@@ -12,7 +12,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useWorkers } from "../../../../client/context";
 import type { HarnessEvent, RunOutcome } from "../../../../client/types";
+import type { CostMetrics, TokenMetrics } from "@test-cabinet/run-record";
 import type {
+  GgAgentStatus,
   GgBoardEpic,
   GgBoardIssue,
   GgCapabilitySet,
@@ -25,6 +27,7 @@ import type {
   GgSkillState,
   GgTaskEntry,
   GgTelemetryEvent,
+  GgWorkflowPhase,
 } from "@test-cabinet/run-record/gg";
 import { useRunsRuntime } from "../../../runtime/runsRuntime";
 
@@ -60,6 +63,11 @@ export interface FeedRow {
   // A compact, secondary line (a tool call's args), shown muted beneath the detail.
   args?: string;
   tone: FeedTone;
+  // The id of the agent that emitted this row (the event envelope's `agentId`), so
+  // the feed can attribute a line to a node in the subagent tree once subagents run.
+  // `"root"` for a single-agent run; undefined for the rare pre-agent event (and for
+  // non-gg orchestrator setup rows, which have no agent).
+  agentId?: string;
 }
 
 // The running token/cost tally, summed from the stream's incremental `usage`
@@ -76,6 +84,83 @@ export interface UsageTally {
   comparable: number | null;
   actual: number | null;
   count: number;
+}
+
+// --- Subagent tree (Phase 4) -------------------------------------------------
+
+// One node of the subagent tree — an agent that joined the run. Its identity
+// (`id`) and its spawner (`parentId`) come from the event envelope's
+// `agentId`/`parentAgentId`, not the payload. `slot`/`modelId`/`depth`/`brief`/
+// `worktree` are filled from the `agent_spawned` event; they are null/absent on a
+// placeholder created from an out-of-order `agent_status`/`agent_returned`/
+// `worktree_merged` that named an agent no spawn had yet introduced. `status`
+// tracks the latest `agent_status` transition (defaulting to "running" on spawn);
+// `returnSummary` is set from `agent_returned` (which also implies "done");
+// `worktreeOutcome` is derived from `worktree_merged`.
+export interface AgentNode {
+  // The agent's id: "root" for the root agent, "agent-N" for a subagent.
+  id: string;
+  // The spawner's id, or null for the root (which has no parent).
+  parentId: string | null;
+  // The model slot the agent runs on (e.g. "primary", "reviewer"); null until a
+  // spawn is seen.
+  slot: string | null;
+  // The concrete model id the slot resolved to; null until a spawn is seen.
+  modelId: string | null;
+  // Depth in the tree (0 = root); null until a spawn is seen.
+  depth: number | null;
+  // The task/issue brief the subagent was dispatched with (absent for the root).
+  brief?: string;
+  // The isolated git worktree branch the agent runs in, when it was dispatched with
+  // one; absent for an agent running in the shared main tree.
+  worktree?: string;
+  // The agent's latest lifecycle status.
+  status: GgAgentStatus;
+  // The value the agent returned to its parent, once it returned.
+  returnSummary?: string;
+  // How the agent's worktree reconciled, once it did: merged back cleanly,
+  // discarded, or left unmerged by a conflict.
+  worktreeOutcome?: "merged" | "discarded" | "conflict";
+}
+
+// A node of the rooted subagent tree — an `AgentNode` plus its spawned children (in
+// spawn order). The tree is always rooted at the "root" node, so a single-agent run
+// is a one-node tree (root with no children).
+export interface AgentTreeNode extends AgentNode {
+  children: AgentTreeNode[];
+}
+
+// --- Per-slot usage (Phase 4, multi-model) -----------------------------------
+
+// The latest usage ROLLUP for one (slot, model) pair, from a `slot_usage` event.
+// A gg run spans several models (one per slot), so usage/cost is accounted per slot
+// rather than as one figure. These are cumulative TOTALS, not deltas — the latest
+// per (slot, model) is that pair's total, so they are never summed across emissions
+// of the same pair (only across distinct pairs, to reach the run's grand total).
+export interface SlotUsage {
+  slot: string;
+  modelId: string;
+  tokens: TokenMetrics;
+  cost: CostMetrics | null;
+}
+
+// --- Declared workflows (Phase 4) --------------------------------------------
+
+// One stage of a declared workflow — a fan-out boundary. `phase` is the latest
+// transition seen ("started" until the stage's "finished" arrives), so a stage in
+// flight reads as running and a completed one as finished.
+export interface WorkflowStage {
+  stage: string;
+  stageIndex: number;
+  itemCount: number;
+  phase: GgWorkflowPhase;
+}
+
+// One declared workflow's stages, in stage order — the structured, sequenced
+// counterpart to ad-hoc subagents (see gg/workflows).
+export interface Workflow {
+  workflowId: string;
+  stages: WorkflowStage[];
 }
 
 // One `context_breakdown` snapshot — a point on the stacked context-window graph.
@@ -176,7 +261,26 @@ export interface GgRunState {
   feed: FeedRow[];
 
   // --- Token/cost tally ----------------------------------------------------
+  // The global running tally. When per-slot rollups are present it is derived as
+  // the sum of the latest `slotUsage` rollups (their authoritative per-slot totals),
+  // so the header total is always consistent with the per-slot breakdown; before any
+  // `slot_usage` arrives it falls back to the sum of the incremental `usage` deltas.
   usage: UsageTally;
+  // The per-(slot, model) usage rollups (latest wins per pair); empty when the run
+  // emitted no `slot_usage` (a single-model run may only emit the global `usage`
+  // deltas). The sum across pairs reconciles with `usage` above.
+  slotUsage: SlotUsage[];
+
+  // --- Subagent tree (Phase 4) ---------------------------------------------
+  // The flat agent map, keyed by agent id, and the same nodes as a tree rooted at
+  // "root". A single-agent run is a one-node tree (just root); subagents extend it.
+  agents: Map<string, AgentNode>;
+  agentTree: AgentTreeNode;
+
+  // --- Declared workflows (Phase 4) ----------------------------------------
+  // The workflows run this session, in first-seen order, each with its stages in
+  // stage order; empty when no workflow ran.
+  workflows: Workflow[];
 
   // --- Context visibility (stacked graph over time) ------------------------
   contextSeries: ContextSnapshot[];
@@ -287,7 +391,9 @@ function ggFeedRow(
   timestamp: string,
   key: string,
 ): FeedRow | null {
-  const base = { key, timestamp };
+  // The emitting agent rides on the event envelope, not the payload; attribute the
+  // row to it so the feed can label which agent produced a line once subagents run.
+  const base = { key, timestamp, agentId: gg.agentId };
   switch (gg.type) {
     case "session_started":
       return {
@@ -372,6 +478,14 @@ function ggFeedRow(
     case "memory_state":
     case "tasks_state":
     case "board_state":
+    // The Phase-4 agent/usage/workflow kinds drive the agent tree, the per-slot
+    // usage read-out, and the workflow view — not the feed — so they render no row.
+    case "agent_spawned":
+    case "agent_status":
+    case "agent_returned":
+    case "worktree_merged":
+    case "slot_usage":
+    case "workflow_stage":
       return null;
     default:
       return null;
@@ -412,6 +526,10 @@ function toFeedRow(event: HarnessEvent, index: number): FeedRow | null {
 interface DerivedGgState {
   feed: FeedRow[];
   usage: UsageTally;
+  slotUsage: SlotUsage[];
+  agents: Map<string, AgentNode>;
+  agentTree: AgentTreeNode;
+  workflows: Workflow[];
   sawSession: boolean;
   sessionEndStatus: string | null;
   contextSeries: ContextSnapshot[];
@@ -437,12 +555,85 @@ const EMPTY_USAGE: UsageTally = {
   count: 0,
 };
 
+// The id of the root agent — the tree is always rooted here (see the subagent
+// contract: a single-agent run stamps every event with `"root"`).
+const ROOT_ID = "root";
+
+// Accumulate one set of null-aware token counts (and any cost) into a tally. Used
+// for both the incremental `usage` deltas and the per-(slot, model) `slot_usage`
+// rollups: summing distinct slot rollups reaches the run's grand total, and each
+// class only counts once a figure reports it. Costs stay null until one is seen.
+function addTokens(
+  tally: UsageTally,
+  tokens: TokenMetrics,
+  cost: CostMetrics | null | undefined,
+): void {
+  for (const cls of [
+    "uncachedInput",
+    "cachedInput",
+    "output",
+    "reasoning",
+  ] as const) {
+    const value = tokens[cls];
+    if (value != null) {
+      tally[cls] += value;
+      tally.totalTokens += value;
+      tally.anyTokens = true;
+    }
+  }
+  if (cost?.comparable != null) {
+    tally.comparable = (tally.comparable ?? 0) + cost.comparable;
+  }
+  if (cost?.actual != null) {
+    tally.actual = (tally.actual ?? 0) + cost.actual;
+  }
+}
+
+// Build the rooted subagent tree from the flat agent map. Always rooted at "root"
+// (seeded even when the stream introduced no agents), with each node's children in
+// spawn order. An orphan — a node whose parent was never seen — is attached under
+// root so an out-of-order or truncated stream still yields one connected tree.
+function buildAgentTree(agents: Map<string, AgentNode>): AgentTreeNode {
+  const nodes = new Map<string, AgentTreeNode>();
+  for (const [id, node] of agents) nodes.set(id, { ...node, children: [] });
+  const root = nodes.get(ROOT_ID)!;
+  for (const node of nodes.values()) {
+    if (node.id === ROOT_ID) continue;
+    const parent =
+      (node.parentId != null ? nodes.get(node.parentId) : undefined) ?? root;
+    parent.children.push(node);
+  }
+  return root;
+}
+
 // Fold the whole event log into the derived state in a single pass. Resilient to a
 // capability being OFF: that kind simply never arrives, so its slice stays empty
 // (skills `[]`, memory `null`, tasks `[]`, contextSeries `[]`).
 function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
   const feed: FeedRow[] = [];
-  const usage: UsageTally = { ...EMPTY_USAGE };
+  // The tally of the incremental `usage` deltas. It is the header total until a
+  // `slot_usage` rollup arrives, after which the header is derived from the rollups
+  // (see the reconciliation at the end of this pass).
+  const deltaUsage: UsageTally = { ...EMPTY_USAGE };
+  // The latest `slot_usage` rollup per (slot, model), in first-seen order.
+  const slotUsageByKey = new Map<string, SlotUsage>();
+  // The agent tree, seeded with the root so a single-agent run is a one-node tree.
+  const agents = new Map<string, AgentNode>([
+    [
+      ROOT_ID,
+      {
+        id: ROOT_ID,
+        parentId: null,
+        slot: null,
+        modelId: null,
+        depth: 0,
+        status: "running",
+      },
+    ],
+  ]);
+  // Per-workflow stages, keyed by stageIndex so a stage's "finished" updates the
+  // "started" it began at; the outer map preserves first-seen workflow order.
+  const workflowStages = new Map<string, Map<number, WorkflowStage>>();
   const contextSeries: ContextSnapshot[] = [];
   const compactions: CompactionBoundary[] = [];
   const contextActions: ContextAction[] = [];
@@ -454,6 +645,29 @@ function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
   let board: BoardState | null = null;
   let plan: PlanState | null = null;
   let turn = 0;
+
+  // Get the agent node for an id, creating a placeholder if the stream referenced it
+  // before (or without) an `agent_spawned` — so an out-of-order status/return/merge
+  // never crashes and still shows the agent. The placeholder carries the parent from
+  // the event envelope when known, and is later filled in if its spawn arrives.
+  const ensureAgent = (id: string, parentId?: string): AgentNode => {
+    let node = agents.get(id);
+    if (!node) {
+      node = {
+        id,
+        parentId: parentId ?? null,
+        slot: null,
+        modelId: null,
+        depth: null,
+        status: "running",
+      };
+      agents.set(id, node);
+    } else if (node.parentId == null && parentId != null && id !== ROOT_ID) {
+      // Fill in a parent we learned about after the placeholder was made.
+      node.parentId = parentId;
+    }
+    return node;
+  };
 
   events.forEach((event, index) => {
     const row = toFeedRow(event, index);
@@ -468,28 +682,80 @@ function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
       case "session_ended":
         sessionEndStatus = gg.status;
         break;
-      case "usage": {
-        usage.count += 1;
-        const { tokens, cost } = gg;
-        for (const cls of [
-          "uncachedInput",
-          "cachedInput",
-          "output",
-          "reasoning",
-        ] as const) {
-          const value = tokens[cls];
-          if (value != null) {
-            usage[cls] += value;
-            usage.totalTokens += value;
-            usage.anyTokens = true;
-          }
+      case "usage":
+        // Incremental deltas: sum them into the delta tally (the header total until
+        // a per-slot rollup supersedes it).
+        deltaUsage.count += 1;
+        addTokens(deltaUsage, gg.tokens, gg.cost);
+        break;
+      case "slot_usage":
+        // A cumulative rollup, NOT a delta: the latest per (slot, model) is that
+        // pair's total, so overwrite (never accumulate) the pair's entry.
+        slotUsageByKey.set(`${gg.slot} ${gg.modelId}`, {
+          slot: gg.slot,
+          modelId: gg.modelId,
+          tokens: gg.tokens,
+          cost: gg.cost ?? null,
+        });
+        break;
+      case "agent_spawned": {
+        // The node's id/parent ride on the envelope; fill in the spawn detail.
+        const node = ensureAgent(
+          event.event.agentId ?? ROOT_ID,
+          event.event.parentAgentId,
+        );
+        node.slot = gg.slot;
+        node.modelId = gg.modelId;
+        node.depth = gg.depth;
+        if (gg.brief != null) node.brief = gg.brief;
+        if (gg.worktree != null) node.worktree = gg.worktree;
+        break;
+      }
+      case "agent_status": {
+        const node = ensureAgent(
+          event.event.agentId ?? ROOT_ID,
+          event.event.parentAgentId,
+        );
+        node.status = gg.status;
+        break;
+      }
+      case "agent_returned": {
+        const node = ensureAgent(
+          event.event.agentId ?? ROOT_ID,
+          event.event.parentAgentId,
+        );
+        node.returnSummary = gg.summary;
+        // A return implies the agent's loop ended normally.
+        node.status = "done";
+        break;
+      }
+      case "worktree_merged": {
+        // The reconciling agent is the emitter. Map the merged/conflicts pair to a
+        // single outcome: clean merge, conflict (main tree untouched), or discard.
+        const node = ensureAgent(
+          event.event.agentId ?? ROOT_ID,
+          event.event.parentAgentId,
+        );
+        node.worktreeOutcome = gg.merged
+          ? "merged"
+          : gg.conflicts
+            ? "conflict"
+            : "discarded";
+        break;
+      }
+      case "workflow_stage": {
+        let stages = workflowStages.get(gg.workflowId);
+        if (!stages) {
+          stages = new Map();
+          workflowStages.set(gg.workflowId, stages);
         }
-        if (cost?.comparable != null) {
-          usage.comparable = (usage.comparable ?? 0) + cost.comparable;
-        }
-        if (cost?.actual != null) {
-          usage.actual = (usage.actual ?? 0) + cost.actual;
-        }
+        // Latest phase for the stage wins ("finished" supersedes "started").
+        stages.set(gg.stageIndex, {
+          stage: gg.stage,
+          stageIndex: gg.stageIndex,
+          itemCount: gg.itemCount,
+          phase: gg.phase,
+        });
         break;
       }
       case "context_breakdown":
@@ -568,9 +834,38 @@ function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
     }
   });
 
+  const slotUsage = [...slotUsageByKey.values()];
+
+  // Reconcile the header total with the per-slot rollups. When any `slot_usage`
+  // arrived, the rollups are the authoritative per-slot totals — a multi-model run
+  // has no single `usage` stream to trust — so the header is their sum across the
+  // distinct (slot, model) pairs (never summed across re-emissions of one pair,
+  // which are overwrites). Before any rollup it falls back to the incremental
+  // `usage` delta tally. Both count the same underlying tokens, so the header is
+  // never the two added together (that would double-count); `count` stays the number
+  // of delta accountings for reference.
+  let usage: UsageTally;
+  if (slotUsage.length > 0) {
+    usage = { ...EMPTY_USAGE, count: deltaUsage.count };
+    for (const s of slotUsage) addTokens(usage, s.tokens, s.cost);
+  } else {
+    usage = deltaUsage;
+  }
+
+  const workflows: Workflow[] = [...workflowStages.entries()].map(
+    ([workflowId, stages]) => ({
+      workflowId,
+      stages: [...stages.values()].sort((a, b) => a.stageIndex - b.stageIndex),
+    }),
+  );
+
   return {
     feed,
     usage,
+    slotUsage,
+    agents,
+    agentTree: buildAgentTree(agents),
+    workflows,
     sawSession,
     sessionEndStatus,
     contextSeries,
