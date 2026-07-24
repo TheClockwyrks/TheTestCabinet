@@ -236,6 +236,33 @@ pub const CAPABILITY_CODE_REVIEWS: &str = "code-reviews";
 /// [FSM-driven processes]: https://docs.testcabinet.ai/gg/fsms/
 pub const CAPABILITY_FSM: &str = "fsm";
 
+/// The stable id of the Phase 5 [speculative execution] capability: **best-of-K** — attempting the
+/// same piece of work several times in parallel and keeping only the best result.
+///
+/// When enabled, the model can call `speculate` with a task (a free-form prompt or an
+/// [issue](CAPABILITY_EPICS_ISSUES)) and a count `K`: gg fans out `K`
+/// [subagents](CAPABILITY_SUBAGENTS) at the same task — optionally with different approach hints, or
+/// on different [model slots](CAPABILITY_MULTI_MODEL) — **each in its own
+/// [worktree](CAPABILITY_WORKTREES)** so the attempts do not collide, driven by the same
+/// [scheduler](CAPABILITY_SUBAGENTS) (honoring the one global parallelism cap and the depth cap — no
+/// separate budget). Once the attempts finish, a **judge** — a dedicated judge subagent (or a
+/// [Code Review](CAPABILITY_CODE_REVIEWS)) — scores their diffs against the task's completion
+/// criteria and picks a winner; gg then **merges the winner's worktree back** into the main tree and
+/// **discards the losers'** branches, so the main tree ends with exactly the winning attempt applied.
+/// The lifecycle (`fan-out → judge → merge`) is streamed as
+/// [`Speculation`](GgTelemetryKind::Speculation) telemetry, and the `K` attempts and the judge appear
+/// in the [agent tree](CAPABILITY_SUBAGENTS) as ordinary subagents.
+///
+/// gg includes speculative execution **so its effectiveness can be measured empirically** — toggled
+/// against single-attempt work, it answers "does best-of-K beat one careful attempt at a fixed
+/// budget?" with data. Opt-in; it needs the delegation machinery to run the attempts and the judge
+/// (so it engages only when [subagents](CAPABILITY_SUBAGENTS) — or [workflows](CAPABILITY_WORKFLOWS)
+/// — is also on) and the [worktrees](CAPABILITY_WORKTREES) capability to isolate them (a `speculate`
+/// call is refused when worktree isolation is unavailable).
+///
+/// [speculative execution]: https://docs.testcabinet.ai/gg/speculative-execution/
+pub const CAPABILITY_SPECULATIVE: &str = "speculative-execution";
+
 /// The declarative, inspectable configuration of a gg run — its *independent
 /// variable*.
 ///
@@ -939,6 +966,32 @@ pub enum GgCodeReviewPhase {
     Approved,
 }
 
+/// The phase of a [speculative execution](https://docs.testcabinet.ai/gg/speculative-execution/) a
+/// [`Speculation`](GgTelemetryKind::Speculation) event reports — the `fan-out → judge → merge`
+/// lifecycle of a best-of-K attempt.
+///
+/// A speculation [fans out](Self::FannedOut) K attempts at the same task (each in its own worktree),
+/// then a judge [scores and picks a winner](Self::Judged) among the attempts that produced work, and
+/// finally the winner's worktree is [merged](Self::Merged) back into the main tree while the losers'
+/// branches are discarded. A speculation that produced no usable work emits [`Judged`](Self::Judged)
+/// with no winner and no [`Merged`](Self::Merged).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum GgSpeculationPhase {
+    /// The K attempts have been fanned out — one subagent per attempt, each in its own isolated
+    /// worktree, running the same task in parallel under the scheduler.
+    FannedOut,
+    /// The attempts finished and a judge scored their work and selected the winner (carried on the
+    /// event's [`winner`](GgTelemetryKind::Speculation) field, with the judge's
+    /// [`rationale`](GgTelemetryKind::Speculation)). Emitted with no winner when no attempt produced
+    /// usable work to merge.
+    Judged,
+    /// The winning attempt's worktree was merged back into the main tree and the losing attempts'
+    /// branches were discarded, so the main tree now holds exactly the winning attempt's changes.
+    Merged,
+}
+
 /// A single event in gg's first-party telemetry stream (schema v1).
 ///
 /// Because gg is [headless](https://docs.testcabinet.ai/gg/overview/), this stream is
@@ -1436,6 +1489,38 @@ pub enum GgTelemetryKind {
         /// The state's zero-based index in the machine's ordered states, so the console can place it
         /// on the machine's path (a `review-gated` loop-back repeats an earlier index).
         state_index: u64,
+    },
+    /// A [speculative execution](https://docs.testcabinet.ai/gg/speculative-execution/) lifecycle
+    /// transition — the event that makes a **best-of-K** attempt (the K parallel tries, the judge's
+    /// pick, and the merge) observable.
+    ///
+    /// Emitted (when the [speculative-execution](CAPABILITY_SPECULATIVE) capability is enabled) on the
+    /// agent that called `speculate`: once as [`FannedOut`](GgSpeculationPhase::FannedOut) when the K
+    /// attempts are dispatched, once as [`Judged`](GgSpeculationPhase::Judged) once a judge has scored
+    /// them and picked the [`winner`](Self::Speculation::winner) (with the judge's
+    /// [`rationale`](Self::Speculation::rationale)), and once as
+    /// [`Merged`](GgSpeculationPhase::Merged) after the winner's worktree is merged back and the
+    /// losers are discarded. A speculation that produced no usable work emits `Judged` with no winner
+    /// and no `Merged`. The K attempts and the judge are ordinary
+    /// [subagents](CAPABILITY_SUBAGENTS) — they emit the usual
+    /// [`AgentSpawned`](Self::AgentSpawned)/[`AgentStatus`](Self::AgentStatus)/[`AgentReturned`](Self::AgentReturned)
+    /// events (each attempt's `AgentSpawned` carrying its isolated worktree branch) — so the console
+    /// can show the K attempts and the chosen winner. A run with the capability off emits none.
+    Speculation {
+        /// How many attempts were fanned out at the task (the `K` of best-of-K).
+        attempts: u64,
+        /// Which phase of the speculation lifecycle this transition is.
+        phase: GgSpeculationPhase,
+        /// The winning attempt's agent id, on [`Judged`](GgSpeculationPhase::Judged) (once a winner is
+        /// picked) and [`Merged`](GgSpeculationPhase::Merged). Absent on
+        /// [`FannedOut`](GgSpeculationPhase::FannedOut), and on a `Judged` where no attempt produced
+        /// usable work.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        winner: Option<String>,
+        /// The judge's one-line rationale for its pick, on [`Judged`](GgSpeculationPhase::Judged).
+        /// Absent on the other phases (and when the judge gave none).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        rationale: Option<String>,
     },
     /// A diagnostic log line from gg itself (not agent output).
     Log {

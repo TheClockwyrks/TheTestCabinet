@@ -14,8 +14,8 @@ use crate::client::MockClient;
 use crate::client::{
     ClientFactory, DEFAULT_MOCK_MEMORY, DEFAULT_MOCK_SKILL, DEFAULT_MOCK_TASK_MOVEMENT,
     DEFAULT_MOCK_TASK_SCAFFOLD, MOCK_CODE_REVIEW_ISSUE_ID, MOCK_FSM_IMPL_FILE, MOCK_FSM_TEST_FILE,
-    MOCK_REVIEW_FIX_FILE, MOCK_REVIEW_FIX_SENTINEL, MOCK_REVIEW_WORKER_FILE, MOCK_SUBAGENT_FILE,
-    MOCK_SUBAGENT_RETURN,
+    MOCK_REVIEW_FIX_FILE, MOCK_REVIEW_FIX_SENTINEL, MOCK_REVIEW_WORKER_FILE,
+    MOCK_SPECULATE_ATTEMPT_PREFIX, MOCK_SUBAGENT_FILE, MOCK_SUBAGENT_RETURN,
 };
 use crate::compaction::CompactionSetup;
 use crate::config::GgInvocation;
@@ -33,10 +33,10 @@ use crate::tools::{RuntimeSet, ToolContext, ToolRegistry};
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_CODE_REVIEWS, CAPABILITY_CONTEXT_VISIBILITY,
     CAPABILITY_EPICS_ISSUES, CAPABILITY_FSM, CAPABILITY_MULTI_MODEL, CAPABILITY_PLANNING,
-    CAPABILITY_SKILLS, CAPABILITY_SUBAGENTS, CAPABILITY_WORKFLOWS, CAPABILITY_WORKTREES,
-    GgAgentStatus, GgCapabilityConfig, GgCapabilitySet, GgCodeReviewPhase, GgContextAction,
-    GgContextSource, GgIssueStatus, GgPlanPhase, GgSlotBinding, GgTelemetryKind, GgWorkflowPhase,
-    PRIMARY_SLOT,
+    CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS, CAPABILITY_WORKFLOWS,
+    CAPABILITY_WORKTREES, GgAgentStatus, GgCapabilityConfig, GgCapabilitySet, GgCodeReviewPhase,
+    GgContextAction, GgContextSource, GgIssueStatus, GgPlanPhase, GgSlotBinding,
+    GgSpeculationPhase, GgTelemetryKind, GgWorkflowPhase, PRIMARY_SLOT,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
@@ -532,6 +532,7 @@ async fn drive_exhausts_the_turn_ceiling_when_the_model_never_stops() {
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
             false,
+            false,
             None,
         )
         .await;
@@ -579,6 +580,7 @@ async fn drive_times_out_at_a_passed_deadline() {
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
             false,
+            false,
             None,
         )
         .await;
@@ -625,6 +627,7 @@ async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
             false,
+            false,
             None,
         )
         .await;
@@ -669,6 +672,7 @@ async fn drive_ends_model_error_on_exhausted_retries() {
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
+            false,
             false,
             None,
         )
@@ -716,6 +720,7 @@ fn system_prompt_reflects_the_offered_tools() {
         &PlanningRuntime::disabled(),
         &FsmRuntime::disabled(),
         false,
+        false,
     );
     assert!(full.contains("write_file"));
     assert!(full.contains("shell"));
@@ -733,6 +738,7 @@ fn system_prompt_reflects_the_offered_tools() {
         &BoardRuntime::disabled(),
         &PlanningRuntime::disabled(),
         &FsmRuntime::disabled(),
+        false,
         false,
     );
     assert!(empty.contains("no tools"));
@@ -1057,6 +1063,7 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
             false,
+            false,
             None,
         )
         .await;
@@ -1235,6 +1242,7 @@ async fn drive_enforces_memory_caps_end_to_end() {
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
+            false,
             false,
             None,
         )
@@ -1427,6 +1435,7 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
+            false,
             false,
             None,
         )
@@ -1728,6 +1737,7 @@ async fn drive_compacts_at_the_threshold_and_retains_pinned_state() {
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
             false,
+            false,
             None,
         )
         .await;
@@ -1884,6 +1894,7 @@ async fn drive_never_compacts_when_capability_off() {
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
             false,
+            false,
             None,
         )
         .await;
@@ -1974,6 +1985,7 @@ async fn drive_manages_context_end_to_end() {
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
+            false,
             false,
             None,
         )
@@ -2081,6 +2093,7 @@ async fn drive_without_amc_offers_no_context_management() {
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
             false,
+            false,
             None,
         )
         .await;
@@ -2162,6 +2175,7 @@ async fn drive_plans_then_implements_from_a_fresh_context() {
             BoardRuntime::disabled(),
             PlanningRuntime::resolve(&set),
             FsmRuntime::disabled(),
+            false,
             false,
             None,
         )
@@ -2318,6 +2332,7 @@ async fn drive_without_planning_offers_no_planning() {
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
+            false,
             false,
             None,
         )
@@ -5106,4 +5121,458 @@ async fn fsm_absent_or_unknown_machine_leaves_behavior_unchanged() {
             "an unrecognized machine is warned about, loudly"
         );
     }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 5c: speculative execution — best-of-K over isolated worktrees + a judge
+// ---------------------------------------------------------------------------
+
+/// [`subagent_set`] (subagents + multi-model), plus the worktrees and speculative-execution
+/// capabilities — a best-of-K run. Every attempt needs its own worktree, so worktrees is required.
+fn speculative_set(extra_slots: &[&str]) -> GgCapabilitySet {
+    let mut set = subagent_set(4, 3, extra_slots);
+    set.capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_WORKTREES));
+    set.capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_SPECULATIVE));
+    set
+}
+
+/// Every `Speculation` event in the stream, as `(agentId, attempts, phase, winner, rationale)`.
+type Speculation = (
+    Option<String>,
+    u64,
+    GgSpeculationPhase,
+    Option<String>,
+    Option<String>,
+);
+fn speculations(events: &[test_cabinet_core::gg::GgTelemetryEvent]) -> Vec<Speculation> {
+    events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::Speculation {
+                attempts,
+                phase,
+                winner,
+                rationale,
+            } => Some((
+                e.agent_id.clone(),
+                *attempts,
+                *phase,
+                winner.clone(),
+                rationale.clone(),
+            )),
+            _ => None,
+        })
+        .collect()
+}
+
+/// An `attempt`-slot producer whose Nth dispatch writes `attempt-N.txt` then finishes — so each
+/// parallel attempt leaves a distinct, countable trace in its own worktree and the judge's diff of
+/// each has real content.
+fn speculation_attempt_producer(
+    counter: Arc<AtomicUsize>,
+) -> impl Fn(&GgSlotBinding) -> Box<dyn ModelClient> + Send + Sync + 'static {
+    move |b| {
+        let n = counter.fetch_add(1, Ordering::SeqCst);
+        Box::new(MockClient::new(
+            &b.model_id,
+            vec![
+                tool_call_response(
+                    "write",
+                    "write_file",
+                    json!({ "path": format!("attempt-{n}.txt"), "contents": format!("attempt {n}\n") }),
+                ),
+                ModelResponse {
+                    text: Some(format!("Attempt {n} complete.")),
+                    tool_calls: Vec::new(),
+                    finish_reason: FinishReason::Stop,
+                    usage: TokenCounts::default(),
+                    cost: None,
+                },
+            ],
+        ))
+    }
+}
+
+/// A `judge`-slot producer that picks the given 1-based candidate as the winner.
+fn judge_producer(
+    winner: usize,
+) -> impl Fn(&GgSlotBinding) -> Box<dyn ModelClient> + Send + Sync + 'static {
+    move |b| {
+        Box::new(MockClient::new(
+            &b.model_id,
+            vec![ModelResponse {
+                text: Some(format!(
+                    "Attempt {winner} is the most complete.\n\nSPECULATION JUDGE: WINNER {winner}"
+                )),
+                tool_calls: Vec::new(),
+                finish_reason: FinishReason::Stop,
+                usage: TokenCounts::default(),
+                cost: None,
+            }],
+        ))
+    }
+}
+
+/// The headline best-of-K proof: `speculate` fans out K attempts, EACH IN ITS OWN WORKTREE (so they
+/// cannot collide), a judge picks a winner against the task, and ONLY the winner's changes are merged
+/// back into the main tree — the losers are discarded. The full `fan-out → judge → merge` lifecycle
+/// streams as `Speculation` telemetry, and the K attempts + the judge appear in the agent tree.
+#[tokio::test]
+async fn speculate_runs_best_of_k_over_worktrees_and_merges_only_the_winner() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-spec".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), speculative_set(&["attempt", "judge"]));
+
+    // The root speculates: two attempts on the `attempt` slot, then stops.
+    let attempt_counter = Arc::new(AtomicUsize::new(0));
+    let factory = ScriptedFactory::new()
+        .slot("primary", |b| {
+            Box::new(MockClient::new(
+                &b.model_id,
+                vec![
+                    tool_call_response(
+                        "spec",
+                        "speculate",
+                        json!({
+                            "prompt": "Implement the widget as well as you can.",
+                            "attempts": 2,
+                            "slots": ["attempt", "attempt"],
+                        }),
+                    ),
+                    stop_response(),
+                ],
+            ))
+        })
+        .slot("attempt", speculation_attempt_producer(Arc::clone(&attempt_counter)))
+        // The judge picks the 2nd candidate — so the winner is the second attempt (agent-1), which
+        // wrote attempt-1.txt.
+        .slot("judge", judge_producer(2));
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran
+    );
+
+    let events = sink.events();
+
+    // The worktrees capability committed a baseline (the repo exists).
+    assert!(
+        dir.path().join(".git").exists(),
+        "best-of-K commits a baseline and runs each attempt in a worktree"
+    );
+
+    // Two attempts, each in its OWN isolated worktree (a distinct branch), plus one judge — all
+    // subagents at depth 1.
+    let spawns = agent_spawns(&events);
+    let attempt_branches: Vec<Option<String>> = events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::AgentSpawned {
+                slot,
+                worktree,
+                depth,
+                ..
+            } if slot == "attempt" && *depth == 1 => Some(worktree.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(attempt_branches.len(), 2, "two attempts were fanned out");
+    assert_eq!(
+        attempt_branches,
+        vec![
+            Some("gg/agent-0".to_string()),
+            Some("gg/agent-1".to_string())
+        ],
+        "each attempt ran in its own isolated worktree branch"
+    );
+    let judge_spawns: Vec<_> = spawns
+        .iter()
+        .filter(|(_, _, slot, _, _)| slot == "judge")
+        .collect();
+    assert_eq!(judge_spawns.len(), 1, "one judge was dispatched");
+
+    // The judge was given each candidate's diff (so it judged the real work against the task).
+    let judge_brief = judge_spawns[0].4.as_deref().unwrap();
+    assert!(
+        judge_brief.contains("attempt-0.txt") && judge_brief.contains("attempt-1.txt"),
+        "the judge sees both attempts' diffs to compare"
+    );
+    assert!(
+        judge_brief.contains("Implement the widget"),
+        "the judge is given the task the attempts were judged against"
+    );
+
+    // The lifecycle: fanned_out → judged(winner) → merged(winner), all on the speculating (root) stream.
+    let specs = speculations(&events);
+    let phases: Vec<GgSpeculationPhase> = specs.iter().map(|(_, _, p, _, _)| *p).collect();
+    assert_eq!(
+        phases,
+        vec![
+            GgSpeculationPhase::FannedOut,
+            GgSpeculationPhase::Judged,
+            GgSpeculationPhase::Merged,
+        ],
+        "a speculation streams fanned_out → judged → merged"
+    );
+    assert!(
+        specs
+            .iter()
+            .all(|(agent, attempts, _, _, _)| agent.as_deref() == Some("root") && *attempts == 2),
+        "every Speculation event names the speculating agent and K=2"
+    );
+    // The winner (the 2nd attempt, agent-1) is named on judged and merged, with a rationale on judged.
+    let (_, _, _, judged_winner, rationale) = specs
+        .iter()
+        .find(|(_, _, p, _, _)| *p == GgSpeculationPhase::Judged)
+        .expect("a judged phase");
+    assert_eq!(
+        judged_winner.as_deref(),
+        Some("agent-1"),
+        "the judge's pick (candidate 2 = the second attempt) is the winner"
+    );
+    assert!(
+        rationale.is_some(),
+        "the judged phase carries the judge's rationale"
+    );
+    let (_, _, _, merged_winner, _) = specs
+        .iter()
+        .find(|(_, _, p, _, _)| *p == GgSpeculationPhase::Merged)
+        .expect("a merged phase");
+    assert_eq!(
+        merged_winner.as_deref(),
+        Some("agent-1"),
+        "the merged winner matches the judged winner"
+    );
+
+    // ONLY the winner's changes are in the main tree: attempt-1.txt (the winner) is present, and
+    // attempt-0.txt (the discarded loser) is not.
+    assert!(
+        dir.path().join("attempt-1.txt").exists(),
+        "the winning attempt's work is merged into the main tree"
+    );
+    assert!(
+        !dir.path().join("attempt-0.txt").exists(),
+        "the losing attempt's work is discarded, not merged"
+    );
+
+    // Every attempt's worktree checkout was torn down (nothing left behind).
+    let root = worktrees_root_for(dir.path());
+    assert!(
+        !root.join("agent-0").exists() && !root.join("agent-1").exists(),
+        "the attempts' worktree checkouts are removed after the speculation"
+    );
+
+    assert!(matches!(
+        &events.last().unwrap().kind,
+        GgTelemetryKind::SessionEnded { status } if status == "completed"
+    ));
+}
+
+/// The `speculate` tool is only offered when the capability is on — the ablation off arm. With it
+/// off, best-of-K is unavailable and the run does ordinary single-attempt work (no fan-out).
+#[test]
+fn speculate_tool_is_gated_on_the_capability() {
+    // Off (subagents + worktrees on, but not speculative): not offered.
+    let mut off = GgCapabilitySet::minimal("mock/echo");
+    off.capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS));
+    off.capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_WORKTREES));
+    assert!(
+        !ToolRegistry::from_capabilities(&off)
+            .definitions()
+            .iter()
+            .any(|d| d.name == "speculate"),
+        "`speculate` must not be offered when speculative-execution is off"
+    );
+
+    // On: offered.
+    let mut on = off.clone();
+    on.capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_SPECULATIVE));
+    assert!(
+        ToolRegistry::from_capabilities(&on)
+            .definitions()
+            .iter()
+            .any(|d| d.name == "speculate"),
+        "`speculate` is offered when speculative-execution is on"
+    );
+}
+
+/// A `speculate` call is **refused** when worktree isolation is unavailable (the capability needs
+/// worktrees to isolate the attempts): no attempts are fanned out, no `Speculation` telemetry fires,
+/// and the workspace is untouched.
+#[tokio::test]
+async fn speculate_is_refused_without_worktrees() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-spec-nowt".to_string()), Box::new(sink.clone()));
+
+    // subagents + multi-model + speculative, but NOT worktrees.
+    let mut set = subagent_set(4, 3, &["attempt", "judge"]);
+    set.capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_SPECULATIVE));
+    let inv = invocation(dir.path(), set);
+
+    let factory = ScriptedFactory::new().slot("primary", |b| {
+        Box::new(MockClient::new(
+            &b.model_id,
+            vec![
+                tool_call_response(
+                    "spec",
+                    "speculate",
+                    json!({ "prompt": "Do the thing.", "attempts": 2 }),
+                ),
+                stop_response(),
+            ],
+        ))
+    });
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran
+    );
+
+    let events = sink.events();
+
+    // The tool was refused (a tool error to the model), not run.
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::ToolResult { name, ok: false, summary: Some(s) }
+                if name == "speculate" && s.contains("worktree")
+        )),
+        "speculate is refused with a worktree message when isolation is unavailable"
+    );
+    // No fan-out, no judge, no Speculation telemetry, no attempt files.
+    assert_eq!(
+        agent_spawns(&events).len(),
+        1,
+        "only the root runs — no attempts or judge were spawned"
+    );
+    assert!(
+        speculations(&events).is_empty(),
+        "no Speculation telemetry when the call is refused"
+    );
+    assert!(
+        !dir.path().join(".git").exists(),
+        "no baseline is committed for a speculative run without worktrees"
+    );
+}
+
+/// Best-of-K driven **offline through the real binary path** (the `DefaultClientFactory` + the
+/// `mock/…` model-id scripts): three attempts each write a distinctly-named file in their own
+/// worktree, the judge picks the first, and only that attempt's file is merged.
+#[tokio::test]
+async fn speculate_offline_e2e_through_the_default_factory() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-spec-offline".to_string()), Box::new(sink.clone()));
+
+    let mut set = GgCapabilitySet::minimal("mock/x-speculate-parent");
+    set.capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_MULTI_MODEL));
+    set.capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS));
+    set.capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_WORKTREES));
+    set.capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_SPECULATIVE));
+    set.slots
+        .push(GgSlotBinding::new("attempt", "mock/x-speculate-attempt"));
+    set.slots
+        .push(GgSlotBinding::new("judge", "mock/x-speculate-judge"));
+    let inv = invocation(dir.path(), set);
+
+    // The real production path: `run` with the DefaultClientFactory, selecting scripts by model id.
+    assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
+
+    let events = sink.events();
+
+    // Three attempts (each in its own worktree) plus one judge.
+    let spawns = agent_spawns(&events);
+    assert_eq!(
+        spawns
+            .iter()
+            .filter(|(_, _, slot, _, _)| slot == "attempt")
+            .count(),
+        3,
+        "three attempts were fanned out"
+    );
+    assert_eq!(
+        spawns
+            .iter()
+            .filter(|(_, _, slot, _, _)| slot == "judge")
+            .count(),
+        1,
+        "one judge was dispatched"
+    );
+
+    // The judge picked the first attempt (WINNER 1), whose brief said "attempt 1 of 3" → it wrote
+    // speculate-attempt-1.txt. Only that file is merged; the other two attempts are discarded.
+    assert!(
+        dir.path()
+            .join(format!("{MOCK_SPECULATE_ATTEMPT_PREFIX}1.txt"))
+            .exists(),
+        "the winning attempt's file is merged into the workspace"
+    );
+    for loser in [2, 3] {
+        assert!(
+            !dir.path()
+                .join(format!("{MOCK_SPECULATE_ATTEMPT_PREFIX}{loser}.txt"))
+                .exists(),
+            "the losing attempts' files are discarded"
+        );
+    }
+
+    // The lifecycle completed with a merged winner.
+    let specs = speculations(&events);
+    assert!(
+        specs
+            .iter()
+            .any(|(_, attempts, phase, winner, _)| *attempts == 3
+                && *phase == GgSpeculationPhase::Merged
+                && winner.is_some()),
+        "the offline speculation merged a winner of the three attempts"
+    );
+
+    assert!(matches!(
+        &events.last().unwrap().kind,
+        GgTelemetryKind::SessionEnded { status } if status == "completed"
+    ));
+}
+
+/// The judge verdict contract: `parse_judge_verdict` reads the 1-based winner (last marker wins,
+/// case-insensitive), and treats a missing or non-positive winner as an error so an unclear judge
+/// never causes a silent or arbitrary merge.
+#[test]
+fn parse_judge_verdict_reads_the_winner_and_rejects_no_verdict() {
+    let verdict =
+        parse_judge_verdict("Attempt 2 wins.\n\nSPECULATION JUDGE: WINNER 2\nIt is more complete.")
+            .expect("a clean verdict parses");
+    assert_eq!(verdict.winner, 2);
+    assert!(!verdict.rationale.is_empty(), "a rationale is captured");
+
+    // Case-insensitive, and the last marker wins.
+    let verdict = parse_judge_verdict("speculation judge: winner 1\nspeculation judge: winner 3")
+        .expect("the last marker wins");
+    assert_eq!(verdict.winner, 3);
+
+    // No marker at all → error (never guess a winner).
+    assert!(
+        parse_judge_verdict("I think the second attempt is best, honestly.").is_err(),
+        "a message with no verdict marker is an error"
+    );
+    // A zero (or non-numeric) winner → error (attempts are 1-based).
+    assert!(
+        parse_judge_verdict("SPECULATION JUDGE: WINNER 0").is_err(),
+        "winner 0 is rejected"
+    );
+    assert!(
+        parse_judge_verdict("SPECULATION JUDGE: WINNER none").is_err(),
+        "a non-numeric winner is rejected"
+    );
 }

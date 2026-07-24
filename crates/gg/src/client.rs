@@ -1529,6 +1529,76 @@ impl MockClient {
         )
     }
 
+    /// The **parent** side of the offline [speculative execution](https://docs.testcabinet.ai/gg/speculative-execution/)
+    /// e2e: a script that makes a best-of-K attempt at a task, then finishes.
+    ///
+    /// 1. `speculate { prompt, attempts: 3, slots: ["attempt", …] }` — gg fans out three
+    ///    [attempts](Self::with_speculate_attempt_script) (each in its own worktree, on the `attempt`
+    ///    slot), a [judge](Self::with_speculate_judge_script) picks the winner, and gg merges the
+    ///    winner back while discarding the losers;
+    /// 2. a final tool-free turn stops.
+    ///
+    /// Selected in production by a mock `model_id` naming `speculate-parent` (see [`mock_client_for`]),
+    /// so the whole best-of-K fan-out → judge → merge path is drivable **offline through the real
+    /// binary**: bind the primary slot to a `mock/…-speculate-parent` model, an `attempt` slot to a
+    /// `mock/…-speculate-attempt` model, and a `judge` slot to a `mock/…-speculate-judge` model, with
+    /// `subagents`, `multi-model`, `worktrees`, and `speculative-execution` all enabled.
+    pub fn with_speculate_parent_script(model_id: impl Into<String>) -> Self {
+        let usage = |input: u64, output: u64| TokenCounts {
+            uncached_input: Some(input),
+            cached_input: None,
+            output: Some(output),
+            reasoning: None,
+        };
+        let speculate = ModelResponse {
+            text: Some(
+                "This is hard — speculating with three parallel attempts and keeping the best."
+                    .to_string(),
+            ),
+            tool_calls: vec![ToolCall {
+                id: "call_speculate".to_string(),
+                name: "speculate".to_string(),
+                arguments: json!({
+                    "prompt": "Implement the feature as well as you can.",
+                    "attempts": 3,
+                    "slots": ["attempt", "attempt", "attempt"],
+                }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: usage(900, 50),
+            cost: None,
+        };
+        let finish = ModelResponse {
+            text: Some(
+                "The best attempt was merged into the workspace; the game is assembled."
+                    .to_string(),
+            ),
+            tool_calls: Vec::new(),
+            finish_reason: FinishReason::Stop,
+            usage: usage(1000, 40),
+            cost: None,
+        };
+        Self::new(model_id, vec![speculate, finish])
+    }
+
+    /// The **attempt** side of the offline [speculative execution](crate::agent) e2e: a message-driven
+    /// worker (its behavior lives in [`complete`](ModelClient::complete), keyed on a `speculate-attempt`
+    /// model id) that reads its **attempt number** from its brief and writes a distinctly-named file
+    /// (`speculate-attempt-<n>.txt`) so each attempt's isolated work is countable and the winner's
+    /// merge is provable, then finishes. Empty script because it never consults one; production selects
+    /// it via [`mock_client_for`].
+    pub fn with_speculate_attempt_script(model_id: impl Into<String>) -> Self {
+        Self::new(model_id, Vec::new())
+    }
+
+    /// The **judge** side of the offline [speculative execution](crate::agent) e2e: a message-driven
+    /// judge (keyed on a `speculate-judge` model id) that picks the **first** attempt as the winner
+    /// (`SPECULATION JUDGE: WINNER 1`). Empty script for the same reason as the attempt mock;
+    /// production selects it via [`mock_client_for`].
+    pub fn with_speculate_judge_script(model_id: impl Into<String>) -> Self {
+        Self::new(model_id, Vec::new())
+    }
+
     /// The **child** side of the offline [subagents](crate::subagents) e2e: a script that does a
     /// bit of work then returns a distinctive value.
     ///
@@ -1602,6 +1672,15 @@ pub const MOCK_REVIEW_FIX_SENTINEL: &str = "REVIEW-FIX-APPLIED";
 /// The stable marker the fix-agent brief carries (`build_fix_brief`'s heading), by which the Code
 /// Review offline worker tells a fix pass from its initial pass.
 const MOCK_REVIEW_FIX_BRIEF_MARKER: &str = "Requested changes from Code Review";
+
+/// The filename prefix each offline [speculation attempt](MockClient::with_speculate_attempt_script)
+/// writes its work to (suffixed with its attempt number), so each attempt's isolated work is distinct
+/// and a test can prove the winner (and only the winner) was merged.
+pub const MOCK_SPECULATE_ATTEMPT_PREFIX: &str = "speculate-attempt-";
+
+/// The marker the offline [speculation attempt brief](crate::agent) carries (`build_attempt_brief`),
+/// by which the attempt mock reads its own attempt number.
+const MOCK_SPECULATE_ATTEMPT_MARKER: &str = "Speculative attempt ";
 
 #[async_trait::async_trait]
 impl ModelClient for MockClient {
@@ -1694,6 +1773,52 @@ impl ModelClient for MockClient {
             });
         }
 
+        // A speculative-execution **attempt** (offline e2e): it reads its attempt number from its
+        // brief and writes a distinctly-named file so each parallel attempt's isolated work is
+        // countable, then finishes. Manages its own turn cursor (a fresh instance per attempt).
+        if self.model_id.contains("speculate-attempt") {
+            let turn = self.cursor.fetch_add(1, Ordering::SeqCst);
+            if turn == 0 {
+                let n = speculate_attempt_number(messages).unwrap_or(0);
+                return Ok(ModelResponse {
+                    text: Some(format!("Attempt {n}: writing my solution.")),
+                    tool_calls: vec![ToolCall {
+                        id: "call_speculate_attempt".to_string(),
+                        name: "write_file".to_string(),
+                        arguments: json!({
+                            "path": format!("{MOCK_SPECULATE_ATTEMPT_PREFIX}{n}.txt"),
+                            "contents": format!("solution from speculative attempt {n}\n"),
+                        }),
+                    }],
+                    finish_reason: FinishReason::ToolCalls,
+                    usage: TokenCounts::default(),
+                    cost: None,
+                });
+            }
+            return Ok(ModelResponse {
+                text: Some("My attempt is complete.".to_string()),
+                tool_calls: Vec::new(),
+                finish_reason: FinishReason::Stop,
+                usage: TokenCounts::default(),
+                cost: None,
+            });
+        }
+
+        // A speculative-execution **judge** (offline e2e): picks the first attempt as the winner in a
+        // single turn. Answered off-script (the cursor is never touched).
+        if self.model_id.contains("speculate-judge") {
+            return Ok(ModelResponse {
+                text: Some(
+                    "Attempt 1 is the strongest solution.\n\nSPECULATION JUDGE: WINNER 1"
+                        .to_string(),
+                ),
+                tool_calls: Vec::new(),
+                finish_reason: FinishReason::Stop,
+                usage: TokenCounts::default(),
+                cost: None,
+            });
+        }
+
         let index = self.cursor.fetch_add(1, Ordering::SeqCst);
         Ok(self
             .script
@@ -1736,6 +1861,24 @@ fn messages_contain(messages: &[Message], needle: &str) -> bool {
             .as_deref()
             .is_some_and(|c| c.contains(needle))
     })
+}
+
+/// The attempt number an offline [speculation attempt](MockClient::with_speculate_attempt_script)
+/// reads from its brief (the `Speculative attempt <n> of <k>` line `build_attempt_brief` writes), so
+/// each parallel attempt writes a distinctly-named file. `None` when no such marker is present.
+fn speculate_attempt_number(messages: &[Message]) -> Option<u64> {
+    for message in messages {
+        if let Some(content) = message.content.as_deref()
+            && let Some(pos) = content.find(MOCK_SPECULATE_ATTEMPT_MARKER)
+        {
+            let rest = &content[pos + MOCK_SPECULATE_ATTEMPT_MARKER.len()..];
+            let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+            if let Ok(n) = digits.parse() {
+                return Some(n);
+            }
+        }
+    }
+    None
 }
 
 /// The chunky level file the [agent-managed-context script](MockClient::with_agent_managed_context_script)
@@ -1867,14 +2010,18 @@ pub fn client_for_slot(binding: &GgSlotBinding) -> Result<Box<dyn ModelClient>, 
 /// its `review-worker` and `review-reviewer` counterparts are message-driven (their behavior lives
 /// in [`MockClient::complete`]). An `fsm-tdd` id selects the
 /// [TDD FSM driver](MockClient::with_fsm_tdd_script) (an agent kept in `write_tests → implement →
-/// verify` order by the engine). So the full spawn → wait → return path — and its worktree,
-/// declared-workflow, Code Review, and FSM variants — can be driven **offline through the real
-/// binary**
+/// verify` order by the engine). A `speculate-parent` id selects the
+/// [best-of-K parent](MockClient::with_speculate_parent_script) (fan out K attempts, judge, and merge
+/// the winner); its `speculate-attempt` and `speculate-judge` counterparts are message-driven (each
+/// attempt writes a distinctly-named file; the judge picks the first). So the full spawn → wait →
+/// return path — and its worktree, declared-workflow, Code Review, FSM, and speculative-execution
+/// variants — can be driven **offline through the real binary**
 /// (bind the primary slot to a `mock/…-subagent-parent`, `mock/…-worktree-parent`,
-/// `mock/…-workflow-parent`, or `mock/…-code-review-parent` model and the role slots to the
-/// corresponding `mock/…-subagent-child` / `mock/…-review-worker` / `mock/…-review-reviewer` models)
-/// and not only the in-crate tests. The child/worker/reviewer scripts never spawn, so there is no
-/// runaway recursion. This keys purely on the (offline) `model_id`, matching how
+/// `mock/…-workflow-parent`, `mock/…-code-review-parent`, or `mock/…-speculate-parent` model and the
+/// role slots to the corresponding `mock/…-subagent-child` / `mock/…-review-worker` /
+/// `mock/…-review-reviewer` / `mock/…-speculate-attempt` / `mock/…-speculate-judge` models) and not
+/// only the in-crate tests. The child/worker/reviewer/attempt/judge scripts never spawn, so there is
+/// no runaway recursion. This keys purely on the (offline) `model_id`, matching how
 /// [`resolve_provider_kind`] already selects the mock provider by `model_id`.
 fn mock_client_for(model_id: &str) -> MockClient {
     if model_id.contains("subagent-child") {
@@ -1891,6 +2038,12 @@ fn mock_client_for(model_id: &str) -> MockClient {
         MockClient::with_review_worker_script(model_id)
     } else if model_id.contains("fsm-tdd") {
         MockClient::with_fsm_tdd_script(model_id)
+    } else if model_id.contains("speculate-attempt") {
+        MockClient::with_speculate_attempt_script(model_id)
+    } else if model_id.contains("speculate-judge") {
+        MockClient::with_speculate_judge_script(model_id)
+    } else if model_id.contains("speculate-parent") {
+        MockClient::with_speculate_parent_script(model_id)
     } else if model_id.contains("subagent-parent") {
         MockClient::with_subagent_parent_script(model_id)
     } else {

@@ -31,6 +31,8 @@ pub const WAIT_FOR_SUBAGENTS_TOOL: &str = "wait_for_subagents";
 pub const SEND_MESSAGE_TOOL: &str = "send_message";
 /// The `run_workflow` tool name.
 pub const RUN_WORKFLOW_TOOL: &str = "run_workflow";
+/// The `speculate` tool name.
+pub const SPECULATE_TOOL: &str = "speculate";
 
 /// Whether `name` is one of the delegation tools the [loop](crate::agent) **intercepts** — the
 /// ad-hoc subagent tools (`spawn_subagent`/`wait_for_subagents`/`send_message`) or the declared
@@ -280,5 +282,78 @@ impl Tool for RunWorkflowTool {
 
     async fn invoke(&self, _args: Value, _ctx: &ToolContext) -> ToolOutcome {
         handled_by_loop(RUN_WORKFLOW_TOOL)
+    }
+}
+
+/// Declares `speculate` — attempt the same task K times in parallel (best-of-K) and keep the best.
+pub struct SpeculateTool;
+
+#[async_trait]
+impl Tool for SpeculateTool {
+    fn name(&self) -> &str {
+        SPECULATE_TOOL
+    }
+
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition::new(
+            SPECULATE_TOOL,
+            "Attempt the same piece of work several times in parallel and keep only the BEST result \
+             (best-of-K). Provide a `prompt` — a self-contained brief for the task — OR an `issueId` \
+             to speculate on one of your board issues (its scope and completion criteria become the \
+             task), and `attempts` (K, the number of parallel tries, 2–6). gg fans out K subagents at \
+             the SAME task, EACH IN ITS OWN ISOLATED WORKTREE so they cannot collide, runs them in \
+             parallel under the same concurrency and depth limits as ordinary subagents (no extra \
+             budget), then a JUDGE scores their work against the task's completion criteria and picks \
+             a winner. gg MERGES the winner's worktree back into your workspace and DISCARDS the \
+             losing attempts — so when this call returns, your workspace holds exactly the winning \
+             attempt's changes. Optionally pass `approaches` (an array of hints, one per attempt, to \
+             steer the tries in different directions) and/or `slots` (an array of model slots, one \
+             per attempt, honored only when multi-model is enabled). Requires the `worktrees` \
+             capability (for isolation); refused without it. Use this for a hard or open-ended piece \
+             of work where one careful attempt may not be enough and you can afford K× the tokens for \
+             a better result; use `spawn_subagent` for ordinary single-attempt delegation. This call \
+             returns only when the winner has been merged.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "prompt": {
+                        "type": "string",
+                        "description": "A self-contained brief for the task to attempt K times \
+                                        (what to do and how it will be judged done). Provide this \
+                                        or `issueId`."
+                    },
+                    "issueId": {
+                        "type": "string",
+                        "description": "The id of a board issue to speculate on; its scope and \
+                                        completion criteria become the task."
+                    },
+                    "attempts": {
+                        "type": "integer",
+                        "minimum": 2,
+                        "maximum": 6,
+                        "description": "K — how many parallel attempts to make (2–6). Defaults to 2."
+                    },
+                    "approaches": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Optional per-attempt approach hints, one per attempt, to \
+                                        steer the tries in different directions (extra attempts \
+                                        beyond the list get no hint)."
+                    },
+                    "slots": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Optional per-attempt model slots, one per attempt (honored \
+                                        only when multi-model is enabled; otherwise all attempts \
+                                        run on the primary model)."
+                    }
+                },
+                "additionalProperties": false
+            }),
+        )
+    }
+
+    async fn invoke(&self, _args: Value, _ctx: &ToolContext) -> ToolOutcome {
+        handled_by_loop(SPECULATE_TOOL)
     }
 }

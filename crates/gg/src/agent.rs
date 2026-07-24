@@ -75,9 +75,10 @@ use serde_json::Value;
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_CODE_REVIEWS, CAPABILITY_CONTEXT_VISIBILITY,
     CAPABILITY_EPICS_ISSUES, CAPABILITY_MEMORIES, CAPABILITY_MULTI_MODEL, CAPABILITY_SKILLS,
-    CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WORKFLOWS, CAPABILITY_WORKTREES,
-    GgAgentStatus, GgCapabilitySet, GgCodeReviewPhase, GgContextAction, GgContextSource,
-    GgPlanPhase, GgSlotBinding, GgTelemetryKind, GgWorkflowPhase, PRIMARY_SLOT,
+    CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WORKFLOWS,
+    CAPABILITY_WORKTREES, GgAgentStatus, GgCapabilitySet, GgCodeReviewPhase, GgContextAction,
+    GgContextSource, GgPlanPhase, GgSlotBinding, GgSpeculationPhase, GgTelemetryKind,
+    GgWorkflowPhase, PRIMARY_SLOT,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 use tokio::sync::{mpsc, oneshot};
@@ -105,7 +106,7 @@ use crate::telemetry::Emitter;
 use crate::tools::{
     ARCHIVE_THREAD_TOOL, COMPLETE_ISSUE_TOOL, DEFAULT_ARCHIVE_KEEP_RECENT, ENTER_PLAN_MODE_TOOL,
     EVICT_FILE_VIEW_TOOL, READ_SKILL_TOOL, RUN_WORKFLOW_TOOL, RuntimeSet, SEND_MESSAGE_TOOL,
-    SPAWN_SUBAGENT_TOOL, SUBMIT_PLAN_TOOL, ToolContext, ToolOutcome, ToolRegistry,
+    SPAWN_SUBAGENT_TOOL, SPECULATE_TOOL, SUBMIT_PLAN_TOOL, ToolContext, ToolOutcome, ToolRegistry,
     WAIT_FOR_SUBAGENTS_TOOL, is_board_tool, is_context_reclaim_tool, is_fsm_tool, is_memory_tool,
     is_planning_tool, is_subagent_tool, is_task_tool, parse_archive_keep_recent, parse_evict_path,
     plan_mode_offers,
@@ -177,6 +178,22 @@ pub const ROOT_AGENT_ID: &str = "root";
 /// off, or no `reviewer` slot is bound, the reviewer collapses to the [`primary`](PRIMARY_SLOT)
 /// slot like any other agent.
 const REVIEWER_SLOT: &str = "reviewer";
+
+/// The conventional [model slot](GgSlotBinding) a [speculative execution](handle_speculate)'s judge
+/// runs on when [multi-model](CAPABILITY_MULTI_MODEL) is enabled and it is bound: a dedicated `judge`
+/// model that scores the K attempts. When absent (or multi-model off), the judge falls back to the
+/// [`reviewer`](REVIEWER_SLOT) slot if bound, else the [`primary`](PRIMARY_SLOT) slot — so a
+/// best-of-K run needs no extra slot binding to work.
+const JUDGE_SLOT: &str = "judge";
+
+/// The default number of parallel attempts a [`speculate`](handle_speculate) call makes when it names
+/// no `attempts` count.
+const DEFAULT_SPECULATION_ATTEMPTS: u64 = 2;
+
+/// The maximum number of parallel attempts a [`speculate`](handle_speculate) call may make. Best-of-K
+/// multiplies token cost by K, and the attempts share the one global parallelism cap, so a generous
+/// but firm ceiling keeps a single call from fanning out unboundedly.
+const MAX_SPECULATION_ATTEMPTS: u64 = 6;
 
 /// One node in gg's [subagent tree](https://docs.testcabinet.ai/gg/subagents/): the unit the
 /// [turn loop](Self::drive) drives.
@@ -550,6 +567,11 @@ struct Orchestrator {
     /// `complete_issue` triggers a [Code Review](handle_code_review) (which needs the delegation
     /// machinery to run a reviewer, so it only engages when [`delegation_enabled`](Self::delegation_enabled)).
     code_reviews_enabled: bool,
+    /// Whether the [speculative-execution](CAPABILITY_SPECULATIVE) capability is on — gates the
+    /// `speculate` tool (best-of-K). Like a Code Review it needs the delegation machinery (to fan out
+    /// the attempts and run the judge), so it only engages when
+    /// [`delegation_enabled`](Self::delegation_enabled); worktree isolation is checked at call time.
+    speculative_enabled: bool,
     /// Per-[issue](test_cabinet_core::gg::GgBoardIssue) dispatch facts a
     /// [Code Review](handle_code_review) needs: the commit the issue's work began at (its review
     /// baseline) and the [slot](GgSlotBinding) it was worked on (where a fix agent re-runs).
@@ -622,6 +644,7 @@ impl Orchestrator {
             worktrees_root: worktrees.root,
             baseline_commit: worktrees.baseline_commit,
             code_reviews_enabled: set.is_enabled(CAPABILITY_CODE_REVIEWS),
+            speculative_enabled: set.is_enabled(CAPABILITY_SPECULATIVE),
             issue_dispatch: Mutex::new(HashMap::new()),
             git_lock: Mutex::new(()),
             config: SubagentConfig::resolve(set),
@@ -702,6 +725,31 @@ impl Orchestrator {
     /// capability) rather than silently doing nothing.
     fn code_reviews_active(&self) -> bool {
         self.code_reviews_enabled && self.delegation_enabled()
+    }
+
+    /// Whether [speculative execution](handle_speculate) can actually run this run: the
+    /// [speculative-execution](CAPABILITY_SPECULATIVE) capability **and** the delegation machinery a
+    /// best-of-K fan-out + judge needs. Worktree isolation is a further requirement checked at call
+    /// time (with a clear refusal), so a speculation without worktrees is a runtime refusal, not a
+    /// silently-withheld tool.
+    fn speculative_active(&self) -> bool {
+        self.speculative_enabled && self.delegation_enabled()
+    }
+
+    /// The [slot](GgSlotBinding) a [speculative execution](handle_speculate)'s **judge** runs on: the
+    /// dedicated [`judge`](JUDGE_SLOT) slot when [multi-model](CAPABILITY_MULTI_MODEL) is on and it is
+    /// bound, else the [`reviewer`](REVIEWER_SLOT) slot when bound (the judge is a reviewer-shaped
+    /// role), else [`primary`](PRIMARY_SLOT) — so best-of-K works with no extra binding.
+    fn judge_slot(&self) -> String {
+        if self.multi_model {
+            if slot_binding(&self.caps, JUDGE_SLOT).is_ok() {
+                return JUDGE_SLOT.to_string();
+            }
+            if slot_binding(&self.caps, REVIEWER_SLOT).is_ok() {
+                return REVIEWER_SLOT.to_string();
+            }
+        }
+        PRIMARY_SLOT.to_string()
     }
 
     /// Record the [dispatch facts](IssueDispatchMeta) for `issue_id` the first time it is dispatched
@@ -816,18 +864,35 @@ enum AgentRole {
     },
 }
 
+/// How a finished worktree subagent's isolated branch is reconciled by [`run_agent`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WorktreeDisposition {
+    /// The default (Phase 4B): on clean completion, commit the work onto the branch and
+    /// [merge it back](reconcile_worktree) into the main tree (or surface a conflict), then tear the
+    /// worktree down — used by ad-hoc `spawn_subagent`/workflow worktree dispatch.
+    Merge,
+    /// [Speculative execution](handle_speculate): the subagent is one of K best-of-K attempts, so
+    /// [`run_agent`] leaves its worktree **in place** without merging — the `speculate` routine judges
+    /// the attempts' work, then merges the winner's worktree and discards the losers'. Reconciling
+    /// each attempt independently would defeat best-of-K (every attempt would merge).
+    Speculative,
+}
+
 /// An isolated [git worktree](https://docs.testcabinet.ai/gg/worktrees/) a subagent runs in: its
 /// per-agent branch and checkout path.
 ///
 /// Created at [spawn time](make_worktree) (a `git worktree add` on a fresh branch based at the
 /// [baseline](Orchestrator::baseline_commit)) so the subagent gets a private copy of the workspace
-/// to mutate; [reconciled](reconcile_worktree) — merged back or discarded — and torn down when the
-/// subagent finishes.
+/// to mutate; how it is reconciled when the subagent finishes is set by its
+/// [disposition](Worktree::disposition) — [merged back](reconcile_worktree) for ad-hoc dispatch, or
+/// [left for the judge](WorktreeDisposition::Speculative) for a best-of-K attempt.
 struct Worktree {
     /// The per-agent branch the worktree checks out (for example `gg/agent-3`).
     branch: String,
     /// The worktree's checkout directory — the subagent's rooted workspace while it runs.
     path: PathBuf,
+    /// How this worktree is reconciled when its subagent finishes.
+    disposition: WorktreeDisposition,
 }
 
 /// The resolved worktree-isolation state for a run, computed once at session start and handed to
@@ -973,6 +1038,7 @@ async fn run_agent(
             &board,
             &planning,
             orch.code_reviews_active(),
+            orch.speculative_active(),
         );
         announce_fsm(emitter, &orch.caps, &fsm);
     }
@@ -1032,6 +1098,7 @@ async fn run_agent(
             planning,
             fsm,
             orch.code_reviews_active(),
+            orch.speculative_active(),
             subagent_context,
         )
         .await;
@@ -1071,23 +1138,37 @@ async fn run_agent(
                 .clone()
                 .unwrap_or_else(|| format!("(subagent ended: {})", end.status));
 
-            // Reconcile an isolated worktree back into the main tree before returning: a cleanly
-            // completed subagent's work is merged back; anything else is discarded; and the worktree
-            // is torn down either way. A merge conflict (or failure) is surfaced — appended to the
-            // return value the spawner sees and emitted as a `WorktreeMerged` outcome — never
-            // silently dropped.
+            // Reconcile an isolated worktree before returning, per its disposition:
+            //
+            // - `Merge` (ad-hoc `spawn_subagent`/workflow dispatch): a cleanly completed subagent's
+            //   work is merged back into the main tree; anything else is discarded; the worktree is
+            //   torn down either way. A merge conflict (or failure) is surfaced — appended to the
+            //   return value the spawner sees and emitted as a `WorktreeMerged` outcome — never
+            //   silently dropped.
+            // - `Speculative` (a best-of-K attempt): the worktree is left **in place** and NOT merged.
+            //   The `speculate` routine that fanned this attempt out judges the K attempts' work and
+            //   then merges only the winner (discarding the rest), so merging each attempt here would
+            //   defeat best-of-K. Its lifecycle is reported by `Speculation` telemetry, not
+            //   `WorktreeMerged`.
             if let Some(wt) = worktree {
-                let succeeded = end.status == "completed";
-                let outcome = reconcile_worktree(&orch, &agent.id, &wt, succeeded);
-                if let Some(note) = outcome.note {
-                    summary.push_str("\n\n");
-                    summary.push_str(&note);
+                match wt.disposition {
+                    WorktreeDisposition::Merge => {
+                        let succeeded = end.status == "completed";
+                        let outcome = reconcile_worktree(&orch, &agent.id, &wt, succeeded);
+                        if let Some(note) = outcome.note {
+                            summary.push_str("\n\n");
+                            summary.push_str(&note);
+                        }
+                        emitter.emit(GgTelemetryKind::WorktreeMerged {
+                            branch: wt.branch,
+                            merged: outcome.merged,
+                            conflicts: outcome.conflicts,
+                        });
+                    }
+                    WorktreeDisposition::Speculative => {
+                        // Leave the worktree and its branch untouched for the speculate routine.
+                    }
                 }
-                emitter.emit(GgTelemetryKind::WorktreeMerged {
-                    branch: wt.branch,
-                    merged: outcome.merged,
-                    conflicts: outcome.conflicts,
-                });
             }
 
             if orch.delegation_enabled() {
@@ -1121,6 +1202,7 @@ fn announce_configuration(
     board: &BoardRuntime,
     planning: &PlanningRuntime,
     code_reviews: bool,
+    speculative: bool,
 ) {
     if registry.is_empty() {
         emitter.emit(log(
@@ -1193,6 +1275,15 @@ fn announce_configuration(
             "code reviews enabled; marking an issue done triggers a Code Review (a reviewer \
              agent inspects the diff against the issue's completion criteria) before the issue is \
              accepted, and a fix agent addresses any requested changes until a review approves.",
+        ));
+    }
+    if speculative {
+        emitter.emit(log(
+            "info",
+            "speculative execution enabled; the model can call `speculate` to make K parallel \
+             attempts at the same task (each in its own worktree), after which a judge picks the \
+             best one to merge and the rest are discarded (requires the `worktrees` capability to \
+             isolate the attempts).",
         ));
     }
 }
@@ -1316,7 +1407,8 @@ fn spawn_subagent(
         .and_then(Value::as_bool)
         .unwrap_or(false);
 
-    match dispatch_child(sub, spawner, brief, issue_id, requested_slot, want_worktree) {
+    let worktree = want_worktree.then_some(WorktreeDisposition::Merge);
+    match dispatch_child(sub, spawner, brief, issue_id, requested_slot, worktree) {
         Ok(child) => {
             let worktree_note = match &child.worktree_branch {
                 Some(branch) => format!(
@@ -1352,6 +1444,10 @@ struct DispatchedChild {
     model_id: String,
     /// The isolated [worktree](Worktree) branch the child runs in, when it was dispatched with one.
     worktree_branch: Option<String>,
+    /// The isolated [worktree](Worktree) checkout path, when the child was dispatched with one — the
+    /// directory a [speculative execution](handle_speculate) reads the attempt's diff from and later
+    /// merges or discards.
+    worktree_path: Option<PathBuf>,
 }
 
 /// Dispatch one child agent — the shared spawn path behind both `spawn_subagent` and each
@@ -1370,7 +1466,7 @@ fn dispatch_child(
     brief: String,
     issue_id: Option<String>,
     requested_slot: &str,
-    want_worktree: bool,
+    worktree_disposition: Option<WorktreeDisposition>,
 ) -> Result<DispatchedChild, String> {
     let orch = &sub.orch;
 
@@ -1414,12 +1510,12 @@ fn dispatch_child(
     // there and its work is reconciled when it finishes. A request without the capability (or with
     // git unavailable) is refused with guidance rather than silently ignored, so an ablation's off
     // arm is unambiguous.
-    let worktree = if want_worktree {
-        Some(make_worktree(orch, &child_id)?)
-    } else {
-        None
+    let worktree = match worktree_disposition {
+        Some(disposition) => Some(make_worktree(orch, &child_id, disposition)?),
+        None => None,
     };
     let worktree_branch = worktree.as_ref().map(|wt| wt.branch.clone());
+    let worktree_path = worktree.as_ref().map(|wt| wt.path.clone());
 
     let (inbox_tx, inbox_rx) = mpsc::unbounded_channel();
     let (result_tx, result_rx) = oneshot::channel();
@@ -1456,6 +1552,7 @@ fn dispatch_child(
         slot,
         model_id,
         worktree_branch,
+        worktree_path,
     })
 }
 
@@ -1468,7 +1565,11 @@ fn dispatch_child(
 /// success it runs `git worktree add` on branch `gg/<child_id>` based at the run
 /// [baseline](Orchestrator::baseline_commit), under the [worktree root](Orchestrator::worktrees_root).
 /// The git call is serialized on the shared [git lock](Orchestrator::git_lock).
-fn make_worktree(orch: &Orchestrator, child_id: &str) -> Result<Worktree, String> {
+fn make_worktree(
+    orch: &Orchestrator,
+    child_id: &str,
+    disposition: WorktreeDisposition,
+) -> Result<Worktree, String> {
     if !orch.worktrees_capability {
         return Err(
             "cannot dispatch this subagent in a worktree: the `worktrees` capability is not \
@@ -1492,7 +1593,11 @@ fn make_worktree(orch: &Orchestrator, child_id: &str) -> Result<Worktree, String
     let _guard = orch.git_lock.lock().expect("git lock");
     git::add_worktree(&orch.workspace_dir, &path, &branch, base)
         .map_err(|err| format!("could not create an isolated worktree for the subagent: {err}"))?;
-    Ok(Worktree { branch, path })
+    Ok(Worktree {
+        branch,
+        path,
+        disposition,
+    })
 }
 
 /// The outcome of [reconciling](reconcile_worktree) a finished worktree subagent's branch.
@@ -1902,7 +2007,7 @@ async fn handle_code_review(
             fix_brief,
             Some(issue_id.clone()),
             &work_slot,
-            false,
+            None,
         ) {
             Ok(child) => child,
             Err(err) => {
@@ -2065,13 +2170,553 @@ async fn dispatch_reviewer(
     review_brief: String,
     reviewer_slot: &str,
 ) -> Result<ReviewVerdict, String> {
-    let reviewer = dispatch_child(sub, spawner, review_brief, issue_id, reviewer_slot, false)
+    let reviewer = dispatch_child(sub, spawner, review_brief, issue_id, reviewer_slot, None)
         .map_err(|err| format!("the reviewer could not be dispatched: {err}"))?;
     let collected = await_children(sub, emitter, std::slice::from_ref(&reviewer.id)).await;
     match collected.into_iter().next() {
         Some((_, Some(ret))) if ret.status == "completed" => Ok(parse_review_verdict(&ret.summary)),
         Some((_, Some(ret))) => Err(format!("the reviewer {} without a verdict", ret.status)),
         _ => Err("the reviewer produced no result".to_string()),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Speculative execution: best-of-K over isolated worktrees + a judge
+// ---------------------------------------------------------------------------
+
+/// One of the K attempts a [speculative execution](handle_speculate) fanned out — the facts the
+/// routine needs to judge it, then merge or discard it.
+struct SpeculationAttempt {
+    /// The attempt subagent's agent id (also the [`winner`](GgTelemetryKind::Speculation) id when it
+    /// wins).
+    id: String,
+    /// The isolated [worktree](Worktree) branch the attempt's work lives on.
+    branch: String,
+    /// The attempt's worktree checkout path — where its diff is read from and, if it wins, its work
+    /// is committed and merged from.
+    path: PathBuf,
+    /// How the attempt's loop ended (`"completed"`, `"model_error"`, `"timed_out"`, …). Only a
+    /// cleanly `"completed"` attempt that produced changes is a candidate to win.
+    status: String,
+    /// The attempt's return value (its final message), shown to the judge for context.
+    summary: String,
+    /// The attempt's diff against the run [baseline](Orchestrator::baseline_commit) — what the judge
+    /// scores and what is merged if it wins. Empty when the attempt produced no changes.
+    diff: String,
+}
+
+/// The judge's verdict for a [speculative execution](handle_speculate): which candidate attempt won,
+/// and why — the judge contract (parsed from its final message by [`parse_judge_verdict`]).
+struct JudgeVerdict {
+    /// The 1-based index of the winning attempt **among the candidates the judge was shown** (not the
+    /// original attempt index).
+    winner: usize,
+    /// The judge's one-line rationale for the pick.
+    rationale: String,
+}
+
+/// Handle an intercepted `speculate` call ([speculative execution](https://docs.testcabinet.ai/gg/speculative-execution/)):
+/// run a **best-of-K** attempt of a task and merge the best result.
+///
+/// The routine — `fan-out → judge → merge/discard`:
+///
+/// 1. requires worktree isolation (each attempt runs in its own [worktree](Worktree) so they do not
+///    collide) — refused clearly when unavailable — and resolves the task (a board
+///    [issue](BoardRuntime::issue_brief) or a free-form `prompt`) and `K`;
+/// 2. **fans out** K [attempt subagents](dispatch_child), each in an isolated worktree left in place
+///    for judging ([`Speculative`](WorktreeDisposition::Speculative) disposition), optionally on
+///    per-attempt [slots](GgSlotBinding) or with per-attempt approach hints, over the same
+///    [scheduler](Scheduler) (honoring the global parallelism + depth caps), emitting
+///    [`Speculation`](GgSpeculationPhase::FannedOut);
+/// 3. [waits](await_children) for them, computes each attempt's [diff](git::diff_since) against the
+///    baseline, and takes the **candidates** (attempts that completed and produced changes);
+/// 4. **judges** the candidates — a [judge subagent](dispatch_judge) scores their diffs against the
+///    task's completion criteria and picks a [winner](JudgeVerdict) (a lone candidate needs no judge)
+///    — emitting [`Speculation`](GgSpeculationPhase::Judged);
+/// 5. **merges** the winner's worktree back into the main tree and **discards** every attempt's
+///    worktree (the losers' unmerged branches and the winner's now-merged one), emitting
+///    [`Speculation`](GgSpeculationPhase::Merged) — so the main tree ends with exactly the winning
+///    attempt applied.
+///
+/// A speculation that produces no usable work, or whose judge does not render a verdict, discards
+/// every attempt and returns an error with the workspace **unchanged** (best-of-K never merges an
+/// unjudged or empty attempt). The attempts and the judge are ordinary subagents scoped to the issue
+/// (when any), so they animate the agent tree normally.
+async fn handle_speculate(
+    sub: &mut SubagentContext,
+    spawner: &Agent,
+    board: &BoardRuntime,
+    emitter: &Emitter,
+    call: &ToolCall,
+) -> ToolOutcome {
+    // Clone the orchestrator Arc out so `sub` stays free to be borrowed mutably by dispatch/await.
+    let orch = Arc::clone(&sub.orch);
+
+    // Best-of-K runs each attempt in an isolated worktree so they cannot collide; refuse clearly when
+    // worktree isolation is unavailable (capability off, or git could not establish a baseline).
+    let baseline = match (orch.baseline_commit(), &orch.worktrees_root) {
+        (Some(base), Some(_root)) => base.to_string(),
+        _ => {
+            return ToolOutcome::error(
+                "cannot speculate: best-of-K runs each attempt in an isolated worktree, but worktree \
+                 isolation is unavailable this run (enable the `worktrees` capability, and ensure \
+                 git is available in the run environment). Do the work with a single attempt instead."
+                    .to_string(),
+            );
+        }
+    };
+
+    // The task: a dispatched board issue (its structured brief) or a free-form prompt.
+    let (base_brief, issue_id) = match call.arguments.get("issueId").and_then(Value::as_str) {
+        Some(id) if !id.trim().is_empty() => {
+            let id = id.trim().to_string();
+            match board.issue_brief(&id) {
+                Some(brief) => (brief, Some(id)),
+                None => {
+                    return ToolOutcome::error(format!(
+                        "cannot speculate on issue `{id}`: no such issue is on your board (or you \
+                         have no board). Create it with `create_issue`, or pass a `prompt` instead."
+                    ));
+                }
+            }
+        }
+        _ => match call.arguments.get("prompt").and_then(Value::as_str) {
+            Some(prompt) if !prompt.trim().is_empty() => (prompt.trim().to_string(), None),
+            _ => {
+                return ToolOutcome::error(
+                    "speculate needs a non-empty `prompt` (the task to attempt K times) or an \
+                     `issueId` to speculate on."
+                        .to_string(),
+                );
+            }
+        },
+    };
+
+    // K — clamped into [2, MAX]; fewer than two would not be best-of-anything.
+    let attempts = call
+        .arguments
+        .get("attempts")
+        .and_then(Value::as_u64)
+        .unwrap_or(DEFAULT_SPECULATION_ATTEMPTS)
+        .clamp(2, MAX_SPECULATION_ATTEMPTS);
+    let approaches = parse_string_array(&call.arguments, "approaches");
+    let slots = parse_string_array(&call.arguments, "slots");
+
+    // Depth cap up front: every attempt is `spawner.depth + 1`, so an agent at the max depth cannot
+    // speculate at all — refuse rather than failing on the first attempt's dispatch.
+    if spawner.depth >= orch.config.max_depth {
+        return ToolOutcome::error(format!(
+            "cannot speculate: you are at the maximum delegation depth ({}), so the parallel \
+             attempts (which run one level deeper) cannot be spawned. Do this work yourself.",
+            orch.config.max_depth
+        ));
+    }
+
+    // The speculation lifecycle rides on this agent's stream, scoped to the issue when there is one.
+    let spec_emitter = match &issue_id {
+        Some(id) => emitter.with_issue(id),
+        None => emitter.clone(),
+    };
+    spec_emitter.emit(speculation_event(
+        attempts,
+        GgSpeculationPhase::FannedOut,
+        None,
+        None,
+    ));
+
+    // Fan out K attempts, each in its own isolated worktree left in place for judging.
+    let mut fanned: Vec<SpeculationAttempt> = Vec::with_capacity(attempts as usize);
+    for i in 0..attempts as usize {
+        let brief = build_attempt_brief(&base_brief, i, attempts as usize, approaches.get(i));
+        let slot = slots
+            .get(i)
+            .map(String::as_str)
+            .filter(|slot| !slot.is_empty())
+            .unwrap_or(PRIMARY_SLOT);
+        match dispatch_child(
+            sub,
+            spawner,
+            brief,
+            issue_id.clone(),
+            slot,
+            Some(WorktreeDisposition::Speculative),
+        ) {
+            Ok(child) => match (child.worktree_branch, child.worktree_path) {
+                (Some(branch), Some(path)) => fanned.push(SpeculationAttempt {
+                    id: child.id,
+                    branch,
+                    path,
+                    status: String::new(),
+                    summary: String::new(),
+                    diff: String::new(),
+                }),
+                // Isolation is required and was checked above, so every attempt gets a worktree; a
+                // child without one is only defensively possible. Wind down and abort.
+                _ => {
+                    abort_speculation(sub, &orch, emitter, &fanned).await;
+                    return ToolOutcome::error(
+                        "cannot speculate: an attempt could not be given an isolated worktree; the \
+                         speculation was aborted and the workspace left unchanged."
+                            .to_string(),
+                    );
+                }
+            },
+            Err(err) => {
+                abort_speculation(sub, &orch, emitter, &fanned).await;
+                return ToolOutcome::error(format!(
+                    "cannot speculate: attempt {} of {attempts} could not be dispatched: {err} The \
+                     speculation was aborted and the workspace left unchanged.",
+                    i + 1
+                ));
+            }
+        }
+    }
+
+    // Wait for every attempt (freeing this agent's slot while they run under the cap), then record
+    // each attempt's outcome and its diff against the baseline.
+    let ids: Vec<String> = fanned.iter().map(|a| a.id.clone()).collect();
+    let collected = await_children(sub, emitter, &ids).await;
+    let mut returns: HashMap<String, AgentReturn> = collected
+        .into_iter()
+        .filter_map(|(id, ret)| ret.map(|ret| (id, ret)))
+        .collect();
+    for attempt in &mut fanned {
+        match returns.remove(&attempt.id) {
+            Some(ret) => {
+                attempt.status = ret.status.to_string();
+                attempt.summary = ret.summary;
+            }
+            None => attempt.status = "(no result)".to_string(),
+        }
+        attempt.diff = {
+            let _guard = orch.git_lock.lock().expect("git lock");
+            git::diff_since(&attempt.path, &baseline).unwrap_or_default()
+        };
+    }
+
+    // Candidates: attempts that completed cleanly AND produced real changes to merge.
+    let candidates: Vec<usize> = fanned
+        .iter()
+        .enumerate()
+        .filter(|(_, a)| a.status == "completed" && !a.diff.trim().is_empty())
+        .map(|(i, _)| i)
+        .collect();
+
+    if candidates.is_empty() {
+        discard_attempts(&orch, &fanned);
+        spec_emitter.emit(speculation_event(
+            attempts,
+            GgSpeculationPhase::Judged,
+            None,
+            Some("no attempt produced usable work to merge".to_string()),
+        ));
+        return ToolOutcome::error(format!(
+            "The speculation ran {attempts} attempt(s) but none produced usable work to merge (each \
+             failed, timed out, or made no changes). The workspace is unchanged."
+        ));
+    }
+
+    // Judge the candidates and pick the winner. A lone candidate needs no judge.
+    let (winner_index, rationale) = if candidates.len() == 1 {
+        (
+            candidates[0],
+            "only one attempt produced usable work".to_string(),
+        )
+    } else {
+        let judge_brief = build_judge_brief(&base_brief, &fanned, &candidates);
+        let judge_slot = orch.judge_slot();
+        match dispatch_judge(
+            sub,
+            spawner,
+            emitter,
+            issue_id.clone(),
+            judge_brief,
+            &judge_slot,
+        )
+        .await
+        {
+            Ok(verdict) => {
+                // The judge numbers the candidates 1..N; map back to the attempt index, clamping a
+                // stray index into range so a well-formed-but-out-of-bounds pick still merges a real
+                // candidate rather than aborting the whole speculation.
+                let picked = verdict.winner.clamp(1, candidates.len());
+                (candidates[picked - 1], verdict.rationale)
+            }
+            Err(err) => {
+                // The judge could not render a verdict: abort rather than merge an unjudged attempt.
+                discard_attempts(&orch, &fanned);
+                emitter.emit(log(
+                    "warn",
+                    format!(
+                        "the speculation judge did not complete: {err}; no attempt was merged."
+                    ),
+                ));
+                spec_emitter.emit(speculation_event(
+                    attempts,
+                    GgSpeculationPhase::Judged,
+                    None,
+                    Some(format!("the judge did not complete: {err}")),
+                ));
+                return ToolOutcome::error(format!(
+                    "The speculation's judge did not render a verdict ({err}), so no attempt was \
+                     merged. The workspace is unchanged."
+                ));
+            }
+        }
+    };
+
+    let winner_id = fanned[winner_index].id.clone();
+    spec_emitter.emit(speculation_event(
+        attempts,
+        GgSpeculationPhase::Judged,
+        Some(winner_id.clone()),
+        Some(rationale.clone()),
+    ));
+
+    // Merge the winner's worktree back into the main tree, then discard every attempt's worktree (the
+    // winner's now-merged branch and the losers' unmerged branches alike). The main tree, untouched
+    // while the attempts ran in isolation, now holds exactly the winning attempt's changes.
+    let merged = merge_speculation_winner(&orch, &fanned[winner_index]);
+    discard_attempts(&orch, &fanned);
+
+    match merged {
+        Ok(()) => {
+            spec_emitter.emit(speculation_event(
+                attempts,
+                GgSpeculationPhase::Merged,
+                Some(winner_id.clone()),
+                None,
+            ));
+            ToolOutcome::ok(
+                format!(
+                    "Ran best-of-{attempts}: attempt `{winner_id}` won ({rationale}) and its work \
+                     was merged into your workspace; the other attempts were discarded. Continue \
+                     from the merged result."
+                ),
+                format!("speculation merged winner `{winner_id}` of {attempts}"),
+            )
+        }
+        Err(err) => {
+            emitter.emit(log(
+                "warn",
+                format!("the speculation winner `{winner_id}` could not be merged back: {err}."),
+            ));
+            ToolOutcome::error(format!(
+                "The speculation chose attempt `{winner_id}`, but its work could not be merged back \
+                 into your workspace: {err}. The workspace is unchanged."
+            ))
+        }
+    }
+}
+
+/// Wind a partially fanned-out speculation down after a dispatch failure: wait for the attempts
+/// already running (so none is leaked) then discard their worktrees. Shared by the two abort paths in
+/// [`handle_speculate`].
+async fn abort_speculation(
+    sub: &mut SubagentContext,
+    orch: &Orchestrator,
+    emitter: &Emitter,
+    fanned: &[SpeculationAttempt],
+) {
+    let ids: Vec<String> = fanned.iter().map(|a| a.id.clone()).collect();
+    let _ = await_children(sub, emitter, &ids).await;
+    discard_attempts(orch, fanned);
+}
+
+/// Build one [attempt](SpeculationAttempt)'s brief for a [speculative execution](handle_speculate):
+/// the shared task, a note that it is one of K independent attempts (judged best-of-K), and the
+/// attempt's assigned approach hint when one was given.
+fn build_attempt_brief(base: &str, index: usize, k: usize, approach: Option<&String>) -> String {
+    let mut brief = format!(
+        "{base}\n\n## Speculative attempt {} of {k}\nYou are ONE of {k} independent attempts at this \
+         exact task, each running in its own isolated copy of the workspace (you cannot see the \
+         others, and they cannot see you). Produce your best, complete implementation of the task \
+         above. When you are done, stop with a short summary of what you built and why it is a strong \
+         solution — a judge will compare all attempts and keep only the best one, discarding the rest.",
+        index + 1
+    );
+    if let Some(approach) = approach.map(String::as_str).filter(|a| !a.is_empty()) {
+        brief.push_str(&format!(
+            "\n\n### Your assigned approach\nTake this approach for your attempt (the other attempts \
+             are trying different ones): {approach}"
+        ));
+    }
+    brief
+}
+
+/// Build the **judge**'s brief for a [speculative execution](handle_speculate): the task, each
+/// candidate attempt's summary and diff, and the verdict protocol [`parse_judge_verdict`] expects.
+/// The candidates are renumbered 1..N (the judge does not see the discarded attempts), and the caller
+/// maps the judge's pick back to the original attempt index.
+fn build_judge_brief(task: &str, attempts: &[SpeculationAttempt], candidates: &[usize]) -> String {
+    let n = candidates.len();
+    let mut brief = format!(
+        "You are the **judge** of a best-of-{n} speculative execution. {n} independent attempts each \
+         tried the SAME task below; your job is to pick the single BEST one against its completion \
+         criteria.\n\n## The task\n{task}\n\n## The attempts"
+    );
+    for (label, &idx) in candidates.iter().enumerate() {
+        let attempt = &attempts[idx];
+        let diff_block = if attempt.diff.trim().is_empty() {
+            "(no changes)".to_string()
+        } else {
+            format!("```diff\n{}\n```", attempt.diff)
+        };
+        let summary = if attempt.summary.trim().is_empty() {
+            "(no summary)"
+        } else {
+            attempt.summary.trim()
+        };
+        brief.push_str(&format!(
+            "\n\n### Attempt {}\nThe attempt's own summary:\n{summary}\n\nIts changes (diff against \
+             the baseline):\n{diff_block}",
+            label + 1
+        ));
+    }
+    brief.push_str(&format!(
+        "\n\n## Your verdict\nCompare the {n} attempts against the task's completion criteria — \
+         correctness, completeness, and quality — and pick the single best one. End your final \
+         message with exactly one line:\n`SPECULATION JUDGE: WINNER <n>`\nwhere <n> is the attempt \
+         number (1–{n}) you chose, followed by a one-sentence rationale for your choice."
+    ));
+    brief
+}
+
+/// Dispatch one **judge** subagent against `judge_brief` on `judge_slot`, await it, and parse its
+/// [verdict](parse_judge_verdict) — the [speculative execution](handle_speculate) analogue of
+/// [`dispatch_reviewer`] (a judge that *selects among* K attempts rather than approving one diff).
+///
+/// Returns the verdict, or a model-facing error when the judge could not be dispatched or returned
+/// without a parseable pick; the caller then merges nothing (best-of-K never merges an unjudged
+/// attempt). The judge is an ordinary [subagent](dispatch_child) scoped to `issue_id` (when any) and
+/// runs in the shared tree (it only reads the diffs in its brief).
+async fn dispatch_judge(
+    sub: &mut SubagentContext,
+    spawner: &Agent,
+    emitter: &Emitter,
+    issue_id: Option<String>,
+    judge_brief: String,
+    judge_slot: &str,
+) -> Result<JudgeVerdict, String> {
+    let judge = dispatch_child(sub, spawner, judge_brief, issue_id, judge_slot, None)
+        .map_err(|err| format!("the judge could not be dispatched: {err}"))?;
+    let collected = await_children(sub, emitter, std::slice::from_ref(&judge.id)).await;
+    match collected.into_iter().next() {
+        Some((_, Some(ret))) if ret.status == "completed" => parse_judge_verdict(&ret.summary),
+        Some((_, Some(ret))) => Err(format!("the judge {} without a verdict", ret.status)),
+        _ => Err("the judge produced no result".to_string()),
+    }
+}
+
+/// Parse a judge's final message into a [`JudgeVerdict`].
+///
+/// The contract: the judge ends with a `SPECULATION JUDGE: WINNER <n>` marker naming the 1-based
+/// candidate it chose, followed by a rationale. Parsing is lenient — the marker match is
+/// case-insensitive and the last occurrence wins — but a message with **no** winner marker (or a
+/// non-numeric / zero winner) is an **error**, so a judge that did not clearly pick never causes a
+/// silent or arbitrary merge.
+fn parse_judge_verdict(text: &str) -> Result<JudgeVerdict, String> {
+    const MARKER: &str = "speculation judge: winner";
+    let lower = text.to_ascii_lowercase();
+    let pos = lower.rfind(MARKER).ok_or_else(|| {
+        "the judge did not report a `SPECULATION JUDGE: WINNER <n>` verdict".to_string()
+    })?;
+    let after = &text[pos + MARKER.len()..];
+    // The winner number is the first run of ASCII digits after the marker.
+    let Some(start) = after.find(|c: char| c.is_ascii_digit()) else {
+        return Err("the judge's verdict did not name a numeric winner".to_string());
+    };
+    let digits: String = after[start..]
+        .chars()
+        .take_while(char::is_ascii_digit)
+        .collect();
+    let winner: usize = digits
+        .parse()
+        .map_err(|_| "the judge's verdict did not name a numeric winner".to_string())?;
+    if winner == 0 {
+        return Err("the judge named winner 0 (attempts are numbered from 1)".to_string());
+    }
+    // The rationale is whatever follows the winner number, else the first line of the message.
+    let rest = after[start + digits.len()..]
+        .trim()
+        .trim_start_matches([':', '.', '-', ')', '\n'])
+        .trim();
+    let rationale = if rest.is_empty() {
+        first_line(text).to_string()
+    } else {
+        first_line(rest).to_string()
+    };
+    let rationale = if rationale.is_empty() {
+        "the judge selected this attempt".to_string()
+    } else {
+        rationale
+    };
+    Ok(JudgeVerdict { winner, rationale })
+}
+
+/// Merge a [speculative execution](handle_speculate)'s winning attempt back into the main tree:
+/// commit its worktree's work onto its branch (its index was reset by the earlier
+/// [diff](git::diff_since)), then [merge that branch](git::merge_branch) into the workspace with an
+/// explicit merge commit. Returns an error (leaving the main tree unchanged) on a conflict or git
+/// failure. Serialized on the shared [git lock](Orchestrator::git_lock).
+fn merge_speculation_winner(
+    orch: &Orchestrator,
+    winner: &SpeculationAttempt,
+) -> Result<(), String> {
+    let _guard = orch.git_lock.lock().expect("git lock");
+    git::commit_worktree(
+        &winner.path,
+        &format!("gg speculation winner {}", winner.id),
+    )
+    .map_err(|err| format!("committing the winning attempt failed: {err}"))?;
+    match git::merge_branch(&orch.workspace_dir, &winner.branch) {
+        Ok(git::MergeOutcome::Merged) => Ok(()),
+        Ok(git::MergeOutcome::Conflict(reason)) => Err(format!(
+            "the merge conflicted with the main tree: {}",
+            first_line(&reason)
+        )),
+        Err(err) => Err(err.to_string()),
+    }
+}
+
+/// Tear down every [attempt](SpeculationAttempt)'s worktree and branch — run after a speculation
+/// merges its winner, or aborts — so no isolated copy or dangling branch is left behind. Cleanup must
+/// not fail the run, so per-worktree failures are ignored (a stray worktree is only noise).
+/// Serialized on the shared [git lock](Orchestrator::git_lock).
+fn discard_attempts(orch: &Orchestrator, attempts: &[SpeculationAttempt]) {
+    let _guard = orch.git_lock.lock().expect("git lock");
+    for attempt in attempts {
+        let _ = git::remove_worktree(&orch.workspace_dir, &attempt.path, &attempt.branch);
+    }
+}
+
+/// Parse an optional string array (`approaches`/`slots`) from a tool's args into a positional list —
+/// each entry trimmed, a non-string entry rendered as empty so the list stays index-aligned with the
+/// attempts. A missing or non-array value yields an empty list.
+fn parse_string_array(args: &Value, key: &str) -> Vec<String> {
+    match args.get(key) {
+        Some(Value::Array(items)) => items
+            .iter()
+            .map(|value| value.as_str().unwrap_or_default().trim().to_string())
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// A [`Speculation`](GgTelemetryKind::Speculation) telemetry event for one lifecycle transition. The
+/// issue under speculation (when any) rides on the emitter's [issue scope](Emitter::with_issue), not
+/// the payload.
+fn speculation_event(
+    attempts: u64,
+    phase: GgSpeculationPhase,
+    winner: Option<String>,
+    rationale: Option<String>,
+) -> GgTelemetryKind {
+    GgTelemetryKind::Speculation {
+        attempts,
+        phase,
+        winner,
+        rationale,
     }
 }
 
@@ -2520,7 +3165,8 @@ async fn run_workflow(
         let mut ids = Vec::with_capacity(items.len());
         for item in &items {
             let brief = render_template(&stage.prompt, item, &prior_block);
-            match dispatch_child(sub, spawner, brief, None, &stage.slot, stage.worktree) {
+            let stage_worktree = stage.worktree.then_some(WorktreeDisposition::Merge);
+            match dispatch_child(sub, spawner, brief, None, &stage.slot, stage_worktree) {
                 Ok(child) => ids.push(child.id),
                 Err(err) => {
                     // A dispatch failure aborts the workflow, but the already-dispatched agents of
@@ -2813,6 +3459,7 @@ impl Agent {
         planning: PlanningRuntime,
         mut fsm: FsmRuntime,
         code_reviews: bool,
+        speculative: bool,
         mut subagents: Option<SubagentContext>,
     ) -> LoopEnd {
         // Code Reviews gate `complete_issue` only when the capability is on *and* this agent has the
@@ -2820,6 +3467,10 @@ impl Agent {
         // `complete_issue` accepts issues directly. Computed once here since `subagents` never
         // toggles over the loop.
         let code_reviews_active = code_reviews && subagents.is_some();
+        // Speculative execution (`speculate`) likewise needs the delegation machinery to fan out the
+        // attempts and run the judge; with it off, the tool (if offered) falls through to a defensive
+        // refusal rather than engaging.
+        let speculative_active = speculative && subagents.is_some();
         // The full offered toolset. When planning is on, each turn's request is filtered from this
         // by the loop's plan-mode state (read-only tools only while planning); otherwise the whole
         // set is offered every turn.
@@ -2842,6 +3493,7 @@ impl Agent {
             &planning,
             &fsm,
             code_reviews_active,
+            speculative_active,
         ));
         context.push_user_prompt(prompt);
 
@@ -3090,6 +3742,12 @@ impl Agent {
                     } else if let Some(sub) = subagents.as_mut() {
                         if is_subagent_tool(&call.name) {
                             handle_subagent_call(sub, self, &board, emitter, call).await
+                        } else if speculative_active && call.name == SPECULATE_TOOL {
+                            // Speculative execution: `speculate` is intercepted here (like the
+                            // delegation tools) so gg runs the best-of-K fan-out → judge → merge
+                            // routine against the orchestrator, scheduler, and worktree machinery,
+                            // which the tool itself cannot reach.
+                            handle_speculate(sub, self, &board, emitter, call).await
                         } else if code_reviews_active
                             && call.name == COMPLETE_ISSUE_TOOL
                             && board.offers_board()
@@ -3644,6 +4302,7 @@ fn system_prompt(
     planning: &PlanningRuntime,
     fsm: &FsmRuntime,
     code_reviews: bool,
+    speculative: bool,
 ) -> String {
     let names: Vec<String> = registry
         .definitions()
@@ -3701,6 +4360,16 @@ fn system_prompt(
              fill in each issue's completion criteria precisely — they are what the Code Review \
              holds the work to — and expect `complete_issue` to take a while (it runs the review \
              and any fixes before returning).",
+        );
+    }
+    if speculative {
+        prompt.push_str(
+            "\n\nSpeculative execution is enabled: for a hard or open-ended piece of work, you can \
+             call `speculate` to make several parallel attempts at the SAME task (best-of-K) — each \
+             in its own isolated workspace — after which a judge keeps only the best one and merges \
+             it back, discarding the rest. It costs K× the tokens of one attempt, so reach for it \
+             when one careful attempt may not be enough and the quality is worth the spend; use \
+             `spawn_subagent` for ordinary single-attempt delegation.",
         );
     }
     prompt

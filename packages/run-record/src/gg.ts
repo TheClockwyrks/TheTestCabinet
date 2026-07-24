@@ -503,6 +503,19 @@ export type GgWorkflowPhase = "started" | "finished";
 export type GgCodeReviewPhase = "requested" | "changes_requested" | "approved";
 
 /**
+ * The phase of a [speculative execution](https://docs.testcabinet.ai/gg/speculative-execution/) a
+ * [`Speculation`](GgTelemetryKind::Speculation) event reports — the `fan-out → judge → merge`
+ * lifecycle of a best-of-K attempt.
+ *
+ * A speculation [fans out](Self::FannedOut) K attempts at the same task (each in its own worktree),
+ * then a judge [scores and picks a winner](Self::Judged) among the attempts that produced work, and
+ * finally the winner's worktree is [merged](Self::Merged) back into the main tree while the losers'
+ * branches are discarded. A speculation that produced no usable work emits [`Judged`](Self::Judged)
+ * with no winner and no [`Merged`](Self::Merged).
+ */
+export type GgSpeculationPhase = "fanned_out" | "judged" | "merged";
+
+/**
  * The type-specific payload of a [`GgTelemetryEvent`], discriminated by the `type`
  * field.
  *
@@ -842,6 +855,29 @@ export type GgTelemetryKind =
        * on the machine's path (a `review-gated` loop-back repeats an earlier index).
        */
       stateIndex: number;
+    }
+  | {
+      type: "speculation";
+      /**
+       * How many attempts were fanned out at the task (the `K` of best-of-K).
+       */
+      attempts: number;
+      /**
+       * Which phase of the speculation lifecycle this transition is.
+       */
+      phase: GgSpeculationPhase;
+      /**
+       * The winning attempt's agent id, on [`Judged`](GgSpeculationPhase::Judged) (once a winner is
+       * picked) and [`Merged`](GgSpeculationPhase::Merged). Absent on
+       * [`FannedOut`](GgSpeculationPhase::FannedOut), and on a `Judged` where no attempt produced
+       * usable work.
+       */
+      winner?: string;
+      /**
+       * The judge's one-line rationale for its pick, on [`Judged`](GgSpeculationPhase::Judged).
+       * Absent on the other phases (and when the judge gave none).
+       */
+      rationale?: string;
     }
   | {
       type: "log";
@@ -1241,6 +1277,29 @@ export type GgTelemetryEvent = {
        * on the machine's path (a `review-gated` loop-back repeats an earlier index).
        */
       stateIndex: number;
+    }
+  | {
+      type: "speculation";
+      /**
+       * How many attempts were fanned out at the task (the `K` of best-of-K).
+       */
+      attempts: number;
+      /**
+       * Which phase of the speculation lifecycle this transition is.
+       */
+      phase: GgSpeculationPhase;
+      /**
+       * The winning attempt's agent id, on [`Judged`](GgSpeculationPhase::Judged) (once a winner is
+       * picked) and [`Merged`](GgSpeculationPhase::Merged). Absent on
+       * [`FannedOut`](GgSpeculationPhase::FannedOut), and on a `Judged` where no attempt produced
+       * usable work.
+       */
+      winner?: string;
+      /**
+       * The judge's one-line rationale for its pick, on [`Judged`](GgSpeculationPhase::Judged).
+       * Absent on the other phases (and when the judge gave none).
+       */
+      rationale?: string;
     }
   | {
       type: "log";

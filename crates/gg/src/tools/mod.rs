@@ -55,7 +55,8 @@ use serde_json::Value;
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_EPICS_ISSUES, CAPABILITY_FILESYSTEM,
     CAPABILITY_FSM, CAPABILITY_MEMORIES, CAPABILITY_PLANNING, CAPABILITY_SHELL, CAPABILITY_SKILLS,
-    CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WORKFLOWS, GgCapabilitySet,
+    CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WORKFLOWS,
+    GgCapabilitySet,
 };
 
 use crate::archive::ArchiveStore;
@@ -75,8 +76,8 @@ pub use memories::is_memory_tool;
 pub use planning::{ENTER_PLAN_MODE_TOOL, SUBMIT_PLAN_TOOL, is_planning_tool};
 pub use skills::READ_SKILL_TOOL;
 pub use subagents::{
-    RUN_WORKFLOW_TOOL, SEND_MESSAGE_TOOL, SPAWN_SUBAGENT_TOOL, WAIT_FOR_SUBAGENTS_TOOL,
-    is_subagent_tool,
+    RUN_WORKFLOW_TOOL, SEND_MESSAGE_TOOL, SPAWN_SUBAGENT_TOOL, SPECULATE_TOOL,
+    WAIT_FOR_SUBAGENTS_TOOL, is_subagent_tool,
 };
 pub use tasks::is_task_tool;
 
@@ -420,6 +421,15 @@ impl ToolRegistry {
             // offered independently of `subagents` (a run may declare workflows without ad-hoc
             // spawning) — the loop builds the delegation runtime whenever either capability is on.
             tools.push(Box::new(subagents::RunWorkflowTool));
+        }
+
+        if capabilities.is_enabled(CAPABILITY_SPECULATIVE) {
+            // The `speculate` tool is declared like the subagent tools and intercepted by the loop,
+            // which runs the best-of-K fan-out → judge → merge routine against the same subagent
+            // scheduler and worktree machinery. It engages only when the delegation runtime is built
+            // (subagents or workflows on) and worktree isolation is available; the loop refuses it
+            // otherwise.
+            tools.push(Box::new(subagents::SpeculateTool));
         }
 
         Self { tools }

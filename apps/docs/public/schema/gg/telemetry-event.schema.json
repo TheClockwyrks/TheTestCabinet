@@ -346,6 +346,26 @@
       "required": ["name", "description", "read"],
       "type": "object"
     },
+    "GgSpeculationPhase": {
+      "description": "The phase of a [speculative execution](https://docs.testcabinet.ai/gg/speculative-execution/) a\n[`Speculation`](GgTelemetryKind::Speculation) event reports — the `fan-out → judge → merge`\nlifecycle of a best-of-K attempt.\n\nA speculation [fans out](Self::FannedOut) K attempts at the same task (each in its own worktree),\nthen a judge [scores and picks a winner](Self::Judged) among the attempts that produced work, and\nfinally the winner's worktree is [merged](Self::Merged) back into the main tree while the losers'\nbranches are discarded. A speculation that produced no usable work emits [`Judged`](Self::Judged)\nwith no winner and no [`Merged`](Self::Merged).",
+      "oneOf": [
+        {
+          "const": "fanned_out",
+          "description": "The K attempts have been fanned out — one subagent per attempt, each in its own isolated\nworktree, running the same task in parallel under the scheduler.",
+          "type": "string"
+        },
+        {
+          "const": "judged",
+          "description": "The attempts finished and a judge scored their work and selected the winner (carried on the\nevent's [`winner`](GgTelemetryKind::Speculation) field, with the judge's\n[`rationale`](GgTelemetryKind::Speculation)). Emitted with no winner when no attempt produced\nusable work to merge.",
+          "type": "string"
+        },
+        {
+          "const": "merged",
+          "description": "The winning attempt's worktree was merged back into the main tree and the losing attempts'\nbranches were discarded, so the main tree now holds exactly the winning attempt's changes.",
+          "type": "string"
+        }
+      ]
+    },
     "GgTaskEntry": {
       "description": "One model-curated [task](https://docs.testcabinet.ai/gg/tasks/) — a node of the\nblocked-by DAG reported in a [`TasksState`](GgTelemetryKind::TasksState) event.\n\nThe model builds a lightweight to-do list with `add_task` (and revises it with\n`update_task` / `set_blocked_by` / `complete_task` / `remove_task`). Each task has a\nstable [`id`](Self::id) the model coins and references, a [`title`](Self::title), an\noptional [`description`](Self::description), a [`status`](Self::status), and the set of\ntask ids it is [`blocked_by`](Self::blocked_by). The blocking relation is a **DAG** —\ngg rejects any edge that would introduce a cycle — and the whole list is retained across\na [compaction] boundary verbatim, so the model never loses its plan.\n\n[compaction]: https://docs.testcabinet.ai/gg/compaction/",
       "properties": {
@@ -956,6 +976,35 @@
         }
       },
       "required": ["type", "machine", "state", "stateIndex"],
+      "type": "object"
+    },
+    {
+      "description": "A [speculative execution](https://docs.testcabinet.ai/gg/speculative-execution/) lifecycle\ntransition — the event that makes a **best-of-K** attempt (the K parallel tries, the judge's\npick, and the merge) observable.\n\nEmitted (when the [speculative-execution](CAPABILITY_SPECULATIVE) capability is enabled) on the\nagent that called `speculate`: once as [`FannedOut`](GgSpeculationPhase::FannedOut) when the K\nattempts are dispatched, once as [`Judged`](GgSpeculationPhase::Judged) once a judge has scored\nthem and picked the [`winner`](Self::Speculation::winner) (with the judge's\n[`rationale`](Self::Speculation::rationale)), and once as\n[`Merged`](GgSpeculationPhase::Merged) after the winner's worktree is merged back and the\nlosers are discarded. A speculation that produced no usable work emits `Judged` with no winner\nand no `Merged`. The K attempts and the judge are ordinary\n[subagents](CAPABILITY_SUBAGENTS) — they emit the usual\n[`AgentSpawned`](Self::AgentSpawned)/[`AgentStatus`](Self::AgentStatus)/[`AgentReturned`](Self::AgentReturned)\nevents (each attempt's `AgentSpawned` carrying its isolated worktree branch) — so the console\ncan show the K attempts and the chosen winner. A run with the capability off emits none.",
+      "properties": {
+        "attempts": {
+          "description": "How many attempts were fanned out at the task (the `K` of best-of-K).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "phase": {
+          "$ref": "#/$defs/GgSpeculationPhase",
+          "description": "Which phase of the speculation lifecycle this transition is."
+        },
+        "rationale": {
+          "description": "The judge's one-line rationale for its pick, on [`Judged`](GgSpeculationPhase::Judged).\nAbsent on the other phases (and when the judge gave none).",
+          "type": ["string", "null"]
+        },
+        "type": {
+          "const": "speculation",
+          "type": "string"
+        },
+        "winner": {
+          "description": "The winning attempt's agent id, on [`Judged`](GgSpeculationPhase::Judged) (once a winner is\npicked) and [`Merged`](GgSpeculationPhase::Merged). Absent on\n[`FannedOut`](GgSpeculationPhase::FannedOut), and on a `Judged` where no attempt produced\nusable work.",
+          "type": ["string", "null"]
+        }
+      },
+      "required": ["type", "attempts", "phase"],
       "type": "object"
     },
     {
