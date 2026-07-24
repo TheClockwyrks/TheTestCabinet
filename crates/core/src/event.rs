@@ -212,6 +212,29 @@ pub enum EventKind {
         /// A human readable description of the stage and its status.
         message: String,
     },
+    /// A first-party **gg** telemetry event, carried through the normalized event
+    /// stream verbatim.
+    ///
+    /// gg — The Test Cabinet's own harness — is invoked directly rather than
+    /// translated from a third-party CLI's output, and it emits a far richer,
+    /// purpose-built [`GgTelemetryEvent`](crate::gg::GgTelemetryEvent) stream (the
+    /// agent tree, the issue board, context-window breakdowns) that the normalized
+    /// taxonomy above deliberately does not model. Rather than flatten that stream
+    /// and lose its structure, a gg run carries each telemetry event **natively** in
+    /// this variant, so gg's own events flow unchanged through the same
+    /// sink → relay → `/jobs/{id}/live` path and into the run record's event store,
+    /// where a gg-aware console renders them richly.
+    ///
+    /// The gg executor **also** emits the mapped, human-facing variants above
+    /// (an [`Agent`](EventKind::Agent) message for an assistant message, a
+    /// [`Command`](EventKind::Command)/[`Write`](EventKind::Write) for a tool call,
+    /// and so on) alongside these native events, so a console that does not yet
+    /// understand gg's stream still shows live activity. See
+    /// [`crate::gg_exec`] for the bridge.
+    Gg {
+        /// The gg telemetry event, verbatim.
+        event: crate::gg::GgTelemetryEvent,
+    },
     /// Harness output that could not be classified as any other type.
     Unknown {
         /// The original, unclassified harness output.
@@ -1236,7 +1259,7 @@ impl EventParser {
 }
 
 /// The current time as an RFC 3339 / ISO 8601 string.
-fn now_timestamp() -> String {
+pub(crate) fn now_timestamp() -> String {
     OffsetDateTime::now_utc()
         .format(&Rfc3339)
         .unwrap_or_default()

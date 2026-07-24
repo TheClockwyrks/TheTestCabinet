@@ -21,6 +21,7 @@ pub mod event;
 pub mod exec_stream;
 pub mod execution;
 pub mod gg;
+pub mod gg_exec;
 pub mod harness;
 pub mod harness_registry;
 pub mod harness_telemetry;
@@ -440,33 +441,25 @@ where
     ) -> Result<(ContainerHandle, HarnessOutcome, RunEnvironment, Duration)> {
         // gg is The Test Cabinet's own harness and is invoked *directly* — it is its
         // own executor, not a subprocess driven through the `AgentHarness` trait or
-        // looped by an orchestrator. So a gg run takes a wholly separate branch here
-        // and must never reach the third-party-harness span below: the `GgHarness`
-        // adapter's `session_argv`/`probe`/`invoke` are unimplemented stubs, and
-        // `drive_orchestrator` does not apply.
+        // looped by an orchestrator (see `crate::gg_exec`). A gg run therefore shares
+        // this method's setup — auth, image pull, container start, the environment
+        // probe, and the test case's `init` step, all of which are test-case-level —
+        // but must never reach the third-party-harness install / `probe` /
+        // `drive_orchestrator` span: the `GgHarness` adapter's `probe`/`invoke` are
+        // unimplemented stubs, and no orchestrator applies. The branches below are
+        // gated on `request.is_gg()` at exactly those points.
         //
-        // TODO(gg-integration, Stage D2): implement the gg executor branch *here*.
-        // It reuses the shared run infrastructure that follows — image pull
-        // (line ~419), container start (line ~510), the environment probe
-        // (line ~547), and the test case's `init` step (line ~636) — but *replaces*
-        // the harness install / `probe` / `drive_orchestrator` span (roughly
-        // lines ~561–701) with: write a `crate::gg::GgInvocation` (built from
-        // `request.gg_capability_set()?`, the seeded `WORKSPACE_DIR`, the rendered
-        // prompt, and a session id) into the container, launch `gg --config <path>`,
-        // bridge its `GgTelemetryEvent` NDJSON stream to `events` (the relay/live
-        // path) while accumulating usage/cost into the returned `HarnessOutcome`,
-        // and return `(handle, outcome, environment, scheduling_wait)`. Until then a
-        // gg run that reaches execution fails clearly rather than falling through.
-        if request.is_gg() {
-            // Surface the invariant error precisely if it somehow slipped past
-            // `run_resolved`'s `validate()`; otherwise report the not-yet-wired
-            // executor.
+        // Resolve the invariant (and the capability set) up front so a misassembled
+        // request fails before any container work, and resolve how gg's binary is
+        // installed: a `Local` binary is copied into the container as a file at start
+        // time (added to `spec.files` below), a `Release` is downloaded inside the
+        // container by `gg_exec::run_gg`.
+        let gg_install = if request.is_gg() {
             request.gg_capability_set()?;
-            return Err(Error::GgExecutorUnimplemented(format!(
-                "run `{run_id}` requested the gg harness, but the direct gg executor \
-                 lands in Stage D2; no gg run can execute yet",
-            )));
-        }
+            Some(gg_exec::resolve_install()?)
+        } else {
+            None
+        };
 
         let slug = request.harness;
         let harness = self
@@ -581,6 +574,30 @@ where
             telemetry_host_gateway = plan.needs_host_gateway;
         }
 
+        // A gg run installs its own binary rather than a third-party CLI. For a
+        // `Local` install, copy the host-built binary into the container as a file at
+        // start time (materialized via a host-temp-file `cp`, so a large binary is
+        // handled fine) at the path `gg_exec::run_gg` invokes. A `Release` install adds
+        // nothing here — it is downloaded inside the container by `run_gg`.
+        if let Some(gg_exec::GgInstall::Local {
+            host_path,
+            container_path,
+        }) = &gg_install
+        {
+            let contents = std::fs::read(host_path).map_err(|err| Error::HarnessUnavailable {
+                slug: slug.as_str().to_string(),
+                detail: format!(
+                    "reading the local gg binary at `{}` failed: {err}",
+                    host_path.display()
+                ),
+            })?;
+            files.push(crate::execution::ContainerFile {
+                container_path: container_path.clone(),
+                contents,
+                mode: 0o755,
+            });
+        }
+
         let spec = ContainerSpec {
             image: image.clone(),
             repo_path: seeded.path.clone(),
@@ -689,37 +706,47 @@ where
 
         // Confirm the install produced a working CLI, capturing the version for
         // the run record. A failed probe aborts the run before a session is spent.
-        events.emit(&HarnessEvent::system(
-            SystemStage::ProbeHarness,
-            SystemStatus::Started,
-        ));
-        let availability = match harness.probe(&self.runtime, &handle).await {
-            Ok(availability) => availability,
-            Err(err) => {
+        //
+        // gg is not a third-party CLI: it has no `AgentHarness` probe (the `GgHarness`
+        // adapter's `probe` is an unimplemented stub) and installs its own binary in the
+        // gg branch below, which reports its own version. So the probe stage is skipped
+        // for a gg run; `harness_version` is filled in by the gg branch instead.
+        let harness_version = if request.is_gg() {
+            None
+        } else {
+            events.emit(&HarnessEvent::system(
+                SystemStage::ProbeHarness,
+                SystemStatus::Started,
+            ));
+            let availability = match harness.probe(&self.runtime, &handle).await {
+                Ok(availability) => availability,
+                Err(err) => {
+                    events.emit(&HarnessEvent::system(
+                        SystemStage::ProbeHarness,
+                        SystemStatus::Failed,
+                    ));
+                    return Err(err);
+                }
+            };
+            if !availability.available {
                 events.emit(&HarnessEvent::system(
                     SystemStage::ProbeHarness,
                     SystemStatus::Failed,
                 ));
-                return Err(err);
+                let _ = self.runtime.stop(&handle).await;
+                return Err(Error::HarnessUnavailable {
+                    slug: slug.as_str().to_string(),
+                    detail: availability
+                        .detail
+                        .unwrap_or_else(|| "harness is unavailable".to_string()),
+                });
             }
-        };
-        if !availability.available {
             events.emit(&HarnessEvent::system(
                 SystemStage::ProbeHarness,
-                SystemStatus::Failed,
+                SystemStatus::Completed,
             ));
-            let _ = self.runtime.stop(&handle).await;
-            return Err(Error::HarnessUnavailable {
-                slug: slug.as_str().to_string(),
-                detail: availability
-                    .detail
-                    .unwrap_or_else(|| "harness is unavailable".to_string()),
-            });
-        }
-        events.emit(&HarnessEvent::system(
-            SystemStage::ProbeHarness,
-            SystemStatus::Completed,
-        ));
+            availability.version
+        };
 
         // Run the test case's init command, if any, now that the seeded workspace
         // is mounted at the working directory. This is where a case installs its
@@ -765,31 +792,54 @@ where
         // max_runtime). The hard cap below is the backstop.
         let deadline_epoch = unix_now().saturating_add(max_runtime);
 
-        // Drive the orchestrator's runner inside the container, bounded by
-        // `max_runtime` exactly as a single session was. The runner writes the
-        // `tcab-session` wrapper and runs the harness's sessions through the same
-        // streaming translation a direct invocation uses; on timeout the future is
-        // dropped (cancelling the in-flight exec) and the `Err` arm below tears the
-        // container down, just as it does for any other harness failure. For a
-        // one-shot run this produces exactly what a direct `invoke` would.
-        let drive = orchestrator::drive_orchestrator(
-            &self.runtime,
-            &handle,
-            harness,
-            orchestrator,
-            slug,
-            &request.model_id,
-            &base_prompt,
-            WORKSPACE_DIR,
-            deadline_epoch,
-            max_runtime,
-            events,
-        );
-        match with_runtime_cap(drive, max_runtime, slug).await {
-            Ok(mut outcome) => {
-                outcome.harness_version = availability.version;
-                Ok((handle, outcome, environment, scheduling_wait))
-            }
+        // Drive the session, bounded by `max_runtime` exactly as a single session was;
+        // on timeout the future is dropped (cancelling the in-flight exec) and the `Err`
+        // arm tears the container down, as for any harness failure.
+        //
+        // A gg run takes its own executor (`gg_exec::run_gg`) rather than the
+        // orchestrator: gg is invoked directly, writes its `GgInvocation`, launches its
+        // own binary, and ingests its first-party telemetry, summing usage/cost into the
+        // outcome. A third-party run drives the resolved orchestrator's runner inside the
+        // container through the shared streaming translation (a one-shot run producing
+        // exactly what a direct `invoke` would).
+        let outcome = if let Some(install) = &gg_install {
+            let drive = gg_exec::run_gg(
+                &self.runtime,
+                &handle,
+                install,
+                request,
+                &base_prompt,
+                WORKSPACE_DIR,
+                max_runtime,
+                run_id,
+                events,
+            );
+            with_runtime_cap(drive, max_runtime, slug).await
+        } else {
+            let drive = orchestrator::drive_orchestrator(
+                &self.runtime,
+                &handle,
+                harness,
+                orchestrator,
+                slug,
+                &request.model_id,
+                &base_prompt,
+                WORKSPACE_DIR,
+                deadline_epoch,
+                max_runtime,
+                events,
+            );
+            // gg reports its own version from within `run_gg`; a third-party run stamps
+            // the version captured by the probe stage above.
+            with_runtime_cap(drive, max_runtime, slug)
+                .await
+                .map(|mut outcome| {
+                    outcome.harness_version = harness_version;
+                    outcome
+                })
+        };
+        match outcome {
+            Ok(outcome) => Ok((handle, outcome, environment, scheduling_wait)),
             Err(err) => {
                 let _ = self.runtime.stop(&handle).await;
                 Err(err)

@@ -375,26 +375,11 @@ fn segment_sessions(raw: &[crate::execution::RawOutputLine]) -> Vec<SessionSegme
     segments
 }
 
-/// Sum two optional token counts the way the run's totals must combine across
-/// sessions: an unreported class on both sides stays unreported (`None`), so a
-/// genuinely-empty class is never silently treated as zero; otherwise the present
-/// values add (an unreported side contributing zero). This mirrors how a single
-/// harness reports its own classes, so summing one session reproduces it exactly.
-fn add_optional(a: Option<u64>, b: Option<u64>) -> Option<u64> {
-    match (a, b) {
-        (None, None) => None,
-        (a, b) => Some(a.unwrap_or(0) + b.unwrap_or(0)),
-    }
-}
-
-/// Add one session's token counts into a running total.
+/// Add one session's token counts into a running total. Delegates to the shared
+/// [`TokenCounts::plus`], which applies exactly this per-class "unreported folds to
+/// zero, but stays `None` when neither side reports it" rule.
 fn add_tokens(total: TokenCounts, next: TokenCounts) -> TokenCounts {
-    TokenCounts {
-        uncached_input: add_optional(total.uncached_input, next.uncached_input),
-        cached_input: add_optional(total.cached_input, next.cached_input),
-        output: add_optional(total.output, next.output),
-        reasoning: add_optional(total.reasoning, next.reasoning),
-    }
+    total.plus(next)
 }
 
 /// Write a file into a started run container at an absolute path, with the given
@@ -404,7 +389,7 @@ fn add_tokens(total: TokenCounts, next: TokenCounts) -> TokenCounts {
 /// `sh -c` script that base64-decodes them into the destination (after creating
 /// its parent) and `chmod`s it. Base64 is shell-safe, so no stdin piping or byte
 /// escaping is needed.
-async fn write_container_file(
+pub(crate) async fn write_container_file(
     runtime: &dyn ContainerRuntime,
     container: &ContainerHandle,
     dest: &str,

@@ -97,6 +97,15 @@ fn render(event: &HarnessEvent) -> String {
             &orchestration_text(*action, subagent_name.as_deref()),
         ),
         EventKind::System { message, .. } => labeled(SYSTEM, "system", message),
+        // gg's native telemetry carry. The gg executor also emits mapped
+        // human-facing variants (agent/command/write/…) alongside these, so the
+        // rendered feed already shows the activity; render the raw gg event under a
+        // dim label so the native stream is still visible without duplicating it.
+        EventKind::Gg { event } => labeled(
+            UNKNOWN,
+            "gg",
+            &serde_json::to_string(event).unwrap_or_default(),
+        ),
         EventKind::Unknown { raw } => labeled(UNKNOWN, "·", &raw.to_string()),
         EventKind::Warning { message, .. } => labeled(WARNING, "warn", message),
         EventKind::Error { message, .. } => labeled(ERROR, "error", message),

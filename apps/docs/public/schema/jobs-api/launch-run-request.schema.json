@@ -17,7 +17,7 @@
           "type": "null"
         }
       ],
-      "description": "The declarative [capability set](GgCapabilitySet) configuring a **gg** run —\nwhich capabilities are on, their implementations/params, and the model-slot\nbindings. Present when (and only when) [`Self::harness`] is\n[`HarnessSlug::Gg`](crate::run_record::HarnessSlug::Gg): a gg run is\nconfigured by this set rather than by the `(model, orchestrator)` dimensions\na third-party harness run uses. Omitted for every non-gg run. The driver maps\nit into [`RunRequest::gg_capability_set`](crate::RunRequest), whose\n`validate` enforces the gg⇔capability-set invariant."
+      "description": "The declarative [capability set](GgCapabilitySet) configuring a **gg** run —\nwhich capabilities are on, their implementations/params, and the model-slot\nbindings. Present when (and only when) [`Self::harness`] is\n[`HarnessSlug::Gg`]: a gg run is\nconfigured by this set rather than by the `(model, orchestrator)` dimensions\na third-party harness run uses. Omitted for every non-gg run. The driver maps\nit into [`RunRequest::gg_capability_set`](crate::RunRequest), whose\n`validate` enforces the gg⇔capability-set invariant."
     },
     "harness": {
       "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/HarnessSlug",

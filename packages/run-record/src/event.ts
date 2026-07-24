@@ -7,6 +7,8 @@
 // JSON Schemas under `apps/docs/public/schema/` are generated from the same types
 // in the same pass.
 
+import type { GgTelemetryEvent } from "./gg";
+
 /**
  * The subagent orchestration states a harness can report.
  */
@@ -217,6 +219,13 @@ export type EventKind =
       message: string;
     }
   | {
+      type: "gg";
+      /**
+       * The gg telemetry event, verbatim.
+       */
+      event: GgTelemetryEvent;
+    }
+  | {
       type: "unknown";
       /**
        * The original, unclassified harness output.
@@ -417,6 +426,13 @@ export type HarnessEvent = {
        * A human readable description of the stage and its status.
        */
       message: string;
+    }
+  | {
+      type: "gg";
+      /**
+       * The gg telemetry event, verbatim.
+       */
+      event: GgTelemetryEvent;
     }
   | {
       type: "unknown";

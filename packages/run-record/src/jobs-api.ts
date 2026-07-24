@@ -78,7 +78,7 @@ export type LaunchBody = {
    * The declarative [capability set](GgCapabilitySet) configuring a **gg** run —
    * which capabilities are on, their implementations/params, and the model-slot
    * bindings. Present when (and only when) [`Self::harness`] is
-   * [`HarnessSlug::Gg`](crate::run_record::HarnessSlug::Gg): a gg run is
+   * [`HarnessSlug::Gg`]: a gg run is
    * configured by this set rather than by the `(model, orchestrator)` dimensions
    * a third-party harness run uses. Omitted for every non-gg run. The driver maps
    * it into [`RunRequest::gg_capability_set`](crate::RunRequest), whose

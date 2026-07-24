@@ -72,6 +72,23 @@ impl TokenCounts {
     pub fn total(&self) -> Option<u64> {
         sum_reported(self.total_input(), self.total_output())
     }
+
+    /// Sum two token accountings class by class, treating an unreported (`None`)
+    /// class as zero but keeping a class `None` when **neither** side reports it —
+    /// exactly `sum_reported`'s rule, applied per class. This is how a session's
+    /// incremental usage deltas (an orchestrator's per-session usage, or a
+    /// [gg](crate::gg) run's per-turn `usage` telemetry events, which are deltas
+    /// consumers sum) are accumulated into one total without a genuinely-empty
+    /// class ever being reported as a misleading zero.
+    #[must_use]
+    pub fn plus(self, other: TokenCounts) -> TokenCounts {
+        TokenCounts {
+            uncached_input: sum_reported(self.uncached_input, other.uncached_input),
+            cached_input: sum_reported(self.cached_input, other.cached_input),
+            output: sum_reported(self.output, other.output),
+            reasoning: sum_reported(self.reasoning, other.reasoning),
+        }
+    }
 }
 
 /// Sum two optional token counts, treating an unreported (`None`) class as zero,
