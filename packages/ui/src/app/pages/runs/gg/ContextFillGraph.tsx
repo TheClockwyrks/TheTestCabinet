@@ -16,11 +16,17 @@ import {
   Chart,
   stackedAreaChart,
   type ChartPalette,
+  type StackedAreaMarker,
   type StackedAreaPoint,
   type StackedSeries,
 } from "@test-cabinet/ui";
 import type { GgContextSource } from "@test-cabinet/run-record/gg";
-import type { ContextSnapshot } from "./useGgRunState";
+import {
+  retainedSummary,
+  shortTokens,
+  type CompactionBoundary,
+  type ContextSnapshot,
+} from "./useGgRunState";
 import styles from "./GgPanels.module.scss";
 
 // The nine context sources in their fixed, stable order (mirrors
@@ -96,9 +102,16 @@ function snapshotFullness(snapshot: ContextSnapshot): number | null {
 interface ContextFillGraphProps {
   series: ContextSnapshot[];
   latest: ContextSnapshot | null;
+  // Compaction boundaries to mark on the graph — each drops the window (the
+  // sawtooth's fall). Empty when compaction is off or never tripped.
+  compactions?: CompactionBoundary[];
 }
 
-export function ContextFillGraph({ series, latest }: ContextFillGraphProps) {
+export function ContextFillGraph({
+  series,
+  latest,
+  compactions = [],
+}: ContextFillGraphProps) {
   // Flatten every snapshot into per-source points for the stacked area. Memoized
   // so the chart only re-plots when a new snapshot arrives.
   const points = useMemo<StackedAreaPoint[]>(
@@ -116,6 +129,17 @@ export function ContextFillGraph({ series, latest }: ContextFillGraphProps) {
   // The window limit to draw as the reference ceiling — the latest known limit.
   const windowLimit = latest?.windowLimit ?? null;
 
+  // Compaction boundaries as vertical markers at their post-compaction turn, so the
+  // fill-then-drop sawtooth is legible. Only those within the plotted turn range.
+  const maxTurn = series.length ? series[series.length - 1]!.turn : 0;
+  const markers = useMemo<StackedAreaMarker[]>(
+    () =>
+      compactions
+        .filter((c) => c.turn <= maxTurn)
+        .map((c) => ({ x: c.turn, label: "compacted" })),
+    [compactions, maxTurn],
+  );
+
   const spec = useMemo(
     () => (palette: ChartPalette) =>
       stackedAreaChart(points, palette, AREA_SERIES, {
@@ -126,8 +150,9 @@ export function ContextFillGraph({ series, latest }: ContextFillGraphProps) {
           windowLimit != null
             ? { value: windowLimit, label: "window limit" }
             : undefined,
+        markers,
       }),
-    [points, windowLimit],
+    [points, windowLimit, markers],
   );
 
   if (!latest) {
@@ -195,6 +220,27 @@ export function ContextFillGraph({ series, latest }: ContextFillGraphProps) {
         <p className={styles.caption}>
           The composition graph appears once a second turn is recorded.
         </p>
+      )}
+
+      {/* Compaction boundaries: what each summarize-and-drop reclaimed and, per the
+          retention contract, the pinned state it carried across verbatim. */}
+      {compactions.length > 0 && (
+        <ul className={styles.boundaryList}>
+          {compactions.map((c) => (
+            <li key={c.key} className={styles.boundaryRow}>
+              <span className={styles.boundaryTick} aria-hidden="true" />
+              <span className={styles.boundaryText}>
+                <span className={styles.boundaryHead}>
+                  Compacted at turn {c.turn}: {shortTokens(c.beforeTokens)} →{" "}
+                  {shortTokens(c.afterTokens)} tokens
+                </span>
+                <span className={styles.boundaryRetained}>
+                  retained {retainedSummary(c.retained)}
+                </span>
+              </span>
+            </li>
+          ))}
+        </ul>
       )}
 
       {/* Current per-source composition — also the chart's color legend. */}

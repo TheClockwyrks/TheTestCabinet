@@ -284,6 +284,15 @@ export interface StackedAreaPoint {
   value: number;
 }
 
+/** A vertical marker drawn across a stacked area at one x position — e.g. a gg
+ * compaction boundary, where the window is summarized and drops. */
+export interface StackedAreaMarker {
+  /** The x position the marker sits at (e.g. the post-compaction turn index). */
+  x: number;
+  /** A short label drawn at the top of the marker (e.g. `"compacted"`). */
+  label: string;
+}
+
 interface StackedAreaLabels {
   x?: string;
   y?: string;
@@ -295,6 +304,12 @@ interface StackedAreaLabels {
    * limit), with a label anchored at its left. Omit to draw no reference.
    */
   reference?: { value: number; label: string };
+  /**
+   * Vertical markers drawn across the plot at chosen x positions (e.g. gg
+   * compaction boundaries), each a dashed rule with a small top label, so the
+   * sawtooth of the window filling then dropping is legible. Omit to draw none.
+   */
+  markers?: readonly StackedAreaMarker[];
 }
 
 // A stacked area chart over an ordered x axis: one filled band per series,
@@ -316,6 +331,7 @@ export function stackedAreaChart(
   // First series sits at the baseline; the list order is the stacking order.
   const order = series.map((s) => s.name);
   const ref = labels.reference;
+  const markers = labels.markers ?? [];
   return {
     ...basePlotOptions(palette),
     x: {
@@ -364,6 +380,28 @@ export function stackedAreaChart(
               fill: palette.muted,
               fontSize: 10,
               textAnchor: "start",
+            }),
+          ]
+        : []),
+      // Vertical boundary markers (e.g. compaction boundaries): a dashed rule at
+      // each x with a small top-anchored label, so where the window was summarized
+      // and dropped reads directly off the sawtooth.
+      ...(markers.length
+        ? [
+            Plot.ruleX(markers as StackedAreaMarker[], {
+              x: "x",
+              stroke: palette.accent2,
+              strokeDasharray: "3 2",
+              strokeOpacity: 0.7,
+            }),
+            Plot.text(markers as StackedAreaMarker[], {
+              x: "x",
+              text: "label",
+              frameAnchor: "top",
+              dy: 2,
+              fill: palette.accent2,
+              fontSize: 10,
+              textAnchor: "middle",
             }),
           ]
         : []),

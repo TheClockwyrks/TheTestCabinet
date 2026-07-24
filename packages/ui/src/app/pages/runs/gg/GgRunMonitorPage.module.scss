@@ -252,3 +252,16 @@
 .toneWarn .rowLabel {
   color: t.$color-accent-2;
 }
+
+// Context-management rows (compaction boundaries + the agent's evict/archive
+// reclaims) read as a distinct band: a colored left rule and a faint wash lift them
+// out of the run of agent/tool lines so a window reclaim is unmistakable.
+.toneCompact {
+  border-left: 2px solid t.$color-accent-2;
+  background: color-mix(in srgb, t.$color-accent-2 8%, transparent);
+}
+
+.toneCompact .rowLabel {
+  color: t.$color-accent-2;
+  font-weight: 600;
+}

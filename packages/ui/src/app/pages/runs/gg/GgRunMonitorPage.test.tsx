@@ -130,6 +130,31 @@ const EVENTS: HarnessEvent[] = [
     totalLen: 120,
     caps: { maxCount: 16, maxLenPerMemory: 2000, maxTotalLen: 16000 },
   }),
+  // Phase 2: a compaction boundary (summarize-and-drop, honoring the retention
+  // contract), the reclaimed post-compaction breakdown it drops to, and the agent
+  // evicting a file view itself.
+  gg({
+    type: "compaction",
+    triggerFullness: 0.85,
+    beforeTokens: 4400,
+    afterTokens: 1800,
+    summaryTokens: 300,
+    retained: { skills: 1, tasks: 3, memories: 1 },
+  }),
+  gg({
+    type: "context_breakdown",
+    bySource: bySource({ system: 1000, user_prompt: 500, history: 300 }),
+    totalTokens: 1800,
+    windowLimit: 200000,
+    fullness: 0.009,
+  }),
+  gg({
+    type: "context_managed",
+    action: "evict_file_views",
+    reclaimedTokens: 1200,
+    items: 1,
+    detail: "Evicted 1 file view (level.json), reclaiming ~1200 tokens.",
+  }),
 ];
 
 // A worker whose live subscription replays a fixed event set synchronously, then
@@ -212,6 +237,48 @@ describe("GgRunMonitorPage", () => {
     expect(screen.getByText("gg-render")).toBeInTheDocument();
     expect(screen.getByText("1 of 2 read")).toBeInTheDocument();
     expect(screen.getByText("controls")).toBeInTheDocument();
+  });
+
+  it("renders compaction boundaries and evict actions in the activity feed", () => {
+    renderMonitor();
+    // The compaction boundary reads as a distinct row: before→after tokens and the
+    // retained-state proof (the pinned state carried across verbatim).
+    expect(
+      screen.getByText("Context compacted: 4.4k → 1.8k tokens."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("retained 1 skill / 3 tasks / 1 memory"),
+    ).toBeInTheDocument();
+    // The agent's own evict reclaim shows too, with what it freed.
+    expect(
+      screen.getByText("Evicted 1 file view (level.json), reclaiming ~1200 tokens."),
+    ).toBeInTheDocument();
+  });
+
+  it("marks compaction boundaries with their retained state on the context tab", () => {
+    renderMonitor();
+    fireEvent.click(screen.getByRole("radio", { name: "Context" }));
+    // The boundary caption under the graph names the turn, the drop, and the pinned
+    // state the retention contract carried across.
+    expect(
+      screen.getByText("Compacted at turn 2: 4.4k → 1.8k tokens"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("retained 1 skill / 3 tasks / 1 memory"),
+    ).toBeInTheDocument();
+  });
+
+  it("shows retained state carrying over on the knowledge tab", () => {
+    renderMonitor();
+    fireEvent.click(screen.getByRole("radio", { name: "Knowledge" }));
+    // The Knowledge tab keeps showing the skills/memories after a compaction, with a
+    // note that they survived the boundary verbatim.
+    expect(screen.getByText("gg-render")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Retained verbatim across 1 compaction — the skills and memories carried over.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("shows empty states when no gg telemetry arrives", () => {

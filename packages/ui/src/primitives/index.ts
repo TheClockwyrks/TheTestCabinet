@@ -33,6 +33,7 @@ export {
   type StackedBarSegment,
   type StackedSeries,
   type StackedAreaPoint,
+  type StackedAreaMarker,
   type PricePoint,
 } from "./plot/charts";
 export {

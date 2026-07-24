@@ -64,6 +64,7 @@ export function GgRunMonitorPage() {
     usage,
     contextSeries,
     latestContext,
+    compactions,
     skills,
     memory,
     tasks,
@@ -271,7 +272,11 @@ export function GgRunMonitorPage() {
         <>
           <span className={runExec.sectionLabel}>context window</span>
           <div className={panels.panelBody}>
-            <ContextFillGraph series={contextSeries} latest={latestContext} />
+            <ContextFillGraph
+              series={contextSeries}
+              latest={latestContext}
+              compactions={compactions}
+            />
           </div>
         </>
       )}
@@ -279,6 +284,7 @@ export function GgRunMonitorPage() {
       {tab === "tasks" && (
         <>
           <span className={runExec.sectionLabel}>tasks</span>
+          <RetainedNote count={compactions.length} what="task list" />
           <div className={panels.panelBody}>
             <TaskDagView tasks={tasks} />
           </div>
@@ -288,6 +294,7 @@ export function GgRunMonitorPage() {
       {tab === "knowledge" && (
         <>
           <span className={runExec.sectionLabel}>knowledge</span>
+          <RetainedNote count={compactions.length} what="skills and memories" />
           <div className={panels.panelBody}>
             <div className={panels.knowledgeSplit}>
               <div className={panels.subPanel}>
@@ -345,6 +352,19 @@ function statusPhase(
   }
 }
 
+// A reassurance line shown on the Tasks / Knowledge tabs once a run has crossed a
+// compaction boundary: the retention contract kept this state verbatim, so it never
+// blanked out when the window was summarized. Renders nothing before any compaction.
+function RetainedNote({ count, what }: { count: number; what: string }) {
+  if (count === 0) return null;
+  return (
+    <p className={panels.retainedNote}>
+      Retained verbatim across {count} compaction{count === 1 ? "" : "s"} — the{" "}
+      {what} carried over.
+    </p>
+  );
+}
+
 function toneClass(tone: FeedTone): string {
   switch (tone) {
     case "agent":
@@ -357,6 +377,8 @@ function toneClass(tone: FeedTone): string {
       return styles.toneFail ?? "";
     case "warn":
       return styles.toneWarn ?? "";
+    case "compact":
+      return styles.toneCompact ?? "";
     case "system":
       return "";
   }

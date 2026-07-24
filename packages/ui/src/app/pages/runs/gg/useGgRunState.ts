@@ -14,9 +14,11 @@ import { useWorkers } from "../../../../client/context";
 import type { HarnessEvent, RunOutcome } from "../../../../client/types";
 import type {
   GgCapabilitySet,
+  GgContextAction,
   GgContextSourceUsage,
   GgMemoryCaps,
   GgMemoryEntry,
+  GgRetainedState,
   GgSkillState,
   GgTaskEntry,
   GgTelemetryEvent,
@@ -34,8 +36,17 @@ export type GgMonitorStatus =
 
 // The visual tone of a feed row, driving the label/body accent in the monitor's
 // stylesheet so a glance reads the shape of the run (agent talk vs tool calls vs
-// failures).
-export type FeedTone = "system" | "agent" | "tool" | "ok" | "fail" | "warn";
+// failures). `compact` is the Phase-2 window-management tone — compaction
+// boundaries and the agent's own evict/archive actions — so a reclaim reads as a
+// distinct event, not just another tool line.
+export type FeedTone =
+  | "system"
+  | "agent"
+  | "tool"
+  | "ok"
+  | "fail"
+  | "warn"
+  | "compact";
 
 export interface FeedRow {
   key: string;
@@ -77,6 +88,36 @@ export interface ContextSnapshot {
   fullness?: number;
 }
 
+// One `compaction` boundary — the point the window was summarized and dropped,
+// honoring the retention contract (the read skills, the task list, and the in-play
+// memories carried across verbatim). `turn` is the graph turn index of the
+// post-compaction breakdown (the sawtooth's low point), so the boundary can be
+// marked at the right x on the context-fill graph.
+export interface CompactionBoundary {
+  // A stable key (the source event's index) for React lists.
+  key: string;
+  timestamp: string;
+  // The graph turn index the reclaimed window shows at — where to draw the marker.
+  turn: number;
+  triggerFullness: number;
+  beforeTokens: number;
+  afterTokens: number;
+  summaryTokens: number;
+  retained: GgRetainedState;
+}
+
+// One `context_managed` action — the agent reclaiming window space itself (evicting
+// file views it no longer needs, or archiving a section of its thread), surfaced so
+// the reclaim is visible alongside the band drop the next breakdown shows.
+export interface ContextAction {
+  key: string;
+  timestamp: string;
+  action: GgContextAction;
+  reclaimedTokens: number;
+  items: number;
+  detail: string;
+}
+
 // The latest `memory_state` — the model's self-curated memories and the caps gg
 // keeps them within.
 export interface GgMemoryState {
@@ -111,6 +152,14 @@ export interface GgRunState {
   contextSeries: ContextSnapshot[];
   latestContext: ContextSnapshot | null;
 
+  // --- Context management (Phase 2) ----------------------------------------
+  // Compaction boundaries in order, each marking a summarize-and-drop of the
+  // window; empty when the compaction capability is off (or never tripped).
+  compactions: CompactionBoundary[];
+  // Agent-driven evict/archive reclaims in order; empty when agent-managed
+  // context is off (or the agent never reclaimed).
+  contextActions: ContextAction[];
+
   // --- Skills / memories / tasks (latest snapshots) ------------------------
   skills: GgSkillState[];
   memory: GgMemoryState | null;
@@ -134,6 +183,37 @@ function compactArgs(args: Record<string, unknown>): string {
   }
   if (!text || text === "{}") return "";
   return text.length > ARGS_MAX ? `${text.slice(0, ARGS_MAX)}…` : text;
+}
+
+// A short, human token count for feed rows and markers (e.g. `12.3k`, `1.2M`), so
+// a "before → after" reclaim reads at a glance without swamping the row.
+export function shortTokens(n: number): string {
+  if (n < 1000) return String(n);
+  if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k`;
+  return `${(n / 1_000_000).toFixed(1)}M`;
+}
+
+// The retained-state line a compaction carried across the boundary verbatim — the
+// proof the retention contract held ("2 skills / 3 tasks / 1 memory"). Each count
+// takes its own singular/plural so a single item never reads as plural.
+export function retainedSummary(retained: GgRetainedState): string {
+  const unit = (n: number, singular: string, plural: string) =>
+    `${n} ${n === 1 ? singular : plural}`;
+  return [
+    unit(retained.skills, "skill", "skills"),
+    unit(retained.tasks, "task", "tasks"),
+    unit(retained.memories, "memory", "memories"),
+  ].join(" / ");
+}
+
+// The human label for an agent-managed-context action.
+function contextActionLabel(action: GgContextAction): string {
+  switch (action) {
+    case "evict_file_views":
+      return "evict";
+    case "archive_thread":
+      return "archive";
+  }
 }
 
 // Map one gg-native telemetry event to a feed row, or null to drop it. `usage` and
@@ -166,6 +246,29 @@ function ggFeedRow(
         label: gg.ok ? "result" : "result ✗",
         detail: gg.summary ? `${gg.name}: ${gg.summary}` : gg.name,
         tone: gg.ok ? "ok" : "fail",
+      };
+    case "compaction":
+      return {
+        ...base,
+        label: "compacted",
+        detail: `Context compacted: ${shortTokens(gg.beforeTokens)} → ${shortTokens(
+          gg.afterTokens,
+        )} tokens.`,
+        args: `retained ${retainedSummary(gg.retained)}`,
+        tone: "compact",
+      };
+    case "context_managed":
+      return {
+        ...base,
+        label: contextActionLabel(gg.action),
+        detail: gg.detail,
+        args:
+          gg.reclaimedTokens > 0
+            ? `reclaimed ${shortTokens(gg.reclaimedTokens)} tokens · ${gg.items} item${
+                gg.items === 1 ? "" : "s"
+              }`
+            : undefined,
+        tone: "compact",
       };
     case "log":
       return {
@@ -231,6 +334,8 @@ interface DerivedGgState {
   sessionEndStatus: string | null;
   contextSeries: ContextSnapshot[];
   latestContext: ContextSnapshot | null;
+  compactions: CompactionBoundary[];
+  contextActions: ContextAction[];
   skills: GgSkillState[];
   memory: GgMemoryState | null;
   tasks: GgTaskEntry[];
@@ -255,6 +360,8 @@ function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
   const feed: FeedRow[] = [];
   const usage: UsageTally = { ...EMPTY_USAGE };
   const contextSeries: ContextSnapshot[] = [];
+  const compactions: CompactionBoundary[] = [];
+  const contextActions: ContextAction[] = [];
   let sawSession = false;
   let sessionEndStatus: string | null = null;
   let skills: GgSkillState[] = [];
@@ -309,6 +416,31 @@ function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
           fullness: gg.fullness,
         });
         break;
+      case "compaction":
+        // Compaction fires at the top of a turn, before that turn's breakdown, so
+        // the current `turn` counter is the graph index the reclaimed window will
+        // show at — where the boundary marker belongs on the sawtooth.
+        compactions.push({
+          key: `${index}`,
+          timestamp: event.timestamp,
+          turn,
+          triggerFullness: gg.triggerFullness,
+          beforeTokens: gg.beforeTokens,
+          afterTokens: gg.afterTokens,
+          summaryTokens: gg.summaryTokens,
+          retained: gg.retained,
+        });
+        break;
+      case "context_managed":
+        contextActions.push({
+          key: `${index}`,
+          timestamp: event.timestamp,
+          action: gg.action,
+          reclaimedTokens: gg.reclaimedTokens,
+          items: gg.items,
+          detail: gg.detail,
+        });
+        break;
       case "skills_state":
         skills = gg.skills;
         break;
@@ -337,6 +469,8 @@ function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
     latestContext: contextSeries.length
       ? contextSeries[contextSeries.length - 1]!
       : null,
+    compactions,
+    contextActions,
     skills,
     memory,
     tasks,

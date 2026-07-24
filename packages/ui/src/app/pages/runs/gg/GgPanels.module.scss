@@ -148,6 +148,62 @@ $context-palette: (
   font-variant-numeric: tabular-nums;
 }
 
+// --- Compaction boundaries ---------------------------------------------------
+
+// The list of compaction boundaries beneath the context graph: each a summarize-
+// and-drop of the window, with the pinned state it carried across verbatim. Keyed
+// to the graph's vertical markers (same accent) so the marker and its explanation
+// read as one.
+.boundaryList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.boundaryRow {
+  display: flex;
+  align-items: stretch;
+  gap: t.$space-sm;
+  font-size: t.$font-sm;
+}
+
+// A short vertical rule echoing the graph's dashed compaction marker (same accent).
+.boundaryTick {
+  flex: 0 0 auto;
+  width: 2px;
+  border-radius: 1px;
+  background: t.$color-accent-2;
+}
+
+.boundaryText {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.boundaryHead {
+  color: t.$color-text;
+  font-variant-numeric: tabular-nums;
+}
+
+.boundaryRetained {
+  color: t.$color-text-muted;
+}
+
+// The reassurance line on the Tasks / Knowledge tabs: the retention contract kept
+// this state across a compaction, so it never blanked out.
+.retainedNote {
+  margin: t.$space-2xs 0 t.$space-xs;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  border-left: 2px solid t.$color-accent-2;
+  padding-left: t.$space-sm;
+}
+
 // --- Tasks -------------------------------------------------------------------
 
 // The blocked-by DAG is shown as a dependency-aware grouping: tasks bucketed by
