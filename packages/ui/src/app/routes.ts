@@ -164,6 +164,11 @@ export const routes = {
   },
   ggMonitor: (jobId: string): string =>
     `/runs/gg/${encodeURIComponent(jobId)}/live`,
+  // The gg result-aggregation surface: run Kibana-style structured queries across
+  // many recorded gg sessions, sliced by capability set. A sibling of `ggNew` under
+  // the same literal `/runs/gg` prefix, console-only (it drives the worker's
+  // `POST /gg/aggregate`).
+  ggAnalyze: (): string => "/runs/gg/analyze",
   // The run's default (Verdict) tab. `edit` opens the review editor in revise
   // mode — used by the single-review page's Edit control to return here with the
   // owner's review form reopened.
@@ -278,6 +283,7 @@ export const routePatterns = {
   // outranks the `/runs/:runId` dynamic route, and `ggMonitor`'s `/runs/gg/:jobId`
   // is a sibling of the plain `runMonitor` under that same static prefix.
   ggNew: "/runs/gg/new",
+  ggAnalyze: "/runs/gg/analyze",
   ggMonitor: "/runs/gg/:jobId/live",
   runMonitor: "/runs/:runId/live",
   runDetail: "/runs/:runId",

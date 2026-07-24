@@ -4,5 +4,6 @@
 // sibling folder — the console is the only way to configure, launch, and watch a
 // gg run. See apps/docs `gg/`.
 export { NewGgRunPage } from "./NewGgRunPage";
+export { GgAnalyzePage } from "./GgAnalyzePage";
 export { GgRunMonitorPage } from "./GgRunMonitorPage";
 export { ggRoutes } from "./router";

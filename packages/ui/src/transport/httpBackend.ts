@@ -59,6 +59,10 @@ import type {
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import type { GgRunRequest, LaunchAck } from "@test-cabinet/run-record/jobs-api";
 import type {
+  GgAggregateQuery,
+  GgAggregateResponse,
+} from "@test-cabinet/run-record/gg-aggregate";
+import type {
   CoverageGroup,
   CoverageGroupInput,
   CoverageMatrix,
@@ -1102,6 +1106,23 @@ export function createBackendExec(
       // its `statusUrl`/`liveUrl` locate the run — since the console watches a gg
       // run through the ack's `jobId`.
       return postJson<LaunchAck>(backendUrl, "/gg/runs", req, token);
+    },
+
+    async aggregateGgRuns(
+      query: GgAggregateQuery,
+      token: string,
+    ): Promise<GgAggregateResponse> {
+      // Run the capability-set-sliced aggregate query on the gg result-aggregation
+      // endpoint (`POST /gg/aggregate`). Like `launchGgRun`, the `GgAggregateQuery`
+      // is already the exact wire body (camelCase) and is posted verbatim; the
+      // signed-in account's token rides along as `Authorization: Bearer`. Returns the
+      // aggregated buckets the console renders as a table + chart.
+      return postJson<GgAggregateResponse>(
+        backendUrl,
+        "/gg/aggregate",
+        query,
+        token,
+      );
     },
 
     async getRun(runId: string): Promise<RunJob> {

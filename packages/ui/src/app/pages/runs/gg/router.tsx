@@ -1,6 +1,7 @@
 import { Route } from "react-router";
 import { routePatterns } from "../../../routes";
 import { NewGgRunPage } from "./NewGgRunPage";
+import { GgAnalyzePage } from "./GgAnalyzePage";
 import { GgRunMonitorPage } from "./GgRunMonitorPage";
 
 // The gg run-execution routes: the capability-set config page (`/runs/gg/new`) and
@@ -15,6 +16,7 @@ export function ggRoutes(canExecute: boolean) {
   return (
     <>
       <Route path={routePatterns.ggNew} element={<NewGgRunPage />} />
+      <Route path={routePatterns.ggAnalyze} element={<GgAnalyzePage />} />
       <Route path={routePatterns.ggMonitor} element={<GgRunMonitorPage />} />
     </>
   );
