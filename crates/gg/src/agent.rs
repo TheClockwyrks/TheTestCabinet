@@ -4509,12 +4509,26 @@ fn short_sha(sha: &str) -> &str {
 /// `None` for an id it does not recognize, so the caller can fall back to a default.
 fn builtin_window_for(model_id: &str) -> Option<u64> {
     /// `(id substring, window tokens)`, first match wins; ordered most-specific first.
+    /// The families here are the ones the model catalog actually lists, so a run
+    /// against a current model measures fullness against roughly the right
+    /// denominator rather than silently taking the 128k default — which, for the
+    /// million-token families below, overstates fullness by ~8×.
     const TABLE: &[(&str, u64)] = &[
         ("gpt-4.1", 1_047_576),
         ("gpt-4o", 128_000),
+        ("gpt-5.4-mini", 400_000),
+        ("gpt-5.4-nano", 400_000),
+        ("gpt-5", 1_050_000),
         ("o200k", 128_000),
         ("claude", 200_000),
         ("gemini", 1_048_576),
+        ("grok-4.5", 500_000),
+        ("grok", 1_000_000),
+        ("qwen", 1_000_000),
+        ("glm-5.1", 202_752),
+        ("glm", 1_048_576),
+        ("deepseek", 1_048_576),
+        ("kimi", 262_144),
         ("llama", 128_000),
     ];
     let id = model_id.to_ascii_lowercase();

@@ -945,6 +945,24 @@ fn resolve_window_limit_prefers_param_then_table_then_default() {
         Some(200_000)
     );
 
+    // The table covers the catalogued families, and a more specific entry wins over the
+    // family-wide one it is a prefix of.
+    assert_eq!(
+        resolve_window_limit(&set, "openai/gpt-5.6-sol"),
+        Some(1_050_000)
+    );
+    assert_eq!(
+        resolve_window_limit(&set, "openai/gpt-5.4-mini"),
+        Some(400_000)
+    );
+    assert_eq!(resolve_window_limit(&set, "x-ai/grok-4.5"), Some(500_000));
+    assert_eq!(resolve_window_limit(&set, "x-ai/grok-4.3"), Some(1_000_000));
+    assert_eq!(resolve_window_limit(&set, "z-ai/glm-5.1"), Some(202_752));
+    assert_eq!(
+        resolve_window_limit(&set, "qwen/qwen3.7-max"),
+        Some(1_000_000)
+    );
+
     // An unrecognized id (and a zero param, which is ignored) falls back to the default.
     assert_eq!(
         resolve_window_limit(&set, "mock/echo"),
