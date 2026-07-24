@@ -30,10 +30,12 @@ clap = { workspace = true }
 # RFC 3339 timestamps for the telemetry stream, matching how `core` stamps its
 # own event/record times (`OffsetDateTime::now_utc().format(&Rfc3339)`).
 time = { workspace = true }
-# The HTTP client the model client (`src/client.rs`) will reach OpenRouter with.
-# Declared now so the imminent client work has the workspace's rustls-backed
-# `reqwest` (no system OpenSSL) already wired in — see `crates/core`.
+# The HTTP client the model client (`src/client.rs`) reaches OpenRouter with — the
+# workspace's rustls-backed `reqwest` (no system OpenSSL); see `crates/core`.
 reqwest = { workspace = true }
+# `async fn` in the `ModelClient` trait (`src/model.rs`), so a boxed `dyn ModelClient`
+# can back the async turn loop and be shared across spawned subagents later.
+async-trait = { workspace = true }
 
 [lints]
 workspace = true

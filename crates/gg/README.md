@@ -97,16 +97,19 @@ completed session.
 | `main.rs` | Entrypoint: parse `--config`, load the invocation, drive the session, emit telemetry. |
 | `config.rs` | Loads the invocation file from disk; re-exports `core`'s `GgInvocation` launch contract. |
 | `telemetry.rs` | The NDJSON-on-stdout `Emitter` for `GgTelemetryEvent`. |
+| `model.rs` | The provider-agnostic message/tool types (`Message`, `ToolCall`, `ToolDefinition`, `ModelResponse`) and the `ModelClient` trait + `ModelError`. |
+| `client.rs` | The slot-bound model clients: `OpenRouterClient` (with bounded retry/backoff), the scripted offline `MockClient`, and slot → client selection. |
 | `agent.rs` | The agent turn loop (the coarse-grained plug point). |
-| `client.rs` | The slot-bound, multi-provider model client. |
 | `tools/` | Tool dispatch and the offered toolset (`tools/mod.rs`; future `shell.rs`, `filesystem.rs`). |
 
-## Phase 0 status — skeleton
+## Phase 0 status
 
-This crate is the **Phase 0 skeleton**. The binary parses its invocation, emits
-the telemetry bookends (`SessionStarted` → a `Log` line → `SessionEnded`), and
-exits `0`. It does **not** yet contact a model or touch the workspace. `client`,
-`agent`'s real loop, and `tools` are documented stubs; the next workflow fills
-them in (see the `TODO(gg-integration)` markers), along with `core`'s
-direct-invocation entrypoint that constructs the invocation file and launches this
-binary.
+The binary parses its invocation, resolves the run's `primary` model slot to a
+concrete client, and drives a minimal turn loop — real against the offline scripted
+`MockClient` (which writes a tiny playable `index.html`), deferred for live
+OpenRouter bindings — streaming the telemetry (`SessionStarted`, `TurnStarted`,
+`AssistantMessage`, `ToolCall`, `Usage`, `SessionEnded`) throughout, then exits `0`.
+Set `TCAB_GG_FAKE_MODEL=1` to force the offline mock for any binding. Tool
+**dispatch** is still a stub (`tools/`), so a called tool is recorded and answered
+with a placeholder result rather than executed; that, driving live providers, and
+`core`'s direct-invocation entrypoint are the remaining `TODO(gg-integration)` work.
