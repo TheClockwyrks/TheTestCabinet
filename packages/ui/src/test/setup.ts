@@ -8,6 +8,18 @@ if (!Element.prototype.scrollTo) {
   Element.prototype.scrollTo = () => {};
 }
 
+// jsdom has no ResizeObserver; the responsive `<Chart>` primitive observes its
+// container to re-render at the measured width. Provide a no-op so chart-bearing
+// components (e.g. the gg context-fill graph) mount under test — jsdom reports
+// zero sizes anyway, and no test asserts on drawn plot geometry.
+if (typeof globalThis.ResizeObserver === "undefined") {
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+}
+
 // jsdom has no canvas backend, so HTMLCanvasElement.getContext throws a "Not
 // implemented" error — and jsdom logs that to its virtual console (→ test stderr)
 // even when the caller catches it (as `supportsWebGL` does). None of these tests
