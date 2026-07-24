@@ -99,8 +99,9 @@ export function PerformanceResultSection({ run }: { run: RunRecord }) {
           separate Proof tab so the run's evidence sits with its scored result. */}
       {active ? (
         <PlaybackOverlay
-          scenario={active}
+          scenarioUrl={active.scenarioUrl}
           moduleUrl={view?.moduleUrl ?? null}
+          label={active.input}
           onExit={() => setLaunched(null)}
         />
       ) : null}

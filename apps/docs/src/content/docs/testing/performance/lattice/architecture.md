@@ -282,8 +282,9 @@ exports a tick-at-a-time playback ABI (`playback_load` / `_board` / `_step` /
 build to draw the belts, lanes, items, and machines. As with
 [Foray's replay](/testing/adversarial/foray/architecture/#browser-playback), the
 renderer holds **no rules of its own** — the engine is the simulation. (The reference
-engine still compiles to that same ABI, for engine-independent example simulations of
-a case; a *run's* playback drives the submission's module.)
+engine compiles to that same ABI, which is what the case's own
+[Reference tab](#the-reference-tab) plays; a *run's* playback drives the submission's
+module.)
 
 Because the submission's engine is arbitrary code — its `playback_load` runs a whole
 window of ticks up front and could trap, spin, or grow memory until it OOMs — the
@@ -302,6 +303,36 @@ this is a built-in console view over a performance run). It also honors the held
 split: a run publishes a scored scenario for playback only for a case whose **answer
 was correct** (including a correct-but-over-ceiling case, so a slow engine's factory
 can be watched); a wrong run's held-out input is never revealed.
+
+### The Reference tab
+
+A run's playback answers *what did this model's engine compute?* The case's
+Reference tab answers the question underneath it — *what is the factory supposed
+to look like?* — by playing the three scored scenarios through the reference
+engine. It is the performance-case analogue of an
+[end-to-end](/testing/end-to-end/overview/) case's reference build and an
+[asset](/testing/asset-generation/overview/) case's published reference frames: a
+performance case produces neither a site nor an image but an *engine*, so its
+reference is what the authoritative engine does.
+
+Both halves ship with the UI bundle — `lattice-core.wasm` (already vendored for
+the renderer) and the scenarios, vendored by `scripts/vendor-lattice-assets.mjs` from
+the case's [replay bundle](#browser-visualization). They cannot come from a run's
+artifacts: the tab is reachable with no run at all, and on the static site, which has
+no backend to ask. That is also why the tab is offered off the *case* rather than off
+a per-variant signal the way the other two references are.
+
+The scenarios are the scored layouts verbatim — same grid, same entities — with
+one change: the timeline is cut to the same dense window the SDK bounds a
+submission's playback to, so the reference and a run's factory are watched over
+identical ticks and read side by side. The reference driver, unlike the SDK's, has no
+window of its own (it emits a full canonical state every tick), so the cut is made in
+the committed scenario by the bundle's `gen-reference.mjs`.
+
+This does publish the held-out *inputs* on the case page. That is a deliberate call:
+the inputs were already published per correct run, and the answer key (the `.out`
+oracles and the fuel a run burned) is not in them — what a reader gets is the
+factory, not the grade.
 
 ### Interpolated playback (not one tick per frame)
 

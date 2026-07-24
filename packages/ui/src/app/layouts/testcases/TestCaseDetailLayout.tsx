@@ -6,6 +6,7 @@ import { BackChevron } from "../../components/BackChevron";
 import { useGalleryData } from "../../data/galleryContext";
 import { useTestCases } from "../../data/useTestCases";
 import { tabOf } from "../../data/testCaseTabs";
+import { hasReferencePlayback } from "../../data/testCaseReference";
 import type { TestCaseSummary, VariantSummary } from "../../data/testCases";
 import { routes } from "../../routes";
 import { useSelectedVariant } from "../../pages/testcases/[slug]/useSelectedVariant";
@@ -129,24 +130,33 @@ export function TestCaseDetailLayout({
       to: routes.testCaseArena(testCase.slug),
     });
   }
-  // The Reference tab is shown for any case whose selected variant has a published
-  // reference implementation, in either of the two shapes one takes — so no
-  // test-type check is needed here, and neither signal is a superset of the other:
+  // The Reference tab is shown for any case with a published reference
+  // implementation, in any of the three shapes one takes. None is a superset of
+  // another:
   //
   //   • `referenceBuild` — a deployed static site (end-to-end and full-stack cases),
   //     which the tab iframes.
   //   • `referenceSheet`  — the published reference FRAMES (asset-generation cases),
   //     which have no page to embed and so are rendered natively from the snapshot
   //     bucket.
+  //   • a bundled reference PLAYBACK (the performance case), whose reference is its
+  //     scored factories stepped through the authoritative engine — see
+  //     `hasReferencePlayback`.
   //
-  // In practice a variant carries at most one: a case is a single test type, and
-  // each type produces only one shape of reference. A variant with neither (the
-  // common case, and any host or backend that predates a field) shows no tab at all.
-  // It keys off the selected variant (not the case) because a reference is
-  // per-variant, so switching variants adds or removes the tab; every host that
-  // carries these fields (live catalog and static snapshot alike) can show it — no
-  // console-only capability is required.
-  if (variant.referenceBuild || variant.referenceSheet) {
+  // In practice a case carries at most one: a case is a single test type, and each
+  // type produces only one shape of reference. A case with none (the common case, and
+  // any host or backend that predates a field) shows no tab at all.
+  //
+  // The first two key off the SELECTED VARIANT, because a deployed build and a
+  // published sheet are per-variant — switching variants adds or removes the tab. The
+  // playback keys off the CASE, because it ships with the UI bundle rather than being
+  // published per variant. Every host can show any of them (live catalog and static
+  // snapshot alike) — no console-only capability is required.
+  if (
+    variant.referenceBuild ||
+    variant.referenceSheet ||
+    hasReferencePlayback(testCase)
+  ) {
     tabs.push({
       key: "reference",
       label: "Reference",

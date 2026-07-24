@@ -1,4 +1,10 @@
-import { render, screen } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { describe, expect, it, vi } from "vitest";
@@ -181,6 +187,84 @@ describe("TestCaseReferencePage", () => {
 
     const frame = screen.getByTitle("Reference implementation for Base");
     expect(frame.getAttribute("src")).toBe("https://ref.example/carom/base/");
+  });
+
+  it("plays the scored factories through the reference engine for the performance case", async () => {
+    // A performance case produces an engine, not a page or an image, so its
+    // reference is what the authoritative engine does — and it ships with the
+    // bundle rather than being published, so no variant signal and no host
+    // resolver is involved.
+    useTestCases.mockReturnValue({
+      testCases: [
+        testCase({
+          slug: "lattice",
+          name: "Lattice",
+          testType: "performance",
+          difficulty: "hard",
+          sheet: null,
+          variants: [variant()],
+        }),
+      ],
+      status: "ready",
+    });
+    galleryData.mockReturnValue({ canExecute: false, arena: undefined });
+    renderReference("lattice");
+
+    // All three factories, each launchable, each labelled by scale and grid — and
+    // nothing else. The tab is the reference, so the rows carry no prose.
+    const play = screen.getAllByRole("button", { name: "▶ Play" });
+    expect(play).toHaveLength(3);
+    expect(screen.getByText("Small — 24×12")).toBeTruthy();
+    expect(screen.getByText("Medium — 48×32")).toBeTruthy();
+    expect(screen.getByText("Large — 72×40")).toBeTruthy();
+
+    // The tab is offered off the case alone — this variant declares neither of the
+    // published reference signals.
+    expect(screen.getByRole("link", { name: "Reference" })).toBeTruthy();
+
+    // Nothing plays until asked: stepping a factory builds thousands of frames.
+    expect(
+      screen.queryByRole("dialog", { name: "Factory playback" }),
+    ).toBeNull();
+    fireEvent.click(play[2]!);
+    const player = screen.getByRole("dialog", { name: "Factory playback" });
+    // The player carries the same name that was clicked, so a full-viewport player
+    // is still identifiable.
+    expect(within(player).getByText("Large — 72×40")).toBeTruthy();
+
+    // The player then goes off to fetch the vendored engine and scenario, which
+    // jsdom cannot serve (there is no canvas or wasm here either — that stack is
+    // covered by `renderer.integration.test.ts` against the real engine). Let that
+    // failure land inside the test rather than after it, and assert the player
+    // reports it instead of hanging on a blank canvas.
+    await waitFor(() =>
+      expect(
+        within(player).getByText(/Could not play this scenario/),
+      ).toBeTruthy(),
+    );
+  });
+
+  it("offers no reference playback for a performance case the bundle has no factories for", () => {
+    // The scenarios are vendored for one case at build time, so a future performance
+    // case must not be handed Lattice's factories. It falls through to the ordinary
+    // per-variant signals, and has neither.
+    useTestCases.mockReturnValue({
+      testCases: [
+        testCase({
+          slug: "some-other-performance-case",
+          testType: "performance",
+          sheet: null,
+          variants: [variant()],
+        }),
+      ],
+      status: "ready",
+    });
+    galleryData.mockReturnValue({ canExecute: false, arena: undefined });
+    renderReference("some-other-performance-case");
+
+    expect(screen.queryByRole("button", { name: "▶ Play" })).toBeNull();
+    expect(screen.getByText(/No reference implementation/)).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Reference" })).toBeNull();
   });
 
   it("shows the no-reference placeholder when the variant declares neither", () => {

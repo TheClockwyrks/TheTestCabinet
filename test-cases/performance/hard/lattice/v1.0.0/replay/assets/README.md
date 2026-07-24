@@ -1,16 +1,16 @@
 # Lattice replay bundle — built artifacts
 
-The two things the browser playback renderer needs, both committed here as the
-single source of truth and vendored into the UI (see
-`scripts/vendor-lattice-assets.mjs`).
+What the browser playback renderer needs, committed here as the single source of
+truth and vendored into the UI (see `scripts/vendor-lattice-assets.mjs`).
 
 | File | What it is |
 | --- | --- |
 | `lattice-core.wasm` | The simulation itself, compiled for the browser. The renderer instantiates it and steps it a tick at a time; it holds no rules of its own. |
 | `sheet.png` / `sheet.json` | The packed sprite atlas and its layout, built from `source/` by `gen-sheet.mjs`. |
+| `reference-{small,medium,large}.json` | The three scored factories, windowed for playback, built from `../../cases/*.json` by `gen-reference.mjs`. The console's test-case Reference tab plays these through `lattice-core.wasm`. |
 | `source/` | The per-entity frames the atlas is packed from — see [`source/README.md`](source/README.md). |
 
-Both are checked in, and `packages/ui/.../lattice/renderer.vendor.test.ts` asserts
+All are checked in, and `packages/ui/.../lattice/renderer.vendor.test.ts` asserts
 the UI's vendored copies stay byte-identical, so a forgotten resync fails CI rather
 than silently rendering with a stale engine or atlas.
 
@@ -50,3 +50,26 @@ wrongly-sized frame is a hard error — there are no placeholders, because the
 renderer has no art to fall back on.
 
 Re-run after re-seeding `source/`.
+
+## Regenerating the reference scenarios
+
+```
+node gen-reference.mjs
+```
+
+Copies each scored scenario from `../../cases/` with its timeline cut to a dense
+2,500-tick window (and its snapshot schedule rewritten to fit — `Scenario::parse`
+rejects a snapshot tick past `ticks`). The grid and every entity pass through
+untouched: the Reference tab's claim is that a viewer is watching the factory a run
+is actually graded on, not an approximation of it, and
+`renderer.vendor.test.ts` asserts exactly that entity-for-entity.
+
+The window matters. Unlike a submission's engine — whose playback ABI bounds itself
+inside the guest (`PLAYBACK_WINDOW_TICKS` in `lattice-sdk`) — the reference driver
+emits a full canonical state every tick with no cap of its own, and a scored
+scenario runs 50,000–360,000 ticks. The bound has to be applied to the scenario, and
+it is deliberately the same window, so the Reference tab and a run's Results tab
+show the same stretch of the same factory. If `PLAYBACK_WINDOW_TICKS` changes,
+change `WINDOW_TICKS` here and re-run.
+
+Re-run after re-seeding the scored set (`lattice gen`), and re-vendor afterwards.

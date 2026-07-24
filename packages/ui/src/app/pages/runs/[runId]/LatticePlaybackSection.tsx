@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { PerformanceScenarioView } from "../../../data/galleryContext";
 import {
   loadSheet,
   Renderer,
@@ -34,10 +33,12 @@ const SPEEDS = [0.5, 1, 2, 4, 16, 64] as const;
 // as a clean fast-forward.
 const DRAW_EVERY_TICK_BELOW = 4;
 
-// How long to wait for the run's own engine to load and step its first frames before
-// giving up. The module is the submission's arbitrary engine — its `playback_load`
-// runs the scored window up front and can trap, spin, or OOM — so a run that never
-// posts `ready` is abandoned rather than left hanging the player forever.
+// How long to wait for the engine to load and step its first frames before giving
+// up. On a run's playback the module is the submission's arbitrary engine — its
+// `playback_load` runs the scored window up front and can trap, spin, or OOM — so a
+// module that never posts `ready` is abandoned rather than left hanging the player
+// forever. (The reference engine always starts; the timeout simply never fires for
+// it.)
 const LOAD_TIMEOUT_MS = 8000;
 
 // Load a bundled `?url` asset's bytes, tolerating both emitted file URLs and inlined
@@ -78,28 +79,44 @@ async function fetchAssetBlob(url: string): Promise<Blob> {
 }
 
 /**
- * A performance run's factory for one scored scenario, replayed full-viewport in the
- * browser. Launched per scenario from that scenario's row on the run's Results tab.
+ * A Lattice factory replayed full-viewport in the browser: one wasm engine
+ * (`moduleUrl`) stepped over one scenario (`scenarioUrl`), drawn tick by
+ * interpolated tick.
  *
- * Playback steps the RUN'S OWN engine module (`moduleUrl` — the submission's compiled
- * `engine.wasm`) over the scored scenario, reconstructing exactly the factory the
- * submission computed — divergences and all — rather than re-simulating with the
- * reference engine. A run records only its scheduled snapshots, thousands of ticks
- * apart, so there is nothing to replay directly; re-stepping the run's engine is the
- * only faithful reconstruction, and there is no reference fallback.
+ * The player is deliberately engine-agnostic — the playback ABI is the same whichever
+ * module drives it — and both of its callers matter:
  *
- * The module is arbitrary code, so it runs in a Web Worker under a load timeout: its
- * `playback_load` runs the whole window and could trap or OOM, which on the main
- * thread would take the tab down. The worker streams decoded frames back; this
- * component caches them and does all rendering (canvas, sprite sheet) itself.
+ *   • A run's Results tab launches it per scored scenario against the RUN'S OWN
+ *     module (the submission's compiled `engine.wasm`), reconstructing exactly the
+ *     factory that submission computed, divergences and all. A run records only its
+ *     scheduled snapshots, thousands of ticks apart, so there is nothing to replay
+ *     directly; re-stepping the run's engine is the only faithful reconstruction, and
+ *     there is no reference fallback — a run whose module will not start is simply
+ *     not playable, never quietly shown the reference's factory instead.
+ *   • The case's Reference tab launches it against the vendored reference engine
+ *     (`lattice-core.wasm`) over the case's own windowed scenarios, to show what the
+ *     factories are supposed to look like. That is a property of the case, not of any
+ *     run — see `../lattice/reference.ts`.
+ *
+ * A run's module is arbitrary code, so whatever the caller, it runs in a Web Worker
+ * under a load timeout: `playback_load` runs the whole window and could trap or OOM,
+ * which on the main thread would take the tab down. The worker streams decoded frames
+ * back; this component caches them and does all rendering (canvas, sprite sheet)
+ * itself.
  */
 export function PlaybackOverlay({
-  scenario,
+  scenarioUrl,
   moduleUrl,
+  label,
   onExit,
 }: {
-  scenario: PerformanceScenarioView;
+  /** Loadable URL of the scenario to step, or null when none can be served. */
+  scenarioUrl: string | null;
+  /** Loadable URL of the engine module to step it with, or null when none exists. */
   moduleUrl: string | null;
+  /** What is being watched, shown in the overlay bar — a scored scenario's path on a
+   * run, the factory's name on the case's reference. */
+  label: string;
   onExit: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -123,13 +140,15 @@ export function PlaybackOverlay({
   const [speed, setSpeed] = useState(1);
   const [tick, setTick] = useState(0);
 
-  // Load the sheet and this run's engine module + scenario, then hand the module to a
-  // worker to step. There is NO reference fallback: without a module (or a scenario)
-  // the run is simply not playable.
+  // Load the sheet and the engine module + scenario, then hand the module to a worker
+  // to step. There is NO fallback in either direction: without both a module and a
+  // scenario there is nothing faithful to draw, so the player says so rather than
+  // substituting another engine's factory.
   useEffect(() => {
-    const scenarioUrl = scenario.scenarioUrl;
     if (!moduleUrl || !scenarioUrl) {
-      setError("Playback is unavailable for this run.");
+      setError(
+        "Playback is unavailable: no engine module or scenario to play.",
+      );
       return;
     }
 
@@ -206,10 +225,9 @@ export function PlaybackOverlay({
         };
 
         // Transfer the wasm buffer — the main thread has no further use for it.
-        worker.postMessage(
-          { type: "init", wasm, scenario: scenarioJson },
-          [wasm],
-        );
+        worker.postMessage({ type: "init", wasm, scenario: scenarioJson }, [
+          wasm,
+        ]);
       } catch (err) {
         if (!cancelled)
           setError(err instanceof Error ? err.message : String(err));
@@ -222,7 +240,7 @@ export function PlaybackOverlay({
       worker?.terminate();
       if (workerRef.current === worker) workerRef.current = null;
     };
-  }, [moduleUrl, scenario.scenarioUrl]);
+  }, [moduleUrl, scenarioUrl]);
 
   // The animation clock. Position advances continuously; the renderer draws the
   // factory between the two nearest cached frames. Frames stream in fast (the window
@@ -284,6 +302,10 @@ export function PlaybackOverlay({
         <button type="button" className={styles.exit} onClick={onExit}>
           Back
         </button>
+        {/* Which factory this is. The player covers the viewport, so without it a
+            viewer who launched one of several scenarios has nothing on screen
+            telling them which one they are watching. */}
+        <span className={styles.overlayLabel}>{label}</span>
       </div>
       <div className={styles.stage}>
         {error ? (

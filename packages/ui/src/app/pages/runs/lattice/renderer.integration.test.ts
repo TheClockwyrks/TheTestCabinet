@@ -844,3 +844,46 @@ describe("inserter animation", () => {
     expect(bridgedCount).toBeGreaterThan(0);
   });
 });
+
+// The Reference tab hands each of these committed scenarios to the vendored engine
+// and draws what comes back. Everything about that path is checked elsewhere except
+// the one thing only the real engine can answer: does it ACCEPT them? A windowed
+// scenario is a hand-edited file — its snapshot schedule is rewritten to fit the cut
+// timeline — and `playback_load` reports a rejection as a bare `false`, which the
+// player can only surface as "the engine rejected this scenario". So load each one
+// for real, and confirm it produces the factory the tab promises.
+describe("reference playback scenarios", () => {
+  for (const name of ["small", "medium", "large"]) {
+    it(`${name} loads into the reference engine and steps its factory`, async () => {
+      const scenario = JSON.parse(
+        readFileSync(join(ASSETS, `reference-${name}.json`), "utf8"),
+      ) as { grid: { width: number; height: number }; entities: unknown[] };
+      const engine = await Engine.instantiate(
+        readFileSync(join(ASSETS, "lattice-core.wasm")),
+      );
+      expect(engine.load(scenario)).toBe(true);
+
+      const board = engine.board();
+      expect(board.grid).toEqual(scenario.grid);
+      expect(board.entities).toHaveLength(scenario.entities.length);
+
+      // Step past the sources' first emissions. A factory that loaded but never put
+      // an item on a belt would play as a still life, which is exactly the failure a
+      // bad window (or a layout cropped to nothing) produces.
+      let carried = false;
+      for (let i = 0; i < 200; i++) {
+        const frame = engine.step();
+        expect(frame).not.toBeNull();
+        carried ||= frame!.entities.some(
+          (state) =>
+            "belt" in state &&
+            (state.belt.left.length > 0 || state.belt.right.length > 0),
+        );
+      }
+      expect(
+        carried,
+        `${name} never moved an item in its first 200 ticks`,
+      ).toBe(true);
+    });
+  }
+});

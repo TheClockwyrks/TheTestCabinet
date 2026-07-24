@@ -26,11 +26,22 @@ const BUNDLE = join(
   repoRoot,
   "test-cases/performance/hard/lattice/v1.0.0/replay/assets",
 );
+const CASES = join(
+  repoRoot,
+  "test-cases/performance/hard/lattice/v1.0.0/cases",
+);
 const VENDORED = join(here, "assets");
 
 // Kept in sync with scripts/vendor-lattice-assets.mjs (the renderer is excluded —
 // it is a manual port, not a copy).
-const VENDORED_ASSETS = ["lattice-core.wasm", "sheet.png", "sheet.json"];
+const VENDORED_ASSETS = [
+  "lattice-core.wasm",
+  "sheet.png",
+  "sheet.json",
+  "reference-small.json",
+  "reference-medium.json",
+  "reference-large.json",
+];
 
 describe("vendored lattice assets", () => {
   for (const name of VENDORED_ASSETS) {
@@ -42,6 +53,70 @@ describe("vendored lattice assets", () => {
         `packages/ui/.../lattice/assets/${name} is stale vs the case bundle. ` +
           `Resync: node scripts/vendor-lattice-assets.mjs`,
       ).toBe(true);
+    });
+  }
+});
+
+// The Reference tab plays these three through the vendored engine. They are the
+// SCORED scenarios with their timelines windowed (see the bundle's
+// `gen-reference.mjs`), and the tab's whole claim is that a reader is watching the
+// factory a run is actually graded on. Guard both halves of that claim: the layout
+// must be the scored one, and the window must be playable.
+describe("lattice reference scenarios", () => {
+  interface Scenario {
+    version: number;
+    grid: { width: number; height: number };
+    ticks: number;
+    snapshots: number[];
+    entities: unknown[];
+  }
+  const read = (path: string): Scenario =>
+    JSON.parse(readFileSync(path, "utf8")) as Scenario;
+
+  // Mirrors `PLAYBACK_WINDOW_TICKS` in `crates/lattice-sdk/src/lib.rs`, which bounds
+  // a submission's playback. The reference is cut to the same window so the two are
+  // watched over identical ticks — a run's factory and the reference's are directly
+  // comparable only if they cover the same stretch.
+  const WINDOW_TICKS = 2500;
+
+  for (const name of ["small", "medium", "large"]) {
+    describe(name, () => {
+      const reference = read(join(VENDORED, `reference-${name}.json`));
+      const scored = read(join(CASES, `${name}.json`));
+
+      it("is the scored layout, entity for entity", () => {
+        // The point of playing the scored scenarios rather than fresh ones: what a
+        // reader sees IS the graded factory. A crop or a re-seed would quietly break
+        // that, and nothing else would notice.
+        expect(reference.version).toBe(scored.version);
+        expect(reference.grid).toEqual(scored.grid);
+        expect(reference.entities).toEqual(scored.entities);
+      });
+
+      it("is windowed to a length the browser can hold", () => {
+        // The reference engine's playback driver emits a full canonical state EVERY
+        // tick with no cap of its own, so an unwindowed scored scenario (50k-360k
+        // ticks) would exhaust the tab. The cut happens in the committed file.
+        expect(scored.ticks).toBeGreaterThan(WINDOW_TICKS);
+        expect(reference.ticks).toBe(WINDOW_TICKS);
+      });
+
+      it("keeps a snapshot schedule the engine will accept", () => {
+        // `Scenario::parse` rejects a schedule that is empty, out of order, or
+        // outside `1..=ticks` — and a rejected scenario fails the load with no
+        // diagnostic beyond "the engine rejected this scenario". The committed
+        // schedule ends at the SCORED tick, so windowing has to rewrite it.
+        expect(reference.snapshots.length).toBeGreaterThan(0);
+        for (const tick of reference.snapshots) {
+          expect(tick).toBeGreaterThanOrEqual(1);
+          expect(tick).toBeLessThanOrEqual(reference.ticks);
+        }
+        const ascending = [...reference.snapshots].sort((a, b) => a - b);
+        expect(reference.snapshots).toEqual(ascending);
+        expect(new Set(reference.snapshots).size).toBe(
+          reference.snapshots.length,
+        );
+      });
     });
   }
 });
@@ -142,8 +217,11 @@ describe("lattice atlas contract", () => {
     // The tiered entities each declare three tiers of frame indices; the renderer
     // picks one and plays it at that tier's own rate. The untiered entities do not.
     const tiers = (name: string) =>
-      (atlas.entities[name] as { tiers?: { fps: number; loop: number[]; curve?: number[] }[] })
-        .tiers;
+      (
+        atlas.entities[name] as {
+          tiers?: { fps: number; loop: number[]; curve?: number[] }[];
+        }
+      ).tiers;
     expect(tiers("belt")?.map((t) => t.fps)).toEqual([12, 16, 20]);
     // Each belt tier is a straight loop plus a parallel curve loop.
     for (const t of tiers("belt")!) {
@@ -182,7 +260,12 @@ describe("lattice atlas contract", () => {
   it("keeps every frame inside the sheet", () => {
     const all = [
       ...Object.values(atlas.entities).flatMap((e) => e.frames),
-      ...(atlas.items.frames as { x: number; y: number; w: number; h: number }[]),
+      ...(atlas.items.frames as {
+        x: number;
+        y: number;
+        w: number;
+        h: number;
+      }[]),
     ];
     expect(all.length).toBe(157);
     for (const r of all) {

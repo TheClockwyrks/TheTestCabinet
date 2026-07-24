@@ -78,6 +78,16 @@
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+// Which factory is playing. Muted and truncating: it is orientation, not a heading,
+// and must never push the exit button off a narrow viewport.
+.overlayLabel {
+  font-size: 0.85rem;
+  opacity: 0.75;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .exit,
 .control,
 .speed,

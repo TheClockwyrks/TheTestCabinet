@@ -30,8 +30,9 @@ publish-reference`), **commit + push** the lockfile, and **re-ingest**.
 
 ## Which cases get a reference
 
-A reference implementation takes one of two forms, depending on what the case
-actually produces.
+A reference implementation takes one of two publishable forms, depending on what
+the case actually produces. (A third form is not published at all — see
+[Bundled references](#bundled-references) — and so needs no operator step.)
 
 **Buildable references.** Case types with a
 [`[build]` table](/testing/end-to-end/manifests/) — today the
@@ -51,6 +52,36 @@ snapshot bucket. Nothing is built and nothing is committed — see
 
 Adversarial and performance cases have neither form today, so
 `publish-reference` refuses them and they are outside this policy.
+
+### Bundled references
+
+The [performance](/testing/performance/overview/) type's Reference tab is real, but
+nothing publishes it: its reference is the case's scored factories played through the
+reference engine, and both the engine and the scenarios ship inside the UI bundle
+(see
+[The Reference tab](/testing/performance/lattice/architecture/#the-reference-tab)).
+There is no deploy, no lockfile entry, and no re-ingest — the tab appears wherever the
+console does, including the static site, as soon as the build ships. Refresh it the
+way you refresh any vendored asset: regenerate in the case bundle, re-run
+`node scripts/vendor-lattice-assets.mjs`, and commit.
+
+**It cannot outrun its case.** The release gate below exists because a deployed
+reference is live on the internet the moment it is published, whatever the catalog
+says — so publishing one for a case nobody can see would leak an answer key early. A
+bundled reference has no such window: it renders only on the case-detail page, so it
+is visible exactly when the *case* is. An experimental case is hidden from the catalog
+and refuses to resolve, so it can never accumulate a published run, so it never enters
+the public snapshot (which emits only versions that have one) — and a case that is not
+in the snapshot has no page for the tab to sit on. That is why the still-experimental
+Lattice case can carry a reference today without the gate being bent: the gate is
+satisfied structurally, not waived.
+
+The one thing that *does* ship ahead of the case: the vendored scenarios are statically
+imported, so the bundler emits them into every build — including the public site's —
+whether or not the catalog carries the case, and they are fetchable by URL. That is
+deliberate and harmless here (the same files are already in the public repository, as
+is the engine that plays them), but weigh it before vendoring anything into the bundle
+that must stay unpublished.
 
 **Release gate.** A reference implementation is only published for a
 **non-experimental** case — one *without* `experimental = true` in its
