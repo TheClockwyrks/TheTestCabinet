@@ -833,6 +833,23 @@ impl BoardStore {
         Some(Message::user(block))
     }
 
+    /// The dispatch **brief** for the issue with id `id` — its title, optional overview, and the
+    /// three structured sections that bound a subagent's work (in-scope, out-of-scope, completion
+    /// criteria) — or `None` when no issue of that id exists. This is the P4 subagent dispatch
+    /// seam: `spawn_subagent { issueId }` reads the brief straight off the board (a read, not a
+    /// reshaping), matching the [dispatch seam](self) the issue fields were designed for.
+    fn issue_brief(&self, id: &str) -> Option<String> {
+        let issue = self.issues.iter().find(|issue| issue.id == id)?;
+        let mut brief = format!("# Issue `{}`: {}", issue.id, issue.title);
+        if let Some(description) = &issue.description {
+            brief.push_str(&format!("\n\n{description}"));
+        }
+        brief.push_str(&format!("\n\n## In scope\n{}", issue.in_scope));
+        brief.push_str(&format!("\n\n## Out of scope\n{}", issue.out_of_scope));
+        brief.push_str(&format!("\n\n## Done when\n{}", issue.completion_criteria));
+        Some(brief)
+    }
+
     /// Render one issue as a block for the pinned [context block](Self::context_block).
     fn render_issue(&self, issue: &Issue) -> String {
         let mut line = format!(
@@ -1006,6 +1023,16 @@ impl BoardRuntime {
             return None;
         }
         self.store.lock().expect("board store lock").context_block()
+    }
+
+    /// The [dispatch brief](BoardStore::issue_brief) for the issue with id `id`, for a subagent
+    /// dispatched against it (`spawn_subagent { issueId }`), or `None` when the capability is off
+    /// or no such issue exists.
+    pub fn issue_brief(&self, id: &str) -> Option<String> {
+        if !self.enabled {
+            return None;
+        }
+        self.store.lock().expect("board store lock").issue_brief(id)
     }
 }
 

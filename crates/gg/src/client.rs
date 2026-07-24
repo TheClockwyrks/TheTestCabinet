@@ -1146,7 +1146,107 @@ impl MockClient {
             vec![enter, explore, premature_write, submit, implement, finish],
         )
     }
+
+    /// The **parent** side of the offline [subagents](crate::subagents) e2e: a script that
+    /// delegates a piece of work, waits for the result, then finishes.
+    ///
+    /// 1. `spawn_subagent { prompt, slot: "subagent" }` schedules a child on the `subagent` slot;
+    /// 2. `wait_for_subagents {}` blocks (freeing the parent's slot) until every outstanding child
+    ///    returns, and receives their return values;
+    /// 3. a final tool-free turn stops.
+    ///
+    /// Pairs with [`with_subagent_child_script`](Self::with_subagent_child_script) (bound to the
+    /// `subagent` slot) so an offline run exercises spawn → schedule → run → return under the cap.
+    #[cfg(test)]
+    pub fn with_subagent_parent_script(model_id: impl Into<String>) -> Self {
+        let usage = |input: u64, output: u64| TokenCounts {
+            uncached_input: Some(input),
+            cached_input: None,
+            output: Some(output),
+            reasoning: None,
+        };
+        let spawn = ModelResponse {
+            text: Some("Delegating the greeting file to a subagent.".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "call_spawn".to_string(),
+                name: "spawn_subagent".to_string(),
+                arguments: json!({
+                    "prompt": "Create a file with a greeting in it.",
+                    "slot": "subagent",
+                }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: usage(900, 40),
+            cost: None,
+        };
+        let wait = ModelResponse {
+            text: Some("Waiting for the subagent to finish.".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "call_wait".to_string(),
+                name: "wait_for_subagents".to_string(),
+                arguments: json!({}),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: usage(950, 30),
+            cost: None,
+        };
+        let finish = ModelResponse {
+            text: Some("The subagent finished; the game is assembled.".to_string()),
+            tool_calls: Vec::new(),
+            finish_reason: FinishReason::Stop,
+            usage: usage(1000, 50),
+            cost: None,
+        };
+        Self::new(model_id, vec![spawn, wait, finish])
+    }
+
+    /// The **child** side of the offline [subagents](crate::subagents) e2e: a script that does a
+    /// bit of work then returns a distinctive value.
+    ///
+    /// 1. `write_file` creates [`MOCK_SUBAGENT_FILE`] in the shared workspace (its "work");
+    /// 2. a final tool-free turn stops with [`MOCK_SUBAGENT_RETURN`] as its message — the return
+    ///    value its spawner collects.
+    ///
+    /// Pairs with [`with_subagent_parent_script`](Self::with_subagent_parent_script).
+    #[cfg(test)]
+    pub fn with_subagent_child_script(model_id: impl Into<String>) -> Self {
+        let usage = |input: u64, output: u64| TokenCounts {
+            uncached_input: Some(input),
+            cached_input: None,
+            output: Some(output),
+            reasoning: None,
+        };
+        let write = ModelResponse {
+            text: Some("Writing the greeting file.".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "call_child_write".to_string(),
+                name: "write_file".to_string(),
+                arguments: json!({ "path": MOCK_SUBAGENT_FILE, "contents": "hello from the subagent\n" }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: usage(500, 30),
+            cost: None,
+        };
+        let finish = ModelResponse {
+            text: Some(MOCK_SUBAGENT_RETURN.to_string()),
+            tool_calls: Vec::new(),
+            finish_reason: FinishReason::Stop,
+            usage: usage(550, 40),
+            cost: None,
+        };
+        Self::new(model_id, vec![write, finish])
+    }
 }
+
+/// The file the [subagent child script](MockClient::with_subagent_child_script) writes — its
+/// observable "work" in the shared workspace.
+#[cfg(test)]
+pub const MOCK_SUBAGENT_FILE: &str = "subagent-greeting.txt";
+
+/// The distinctive final message the [subagent child script](MockClient::with_subagent_child_script)
+/// returns, so a test can assert the return value reached the parent (via `AgentReturned`).
+#[cfg(test)]
+pub const MOCK_SUBAGENT_RETURN: &str = "Subagent done: wrote the greeting file.";
 
 #[async_trait::async_trait]
 impl ModelClient for MockClient {
@@ -1313,6 +1413,31 @@ pub fn client_for_slot(binding: &GgSlotBinding) -> Result<Box<dyn ModelClient>, 
     match provider_for(binding) {
         ProviderKind::Mock => Ok(Box::new(MockClient::with_default_script(&binding.model_id))),
         ProviderKind::OpenRouter => Ok(Box::new(OpenRouterClient::from_binding(binding)?)),
+    }
+}
+
+/// Resolves a [slot binding](GgSlotBinding) to a **fresh** [`ModelClient`] each call — the seam
+/// every agent (the root and each spawned subagent) resolves its own client through.
+///
+/// A subagent runs on its own model, possibly a different, cross-provider [slot](GgSlotBinding)
+/// than its parent, and each agent needs its own client instance (the [`MockClient`] carries a
+/// per-agent script cursor, and a real client its own connection state), so the factory returns a
+/// new client per call rather than a shared one. Production uses [`DefaultClientFactory`]
+/// (delegating to [`client_for_slot`]); tests inject a scripted factory so a parent and its
+/// subagents can be driven by distinct offline scripts with no network.
+pub trait ClientFactory: Send + Sync {
+    /// Build a fresh client for `binding`, or a [`ModelError`] when it cannot be resolved (for
+    /// example a live binding with no credential).
+    fn client_for(&self, binding: &GgSlotBinding) -> Result<Box<dyn ModelClient>, ModelError>;
+}
+
+/// The production [`ClientFactory`]: resolves each binding through [`client_for_slot`], honoring
+/// the `TCAB_GG_FAKE_MODEL` / `mock` selection rules.
+pub struct DefaultClientFactory;
+
+impl ClientFactory for DefaultClientFactory {
+    fn client_for(&self, binding: &GgSlotBinding) -> Result<Box<dyn ModelClient>, ModelError> {
+        client_for_slot(binding)
     }
 }
 

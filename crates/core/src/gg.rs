@@ -130,6 +130,23 @@ pub const CAPABILITY_PLANNING: &str = "planning";
 /// [subagents]: https://docs.testcabinet.ai/gg/subagents/
 pub const CAPABILITY_MULTI_MODEL: &str = "multi-model";
 
+/// The stable id of the Phase 4 [subagents] capability: the delegation core — an agent's
+/// ability to **spawn other agents**, work in parallel with them or **block** until they
+/// return, **message** a running child, and receive its **return value**.
+///
+/// When enabled, the agent is offered the `spawn_subagent`/`wait_for_subagents`/`send_message`
+/// tools and its subagents are governed by a single global [scheduler]: a `maxParallel` param
+/// caps how many agents run at once (a spawn beyond the cap **blocks until a slot frees**), and a
+/// `maxDepth` param bounds recursion (a spawn at `maxDepth` is **refused**, not queued). A blocked
+/// parent frees its running slot so other work runs but retains priority over not-yet-started
+/// agents. Off (its default — it is opt-in), the tools vanish and a run stays single-agent. Which
+/// [model slot](GgSlotBinding) a subagent runs on is governed by [multi-model](CAPABILITY_MULTI_MODEL),
+/// orthogonally to the parallelism cap.
+///
+/// [subagents]: https://docs.testcabinet.ai/gg/subagents/
+/// [scheduler]: https://docs.testcabinet.ai/gg/subagents/#scheduling
+pub const CAPABILITY_SUBAGENTS: &str = "subagents";
+
 /// The declarative, inspectable configuration of a gg run — its *independent
 /// variable*.
 ///
@@ -759,6 +776,32 @@ pub enum GgPlanPhase {
     Implementing,
 }
 
+/// The lifecycle status of an agent in the [subagent tree](https://docs.testcabinet.ai/gg/subagents/),
+/// reported by an [`AgentStatus`](GgTelemetryKind::AgentStatus) transition so the console can
+/// colour each node of the live tree (running vs waiting) and mark it done or failed.
+///
+/// An agent is [`Running`](Self::Running) while it drives its turn loop, [`Blocked`](Self::Blocked)
+/// while it has **freed its running slot to wait on its subagents** (the scheduler's
+/// blocked-frees-slot state — distinct from merely queuing for a slot), and terminally either
+/// [`Done`](Self::Done) (its loop ended normally) or [`Failed`](Self::Failed) (its loop ended in a
+/// model error). Like [`AgentSpawned`](GgTelemetryKind::AgentSpawned), the agent's identity rides
+/// on the event's own [`agent_id`](GgTelemetryEvent::agent_id), so the payload carries only the
+/// status.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum GgAgentStatus {
+    /// The agent is actively driving its turn loop (holds a running slot).
+    Running,
+    /// The agent has freed its running slot and is waiting on one or more of its subagents to
+    /// return (the scheduler's blocked-with-a-wait-condition state).
+    Blocked,
+    /// The agent's turn loop ended normally (completed, exhausted, or timed out).
+    Done,
+    /// The agent's turn loop ended in a model error.
+    Failed,
+}
+
 /// A single event in gg's first-party telemetry stream (schema v1).
 ///
 /// Because gg is [headless](https://docs.testcabinet.ai/gg/overview/), this stream is
@@ -1101,6 +1144,39 @@ pub enum GgTelemetryKind {
         /// The cost accumulated on this slot/model, when any turn on it reported one.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         cost: Option<Cost>,
+    },
+    /// An agent [transitioned](https://docs.testcabinet.ai/gg/subagents/) between lifecycle
+    /// states — the running/blocked/done/failed transitions the console animates on the live
+    /// agent tree.
+    ///
+    /// Emitted when the [subagents](CAPABILITY_SUBAGENTS) capability is enabled, as each agent
+    /// moves through its lifecycle: [`Running`](GgAgentStatus::Running) once it acquires a slot
+    /// and begins (right after its [`AgentSpawned`](Self::AgentSpawned)),
+    /// [`Blocked`](GgAgentStatus::Blocked) when it frees its slot to
+    /// [wait](https://docs.testcabinet.ai/gg/subagents/#scheduling) on its subagents,
+    /// [`Running`](GgAgentStatus::Running) again when it resumes, and terminally
+    /// [`Done`](GgAgentStatus::Done)/[`Failed`](GgAgentStatus::Failed). Like
+    /// [`AgentSpawned`](Self::AgentSpawned), the agent's identity is the event's own
+    /// [`agent_id`](GgTelemetryEvent::agent_id) (the event is emitted on that agent's scoped
+    /// stream), so the payload carries only the new status.
+    AgentStatus {
+        /// The agent's new lifecycle status.
+        status: GgAgentStatus,
+    },
+    /// A subagent [returned](https://docs.testcabinet.ai/gg/subagents/) to the agent that
+    /// spawned it — the event that closes a node of the agent tree and carries the child's
+    /// result back for the console.
+    ///
+    /// Emitted (when the [subagents](CAPABILITY_SUBAGENTS) capability is enabled) once, on the
+    /// **returning subagent's** own scoped stream, as its turn loop ends — so the returning
+    /// agent is the event's [`agent_id`](GgTelemetryEvent::agent_id) and its spawner is the
+    /// [`parent_agent_id`](GgTelemetryEvent::parent_agent_id). The `summary` is the child's
+    /// return value the parent receives (its final assistant message, or a short status when it
+    /// produced none). The root agent has no spawner and so emits no `AgentReturned`.
+    AgentReturned {
+        /// The subagent's return value: its final assistant message, or a short status line when
+        /// the loop produced no final text.
+        summary: String,
     },
     /// A diagnostic log line from gg itself (not agent output).
     Log {

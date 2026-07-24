@@ -60,6 +60,7 @@ mod memories;
 mod model;
 mod planning;
 mod skills;
+mod subagents;
 mod tasks;
 mod telemetry;
 mod tools;

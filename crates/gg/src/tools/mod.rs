@@ -43,6 +43,7 @@ mod memories;
 mod planning;
 mod shell;
 mod skills;
+mod subagents;
 mod tasks;
 
 use std::path::PathBuf;
@@ -53,7 +54,7 @@ use serde_json::Value;
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_EPICS_ISSUES, CAPABILITY_FILESYSTEM,
     CAPABILITY_MEMORIES, CAPABILITY_PLANNING, CAPABILITY_SHELL, CAPABILITY_SKILLS,
-    CAPABILITY_TASKS, GgCapabilitySet,
+    CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, GgCapabilitySet,
 };
 
 use crate::archive::ArchiveStore;
@@ -71,6 +72,9 @@ pub use context::{
 pub use memories::is_memory_tool;
 pub use planning::{ENTER_PLAN_MODE_TOOL, SUBMIT_PLAN_TOOL, is_planning_tool};
 pub use skills::READ_SKILL_TOOL;
+pub use subagents::{
+    SEND_MESSAGE_TOOL, SPAWN_SUBAGENT_TOOL, WAIT_FOR_SUBAGENTS_TOOL, is_subagent_tool,
+};
 pub use tasks::is_task_tool;
 
 /// The tool names that are **read-only** — they inspect the workspace or gg's own state but
@@ -305,7 +309,10 @@ impl ToolRegistry {
     /// `evict_file_view`/`archive_thread`/`search_archive` tools when an archive store is bound
     /// (the store backs `search_archive`; the loop applies the reclaim); and the
     /// [`planning`](CAPABILITY_PLANNING) capability contributes the `enter_plan_mode`/`submit_plan`
-    /// tools (stateless, like shell/filesystem — the loop owns plan mode and the context reset).
+    /// tools (stateless, like shell/filesystem — the loop owns plan mode and the context reset);
+    /// and the [`subagents`](CAPABILITY_SUBAGENTS) capability contributes the
+    /// `spawn_subagent`/`wait_for_subagents`/`send_message` tools (stateless declarations — the
+    /// loop intercepts and performs delegation against the scheduler and agent tree).
     /// A disabled or absent capability contributes nothing.
     pub fn from_run(capabilities: &GgCapabilitySet, runtimes: &RuntimeSet<'_>) -> Self {
         let mut tools: Vec<Box<dyn Tool>> = Vec::new();
@@ -383,6 +390,15 @@ impl ToolRegistry {
             // context reset, and applies them when a call succeeds.
             tools.push(Box::new(planning::EnterPlanModeTool));
             tools.push(Box::new(planning::SubmitPlanTool));
+        }
+
+        if capabilities.is_enabled(CAPABILITY_SUBAGENTS) {
+            // The subagent tools only *declare* themselves; the loop intercepts their calls and
+            // performs the spawn/wait/message against the orchestrator and scheduler (they act on
+            // the agent tree, which a self-contained tool cannot reach).
+            tools.push(Box::new(subagents::SpawnSubagentTool));
+            tools.push(Box::new(subagents::WaitForSubagentsTool));
+            tools.push(Box::new(subagents::SendMessageTool));
         }
 
         Self { tools }

@@ -22,10 +22,9 @@
 //! same underlying [`sink`](EventSink) but stamps that agent's id and its spawner's id onto
 //! every event. Because the sink is shared (an [`Arc`]), each agent — the root today, and
 //! spawned subagents in Phase 4B — writes to the one live stream while remaining
-//! individually attributable.
-//!
-//! TODO(gg-integration): the reserved `issue_id` gets populated once work is dispatched
-//! against a board issue (Phase 4B).
+//! individually attributable. A subagent dispatched against a board
+//! [issue](test_cabinet_core::gg::GgBoardIssue) is [scoped to that issue](Emitter::for_agent_on_issue)
+//! so its whole stream also carries the `issue_id` it was dispatched for.
 
 use std::io::Write;
 use std::sync::Arc;
@@ -65,8 +64,14 @@ impl EventSink for StdoutSink {
 ///
 /// Every event it emits carries the [`session_id`](Self::session_id) it was built with, a
 /// fresh [`now_rfc3339`] timestamp, and — once the emitter is
-/// [scoped to an agent](Self::for_agent) — that agent's id and its spawner's id, so the
-/// event is attributable to its node in the subagent tree.
+/// [scoped to an agent](Self::for_agent) — that agent's id, its spawner's id, and (for a
+/// subagent dispatched against a board issue) the [issue id](Self::issue_id), so the event is
+/// attributable to its node in the subagent tree and to the work it was dispatched for.
+///
+/// [`Clone`] shares the underlying [`sink`](EventSink) (an [`Arc`]) so the orchestrator can keep
+/// a base emitter and derive a fresh [agent-scoped](Self::for_agent) child per spawned subagent,
+/// all writing to the one live stream.
+#[derive(Clone)]
 pub struct Emitter {
     /// The session id stamped onto every emitted event, when known.
     session_id: Option<String>,
@@ -76,6 +81,10 @@ pub struct Emitter {
     /// The id of that agent's spawner, once [scoped](Self::for_agent). `None` for the root
     /// agent (no spawner) and on a base emitter.
     parent_agent_id: Option<String>,
+    /// The id of the board [issue](test_cabinet_core::gg::GgBoardIssue) this agent's work is
+    /// scoped to, when it was [dispatched against one](Self::for_agent_on_issue). `None` for the
+    /// root and for subagents spawned from a free-form brief.
+    issue_id: Option<String>,
     /// Where serialized lines are written. Stdout in production; injectable for tests.
     /// Shared (`Arc`) so an [agent-scoped](Self::for_agent) child emitter writes to the same
     /// live stream as its parent.
@@ -98,6 +107,7 @@ impl Emitter {
             session_id,
             agent_id: None,
             parent_agent_id: None,
+            issue_id: None,
             sink: Arc::from(sink),
         }
     }
@@ -108,19 +118,35 @@ impl Emitter {
     /// Every event the returned emitter emits is stamped with `agent_id` and
     /// `parent_agent_id`, so an agent's whole stream is attributable to its node in the
     /// [subagent tree](https://docs.testcabinet.ai/gg/subagents/). The root agent passes
-    /// `parent_agent_id: None`; a spawned subagent (Phase 4B) passes its spawner's id.
+    /// `parent_agent_id: None`; a spawned subagent passes its spawner's id. Use
+    /// [`for_agent_on_issue`](Self::for_agent_on_issue) when the subagent was dispatched against a
+    /// board issue.
     pub fn for_agent(&self, agent_id: impl Into<String>, parent_agent_id: Option<String>) -> Self {
+        self.for_agent_on_issue(agent_id, parent_agent_id, None)
+    }
+
+    /// Derive an emitter scoped to `agent_id` (spawned by `parent_agent_id`) whose work is
+    /// scoped to board [issue](test_cabinet_core::gg::GgBoardIssue) `issue_id`, so every event the
+    /// agent emits also carries the issue it was dispatched for. `issue_id: None` is equivalent to
+    /// [`for_agent`](Self::for_agent).
+    pub fn for_agent_on_issue(
+        &self,
+        agent_id: impl Into<String>,
+        parent_agent_id: Option<String>,
+        issue_id: Option<String>,
+    ) -> Self {
         Self {
             session_id: self.session_id.clone(),
             agent_id: Some(agent_id.into()),
             parent_agent_id,
+            issue_id,
             sink: Arc::clone(&self.sink),
         }
     }
 
     /// Stamp `kind` with the current time, this emitter's session id, and — when
-    /// [scoped to an agent](Self::for_agent) — that agent's id and its spawner's id, then
-    /// write it to the sink as one NDJSON line.
+    /// [scoped to an agent](Self::for_agent) — that agent's id, its spawner's id, and any
+    /// [issue id](Self::issue_id), then write it to the sink as one NDJSON line.
     ///
     /// Serialization failures are reported on stderr and otherwise ignored —
     /// telemetry is best-effort and must never abort the run it is observing.
@@ -129,6 +155,7 @@ impl Emitter {
         event.session_id = self.session_id.clone();
         event.agent_id = self.agent_id.clone();
         event.parent_agent_id = self.parent_agent_id.clone();
+        event.issue_id = self.issue_id.clone();
 
         match serde_json::to_string(&event) {
             Ok(line) => self.sink.write_line(&line),

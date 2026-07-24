@@ -458,6 +458,21 @@ export type GgContextAction = "evict_file_views" | "archive_thread";
 export type GgPlanPhase = "entered" | "submitted" | "implementing";
 
 /**
+ * The lifecycle status of an agent in the [subagent tree](https://docs.testcabinet.ai/gg/subagents/),
+ * reported by an [`AgentStatus`](GgTelemetryKind::AgentStatus) transition so the console can
+ * colour each node of the live tree (running vs waiting) and mark it done or failed.
+ *
+ * An agent is [`Running`](Self::Running) while it drives its turn loop, [`Blocked`](Self::Blocked)
+ * while it has **freed its running slot to wait on its subagents** (the scheduler's
+ * blocked-frees-slot state — distinct from merely queuing for a slot), and terminally either
+ * [`Done`](Self::Done) (its loop ended normally) or [`Failed`](Self::Failed) (its loop ended in a
+ * model error). Like [`AgentSpawned`](GgTelemetryKind::AgentSpawned), the agent's identity rides
+ * on the event's own [`agent_id`](GgTelemetryEvent::agent_id), so the payload carries only the
+ * status.
+ */
+export type GgAgentStatus = "running" | "blocked" | "done" | "failed";
+
+/**
  * The type-specific payload of a [`GgTelemetryEvent`], discriminated by the `type`
  * field.
  *
@@ -689,6 +704,21 @@ export type GgTelemetryKind =
        * The cost accumulated on this slot/model, when any turn on it reported one.
        */
       cost?: CostMetrics;
+    }
+  | {
+      type: "agent_status";
+      /**
+       * The agent's new lifecycle status.
+       */
+      status: GgAgentStatus;
+    }
+  | {
+      type: "agent_returned";
+      /**
+       * The subagent's return value: its final assistant message, or a short status line when
+       * the loop produced no final text.
+       */
+      summary: string;
     }
   | {
       type: "log";
@@ -980,6 +1010,21 @@ export type GgTelemetryEvent = {
        * The cost accumulated on this slot/model, when any turn on it reported one.
        */
       cost?: CostMetrics;
+    }
+  | {
+      type: "agent_status";
+      /**
+       * The agent's new lifecycle status.
+       */
+      status: GgAgentStatus;
+    }
+  | {
+      type: "agent_returned";
+      /**
+       * The subagent's return value: its final assistant message, or a short status line when
+       * the loop produced no final text.
+       */
+      summary: string;
     }
   | {
       type: "log";

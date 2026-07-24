@@ -191,6 +191,7 @@ fn main() -> Result<()> {
                 gg::GgTaskStatus, gg::GgTaskEntry,
                 gg::GgIssueStatus, gg::GgBoardEpic, gg::GgBoardIssue,
                 gg::GgRetainedState, gg::GgContextAction, gg::GgPlanPhase,
+                gg::GgAgentStatus,
                 gg::GgTelemetryKind, gg::GgTelemetryEvent,
             ],
         },

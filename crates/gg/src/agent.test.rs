@@ -5,11 +5,14 @@ use std::time::Instant;
 use serde_json::json;
 use tempfile::TempDir;
 
+use std::collections::HashMap;
+
 use super::*;
 use crate::board::BoardRuntime;
 use crate::client::MockClient;
 use crate::client::{
-    DEFAULT_MOCK_MEMORY, DEFAULT_MOCK_SKILL, DEFAULT_MOCK_TASK_MOVEMENT, DEFAULT_MOCK_TASK_SCAFFOLD,
+    ClientFactory, DEFAULT_MOCK_MEMORY, DEFAULT_MOCK_SKILL, DEFAULT_MOCK_TASK_MOVEMENT,
+    DEFAULT_MOCK_TASK_SCAFFOLD, MOCK_SUBAGENT_FILE, MOCK_SUBAGENT_RETURN,
 };
 use crate::compaction::CompactionSetup;
 use crate::config::GgInvocation;
@@ -25,9 +28,9 @@ use crate::telemetry::{CollectingSink, Emitter};
 use crate::tools::{RuntimeSet, ToolContext, ToolRegistry};
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_CONTEXT_VISIBILITY, CAPABILITY_EPICS_ISSUES,
-    CAPABILITY_MULTI_MODEL, CAPABILITY_PLANNING, CAPABILITY_SKILLS, GgCapabilityConfig,
-    GgCapabilitySet, GgContextAction, GgContextSource, GgPlanPhase, GgSlotBinding, GgTelemetryKind,
-    PRIMARY_SLOT,
+    CAPABILITY_MULTI_MODEL, CAPABILITY_PLANNING, CAPABILITY_SKILLS, CAPABILITY_SUBAGENTS,
+    GgAgentStatus, GgCapabilityConfig, GgCapabilitySet, GgContextAction, GgContextSource,
+    GgPlanPhase, GgSlotBinding, GgTelemetryKind, PRIMARY_SLOT,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
@@ -467,6 +470,7 @@ async fn drive_exhausts_the_turn_ceiling_when_the_model_never_stops() {
             TasksRuntime::disabled(),
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
+            None,
         )
         .await;
 
@@ -511,6 +515,7 @@ async fn drive_times_out_at_a_passed_deadline() {
             TasksRuntime::disabled(),
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
+            None,
         )
         .await;
 
@@ -554,6 +559,7 @@ async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
             TasksRuntime::disabled(),
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
+            None,
         )
         .await;
 
@@ -596,6 +602,7 @@ async fn drive_ends_model_error_on_exhausted_retries() {
             TasksRuntime::disabled(),
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
+            None,
         )
         .await;
 
@@ -976,6 +983,7 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
             TasksRuntime::disabled(),
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
+            None,
         )
         .await;
     assert_eq!(end.status, "completed");
@@ -1152,6 +1160,7 @@ async fn drive_enforces_memory_caps_end_to_end() {
             TasksRuntime::disabled(),
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
+            None,
         )
         .await;
     assert_eq!(end.status, "completed");
@@ -1341,6 +1350,7 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
             tasks,
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
+            None,
         )
         .await;
     assert_eq!(end.status, "completed");
@@ -1638,6 +1648,7 @@ async fn drive_compacts_at_the_threshold_and_retains_pinned_state() {
             tasks,
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
+            None,
         )
         .await;
     assert_eq!(end.status, "completed");
@@ -1791,6 +1802,7 @@ async fn drive_never_compacts_when_capability_off() {
             tasks,
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
+            None,
         )
         .await;
     assert_eq!(end.status, "completed");
@@ -1879,6 +1891,7 @@ async fn drive_manages_context_end_to_end() {
             TasksRuntime::disabled(),
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
+            None,
         )
         .await;
     assert_eq!(end.status, "completed");
@@ -1982,6 +1995,7 @@ async fn drive_without_amc_offers_no_context_management() {
             TasksRuntime::disabled(),
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
+            None,
         )
         .await;
     assert_eq!(end.status, "completed");
@@ -2061,6 +2075,7 @@ async fn drive_plans_then_implements_from_a_fresh_context() {
             TasksRuntime::disabled(),
             BoardRuntime::disabled(),
             PlanningRuntime::resolve(&set),
+            None,
         )
         .await;
     assert_eq!(end.status, "completed");
@@ -2214,6 +2229,7 @@ async fn drive_without_planning_offers_no_planning() {
             TasksRuntime::disabled(),
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
+            None,
         )
         .await;
     assert_eq!(end.status, "completed");
@@ -2589,5 +2605,629 @@ async fn run_forces_primary_slot_when_multi_model_off() {
     assert_eq!(
         model_id, "mock/primary-model",
         "with multi-model off the root resolves the primary model"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4b: subagents — the scheduler, spawn/wait/return, messaging, recursion
+// ---------------------------------------------------------------------------
+
+/// A per-slot client producer: mints a fresh client for a binding (each subagent needs its own
+/// script cursor).
+type ClientProducer = Box<dyn Fn(&GgSlotBinding) -> Box<dyn ModelClient> + Send + Sync>;
+
+/// A per-slot client factory for the subagent e2es: each bound slot maps to a
+/// [producer](ClientProducer). An unmapped slot gets an empty-script mock (which finishes
+/// immediately).
+struct ScriptedFactory {
+    producers: HashMap<String, ClientProducer>,
+}
+
+impl ScriptedFactory {
+    fn new() -> Self {
+        Self {
+            producers: HashMap::new(),
+        }
+    }
+
+    fn slot(
+        mut self,
+        slot: &str,
+        producer: impl Fn(&GgSlotBinding) -> Box<dyn ModelClient> + Send + Sync + 'static,
+    ) -> Self {
+        self.producers.insert(slot.to_string(), Box::new(producer));
+        self
+    }
+}
+
+impl ClientFactory for ScriptedFactory {
+    fn client_for(&self, binding: &GgSlotBinding) -> Result<Box<dyn ModelClient>, ModelError> {
+        match self.producers.get(&binding.slot) {
+            Some(producer) => Ok(producer(binding)),
+            None => Ok(Box::new(MockClient::new(
+                binding.model_id.clone(),
+                Vec::new(),
+            ))),
+        }
+    }
+}
+
+/// A capability set with subagents (`maxParallel`/`maxDepth`) and multi-model enabled on top of the
+/// minimal defaults, plus a binding for each named `extra_slot` (`mock/<slot>`).
+fn subagent_set(max_parallel: u64, max_depth: u64, extra_slots: &[&str]) -> GgCapabilitySet {
+    let mut set = GgCapabilitySet::minimal("mock/primary");
+    set.capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_MULTI_MODEL));
+    let mut subagents = GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS);
+    subagents.params = json!({ "maxParallel": max_parallel, "maxDepth": max_depth });
+    set.capabilities.push(subagents);
+    for slot in extra_slots {
+        set.slots
+            .push(GgSlotBinding::new(*slot, format!("mock/{slot}")));
+    }
+    set
+}
+
+/// Every `AgentSpawned` in the stream, as `(agentId, parentId, slot, depth, brief)`.
+type Spawn = (Option<String>, Option<String>, String, u64, Option<String>);
+fn agent_spawns(events: &[test_cabinet_core::gg::GgTelemetryEvent]) -> Vec<Spawn> {
+    events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::AgentSpawned {
+                slot, depth, brief, ..
+            } => Some((
+                e.agent_id.clone(),
+                e.parent_agent_id.clone(),
+                slot.clone(),
+                *depth,
+                brief.clone(),
+            )),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The subagent tools are only offered when the capability is on — the ablation off arm.
+#[test]
+fn subagent_tools_are_gated_on_the_capability() {
+    let names = ["spawn_subagent", "wait_for_subagents", "send_message"];
+
+    // Off (minimal has no subagents): none offered.
+    let off = ToolRegistry::from_capabilities(&GgCapabilitySet::minimal("mock/echo"));
+    for name in names {
+        assert!(
+            !off.definitions().iter().any(|d| d.name == name),
+            "`{name}` must not be offered when subagents is off"
+        );
+    }
+
+    // On: all three offered.
+    let mut set = GgCapabilitySet::minimal("mock/echo");
+    set.capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS));
+    let on = ToolRegistry::from_capabilities(&set);
+    for name in names {
+        assert!(
+            on.definitions().iter().any(|d| d.name == name),
+            "`{name}` must be offered when subagents is on"
+        );
+    }
+}
+
+/// The headline offline e2e under a cap of **1**: the root spawns a child on a different slot,
+/// blocks to wait on it (freeing its slot so the child can run — cap=1 could not run the child
+/// otherwise), the child does a bit of work and returns a value, and the root collects it. This
+/// exercises spawn → schedule → run → return and the blocked-frees-slot rule together.
+#[tokio::test]
+async fn run_spawns_a_subagent_that_runs_under_cap_one_and_returns() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-sub".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), subagent_set(1, 3, &["subagent"]));
+    let factory = ScriptedFactory::new()
+        .slot("primary", |b| {
+            Box::new(MockClient::with_subagent_parent_script(&b.model_id))
+        })
+        .slot("subagent", |b| {
+            Box::new(MockClient::with_subagent_child_script(&b.model_id))
+        });
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran
+    );
+
+    // The child actually ran in the shared workspace.
+    assert!(
+        dir.path().join(MOCK_SUBAGENT_FILE).exists(),
+        "the subagent wrote its file, so it ran"
+    );
+
+    let events = sink.events();
+
+    // Two agents spawned: the root (depth 0, no brief) and one child (depth 1, on the subagent
+    // slot, parented at root, carrying a brief).
+    let spawns = agent_spawns(&events);
+    assert_eq!(spawns.len(), 2, "the root and exactly one child");
+    assert!(
+        spawns.iter().any(
+            |(id, parent, slot, depth, brief)| id.as_deref() == Some(ROOT_AGENT_ID)
+                && parent.is_none()
+                && slot == PRIMARY_SLOT
+                && *depth == 0
+                && brief.is_none()
+        ),
+        "the root spawn is depth 0 on primary with no brief"
+    );
+    let (child_id, child_parent, child_slot, child_depth, child_brief) = spawns
+        .iter()
+        .find(|(_, _, _, depth, _)| *depth == 1)
+        .expect("a depth-1 child spawn");
+    assert_eq!(child_id.as_deref(), Some("agent-0"));
+    assert_eq!(child_parent.as_deref(), Some(ROOT_AGENT_ID));
+    assert_eq!(child_slot, "subagent");
+    assert_eq!(*child_depth, 1);
+    assert!(
+        child_brief.is_some(),
+        "the child carries its dispatched brief"
+    );
+
+    // The child returned its distinctive value on its own stream, attributed to it and its parent.
+    let (ret_id, ret_parent, ret_summary) = events
+        .iter()
+        .find_map(|e| match &e.kind {
+            GgTelemetryKind::AgentReturned { summary } => Some((
+                e.agent_id.clone(),
+                e.parent_agent_id.clone(),
+                summary.clone(),
+            )),
+            _ => None,
+        })
+        .expect("the child emitted AgentReturned");
+    assert_eq!(ret_id.as_deref(), Some("agent-0"));
+    assert_eq!(ret_parent.as_deref(), Some(ROOT_AGENT_ID));
+    assert_eq!(
+        ret_summary, MOCK_SUBAGENT_RETURN,
+        "its final message is the return value"
+    );
+
+    // The parent collected the result (a successful wait).
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::ToolResult { name, ok: true, .. } if name == "wait_for_subagents"
+        )),
+        "the parent's wait_for_subagents succeeded"
+    );
+
+    // Blocked-frees-slot under cap=1: the child could only start after the parent freed its slot by
+    // blocking, so the parent's Blocked transition precedes the child's spawn.
+    let parent_blocked = events
+        .iter()
+        .position(|e| {
+            e.agent_id.as_deref() == Some(ROOT_AGENT_ID)
+                && matches!(
+                    e.kind,
+                    GgTelemetryKind::AgentStatus {
+                        status: GgAgentStatus::Blocked
+                    }
+                )
+        })
+        .expect("the root blocked while waiting");
+    let child_started = events
+        .iter()
+        .position(|e| {
+            e.agent_id.as_deref() == Some("agent-0")
+                && matches!(e.kind, GgTelemetryKind::AgentSpawned { .. })
+        })
+        .expect("the child started");
+    assert!(
+        parent_blocked < child_started,
+        "under cap=1 the child starts only after the parent frees its slot by blocking"
+    );
+
+    // Per-slot accounting spans both models: a rollup for each of the primary and subagent slots.
+    let rollups: Vec<_> = events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::SlotUsage { slot, model_id, .. } => {
+                Some((slot.clone(), model_id.clone()))
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        rollups.len(),
+        2,
+        "one rollup per (slot, model) the run touched"
+    );
+    assert!(
+        rollups
+            .iter()
+            .any(|(slot, model)| slot == PRIMARY_SLOT && model == "mock/primary")
+    );
+    assert!(
+        rollups
+            .iter()
+            .any(|(slot, model)| slot == "subagent" && model == "mock/subagent")
+    );
+
+    // The session completed.
+    assert!(matches!(
+        &events.last().unwrap().kind,
+        GgTelemetryKind::SessionEnded { status } if status == "completed"
+    ));
+}
+
+/// A spawn at the maximum depth is **refused** (a tool error to the model), not queued: with
+/// `maxDepth = 1`, the root's child (depth 1) cannot spawn deeper, and no depth-2 agent appears.
+#[tokio::test]
+async fn spawn_is_refused_at_the_max_depth() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-depth".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), subagent_set(4, 1, &["subagent", "worker"]));
+
+    // The child tries to spawn a grandchild on the `worker` slot — refused by the depth cap.
+    let child_tries_to_spawn = || -> Box<dyn ModelClient> {
+        let attempt = ModelResponse {
+            text: Some("Trying to delegate deeper.".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "call_deep".to_string(),
+                name: "spawn_subagent".to_string(),
+                arguments: json!({ "prompt": "do the sub-sub work", "slot": "worker" }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: TokenCounts::default(),
+            cost: None,
+        };
+        Box::new(MockClient::new(
+            "mock/subagent",
+            vec![attempt, stop_response()],
+        ))
+    };
+    let factory = ScriptedFactory::new()
+        .slot("primary", |b| {
+            Box::new(MockClient::with_subagent_parent_script(&b.model_id))
+        })
+        .slot("subagent", move |_| child_tries_to_spawn());
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran
+    );
+
+    let events = sink.events();
+
+    // Only the root (depth 0) and its one child (depth 1) were spawned — the grandchild was refused.
+    let spawns = agent_spawns(&events);
+    assert_eq!(spawns.len(), 2, "no agent spawns past the depth cap");
+    assert!(
+        !spawns.iter().any(|(_, _, _, depth, _)| *depth >= 2),
+        "no depth-2 agent may exist under maxDepth=1"
+    );
+
+    // The child's spawn attempt was refused with a depth-cap error (on the child's stream).
+    assert!(
+        events
+            .iter()
+            .any(|e| e.agent_id.as_deref() == Some("agent-0")
+                && matches!(
+                    &e.kind,
+                    GgTelemetryKind::ToolResult { name, ok: false, summary: Some(s) }
+                        if name == "spawn_subagent" && s.contains("maximum delegation depth")
+                )),
+        "the deeper spawn is refused with a depth-cap message"
+    );
+}
+
+/// Recursion: with a generous depth cap, a subagent can itself spawn a subagent. The root spawns a
+/// child on `subagent`, which spawns a grandchild on `worker`, which does the work — three agents at
+/// depths 0, 1, 2.
+#[tokio::test]
+async fn subagents_recurse_within_the_depth_cap() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-rec".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), subagent_set(4, 3, &["subagent", "worker"]));
+
+    // The mid-level child spawns a grandchild on `worker`, waits for it, then finishes.
+    let child_spawns_grandchild = || -> Box<dyn ModelClient> {
+        let spawn = ModelResponse {
+            text: Some("Delegating deeper to a worker.".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "call_gspawn".to_string(),
+                name: "spawn_subagent".to_string(),
+                arguments: json!({ "prompt": "do the leaf work", "slot": "worker" }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: TokenCounts::default(),
+            cost: None,
+        };
+        let wait = ModelResponse {
+            text: Some("Waiting for the worker.".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "call_gwait".to_string(),
+                name: "wait_for_subagents".to_string(),
+                arguments: json!({}),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: TokenCounts::default(),
+            cost: None,
+        };
+        Box::new(MockClient::new(
+            "mock/subagent",
+            vec![spawn, wait, stop_response()],
+        ))
+    };
+
+    let factory = ScriptedFactory::new()
+        .slot("primary", |b| {
+            Box::new(MockClient::with_subagent_parent_script(&b.model_id))
+        })
+        .slot("subagent", move |_| child_spawns_grandchild())
+        .slot("worker", |b| {
+            Box::new(MockClient::with_subagent_child_script(&b.model_id))
+        });
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran
+    );
+
+    // The leaf grandchild ran (wrote the file).
+    assert!(
+        dir.path().join(MOCK_SUBAGENT_FILE).exists(),
+        "the depth-2 grandchild did the work"
+    );
+
+    let events = sink.events();
+    let spawns = agent_spawns(&events);
+    assert_eq!(spawns.len(), 3, "root, child, grandchild");
+    let depths: HashSet<u64> = spawns.iter().map(|(_, _, _, depth, _)| *depth).collect();
+    assert_eq!(
+        depths,
+        HashSet::from([0, 1, 2]),
+        "one agent at each depth 0..=2"
+    );
+
+    // The grandchild (depth 2, on the worker slot) is parented at the mid-level child.
+    let (gc_id, gc_parent, gc_slot, _, _) = spawns
+        .iter()
+        .find(|(_, _, _, depth, _)| *depth == 2)
+        .expect("a depth-2 grandchild");
+    assert_eq!(gc_slot, "worker");
+    assert_eq!(
+        gc_id.as_deref(),
+        Some("agent-1"),
+        "the second spawn minted agent-1"
+    );
+    assert_eq!(
+        gc_parent.as_deref(),
+        Some("agent-0"),
+        "parented at the mid-level child"
+    );
+}
+
+/// A client that reports, in its single final message, whether it saw a sentinel string in its
+/// context — used to prove a `send_message` reached a running child and affected its output.
+struct InboxProbeClient;
+
+#[async_trait::async_trait]
+impl ModelClient for InboxProbeClient {
+    async fn complete(
+        &self,
+        messages: &[Message],
+        _tools: &[ToolDefinition],
+    ) -> Result<ModelResponse, ModelError> {
+        let saw_ping = messages.iter().any(|m| {
+            m.content
+                .as_deref()
+                .is_some_and(|content| content.contains("PARENT_PING"))
+        });
+        let text = if saw_ping {
+            "child received PARENT_PING from its parent".to_string()
+        } else {
+            "child received no message".to_string()
+        };
+        Ok(ModelResponse {
+            text: Some(text),
+            tool_calls: Vec::new(),
+            finish_reason: FinishReason::Stop,
+            usage: TokenCounts::default(),
+            cost: None,
+        })
+    }
+
+    fn model_id(&self) -> &str {
+        "mock/subagent"
+    }
+}
+
+/// A parent can message a running subagent, and the message reaches it: the child injects the
+/// parent's message at its turn boundary, so its (message-sensitive) output reflects it.
+#[tokio::test]
+async fn send_message_reaches_a_running_subagent_and_affects_it() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-msg".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), subagent_set(2, 3, &["subagent"]));
+
+    // The parent spawns a child, messages it (before it runs — the message buffers in the inbox),
+    // then waits for it.
+    let parent_messages_child = || -> Box<dyn ModelClient> {
+        let spawn = ModelResponse {
+            text: Some("Spawning a child to probe.".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "call_spawn".to_string(),
+                name: "spawn_subagent".to_string(),
+                arguments: json!({ "prompt": "await instructions", "slot": "subagent" }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: TokenCounts::default(),
+            cost: None,
+        };
+        let message = ModelResponse {
+            text: Some("Guiding the child.".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "call_msg".to_string(),
+                name: "send_message".to_string(),
+                arguments: json!({ "agentId": "agent-0", "message": "PARENT_PING: focus on X" }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: TokenCounts::default(),
+            cost: None,
+        };
+        let wait = ModelResponse {
+            text: Some("Waiting for the child.".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "call_wait".to_string(),
+                name: "wait_for_subagents".to_string(),
+                arguments: json!({}),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: TokenCounts::default(),
+            cost: None,
+        };
+        Box::new(MockClient::new(
+            "mock/primary",
+            vec![spawn, message, wait, stop_response()],
+        ))
+    };
+
+    let factory = ScriptedFactory::new()
+        .slot("primary", move |_| parent_messages_child())
+        .slot("subagent", |_| Box::new(InboxProbeClient));
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran
+    );
+
+    let events = sink.events();
+
+    // The send succeeded.
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::ToolResult { name, ok: true, .. } if name == "send_message"
+        )),
+        "send_message to the running child succeeded"
+    );
+
+    // The child saw the message and reflected it in its return value — proving the live channel.
+    let summary = events
+        .iter()
+        .find_map(|e| match &e.kind {
+            GgTelemetryKind::AgentReturned { summary }
+                if e.agent_id.as_deref() == Some("agent-0") =>
+            {
+                Some(summary.clone())
+            }
+            _ => None,
+        })
+        .expect("the child returned");
+    assert!(
+        summary.contains("PARENT_PING"),
+        "the child received and acted on the parent's message (got: {summary:?})"
+    );
+}
+
+/// Messaging an agent that is not one of your subagents, or one that has already returned, is
+/// refused with guidance rather than delivered.
+#[tokio::test]
+async fn send_message_refuses_unknown_and_finished_targets() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-msg-err".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), subagent_set(2, 3, &["subagent"]));
+
+    // The parent spawns a child, waits for it to finish, THEN messages it (too late) and also
+    // messages a never-spawned id.
+    let parent = || -> Box<dyn ModelClient> {
+        let spawn = ModelResponse {
+            text: Some("spawn".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "s".to_string(),
+                name: "spawn_subagent".to_string(),
+                arguments: json!({ "prompt": "quick work", "slot": "subagent" }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: TokenCounts::default(),
+            cost: None,
+        };
+        let wait = ModelResponse {
+            text: Some("wait".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "w".to_string(),
+                name: "wait_for_subagents".to_string(),
+                arguments: json!({}),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: TokenCounts::default(),
+            cost: None,
+        };
+        let msg_finished = ModelResponse {
+            text: Some("message the finished child".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "m1".to_string(),
+                name: "send_message".to_string(),
+                arguments: json!({ "agentId": "agent-0", "message": "too late" }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: TokenCounts::default(),
+            cost: None,
+        };
+        let msg_unknown = ModelResponse {
+            text: Some("message a stranger".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "m2".to_string(),
+                name: "send_message".to_string(),
+                arguments: json!({ "agentId": "agent-99", "message": "who are you" }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: TokenCounts::default(),
+            cost: None,
+        };
+        Box::new(MockClient::new(
+            "mock/primary",
+            vec![spawn, wait, msg_finished, msg_unknown, stop_response()],
+        ))
+    };
+
+    let factory = ScriptedFactory::new()
+        .slot("primary", move |_| parent())
+        .slot("subagent", |b| {
+            Box::new(MockClient::with_subagent_child_script(&b.model_id))
+        });
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran
+    );
+
+    let events = sink.events();
+    let refusals: Vec<String> = events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::ToolResult {
+                name,
+                ok: false,
+                summary: Some(s),
+            } if name == "send_message" => Some(s.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(refusals.len(), 2, "both messages are refused");
+    assert!(
+        refusals.iter().any(|s| s.contains("already returned")),
+        "messaging a finished child is refused"
+    );
+    assert!(
+        refusals
+            .iter()
+            .any(|s| s.contains("not one of your subagents")),
+        "messaging an unknown agent is refused"
     );
 }

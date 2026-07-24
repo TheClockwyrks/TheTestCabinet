@@ -1,5 +1,30 @@
 {
   "$defs": {
+    "GgAgentStatus": {
+      "description": "The lifecycle status of an agent in the [subagent tree](https://docs.testcabinet.ai/gg/subagents/),\nreported by an [`AgentStatus`](GgTelemetryKind::AgentStatus) transition so the console can\ncolour each node of the live tree (running vs waiting) and mark it done or failed.\n\nAn agent is [`Running`](Self::Running) while it drives its turn loop, [`Blocked`](Self::Blocked)\nwhile it has **freed its running slot to wait on its subagents** (the scheduler's\nblocked-frees-slot state — distinct from merely queuing for a slot), and terminally either\n[`Done`](Self::Done) (its loop ended normally) or [`Failed`](Self::Failed) (its loop ended in a\nmodel error). Like [`AgentSpawned`](GgTelemetryKind::AgentSpawned), the agent's identity rides\non the event's own [`agent_id`](GgTelemetryEvent::agent_id), so the payload carries only the\nstatus.",
+      "oneOf": [
+        {
+          "const": "running",
+          "description": "The agent is actively driving its turn loop (holds a running slot).",
+          "type": "string"
+        },
+        {
+          "const": "blocked",
+          "description": "The agent has freed its running slot and is waiting on one or more of its subagents to\nreturn (the scheduler's blocked-with-a-wait-condition state).",
+          "type": "string"
+        },
+        {
+          "const": "done",
+          "description": "The agent's turn loop ended normally (completed, exhausted, or timed out).",
+          "type": "string"
+        },
+        {
+          "const": "failed",
+          "description": "The agent's turn loop ended in a model error.",
+          "type": "string"
+        }
+      ]
+    },
     "GgBoardEpic": {
       "description": "One [epic](https://docs.testcabinet.ai/gg/epics-and-issues/) on the board — a grouping of\nrelated [issues](GgBoardIssue) reported in a [`BoardState`](GgTelemetryKind::BoardState)\nevent.\n\nAn epic is organizational: it has a stable [`id`](Self::id) issues reference through their\n[`epic_id`](GgBoardIssue::epic_id), a [`title`](Self::title), and a\n[`description`](Self::description). It carries no status of its own — an epic's progress is\nread from the status of the issues grouped under it.",
       "properties": {
@@ -746,6 +771,36 @@
         }
       },
       "required": ["type", "slot", "modelId", "tokens"],
+      "type": "object"
+    },
+    {
+      "description": "An agent [transitioned](https://docs.testcabinet.ai/gg/subagents/) between lifecycle\nstates — the running/blocked/done/failed transitions the console animates on the live\nagent tree.\n\nEmitted when the [subagents](CAPABILITY_SUBAGENTS) capability is enabled, as each agent\nmoves through its lifecycle: [`Running`](GgAgentStatus::Running) once it acquires a slot\nand begins (right after its [`AgentSpawned`](Self::AgentSpawned)),\n[`Blocked`](GgAgentStatus::Blocked) when it frees its slot to\n[wait](https://docs.testcabinet.ai/gg/subagents/#scheduling) on its subagents,\n[`Running`](GgAgentStatus::Running) again when it resumes, and terminally\n[`Done`](GgAgentStatus::Done)/[`Failed`](GgAgentStatus::Failed). Like\n[`AgentSpawned`](Self::AgentSpawned), the agent's identity is the event's own\n[`agent_id`](GgTelemetryEvent::agent_id) (the event is emitted on that agent's scoped\nstream), so the payload carries only the new status.",
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/GgAgentStatus",
+          "description": "The agent's new lifecycle status."
+        },
+        "type": {
+          "const": "agent_status",
+          "type": "string"
+        }
+      },
+      "required": ["type", "status"],
+      "type": "object"
+    },
+    {
+      "description": "A subagent [returned](https://docs.testcabinet.ai/gg/subagents/) to the agent that\nspawned it — the event that closes a node of the agent tree and carries the child's\nresult back for the console.\n\nEmitted (when the [subagents](CAPABILITY_SUBAGENTS) capability is enabled) once, on the\n**returning subagent's** own scoped stream, as its turn loop ends — so the returning\nagent is the event's [`agent_id`](GgTelemetryEvent::agent_id) and its spawner is the\n[`parent_agent_id`](GgTelemetryEvent::parent_agent_id). The `summary` is the child's\nreturn value the parent receives (its final assistant message, or a short status when it\nproduced none). The root agent has no spawner and so emits no `AgentReturned`.",
+      "properties": {
+        "summary": {
+          "description": "The subagent's return value: its final assistant message, or a short status line when\nthe loop produced no final text.",
+          "type": "string"
+        },
+        "type": {
+          "const": "agent_returned",
+          "type": "string"
+        }
+      },
+      "required": ["type", "summary"],
       "type": "object"
     },
     {

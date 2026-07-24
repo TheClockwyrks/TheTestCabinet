@@ -2,8 +2,9 @@
 //!
 //! An [`Agent`] is one node in gg's [subagent tree](https://docs.testcabinet.ai/gg/subagents/):
 //! it carries a stable [`id`](Agent::id), its spawner's id
-//! ([`parent_id`](Agent::parent_id)), its [`depth`](Agent::depth) in the tree, the model
-//! [`slot`](Agent::slot) it runs on, and its [`status`](Agent::status). Its
+//! ([`parent_id`](Agent::parent_id)), its [`depth`](Agent::depth) in the tree, and the model
+//! [`slot`](Agent::slot) it runs on (its live lifecycle is streamed as
+//! [`AgentStatus`](test_cabinet_core::gg::GgTelemetryKind::AgentStatus) telemetry). Its
 //! [turn loop](Agent::drive) is gg's core — the one coarse-grained plug point of the design
 //! (all other modularity comes from [which tools](crate::tools) are offered). The loop drives
 //! one agent: build a model request from the conversation and the offered toolset, send it via
@@ -64,37 +65,43 @@
 //! and ended for any other reason is a *run outcome* recorded in the telemetry, not a
 //! process failure, and exits `0`.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_CONTEXT_VISIBILITY, CAPABILITY_EPICS_ISSUES,
-    CAPABILITY_MEMORIES, CAPABILITY_MULTI_MODEL, CAPABILITY_SKILLS, CAPABILITY_TASKS,
-    GgCapabilitySet, GgContextAction, GgContextSource, GgPlanPhase, GgSlotBinding, GgTelemetryKind,
-    PRIMARY_SLOT,
+    CAPABILITY_MEMORIES, CAPABILITY_MULTI_MODEL, CAPABILITY_SKILLS, CAPABILITY_SUBAGENTS,
+    CAPABILITY_TASKS, GgAgentStatus, GgCapabilitySet, GgContextAction, GgContextSource,
+    GgPlanPhase, GgSlotBinding, GgTelemetryKind, PRIMARY_SLOT,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
+use tokio::sync::{mpsc, oneshot};
+use tokio::task::JoinHandle;
 
 use crate::archive::ArchiveStore;
 use crate::board::{BoardCaps, BoardRuntime};
-use crate::client::{client_for_slot, provider_for};
+use crate::client::{ClientFactory, DefaultClientFactory, provider_for};
 use crate::compaction::{CompactionSetup, RetainedCounts, compact_if_needed};
 use crate::config::GgInvocation;
 use crate::context::{
     BpeTokenEstimator, ContextModel, Retention, TokenEstimator, tool_output_source,
 };
 use crate::memories::{MemoriesRuntime, MemoryCaps};
-use crate::model::{ModelClient, ModelResponse, ToolCall, ToolDefinition};
+use crate::model::{Message, ModelClient, ModelResponse, ToolCall, ToolDefinition};
 use crate::planning::PlanningRuntime;
 use crate::skills::{DEFAULT_SKILLS_DIR, ReadRecord, SkillLibrary, SkillsRuntime};
+use crate::subagents::{AgentCtx, AgentReturn, ChildHandle, ParentWait, Scheduler, SubagentConfig};
 use crate::tasks::{TasksRuntime, resolve_max_tasks};
 use crate::telemetry::Emitter;
 use crate::tools::{
     ARCHIVE_THREAD_TOOL, DEFAULT_ARCHIVE_KEEP_RECENT, ENTER_PLAN_MODE_TOOL, EVICT_FILE_VIEW_TOOL,
-    READ_SKILL_TOOL, RuntimeSet, SUBMIT_PLAN_TOOL, ToolContext, ToolOutcome, ToolRegistry,
-    is_board_tool, is_context_reclaim_tool, is_memory_tool, is_planning_tool, is_task_tool,
+    READ_SKILL_TOOL, RuntimeSet, SEND_MESSAGE_TOOL, SPAWN_SUBAGENT_TOOL, SUBMIT_PLAN_TOOL,
+    ToolContext, ToolOutcome, ToolRegistry, WAIT_FOR_SUBAGENTS_TOOL, is_board_tool,
+    is_context_reclaim_tool, is_memory_tool, is_planning_tool, is_subagent_tool, is_task_tool,
     parse_archive_keep_recent, parse_evict_path, plan_mode_offers,
 };
 
@@ -158,47 +165,23 @@ pub enum SessionOutcome {
 /// beneath it.
 pub const ROOT_AGENT_ID: &str = "root";
 
-/// Where an [`Agent`] is in its lifecycle.
-///
-/// Today an agent is [`Running`](Self::Running) from creation until its
-/// [turn loop](Agent::drive) returns, at which point the orchestrator marks it
-/// [`Done`](Self::Done). Phase 4B's [scheduler](https://docs.testcabinet.ai/gg/subagents/#scheduling)
-/// extends this with a `Blocked` state (an agent that has freed its slot while waiting on its
-/// subagents); the two states here are the ones a non-spawning run actually moves through.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AgentStatus {
-    /// The agent is executing its turn loop.
-    Running,
-    /// The agent's turn loop returned (however it ended — the detail is in the loop's
-    /// [`SessionEnded`](GgTelemetryKind::SessionEnded) status).
-    Done,
-}
-
-impl AgentStatus {
-    /// A short human-readable label for a closing log line.
-    fn label(self) -> &'static str {
-        match self {
-            AgentStatus::Running => "running",
-            AgentStatus::Done => "done",
-        }
-    }
-}
-
 /// One node in gg's [subagent tree](https://docs.testcabinet.ai/gg/subagents/): the unit the
 /// [turn loop](Self::drive) drives.
 ///
 /// An agent carries its **identity** in the tree — a stable [`id`](Self::id), its spawner's
 /// [`parent_id`](Self::parent_id) (`None` for the root), its [`depth`](Self::depth), and the
-/// model [`slot`](Self::slot) it runs on — plus its [`status`](Self::status). The identity is
-/// what agent-tagged [telemetry](crate::telemetry::Emitter::for_agent) streams, so the console
-/// can reconstruct who-spawned-whom and account usage per slot.
+/// model [`slot`](Self::slot) it runs on. The identity is what agent-tagged
+/// [telemetry](crate::telemetry::Emitter::for_agent) streams, so the console can reconstruct
+/// who-spawned-whom and account usage per slot; its live lifecycle (running → blocked → done/
+/// failed) is streamed as [`AgentStatus`](GgTelemetryKind::AgentStatus) telemetry rather than kept
+/// on the struct.
 ///
 /// The agent's *resources* — its [context model](ContextModel), its [toolset](ToolRegistry),
-/// and the capability [runtimes](RuntimeSet) — are constructed **per agent** by the orchestrator
-/// and handed to [`drive`](Self::drive); the root's are built in [`run`]. Keeping resource
-/// construction in the orchestrator (rather than the struct) is the multi-agent seam: Phase 4B's
-/// spawn builds a child agent's context/toolset/runtimes the same way [`run`] builds the root's,
-/// then drives it identically.
+/// and the capability [runtimes](RuntimeSet) — are constructed **per agent** by the
+/// [orchestrator](Orchestrator) and handed to [`drive`](Self::drive) by [`run_agent`]. Keeping
+/// resource construction in the orchestrator (rather than the struct) is the multi-agent seam: a
+/// spawn builds a child agent's context/toolset/runtimes the same way the root's are built, then
+/// drives it identically.
 pub struct Agent {
     /// The agent's stable id in the tree ([`ROOT_AGENT_ID`] for the root).
     pub id: String,
@@ -208,20 +191,17 @@ pub struct Agent {
     pub depth: usize,
     /// The model [slot](GgSlotBinding) this agent runs on.
     pub slot: String,
-    /// Where the agent is in its lifecycle.
-    pub status: AgentStatus,
 }
 
 impl Agent {
     /// The **root** agent for a run: [`ROOT_AGENT_ID`], no parent, depth `0`, on `slot`
-    /// (the [`primary`](PRIMARY_SLOT) slot), [`Running`](AgentStatus::Running).
+    /// (the [`primary`](PRIMARY_SLOT) slot).
     pub fn root(slot: impl Into<String>) -> Self {
         Self {
             id: ROOT_AGENT_ID.to_string(),
             parent_id: None,
             depth: 0,
             slot: slot.into(),
-            status: AgentStatus::Running,
         }
     }
 }
@@ -356,128 +336,497 @@ fn validate_slots(set: &GgCapabilitySet) -> Result<(), String> {
 /// [`SessionEnded`](GgTelemetryKind::SessionEnded). The function itself never panics;
 /// a model error is a *run* outcome, not a launch failure (see [`SessionOutcome`]).
 ///
-/// The `emitter` passed in is a base (unscoped) emitter; `run` scopes it to the
-/// [root agent](ROOT_AGENT_ID) so every event — including the launch-failure diagnostics —
-/// is tagged with the root agent's id, and Phase 4B scopes a fresh emitter per spawned agent.
+/// The `emitter` passed in is a base (unscoped) emitter; the root agent scopes it to the
+/// [root agent](ROOT_AGENT_ID) so every event — including the launch-failure diagnostics — is
+/// tagged with the root agent's id, and each spawned subagent scopes a fresh emitter from its own
+/// id and its spawner's id.
 pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome {
+    // Production resolves every agent's client through the default factory (the
+    // `TCAB_GG_FAKE_MODEL`/`mock` rules, else live OpenRouter). Tests inject a scripted factory so
+    // a parent and its subagents run distinct offline scripts.
+    run_with_factory(invocation, emitter, Arc::new(DefaultClientFactory)).await
+}
+
+/// [`run`], but with an injectable [`ClientFactory`] so a test can drive the root and its
+/// subagents from scripted offline clients. Owns the session frame: it scopes the root emitter,
+/// emits [`SessionStarted`](GgTelemetryKind::SessionStarted), performs the launch checks (slot
+/// validation and the root's client resolution — the only two [launch failures](SessionOutcome)),
+/// builds the [`Orchestrator`], drives the [root agent](ROOT_AGENT_ID), then joins every spawned
+/// subagent, streams the [per-slot](SlotAccounting) rollups the run accumulated, and emits the
+/// terminal [`SessionEnded`](GgTelemetryKind::SessionEnded).
+pub(crate) async fn run_with_factory(
+    invocation: &GgInvocation,
+    emitter: &Emitter,
+    factory: Arc<dyn ClientFactory>,
+) -> SessionOutcome {
     let set = &invocation.capability_set;
-
-    // The root agent — the top of the tree. It runs on the `primary` slot: `effective_slot`
-    // collapses to primary when multi-model is off, and for the root the request is already
-    // primary, so this is primary either way — the call is here as the seam Phase 4B reuses for
-    // subagents that request other slots. Its resources (context/toolset/runtimes) are built
-    // below; Phase 4B builds a child's the same way and drives it identically.
     let multi_model = set.is_enabled(CAPABILITY_MULTI_MODEL);
+    // The root runs on the `primary` slot: `effective_slot` collapses to primary when multi-model
+    // is off, and the root already requests primary, so this is primary either way — the seam a
+    // subagent requesting another slot reuses.
     let root_slot = effective_slot(PRIMARY_SLOT, multi_model).to_string();
-    let mut agent = Agent::root(root_slot.clone());
 
-    // Scope the stream to the agent up front, so every event (launch diagnostics included) is
-    // attributed to its node in the agent tree. Phase 4B scopes a fresh emitter per subagent the
-    // same way, from that agent's id and its spawner's id.
-    let emitter = emitter.for_agent(agent.id.clone(), agent.parent_id.clone());
-    let emitter = &emitter;
-    emitter.emit(GgTelemetryKind::SessionStarted {});
+    // Scope the stream to the root up front, so every event (launch diagnostics included) is
+    // attributed to it.
+    let root_emitter = emitter.for_agent(ROOT_AGENT_ID, None);
+    root_emitter.emit(GgTelemetryKind::SessionStarted {});
 
-    // Validate the slot bindings before anything else — a misconfiguration is a launch failure.
+    // Launch check 1: the slot bindings must be well-formed and bind `primary`.
     if let Err(err) = validate_slots(set) {
-        emitter.emit(log("error", err));
-        emitter.emit(session_ended("error"));
+        root_emitter.emit(log("error", err));
+        root_emitter.emit(session_ended("error"));
         return SessionOutcome::LaunchFailed;
     }
-
-    let binding = match slot_binding(set, &agent.slot) {
-        Ok(binding) => binding,
+    let binding = match slot_binding(set, &root_slot) {
+        Ok(binding) => binding.clone(),
         Err(err) => {
-            emitter.emit(log("error", err));
-            emitter.emit(session_ended("error"));
+            root_emitter.emit(log("error", err));
+            root_emitter.emit(session_ended("error"));
             return SessionOutcome::LaunchFailed;
         }
     };
 
-    let client = match client_for_slot(binding) {
+    // Launch check 2: the root's model client must resolve (a missing credential fails here). A
+    // subagent's client is resolved at spawn time instead, where a failure is reported to its
+    // spawner rather than failing the whole process.
+    let client = match factory.client_for(&binding) {
         Ok(client) => client,
         Err(err) => {
-            emitter.emit(log(
+            root_emitter.emit(log(
                 "error",
                 format!(
                     "could not resolve the `{root_slot}` slot (model `{}`): {err}",
                     binding.model_id
                 ),
             ));
-            emitter.emit(session_ended("error"));
+            root_emitter.emit(session_ended("error"));
             return SessionOutcome::LaunchFailed;
         }
     };
 
+    // Build the orchestrator: the shared, cross-task state every agent (the root and each
+    // subagent) is built and driven from — the scheduler, the per-slot accounting, the offered
+    // model factory, the shared skills library and token estimator, the resolved bounds/deadline,
+    // and the spawned-task registry the session joins on before ending.
+    let orch = Arc::new(Orchestrator::build(
+        invocation,
+        emitter,
+        factory,
+        multi_model,
+    ));
+
+    // Drive the root agent. Its inbox is unused (nothing spawns the root), but every agent owns
+    // one for uniformity.
+    let (_root_inbox_tx, root_inbox_rx) = mpsc::unbounded_channel();
+    let root_agent = Agent::root(root_slot);
+    let end = run_agent(
+        Arc::clone(&orch),
+        root_agent,
+        AgentRole::Root,
+        client,
+        root_inbox_rx,
+    )
+    .await;
+
+    // Join every subagent the run spawned (transitively). The root released its slot inside
+    // `run_agent`, so cap-limited children that were waiting can now finish; a completed task has
+    // already registered any children it spawned, so draining to empty joins the whole tree.
+    loop {
+        let handle = orch.tasks.lock().expect("subagent tasks lock").pop();
+        match handle {
+            Some(handle) => {
+                let _ = handle.await;
+            }
+            None => break,
+        }
+    }
+
+    // Stream the per-slot rollups the whole run accumulated (the root plus every subagent, keyed by
+    // `(slot, model)`), so the console shows cost per slot even though the run spanned several
+    // models, then close the session. The root's `end` names the session's terminal status.
+    root_emitter.emit(log("info", end.summary()));
+    {
+        let accounting = orch.accounting.lock().expect("slot accounting lock");
+        for usage in accounting.slot_usage_events() {
+            root_emitter.emit(usage);
+        }
+    }
+    root_emitter.emit(log(
+        "info",
+        format!(
+            "root agent `{ROOT_AGENT_ID}` (slot `{root_slot_label}`) {status}.",
+            root_slot_label = end.slot,
+            status = if end.status == "model_error" {
+                "failed"
+            } else {
+                "done"
+            }
+        ),
+    ));
+    root_emitter.emit(session_ended(end.status));
+    SessionOutcome::Ran
+}
+
+/// The shared, cross-task state a whole gg session is orchestrated from.
+///
+/// A run is no longer a single agent: the root can [spawn](handle_subagent_call) subagents that
+/// run concurrently, each on its own [slot](GgSlotBinding), possibly spawning their own. All of
+/// them are built and driven by [`run_agent`] from this one orchestrator — so it owns everything
+/// that must be shared across those tasks: the [scheduler](Scheduler) (the global parallelism
+/// cap), the [per-slot accounting](SlotAccounting) every agent folds its usage into, the
+/// [client factory](ClientFactory) each agent resolves its model through, the shared skills
+/// library and token estimator, the resolved loop bounds/deadline, and the registry of spawned
+/// tasks the session joins before it ends. It is held behind an [`Arc`] and cloned into every
+/// spawned agent task.
+struct Orchestrator {
+    /// The run's capability set — the source of truth each agent rebuilds its runtimes from.
+    caps: GgCapabilitySet,
+    /// The seeded workspace every agent's tools are rooted at (shared; worktrees are Phase 4B).
+    workspace_dir: PathBuf,
+    /// The root's build prompt (a subagent is driven by its brief instead).
+    prompt: String,
+    /// Whether [multi-model](CAPABILITY_MULTI_MODEL) is on — decides whether a subagent may run on
+    /// a non-primary [slot](GgSlotBinding) or collapses to primary.
+    multi_model: bool,
+    /// Whether the [subagents](CAPABILITY_SUBAGENTS) capability is on — gates the spawn tools, the
+    /// per-agent delegation context, and the agent-tree telemetry.
+    subagents_enabled: bool,
+    /// The resolved [parallelism and depth caps](SubagentConfig).
+    config: SubagentConfig,
+    /// The single global [scheduler](Scheduler) coordinating every agent's running slot.
+    scheduler: Arc<Scheduler>,
+    /// The per-`(slot, model)` usage/cost accounting every agent folds its total into.
+    accounting: Mutex<SlotAccounting>,
+    /// The base (unscoped) emitter each agent derives its scoped stream from.
+    base_emitter: Emitter,
+    /// The offered model factory each agent resolves its slot's client through.
+    factory: Arc<dyn ClientFactory>,
+    /// The shared skills library (loaded once), cloned into each agent's own skills runtime.
+    skills_library: Arc<SkillLibrary>,
+    /// Whether the [skills](CAPABILITY_SKILLS) capability is on.
+    skills_enabled: bool,
+    /// The shared token estimator (built once — the BPE vocab is expensive), backing every agent's
+    /// context accounting.
+    estimator: Arc<dyn TokenEstimator>,
+    /// The resolved loop bounds shared by every agent.
+    bounds: LoopBounds,
+    /// The optional shared wall-clock deadline (from run start) every agent stops at.
+    deadline: Option<Instant>,
+    /// The join handles of every spawned subagent task, drained and awaited before the session
+    /// ends. Guarded so concurrently-spawning agents can register their children.
+    tasks: Mutex<Vec<JoinHandle<()>>>,
+    /// A monotonic counter minting unique subagent ids.
+    next_seq: AtomicU64,
+}
+
+impl Orchestrator {
+    /// Build the orchestrator for `invocation`, loading the shared skills library and token
+    /// estimator once and resolving the run-wide bounds/deadline and subagent caps.
+    fn build(
+        invocation: &GgInvocation,
+        emitter: &Emitter,
+        factory: Arc<dyn ClientFactory>,
+        multi_model: bool,
+    ) -> Self {
+        let set = &invocation.capability_set;
+        // Load the skills library once (empty when the capability is off or nothing is seeded) and
+        // share its Arc across agents; each agent keeps its own read-state runtime over it.
+        let skills = resolve_skills(set, &invocation.workspace_dir);
+        let bounds = resolve_bounds(set);
+        let deadline = bounds
+            .max_runtime_secs
+            .map(|secs| Instant::now() + Duration::from_secs(secs));
+        Self {
+            caps: set.clone(),
+            workspace_dir: invocation.workspace_dir.clone(),
+            prompt: invocation.prompt.clone(),
+            multi_model,
+            subagents_enabled: set.is_enabled(CAPABILITY_SUBAGENTS),
+            config: SubagentConfig::resolve(set),
+            scheduler: Scheduler::new(SubagentConfig::resolve(set).max_parallel),
+            accounting: Mutex::new(SlotAccounting::default()),
+            base_emitter: emitter.clone(),
+            factory,
+            skills_library: skills.library(),
+            skills_enabled: set.is_enabled(CAPABILITY_SKILLS),
+            estimator: Arc::new(BpeTokenEstimator::new()),
+            bounds,
+            deadline,
+            tasks: Mutex::new(Vec::new()),
+            next_seq: AtomicU64::new(0),
+        }
+    }
+
+    /// This agent's skills runtime over the shared library (a fresh read-state runtime per agent),
+    /// or a disabled one when the capability is off.
+    fn skills_runtime(&self) -> SkillsRuntime {
+        if self.skills_enabled {
+            SkillsRuntime::new(Arc::clone(&self.skills_library))
+        } else {
+            SkillsRuntime::disabled()
+        }
+    }
+
+    /// The context accounting for an agent running `model_id`: the shared estimator, the model's
+    /// window limit, and whether to emit the per-turn breakdown (gated on context visibility).
+    fn context_setup(&self, model_id: &str) -> ContextSetup {
+        ContextSetup {
+            estimator: Arc::clone(&self.estimator),
+            window_limit: resolve_window_limit(&self.caps, model_id),
+            emit_breakdown: self.caps.is_enabled(CAPABILITY_CONTEXT_VISIBILITY),
+        }
+    }
+
+    /// Mint the next unique subagent id.
+    fn next_agent_id(&self) -> String {
+        format!("agent-{}", self.next_seq.fetch_add(1, Ordering::SeqCst))
+    }
+}
+
+/// How an agent driven by [`run_agent`] is dispatched: the [`Root`](Self::Root) driven by the
+/// run's build prompt, or a [`Sub`](Self::Sub)agent driven by a delegated brief and wired to
+/// signal its spawner on completion.
+enum AgentRole {
+    /// The root agent, driven by the run's build prompt.
+    Root,
+    /// A spawned subagent, driven by `brief`, that on completion delivers its
+    /// [return value](AgentReturn) on `result`, flips `finished` (so `send_message` stops), and
+    /// signals its spawner's [`ParentWait`].
+    Sub {
+        /// The delegated brief that drives the subagent (its build prompt).
+        brief: String,
+        /// The board issue this subagent was dispatched against, when any (scopes its telemetry).
+        issue_id: Option<String>,
+        /// The spawner's wait condition the subagent signals on completion.
+        parent_wait: Arc<ParentWait>,
+        /// The channel the subagent's [return value](AgentReturn) is delivered on.
+        result: oneshot::Sender<AgentReturn>,
+        /// Flipped when the subagent's loop ends, so its spawner's `send_message` refuses.
+        finished: Arc<AtomicBool>,
+    },
+}
+
+/// A single agent's [delegation context](crate::subagents), threaded into [`Agent::drive`] when
+/// the [subagents](CAPABILITY_SUBAGENTS) capability is on: the [orchestrator](Orchestrator) (to
+/// spawn and schedule children) and this agent's [`AgentCtx`] (its inbox, its children, and the
+/// wait condition its children signal).
+struct SubagentContext {
+    /// The shared orchestrator every spawn builds and schedules a child through.
+    orch: Arc<Orchestrator>,
+    /// This agent's own delegation state.
+    ctx: AgentCtx,
+}
+
+/// Build and drive one agent to completion: acquire a running slot, resolve its stream and
+/// resources, drive its [turn loop](Agent::drive), fold its usage into the shared
+/// [accounting](SlotAccounting), and — for a subagent — deliver its [return value](AgentReturn)
+/// to its spawner and free its slot (waking the spawner if it was the last child it awaited).
+///
+/// This is the one path every agent goes through, the root and each spawned subagent alike, so
+/// the tree is uniform: recursion is just a subagent whose own loop spawns more agents that come
+/// back through here. `client` is resolved by the caller (the root's in [`run_with_factory`], a
+/// child's at spawn time) so a resolution failure is surfaced where it belongs.
+async fn run_agent(
+    orch: Arc<Orchestrator>,
+    agent: Agent,
+    role: AgentRole,
+    client: Box<dyn ModelClient>,
+    inbox_rx: mpsc::UnboundedReceiver<String>,
+) -> LoopEnd {
+    // Acquire a running slot before doing anything: a spawned agent blocks here until the
+    // scheduler grants one (the root's is granted immediately). This is the parallelism cap.
+    orch.scheduler.acquire_start().await;
+
+    let is_root = matches!(role, AgentRole::Root);
+    let issue_id = match &role {
+        AgentRole::Sub { issue_id, .. } => issue_id.clone(),
+        AgentRole::Root => None,
+    };
+    // Scope this agent's stream to its node in the tree (and to the issue it was dispatched for).
+    let emitter =
+        orch.base_emitter
+            .for_agent_on_issue(agent.id.clone(), agent.parent_id.clone(), issue_id);
+    let emitter = &emitter;
+
+    let model_id = client.model_id().to_string();
     emitter.emit(log(
         "info",
         format!(
-            "{} slot resolved to model `{}` ({} provider).",
+            "{} slot resolved to model `{model_id}` ({} provider).",
             agent.slot,
-            client.model_id(),
-            provider_label(binding),
+            provider_label_for(&orch, &agent.slot),
         ),
     ));
 
-    // Announce the root agent to the tree: which slot/model it runs on and its depth. `brief` is
-    // absent for the root (it is driven by the build prompt, not a delegated brief); a Phase 4B
-    // subagent carries the brief it was dispatched with.
+    // Announce this agent to the tree: its slot/model, depth, and (for a subagent) the brief it was
+    // dispatched with. The root carries no brief (it is driven by the build prompt).
+    let brief = match &role {
+        AgentRole::Sub { brief, .. } => Some(brief.clone()),
+        AgentRole::Root => None,
+    };
     emitter.emit(GgTelemetryKind::AgentSpawned {
         slot: agent.slot.clone(),
-        model_id: client.model_id().to_string(),
+        model_id: model_id.clone(),
         depth: agent.depth as u64,
-        brief: None,
+        brief,
     });
+    // The running transition is only meaningful (and only emitted) when the subagents capability is
+    // on — it is what animates the live tree.
+    if orch.subagents_enabled {
+        emitter.emit(agent_status(GgAgentStatus::Running));
+    }
 
-    // Load the run's skills (an authored, compaction-retained affordance). Off, or with
-    // no skills directory, this is an empty library and the capability vanishes: no
-    // `read_skill` tool, no prompt listing, no telemetry.
-    let skills = resolve_skills(&invocation.capability_set, &invocation.workspace_dir);
-
-    // Set up the run's memories (a bounded, model-curated, compaction-retained
-    // scratchpad). Off, this is a disabled runtime and the capability vanishes: no memory
-    // tools, no prompt section, no context block, no telemetry.
-    let memories = resolve_memories(&invocation.capability_set);
-
-    // Set up the run's tasks (a blocked-by DAG the model plans with, retained across
-    // compaction). Off, this is a disabled runtime and the capability vanishes: no task
-    // tools, no prompt section, no context block, no telemetry.
-    let tasks = resolve_tasks(&invocation.capability_set);
-
-    // Set up the run's epic/issue board (the heavyweight work-decomposition counterpart to
-    // tasks: structured, dispatchable issues in a blocked-by DAG, grouped into epics, retained
-    // across compaction). Off, this is a disabled runtime and the capability vanishes: no board
-    // tools, no prompt section, no context block, no telemetry.
-    let board = resolve_board(&invocation.capability_set);
-
-    // Set up the run's planning capability (a mid-session read-only planning pass followed by a
-    // fresh-context implementation pass). Off, this is a disabled runtime and the capability
-    // vanishes: no planning tools, no prompt section, no read-only mode, no telemetry.
-    let planning = PlanningRuntime::resolve(&invocation.capability_set);
-
-    // Assemble the offered toolset from the run's enabled capabilities (the basis for
-    // toolset ablation) and root every tool at the seeded workspace. The runtime set binds the
-    // shared stores each stateful capability's tools mutate — the skill library (so a
-    // skills-enabled run with authored skills offers `read_skill`), the memory store, the task
-    // store, the epic/issue board store, and the thread archive — and the registry gates each
-    // on its capability, so binding a store when the capability is off is inert.
-    // The searchable thread archive backing agent-managed context (`archive_thread` moves
-    // removed thread material into it; `search_archive` reads it). Always created (cheap and
-    // empty); the tools that use it are only offered when the capability is enabled.
+    // Build this agent's resources the same way for every agent. The runtimes (memories, tasks,
+    // board, planning) and the archive are per-agent (a subagent has its own scratchpad/board);
+    // the skills library and estimator are shared through the orchestrator.
+    let skills = orch.skills_runtime();
+    let memories = resolve_memories(&orch.caps);
+    let tasks = resolve_tasks(&orch.caps);
+    let board = resolve_board(&orch.caps);
+    let planning = PlanningRuntime::resolve(&orch.caps);
     let archive_store = Arc::new(Mutex::new(ArchiveStore::new()));
     let library = skills.library();
     let memory_store = memories.store();
     let task_store = tasks.store();
     let board_store = board.store();
     let registry = ToolRegistry::from_run(
-        &invocation.capability_set,
+        &orch.caps,
         &RuntimeSet::new(&library)
             .with_memories(&memory_store)
             .with_tasks(&task_store)
             .with_board(&board_store)
             .with_archive(&archive_store),
     );
-    let context = ToolContext::new(invocation.workspace_dir.clone());
+    let tool_ctx = ToolContext::new(orch.workspace_dir.clone());
+
+    // Announce the run's configuration once, on the root's stream, so the console shows the enabled
+    // capabilities from the start; subagents inherit the same configuration and stay quiet.
+    if is_root {
+        announce_configuration(
+            emitter, &registry, &skills, &memories, &tasks, &board, &planning,
+        );
+    }
+
+    let context_setup = orch.context_setup(&model_id);
+    let compaction = CompactionSetup::resolve(&orch.caps);
+    let amc = AmcSetup {
+        enabled: orch.caps.is_enabled(CAPABILITY_AGENT_MANAGED_CONTEXT),
+        archive: Arc::clone(&archive_store),
+    };
+    if is_root && compaction.enabled {
+        emitter.emit(log(
+            "info",
+            format!(
+                "compaction enabled; the thread compacts once the window reaches {:.0}% full.",
+                compaction.policy.trigger_fullness * 100.0
+            ),
+        ));
+    }
+    if is_root && amc.enabled {
+        emitter.emit(log(
+            "info",
+            "agent-managed context enabled; the model sees a live window-fullness signal and \
+             can evict file views, archive thread history, and search the archive.",
+        ));
+    }
+
+    // When subagents are enabled, this agent gets a delegation context so its loop can spawn/wait/
+    // message; off, it is a single agent with no such context (and the tools were never offered).
+    let subagent_context = orch.subagents_enabled.then(|| SubagentContext {
+        orch: Arc::clone(&orch),
+        ctx: AgentCtx::new(inbox_rx),
+    });
+
+    let prompt = match &role {
+        AgentRole::Root => orch.prompt.clone(),
+        AgentRole::Sub { brief, .. } => brief.clone(),
+    };
+
+    let end = agent
+        .drive(
+            client.as_ref(),
+            &prompt,
+            &registry,
+            &tool_ctx,
+            emitter,
+            orch.bounds.max_turns,
+            orch.deadline,
+            context_setup,
+            compaction,
+            amc,
+            skills,
+            memories,
+            tasks,
+            board,
+            planning,
+            subagent_context,
+        )
+        .await;
+
+    // Fold this agent's usage into the shared per-slot accounting.
+    orch.accounting
+        .lock()
+        .expect("slot accounting lock")
+        .record(&end.slot, &model_id, end.tokens, end.cost);
+
+    let failed = end.status == "model_error";
+    if orch.subagents_enabled {
+        emitter.emit(agent_status(if failed {
+            GgAgentStatus::Failed
+        } else {
+            GgAgentStatus::Done
+        }));
+    }
+
+    match role {
+        AgentRole::Root => {
+            // The root frees its slot so any cap-limited subagents it spawned can now run to
+            // completion while the session joins them.
+            orch.scheduler.release();
+        }
+        AgentRole::Sub {
+            parent_wait,
+            result,
+            finished,
+            ..
+        } => {
+            // Deliver the return value to the spawner, then signal completion. The summary is the
+            // subagent's final assistant message (its return value), or a short status when it
+            // produced none.
+            let summary = end
+                .final_text
+                .clone()
+                .unwrap_or_else(|| format!("(subagent ended: {})", end.status));
+            if orch.subagents_enabled {
+                emitter.emit(GgTelemetryKind::AgentReturned {
+                    summary: summary.clone(),
+                });
+            }
+            // Flip finished and deliver the result *before* signalling the parent, so by the time
+            // the spawner is woken its collect finds the result ready.
+            finished.store(true, Ordering::SeqCst);
+            let _ = result.send(AgentReturn {
+                summary,
+                status: end.status,
+            });
+            parent_wait.child_completed(&orch.scheduler, &agent.id);
+        }
+    }
+    end
+}
+
+/// Announce the run's enabled capabilities once (on the root's stream) so the console shows the
+/// configuration from the start — the offered toolset and the initial (empty) skills/memory/task/
+/// board state — mirroring the per-capability announcements a single-agent run emitted.
+fn announce_configuration(
+    emitter: &Emitter,
+    registry: &ToolRegistry,
+    skills: &SkillsRuntime,
+    memories: &MemoriesRuntime,
+    tasks: &TasksRuntime,
+    board: &BoardRuntime,
+    planning: &PlanningRuntime,
+) {
     if registry.is_empty() {
         emitter.emit(log(
             "warn",
@@ -493,9 +842,6 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
             ),
         ));
     }
-
-    // Announce the run's skills up front (when any are offered) so the console shows the
-    // catalog from the start; each is unread until the model calls `read_skill`.
     if let Some(state) = skills.state_event() {
         emitter.emit(log(
             "info",
@@ -506,10 +852,6 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
         ));
         emitter.emit(state);
     }
-
-    // Announce the memories capability up front (when enabled) so the console shows the
-    // — initially empty — curated set and its caps from the start; the model fills it in
-    // as it works.
     if let Some(state) = memories.state_event() {
         let caps = memories.caps();
         emitter.emit(log(
@@ -521,9 +863,6 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
         ));
         emitter.emit(state);
     }
-
-    // Announce the tasks capability up front (when enabled) so the console shows the —
-    // initially empty — task DAG from the start; the model plans it as it works.
     if let Some(state) = tasks.state_event() {
         emitter.emit(log(
             "info",
@@ -534,9 +873,6 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
         ));
         emitter.emit(state);
     }
-
-    // Announce the epics-and-issues capability up front (when enabled) so the console shows the
-    // — initially empty — board from the start; the model decomposes the build as it works.
     if let Some(state) = board.state_event() {
         let caps = board.caps();
         emitter.emit(log(
@@ -549,9 +885,6 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
         ));
         emitter.emit(state);
     }
-
-    // Announce the planning capability up front (when enabled) so it is visible in the run's
-    // configuration from the start; the plan-mode transitions stream as the model elects them.
     if planning.offers_planning() {
         emitter.emit(log(
             "info",
@@ -559,100 +892,291 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
              implement from a fresh context after submitting a plan.",
         ));
     }
+}
 
-    // Resolve the loop bounds and the optional wall-clock deadline. `core` also caps
-    // the run externally; the deadline is a self-imposed bound so a runaway loop ends
-    // cleanly on its own.
-    let bounds = resolve_bounds(&invocation.capability_set);
-    let deadline = bounds
-        .max_runtime_secs
-        .map(|secs| Instant::now() + Duration::from_secs(secs));
+/// An [`AgentStatus`](GgTelemetryKind::AgentStatus) telemetry event for `status`.
+fn agent_status(status: GgAgentStatus) -> GgTelemetryKind {
+    GgTelemetryKind::AgentStatus { status }
+}
 
-    // Set up the context accounting: the token estimator, the active model's window
-    // limit, and whether to emit the per-turn breakdown telemetry. The accounting is
-    // always computed (compaction needs it); only the emission is gated on the
-    // context-visibility capability so an ablation's off arm stops streaming it.
-    let context_setup = ContextSetup {
-        estimator: Arc::new(BpeTokenEstimator::new()),
-        window_limit: resolve_window_limit(&invocation.capability_set, client.model_id()),
-        emit_breakdown: invocation
-            .capability_set
-            .is_enabled(CAPABILITY_CONTEXT_VISIBILITY),
-    };
+/// A human-readable provider label for the model bound to `slot`, for an agent's resolution log
+/// line. Falls back to `"mock"` when the slot cannot be resolved (it always can here — it was
+/// resolved to build the client — so this is only defensive).
+fn provider_label_for(orch: &Orchestrator, slot: &str) -> &'static str {
+    match slot_binding(&orch.caps, slot) {
+        Ok(binding) => provider_label(binding),
+        Err(_) => "mock",
+    }
+}
 
-    // Resolve the compaction backstop (opt-in): when enabled, the loop summarizes and
-    // restarts the thread once window fullness crosses the threshold, carrying pinned state
-    // across verbatim. Off, the loop never compacts.
-    let compaction = CompactionSetup::resolve(&invocation.capability_set);
-    if compaction.enabled {
-        emitter.emit(log(
-            "info",
-            format!(
-                "compaction enabled; the thread compacts once the window reaches {:.0}% full.",
-                compaction.policy.trigger_fullness * 100.0
-            ),
+// ---------------------------------------------------------------------------
+// Subagent tool handling (spawn / wait / message), applied by the loop
+// ---------------------------------------------------------------------------
+
+/// Dispatch a [subagent tool](is_subagent_tool) call against the agent's
+/// [delegation context](SubagentContext), returning the model-facing [`ToolOutcome`]. Routed here
+/// by [`Agent::drive`] instead of ordinary tool dispatch because these tools act on the scheduler
+/// and the agent tree.
+async fn handle_subagent_call(
+    sub: &mut SubagentContext,
+    spawner: &Agent,
+    board: &BoardRuntime,
+    emitter: &Emitter,
+    call: &ToolCall,
+) -> ToolOutcome {
+    match call.name.as_str() {
+        SPAWN_SUBAGENT_TOOL => spawn_subagent(sub, spawner, board, &call.arguments),
+        WAIT_FOR_SUBAGENTS_TOOL => wait_for_subagents(sub, emitter, &call.arguments).await,
+        SEND_MESSAGE_TOOL => send_message(sub, &call.arguments),
+        // `is_subagent_tool` admits only the three arms above.
+        other => ToolOutcome::error(format!("`{other}` is not a subagent tool.")),
+    }
+}
+
+/// Handle `spawn_subagent`: resolve the brief and slot, schedule the child on the scheduler
+/// (spawning its task), and return its id immediately — the parent keeps running (parallel by
+/// default). A spawn at the [max depth](SubagentConfig::max_depth) is **refused** (a tool error),
+/// not queued.
+fn spawn_subagent(
+    sub: &mut SubagentContext,
+    spawner: &Agent,
+    board: &BoardRuntime,
+    args: &Value,
+) -> ToolOutcome {
+    let orch = &sub.orch;
+
+    // Depth cap: a structural refusal, not a queue. An agent at the max depth cannot delegate
+    // deeper — it must do the work itself.
+    if spawner.depth >= orch.config.max_depth {
+        return ToolOutcome::error(format!(
+            "cannot spawn a subagent: you are at the maximum delegation depth ({}), so you must \
+             do this work yourself rather than delegating deeper.",
+            orch.config.max_depth
         ));
     }
 
-    // Resolve agent-managed context (opt-in): when enabled the model is offered the
-    // evict/archive/search tools and is shown a per-turn fullness signal it can act on — the
-    // model-facing complement to compaction. Off, none of that appears.
-    let amc = AmcSetup {
-        enabled: invocation
-            .capability_set
-            .is_enabled(CAPABILITY_AGENT_MANAGED_CONTEXT),
-        archive: Arc::clone(&archive_store),
+    // The brief comes from a dispatched board issue (its structured scope is the brief) or from a
+    // free-form `prompt`.
+    let (brief, issue_id) = match args.get("issueId").and_then(Value::as_str) {
+        Some(issue_id) if !issue_id.trim().is_empty() => {
+            let issue_id = issue_id.trim().to_string();
+            match board.issue_brief(&issue_id) {
+                Some(brief) => (brief, Some(issue_id)),
+                None => {
+                    return ToolOutcome::error(format!(
+                        "cannot dispatch issue `{issue_id}`: no such issue is on your board (or \
+                         you have no board). Create it with `create_issue`, or pass a `prompt` \
+                         instead."
+                    ));
+                }
+            }
+        }
+        _ => match args.get("prompt").and_then(Value::as_str) {
+            Some(prompt) if !prompt.trim().is_empty() => (prompt.trim().to_string(), None),
+            _ => {
+                return ToolOutcome::error(
+                    "spawn_subagent needs a non-empty `prompt` (the subagent's brief) or an \
+                     `issueId` to dispatch."
+                        .to_string(),
+                );
+            }
+        },
     };
-    if amc.enabled {
-        emitter.emit(log(
-            "info",
-            "agent-managed context enabled; the model sees a live window-fullness signal and \
-             can evict file views, archive thread history, and search the archive.",
-        ));
-    }
 
-    let end = agent
-        .drive(
-            client.as_ref(),
-            &invocation.prompt,
-            &registry,
-            &context,
-            emitter,
-            bounds.max_turns,
-            deadline,
-            context_setup,
-            compaction,
-            amc,
-            skills,
-            memories,
-            tasks,
-            board,
-            planning,
-        )
-        .await;
-    agent.status = AgentStatus::Done;
+    // The requested slot (default primary), collapsed to primary when multi-model is off.
+    let requested_slot = args
+        .get("slot")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|slot| !slot.is_empty())
+        .unwrap_or(PRIMARY_SLOT);
+    let slot = effective_slot(requested_slot, orch.multi_model).to_string();
+    let binding = match slot_binding(&orch.caps, &slot) {
+        Ok(binding) => binding.clone(),
+        Err(err) => {
+            return ToolOutcome::error(format!("cannot spawn on the `{slot}` slot: {err}"));
+        }
+    };
+    let client = match orch.factory.client_for(&binding) {
+        Ok(client) => client,
+        Err(err) => {
+            return ToolOutcome::error(format!(
+                "cannot spawn on the `{slot}` slot (model `{}`): {err}",
+                binding.model_id
+            ));
+        }
+    };
+    let model_id = client.model_id().to_string();
 
-    // Fold the agent's usage into the per-slot accounting and stream the per-slot rollups, so the
-    // console can show cost per slot even though a run spans several models. With one agent this
-    // is a single `(slot, model)` entry; Phase 4B records each subagent under its own slot.
-    let mut accounting = SlotAccounting::default();
-    accounting.record(&end.slot, client.model_id(), end.tokens, end.cost);
+    // Build the child's identity, wiring, and role, then schedule it. The child clones the
+    // spawner's `ParentWait` so it can signal completion back up.
+    let child_id = orch.next_agent_id();
+    let (inbox_tx, inbox_rx) = mpsc::unbounded_channel();
+    let (result_tx, result_rx) = oneshot::channel();
+    let finished = Arc::new(AtomicBool::new(false));
+    let child = Agent {
+        id: child_id.clone(),
+        parent_id: Some(spawner.id.clone()),
+        depth: spawner.depth + 1,
+        slot: slot.clone(),
+    };
+    let role = AgentRole::Sub {
+        brief,
+        issue_id,
+        parent_wait: Arc::clone(&sub.ctx.wait),
+        result: result_tx,
+        finished: Arc::clone(&finished),
+    };
+    let orch_for_task = Arc::clone(orch);
+    let handle = tokio::spawn(async move {
+        run_agent(orch_for_task, child, role, client, inbox_rx).await;
+    });
+    orch.tasks.lock().expect("subagent tasks lock").push(handle);
+    sub.ctx.children.push(ChildHandle {
+        id: child_id.clone(),
+        inbox: inbox_tx,
+        finished,
+        result: Some(result_rx),
+        collected: false,
+    });
 
-    emitter.emit(log("info", end.summary()));
-    for usage in accounting.slot_usage_events() {
-        emitter.emit(usage);
-    }
-    emitter.emit(log(
-        "info",
+    ToolOutcome::ok(
         format!(
-            "root agent `{}` (slot `{}`) {}.",
-            agent.id,
-            agent.slot,
-            agent.status.label()
+            "Spawned subagent `{child_id}` on slot `{slot}` (model `{model_id}`). It is running \
+             in parallel — call `wait_for_subagents` to collect its result, or `send_message` to \
+             guide it while it works."
         ),
-    ));
-    emitter.emit(session_ended(end.status));
-    SessionOutcome::Ran
+        format!("spawned subagent `{child_id}`"),
+    )
+}
+
+/// Handle `wait_for_subagents`: block until the named (or all outstanding) children have returned,
+/// freeing this agent's slot while it waits, then collect and return their results. Emits the
+/// [`Blocked`](GgAgentStatus::Blocked)→[`Running`](GgAgentStatus::Running) transitions only when it
+/// actually blocks.
+async fn wait_for_subagents(
+    sub: &mut SubagentContext,
+    emitter: &Emitter,
+    args: &Value,
+) -> ToolOutcome {
+    // The awaited ids: an explicit `ids` list (validated against this agent's children) or every
+    // not-yet-collected child.
+    let awaited_ids: Vec<String> = match args.get("ids") {
+        Some(Value::Array(items)) => {
+            let mut ids = Vec::with_capacity(items.len());
+            for item in items {
+                match item.as_str() {
+                    Some(id) => {
+                        if !sub.ctx.children.iter().any(|c| c.id == id) {
+                            return ToolOutcome::error(format!(
+                                "`{id}` is not one of your subagents; you can only wait for agents \
+                                 you spawned."
+                            ));
+                        }
+                        ids.push(id.to_string());
+                    }
+                    None => {
+                        return ToolOutcome::error(
+                            "each entry in `ids` must be a subagent id string.".to_string(),
+                        );
+                    }
+                }
+            }
+            ids
+        }
+        Some(Value::Null) | None => sub
+            .ctx
+            .children
+            .iter()
+            .filter(|c| !c.collected)
+            .map(|c| c.id.clone())
+            .collect(),
+        Some(_) => {
+            return ToolOutcome::error(
+                "`ids` must be an array of subagent id strings (or omit it to wait for all)."
+                    .to_string(),
+            );
+        }
+    };
+
+    if awaited_ids.is_empty() {
+        return ToolOutcome::ok(
+            "You have no outstanding subagents to wait for.",
+            "no subagents to wait for",
+        );
+    }
+
+    // Block on the wait condition, freeing this agent's running slot so its children (and other
+    // agents) can run. `begin_wait` returns `None` when every awaited child has already finished,
+    // in which case there is nothing to block on.
+    let awaited: HashSet<String> = awaited_ids.iter().cloned().collect();
+    if let Some(rx) = sub.ctx.wait.begin_wait(&sub.orch.scheduler, &awaited) {
+        emitter.emit(agent_status(GgAgentStatus::Blocked));
+        let _ = rx.await;
+        emitter.emit(agent_status(GgAgentStatus::Running));
+    }
+
+    // Collect each awaited child's return value (all delivered by now — a child sends its result
+    // before signalling this wait) and mark them collected.
+    let mut lines = Vec::with_capacity(awaited_ids.len());
+    for id in &awaited_ids {
+        if let Some(child) = sub.ctx.children.iter_mut().find(|c| c.id == *id) {
+            child.collected = true;
+            let returned = match child.result.take() {
+                Some(rx) => rx.await.ok(),
+                None => None,
+            };
+            match returned {
+                Some(ret) => lines.push(format!(
+                    "Subagent `{}` returned ({}):\n{}",
+                    id, ret.status, ret.summary
+                )),
+                None => lines.push(format!("Subagent `{id}` returned no result.")),
+            }
+        }
+    }
+
+    ToolOutcome::ok(
+        format!(
+            "Collected {} subagent result(s):\n\n{}",
+            awaited_ids.len(),
+            lines.join("\n\n")
+        ),
+        format!("collected {} subagent result(s)", awaited_ids.len()),
+    )
+}
+
+/// Handle `send_message`: deliver a message to one of this agent's **running** children, which the
+/// child drains at its next turn boundary (a live channel, not spawn-and-wait-only).
+fn send_message(sub: &mut SubagentContext, args: &Value) -> ToolOutcome {
+    let agent_id = match args.get("agentId").and_then(Value::as_str) {
+        Some(id) if !id.trim().is_empty() => id.trim().to_string(),
+        _ => return ToolOutcome::error("send_message needs a non-empty `agentId`.".to_string()),
+    };
+    let message = match args.get("message").and_then(Value::as_str) {
+        Some(message) if !message.trim().is_empty() => message.to_string(),
+        _ => return ToolOutcome::error("send_message needs a non-empty `message`.".to_string()),
+    };
+    match sub.ctx.children.iter().find(|c| c.id == agent_id) {
+        None => ToolOutcome::error(format!(
+            "`{agent_id}` is not one of your subagents; you can only message agents you spawned."
+        )),
+        Some(child) if child.is_finished() => ToolOutcome::error(format!(
+            "subagent `{agent_id}` has already returned; you cannot message it."
+        )),
+        Some(child) => match child.inbox.send(message) {
+            Ok(()) => ToolOutcome::ok(
+                format!(
+                    "Sent your message to subagent `{agent_id}`; it will receive it at its next \
+                     turn."
+                ),
+                format!("messaged subagent `{agent_id}`"),
+            ),
+            Err(_) => ToolOutcome::error(format!(
+                "subagent `{agent_id}` is no longer receiving messages (it has returned)."
+            )),
+        },
+    }
 }
 
 /// How a driven turn loop ended, plus the usage it accumulated.
@@ -668,6 +1192,10 @@ struct LoopEnd {
     /// The [slot](GgSlotBinding) the agent ran on, so the orchestrator can attribute this
     /// usage/cost to the right slot in the [per-slot accounting](SlotAccounting).
     slot: String,
+    /// The agent's **final assistant message** — the last natural-language text it produced. For a
+    /// subagent this is its [return value](AgentReturn) to its spawner; `None` when the loop
+    /// produced no assistant text (for example an immediate timeout).
+    final_text: Option<String>,
 }
 
 impl LoopEnd {
@@ -706,11 +1234,15 @@ impl Agent {
     /// The agent's resources are passed in rather than owned by the struct: the `registry`,
     /// the capability runtimes (`skills`/`memories`/`tasks`/`board`/`planning`), the
     /// [`context_setup`](ContextSetup), and the `client` are all constructed per agent by the
-    /// orchestrator ([`run`] for the root). **Phase 4B attaches spawning here**: a tool that
-    /// spawns a subagent constructs a child [`Agent`] (at `self.depth + 1`, refused past the
-    /// max depth), builds its resources the same way, resolves its slot's client
-    /// ([`effective_slot`] + [`slot_binding`] + [`client_for_slot`]),
-    /// and drives it — blocking or in parallel per the scheduler.
+    /// orchestrator ([`run_agent`] for every agent). When the [subagents](CAPABILITY_SUBAGENTS)
+    /// capability is on, `subagents` carries this agent's [delegation context](SubagentContext):
+    /// the loop drains the agent's inbox each turn (injecting any parent messages) and, when the
+    /// model calls a [subagent tool](is_subagent_tool), performs the spawn/wait/message against the
+    /// [orchestrator](Orchestrator) and [scheduler](Scheduler) instead of ordinary dispatch. A
+    /// spawn constructs a child [`Agent`] at `self.depth + 1` (refused past the
+    /// [max depth](SubagentConfig::max_depth)) and drives it on its own slot the same way this
+    /// agent is driven. `subagents` is `None` for a single-agent run (the tools are then never
+    /// offered).
     #[allow(clippy::too_many_arguments)]
     async fn drive(
         &self,
@@ -729,6 +1261,7 @@ impl Agent {
         tasks: TasksRuntime,
         board: BoardRuntime,
         planning: PlanningRuntime,
+        mut subagents: Option<SubagentContext>,
     ) -> LoopEnd {
         // The full offered toolset. When planning is on, each turn's request is filtered from this
         // by the loop's plan-mode state (read-only tools only while planning); otherwise the whole
@@ -750,6 +1283,9 @@ impl Agent {
 
         let mut total_tokens = TokenCounts::default();
         let mut total_cost: Option<Cost> = None;
+        // The last natural-language assistant message, carried out as this agent's final text (a
+        // subagent's return value to its spawner).
+        let mut last_text: Option<String> = None;
         // Plan mode is loop state: while `true`, the offered toolset is restricted to read-only
         // tools (plus `submit_plan`). It flips on a successful `enter_plan_mode` and back off once a
         // submitted plan has seeded the fresh implementation context. Only meaningful when planning
@@ -769,10 +1305,26 @@ impl Agent {
                     tokens: total_tokens,
                     cost: total_cost,
                     slot: self.slot.clone(),
+                    final_text: last_text,
                 };
             }
 
             emitter.emit(GgTelemetryKind::TurnStarted {});
+
+            // Drain this agent's inbox at the turn boundary and inject any messages from its parent
+            // as ephemeral user turns, so `send_message` is a live channel: the running child sees
+            // the guidance on its very next turn. Drained here (before the pinned refreshes and the
+            // model call) so an injected message never lands between an assistant tool-call message
+            // and its results.
+            if let Some(sub) = subagents.as_mut() {
+                for message in sub.ctx.drain_inbox() {
+                    context.push(
+                        GgContextSource::UserPrompt,
+                        Retention::Ephemeral,
+                        Message::user(format!("[Message from your parent agent]: {message}")),
+                    );
+                }
+            }
 
             // Refresh the pinned memory block from the store so the window reflects the
             // memories the model curated on previous turns (and Phase 2 compaction retains
@@ -884,6 +1436,7 @@ impl Agent {
                         tokens: total_tokens,
                         cost: total_cost,
                         slot: self.slot.clone(),
+                        final_text: last_text,
                     };
                 }
             };
@@ -894,6 +1447,7 @@ impl Agent {
 
             if let Some(text) = &response.text {
                 emitter.emit(GgTelemetryKind::AssistantMessage { text: text.clone() });
+                last_text = Some(text.clone());
             }
 
             // Record the assistant turn (text + any tool calls) into the context.
@@ -906,6 +1460,7 @@ impl Agent {
                     tokens: total_tokens,
                     cost: total_cost,
                     slot: self.slot.clone(),
+                    final_text: last_text,
                 };
             }
 
@@ -924,9 +1479,16 @@ impl Agent {
                 // In plan mode the loop is read-only: a tool the plan-mode filter withheld is
                 // refused here too (a defensive guard — the model was not offered it) with guidance,
                 // rather than dispatched. Outside plan mode this only ever withholds `submit_plan`.
+                // A subagent tool is intercepted here (never routed through `registry.dispatch`,
+                // whose registered validators are defensive placeholders): the loop performs the
+                // spawn/wait/message against the orchestrator, which the tools cannot reach.
                 let mut outcome =
                     if planning.offers_planning() && !plan_mode_offers(&call.name, in_plan_mode) {
                         ToolOutcome::error(plan_mode_refusal(&call.name, in_plan_mode))
+                    } else if let Some(sub) = subagents.as_mut()
+                        && is_subagent_tool(&call.name)
+                    {
+                        handle_subagent_call(sub, self, &board, emitter, call).await
                     } else {
                         registry.dispatch(call, tool_ctx).await
                     };
@@ -1034,6 +1596,7 @@ impl Agent {
             tokens: total_tokens,
             cost: total_cost,
             slot: self.slot.clone(),
+            final_text: last_text,
         }
     }
 }
