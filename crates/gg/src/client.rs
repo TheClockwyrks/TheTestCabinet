@@ -814,6 +814,107 @@ impl MockClient {
             ],
         )
     }
+
+    /// A script exercising [agent-managed context](crate::tools) offline end to end:
+    ///
+    /// 1. `write_file` creates a chunky `level.json` (working material to reclaim);
+    /// 2. `read_file` reads it back — a [`FileView`](test_cabinet_core::gg::GgContextSource::FileView)
+    ///    enters the window;
+    /// 3. `evict_file_view { path: "level.json" }` drops that file view, reclaiming its tokens
+    ///    (the next context breakdown shows the file-view band fall to zero);
+    /// 4. `archive_thread` moves the older turns out of the live window into the searchable
+    ///    archive (reclaiming more), keeping the current turn;
+    /// 5. `search_archive { query: "level.json" }` recovers the archived reference on demand,
+    ///    proving the archived history is still reachable though out of the window;
+    /// 6. a final tool-free turn stops.
+    ///
+    /// Used by the offline agent-managed-context e2e; requires a run with the
+    /// [`agent-managed-context`](test_cabinet_core::gg::CAPABILITY_AGENT_MANAGED_CONTEXT) and
+    /// filesystem capabilities enabled so every call resolves to a real tool.
+    #[cfg(test)]
+    pub fn with_agent_managed_context_script(model_id: impl Into<String>) -> Self {
+        let usage = |input: u64, output: u64| TokenCounts {
+            uncached_input: Some(input),
+            cached_input: None,
+            output: Some(output),
+            reasoning: None,
+        };
+        let write_level = ModelResponse {
+            text: Some("Writing a level file I will inspect.".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "call_write_level".to_string(),
+                name: "write_file".to_string(),
+                arguments: json!({ "path": "level.json", "contents": AMC_LEVEL_JSON }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: usage(900, 120),
+            cost: None,
+        };
+        let read_level = ModelResponse {
+            text: Some("Reading level.json to check the layout.".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "call_read_level".to_string(),
+                name: "read_file".to_string(),
+                arguments: json!({ "path": "level.json" }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: usage(950, 40),
+            cost: None,
+        };
+        let evict_level = ModelResponse {
+            text: Some(
+                "I have what I need from level.json; evicting it to reclaim context.".to_string(),
+            ),
+            tool_calls: vec![ToolCall {
+                id: "call_evict_level".to_string(),
+                name: "evict_file_view".to_string(),
+                arguments: json!({ "path": "level.json" }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: usage(1200, 40),
+            cost: None,
+        };
+        let archive = ModelResponse {
+            text: Some("Archiving the earlier thread to keep my window lean.".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "call_archive".to_string(),
+                name: "archive_thread".to_string(),
+                arguments: json!({}),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: usage(700, 30),
+            cost: None,
+        };
+        let search = ModelResponse {
+            text: Some("Recovering the archived level reference.".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "call_search".to_string(),
+                name: "search_archive".to_string(),
+                arguments: json!({ "query": "level.json" }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: usage(400, 30),
+            cost: None,
+        };
+        let finish = ModelResponse {
+            text: Some("Done — managed my context along the way.".to_string()),
+            tool_calls: Vec::new(),
+            finish_reason: FinishReason::Stop,
+            usage: usage(500, 40),
+            cost: None,
+        };
+        Self::new(
+            model_id,
+            vec![
+                write_level,
+                read_level,
+                evict_level,
+                archive,
+                search,
+                finish,
+            ],
+        )
+    }
 }
 
 #[async_trait::async_trait]
@@ -868,6 +969,22 @@ fn is_summarization_request(messages: &[Message]) -> bool {
             .is_some_and(|content| content.contains(crate::compaction::SUMMARIZATION_MARKER))
     })
 }
+
+/// The chunky level file the [agent-managed-context script](MockClient::with_agent_managed_context_script)
+/// writes then reads, so its file view is worth evicting. Deliberately verbose so the reclaim
+/// is visible in the token accounting.
+#[cfg(test)]
+const AMC_LEVEL_JSON: &str = r#"{
+  "name": "level.json",
+  "tiles": [
+    "XXXXXXXXXXXXXXXXXXXXXXXX", "X....................g.X", "X..XXX...XXXX...XXX....X",
+    "X..X..................X", "X..X..p....XXXX...XXX..X", "X..XXX...........XXX...X",
+    "X..............XXXX....X", "XXXXXXXXXXXXXXXXXXXXXXXX"
+  ],
+  "spawns": [ { "x": 4, "y": 4, "kind": "player" }, { "x": 21, "y": 1, "kind": "goal" } ],
+  "notes": "Reachable layout; player p spawns bottom-left and must reach the goal g top-right."
+}
+"#;
 
 /// The minimal playable game the [default mock script](MockClient::with_default_script)
 /// writes: a tiny arrow-key canvas game.

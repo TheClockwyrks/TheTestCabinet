@@ -188,3 +188,221 @@ fn tool_output_source_maps_reads_to_file_views() {
     );
     assert_eq!(tool_output_source("list_dir"), GgContextSource::ToolOutput);
 }
+
+// ---------------------------------------------------------------------------
+// Agent-managed context: file-view eviction
+// ---------------------------------------------------------------------------
+
+#[test]
+fn evict_file_views_removes_all_or_by_path_and_reclaims_tokens() {
+    let mut ctx = model(Some(100_000));
+    ctx.push_system("system");
+    ctx.push_file_view(Some("a.js".to_string()), "c1", "contents of a".repeat(5));
+    ctx.push_file_view(Some("b.js".to_string()), "c2", "contents of b".repeat(5));
+    ctx.push_tool_result(GgContextSource::ToolOutput, "c3", "some shell output");
+
+    let before = ctx.total_tokens();
+    assert!(ctx.tokens_for(GgContextSource::FileView) > 0);
+
+    // Targeted eviction removes only the matching path.
+    let result = ctx.evict_file_views(Some("a.js"));
+    assert_eq!(result.items, 1);
+    assert!(result.tokens > 0);
+    assert_eq!(result.paths, vec!["a.js".to_string()]);
+    assert!(ctx.total_tokens() < before, "the window was reclaimed");
+    // b.js's view remains; other tool output is untouched.
+    assert!(ctx.tokens_for(GgContextSource::FileView) > 0);
+    assert!(ctx.tokens_for(GgContextSource::ToolOutput) > 0);
+
+    // A blanket eviction removes the rest of the file views (and nothing else).
+    let rest = ctx.evict_file_views(None);
+    assert_eq!(rest.items, 1);
+    assert_eq!(rest.paths, vec!["b.js".to_string()]);
+    assert_eq!(
+        ctx.tokens_for(GgContextSource::FileView),
+        0,
+        "the file-view band drops to zero after eviction"
+    );
+    assert!(ctx.tokens_for(GgContextSource::ToolOutput) > 0);
+}
+
+#[test]
+fn evict_file_views_on_a_missing_path_reclaims_nothing() {
+    let mut ctx = model(Some(100_000));
+    ctx.push_file_view(Some("a.js".to_string()), "c1", "body");
+    let before = ctx.total_tokens();
+    let result = ctx.evict_file_views(Some("nope.js"));
+    assert_eq!(result.items, 0);
+    assert_eq!(result.tokens, 0);
+    assert_eq!(ctx.total_tokens(), before);
+}
+
+// ---------------------------------------------------------------------------
+// Agent-managed context: thread archival
+// ---------------------------------------------------------------------------
+
+#[test]
+fn archive_thread_removes_old_turns_keeping_the_recent_one() {
+    let mut ctx = model(Some(100_000));
+    // Pinned prefix (never archived).
+    ctx.push_system("system");
+    ctx.push_user_prompt("build");
+    ctx.push(
+        GgContextSource::Skill,
+        Retention::Pinned,
+        Message::user("SKILL BODY"),
+    );
+    // Turn 0.
+    ctx.push_assistant(
+        Some("turn zero reading".to_string()),
+        vec![call("c1", "read_file")],
+    );
+    ctx.push_file_view(Some("a.js".to_string()), "c1", "a contents");
+    // Turn 1.
+    ctx.push_assistant(
+        Some("turn one listing".to_string()),
+        vec![call("c2", "list_dir")],
+    );
+    ctx.push_tool_result(GgContextSource::ToolOutput, "c2", "listing output");
+    // Turn 2 (current).
+    ctx.push_assistant(Some("turn two current".to_string()), Vec::new());
+
+    let before = ctx.total_tokens();
+    let result = ctx.archive_thread(1); // keep the current turn, archive 0 and 1.
+    assert!(result.tokens > 0);
+    // Four items archived: two assistant turns and their two tool/file results.
+    assert_eq!(result.items.len(), 4);
+    assert!(ctx.total_tokens() < before);
+
+    // The pinned prefix survives; the current turn stays live; the older turns are gone.
+    let contents: Vec<String> = ctx
+        .messages()
+        .iter()
+        .filter_map(|m| m.content.clone())
+        .collect();
+    assert!(
+        contents.iter().any(|c| c == "SKILL BODY"),
+        "skills retained"
+    );
+    assert!(contents.iter().any(|c| c.contains("turn two current")));
+    assert!(!contents.iter().any(|c| c.contains("turn zero reading")));
+    assert!(!contents.iter().any(|c| c.contains("turn one listing")));
+    assert_eq!(
+        ctx.tokens_for(GgContextSource::FileView),
+        0,
+        "the archived turn's file view left the window"
+    );
+    assert!(ctx.tokens_for(GgContextSource::Skill) > 0);
+
+    // The archived items carry their source band for the archive store.
+    assert!(
+        result
+            .items
+            .iter()
+            .any(|it| it.source == GgContextSource::FileView)
+    );
+}
+
+#[test]
+fn archive_thread_keeping_all_turns_archives_nothing() {
+    let mut ctx = model(Some(100_000));
+    ctx.push_system("system");
+    ctx.push_assistant(Some("only turn".to_string()), Vec::new());
+    let before = ctx.total_tokens();
+    let result = ctx.archive_thread(5); // more than the number of turns.
+    assert!(result.items.is_empty());
+    assert_eq!(result.tokens, 0);
+    assert_eq!(ctx.total_tokens(), before);
+}
+
+#[test]
+fn archive_thread_with_zero_keep_archives_all_ephemeral_history() {
+    let mut ctx = model(Some(100_000));
+    ctx.push_system("system"); // pinned
+    ctx.push_assistant(Some("turn a".to_string()), Vec::new());
+    ctx.push_assistant(Some("turn b".to_string()), Vec::new());
+    let result = ctx.archive_thread(0);
+    assert_eq!(result.items.len(), 2);
+    // Only the pinned system prompt remains.
+    assert_eq!(ctx.tokens_for(GgContextSource::Assistant), 0);
+    assert!(ctx.tokens_for(GgContextSource::System) > 0);
+}
+
+// ---------------------------------------------------------------------------
+// Agent-managed context: the fullness signal
+// ---------------------------------------------------------------------------
+
+#[test]
+fn fullness_signal_reflects_current_state_and_refreshes_in_place() {
+    let mut ctx = model(Some(1000));
+    ctx.push_system("the base system prompt");
+    ctx.refresh_fullness_signal();
+
+    // The signal is a pinned, system-adjacent line that reports the current fill.
+    let signal_after_first = signal_text(&ctx).expect("a signal was injected");
+    assert!(signal_after_first.contains("Context window:"));
+    assert!(signal_after_first.contains("% full"));
+    // It mentions the tools the agent can use to reclaim space.
+    assert!(signal_after_first.contains("evict_file_view"));
+    assert!(signal_after_first.contains("archive_thread"));
+
+    // There is exactly one signal item, and the base prompt is untouched.
+    assert_eq!(count_signal_items(&ctx), 1);
+    assert!(
+        ctx.messages()
+            .iter()
+            .any(|m| m.content.as_deref() == Some("the base system prompt"))
+    );
+
+    // Grow the window, refresh again: still exactly one signal (refreshed in place), and the
+    // reported percentage tracks the larger window.
+    ctx.push_tool_result(GgContextSource::ToolOutput, "c1", "x".repeat(2000));
+    ctx.refresh_fullness_signal();
+    assert_eq!(count_signal_items(&ctx), 1);
+    let signal_after_growth = signal_text(&ctx).unwrap();
+    assert_ne!(
+        signal_after_first, signal_after_growth,
+        "the signal updated to the new fill"
+    );
+    // The larger tool output shows up as a top consumer.
+    assert!(signal_after_growth.contains("tool output"));
+}
+
+#[test]
+fn no_fullness_signal_without_a_window_limit() {
+    let mut ctx = model(None);
+    ctx.push_system("system");
+    ctx.refresh_fullness_signal();
+    assert_eq!(count_signal_items(&ctx), 0);
+}
+
+/// The text of the current fullness-signal item, if any (a `System` item whose content is the
+/// signal line — identified here by its stable "Context window:" prefix).
+fn signal_text(ctx: &ContextModel) -> Option<String> {
+    ctx.items()
+        .iter()
+        .find(|item| {
+            item.source() == GgContextSource::System
+                && item
+                    .message()
+                    .content
+                    .as_deref()
+                    .is_some_and(|c| c.starts_with("Context window:"))
+        })
+        .and_then(|item| item.message().content.clone())
+}
+
+/// How many fullness-signal items exist (should always be 0 or 1).
+fn count_signal_items(ctx: &ContextModel) -> usize {
+    ctx.items()
+        .iter()
+        .filter(|item| {
+            item.source() == GgContextSource::System
+                && item
+                    .message()
+                    .content
+                    .as_deref()
+                    .is_some_and(|c| c.starts_with("Context window:"))
+        })
+        .count()
+}

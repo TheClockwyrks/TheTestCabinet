@@ -46,6 +46,7 @@
 //!   `primary` slot.
 
 mod agent;
+mod archive;
 mod client;
 mod compaction;
 mod config;

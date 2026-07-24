@@ -164,20 +164,20 @@ fn registry_gates_read_skill_on_capability_and_a_non_empty_library() {
     // Enabled capability + a non-empty library => read_skill is offered.
     let on = set_with(vec![GgCapabilityConfig::enabled(CAPABILITY_SKILLS)]);
     assert!(offers(
-        &ToolRegistry::from_run(&on, &library, None, None),
+        &ToolRegistry::from_run(&on, &library, None, None, None),
         "read_skill"
     ));
 
     // Enabled capability but an empty library => nothing to read, so no tool.
     assert!(!offers(
-        &ToolRegistry::from_run(&on, &empty, None, None),
+        &ToolRegistry::from_run(&on, &empty, None, None, None),
         "read_skill"
     ));
 
     // Disabled capability => no tool even with a populated library (the ablation off arm).
     let off = set_with(vec![GgCapabilityConfig::disabled(CAPABILITY_SKILLS)]);
     assert!(!offers(
-        &ToolRegistry::from_run(&off, &library, None, None),
+        &ToolRegistry::from_run(&off, &library, None, None, None),
         "read_skill"
     ));
 }
@@ -196,14 +196,19 @@ fn registry_gates_memory_tools_on_capability_and_a_bound_store() {
 
     // Enabled capability + a bound store => all three memory tools are offered.
     let on = set_with(vec![GgCapabilityConfig::enabled(CAPABILITY_MEMORIES)]);
-    let registry =
-        ToolRegistry::from_run(&on, &Arc::new(SkillLibrary::empty()), Some(&store), None);
+    let registry = ToolRegistry::from_run(
+        &on,
+        &Arc::new(SkillLibrary::empty()),
+        Some(&store),
+        None,
+        None,
+    );
     for name in names {
         assert!(offers(&registry, name), "expected `{name}` offered");
     }
 
     // Enabled capability but no store bound => no memory tools (the bare convenience path).
-    let none = ToolRegistry::from_run(&on, &Arc::new(SkillLibrary::empty()), None, None);
+    let none = ToolRegistry::from_run(&on, &Arc::new(SkillLibrary::empty()), None, None, None);
     for name in names {
         assert!(
             !offers(&none, name),
@@ -213,8 +218,13 @@ fn registry_gates_memory_tools_on_capability_and_a_bound_store() {
 
     // Disabled capability => no memory tools even with a bound store (the ablation off arm).
     let off = set_with(vec![GgCapabilityConfig::disabled(CAPABILITY_MEMORIES)]);
-    let registry =
-        ToolRegistry::from_run(&off, &Arc::new(SkillLibrary::empty()), Some(&store), None);
+    let registry = ToolRegistry::from_run(
+        &off,
+        &Arc::new(SkillLibrary::empty()),
+        Some(&store),
+        None,
+        None,
+    );
     for name in names {
         assert!(
             !offers(&registry, name),
@@ -243,14 +253,19 @@ fn registry_gates_task_tools_on_capability_and_a_bound_store() {
 
     // Enabled capability + a bound store => all five task tools are offered.
     let on = set_with(vec![GgCapabilityConfig::enabled(CAPABILITY_TASKS)]);
-    let registry =
-        ToolRegistry::from_run(&on, &Arc::new(SkillLibrary::empty()), None, Some(&store));
+    let registry = ToolRegistry::from_run(
+        &on,
+        &Arc::new(SkillLibrary::empty()),
+        None,
+        Some(&store),
+        None,
+    );
     for name in names {
         assert!(offers(&registry, name), "expected `{name}` offered");
     }
 
     // Enabled capability but no store bound => no task tools (the bare convenience path).
-    let none = ToolRegistry::from_run(&on, &Arc::new(SkillLibrary::empty()), None, None);
+    let none = ToolRegistry::from_run(&on, &Arc::new(SkillLibrary::empty()), None, None, None);
     for name in names {
         assert!(
             !offers(&none, name),
@@ -260,8 +275,13 @@ fn registry_gates_task_tools_on_capability_and_a_bound_store() {
 
     // Disabled capability => no task tools even with a bound store (the ablation off arm).
     let off = set_with(vec![GgCapabilityConfig::disabled(CAPABILITY_TASKS)]);
-    let registry =
-        ToolRegistry::from_run(&off, &Arc::new(SkillLibrary::empty()), None, Some(&store));
+    let registry = ToolRegistry::from_run(
+        &off,
+        &Arc::new(SkillLibrary::empty()),
+        None,
+        Some(&store),
+        None,
+    );
     for name in names {
         assert!(
             !offers(&registry, name),

@@ -49,16 +49,18 @@
 //! process failure, and exits `0`.
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
 use test_cabinet_core::gg::{
-    CAPABILITY_CONTEXT_VISIBILITY, CAPABILITY_MEMORIES, CAPABILITY_SKILLS, CAPABILITY_TASKS,
-    GgCapabilitySet, GgContextSource, GgSlotBinding, GgTelemetryKind, PRIMARY_SLOT,
+    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_CONTEXT_VISIBILITY, CAPABILITY_MEMORIES,
+    CAPABILITY_SKILLS, CAPABILITY_TASKS, GgCapabilitySet, GgContextAction, GgContextSource,
+    GgSlotBinding, GgTelemetryKind, PRIMARY_SLOT,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
+use crate::archive::ArchiveStore;
 use crate::client::{client_for_slot, provider_for};
 use crate::compaction::{CompactionSetup, RetainedCounts, compact_if_needed};
 use crate::config::GgInvocation;
@@ -71,7 +73,9 @@ use crate::skills::{DEFAULT_SKILLS_DIR, ReadRecord, SkillLibrary, SkillsRuntime}
 use crate::tasks::{TasksRuntime, resolve_max_tasks};
 use crate::telemetry::Emitter;
 use crate::tools::{
-    READ_SKILL_TOOL, ToolContext, ToolOutcome, ToolRegistry, is_memory_tool, is_task_tool,
+    ARCHIVE_THREAD_TOOL, DEFAULT_ARCHIVE_KEEP_RECENT, EVICT_FILE_VIEW_TOOL, READ_SKILL_TOOL,
+    ToolContext, ToolOutcome, ToolRegistry, is_context_reclaim_tool, is_memory_tool, is_task_tool,
+    parse_archive_keep_recent, parse_evict_path,
 };
 
 /// The default per-run turn ceiling, used when no `maxTurns` capability param sets
@@ -197,6 +201,10 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
     // memory store so a memories-enabled run offers the memory tools, and the shared task
     // store so a tasks-enabled run offers the task tools (the registry gates each on its
     // capability, so binding a store when it is off is inert).
+    // The searchable thread archive backing agent-managed context (`archive_thread` moves
+    // removed thread material into it; `search_archive` reads it). Always created (cheap and
+    // empty); the tools that use it are only offered when the capability is enabled.
+    let archive_store = Arc::new(Mutex::new(ArchiveStore::new()));
     let memory_store = memories.store();
     let task_store = tasks.store();
     let registry = ToolRegistry::from_run(
@@ -204,6 +212,7 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
         &skills.library(),
         Some(&memory_store),
         Some(&task_store),
+        Some(&archive_store),
     );
     let context = ToolContext::new(invocation.workspace_dir.clone());
     if registry.is_empty() {
@@ -297,6 +306,23 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
         ));
     }
 
+    // Resolve agent-managed context (opt-in): when enabled the model is offered the
+    // evict/archive/search tools and is shown a per-turn fullness signal it can act on — the
+    // model-facing complement to compaction. Off, none of that appears.
+    let amc = AmcSetup {
+        enabled: invocation
+            .capability_set
+            .is_enabled(CAPABILITY_AGENT_MANAGED_CONTEXT),
+        archive: Arc::clone(&archive_store),
+    };
+    if amc.enabled {
+        emitter.emit(log(
+            "info",
+            "agent-managed context enabled; the model sees a live window-fullness signal and \
+             can evict file views, archive thread history, and search the archive.",
+        ));
+    }
+
     let end = drive(
         client.as_ref(),
         &invocation.prompt,
@@ -307,6 +333,7 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
         deadline,
         context_setup,
         compaction,
+        amc,
         skills,
         memories,
         tasks,
@@ -371,6 +398,7 @@ async fn drive(
     deadline: Option<Instant>,
     context_setup: ContextSetup,
     compaction: CompactionSetup,
+    amc: AmcSetup,
     mut skills: SkillsRuntime,
     memories: MemoriesRuntime,
     tasks: TasksRuntime,
@@ -454,6 +482,14 @@ async fn drive(
             emitter.emit(event);
         }
 
+        // Agent-managed context: rebuild the pinned, system-adjacent fullness signal from the
+        // now fully-assembled (and possibly just-compacted) window, so the model sees an
+        // up-to-date "how full is my window, and what is filling it" line it can act on this
+        // turn. Cheap by design (one short line) and refreshed in place each turn.
+        if amc.enabled {
+            context.refresh_fullness_signal();
+        }
+
         // The context for this turn is fully assembled (every prior item is in the
         // model). Emit its per-source breakdown when context visibility is on; the
         // accounting itself was computed regardless.
@@ -514,12 +550,29 @@ async fn drive(
                 name: call.name.clone(),
                 args: call.arguments.clone(),
             });
-            let outcome = registry.dispatch(call, tool_ctx).await;
+            let mut outcome = registry.dispatch(call, tool_ctx).await;
+
+            // Agent-managed context: `evict_file_view`/`archive_thread` act on the live
+            // window, which the tools cannot hold — the tool only validated the args, so the
+            // loop performs the reclaim against the context model here, rewrites the tool
+            // result with what was actually reclaimed, and emits the `ContextManaged` effect
+            // (the tool `ToolCall`/`ToolResult` still stream too). `search_archive` needs no
+            // special handling — it read the shared archive in its own `invoke`.
+            let managed_event = if amc.enabled && outcome.ok && is_context_reclaim_tool(&call.name)
+            {
+                apply_context_reclaim(&mut context, &amc.archive, call, &mut outcome)
+            } else {
+                None
+            };
+
             emitter.emit(GgTelemetryKind::ToolResult {
                 name: call.name.clone(),
                 ok: outcome.ok,
                 summary: outcome.summary.clone(),
             });
+            if let Some(event) = managed_event {
+                emitter.emit(event);
+            }
             record_tool_result(
                 &mut context,
                 &mut skills,
@@ -587,6 +640,100 @@ struct ContextSetup {
     /// Whether to emit the per-turn context breakdown. Gated on the context-visibility
     /// capability; the accounting itself is computed regardless.
     emit_breakdown: bool,
+}
+
+/// The agent-managed-context configuration threaded into the [turn loop](drive): whether the
+/// capability is on and the shared thread [archive](ArchiveStore) that `archive_thread` fills
+/// and `search_archive` reads.
+struct AmcSetup {
+    /// Whether the [agent-managed-context](CAPABILITY_AGENT_MANAGED_CONTEXT) capability is on.
+    /// When on the loop injects the per-turn fullness signal and applies the reclaim tools;
+    /// off, it does neither (and the tools were never offered).
+    enabled: bool,
+    /// The shared thread archive the reclaim applies to. Bound to the same store the
+    /// `search_archive` tool reads, so archived material is immediately searchable.
+    archive: Arc<Mutex<ArchiveStore>>,
+}
+
+/// Apply an agent-managed-context reclaim tool (`evict_file_view` or `archive_thread`) to the
+/// live `context`: perform the reclaim, rewrite `outcome` with what was reclaimed (the tool's
+/// own `invoke` only validated the arguments), and return the
+/// [`ContextManaged`](GgTelemetryKind::ContextManaged) effect event to emit.
+///
+/// The reclaim runs **here**, in the loop, because it mutates the context window the tools
+/// cannot hold. `search_archive` is not routed through this — it read the shared archive in its
+/// own `invoke`. The arguments were already validated by the tool, so the shared parsers are
+/// re-run with their defaults on the (unreachable) error path rather than failing.
+fn apply_context_reclaim(
+    context: &mut ContextModel,
+    archive: &Arc<Mutex<ArchiveStore>>,
+    call: &ToolCall,
+    outcome: &mut ToolOutcome,
+) -> Option<GgTelemetryKind> {
+    match call.name.as_str() {
+        EVICT_FILE_VIEW_TOOL => {
+            let path = parse_evict_path(&call.arguments).unwrap_or(None);
+            let result = context.evict_file_views(path.as_deref());
+            let detail = if result.items == 0 {
+                match &path {
+                    Some(path) => format!("No file views for `{path}` were in context to evict."),
+                    None => "No file views were in context to evict.".to_string(),
+                }
+            } else {
+                let where_ = if result.paths.is_empty() {
+                    String::new()
+                } else {
+                    format!(" ({})", result.paths.join(", "))
+                };
+                format!(
+                    "Evicted {} file view(s){where_}, reclaiming ~{} tokens. You can re-read \
+                     these files with read_file if you need them again.",
+                    result.items, result.tokens
+                )
+            };
+            *outcome = ToolOutcome::ok(
+                detail.clone(),
+                format!("evicted {} file view(s)", result.items),
+            );
+            Some(GgTelemetryKind::ContextManaged {
+                action: GgContextAction::EvictFileViews,
+                reclaimed_tokens: result.tokens,
+                items: result.items as u64,
+                detail,
+            })
+        }
+        ARCHIVE_THREAD_TOOL => {
+            let keep =
+                parse_archive_keep_recent(&call.arguments).unwrap_or(DEFAULT_ARCHIVE_KEEP_RECENT);
+            let result = context.archive_thread(keep);
+            let count = result.items.len();
+            let archive_total = {
+                let mut store = archive.lock().expect("archive store lock");
+                store.archive(result.items.iter().map(|item| (item.source, &item.message)));
+                store.len()
+            };
+            let detail = if count == 0 {
+                "No older thread history to archive — the recent turns are kept live.".to_string()
+            } else {
+                format!(
+                    "Archived {count} older thread item(s), reclaiming ~{} tokens. They are out \
+                     of your window but still searchable with search_archive (the archive now \
+                     holds {archive_total} item(s)).",
+                    result.tokens
+                )
+            };
+            *outcome = ToolOutcome::ok(detail.clone(), format!("archived {count} thread item(s)"));
+            Some(GgTelemetryKind::ContextManaged {
+                action: GgContextAction::ArchiveThread,
+                reclaimed_tokens: result.tokens,
+                items: count as u64,
+                detail,
+            })
+        }
+        // Not a reclaim tool (the caller gates this to `is_context_reclaim_tool`), so nothing
+        // to apply.
+        _ => None,
+    }
 }
 
 /// Resolve the active model's context-window limit for the fullness ratio: an explicit
@@ -819,8 +966,19 @@ fn record_tool_result(
     }
 
     // Tag the result by source so the breakdown separates file views (evictable) from
-    // other tool output.
-    context.push_tool_result(tool_output_source(&call.name), &call.id, outcome.output);
+    // other tool output. A `read_file` result is a file view tagged with its path, so
+    // agent-managed context can evict it by path (`evict_file_view { path }`).
+    let source = tool_output_source(&call.name);
+    if source == GgContextSource::FileView {
+        let path = call
+            .arguments
+            .get("path")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        context.push_file_view(path, &call.id, outcome.output);
+    } else {
+        context.push_tool_result(source, &call.id, outcome.output);
+    }
 }
 
 /// Emit a [`Usage`](GgTelemetryKind::Usage) event for a turn when it reported any

@@ -558,6 +558,31 @@ pub struct GgRetainedState {
     pub memories: u64,
 }
 
+/// The kind of agent-managed-context action a [`ContextManaged`](GgTelemetryKind::ContextManaged)
+/// event reports — the model-facing window management that is the complement to
+/// [compaction](CAPABILITY_COMPACTION).
+///
+/// The [agent-managed context](https://docs.testcabinet.ai/gg/agent-managed-context/)
+/// capability lets a disciplined agent reclaim window space itself rather than waiting for
+/// the automatic backstop: it can [evict file views](Self::EvictFileViews) it no longer
+/// needs (safe — it can re-read the file later) or [archive a section of its
+/// thread](Self::ArchiveThread) (removed from the live window but kept **searchable** via
+/// `search_archive`). Both reclaim tokens; a `search_archive` call reclaims nothing and so
+/// is reported only as an ordinary tool result, not as a `ContextManaged` action.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum GgContextAction {
+    /// The agent evicted one or more [file views](GgContextSource::FileView) (the results of
+    /// `read_file`) from the live window, reclaiming their tokens. The file is unchanged on
+    /// disk and can be re-read.
+    EvictFileViews,
+    /// The agent archived a section of its [thread](GgContextSource::History) — the oldest
+    /// ephemeral turns — removing it from the live window while keeping it searchable and
+    /// recoverable through `search_archive`.
+    ArchiveThread,
+}
+
 /// A single event in gg's first-party telemetry stream (schema v1).
 ///
 /// Because gg is [headless](https://docs.testcabinet.ai/gg/overview/), this stream is
@@ -770,6 +795,33 @@ pub enum GgTelemetryKind {
         summary_tokens: u64,
         /// The pinned state carried across the boundary verbatim (the retention proof).
         retained: GgRetainedState,
+    },
+    /// An [agent-managed context](https://docs.testcabinet.ai/gg/agent-managed-context/)
+    /// action: the model reclaimed window space itself — evicting file views or archiving a
+    /// section of its thread — the complement to the automatic [compaction] backstop.
+    ///
+    /// Emitted when the [agent-managed-context](CAPABILITY_AGENT_MANAGED_CONTEXT) capability
+    /// is enabled and the model calls `evict_file_view` or `archive_thread` (the underlying
+    /// `ToolCall`/`ToolResult` still stream too; this event carries the *effect* — how much
+    /// window was reclaimed). The console draws it as a marker on the timeline and the
+    /// context graph, alongside the drop the next
+    /// [`ContextBreakdown`](GgTelemetryKind::ContextBreakdown) shows in the affected
+    /// band. A `search_archive` call reclaims nothing, so it is reported only as an ordinary
+    /// tool result, never here. A run with the capability off emits none.
+    ///
+    /// [compaction]: https://docs.testcabinet.ai/gg/compaction/
+    ContextManaged {
+        /// Which window-management action the agent took.
+        action: GgContextAction,
+        /// The estimated tokens reclaimed from the live window by the action.
+        reclaimed_tokens: u64,
+        /// The number of context items removed from the live window (evicted file views, or
+        /// archived thread items).
+        items: u64,
+        /// A short human-readable description of the action and what it affected (for
+        /// example the evicted paths, or how many turns were archived and the archive's new
+        /// size), for the console feed.
+        detail: String,
     },
     /// A diagnostic log line from gg itself (not agent output).
     Log {

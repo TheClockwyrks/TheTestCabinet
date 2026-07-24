@@ -323,6 +323,21 @@ export type GgRetainedState = {
 };
 
 /**
+ * The kind of agent-managed-context action a [`ContextManaged`](GgTelemetryKind::ContextManaged)
+ * event reports — the model-facing window management that is the complement to
+ * [compaction](CAPABILITY_COMPACTION).
+ *
+ * The [agent-managed context](https://docs.testcabinet.ai/gg/agent-managed-context/)
+ * capability lets a disciplined agent reclaim window space itself rather than waiting for
+ * the automatic backstop: it can [evict file views](Self::EvictFileViews) it no longer
+ * needs (safe — it can re-read the file later) or [archive a section of its
+ * thread](Self::ArchiveThread) (removed from the live window but kept **searchable** via
+ * `search_archive`). Both reclaim tokens; a `search_archive` call reclaims nothing and so
+ * is reported only as an ordinary tool result, not as a `ContextManaged` action.
+ */
+export type GgContextAction = "evict_file_views" | "archive_thread";
+
+/**
  * The type-specific payload of a [`GgTelemetryEvent`], discriminated by the `type`
  * field.
  *
@@ -459,6 +474,28 @@ export type GgTelemetryKind =
        * The pinned state carried across the boundary verbatim (the retention proof).
        */
       retained: GgRetainedState;
+    }
+  | {
+      type: "context_managed";
+      /**
+       * Which window-management action the agent took.
+       */
+      action: GgContextAction;
+      /**
+       * The estimated tokens reclaimed from the live window by the action.
+       */
+      reclaimedTokens: number;
+      /**
+       * The number of context items removed from the live window (evicted file views, or
+       * archived thread items).
+       */
+      items: number;
+      /**
+       * A short human-readable description of the action and what it affected (for
+       * example the evicted paths, or how many turns were archived and the archive's new
+       * size), for the console feed.
+       */
+      detail: string;
     }
   | {
       type: "log";
@@ -648,6 +685,28 @@ export type GgTelemetryEvent = {
        * The pinned state carried across the boundary verbatim (the retention proof).
        */
       retained: GgRetainedState;
+    }
+  | {
+      type: "context_managed";
+      /**
+       * Which window-management action the agent took.
+       */
+      action: GgContextAction;
+      /**
+       * The estimated tokens reclaimed from the live window by the action.
+       */
+      reclaimedTokens: number;
+      /**
+       * The number of context items removed from the live window (evicted file views, or
+       * archived thread items).
+       */
+      items: number;
+      /**
+       * A short human-readable description of the action and what it affected (for
+       * example the evicted paths, or how many turns were archived and the archive's new
+       * size), for the console feed.
+       */
+      detail: string;
     }
   | {
       type: "log";

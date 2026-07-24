@@ -36,6 +36,7 @@
 //! matches by name and returns a well-formed error [`ToolOutcome`] (never a panic)
 //! for an unknown tool.
 
+mod context;
 mod filesystem;
 mod memories;
 mod shell;
@@ -48,15 +49,20 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use serde_json::Value;
 use test_cabinet_core::gg::{
-    CAPABILITY_FILESYSTEM, CAPABILITY_MEMORIES, CAPABILITY_SHELL, CAPABILITY_SKILLS,
-    CAPABILITY_TASKS, GgCapabilitySet,
+    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_FILESYSTEM, CAPABILITY_MEMORIES, CAPABILITY_SHELL,
+    CAPABILITY_SKILLS, CAPABILITY_TASKS, GgCapabilitySet,
 };
 
+use crate::archive::ArchiveStore;
 use crate::memories::MemoryStore;
 use crate::model::{ToolCall, ToolDefinition};
 use crate::skills::SkillLibrary;
 use crate::tasks::TaskStore;
 
+pub use context::{
+    ARCHIVE_THREAD_TOOL, DEFAULT_ARCHIVE_KEEP_RECENT, EVICT_FILE_VIEW_TOOL,
+    is_context_reclaim_tool, parse_archive_keep_recent, parse_evict_path,
+};
 pub use memories::is_memory_tool;
 pub use skills::READ_SKILL_TOOL;
 pub use tasks::is_task_tool;
@@ -161,8 +167,10 @@ impl ToolRegistry {
     /// Assemble the offered toolset from the *enabled* capabilities in `capabilities`,
     /// **without** a skill library, memory store, or task store — so the
     /// [`skills`](CAPABILITY_SKILLS) capability contributes no `read_skill` tool, the
-    /// [`memories`](CAPABILITY_MEMORIES) capability contributes no memory tools, and the
-    /// [`tasks`](CAPABILITY_TASKS) capability contributes no task tools even when enabled.
+    /// [`memories`](CAPABILITY_MEMORIES) capability contributes no memory tools, the
+    /// [`tasks`](CAPABILITY_TASKS) capability contributes no task tools, and the
+    /// [`agent-managed-context`](CAPABILITY_AGENT_MANAGED_CONTEXT) capability contributes no
+    /// context-management tools even when enabled.
     ///
     /// This is the convenience entry point for callers that bind none of them (and for
     /// tests). The loop uses [`from_run`](Self::from_run) so a skills-, memories-, or
@@ -172,7 +180,13 @@ impl ToolRegistry {
     // non-test build sees it as unused.
     #[allow(dead_code)]
     pub fn from_capabilities(capabilities: &GgCapabilitySet) -> Self {
-        Self::from_run(capabilities, &Arc::new(SkillLibrary::empty()), None, None)
+        Self::from_run(
+            capabilities,
+            &Arc::new(SkillLibrary::empty()),
+            None,
+            None,
+            None,
+        )
     }
 
     /// Assemble the offered toolset from the *enabled* capabilities in `capabilities`,
@@ -192,12 +206,17 @@ impl ToolRegistry {
     /// bound; and the [`tasks`](CAPABILITY_TASKS) capability contributes the
     /// `add_task`/`update_task`/`set_blocked_by`/`complete_task`/`remove_task` tools when a
     /// `tasks` store is bound (the model creates the memories and tasks, so no pre-existing
-    /// content is required). A disabled or absent capability contributes nothing.
+    /// content is required); and the
+    /// [`agent-managed-context`](CAPABILITY_AGENT_MANAGED_CONTEXT) capability contributes the
+    /// `evict_file_view`/`archive_thread`/`search_archive` tools when an `archive` store is
+    /// bound (the store backs `search_archive`; the loop applies the reclaim). A disabled or
+    /// absent capability contributes nothing.
     pub fn from_run(
         capabilities: &GgCapabilitySet,
         skills: &Arc<SkillLibrary>,
         memories: Option<&Arc<Mutex<MemoryStore>>>,
         tasks: Option<&Arc<Mutex<TaskStore>>>,
+        archive: Option<&Arc<Mutex<ArchiveStore>>>,
     ) -> Self {
         let mut tools: Vec<Box<dyn Tool>> = Vec::new();
 
@@ -238,6 +257,18 @@ impl ToolRegistry {
             tools.push(Box::new(tasks::SetBlockedByTool::new(Arc::clone(tasks))));
             tools.push(Box::new(tasks::CompleteTaskTool::new(Arc::clone(tasks))));
             tools.push(Box::new(tasks::RemoveTaskTool::new(Arc::clone(tasks))));
+        }
+
+        if capabilities.is_enabled(CAPABILITY_AGENT_MANAGED_CONTEXT)
+            && let Some(archive) = archive
+        {
+            // The two reclaim tools act on the live window (applied by the loop); the search
+            // tool reads the shared archive directly.
+            tools.push(Box::new(context::EvictFileViewTool));
+            tools.push(Box::new(context::ArchiveThreadTool));
+            tools.push(Box::new(context::SearchArchiveTool::new(Arc::clone(
+                archive,
+            ))));
         }
 
         Self { tools }

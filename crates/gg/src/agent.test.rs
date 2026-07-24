@@ -1,5 +1,5 @@
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use serde_json::json;
@@ -22,8 +22,8 @@ use crate::tasks::TasksRuntime;
 use crate::telemetry::{CollectingSink, Emitter};
 use crate::tools::{ToolContext, ToolRegistry};
 use test_cabinet_core::gg::{
-    CAPABILITY_CONTEXT_VISIBILITY, CAPABILITY_SKILLS, GgCapabilitySet, GgContextSource,
-    GgTelemetryKind,
+    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_CONTEXT_VISIBILITY, CAPABILITY_SKILLS,
+    GgCapabilityConfig, GgCapabilitySet, GgContextAction, GgContextSource, GgTelemetryKind,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
@@ -89,6 +89,24 @@ fn compaction_at(trigger_fullness: f64) -> CompactionSetup {
         enabled: true,
         policy: crate::compaction::CompactionPolicy { trigger_fullness },
         summarizer: crate::compaction::resolve_summarizer(None),
+    }
+}
+
+/// A disabled agent-managed-context setup — the `drive` tests that are not about
+/// agent-managed context inject no fullness signal and apply no reclaim tools.
+fn no_amc() -> AmcSetup {
+    AmcSetup {
+        enabled: false,
+        archive: Arc::new(Mutex::new(ArchiveStore::new())),
+    }
+}
+
+/// An enabled agent-managed-context setup sharing `archive` with a registry's `search_archive`
+/// tool, so a `drive` e2e can archive and then recover.
+fn amc_with(archive: Arc<Mutex<ArchiveStore>>) -> AmcSetup {
+    AmcSetup {
+        enabled: true,
+        archive,
     }
 }
 
@@ -437,6 +455,7 @@ async fn drive_exhausts_the_turn_ceiling_when_the_model_never_stops() {
         None,
         test_context_setup(false),
         no_compaction(),
+        no_amc(),
         SkillsRuntime::disabled(),
         MemoriesRuntime::disabled(),
         TasksRuntime::disabled(),
@@ -476,6 +495,7 @@ async fn drive_times_out_at_a_passed_deadline() {
         Some(Instant::now()),
         test_context_setup(false),
         no_compaction(),
+        no_amc(),
         SkillsRuntime::disabled(),
         MemoriesRuntime::disabled(),
         TasksRuntime::disabled(),
@@ -514,6 +534,7 @@ async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
         None,
         test_context_setup(false),
         no_compaction(),
+        no_amc(),
         SkillsRuntime::disabled(),
         MemoriesRuntime::disabled(),
         TasksRuntime::disabled(),
@@ -551,6 +572,7 @@ async fn drive_ends_model_error_on_exhausted_retries() {
         None,
         test_context_setup(false),
         no_compaction(),
+        no_amc(),
         SkillsRuntime::disabled(),
         MemoriesRuntime::disabled(),
         TasksRuntime::disabled(),
@@ -896,7 +918,7 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
     assert_eq!(library.len(), 1);
 
     let set = GgCapabilitySet::minimal("mock/echo");
-    let registry = ToolRegistry::from_run(&set, &library, None, None);
+    let registry = ToolRegistry::from_run(&set, &library, None, None, None);
     let runtime = SkillsRuntime::new(Arc::clone(&library));
     let ctx = ToolContext::new(dir.path());
     let sink = CollectingSink::new();
@@ -922,6 +944,7 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
         None,
         test_context_setup(true),
         no_compaction(),
+        no_amc(),
         runtime,
         MemoriesRuntime::disabled(),
         TasksRuntime::disabled(),
@@ -1071,6 +1094,7 @@ async fn drive_enforces_memory_caps_end_to_end() {
         &Arc::new(SkillLibrary::empty()),
         Some(&memories.store()),
         None,
+        None,
     );
 
     // Write `first` (accepted), then `second` (refused — count cap), then stop.
@@ -1093,6 +1117,7 @@ async fn drive_enforces_memory_caps_end_to_end() {
         None,
         test_context_setup(true),
         no_compaction(),
+        no_amc(),
         SkillsRuntime::disabled(),
         memories,
         TasksRuntime::disabled(),
@@ -1237,6 +1262,7 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
         &Arc::new(SkillLibrary::empty()),
         None,
         Some(&tasks.store()),
+        None,
     );
 
     // add a, add b (blocked by a), try a blocked-by b (cycle → refused), complete a, stop.
@@ -1280,6 +1306,7 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
         None,
         test_context_setup(true),
         no_compaction(),
+        no_amc(),
         SkillsRuntime::disabled(),
         MemoriesRuntime::disabled(),
         tasks,
@@ -1391,6 +1418,7 @@ fn compaction_runtimes(dir: &Path) -> (ToolRegistry, SkillsRuntime, MemoriesRunt
         &library,
         Some(&memories.store()),
         Some(&tasks.store()),
+        None,
     );
     (registry, skills, memories, tasks)
 }
@@ -1420,6 +1448,7 @@ async fn drive_compacts_at_the_threshold_and_retains_pinned_state() {
         None,
         test_context_setup_with_window(true, 4_000),
         compaction_at(0.6),
+        no_amc(),
         skills,
         memories,
         tasks,
@@ -1568,6 +1597,7 @@ async fn drive_never_compacts_when_capability_off() {
         None,
         test_context_setup_with_window(true, 4_000),
         no_compaction(),
+        no_amc(),
         skills,
         memories,
         tasks,
@@ -1590,5 +1620,192 @@ async fn drive_never_compacts_when_capability_off() {
             GgTelemetryKind::ContextBreakdown { fullness: Some(f), .. } if *f >= 0.6
         )),
         "the window crossed the threshold, yet nothing compacted"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Agent-managed context, end to end through the loop
+// ---------------------------------------------------------------------------
+
+/// A capability set with the agent-managed-context capability enabled on top of the minimal
+/// defaults, so the reclaim tools are offered and the fullness signal is injected.
+fn minimal_with_amc(model: &str) -> GgCapabilitySet {
+    let mut set = GgCapabilitySet::minimal(model);
+    set.capabilities.push(GgCapabilityConfig::enabled(
+        CAPABILITY_AGENT_MANAGED_CONTEXT,
+    ));
+    set
+}
+
+/// The FileView token band of every emitted `ContextBreakdown`, in order.
+fn file_view_bands(events: &[test_cabinet_core::gg::GgTelemetryEvent]) -> Vec<u64> {
+    events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::ContextBreakdown { by_source, .. } => Some(
+                by_source
+                    .iter()
+                    .find(|b| b.source == GgContextSource::FileView)
+                    .map(|b| b.tokens)
+                    .unwrap_or(0),
+            ),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The offline agent-managed-context e2e: the scripted mock writes and reads a file, evicts the
+/// file view (reclaiming it), archives the older thread, then searches the archive to recover
+/// it. The stream carries the `ContextManaged` effects, the file-view band drops to zero, and
+/// the shared archive holds the recovered material.
+#[tokio::test]
+async fn drive_manages_context_end_to_end() {
+    let dir = TempDir::new().unwrap();
+    let ctx = ToolContext::new(dir.path());
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-amc".to_string()), Box::new(sink.clone()));
+
+    let set = minimal_with_amc("mock/echo");
+    let archive = Arc::new(Mutex::new(ArchiveStore::new()));
+    let registry = ToolRegistry::from_run(
+        &set,
+        &Arc::new(SkillLibrary::empty()),
+        None,
+        None,
+        Some(&archive),
+    );
+
+    let client = MockClient::with_agent_managed_context_script("mock/echo");
+    let end = drive(
+        &client,
+        "go",
+        &registry,
+        &ctx,
+        &emitter,
+        20,
+        None,
+        test_context_setup(true),
+        no_compaction(),
+        amc_with(Arc::clone(&archive)),
+        SkillsRuntime::disabled(),
+        MemoriesRuntime::disabled(),
+        TasksRuntime::disabled(),
+    )
+    .await;
+    assert_eq!(end.status, "completed");
+
+    let events = sink.events();
+
+    // (a) an evict ContextManaged effect that actually reclaimed tokens.
+    let evict = events
+        .iter()
+        .find_map(|e| match &e.kind {
+            GgTelemetryKind::ContextManaged {
+                action: GgContextAction::EvictFileViews,
+                reclaimed_tokens,
+                items,
+                ..
+            } => Some((*reclaimed_tokens, *items)),
+            _ => None,
+        })
+        .expect("an evict_file_views ContextManaged event");
+    assert!(evict.0 > 0, "the eviction reclaimed tokens");
+    assert_eq!(evict.1, 1, "one file view was evicted");
+
+    // (b) an archive ContextManaged effect.
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::ContextManaged {
+                action: GgContextAction::ArchiveThread,
+                ..
+            }
+        )),
+        "an archive_thread ContextManaged event"
+    );
+
+    // (c) the file-view band rose (after the read) and fell back to zero (after the evict).
+    let bands = file_view_bands(&events);
+    assert!(
+        bands.iter().any(|&t| t > 0),
+        "the file view entered the window"
+    );
+    assert_eq!(
+        *bands.last().unwrap(),
+        0,
+        "the file-view band drops to zero after eviction"
+    );
+
+    // (d) search_archive recovered the archived reference (a successful hit), and the shared
+    // archive still holds the material out of the live window.
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::ToolResult { name, ok: true, summary: Some(s) }
+                if name == "search_archive" && s.contains("archive hit")
+        )),
+        "search_archive returned a hit"
+    );
+    assert!(
+        !archive.lock().unwrap().search("level.json", 10).is_empty(),
+        "the archived thread material remains searchable after the run"
+    );
+}
+
+/// With the capability off, none of the agent-managed-context tools are offered and no
+/// `ContextManaged` effect or fullness signal is produced — the ablation off arm. Driving the
+/// same script, every reclaim/search call comes back as an unknown-tool error and the run still
+/// completes.
+#[tokio::test]
+async fn drive_without_amc_offers_no_context_management() {
+    let dir = TempDir::new().unwrap();
+    let ctx = ToolContext::new(dir.path());
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-no-amc".to_string()), Box::new(sink.clone()));
+
+    // Minimal set (no agent-managed-context), and no archive bound to the registry.
+    let set = GgCapabilitySet::minimal("mock/echo");
+    let registry = ToolRegistry::from_run(&set, &Arc::new(SkillLibrary::empty()), None, None, None);
+    for name in ["evict_file_view", "archive_thread", "search_archive"] {
+        assert!(
+            !registry.definitions().iter().any(|d| d.name == name),
+            "`{name}` must not be offered when the capability is off"
+        );
+    }
+
+    let client = MockClient::with_agent_managed_context_script("mock/echo");
+    let end = drive(
+        &client,
+        "go",
+        &registry,
+        &ctx,
+        &emitter,
+        20,
+        None,
+        test_context_setup(true),
+        no_compaction(),
+        no_amc(),
+        SkillsRuntime::disabled(),
+        MemoriesRuntime::disabled(),
+        TasksRuntime::disabled(),
+    )
+    .await;
+    assert_eq!(end.status, "completed");
+
+    let events = sink.events();
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e.kind, GgTelemetryKind::ContextManaged { .. })),
+        "the off arm must never emit a ContextManaged event"
+    );
+    // No fullness signal reached the model: no context item content starts with the signal
+    // line (the breakdown's System band is only the base prompt).
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::ToolResult { name, ok: false, .. } if name == "evict_file_view"
+        )),
+        "the reclaim call falls through to an unknown-tool error when the capability is off"
     );
 }

@@ -13,9 +13,12 @@ fn minimal_capability_set_binds_the_primary_slot_and_phase0_capabilities() {
     assert!(set.is_enabled(CAPABILITY_FILESYSTEM));
     // Context visibility is a default-on capability (it adds no tools, only accounting).
     assert!(set.is_enabled(CAPABILITY_CONTEXT_VISIBILITY));
-    // An absent capability is distinguishable from a present one.
+    // An absent capability is distinguishable from a present one. Both Phase 2 backstops are
+    // opt-in, so neither is in the minimal set.
     assert!(!set.is_enabled("compaction"));
     assert!(set.capability("compaction").is_none());
+    assert!(!set.is_enabled(CAPABILITY_AGENT_MANAGED_CONTEXT));
+    assert!(set.capability(CAPABILITY_AGENT_MANAGED_CONTEXT).is_none());
     assert_eq!(
         set.model_for_slot(PRIMARY_SLOT),
         Some("anthropic/claude-opus-4.8")
@@ -284,6 +287,35 @@ fn tasks_state_serializes_the_dag_with_statuses_and_edges() {
     );
     let back: GgTelemetryKind = serde_json::from_value(value).expect("deserialize");
     assert_eq!(kind, back);
+}
+
+#[test]
+fn context_managed_serializes_the_action_and_reclaim() {
+    let kind = GgTelemetryKind::ContextManaged {
+        action: GgContextAction::EvictFileViews,
+        reclaimed_tokens: 1280,
+        items: 2,
+        detail: "Evicted 2 file view(s) (a.js, b.js), reclaiming ~1280 tokens.".to_string(),
+    };
+    let value = serde_json::to_value(&kind).expect("serialize");
+    assert_eq!(
+        value,
+        json!({
+            "type": "context_managed",
+            "action": "evict_file_views",
+            "reclaimedTokens": 1280,
+            "items": 2,
+            "detail": "Evicted 2 file view(s) (a.js, b.js), reclaiming ~1280 tokens.",
+        })
+    );
+    let back: GgTelemetryKind = serde_json::from_value(value).expect("deserialize");
+    assert_eq!(kind, back);
+
+    // The other action variant tags snake_case too.
+    assert_eq!(
+        serde_json::to_value(GgContextAction::ArchiveThread).unwrap(),
+        json!("archive_thread")
+    );
 }
 
 #[test]

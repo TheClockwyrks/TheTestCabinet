@@ -1,5 +1,20 @@
 {
   "$defs": {
+    "GgContextAction": {
+      "description": "The kind of agent-managed-context action a [`ContextManaged`](GgTelemetryKind::ContextManaged)\nevent reports — the model-facing window management that is the complement to\n[compaction](CAPABILITY_COMPACTION).\n\nThe [agent-managed context](https://docs.testcabinet.ai/gg/agent-managed-context/)\ncapability lets a disciplined agent reclaim window space itself rather than waiting for\nthe automatic backstop: it can [evict file views](Self::EvictFileViews) it no longer\nneeds (safe — it can re-read the file later) or [archive a section of its\nthread](Self::ArchiveThread) (removed from the live window but kept **searchable** via\n`search_archive`). Both reclaim tokens; a `search_archive` call reclaims nothing and so\nis reported only as an ordinary tool result, not as a `ContextManaged` action.",
+      "oneOf": [
+        {
+          "const": "evict_file_views",
+          "description": "The agent evicted one or more [file views](GgContextSource::FileView) (the results of\n`read_file`) from the live window, reclaiming their tokens. The file is unchanged on\ndisk and can be re-read.",
+          "type": "string"
+        },
+        {
+          "const": "archive_thread",
+          "description": "The agent archived a section of its [thread](GgContextSource::History) — the oldest\nephemeral turns — removing it from the live window while keeping it searchable and\nrecoverable through `search_archive`.",
+          "type": "string"
+        }
+      ]
+    },
     "GgContextSource": {
       "description": "The **source** a context-window contribution is attributed to, for the per-source\naccounting [context visibility] reports.\n\ngg's context is not a flat transcript: every item that occupies the window is tagged\nwith the source that produced it, so gg can report *what* is filling the window —\nthe signal [compaction] triggers on and the console renders as a stacked line graph.\nThe set is a **closed, stable taxonomy** (unlike the open capability ids): the\nconsole's categories and their colors are keyed to these variants, and\n[`ALL`](Self::ALL) fixes their order so a breakdown is emitted with every category\npresent (a zero when a source contributed nothing this turn), keeping the graph's\nbands stable across turns.\n\n[context visibility]: https://docs.testcabinet.ai/gg/context-visibility/\n[compaction]: https://docs.testcabinet.ai/gg/compaction/",
       "oneOf": [
@@ -464,6 +479,37 @@
         "summaryTokens",
         "retained"
       ],
+      "type": "object"
+    },
+    {
+      "description": "An [agent-managed context](https://docs.testcabinet.ai/gg/agent-managed-context/)\naction: the model reclaimed window space itself — evicting file views or archiving a\nsection of its thread — the complement to the automatic [compaction] backstop.\n\nEmitted when the [agent-managed-context](CAPABILITY_AGENT_MANAGED_CONTEXT) capability\nis enabled and the model calls `evict_file_view` or `archive_thread` (the underlying\n`ToolCall`/`ToolResult` still stream too; this event carries the *effect* — how much\nwindow was reclaimed). The console draws it as a marker on the timeline and the\ncontext graph, alongside the drop the next\n[`ContextBreakdown`](GgTelemetryKind::ContextBreakdown) shows in the affected\nband. A `search_archive` call reclaims nothing, so it is reported only as an ordinary\ntool result, never here. A run with the capability off emits none.\n\n[compaction]: https://docs.testcabinet.ai/gg/compaction/",
+      "properties": {
+        "action": {
+          "$ref": "#/$defs/GgContextAction",
+          "description": "Which window-management action the agent took."
+        },
+        "detail": {
+          "description": "A short human-readable description of the action and what it affected (for\nexample the evicted paths, or how many turns were archived and the archive's new\nsize), for the console feed.",
+          "type": "string"
+        },
+        "items": {
+          "description": "The number of context items removed from the live window (evicted file views, or\narchived thread items).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "reclaimedTokens": {
+          "description": "The estimated tokens reclaimed from the live window by the action.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "type": {
+          "const": "context_managed",
+          "type": "string"
+        }
+      },
+      "required": ["type", "action", "reclaimedTokens", "items", "detail"],
       "type": "object"
     },
     {
