@@ -205,6 +205,19 @@ impl Emitter {
     pub fn finalize_summary(&self, terminal_status: &str) -> GgSessionSummary {
         self.summary.finalize(terminal_status)
     }
+
+    /// Record the run's [effective toolset](GgSessionSummary::effective_tools) on the shared
+    /// [summary tracker](SessionSummaryTracker) — the exact tool names offered to the root agent,
+    /// in the order presented to the model.
+    ///
+    /// Unlike the telemetry-derived counts, the offered toolset is not carried by any event, so the
+    /// binary records it once (off the root's assembled [`ToolRegistry`](crate::tools::ToolRegistry))
+    /// before [finalizing](Self::finalize_summary). Because the tracker is shared across every
+    /// agent-scoped emitter, it does not matter which emitter records it; the loop records it on the
+    /// root's.
+    pub fn record_effective_tools(&self, tools: Vec<String>) {
+        self.summary.record_effective_tools(tools);
+    }
 }
 
 /// The current UTC time as an RFC 3339 string, matching how `core` stamps its own

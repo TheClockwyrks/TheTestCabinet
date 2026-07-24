@@ -301,6 +301,23 @@ pub struct GgCapabilitySet {
     /// many, possibly cross-provider.
     #[serde(default)]
     pub slots: Vec<GgSlotBinding>,
+    /// Individual tool names to **withhold** from the agent even when the capability
+    /// that offers them is on — the finest-grained ablation lever, one notch below
+    /// toggling a whole [capability](GgCapabilityConfig::enabled).
+    ///
+    /// Because gg's modularity comes from the toolset, the *set of tools offered* is
+    /// itself an experimental variable: turning a capability off is the coarse way to
+    /// withhold its tools, and this list is the fine way — drop a single over-used or
+    /// competing tool (say `edit_file` while keeping `write_file`, to ask "does
+    /// whole-file rewriting beat patching?") without disabling the rest of its
+    /// capability. A named tool is not offered to the model (no schema, not
+    /// dispatchable) exactly as if its capability were off, and the run records the
+    /// resulting [effective toolset](GgSessionSummary::effective_tools) so a study can
+    /// slice by which tools were actually present. A name here that no enabled
+    /// capability offers withholds nothing (it is reported as a startup warning, not an
+    /// error, so a sweep can list a tool that only some arms offer).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub disabled_tools: Vec<String>,
 }
 
 impl Default for GgCapabilitySet {
@@ -312,6 +329,7 @@ impl Default for GgCapabilitySet {
             preset: None,
             capabilities: default_capabilities(),
             slots: Vec::new(),
+            disabled_tools: Vec::new(),
         }
     }
 }
@@ -330,7 +348,16 @@ impl GgCapabilitySet {
             preset: Some("minimal".to_string()),
             capabilities: default_capabilities(),
             slots: vec![GgSlotBinding::new(PRIMARY_SLOT, model_id)],
+            disabled_tools: Vec::new(),
         }
+    }
+
+    /// Whether the tool named `tool` is [withheld](Self::disabled_tools) from the agent
+    /// even when its capability is on — the per-tool ablation override. A withheld tool
+    /// is not offered to the model and not dispatchable, exactly as if its capability
+    /// were off.
+    pub fn is_tool_disabled(&self, tool: &str) -> bool {
+        self.disabled_tools.iter().any(|t| t == tool)
     }
 
     /// The configuration for the capability with the given id, or `None` when the
@@ -1108,6 +1135,20 @@ pub struct GgSessionSummary {
     /// turn).
     #[serde(default)]
     pub slot_costs: Vec<GgSlotCost>,
+    /// The **effective toolset**: the exact set of tool names offered to the run's agent,
+    /// in the order they were presented to the model. This is what the run's
+    /// [capability set](GgCapabilitySet) *actually resolved to* — a capability contributes
+    /// its tools only when enabled (and, for the stateful ones, only when its store is
+    /// non-empty), minus any individually [withheld](GgCapabilitySet::disabled_tools) tool —
+    /// so recording it durably makes the toolset a first-class experimental variable a query
+    /// can slice by ("group by whether `edit_file` was offered", "runs with only
+    /// `write_file`"). Because switching a capability on/off *is* offering/withholding its
+    /// tools, this is the ground truth an ablation study reads rather than re-deriving the
+    /// toolset from the capability set. Empty only for a run whose agent was offered no tools
+    /// at all. Recorded off the root agent's toolset (subagents inherit the same capability
+    /// set; only the root may additionally be driven by an FSM).
+    #[serde(default)]
+    pub effective_tools: Vec<String>,
 }
 
 /// A single event in gg's first-party telemetry stream (schema v1).

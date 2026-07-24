@@ -32,6 +32,7 @@ fn summary() -> GgSessionSummary {
         issues_created: 0,
         issues_completed: 0,
         slot_costs: Vec::new(),
+        effective_tools: Vec::new(),
     }
 }
 
@@ -168,6 +169,87 @@ async fn group_by_compaction_enabled_context_overflow_rate_differs() {
 
     assert_eq!(rate_for("false"), 0.5, "compaction-off overflow rate");
     assert_eq!(rate_for("true"), 0.0, "compaction-on overflow rate");
+}
+
+/// Grouping and filtering by whether a tool was offered slices the population by the effective
+/// toolset recorded on each run — the toolset-ablation query, end to end through the store. Two
+/// runs offered `edit_file`; one offered only `write_file`.
+#[tokio::test]
+async fn group_and_filter_by_tool_offered_slices_by_the_effective_toolset() {
+    let db = Db::connect_in_memory().await.unwrap();
+
+    let with_tools = |id: &str, tools: &[&str]| {
+        let mut r = gg_record(id, true, false);
+        r.subject.gg_summary = Some(GgSessionSummary {
+            effective_tools: tools.iter().map(|s| s.to_string()).collect(),
+            ..summary()
+        });
+        r
+    };
+    db.push(
+        &with_tools("t1", &["shell", "edit_file"]),
+        &RunLinks::default(),
+        None,
+    )
+    .await
+    .unwrap();
+    db.push(
+        &with_tools("t2", &["shell", "edit_file"]),
+        &RunLinks::default(),
+        None,
+    )
+    .await
+    .unwrap();
+    db.push(
+        &with_tools("t3", &["shell", "write_file"]),
+        &RunLinks::default(),
+        None,
+    )
+    .await
+    .unwrap();
+
+    let runs = db.list_gg_runs(None).await.unwrap();
+
+    // Group by whether `edit_file` was offered: two "true", one "false".
+    let group = GgAggregateQuery {
+        test_case: None,
+        facet_filters: Vec::new(),
+        metric_filters: Vec::new(),
+        group_by: vec![GgFacet::ToolOffered {
+            tool: "edit_file".to_string(),
+        }],
+        metrics: Vec::new(),
+    };
+    let resp = aggregate_stored_gg_runs(&runs, &group, |_| None);
+    assert_eq!(resp.total_runs, 3);
+    let n_for = |v: &str| {
+        resp.buckets
+            .iter()
+            .find(|b| b.key[0].value.as_deref() == Some(v))
+            .map(|b| b.n)
+    };
+    assert_eq!(n_for("true"), Some(2), "two runs offered edit_file");
+    assert_eq!(n_for("false"), Some(1), "one run did not");
+
+    // Filter to runs that did NOT offer `edit_file` (the "only write_file" arm).
+    let filter = GgAggregateQuery {
+        test_case: None,
+        facet_filters: vec![test_cabinet_core::gg_aggregate::GgFacetFilter {
+            facet: GgFacet::ToolOffered {
+                tool: "edit_file".to_string(),
+            },
+            op: test_cabinet_core::gg_aggregate::GgFacetOp::Eq,
+            value: Some("false".to_string()),
+        }],
+        metric_filters: Vec::new(),
+        group_by: Vec::new(),
+        metrics: Vec::new(),
+    };
+    let resp = aggregate_stored_gg_runs(&runs, &filter, |_| None);
+    assert_eq!(
+        resp.total_runs, 1,
+        "only the no-edit_file run passes the filter"
+    );
 }
 
 /// The `testCase` narrowing and a facet filter compose: filtering to the

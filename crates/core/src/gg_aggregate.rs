@@ -156,6 +156,22 @@ pub enum GgFacet {
         /// The slot name (for example `"primary"` or `"reviewer"`).
         slot: String,
     },
+    /// Whether the named tool was in the run's **effective toolset** — the exact set of tools it
+    /// [offered its agent](GgSessionSummary::effective_tools). This is the
+    /// [toolset-ablation](https://docs.testcabinet.ai/gg/toolset-ablation/) slice-by dimension:
+    /// because switching a capability on/off *is* offering/withholding its tools, "was `edit_file`
+    /// offered?" is a first-class facet a study groups and filters by ("group by whether `edit_file`
+    /// was offered → avg score"; "runs with only `write_file` (no `edit_file`) → reopened-issue
+    /// rate").
+    ///
+    /// Resolves to `"true"`/`"false"` for a run that recorded a [summary](GgSessionSummary) (the
+    /// durable record of what it offered) — `"false"` catching both a tool its capability withheld
+    /// and one individually [disabled](crate::gg::GgCapabilitySet::disabled_tools) — and to absent
+    /// only for a run that never ran a session (no summary, so the offered toolset is unknown).
+    ToolOffered {
+        /// The tool's name (for example `"edit_file"` or `"speculate"`).
+        tool: String,
+    },
     /// The run's [terminal status](GgSessionSummary::terminal_status), or absent for a
     /// run that recorded no session summary (a launch that never ran).
     TerminalStatus {},
@@ -191,6 +207,13 @@ impl GgFacet {
             GgFacet::SlotModel { slot } => capability_set
                 .and_then(|set| set.model_for_slot(slot))
                 .map(str::to_string),
+            GgFacet::ToolOffered { tool } => {
+                // The offered toolset lives on the summary (the durable record of what the run
+                // actually offered), so a run that never ran a session buckets as absent — but one
+                // that did resolves to true/false, "false" covering both a capability-withheld and
+                // an individually disabled tool.
+                summary.map(|s| bool_str(s.effective_tools.iter().any(|t| t == tool)).to_string())
+            }
             GgFacet::TerminalStatus {} => summary.map(|s| s.terminal_status.clone()),
         }
     }
@@ -278,6 +301,29 @@ impl GgCapabilitySet {
             ));
         }
         out
+    }
+}
+
+impl GgSessionSummary {
+    /// Enumerate the [toolset](GgFacet::ToolOffered) facets this run's
+    /// [effective toolset](Self::effective_tools) exposes — one
+    /// [`ToolOffered`](GgFacet::ToolOffered) binding per offered tool, resolved to `"true"`.
+    ///
+    /// This is the toolset-ablation companion to [`GgCapabilitySet::facets`]: the capability set
+    /// enumerates the capability/slot/preset dimensions, and the summary enumerates the *tool*
+    /// dimensions — because the exact offered toolset is recorded on the summary, not fully derivable
+    /// from the capability set (a stateful capability offers its tools only when its store is
+    /// non-empty, and individual tools may be [withheld](GgCapabilitySet::disabled_tools)). A console
+    /// unions the two off a representative run to populate its facet picker; every enumerated facet
+    /// is also filterable and groupable in a [`GgAggregateQuery`].
+    pub fn tool_facets(&self) -> Vec<GgFacetBinding> {
+        self.effective_tools
+            .iter()
+            .map(|tool| GgFacetBinding {
+                facet: GgFacet::ToolOffered { tool: tool.clone() },
+                value: Some("true".to_string()),
+            })
+            .collect()
     }
 }
 

@@ -70,12 +70,34 @@ struct SummaryState {
     issues_completed: HashSet<String>,
     /// One entry per [`SlotUsage`](GgTelemetryKind::SlotUsage) rollup, captured in emission order.
     slot_costs: Vec<GgSlotCost>,
+    /// The [effective toolset](GgSessionSummary::effective_tools) — the exact tool names offered to
+    /// the run's (root) agent, in the order presented to the model. Unlike every other field this is
+    /// **not** telemetry-derived (no event carries the offered toolset); the binary records it once,
+    /// off the assembled [`ToolRegistry`](crate::tools::ToolRegistry), via
+    /// [`record_effective_tools`](SessionSummaryTracker::record_effective_tools).
+    effective_tools: Vec<String>,
 }
 
 impl SessionSummaryTracker {
     /// A fresh, empty tracker.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Record the run's [effective toolset](GgSessionSummary::effective_tools) — the exact set of
+    /// tool names offered to the (root) agent, in the order they were presented to the model.
+    ///
+    /// This is the one summary figure that is not folded in from the telemetry stream (no event
+    /// carries the offered toolset), so the binary sets it once, off the root agent's assembled
+    /// [`ToolRegistry`](crate::tools::ToolRegistry), before [finalizing](Self::finalize). Recording
+    /// the *resolved* toolset — a capability's tools only when enabled and, for the stateful ones,
+    /// only when their store is non-empty, minus any individually
+    /// [withheld](test_cabinet_core::gg::GgCapabilitySet::disabled_tools) tool — makes the toolset a
+    /// first-class, slice-by ablation variable rather than something a query must re-derive from the
+    /// capability set.
+    pub fn record_effective_tools(&self, tools: Vec<String>) {
+        let mut state = self.inner.lock().expect("summary tracker lock");
+        state.effective_tools = tools;
     }
 
     /// Fold one emitted telemetry event into the running summary.
@@ -167,6 +189,7 @@ impl SessionSummaryTracker {
             issues_created: state.issues_created.len() as u64,
             issues_completed: state.issues_completed.len() as u64,
             slot_costs: state.slot_costs.clone(),
+            effective_tools: state.effective_tools.clone(),
         }
     }
 }

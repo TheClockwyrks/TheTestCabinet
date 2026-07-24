@@ -112,6 +112,11 @@ fn gg_record(id: &str) -> RunRecord {
                 actual: Some(0.0063),
             }),
         }],
+        effective_tools: vec![
+            "shell".to_string(),
+            "read_file".to_string(),
+            "write_file".to_string(),
+        ],
     });
     record
 }

@@ -42,6 +42,7 @@ fn disabled_capability_is_present_but_off() {
         preset: None,
         capabilities: vec![GgCapabilityConfig::disabled(CAPABILITY_SHELL)],
         slots: Vec::new(),
+        disabled_tools: Vec::new(),
     };
     // Present-but-disabled reports not-enabled but is still findable.
     assert!(!set.is_enabled(CAPABILITY_SHELL));
@@ -69,6 +70,7 @@ fn capability_set_round_trips_through_json() {
                 provider: Some("openrouter".to_string()),
             },
         ],
+        disabled_tools: vec!["edit_file".to_string()],
     };
     let value = serde_json::to_value(&set).expect("serialize");
     let back: GgCapabilitySet = serde_json::from_value(value).expect("deserialize");

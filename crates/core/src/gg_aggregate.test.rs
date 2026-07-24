@@ -22,6 +22,7 @@ fn summary() -> GgSessionSummary {
         issues_created: 0,
         issues_completed: 0,
         slot_costs: Vec::new(),
+        effective_tools: Vec::new(),
     }
 }
 
@@ -64,6 +65,7 @@ fn facets_extracts_enabled_impl_params_slots_and_preset() {
             params: json!({ "triggerFullness": 0.8 }),
         }],
         slots: vec![GgSlotBinding::new(PRIMARY_SLOT, "mock/echo")],
+        disabled_tools: Vec::new(),
     };
     // A capability with no implementation selected reports the "default" bucket.
     set.capabilities
@@ -125,6 +127,109 @@ fn capability_enabled_facet_treats_absent_as_off() {
         facet.resolve("pong", Some(&set), None),
         Some("false".to_string())
     );
+}
+
+#[test]
+fn tool_offered_facet_resolves_off_the_effective_toolset() {
+    // The toolset-ablation facet reads the run's recorded effective toolset: a tool that was
+    // offered resolves to "true", one that was not to "false", and — for a run that never ran a
+    // session (no summary, so the offered toolset is unknown) — to absent.
+    let offered = GgFacet::ToolOffered {
+        tool: "edit_file".to_string(),
+    };
+    let mut summary = summary();
+    summary.effective_tools = vec!["shell".to_string(), "write_file".to_string()];
+
+    // Present summary, tool not offered → "false".
+    assert_eq!(
+        offered.resolve("pong", None, Some(&summary)),
+        Some("false".to_string())
+    );
+    // Present summary, tool offered → "true".
+    assert_eq!(
+        GgFacet::ToolOffered {
+            tool: "write_file".to_string()
+        }
+        .resolve("pong", None, Some(&summary)),
+        Some("true".to_string())
+    );
+    // No summary → absent (the offered toolset is unknown).
+    assert_eq!(offered.resolve("pong", None, None), None);
+}
+
+#[test]
+fn tool_facets_enumerates_one_binding_per_offered_tool() {
+    // The summary's toolset-facet discovery mirrors `GgCapabilitySet::facets` for tools: one
+    // `ToolOffered` binding per effective tool, each resolved to "true".
+    let mut summary = summary();
+    summary.effective_tools = vec!["shell".to_string(), "read_file".to_string()];
+
+    let facets = summary.tool_facets();
+    assert_eq!(
+        facets,
+        vec![
+            GgFacetBinding {
+                facet: GgFacet::ToolOffered {
+                    tool: "shell".to_string()
+                },
+                value: Some("true".to_string()),
+            },
+            GgFacetBinding {
+                facet: GgFacet::ToolOffered {
+                    tool: "read_file".to_string()
+                },
+                value: Some("true".to_string()),
+            },
+        ]
+    );
+}
+
+#[test]
+fn group_by_tool_offered_slices_score_by_whether_a_tool_was_present() {
+    // The headline toolset-ablation query: group by whether `edit_file` was offered and average
+    // the score, so "does removing edit_file help?" is a query. Two runs offered it (scores 0.4,
+    // 0.6 → avg 0.5); one did not (score 0.9).
+    let mut rows = Vec::new();
+    for (tools, score) in [
+        (vec!["shell", "edit_file"], 0.4),
+        (vec!["shell", "edit_file"], 0.6),
+        (vec!["shell", "write_file"], 0.9),
+    ] {
+        let mut r = row();
+        r.score = Some(score);
+        r.summary = Some(GgSessionSummary {
+            effective_tools: tools.into_iter().map(str::to_string).collect(),
+            ..summary()
+        });
+        rows.push(r);
+    }
+
+    let query = GgAggregateQuery {
+        test_case: None,
+        facet_filters: Vec::new(),
+        metric_filters: Vec::new(),
+        group_by: vec![GgFacet::ToolOffered {
+            tool: "edit_file".to_string(),
+        }],
+        metrics: vec![GgMetricSpec {
+            metric: GgMetric::Score {},
+            agg: GgAggregation::Avg,
+        }],
+    };
+    let resp = aggregate(&rows, &query);
+    assert_eq!(resp.total_runs, 3);
+
+    let bucket_for = |value: &str| {
+        resp.buckets
+            .iter()
+            .find(|b| b.key[0].value.as_deref() == Some(value))
+            .unwrap_or_else(|| panic!("missing edit_file={value} bucket"))
+    };
+    // The two edit_file runs average 0.5; the lone no-edit_file run is 0.9.
+    assert_eq!(bucket_for("true").n, 2);
+    assert_eq!(bucket_for("true").metrics[0].value, Some(0.5));
+    assert_eq!(bucket_for("false").n, 1);
+    assert_eq!(bucket_for("false").metrics[0].value, Some(0.9));
 }
 
 #[test]

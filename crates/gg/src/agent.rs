@@ -109,7 +109,7 @@ use crate::tools::{
     SPAWN_SUBAGENT_TOOL, SPECULATE_TOOL, SUBMIT_PLAN_TOOL, ToolContext, ToolOutcome, ToolRegistry,
     WAIT_FOR_SUBAGENTS_TOOL, is_board_tool, is_context_reclaim_tool, is_fsm_tool, is_memory_tool,
     is_planning_tool, is_subagent_tool, is_task_tool, parse_archive_keep_recent, parse_evict_path,
-    plan_mode_offers,
+    plan_mode_offers, unknown_disabled_tools,
 };
 
 /// The default per-run turn ceiling, used when no `maxTurns` capability param sets
@@ -1048,6 +1048,20 @@ async fn run_agent(
             orch.speculative_active(),
         );
         announce_fsm(emitter, &orch.caps, &fsm);
+        // Record the run's effective toolset on the session summary — the exact set of tool names
+        // offered to the root agent after capability gating and per-tool overrides — so the toolset
+        // is a durable, slice-by ablation variable. Then warn (loudly but non-fatally) about any
+        // per-tool override that names a tool gg does not offer at all, so a typo is visible.
+        emitter.record_effective_tools(registry.tool_names());
+        for unknown in unknown_disabled_tools(&orch.caps) {
+            emitter.emit(log(
+                "warn",
+                format!(
+                    "capability set disables unknown tool `{unknown}`: it is not a tool gg offers, \
+                     so it withholds nothing. Check the name against the toolset."
+                ),
+            ));
+        }
     }
 
     let context_setup = orch.context_setup(&model_id);

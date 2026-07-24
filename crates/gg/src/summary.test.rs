@@ -57,6 +57,42 @@ fn empty_tracker_finalizes_to_a_zeroed_summary() {
     assert_eq!(summary.issues_created, 0);
     assert_eq!(summary.issues_completed, 0);
     assert!(summary.slot_costs.is_empty());
+    // The effective toolset is empty until the binary records it off the assembled registry.
+    assert!(summary.effective_tools.is_empty());
+}
+
+/// The effective toolset is recorded directly (not folded in from the stream), so it survives on
+/// the finalized summary in the exact order the registry offered it — the durable, slice-by
+/// ablation variable a query reads.
+#[test]
+fn records_the_effective_toolset_verbatim() {
+    let tracker = SessionSummaryTracker::new();
+    // A stray telemetry event flows through the same tracker; it must not disturb the recorded
+    // toolset.
+    tracker.observe(&GgTelemetryKind::AgentSpawned {
+        slot: "primary".to_string(),
+        model_id: "mock/echo".to_string(),
+        depth: 0,
+        brief: None,
+        worktree: None,
+    });
+    tracker.record_effective_tools(vec![
+        "shell".to_string(),
+        "read_file".to_string(),
+        "write_file".to_string(),
+    ]);
+
+    let summary = tracker.finalize("completed");
+    assert_eq!(
+        summary.effective_tools,
+        vec![
+            "shell".to_string(),
+            "read_file".to_string(),
+            "write_file".to_string()
+        ]
+    );
+    // Recording the toolset does not disturb the telemetry-derived counts.
+    assert_eq!(summary.agents_spawned, 1);
 }
 
 /// The agent-tree figures count every `AgentSpawned` (root included) and track the deepest

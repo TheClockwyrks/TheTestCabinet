@@ -81,6 +81,67 @@ pub use subagents::{
 };
 pub use tasks::is_task_tool;
 
+/// Every tool name gg can offer, across **all** capabilities — the canonical vocabulary a per-tool
+/// [override](GgCapabilitySet::disabled_tools) is validated against.
+///
+/// A name in a run's `disabled_tools` that is **not** in this set is unknown (a typo, or a tool that
+/// no longer exists) and is surfaced as a startup warning by [`unknown_disabled_tools`]; a name that
+/// *is* here but that the run's enabled capabilities do not offer simply withholds nothing (it is
+/// not flagged, so a sweep can name a tool only some arms offer). The list is the single source of
+/// truth for the vocabulary; a test asserts a maximal registry offers exactly these, so a newly
+/// added or renamed tool cannot drift out of sync.
+pub const ALL_TOOL_NAMES: &[&str] = &[
+    "shell",
+    "read_file",
+    "write_file",
+    "edit_file",
+    "list_dir",
+    "read_skill",
+    "write_memory",
+    "update_memory",
+    "delete_memory",
+    "add_task",
+    "update_task",
+    "set_blocked_by",
+    "complete_task",
+    "remove_task",
+    "create_epic",
+    "create_issue",
+    "update_issue",
+    "set_issue_blocked_by",
+    "complete_issue",
+    "remove_epic",
+    "remove_issue",
+    "evict_file_view",
+    "archive_thread",
+    "search_archive",
+    "enter_plan_mode",
+    "submit_plan",
+    "advance_state",
+    "spawn_subagent",
+    "wait_for_subagents",
+    "send_message",
+    "run_workflow",
+    "speculate",
+];
+
+/// The names in a capability set's per-tool [overrides](GgCapabilitySet::disabled_tools) that are
+/// **unknown** — not a tool gg can offer at all (a typo, or a removed tool), validated against
+/// [`ALL_TOOL_NAMES`].
+///
+/// The loop reports these as a startup **warning** rather than failing the run: a misconfigured
+/// override should be loud but must not abort a study, and a name that is a real tool yet is not
+/// offered by *this* run's enabled capabilities (so it withholds nothing) is deliberately *not*
+/// flagged — a preset can list a tool that only some arms of a sweep offer.
+pub fn unknown_disabled_tools(capabilities: &GgCapabilitySet) -> Vec<String> {
+    capabilities
+        .disabled_tools
+        .iter()
+        .filter(|name| !ALL_TOOL_NAMES.contains(&name.as_str()))
+        .cloned()
+        .collect()
+}
+
 /// The tool names that are **read-only** — they inspect the workspace or gg's own state but
 /// mutate nothing — and so remain available in [plan mode](crate::planning). Everything not on
 /// this list (writes, edits, shell, and every task/memory/board/context mutation) is withheld
@@ -432,12 +493,38 @@ impl ToolRegistry {
             tools.push(Box::new(subagents::SpeculateTool));
         }
 
+        // Apply the per-tool ablation overrides last: an individually
+        // [withheld](GgCapabilitySet::disabled_tools) tool is dropped from the offered set even
+        // though the capability that contributes it is on, so it is never shown to the model (no
+        // schema, absent from [`definitions`](Self::definitions)) and never dispatchable (absent
+        // from [`dispatch`](Self::dispatch)). This is the finest-grained toolset ablation lever —
+        // one notch below toggling a whole capability. Names that match no offered tool are inert
+        // here (they withhold nothing); the loop separately warns about ones that are wholly
+        // [unknown](unknown_disabled_tools).
+        if !capabilities.disabled_tools.is_empty() {
+            tools.retain(|tool| !capabilities.is_tool_disabled(tool.name()));
+        }
+
         Self { tools }
     }
 
     /// The [`ToolDefinition`]s to offer the model, in registration order.
     pub fn definitions(&self) -> Vec<ToolDefinition> {
         self.tools.iter().map(|tool| tool.definition()).collect()
+    }
+
+    /// The names of the offered tools, in registration order — the run's **effective toolset** after
+    /// capability gating and per-tool [overrides](GgCapabilitySet::disabled_tools).
+    ///
+    /// Recorded on the run's [session summary](test_cabinet_core::gg::GgSessionSummary::effective_tools)
+    /// so the exact set of tools a run offered is a durable, slice-by ablation variable — the ground
+    /// truth "which tools actually mattered?" queries read, rather than re-deriving the toolset from
+    /// the capability set.
+    pub fn tool_names(&self) -> Vec<String> {
+        self.tools
+            .iter()
+            .map(|tool| tool.name().to_string())
+            .collect()
     }
 
     /// Whether any tool is offered. An empty registry (every capability off) means the

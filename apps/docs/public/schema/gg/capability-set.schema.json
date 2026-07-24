@@ -55,6 +55,13 @@
       },
       "type": "array"
     },
+    "disabledTools": {
+      "description": "Individual tool names to **withhold** from the agent even when the capability\nthat offers them is on — the finest-grained ablation lever, one notch below\ntoggling a whole [capability](GgCapabilityConfig::enabled).\n\nBecause gg's modularity comes from the toolset, the *set of tools offered* is\nitself an experimental variable: turning a capability off is the coarse way to\nwithhold its tools, and this list is the fine way — drop a single over-used or\ncompeting tool (say `edit_file` while keeping `write_file`, to ask \"does\nwhole-file rewriting beat patching?\") without disabling the rest of its\ncapability. A named tool is not offered to the model (no schema, not\ndispatchable) exactly as if its capability were off, and the run records the\nresulting [effective toolset](GgSessionSummary::effective_tools) so a study can\nslice by which tools were actually present. A name here that no enabled\ncapability offers withholds nothing (it is reported as a startup warning, not an\nerror, so a sweep can list a tool that only some arms offer).",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
     "preset": {
       "description": "The name of a saved preset this set was assembled from (for example\n`\"minimal\"`, `\"full\"`, or `\"planning-A\"`), when it is a named preset rather\nthan a hand-assembled configuration. A study is a sweep over presets, so this\nrecords which one produced a run.",
       "type": ["string", "null"]

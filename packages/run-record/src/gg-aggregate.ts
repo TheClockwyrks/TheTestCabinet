@@ -86,6 +86,13 @@ export type GgFacet =
        */
       slot: string;
     }
+  | {
+      kind: "toolOffered";
+      /**
+       * The tool's name (for example `"edit_file"` or `"speculate"`).
+       */
+      tool: string;
+    }
   | { kind: "terminalStatus" };
 
 /**

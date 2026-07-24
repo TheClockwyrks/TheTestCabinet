@@ -16,6 +16,7 @@ fn set_with(capabilities: Vec<GgCapabilityConfig>) -> GgCapabilitySet {
         preset: None,
         capabilities,
         slots: Vec::new(),
+        disabled_tools: Vec::new(),
     }
 }
 
@@ -383,6 +384,158 @@ fn plan_mode_offers_restricts_to_read_only_tools() {
     assert!(plan_mode_offers("write_file", false));
     assert!(plan_mode_offers(ENTER_PLAN_MODE_TOOL, false));
     assert!(!plan_mode_offers(SUBMIT_PLAN_TOOL, false));
+}
+
+/// A per-tool override withholds exactly the named tool while its capability stays on: the rest of
+/// the capability's tools remain offered. This is the finest-grained toolset-ablation lever — one
+/// notch below toggling a whole capability (the `apply-patch` vs `write-file` study).
+#[test]
+fn per_tool_override_withholds_only_the_named_tool() {
+    // Filesystem on, but `edit_file` individually disabled.
+    let mut set = set_with(vec![
+        GgCapabilityConfig::enabled(CAPABILITY_SHELL),
+        GgCapabilityConfig::enabled(CAPABILITY_FILESYSTEM),
+    ]);
+    set.disabled_tools = vec!["edit_file".to_string()];
+    let registry = ToolRegistry::from_capabilities(&set);
+
+    assert!(
+        !offers(&registry, "edit_file"),
+        "the individually disabled tool is withheld"
+    );
+    // Its capability stays on, so the rest of the filesystem tools (and shell) remain.
+    for name in ["shell", "read_file", "write_file", "list_dir"] {
+        assert!(
+            offers(&registry, name),
+            "expected `{name}` to remain offered"
+        );
+    }
+    // It is absent from the recorded effective toolset too.
+    assert!(!registry.tool_names().contains(&"edit_file".to_string()));
+    assert_eq!(registry.len(), 4);
+}
+
+/// A per-tool-disabled tool is genuinely undispatchable — a model that calls it anyway gets the
+/// unknown-tool error, exactly as if its capability were off (no schema, not dispatchable).
+#[tokio::test]
+async fn dispatch_per_tool_disabled_tool_returns_error_outcome() {
+    let dir = TempDir::new().unwrap();
+    let set = GgCapabilitySet {
+        disabled_tools: vec!["edit_file".to_string()],
+        ..GgCapabilitySet::default()
+    };
+    let registry = ToolRegistry::from_capabilities(&set);
+    let ctx = ToolContext::new(dir.path());
+
+    let call = ToolCall {
+        id: "call_1".to_string(),
+        name: "edit_file".to_string(),
+        arguments: json!({ "path": "a.txt", "old": "x", "new": "y" }),
+    };
+    let outcome = registry.dispatch(&call, &ctx).await;
+    assert!(!outcome.ok);
+    assert!(outcome.output.contains("unknown tool"));
+}
+
+/// `tool_names` reports the effective toolset in registration order, after **both** capability
+/// gating and per-tool overrides — the exact list recorded on the session summary.
+#[test]
+fn tool_names_reports_the_effective_toolset() {
+    // The default set is shell + filesystem.
+    let set = GgCapabilitySet {
+        disabled_tools: vec!["write_file".to_string()],
+        ..GgCapabilitySet::default()
+    };
+    let registry = ToolRegistry::from_capabilities(&set);
+    assert_eq!(
+        registry.tool_names(),
+        vec![
+            "shell".to_string(),
+            "read_file".to_string(),
+            "edit_file".to_string(),
+            "list_dir".to_string(),
+        ]
+    );
+}
+
+/// `unknown_disabled_tools` flags only names no gg tool bears (a typo or removed tool), not a real
+/// tool that this run's capabilities simply do not offer — that withholds nothing but is not a
+/// mistake (a sweep may name a tool only some arms offer).
+#[test]
+fn unknown_disabled_tools_flags_only_typos() {
+    let mut set = set_with(Vec::new());
+    set.disabled_tools = vec![
+        "edit_file".to_string(), // a real tool (not offered here, but valid) — not flagged
+        "speculate".to_string(), // a real tool — not flagged
+        "edti_file".to_string(), // a typo — flagged
+        "frobnicate".to_string(), // not a tool at all — flagged
+    ];
+    assert_eq!(
+        unknown_disabled_tools(&set),
+        vec!["edti_file".to_string(), "frobnicate".to_string()]
+    );
+}
+
+/// The canonical [`ALL_TOOL_NAMES`] vocabulary stays in lockstep with what the registry can offer:
+/// a maximal capability set (every capability enabled, every store bound, a non-empty skill
+/// library) offers exactly the names in `ALL_TOOL_NAMES`. This guards the per-tool-override
+/// vocabulary against drift when a tool is added or renamed.
+#[test]
+fn all_tool_names_matches_a_maximal_registry() {
+    use std::collections::BTreeSet;
+    use std::sync::Mutex;
+
+    use crate::archive::ArchiveStore;
+    use crate::board::{BoardCaps, BoardStore};
+    use crate::memories::{MemoryCaps, MemoryStore};
+    use crate::tasks::TaskStore;
+    use test_cabinet_core::gg::{
+        CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_EPICS_ISSUES, CAPABILITY_FSM,
+        CAPABILITY_MEMORIES, CAPABILITY_PLANNING, CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS,
+        CAPABILITY_TASKS, CAPABILITY_WORKFLOWS,
+    };
+
+    let dir = TempDir::new().unwrap();
+    std::fs::write(
+        dir.path().join("s.md"),
+        "---\nname: s\ndescription: d.\n---\nbody",
+    )
+    .unwrap();
+    let library = Arc::new(SkillLibrary::load(dir.path()));
+    let memories = Arc::new(Mutex::new(MemoryStore::new(MemoryCaps::default())));
+    let tasks = Arc::new(Mutex::new(TaskStore::new(100)));
+    let board = Arc::new(Mutex::new(BoardStore::new(BoardCaps::default())));
+    let archive = Arc::new(Mutex::new(ArchiveStore::new()));
+
+    let set = set_with(vec![
+        GgCapabilityConfig::enabled(CAPABILITY_SHELL),
+        GgCapabilityConfig::enabled(CAPABILITY_FILESYSTEM),
+        GgCapabilityConfig::enabled(CAPABILITY_SKILLS),
+        GgCapabilityConfig::enabled(CAPABILITY_MEMORIES),
+        GgCapabilityConfig::enabled(CAPABILITY_TASKS),
+        GgCapabilityConfig::enabled(CAPABILITY_EPICS_ISSUES),
+        GgCapabilityConfig::enabled(CAPABILITY_AGENT_MANAGED_CONTEXT),
+        GgCapabilityConfig::enabled(CAPABILITY_PLANNING),
+        GgCapabilityConfig::enabled(CAPABILITY_FSM),
+        GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS),
+        GgCapabilityConfig::enabled(CAPABILITY_WORKFLOWS),
+        GgCapabilityConfig::enabled(CAPABILITY_SPECULATIVE),
+    ]);
+    let registry = ToolRegistry::from_run(
+        &set,
+        &RuntimeSet::new(&library)
+            .with_memories(&memories)
+            .with_tasks(&tasks)
+            .with_board(&board)
+            .with_archive(&archive),
+    );
+
+    let offered: BTreeSet<String> = registry.tool_names().into_iter().collect();
+    let canonical: BTreeSet<String> = ALL_TOOL_NAMES.iter().map(|s| s.to_string()).collect();
+    assert_eq!(
+        offered, canonical,
+        "ALL_TOOL_NAMES must list exactly the tools a maximal registry offers"
+    );
 }
 
 /// `ToolOutcome` constructors set `ok` and populate the summary as documented.

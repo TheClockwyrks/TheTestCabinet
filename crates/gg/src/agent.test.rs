@@ -729,6 +729,7 @@ fn system_prompt_reflects_the_offered_tools() {
         preset: None,
         capabilities: Vec::new(),
         slots: Vec::new(),
+        disabled_tools: Vec::new(),
     };
     let empty = system_prompt(
         &ToolRegistry::from_capabilities(&empty_set),
@@ -2600,6 +2601,7 @@ fn validate_slots_enforces_the_binding_invariants() {
         preset: None,
         capabilities: Vec::new(),
         slots: vec![GgSlotBinding::new("subagent", "mock/b")],
+        disabled_tools: Vec::new(),
     };
     assert!(
         validate_slots(&no_primary)
@@ -2615,6 +2617,7 @@ fn validate_slots_enforces_the_binding_invariants() {
             GgSlotBinding::new(PRIMARY_SLOT, "mock/a"),
             GgSlotBinding::new(PRIMARY_SLOT, "mock/b"),
         ],
+        disabled_tools: Vec::new(),
     };
     assert!(validate_slots(&dup).unwrap_err().contains("more than once"));
 
@@ -2623,12 +2626,14 @@ fn validate_slots_enforces_the_binding_invariants() {
         preset: None,
         capabilities: Vec::new(),
         slots: vec![GgSlotBinding::new(PRIMARY_SLOT, "")],
+        disabled_tools: Vec::new(),
     };
     assert!(validate_slots(&empty_model).is_err());
     let empty_slot = GgCapabilitySet {
         preset: None,
         capabilities: Vec::new(),
         slots: vec![GgSlotBinding::new("", "mock/a")],
+        disabled_tools: Vec::new(),
     };
     assert!(validate_slots(&empty_slot).is_err());
 }
@@ -4719,6 +4724,50 @@ async fn run_emits_a_session_summary_immediately_before_session_ended() {
     );
     assert_eq!(summary.slot_costs.len(), 1);
     assert_eq!(summary.slot_costs[0].slot, PRIMARY_SLOT);
+    // The effective toolset is recorded on the summary: the exact set of tools the run offered its
+    // agent (shell + the filesystem tools among them), so the toolset is a durable, slice-by
+    // ablation variable.
+    assert!(
+        !summary.effective_tools.is_empty(),
+        "the run recorded its effective toolset"
+    );
+    for tool in ["shell", "read_file", "write_file", "edit_file", "list_dir"] {
+        assert!(
+            summary.effective_tools.iter().any(|t| t == tool),
+            "expected `{tool}` in the recorded effective toolset"
+        );
+    }
+}
+
+/// A per-tool override recorded on the capability set is honored end to end: the withheld tool is
+/// absent from the effective toolset the summary records, while the rest of its capability's tools
+/// remain — the finest-grained toolset-ablation lever, observable on the run's durable outcome.
+#[tokio::test]
+async fn a_per_tool_override_is_reflected_in_the_recorded_effective_toolset() {
+    let dir = TempDir::new().unwrap();
+    seed_default_skill(dir.path());
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-ablate".to_string()), Box::new(sink.clone()));
+    // Filesystem stays on, but `edit_file` is individually withheld (the apply-patch-vs-write lever).
+    let mut set = GgCapabilitySet::minimal("mock/echo");
+    set.disabled_tools = vec!["edit_file".to_string()];
+    let inv = invocation(dir.path(), set);
+
+    assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
+    let summary = session_summary(&sink.events()).unwrap();
+
+    // The withheld tool is absent from the recorded effective toolset...
+    assert!(
+        !summary.effective_tools.iter().any(|t| t == "edit_file"),
+        "edit_file was withheld by the per-tool override"
+    );
+    // ...while the rest of the filesystem capability's tools (and shell) remain offered.
+    for tool in ["read_file", "write_file", "list_dir", "shell"] {
+        assert!(
+            summary.effective_tools.iter().any(|t| t == tool),
+            "expected `{tool}` to remain offered"
+        );
+    }
 }
 
 /// A multi-agent, review-gated run's summary counts each aggregatable figure exactly as the stream
