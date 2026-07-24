@@ -514,6 +514,9 @@ export default defineConfig({
           collapsed: true,
           items: [
             "gg/overview",
+            // How a capability set is named, saved, and launched in the console —
+            // the operator-facing counterpart to the overview's design material.
+            "gg/configurations",
             // One page per capability. Grouped by concern for reading order; the
             // grouping is editorial, matching the index on the overview page.
             {

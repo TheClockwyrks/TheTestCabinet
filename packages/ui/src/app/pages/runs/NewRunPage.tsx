@@ -8,7 +8,11 @@ import { familyOf } from "../../data/families";
 import {
   BUILT_IN_ORCHESTRATORS,
   DEFAULT_ORCHESTRATOR_SLUG,
+  isGgOrchestrator,
+  orchestratorsFor,
 } from "../../data/orchestrators";
+import { bindPrimarySlot } from "./gg/ggConfigDraft";
+import { useGgConfigs } from "./gg/useGgConfigs";
 import {
   OPENROUTER_PROVIDER,
   PROVIDERS,
@@ -35,10 +39,17 @@ import styles from "./RunExec.module.scss";
 // variant, orchestrator, max runtime) is shared across all combinations; each
 // combination varies the harness and model (and, for provider-routed harnesses,
 // the provider) so a single form submission can fan out across many runs.
+//
+// A gg run varies the same way, except the configuration stands where the harness
+// does: `ggConfig` names the saved (or built-in) capability set the row launches,
+// and the row's model binds that set's primary slot — so the same fan-out spans
+// configurations × models, which is exactly an ablation sweep.
 interface Combination {
   /** A stable client-side key so React and per-row edits track the right row. */
   id: string;
   harness: string;
+  /** The picked gg configuration's key (see `useGgConfigs`); gg runs only. */
+  ggConfig: string;
   modelId: string;
   provider: string;
 }
@@ -48,7 +59,10 @@ interface Combination {
 // norm — one combination failing must not abort the rest.
 interface LaunchOutcome {
   key: string;
-  harness: string;
+  /** How the row read: the harness's display name, or the gg configuration's. */
+  label: string;
+  /** Where the launched run is watched — the conventional monitor, or gg's. */
+  monitorPath?: string;
   modelId: string;
   // 1-based repeat index within the combination (shown only when runCount > 1).
   runIndex: number;
@@ -72,6 +86,7 @@ function makeCombination(id: string): Combination {
   return {
     id,
     harness: harnesses[0]?.slug ?? "",
+    ggConfig: "",
     modelId: "",
     provider: OPENROUTER_PROVIDER,
   };
@@ -121,11 +136,18 @@ export function NewRunPage() {
   const [category, setCategory] = useState<CatalogCategory | null>(null);
 
   const [models, setModels] = useState<Model[]>([]);
-  // The orchestrator that conducts the harness sessions. Selectable only for the
-  // end-to-end test type (the selector below is hidden otherwise); every other
-  // test type always submits the default `one-shot`. Built-in slugs only — the
-  // worker has no access to a submitter's local orchestrator directory.
+  // The orchestrator that conducts the harness sessions — and, since it is where an
+  // operator says *how* a run is conducted, also where gg (The Test Cabinet's own
+  // run mode) is chosen. A non-default session strategy (`ralph`) is offered only
+  // for the program-building types; every other type submits `one-shot`. Built-in
+  // slugs only — the worker has no access to a submitter's local orchestrator
+  // directory.
   const [orchestrator, setOrchestrator] = useState(DEFAULT_ORCHESTRATOR_SLUG);
+  // The gg configurations this operator can launch: the shared read-only built-ins
+  // plus the ones registered on their account (the account section's gg tab). Only
+  // consulted when gg is the chosen run mode.
+  const { options: ggOptions } = useGgConfigs();
+  const isGg = isGgOrchestrator(orchestrator);
   const [maxRuntime, setMaxRuntime] = useState("");
   // The harness/model combinations to launch. The form starts with one empty row
   // so the single-run path is unchanged in feel; "Add combination" fans out.
@@ -168,12 +190,17 @@ export function NewRunPage() {
   function addCombination() {
     setCombinations((prev) => {
       const next = makeCombination(`c${nextComboId.current++}`);
-      // Seed the new row with the last row's harness — fanning out across models
-      // for one harness is the common case, so carry it forward rather than
-      // resetting to the first harness (the model still starts empty to force an
-      // explicit pick).
+      // Seed the new row with the last row's harness (or gg configuration) —
+      // fanning out across models for one of them is the common case, so carry it
+      // forward rather than resetting to the first (the model still starts empty to
+      // force an explicit pick).
       const last = prev[prev.length - 1];
-      return [...prev, last ? { ...next, harness: last.harness } : next];
+      return [
+        ...prev,
+        last
+          ? { ...next, harness: last.harness, ggConfig: last.ggConfig }
+          : next,
+      ];
     });
   }
   function removeCombination(id: string) {
@@ -185,6 +212,12 @@ export function NewRunPage() {
 
   const harnessName = (slug: string) =>
     harnesses.find((h) => h.slug === slug)?.displayName ?? slug;
+  // What a row reads as in the launch summary: its gg configuration when the run
+  // mode is gg, otherwise its harness.
+  const comboLabel = (combo: Combination) =>
+    isGg
+      ? (ggOptions.find((o) => o.key === combo.ggConfig)?.name ?? "gg")
+      : harnessName(combo.harness);
 
   // The category actually in effect: the user's pick once made, otherwise the
   // navigated-to case's category, falling back to the first tab (E2E). Note this
@@ -229,6 +262,18 @@ export function NewRunPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [category, sel.slug, sel.cases, summaryBySlug, navSlug]);
 
+  // Seed each row's gg configuration once gg is chosen (and the configurations have
+  // loaded), so the picker opens on the launchable default instead of a blank row.
+  useEffect(() => {
+    if (!isGg || ggOptions.length === 0) return;
+    const first = ggOptions[0]!.key;
+    setCombinations((prev) =>
+      prev.some((c) => !c.ggConfig)
+        ? prev.map((c) => (c.ggConfig ? c : { ...c, ggConfig: first }))
+        : prev,
+    );
+  }, [isGg, ggOptions]);
+
   // Switching the type moves the case selection into the chosen category (unless
   // the current case already belongs to it) so the version and variant re-resolve
   // for a case the dropdown actually shows.
@@ -270,12 +315,24 @@ export function NewRunPage() {
   const buildsProgram =
     sel.versionInfo?.testType === "end-to-end" ||
     sel.versionInfo?.testType === "full-stack";
+  // The orchestrators this case may be run with: gg always, `ralph` only where a
+  // multi-session strategy applies.
+  const orchestratorOptions = orchestratorsFor(buildsProgram);
+  // Keep the picked orchestrator among the ones this case offers: switching to a
+  // type that cannot be conducted by `ralph` falls back to the default rather than
+  // leaving the select showing an option it no longer lists.
+  const orchestratorOffered = orchestratorOptions.some(
+    (o) => o.slug === orchestrator,
+  );
+  useEffect(() => {
+    if (!orchestratorOffered) setOrchestrator(DEFAULT_ORCHESTRATOR_SLUG);
+  }, [orchestratorOffered]);
   // Whatever the picker holds, only a program-building case may carry a
-  // non-default orchestrator — otherwise the run is one-shot no matter what was
-  // last chosen.
-  const submittedOrchestrator = buildsProgram
-    ? orchestrator
-    : DEFAULT_ORCHESTRATOR_SLUG;
+  // non-default session orchestrator — otherwise the run is one-shot no matter what
+  // was last chosen. (gg is not a session strategy, so it is unaffected; a gg run
+  // carries no orchestrator at all.)
+  const submittedOrchestrator =
+    buildsProgram || isGg ? orchestrator : DEFAULT_ORCHESTRATOR_SLUG;
   const mismatched = worker?.backendMatch === "mismatch";
   // A remote (service-driven) worker enqueues on the backend's `POST /jobs`,
   // which is gated on the launching account — so a sign-in is required before a
@@ -283,11 +340,11 @@ export function NewRunPage() {
   // needs no token.
   const needsAuth = Boolean(worker && !worker.local);
   const signedOut = needsAuth && !token;
-  // Every combination must name a harness and a model; a partially-filled row
-  // would otherwise be silently skipped.
+  // Every combination must name a harness (a gg configuration, in the gg run mode)
+  // and a model; a partially-filled row would otherwise be silently skipped.
   const combosValid =
     combinations.length > 0 &&
-    combinations.every((c) => c.harness && c.modelId);
+    combinations.every((c) => (isGg ? c.ggConfig : c.harness) && c.modelId);
   const totalLaunches = combinations.length * runCount;
   const canLaunch = Boolean(
     worker &&
@@ -299,6 +356,57 @@ export function NewRunPage() {
     combosValid &&
     !launching,
   );
+
+  // Enqueue the fan-out as **gg** runs. gg is its own run mode with its own
+  // request shape (a capability set rather than a harness/model/orchestrator
+  // tuple), so it has no batch endpoint: each launch is its own `POST /gg/runs`,
+  // isolated so one failure never aborts the rest. The row's configuration supplies
+  // the capability set and the row's model binds its primary slot.
+  async function launchGgRuns(
+    meta: { combo: Combination; runIndex: number }[],
+  ): Promise<LaunchOutcome[]> {
+    const outcomes: LaunchOutcome[] = [];
+    for (const { combo, runIndex } of meta) {
+      const option = ggOptions.find((o) => o.key === combo.ggConfig);
+      const base: Omit<LaunchOutcome, "runId" | "error"> = {
+        key: `${combo.id}#${runIndex}`,
+        label: comboLabel(combo),
+        modelId: combo.modelId,
+        runIndex,
+      };
+      if (!option) {
+        outcomes.push({ ...base, error: "that gg configuration is gone" });
+        continue;
+      }
+      try {
+        const ack = await worker!.client.launchGgRun(
+          {
+            testCase: sel.slug,
+            version: sel.version,
+            variant: sel.variant,
+            capabilitySet: bindPrimarySlot(option.capabilitySet, combo.modelId),
+            // Omit the override entirely when blank so the case's default runtime
+            // applies (the field is optional, not nullable).
+            ...(maxRuntime ? { maxRuntimeSeconds: Number(maxRuntime) } : {}),
+            retryCount,
+          },
+          token ?? "",
+        );
+        // A gg run is watched on its own monitor, keyed by the enqueued job id.
+        outcomes.push({
+          ...base,
+          runId: ack.jobId,
+          monitorPath: routes.ggMonitor(ack.jobId),
+        });
+      } catch (e) {
+        outcomes.push({
+          ...base,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
+    }
+    return outcomes;
+  }
 
   async function onLaunch() {
     if (!worker) return;
@@ -312,6 +420,12 @@ export function NewRunPage() {
     const meta = combinations.flatMap((combo) =>
       Array.from({ length: runCount }, (_, i) => ({ combo, runIndex: i + 1 })),
     );
+    if (isGg) {
+      const ggOutcomes = await launchGgRuns(meta);
+      setLaunching(false);
+      finishLaunch(ggOutcomes);
+      return;
+    }
     const items: LaunchItem[] = meta.map(({ combo }) => ({
       config: {
         testCase: sel.slug,
@@ -340,28 +454,35 @@ export function NewRunPage() {
       const result = launched[i];
       return {
         key: `${m.combo.id}#${m.runIndex}`,
-        harness: m.combo.harness,
+        label: comboLabel(m.combo),
         modelId: m.combo.modelId,
         runIndex: m.runIndex,
         runId: result?.runId,
+        monitorPath: result?.runId
+          ? routes.runMonitor(result.runId)
+          : undefined,
         error: result?.error,
       };
     });
     setLaunching(false);
+    finishLaunch(outcomes);
+  }
 
-    // Single-launch path is unchanged in feel: on success jump straight to the
-    // live monitor; on failure surface the error inline as before.
+  // What to do once every launch has been attempted, shared by both run modes: a
+  // single launch is unchanged in feel — jump straight to the live monitor (gg's
+  // own, for a gg run) on success, surface the error inline on failure — while a
+  // batch keeps the operator here with a per-combination summary so partial
+  // failures stay visible.
+  function finishLaunch(outcomes: LaunchOutcome[]) {
     const only = outcomes.length === 1 ? outcomes[0] : undefined;
     if (only) {
-      if (only.runId) {
-        navigate(routes.runMonitor(only.runId));
+      if (only.monitorPath) {
+        navigate(only.monitorPath);
         return;
       }
       setLaunchError(only.error ?? "Launch failed.");
       return;
     }
-    // Batch path: keep the user here with a per-combination summary linking to
-    // each launched run (and the runs list), so partial failures stay visible.
     setResults(outcomes);
   }
 
@@ -458,26 +579,24 @@ export function NewRunPage() {
             ))}
           </select>
         </label>
-        {buildsProgram && (
-          <label className={styles.field}>
-            <span className={styles.fieldLabel}>Orchestrator</span>
-            <select
-              className={styles.select}
-              value={orchestrator}
-              onChange={(e) => setOrchestrator(e.target.value)}
-              title={
-                BUILT_IN_ORCHESTRATORS.find((o) => o.slug === orchestrator)
-                  ?.description
-              }
-            >
-              {BUILT_IN_ORCHESTRATORS.map((o) => (
-                <option key={o.slug} value={o.slug} title={o.description}>
-                  {o.displayName}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
+        <label className={styles.field}>
+          <span className={styles.fieldLabel}>Orchestrator</span>
+          <select
+            className={styles.select}
+            value={orchestrator}
+            onChange={(e) => setOrchestrator(e.target.value)}
+            title={
+              BUILT_IN_ORCHESTRATORS.find((o) => o.slug === orchestrator)
+                ?.description
+            }
+          >
+            {orchestratorOptions.map((o) => (
+              <option key={o.slug} value={o.slug} title={o.description}>
+                {o.displayName}
+              </option>
+            ))}
+          </select>
+        </label>
         <label className={styles.field}>
           <span className={styles.fieldLabel}>Max runtime (s, optional)</span>
           <input
@@ -539,45 +658,87 @@ export function NewRunPage() {
       </div>
 
       <p className={`${styles.sectionLabel} ${styles.sectionLabelBackdrop}`}>
-        Harness / model combinations
+        {isGg
+          ? "gg configuration / model combinations"
+          : "Harness / model combinations"}
       </p>
+      {isGg && (
+        <p className={styles.muted}>
+          Each row launches a saved gg configuration — a named capability set —
+          with its model bound to the configuration&rsquo;s primary slot. Manage
+          your configurations under{" "}
+          <Link to={routes.accountGgConfigs()}>Account → gg</Link>.
+        </p>
+      )}
       <div className={styles.comboList}>
         {combinations.map((combo) => (
           <div key={combo.id} className={styles.comboRow}>
-            <label className={`${styles.field} ${styles.comboField}`}>
-              <span className={styles.fieldLabel}>Harness</span>
-              <select
-                className={styles.select}
-                value={combo.harness}
-                onChange={(e) =>
-                  // A model slug is family-specific, so switching harness clears
-                  // the selection — the operator must explicitly pick a model the
-                  // new harness can launch rather than inherit a silent default.
-                  updateCombination(combo.id, {
-                    harness: e.target.value,
-                    modelId: "",
-                  })
-                }
-              >
-                {harnesses.map((h) => (
-                  <option key={h.slug} value={h.slug}>
-                    {h.displayName}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {isGg ? (
+              <label className={`${styles.field} ${styles.comboField}`}>
+                <span className={styles.fieldLabel}>gg configuration</span>
+                <select
+                  className={styles.select}
+                  value={combo.ggConfig}
+                  onChange={(e) =>
+                    updateCombination(combo.id, { ggConfig: e.target.value })
+                  }
+                  title={
+                    ggOptions.find((o) => o.key === combo.ggConfig)?.description
+                  }
+                >
+                  {ggOptions.length === 0 && (
+                    <option value="">(loading…)</option>
+                  )}
+                  {ggOptions.map((o) => (
+                    <option key={o.key} value={o.key} title={o.description}>
+                      {o.name}
+                      {o.builtIn ? " (built-in)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <label className={`${styles.field} ${styles.comboField}`}>
+                <span className={styles.fieldLabel}>Harness</span>
+                <select
+                  className={styles.select}
+                  value={combo.harness}
+                  onChange={(e) =>
+                    // A model slug is family-specific, so switching harness clears
+                    // the selection — the operator must explicitly pick a model the
+                    // new harness can launch rather than inherit a silent default.
+                    updateCombination(combo.id, {
+                      harness: e.target.value,
+                      modelId: "",
+                    })
+                  }
+                >
+                  {harnesses.map((h) => (
+                    <option key={h.slug} value={h.slug}>
+                      {h.displayName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <label className={`${styles.field} ${styles.comboFieldWide}`}>
               <span className={styles.fieldLabel}>Model</span>
               <ModelCombobox
                 value={combo.modelId}
                 onChange={(v) => updateCombination(combo.id, { modelId: v })}
                 models={models}
-                harnessFamily={familyOf(combo.harness)}
+                // gg reaches every slot's model through OpenRouter, so its picker
+                // is scoped to that family and commits the OpenRouter slug.
+                harnessFamily={familyOf(isGg ? "gg" : combo.harness)}
                 inputClassName={styles.input}
-                placeholder="model id (e.g. claude-opus-4-8)"
+                placeholder={
+                  isGg
+                    ? "model id (e.g. anthropic/claude-opus-4.8)"
+                    : "model id (e.g. claude-opus-4-8)"
+                }
               />
             </label>
-            {harnessUsesProvider(combo.harness) && (
+            {!isGg && harnessUsesProvider(combo.harness) && (
               <label className={`${styles.field} ${styles.comboField}`}>
                 <span className={styles.fieldLabel}>Provider</span>
                 <select
@@ -651,14 +812,11 @@ export function NewRunPage() {
                 }`}
               >
                 <span className={styles.resultLabel}>
-                  {harnessName(o.harness)} · {o.modelId}
+                  {o.label} · {o.modelId}
                   {runCount > 1 ? ` · #${o.runIndex}` : ""}
                 </span>
-                {o.runId ? (
-                  <Link
-                    className={styles.resultLink}
-                    to={routes.runMonitor(o.runId)}
-                  >
+                {o.monitorPath ? (
+                  <Link className={styles.resultLink} to={o.monitorPath}>
                     view run →
                   </Link>
                 ) : (

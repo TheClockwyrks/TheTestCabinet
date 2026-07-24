@@ -1,6 +1,6 @@
 // The shared gg capability catalog — the single in-console description of gg's full
-// capability set. Both the config/launch page (`NewGgRunPage`) and the
-// result-aggregation surface (`GgAnalyzePage`) drive off this one list so the
+// capability set. Both the configuration editor (`GgConfigEditor`) and the
+// result-aggregation surface (`GgAggregatePage`) drive off this one list so the
 // facets a query can slice by stay in lockstep with the capabilities a run can be
 // configured with. The ids, params, and tool names are the real core contract
 // (`crates/core/src/gg.rs` + `crates/gg/src/tools/mod.rs`), not guesses.
@@ -37,7 +37,10 @@ export type CapGroup =
   | "Models & tools"
   | "Debugging";
 
-export const CAP_GROUPS: ReadonlyArray<{ group: CapGroup; startOpen: boolean }> = [
+export const CAP_GROUPS: ReadonlyArray<{
+  group: CapGroup;
+  startOpen: boolean;
+}> = [
   { group: "Models & tools", startOpen: true },
   { group: "Context", startOpen: true },
   { group: "Knowledge", startOpen: true },
@@ -92,7 +95,8 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     id: "shell",
     name: "Shell",
     group: "Models & tools",
-    purpose: "Run shell commands in the run container — build, test, drive tooling.",
+    purpose:
+      "Run shell commands in the run container — build, test, drive tooling.",
     defaultOn: true,
     tools: ["shell"],
   },

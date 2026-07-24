@@ -1,8 +1,10 @@
-@use "../../../styles/tokens" as t;
+@use "../../styles/tokens" as t;
+@use "../../styles/surfaces" as s;
 
-// The gg result-aggregation surface. The query builder reuses the shared
-// run-execution field/select/input/button styles (`../RunExec.module.scss`); this
-// module adds the clause-row layout of the builder and the results table + chart.
+// The gg analysis section's styles: the aggregate query builder's clause rows,
+// its results table + chart, and the dashboard's stat tiles. Everything else
+// reuses the shared run-execution field/select/input/button styles
+// (`../runs/RunExec.module.scss`).
 
 // The example-study shortcut buttons wrap onto as many lines as they need.
 .exampleRow {
@@ -147,4 +149,69 @@
 .stateCell {
   color: t.$color-text-muted;
   white-space: nowrap;
+}
+
+// --- Dashboard ------------------------------------------------------------------
+
+// The headline figures as a responsive grid of tiles: each is one aggregated
+// number over every recorded session, big enough to read at a glance with its
+// name underneath.
+.statGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: t.$space-md;
+  margin-bottom: t.$space-xl;
+}
+
+.statTile {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  padding: t.$space-md t.$space-lg;
+}
+
+.statValue {
+  color: t.$color-accent;
+  font-family: var(--ttc-display);
+  font-size: t.$font-xl;
+  text-shadow: var(--ttc-glow);
+  font-variant-numeric: tabular-nums;
+}
+
+.statLabel {
+  color: t.$color-text-muted;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+}
+
+// The terminal-state mix as a row of count chips — how the recorded sessions
+// ended, without spending a whole chart on a handful of numbers.
+.stateStrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-sm;
+  margin-bottom: t.$space-xl;
+}
+
+.stateChip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  padding: t.$space-2xs t.$space-sm;
+  font-size: t.$font-sm;
+}
+
+.stateName {
+  color: t.$color-text-muted;
+}
+
+.stateCount {
+  color: t.$color-text;
+  font-variant-numeric: tabular-nums;
 }

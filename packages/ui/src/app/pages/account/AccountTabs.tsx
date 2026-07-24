@@ -3,7 +3,7 @@ import { routes } from "../../routes";
 import styles from "./AccountTabs.module.scss";
 
 // Which account surface the rendering page represents, so its tab reads as active.
-export type AccountTab = "profile" | "reviews" | "coverage" | "groups";
+export type AccountTab = "profile" | "reviews" | "coverage" | "groups" | "gg";
 
 // The shared tab navigation across the account section. Each tab is its own route
 // (so a surface is linkable), mirroring the runs section's tab bar. The whole
@@ -16,6 +16,7 @@ export function AccountTabs({ active }: { active: AccountTab }) {
     { key: "reviews", label: "Reviews", to: routes.accountReviews() },
     { key: "coverage", label: "Coverage", to: routes.accountCoverage() },
     { key: "groups", label: "Groups", to: routes.accountGroups() },
+    { key: "gg", label: "gg", to: routes.accountGgConfigs() },
   ];
   return (
     <nav className={styles.tabs} aria-label="Account sections">

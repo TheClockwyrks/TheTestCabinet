@@ -116,6 +116,19 @@ export const routes = {
   accountGroupNew: (): string => "/account/groups/new",
   accountGroupEdit: (groupId: string): string =>
     `/account/groups/${groupId}/edit`,
+  // The account section's gg tab: the operator's registered gg configurations
+  // (named capability sets) plus the read-only built-ins, and their create/edit
+  // pages. A configuration is what the new-run form launches once `gg` is picked as
+  // the orchestrator. `new` is a static segment so it ranks above `:configId`; the
+  // create page optionally seeds itself from an existing configuration
+  // (`?from=builtin:<name>` / `?from=saved:<id>`) so a built-in can be duplicated.
+  accountGgConfigs: (): string => "/account/gg",
+  accountGgConfigNew: (from?: string): string =>
+    from
+      ? `/account/gg/new?from=${encodeURIComponent(from)}`
+      : "/account/gg/new",
+  accountGgConfigEdit: (configId: string): string =>
+    `/account/gg/${configId}/edit`,
   runs: (): string => "/runs",
   // The publishable-failures worklist (consoles only): produced catastrophic /
   // timed-out runs awaiting publish. The static site never links to it.
@@ -142,26 +155,13 @@ export const routes = {
   runMonitor: (runId: string): string =>
     `/runs/${encodeURIComponent(runId)}/live`,
   // gg run-execution routes (consoles only; the static site never links to them).
-  // gg is headless — this config surface is the only way to assemble a capability
-  // set and launch a gg run. `ggNew` optionally carries a test case to pre-select,
-  // mirroring `runNew`, so a Run-with-gg entry point lands here with the case
-  // chosen. `ggMonitor` watches an enqueued gg run: it rides the same
-  // `GET /jobs/{id}/live` relay as `runMonitor` but renders gg's native telemetry,
-  // so it is its own page keyed by the launch ack's job id. Both live under a
-  // literal `/runs/gg` segment (more specific than the `/runs/:runId` dynamic
-  // route, so no collision).
-  ggNew: (preselect?: {
-    slug?: string;
-    version?: string;
-    variant?: string;
-  }): string => {
-    const params = new URLSearchParams();
-    if (preselect?.slug) params.set("slug", preselect.slug);
-    if (preselect?.version) params.set("version", preselect.version);
-    if (preselect?.variant) params.set("variant", preselect.variant);
-    const query = params.toString();
-    return query ? `/runs/gg/new?${query}` : "/runs/gg/new";
-  },
+  // gg is launched from the ordinary new-run form — picking `gg` as the
+  // orchestrator swaps the harness picker for the operator's saved gg
+  // configurations — so there is no separate gg launch page. `ggMonitor` watches an
+  // enqueued gg run: it rides the same `GET /jobs/{id}/live` relay as `runMonitor`
+  // but renders gg's native telemetry, so it is its own page keyed by the launch
+  // ack's job id. It lives under a literal `/runs/gg` segment (more specific than
+  // the `/runs/:runId` dynamic route, so no collision).
   ggMonitor: (jobId: string): string =>
     `/runs/gg/${encodeURIComponent(jobId)}/live`,
   // The step-through replay debug view for a finished gg run (consoles only,
@@ -172,11 +172,14 @@ export const routes = {
   // so no collision), a sibling of `ggMonitor`.
   ggReplay: (runId: string): string =>
     `/runs/gg/${encodeURIComponent(runId)}/replay`,
-  // The gg result-aggregation surface: run Kibana-style structured queries across
-  // many recorded gg sessions, sliced by capability set. A sibling of `ggNew` under
-  // the same literal `/runs/gg` prefix, console-only (it drives the worker's
-  // `POST /gg/aggregate`).
-  ggAnalyze: (): string => "/runs/gg/analyze",
+  // The gg **analysis** section (consoles only): its own top-level `/gg` space,
+  // entered from the topbar's analyze control. It keeps the app's chrome but swaps
+  // the mark for a back arrow and the section nav for gg's own tabs — the
+  // cross-run dashboard it opens on, the Kibana-style aggregate query surface, and
+  // the recorded gg sessions.
+  ggAnalysis: (): string => "/gg",
+  ggAnalysisAggregate: (): string => "/gg/aggregate",
+  ggAnalysisSessions: (): string => "/gg/sessions",
   // The run's default (Verdict) tab. `edit` opens the review editor in revise
   // mode — used by the single-review page's Edit control to return here with the
   // owner's review form reopened.
@@ -283,16 +286,24 @@ export const routePatterns = {
   accountGroups: "/account/groups",
   accountGroupNew: "/account/groups/new",
   accountGroupEdit: "/account/groups/:groupId/edit",
+  // The account section's gg configurations. `new` (static) outranks the dynamic
+  // `:configId`, so route order does not matter.
+  accountGgConfigs: "/account/gg",
+  accountGgConfigNew: "/account/gg/new",
+  accountGgConfigEdit: "/account/gg/:configId/edit",
   runs: "/runs",
   runFailures: "/runs/failures",
   runUnreviewed: "/runs/unreviewed",
   runNew: "/runs/new",
-  // gg run-execution routes. The literal `/runs/gg` segment (and its `new` child)
-  // outranks the `/runs/:runId` dynamic route, and `ggMonitor`'s `/runs/gg/:jobId`
-  // is a sibling of the plain `runMonitor` under that same static prefix.
-  ggNew: "/runs/gg/new",
-  ggAnalyze: "/runs/gg/analyze",
+  // gg run-execution routes. The literal `/runs/gg` segment outranks the
+  // `/runs/:runId` dynamic route, and `ggMonitor`'s `/runs/gg/:jobId` is a sibling
+  // of the plain `runMonitor` under that same static prefix.
   ggMonitor: "/runs/gg/:jobId/live",
+  // The gg analysis section's own top-level space (console-only), one route per
+  // tab so a surface is linkable and survives a reload.
+  ggAnalysis: "/gg",
+  ggAnalysisAggregate: "/gg/aggregate",
+  ggAnalysisSessions: "/gg/sessions",
   // The debug-only step-through replay view, a sibling of `ggMonitor` under the
   // literal `/runs/gg` prefix (both outrank the `/runs/:runId` dynamic route).
   ggReplay: "/runs/gg/:runId/replay",

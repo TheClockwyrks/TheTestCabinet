@@ -54,7 +54,9 @@ through its own executor and records a far richer run record on the way.
 
 gg is **headless**: it has no TUI and no direct user interaction of its own. It is
 configured, launched, and monitored **entirely through the Test Cabinet UI** — the
-capability set is assembled there, and the [telemetry](/gg/telemetry/) channel is a
+capability set is assembled there as a named
+[configuration](/gg/configurations/), launched from the ordinary new-run form by
+picking gg as the orchestrator, and the [telemetry](/gg/telemetry/) channel is a
 run's only live window into what its agents are doing. Building that UI is therefore
 not a follow-on to gg but a **co-requirement**: each capability ships with the UI to
 drive and observe it, from the very first runnable version onward.
@@ -92,7 +94,9 @@ the capability set, and the harness becomes a laboratory. It must be:
   [Result aggregation](/gg/result-aggregation/)).
 - **Named / preset-able** — common configurations ("full", "minimal",
   "no-compaction", "planning-A") should be nameable presets, so a study is a sweep
-  over presets rather than hand-assembled flag soup.
+  over presets rather than hand-assembled flag soup. A named capability set is a
+  [configuration](/gg/configurations/): registered on an operator's account, then
+  picked by name when a run is launched.
 
 The capability set is a **first-class Test Cabinet concept** that **replaces** the
 `harness + model + orchestrator` tuple for a gg run (only the test case and variant
@@ -125,7 +129,9 @@ install step, but pulling our own release rather than a public registry.
 ## Capabilities
 
 Each capability has its own page. They are grouped here by concern for reading; the
-grouping is editorial, not a structural distinction.
+grouping is editorial, not a structural distinction. How a capability set is named,
+saved, launched, and analyzed in the console is
+[Configurations](/gg/configurations/).
 
 **Context**
 

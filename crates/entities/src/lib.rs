@@ -14,6 +14,7 @@ pub mod case_reference_build;
 pub mod case_reference_sheet;
 pub mod coverage_group;
 pub mod coverage_plan;
+pub mod gg_config;
 pub mod harness_config;
 pub mod job;
 pub mod model;

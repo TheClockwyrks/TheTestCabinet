@@ -149,12 +149,6 @@ export function RunsPage() {
             <Link className={exec.secondary} to={routes.accountCoverage()}>
               Coverage plans
             </Link>
-            <Link className={exec.secondary} to={routes.ggAnalyze()}>
-              gg analyze
-            </Link>
-            <Link className={exec.secondary} to={routes.ggNew()}>
-              + New gg run
-            </Link>
             <Link className={exec.primary} to={routes.runNew()}>
               + New run
             </Link>

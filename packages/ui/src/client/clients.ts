@@ -37,12 +37,19 @@ import type {
   WorkerIdentity,
 } from "./types";
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
-import type { GgRunRequest, LaunchAck } from "@test-cabinet/run-record/jobs-api";
+import type {
+  GgRunRequest,
+  LaunchAck,
+} from "@test-cabinet/run-record/jobs-api";
 import type {
   GgAggregateQuery,
   GgAggregateResponse,
 } from "@test-cabinet/run-record/gg-aggregate";
-import type { GgReplayRecord } from "@test-cabinet/run-record/gg";
+import type {
+  GgConfig,
+  GgConfigInput,
+  GgReplayRecord,
+} from "@test-cabinet/run-record/gg";
 import type {
   CoverageGroup,
   CoverageGroupInput,
@@ -270,6 +277,26 @@ export interface BackendClient {
    * completed/in-flight/remaining counts and version-staleness flag.
    */
   getCoveragePlanCoverage?(id: string, token: string): Promise<CoverageMatrix>;
+
+  // The operator's saved gg configurations (console-only, Bearer). gg is its own
+  // run mode — a named capability set stands where a third-party run's harness
+  // does — so these back the account section's gg tab and the new-run form's
+  // configuration picker. Optional for the same reason the coverage calls are: the
+  // static site's read-only transport omits them.
+  /** The operator's saved gg configurations (`GET /gg/configs`). */
+  listGgConfigs?(token: string): Promise<GgConfig[]>;
+  /**
+   * Register a configuration (`POST /gg/configs`), returning it with its new id.
+   */
+  createGgConfig?(input: GgConfigInput, token: string): Promise<GgConfig>;
+  /** Update a configuration in place (`PUT /gg/configs/{id}`). */
+  updateGgConfig?(
+    id: string,
+    input: GgConfigInput,
+    token: string,
+  ): Promise<GgConfig>;
+  /** Delete a configuration (`DELETE /gg/configs/{id}`). */
+  deleteGgConfig?(id: string, token: string): Promise<void>;
 
   /**
    * The signed-in account's own submitted reviews, newest-first, with a numbered

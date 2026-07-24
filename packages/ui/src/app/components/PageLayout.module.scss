@@ -157,6 +157,18 @@
   }
 }
 
+// The icon controls (analyze, bell, gear) as one tight cluster. They are the same
+// kind of thing — square glyph buttons — so they sit almost shoulder to shoulder
+// and read as a group, while the account control and menu toggle keep the wider
+// `.controls` gap around them. The tighter spacing is also what makes room for the
+// analyze control without pushing the row onto a second line.
+.iconControls {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-2xs;
+  flex: none;
+}
+
 // The mobile section-nav toggle. Mirrors the gear/bell sizing and hover so the
 // three controls read as a set. Shown only at/below $bp-md; above it the inline
 // nav is authoritative and this is hidden so exactly one nav presentation shows.

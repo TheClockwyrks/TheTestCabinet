@@ -24,6 +24,7 @@ use crate::store::DefinitionStore;
 mod coverage;
 mod game_jams;
 mod gg;
+mod gg_config;
 mod harness_config;
 mod ingest_api;
 mod jobs;
@@ -40,6 +41,7 @@ pub use coverage::{
     CoveragePlan, CoveragePlanInput, CoveragePlanSummary, ReviewPlanCase, ReviewPlanCombo,
 };
 pub use gg::GgRunRequest;
+pub use gg_config::{GgConfig, GgConfigInput};
 pub use jobs::{
     ActiveJobOut, ClaimedJob, DriverState, JobState, JobStatusOut, LaunchAck, LaunchBatchAck,
     LaunchBatchBody, LaunchBatchItem, LaunchBody, StatusUpdate,
@@ -275,6 +277,18 @@ pub fn router(state: AppState) -> Router {
         // structured query across many persisted gg runs, sliced by the capability
         // set recorded on each. Returns aggregated buckets, not individual runs.
         .route("/gg/aggregate", post(gg::aggregate_gg))
+        // The operator's saved gg configurations (auth-gated; keyed to the token's
+        // account): named capability sets the new-run form offers once `gg` is
+        // picked as the orchestrator. `/gg/configs` is static and `/gg/configs/{id}`
+        // is its child, so neither collides with `/gg/runs` or `/gg/aggregate`.
+        .route(
+            "/gg/configs",
+            get(gg_config::list_configs).post(gg_config::create_config),
+        )
+        .route(
+            "/gg/configs/{id}",
+            put(gg_config::update_config).delete(gg_config::delete_config),
+        )
         .route("/jobs/active", get(jobs::active))
         .route("/jobs/next", post(jobs::claim))
         .route("/jobs/{id}", get(jobs::status))

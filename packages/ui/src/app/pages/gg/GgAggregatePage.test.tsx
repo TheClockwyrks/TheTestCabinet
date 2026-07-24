@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { describe, expect, it, vi } from "vitest";
@@ -7,30 +13,30 @@ import {
   WorkersProvider,
   type BackendContextValue,
   type WorkersContextValue,
-} from "../../../../client/context";
-import type { WorkerClient } from "../../../../client/clients";
+} from "../../../client/context";
+import type { WorkerClient } from "../../../client/clients";
 import type { GgAggregateResponse } from "@test-cabinet/run-record/gg-aggregate";
-import { GgAnalyzePage } from "./GgAnalyzePage";
+import { GgAggregatePage } from "./GgAggregatePage";
 
-// Stub the page chrome and data hooks, mirroring the NewGgRunPage test — the logic
+// Stub the page chrome and data hooks, mirroring the other page tests — the logic
 // under test is the query builder + result rendering, not the app shell or catalog.
-vi.mock("../../../components/PageLayout", () => ({
+vi.mock("../../components/PageLayout", () => ({
   PageLayout: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
-vi.mock("../../../components/PromptHeader", () => ({
+vi.mock("../../components/PromptHeader", () => ({
   PromptHeader: () => null,
 }));
 // A local worker needs no sign-in, so a signed-out stub still lets the query run.
-vi.mock("../../../../client/auth", () => ({
+vi.mock("../../../client/auth", () => ({
   useAuth: () => ({ token: null }),
 }));
-vi.mock("../../../data/useTestCases", () => ({
+vi.mock("../../data/useTestCases", () => ({
   useTestCases: () => ({
     testCases: [{ slug: "carom", name: "Carom" }],
     status: "ready",
   }),
 }));
-vi.mock("../../../data/useTestCaseName", () => ({
+vi.mock("../../data/useTestCaseName", () => ({
   useTestCaseName: () => (slug: string) => slug,
 }));
 
@@ -50,7 +56,12 @@ const RESPONSE: GgAggregateResponse = {
   totalRuns: 7,
   buckets: [
     {
-      key: [{ facet: { kind: "capabilityEnabled", capability: "compaction" }, value: "false" }],
+      key: [
+        {
+          facet: { kind: "capabilityEnabled", capability: "compaction" },
+          value: "false",
+        },
+      ],
       n: 4,
       metrics: [
         {
@@ -66,7 +77,12 @@ const RESPONSE: GgAggregateResponse = {
       ],
     },
     {
-      key: [{ facet: { kind: "capabilityEnabled", capability: "compaction" }, value: "true" }],
+      key: [
+        {
+          facet: { kind: "capabilityEnabled", capability: "compaction" },
+          value: "true",
+        },
+      ],
       n: 3,
       metrics: [
         {
@@ -81,7 +97,9 @@ const RESPONSE: GgAggregateResponse = {
   ],
 };
 
-function workersValue(aggregate: WorkerClient["aggregateGgRuns"]): WorkersContextValue {
+function workersValue(
+  aggregate: WorkerClient["aggregateGgRuns"],
+): WorkersContextValue {
   const client = { aggregateGgRuns: aggregate } as unknown as WorkerClient;
   return {
     workers: [],
@@ -103,11 +121,11 @@ function workersValue(aggregate: WorkerClient["aggregateGgRuns"]): WorkersContex
 
 function renderPage(aggregate: WorkerClient["aggregateGgRuns"]) {
   return render(
-    <MemoryRouter initialEntries={["/runs/gg/analyze"]}>
+    <MemoryRouter initialEntries={["/gg/aggregate"]}>
       <BackendProvider value={backendValue}>
         <WorkersProvider value={workersValue(aggregate)}>
           <Routes>
-            <Route path="/runs/gg/analyze" element={<GgAnalyzePage />} />
+            <Route path="/gg/aggregate" element={<GgAggregatePage />} />
           </Routes>
         </WorkersProvider>
       </BackendProvider>
@@ -115,7 +133,7 @@ function renderPage(aggregate: WorkerClient["aggregateGgRuns"]) {
   );
 }
 
-describe("GgAnalyzePage", () => {
+describe("GgAggregatePage", () => {
   it("renders the query builder", () => {
     renderPage(vi.fn());
     expect(screen.getByText("Facet filters")).toBeInTheDocument();
@@ -170,7 +188,10 @@ describe("GgAnalyzePage", () => {
   it("shows an empty-state message when no runs match", async () => {
     const aggregate = vi
       .fn()
-      .mockResolvedValue({ totalRuns: 0, buckets: [] } satisfies GgAggregateResponse);
+      .mockResolvedValue({
+        totalRuns: 0,
+        buckets: [],
+      } satisfies GgAggregateResponse);
     renderPage(aggregate);
     fireEvent.click(screen.getByRole("button", { name: "Run query" }));
     expect(await screen.findByText(/No gg runs matched/i)).toBeInTheDocument();

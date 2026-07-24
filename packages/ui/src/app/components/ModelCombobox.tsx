@@ -36,6 +36,8 @@ interface ModelComboboxProps {
   placeholder?: string;
   /** Extra class for the text input (e.g. the shared field `input` styling). */
   inputClassName?: string;
+  /** Render the field read-only — a picker shown for reference, not for editing. */
+  disabled?: boolean;
 }
 
 function buildOptions(models: Model[], family?: HarnessFamily): ModelOption[] {
@@ -89,6 +91,7 @@ export function ModelCombobox({
   id,
   placeholder,
   inputClassName,
+  disabled = false,
 }: ModelComboboxProps) {
   const reactId = useId();
   const listId = `${reactId}-list`;
@@ -221,6 +224,7 @@ export function ModelCombobox({
         autoComplete="off"
         value={value}
         placeholder={placeholder}
+        disabled={disabled}
         onChange={(e) => {
           onChange(e.target.value);
           setOpen(true);

@@ -1792,3 +1792,49 @@ export type GgReplayStep = {
    */
   toolResults: Array<GgReplayToolStep>;
 };
+
+/**
+ * An operator's saved, reusable gg configuration: a named
+ * [capability set](GgCapabilitySet) the new-run form can launch as-is.
+ */
+export type GgConfig = {
+  /**
+   * The configuration's opaque id (minted on create).
+   */
+  id: string;
+  /**
+   * The operator-chosen display name.
+   */
+  name: string;
+  /**
+   * A one-line note on what the configuration is for. Empty when unset.
+   */
+  description: string;
+  /**
+   * The capability set a run launched from this configuration carries.
+   */
+  capabilitySet: GgCapabilitySet;
+  /**
+   * RFC 3339 of when the configuration was last saved.
+   */
+  updatedAt: string;
+};
+
+/**
+ * The create/update body for a gg configuration (the server assigns `id` and
+ * `updatedAt`).
+ */
+export type GgConfigInput = {
+  /**
+   * The operator-chosen display name.
+   */
+  name: string;
+  /**
+   * A one-line note on what the configuration is for.
+   */
+  description: string;
+  /**
+   * The capability set to save.
+   */
+  capabilitySet: GgCapabilitySet;
+};

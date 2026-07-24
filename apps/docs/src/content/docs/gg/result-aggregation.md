@@ -18,3 +18,14 @@ This is where the [capability set](/gg/overview/#the-capability-set) recorded on
 run pays off — it is the dimension every aggregate query slices by. Result
 aggregation depends directly on the [telemetry](/gg/telemetry/) schema: we can only
 aggregate over fields we durably record, so the two are designed together.
+
+## Where it lives
+
+Aggregation is one tab of the console's **gg analysis** UI, entered from the
+topbar's analyze control (see
+[Configurations](/gg/configurations/#analyzing-across-them)). The **Dashboard** tab
+answers the standing question — how gg is doing across every recorded session —
+while this **Aggregate** tab is where a specific study question gets asked: narrow
+by facet and metric predicates, group by one or more capability-set facets, and
+aggregate metrics per bucket. **Sessions** lists the individual runs behind an
+aggregate.

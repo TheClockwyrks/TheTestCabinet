@@ -181,7 +181,9 @@ fn main() -> Result<()> {
         // (the "independent variable") and the first-party telemetry v1 stream the
         // console renders live. The telemetry `Usage` variant reuses the shared
         // token/cost types (`TokenMetrics`, `CostMetrics`) owned by the run-record
-        // document, so they are imported from `index.ts`.
+        // document, so they are imported from `index.ts`. The saved-configuration
+        // shapes (`/gg/configs`) live here too: a registered configuration is just a
+        // named capability set, so it belongs beside the set it wraps.
         TsModule {
             file: "gg.ts",
             decls: ts_decls![&cfg;
@@ -197,6 +199,7 @@ fn main() -> Result<()> {
                 gg::GgTelemetryKind, gg::GgTelemetryEvent,
                 gg::GgReplayEntryKind, gg::GgReplayEntry, gg::GgReplayRecord,
                 gg::GgReplayToolStep, gg::GgReplayStep,
+                bapi::GgConfig, bapi::GgConfigInput,
             ],
         },
         // The gg result-aggregation query contract: the Kibana-style query over many

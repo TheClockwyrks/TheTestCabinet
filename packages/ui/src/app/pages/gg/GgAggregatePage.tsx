@@ -1,5 +1,10 @@
 import { useMemo, useState } from "react";
-import { Chart, barChart, type BarPoint, type ChartPalette } from "@test-cabinet/ui";
+import {
+  Chart,
+  barChart,
+  type BarPoint,
+  type ChartPalette,
+} from "@test-cabinet/ui";
 import type {
   GgAggregateQuery,
   GgAggregateResponse,
@@ -16,21 +21,22 @@ import type {
   GgSummaryField,
 } from "@test-cabinet/run-record/gg-aggregate";
 import type { RunState } from "@test-cabinet/run-record";
-import { useAuth } from "../../../../client/auth";
-import { useWorkers } from "../../../../client/context";
-import { PageLayout } from "../../../components/PageLayout";
-import { PromptHeader } from "../../../components/PromptHeader";
-import { describeRunState } from "../../../data/runState";
-import { useTestCaseName } from "../../../data/useTestCaseName";
-import { useTestCases } from "../../../data/useTestCases";
+import { useAuth } from "../../../client/auth";
+import { useWorkers } from "../../../client/context";
+import { PageLayout } from "../../components/PageLayout";
+import { PromptHeader } from "../../components/PromptHeader";
+import { describeRunState } from "../../data/runState";
+import { useTestCaseName } from "../../data/useTestCaseName";
+import { useTestCases } from "../../data/useTestCases";
 import {
   CAPABILITIES,
   COMMON_ROLE_SLOTS,
   PRIMARY_SLOT,
   ALL_TOOL_NAMES,
-} from "./ggCatalog";
-import runExec from "../RunExec.module.scss";
-import gg from "./GgAnalyzePage.module.scss";
+} from "../runs/gg/ggCatalog";
+import runExec from "../runs/RunExec.module.scss";
+import { GG_CHROME } from "./ggChrome";
+import gg from "./GgAnalysis.module.scss";
 
 // The result-aggregation surface: a Kibana-style structured-query builder over the
 // recorded gg sessions (`POST /gg/aggregate`). Every dimension a query can slice by
@@ -55,7 +61,11 @@ const FACET_KINDS: ReadonlyArray<{
   label: string;
   needs: FacetNeeds;
 }> = [
-  { kind: "capabilityEnabled", label: "Capability enabled", needs: "capability" },
+  {
+    kind: "capabilityEnabled",
+    label: "Capability enabled",
+    needs: "capability",
+  },
   {
     kind: "capabilityImplementation",
     label: "Capability implementation",
@@ -87,22 +97,23 @@ const METRIC_KINDS: ReadonlyArray<{ kind: MetricKind; label: string }> = [
 
 // Every `GgSummaryField`, with a human label. Typed as the union so a new field is a
 // compile error until it is given a label here.
-const SUMMARY_FIELDS: ReadonlyArray<{ field: GgSummaryField; label: string }> = [
-  { field: "agents_spawned", label: "Agents spawned" },
-  { field: "subagent_count", label: "Subagent count" },
-  { field: "max_subagent_depth", label: "Max subagent depth" },
-  { field: "compactions", label: "Compactions" },
-  { field: "context_overflow_count", label: "Context overflows" },
-  { field: "ran_out_of_context", label: "Ran out of context (rate)" },
-  { field: "final_fullness", label: "Final fullness" },
-  { field: "code_reviews", label: "Code reviews" },
-  { field: "review_cycles", label: "Review cycles" },
-  { field: "issues_reopened", label: "Issues reopened" },
-  { field: "speculations", label: "Speculations" },
-  { field: "code_executions", label: "Code executions" },
-  { field: "issues_created", label: "Issues created" },
-  { field: "issues_completed", label: "Issues completed" },
-];
+const SUMMARY_FIELDS: ReadonlyArray<{ field: GgSummaryField; label: string }> =
+  [
+    { field: "agents_spawned", label: "Agents spawned" },
+    { field: "subagent_count", label: "Subagent count" },
+    { field: "max_subagent_depth", label: "Max subagent depth" },
+    { field: "compactions", label: "Compactions" },
+    { field: "context_overflow_count", label: "Context overflows" },
+    { field: "ran_out_of_context", label: "Ran out of context (rate)" },
+    { field: "final_fullness", label: "Final fullness" },
+    { field: "code_reviews", label: "Code reviews" },
+    { field: "review_cycles", label: "Review cycles" },
+    { field: "issues_reopened", label: "Issues reopened" },
+    { field: "speculations", label: "Speculations" },
+    { field: "code_executions", label: "Code executions" },
+    { field: "issues_created", label: "Issues created" },
+    { field: "issues_completed", label: "Issues completed" },
+  ];
 
 const AGGREGATIONS: ReadonlyArray<GgAggregation> = ["avg", "min", "max", "sum"];
 const FACET_OPS: ReadonlyArray<{ op: GgFacetOp; label: string }> = [
@@ -131,7 +142,9 @@ const RUN_STATES: ReadonlyArray<RunState> = [
 
 // The first capability with a param, used to seed a `capabilityParam` facet so it
 // resolves to a real target on the first click.
-const FIRST_PARAM_CAP = CAPABILITIES.find((c) => c.params && c.params.length > 0);
+const FIRST_PARAM_CAP = CAPABILITIES.find(
+  (c) => c.params && c.params.length > 0,
+);
 
 // --- Draft state (the builder's editable shape) ---------------------------------
 
@@ -189,7 +202,11 @@ function toFacet(d: FacetDraft): GgFacet {
     case "capabilityImplementation":
       return { kind: "capabilityImplementation", capability: d.capability };
     case "capabilityParam":
-      return { kind: "capabilityParam", capability: d.capability, param: d.param };
+      return {
+        kind: "capabilityParam",
+        capability: d.capability,
+        param: d.param,
+      };
     case "slotModel":
       return { kind: "slotModel", slot: d.slot };
     case "toolOffered":
@@ -319,9 +336,14 @@ const EXAMPLES: ReadonlyArray<Example> = [
     build: () => ({
       facetFilters: [],
       metricFilters: [],
-      groupBy: [{ ...blankFacet("capabilityEnabled"), capability: "compaction" }],
+      groupBy: [
+        { ...blankFacet("capabilityEnabled"), capability: "compaction" },
+      ],
       metrics: [
-        { metric: { kind: "summary", field: "ran_out_of_context" }, agg: "avg" },
+        {
+          metric: { kind: "summary", field: "ran_out_of_context" },
+          agg: "avg",
+        },
       ],
     }),
   },
@@ -344,9 +366,15 @@ const EXAMPLES: ReadonlyArray<Example> = [
       facetFilters: [],
       metricFilters: [],
       groupBy: [
-        { ...blankFacet("capabilityParam"), capability: "subagents", param: "maxDepth" },
+        {
+          ...blankFacet("capabilityParam"),
+          capability: "subagents",
+          param: "maxDepth",
+        },
       ],
-      metrics: [{ metric: { kind: "score", field: "agents_spawned" }, agg: "avg" }],
+      metrics: [
+        { metric: { kind: "score", field: "agents_spawned" }, agg: "avg" },
+      ],
     }),
   },
   {
@@ -360,12 +388,14 @@ const EXAMPLES: ReadonlyArray<Example> = [
           capability: "speculative-execution",
         },
       ],
-      metrics: [{ metric: { kind: "score", field: "agents_spawned" }, agg: "avg" }],
+      metrics: [
+        { metric: { kind: "score", field: "agents_spawned" }, agg: "avg" },
+      ],
     }),
   },
 ];
 
-export function GgAnalyzePage() {
+export function GgAggregatePage() {
   const { active: worker } = useWorkers();
   const { token } = useAuth();
   const { testCases } = useTestCases();
@@ -500,7 +530,9 @@ export function GgAnalyzePage() {
     setGroupBy((prev) => [...prev, blankFacet()]);
   }
   function updateGroupBy(i: number, patch: Partial<FacetDraft>) {
-    setGroupBy((prev) => prev.map((f, j) => (i === j ? { ...f, ...patch } : f)));
+    setGroupBy((prev) =>
+      prev.map((f, j) => (i === j ? { ...f, ...patch } : f)),
+    );
   }
   function removeGroupBy(i: number) {
     setGroupBy((prev) => prev.filter((_, j) => j !== i));
@@ -509,13 +541,18 @@ export function GgAnalyzePage() {
   // --- Metric mutators ------------------------------------------------------
   function addMetric() {
     setMetrics((prev) => {
-      const next = [...prev, { metric: blankMetric(), agg: "avg" as GgAggregation }];
+      const next = [
+        ...prev,
+        { metric: blankMetric(), agg: "avg" as GgAggregation },
+      ];
       if (chartMetric === -1) setChartMetric(next.length - 1);
       return next;
     });
   }
   function updateMetric(i: number, patch: Partial<MetricSpecDraft>) {
-    setMetrics((prev) => prev.map((m, j) => (i === j ? { ...m, ...patch } : m)));
+    setMetrics((prev) =>
+      prev.map((m, j) => (i === j ? { ...m, ...patch } : m)),
+    );
   }
   function removeMetric(i: number) {
     setMetrics((prev) => prev.filter((_, j) => j !== i));
@@ -558,9 +595,9 @@ export function GgAnalyzePage() {
   );
 
   return (
-    <PageLayout>
+    <PageLayout chrome={GG_CHROME}>
       <PromptHeader
-        command="--gg analyze"
+        command="--gg aggregate"
         comment={<>// query &amp; slice recorded gg sessions in aggregate</>}
       />
 
@@ -626,7 +663,11 @@ export function GgAnalyzePage() {
       <div className={gg.builderSection}>
         <div className={gg.builderHead}>
           <span className={gg.builderTitle}>Facet filters</span>
-          <button type="button" className={runExec.secondary} onClick={addFacetFilter}>
+          <button
+            type="button"
+            className={runExec.secondary}
+            onClick={addFacetFilter}
+          >
             + Add facet filter
           </button>
         </div>
@@ -680,7 +721,11 @@ export function GgAnalyzePage() {
       <div className={gg.builderSection}>
         <div className={gg.builderHead}>
           <span className={gg.builderTitle}>Metric filters</span>
-          <button type="button" className={runExec.secondary} onClick={addMetricFilter}>
+          <button
+            type="button"
+            className={runExec.secondary}
+            onClick={addMetricFilter}
+          >
             + Add metric filter
           </button>
         </div>
@@ -715,7 +760,9 @@ export function GgAnalyzePage() {
                 className={runExec.input}
                 type="number"
                 value={f.value}
-                onChange={(e) => updateMetricFilter(i, { value: e.target.value })}
+                onChange={(e) =>
+                  updateMetricFilter(i, { value: e.target.value })
+                }
                 aria-label="threshold"
               />
               <button
@@ -735,7 +782,11 @@ export function GgAnalyzePage() {
       <div className={gg.builderSection}>
         <div className={gg.builderHead}>
           <span className={gg.builderTitle}>Group by</span>
-          <button type="button" className={runExec.secondary} onClick={addGroupBy}>
+          <button
+            type="button"
+            className={runExec.secondary}
+            onClick={addGroupBy}
+          >
             + Add group-by facet
           </button>
         </div>
@@ -767,7 +818,11 @@ export function GgAnalyzePage() {
       <div className={gg.builderSection}>
         <div className={gg.builderHead}>
           <span className={gg.builderTitle}>Metrics</span>
-          <button type="button" className={runExec.secondary} onClick={addMetric}>
+          <button
+            type="button"
+            className={runExec.secondary}
+            onClick={addMetric}
+          >
             + Add metric
           </button>
         </div>
@@ -811,7 +866,11 @@ export function GgAnalyzePage() {
 
       <div className={runExec.actions}>
         <div className={runExec.actionsEnd}>
-          <button className={runExec.primary} onClick={onRun} disabled={!canRun}>
+          <button
+            className={runExec.primary}
+            onClick={onRun}
+            disabled={!canRun}
+          >
             {running ? "Running…" : "Run query"}
           </button>
         </div>
@@ -1021,7 +1080,9 @@ function MetricPicker({
         <select
           className={runExec.select}
           value={metric.field}
-          onChange={(e) => onChange({ field: e.target.value as GgSummaryField })}
+          onChange={(e) =>
+            onChange({ field: e.target.value as GgSummaryField })
+          }
           aria-label="summary field"
         >
           {SUMMARY_FIELDS.map((f) => (
@@ -1102,8 +1163,8 @@ function Results({
             <Chart title={chartTitle} spec={chartSpec} className={gg.chart} />
           ) : (
             <p className={runExec.muted}>
-              The chosen metric is absent in every bucket (no run carried it), so
-              there is nothing to plot.
+              The chosen metric is absent in every bucket (no run carried it),
+              so there is nothing to plot.
             </p>
           )}
 

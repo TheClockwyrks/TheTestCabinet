@@ -57,12 +57,19 @@ import type {
   RunRecord,
 } from "@test-cabinet/run-record";
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
-import type { GgRunRequest, LaunchAck } from "@test-cabinet/run-record/jobs-api";
+import type {
+  GgRunRequest,
+  LaunchAck,
+} from "@test-cabinet/run-record/jobs-api";
 import type {
   GgAggregateQuery,
   GgAggregateResponse,
 } from "@test-cabinet/run-record/gg-aggregate";
-import type { GgReplayRecord } from "@test-cabinet/run-record/gg";
+import type {
+  GgConfig,
+  GgConfigInput,
+  GgReplayRecord,
+} from "@test-cabinet/run-record/gg";
 import type {
   CoverageGroup,
   CoverageGroupInput,
@@ -620,6 +627,37 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         `/coverage-plans/${encodeURIComponent(id)}/coverage`,
         token,
       );
+    },
+
+    // The operator's saved gg configurations — named capability sets the account
+    // section registers and the new-run form launches once `gg` is the chosen
+    // orchestrator. Per-account, so every call carries the bearer token.
+    async listGgConfigs(token: string): Promise<GgConfig[]> {
+      return getJson<GgConfig[]>(baseUrl, "/gg/configs", token);
+    },
+
+    async createGgConfig(
+      input: GgConfigInput,
+      token: string,
+    ): Promise<GgConfig> {
+      return postJson<GgConfig>(baseUrl, "/gg/configs", input, token);
+    },
+
+    async updateGgConfig(
+      id: string,
+      input: GgConfigInput,
+      token: string,
+    ): Promise<GgConfig> {
+      return putJson<GgConfig>(
+        baseUrl,
+        `/gg/configs/${encodeURIComponent(id)}`,
+        input,
+        token,
+      );
+    },
+
+    async deleteGgConfig(id: string, token: string): Promise<void> {
+      await delVoid(baseUrl, `/gg/configs/${encodeURIComponent(id)}`, token);
     },
 
     async listMyReviews(

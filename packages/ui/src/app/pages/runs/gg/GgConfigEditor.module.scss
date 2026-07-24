@@ -1,13 +1,13 @@
 @use "../../../styles/tokens" as t;
 @use "../../../styles/surfaces" as s;
 
-// gg-specific bits of the run-configuration form. Everything else reuses the
+// gg-specific bits of the capability-set editor. Everything else reuses the
 // shared run-execution styles (`../RunExec.module.scss`): the field grid,
 // selects/inputs, section labels, notices, and buttons. Only the capability
-// toggle rows and the preset controls are new here.
+// toggle rows and the configuration-identity controls are new here.
 
-// The preset controls row: the preset dropdown plus the save/delete affordances,
-// bottom-aligned so their controls sit on one line and wrap when cramped.
+// The configuration identity row: name + description, bottom-aligned so their
+// controls sit on one line and wrap when cramped.
 .presetRow {
   display: flex;
   align-items: flex-end;

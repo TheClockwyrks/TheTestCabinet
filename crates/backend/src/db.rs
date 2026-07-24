@@ -33,9 +33,9 @@ use test_cabinet_core::run_record::{
 };
 use test_cabinet_core::test_case::TestType;
 use test_cabinet_entities::{
-    case_reference_build, case_reference_sheet, coverage_group, coverage_plan, harness_config, job,
-    model, model_alias, model_price, publish_job, review, review_plan, review_revision, run,
-    run_link, snapshot_state, tournament,
+    case_reference_build, case_reference_sheet, coverage_group, coverage_plan, gg_config,
+    harness_config, job, model, model_alias, model_price, publish_job, review, review_plan,
+    review_revision, run, run_link, snapshot_state, tournament,
 };
 
 use crate::error::{BackendError, Result};
@@ -1691,6 +1691,96 @@ impl Db {
         Ok(res.rows_affected > 0)
     }
 
+    /// Every saved gg configuration the account owns, ordered by display name.
+    pub async fn list_gg_configs(&self, user_id: &str) -> Result<Vec<crate::api::GgConfig>> {
+        gg_config::Entity::find()
+            .filter(gg_config::Column::UserId.eq(user_id))
+            .order_by_asc(gg_config::Column::Name)
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .map(gg_config_from_row)
+            .collect()
+    }
+
+    /// One saved gg configuration by id, scoped to the owning account (`None` when
+    /// the id is unknown or belongs to someone else).
+    pub async fn get_gg_config(
+        &self,
+        user_id: &str,
+        id: &str,
+    ) -> Result<Option<crate::api::GgConfig>> {
+        let Some(row) = gg_config::Entity::find_by_id(id.to_string())
+            .one(&self.conn())
+            .await?
+        else {
+            return Ok(None);
+        };
+        if row.user_id != user_id {
+            return Ok(None);
+        }
+        Ok(Some(gg_config_from_row(row)?))
+    }
+
+    /// Insert a new gg configuration (id already minted by the handler).
+    pub async fn insert_gg_config(
+        &self,
+        user_id: &str,
+        config: &crate::api::GgConfig,
+    ) -> Result<()> {
+        gg_config::ActiveModel {
+            id: Set(config.id.clone()),
+            user_id: Set(user_id.to_string()),
+            name: Set(config.name.clone()),
+            description: Set(config.description.clone()),
+            capability_set_json: Set(serde_json::to_string(&config.capability_set)?),
+            updated_at: Set(config.updated_at.clone()),
+        }
+        .insert(&self.conn())
+        .await?;
+        Ok(())
+    }
+
+    /// Update a gg configuration in place, scoped to the owning account. Returns
+    /// whether a row matched.
+    pub async fn update_gg_config(
+        &self,
+        user_id: &str,
+        config: &crate::api::GgConfig,
+    ) -> Result<bool> {
+        let res = gg_config::Entity::update_many()
+            .col_expr(gg_config::Column::Name, Expr::value(config.name.clone()))
+            .col_expr(
+                gg_config::Column::Description,
+                Expr::value(config.description.clone()),
+            )
+            .col_expr(
+                gg_config::Column::CapabilitySetJson,
+                Expr::value(serde_json::to_string(&config.capability_set)?),
+            )
+            .col_expr(
+                gg_config::Column::UpdatedAt,
+                Expr::value(config.updated_at.clone()),
+            )
+            .filter(gg_config::Column::Id.eq(config.id.clone()))
+            .filter(gg_config::Column::UserId.eq(user_id))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
+    }
+
+    /// Delete a gg configuration, scoped to the owning account. Returns whether a
+    /// row was removed. Runs already launched from it are unaffected — each records
+    /// its own capability set.
+    pub async fn delete_gg_config(&self, user_id: &str, id: &str) -> Result<bool> {
+        let res = gg_config::Entity::delete_many()
+            .filter(gg_config::Column::Id.eq(id))
+            .filter(gg_config::Column::UserId.eq(user_id))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
+    }
+
     /// The legacy single-per-account plans that the startup backfill has not yet
     /// copied into `coverage_plan` (`migrated = false`). Each is returned with its
     /// parsed combinations and cases so the backfill can inline them as one-off
@@ -1878,6 +1968,18 @@ fn coverage_plan_from_row(row: coverage_plan::Model) -> Result<crate::api::Cover
         case_group_ids: serde_json::from_str(&row.case_group_ids_json)?,
         combos: serde_json::from_str(&row.combos_json)?,
         cases: serde_json::from_str(&row.cases_json)?,
+        updated_at: row.updated_at,
+    })
+}
+
+/// Rebuild a saved gg configuration from its stored row, parsing the capability
+/// set held as JSON text.
+fn gg_config_from_row(row: gg_config::Model) -> Result<crate::api::GgConfig> {
+    Ok(crate::api::GgConfig {
+        id: row.id,
+        name: row.name,
+        description: row.description,
+        capability_set: serde_json::from_str(&row.capability_set_json)?,
         updated_at: row.updated_at,
     })
 }
