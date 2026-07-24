@@ -1034,6 +1034,23 @@ impl BoardRuntime {
         }
         self.store.lock().expect("board store lock").issue_brief(id)
     }
+
+    /// Mark the issue with id `id` [done](IssueStatus::Done), returning whether it was (an unknown
+    /// id, or a disabled runtime, yields `false`). Used by the
+    /// [Code Reviews](https://docs.testcabinet.ai/gg/code-reviews/) capability to **accept** an
+    /// issue once its Code Review approves — the acceptance the `complete_issue` tool is intercepted
+    /// to gate. The loop refreshes the pinned board block and re-emits
+    /// [`BoardState`](GgTelemetryKind::BoardState) after, just as it does for the tool.
+    pub fn complete_issue(&self, id: &str) -> bool {
+        if !self.enabled {
+            return false;
+        }
+        self.store
+            .lock()
+            .expect("board store lock")
+            .complete_issue(id)
+            .is_ok()
+    }
 }
 
 #[cfg(test)]

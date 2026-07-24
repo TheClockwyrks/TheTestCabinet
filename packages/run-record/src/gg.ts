@@ -487,6 +487,22 @@ export type GgAgentStatus = "running" | "blocked" | "done" | "failed";
 export type GgWorkflowPhase = "started" | "finished";
 
 /**
+ * The phase of a [Code Review](https://docs.testcabinet.ai/gg/code-reviews/) a
+ * [`CodeReview`](GgTelemetryKind::CodeReview) event reports — the
+ * requested → (changes_requested)* → approved lifecycle that gates an
+ * [issue](GgBoardIssue)'s acceptance.
+ *
+ * A Code Review is [requested](Self::Requested) when the model marks an issue done (gg dispatches
+ * a reviewer against the diff rather than accepting immediately). The reviewer then either
+ * [requests changes](Self::ChangesRequested) — carrying the actionable items a fix agent must
+ * address, after which the work is re-reviewed — or [approves](Self::Approved), at which point the
+ * issue is finally accepted (marked done). Because there is **no cycle limit**, a single Code
+ * Review may emit many [`ChangesRequested`](Self::ChangesRequested) phases before an
+ * [`Approved`](Self::Approved) (or none, on a clean first pass).
+ */
+export type GgCodeReviewPhase = "requested" | "changes_requested" | "approved";
+
+/**
  * The type-specific payload of a [`GgTelemetryEvent`], discriminated by the `type`
  * field.
  *
@@ -788,6 +804,26 @@ export type GgTelemetryKind =
        * Whether this event marks the stage's [start or finish](GgWorkflowPhase).
        */
       phase: GgWorkflowPhase;
+    }
+  | {
+      type: "code_review";
+      /**
+       * Which phase of the review lifecycle this transition is.
+       */
+      phase: GgCodeReviewPhase;
+      /**
+       * The reviewer's actionable items, on the
+       * [`ChangesRequested`](GgCodeReviewPhase::ChangesRequested) phase (the changes a fix agent
+       * must address before re-review). Absent on [`Requested`](GgCodeReviewPhase::Requested) and
+       * [`Approved`](GgCodeReviewPhase::Approved).
+       */
+      items?: Array<string>;
+      /**
+       * The baseline commit the review diffed the work against — the issue's initial commit
+       * (captured when its work began) or, failing that, the run's baseline. Absent when no git
+       * baseline could be established for the run.
+       */
+      baseline?: string;
     }
   | {
       type: "log";
@@ -1149,6 +1185,26 @@ export type GgTelemetryEvent = {
        * Whether this event marks the stage's [start or finish](GgWorkflowPhase).
        */
       phase: GgWorkflowPhase;
+    }
+  | {
+      type: "code_review";
+      /**
+       * Which phase of the review lifecycle this transition is.
+       */
+      phase: GgCodeReviewPhase;
+      /**
+       * The reviewer's actionable items, on the
+       * [`ChangesRequested`](GgCodeReviewPhase::ChangesRequested) phase (the changes a fix agent
+       * must address before re-review). Absent on [`Requested`](GgCodeReviewPhase::Requested) and
+       * [`Approved`](GgCodeReviewPhase::Approved).
+       */
+      items?: Array<string>;
+      /**
+       * The baseline commit the review diffed the work against — the issue's initial commit
+       * (captured when its work began) or, failing that, the run's baseline. Absent when no git
+       * baseline could be established for the run.
+       */
+      baseline?: string;
     }
   | {
       type: "log";

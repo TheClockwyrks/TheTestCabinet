@@ -98,6 +98,26 @@
       ],
       "type": "object"
     },
+    "GgCodeReviewPhase": {
+      "description": "The phase of a [Code Review](https://docs.testcabinet.ai/gg/code-reviews/) a\n[`CodeReview`](GgTelemetryKind::CodeReview) event reports — the\nrequested → (changes_requested)* → approved lifecycle that gates an\n[issue](GgBoardIssue)'s acceptance.\n\nA Code Review is [requested](Self::Requested) when the model marks an issue done (gg dispatches\na reviewer against the diff rather than accepting immediately). The reviewer then either\n[requests changes](Self::ChangesRequested) — carrying the actionable items a fix agent must\naddress, after which the work is re-reviewed — or [approves](Self::Approved), at which point the\nissue is finally accepted (marked done). Because there is **no cycle limit**, a single Code\nReview may emit many [`ChangesRequested`](Self::ChangesRequested) phases before an\n[`Approved`](Self::Approved) (or none, on a clean first pass).",
+      "oneOf": [
+        {
+          "const": "requested",
+          "description": "A Code Review was triggered (the model marked the issue done): a reviewer is dispatched\nagainst the diff instead of the issue being accepted immediately.",
+          "type": "string"
+        },
+        {
+          "const": "changes_requested",
+          "description": "The reviewer returned actionable items: the work is not yet done. gg spawns a fix agent with\nthe original brief plus these items, then re-reviews. The items ride on the event's\n[`items`](GgTelemetryKind::CodeReview) field.",
+          "type": "string"
+        },
+        {
+          "const": "approved",
+          "description": "The reviewer approved the work: the issue is accepted and marked done. This is the only\nterminal phase that accepts the issue.",
+          "type": "string"
+        }
+      ]
+    },
     "GgContextAction": {
       "description": "The kind of agent-managed-context action a [`ContextManaged`](GgTelemetryKind::ContextManaged)\nevent reports — the model-facing window management that is the complement to\n[compaction](CAPABILITY_COMPACTION).\n\nThe [agent-managed context](https://docs.testcabinet.ai/gg/agent-managed-context/)\ncapability lets a disciplined agent reclaim window space itself rather than waiting for\nthe automatic backstop: it can [evict file views](Self::EvictFileViews) it no longer\nneeds (safe — it can re-read the file later) or [archive a section of its\nthread](Self::ArchiveThread) (removed from the live window but kept **searchable** via\n`search_archive`). Both reclaim tokens; a `search_archive` call reclaims nothing and so\nis reported only as an ordinary tool result, not as a `ContextManaged` action.",
       "oneOf": [
@@ -885,6 +905,32 @@
         "itemCount",
         "phase"
       ],
+      "type": "object"
+    },
+    {
+      "description": "A [Code Review](https://docs.testcabinet.ai/gg/code-reviews/) lifecycle transition — the\nevent that makes the review-gated acceptance of an [issue](GgBoardIssue) observable.\n\nEmitted (when the [code-reviews](CAPABILITY_CODE_REVIEWS) capability is enabled) on the agent\nthat marked the issue done: once as [`Requested`](GgCodeReviewPhase::Requested) when the\nreview is triggered, then once per [`ChangesRequested`](GgCodeReviewPhase::ChangesRequested)\nround (carrying the reviewer's actionable [`items`](Self::CodeReview::items) a fix agent then\naddresses), and finally once as [`Approved`](GgCodeReviewPhase::Approved) when the issue is\naccepted. Because there is **no cycle limit**, a single Code Review may stream many\n`ChangesRequested` events before an `Approved` (or go straight to `Approved` on a clean first\npass).\n\nWhich [issue](GgBoardIssue) the review gates rides on the event's own\n[`issue_id`](GgTelemetryEvent::issue_id) (the event is emitted on an issue-scoped stream), the\nsame way an agent's identity rides on [`agent_id`](GgTelemetryEvent::agent_id) — so the\npayload carries only the phase-specific data. The reviewer and fix agents themselves are\nordinary [subagents](CAPABILITY_SUBAGENTS): they emit the usual\n[`AgentSpawned`](Self::AgentSpawned)/[`AgentStatus`](Self::AgentStatus)/[`AgentReturned`](Self::AgentReturned)\nevents, also scoped to the issue under review. A run with the capability off emits none.",
+      "properties": {
+        "baseline": {
+          "description": "The baseline commit the review diffed the work against — the issue's initial commit\n(captured when its work began) or, failing that, the run's baseline. Absent when no git\nbaseline could be established for the run.",
+          "type": ["string", "null"]
+        },
+        "items": {
+          "description": "The reviewer's actionable items, on the\n[`ChangesRequested`](GgCodeReviewPhase::ChangesRequested) phase (the changes a fix agent\nmust address before re-review). Absent on [`Requested`](GgCodeReviewPhase::Requested) and\n[`Approved`](GgCodeReviewPhase::Approved).",
+          "items": {
+            "type": "string"
+          },
+          "type": ["array", "null"]
+        },
+        "phase": {
+          "$ref": "#/$defs/GgCodeReviewPhase",
+          "description": "Which phase of the review lifecycle this transition is."
+        },
+        "type": {
+          "const": "code_review",
+          "type": "string"
+        }
+      },
+      "required": ["type", "phase"],
       "type": "object"
     },
     {

@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -12,7 +13,8 @@ use crate::board::BoardRuntime;
 use crate::client::MockClient;
 use crate::client::{
     ClientFactory, DEFAULT_MOCK_MEMORY, DEFAULT_MOCK_SKILL, DEFAULT_MOCK_TASK_MOVEMENT,
-    DEFAULT_MOCK_TASK_SCAFFOLD, MOCK_SUBAGENT_FILE, MOCK_SUBAGENT_RETURN,
+    DEFAULT_MOCK_TASK_SCAFFOLD, MOCK_CODE_REVIEW_ISSUE_ID, MOCK_REVIEW_FIX_FILE,
+    MOCK_REVIEW_FIX_SENTINEL, MOCK_REVIEW_WORKER_FILE, MOCK_SUBAGENT_FILE, MOCK_SUBAGENT_RETURN,
 };
 use crate::compaction::CompactionSetup;
 use crate::config::GgInvocation;
@@ -27,11 +29,11 @@ use crate::tasks::TasksRuntime;
 use crate::telemetry::{CollectingSink, Emitter};
 use crate::tools::{RuntimeSet, ToolContext, ToolRegistry};
 use test_cabinet_core::gg::{
-    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_CONTEXT_VISIBILITY, CAPABILITY_EPICS_ISSUES,
-    CAPABILITY_MULTI_MODEL, CAPABILITY_PLANNING, CAPABILITY_SKILLS, CAPABILITY_SUBAGENTS,
-    CAPABILITY_WORKFLOWS, CAPABILITY_WORKTREES, GgAgentStatus, GgCapabilityConfig, GgCapabilitySet,
-    GgContextAction, GgContextSource, GgPlanPhase, GgSlotBinding, GgTelemetryKind, GgWorkflowPhase,
-    PRIMARY_SLOT,
+    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_CODE_REVIEWS, CAPABILITY_CONTEXT_VISIBILITY,
+    CAPABILITY_EPICS_ISSUES, CAPABILITY_MULTI_MODEL, CAPABILITY_PLANNING, CAPABILITY_SKILLS,
+    CAPABILITY_SUBAGENTS, CAPABILITY_WORKFLOWS, CAPABILITY_WORKTREES, GgAgentStatus,
+    GgCapabilityConfig, GgCapabilitySet, GgCodeReviewPhase, GgContextAction, GgContextSource,
+    GgIssueStatus, GgPlanPhase, GgSlotBinding, GgTelemetryKind, GgWorkflowPhase, PRIMARY_SLOT,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
@@ -525,6 +527,7 @@ async fn drive_exhausts_the_turn_ceiling_when_the_model_never_stops() {
             TasksRuntime::disabled(),
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
+            false,
             None,
         )
         .await;
@@ -570,6 +573,7 @@ async fn drive_times_out_at_a_passed_deadline() {
             TasksRuntime::disabled(),
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
+            false,
             None,
         )
         .await;
@@ -614,6 +618,7 @@ async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
             TasksRuntime::disabled(),
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
+            false,
             None,
         )
         .await;
@@ -657,6 +662,7 @@ async fn drive_ends_model_error_on_exhausted_retries() {
             TasksRuntime::disabled(),
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
+            false,
             None,
         )
         .await;
@@ -701,6 +707,7 @@ fn system_prompt_reflects_the_offered_tools() {
         &TasksRuntime::disabled(),
         &BoardRuntime::disabled(),
         &PlanningRuntime::disabled(),
+        false,
     );
     assert!(full.contains("write_file"));
     assert!(full.contains("shell"));
@@ -717,6 +724,7 @@ fn system_prompt_reflects_the_offered_tools() {
         &TasksRuntime::disabled(),
         &BoardRuntime::disabled(),
         &PlanningRuntime::disabled(),
+        false,
     );
     assert!(empty.contains("no tools"));
 }
@@ -1038,6 +1046,7 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
             TasksRuntime::disabled(),
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
+            false,
             None,
         )
         .await;
@@ -1215,6 +1224,7 @@ async fn drive_enforces_memory_caps_end_to_end() {
             TasksRuntime::disabled(),
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
+            false,
             None,
         )
         .await;
@@ -1405,6 +1415,7 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
             tasks,
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
+            false,
             None,
         )
         .await;
@@ -1703,6 +1714,7 @@ async fn drive_compacts_at_the_threshold_and_retains_pinned_state() {
             tasks,
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
+            false,
             None,
         )
         .await;
@@ -1857,6 +1869,7 @@ async fn drive_never_compacts_when_capability_off() {
             tasks,
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
+            false,
             None,
         )
         .await;
@@ -1946,6 +1959,7 @@ async fn drive_manages_context_end_to_end() {
             TasksRuntime::disabled(),
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
+            false,
             None,
         )
         .await;
@@ -2050,6 +2064,7 @@ async fn drive_without_amc_offers_no_context_management() {
             TasksRuntime::disabled(),
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
+            false,
             None,
         )
         .await;
@@ -2130,6 +2145,7 @@ async fn drive_plans_then_implements_from_a_fresh_context() {
             TasksRuntime::disabled(),
             BoardRuntime::disabled(),
             PlanningRuntime::resolve(&set),
+            false,
             None,
         )
         .await;
@@ -2284,6 +2300,7 @@ async fn drive_without_planning_offers_no_planning() {
             TasksRuntime::disabled(),
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
+            false,
             None,
         )
         .await;
@@ -4036,4 +4053,574 @@ fn parse_workflow_stages_rejects_malformed_declarations() {
         parsed[0].items.as_deref(),
         Some(&["a".to_string(), "b".to_string()][..])
     );
+}
+
+// ---------------------------------------------------------------------------
+// Phase 5a: Code Reviews — gate issue acceptance on a reviewer + a fix loop
+// ---------------------------------------------------------------------------
+
+/// The board issue the scripted Code Review e2es create, dispatch, and complete.
+const REVIEW_ISSUE_ID: &str = "feat-1";
+
+/// [`subagent_set`], plus the epics-and-issues and code-reviews capabilities — a review-gated run.
+fn code_review_set(extra_slots: &[&str]) -> GgCapabilitySet {
+    let mut set = subagent_set(4, 3, extra_slots);
+    set.capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_EPICS_ISSUES));
+    set.capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_CODE_REVIEWS));
+    set
+}
+
+/// A one-tool-call assistant turn.
+fn tool_call_response(id: &str, name: &str, args: serde_json::Value) -> ModelResponse {
+    ModelResponse {
+        text: Some(format!("calling {name}")),
+        tool_calls: vec![ToolCall {
+            id: id.to_string(),
+            name: name.to_string(),
+            arguments: args,
+        }],
+        finish_reason: FinishReason::ToolCalls,
+        usage: TokenCounts::default(),
+        cost: None,
+    }
+}
+
+/// The scripted **root** for a Code Review e2e: build one issue, dispatch its work to a `worker`
+/// subagent, wait, then `complete_issue` — which (code-reviews on) triggers the review.
+fn code_review_root_mock(model_id: &str) -> MockClient {
+    MockClient::new(
+        model_id,
+        vec![
+            tool_call_response(
+                "epic",
+                "create_epic",
+                json!({ "id": "e1", "title": "Build", "description": "the build" }),
+            ),
+            tool_call_response(
+                "issue",
+                "create_issue",
+                json!({
+                    "id": REVIEW_ISSUE_ID,
+                    "title": "Add the widget",
+                    "inScope": "Implement the widget.",
+                    "outOfScope": "Unrelated changes.",
+                    "completionCriteria": "The widget is fully implemented.",
+                    "epicId": "e1",
+                }),
+            ),
+            tool_call_response(
+                "dispatch",
+                "spawn_subagent",
+                json!({ "issueId": REVIEW_ISSUE_ID, "slot": "worker" }),
+            ),
+            tool_call_response("wait", "wait_for_subagents", json!({})),
+            tool_call_response(
+                "complete",
+                "complete_issue",
+                json!({ "id": REVIEW_ISSUE_ID }),
+            ),
+            stop_response(),
+        ],
+    )
+}
+
+/// A reviewer that returns a clean, parseable verdict in one turn — APPROVED, or CHANGES REQUESTED
+/// with one actionable item.
+fn reviewer_verdict_mock(model_id: &str, approved: bool) -> MockClient {
+    let text = if approved {
+        "The work satisfies the completion criteria.\n\nCODE REVIEW: APPROVED".to_string()
+    } else {
+        "Not finished.\n\nCODE REVIEW: CHANGES REQUESTED\n1. Add the missing widget to the game."
+            .to_string()
+    };
+    MockClient::new(
+        model_id,
+        vec![ModelResponse {
+            text: Some(text),
+            tool_calls: Vec::new(),
+            finish_reason: FinishReason::Stop,
+            usage: TokenCounts::default(),
+            cost: None,
+        }],
+    )
+}
+
+/// A `worker`-slot producer whose Nth dispatch writes `work-N.txt` then finishes — so the initial
+/// worker and each fix agent leave a distinct, countable trace, and the reviewer's diff has real
+/// content to review.
+fn counting_worker_producer(
+    counter: Arc<AtomicUsize>,
+) -> impl Fn(&GgSlotBinding) -> Box<dyn ModelClient> + Send + Sync + 'static {
+    move |b| {
+        let n = counter.fetch_add(1, Ordering::SeqCst);
+        Box::new(MockClient::new(
+            &b.model_id,
+            vec![
+                tool_call_response(
+                    "write",
+                    "write_file",
+                    json!({ "path": format!("work-{n}.txt"), "contents": "work\n" }),
+                ),
+                stop_response(),
+            ],
+        ))
+    }
+}
+
+/// A `reviewer`-slot producer that requests changes for its first `approve_after` dispatches, then
+/// approves — the scripted "approve-after-N" that terminates the (otherwise unbounded) fix loop.
+fn approve_after_producer(
+    counter: Arc<AtomicUsize>,
+    approve_after: usize,
+) -> impl Fn(&GgSlotBinding) -> Box<dyn ModelClient> + Send + Sync + 'static {
+    move |b| {
+        let n = counter.fetch_add(1, Ordering::SeqCst);
+        Box::new(reviewer_verdict_mock(&b.model_id, n >= approve_after))
+    }
+}
+
+/// Every `CodeReview` event in the stream, as `(issueId, phase, items, baseline)`. The issue id
+/// rides on the event envelope (`issue_id`), not the payload.
+type Review = (
+    Option<String>,
+    GgCodeReviewPhase,
+    Option<Vec<String>>,
+    Option<String>,
+);
+fn code_reviews(events: &[test_cabinet_core::gg::GgTelemetryEvent]) -> Vec<Review> {
+    events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::CodeReview {
+                phase,
+                items,
+                baseline,
+            } => Some((e.issue_id.clone(), *phase, items.clone(), baseline.clone())),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The most recent status reported for `issue_id` on any `BoardState`.
+fn last_issue_status(
+    events: &[test_cabinet_core::gg::GgTelemetryEvent],
+    issue_id: &str,
+) -> Option<GgIssueStatus> {
+    events.iter().rev().find_map(|e| match &e.kind {
+        GgTelemetryKind::BoardState { issues, .. } => {
+            issues.iter().find(|i| i.id == issue_id).map(|i| i.status)
+        }
+        _ => None,
+    })
+}
+
+/// Completing an issue with the capability on triggers a **Code Review** rather than accepting the
+/// issue: a reviewer is dispatched against the baseline diff, one round requests changes (a fix
+/// agent runs with the original brief plus the items), and a re-review approves — only then is the
+/// issue marked done. Exercises the whole review → fix → approve cycle end to end.
+#[tokio::test]
+async fn completing_an_issue_triggers_a_code_review_and_accepts_on_approval() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-cr".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), code_review_set(&["worker", "reviewer"]));
+
+    let worker_counter = Arc::new(AtomicUsize::new(0));
+    let review_counter = Arc::new(AtomicUsize::new(0));
+    let factory = ScriptedFactory::new()
+        .slot("primary", |b| Box::new(code_review_root_mock(&b.model_id)))
+        .slot(
+            "worker",
+            counting_worker_producer(Arc::clone(&worker_counter)),
+        )
+        .slot(
+            "reviewer",
+            // Approve on the 2nd review (one changes-requested round first).
+            approve_after_producer(Arc::clone(&review_counter), 1),
+        );
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran
+    );
+
+    let events = sink.events();
+    let reviews = code_reviews(&events);
+
+    // The lifecycle: requested → changes_requested (with items) → approved, all scoped to the issue.
+    let phases: Vec<GgCodeReviewPhase> = reviews.iter().map(|(_, p, _, _)| *p).collect();
+    assert_eq!(
+        phases,
+        vec![
+            GgCodeReviewPhase::Requested,
+            GgCodeReviewPhase::ChangesRequested,
+            GgCodeReviewPhase::Approved,
+        ],
+        "a Code Review runs requested → changes_requested → approved"
+    );
+    assert!(
+        reviews
+            .iter()
+            .all(|(id, _, _, _)| id.as_deref() == Some(REVIEW_ISSUE_ID)),
+        "every CodeReview event is scoped to the issue under review"
+    );
+    // The changes-requested round carries the reviewer's actionable items.
+    let (_, _, items, baseline) = reviews
+        .iter()
+        .find(|(_, p, _, _)| *p == GgCodeReviewPhase::ChangesRequested)
+        .expect("a changes_requested phase");
+    assert!(
+        items
+            .as_ref()
+            .is_some_and(|items| items.iter().any(|i| i.contains("missing widget"))),
+        "the changes_requested event carries the reviewer's items"
+    );
+    // The review diffed against a real git baseline (worktrees off, but code-reviews established one).
+    assert!(
+        baseline.is_some(),
+        "the Code Review records the baseline it diffed against"
+    );
+
+    // Not immediate acceptance: the issue was accepted only via the review's approval, and the
+    // `complete_issue` result reports the approval rather than a plain completion.
+    let complete_ok = events.iter().any(|e| {
+        matches!(
+            &e.kind,
+            GgTelemetryKind::ToolResult { name, ok: true, summary: Some(s) }
+                if name == "complete_issue" && s.contains("code review approved")
+        )
+    });
+    assert!(
+        complete_ok,
+        "complete_issue is gated: it succeeds only once the Code Review approves"
+    );
+    assert_eq!(
+        last_issue_status(&events, REVIEW_ISSUE_ID),
+        Some(GgIssueStatus::Done),
+        "the issue is accepted (marked done) after approval"
+    );
+
+    // The reviewer ran twice (round 1 + re-review) and a fix agent ran once, all as subagents.
+    let spawns = agent_spawns(&events);
+    let reviewer_spawns = spawns
+        .iter()
+        .filter(|(_, _, slot, _, _)| slot == "reviewer");
+    assert_eq!(
+        reviewer_spawns.count(),
+        2,
+        "a reviewer is dispatched for the first review and the re-review"
+    );
+    // The reviewer's brief carries the diff against the baseline (the initial worker's file appears
+    // in it), so the review is genuinely of the work, diffed against the baseline.
+    assert!(
+        spawns
+            .iter()
+            .any(|(_, _, slot, _, brief)| slot == "reviewer"
+                && brief.as_deref().is_some_and(
+                    |b| b.contains("work-0.txt") && b.contains("diff against the baseline")
+                )),
+        "the reviewer is given the baseline diff of the work"
+    );
+    // A fix agent ran on the work slot with the ORIGINAL issue brief plus the review's items.
+    let fix_spawns: Vec<_> = spawns
+        .iter()
+        .filter(|(_, _, slot, _, brief)| {
+            slot == "worker"
+                && brief
+                    .as_deref()
+                    .is_some_and(|b| b.contains("Requested changes from Code Review"))
+        })
+        .collect();
+    assert_eq!(
+        fix_spawns.len(),
+        1,
+        "one fix agent for the one changes round"
+    );
+    let fix_brief = fix_spawns[0].4.as_deref().unwrap();
+    assert!(
+        fix_brief.contains("Implement the widget."),
+        "the fix agent gets the original issue brief (its in-scope)"
+    );
+    assert!(
+        fix_brief.contains("missing widget"),
+        "the fix agent gets the reviewer's actionable items"
+    );
+
+    // The fix agent actually ran (the initial worker wrote work-0, the fix agent work-1).
+    assert!(
+        dir.path().join("work-0.txt").exists(),
+        "the initial worker ran"
+    );
+    assert!(dir.path().join("work-1.txt").exists(), "the fix agent ran");
+
+    assert!(matches!(
+        &events.last().unwrap().kind,
+        GgTelemetryKind::SessionEnded { status } if status == "completed"
+    ));
+}
+
+/// The fix → re-review loop has **no cycle limit**: it runs as many rounds as the reviewer keeps
+/// requesting changes and terminates only on approval. Scripted with approve-after-3: three
+/// changes-requested rounds, three fix agents, then approval accepts the issue.
+#[tokio::test]
+async fn code_review_fix_loop_has_no_cycle_limit_and_terminates_on_approval() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-cr-n".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), code_review_set(&["worker", "reviewer"]));
+
+    let worker_counter = Arc::new(AtomicUsize::new(0));
+    let review_counter = Arc::new(AtomicUsize::new(0));
+    let factory = ScriptedFactory::new()
+        .slot("primary", |b| Box::new(code_review_root_mock(&b.model_id)))
+        .slot(
+            "worker",
+            counting_worker_producer(Arc::clone(&worker_counter)),
+        )
+        .slot(
+            "reviewer",
+            approve_after_producer(Arc::clone(&review_counter), 3),
+        );
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran
+    );
+
+    let events = sink.events();
+    let reviews = code_reviews(&events);
+
+    // Three changes-requested rounds before the single approval — no limit shy of it.
+    let changes = reviews
+        .iter()
+        .filter(|(_, p, _, _)| *p == GgCodeReviewPhase::ChangesRequested)
+        .count();
+    let approvals = reviews
+        .iter()
+        .filter(|(_, p, _, _)| *p == GgCodeReviewPhase::Approved)
+        .count();
+    assert_eq!(
+        changes, 3,
+        "three changes-requested rounds ran (no cycle limit)"
+    );
+    assert_eq!(approvals, 1, "the loop terminates on the single approval");
+
+    // Four reviewer dispatches (three changes + the approving one) and three fix agents.
+    let spawns = agent_spawns(&events);
+    assert_eq!(
+        spawns
+            .iter()
+            .filter(|(_, _, slot, _, _)| slot == "reviewer")
+            .count(),
+        4,
+        "a reviewer ran for each of the four review rounds"
+    );
+    assert_eq!(
+        spawns
+            .iter()
+            .filter(|(_, _, slot, _, brief)| slot == "worker"
+                && brief
+                    .as_deref()
+                    .is_some_and(|b| b.contains("Requested changes from Code Review")))
+            .count(),
+        3,
+        "a fix agent ran for each of the three changes rounds"
+    );
+
+    // The issue is accepted only after the loop terminates on approval.
+    assert_eq!(
+        last_issue_status(&events, REVIEW_ISSUE_ID),
+        Some(GgIssueStatus::Done),
+        "the issue is accepted once the fix loop terminates on approval"
+    );
+}
+
+/// With the capability **off**, `complete_issue` accepts the issue directly — no Code Review is
+/// triggered, no reviewer is dispatched, and no git baseline is established. The ablation off arm.
+#[tokio::test]
+async fn code_review_off_completes_the_issue_directly() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-cr-off".to_string()), Box::new(sink.clone()));
+
+    // Subagents + a board, but NOT code-reviews.
+    let mut set = GgCapabilitySet::minimal("mock/primary");
+    set.capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS));
+    set.capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_EPICS_ISSUES));
+    let inv = invocation(dir.path(), set);
+
+    // A root that files an issue and completes it directly (no dispatch — no review to run).
+    let factory = ScriptedFactory::new().slot("primary", |b| {
+        Box::new(MockClient::new(
+            &b.model_id,
+            vec![
+                tool_call_response(
+                    "epic",
+                    "create_epic",
+                    json!({ "id": "e1", "title": "Build", "description": "the build" }),
+                ),
+                tool_call_response(
+                    "issue",
+                    "create_issue",
+                    json!({
+                        "id": REVIEW_ISSUE_ID,
+                        "title": "Add the widget",
+                        "inScope": "Implement the widget.",
+                        "outOfScope": "Unrelated changes.",
+                        "completionCriteria": "The widget is fully implemented.",
+                    }),
+                ),
+                tool_call_response(
+                    "complete",
+                    "complete_issue",
+                    json!({ "id": REVIEW_ISSUE_ID }),
+                ),
+                stop_response(),
+            ],
+        ))
+    });
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran
+    );
+
+    let events = sink.events();
+
+    // No Code Review at all, and no reviewer subagent.
+    assert!(
+        code_reviews(&events).is_empty(),
+        "no CodeReview telemetry when the capability is off"
+    );
+    assert_eq!(
+        agent_spawns(&events).len(),
+        1,
+        "only the root runs — no reviewer or fix subagents"
+    );
+    // `complete_issue` accepted the issue directly (the plain tool confirmation, not a review).
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::ToolResult { name, ok: true, summary: Some(s) }
+                if name == "complete_issue" && s.contains("completed issue")
+        )),
+        "complete_issue accepts the issue directly when code-reviews is off"
+    );
+    assert_eq!(
+        last_issue_status(&events, REVIEW_ISSUE_ID),
+        Some(GgIssueStatus::Done),
+        "the issue is done immediately"
+    );
+    // No git machinery engaged (no worktrees, no code-reviews → no baseline committed).
+    assert!(
+        !dir.path().join(".git").exists(),
+        "no baseline is committed when neither worktrees nor code-reviews is on"
+    );
+}
+
+/// The full review → fix → approve cycle driven **offline through the real binary path** (the
+/// `DefaultClientFactory` + the `mock/…` model-id scripts), not the in-crate scripted factory: the
+/// reviewer requests the fix marker, the fixer writes it, and the re-review approves.
+#[tokio::test]
+async fn code_review_offline_e2e_through_the_default_factory() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-cr-mock".to_string()), Box::new(sink.clone()));
+
+    let mut set = GgCapabilitySet::minimal("mock/demo-code-review-parent");
+    set.capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_MULTI_MODEL));
+    set.capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS));
+    set.capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_EPICS_ISSUES));
+    set.capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_CODE_REVIEWS));
+    set.slots
+        .push(GgSlotBinding::new("worker", "mock/demo-review-worker"));
+    set.slots
+        .push(GgSlotBinding::new("reviewer", "mock/demo-review-reviewer"));
+    let inv = invocation(dir.path(), set);
+
+    // `run` uses the production DefaultClientFactory, which selects the mock scripts by model id.
+    assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
+
+    // The worker did the initial work, then a fix agent wrote the review fix marker.
+    assert!(
+        dir.path().join(MOCK_REVIEW_WORKER_FILE).exists(),
+        "the initial worker did its work"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join(MOCK_REVIEW_FIX_FILE))
+            .ok()
+            .as_deref()
+            .map(str::trim),
+        Some(MOCK_REVIEW_FIX_SENTINEL),
+        "the fix agent applied the reviewer's requested change"
+    );
+
+    let events = sink.events();
+    let reviews = code_reviews(&events);
+    assert!(
+        reviews
+            .iter()
+            .any(|(_, p, _, _)| *p == GgCodeReviewPhase::ChangesRequested),
+        "the first review requested changes"
+    );
+    assert!(
+        reviews
+            .iter()
+            .any(|(_, p, _, _)| *p == GgCodeReviewPhase::Approved),
+        "the re-review approved"
+    );
+    assert_eq!(
+        last_issue_status(&events, MOCK_CODE_REVIEW_ISSUE_ID),
+        Some(GgIssueStatus::Done),
+        "the issue is accepted after the offline review→fix→approve cycle"
+    );
+    assert!(matches!(
+        &events.last().unwrap().kind,
+        GgTelemetryKind::SessionEnded { status } if status == "completed"
+    ));
+}
+
+/// The verdict parser: an explicit approval marker approves; anything else is changes-requested with
+/// the message's list items (a generic item when it lists none); the last marker wins.
+#[test]
+fn parse_review_verdict_reads_the_contract() {
+    // Approval.
+    let approved = parse_review_verdict("Looks good.\n\nCODE REVIEW: APPROVED");
+    assert!(approved.approved);
+    assert!(approved.items.is_empty());
+
+    // Changes with numbered items.
+    let changes = parse_review_verdict(
+        "CODE REVIEW: CHANGES REQUESTED\n1. Fix the score.\n2. Add a restart button.",
+    );
+    assert!(!changes.approved);
+    assert_eq!(
+        changes.items,
+        vec![
+            "Fix the score.".to_string(),
+            "Add a restart button.".to_string()
+        ]
+    );
+
+    // Changes with bullet items.
+    let bullets = parse_review_verdict("CODE REVIEW: CHANGES REQUESTED\n- Do X\n- Do Y");
+    assert_eq!(bullets.items, vec!["Do X".to_string(), "Do Y".to_string()]);
+
+    // No clear verdict → conservatively not approved, with a synthesized item so a fixer has work.
+    let unclear = parse_review_verdict("I looked at it and I have some thoughts.");
+    assert!(!unclear.approved);
+    assert_eq!(unclear.items.len(), 1);
+
+    // The last marker wins (a reviewer that discusses then concludes).
+    let concludes =
+        parse_review_verdict("I might request changes... but actually: CODE REVIEW: APPROVED");
+    assert!(concludes.approved);
 }

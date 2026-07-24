@@ -64,7 +64,7 @@ use crate::model::{ToolCall, ToolDefinition};
 use crate::skills::SkillLibrary;
 use crate::tasks::TaskStore;
 
-pub use board::is_board_tool;
+pub use board::{COMPLETE_ISSUE_TOOL, is_board_tool};
 pub use context::{
     ARCHIVE_THREAD_TOOL, DEFAULT_ARCHIVE_KEEP_RECENT, EVICT_FILE_VIEW_TOOL, SEARCH_ARCHIVE_TOOL,
     is_context_reclaim_tool, parse_archive_keep_recent, parse_evict_path,

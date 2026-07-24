@@ -143,6 +143,33 @@ pub fn ensure_baseline(workspace: &Path) -> Result<String, GitError> {
     run_git(workspace, "git rev-parse HEAD", &["rev-parse", "HEAD"])
 }
 
+/// The current `HEAD` commit sha of the repository rooted at `dir` — the point a
+/// [Code Review](https://docs.testcabinet.ai/gg/code-reviews/) captures as an issue's **initial
+/// commit** when its work is dispatched, so a later review diffs only that issue's changes rather
+/// than the whole run. On the first dispatch this equals the [baseline](ensure_baseline); after
+/// earlier worktree merges advanced `HEAD` it is later.
+pub fn head_commit(dir: &Path) -> Result<String, GitError> {
+    run_git(dir, "git rev-parse HEAD", &["rev-parse", "HEAD"])
+}
+
+/// The full textual diff of the working tree at `dir` against commit `base` — what a
+/// [Code Review](https://docs.testcabinet.ai/gg/code-reviews/) hands its reviewer.
+///
+/// Includes new, modified, and deleted files (not just tracked modifications): everything is
+/// staged (`git add -A`) so the `--cached` diff against `base` covers untracked additions too, then
+/// the index is reset back to `HEAD` so the staging is transient and the main tree is left as it
+/// was. Returns the (possibly empty) diff text. Runs three git calls; the caller serializes them on
+/// the shared git lock since staging mutates the shared index.
+pub fn diff_since(dir: &Path, base: &str) -> Result<String, GitError> {
+    run_git(dir, "git add", &["add", "-A"])?;
+    let diff = run_git(dir, "git diff --cached", &["diff", "--cached", base])?;
+    // Restore the index to HEAD so the transient staging does not linger (and cannot interfere with
+    // a concurrent worktree merge in the main tree). Best-effort: a failure here does not invalidate
+    // the diff we already captured.
+    let _ = run_git(dir, "git reset", &["reset", "-q"]);
+    Ok(diff)
+}
+
 /// Create a fresh worktree at `worktree_path` on a new `branch` based at commit `base`, from the
 /// repository rooted at `main`. The new worktree is an isolated checkout of `base` the subagent
 /// mutates on its own; `worktree_path` must not already exist.

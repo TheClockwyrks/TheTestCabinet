@@ -65,7 +65,7 @@
 //! and ended for any other reason is a *run outcome* recorded in the telemetry, not a
 //! process failure, and exits `0`.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -73,11 +73,11 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 use test_cabinet_core::gg::{
-    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_CONTEXT_VISIBILITY, CAPABILITY_EPICS_ISSUES,
-    CAPABILITY_MEMORIES, CAPABILITY_MULTI_MODEL, CAPABILITY_SKILLS, CAPABILITY_SUBAGENTS,
-    CAPABILITY_TASKS, CAPABILITY_WORKFLOWS, CAPABILITY_WORKTREES, GgAgentStatus, GgCapabilitySet,
-    GgContextAction, GgContextSource, GgPlanPhase, GgSlotBinding, GgTelemetryKind, GgWorkflowPhase,
-    PRIMARY_SLOT,
+    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_CODE_REVIEWS, CAPABILITY_CONTEXT_VISIBILITY,
+    CAPABILITY_EPICS_ISSUES, CAPABILITY_MEMORIES, CAPABILITY_MULTI_MODEL, CAPABILITY_SKILLS,
+    CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WORKFLOWS, CAPABILITY_WORKTREES,
+    GgAgentStatus, GgCapabilitySet, GgCodeReviewPhase, GgContextAction, GgContextSource,
+    GgPlanPhase, GgSlotBinding, GgTelemetryKind, GgWorkflowPhase, PRIMARY_SLOT,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 use tokio::sync::{mpsc, oneshot};
@@ -100,11 +100,12 @@ use crate::subagents::{AgentCtx, AgentReturn, ChildHandle, ParentWait, Scheduler
 use crate::tasks::{TasksRuntime, resolve_max_tasks};
 use crate::telemetry::Emitter;
 use crate::tools::{
-    ARCHIVE_THREAD_TOOL, DEFAULT_ARCHIVE_KEEP_RECENT, ENTER_PLAN_MODE_TOOL, EVICT_FILE_VIEW_TOOL,
-    READ_SKILL_TOOL, RUN_WORKFLOW_TOOL, RuntimeSet, SEND_MESSAGE_TOOL, SPAWN_SUBAGENT_TOOL,
-    SUBMIT_PLAN_TOOL, ToolContext, ToolOutcome, ToolRegistry, WAIT_FOR_SUBAGENTS_TOOL,
-    is_board_tool, is_context_reclaim_tool, is_memory_tool, is_planning_tool, is_subagent_tool,
-    is_task_tool, parse_archive_keep_recent, parse_evict_path, plan_mode_offers,
+    ARCHIVE_THREAD_TOOL, COMPLETE_ISSUE_TOOL, DEFAULT_ARCHIVE_KEEP_RECENT, ENTER_PLAN_MODE_TOOL,
+    EVICT_FILE_VIEW_TOOL, READ_SKILL_TOOL, RUN_WORKFLOW_TOOL, RuntimeSet, SEND_MESSAGE_TOOL,
+    SPAWN_SUBAGENT_TOOL, SUBMIT_PLAN_TOOL, ToolContext, ToolOutcome, ToolRegistry,
+    WAIT_FOR_SUBAGENTS_TOOL, is_board_tool, is_context_reclaim_tool, is_memory_tool,
+    is_planning_tool, is_subagent_tool, is_task_tool, parse_archive_keep_recent, parse_evict_path,
+    plan_mode_offers,
 };
 
 /// The default per-run turn ceiling, used when no `maxTurns` capability param sets
@@ -166,6 +167,13 @@ pub enum SessionOutcome {
 /// single-agent run has only this agent; Phase 4B gives spawned subagents generated ids
 /// beneath it.
 pub const ROOT_AGENT_ID: &str = "root";
+
+/// The conventional [model slot](GgSlotBinding) a [Code Review](handle_code_review)'s reviewer runs
+/// on when [multi-model](CAPABILITY_MULTI_MODEL) is enabled and the slot is bound: a dedicated
+/// `reviewer` model, distinct from the model that did (and will fix) the work. When multi-model is
+/// off, or no `reviewer` slot is bound, the reviewer collapses to the [`primary`](PRIMARY_SLOT)
+/// slot like any other agent.
+const REVIEWER_SLOT: &str = "reviewer";
 
 /// One node in gg's [subagent tree](https://docs.testcabinet.ai/gg/subagents/): the unit the
 /// [turn loop](Self::drive) drives.
@@ -476,6 +484,19 @@ pub(crate) async fn run_with_factory(
     SessionOutcome::Ran
 }
 
+/// The dispatch facts recorded for one [issue](test_cabinet_core::gg::GgBoardIssue) the first time
+/// it is dispatched to a subagent, so a later [Code Review](handle_code_review) of it has an
+/// issue-level baseline and knows where to run a fix agent.
+struct IssueDispatchMeta {
+    /// The commit `HEAD` sat at when the issue's work began — its review baseline. `None` when no
+    /// git baseline was established this run (the review falls back to the run baseline, which is
+    /// then also `None`).
+    initial_commit: Option<String>,
+    /// The [slot](GgSlotBinding) the issue's work was dispatched on, so a Code Review's fix agent
+    /// re-runs the work on the same kind of model rather than defaulting to primary.
+    work_slot: String,
+}
+
 /// The shared, cross-task state a whole gg session is orchestrated from.
 ///
 /// A run is no longer a single agent: the root can [spawn](handle_subagent_call) subagents that
@@ -522,9 +543,21 @@ struct Orchestrator {
     /// here (see [`baseline_commit`](Self::baseline_commit)) so that phase can reuse it. `None` when
     /// worktrees are off or git could not initialize a baseline.
     baseline_commit: Option<String>,
-    /// Serializes every git operation on the shared repository (worktree add/merge/remove), since
-    /// concurrently-finishing subagents would otherwise race on `.git` and the main working tree.
-    /// Held only across the synchronous git calls, never across an await.
+    /// Whether the [code-reviews](CAPABILITY_CODE_REVIEWS) capability is on — gates whether
+    /// `complete_issue` triggers a [Code Review](handle_code_review) (which needs the delegation
+    /// machinery to run a reviewer, so it only engages when [`delegation_enabled`](Self::delegation_enabled)).
+    code_reviews_enabled: bool,
+    /// Per-[issue](test_cabinet_core::gg::GgBoardIssue) dispatch facts a
+    /// [Code Review](handle_code_review) needs: the commit the issue's work began at (its review
+    /// baseline) and the [slot](GgSlotBinding) it was worked on (where a fix agent re-runs).
+    /// Captured on the **first** dispatch of each issue (`spawn_subagent { issueId }`) and read back
+    /// when the issue is completed; an issue never dispatched to a subagent falls back to the run
+    /// baseline and the primary slot. Guarded so concurrently-dispatching agents can record.
+    issue_dispatch: Mutex<HashMap<String, IssueDispatchMeta>>,
+    /// Serializes every git operation on the shared repository (worktree add/merge/remove, and a
+    /// Code Review's baseline diff), since concurrently-finishing subagents would otherwise race on
+    /// `.git` and the main working tree. Held only across the synchronous git calls, never across an
+    /// await.
     git_lock: Mutex<()>,
     /// The resolved [parallelism and depth caps](SubagentConfig).
     config: SubagentConfig,
@@ -585,6 +618,8 @@ impl Orchestrator {
             worktrees_capability: worktrees.capability,
             worktrees_root: worktrees.root,
             baseline_commit: worktrees.baseline_commit,
+            code_reviews_enabled: set.is_enabled(CAPABILITY_CODE_REVIEWS),
+            issue_dispatch: Mutex::new(HashMap::new()),
             git_lock: Mutex::new(()),
             config: SubagentConfig::resolve(set),
             scheduler: Scheduler::new(SubagentConfig::resolve(set).max_parallel),
@@ -649,12 +684,92 @@ impl Orchestrator {
     /// session start when the worktrees capability made the workspace a git repo — or `None` when
     /// worktrees are off or no baseline could be committed.
     ///
-    /// This is the "original commit for the run" that Phase 5
-    /// [Code Reviews](https://docs.testcabinet.ai/gg/code-reviews/) diff against; exposed here so
-    /// that phase reuses the recorded sha rather than recomputing it. (Unused until Phase 5.)
-    #[allow(dead_code)]
+    /// This is the "original commit for the run" that
+    /// [Code Reviews](https://docs.testcabinet.ai/gg/code-reviews/) diff against when an issue has no
+    /// recorded [initial commit](IssueDispatchMeta::initial_commit) of its own; exposed here so the
+    /// review reuses the recorded sha rather than recomputing it.
     fn baseline_commit(&self) -> Option<&str> {
         self.baseline_commit.as_deref()
+    }
+
+    /// Whether [Code Reviews](handle_code_review) actually gate issue acceptance this run: the
+    /// [code-reviews](CAPABILITY_CODE_REVIEWS) capability **and** the delegation machinery a review
+    /// needs to run its reviewer/fix subagents. With the capability on but delegation off, a review
+    /// could not be dispatched, so `complete_issue` accepts issues directly (as without the
+    /// capability) rather than silently doing nothing.
+    fn code_reviews_active(&self) -> bool {
+        self.code_reviews_enabled && self.delegation_enabled()
+    }
+
+    /// Record the [dispatch facts](IssueDispatchMeta) for `issue_id` the first time it is dispatched
+    /// (`spawn_subagent { issueId }`), capturing the commit its work began at (for a later
+    /// [Code Review](handle_code_review)'s baseline) and the slot it ran on. Only the **first**
+    /// dispatch is recorded (`or_insert`), so a later reviewer or fix agent dispatched against the
+    /// same issue does not clobber the real work baseline/slot.
+    fn record_issue_dispatch(&self, issue_id: &str, work_slot: &str) {
+        let initial_commit = if self.baseline_commit.is_some() {
+            git::head_commit(&self.workspace_dir).ok()
+        } else {
+            None
+        };
+        self.issue_dispatch
+            .lock()
+            .expect("issue dispatch lock")
+            .entry(issue_id.to_string())
+            .or_insert_with(|| IssueDispatchMeta {
+                initial_commit,
+                work_slot: work_slot.to_string(),
+            });
+    }
+
+    /// The baseline commit a [Code Review](handle_code_review) of `issue_id` diffs against: the
+    /// issue's recorded [initial commit](IssueDispatchMeta::initial_commit) if it was dispatched,
+    /// else the run [baseline](Self::baseline_commit). `None` when no git baseline exists at all.
+    fn issue_baseline(&self, issue_id: &str) -> Option<String> {
+        self.issue_dispatch
+            .lock()
+            .expect("issue dispatch lock")
+            .get(issue_id)
+            .and_then(|meta| meta.initial_commit.clone())
+            .or_else(|| self.baseline_commit().map(str::to_string))
+    }
+
+    /// The [slot](GgSlotBinding) a [Code Review](handle_code_review)'s **fix agent** for `issue_id`
+    /// runs on: the slot the issue's work was dispatched on (so the fix is done by the same kind of
+    /// agent), or [`primary`](PRIMARY_SLOT) when the issue was never dispatched to a subagent.
+    fn issue_work_slot(&self, issue_id: &str) -> String {
+        self.issue_dispatch
+            .lock()
+            .expect("issue dispatch lock")
+            .get(issue_id)
+            .map(|meta| meta.work_slot.clone())
+            .unwrap_or_else(|| PRIMARY_SLOT.to_string())
+    }
+
+    /// The [slot](GgSlotBinding) a [Code Review](handle_code_review)'s **reviewer** runs on: the
+    /// dedicated [`reviewer`](REVIEWER_SLOT) slot when [multi-model](CAPABILITY_MULTI_MODEL) is on
+    /// and that slot is bound, else [`primary`](PRIMARY_SLOT). (When multi-model is off,
+    /// [`dispatch_child`] would collapse a `reviewer` request to primary anyway; resolving it here
+    /// keeps the dispatch from failing on an unbound `reviewer` slot.)
+    fn reviewer_slot(&self) -> String {
+        if self.multi_model && slot_binding(&self.caps, REVIEWER_SLOT).is_ok() {
+            REVIEWER_SLOT.to_string()
+        } else {
+            PRIMARY_SLOT.to_string()
+        }
+    }
+
+    /// The textual diff of the work for `issue_id` against its [review baseline](Self::issue_baseline)
+    /// — what a [Code Review](handle_code_review) hands its reviewer. Empty when no baseline exists,
+    /// and empty (with a logged breadcrumb suppressed to keep the review resilient) when the git
+    /// diff itself fails. Serialized on the shared [git lock](Self::git_lock) since it stages the
+    /// index transiently.
+    fn review_diff(&self, issue_id: &str) -> String {
+        let Some(baseline) = self.issue_baseline(issue_id) else {
+            return String::new();
+        };
+        let _guard = self.git_lock.lock().expect("git lock");
+        git::diff_since(&self.workspace_dir, &baseline).unwrap_or_default()
     }
 }
 
@@ -828,7 +943,14 @@ async fn run_agent(
     // capabilities from the start; subagents inherit the same configuration and stay quiet.
     if is_root {
         announce_configuration(
-            emitter, &registry, &skills, &memories, &tasks, &board, &planning,
+            emitter,
+            &registry,
+            &skills,
+            &memories,
+            &tasks,
+            &board,
+            &planning,
+            orch.code_reviews_active(),
         );
     }
 
@@ -885,6 +1007,7 @@ async fn run_agent(
             tasks,
             board,
             planning,
+            orch.code_reviews_active(),
             subagent_context,
         )
         .await;
@@ -964,6 +1087,7 @@ async fn run_agent(
 /// Announce the run's enabled capabilities once (on the root's stream) so the console shows the
 /// configuration from the start — the offered toolset and the initial (empty) skills/memory/task/
 /// board state — mirroring the per-capability announcements a single-agent run emitted.
+#[allow(clippy::too_many_arguments)]
 fn announce_configuration(
     emitter: &Emitter,
     registry: &ToolRegistry,
@@ -972,6 +1096,7 @@ fn announce_configuration(
     tasks: &TasksRuntime,
     board: &BoardRuntime,
     planning: &PlanningRuntime,
+    code_reviews: bool,
 ) {
     if registry.is_empty() {
         emitter.emit(log(
@@ -1036,6 +1161,14 @@ fn announce_configuration(
             "info",
             "planning enabled; the model can enter a read-only plan mode mid-session and \
              implement from a fresh context after submitting a plan.",
+        ));
+    }
+    if code_reviews {
+        emitter.emit(log(
+            "info",
+            "code reviews enabled; marking an issue done triggers a Code Review (a reviewer \
+             agent inspects the diff against the issue's completion criteria) before the issue is \
+             accepted, and a fix agent addresses any requested changes until a review approves.",
         ));
     }
 }
@@ -1210,6 +1343,14 @@ fn dispatch_child(
         )
     })?;
     let model_id = client.model_id().to_string();
+
+    // Record this issue's dispatch facts on its first dispatch, so a later Code Review of it has an
+    // issue-level baseline (the commit its work began at) and knows which slot to re-run a fix agent
+    // on. Only the first dispatch is kept, so a reviewer/fix agent dispatched against the same issue
+    // (which also carries its issueId) does not overwrite the real work baseline/slot.
+    if let Some(issue_id) = &issue_id {
+        orch.record_issue_dispatch(issue_id, &slot);
+    }
 
     // Build the child's identity, wiring, and role, then schedule it. The child clones the
     // spawner's `ParentWait` so it can signal completion back up.
@@ -1545,6 +1686,341 @@ fn send_message(sub: &mut SubagentContext, args: &Value) -> ToolOutcome {
                 "subagent `{agent_id}` is no longer receiving messages (it has returned)."
             )),
         },
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Code Reviews: gate issue acceptance on a reviewer subagent + a fix loop
+// ---------------------------------------------------------------------------
+
+/// The structured verdict a [Code Review](handle_code_review)'s reviewer returns, parsed from its
+/// final message by [`parse_review_verdict`].
+struct ReviewVerdict {
+    /// Whether the reviewer **approved** the work (the issue may be accepted).
+    approved: bool,
+    /// When not approved, the reviewer's actionable items — the changes a fix agent must address
+    /// before re-review. Always at least one item when `!approved` (a generic item is synthesized
+    /// if the reviewer listed none).
+    items: Vec<String>,
+}
+
+/// Handle an intercepted `complete_issue` when [Code Reviews are active](Orchestrator::code_reviews_active):
+/// run a **Code Review** that gates the issue's acceptance, and return the model-facing outcome.
+///
+/// Rather than mark the issue done, gg:
+///
+/// 1. resolves the issue's brief and its [review baseline](Orchestrator::issue_baseline), and emits
+///    [`CodeReview`](GgCodeReviewPhase::Requested);
+/// 2. computes the [diff](Orchestrator::review_diff) of the work against that baseline and
+///    [dispatches a reviewer subagent](dispatch_child) — on the [`reviewer`](Orchestrator::reviewer_slot)
+///    slot — with the diff plus the issue's scope/completion criteria as its brief, then
+///    [waits](await_children) for it and [parses its verdict](parse_review_verdict);
+/// 3. on **approval**, marks the issue done ([`CodeReview`](GgCodeReviewPhase::Approved)) and returns
+///    a success outcome — the issue is accepted;
+/// 4. on **actionable items** ([`CodeReview`](GgCodeReviewPhase::ChangesRequested)), spawns a fix
+///    agent with the **original issue brief plus the items**, waits for it, and loops back to
+///    re-review — with **no cycle limit**.
+///
+/// The loop terminates on approval; it is otherwise bounded only by the run's
+/// [deadline](Orchestrator::deadline) (checked each round) and the scheduler — a reviewer that ends
+/// without a clean verdict, an undispatchable reviewer/fix agent, or an exhausted time budget aborts
+/// the review with the issue **left unaccepted** (never silently accepted). The reviewer and fix
+/// agents are ordinary subagents scoped to the issue, so they animate the agent tree normally.
+async fn handle_code_review(
+    sub: &mut SubagentContext,
+    spawner: &Agent,
+    board: &BoardRuntime,
+    emitter: &Emitter,
+    call: &ToolCall,
+) -> ToolOutcome {
+    // Clone the orchestrator Arc out so `sub` stays free to be borrowed mutably by dispatch/await.
+    let orch = Arc::clone(&sub.orch);
+
+    let issue_id = match call.arguments.get("id").and_then(Value::as_str) {
+        Some(id) if !id.trim().is_empty() => id.trim().to_string(),
+        _ => return ToolOutcome::error("complete_issue needs a non-empty `id`.".to_string()),
+    };
+    // The original task being tackled — the issue's brief — drives both the reviewer's context and
+    // (augmented with the review items) each fix agent.
+    let brief = match board.issue_brief(&issue_id) {
+        Some(brief) => brief,
+        None => {
+            return ToolOutcome::error(format!(
+                "cannot review issue `{issue_id}`: no such issue is on your board. Create it with \
+                 `create_issue` first."
+            ));
+        }
+    };
+    let baseline = orch.issue_baseline(&issue_id);
+    // The Code Review's lifecycle events ride on the issue's own stream (the envelope `issue_id`),
+    // even though this agent (the completer) was not itself dispatched against the issue.
+    let review_emitter = emitter.with_issue(&issue_id);
+    review_emitter.emit(code_review_event(
+        GgCodeReviewPhase::Requested,
+        None,
+        baseline.clone(),
+    ));
+
+    loop {
+        // Termination guard: the fix→re-review loop has no cycle limit, so bound it by the run's
+        // wall-clock budget. Past the deadline the review aborts with the issue unaccepted, rather
+        // than spinning up agents that would each time out immediately.
+        if orch
+            .deadline
+            .is_some_and(|deadline| Instant::now() >= deadline)
+        {
+            emitter.emit(log(
+                "warn",
+                format!(
+                    "the Code Review of issue `{issue_id}` did not approve before the run's time \
+                     budget ran out; the issue was not accepted."
+                ),
+            ));
+            return ToolOutcome::error(format!(
+                "The Code Review of issue `{issue_id}` did not reach approval before the run's time \
+                 budget ran out, so the issue was NOT marked done. Its work remains for a later \
+                 pass."
+            ));
+        }
+
+        // Dispatch a reviewer against the current diff of the work.
+        let diff = orch.review_diff(&issue_id);
+        let review_brief = build_review_brief(&brief, &diff);
+        let reviewer_slot = orch.reviewer_slot();
+        let reviewer = match dispatch_child(
+            sub,
+            spawner,
+            review_brief,
+            Some(issue_id.clone()),
+            &reviewer_slot,
+            false,
+        ) {
+            Ok(child) => child,
+            Err(err) => {
+                emitter.emit(log(
+                    "warn",
+                    format!("could not dispatch a Code Review of issue `{issue_id}`: {err}"),
+                ));
+                return ToolOutcome::error(format!(
+                    "The Code Review of issue `{issue_id}` could not be dispatched: {err} The issue \
+                     was NOT marked done."
+                ));
+            }
+        };
+        let collected = await_children(sub, emitter, std::slice::from_ref(&reviewer.id)).await;
+
+        // The reviewer must have returned a clean verdict; anything else aborts the review with the
+        // issue unaccepted (never accept work no reviewer approved).
+        let verdict = match collected.into_iter().next() {
+            Some((_, Some(ret))) if ret.status == "completed" => parse_review_verdict(&ret.summary),
+            Some((_, Some(ret))) => {
+                emitter.emit(log(
+                    "warn",
+                    format!(
+                        "the Code Review of issue `{issue_id}` ended without a verdict (reviewer \
+                         {}); the issue was not accepted.",
+                        ret.status
+                    ),
+                ));
+                return ToolOutcome::error(format!(
+                    "The Code Review of issue `{issue_id}` could not complete (the reviewer {}), so \
+                     the issue was NOT marked done.",
+                    ret.status
+                ));
+            }
+            _ => {
+                emitter.emit(log(
+                    "warn",
+                    format!(
+                        "the Code Review of issue `{issue_id}` produced no result; the issue was \
+                         not accepted."
+                    ),
+                ));
+                return ToolOutcome::error(format!(
+                    "The Code Review of issue `{issue_id}` produced no result, so the issue was NOT \
+                     marked done."
+                ));
+            }
+        };
+
+        if verdict.approved {
+            // Accept the issue: mark it done on the board. The loop refreshes the pinned board block
+            // and re-emits `BoardState` after this outcome (as it does for the tool), so the
+            // acceptance is reflected in the window and the console.
+            board.complete_issue(&issue_id);
+            review_emitter.emit(code_review_event(
+                GgCodeReviewPhase::Approved,
+                None,
+                baseline.clone(),
+            ));
+            return ToolOutcome::ok(
+                format!(
+                    "The Code Review of issue `{issue_id}` approved the work; the issue is accepted \
+                     and marked done."
+                ),
+                format!("code review approved issue `{issue_id}`"),
+            );
+        }
+
+        // Changes requested: record the items, then spawn a fix agent with the original brief plus
+        // the items and loop back to re-review its work. No cycle limit.
+        review_emitter.emit(code_review_event(
+            GgCodeReviewPhase::ChangesRequested,
+            Some(verdict.items.clone()),
+            baseline.clone(),
+        ));
+        let fix_brief = build_fix_brief(&brief, &verdict.items);
+        let work_slot = orch.issue_work_slot(&issue_id);
+        let fixer = match dispatch_child(
+            sub,
+            spawner,
+            fix_brief,
+            Some(issue_id.clone()),
+            &work_slot,
+            false,
+        ) {
+            Ok(child) => child,
+            Err(err) => {
+                emitter.emit(log(
+                    "warn",
+                    format!("could not dispatch a fix agent for issue `{issue_id}`: {err}"),
+                ));
+                return ToolOutcome::error(format!(
+                    "The Code Review of issue `{issue_id}` requested changes, but a fix agent could \
+                     not be dispatched: {err} The issue was NOT marked done."
+                ));
+            }
+        };
+        let _ = await_children(sub, emitter, std::slice::from_ref(&fixer.id)).await;
+        // Loop: re-review the fixed work.
+    }
+}
+
+/// The reviewer's brief for a [Code Review](handle_code_review): the issue's own brief (its title,
+/// scope, and completion criteria) plus the diff to review and the verdict protocol the
+/// [parser](parse_review_verdict) expects. A missing/empty diff is stated plainly so the reviewer
+/// does not hallucinate changes.
+fn build_review_brief(issue_brief: &str, diff: &str) -> String {
+    let diff_block = if diff.trim().is_empty() {
+        "(No textual diff was available — no changes were detected against the baseline. Review \
+         against the completion criteria and, unless the work was clearly already present, request \
+         the missing work.)"
+            .to_string()
+    } else {
+        format!("```diff\n{diff}\n```")
+    };
+    format!(
+        "You are performing a **Code Review**. Inspect the changes below against the issue's \
+         requirements and decide whether the work is complete and stays in scope.\n\n{issue_brief}\
+         \n\n## Changes to review (diff against the baseline)\n{diff_block}\n\n## Your verdict\n\
+         Review the diff carefully against the completion criteria and the in/out-of-scope \
+         boundaries. When you are done, end your final message with exactly one verdict:\n\
+         - If the work fully satisfies the completion criteria and stays in scope, write on its own \
+         line:\n`CODE REVIEW: APPROVED`\n\
+         - Otherwise, write on its own line:\n`CODE REVIEW: CHANGES REQUESTED`\n\
+         and then a numbered list of specific, actionable items that must be fixed before the work \
+         can be accepted. Be concrete: each item should say what is wrong and what to change."
+    )
+}
+
+/// A fix agent's brief for a [Code Review](handle_code_review) round: the original issue brief plus
+/// the reviewer's actionable items. The `## Requested changes from Code Review` heading is a stable
+/// marker (a worker can detect it is on a fix pass).
+fn build_fix_brief(issue_brief: &str, items: &[String]) -> String {
+    let mut list = String::new();
+    for (index, item) in items.iter().enumerate() {
+        list.push_str(&format!("\n{}. {}", index + 1, item));
+    }
+    if list.is_empty() {
+        list.push_str(
+            "\n1. The reviewer requested changes but listed no specific items; re-check the \
+             completion criteria and make sure every part is done.",
+        );
+    }
+    format!(
+        "{issue_brief}\n\n## Requested changes from Code Review\nA Code Review of the work for this \
+         issue found that it is not yet done. Address every item below (keeping the rest of the \
+         work intact), then stop — your changes will be re-reviewed:\n{list}"
+    )
+}
+
+/// Parse a reviewer's final message into a [`ReviewVerdict`].
+///
+/// The contract: the reviewer ends with a `CODE REVIEW:` marker whose following word is `APPROVED`
+/// (approval) or `CHANGES REQUESTED` (with a list of actionable items). Parsing is deliberately
+/// lenient — the marker match is case-insensitive and the last occurrence wins — and **conservative
+/// on ambiguity**: anything that is not a clear approval is treated as changes requested, so work no
+/// reviewer clearly approved is never accepted. When changes are requested but no list items are
+/// found, a single generic item is synthesized so a fix agent always has something to act on.
+fn parse_review_verdict(text: &str) -> ReviewVerdict {
+    const MARKER: &str = "code review:";
+    let lower = text.to_ascii_lowercase();
+    if let Some(pos) = lower.rfind(MARKER) {
+        let after = lower[pos + MARKER.len()..].trim_start();
+        if after.starts_with("approve") {
+            return ReviewVerdict {
+                approved: true,
+                items: Vec::new(),
+            };
+        }
+    }
+    let mut items = collect_actionable_items(text);
+    if items.is_empty() {
+        items.push(
+            "The Code Review did not approve the work; revisit the completion criteria and address \
+             the reviewer's feedback."
+                .to_string(),
+        );
+    }
+    ReviewVerdict {
+        approved: false,
+        items,
+    }
+}
+
+/// Collect the actionable items from a reviewer's message: every line that reads as a list item —
+/// a `-`/`*`/`+` bullet or a `N.`/`N)` numbered entry — with its marker stripped. Order preserved;
+/// empty entries dropped.
+fn collect_actionable_items(text: &str) -> Vec<String> {
+    text.lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            for bullet in ["- ", "* ", "+ "] {
+                if let Some(rest) = trimmed.strip_prefix(bullet) {
+                    let rest = rest.trim();
+                    if !rest.is_empty() {
+                        return Some(rest.to_string());
+                    }
+                    return None;
+                }
+            }
+            // A numbered entry: leading ASCII digits followed by `.` or `)`.
+            let digits: String = trimmed.chars().take_while(char::is_ascii_digit).collect();
+            if !digits.is_empty() {
+                let rest = &trimmed[digits.len()..];
+                if let Some(after) = rest.strip_prefix('.').or_else(|| rest.strip_prefix(')')) {
+                    let after = after.trim();
+                    if !after.is_empty() {
+                        return Some(after.to_string());
+                    }
+                }
+            }
+            None
+        })
+        .collect()
+}
+
+/// A [`CodeReview`](GgTelemetryKind::CodeReview) telemetry event for one lifecycle transition. The
+/// issue under review rides on the emitter's [issue scope](Emitter::with_issue), not the payload.
+fn code_review_event(
+    phase: GgCodeReviewPhase,
+    items: Option<Vec<String>>,
+    baseline: Option<String>,
+) -> GgTelemetryKind {
+    GgTelemetryKind::CodeReview {
+        phase,
+        items,
+        baseline,
     }
 }
 
@@ -1939,8 +2415,14 @@ impl Agent {
         tasks: TasksRuntime,
         board: BoardRuntime,
         planning: PlanningRuntime,
+        code_reviews: bool,
         mut subagents: Option<SubagentContext>,
     ) -> LoopEnd {
+        // Code Reviews gate `complete_issue` only when the capability is on *and* this agent has the
+        // delegation machinery to run a reviewer (i.e. `subagents` is `Some`); otherwise
+        // `complete_issue` accepts issues directly. Computed once here since `subagents` never
+        // toggles over the loop.
+        let code_reviews_active = code_reviews && subagents.is_some();
         // The full offered toolset. When planning is on, each turn's request is filtered from this
         // by the loop's plan-mode state (read-only tools only while planning); otherwise the whole
         // set is offered every turn.
@@ -1955,7 +2437,13 @@ impl Agent {
         // Phase 2 compaction.
         let mut context = ContextModel::new(context_setup.estimator, context_setup.window_limit);
         context.push_system(system_prompt(
-            registry, &skills, &memories, &tasks, &board, &planning,
+            registry,
+            &skills,
+            &memories,
+            &tasks,
+            &board,
+            &planning,
+            code_reviews_active,
         ));
         context.push_user_prompt(prompt);
 
@@ -2163,10 +2651,22 @@ impl Agent {
                 let mut outcome =
                     if planning.offers_planning() && !plan_mode_offers(&call.name, in_plan_mode) {
                         ToolOutcome::error(plan_mode_refusal(&call.name, in_plan_mode))
-                    } else if let Some(sub) = subagents.as_mut()
-                        && is_subagent_tool(&call.name)
-                    {
-                        handle_subagent_call(sub, self, &board, emitter, call).await
+                    } else if let Some(sub) = subagents.as_mut() {
+                        if is_subagent_tool(&call.name) {
+                            handle_subagent_call(sub, self, &board, emitter, call).await
+                        } else if code_reviews_active
+                            && call.name == COMPLETE_ISSUE_TOOL
+                            && board.offers_board()
+                        {
+                            // Code Reviews gate acceptance: `complete_issue` is intercepted here (like
+                            // the delegation tools) so that instead of marking the issue done
+                            // immediately, gg runs a Code Review — dispatching a reviewer subagent and
+                            // fix agents against the orchestrator, which the tool itself cannot reach —
+                            // and only accepts the issue once the review approves.
+                            handle_code_review(sub, self, &board, emitter, call).await
+                        } else {
+                            registry.dispatch(call, tool_ctx).await
+                        }
                     } else {
                         registry.dispatch(call, tool_ctx).await
                     };
@@ -2514,23 +3014,37 @@ fn resolve_board(set: &GgCapabilitySet) -> BoardRuntime {
     BoardRuntime::new(caps)
 }
 
-/// Resolve the run's [worktree isolation](WorktreesSetup) at session start, reporting on `emitter`.
+/// Resolve the run's git-backed [isolation and baseline](WorktreesSetup) at session start, reporting
+/// on `emitter`.
 ///
-/// When the [worktrees](CAPABILITY_WORKTREES) capability is off, isolation is inert (no baseline,
-/// no root). When it is on, gg checks for git, [commits the baseline](git::ensure_baseline) of the
-/// seeded workspace (the commit Phase 5 Code Reviews diff against and every worktree branches
-/// from), and creates the [worktree root](worktrees_root_for) alongside the workspace. Any
-/// problem — git absent, a failed baseline, or an uncreatable root — is logged **loudly** at error
-/// level and leaves isolation unusable (a later `worktree: true` spawn is refused with a clear
-/// message) rather than crashing the run; a committed baseline is still recorded even if the root
-/// could not be created, so Phase 5 can reuse it.
+/// A git **baseline** is committed whenever either the [worktrees](CAPABILITY_WORKTREES) capability
+/// (every worktree branches from it) or the [code-reviews](CAPABILITY_CODE_REVIEWS) capability (a
+/// Code Review diffs the work against it) is on. On top of that, the [worktree
+/// root](worktrees_root_for) is created **only** when worktrees is on. When neither capability wants
+/// git, isolation is inert (no baseline, no root).
+///
+/// Any problem — git absent, a failed baseline, or an uncreatable worktree root — is logged
+/// **loudly** at error level and leaves the affected feature unusable (a later `worktree: true`
+/// spawn is refused; a Code Review runs against an empty diff) rather than crashing the run; a
+/// committed baseline is still recorded even if the worktree root could not be created, so Code
+/// Reviews can still reuse it. The [`capability`](WorktreesSetup::capability) field always reflects
+/// the **worktrees** capability specifically (it gates the `worktree` spawn option), independent of
+/// whether the baseline was committed for code-reviews.
 fn resolve_worktrees(
     set: &GgCapabilitySet,
     workspace_dir: &Path,
     emitter: &Emitter,
 ) -> WorktreesSetup {
-    let capability = set.is_enabled(CAPABILITY_WORKTREES);
-    if !capability {
+    let worktrees = set.is_enabled(CAPABILITY_WORKTREES);
+    let code_reviews = set.is_enabled(CAPABILITY_CODE_REVIEWS);
+    // A short, accurate description of why git is needed, for the diagnostics.
+    let reason = match (worktrees, code_reviews) {
+        (true, true) => "the `worktrees` and `code-reviews` capabilities are enabled",
+        (true, false) => "the `worktrees` capability is enabled",
+        (false, true) => "the `code-reviews` capability is enabled",
+        (false, false) => "",
+    };
+    if !worktrees && !code_reviews {
         return WorktreesSetup {
             capability: false,
             baseline_commit: None,
@@ -2541,12 +3055,15 @@ fn resolve_worktrees(
     if !git::git_available() {
         emitter.emit(log(
             "error",
-            "the `worktrees` capability is enabled but the `git` binary is not available; \
-             worktree isolation is disabled for this run and any `worktree: true` spawn will be \
-             refused. (The rest of the run is unaffected.)",
+            format!(
+                "{reason} but the `git` binary is not available; a workspace baseline could not be \
+                 committed, so worktree isolation is disabled (any `worktree: true` spawn is \
+                 refused) and Code Reviews run against an empty diff. (The rest of the run is \
+                 unaffected.)"
+            ),
         ));
         return WorktreesSetup {
-            capability: true,
+            capability: worktrees,
             baseline_commit: None,
             root: None,
         };
@@ -2558,50 +3075,65 @@ fn resolve_worktrees(
             emitter.emit(log(
                 "error",
                 format!(
-                    "the `worktrees` capability is enabled but git could not initialize a baseline \
-                     of the workspace: {err}; worktree isolation is disabled for this run."
+                    "{reason} but git could not initialize a baseline of the workspace: {err}; \
+                     worktree isolation is disabled and Code Reviews run against an empty diff."
                 ),
             ));
             return WorktreesSetup {
-                capability: true,
+                capability: worktrees,
                 baseline_commit: None,
                 root: None,
             };
         }
     };
 
-    let root = worktrees_root_for(workspace_dir);
-    if let Err(err) = std::fs::create_dir_all(&root) {
-        emitter.emit(log(
-            "error",
-            format!(
-                "the `worktrees` capability is enabled and a baseline was committed, but the \
-                 worktree root `{}` could not be created: {err}; worktree isolation is disabled \
-                 for this run.",
-                root.display()
-            ),
-        ));
-        // Keep the baseline: Phase 5 can still diff against it even though no worktree can be made.
-        return WorktreesSetup {
-            capability: true,
-            baseline_commit: Some(baseline),
-            root: None,
-        };
-    }
+    // The worktree checkout root is only needed by the worktrees capability. Code-reviews-only runs
+    // keep the baseline but need no root.
+    let root = if worktrees {
+        let root = worktrees_root_for(workspace_dir);
+        match std::fs::create_dir_all(&root) {
+            Ok(()) => Some(root),
+            Err(err) => {
+                emitter.emit(log(
+                    "error",
+                    format!(
+                        "a workspace baseline was committed, but the worktree root `{}` could not \
+                         be created: {err}; worktree isolation is disabled for this run.",
+                        root.display()
+                    ),
+                ));
+                // Keep the baseline: Code Reviews can still diff against it even though no worktree
+                // can be made.
+                None
+            }
+        }
+    } else {
+        None
+    };
 
     emitter.emit(log(
         "info",
         format!(
-            "worktrees enabled; committed the seeded workspace as the baseline `{}`. A subagent \
-             dispatched with `worktree: true` runs in an isolated copy that is merged back into \
-             the main tree on clean completion (or discarded otherwise).",
-            short_sha(&baseline)
+            "committed the seeded workspace as the baseline `{}`{}. {}",
+            short_sha(&baseline),
+            if code_reviews {
+                " (Code Reviews diff issue work against it)"
+            } else {
+                ""
+            },
+            if worktrees {
+                "A subagent dispatched with `worktree: true` runs in an isolated copy that is \
+                 merged back into the main tree on clean completion (or discarded otherwise)."
+            } else {
+                "Marking an issue done triggers a Code Review against this baseline before it is \
+                 accepted."
+            },
         ),
     ));
     WorktreesSetup {
-        capability: true,
+        capability: worktrees,
         baseline_commit: Some(baseline),
-        root: Some(root),
+        root,
     }
 }
 
@@ -2660,6 +3192,7 @@ fn system_prompt(
     tasks: &TasksRuntime,
     board: &BoardRuntime,
     planning: &PlanningRuntime,
+    code_reviews: bool,
 ) -> String {
     let names: Vec<String> = registry
         .definitions()
@@ -2695,6 +3228,18 @@ fn system_prompt(
     if let Some(section) = planning.prompt_section() {
         prompt.push_str("\n\n");
         prompt.push_str(&section);
+    }
+    if code_reviews {
+        prompt.push_str(
+            "\n\nCode Reviews are enabled: when you mark an issue done with `complete_issue`, it \
+             is not accepted immediately. gg triggers a **Code Review** — a reviewer agent inspects \
+             the changes against the issue's completion criteria and either approves or returns \
+             actionable items. If it returns items, a fix agent addresses them and the work is \
+             re-reviewed, repeating until a review approves; only then is the issue marked done. So \
+             fill in each issue's completion criteria precisely — they are what the Code Review \
+             holds the work to — and expect `complete_issue` to take a while (it runs the review \
+             and any fixes before returning).",
+        );
     }
     prompt
 }

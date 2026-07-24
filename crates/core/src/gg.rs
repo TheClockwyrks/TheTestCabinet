@@ -186,6 +186,33 @@ pub const CAPABILITY_WORKTREES: &str = "worktrees";
 /// [FSM-driven processes]: https://docs.testcabinet.ai/gg/fsms/
 pub const CAPABILITY_WORKFLOWS: &str = "workflows";
 
+/// The stable id of the Phase 5 [Code Reviews] capability: gating an
+/// [issue](CAPABILITY_EPICS_ISSUES)'s **acceptance** on a verification pass. Always called a
+/// **Code Review** (never a bare "review") to keep it distinct from The Test Cabinet's own
+/// test-run reviews.
+///
+/// When enabled, marking an issue done with `complete_issue` no longer accepts it immediately:
+/// gg **triggers a Code Review**, dispatching a reviewer [subagent](CAPABILITY_SUBAGENTS)
+/// (optionally on a dedicated `reviewer` [model slot](GgSlotBinding) when
+/// [multi-model](CAPABILITY_MULTI_MODEL) is on) with the **diff** of the work against a baseline
+/// — the issue's initial commit captured when its work began, falling back to the run's
+/// [baseline](CAPABILITY_WORKTREES) — plus the issue's scope and completion criteria. The reviewer
+/// either **approves** (the issue is then accepted and marked done) or returns one or more
+/// **actionable items**, in which case gg spawns a fix agent given the original issue brief plus
+/// those items and then **re-reviews** — with **no cycle limit** (a fix can be re-reviewed, produce
+/// new items, and be fixed again until a review approves), bounded only by the run's
+/// max-runtime/scheduler. The lifecycle is streamed as [`CodeReview`](GgTelemetryKind::CodeReview)
+/// telemetry; the reviewer and fix agents appear in the [agent tree](CAPABILITY_SUBAGENTS) as
+/// ordinary subagents. Gating acceptance on a Code Review makes "definition of done" enforceable,
+/// and pairs with the [FSM](https://docs.testcabinet.ai/gg/fsms/) capability (a Code Review is the
+/// `review` state of a `develop → review → accept` machine) and
+/// [speculative execution](https://docs.testcabinet.ai/gg/speculative-execution/) (a Code Review is
+/// the judge). Opt-in; a Code Review needs the delegation machinery, so it engages only when
+/// [subagents](CAPABILITY_SUBAGENTS) (or [workflows](CAPABILITY_WORKFLOWS)) is also on.
+///
+/// [Code Reviews]: https://docs.testcabinet.ai/gg/code-reviews/
+pub const CAPABILITY_CODE_REVIEWS: &str = "code-reviews";
+
 /// The declarative, inspectable configuration of a gg run — its *independent
 /// variable*.
 ///
@@ -861,6 +888,34 @@ pub enum GgWorkflowPhase {
     Finished,
 }
 
+/// The phase of a [Code Review](https://docs.testcabinet.ai/gg/code-reviews/) a
+/// [`CodeReview`](GgTelemetryKind::CodeReview) event reports — the
+/// requested → (changes_requested)* → approved lifecycle that gates an
+/// [issue](GgBoardIssue)'s acceptance.
+///
+/// A Code Review is [requested](Self::Requested) when the model marks an issue done (gg dispatches
+/// a reviewer against the diff rather than accepting immediately). The reviewer then either
+/// [requests changes](Self::ChangesRequested) — carrying the actionable items a fix agent must
+/// address, after which the work is re-reviewed — or [approves](Self::Approved), at which point the
+/// issue is finally accepted (marked done). Because there is **no cycle limit**, a single Code
+/// Review may emit many [`ChangesRequested`](Self::ChangesRequested) phases before an
+/// [`Approved`](Self::Approved) (or none, on a clean first pass).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum GgCodeReviewPhase {
+    /// A Code Review was triggered (the model marked the issue done): a reviewer is dispatched
+    /// against the diff instead of the issue being accepted immediately.
+    Requested,
+    /// The reviewer returned actionable items: the work is not yet done. gg spawns a fix agent with
+    /// the original brief plus these items, then re-reviews. The items ride on the event's
+    /// [`items`](GgTelemetryKind::CodeReview) field.
+    ChangesRequested,
+    /// The reviewer approved the work: the issue is accepted and marked done. This is the only
+    /// terminal phase that accepts the issue.
+    Approved,
+}
+
 /// A single event in gg's first-party telemetry stream (schema v1).
 ///
 /// Because gg is [headless](https://docs.testcabinet.ai/gg/overview/), this stream is
@@ -1299,6 +1354,40 @@ pub enum GgTelemetryKind {
         item_count: u64,
         /// Whether this event marks the stage's [start or finish](GgWorkflowPhase).
         phase: GgWorkflowPhase,
+    },
+    /// A [Code Review](https://docs.testcabinet.ai/gg/code-reviews/) lifecycle transition — the
+    /// event that makes the review-gated acceptance of an [issue](GgBoardIssue) observable.
+    ///
+    /// Emitted (when the [code-reviews](CAPABILITY_CODE_REVIEWS) capability is enabled) on the agent
+    /// that marked the issue done: once as [`Requested`](GgCodeReviewPhase::Requested) when the
+    /// review is triggered, then once per [`ChangesRequested`](GgCodeReviewPhase::ChangesRequested)
+    /// round (carrying the reviewer's actionable [`items`](Self::CodeReview::items) a fix agent then
+    /// addresses), and finally once as [`Approved`](GgCodeReviewPhase::Approved) when the issue is
+    /// accepted. Because there is **no cycle limit**, a single Code Review may stream many
+    /// `ChangesRequested` events before an `Approved` (or go straight to `Approved` on a clean first
+    /// pass).
+    ///
+    /// Which [issue](GgBoardIssue) the review gates rides on the event's own
+    /// [`issue_id`](GgTelemetryEvent::issue_id) (the event is emitted on an issue-scoped stream), the
+    /// same way an agent's identity rides on [`agent_id`](GgTelemetryEvent::agent_id) — so the
+    /// payload carries only the phase-specific data. The reviewer and fix agents themselves are
+    /// ordinary [subagents](CAPABILITY_SUBAGENTS): they emit the usual
+    /// [`AgentSpawned`](Self::AgentSpawned)/[`AgentStatus`](Self::AgentStatus)/[`AgentReturned`](Self::AgentReturned)
+    /// events, also scoped to the issue under review. A run with the capability off emits none.
+    CodeReview {
+        /// Which phase of the review lifecycle this transition is.
+        phase: GgCodeReviewPhase,
+        /// The reviewer's actionable items, on the
+        /// [`ChangesRequested`](GgCodeReviewPhase::ChangesRequested) phase (the changes a fix agent
+        /// must address before re-review). Absent on [`Requested`](GgCodeReviewPhase::Requested) and
+        /// [`Approved`](GgCodeReviewPhase::Approved).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        items: Option<Vec<String>>,
+        /// The baseline commit the review diffed the work against — the issue's initial commit
+        /// (captured when its work began) or, failing that, the run's baseline. Absent when no git
+        /// baseline could be established for the run.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        baseline: Option<String>,
     },
     /// A diagnostic log line from gg itself (not agent output).
     Log {
