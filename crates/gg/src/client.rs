@@ -1450,6 +1450,85 @@ impl MockClient {
         Self::new(model_id, Vec::new())
     }
 
+    /// The offline driver for a [`tdd`](crate::fsm) [FSM-driven](crate::fsm) run: a script that is
+    /// **kept in order** by the engine — it *tries* to advance before writing any test (which the
+    /// engine refuses), then writes the tests, advances to `implement`, implements, advances to
+    /// `verify`, and stops.
+    ///
+    /// 1. `advance_state` — attempted with **no test written yet**; gg refuses it (the
+    ///    [`write_tests` → `implement`](crate::fsm) guard is unmet), so the run stays in `write_tests`;
+    /// 2. `write_file` [`MOCK_FSM_TEST_FILE`] — the tests;
+    /// 3. `advance_state` — now a test exists, so gg allows it → `implement`;
+    /// 4. `write_file` [`MOCK_FSM_IMPL_FILE`] — the implementation;
+    /// 5. `advance_state` → `verify`;
+    /// 6. a final tool-free turn stops.
+    ///
+    /// The mock replays this fixed script regardless of the refusal (it ignores tool results), so the
+    /// refused first advance is a genuine, engine-enforced no-op — proof the order holds. Selected in
+    /// production by a mock `model_id` naming `fsm-tdd` (see [`mock_client_for`]), so the enforced
+    /// order is drivable **offline through the real binary** (bind the primary slot to a
+    /// `mock/…-fsm-tdd` model with the `fsm` capability's `machine` set to `tdd`).
+    pub fn with_fsm_tdd_script(model_id: impl Into<String>) -> Self {
+        let usage = |input: u64, output: u64| TokenCounts {
+            uncached_input: Some(input),
+            cached_input: None,
+            output: Some(output),
+            reasoning: None,
+        };
+        let advance = |id: &str, text: &str| ModelResponse {
+            text: Some(text.to_string()),
+            tool_calls: vec![ToolCall {
+                id: id.to_string(),
+                name: "advance_state".to_string(),
+                arguments: json!({}),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: usage(900, 20),
+            cost: None,
+        };
+        let write = |id: &str, path: &str, contents: &str, text: &str| ModelResponse {
+            text: Some(text.to_string()),
+            tool_calls: vec![ToolCall {
+                id: id.to_string(),
+                name: "write_file".to_string(),
+                arguments: json!({ "path": path, "contents": contents }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: usage(950, 60),
+            cost: None,
+        };
+        Self::new(
+            model_id,
+            vec![
+                advance(
+                    "adv_early",
+                    "Trying to implement first (should be refused).",
+                ),
+                write(
+                    "wt",
+                    MOCK_FSM_TEST_FILE,
+                    "// tests for the game\n",
+                    "Writing the tests first.",
+                ),
+                advance("adv_impl", "Tests are written — advancing to implement."),
+                write(
+                    "impl",
+                    MOCK_FSM_IMPL_FILE,
+                    "// the implementation\n",
+                    "Implementing to satisfy the tests.",
+                ),
+                advance("adv_verify", "Implementation done — advancing to verify."),
+                ModelResponse {
+                    text: Some("Verified: the tests pass. Done.".to_string()),
+                    tool_calls: Vec::new(),
+                    finish_reason: FinishReason::Stop,
+                    usage: usage(1000, 40),
+                    cost: None,
+                },
+            ],
+        )
+    }
+
     /// The **child** side of the offline [subagents](crate::subagents) e2e: a script that does a
     /// bit of work then returns a distinctive value.
     ///
@@ -1499,6 +1578,14 @@ pub const MOCK_SUBAGENT_RETURN: &str = "Subagent done: wrote the greeting file."
 /// The id of the issue the [Code Review parent script](MockClient::with_code_review_parent_script)
 /// creates, dispatches, and completes — the issue its Code Review gates.
 pub const MOCK_CODE_REVIEW_ISSUE_ID: &str = "review-issue";
+
+/// The test file the [`tdd` FSM script](MockClient::with_fsm_tdd_script) writes in its `write_tests`
+/// state — the evidence that lets the machine advance to `implement`.
+pub const MOCK_FSM_TEST_FILE: &str = "game.test.js";
+
+/// The implementation file the [`tdd` FSM script](MockClient::with_fsm_tdd_script) writes in its
+/// `implement` state.
+pub const MOCK_FSM_IMPL_FILE: &str = "game.js";
 
 /// The file the Code Review offline **worker** writes on its initial pass (its ordinary "work").
 pub const MOCK_REVIEW_WORKER_FILE: &str = "review-work.txt";
@@ -1778,8 +1865,11 @@ pub fn client_for_slot(binding: &GgSlotBinding) -> Result<Box<dyn ModelClient>, 
 /// `code-review-parent` id selects the [Code Review parent](MockClient::with_code_review_parent_script)
 /// (create an issue, dispatch it, then `complete_issue` to trigger a review → fix → approve cycle);
 /// its `review-worker` and `review-reviewer` counterparts are message-driven (their behavior lives
-/// in [`MockClient::complete`]). So the full spawn → wait → return path — and its worktree,
-/// declared-workflow, and Code Review variants — can be driven **offline through the real binary**
+/// in [`MockClient::complete`]). An `fsm-tdd` id selects the
+/// [TDD FSM driver](MockClient::with_fsm_tdd_script) (an agent kept in `write_tests → implement →
+/// verify` order by the engine). So the full spawn → wait → return path — and its worktree,
+/// declared-workflow, Code Review, and FSM variants — can be driven **offline through the real
+/// binary**
 /// (bind the primary slot to a `mock/…-subagent-parent`, `mock/…-worktree-parent`,
 /// `mock/…-workflow-parent`, or `mock/…-code-review-parent` model and the role slots to the
 /// corresponding `mock/…-subagent-child` / `mock/…-review-worker` / `mock/…-review-reviewer` models)
@@ -1799,6 +1889,8 @@ fn mock_client_for(model_id: &str) -> MockClient {
         MockClient::with_review_reviewer_script(model_id)
     } else if model_id.contains("review-worker") {
         MockClient::with_review_worker_script(model_id)
+    } else if model_id.contains("fsm-tdd") {
+        MockClient::with_fsm_tdd_script(model_id)
     } else if model_id.contains("subagent-parent") {
         MockClient::with_subagent_parent_script(model_id)
     } else {

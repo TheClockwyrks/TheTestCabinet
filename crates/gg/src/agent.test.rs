@@ -13,12 +13,14 @@ use crate::board::BoardRuntime;
 use crate::client::MockClient;
 use crate::client::{
     ClientFactory, DEFAULT_MOCK_MEMORY, DEFAULT_MOCK_SKILL, DEFAULT_MOCK_TASK_MOVEMENT,
-    DEFAULT_MOCK_TASK_SCAFFOLD, MOCK_CODE_REVIEW_ISSUE_ID, MOCK_REVIEW_FIX_FILE,
-    MOCK_REVIEW_FIX_SENTINEL, MOCK_REVIEW_WORKER_FILE, MOCK_SUBAGENT_FILE, MOCK_SUBAGENT_RETURN,
+    DEFAULT_MOCK_TASK_SCAFFOLD, MOCK_CODE_REVIEW_ISSUE_ID, MOCK_FSM_IMPL_FILE, MOCK_FSM_TEST_FILE,
+    MOCK_REVIEW_FIX_FILE, MOCK_REVIEW_FIX_SENTINEL, MOCK_REVIEW_WORKER_FILE, MOCK_SUBAGENT_FILE,
+    MOCK_SUBAGENT_RETURN,
 };
 use crate::compaction::CompactionSetup;
 use crate::config::GgInvocation;
 use crate::context::HeuristicTokenEstimator;
+use crate::fsm::FsmRuntime;
 use crate::memories::MemoriesRuntime;
 use crate::model::{
     FinishReason, Message, ModelClient, ModelError, ModelResponse, ToolCall, ToolDefinition,
@@ -30,10 +32,11 @@ use crate::telemetry::{CollectingSink, Emitter};
 use crate::tools::{RuntimeSet, ToolContext, ToolRegistry};
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_CODE_REVIEWS, CAPABILITY_CONTEXT_VISIBILITY,
-    CAPABILITY_EPICS_ISSUES, CAPABILITY_MULTI_MODEL, CAPABILITY_PLANNING, CAPABILITY_SKILLS,
-    CAPABILITY_SUBAGENTS, CAPABILITY_WORKFLOWS, CAPABILITY_WORKTREES, GgAgentStatus,
-    GgCapabilityConfig, GgCapabilitySet, GgCodeReviewPhase, GgContextAction, GgContextSource,
-    GgIssueStatus, GgPlanPhase, GgSlotBinding, GgTelemetryKind, GgWorkflowPhase, PRIMARY_SLOT,
+    CAPABILITY_EPICS_ISSUES, CAPABILITY_FSM, CAPABILITY_MULTI_MODEL, CAPABILITY_PLANNING,
+    CAPABILITY_SKILLS, CAPABILITY_SUBAGENTS, CAPABILITY_WORKFLOWS, CAPABILITY_WORKTREES,
+    GgAgentStatus, GgCapabilityConfig, GgCapabilitySet, GgCodeReviewPhase, GgContextAction,
+    GgContextSource, GgIssueStatus, GgPlanPhase, GgSlotBinding, GgTelemetryKind, GgWorkflowPhase,
+    PRIMARY_SLOT,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
@@ -527,6 +530,7 @@ async fn drive_exhausts_the_turn_ceiling_when_the_model_never_stops() {
             TasksRuntime::disabled(),
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
+            FsmRuntime::disabled(),
             false,
             None,
         )
@@ -573,6 +577,7 @@ async fn drive_times_out_at_a_passed_deadline() {
             TasksRuntime::disabled(),
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
+            FsmRuntime::disabled(),
             false,
             None,
         )
@@ -618,6 +623,7 @@ async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
             TasksRuntime::disabled(),
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
+            FsmRuntime::disabled(),
             false,
             None,
         )
@@ -662,6 +668,7 @@ async fn drive_ends_model_error_on_exhausted_retries() {
             TasksRuntime::disabled(),
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
+            FsmRuntime::disabled(),
             false,
             None,
         )
@@ -707,6 +714,7 @@ fn system_prompt_reflects_the_offered_tools() {
         &TasksRuntime::disabled(),
         &BoardRuntime::disabled(),
         &PlanningRuntime::disabled(),
+        &FsmRuntime::disabled(),
         false,
     );
     assert!(full.contains("write_file"));
@@ -724,6 +732,7 @@ fn system_prompt_reflects_the_offered_tools() {
         &TasksRuntime::disabled(),
         &BoardRuntime::disabled(),
         &PlanningRuntime::disabled(),
+        &FsmRuntime::disabled(),
         false,
     );
     assert!(empty.contains("no tools"));
@@ -1046,6 +1055,7 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
             TasksRuntime::disabled(),
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
+            FsmRuntime::disabled(),
             false,
             None,
         )
@@ -1224,6 +1234,7 @@ async fn drive_enforces_memory_caps_end_to_end() {
             TasksRuntime::disabled(),
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
+            FsmRuntime::disabled(),
             false,
             None,
         )
@@ -1415,6 +1426,7 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
             tasks,
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
+            FsmRuntime::disabled(),
             false,
             None,
         )
@@ -1714,6 +1726,7 @@ async fn drive_compacts_at_the_threshold_and_retains_pinned_state() {
             tasks,
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
+            FsmRuntime::disabled(),
             false,
             None,
         )
@@ -1869,6 +1882,7 @@ async fn drive_never_compacts_when_capability_off() {
             tasks,
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
+            FsmRuntime::disabled(),
             false,
             None,
         )
@@ -1959,6 +1973,7 @@ async fn drive_manages_context_end_to_end() {
             TasksRuntime::disabled(),
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
+            FsmRuntime::disabled(),
             false,
             None,
         )
@@ -2064,6 +2079,7 @@ async fn drive_without_amc_offers_no_context_management() {
             TasksRuntime::disabled(),
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
+            FsmRuntime::disabled(),
             false,
             None,
         )
@@ -2145,6 +2161,7 @@ async fn drive_plans_then_implements_from_a_fresh_context() {
             TasksRuntime::disabled(),
             BoardRuntime::disabled(),
             PlanningRuntime::resolve(&set),
+            FsmRuntime::disabled(),
             false,
             None,
         )
@@ -2300,6 +2317,7 @@ async fn drive_without_planning_offers_no_planning() {
             TasksRuntime::disabled(),
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
+            FsmRuntime::disabled(),
             false,
             None,
         )
@@ -4623,4 +4641,469 @@ fn parse_review_verdict_reads_the_contract() {
     let concludes =
         parse_review_verdict("I might request changes... but actually: CODE REVIEW: APPROVED");
     assert!(concludes.approved);
+}
+
+// ---------------------------------------------------------------------------
+// Phase 5b: FSM-driven processes — the built-in machines, order enforced
+// ---------------------------------------------------------------------------
+
+/// A capability set with the `fsm` capability selecting `machine`, on top of the minimal defaults,
+/// plus a binding for each named `extra_slot` (`mock/<slot>`). `review-gated` additionally needs
+/// delegation + a distinct reviewer model, so callers add `subagents`/`multi-model` themselves.
+fn fsm_set(machine: &str) -> GgCapabilitySet {
+    fsm_set_for(machine, "mock/primary")
+}
+
+/// A capability set with the `fsm` capability selecting `machine`, bound to `model_id` on the primary
+/// slot (so the offline `DefaultClientFactory` selects a specific mock script by id).
+fn fsm_set_for(machine: &str, model_id: &str) -> GgCapabilitySet {
+    let mut set = GgCapabilitySet::minimal(model_id);
+    let mut cap = GgCapabilityConfig::enabled(CAPABILITY_FSM);
+    cap.params = json!({ "machine": machine });
+    set.capabilities.push(cap);
+    set
+}
+
+/// Every `FsmState` transition in the stream, as `(machine, state, stateIndex)`, in order.
+fn fsm_states(events: &[test_cabinet_core::gg::GgTelemetryEvent]) -> Vec<(String, String, u64)> {
+    events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::FsmState {
+                machine,
+                state,
+                state_index,
+            } => Some((machine.clone(), state.clone(), *state_index)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The `ok` flag of every `advance_state` tool result, in order.
+fn advance_results(events: &[test_cabinet_core::gg::GgTelemetryEvent]) -> Vec<bool> {
+    events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::ToolResult { name, ok, .. } if name == "advance_state" => Some(*ok),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The headline TDD proof: the machine **enforces** write tests → implement → verify. A first
+/// `advance_state` (before any test exists) is **refused** — the agent cannot jump to implementing —
+/// and only after a test file is written does the advance succeed and the machine move to
+/// `implement`, then `verify`. The order is a property of the process, not the model's discretion.
+#[tokio::test]
+async fn fsm_tdd_cannot_advance_to_implement_before_tests_exist() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-tdd".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), fsm_set("tdd"));
+
+    // The scripted agent *tries* to advance before writing any test — the engine must refuse it.
+    let factory = ScriptedFactory::new().slot("primary", |b| {
+        Box::new(MockClient::new(
+            &b.model_id,
+            vec![
+                // 1. Jump straight to advancing — no test exists yet. Refused.
+                tool_call_response("adv1", "advance_state", json!({})),
+                // 2. Now write the tests.
+                tool_call_response(
+                    "wt",
+                    "write_file",
+                    json!({ "path": "game.test.js", "contents": "// a test\n" }),
+                ),
+                // 3. Advance — tests exist, so this is allowed → implement.
+                tool_call_response("adv2", "advance_state", json!({})),
+                // 4. Implement.
+                tool_call_response(
+                    "impl",
+                    "write_file",
+                    json!({ "path": "game.js", "contents": "// the implementation\n" }),
+                ),
+                // 5. Advance → verify.
+                tool_call_response("adv3", "advance_state", json!({})),
+                stop_response(),
+            ],
+        ))
+    });
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran
+    );
+    let events = sink.events();
+
+    // The machine drove the states in order, never skipping.
+    assert_eq!(
+        fsm_states(&events),
+        vec![
+            ("tdd".to_string(), "write_tests".to_string(), 0),
+            ("tdd".to_string(), "implement".to_string(), 1),
+            ("tdd".to_string(), "verify".to_string(), 2),
+        ],
+        "tdd is driven write_tests → implement → verify, in order"
+    );
+
+    // The first advance (no tests) was REFUSED; the two after the test file was written succeeded.
+    assert_eq!(
+        advance_results(&events),
+        vec![false, true, true],
+        "the advance before any test exists is refused, not honored"
+    );
+    // ...and the refusal explains why (tests must exist first).
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::ToolResult { name, ok: false, summary: Some(s) }
+                if name == "advance_state" && s.contains("test file")
+        )),
+        "the refusal tells the agent it must write tests first"
+    );
+
+    // The enforcement is temporal: the machine only entered `implement` AFTER the refusal — the agent
+    // could not reach the implement state before tests existed.
+    let refusal_at = events
+        .iter()
+        .position(|e| matches!(&e.kind, GgTelemetryKind::ToolResult { name, ok: false, .. } if name == "advance_state"))
+        .expect("a refused advance");
+    let implement_at = events
+        .iter()
+        .position(
+            |e| matches!(&e.kind, GgTelemetryKind::FsmState { state, .. } if state == "implement"),
+        )
+        .expect("an implement transition");
+    assert!(
+        refusal_at < implement_at,
+        "the machine refused to implement before tests existed"
+    );
+
+    // Both files landed, in their phases.
+    assert!(
+        dir.path().join("game.test.js").exists(),
+        "tests were written"
+    );
+    assert!(
+        dir.path().join("game.js").exists(),
+        "the implementation was written"
+    );
+    assert!(matches!(
+        &events.last().unwrap().kind,
+        GgTelemetryKind::SessionEnded { status } if status == "completed"
+    ));
+}
+
+/// The TDD order enforced **offline through the real binary path** (the `DefaultClientFactory` + the
+/// `mock/…-fsm-tdd` script), not the in-crate scripted factory: the machine drives write_tests →
+/// implement → verify and refuses the premature advance.
+#[tokio::test]
+async fn fsm_tdd_offline_e2e_through_the_default_factory() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-tdd-mock".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), fsm_set_for("tdd", "mock/demo-fsm-tdd"));
+
+    // `run` uses the production DefaultClientFactory, which selects the tdd script by model id.
+    assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
+
+    let events = sink.events();
+    assert_eq!(
+        fsm_states(&events)
+            .iter()
+            .map(|(_, s, _)| s.clone())
+            .collect::<Vec<_>>(),
+        vec!["write_tests", "implement", "verify"],
+        "the machine drives the states in order through the real binary path"
+    );
+    assert_eq!(
+        advance_results(&events),
+        vec![false, true, true],
+        "the premature advance (before tests) is refused offline too"
+    );
+    assert!(dir.path().join(MOCK_FSM_TEST_FILE).exists());
+    assert!(dir.path().join(MOCK_FSM_IMPL_FILE).exists());
+}
+
+/// `review-gated` composes P5a: entering the `review` state triggers a **Code Review** of the run's
+/// work, and the machine reaches `accept` only when the review approves — else it loops **back to
+/// `develop`** with the reviewer's items. Scripted so the first review requests changes and the
+/// re-review approves.
+#[tokio::test]
+async fn fsm_review_gated_accepts_only_after_a_code_review_approves() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-rg".to_string()), Box::new(sink.clone()));
+
+    // review-gated needs delegation (to dispatch the reviewer) and a distinct reviewer model.
+    let mut set = fsm_set("review-gated");
+    set.capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_MULTI_MODEL));
+    set.capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS));
+    set.slots
+        .push(GgSlotBinding::new("reviewer", "mock/reviewer"));
+    let inv = invocation(dir.path(), set);
+
+    let review_counter = Arc::new(AtomicUsize::new(0));
+    let factory = ScriptedFactory::new()
+        .slot("primary", |b| {
+            Box::new(MockClient::new(
+                &b.model_id,
+                vec![
+                    // develop: do the work.
+                    tool_call_response(
+                        "w1",
+                        "write_file",
+                        json!({ "path": "feature.txt", "contents": "v1\n" }),
+                    ),
+                    // advance → review (Code Review requests changes → back to develop).
+                    tool_call_response("adv1", "advance_state", json!({})),
+                    // develop again: address the change.
+                    tool_call_response(
+                        "w2",
+                        "write_file",
+                        json!({ "path": "feature.txt", "contents": "v2 (fixed)\n" }),
+                    ),
+                    // advance → review (approves) → accept.
+                    tool_call_response("adv2", "advance_state", json!({})),
+                    stop_response(),
+                ],
+            ))
+        })
+        // Approve on the 2nd review (one changes-requested round first).
+        .slot(
+            "reviewer",
+            approve_after_producer(Arc::clone(&review_counter), 1),
+        );
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran
+    );
+    let events = sink.events();
+
+    // The machine's path: develop → review → (changes) back to develop → review → accept.
+    assert_eq!(
+        fsm_states(&events)
+            .iter()
+            .map(|(_, state, index)| (state.clone(), *index))
+            .collect::<Vec<_>>(),
+        vec![
+            ("develop".to_string(), 0),
+            ("review".to_string(), 1),
+            ("develop".to_string(), 0),
+            ("review".to_string(), 1),
+            ("accept".to_string(), 2),
+        ],
+        "review-gated loops back to develop on changes and only reaches accept on approval"
+    );
+
+    // It composed the Code Review capability: a review was requested each round, one requested
+    // changes, and the last approved — accept came only after approval.
+    let phases: Vec<GgCodeReviewPhase> = code_reviews(&events)
+        .iter()
+        .map(|(_, p, _, _)| *p)
+        .collect();
+    assert_eq!(
+        phases,
+        vec![
+            GgCodeReviewPhase::Requested,
+            GgCodeReviewPhase::ChangesRequested,
+            GgCodeReviewPhase::Requested,
+            GgCodeReviewPhase::Approved,
+        ],
+        "each review round is a Code Review; accept follows the approval"
+    );
+    // `accept` is reached strictly after the approval.
+    let approved_at = events
+        .iter()
+        .position(|e| {
+            matches!(
+                &e.kind,
+                GgTelemetryKind::CodeReview {
+                    phase: GgCodeReviewPhase::Approved,
+                    ..
+                }
+            )
+        })
+        .expect("an approval");
+    let accept_at = events
+        .iter()
+        .position(
+            |e| matches!(&e.kind, GgTelemetryKind::FsmState { state, .. } if state == "accept"),
+        )
+        .expect("an accept transition");
+    assert!(
+        approved_at <= accept_at,
+        "accept follows the Code Review approval"
+    );
+
+    // Two reviewer subagents ran (the changes round + the approving re-review); the reviewer saw the
+    // run's diff.
+    let spawns = agent_spawns(&events);
+    assert_eq!(
+        spawns
+            .iter()
+            .filter(|(_, _, slot, _, _)| slot == "reviewer")
+            .count(),
+        2,
+        "a reviewer ran for the initial review and the re-review"
+    );
+    assert!(matches!(
+        &events.last().unwrap().kind,
+        GgTelemetryKind::SessionEnded { status } if status == "completed"
+    ));
+}
+
+/// `plan-first` reuses the planning capability's plan → implement flow as its two states: the `plan`
+/// state is **read-only** (a mutating call is refused), advancing performs the plan → implement reset
+/// (emitting the planning telemetry), and the `implement` state has the full toolset back. The
+/// planning capability itself is off — plan-first is self-contained.
+#[tokio::test]
+async fn fsm_plan_first_reuses_the_planning_flow() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-pf".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), fsm_set("plan-first"));
+    assert!(
+        !inv.capability_set.is_enabled(CAPABILITY_PLANNING),
+        "plan-first works without the standalone planning capability"
+    );
+
+    let factory = ScriptedFactory::new().slot("primary", |b| {
+        Box::new(MockClient::new(
+            &b.model_id,
+            vec![
+                // plan state (read-only): a read is allowed.
+                tool_call_response("ls", "list_dir", json!({ "path": "." })),
+                // plan state: a mutating call is REFUSED (read-only) — premature.txt is never written.
+                tool_call_response(
+                    "bad",
+                    "write_file",
+                    json!({ "path": "premature.txt", "contents": "too soon" }),
+                ),
+                // advance with the plan → implement.
+                tool_call_response(
+                    "adv",
+                    "advance_state",
+                    json!({ "note": "1. create index.html 2. add a player 3. draw each frame" }),
+                ),
+                // implement: now allowed.
+                tool_call_response(
+                    "impl",
+                    "write_file",
+                    json!({ "path": "index.html", "contents": "<!doctype html>\n" }),
+                ),
+                stop_response(),
+            ],
+        ))
+    });
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran
+    );
+    let events = sink.events();
+
+    // The two states, in order.
+    assert_eq!(
+        fsm_states(&events),
+        vec![
+            ("plan-first".to_string(), "plan".to_string(), 0),
+            ("plan-first".to_string(), "implement".to_string(), 1),
+        ],
+        "plan-first is plan → implement"
+    );
+
+    // The read-only plan state refused the mutating write (the file was never created).
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::ToolResult { name, ok: false, .. } if name == "write_file"
+        )),
+        "a mutating call in the read-only plan state is refused"
+    );
+    assert!(
+        !dir.path().join("premature.txt").exists(),
+        "the refused write never touched the workspace"
+    );
+
+    // It reused the planning plan → implement flow: the planning telemetry fired.
+    let plan_phases: Vec<GgPlanPhase> = events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::Planning { phase, .. } => Some(*phase),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        plan_phases.contains(&GgPlanPhase::Submitted)
+            && plan_phases.contains(&GgPlanPhase::Implementing),
+        "the plan → implement reset reused the planning flow (submitted + implementing)"
+    );
+
+    // The implement phase wrote the real file.
+    assert!(
+        dir.path().join("index.html").exists(),
+        "the implement state wrote the game with its full toolset back"
+    );
+    assert!(matches!(
+        &events.last().unwrap().kind,
+        GgTelemetryKind::SessionEnded { status } if status == "completed"
+    ));
+}
+
+/// With no machine selected the run behaves exactly as before: no `FsmState` telemetry, no
+/// `advance_state` offered, and the default build proceeds. An `fsm` capability naming an unknown
+/// machine warns and drives nothing.
+#[tokio::test]
+async fn fsm_absent_or_unknown_machine_leaves_behavior_unchanged() {
+    // No fsm capability at all: the default mock run is untouched.
+    {
+        let dir = TempDir::new().unwrap();
+        seed_default_skill(dir.path());
+        let sink = CollectingSink::new();
+        let emitter = Emitter::with_sink(Some("run-nofsm".to_string()), Box::new(sink.clone()));
+        let inv = invocation(dir.path(), GgCapabilitySet::minimal("mock/echo"));
+        assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
+        let events = sink.events();
+        assert!(
+            fsm_states(&events).is_empty(),
+            "no machine → no FsmState telemetry"
+        );
+        assert!(
+            dir.path().join("index.html").exists(),
+            "the default build still runs unchanged"
+        );
+    }
+
+    // An fsm capability naming a machine gg does not ship: a warning, and nothing drives the run.
+    {
+        let dir = TempDir::new().unwrap();
+        let sink = CollectingSink::new();
+        let emitter = Emitter::with_sink(Some("run-bogus".to_string()), Box::new(sink.clone()));
+        // Give it a benign one-shot script so the run completes.
+        let inv = invocation(dir.path(), fsm_set("does-not-exist"));
+        let factory = ScriptedFactory::new().slot("primary", |b| {
+            Box::new(MockClient::new(&b.model_id, vec![stop_response()]))
+        });
+        assert_eq!(
+            run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+            SessionOutcome::Ran
+        );
+        let events = sink.events();
+        assert!(
+            fsm_states(&events).is_empty(),
+            "an unknown machine drives nothing"
+        );
+        assert!(
+            events.iter().any(|e| matches!(
+                &e.kind,
+                GgTelemetryKind::Log { level, message }
+                    if level == "warn" && message.contains("unknown machine")
+            )),
+            "an unrecognized machine is warned about, loudly"
+        );
+    }
 }

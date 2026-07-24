@@ -39,6 +39,7 @@
 mod board;
 mod context;
 mod filesystem;
+mod fsm;
 mod memories;
 mod planning;
 mod shell;
@@ -53,7 +54,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_EPICS_ISSUES, CAPABILITY_FILESYSTEM,
-    CAPABILITY_MEMORIES, CAPABILITY_PLANNING, CAPABILITY_SHELL, CAPABILITY_SKILLS,
+    CAPABILITY_FSM, CAPABILITY_MEMORIES, CAPABILITY_PLANNING, CAPABILITY_SHELL, CAPABILITY_SKILLS,
     CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WORKFLOWS, GgCapabilitySet,
 };
 
@@ -69,6 +70,7 @@ pub use context::{
     ARCHIVE_THREAD_TOOL, DEFAULT_ARCHIVE_KEEP_RECENT, EVICT_FILE_VIEW_TOOL, SEARCH_ARCHIVE_TOOL,
     is_context_reclaim_tool, parse_archive_keep_recent, parse_evict_path,
 };
+pub use fsm::{ADVANCE_STATE_TOOL, is_fsm_tool};
 pub use memories::is_memory_tool;
 pub use planning::{ENTER_PLAN_MODE_TOOL, SUBMIT_PLAN_TOOL, is_planning_tool};
 pub use skills::READ_SKILL_TOOL;
@@ -393,6 +395,14 @@ impl ToolRegistry {
             // context reset, and applies them when a call succeeds.
             tools.push(Box::new(planning::EnterPlanModeTool));
             tools.push(Box::new(planning::SubmitPlanTool));
+        }
+
+        if capabilities.is_enabled(CAPABILITY_FSM) {
+            // The `advance_state` tool is a declaration the loop intercepts to drive its
+            // [FSM](crate::fsm) engine (checking the current state's transition guard and moving the
+            // machine on). It is withheld per-turn by the loop's toolset filter while the current
+            // state is not one the agent advances by calling it.
+            tools.push(Box::new(fsm::AdvanceStateTool));
         }
 
         if capabilities.is_enabled(CAPABILITY_SUBAGENTS) {

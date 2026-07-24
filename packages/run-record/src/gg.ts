@@ -826,6 +826,24 @@ export type GgTelemetryKind =
       baseline?: string;
     }
   | {
+      type: "fsm_state";
+      /**
+       * The built-in machine driving the run (for example `"tdd"`, `"review-gated"`, or
+       * `"plan-first"`).
+       */
+      machine: string;
+      /**
+       * The name of the state just entered (for example `"write_tests"`, `"implement"`,
+       * `"verify"`, `"develop"`, `"review"`, `"accept"`, or `"plan"`).
+       */
+      state: string;
+      /**
+       * The state's zero-based index in the machine's ordered states, so the console can place it
+       * on the machine's path (a `review-gated` loop-back repeats an earlier index).
+       */
+      stateIndex: number;
+    }
+  | {
       type: "log";
       /**
        * The severity level (for example `"info"`, `"warn"`, or `"error"`).
@@ -1205,6 +1223,24 @@ export type GgTelemetryEvent = {
        * baseline could be established for the run.
        */
       baseline?: string;
+    }
+  | {
+      type: "fsm_state";
+      /**
+       * The built-in machine driving the run (for example `"tdd"`, `"review-gated"`, or
+       * `"plan-first"`).
+       */
+      machine: string;
+      /**
+       * The name of the state just entered (for example `"write_tests"`, `"implement"`,
+       * `"verify"`, `"develop"`, `"review"`, `"accept"`, or `"plan"`).
+       */
+      state: string;
+      /**
+       * The state's zero-based index in the machine's ordered states, so the console can place it
+       * on the machine's path (a `review-gated` loop-back repeats an earlier index).
+       */
+      stateIndex: number;
     }
   | {
       type: "log";

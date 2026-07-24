@@ -934,6 +934,31 @@
       "type": "object"
     },
     {
+      "description": "A [FSM-driven process](https://docs.testcabinet.ai/gg/fsms/) transition: the run entered a\nnew state of the built-in machine driving it — the event that lets the console show the\ncurrent state (and the ordered path through the machine).\n\nEmitted (when the [fsm](CAPABILITY_FSM) capability selects a machine) on the agent the machine\ndrives — the root — once as the run **enters the machine's first state**, and again on every\ntransition the [engine](CAPABILITY_FSM) makes: an `advance_state` the agent earns by meeting a\nstate's transition condition, an automatic move into and out of a `review` state (a\n[Code Review](Self::CodeReview) — the `review-gated` machine also streams its `CodeReview`\nevents), the plan → implement reset of `plan-first` (which also streams its\n[`Planning`](Self::Planning) events), or a machine that loops **back** to an earlier state\n(`review-gated` returns to `develop` when the Code Review requests changes). The order is a\nproperty of the machine, so this sequence of states is what proves the run was driven through\nthe process rather than freelancing. A run with no machine selected emits none.",
+      "properties": {
+        "machine": {
+          "description": "The built-in machine driving the run (for example `\"tdd\"`, `\"review-gated\"`, or\n`\"plan-first\"`).",
+          "type": "string"
+        },
+        "state": {
+          "description": "The name of the state just entered (for example `\"write_tests\"`, `\"implement\"`,\n`\"verify\"`, `\"develop\"`, `\"review\"`, `\"accept\"`, or `\"plan\"`).",
+          "type": "string"
+        },
+        "stateIndex": {
+          "description": "The state's zero-based index in the machine's ordered states, so the console can place it\non the machine's path (a `review-gated` loop-back repeats an earlier index).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "type": {
+          "const": "fsm_state",
+          "type": "string"
+        }
+      },
+      "required": ["type", "machine", "state", "stateIndex"],
+      "type": "object"
+    },
+    {
       "description": "A diagnostic log line from gg itself (not agent output).",
       "properties": {
         "level": {

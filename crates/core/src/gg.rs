@@ -213,6 +213,29 @@ pub const CAPABILITY_WORKFLOWS: &str = "workflows";
 /// [Code Reviews]: https://docs.testcabinet.ai/gg/code-reviews/
 pub const CAPABILITY_CODE_REVIEWS: &str = "code-reviews";
 
+/// The stable id of the Phase 5 [FSM-driven processes] capability: driving a run through a
+/// **fixed, named finite state machine** so the *order* of the work is a property of the process,
+/// not the model's discretion.
+///
+/// Where a [workflow](CAPABILITY_WORKFLOWS) is a fan-out the agent assembles, an FSM is a
+/// **built-in** machine the agent is *driven through* — the machines are authored as part of the
+/// harness (a shipped library), not a per-study data format and not model-defined. The capability's
+/// `machine` param selects which built-in drives the run — `"tdd"` (write tests → implement → verify
+/// with tests), `"review-gated"` (develop → review → accept, where the `review` state is a
+/// [Code Review](CAPABILITY_CODE_REVIEWS)), or `"plan-first"` (a read-only plan pass → a
+/// fresh-context implementation pass, reusing the [planning](CAPABILITY_PLANNING) plan→implement
+/// flow); an absent/unrecognized `machine` leaves no FSM driving the run. The engine keeps the agent
+/// in each state until its transition condition holds — enforced through per-state system guidance,
+/// a controlled `advance_state` transition (gated on evidence: for `tdd`, tests must exist before
+/// the machine will move to `implement`), and per-state toolset gating (the `plan` state is
+/// read-only, mirroring plan mode) — so the agent **cannot skip ahead**. Each transition is streamed
+/// as [`FsmState`](GgTelemetryKind::FsmState) telemetry. Opt-in, like the other Phase 2+
+/// capabilities; `review-gated`/`plan-first` compose with the capabilities their states reuse
+/// (a Code Review needs the delegation machinery; the plan pass reuses the planner).
+///
+/// [FSM-driven processes]: https://docs.testcabinet.ai/gg/fsms/
+pub const CAPABILITY_FSM: &str = "fsm";
+
 /// The declarative, inspectable configuration of a gg run — its *independent
 /// variable*.
 ///
@@ -1388,6 +1411,31 @@ pub enum GgTelemetryKind {
         /// baseline could be established for the run.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         baseline: Option<String>,
+    },
+    /// A [FSM-driven process](https://docs.testcabinet.ai/gg/fsms/) transition: the run entered a
+    /// new state of the built-in machine driving it — the event that lets the console show the
+    /// current state (and the ordered path through the machine).
+    ///
+    /// Emitted (when the [fsm](CAPABILITY_FSM) capability selects a machine) on the agent the machine
+    /// drives — the root — once as the run **enters the machine's first state**, and again on every
+    /// transition the [engine](CAPABILITY_FSM) makes: an `advance_state` the agent earns by meeting a
+    /// state's transition condition, an automatic move into and out of a `review` state (a
+    /// [Code Review](Self::CodeReview) — the `review-gated` machine also streams its `CodeReview`
+    /// events), the plan → implement reset of `plan-first` (which also streams its
+    /// [`Planning`](Self::Planning) events), or a machine that loops **back** to an earlier state
+    /// (`review-gated` returns to `develop` when the Code Review requests changes). The order is a
+    /// property of the machine, so this sequence of states is what proves the run was driven through
+    /// the process rather than freelancing. A run with no machine selected emits none.
+    FsmState {
+        /// The built-in machine driving the run (for example `"tdd"`, `"review-gated"`, or
+        /// `"plan-first"`).
+        machine: String,
+        /// The name of the state just entered (for example `"write_tests"`, `"implement"`,
+        /// `"verify"`, `"develop"`, `"review"`, `"accept"`, or `"plan"`).
+        state: String,
+        /// The state's zero-based index in the machine's ordered states, so the console can place it
+        /// on the machine's path (a `review-gated` loop-back repeats an earlier index).
+        state_index: u64,
     },
     /// A diagnostic log line from gg itself (not agent output).
     Log {

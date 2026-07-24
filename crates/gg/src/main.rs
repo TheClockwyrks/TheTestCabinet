@@ -56,6 +56,7 @@ mod compaction;
 mod config;
 mod context;
 mod dag;
+mod fsm;
 mod git;
 mod memories;
 mod model;

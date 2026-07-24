@@ -91,6 +91,9 @@ use crate::config::GgInvocation;
 use crate::context::{
     BpeTokenEstimator, ContextModel, Retention, TokenEstimator, tool_output_source,
 };
+use crate::fsm::{
+    FsmRuntime, MACHINE_REVIEW_GATED, StateExit, ToolPolicy, configured_machine, is_builtin_machine,
+};
 use crate::git;
 use crate::memories::{MemoriesRuntime, MemoryCaps};
 use crate::model::{Message, ModelClient, ModelResponse, ToolCall, ToolDefinition};
@@ -103,7 +106,7 @@ use crate::tools::{
     ARCHIVE_THREAD_TOOL, COMPLETE_ISSUE_TOOL, DEFAULT_ARCHIVE_KEEP_RECENT, ENTER_PLAN_MODE_TOOL,
     EVICT_FILE_VIEW_TOOL, READ_SKILL_TOOL, RUN_WORKFLOW_TOOL, RuntimeSet, SEND_MESSAGE_TOOL,
     SPAWN_SUBAGENT_TOOL, SUBMIT_PLAN_TOOL, ToolContext, ToolOutcome, ToolRegistry,
-    WAIT_FOR_SUBAGENTS_TOOL, is_board_tool, is_context_reclaim_tool, is_memory_tool,
+    WAIT_FOR_SUBAGENTS_TOOL, is_board_tool, is_context_reclaim_tool, is_fsm_tool, is_memory_tool,
     is_planning_tool, is_subagent_tool, is_task_tool, parse_archive_keep_recent, parse_evict_path,
     plan_mode_offers,
 };
@@ -771,6 +774,18 @@ impl Orchestrator {
         let _guard = self.git_lock.lock().expect("git lock");
         git::diff_since(&self.workspace_dir, &baseline).unwrap_or_default()
     }
+
+    /// The textual diff of the **whole run's** work against the run [baseline](Self::baseline_commit)
+    /// — what the [`review-gated`](crate::fsm) FSM's `review` state hands its reviewer (a run-level
+    /// [Code Review](handle_code_review), not scoped to a board issue). Empty when no baseline exists.
+    /// Serialized on the shared [git lock](Self::git_lock) since it stages the index transiently.
+    fn run_diff(&self) -> String {
+        let Some(baseline) = self.baseline_commit() else {
+            return String::new();
+        };
+        let _guard = self.git_lock.lock().expect("git lock");
+        git::diff_since(&self.workspace_dir, baseline).unwrap_or_default()
+    }
 }
 
 /// How an agent driven by [`run_agent`] is dispatched: the [`Root`](Self::Root) driven by the
@@ -914,6 +929,13 @@ async fn run_agent(
     let tasks = resolve_tasks(&orch.caps);
     let board = resolve_board(&orch.caps);
     let planning = PlanningRuntime::resolve(&orch.caps);
+    // The FSM engine drives only the **root** agent (the run's top-level process); a subagent does
+    // scoped work and is not itself driven through a machine, so it gets a disabled runtime.
+    let fsm = if is_root {
+        FsmRuntime::resolve(&orch.caps)
+    } else {
+        FsmRuntime::disabled()
+    };
     let archive_store = Arc::new(Mutex::new(ArchiveStore::new()));
     let library = skills.library();
     let memory_store = memories.store();
@@ -952,6 +974,7 @@ async fn run_agent(
             &planning,
             orch.code_reviews_active(),
         );
+        announce_fsm(emitter, &orch.caps, &fsm);
     }
 
     let context_setup = orch.context_setup(&model_id);
@@ -1007,6 +1030,7 @@ async fn run_agent(
             tasks,
             board,
             planning,
+            fsm,
             orch.code_reviews_active(),
             subagent_context,
         )
@@ -1170,6 +1194,35 @@ fn announce_configuration(
              agent inspects the diff against the issue's completion criteria) before the issue is \
              accepted, and a fix agent addresses any requested changes until a review approves.",
         ));
+    }
+}
+
+/// Announce the [FSM-driven process](crate::fsm) driving the run, once on the root's stream: which
+/// machine is active (and what it enforces), or a **warning** when the [`fsm`](test_cabinet_core::gg::CAPABILITY_FSM)
+/// capability names a machine gg does not recognize (so the misconfiguration is loud rather than
+/// silently leaving the run undriven).
+fn announce_fsm(emitter: &Emitter, caps: &GgCapabilitySet, fsm: &FsmRuntime) {
+    if fsm.is_active() {
+        emitter.emit(log(
+            "info",
+            format!(
+                "FSM-driven process enabled: the `{}` machine drives this run through a fixed order \
+                 of states. The agent is kept in each state until its transition condition is met \
+                 (it cannot skip ahead); each transition is streamed as an FsmState event.",
+                fsm.machine_name()
+            ),
+        ));
+    } else if let Some(name) = configured_machine(caps) {
+        // The capability named a machine, but it is not one gg ships — warn rather than run undriven.
+        if !is_builtin_machine(name) {
+            emitter.emit(log(
+                "warn",
+                format!(
+                    "the `fsm` capability named an unknown machine `{name}`; no FSM will drive this \
+                     run. The built-in machines are `tdd`, `review-gated`, and `plan-first`."
+                ),
+            ));
+        }
     }
 }
 
@@ -1783,62 +1836,34 @@ async fn handle_code_review(
             ));
         }
 
-        // Dispatch a reviewer against the current diff of the work.
+        // Dispatch a reviewer against the current diff of the work and parse its verdict. Anything
+        // other than a clean verdict aborts the review with the issue unaccepted (never accept work
+        // no reviewer approved).
         let diff = orch.review_diff(&issue_id);
         let review_brief = build_review_brief(&brief, &diff);
         let reviewer_slot = orch.reviewer_slot();
-        let reviewer = match dispatch_child(
+        let verdict = match dispatch_reviewer(
             sub,
             spawner,
-            review_brief,
+            emitter,
             Some(issue_id.clone()),
+            review_brief,
             &reviewer_slot,
-            false,
-        ) {
-            Ok(child) => child,
+        )
+        .await
+        {
+            Ok(verdict) => verdict,
             Err(err) => {
                 emitter.emit(log(
                     "warn",
-                    format!("could not dispatch a Code Review of issue `{issue_id}`: {err}"),
-                ));
-                return ToolOutcome::error(format!(
-                    "The Code Review of issue `{issue_id}` could not be dispatched: {err} The issue \
-                     was NOT marked done."
-                ));
-            }
-        };
-        let collected = await_children(sub, emitter, std::slice::from_ref(&reviewer.id)).await;
-
-        // The reviewer must have returned a clean verdict; anything else aborts the review with the
-        // issue unaccepted (never accept work no reviewer approved).
-        let verdict = match collected.into_iter().next() {
-            Some((_, Some(ret))) if ret.status == "completed" => parse_review_verdict(&ret.summary),
-            Some((_, Some(ret))) => {
-                emitter.emit(log(
-                    "warn",
                     format!(
-                        "the Code Review of issue `{issue_id}` ended without a verdict (reviewer \
-                         {}); the issue was not accepted.",
-                        ret.status
+                        "the Code Review of issue `{issue_id}` did not complete: {err}; the issue \
+                         was not accepted."
                     ),
                 ));
                 return ToolOutcome::error(format!(
-                    "The Code Review of issue `{issue_id}` could not complete (the reviewer {}), so \
-                     the issue was NOT marked done.",
-                    ret.status
-                ));
-            }
-            _ => {
-                emitter.emit(log(
-                    "warn",
-                    format!(
-                        "the Code Review of issue `{issue_id}` produced no result; the issue was \
-                         not accepted."
-                    ),
-                ));
-                return ToolOutcome::error(format!(
-                    "The Code Review of issue `{issue_id}` produced no result, so the issue was NOT \
-                     marked done."
+                    "The Code Review of issue `{issue_id}` did not complete ({err}), so the issue \
+                     was NOT marked done. Its work remains for a later pass."
                 ));
             }
         };
@@ -2022,6 +2047,377 @@ fn code_review_event(
         items,
         baseline,
     }
+}
+
+/// Dispatch one **reviewer** subagent against `review_brief` on `reviewer_slot`, await it, and parse
+/// its [verdict](parse_review_verdict) — the reusable core of a Code Review shared by the issue-level
+/// [Code Review](handle_code_review) (P5a) and the [`review-gated`](crate::fsm) FSM's `review` state.
+///
+/// Returns the verdict, or a model-facing error when the reviewer could not be dispatched or returned
+/// without a clean verdict; the caller then leaves the work **unaccepted** (work no reviewer approved
+/// is never accepted). The reviewer is an ordinary [subagent](dispatch_child) scoped to `issue_id`
+/// (when any).
+async fn dispatch_reviewer(
+    sub: &mut SubagentContext,
+    spawner: &Agent,
+    emitter: &Emitter,
+    issue_id: Option<String>,
+    review_brief: String,
+    reviewer_slot: &str,
+) -> Result<ReviewVerdict, String> {
+    let reviewer = dispatch_child(sub, spawner, review_brief, issue_id, reviewer_slot, false)
+        .map_err(|err| format!("the reviewer could not be dispatched: {err}"))?;
+    let collected = await_children(sub, emitter, std::slice::from_ref(&reviewer.id)).await;
+    match collected.into_iter().next() {
+        Some((_, Some(ret))) if ret.status == "completed" => Ok(parse_review_verdict(&ret.summary)),
+        Some((_, Some(ret))) => Err(format!("the reviewer {} without a verdict", ret.status)),
+        _ => Err("the reviewer produced no result".to_string()),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// FSM-driven processes: drive the agent through a fixed, ordered machine
+// ---------------------------------------------------------------------------
+
+/// The result of an intercepted `advance_state` call: the model-facing [outcome](ToolOutcome) plus,
+/// for a [`plan-first`](crate::fsm) plan reset, the plan text to seed after the turn's tool results
+/// are recorded (mirroring how `submit_plan` defers its context reset, so the conversation stays
+/// valid).
+struct AdvanceResult {
+    /// What the model sees for its `advance_state` call — the state entered, or a refusal explaining
+    /// the unmet condition.
+    outcome: ToolOutcome,
+    /// The plan to reset the context with after this turn (the `plan-first` `plan → implement`
+    /// reset), or `None` for every other transition.
+    submit_plan: Option<String>,
+}
+
+impl AdvanceResult {
+    /// A result carrying only an outcome (no deferred plan reset).
+    fn just(outcome: ToolOutcome) -> Self {
+        Self {
+            outcome,
+            submit_plan: None,
+        }
+    }
+}
+
+/// Handle an intercepted `advance_state` by driving the [FSM](crate::fsm): check the current state's
+/// [transition condition](StateExit) and, when it holds, move the machine to the next state (emitting
+/// [`FsmState`](GgTelemetryKind::FsmState) and injecting the new state's guidance); when it does not,
+/// **refuse** the advance so the agent stays put and cannot skip ahead.
+///
+/// The three exit kinds:
+/// - [`Advance`](StateExit::Advance) — evaluate the [guard](crate::fsm::AdvanceGuard) against the
+///   workspace (for `tdd`, tests/implementation must exist); on success step forward, and if the
+///   state entered is the transient [`review`](StateExit::ReviewGate) state, run its
+///   [Code Review](process_review_gate) inline;
+/// - [`PlanReset`](StateExit::PlanReset) — `plan-first`'s `plan` state: take the plan from the call's
+///   `note`, step to `implement`, and defer the [context reset](AdvanceResult::submit_plan) (reusing
+///   the planning flow);
+/// - [`ReviewGate`](StateExit::ReviewGate)/[`Terminal`](StateExit::Terminal) — not agent-advanced, so
+///   `advance_state` is refused (these were never offered while resting).
+async fn handle_advance_state(
+    fsm: &mut FsmRuntime,
+    context: &mut ContextModel,
+    subagents: Option<&mut SubagentContext>,
+    spawner: &Agent,
+    tool_ctx: &ToolContext,
+    emitter: &Emitter,
+    call: &ToolCall,
+) -> AdvanceResult {
+    // The current state's exit decides how (and whether) the machine moves. Copied out so no borrow
+    // of `fsm` is held across the mutation below.
+    let Some(exit) = fsm.current_state().map(|state| state.exit) else {
+        return AdvanceResult::just(ToolOutcome::error(
+            "advance_state: no state machine is driving this run.",
+        ));
+    };
+
+    match exit {
+        StateExit::Advance(guard) => {
+            // Enforce the order: the guard's evidence must be present in the workspace, else the
+            // advance is refused and the agent stays in this state.
+            if let Err(reason) = guard.evaluate(&tool_ctx.workspace_dir) {
+                return AdvanceResult::just(ToolOutcome::error(reason));
+            }
+            let (name, guidance, new_exit) = advance_owned(fsm);
+            if name.is_empty() {
+                return AdvanceResult::just(ToolOutcome::ok(
+                    "You are already at the final state; finish your work and stop.",
+                    "fsm already at final state",
+                ));
+            }
+            emitter.emit(fsm_state_event(
+                fsm.machine_name(),
+                name,
+                fsm.current_index(),
+            ));
+            // Entering the transient `review` state triggers a Code Review, which decides the next
+            // move (to `accept`, or back to `develop`). The `review` state is not rested in.
+            if matches!(new_exit, StateExit::ReviewGate) {
+                return process_review_gate(fsm, context, subagents, spawner, emitter).await;
+            }
+            push_state_guidance(context, guidance, new_exit);
+            AdvanceResult::just(ToolOutcome::ok(
+                format!("Advanced to the `{name}` state. Follow its guidance."),
+                format!("advanced to `{name}`"),
+            ))
+        }
+        StateExit::PlanReset => {
+            // plan-first: the plan comes from the call's `note`. The reset (clearing the exploration
+            // and seeding the framed plan) is deferred to after this turn's tool results, like
+            // `submit_plan`, so the conversation stays valid.
+            let plan = call
+                .arguments
+                .get("note")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .trim()
+                .to_string();
+            if plan.is_empty() {
+                return AdvanceResult::just(ToolOutcome::error(
+                    "advance_state: include your implementation plan in the `note` before advancing \
+                     from the plan state — it seeds your fresh implementation context.",
+                ));
+            }
+            emitter.emit(GgTelemetryKind::Planning {
+                phase: GgPlanPhase::Submitted,
+                plan: Some(plan.clone()),
+            });
+            let (name, guidance, new_exit) = advance_owned(fsm);
+            emitter.emit(fsm_state_event(
+                fsm.machine_name(),
+                name,
+                fsm.current_index(),
+            ));
+            // The implement-state guidance is pinned, so it survives the deferred `clear_ephemeral`.
+            push_state_guidance(context, guidance, new_exit);
+            AdvanceResult {
+                outcome: ToolOutcome::ok(
+                    "Plan accepted. Clearing your exploration and starting implementation from a \
+                     clean context with the original request and your plan.",
+                    "advanced to `implement`",
+                ),
+                submit_plan: Some(plan),
+            }
+        }
+        StateExit::ReviewGate => AdvanceResult::just(ToolOutcome::error(
+            "advance_state is not available while a Code Review is running.",
+        )),
+        StateExit::Terminal => AdvanceResult::just(ToolOutcome::error(
+            "advance_state: you are in the final state of the process; finish your work and stop.",
+        )),
+    }
+}
+
+/// Process the transient [`review`](StateExit::ReviewGate) state of the [`review-gated`](crate::fsm)
+/// machine, just entered from `develop`: run a run-level [Code Review](dispatch_reviewer) of the
+/// work, then move the machine on — to `accept` on **approval**, or **back to `develop`** with the
+/// reviewer's items on changes. This is the composition of the Code Review capability into the FSM.
+///
+/// The reviewer is an ordinary subagent, so delegation must be available; when it is not (a
+/// misconfigured `review-gated` run, already warned at start), the review is skipped and the machine
+/// passes through to `accept` so the run can still finish.
+async fn process_review_gate(
+    fsm: &mut FsmRuntime,
+    context: &mut ContextModel,
+    subagents: Option<&mut SubagentContext>,
+    spawner: &Agent,
+    emitter: &Emitter,
+) -> AdvanceResult {
+    let Some(sub) = subagents else {
+        emitter.emit(log(
+            "warn",
+            "the `review-gated` machine reached its `review` state, but no subagents are available \
+             to run the Code Review; the work is accepted without one (enable the `subagents` \
+             capability for a real Code Review).",
+        ));
+        let (name, guidance, new_exit) = advance_owned(fsm);
+        emitter.emit(fsm_state_event(
+            fsm.machine_name(),
+            name,
+            fsm.current_index(),
+        ));
+        push_state_guidance(context, guidance, new_exit);
+        return AdvanceResult::just(ToolOutcome::ok(
+            "Advanced to `accept` (no reviewer was available to run a Code Review).",
+            "advanced to `accept`",
+        ));
+    };
+
+    let orch = Arc::clone(&sub.orch);
+    let baseline = orch.baseline_commit().map(str::to_string);
+    // The Code Review lifecycle rides on the root's (run-level) stream — a review-gated run reviews
+    // the whole run's diff, not a board issue.
+    emitter.emit(code_review_event(
+        GgCodeReviewPhase::Requested,
+        None,
+        baseline.clone(),
+    ));
+    let diff = orch.run_diff();
+    let review_brief = build_review_brief(&orch.prompt, &diff);
+    let reviewer_slot = orch.reviewer_slot();
+    let verdict = match dispatch_reviewer(sub, spawner, emitter, None, review_brief, &reviewer_slot)
+        .await
+    {
+        Ok(verdict) => verdict,
+        Err(err) => {
+            // The review could not complete: leave the machine back in `develop` so the agent can
+            // fix things and try again, rather than accepting unreviewed work.
+            emitter.emit(log(
+                "warn",
+                format!("the `review-gated` Code Review did not complete: {err}."),
+            ));
+            let develop_index = fsm.index_of("develop").unwrap_or(0);
+            let (name, _guidance, _exit) = revert_owned(fsm, develop_index);
+            emitter.emit(fsm_state_event(
+                fsm.machine_name(),
+                name,
+                fsm.current_index(),
+            ));
+            return AdvanceResult::just(ToolOutcome::error(format!(
+                "The Code Review could not complete ({err}); you are back in the `develop` state. \
+                 Address anything outstanding and call `advance_state` to try again."
+            )));
+        }
+    };
+
+    if verdict.approved {
+        emitter.emit(code_review_event(
+            GgCodeReviewPhase::Approved,
+            None,
+            baseline,
+        ));
+        let (name, guidance, new_exit) = advance_owned(fsm);
+        emitter.emit(fsm_state_event(
+            fsm.machine_name(),
+            name,
+            fsm.current_index(),
+        ));
+        push_state_guidance(context, guidance, new_exit);
+        AdvanceResult::just(ToolOutcome::ok(
+            "The Code Review approved your work; advanced to `accept`. Summarize and stop.",
+            "code review approved; advanced to `accept`",
+        ))
+    } else {
+        // Changes requested: loop back to `develop` with the reviewer's items injected as guidance.
+        emitter.emit(code_review_event(
+            GgCodeReviewPhase::ChangesRequested,
+            Some(verdict.items.clone()),
+            baseline,
+        ));
+        let develop_index = fsm.index_of("develop").unwrap_or(0);
+        let (name, _guidance, _exit) = revert_owned(fsm, develop_index);
+        emitter.emit(fsm_state_event(
+            fsm.machine_name(),
+            name,
+            fsm.current_index(),
+        ));
+        let items_guidance = build_review_items_guidance(&verdict.items);
+        context.push(
+            GgContextSource::System,
+            Retention::Pinned,
+            Message::user(items_guidance),
+        );
+        AdvanceResult::just(ToolOutcome::error(format!(
+            "The Code Review requested changes; you are back in the `develop` state (`{name}`). \
+             Address the reviewer's items (now in your guidance), then call `advance_state` to \
+             re-submit for review."
+        )))
+    }
+}
+
+/// Step the machine to the next state and return the entered state's `(name, guidance, exit)` as
+/// owned/copied values, so the caller holds no borrow of the runtime across the emit/inject that
+/// follow. A machine already at its last state returns an empty name.
+fn advance_owned(fsm: &mut FsmRuntime) -> (&'static str, String, StateExit) {
+    match fsm.advance() {
+        Some(state) => (state.name, state.guidance.clone(), state.exit),
+        None => ("", String::new(), StateExit::Terminal),
+    }
+}
+
+/// Move the machine **back** to the state at `index` (a `review-gated` loop-back to `develop`),
+/// returning the entered state's `(name, guidance, exit)` as owned/copied values.
+fn revert_owned(fsm: &mut FsmRuntime, index: usize) -> (&'static str, String, StateExit) {
+    match fsm.revert_to(index) {
+        Some(state) => (state.name, state.guidance.clone(), state.exit),
+        None => ("", String::new(), StateExit::Terminal),
+    }
+}
+
+/// Inject a state's `guidance` into the context on entering it. A [`PlanReset`](StateExit::PlanReset)
+/// (plan-first `plan`) state's guidance is **ephemeral** — the plan → implement reset clears it —
+/// while every other state's guidance is **pinned** (it frames what the agent must do for the rest of
+/// that state and survives compaction). Tagged [`System`](GgContextSource::System) as process-level
+/// instruction. An empty guidance (a machine past its last state) injects nothing.
+fn push_state_guidance(context: &mut ContextModel, guidance: String, exit: StateExit) {
+    if guidance.trim().is_empty() {
+        return;
+    }
+    let retention = if matches!(exit, StateExit::PlanReset) {
+        Retention::Ephemeral
+    } else {
+        Retention::Pinned
+    };
+    context.push(GgContextSource::System, retention, Message::user(guidance));
+}
+
+/// A [`FsmState`](GgTelemetryKind::FsmState) telemetry event for a transition into `state` (index
+/// `index`) of `machine`.
+fn fsm_state_event(machine: &str, state: &str, index: usize) -> GgTelemetryKind {
+    GgTelemetryKind::FsmState {
+        machine: machine.to_string(),
+        state: state.to_string(),
+        state_index: index as u64,
+    }
+}
+
+/// The model-facing message for a tool call the current [FSM](crate::fsm) state withholds — a
+/// defensive guard (the tool was not offered this turn). Explains the state and how to proceed
+/// (explore then advance, for a read-only state; complete the work then advance, otherwise).
+fn fsm_refusal(name: &str, fsm: &FsmRuntime) -> String {
+    match fsm.current_state() {
+        Some(state) => {
+            let how = match state.tool_policy {
+                ToolPolicy::ReadOnly => {
+                    "This state is read-only: explore with `read_file`, `list_dir`, `read_skill`, \
+                     and `search_archive`, then call `advance_state` to move on."
+                }
+                ToolPolicy::All => {
+                    "Do this state's work, then call `advance_state` once its condition is met."
+                }
+            };
+            format!(
+                "`{name}` is not available in the `{}` state of the `{}` process. {how}",
+                state.name,
+                fsm.machine_name(),
+            )
+        }
+        None => format!("`{name}` is not available right now."),
+    }
+}
+
+/// The guidance injected when a [`review-gated`](crate::fsm) Code Review requests changes and the
+/// machine loops back to `develop`: the reviewer's actionable items the agent must address before
+/// re-submitting.
+fn build_review_items_guidance(items: &[String]) -> String {
+    let mut list = String::new();
+    for (index, item) in items.iter().enumerate() {
+        list.push_str(&format!("\n{}. {}", index + 1, item));
+    }
+    if list.is_empty() {
+        list.push_str(
+            "\n1. The Code Review did not approve the work but listed no specific items; re-check \
+             the task and make sure every part is done.",
+        );
+    }
+    format!(
+        "# Code Review requested changes\n\nA Code Review of your work did not approve it. You are \
+         back in the `develop` state. Address every item below, then call `advance_state` to submit \
+         for re-review:{list}"
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -2415,6 +2811,7 @@ impl Agent {
         tasks: TasksRuntime,
         board: BoardRuntime,
         planning: PlanningRuntime,
+        mut fsm: FsmRuntime,
         code_reviews: bool,
         mut subagents: Option<SubagentContext>,
     ) -> LoopEnd {
@@ -2443,9 +2840,21 @@ impl Agent {
             &tasks,
             &board,
             &planning,
+            &fsm,
             code_reviews_active,
         ));
         context.push_user_prompt(prompt);
+
+        // FSM start: emit the machine's entry state and inject its guidance, so the run is driven
+        // through the process from the very first turn. Only the root carries an active machine.
+        let fsm_active = fsm.is_active();
+        if fsm_active && let Some(state) = fsm.current_state() {
+            let event = fsm_state_event(fsm.machine_name(), state.name, fsm.current_index());
+            let guidance = state.guidance.clone();
+            let exit = state.exit;
+            emitter.emit(event);
+            push_state_guidance(&mut context, guidance, exit);
+        }
 
         let mut total_tokens = TokenCounts::default();
         let mut total_cost: Option<Cost> = None;
@@ -2559,18 +2968,21 @@ impl Agent {
                 context.refresh_fullness_signal();
             }
 
-            // The offered toolset for this turn. In plan mode gg restricts it to the read-only
-            // tools (plus `submit_plan`, the way out); otherwise the whole set is offered. The same
-            // predicate guards dispatch below, so what the model is shown and what it may run agree.
-            let tools: Vec<ToolDefinition> = if planning.offers_planning() {
-                all_tools
-                    .iter()
-                    .filter(|tool| plan_mode_offers(&tool.name, in_plan_mode))
-                    .cloned()
-                    .collect()
-            } else {
-                all_tools.clone()
-            };
+            // The offered toolset for this turn — the intersection of every active restriction, so
+            // what the model is shown and what it may run agree (the same predicates guard dispatch
+            // below). In plan mode gg restricts it to the read-only tools (plus `submit_plan`, the way
+            // out); an active FSM state restricts it to what that state allows (a read-only plan
+            // state, and `advance_state` only while the current state is one the agent leaves by
+            // calling it).
+            let tools: Vec<ToolDefinition> = all_tools
+                .iter()
+                .filter(|tool| {
+                    let planning_ok =
+                        !planning.offers_planning() || plan_mode_offers(&tool.name, in_plan_mode);
+                    planning_ok && fsm.offers(&tool.name)
+                })
+                .cloned()
+                .collect();
 
             // The context for this turn is fully assembled (every prior item is in the
             // model). Emit its per-source breakdown when context visibility is on; the
@@ -2642,15 +3054,39 @@ impl Agent {
                     args: call.arguments.clone(),
                 });
 
-                // In plan mode the loop is read-only: a tool the plan-mode filter withheld is
-                // refused here too (a defensive guard — the model was not offered it) with guidance,
-                // rather than dispatched. Outside plan mode this only ever withholds `submit_plan`.
-                // A subagent tool is intercepted here (never routed through `registry.dispatch`,
-                // whose registered validators are defensive placeholders): the loop performs the
-                // spawn/wait/message against the orchestrator, which the tools cannot reach.
+                // In plan mode the loop is read-only, and an active FSM state may restrict the toolset
+                // further: a tool either filter withheld is refused here too (a defensive guard — the
+                // model was not offered it) rather than dispatched. `advance_state` and the subagent
+                // tools are intercepted here (never routed through `registry.dispatch`, whose
+                // registered validators are defensive placeholders): the loop drives the state machine
+                // / the scheduler / the agent tree, which the tools cannot reach.
                 let mut outcome =
                     if planning.offers_planning() && !plan_mode_offers(&call.name, in_plan_mode) {
                         ToolOutcome::error(plan_mode_refusal(&call.name, in_plan_mode))
+                    } else if fsm_active && !fsm.offers(&call.name) {
+                        // The FSM's current state withholds this tool this turn (a read-only plan state,
+                        // or a tool that is not the state's exit) — refuse it with guidance.
+                        ToolOutcome::error(fsm_refusal(&call.name, &fsm))
+                    } else if fsm_active && is_fsm_tool(&call.name) {
+                        // Drive the state machine: check the current state's transition guard, move on
+                        // when it holds (and — for `review-gated` — run the Code Review that gates the
+                        // move), and refuse the advance otherwise so the agent cannot skip ahead. A
+                        // `plan-first` plan reset is captured here and applied after the turn's tool
+                        // results are recorded, exactly like `submit_plan`.
+                        let advance = handle_advance_state(
+                            &mut fsm,
+                            &mut context,
+                            subagents.as_mut(),
+                            self,
+                            tool_ctx,
+                            emitter,
+                            call,
+                        )
+                        .await;
+                        if let Some(plan) = advance.submit_plan {
+                            submitted_plan = Some(plan);
+                        }
+                        advance.outcome
                     } else if let Some(sub) = subagents.as_mut() {
                         if is_subagent_tool(&call.name) {
                             handle_subagent_call(sub, self, &board, emitter, call).await
@@ -2745,17 +3181,26 @@ impl Agent {
                 }
             }
 
-            // A plan was submitted this turn: clear the exploration history (keeping the pinned
-            // prefix — system, original prompt, skills, memories, tasks, board) via the shared
-            // context-reset primitive, seed the fresh implementation context with the framed plan as
-            // a pinned item, leave plan mode, and restore the full toolset for the next turn.
+            // A plan was submitted this turn — either via `submit_plan` (the planning capability) or
+            // an `advance_state` out of a `plan-first` FSM plan state (both defer here). Clear the
+            // exploration history (keeping the pinned prefix — system, original prompt, skills,
+            // memories, tasks, board, and any pinned FSM guidance) via the shared context-reset
+            // primitive, seed the fresh implementation context with the framed plan as a pinned item,
+            // leave plan mode, and restore the full toolset for the next turn. The plan is framed by
+            // the FSM's own planner when a machine drives the run (so a `plan-first` machine reuses
+            // the planning flow even with the standalone planning capability off), else by the
+            // planning runtime.
             if let Some(plan) = submitted_plan {
                 in_plan_mode = false;
                 context.clear_ephemeral();
+                let framed = match fsm.planner() {
+                    Some(planner) => planner.frame_plan(&plan),
+                    None => planning.frame_plan(&plan),
+                };
                 context.push(
                     GgContextSource::Plan,
                     Retention::Pinned,
-                    crate::model::Message::user(planning.frame_plan(&plan)),
+                    crate::model::Message::user(framed),
                 );
                 emitter.emit(GgTelemetryKind::Planning {
                     phase: GgPlanPhase::Implementing,
@@ -3036,12 +3481,16 @@ fn resolve_worktrees(
     emitter: &Emitter,
 ) -> WorktreesSetup {
     let worktrees = set.is_enabled(CAPABILITY_WORKTREES);
-    let code_reviews = set.is_enabled(CAPABILITY_CODE_REVIEWS);
+    // A baseline is needed for a Code Review to diff against — whether triggered by the
+    // `code-reviews` capability (per-issue) or by the `review-gated` FSM's `review` state (the whole
+    // run's diff).
+    let code_reviews = set.is_enabled(CAPABILITY_CODE_REVIEWS)
+        || configured_machine(set) == Some(MACHINE_REVIEW_GATED);
     // A short, accurate description of why git is needed, for the diagnostics.
     let reason = match (worktrees, code_reviews) {
-        (true, true) => "the `worktrees` and `code-reviews` capabilities are enabled",
+        (true, true) => "the `worktrees` capability is enabled and a Code Review may run",
         (true, false) => "the `worktrees` capability is enabled",
-        (false, true) => "the `code-reviews` capability is enabled",
+        (false, true) => "a Code Review may run (the `code-reviews` or `review-gated` capability)",
         (false, false) => "",
     };
     if !worktrees && !code_reviews {
@@ -3185,6 +3634,7 @@ fn builtin_window_for(model_id: &str) -> Option<u64> {
 /// (their names and descriptions), and — when the [memories](crate::memories) and
 /// [tasks](crate::tasks) capabilities are on — how to curate memories and how to plan with
 /// the task DAG.
+#[allow(clippy::too_many_arguments)]
 fn system_prompt(
     registry: &ToolRegistry,
     skills: &SkillsRuntime,
@@ -3192,6 +3642,7 @@ fn system_prompt(
     tasks: &TasksRuntime,
     board: &BoardRuntime,
     planning: &PlanningRuntime,
+    fsm: &FsmRuntime,
     code_reviews: bool,
 ) -> String {
     let names: Vec<String> = registry
@@ -3228,6 +3679,17 @@ fn system_prompt(
     if let Some(section) = planning.prompt_section() {
         prompt.push_str("\n\n");
         prompt.push_str(&section);
+    }
+    if fsm.is_active() {
+        prompt.push_str(&format!(
+            "\n\nThis run is driven through a fixed **{}** process: you are placed in an ordered \
+             sequence of states and must complete each before the next. Follow the guidance for \
+             your current state, and call `advance_state` to move on once its condition is met — gg \
+             **refuses** the advance while the condition is unmet, so you cannot skip ahead (for \
+             example, you cannot start implementing before your tests exist). Some states restrict \
+             which tools you may use.",
+            fsm.machine_name()
+        ));
     }
     if code_reviews {
         prompt.push_str(
