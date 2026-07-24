@@ -104,6 +104,14 @@ export function GgRunMonitorPage() {
   // unchanged (no chips), keeping the common case unobtrusive.
   const multiAgent = agents.size > 1;
 
+  // Whether this run was captured for replay — the debug-only `replay` capability was
+  // on. Only then does a stored replay record exist to step through, so the Replay
+  // link on the terminal outcome is shown only in that case (it is debug tooling, not
+  // a normal result surface).
+  const replayCaptured =
+    capabilitySet?.capabilities.some((c) => c.id === "replay" && c.enabled) ??
+    false;
+
   const [tab, setTab] = useState<MonitorTab>("activity");
 
   // Whether the Activity feed auto-follows the newest row. On by default;
@@ -220,6 +228,16 @@ export function GgRunMonitorPage() {
             see its metrics
           </Link>
           .
+          {replayCaptured && (
+            <>
+              {" "}
+              This run was captured for replay —{" "}
+              <Link to={routes.ggReplay(status.outcome.record.id)}>
+                step through what each agent saw and did
+              </Link>{" "}
+              (debug).
+            </>
+          )}
         </p>
       )}
       {status.kind === "done" && status.outcome.kind === "canceled" && (

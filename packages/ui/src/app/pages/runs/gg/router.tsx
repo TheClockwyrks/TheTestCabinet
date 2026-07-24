@@ -3,6 +3,7 @@ import { routePatterns } from "../../../routes";
 import { NewGgRunPage } from "./NewGgRunPage";
 import { GgAnalyzePage } from "./GgAnalyzePage";
 import { GgRunMonitorPage } from "./GgRunMonitorPage";
+import { GgReplayView } from "./GgReplayView";
 
 // The gg run-execution routes: the capability-set config page (`/runs/gg/new`) and
 // the live gg run monitor (`/runs/gg/:jobId/live`). Both are console-only — they
@@ -18,6 +19,7 @@ export function ggRoutes(canExecute: boolean) {
       <Route path={routePatterns.ggNew} element={<NewGgRunPage />} />
       <Route path={routePatterns.ggAnalyze} element={<GgAnalyzePage />} />
       <Route path={routePatterns.ggMonitor} element={<GgRunMonitorPage />} />
+      <Route path={routePatterns.ggReplay} element={<GgReplayView />} />
     </>
   );
 }

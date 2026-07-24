@@ -1,0 +1,428 @@
+@use "../../../styles/tokens" as t;
+@use "../../../styles/surfaces" as s;
+
+// The step-through replay debug view. This is DEBUG tooling — a dense,
+// information-rich, monospace-leaning layout is right: two panes (Saw / Did) over a
+// tool-results strip, driven by playback controls and an agent filter. It reuses the
+// shared run-execution notices/buttons for chrome and owns the stepper layout here.
+
+.debugNote {
+  margin: t.$space-sm 0 t.$space-md;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.surface {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+  outline: none;
+}
+
+// --- Header ------------------------------------------------------------------
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  padding: t.$space-md;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+}
+
+.headerRow {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
+.headerKey {
+  flex: 0 0 5rem;
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$color-text-muted;
+}
+
+.headerVal {
+  font-size: t.$font-sm;
+  color: t.$color-text;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+// --- Agent filter/tree -------------------------------------------------------
+
+.agentBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-xs;
+}
+
+.agentChip {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-xs;
+  padding: t.$space-2xs t.$space-sm;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  background: transparent;
+  color: t.$color-text;
+  font-family: monospace;
+  font-size: t.$font-sm;
+  cursor: pointer;
+
+  &:hover {
+    border-color: t.$color-accent;
+  }
+
+  &[data-active] {
+    border-color: t.$color-accent;
+    background: t.$color-accent;
+    color: t.$color-bg;
+  }
+}
+
+.agentCount {
+  font-size: t.$font-sm;
+  opacity: 0.7;
+}
+
+// --- Playback controls -------------------------------------------------------
+
+.controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: t.$space-md;
+  padding: t.$space-sm t.$space-md;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+}
+
+.buttons {
+  display: flex;
+  gap: t.$space-xs;
+
+  button {
+    padding: t.$space-2xs t.$space-sm;
+    border: t.$border-hairline solid t.$color-border;
+    border-radius: t.$radius-sm;
+    background: transparent;
+    color: t.$color-text;
+    font-size: t.$font-sm;
+    cursor: pointer;
+
+    &:hover:not(:disabled) {
+      border-color: t.$color-accent;
+    }
+
+    &:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
+  }
+}
+
+.counter {
+  font-family: monospace;
+  font-size: t.$font-sm;
+  color: t.$color-text;
+}
+
+.counterStep {
+  color: t.$color-text;
+}
+
+.counterSeq {
+  color: t.$color-text-muted;
+}
+
+.jump {
+  flex: 1 1 12rem;
+  min-width: 8rem;
+}
+
+// --- The current step --------------------------------------------------------
+
+.step {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+}
+
+.stepTitle {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+}
+
+.stepAgent {
+  font-family: monospace;
+  font-size: t.$font-sm;
+  padding: t.$space-2xs t.$space-sm;
+  border-radius: t.$radius-sm;
+  background: t.$color-accent;
+  color: t.$color-bg;
+}
+
+.stepSeq {
+  font-family: monospace;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.stepSynthetic {
+  font-size: t.$font-sm;
+  color: t.$color-warning;
+}
+
+.panes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: t.$space-md;
+
+  @media (max-width: 52rem) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.pane,
+.results {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  padding: t.$space-md;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+  min-width: 0;
+}
+
+.paneTitle {
+  margin: 0;
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$color-text;
+}
+
+.paneSub {
+  margin-left: t.$space-xs;
+  text-transform: none;
+  letter-spacing: normal;
+  color: t.$color-text-muted;
+  font-weight: normal;
+}
+
+// --- Messages (what the agent saw) -------------------------------------------
+
+.messages {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.message {
+  display: flex;
+  gap: t.$space-sm;
+  padding: t.$space-xs;
+  border-left: 2px solid t.$color-border;
+  min-width: 0;
+
+  &[data-role="system"] {
+    border-left-color: t.$color-text-muted;
+  }
+  &[data-role="user"] {
+    border-left-color: t.$color-accent-2;
+  }
+  &[data-role="assistant"] {
+    border-left-color: t.$color-accent;
+  }
+  &[data-role="tool"] {
+    border-left-color: t.$color-positive;
+  }
+}
+
+.msgRole {
+  flex: 0 0 4.5rem;
+  font-family: monospace;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  text-transform: uppercase;
+}
+
+.msgBody {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.msgContent {
+  margin: 0;
+  font-family: monospace;
+  font-size: t.$font-sm;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: t.$color-text;
+  max-height: 24rem;
+  overflow: auto;
+}
+
+.msgMeta {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-style: italic;
+}
+
+// --- Tool calls / args -------------------------------------------------------
+
+.callLine {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  padding: t.$space-2xs t.$space-xs;
+  border: t.$border-hairline dashed t.$color-border;
+  border-radius: t.$radius-sm;
+  min-width: 0;
+}
+
+.callName {
+  font-family: monospace;
+  font-size: t.$font-sm;
+  color: t.$color-accent;
+}
+
+.args {
+  margin: 0;
+  font-family: monospace;
+  font-size: t.$font-sm;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: t.$color-text-muted;
+  max-height: 16rem;
+  overflow: auto;
+}
+
+// --- Offered tools -----------------------------------------------------------
+
+.tools {
+  font-size: t.$font-sm;
+
+  summary {
+    cursor: pointer;
+    color: t.$color-text-muted;
+  }
+}
+
+.toolList {
+  margin: t.$space-xs 0 0;
+  padding-left: t.$space-lg;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+.toolDesc {
+  color: t.$color-text-muted;
+}
+
+// --- Response (what the model did) -------------------------------------------
+
+.response {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+.respCalls {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.respCallsLabel {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.respMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-md;
+  font-family: monospace;
+  font-size: t.$font-sm;
+  color: t.$color-text;
+}
+
+.respMetaKey {
+  margin-right: t.$space-xs;
+  color: t.$color-text-muted;
+  text-transform: uppercase;
+}
+
+// --- Tool results ------------------------------------------------------------
+
+.result {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  padding: t.$space-sm;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  min-width: 0;
+}
+
+.resultHead {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+}
+
+.resultStatus {
+  font-family: monospace;
+  font-size: t.$font-sm;
+  padding: t.$space-2xs t.$space-sm;
+  border-radius: t.$radius-sm;
+  background: t.$color-negative;
+  color: t.$color-bg;
+
+  &[data-ok] {
+    background: t.$color-positive;
+  }
+}
+
+.resultName {
+  font-family: monospace;
+  font-size: t.$font-sm;
+  color: t.$color-accent;
+}
+
+.resultSummary {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text;
+}
+
+.output {
+  margin: 0;
+  font-family: monospace;
+  font-size: t.$font-sm;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: t.$color-text-muted;
+  max-height: 20rem;
+  overflow: auto;
+}
+
+.empty {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-style: italic;
+  margin: 0;
+}

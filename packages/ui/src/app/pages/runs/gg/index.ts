@@ -6,4 +6,5 @@
 export { NewGgRunPage } from "./NewGgRunPage";
 export { GgAnalyzePage } from "./GgAnalyzePage";
 export { GgRunMonitorPage } from "./GgRunMonitorPage";
+export { GgReplayView } from "./GgReplayView";
 export { ggRoutes } from "./router";

@@ -164,6 +164,14 @@ export const routes = {
   },
   ggMonitor: (jobId: string): string =>
     `/runs/gg/${encodeURIComponent(jobId)}/live`,
+  // The step-through replay debug view for a finished gg run (consoles only,
+  // debug-only). Reached from a finished run whose recorded capability set had the
+  // `replay` capability on; loads the run's stored replay record and lets a
+  // developer walk exactly what each agent saw and did. Keyed by the produced run
+  // id, under the same literal `/runs/gg` prefix (more specific than `/runs/:runId`,
+  // so no collision), a sibling of `ggMonitor`.
+  ggReplay: (runId: string): string =>
+    `/runs/gg/${encodeURIComponent(runId)}/replay`,
   // The gg result-aggregation surface: run Kibana-style structured queries across
   // many recorded gg sessions, sliced by capability set. A sibling of `ggNew` under
   // the same literal `/runs/gg` prefix, console-only (it drives the worker's
@@ -285,6 +293,9 @@ export const routePatterns = {
   ggNew: "/runs/gg/new",
   ggAnalyze: "/runs/gg/analyze",
   ggMonitor: "/runs/gg/:jobId/live",
+  // The debug-only step-through replay view, a sibling of `ggMonitor` under the
+  // literal `/runs/gg` prefix (both outrank the `/runs/:runId` dynamic route).
+  ggReplay: "/runs/gg/:runId/replay",
   runMonitor: "/runs/:runId/live",
   runDetail: "/runs/:runId",
   runReview: "/runs/:runId/reviews/:reviewerId",

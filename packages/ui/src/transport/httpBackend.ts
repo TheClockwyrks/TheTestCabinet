@@ -62,6 +62,7 @@ import type {
   GgAggregateQuery,
   GgAggregateResponse,
 } from "@test-cabinet/run-record/gg-aggregate";
+import type { GgReplayRecord } from "@test-cabinet/run-record/gg";
 import type {
   CoverageGroup,
   CoverageGroupInput,
@@ -716,6 +717,22 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         onProgress,
       );
       return { events, raw: null };
+    },
+
+    async readGgReplay(id: string): Promise<GgReplayRecord | null> {
+      // The backend serves the stored replay record as JSON, and 404s when the run
+      // captured none (replay was off) — the common case, since replay is debug-only.
+      // A raw fetch lets that 404 resolve to `null` (a tidy "no replay" state) while
+      // any other non-2xx still surfaces as an error.
+      const res = await fetch(
+        joinUrl(baseUrl, `/runs/${encodeURIComponent(id)}/replay`),
+        { headers: { accept: "application/json" } },
+      );
+      if (res.status === 404) return null;
+      if (!res.ok) {
+        throw new Error(`replay fetch failed: ${res.status} ${res.statusText}`);
+      }
+      return (await res.json()) as GgReplayRecord;
     },
   };
 }

@@ -42,6 +42,7 @@ import type {
   GgAggregateQuery,
   GgAggregateResponse,
 } from "@test-cabinet/run-record/gg-aggregate";
+import type { GgReplayRecord } from "@test-cabinet/run-record/gg";
 import type {
   CoverageGroup,
   CoverageGroupInput,
@@ -199,6 +200,17 @@ export interface BackendClient {
     id: string,
     onProgress?: ProgressCallback,
   ): Promise<RunEventStreams>;
+
+  /**
+   * A gg run's stored **replay record** (`GET /runs/{id}/replay`), or `null` when
+   * the run captured none (the debug-only [replay](https://docs.testcabinet.ai/gg/replay/)
+   * capability was off). Backs the console-only step-through replay debug view: the
+   * record pins each agent's model I/O and every tool result so a developer can walk
+   * exactly what each agent saw and did. Optional so a transport that cannot reach
+   * per-run debug media (the static site) omits it and the console hides the
+   * affordance — the same pattern the other console-only reads use.
+   */
+  readGgReplay?(id: string): Promise<GgReplayRecord | null>;
 
   /**
    * The reviewer checklist items a case declares for a variant (`commonReviewItems`
