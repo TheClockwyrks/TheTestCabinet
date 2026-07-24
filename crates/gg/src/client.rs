@@ -1157,7 +1157,9 @@ impl MockClient {
     ///
     /// Pairs with [`with_subagent_child_script`](Self::with_subagent_child_script) (bound to the
     /// `subagent` slot) so an offline run exercises spawn → schedule → run → return under the cap.
-    #[cfg(test)]
+    /// Selected in production by a mock `model_id` naming `subagent-parent` (see
+    /// [`mock_client_for`]), so the delegation path is drivable offline through the real binary and
+    /// not only the in-crate tests.
     pub fn with_subagent_parent_script(model_id: impl Into<String>) -> Self {
         let usage = |input: u64, output: u64| TokenCounts {
             uncached_input: Some(input),
@@ -1207,8 +1209,8 @@ impl MockClient {
     /// 2. a final tool-free turn stops with [`MOCK_SUBAGENT_RETURN`] as its message — the return
     ///    value its spawner collects.
     ///
-    /// Pairs with [`with_subagent_parent_script`](Self::with_subagent_parent_script).
-    #[cfg(test)]
+    /// Pairs with [`with_subagent_parent_script`](Self::with_subagent_parent_script). Selected in
+    /// production by a mock `model_id` naming `subagent-child` (see [`mock_client_for`]).
     pub fn with_subagent_child_script(model_id: impl Into<String>) -> Self {
         let usage = |input: u64, output: u64| TokenCounts {
             uncached_input: Some(input),
@@ -1240,12 +1242,10 @@ impl MockClient {
 
 /// The file the [subagent child script](MockClient::with_subagent_child_script) writes — its
 /// observable "work" in the shared workspace.
-#[cfg(test)]
 pub const MOCK_SUBAGENT_FILE: &str = "subagent-greeting.txt";
 
 /// The distinctive final message the [subagent child script](MockClient::with_subagent_child_script)
 /// returns, so a test can assert the return value reached the parent (via `AgentReturned`).
-#[cfg(test)]
 pub const MOCK_SUBAGENT_RETURN: &str = "Subagent done: wrote the greeting file.";
 
 #[async_trait::async_trait]
@@ -1411,8 +1411,28 @@ pub fn provider_for(binding: &GgSlotBinding) -> ProviderKind {
 /// [`ModelError::MissingApiKey`] for a live OpenRouter binding with no credential.
 pub fn client_for_slot(binding: &GgSlotBinding) -> Result<Box<dyn ModelClient>, ModelError> {
     match provider_for(binding) {
-        ProviderKind::Mock => Ok(Box::new(MockClient::with_default_script(&binding.model_id))),
+        ProviderKind::Mock => Ok(Box::new(mock_client_for(&binding.model_id))),
         ProviderKind::OpenRouter => Ok(Box::new(OpenRouterClient::from_binding(binding)?)),
+    }
+}
+
+/// Choose the offline [`MockClient`] script a mock `model_id` names.
+///
+/// Most ids get the [default script](MockClient::with_default_script). The two `subagent-*` ids
+/// select the paired [parent](MockClient::with_subagent_parent_script) /
+/// [child](MockClient::with_subagent_child_script) delegation scripts, so the full spawn → wait →
+/// return path can be driven **offline through the real binary** (bind the primary slot to a
+/// `mock/…-subagent-parent` model and a second slot to a `mock/…-subagent-child` model) and not
+/// only the in-crate tests. The child script never spawns, so there is no runaway recursion. This
+/// keys purely on the (offline) `model_id`, matching how [`resolve_provider_kind`] already selects
+/// the mock provider by `model_id`.
+fn mock_client_for(model_id: &str) -> MockClient {
+    if model_id.contains("subagent-child") {
+        MockClient::with_subagent_child_script(model_id)
+    } else if model_id.contains("subagent-parent") {
+        MockClient::with_subagent_parent_script(model_id)
+    } else {
+        MockClient::with_default_script(model_id)
     }
 }
 

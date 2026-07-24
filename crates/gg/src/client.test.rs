@@ -484,3 +484,32 @@ async fn default_mock_script_exercises_every_capability_then_finishes() {
     assert_eq!(last.finish_reason, FinishReason::Stop);
     assert!(last.tool_calls.is_empty());
 }
+
+// ---------------------------------------------------------------------------
+// Offline mock script selection by model_id
+// ---------------------------------------------------------------------------
+
+/// `mock_client_for` routes the two `subagent-*` model ids to the paired delegation scripts and
+/// everything else to the default script, so the spawn → wait → return path is drivable offline
+/// through the real binary (via `client_for_slot`) and not only the in-crate tests.
+#[tokio::test]
+async fn mock_client_for_selects_the_named_subagent_scripts() {
+    // The parent id → a script whose first turn spawns a subagent.
+    let parent = mock_client_for("mock/demo-subagent-parent");
+    let first = parent.complete(&[], &[]).await.expect("parent turn 1");
+    assert_eq!(first.tool_calls[0].name, "spawn_subagent");
+
+    // The child id → a script whose first turn writes the greeting file (no spawn).
+    let child = mock_client_for("mock/demo-subagent-child");
+    let first = child.complete(&[], &[]).await.expect("child turn 1");
+    assert_eq!(first.tool_calls[0].name, "write_file");
+    assert_eq!(
+        first.tool_calls[0].arguments["path"],
+        json!(MOCK_SUBAGENT_FILE)
+    );
+
+    // Any other mock id → the default script (first turn reads a skill).
+    let other = mock_client_for("mock/primary");
+    let first = other.complete(&[], &[]).await.expect("default turn 1");
+    assert_eq!(first.tool_calls[0].name, "read_skill");
+}
