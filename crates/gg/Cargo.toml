@@ -16,6 +16,11 @@ path = "src/main.rs"
 # the invocation config that core hands this binary.
 test-cabinet-core = { path = "../core" }
 
+# The responses-as-code interpreter — gg embeds its committed `.wasm` and reads back
+# its `ProgramOutcome` envelope, so it consumes the guest crate's shared types (built
+# here for the native host, embedded as wasm for the sandbox). See `src/rac.rs`.
+gg-rac-interp = { path = "../gg-rac-interp" }
+
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
@@ -36,6 +41,12 @@ reqwest = { workspace = true }
 # `async fn` in the `ModelClient` trait (`src/model.rs`), so a boxed `dyn ModelClient`
 # can back the async turn loop and be shared across spawned subagents later.
 async-trait = { workspace = true }
+# The wasm runtime backing the responses-as-code sandbox (`src/rac.rs`): it runs an
+# agent's code-shaped response — the committed `gg-rac-interp` interpreter — under a
+# fuel + linear-memory ceiling, mirroring the `foray-host`/`lattice-host` pattern.
+# Same pinned major version and minimal (`cranelift` + `runtime`) feature set as those
+# hosts, so the fuel/memory sandbox semantics stay identical across the workspace.
+wasmtime = { workspace = true }
 # BPE tokenizer backing the default context-window token estimator (`src/context.rs`).
 # gg accounts every context contribution per source in estimated tokens; the estimator
 # is a trait so this is swappable, but the default counts with a fixed BPE base as a

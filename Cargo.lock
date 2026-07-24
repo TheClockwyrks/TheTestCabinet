@@ -1944,6 +1944,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "gg-rac-interp"
+version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "gif"
 version = "0.14.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6253,6 +6261,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "clap",
+ "gg-rac-interp",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -6262,6 +6271,7 @@ dependencies = [
  "tiktoken-rs",
  "time",
  "tokio",
+ "wasmtime",
 ]
 
 [[package]]

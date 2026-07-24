@@ -4,6 +4,7 @@ members = [
 	"crates/core",
 	"crates/cli",
 	"crates/gg",
+	"crates/gg-rac-interp",
 	"crates/contract-codegen",
 	"crates/draw",
 	"crates/model-core",
@@ -109,6 +110,14 @@ codegen-units = 1
 codegen-units = 1
 
 [profile.dev.package.lattice-ref-transport]
+codegen-units = 1
+
+# The responses-as-code interpreter (`crates/gg-rac-interp`) is a `cdylib` for the
+# same reason the reference engines are (it compiles to `wasm32-unknown-unknown` to
+# load in gg's `rac` sandbox), so on the NATIVE host `cargo test` builds an
+# (otherwise unused) `.so` and hits the same intermittent incremental-codegen
+# `*.rcgu.o` race. Pin it to one codegen unit for parity.
+[profile.dev.package.gg-rac-interp]
 codegen-units = 1
 
 # The desktop shell's library target is built as a `cdylib`/`staticlib` (the Tauri

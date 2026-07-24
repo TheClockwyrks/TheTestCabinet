@@ -61,6 +61,7 @@ mod git;
 mod memories;
 mod model;
 mod planning;
+mod rac;
 mod skills;
 mod subagents;
 mod summary;
