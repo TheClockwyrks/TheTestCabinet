@@ -1,4 +1,73 @@
 {
+  "$defs": {
+    "GgContextSource": {
+      "description": "The **source** a context-window contribution is attributed to, for the per-source\naccounting [context visibility] reports.\n\ngg's context is not a flat transcript: every item that occupies the window is tagged\nwith the source that produced it, so gg can report *what* is filling the window —\nthe signal [compaction] triggers on and the console renders as a stacked line graph.\nThe set is a **closed, stable taxonomy** (unlike the open capability ids): the\nconsole's categories and their colors are keyed to these variants, and\n[`ALL`](Self::ALL) fixes their order so a breakdown is emitted with every category\npresent (a zero when a source contributed nothing this turn), keeping the graph's\nbands stable across turns.\n\n[context visibility]: https://docs.testcabinet.ai/gg/context-visibility/\n[compaction]: https://docs.testcabinet.ai/gg/compaction/",
+      "oneOf": [
+        {
+          "const": "system",
+          "description": "The base system prompt seeding the session.",
+          "type": "string"
+        },
+        {
+          "const": "user_prompt",
+          "description": "The build prompt handed to the agent (the rendered test-case instruction).",
+          "type": "string"
+        },
+        {
+          "const": "assistant",
+          "description": "An assistant turn's own output (its natural-language text and tool calls).",
+          "type": "string"
+        },
+        {
+          "const": "tool_output",
+          "description": "The output of a tool the agent called, fed back as a tool result.",
+          "type": "string"
+        },
+        {
+          "const": "file_view",
+          "description": "The contents of a file the agent viewed — evictable working material (an\nagent-managed context capability may drop these; ordinary tool output is not a\nfile view).",
+          "type": "string"
+        },
+        {
+          "const": "skill",
+          "description": "A [skill](https://docs.testcabinet.ai/gg/skills/) shown or read — retained across\na compaction boundary.",
+          "type": "string"
+        },
+        {
+          "const": "memory",
+          "description": "A self-curated [memory](https://docs.testcabinet.ai/gg/memories/) — retained\nacross a compaction boundary.",
+          "type": "string"
+        },
+        {
+          "const": "task_list",
+          "description": "The model's [task](https://docs.testcabinet.ai/gg/tasks/) list — retained across\na compaction boundary.",
+          "type": "string"
+        },
+        {
+          "const": "history",
+          "description": "Prior-turn thread material not attributable to a more specific source — the\ncatch-all history bucket, and what compaction summarizes.",
+          "type": "string"
+        }
+      ]
+    },
+    "GgContextSourceUsage": {
+      "description": "The estimated token cost attributed to one [`GgContextSource`] at a point in the\nrun — one band of a [`ContextBreakdown`](GgTelemetryKind::ContextBreakdown).\n\nThe token figure is an **estimate**: exact per-provider counts are not available\ncross-provider, so gg counts with a fixed BPE tokenizer as a documented cross-model\napproximation (see the `context` module in the `gg` crate).",
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/GgContextSource",
+          "description": "The source this band accounts for."
+        },
+        "tokens": {
+          "description": "The estimated tokens that source occupies in the context window.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["source", "tokens"],
+      "type": "object"
+    }
+  },
   "$id": "https://docs.testcabinet.ai/schema/gg/telemetry-event.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "A single event in gg's first-party telemetry stream (schema v1).\n\nBecause gg is [headless](https://docs.testcabinet.ai/gg/overview/), this stream is\nthe only live window into a run — the console renders it natively. Each event\ncarries common fields (a timestamp and an optional session id) plus the\ntype-specific [`GgTelemetryKind`], flattened into the serialized form so the\ndiscriminator and its fields sit inline.\n\nThe [`agent_id`](Self::agent_id), [`parent_agent_id`](Self::parent_agent_id), and\n[`issue_id`](Self::issue_id) fields are **reserved for later phases** and are\npresent up front so the schema is designed once: the subagent tree (which the agent\nids form) lands in Phase 4 and the epic/issue board (which `issue_id` scopes to)\nlands in Phase 3. A Phase 0 run leaves them unset.",
@@ -105,6 +174,41 @@
         }
       },
       "required": ["type", "tokens"],
+      "type": "object"
+    },
+    {
+      "description": "The per-source breakdown of what fills the context window, assembled for a turn.\n\nEmitted once per turn when the\n[context-visibility](CAPABILITY_CONTEXT_VISIBILITY) capability is enabled (the\naccounting is always computed; only this emission is gated). The console renders\nthe stream of these as a stacked line graph of window fullness by category over\nthe run. All token figures are estimates (see [`GgContextSourceUsage`]).",
+      "properties": {
+        "bySource": {
+          "description": "One band per [`GgContextSource`], in [`GgContextSource::ALL`] order (a source\nthat contributed nothing this turn is present with `0`), so the graph's bands\nstay stable across turns.",
+          "items": {
+            "$ref": "#/$defs/GgContextSourceUsage"
+          },
+          "type": "array"
+        },
+        "fullness": {
+          "description": "`total_tokens / window_limit` in `0.0..=1.0+`, when a limit is known — the\nfullness signal compaction triggers on.",
+          "format": "double",
+          "type": ["number", "null"]
+        },
+        "totalTokens": {
+          "description": "The estimated total tokens across every source — the numerator of fullness.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "type": {
+          "const": "context_breakdown",
+          "type": "string"
+        },
+        "windowLimit": {
+          "description": "The active model's context-window limit, when known (a capability param or a\nbuilt-in per-model default). The denominator of fullness.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        }
+      },
+      "required": ["type", "bySource", "totalTokens"],
       "type": "object"
     },
     {

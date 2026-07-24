@@ -48,15 +48,19 @@
 //! and ended for any other reason is a *run outcome* recorded in the telemetry, not a
 //! process failure, and exits `0`.
 
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
-use test_cabinet_core::gg::{GgCapabilitySet, GgSlotBinding, GgTelemetryKind, PRIMARY_SLOT};
+use test_cabinet_core::gg::{
+    CAPABILITY_CONTEXT_VISIBILITY, GgCapabilitySet, GgSlotBinding, GgTelemetryKind, PRIMARY_SLOT,
+};
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
 use crate::client::{client_for_slot, provider_for};
 use crate::config::GgInvocation;
-use crate::model::{Message, ModelClient, ModelResponse};
+use crate::context::{BpeTokenEstimator, ContextModel, TokenEstimator, tool_output_source};
+use crate::model::{ModelClient, ModelResponse};
 use crate::telemetry::Emitter;
 use crate::tools::{ToolContext, ToolRegistry};
 
@@ -72,6 +76,17 @@ const PARAM_MAX_TURNS: &str = "maxTurns";
 /// wrapped in an external runtime cap by `core`; this is a belt-and-suspenders bound
 /// so a runaway loop ends with `"timed_out"` rather than being killed from outside.
 const PARAM_MAX_RUNTIME_SECS: &str = "maxRuntimeSecs";
+
+/// Context-visibility capability param naming the active model's context-window limit
+/// in tokens. When present it overrides the [built-in table](builtin_window_for); a
+/// value of `0` or a non-integer is ignored.
+const PARAM_WINDOW_LIMIT: &str = "windowLimit";
+
+/// The context-window limit assumed when neither the [`PARAM_WINDOW_LIMIT`] param nor
+/// the [built-in table](builtin_window_for) resolves one. A conservative modern default
+/// (128k) — the accounting is an estimate and the exact figure only sets the fullness
+/// denominator, so a run without a configured window still reports a plausible ratio.
+const DEFAULT_CONTEXT_WINDOW: u64 = 128_000;
 
 /// The base system prompt seeding the loop. The available tools are appended per run
 /// (see [`system_prompt`]) so the prompt reflects the enabled capabilities.
@@ -174,6 +189,18 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
         .max_runtime_secs
         .map(|secs| Instant::now() + Duration::from_secs(secs));
 
+    // Set up the context accounting: the token estimator, the active model's window
+    // limit, and whether to emit the per-turn breakdown telemetry. The accounting is
+    // always computed (compaction needs it); only the emission is gated on the
+    // context-visibility capability so an ablation's off arm stops streaming it.
+    let context_setup = ContextSetup {
+        estimator: Arc::new(BpeTokenEstimator::new()),
+        window_limit: resolve_window_limit(&invocation.capability_set, client.model_id()),
+        emit_breakdown: invocation
+            .capability_set
+            .is_enabled(CAPABILITY_CONTEXT_VISIBILITY),
+    };
+
     let end = drive(
         client.as_ref(),
         &invocation.prompt,
@@ -182,6 +209,7 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
         emitter,
         bounds.max_turns,
         deadline,
+        context_setup,
     )
     .await;
 
@@ -237,16 +265,23 @@ async fn drive(
     client: &dyn ModelClient,
     prompt: &str,
     registry: &ToolRegistry,
-    context: &ToolContext,
+    tool_ctx: &ToolContext,
     emitter: &Emitter,
     max_turns: usize,
     deadline: Option<Instant>,
+    context_setup: ContextSetup,
 ) -> LoopEnd {
     let tools = registry.definitions();
-    let mut conversation = vec![
-        Message::system(system_prompt(registry)),
-        Message::user(prompt),
-    ];
+
+    // Build the source-tagged context model in place of a flat transcript, seeded with
+    // the two pinned items every session opens with: the system prompt and the build
+    // prompt. Every later contribution (assistant turns, tool output, file views) is
+    // appended as a tagged item, so the window can be accounted by source and the
+    // pinned/ephemeral split is available for Phase 2 compaction.
+    let mut context = ContextModel::new(context_setup.estimator, context_setup.window_limit);
+    context.push_system(system_prompt(registry));
+    context.push_user_prompt(prompt);
+
     let mut total_tokens = TokenCounts::default();
     let mut total_cost: Option<Cost> = None;
 
@@ -267,7 +302,14 @@ async fn drive(
 
         emitter.emit(GgTelemetryKind::TurnStarted {});
 
-        let response = match client.complete(&conversation, &tools).await {
+        // The context for this turn is fully assembled (every prior item is in the
+        // model). Emit its per-source breakdown when context visibility is on; the
+        // accounting itself was computed regardless.
+        if context_setup.emit_breakdown {
+            emitter.emit(context.breakdown_event());
+        }
+
+        let response = match client.complete(&context.messages(), &tools).await {
             Ok(response) => response,
             Err(err) => {
                 // Surface the failure loudly — a `Log(error)` and a `model_error`
@@ -301,11 +343,8 @@ async fn drive(
             emitter.emit(GgTelemetryKind::AssistantMessage { text: text.clone() });
         }
 
-        // Record the assistant turn (text + any tool calls) into the conversation.
-        conversation.push(Message::assistant(
-            response.text.clone(),
-            response.tool_calls.clone(),
-        ));
+        // Record the assistant turn (text + any tool calls) into the context.
+        context.push_assistant(response.text.clone(), response.tool_calls.clone());
 
         if response.tool_calls.is_empty() {
             return LoopEnd {
@@ -323,13 +362,15 @@ async fn drive(
                 name: call.name.clone(),
                 args: call.arguments.clone(),
             });
-            let outcome = registry.dispatch(call, context).await;
+            let outcome = registry.dispatch(call, tool_ctx).await;
             emitter.emit(GgTelemetryKind::ToolResult {
                 name: call.name.clone(),
                 ok: outcome.ok,
                 summary: outcome.summary.clone(),
             });
-            conversation.push(Message::tool_result(&call.id, outcome.output));
+            // Tag the result by source so the breakdown separates file views (evictable)
+            // from other tool output.
+            context.push_tool_result(tool_output_source(&call.name), &call.id, outcome.output);
         }
     }
 
@@ -373,6 +414,59 @@ fn param_u64(set: &GgCapabilitySet, key: &str) -> Option<u64> {
     set.capabilities
         .iter()
         .find_map(|capability| capability.params.get(key).and_then(Value::as_u64))
+}
+
+/// The context-accounting configuration threaded into the [turn loop](drive): the
+/// [token estimator](TokenEstimator), the active model's window limit, and whether to
+/// emit the per-turn [`ContextBreakdown`](GgTelemetryKind::ContextBreakdown).
+struct ContextSetup {
+    /// The estimator every context item is measured with. Shared (`Arc`) so it can back
+    /// the async loop and, in later phases, spawned subagents.
+    estimator: Arc<dyn TokenEstimator>,
+    /// The active model's context-window limit in tokens, when known — the fullness
+    /// denominator.
+    window_limit: Option<u64>,
+    /// Whether to emit the per-turn context breakdown. Gated on the context-visibility
+    /// capability; the accounting itself is computed regardless.
+    emit_breakdown: bool,
+}
+
+/// Resolve the active model's context-window limit for the fullness ratio: an explicit
+/// [`PARAM_WINDOW_LIMIT`] on the context-visibility capability wins, else the
+/// [built-in per-model table](builtin_window_for), else [`DEFAULT_CONTEXT_WINDOW`]. The
+/// limit is always known (the default backstops it); it is an [`Option`] on the wire so
+/// a future estimator can report "unknown" without a schema change.
+fn resolve_window_limit(set: &GgCapabilitySet, model_id: &str) -> Option<u64> {
+    if let Some(limit) = set
+        .capability(CAPABILITY_CONTEXT_VISIBILITY)
+        .and_then(|cap| cap.params.get(PARAM_WINDOW_LIMIT))
+        .and_then(Value::as_u64)
+        .filter(|&n| n > 0)
+    {
+        return Some(limit);
+    }
+    Some(builtin_window_for(model_id).unwrap_or(DEFAULT_CONTEXT_WINDOW))
+}
+
+/// A small built-in table of **approximate** context-window sizes keyed by a substring
+/// of the model id (matched case-insensitively). Deliberately coarse: it only sets the
+/// fullness denominator, and a run can override it with [`PARAM_WINDOW_LIMIT`]. Returns
+/// `None` for an id it does not recognize, so the caller can fall back to a default.
+fn builtin_window_for(model_id: &str) -> Option<u64> {
+    /// `(id substring, window tokens)`, first match wins; ordered most-specific first.
+    const TABLE: &[(&str, u64)] = &[
+        ("gpt-4.1", 1_047_576),
+        ("gpt-4o", 128_000),
+        ("o200k", 128_000),
+        ("claude", 200_000),
+        ("gemini", 1_048_576),
+        ("llama", 128_000),
+    ];
+    let id = model_id.to_ascii_lowercase();
+    TABLE
+        .iter()
+        .find(|(needle, _)| id.contains(needle))
+        .map(|&(_, window)| window)
 }
 
 /// The system prompt for a run, reflecting the tools the enabled capabilities offer

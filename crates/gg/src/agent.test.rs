@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Instant;
 
 use serde_json::json;
@@ -7,12 +8,15 @@ use tempfile::TempDir;
 use super::*;
 use crate::client::MockClient;
 use crate::config::GgInvocation;
+use crate::context::HeuristicTokenEstimator;
 use crate::model::{
     FinishReason, Message, ModelClient, ModelError, ModelResponse, ToolCall, ToolDefinition,
 };
 use crate::telemetry::{CollectingSink, Emitter};
 use crate::tools::{ToolContext, ToolRegistry};
-use test_cabinet_core::gg::{GgCapabilitySet, GgTelemetryKind};
+use test_cabinet_core::gg::{
+    CAPABILITY_CONTEXT_VISIBILITY, GgCapabilitySet, GgContextSource, GgTelemetryKind,
+};
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
 /// An invocation over `dir` configured with `set`.
@@ -22,6 +26,17 @@ fn invocation(dir: &Path, set: GgCapabilitySet) -> GgInvocation {
         workspace_dir: dir.to_path_buf(),
         prompt: "Build a tiny game.".to_string(),
         capability_set: set,
+    }
+}
+
+/// A [`ContextSetup`] for the `drive` unit tests: the cheap heuristic estimator (so the
+/// tests never build the BPE vocab), a fixed window, and breakdown emission per the
+/// argument.
+fn test_context_setup(emit_breakdown: bool) -> ContextSetup {
+    ContextSetup {
+        estimator: Arc::new(HeuristicTokenEstimator::new()),
+        window_limit: Some(128_000),
+        emit_breakdown,
     }
 }
 
@@ -195,7 +210,17 @@ async fn drive_exhausts_the_turn_ceiling_when_the_model_never_stops() {
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
 
     let never_stops = MockClient::new("mock/loop", vec![looping_response(); 5]);
-    let end = drive(&never_stops, "go", &registry, &ctx, &emitter, 2, None).await;
+    let end = drive(
+        &never_stops,
+        "go",
+        &registry,
+        &ctx,
+        &emitter,
+        2,
+        None,
+        test_context_setup(false),
+    )
+    .await;
 
     assert_eq!(end.status, "exhausted");
     assert_eq!(end.turns, 2);
@@ -228,6 +253,7 @@ async fn drive_times_out_at_a_passed_deadline() {
         &emitter,
         50,
         Some(Instant::now()),
+        test_context_setup(false),
     )
     .await;
 
@@ -253,7 +279,17 @@ async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
 
     let client = FailingClient { retryable: false };
-    let end = drive(&client, "go", &registry, &ctx, &emitter, 5, None).await;
+    let end = drive(
+        &client,
+        "go",
+        &registry,
+        &ctx,
+        &emitter,
+        5,
+        None,
+        test_context_setup(false),
+    )
+    .await;
 
     assert_eq!(end.status, "model_error");
     assert_eq!(end.turns, 0);
@@ -276,7 +312,17 @@ async fn drive_ends_model_error_on_exhausted_retries() {
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
 
     let client = FailingClient { retryable: true };
-    let end = drive(&client, "go", &registry, &ctx, &emitter, 5, None).await;
+    let end = drive(
+        &client,
+        "go",
+        &registry,
+        &ctx,
+        &emitter,
+        5,
+        None,
+        test_context_setup(false),
+    )
+    .await;
 
     assert_eq!(end.status, "model_error");
     assert!(
@@ -361,4 +407,158 @@ fn add_cost_accumulates_optionally() {
     let summed = add_cost(one, one).unwrap();
     assert_eq!(summed.comparable, Some(0.02));
     assert_eq!(summed.actual, Some(0.02));
+}
+
+// ---------------------------------------------------------------------------
+// Context visibility: the per-turn breakdown and its gating
+// ---------------------------------------------------------------------------
+
+/// `minimal`, but with the context-visibility capability disabled (kept present so the
+/// ablation's off arm records what it turned off).
+fn minimal_without_context_visibility(model: &str) -> GgCapabilitySet {
+    let mut set = GgCapabilitySet::minimal(model);
+    for cap in &mut set.capabilities {
+        if cap.id == CAPABILITY_CONTEXT_VISIBILITY {
+            cap.enabled = false;
+        }
+    }
+    set
+}
+
+/// With context visibility on (the default), the loop emits a `ContextBreakdown` each
+/// turn — after the turn starts and before the turn's tool call — accounting the window
+/// by source with a total, a window limit, and a fullness ratio.
+#[tokio::test]
+async fn run_emits_context_breakdown_each_turn_when_visibility_enabled() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-cv".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), GgCapabilitySet::minimal("mock/echo"));
+
+    assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
+    let events = sink.events();
+
+    let breakdowns: Vec<_> = events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::ContextBreakdown {
+                by_source,
+                total_tokens,
+                window_limit,
+                fullness,
+            } => Some((by_source, *total_tokens, *window_limit, *fullness)),
+            _ => None,
+        })
+        .collect();
+
+    // The default mock scripts two turns; a breakdown is emitted at the top of each.
+    assert!(
+        !breakdowns.is_empty(),
+        "context visibility on should emit a breakdown per turn"
+    );
+    let turns = events
+        .iter()
+        .filter(|e| matches!(e.kind, GgTelemetryKind::TurnStarted {}))
+        .count();
+    assert_eq!(breakdowns.len(), turns, "one breakdown per turn");
+
+    let (by_source, total, window_limit, fullness) = &breakdowns[0];
+    // A stable band per source, in ALL order, present even at zero.
+    assert_eq!(by_source.len(), GgContextSource::ALL.len());
+    for (band, &source) in by_source.iter().zip(GgContextSource::ALL.iter()) {
+        assert_eq!(band.source, source);
+    }
+    // The pinned system + user prompt are in the window from the first turn.
+    let tokens_for = |source: GgContextSource| {
+        by_source
+            .iter()
+            .find(|b| b.source == source)
+            .map(|b| b.tokens)
+            .unwrap()
+    };
+    assert!(tokens_for(GgContextSource::System) > 0);
+    assert!(tokens_for(GgContextSource::UserPrompt) > 0);
+    assert!(*total > 0);
+    assert_eq!(
+        *total,
+        by_source.iter().map(|b| b.tokens).sum::<u64>(),
+        "the total equals the sum of the bands"
+    );
+    // An unrecognized model id falls back to the default window; fullness follows.
+    assert_eq!(*window_limit, Some(DEFAULT_CONTEXT_WINDOW));
+    let f = fullness.expect("fullness is known when the window is");
+    assert!(f > 0.0 && f < 1.0);
+
+    // Ordering: the first breakdown sits after the first TurnStarted and before the
+    // write_file tool call it accounted for.
+    let first_turn = events
+        .iter()
+        .position(|e| matches!(e.kind, GgTelemetryKind::TurnStarted {}))
+        .unwrap();
+    let first_breakdown = events
+        .iter()
+        .position(|e| matches!(e.kind, GgTelemetryKind::ContextBreakdown { .. }))
+        .unwrap();
+    let first_call = events
+        .iter()
+        .position(|e| matches!(&e.kind, GgTelemetryKind::ToolCall { .. }))
+        .unwrap();
+    assert!(first_turn < first_breakdown && first_breakdown < first_call);
+}
+
+/// With context visibility off, no `ContextBreakdown` is emitted — but the run is
+/// otherwise unchanged (the accounting is still computed internally; only the telemetry
+/// is gated), so the file is still produced and the session completes.
+#[tokio::test]
+async fn run_omits_context_breakdown_when_visibility_disabled() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-nocv".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), minimal_without_context_visibility("mock/echo"));
+
+    assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
+    let events = sink.events();
+
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e.kind, GgTelemetryKind::ContextBreakdown { .. })),
+        "context visibility off must not emit any breakdown"
+    );
+    // The rest of the run is intact.
+    assert!(dir.path().join("index.html").exists());
+    assert!(matches!(
+        &events.last().unwrap().kind,
+        GgTelemetryKind::SessionEnded { status } if status == "completed"
+    ));
+}
+
+/// The window limit prefers an explicit capability param, then the built-in per-model
+/// table, then the default.
+#[test]
+fn resolve_window_limit_prefers_param_then_table_then_default() {
+    // An explicit param on the context-visibility capability wins over the table.
+    let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
+    for cap in &mut set.capabilities {
+        if cap.id == CAPABILITY_CONTEXT_VISIBILITY {
+            cap.params = json!({ "windowLimit": 42_000 });
+        }
+    }
+    assert_eq!(
+        resolve_window_limit(&set, "anthropic/claude-opus-4.8"),
+        Some(42_000)
+    );
+
+    // No param: the built-in table resolves by a model-id substring.
+    let set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
+    assert_eq!(
+        resolve_window_limit(&set, "anthropic/claude-opus-4.8"),
+        Some(200_000)
+    );
+
+    // An unrecognized id (and a zero param, which is ignored) falls back to the default.
+    assert_eq!(
+        resolve_window_limit(&set, "mock/echo"),
+        Some(DEFAULT_CONTEXT_WINDOW)
+    );
 }

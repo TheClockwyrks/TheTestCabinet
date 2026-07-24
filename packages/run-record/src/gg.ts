@@ -111,6 +111,52 @@ export type GgCapabilitySet = {
 };
 
 /**
+ * The **source** a context-window contribution is attributed to, for the per-source
+ * accounting [context visibility] reports.
+ *
+ * gg's context is not a flat transcript: every item that occupies the window is tagged
+ * with the source that produced it, so gg can report *what* is filling the window —
+ * the signal [compaction] triggers on and the console renders as a stacked line graph.
+ * The set is a **closed, stable taxonomy** (unlike the open capability ids): the
+ * console's categories and their colors are keyed to these variants, and
+ * [`ALL`](Self::ALL) fixes their order so a breakdown is emitted with every category
+ * present (a zero when a source contributed nothing this turn), keeping the graph's
+ * bands stable across turns.
+ *
+ * [context visibility]: https://docs.testcabinet.ai/gg/context-visibility/
+ * [compaction]: https://docs.testcabinet.ai/gg/compaction/
+ */
+export type GgContextSource =
+  | "system"
+  | "user_prompt"
+  | "assistant"
+  | "tool_output"
+  | "file_view"
+  | "skill"
+  | "memory"
+  | "task_list"
+  | "history";
+
+/**
+ * The estimated token cost attributed to one [`GgContextSource`] at a point in the
+ * run — one band of a [`ContextBreakdown`](GgTelemetryKind::ContextBreakdown).
+ *
+ * The token figure is an **estimate**: exact per-provider counts are not available
+ * cross-provider, so gg counts with a fixed BPE tokenizer as a documented cross-model
+ * approximation (see the `context` module in the `gg` crate).
+ */
+export type GgContextSourceUsage = {
+  /**
+   * The source this band accounts for.
+   */
+  source: GgContextSource;
+  /**
+   * The estimated tokens that source occupies in the context window.
+   */
+  tokens: number;
+};
+
+/**
  * The type-specific payload of a [`GgTelemetryEvent`], discriminated by the `type`
  * field.
  *
@@ -165,6 +211,29 @@ export type GgTelemetryKind =
        * The cost of this accounting, when it could be determined.
        */
       cost?: CostMetrics;
+    }
+  | {
+      type: "context_breakdown";
+      /**
+       * One band per [`GgContextSource`], in [`GgContextSource::ALL`] order (a source
+       * that contributed nothing this turn is present with `0`), so the graph's bands
+       * stay stable across turns.
+       */
+      bySource: Array<GgContextSourceUsage>;
+      /**
+       * The estimated total tokens across every source — the numerator of fullness.
+       */
+      totalTokens: number;
+      /**
+       * The active model's context-window limit, when known (a capability param or a
+       * built-in per-model default). The denominator of fullness.
+       */
+      windowLimit?: number;
+      /**
+       * `total_tokens / window_limit` in `0.0..=1.0+`, when a limit is known — the
+       * fullness signal compaction triggers on.
+       */
+      fullness?: number;
     }
   | {
       type: "log";
@@ -272,6 +341,29 @@ export type GgTelemetryEvent = {
        * The cost of this accounting, when it could be determined.
        */
       cost?: CostMetrics;
+    }
+  | {
+      type: "context_breakdown";
+      /**
+       * One band per [`GgContextSource`], in [`GgContextSource::ALL`] order (a source
+       * that contributed nothing this turn is present with `0`), so the graph's bands
+       * stay stable across turns.
+       */
+      bySource: Array<GgContextSourceUsage>;
+      /**
+       * The estimated total tokens across every source — the numerator of fullness.
+       */
+      totalTokens: number;
+      /**
+       * The active model's context-window limit, when known (a capability param or a
+       * built-in per-model default). The denominator of fullness.
+       */
+      windowLimit?: number;
+      /**
+       * `total_tokens / window_limit` in `0.0..=1.0+`, when a limit is known — the
+       * fullness signal compaction triggers on.
+       */
+      fullness?: number;
     }
   | {
       type: "log";

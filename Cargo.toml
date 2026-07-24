@@ -314,3 +314,13 @@ opentelemetry-semantic-conventions = { version = "0.32", features = [
 ] }
 opentelemetry-appender-tracing = "0.32"
 tracing-opentelemetry = "0.33"
+
+# BPE tokenizer for gg's context-window token accounting (`crates/gg`'s `context`
+# module). gg tags every context contribution with a source and an estimated token
+# count so it can report what fills the window (context visibility) and trigger
+# compaction on fullness. Exact per-provider counts are not available cross-provider,
+# so gg counts with a fixed BPE base (o200k) as a documented cross-model approximation;
+# the estimator is swappable so a later phase can refine it per model family.
+# `tiktoken-rs` embeds the BPE vocab (no network, no system deps), matching the
+# workspace's minimal-host stance. Only `crates/gg` pulls it in.
+tiktoken-rs = "0.7"

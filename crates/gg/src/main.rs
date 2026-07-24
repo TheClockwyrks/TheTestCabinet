@@ -48,6 +48,7 @@
 mod agent;
 mod client;
 mod config;
+mod context;
 mod model;
 mod telemetry;
 mod tools;

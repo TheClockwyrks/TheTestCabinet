@@ -11,6 +11,8 @@ fn minimal_capability_set_binds_the_primary_slot_and_phase0_capabilities() {
     assert_eq!(set.preset.as_deref(), Some("minimal"));
     assert!(set.is_enabled(CAPABILITY_SHELL));
     assert!(set.is_enabled(CAPABILITY_FILESYSTEM));
+    // Context visibility is a default-on capability (it adds no tools, only accounting).
+    assert!(set.is_enabled(CAPABILITY_CONTEXT_VISIBILITY));
     // An absent capability is distinguishable from a present one.
     assert!(!set.is_enabled("compaction"));
     assert!(set.capability("compaction").is_none());
@@ -25,9 +27,10 @@ fn default_capability_set_needs_no_model_and_binds_no_slot() {
     let set = GgCapabilitySet::default();
     assert!(set.slots.is_empty());
     assert!(set.preset.is_none());
-    // The Phase 0 capabilities are still present, just unbound to any model.
+    // The default capabilities are still present, just unbound to any model.
     assert!(set.is_enabled(CAPABILITY_SHELL));
     assert!(set.is_enabled(CAPABILITY_FILESYSTEM));
+    assert!(set.is_enabled(CAPABILITY_CONTEXT_VISIBILITY));
 }
 
 #[test]
@@ -140,6 +143,64 @@ fn usage_telemetry_reuses_the_shared_token_and_cost_types() {
     let value = serde_json::to_value(&event).expect("serialize");
     let back: GgTelemetryEvent = serde_json::from_value(value).expect("deserialize");
     assert_eq!(event, back);
+}
+
+#[test]
+fn context_breakdown_serializes_source_bands_and_omits_unknown_limit() {
+    let kind = GgTelemetryKind::ContextBreakdown {
+        by_source: vec![
+            GgContextSourceUsage {
+                source: GgContextSource::System,
+                tokens: 120,
+            },
+            GgContextSourceUsage {
+                source: GgContextSource::ToolOutput,
+                tokens: 40,
+            },
+        ],
+        total_tokens: 160,
+        window_limit: Some(128_000),
+        fullness: Some(0.00125),
+    };
+    let value = serde_json::to_value(&kind).expect("serialize");
+    assert_eq!(
+        value,
+        json!({
+            "type": "context_breakdown",
+            "bySource": [
+                { "source": "system", "tokens": 120 },
+                { "source": "tool_output", "tokens": 40 },
+            ],
+            "totalTokens": 160,
+            "windowLimit": 128_000,
+            "fullness": 0.00125,
+        })
+    );
+    let back: GgTelemetryKind = serde_json::from_value(value).expect("deserialize");
+    assert_eq!(kind, back);
+
+    // An unknown window limit (and thus fullness) is omitted rather than serialized null.
+    let unknown = GgTelemetryKind::ContextBreakdown {
+        by_source: Vec::new(),
+        total_tokens: 0,
+        window_limit: None,
+        fullness: None,
+    };
+    assert_eq!(
+        serde_json::to_value(&unknown).unwrap(),
+        json!({ "type": "context_breakdown", "bySource": [], "totalTokens": 0 })
+    );
+}
+
+#[test]
+fn context_source_all_covers_every_variant_in_stable_order() {
+    // `ALL` constructs every variant (so none is dead) and fixes the band order.
+    assert_eq!(GgContextSource::ALL.len(), 9);
+    assert_eq!(GgContextSource::ALL[0], GgContextSource::System);
+    assert_eq!(
+        serde_json::to_value(GgContextSource::TaskList).unwrap(),
+        json!("task_list")
+    );
 }
 
 #[test]

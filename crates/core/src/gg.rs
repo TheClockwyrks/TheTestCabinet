@@ -37,6 +37,30 @@ pub const CAPABILITY_SHELL: &str = "shell";
 /// and write files in the run workspace.
 pub const CAPABILITY_FILESYSTEM: &str = "filesystem";
 
+/// The stable id of the Phase 1 context-visibility capability: the per-source
+/// accounting of what fills the context window (skills, memories, file contents, the
+/// thread, tool output, …). The accounting itself is always computed — [compaction]
+/// and agent-managed context need the fullness signal — but this capability gates the
+/// [`ContextBreakdown`](GgTelemetryKind::ContextBreakdown) telemetry the console renders
+/// as a stacked line graph, so an ablation's off arm stops emitting it.
+///
+/// [compaction]: https://docs.testcabinet.ai/gg/compaction/
+pub const CAPABILITY_CONTEXT_VISIBILITY: &str = "context-visibility";
+
+/// The stable id of the Phase 1 skills capability: markdown-with-front-matter skills
+/// whose descriptions are shown up front and whose bodies, once read, are retained
+/// across a compaction boundary.
+pub const CAPABILITY_SKILLS: &str = "skills";
+
+/// The stable id of the Phase 1 memories capability: the same mechanism as
+/// [`CAPABILITY_SKILLS`] but curated by the model itself and bounded in count and
+/// length, so self-curated memory cannot crowd out the working context.
+pub const CAPABILITY_MEMORIES: &str = "memories";
+
+/// The stable id of the Phase 1 tasks capability: the model's lightweight to-do list,
+/// a blocked-by DAG that survives compaction verbatim.
+pub const CAPABILITY_TASKS: &str = "tasks";
+
 /// The declarative, inspectable configuration of a gg run — its *independent
 /// variable*.
 ///
@@ -78,27 +102,27 @@ pub struct GgCapabilitySet {
 }
 
 impl Default for GgCapabilitySet {
-    /// A capability set carrying the Phase 0 capabilities but **no** slot binding, so
-    /// it needs no model id. Use [`Self::minimal`] to build a launchable set bound to
-    /// a model.
+    /// A capability set carrying the default capabilities but **no** slot binding, so it
+    /// needs no model id. Use [`Self::minimal`] to build a launchable set bound to a
+    /// model.
     fn default() -> Self {
         Self {
             preset: None,
-            capabilities: phase0_capabilities(),
+            capabilities: default_capabilities(),
             slots: Vec::new(),
         }
     }
 }
 
 impl GgCapabilitySet {
-    /// The reasonable Phase 0 "minimal" set: the [`PRIMARY_SLOT`] bound to `model_id`
-    /// and the Phase 0 capabilities ([`CAPABILITY_SHELL`] and
-    /// [`CAPABILITY_FILESYSTEM`]) present and enabled. This is a launchable
+    /// The reasonable "minimal" set: the [`PRIMARY_SLOT`] bound to `model_id` and the
+    /// default capabilities ([`CAPABILITY_SHELL`], [`CAPABILITY_FILESYSTEM`], and
+    /// [`CAPABILITY_CONTEXT_VISIBILITY`]) present and enabled. This is a launchable
     /// configuration — the smallest set that runs a gg session end to end.
     pub fn minimal(model_id: impl Into<String>) -> Self {
         Self {
             preset: Some("minimal".to_string()),
-            capabilities: phase0_capabilities(),
+            capabilities: default_capabilities(),
             slots: vec![GgSlotBinding::new(PRIMARY_SLOT, model_id)],
         }
     }
@@ -125,12 +149,15 @@ impl GgCapabilitySet {
     }
 }
 
-/// The Phase 0 capabilities, present and enabled: the shell and filesystem tools the
-/// core agent loop needs to build a test case.
-fn phase0_capabilities() -> Vec<GgCapabilityConfig> {
+/// The default enabled capabilities: the shell and filesystem tools the core agent loop
+/// needs to build a test case, plus [context visibility](CAPABILITY_CONTEXT_VISIBILITY)
+/// — the per-source window accounting is foundational and adds no tools, so it is on by
+/// default and an ablation's off arm turns it off explicitly.
+fn default_capabilities() -> Vec<GgCapabilityConfig> {
     vec![
         GgCapabilityConfig::enabled(CAPABILITY_SHELL),
         GgCapabilityConfig::enabled(CAPABILITY_FILESYSTEM),
+        GgCapabilityConfig::enabled(CAPABILITY_CONTEXT_VISIBILITY),
     ]
 }
 
@@ -266,6 +293,83 @@ pub struct GgInvocation {
     pub capability_set: GgCapabilitySet,
 }
 
+/// The **source** a context-window contribution is attributed to, for the per-source
+/// accounting [context visibility] reports.
+///
+/// gg's context is not a flat transcript: every item that occupies the window is tagged
+/// with the source that produced it, so gg can report *what* is filling the window —
+/// the signal [compaction] triggers on and the console renders as a stacked line graph.
+/// The set is a **closed, stable taxonomy** (unlike the open capability ids): the
+/// console's categories and their colors are keyed to these variants, and
+/// [`ALL`](Self::ALL) fixes their order so a breakdown is emitted with every category
+/// present (a zero when a source contributed nothing this turn), keeping the graph's
+/// bands stable across turns.
+///
+/// [context visibility]: https://docs.testcabinet.ai/gg/context-visibility/
+/// [compaction]: https://docs.testcabinet.ai/gg/compaction/
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum GgContextSource {
+    /// The base system prompt seeding the session.
+    System,
+    /// The build prompt handed to the agent (the rendered test-case instruction).
+    UserPrompt,
+    /// An assistant turn's own output (its natural-language text and tool calls).
+    Assistant,
+    /// The output of a tool the agent called, fed back as a tool result.
+    ToolOutput,
+    /// The contents of a file the agent viewed — evictable working material (an
+    /// agent-managed context capability may drop these; ordinary tool output is not a
+    /// file view).
+    FileView,
+    /// A [skill](https://docs.testcabinet.ai/gg/skills/) shown or read — retained across
+    /// a compaction boundary.
+    Skill,
+    /// A self-curated [memory](https://docs.testcabinet.ai/gg/memories/) — retained
+    /// across a compaction boundary.
+    Memory,
+    /// The model's [task](https://docs.testcabinet.ai/gg/tasks/) list — retained across
+    /// a compaction boundary.
+    TaskList,
+    /// Prior-turn thread material not attributable to a more specific source — the
+    /// catch-all history bucket, and what compaction summarizes.
+    History,
+}
+
+impl GgContextSource {
+    /// Every source, in a stable order. A [`ContextBreakdown`](GgTelemetryKind::ContextBreakdown)
+    /// reports one entry per source in this order (zero when a source contributed
+    /// nothing), so the console's stacked graph keeps stable bands across turns.
+    pub const ALL: [GgContextSource; 9] = [
+        GgContextSource::System,
+        GgContextSource::UserPrompt,
+        GgContextSource::Assistant,
+        GgContextSource::ToolOutput,
+        GgContextSource::FileView,
+        GgContextSource::Skill,
+        GgContextSource::Memory,
+        GgContextSource::TaskList,
+        GgContextSource::History,
+    ];
+}
+
+/// The estimated token cost attributed to one [`GgContextSource`] at a point in the
+/// run — one band of a [`ContextBreakdown`](GgTelemetryKind::ContextBreakdown).
+///
+/// The token figure is an **estimate**: exact per-provider counts are not available
+/// cross-provider, so gg counts with a fixed BPE tokenizer as a documented cross-model
+/// approximation (see the `context` module in the `gg` crate).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgContextSourceUsage {
+    /// The source this band accounts for.
+    pub source: GgContextSource,
+    /// The estimated tokens that source occupies in the context window.
+    pub tokens: u64,
+}
+
 /// A single event in gg's first-party telemetry stream (schema v1).
 ///
 /// Because gg is [headless](https://docs.testcabinet.ai/gg/overview/), this stream is
@@ -380,6 +484,29 @@ pub enum GgTelemetryKind {
         /// The cost of this accounting, when it could be determined.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         cost: Option<Cost>,
+    },
+    /// The per-source breakdown of what fills the context window, assembled for a turn.
+    ///
+    /// Emitted once per turn when the
+    /// [context-visibility](CAPABILITY_CONTEXT_VISIBILITY) capability is enabled (the
+    /// accounting is always computed; only this emission is gated). The console renders
+    /// the stream of these as a stacked line graph of window fullness by category over
+    /// the run. All token figures are estimates (see [`GgContextSourceUsage`]).
+    ContextBreakdown {
+        /// One band per [`GgContextSource`], in [`GgContextSource::ALL`] order (a source
+        /// that contributed nothing this turn is present with `0`), so the graph's bands
+        /// stay stable across turns.
+        by_source: Vec<GgContextSourceUsage>,
+        /// The estimated total tokens across every source — the numerator of fullness.
+        total_tokens: u64,
+        /// The active model's context-window limit, when known (a capability param or a
+        /// built-in per-model default). The denominator of fullness.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        window_limit: Option<u64>,
+        /// `total_tokens / window_limit` in `0.0..=1.0+`, when a limit is known — the
+        /// fullness signal compaction triggers on.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        fullness: Option<f64>,
     },
     /// A diagnostic log line from gg itself (not agent output).
     Log {

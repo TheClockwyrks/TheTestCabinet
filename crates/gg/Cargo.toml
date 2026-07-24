@@ -36,6 +36,11 @@ reqwest = { workspace = true }
 # `async fn` in the `ModelClient` trait (`src/model.rs`), so a boxed `dyn ModelClient`
 # can back the async turn loop and be shared across spawned subagents later.
 async-trait = { workspace = true }
+# BPE tokenizer backing the default context-window token estimator (`src/context.rs`).
+# gg accounts every context contribution per source in estimated tokens; the estimator
+# is a trait so this is swappable, but the default counts with a fixed BPE base as a
+# documented cross-model approximation. The crate embeds its vocab (no network).
+tiktoken-rs = { workspace = true }
 
 [dev-dependencies]
 # A scratch workspace root for the tool tests (shell + filesystem): tools operate on
