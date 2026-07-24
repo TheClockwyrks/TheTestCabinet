@@ -27,6 +27,10 @@
       "types": "./dist/jobs-api.d.ts",
       "default": "./dist/jobs-api.js"
     },
+    "./gg": {
+      "types": "./dist/gg.d.ts",
+      "default": "./dist/gg.js"
+    },
     "./coverage": {
       "types": "./dist/coverage.d.ts",
       "default": "./dist/coverage.js"

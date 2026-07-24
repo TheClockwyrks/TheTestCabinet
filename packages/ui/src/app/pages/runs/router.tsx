@@ -13,6 +13,7 @@ import { RunProofPage } from "./[runId]/RunProofPage";
 import { RunInputsPage } from "./[runId]/RunInputsPage";
 import { RunVerdictPage } from "./[runId]/RunVerdictPage";
 import { RunReviewPage } from "./[runId]/RunReviewPage";
+import { ggRoutes } from "./gg";
 
 // Routes owned by the runs section: the all-runs index list and the per-run
 // detail, whose Verdict / Play / Inputs / Proof / Metrics / Events / Metadata
@@ -51,6 +52,10 @@ export function runsRoutes(canExecute: boolean) {
       {canExecute && (
         <Route path={routePatterns.runMonitor} element={<RunMonitorPage />} />
       )}
+      {/* gg (The Test Cabinet's own headless harness): its config + live-monitor
+          routes, console-only. Their `/runs/gg` prefix is more specific than the
+          `/runs/:runId` dynamic route below. */}
+      {ggRoutes(canExecute)}
       <Route path={routePatterns.runDetail} element={<RunVerdictPage />} />
       <Route path={routePatterns.runReview} element={<RunReviewPage />} />
       <Route path={routePatterns.runInputs} element={<RunInputsPage />} />

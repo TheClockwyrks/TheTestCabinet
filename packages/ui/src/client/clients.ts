@@ -37,6 +37,7 @@ import type {
   WorkerIdentity,
 } from "./types";
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+import type { GgRunRequest, LaunchAck } from "@test-cabinet/run-record/jobs-api";
 import type {
   CoverageGroup,
   CoverageGroupInput,
@@ -336,6 +337,19 @@ export interface WorkerClient {
     configs: LaunchConfig[],
     token?: string | null,
   ): Promise<BatchLaunchResult[]>;
+
+  /**
+   * Launch a **gg** run; resolves to the enqueue ack (`POST /gg/runs`, Bearer).
+   * gg is its own run mode — configured by a {@link GgRunRequest.capabilitySet}
+   * (which capabilities are on, their implementations/params, and the model-slot
+   * bindings) rather than a `(harness, model, orchestrator)` tuple — so it does
+   * not go through {@link launchRun}. The backend gates it on the same signed-in
+   * account as `POST /jobs` (a missing/invalid `token` is rejected `401`) and
+   * requires the capability set to bind a model to the `primary` slot. The ack's
+   * `jobId` is what the console tracks the in-flight run under and streams live
+   * from the existing `GET /jobs/{id}/live` relay — gg needs no new live route.
+   */
+  launchGgRun(req: GgRunRequest, token: string): Promise<LaunchAck>;
 
   /** The current state of a submitted job (`GET /runs/{job}`). */
   getRun(runId: string): Promise<RunJob>;

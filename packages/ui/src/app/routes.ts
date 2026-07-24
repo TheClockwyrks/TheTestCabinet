@@ -141,6 +141,29 @@ export const routes = {
   },
   runMonitor: (runId: string): string =>
     `/runs/${encodeURIComponent(runId)}/live`,
+  // gg run-execution routes (consoles only; the static site never links to them).
+  // gg is headless — this config surface is the only way to assemble a capability
+  // set and launch a gg run. `ggNew` optionally carries a test case to pre-select,
+  // mirroring `runNew`, so a Run-with-gg entry point lands here with the case
+  // chosen. `ggMonitor` watches an enqueued gg run: it rides the same
+  // `GET /jobs/{id}/live` relay as `runMonitor` but renders gg's native telemetry,
+  // so it is its own page keyed by the launch ack's job id. Both live under a
+  // literal `/runs/gg` segment (more specific than the `/runs/:runId` dynamic
+  // route, so no collision).
+  ggNew: (preselect?: {
+    slug?: string;
+    version?: string;
+    variant?: string;
+  }): string => {
+    const params = new URLSearchParams();
+    if (preselect?.slug) params.set("slug", preselect.slug);
+    if (preselect?.version) params.set("version", preselect.version);
+    if (preselect?.variant) params.set("variant", preselect.variant);
+    const query = params.toString();
+    return query ? `/runs/gg/new?${query}` : "/runs/gg/new";
+  },
+  ggMonitor: (jobId: string): string =>
+    `/runs/gg/${encodeURIComponent(jobId)}/live`,
   // The run's default (Verdict) tab. `edit` opens the review editor in revise
   // mode — used by the single-review page's Edit control to return here with the
   // owner's review form reopened.
@@ -251,6 +274,11 @@ export const routePatterns = {
   runFailures: "/runs/failures",
   runUnreviewed: "/runs/unreviewed",
   runNew: "/runs/new",
+  // gg run-execution routes. The literal `/runs/gg` segment (and its `new` child)
+  // outranks the `/runs/:runId` dynamic route, and `ggMonitor`'s `/runs/gg/:jobId`
+  // is a sibling of the plain `runMonitor` under that same static prefix.
+  ggNew: "/runs/gg/new",
+  ggMonitor: "/runs/gg/:jobId/live",
   runMonitor: "/runs/:runId/live",
   runDetail: "/runs/:runId",
   runReview: "/runs/:runId/reviews/:reviewerId",

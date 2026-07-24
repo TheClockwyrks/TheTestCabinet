@@ -8,6 +8,42 @@
 // the same hue in the CLI stream and here. Keep the two in lockstep.
 
 import type { HarnessEvent } from "../client/types";
+import type { GgTelemetryEvent } from "@test-cabinet/run-record/gg";
+
+// The detail line for a gg-native telemetry event (`HarnessEvent` of `type: "gg"`).
+// gg is headless, so its typed stream is the only live window into a run; the feed
+// still shows the alongside-mapped human-facing events (agent/command/…), but this
+// renders the salient field of the first-party event so nothing is lost. Kinds
+// mirror `GgTelemetryKind`.
+function ggEventDetail(event: GgTelemetryEvent): string {
+  switch (event.type) {
+    case "session_started":
+      return "session started";
+    case "turn_started":
+      return "turn started";
+    case "assistant_message":
+      return event.text;
+    case "tool_call":
+      return event.name;
+    case "tool_result":
+      return `${event.name} ${event.ok ? "ok" : "failed"}${event.summary ? `: ${event.summary}` : ""}`;
+    case "usage": {
+      const t = event.tokens;
+      const total =
+        (t.uncachedInput ?? 0) +
+        (t.cachedInput ?? 0) +
+        (t.output ?? 0) +
+        (t.reasoning ?? 0);
+      return `${total} tokens`;
+    }
+    case "log":
+      return event.message;
+    case "session_ended":
+      return `session ${event.status}`;
+    default:
+      return JSON.stringify(event);
+  }
+}
 
 // The detail line for an event: the salient field for its type, with NO type
 // label prefixed. The feed renders the type in its own column, so prefixing the
@@ -34,6 +70,8 @@ export function eventDetail(e: HarnessEvent): string {
     case "warning":
     case "system":
       return e.message ?? "";
+    case "gg":
+      return ggEventDetail(e.event);
     default:
       return JSON.stringify(e.raw ?? e);
   }

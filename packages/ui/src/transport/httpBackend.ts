@@ -57,6 +57,7 @@ import type {
   RunRecord,
 } from "@test-cabinet/run-record";
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+import type { GgRunRequest, LaunchAck } from "@test-cabinet/run-record/jobs-api";
 import type {
   CoverageGroup,
   CoverageGroupInput,
@@ -1088,6 +1089,19 @@ export function createBackendExec(
         runId: entry.jobId,
         error: entry.error,
       }));
+    },
+
+    async launchGgRun(req: GgRunRequest, token: string): Promise<LaunchAck> {
+      // Enqueue a gg run on its own endpoint (`POST /gg/runs`); the dispatcher
+      // creates the gg driver Job. gg is configured by the request's capability
+      // set rather than a `(harness, model, orchestrator)` tuple, so — unlike
+      // `launchRun` — the `GgRunRequest` is already the exact wire body (camelCase)
+      // and is posted verbatim. Same account gate as `POST /jobs`: the signed-in
+      // account's token rides along as `Authorization: Bearer` (a missing/invalid
+      // token is rejected `401`). Unlike `launchRun`, the whole ack is returned —
+      // its `statusUrl`/`liveUrl` locate the run — since the console watches a gg
+      // run through the ack's `jobId`.
+      return postJson<LaunchAck>(backendUrl, "/gg/runs", req, token);
     },
 
     async getRun(runId: string): Promise<RunJob> {
