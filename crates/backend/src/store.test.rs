@@ -197,6 +197,58 @@ fn artifact_reads_a_real_file() {
 }
 
 #[test]
+fn read_rendered_spec_renders_a_template_and_passes_plain_through() {
+    let (_dir, store) = temp_store();
+    store
+        .write_manifest(&sample_manifest("pong", "v1.0.0"))
+        .unwrap();
+    let dir = store.version_dir("pong", "v1.0.0");
+    std::fs::create_dir_all(dir.join("specs")).unwrap();
+    // A template spec that branches on the variant slug, and a plain one.
+    std::fs::write(
+        dir.join("specs/field.md.hbs"),
+        "# Field\n{{#if (eq variant.slug \"gyre\")}}rotating{{else}}static{{/if}}\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("specs/overview.md"),
+        "# Overview {{not touched}}\n",
+    )
+    .unwrap();
+
+    let template = StoredSpec {
+        source: "specs/field.md.hbs".to_string(),
+        dest: "specs/field.md".to_string(),
+        template: true,
+        kind: Default::default(),
+    };
+    let plain = StoredSpec {
+        source: "specs/overview.md".to_string(),
+        dest: "specs/overview.md".to_string(),
+        template: false,
+        kind: Default::default(),
+    };
+
+    // The template renders for the selected variant — its branch resolved, no
+    // handlebars left — and differs between variants.
+    let base = store
+        .read_rendered_spec("pong", "v1.0.0", &template, "base", "Base", None, None)
+        .unwrap();
+    let gyre = store
+        .read_rendered_spec("pong", "v1.0.0", &template, "gyre", "Gyre", None, None)
+        .unwrap();
+    assert_eq!(base, "# Field\nstatic\n");
+    assert_eq!(gyre, "# Field\nrotating\n");
+
+    // A plain spec is returned verbatim — never run through the engine, so a
+    // brace-y body that is not a real template is untouched.
+    let overview = store
+        .read_rendered_spec("pong", "v1.0.0", &plain, "base", "Base", None, None)
+        .unwrap();
+    assert_eq!(overview, "# Overview {{not touched}}\n");
+}
+
+#[test]
 fn reference_scope_and_view_are_validated() {
     let (_dir, store) = temp_store();
     assert!(matches!(

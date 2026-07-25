@@ -242,6 +242,7 @@ export default defineConfig({
               collapsed: true,
               items: [
                 "guides/devops/adding-or-updating-a-model",
+                "guides/devops/authoring-errata",
                 "guides/devops/publishing-a-test-run-result",
                 "guides/devops/publishing-a-reference-implementation",
                 "guides/devops/rolling-prod-service-images",

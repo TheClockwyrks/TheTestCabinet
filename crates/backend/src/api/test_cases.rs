@@ -118,6 +118,76 @@ pub async fn artifact(
     Ok(bytes_response(&path, bytes))
 }
 
+/// `GET /test-cases/{slug}/versions/{version}/specs/{variant}` — the variant's
+/// full seeded spec set with every body rendered for that variant, in seed
+/// order (the common specs first, then the variant's own).
+///
+/// This is the spec analogue of the rendered variant prompt on [`resolve_version`]:
+/// a `template` spec's `{{#if (eq variant.slug …)}}` branches are resolved here, on
+/// the backend, so the console's Inputs tab shows handlebars-free text — the same
+/// file the harness receives — rather than the raw template the per-key
+/// [`artifact`] route serves. A plain spec is returned verbatim. A render error is
+/// exceptional (the same template renders at run time), so it surfaces as an
+/// internal error rather than silently dropping the spec.
+pub async fn variant_specs(
+    State(state): State<AppState>,
+    Path((slug, version, variant)): Path<(String, String, String)>,
+) -> Result<Json<SpecsResponse>, ApiError> {
+    let manifest = state
+        .store
+        .read_manifest(&slug, &version)
+        .map_err(ApiError::from)?;
+    // Mirror `resolve_version`: an experimental version the deployment has not
+    // opted into is treated as if it does not exist.
+    if manifest.experimental && !state.config.allow_experimental {
+        return Err(ApiError::not_found(format!(
+            "test-case version `{slug}@{version}` is not ingested"
+        )));
+    }
+    let selected = manifest
+        .variants
+        .iter()
+        .find(|v| v.slug == variant)
+        .ok_or_else(|| {
+            ApiError::not_found(format!(
+                "variant `{variant}` of `{slug}@{version}` not found"
+            ))
+        })?;
+    // The variant's own volume overrides the case's, matching how the prompt and a
+    // run's seed resolve `{{voxel}}` for this variant.
+    let voxel = selected.voxel.as_ref().or(manifest.voxel.as_ref());
+    // Seed order: the common specs first, then the variant's own — the order a run
+    // is seeded and the prompt lists them.
+    let specs = manifest
+        .common_specs
+        .iter()
+        .chain(selected.specs.iter())
+        .map(|spec| {
+            let body = state.store.read_rendered_spec(
+                &slug,
+                &version,
+                spec,
+                &selected.slug,
+                &selected.name,
+                selected.description.as_deref(),
+                voxel,
+            )?;
+            Ok(SpecDocumentOut {
+                dest: spec.dest.clone(),
+                body,
+                kind: spec.kind,
+            })
+        })
+        .collect::<Result<Vec<_>, ApiError>>()?;
+    Ok(Json(SpecsResponse {
+        slug: manifest.slug.clone(),
+        version: manifest.version.clone(),
+        variant: selected.slug.clone(),
+        description: manifest.description.clone(),
+        specs,
+    }))
+}
+
 /// `GET /test-cases/{slug}/versions/{version}/validation-files` — the store-relative
 /// keys of every file under the version's reporter-side automated-validation script
 /// directory (`validation/`), as a JSON string array. A backend-driven run fetches this
@@ -772,6 +842,37 @@ struct SpecOut {
     template: bool,
     /// The seeded file's role (`spec`/`script`), so the console's Inputs tab can
     /// tag it. Presentation only.
+    kind: SpecKind,
+}
+
+/// A variant's seeded spec set with every body rendered for that variant, the
+/// response of [`variant_specs`]. Unlike [`SpecOut`] (a descriptor pointing at the
+/// raw artifact key) this carries the finished, handlebars-free `body` the reader
+/// shows.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct SpecsResponse {
+    slug: String,
+    version: String,
+    variant: String,
+    /// The version's site-facing description (never seeded), carried so the Inputs
+    /// tab has the same context the resolved version does. `null` when none.
+    description: Option<String>,
+    specs: Vec<SpecDocumentOut>,
+}
+
+/// One seeded spec with its body already rendered for the selected variant.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+struct SpecDocumentOut {
+    /// The run-workspace-relative path the spec seeds to (its `dest`).
+    dest: String,
+    /// The spec's body, rendered for this variant — a template spec's conditionals
+    /// resolved, a plain spec verbatim.
+    body: String,
+    /// The seeded file's role (`spec`/`script`), for the Inputs-tab tag.
     kind: SpecKind,
 }
 

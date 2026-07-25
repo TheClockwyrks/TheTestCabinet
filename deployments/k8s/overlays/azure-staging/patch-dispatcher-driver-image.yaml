@@ -6,11 +6,11 @@
 # Like TCAB_DRIVER_IMAGE it is an env value the driver reads at run time and the
 # dispatcher forwards into every driver Job. It is pinned SEPARATELY from the service
 # images (the run images only rebuild when `build-containers` runs), so this tracks the
-# latest sha at which `build-containers` published multi-arch run images — `8c80dd94`
-# (v0.6.0-beta2). The v0.6.0-beta2.1 (5171a923) and beta3 (ae3859f7) builds ran only
-# `build-service-images`, NOT `build-containers`, so the driver SERVICE image above moved
-# to beta3 while the run-container tag STAYS at beta2 (8c80dd94) — the two have remained
-# diverged since beta2.1.
+# latest sha at which `build-containers` published multi-arch run images. The
+# v0.6.0-beta2.1 (5171a923) and beta3 (ae3859f7) builds ran only `build-service-images`,
+# NOT `build-containers`, so the run-container tag stayed pinned at beta2 (8c80dd94) while
+# the driver SERVICE image moved ahead. The v0.6.0-beta4 build ran `build-containers`
+# again, so both RE-CONVERGE onto `e6afbee6` here, ending that divergence.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -24,6 +24,6 @@ spec:
         - name: dispatcher
           env:
             - name: TCAB_DRIVER_IMAGE
-              value: "ghcr.io/theclockwyrks/tcab-driver:ae3859f7145df8e6d968f4565f7c1764ee440559"
+              value: "ghcr.io/theclockwyrks/tcab-driver:e6afbee63a8093a7c717b5195cd8dcae85d77fdf"
             - name: TCAB_CONTAINER_TAG
-              value: "8c80dd946b86f7bb5182e49019832e2f79af35e1"
+              value: "e6afbee63a8093a7c717b5195cd8dcae85d77fdf"

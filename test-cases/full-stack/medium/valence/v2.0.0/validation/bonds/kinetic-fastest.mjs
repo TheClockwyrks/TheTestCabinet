@@ -31,7 +31,14 @@ import {
   MAP,
 } from "../_helpers.mjs";
 
-const WINDOW_TICKS = 90; // 90 ticks = the old 1.5 s — short enough that neither tower has spent the pool
+// 135 ticks (~2.25 s). The window must be long enough that the low-fire-rate Cleaver
+// (1.2 shots/s) lands its SECOND bond hit — a 90-tick window caught only one, so it
+// measured shot-count quantization (kinetic 4 vs energy 3) rather than the x2 bond bonus
+// the impl actually applies. Yet it must stay short enough that the Cleaver has NOT spent
+// the 11-point pool: once it opens the cluster its "removed" caps at the pool size while
+// the faster Emitter keeps accumulating, and the ratio collapses again. Empirically the
+// ratio sits stably at 2.0 (kinetic 8, energy 4) across ~110-160 ticks; 135 is its centre.
+const WINDOW_TICKS = 135;
 
 /** Pose one tower/Polymer scenario; `begin` opens the run (`startRun` or `poseRun`). */
 async function poseScenario(api, kind, begin) {

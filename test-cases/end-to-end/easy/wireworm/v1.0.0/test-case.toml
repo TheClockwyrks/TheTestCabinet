@@ -400,6 +400,13 @@ validation = { script = "validation/cursor/fires-up.mjs", outputs = [
   { id = "fire", name = "A bolt travelling up and stopping", kind = "video" },
 ] }
 [[review.categories.items]]
+id = "bolt-travels"
+title = "A bolt travels the column rather than resolving instantly"
+description = "A fired bolt is visibly in flight, climbing its column at about 900 px/s, and is still travelling well after it was fired when its target is far up the board; it does not resolve against a distant target on the tick it was fired."
+validation = { script = "validation/cursor/bolt-travels.mjs", outputs = [
+  { id = "travel", name = "A bolt climbing an empty column", kind = "video" },
+] }
+[[review.categories.items]]
 id = "fire-cadence"
 title = "Firing has a cadence and a cap on bolts in flight"
 description = "Held fire respects a minimum interval between bolts (about 0.15 s) and never puts more than three bolts in flight at once."
@@ -737,3 +744,4 @@ description = "Distinct short cues, synthesized with the Web Audio API (no audio
 id = "graceful"
 title = "Muted-playable, no autoplay, working mute"
 description = "The game stays fully playable with sound muted, never blocks loading if audio cannot start, does not begin audio until the player interacts, and provides a working mute toggle."
+

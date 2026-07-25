@@ -103,9 +103,17 @@ export function segmentAt(snap, c, r) {
 
 /**
  * Reset (reseeding all randomness) and enter a clean, empty, live board at level
- * 1. `clearField` routes through the real ensureRun (which lays a scattered field
- * and enters active play) and then empties it, so the board is empty and the game
- * is in `playing`/`active` — the state a posed mechanic scenario needs.
+ * 1: `enterPlay` puts the build directly into `playing`/`active` — no level banner
+ * and no spawn-in invulnerability (see specs/instrumentation.md) — and `clearField`
+ * then empties the scattered field it laid, which is the state a posed mechanic
+ * scenario needs.
+ *
+ * `enterPlay` is what makes this instant, and it is REQUIRED: no control operation
+ * starts a run on its own, and `step` only advances live play, so without it the
+ * build would sit on the title screen and nothing an item did would move. (That is
+ * not hypothetical — this helper used to rely on `clearField` implicitly starting a
+ * run, which the spec never promised, and every check that did not happen to call
+ * `setWorm` silently measured a frozen title screen.)
  *
  * ARRANGE ONLY. This calls `api.reset`, which the runtime rejects inside `act`
  * (reset hands the build back to its manual clock, which would silently freeze the
@@ -113,6 +121,7 @@ export function segmentAt(snap, c, r) {
  */
 export async function freshBoard(api, seed = 1) {
   await api.reset({ seed });
+  await api.call("enterPlay");
   await api.call("clearField");
 }
 

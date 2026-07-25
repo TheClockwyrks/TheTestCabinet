@@ -642,16 +642,21 @@ async fn case_metadata_inlines_specs_and_description() {
     assert_eq!(parsed["checks"][0]["referenceView"], "title");
     // The prompt template itself never leaks (only its rendered prompt does).
     assert!(parsed.get("promptTemplate").is_none());
-    // The seeded spec bodies are inlined: common ones at the case level, the
-    // variant's own on the variant, each carrying its dest path and text.
-    assert_eq!(parsed["commonSeededInputs"][0]["path"], "spec/rules.md");
-    assert_eq!(parsed["commonSeededInputs"][0]["text"], "# Rules");
+    // The seeded spec bodies are inlined per variant: each variant carries its
+    // complete, seed-ordered set — the common specs first, then the variant's own —
+    // with every body rendered for that variant. So `base`'s set opens with the
+    // common `spec/rules.md`, then its own `build.py`.
+    assert_eq!(
+        parsed["variants"][0]["seededInputs"][0]["path"],
+        "spec/rules.md"
+    );
+    assert_eq!(parsed["variants"][0]["seededInputs"][0]["text"], "# Rules");
     // A common spec with no explicit role defaults to "spec".
-    assert_eq!(parsed["commonSeededInputs"][0]["kind"], "spec");
-    assert_eq!(parsed["variants"][0]["seededInputs"][0]["path"], "build.py");
-    assert_eq!(parsed["variants"][0]["seededInputs"][0]["text"], "# build");
+    assert_eq!(parsed["variants"][0]["seededInputs"][0]["kind"], "spec");
+    assert_eq!(parsed["variants"][0]["seededInputs"][1]["path"], "build.py");
+    assert_eq!(parsed["variants"][0]["seededInputs"][1]["text"], "# build");
     // The script role survives ingest → snapshot, so the Inputs tab tags it "Script".
-    assert_eq!(parsed["variants"][0]["seededInputs"][0]["kind"], "script");
+    assert_eq!(parsed["variants"][0]["seededInputs"][1]["kind"], "script");
     // The declared package is carried with its UI-only description, looked up from
     // core's registry at snapshot time.
     assert_eq!(
@@ -664,6 +669,79 @@ async fn case_metadata_inlines_specs_and_description() {
             .is_some_and(|d| !d.is_empty()),
         "package description should be inlined from core's registry"
     );
+}
+
+#[tokio::test]
+async fn case_metadata_renders_template_specs_per_variant() {
+    // A common `.hbs` spec (`template = true`) that branches on the variant slug,
+    // seeded into two variants. The snapshot must render it FOR EACH variant, so the
+    // static gallery shows the resolved branch — never the raw `{{#if …}}` template.
+    // This is the regression the whole change fixes.
+    let mut m = manifest();
+    m.common_specs = vec![crate::store::StoredSpec {
+        source: "spec/field.md.hbs".to_string(),
+        dest: "spec/field.md".to_string(),
+        template: true,
+        kind: Default::default(),
+    }];
+    // A second variant so the two renders can be compared. Its `base` sibling comes
+    // from the manifest() helper.
+    m.variants.push(crate::store::StoredVariant {
+        slug: "gyre".to_string(),
+        name: "Gyre".to_string(),
+        description: Some("Rotating.".to_string()),
+        specs: vec![],
+        workspace: None,
+        references: vec![],
+        proofs: vec![],
+        review_items: vec![],
+        domains: vec![],
+        voxel: None,
+    });
+
+    let (_tmp, store) = empty_store();
+    let template = "# Field\n\
+        {{#if (eq variant.slug \"gyre\")}}\nRotating obstacles.\n\
+        {{else}}\nStatic obstacles.\n{{/if}}\n";
+    let path = store
+        .version_dir(&m.slug, &m.version)
+        .join("spec/field.md.hbs");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, template).unwrap();
+
+    let snapshot = SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![m], store)
+        .build(now())
+        .await
+        .unwrap();
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+    let case = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/cases/pong/v1.0.0.json"))
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
+
+    // Each variant carries its own rendered copy at the seeded dest (not the source
+    // `.hbs` key), with the branch resolved and no handlebars left behind.
+    let base = &parsed["variants"][0]["seededInputs"][0];
+    let gyre = &parsed["variants"][1]["seededInputs"][0];
+    assert_eq!(parsed["variants"][0]["slug"], "base");
+    assert_eq!(parsed["variants"][1]["slug"], "gyre");
+    assert_eq!(base["path"], "spec/field.md");
+    assert_eq!(gyre["path"], "spec/field.md");
+    let base_text = base["text"].as_str().unwrap();
+    let gyre_text = gyre["text"].as_str().unwrap();
+    assert!(base_text.contains("Static obstacles."), "base: {base_text}");
+    assert!(
+        gyre_text.contains("Rotating obstacles."),
+        "gyre: {gyre_text}"
+    );
+    for text in [base_text, gyre_text] {
+        assert!(
+            !text.contains("{{") && !text.contains("variant.slug"),
+            "raw handlebars leaked into the rendered spec: {text}"
+        );
+    }
 }
 
 #[tokio::test]

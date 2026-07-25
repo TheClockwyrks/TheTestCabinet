@@ -20,6 +20,7 @@ use time::format_description::well_known::Rfc3339;
 use crate::db::ReferenceSheetEntry;
 use crate::error::ApiError;
 use crate::ingest::{IngestEvent, IngestReport, IngestRequest, Ingestor};
+use crate::publisher::Publisher;
 use crate::store::DefinitionStore;
 
 use super::AppState;
@@ -67,7 +68,13 @@ pub async fn ingest(
     let protected = state.db.referenced_cases().await.map_err(ApiError::from)?;
 
     if wants_ndjson(&headers) {
-        return Ok(ingest_streaming(checkout, store, request, protected));
+        return Ok(ingest_streaming(
+            checkout,
+            store,
+            request,
+            protected,
+            state.publisher.clone(),
+        ));
     }
 
     // Default: run the scan to completion and answer with the full report.
@@ -80,7 +87,33 @@ pub async fn ingest(
     .map_err(|e| ApiError::internal(format!("ingest task panicked: {e}")))?
     .map_err(ApiError::from)?;
 
+    // A scan that actually (re)ingested a version changed the definition store the
+    // public snapshot's case metadata is exported from, so queue a refresh (see
+    // `scan_changed_store`). This is what makes repopulating an emptied store — the
+    // ephemeral `/state` volume's self-heal after a reschedule, or a manual
+    // `reingest-cluster.sh` — republish a corrected snapshot instead of leaving the
+    // gallery frozen on whatever was built while the store was momentarily empty.
+    if scan_changed_store(&report) {
+        state.publisher.queue_refresh();
+    }
+
     Ok(Json(IngestResponse::from(report)).into_response())
+}
+
+/// Whether an ingest scan actually (re)ingested any version, versus a no-op scan
+/// that found every version already present and unchanged. A scan that copied or
+/// re-rendered at least one version has changed the definition store, so the public
+/// snapshot's case metadata — a case's name, specs, prompt, review items, and the
+/// very presence of its `cases/<slug>/<version>.json` file — may now differ and
+/// must be re-exported.
+///
+/// This is deliberately quiet on a no-op scan (every version unchanged), so the
+/// non-forced periodic ingest does not fire a gallery rebuild every cycle; only a
+/// scan that moved something republishes. A forced re-ingest re-writes every version
+/// (all `ingested`), so it always refreshes — which is exactly what an operator
+/// running `reingest-cluster.sh` to push catalog edits to the site wants.
+fn scan_changed_store(report: &IngestReport) -> bool {
+    report.test_case_versions.iter().any(|v| v.ingested)
 }
 
 /// Reconcile `case_reference_build` from the committed reference-builds lockfile to
@@ -235,6 +268,7 @@ fn ingest_streaming(
     store: DefinitionStore,
     request: IngestRequest,
     protected: std::collections::HashSet<(String, String)>,
+    publisher: Publisher,
 ) -> Response {
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Bytes>();
 
@@ -246,7 +280,15 @@ fn ingest_streaming(
         // A single closing line conveys the outcome in-band: the stream has already
         // sent a 200, so a late failure cannot become an HTTP error code.
         let closing = match result {
-            Ok(report) => StreamEvent::done(&report),
+            Ok(report) => {
+                // Same as the non-streaming path: a scan that changed the definition
+                // store must re-export the snapshot's case metadata (see
+                // `scan_changed_store`).
+                if scan_changed_store(&report) {
+                    publisher.queue_refresh();
+                }
+                StreamEvent::done(&report)
+            }
             Err(err) => StreamEvent::Error {
                 message: err.to_string(),
             },
@@ -400,3 +442,7 @@ impl From<IngestEvent<'_>> for StreamEvent {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "ingest_api.test.rs"]
+mod tests;

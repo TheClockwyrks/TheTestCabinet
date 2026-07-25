@@ -113,10 +113,12 @@ function GradeChoice({
   value,
   onChange,
   ariaLabel,
+  disabled = false,
 }: {
   value: GradeStatus | "";
   onChange: (next: GradeStatus | "") => void;
   ariaLabel: string;
+  disabled?: boolean;
 }) {
   return (
     <div
@@ -135,7 +137,8 @@ function GradeChoice({
             aria-checked={selected}
             aria-label={`${meta.label} (${meta.points} ${meta.points === 1 ? "pt" : "pts"})`}
             title={`${meta.label} — ${meta.points} ${meta.points === 1 ? "pt" : "pts"}`}
-            tabIndex={selected || (!value && i === 0) ? 0 : -1}
+            disabled={disabled}
+            tabIndex={disabled ? -1 : selected || (!value && i === 0) ? 0 : -1}
             className={`${styles.verdictOption} ${styles.gradeOption}${
               selected ? ` ${styles.verdictOptionActive}` : ""
             }`}
@@ -432,8 +435,20 @@ export function RunReviewEditor({
   // no scoring domains; every category carries `graded`, so the presence of a
   // graded item makes this a jam review. The two scales never mix within a case.
   const jam = items.some((it) => it.graded);
-  const itemAddressed = (item: ReviewItem) =>
-    verdictIdsForItem(item).every((vid) => verdicts[vid]?.status);
+  // A point excluded from scoring for the version (an erratum's `excludeFromScore`)
+  // no longer counts, so grading it is optional — it must not block submission. A
+  // whole-item exclusion clears the item; within a category, only the excluded
+  // sub-items are exempt while the rest still require a verdict.
+  const itemAddressed = (item: ReviewItem) => {
+    if (item.scored === false) return true;
+    const subs = item.subItems ?? [];
+    if (subs.length === 0) return Boolean(verdicts[item.id]?.status);
+    return subs.every(
+      (sub) =>
+        sub.scored === false ||
+        Boolean(verdicts[subItemVerdictId(item.id, sub.id)]?.status),
+    );
+  };
   const allAddressed = items.every(itemAddressed);
   // A jam is fully rated once the whole-game overall grade is picked (it has no
   // domains); a domain-scored case once every domain carries a rating.
@@ -471,7 +486,7 @@ export function RunReviewEditor({
   // sub-item. Shared so a whole-item verdict and each sub-item's verdict use the
   // identical radiogroup: Pass/Fail as two radio-like buttons, a roving tabindex +
   // arrow keys, and clicking the selected option clearing it back to unset.
-  function renderVerdict(verdictId: string) {
+  function renderVerdict(verdictId: string, disabled = false) {
     const d = verdicts[verdictId] ?? { status: "", note: "" };
     // Whether this verdict is still holding its pre-filled auto value (the reviewer
     // has not overridden it). Its selected option renders desaturated to mark it as
@@ -547,7 +562,10 @@ export function RunReviewEditor({
                   type="button"
                   role="radio"
                   aria-checked={selected}
-                  tabIndex={selected || (!d.status && i === 0) ? 0 : -1}
+                  disabled={disabled}
+                  tabIndex={
+                    disabled ? -1 : selected || (!d.status && i === 0) ? 0 : -1
+                  }
                   className={`${styles.verdictOption} ${
                     s === "pass"
                       ? styles.verdictOptionPass
@@ -556,9 +574,11 @@ export function RunReviewEditor({
                     selected && isAuto ? ` ${styles.verdictOptionAuto}` : ""
                   }`}
                   title={
-                    selected && isAuto
-                      ? "Auto-set from this run's debug script — click to override"
-                      : undefined
+                    disabled
+                      ? "Excluded from scoring by an erratum — not rated"
+                      : selected && isAuto
+                        ? "Auto-set from this run's debug script — click to override"
+                        : undefined
                   }
                   onClick={() =>
                     setVerdict(verdictId, { status: selected ? "" : s })
@@ -589,6 +609,7 @@ export function RunReviewEditor({
             value={d.note}
             onChange={(e) => setVerdict(verdictId, { note: e.target.value })}
             placeholder="note (optional)"
+            disabled={disabled}
           />
         </div>
       </>
@@ -597,7 +618,7 @@ export function RunReviewEditor({
 
   // The graded (game-jam) counterpart of {@link renderVerdict}: the five-emoji
   // grade picker plus the same optional note, keyed by the item's verdict id.
-  function renderGradeVerdict(verdictId: string) {
+  function renderGradeVerdict(verdictId: string, disabled = false) {
     const d = verdicts[verdictId] ?? { status: "", note: "" };
     return (
       <div className={styles.checklistControls}>
@@ -605,12 +626,14 @@ export function RunReviewEditor({
           value={isGrade(d.status) ? d.status : ""}
           onChange={(next) => setVerdict(verdictId, { status: next })}
           ariaLabel="Grade"
+          disabled={disabled}
         />
         <input
           className={styles.input}
           value={d.note}
           onChange={(e) => setVerdict(verdictId, { note: e.target.value })}
           placeholder="note (optional)"
+          disabled={disabled}
         />
       </div>
     );
@@ -661,14 +684,22 @@ export function RunReviewEditor({
     // One verdict per verdict id: the item's own when graded as a whole, or one
     // per sub-item (keyed by the `<item>.<sub>` composite) when it has sub-items.
     const verdictList = items.flatMap((item) =>
-      verdictIdsForItem(item).map((vid) => {
+      verdictIdsForItem(item).flatMap((vid) => {
         const draft = verdicts[vid] ?? { status: "", note: "" };
+        // Omit an unrated point rather than sending an empty status the backend's
+        // `VerdictStatus` enum would reject (422). With the completeness gate this
+        // only arises for a point excluded from scoring (an erratum's
+        // `excludeFromScore`) that the reviewer chose to skip — it simply carries no
+        // verdict, exactly as it carries no score.
+        if (!draft.status) return [];
         const note = draft.note.trim();
-        return {
-          id: vid,
-          status: draft.status as VerdictStatus,
-          ...(note ? { note } : {}),
-        };
+        return [
+          {
+            id: vid,
+            status: draft.status,
+            ...(note ? { note } : {}),
+          },
+        ];
       }),
     );
     // A jam rides its whole-game overall grade in the same checklist, under the
@@ -808,6 +839,11 @@ export function RunReviewEditor({
   const item = slot ? items[slot.itemIndex] : undefined;
   const sub =
     slot && slot.subIndex >= 0 ? item?.subItems?.[slot.subIndex] : undefined;
+  // Whether the current point is excluded from scoring for the version (an erratum's
+  // `excludeFromScore`): a whole-item exclusion clears the item, a sub-item one just
+  // that sub. Shown as a "not scored" badge in place of the point value.
+  const slotNotScored =
+    item?.scored === false || (sub ? sub.scored === false : false);
   // The verdict id for the current slot — the sub-item's composite, or the item's own.
   const slotVerdictId = item
     ? sub
@@ -833,6 +869,10 @@ export function RunReviewEditor({
     const it = items[s.itemIndex];
     if (!it) return false;
     const subItem = s.subIndex >= 0 ? it.subItems?.[s.subIndex] : undefined;
+    // An excluded point (erratum `excludeFromScore`) needs no verdict — treat it as
+    // addressed so it neither drags the progress count nor traps Previous/Next on a
+    // point the reviewer is free to skip.
+    if (it.scored === false || subItem?.scored === false) return true;
     const vid = subItem ? subItemVerdictId(it.id, subItem.id) : it.id;
     return Boolean(verdicts[vid]?.status);
   };
@@ -1175,11 +1215,18 @@ export function RunReviewEditor({
                   <span className={styles.checklistNumber}>
                     {slotIndex + 1}.
                   </span>{" "}
-                  {sub ? sub.title : item.title} (
-                  {sub
-                    ? formatPoints(sub.weight ?? 1)
-                    : itemPoints(item, verdicts[item.id]?.status)}
-                  )
+                  {sub ? sub.title : item.title}{" "}
+                  {slotNotScored ? (
+                    <span className={styles.notScored}>Not scored</span>
+                  ) : (
+                    <>
+                      (
+                      {sub
+                        ? formatPoints(sub.weight ?? 1)
+                        : itemPoints(item, verdicts[item.id]?.status)}
+                      )
+                    </>
+                  )}
                 </span>
                 {/* The point's prose: a sub-item's own description, or a whole item's
                 text (a category itself carries none). */}
@@ -1223,8 +1270,8 @@ export function RunReviewEditor({
                 automated-validation media backing the point renders at the top of the
                 verdict control. */}
                 {item.graded
-                  ? renderGradeVerdict(item.id)
-                  : renderVerdict(slotVerdictId)}
+                  ? renderGradeVerdict(item.id, slotNotScored)
+                  : renderVerdict(slotVerdictId, slotNotScored)}
 
                 {/* Previous / Next jump to the nearest unreviewed item on that side
                 and disable when none remains — the wrapper carries the explanatory
