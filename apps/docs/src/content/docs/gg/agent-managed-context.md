@@ -27,7 +27,7 @@ Each turn — after the pinned blocks (skills, memories, tasks) are refreshed an
 any [compaction](/gg/compaction/) — gg rebuilds a short, **system-adjacent** line from
 the *current* window accounting and pins it just before the model acts:
 
-> Context window: 74210/128000 tokens (58% full). Largest consumers (tokens): file
+> Context window: 74000/128000 tokens (58% full). Largest consumers (tokens): file
 > views 41000, tool output 12000, history 8000. If it is getting full, reclaim space
 > yourself: `evict_file_view` … `archive_thread` … `search_archive`.
 
@@ -35,6 +35,15 @@ It reflects the live [`ContextModel`](/gg/context-visibility/) each turn, names 
 biggest consuming [sources](/gg/context-visibility/) so the agent knows *where* the
 window is going, and is refreshed **in place** (never accreting turn over turn) so it
 stays cheap — one short line whose own cost is excluded from the numbers it reports.
+
+Every token figure is reported to a resolution of **one percent of the window** — the
+same precision as the percentage beside it — and a source is named as a consumer only
+once it rounds to a non-zero figure. The line is a hint the agent acts on ("how full am
+I, and where is it going?"), for which a token-exact figure is no more useful than a
+rounded one, and rounding is what lets the line hold its position across turns that did
+not move it meaningfully. That in turn is what keeps the rendered prompt
+[cacheable](/gg/context-visibility/): a signal that changed by a few tokens every turn
+would rewrite the tail of the prompt every turn and cost the run its prompt cache.
 
 ## Evicting file views
 

@@ -406,3 +406,214 @@ fn count_signal_items(ctx: &ContextModel) -> usize {
         })
         .count()
 }
+
+// ---------------------------------------------------------------------------
+// Prompt cacheability: a turn's rendered window must extend the previous turn's
+// ---------------------------------------------------------------------------
+
+#[test]
+fn replacing_a_source_with_an_unchanged_block_leaves_it_in_place() {
+    let mut ctx = model(Some(100_000));
+    ctx.push_system("system");
+    let block = Message::user("# Your tasks\n\n- [ ] scaffold");
+    ctx.replace_source(
+        GgContextSource::TaskList,
+        Retention::Pinned,
+        Some(block.clone()),
+    );
+
+    // A turn's worth of history lands after the block.
+    ctx.push_assistant(None, vec![call("c1", "shell")]);
+    ctx.push_tool_result(GgContextSource::ToolOutput, "c1", "exit code: 0");
+    let before = ctx.messages();
+
+    // The next turn rebuilds the same block from an unchanged store: it must not be lifted
+    // out and re-appended behind the history above, because that would rewrite the prompt
+    // just before its end and cost the run its prompt cache.
+    ctx.replace_source(
+        GgContextSource::TaskList,
+        Retention::Pinned,
+        Some(block.clone()),
+    );
+    assert_eq!(ctx.messages(), before, "an unchanged block did not move");
+    assert_eq!(
+        ctx.messages()[1].content.as_deref(),
+        Some("# Your tasks\n\n- [ ] scaffold"),
+        "the block kept its original position"
+    );
+    assert_eq!(
+        ctx.items()
+            .iter()
+            .filter(|item| item.source() == GgContextSource::TaskList)
+            .count(),
+        1,
+        "still exactly one block"
+    );
+}
+
+#[test]
+fn replacing_a_source_with_a_changed_block_moves_it_to_the_tail() {
+    let mut ctx = model(Some(100_000));
+    ctx.push_system("system");
+    ctx.replace_source(
+        GgContextSource::TaskList,
+        Retention::Pinned,
+        Some(Message::user("# Your tasks\n\n- [ ] scaffold")),
+    );
+    ctx.push_assistant(None, vec![call("c1", "add_task")]);
+    ctx.push_tool_result(GgContextSource::ToolOutput, "c1", "Added task `core`.");
+
+    ctx.replace_source(
+        GgContextSource::TaskList,
+        Retention::Pinned,
+        Some(Message::user("# Your tasks\n\n- [ ] scaffold\n- [ ] core")),
+    );
+
+    let messages = ctx.messages();
+    assert_eq!(
+        messages.last().unwrap().content.as_deref(),
+        Some("# Your tasks\n\n- [ ] scaffold\n- [ ] core"),
+        "a block with news for the model is re-appended at the tail"
+    );
+    assert_eq!(
+        messages
+            .iter()
+            .filter(|m| m
+                .content
+                .as_deref()
+                .is_some_and(|c| c.starts_with("# Your tasks")))
+            .count(),
+        1,
+        "the stale copy is gone"
+    );
+}
+
+#[test]
+fn replacing_a_source_collapses_multiple_items_back_to_one() {
+    let mut ctx = model(Some(100_000));
+    ctx.push_system("system");
+    let block = Message::user("# Memories\n\n- plan");
+    // Two items for one single-block source (a shape no caller should produce, but the
+    // in-place path must not mistake it for "already correct").
+    ctx.push(GgContextSource::Memory, Retention::Pinned, block.clone());
+    ctx.push(GgContextSource::Memory, Retention::Pinned, block.clone());
+
+    ctx.replace_source(GgContextSource::Memory, Retention::Pinned, Some(block));
+    assert_eq!(
+        ctx.items()
+            .iter()
+            .filter(|item| item.source() == GgContextSource::Memory)
+            .count(),
+        1,
+        "collapsed to a single block"
+    );
+}
+
+#[test]
+fn replacing_an_absent_source_with_nothing_changes_nothing() {
+    let mut ctx = model(Some(100_000));
+    ctx.push_system("system");
+    let before = ctx.messages();
+    ctx.replace_source(GgContextSource::TaskList, Retention::Pinned, None);
+    assert_eq!(ctx.messages(), before);
+}
+
+#[test]
+fn an_unchanged_fullness_signal_stays_where_it_is() {
+    // A 100k window rounds its reported figures to the nearest 1k, so a small growth does
+    // not change the line.
+    let mut ctx = model(Some(100_000));
+    ctx.push_system("system");
+    ctx.refresh_fullness_signal();
+    let signal_index = |ctx: &ContextModel| {
+        ctx.items()
+            .iter()
+            .position(|item| {
+                item.message()
+                    .content
+                    .as_deref()
+                    .is_some_and(|c| c.starts_with("Context window:"))
+            })
+            .expect("a signal is present")
+    };
+    assert_eq!(signal_index(&ctx), 1);
+
+    ctx.push_assistant(None, vec![call("c1", "shell")]);
+    ctx.push_tool_result(GgContextSource::ToolOutput, "c1", "exit code: 0");
+    let before = ctx.messages();
+    ctx.refresh_fullness_signal();
+
+    assert_eq!(
+        ctx.messages(),
+        before,
+        "a signal whose figures did not move stays put, keeping the prompt an extension"
+    );
+    assert_eq!(signal_index(&ctx), 1);
+    assert_eq!(count_signal_items(&ctx), 1);
+
+    // Growth past the reporting resolution does move it — the line still tracks the window.
+    ctx.push_tool_result(GgContextSource::ToolOutput, "c2", "x".repeat(40_000));
+    ctx.refresh_fullness_signal();
+    assert_eq!(count_signal_items(&ctx), 1);
+    assert_eq!(
+        signal_index(&ctx),
+        ctx.items().len() - 1,
+        "a meaningfully changed signal is re-appended at the tail"
+    );
+}
+
+#[test]
+fn fullness_figures_are_reported_at_one_percent_of_the_window() {
+    assert_eq!(fullness_report_granularity(100_000), 1_000);
+    // A tiny or zero limit never divides by zero or rounds everything to nothing.
+    assert_eq!(fullness_report_granularity(50), 1);
+    assert_eq!(fullness_report_granularity(0), 1);
+
+    // Round-half-up to the nearest multiple, and an exact multiple is unchanged.
+    assert_eq!(round_to(1_499, 1_000), 1_000);
+    assert_eq!(round_to(1_500, 1_000), 2_000);
+    assert_eq!(round_to(2_000, 1_000), 2_000);
+    // A granularity of one reports the exact figure.
+    assert_eq!(round_to(1_234, 1), 1_234);
+}
+
+#[test]
+fn every_turn_extends_the_previous_turns_window() {
+    // The property a provider prompt cache needs: with the pinned blocks refreshed each turn
+    // from an unchanged store, turn N+1's rendered messages start with turn N's.
+    let mut ctx = model(Some(100_000));
+    ctx.push_system("system");
+    ctx.push_user_prompt("build a game");
+
+    let tasks = Message::user("# Your tasks\n\n- [ ] scaffold");
+    let memories = Message::user("# Memories\n\n- plan");
+    let mut previous: Option<Vec<Message>> = None;
+
+    for turn in 0..5 {
+        ctx.replace_source(
+            GgContextSource::Memory,
+            Retention::Pinned,
+            Some(memories.clone()),
+        );
+        ctx.replace_source(
+            GgContextSource::TaskList,
+            Retention::Pinned,
+            Some(tasks.clone()),
+        );
+        ctx.refresh_fullness_signal();
+
+        let rendered = ctx.messages();
+        if let Some(previous) = &previous {
+            assert!(
+                rendered.starts_with(previous),
+                "turn {turn} did not extend turn {}'s window",
+                turn - 1
+            );
+        }
+        previous = Some(rendered);
+
+        let id = format!("c{turn}");
+        ctx.push_assistant(None, vec![call(&id, "shell")]);
+        ctx.push_tool_result(GgContextSource::ToolOutput, &id, "exit code: 0");
+    }
+}

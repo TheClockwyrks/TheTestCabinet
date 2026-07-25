@@ -336,15 +336,51 @@ impl ContextModel {
     /// block is removed and the new one appended, the rebuild must happen at a turn
     /// boundary (before this turn's assistant message and its tool results), never between
     /// an assistant tool-call message and the tool results answering it.
+    ///
+    /// # Unchanged blocks are left exactly where they are
+    ///
+    /// When the rebuilt block is **byte-identical** to the one already in the window, this
+    /// is a no-op: the existing item keeps its position instead of being removed and
+    /// re-appended behind the history that has accumulated since. That is not a micro
+    /// optimization — it is what makes the rendered prompt **cacheable**. A provider prompt
+    /// cache only serves a prefix of a request it has already seen, so a turn only reads the
+    /// cache when its message list *extends* the previous turn's. Moving an unchanged block
+    /// to the tail every turn rewrites the prompt just before its end, so no turn ever
+    /// extends the last one and every turn re-reads its whole context as uncached input.
+    /// Holding the block still keeps each turn an append-only extension of the last, and a
+    /// block that genuinely changed still moves to the tail — costing one uncached turn,
+    /// which is also the turn on which the block has news for the model.
     pub fn replace_source(
         &mut self,
         source: GgContextSource,
         retention: Retention,
         message: Option<Message>,
     ) {
+        if self.source_block_is(source, message.as_ref()) {
+            return;
+        }
         self.items.retain(|item| item.source != source);
         if let Some(message) = message {
             self.push(source, retention, message);
+        }
+    }
+
+    /// Whether `source` is already represented by exactly the single-block state
+    /// `message` describes — one item carrying that exact message, or (for `None`) no item
+    /// at all. The equality test [`replace_source`](Self::replace_source) uses to leave an
+    /// unchanged block in place.
+    fn source_block_is(&self, source: GgContextSource, message: Option<&Message>) -> bool {
+        let mut live = self.items.iter().filter(|item| item.source == source);
+        let current = live.next();
+        // More than one item for this source is not the single-block shape, so fall through
+        // to the rebuild that collapses it back to one.
+        if live.next().is_some() {
+            return false;
+        }
+        match (current, message) {
+            (None, None) => true,
+            (Some(item), Some(message)) => &item.message == message,
+            _ => false,
         }
     }
 
@@ -550,49 +586,72 @@ impl ContextModel {
     /// rebuilt fresh the next turn regardless). A no-op when no window limit is known (there is
     /// no fullness to report).
     pub fn refresh_fullness_signal(&mut self) {
-        self.remove_fullness_signal();
-        if let Some(text) = self.fullness_signal_text() {
-            self.push_labeled(
-                GgContextSource::System,
-                Retention::Pinned,
-                Message::system(text),
-                Some(FULLNESS_SIGNAL_LABEL.to_string()),
-            );
+        // Lift the prior signal out (remembering where it sat) so the numbers below are
+        // computed without it, then decide whether it moves at all.
+        let prior = self.items.iter().position(is_fullness_signal);
+        let prior = prior.map(|index| (index, self.items.remove(index)));
+        let Some(text) = self.fullness_signal_text() else {
+            return;
+        };
+        // An unchanged line goes back exactly where it was rather than to the tail, so this
+        // turn's prompt still extends the last one and stays cacheable — the same rule
+        // [`replace_source`](Self::replace_source) follows for the other pinned blocks.
+        if let Some((index, item)) = prior
+            && item.message.content.as_deref() == Some(text.as_str())
+        {
+            self.items.insert(index, item);
+            return;
         }
-    }
-
-    /// Remove the current fullness-signal item, if any (matched by its source and sentinel
-    /// label, so the base system prompt is untouched).
-    fn remove_fullness_signal(&mut self) {
-        self.items.retain(|item| !is_fullness_signal(item));
+        self.push_labeled(
+            GgContextSource::System,
+            Retention::Pinned,
+            Message::system(text),
+            Some(FULLNESS_SIGNAL_LABEL.to_string()),
+        );
     }
 
     /// The text of the fullness signal for the current window, or `None` when no window limit
     /// is known. Reports `used/limit tokens (P% full)` plus the two or three largest consuming
     /// sources, and a short hint that the agent can reclaim space itself.
+    ///
+    /// Every token figure is reported to [one-percent-of-window](fullness_report_granularity)
+    /// resolution. The line is a *hint* — the agent acts on "how full am I, and where is it
+    /// going", for which a token-exact figure is no more useful than a rounded one — and the
+    /// rounding is what lets [`refresh_fullness_signal`](Self::refresh_fullness_signal) leave
+    /// the line in place across turns that did not move it a meaningful amount. A figure that
+    /// changed by a handful of tokens would otherwise rewrite the tail of the prompt every
+    /// turn and cost the run its whole prompt cache.
     fn fullness_signal_text(&self) -> Option<String> {
         let limit = self.window_limit?;
         if limit == 0 {
             return None;
         }
-        let total = self.total_tokens();
+        let granularity = fullness_report_granularity(limit);
+        let total = round_to(self.total_tokens(), granularity);
+        // Derived from the rounded total so the reported figures agree with each other.
         let percent = ((total as f64 / limit as f64) * 100.0).round() as u64;
 
-        // The largest non-empty consumers, most first, for an at-a-glance hint of where the
-        // window is going.
+        // The largest consumers, most first, for an at-a-glance hint of where the window is
+        // going.
         let mut bands: Vec<(GgContextSource, u64)> = self
             .usage_by_source()
             .into_iter()
-            .filter(|usage| usage.tokens > 0)
             .map(|usage| (usage.source, usage.tokens))
             .collect();
         // Stable sort by tokens descending; ties keep `GgContextSource::ALL` order (the
-        // order `usage_by_source` produced), so the hint is deterministic.
+        // order `usage_by_source` produced), so the hint is deterministic. Sorted on the
+        // exact counts and only then rounded, so rounding cannot reorder the bands.
         bands.sort_by_key(|&(_, tokens)| std::cmp::Reverse(tokens));
+        // A band is named only once it rounds to a non-zero figure. That keeps the line free
+        // of `history 0` noise, and — because a source appearing in the window for the first
+        // time no longer rewrites the line while it is still a rounding error — keeps the line
+        // stable enough to hold its position turn over turn.
         let top: Vec<String> = bands
             .iter()
+            .map(|&(source, tokens)| (source, round_to(tokens, granularity)))
+            .filter(|&(_, tokens)| tokens > 0)
             .take(3)
-            .map(|(source, tokens)| format!("{} {tokens}", source_label(*source)))
+            .map(|(source, tokens)| format!("{} {tokens}", source_label(source)))
             .collect();
 
         let consumers = if top.is_empty() {
@@ -722,6 +781,30 @@ fn source_label(source: GgContextSource) -> &'static str {
 /// item carrying the [`FULLNESS_SIGNAL_LABEL`] sentinel), as opposed to the base system prompt.
 fn is_fullness_signal(item: &ContextItem) -> bool {
     item.source == GgContextSource::System && item.label.as_deref() == Some(FULLNESS_SIGNAL_LABEL)
+}
+
+/// The resolution the [fullness signal](ContextModel::refresh_fullness_signal) reports token
+/// figures at: one percent of the window, and never less than one token (so a tiny or unknown
+/// window still reports something rather than dividing by zero).
+///
+/// One percent is the resolution the line already reported its *percentage* at, so this simply
+/// holds its token figures to the same precision as the percentage beside them.
+fn fullness_report_granularity(limit: u64) -> u64 {
+    (limit / 100).max(1)
+}
+
+/// `value` rounded to the nearest multiple of `granularity` (halves round up).
+fn round_to(value: u64, granularity: u64) -> u64 {
+    if granularity <= 1 {
+        return value;
+    }
+    // Integer round-half-up without overflowing on a large `value`.
+    let remainder = value % granularity;
+    if remainder * 2 >= granularity {
+        value - remainder + granularity
+    } else {
+        value - remainder
+    }
 }
 
 // Read/partition seams for Phase 2 (compaction summarizes the ephemeral history and
