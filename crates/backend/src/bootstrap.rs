@@ -296,6 +296,13 @@ pub fn spawn_price_refresher(db: Arc<Db>, prices: OpenRouterPrices) -> tokio::ta
 
 /// Insert a price observation for `model_id` when it differs from the latest one
 /// on record (or there is none). Returns whether a row was inserted.
+///
+/// "Differs" covers the catalog facts riding along on the observation — the context
+/// window, release date, and accepted input modalities — not just the price triple.
+/// A fact can change while the price holds still (a provider adds a longer route; a
+/// model gains vision), and a fact nothing ever records is a fact gg cannot be told
+/// at launch. The price *series* the catalog renders collapses consecutive-equal
+/// price triples, so a fact-only observation adds no spurious price step.
 async fn insert_if_changed(
     db: &Db,
     model_id: &str,
@@ -303,11 +310,16 @@ async fn insert_if_changed(
     now: &str,
 ) -> Result<bool> {
     let prices = &details.prices;
+    let context_length = details.context_length.and_then(|c| i64::try_from(c).ok());
+    let input_modalities = encode_modalities(&details.input_modalities);
     let changed = match db.latest_price(model_id).await? {
         Some(latest) => {
             latest.uncached_input != prices.uncached_input
                 || latest.cached_input != prices.cached_input
                 || latest.output != prices.output
+                || latest.context_length != context_length
+                || latest.released_at != details.released_at
+                || latest.input_modalities != input_modalities
         }
         None => true,
     };
@@ -318,12 +330,32 @@ async fn insert_if_changed(
             uncached_input: prices.uncached_input,
             cached_input: prices.cached_input,
             output: prices.output,
-            context_length: details.context_length.and_then(|c| i64::try_from(c).ok()),
+            context_length,
             released_at: details.released_at.clone(),
+            input_modalities,
         })
         .await?;
     }
     Ok(changed)
+}
+
+/// Encode observed input modalities for storage: a comma-separated lowercase list,
+/// or `None` when OpenRouter reported none. `None` reads back as **unknown** rather
+/// than "text only", so an unannotated model is never wrongly denied an image.
+pub fn encode_modalities(modalities: &[String]) -> Option<String> {
+    (!modalities.is_empty()).then(|| modalities.join(","))
+}
+
+/// Decode a stored [`encode_modalities`] list back into its parts, dropping blanks.
+/// A `None` (or all-blank) column yields an empty list — unknown.
+pub fn decode_modalities(stored: Option<&str>) -> Vec<String> {
+    stored
+        .unwrap_or_default()
+        .split(',')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .map(str::to_string)
+        .collect()
 }
 
 /// Fetch OpenRouter's catalog as a base-price map keyed by OpenRouter id, for the

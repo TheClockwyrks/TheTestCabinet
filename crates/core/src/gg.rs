@@ -837,6 +837,19 @@ pub struct GgInvocation {
     /// an explicitly configured `windowLimit`).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub model_windows: BTreeMap<String, u64>,
+    /// The **input modalities** each model this run may bind accepts (`text`, `image`,
+    /// `file`, …), from the same model catalog and pushed in on the same terms as
+    /// [`model_windows`](Self::model_windows). Keyed by the model id the
+    /// [binding](GgSlotBinding::model_id) names.
+    ///
+    /// This is what lets gg show a model a reference image — the mockups a test case
+    /// ships are part of its spec — without breaking a run on a model that cannot take
+    /// one. A model listed **without** `image` is never sent a picture; a model that is
+    /// **absent** from the map is unknown rather than text-only, and gg tries the image
+    /// and recovers if the provider refuses it. Either way an image read never fails a
+    /// run.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub model_modalities: BTreeMap<String, Vec<String>>,
 }
 
 /// The **source** a context-window contribution is attributed to, for the per-source

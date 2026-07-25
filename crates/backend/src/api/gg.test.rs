@@ -99,6 +99,7 @@ fn build_new_job_leaves_gg_config_null_for_a_conventional_run() {
         retry_count: None,
         gg_capability_set: None,
         gg_model_windows: Default::default(),
+        gg_model_modalities: Default::default(),
     };
     let new = build_new_job(&launch, "2026-07-23T00:00:00Z").unwrap();
     assert!(new.gg_config_json.is_none());
@@ -149,6 +150,7 @@ fn window_observation(model_id: &str, context_length: i64) -> crate::db::PriceWr
         output: Some(2.0),
         context_length: Some(context_length),
         released_at: None,
+        input_modalities: None,
     }
 }
 
@@ -184,7 +186,7 @@ async fn launch_resolves_the_bound_models_context_windows() {
     .into_launch_body()
     .unwrap();
 
-    resolve_gg_model_windows(&db, &unreachable_prices(), &mut launch)
+    resolve_gg_model_facts(&db, &unreachable_prices(), &mut launch)
         .await
         .expect("every bound model is in the catalog");
 
@@ -197,6 +199,83 @@ async fn launch_resolves_the_bound_models_context_windows() {
     );
 }
 
+/// The same resolution also stamps each bound model's **input modalities** onto the
+/// launch — the fact gg reads to decide whether it may show that model a reference
+/// image. A model the catalog has no list for is left **out** of the map rather than
+/// recorded as text-only, so gg reads it as unknown and treats it optimistically.
+#[tokio::test]
+async fn launch_resolves_the_bound_models_input_modalities() {
+    let db = Db::connect_in_memory().await.unwrap();
+    let mut seeing = window_observation("anthropic/claude-opus-4.8", 200_000);
+    seeing.input_modalities = Some("text,image".to_string());
+    db.insert_price_observation(seeing).await.unwrap();
+    let mut blind = window_observation("z-ai/glm-5.2", 1_048_576);
+    blind.input_modalities = Some("text".to_string());
+    db.insert_price_observation(blind).await.unwrap();
+    // Observed for its window, but with no modality list recorded.
+    db.insert_price_observation(window_observation("mystery/model", 128_000))
+        .await
+        .unwrap();
+
+    let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
+    set.slots.push(test_cabinet_core::gg::GgSlotBinding::new(
+        "subagent",
+        "z-ai/glm-5.2",
+    ));
+    set.slots.push(test_cabinet_core::gg::GgSlotBinding::new(
+        "reviewer",
+        "mystery/model",
+    ));
+    let mut launch = GgRunRequest {
+        capability_set: set,
+        ..sample_request()
+    }
+    .into_launch_body()
+    .unwrap();
+
+    resolve_gg_model_facts(&db, &unreachable_prices(), &mut launch)
+        .await
+        .expect("every bound model has a window, which is what a launch hinges on");
+
+    assert_eq!(
+        launch.gg_model_modalities,
+        std::collections::BTreeMap::from([
+            (
+                "anthropic/claude-opus-4.8".to_string(),
+                vec!["text".to_string(), "image".to_string()]
+            ),
+            ("z-ai/glm-5.2".to_string(), vec!["text".to_string()]),
+        ]),
+        "an unobserved model is absent, not recorded as text-only"
+    );
+}
+
+/// An unknown modality list never blocks a launch. Refusing to enqueue over a fact that
+/// only decides whether one tool result may carry a picture would be the wrong trade —
+/// unlike the context window, which the run's whole accounting is measured against.
+#[tokio::test]
+async fn unknown_modalities_do_not_block_a_launch() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // A window and nothing else — exactly what a row recorded before modalities existed
+    // looks like.
+    db.insert_price_observation(window_observation("anthropic/claude-opus-4.8", 200_000))
+        .await
+        .unwrap();
+
+    let mut launch = GgRunRequest {
+        capability_set: GgCapabilitySet::minimal("anthropic/claude-opus-4.8"),
+        ..sample_request()
+    }
+    .into_launch_body()
+    .unwrap();
+
+    resolve_gg_model_facts(&db, &unreachable_prices(), &mut launch)
+        .await
+        .expect("a missing modality list is not a launch failure");
+    assert!(launch.gg_model_modalities.is_empty());
+    assert!(!launch.gg_model_windows.is_empty());
+}
+
 /// A bound model whose window resolves nowhere — not in the catalog, and not from a live
 /// lookup either — **rejects the launch**, naming the model. There is no default window: a
 /// run measured against an assumed figure would report fullness, trigger compaction, and
@@ -206,7 +285,7 @@ async fn launch_is_rejected_when_a_models_window_cannot_be_resolved() {
     let db = Db::connect_in_memory().await.unwrap();
     let mut launch = sample_request().into_launch_body().unwrap();
 
-    let err = resolve_gg_model_windows(&db, &unreachable_prices(), &mut launch)
+    let err = resolve_gg_model_facts(&db, &unreachable_prices(), &mut launch)
         .await
         .expect_err("an unresolvable window is a launch failure");
     assert!(err.contains("mock/echo"), "unexpected reason: {err}");
@@ -225,7 +304,7 @@ async fn launch_rejects_the_scripted_mock_provider() {
     .into_launch_body()
     .unwrap();
 
-    let err = resolve_gg_model_windows(&db, &unreachable_prices(), &mut launch)
+    let err = resolve_gg_model_facts(&db, &unreachable_prices(), &mut launch)
         .await
         .expect_err("a mock model cannot be launched");
     assert!(
@@ -246,7 +325,7 @@ async fn launch_overwrites_client_supplied_windows() {
         .insert("mock/echo".to_string(), 999_999);
 
     assert!(
-        resolve_gg_model_windows(&db, &unreachable_prices(), &mut launch)
+        resolve_gg_model_facts(&db, &unreachable_prices(), &mut launch)
             .await
             .is_err()
     );
@@ -270,9 +349,10 @@ async fn launch_resolves_nothing_for_a_conventional_run() {
         retry_count: None,
         gg_capability_set: None,
         gg_model_windows: Default::default(),
+        gg_model_modalities: Default::default(),
     };
 
-    resolve_gg_model_windows(&db, &unreachable_prices(), &mut launch)
+    resolve_gg_model_facts(&db, &unreachable_prices(), &mut launch)
         .await
         .expect("a non-gg run resolves nothing");
     assert!(launch.gg_model_windows.is_empty());

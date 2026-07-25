@@ -394,6 +394,11 @@ fn gg_request(model: &str) -> RunRequest {
         gg_capability_set: Some(GgCapabilitySet::minimal(model)),
         // What a launch pushes in: a context window per bound model.
         gg_model_windows: std::collections::BTreeMap::from([(model.to_string(), 200_000)]),
+        // And the input modalities the catalog observed for it.
+        gg_model_modalities: std::collections::BTreeMap::from([(
+            model.to_string(),
+            vec!["text".to_string(), "image".to_string()],
+        )]),
     }
 }
 
@@ -434,4 +439,31 @@ fn build_invocation_carries_the_resolved_model_windows() {
         err.to_string().contains("mock/echo"),
         "unexpected error: {err}"
     );
+}
+
+/// The per-model input modalities travel into the invocation on the same terms — how gg
+/// learns which of its models may be shown a reference image without holding a model
+/// table of its own.
+///
+/// Unlike the windows, a **missing** entry is not an error: a model the catalog has no
+/// modality list for is simply absent, and gg reads that as unknown (try an image, and
+/// recover if the provider refuses it) rather than as text-only.
+#[test]
+fn build_invocation_carries_the_resolved_model_modalities() {
+    let request = gg_request("anthropic/claude-opus-4.8");
+    let invocation = build_invocation(&request, "the build prompt", "/work", "run-123").unwrap();
+    assert_eq!(
+        invocation
+            .model_modalities
+            .get("anthropic/claude-opus-4.8")
+            .map(Vec::as_slice),
+        Some(["text".to_string(), "image".to_string()].as_slice())
+    );
+
+    // No modalities at all is a launchable configuration, unlike a missing window.
+    let mut request = gg_request("mock/echo");
+    request.gg_model_modalities.clear();
+    let invocation = build_invocation(&request, "prompt", "/work", "run-123")
+        .expect("unknown modalities never block a run");
+    assert!(invocation.model_modalities.is_empty());
 }

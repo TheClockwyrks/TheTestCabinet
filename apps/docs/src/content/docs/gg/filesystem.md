@@ -80,11 +80,66 @@ Two deliberate properties keep the arms comparable:
 A separate 256 KiB **byte** ceiling backstops every mode (a file can have enormous lines),
 and applies to whatever the line window selected. A read truncated by it says so.
 
+## Reading images
+
+A test case's specs ship **reference mockups**, so `read_file` on a `.png` has to do
+something better than hand the model a screenful of mojibake — which is exactly what
+decoding image bytes as lossy UTF-8 produces. It reads the picture as a picture:
+
+- **The format is detected by magic number, not by extension.** The tool already has the
+  bytes, and an extension is a claim rather than a fact — a mockup saved as `.txt` is
+  still an image, and a `.png` holding text is still text. PNG, JPEG, GIF, and WebP are
+  recognized; anything else reads as the ordinary file it is.
+- **The image is attached to its own tool result**, alongside a line of prose naming the
+  file, format, and size. It travels to the provider as a base64 `data:` URL in a
+  multi-part message.
+- **`offset`/`limit` do not apply.** They describe lines of text; a picture is returned
+  whole or not at all.
+- **An image over 8 MiB is described rather than attached.** An inline image is charged to
+  the window at a rate no estimator can pin down, so an unbounded one is the easiest way
+  for a run to spend its whole context on a single call. Every reference mockup a test
+  case ships clears the limit by a wide margin.
+
+### Models that cannot see images
+
+The models a study sweeps are not uniform: some accept image input and some are
+text-only, and a text-only model answers an image-bearing request with a hard error.
+**Reading a reference image must never be what discards a run**, so gg resolves this in
+two stages.
+
+**Declared, up front.** The [model catalog](/components/backend/) records the input
+modalities OpenRouter reports per model, and the launch pushes them into the run
+alongside each model's [context window](/gg/multi-model/). A model declared *without*
+`image` is simply never sent one: `read_file` describes the file instead of attaching it,
+the system prompt tells the model up front that it cannot see images and that re-reading
+will not change that, and no request is wasted.
+
+**Learned, at runtime.** A model the catalog has no modality list for is treated
+**optimistically** — unknown is not the same as text-only, and withholding a test case's
+mockups from a just-released model would be the wrong default for a harness whose point
+is running new models. If the provider then refuses the request (OpenRouter answers
+`No endpoints found that support image input`), gg:
+
+1. records the model as unable to see images, **run-wide** — shared across agents, so
+   every subagent bound to the same model stops attaching them too;
+2. strips the images from the context, keeping each affected tool result's text *and* its
+   `tool_call_id` — so every assistant tool call still has its matching result and the
+   conversation stays well-formed — plus a note telling the model where the picture went;
+3. re-runs the same turn against the now image-free conversation.
+
+Being wrong therefore costs one request per model per run, not the run. A model's vision
+support is shown on its page in the console's **Models** section, under **Specs**.
+
 ## What this costs the context window
 
 A `read_file` result enters the window as a `FileView`, tagged with its path — its own
 band in the [context breakdown](/gg/context-visibility/), and the thing
-[`evict_file_view`](/gg/agent-managed-context/) targets. A capped read puts only the
+[`evict_file_view`](/gg/agent-managed-context/) targets. An attached image is part of the
+same view, so evicting the view reclaims the picture too. Its cost is **estimated**: every
+provider charges images by its own tiling of the decoded dimensions, which gg does not
+decode, so the figure is a deliberately coarse stand-in whose job is only to stop an
+attached mockup being accounted as free (which would let fullness drift below the truth
+and delay compaction, precisely on the runs that read the most reference material). A capped read puts only the
 window it returned into the context, so the two capped modes and the eviction tool are
 different answers to the same problem: one rations what enters the window, the other
 reclaims it after the fact. They compose, and comparing them is a reasonable study.

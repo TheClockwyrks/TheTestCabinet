@@ -30,9 +30,11 @@ fn full_system() -> SystemContext {
         ],
         responses_as_code: false,
         read_file: ReadFileView {
+            offered: true,
             capped: true,
             hard_cap: true,
             line_cap: 250,
+            images: true,
         },
         skills: vec![SkillView {
             name: "physics".to_string(),
@@ -181,9 +183,11 @@ fn the_read_cap_is_stated_only_when_one_is_in_force() {
 
     let default_cap = render_system(&SystemContext {
         read_file: ReadFileView {
+            offered: true,
             capped: true,
             hard_cap: false,
             line_cap: 40,
+            images: true,
         },
         ..full_system()
     });

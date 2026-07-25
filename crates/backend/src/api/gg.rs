@@ -43,7 +43,7 @@ use crate::snapshot::run_summary_score;
 use crate::store::StoredManifest;
 
 use super::AppState;
-use super::jobs::{LaunchAck, build_new_job, now_rfc3339, resolve_gg_model_windows};
+use super::jobs::{LaunchAck, build_new_job, now_rfc3339, resolve_gg_model_facts};
 
 /// The default variant a gg run targets when the request omits one — the same
 /// baseline variant every case defines.
@@ -147,6 +147,7 @@ impl GgRunRequest {
             // Resolved from the model catalog by the handler, which has the database
             // this lowering does not; never taken from the request.
             gg_model_windows: Default::default(),
+            gg_model_modalities: Default::default(),
         })
     }
 }
@@ -201,7 +202,7 @@ pub async fn launch_gg(
     // against. gg keeps no model table of its own and assumes no default, so a model
     // whose window cannot be resolved (not in the catalog, and not listed by
     // OpenRouter either) is rejected here rather than run against a guess.
-    resolve_gg_model_windows(&state.db, &state.prices, &mut launch)
+    resolve_gg_model_facts(&state.db, &state.prices, &mut launch)
         .await
         .map_err(ApiError::bad_request)?;
     let now = now_rfc3339()?;

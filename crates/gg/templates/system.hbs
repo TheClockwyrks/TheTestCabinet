@@ -64,6 +64,19 @@ once, or page through it with `offset`.
 {{/if}}
 {{/if}}
 
+{{#if readFile.offered}}
+{{#if readFile.images}}
+You can **see images**. `read_file` on a PNG, JPEG, GIF, or WebP file returns the picture
+itself, so read the reference mockups a specification points at and match what you build to
+what you see in them.
+{{else}}
+You **cannot see images** this run: the model you are running on does not accept image input.
+`read_file` on a picture will describe the file rather than show it to you, and reading it
+again will not change that. Build from the written specification, and do not spend turns
+trying to view reference images.
+{{/if}}
+{{/if}}
+
 {{#if skills}}
 ## Skills
 

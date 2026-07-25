@@ -96,7 +96,10 @@ function StatsContent({ model }: { model: ModelSummary }) {
         </div>
       </section>
 
-      {/* Specs: the context window and release date OpenRouter reports. */}
+      {/* Specs: the context window, release date, and accepted input modalities
+          OpenRouter reports. The modalities are not trivia — they decide whether a
+          gg run may show this model the reference images a test case's specs ship,
+          so a text-only model is worth seeing at a glance. */}
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Specs</h2>
         <div className={styles.grid}>
@@ -116,10 +119,38 @@ function StatsContent({ model }: { model: ModelSummary }) {
             }
             muted={!model.releasedAt}
           />
+          <Stat
+            label="Input modalities"
+            // An empty list is "not observed yet", not "text only" — showing a dash
+            // rather than claiming text-only keeps the two apart.
+            value={
+              model.inputModalities.length > 0
+                ? model.inputModalities.map(formatModality).join(", ")
+                : "—"
+            }
+            muted={model.inputModalities.length === 0}
+          />
+          <Stat
+            label="Vision"
+            value={
+              model.inputModalities.length === 0
+                ? "—"
+                : model.inputModalities.includes("image")
+                  ? "Accepts images"
+                  : "Text only"
+            }
+            muted={model.inputModalities.length === 0}
+          />
         </div>
       </section>
     </>
   );
+}
+
+// Title-case a modality token for display (`image` → `Image`). The catalog stores
+// them lowercased so comparisons are exact; only the label is prettified.
+function formatModality(modality: string): string {
+  return modality.charAt(0).toUpperCase() + modality.slice(1);
 }
 
 interface StatProps {

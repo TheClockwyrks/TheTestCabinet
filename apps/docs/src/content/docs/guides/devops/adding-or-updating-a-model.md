@@ -112,8 +112,10 @@ single committed number:
 
 - The **backend** fetches a model's current OpenRouter price **when a run
   completes**, and again on a **24-hour periodic refresh**.
-- An observation is appended to the price history **only when the price changed**,
-  so the table doesn't grow on every identical fetch.
+- An observation is appended **only when something changed** — the price, or one of
+  the catalog facts riding along on it (see below) — so the table doesn't grow on
+  every identical fetch. The graph and table collapse consecutive-equal prices, so an
+  observation recorded for a fact change adds no spurious price step.
 - Fetching at run-completion time means **promotional pricing** (e.g. a
   launch-week discount) is captured as it was when the run actually ran.
 - A `:free`-tagged OpenRouter run is priced at the model's **base rate**, never
@@ -136,6 +138,21 @@ whole catalog. If neither the catalog nor that lookup can answer, **the launch i
 rejected**: gg assumes no default window, because a run measured against a guessed
 one looks healthy and reports the wrong thing. See
 [A run with no window does not start](/gg/context-visibility/#a-run-with-no-window-does-not-start).
+
+### Input modalities
+
+Each observation likewise carries the **input modalities** OpenRouter reports the
+model accepts (`text`, `image`, `file`, …), shown on the model's detail page under
+**Specs** as both the raw list and a plain **Vision: accepts images / text only**
+line. They travel to a gg run on the same launch as the context window, and decide
+whether the agent may be shown the **reference images** a test case's specs ship —
+see [Reading images](/gg/filesystem/#reading-images).
+
+Unlike the window, an unknown modality list **never blocks a launch**. It is recorded
+as unknown and the run proceeds: gg treats an unannotated model optimistically and
+recovers if the provider turns out to refuse the image. Blocking a run over a fact
+that only affects whether one tool result may carry a picture would be the wrong
+trade, and an empty list in the console means *not observed yet*, not *text only*.
 
 ## Updating an existing model
 

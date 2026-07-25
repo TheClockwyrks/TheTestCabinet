@@ -214,6 +214,7 @@ async fn run_command(command: &str, timeout: Duration, ctx: &ToolContext) -> Too
         ok,
         output,
         summary: Some(summary),
+        images: Vec::new(),
     }
 }
 

@@ -86,6 +86,10 @@ export interface Model {
   contextLength: number | null;
   /** The latest observed release date (RFC 3339), or null. */
   releasedAt: string | null;
+  /** The input modalities the model accepts (`text`, `image`, `file`, …),
+   * lowercased. **Empty means unobserved**, not "text only" — the catalog has
+   * simply not recorded a modality list for this model yet. */
+  inputModalities: string[];
 }
 
 /** The `POST /models` / `PUT /models/{slug}` request body. Each alias pairs a slug

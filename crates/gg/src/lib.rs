@@ -41,6 +41,7 @@ mod summary;
 mod tasks;
 mod telemetry;
 mod tools;
+mod vision;
 
 use std::path::PathBuf;
 use std::process::ExitCode;

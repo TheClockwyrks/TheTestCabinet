@@ -58,6 +58,10 @@ wasmtime = { workspace = true }
 # is a trait so this is swappable, but the default counts with a fixed BPE base as a
 # documented cross-model approximation. The crate embeds its vocab (no network).
 tiktoken-rs = { workspace = true }
+# Encoding a workspace image for the wire: a `read_file` of a reference mockup attaches
+# the picture to its tool result as a base64 `data:` URL, which is how every provider
+# behind OpenRouter takes an inline image (`src/tools/filesystem.rs`, `src/client.rs`).
+base64 = { workspace = true }
 
 [dev-dependencies]
 # A scratch workspace root for the tool tests (shell + filesystem): tools operate on

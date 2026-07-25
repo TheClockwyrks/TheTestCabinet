@@ -15,9 +15,9 @@ use crate::metrics::TokenPrices;
 const MODELS_URL: &str = "https://openrouter.ai/api/v1/models";
 
 /// Selected OpenRouter metadata for a model: its comparable per-token prices
-/// plus the catalog facts the static site surfaces — the context window and the
-/// model's release date. Each field beyond the prices is optional because
-/// OpenRouter does not always report it.
+/// plus the catalog facts the static site surfaces — the context window, the
+/// model's release date, and the input modalities it accepts. Each field beyond
+/// the prices is optional because OpenRouter does not always report it.
 #[derive(Debug, Clone)]
 pub struct ModelDetails {
     /// Comparable per-token prices, mapped onto [`TokenPrices`].
@@ -27,6 +27,42 @@ pub struct ModelDetails {
     /// The model's release date as an RFC 3339 UTC timestamp, derived from
     /// OpenRouter's `created` unix timestamp, when present.
     pub released_at: Option<String>,
+    /// The input modalities OpenRouter says the model accepts (`text`, `image`,
+    /// `file`, `audio`, …), normalized to lowercase. Empty when OpenRouter
+    /// reports none, which is "unknown" rather than "text only".
+    pub input_modalities: Vec<String>,
+}
+
+/// The modality token OpenRouter uses for image input — the one gg checks before
+/// putting a picture in a prompt.
+pub const MODALITY_IMAGE: &str = "image";
+
+/// The launch-time facts a [gg](crate::gg) run needs about one model, resolved in a
+/// single per-model fetch: the context window its accounting is measured against and
+/// the input modalities that decide whether it can be shown an image.
+///
+/// These travel together because they come from the same `/models/{id}/endpoints`
+/// read and are pushed into the run container together — a run is *told* what it needs
+/// about its models at launch rather than querying for it from inside the container.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ModelLaunchFacts {
+    /// The largest context length any provider route reports, or `None` when
+    /// OpenRouter lists the model but reports no window for any route.
+    pub context_window: Option<u64>,
+    /// The input modalities the model accepts, normalized to lowercase. Empty means
+    /// OpenRouter reported none — unknown, not "text only".
+    pub input_modalities: Vec<String>,
+}
+
+impl ModelLaunchFacts {
+    /// Whether the model is known to accept image input.
+    ///
+    /// `false` for an **empty** modality list too: this asks what OpenRouter
+    /// *declared*, and callers that must decide something under uncertainty
+    /// distinguish "declared text-only" from "nothing declared" themselves.
+    pub fn accepts_images(&self) -> bool {
+        self.input_modalities.iter().any(|m| m == MODALITY_IMAGE)
+    }
 }
 
 /// Fetches model prices from OpenRouter.
@@ -76,11 +112,7 @@ impl OpenRouterPrices {
     /// metadata alongside the prices.
     pub async fn model_details(&self, model_id: &str) -> Result<ModelDetails> {
         let model = self.fetch_model(model_id).await?;
-        Ok(ModelDetails {
-            prices: prices_of(&model),
-            context_length: model.context_length,
-            released_at: model.created.and_then(release_date),
-        })
+        Ok(details_of(model))
     }
 
     /// Look up the comparable prices plus catalog facts for **every** model
@@ -95,38 +127,36 @@ impl OpenRouterPrices {
             .fetch_catalog()
             .await?
             .into_iter()
-            .map(|model| {
-                let details = ModelDetails {
-                    prices: prices_of(&model),
-                    context_length: model.context_length,
-                    released_at: model.created.and_then(release_date),
-                };
-                (model.id, details)
-            })
+            .map(|model| (model.id.clone(), details_of(model)))
             .collect())
     }
 
-    /// Look up **one** model's context window in tokens, fetching only that model.
+    /// Look up **one** model's [launch facts](ModelLaunchFacts) — its context window and
+    /// the input modalities it accepts — fetching only that model.
     ///
     /// Unlike [`model_details`](Self::model_details) — which serves the completion-time
     /// price lookup and reads the whole catalog — this hits OpenRouter's per-model
     /// endpoint (`/models/{id}/endpoints`, a few KB rather than the ~half-megabyte
-    /// listing). It exists for the launch path, which needs the window for the one or
-    /// two models a run binds and must not pay for the entire catalog to get them.
+    /// listing). It exists for the launch path, which needs these facts for the one or
+    /// two models a run binds and must not pay for the entire catalog to get them. Both
+    /// facts come out of the **same** response, so a run learns them in one request.
     ///
     /// That endpoint reports a context length **per provider route** rather than one
     /// headline figure, and the routes can differ (a model may be served at 1M tokens by
     /// most providers and 200k by one). The **maximum** is taken because that is exactly
     /// what the listing's top-level `context_length` reports, so a window resolved here
-    /// agrees with the one the periodic refresh records rather than fighting it.
+    /// agrees with the one the periodic refresh records rather than fighting it. The
+    /// modalities, by contrast, are a property of the model rather than a route, and are
+    /// read from the response's single `architecture` block.
     ///
-    /// `Ok(None)` means OpenRouter lists the model but reports no context length for any
-    /// route; an unlisted model is an `Err`.
-    pub async fn model_context_window(&self, model_id: &str) -> Result<Option<u64>> {
+    /// A [`context_window`](ModelLaunchFacts::context_window) of `None` means OpenRouter
+    /// lists the model but reports no context length for any route; an unlisted model is
+    /// an `Err`.
+    pub async fn model_launch_facts(&self, model_id: &str) -> Result<ModelLaunchFacts> {
         let url = format!("{}/{model_id}/endpoints", self.endpoint);
         let response = reqwest::get(&url).await.map_err(|err| {
             Error::Validation(format!(
-                "fetching the OpenRouter context window for `{model_id}`: {err}"
+                "fetching the OpenRouter catalog facts for `{model_id}`: {err}"
             ))
         })?;
         if !response.status().is_success() {
@@ -137,15 +167,18 @@ impl OpenRouterPrices {
         }
         let body: ModelEndpointsResponse = response.json().await.map_err(|err| {
             Error::Validation(format!(
-                "parsing the OpenRouter context window for `{model_id}`: {err}"
+                "parsing the OpenRouter catalog facts for `{model_id}`: {err}"
             ))
         })?;
-        Ok(body
-            .data
-            .endpoints
-            .iter()
-            .filter_map(|endpoint| endpoint.context_length)
-            .max())
+        Ok(ModelLaunchFacts {
+            context_window: body
+                .data
+                .endpoints
+                .iter()
+                .filter_map(|endpoint| endpoint.context_length)
+                .max(),
+            input_modalities: modalities_of(body.data.architecture.as_ref()),
+        })
     }
 
     /// Fetch OpenRouter's full model catalog.
@@ -173,6 +206,37 @@ impl OpenRouterPrices {
                 ))
             })
     }
+}
+
+/// Map one catalog entry onto the [`ModelDetails`] the catalog stores.
+fn details_of(model: Model) -> ModelDetails {
+    ModelDetails {
+        prices: prices_of(&model),
+        context_length: model.context_length,
+        released_at: model.created.and_then(release_date),
+        input_modalities: modalities_of(model.architecture.as_ref()),
+    }
+}
+
+/// The normalized input modalities an `architecture` block declares: trimmed,
+/// lowercased, blanks dropped, first occurrence kept.
+///
+/// A missing block (or one with no `input_modalities`) yields an **empty** list,
+/// which every caller reads as "OpenRouter said nothing" rather than "text only" —
+/// the distinction that keeps an unannotated model from being wrongly denied an
+/// image.
+fn modalities_of(architecture: Option<&Architecture>) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for raw in architecture
+        .map(|a| a.input_modalities.as_slice())
+        .unwrap_or(&[])
+    {
+        let normalized = raw.trim().to_lowercase();
+        if !normalized.is_empty() && !out.contains(&normalized) {
+            out.push(normalized);
+        }
+    }
+    out
 }
 
 /// Map an OpenRouter model's pricing block onto [`TokenPrices`].
@@ -232,21 +296,34 @@ struct Model {
     created: Option<i64>,
     #[serde(default)]
     context_length: Option<u64>,
+    #[serde(default)]
+    architecture: Option<Architecture>,
+}
+
+/// A model's `architecture` block. Only the input modalities are read: they are
+/// what decides whether a prompt may carry an image. The block also names the
+/// tokenizer and the output modalities, which nothing here needs.
+#[derive(Debug, Deserialize)]
+struct Architecture {
+    #[serde(default)]
+    input_modalities: Vec<String>,
 }
 
 /// The OpenRouter `/models/{id}/endpoints` response envelope — the single-model read
-/// [`model_context_window`](OpenRouterPrices::model_context_window) uses.
+/// [`model_launch_facts`](OpenRouterPrices::model_launch_facts) uses.
 #[derive(Debug, Deserialize)]
 struct ModelEndpointsResponse {
     data: ModelEndpoints,
 }
 
-/// One model's provider routes. Only the context lengths are read here; the endpoint
-/// carries per-route pricing too, but prices are recorded from the listing (whose
-/// top-level block is the headline the catalog stores), so reading them here would
-/// invite two sources disagreeing.
+/// One model's `architecture` block and its provider routes. The context lengths and
+/// the input modalities are read here; the endpoint carries per-route pricing too, but
+/// prices are recorded from the listing (whose top-level block is the headline the
+/// catalog stores), so reading them here would invite two sources disagreeing.
 #[derive(Debug, Deserialize)]
 struct ModelEndpoints {
+    #[serde(default)]
+    architecture: Option<Architecture>,
     #[serde(default)]
     endpoints: Vec<ModelEndpoint>,
 }

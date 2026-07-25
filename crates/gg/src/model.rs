@@ -31,6 +31,41 @@ pub enum Role {
     Tool,
 }
 
+/// An image attached to a [`Message`] — how a picture in the workspace reaches a
+/// model that can see one.
+///
+/// Held as raw base64 plus its media type rather than as a formatted `data:` URL, so
+/// the domain type stays free of any provider's encoding; [`crate::client`] renders it
+/// into whatever shape the wire wants. `bytes` is the **estimated** decoded size,
+/// carried so context accounting can charge the image without decoding it again.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageContent {
+    /// The IANA media type (`image/png`, `image/jpeg`, …).
+    pub media_type: String,
+    /// The image's bytes, base64-encoded (no `data:` prefix).
+    pub data_base64: String,
+    /// The decoded size in bytes — what the file on disk measured.
+    pub bytes: u64,
+}
+
+impl ImageContent {
+    /// An image of `media_type` from already-encoded `data_base64` covering `bytes`
+    /// decoded bytes.
+    pub fn new(media_type: impl Into<String>, data_base64: impl Into<String>, bytes: u64) -> Self {
+        Self {
+            media_type: media_type.into(),
+            data_base64: data_base64.into(),
+            bytes,
+        }
+    }
+
+    /// The `data:` URL form providers accept: `data:<media type>;base64,<data>`.
+    pub fn data_url(&self) -> String {
+        format!("data:{};base64,{}", self.media_type, self.data_base64)
+    }
+}
+
 /// A single conversation message.
 ///
 /// The shape is uniform across roles; which fields are populated depends on the
@@ -41,6 +76,9 @@ pub enum Role {
 ///   and/or [`tool_calls`](Self::tool_calls).
 /// - `tool`: [`content`](Self::content) (the tool's result text) plus the
 ///   [`tool_call_id`](Self::tool_call_id) it answers.
+///
+/// A `user` or `tool` message may additionally carry [`images`](Self::images), which
+/// turn its content into a multi-part message on the wire.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Message {
@@ -58,6 +96,11 @@ pub struct Message {
     /// `None` for every other role.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_call_id: Option<String>,
+    /// Images carried alongside the text — a `read_file` of a PNG the model can
+    /// actually look at. Empty for every message that carries only text, which is the
+    /// overwhelming majority, so the wire shape is unchanged for them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub images: Vec<ImageContent>,
 }
 
 impl Message {
@@ -68,6 +111,7 @@ impl Message {
             content: Some(content.into()),
             tool_calls: Vec::new(),
             tool_call_id: None,
+            images: Vec::new(),
         }
     }
 
@@ -78,6 +122,7 @@ impl Message {
             content: Some(content.into()),
             tool_calls: Vec::new(),
             tool_call_id: None,
+            images: Vec::new(),
         }
     }
 
@@ -90,6 +135,7 @@ impl Message {
             content,
             tool_calls,
             tool_call_id: None,
+            images: Vec::new(),
         }
     }
 
@@ -101,7 +147,30 @@ impl Message {
             content: Some(content.into()),
             tool_calls: Vec::new(),
             tool_call_id: Some(tool_call_id.into()),
+            images: Vec::new(),
         }
+    }
+
+    /// This message with `images` attached — the builder a `read_file` of a picture
+    /// goes through. Attaching none leaves the message exactly as it was.
+    pub fn with_images(mut self, images: Vec<ImageContent>) -> Self {
+        self.images = images;
+        self
+    }
+
+    /// Drop every attached image, returning whether any were removed.
+    ///
+    /// This is the recovery step when a provider turns out not to accept images after
+    /// all: the message keeps its text and — crucially — its
+    /// [`tool_call_id`](Self::tool_call_id), so the assistant tool-call it answers
+    /// still has its matching result and the conversation stays well-formed. Only the
+    /// picture the model cannot see goes away.
+    pub fn strip_images(&mut self) -> bool {
+        if self.images.is_empty() {
+            return false;
+        }
+        self.images.clear();
+        true
     }
 }
 
@@ -226,6 +295,21 @@ pub enum ModelError {
         /// The last error observed.
         last: String,
     },
+    /// The request carried an image and the provider has no route for this model that
+    /// accepts image input.
+    ///
+    /// Recoverable in a way no other error is: the *conversation* is at fault, not the
+    /// configuration, and dropping the image fixes it. The loop responds by recording
+    /// that this model cannot see images, [stripping](Message::strip_images) them from
+    /// the context, and re-running the same turn — so a run against a text-only model
+    /// survives having read a reference mockup instead of dying on it.
+    #[error("the model `{model_id}` does not accept image input: {message}")]
+    VisionUnsupported {
+        /// The model that refused the image.
+        model_id: String,
+        /// A (truncated) copy of the provider's error body.
+        message: String,
+    },
     /// A `2xx` response could not be parsed into a [`ModelResponse`]. Fatal — retrying
     /// an already-successful-but-malformed response would not help.
     #[error("could not parse model response: {0}")]
@@ -255,6 +339,16 @@ impl ModelError {
             ModelError::MissingApiKey => true,
             ModelError::Fatal { status, .. } => matches!(status, 401 | 403),
             _ => false,
+        }
+    }
+
+    /// The model id a [`VisionUnsupported`](Self::VisionUnsupported) names, or `None`
+    /// for every other error. The loop's one check for "can I recover from this by
+    /// dropping the pictures and trying again?".
+    pub fn vision_unsupported_model(&self) -> Option<&str> {
+        match self {
+            ModelError::VisionUnsupported { model_id, .. } => Some(model_id),
+            _ => None,
         }
     }
 }

@@ -29,6 +29,7 @@ fn claim() -> ClaimedJob {
             retry_count: None,
             gg_capability_set: None,
             gg_model_windows: Default::default(),
+            gg_model_modalities: Default::default(),
         },
     }
 }

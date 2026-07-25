@@ -52,6 +52,7 @@ fn price(
         output: Some(output),
         context_length: Some(200_000),
         released_at: Some("2026-01-01T00:00:00Z".to_string()),
+        input_modalities: Some("text,image".to_string()),
     }
 }
 
@@ -192,6 +193,7 @@ fn window_observation(model_id: &str, context_length: i64) -> crate::db::PriceWr
         output: Some(2.0),
         context_length: Some(context_length),
         released_at: None,
+        input_modalities: None,
     }
 }
 
@@ -215,7 +217,10 @@ async fn context_window_reads_the_latest_observation_by_canonical_id() {
         "anthropic/claude-opus-4.8:free",
     ] {
         assert_eq!(
-            context_window_for(&db, id, HarnessSlug::Gg).await.unwrap(),
+            launch_facts_for(&db, id, HarnessSlug::Gg)
+                .await
+                .unwrap()
+                .context_window,
             Some(400_000),
             "{id}"
         );
@@ -248,22 +253,76 @@ async fn context_window_follows_a_curated_model_alias() {
         .unwrap();
 
     assert_eq!(
-        context_window_for(&db, "claude-opus-4-8", HarnessSlug::Claude)
+        launch_facts_for(&db, "claude-opus-4-8", HarnessSlug::Claude)
             .await
-            .unwrap(),
+            .unwrap()
+            .context_window,
         Some(200_000)
     );
 }
 
-/// A model the catalog has no observation for has no window — the caller (and so gg)
-/// treats that as "unknown" rather than guessing.
+/// A model the catalog has no observation for has no facts at all — the caller (and so
+/// gg) treats that as "unknown" rather than guessing.
 #[tokio::test]
 async fn context_window_is_none_for_an_unknown_model() {
     let db = crate::db::Db::connect_in_memory().await.unwrap();
-    assert_eq!(
-        context_window_for(&db, "mock/scripted-builder", HarnessSlug::Gg)
-            .await
-            .unwrap(),
-        None
-    );
+    let facts = launch_facts_for(&db, "mock/scripted-builder", HarnessSlug::Gg)
+        .await
+        .unwrap();
+    assert_eq!(facts.context_window, None);
+    // Empty modalities means *unobserved*, which gg reads as "try an image and recover
+    // if refused" — not as "text only".
+    assert!(facts.input_modalities.is_empty());
+    assert!(!facts.accepts_images());
+}
+
+/// The input modalities ride along on the same observation as the window and come back
+/// from the same lookup, so gg learns both from one catalog read.
+#[tokio::test]
+async fn launch_facts_carry_the_observed_input_modalities() {
+    let db = crate::db::Db::connect_in_memory().await.unwrap();
+    let mut observation = window_observation("anthropic/claude-opus-4.8", 200_000);
+    observation.input_modalities = Some("text,image".to_string());
+    db.insert_price_observation(observation).await.unwrap();
+
+    let facts = launch_facts_for(&db, "anthropic/claude-opus-4.8", HarnessSlug::Gg)
+        .await
+        .unwrap();
+    assert_eq!(facts.context_window, Some(200_000));
+    assert_eq!(facts.input_modalities, vec!["text", "image"]);
+    assert!(facts.accepts_images());
+}
+
+/// A model observed as text-only is reported as such — the fact that keeps gg from
+/// putting a reference mockup in a prompt it would be refused for.
+#[tokio::test]
+async fn launch_facts_report_a_text_only_model() {
+    let db = crate::db::Db::connect_in_memory().await.unwrap();
+    let mut observation = window_observation("z-ai/glm-5.2", 1_048_576);
+    observation.input_modalities = Some("text".to_string());
+    db.insert_price_observation(observation).await.unwrap();
+
+    let facts = launch_facts_for(&db, "z-ai/glm-5.2", HarnessSlug::Gg)
+        .await
+        .unwrap();
+    assert_eq!(facts.input_modalities, vec!["text"]);
+    assert!(!facts.accepts_images());
+}
+
+/// An observation recorded before the modality column existed reads back as unknown
+/// rather than as text-only, so an old row can never wrongly deny a model an image.
+#[tokio::test]
+async fn a_pre_existing_observation_reads_as_unknown_modalities() {
+    let db = crate::db::Db::connect_in_memory().await.unwrap();
+    // `window_observation` leaves `input_modalities` unset, exactly as a row written
+    // before this column did.
+    db.insert_price_observation(window_observation("legacy/model", 128_000))
+        .await
+        .unwrap();
+
+    let facts = launch_facts_for(&db, "legacy/model", HarnessSlug::Gg)
+        .await
+        .unwrap();
+    assert_eq!(facts.context_window, Some(128_000));
+    assert!(facts.input_modalities.is_empty());
 }

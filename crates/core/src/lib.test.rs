@@ -341,6 +341,7 @@ fn request_with_override(max_runtime_override: Option<u64>) -> RunRequest {
         container_image: None,
         gg_capability_set: None,
         gg_model_windows: Default::default(),
+        gg_model_modalities: Default::default(),
     }
 }
 
@@ -387,6 +388,7 @@ fn a_gg_run_with_a_capability_set_is_gg_and_yields_its_set() {
         // The launch resolves a context window for every bound model; a gg run
         // carrying none is refused (see the test below).
         gg_model_windows: BTreeMap::from([("mock/primary".to_string(), 200_000)]),
+        gg_model_modalities: Default::default(),
         ..request_with_override(None)
     };
     assert!(request.is_gg());
@@ -430,6 +432,7 @@ fn a_gg_run_without_a_model_window_is_a_configuration_error() {
         gg_capability_set: Some(set),
         // Only the primary is covered; the subagent's model is not.
         gg_model_windows: BTreeMap::from([("mock/primary".to_string(), 200_000)]),
+        gg_model_modalities: Default::default(),
         ..request_with_override(None)
     };
     let err = request

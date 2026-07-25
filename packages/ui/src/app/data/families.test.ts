@@ -18,6 +18,7 @@ function model(name: string, aliases: ModelAlias[]): Model {
     priceHistory: [],
     contextLength: null,
     releasedAt: null,
+    inputModalities: [],
   };
 }
 

@@ -105,6 +105,16 @@ pub struct LaunchBody {
     /// the catalog knows no window for any bound model, and for every non-gg run.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub gg_model_windows: std::collections::BTreeMap<String, u64>,
+    /// The input modalities each model this **gg** run may bind accepts (`text`,
+    /// `image`, `file`, …), as the model catalog observed them.
+    ///
+    /// **Filled in by the backend at enqueue, not sent by a client**, on the same terms
+    /// as [`gg_model_windows`](Self::gg_model_windows) and from the same lookup. A model
+    /// the catalog has no modality list for is simply **absent** from the map, which gg
+    /// reads as unknown rather than as "text only": it will try an image and recover if
+    /// the provider refuses it. Empty for every non-gg run.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub gg_model_modalities: std::collections::BTreeMap<String, Vec<String>>,
 }
 
 /// The claimed job the dispatcher receives from `POST /jobs/next`: the id, the

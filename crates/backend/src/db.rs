@@ -2783,6 +2783,9 @@ pub struct PriceWrite {
     pub output: Option<f64>,
     pub context_length: Option<i64>,
     pub released_at: Option<String>,
+    /// The accepted input modalities as a comma-separated lowercase list, or
+    /// `None` when OpenRouter reported none (unknown, not "text only").
+    pub input_modalities: Option<String>,
 }
 
 /// Project a stored `model_alias` row into an [`AliasEntry`], parsing its
@@ -2973,6 +2976,7 @@ impl Db {
             output: Set(write.output),
             context_length: Set(write.context_length),
             released_at: Set(write.released_at),
+            input_modalities: Set(write.input_modalities),
         })
         .exec(&self.conn())
         .await?;

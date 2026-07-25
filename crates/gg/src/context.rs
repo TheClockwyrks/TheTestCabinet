@@ -49,7 +49,7 @@ use std::sync::Arc;
 
 use test_cabinet_core::gg::{GgContextSource, GgContextSourceUsage, GgTelemetryKind};
 
-use crate::model::{Message, Role, ToolCall};
+use crate::model::{ImageContent, Message, Role, ToolCall};
 
 /// A small fixed per-message token allowance approximating the role tag and message
 /// framing a provider adds around the content (chat formats wrap each message in a few
@@ -171,8 +171,31 @@ pub trait TokenEstimator: Send + Sync {
         if let Some(id) = &message.tool_call_id {
             text.push_str(id);
         }
-        MESSAGE_FRAMING_TOKENS + self.estimate_str(&text)
+        let images: usize = message
+            .images
+            .iter()
+            .map(|image| estimate_image(image.bytes))
+            .sum();
+        MESSAGE_FRAMING_TOKENS + self.estimate_str(&text) + images
     }
+}
+
+/// Estimate the tokens an inline image of `bytes` occupies.
+///
+/// Not a `TokenEstimator` method, because an image is not text and no tokenizer can
+/// answer it: every provider charges images by its own tiling of the decoded
+/// **dimensions**, which gg does not decode. This is a deliberately coarse stand-in —
+/// roughly the tile count a ~1024×1024 picture costs at the common ~750 tokens, scaled
+/// by file size — and its job is only to keep an attached mockup from being accounted as
+/// *free*, which would let a run's fullness figure drift below the truth and delay
+/// compaction. It is floored so even a tiny icon is charged something.
+pub fn estimate_image(bytes: u64) -> usize {
+    /// Tokens charged per KiB of encoded image, chosen so a typical few-hundred-KB
+    /// reference mockup lands in the high hundreds of tokens.
+    const TOKENS_PER_KIB: u64 = 2;
+    /// The floor: no image is cheaper than this, however small the file.
+    const MIN_TOKENS: u64 = 85;
+    ((bytes / 1024) * TOKENS_PER_KIB).max(MIN_TOKENS) as usize
 }
 
 /// The default [`TokenEstimator`]: a real BPE tokenizer (`o200k_base`, the base OpenAI's
@@ -457,22 +480,71 @@ impl ContextModel {
         );
     }
 
+    /// Like [`push_tool_result`](Self::push_tool_result) but attaching `images` to the
+    /// result — a `read_file` of a picture the model can see.
+    pub fn push_tool_result_with_images(
+        &mut self,
+        source: GgContextSource,
+        tool_call_id: impl Into<String>,
+        content: impl Into<String>,
+        images: Vec<ImageContent>,
+    ) {
+        self.push(
+            source,
+            Retention::Ephemeral,
+            Message::tool_result(tool_call_id, content).with_images(images),
+        );
+    }
+
     /// Record a `read_file` result as an ephemeral [`FileView`](GgContextSource::FileView)
     /// tagged with the file's `path`, so [agent-managed context](https://docs.testcabinet.ai/gg/agent-managed-context/)
     /// can target it with `evict_file_view { path }`. A file view whose path is unknown
     /// (a malformed call) is tagged `None` and is only reachable by a blanket eviction.
+    ///
+    /// `images` is what a read of a **reference mockup** carries. The picture is part of
+    /// the same file view as its text, so `evict_file_view { path }` reclaims both, and
+    /// the [image's estimated cost](estimate_image) is what gets reclaimed.
     pub fn push_file_view(
         &mut self,
         path: Option<String>,
         tool_call_id: impl Into<String>,
         content: impl Into<String>,
+        images: Vec<ImageContent>,
     ) {
         self.push_labeled(
             GgContextSource::FileView,
             Retention::Ephemeral,
-            Message::tool_result(tool_call_id, content),
+            Message::tool_result(tool_call_id, content).with_images(images),
             path,
         );
+    }
+
+    /// Drop every attached image from the window, re-estimating the items that carried
+    /// one, and return how many messages were stripped.
+    ///
+    /// The recovery step when a provider turns out to refuse image input: the pictures
+    /// go, the text and the `tool_call_id` pairing stay, and the turn can be re-run
+    /// against the same conversation. Each stripped message additionally gains a line
+    /// telling the model *why* its picture vanished, so the transcript stays coherent
+    /// (a tool result that silently changed shape between turns would read as a glitch)
+    /// and the model stops reading images it will never see.
+    pub fn strip_images(&mut self, note: &str) -> usize {
+        let mut stripped = 0;
+        for item in &mut self.items {
+            if !item.message.strip_images() {
+                continue;
+            }
+            match &mut item.message.content {
+                Some(content) => {
+                    content.push_str("\n\n");
+                    content.push_str(note);
+                }
+                slot @ None => *slot = Some(note.to_string()),
+            }
+            item.tokens = self.estimator.estimate_message(&item.message);
+            stripped += 1;
+        }
+        stripped
     }
 
     /// Render the model to the ordered `Vec<Message>` the client consumes — the faithful

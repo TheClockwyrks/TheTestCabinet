@@ -313,6 +313,7 @@ async fn snapshot_emits_the_composed_model_catalog() {
         price_history: vec![],
         context_length: None,
         released_at: None,
+        input_modalities: vec![],
     };
     let snapshot = SnapshotBuilder::new(vec![], vec![], store)
         .with_models(vec![model])

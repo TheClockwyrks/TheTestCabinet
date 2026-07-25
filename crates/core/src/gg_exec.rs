@@ -436,6 +436,7 @@ fn build_invocation(
         prompt: base_prompt.to_string(),
         capability_set: request.gg_capability_set()?.clone(),
         model_windows: request.gg_model_windows.clone(),
+        model_modalities: request.gg_model_modalities.clone(),
     })
 }
 

@@ -77,6 +77,12 @@ pub struct ModelOut {
     pub context_length: Option<u64>,
     /// The latest observed release date (RFC 3339), or null.
     pub released_at: Option<String>,
+    /// The input modalities OpenRouter reports the model accepts (`text`,
+    /// `image`, `file`, …), lowercased. **Empty means unobserved**, not "text
+    /// only" — the catalog has simply not recorded a modality list for this model
+    /// yet, and a consumer deciding whether it may send an image treats that as
+    /// unknown rather than as a refusal.
+    pub input_modalities: Vec<String>,
 }
 
 /// One canonical model id a catalog entry claims, with the harness family it is
@@ -393,13 +399,15 @@ pub async fn logo(
     Ok(Json(LogoFetchOut { logo_svg }))
 }
 
-/// The catalog's context window, in tokens, for the model a run names — the latest
-/// observed `context_length` for it — or `None` when the catalog has no figure.
+/// The catalog's [launch facts](test_cabinet_core::ModelLaunchFacts) for the model a
+/// run names — the latest observed context window and input modalities for it — or
+/// empty fields where the catalog has recorded nothing.
 ///
-/// The catalog is the **single store of model facts**, so this is the one place a
-/// context window is looked up: a run that needs one (a [gg](test_cabinet_core::gg)
-/// run, whose fullness accounting and compaction trigger are measured against it) is
-/// told the answer at launch rather than keeping a table of its own.
+/// The catalog is the **single store of model facts**, so this is the one place they
+/// are looked up: a run that needs them (a [gg](test_cabinet_core::gg) run, whose
+/// fullness accounting and compaction trigger are measured against the window, and
+/// whose reference-image reads are gated on the modalities) is told the answers at
+/// launch rather than keeping a table of its own.
 ///
 /// The lookup mirrors how prices are recorded: observations are keyed by the run's
 /// canonical model id, except for a **curated** model, whose observations are stored
@@ -407,31 +415,39 @@ pub async fn logo(
 /// canonical id is tried first and the curated slug second.
 ///
 /// Best-effort by construction: a model with no price observation yet (the catalog
-/// learns one when the model is first priced) simply has no window, which the caller
+/// learns one when the model is first priced) simply has no facts, which the caller
 /// treats as "unknown" rather than an error.
-pub async fn context_window_for(
+pub async fn launch_facts_for(
     db: &crate::db::Db,
     model_id: &str,
     harness: HarnessSlug,
-) -> crate::error::Result<Option<u64>> {
+) -> crate::error::Result<test_cabinet_core::ModelLaunchFacts> {
     let canonical = canonical_model_id(model_id, harness);
-    if let Some(window) = latest_context_length(db, &canonical).await? {
-        return Ok(Some(window));
+    if let Some(facts) = latest_launch_facts(db, &canonical).await? {
+        return Ok(facts);
     }
     let Some(slug) = db.openrouter_slug_for_alias(&canonical).await? else {
-        return Ok(None);
+        return Ok(test_cabinet_core::ModelLaunchFacts::default());
     };
-    latest_context_length(db, &slug).await
+    Ok(latest_launch_facts(db, &slug).await?.unwrap_or_default())
 }
 
-/// The `context_length` on the latest price observation stored under `key`, when it
-/// carries one (an older observation, recorded before the column existed, may not).
-async fn latest_context_length(db: &crate::db::Db, key: &str) -> crate::error::Result<Option<u64>> {
+/// The catalog facts on the latest price observation stored under `key`, or `None`
+/// when there is no observation at all. An observation recorded before a column
+/// existed simply carries an empty field for it.
+async fn latest_launch_facts(
+    db: &crate::db::Db,
+    key: &str,
+) -> crate::error::Result<Option<test_cabinet_core::ModelLaunchFacts>> {
     Ok(db
         .latest_price(key)
         .await?
-        .and_then(|row| row.context_length)
-        .and_then(|length| u64::try_from(length).ok()))
+        .map(|row| test_cabinet_core::ModelLaunchFacts {
+            context_window: row
+                .context_length
+                .and_then(|length| u64::try_from(length).ok()),
+            input_modalities: crate::bootstrap::decode_modalities(row.input_modalities.as_deref()),
+        }))
 }
 
 /// Compose the merged catalog from curated configs, the full price history, and
@@ -500,7 +516,7 @@ pub fn compose_catalog(
             .collect();
         rows.sort_by(|a, b| a.observed_at.cmp(&b.observed_at).then(a.id.cmp(&b.id)));
         let series = observations(&rows);
-        let (price, context_length, released_at) = latest_facts(&rows);
+        let facts = latest_facts(&rows);
         let config = &stored.config;
         out.push(ModelOut {
             slug: config.slug.clone(),
@@ -518,10 +534,11 @@ pub fn compose_catalog(
                     harness_family: entry.family,
                 })
                 .collect(),
-            price,
+            price: facts.price,
             price_history: series,
-            context_length,
-            released_at,
+            context_length: facts.context_length,
+            released_at: facts.released_at,
+            input_modalities: facts.input_modalities,
         });
     }
 
@@ -533,7 +550,7 @@ pub fn compose_catalog(
         let rows: Vec<&model_price::Model> =
             history.get(canonical.as_str()).cloned().unwrap_or_default();
         let series = observations(&rows);
-        let (price, context_length, released_at) = latest_facts(&rows);
+        let facts = latest_facts(&rows);
         let family = covered_family
             .get(canonical)
             .copied()
@@ -551,10 +568,11 @@ pub fn compose_catalog(
                 slug: canonical.clone(),
                 harness_family: family,
             }],
-            price,
+            price: facts.price,
             price_history: series,
-            context_length,
-            released_at,
+            context_length: facts.context_length,
+            released_at: facts.released_at,
+            input_modalities: facts.input_modalities,
         });
     }
 
@@ -583,21 +601,30 @@ fn observations(rows: &[&model_price::Model]) -> Vec<PriceObservationOut> {
     series
 }
 
-/// The latest price, context window, and release date from time-ordered rows.
-fn latest_facts(
-    rows: &[&model_price::Model],
-) -> (Option<ModelPricesOut>, Option<u64>, Option<String>) {
+/// The catalog facts carried on the newest of `rows` (time-ordered): the latest
+/// price, context window, release date, and accepted input modalities.
+#[derive(Debug, Default)]
+struct LatestFacts {
+    price: Option<ModelPricesOut>,
+    context_length: Option<u64>,
+    released_at: Option<String>,
+    input_modalities: Vec<String>,
+}
+
+/// The latest price and catalog facts from time-ordered rows.
+fn latest_facts(rows: &[&model_price::Model]) -> LatestFacts {
     match rows.last() {
-        Some(row) => (
-            Some(ModelPricesOut {
+        Some(row) => LatestFacts {
+            price: Some(ModelPricesOut {
                 uncached_input: row.uncached_input,
                 cached_input: row.cached_input,
                 output: row.output,
             }),
-            row.context_length.and_then(|c| u64::try_from(c).ok()),
-            row.released_at.clone(),
-        ),
-        None => (None, None, None),
+            context_length: row.context_length.and_then(|c| u64::try_from(c).ok()),
+            released_at: row.released_at.clone(),
+            input_modalities: crate::bootstrap::decode_modalities(row.input_modalities.as_deref()),
+        },
+        None => LatestFacts::default(),
     }
 }
 

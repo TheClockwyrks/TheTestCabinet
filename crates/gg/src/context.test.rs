@@ -5,7 +5,7 @@ use std::sync::Arc;
 use serde_json::json;
 
 use super::*;
-use crate::model::Role;
+use crate::model::{ImageContent, Role};
 use test_cabinet_core::gg::GgContextSource;
 
 /// A model measuring with the deterministic heuristic estimator (chars/4 + framing) and
@@ -197,8 +197,18 @@ fn tool_output_source_maps_reads_to_file_views() {
 fn evict_file_views_removes_all_or_by_path_and_reclaims_tokens() {
     let mut ctx = model(Some(100_000));
     ctx.push_system("system");
-    ctx.push_file_view(Some("a.js".to_string()), "c1", "contents of a".repeat(5));
-    ctx.push_file_view(Some("b.js".to_string()), "c2", "contents of b".repeat(5));
+    ctx.push_file_view(
+        Some("a.js".to_string()),
+        "c1",
+        "contents of a".repeat(5),
+        Vec::new(),
+    );
+    ctx.push_file_view(
+        Some("b.js".to_string()),
+        "c2",
+        "contents of b".repeat(5),
+        Vec::new(),
+    );
     ctx.push_tool_result(GgContextSource::ToolOutput, "c3", "some shell output");
 
     let before = ctx.total_tokens();
@@ -229,7 +239,7 @@ fn evict_file_views_removes_all_or_by_path_and_reclaims_tokens() {
 #[test]
 fn evict_file_views_on_a_missing_path_reclaims_nothing() {
     let mut ctx = model(Some(100_000));
-    ctx.push_file_view(Some("a.js".to_string()), "c1", "body");
+    ctx.push_file_view(Some("a.js".to_string()), "c1", "body", Vec::new());
     let before = ctx.total_tokens();
     let result = ctx.evict_file_views(Some("nope.js"));
     assert_eq!(result.items, 0);
@@ -257,7 +267,7 @@ fn archive_thread_removes_old_turns_keeping_the_recent_one() {
         Some("turn zero reading".to_string()),
         vec![call("c1", "read_file")],
     );
-    ctx.push_file_view(Some("a.js".to_string()), "c1", "a contents");
+    ctx.push_file_view(Some("a.js".to_string()), "c1", "a contents", Vec::new());
     // Turn 1.
     ctx.push_assistant(
         Some("turn one listing".to_string()),
@@ -708,4 +718,108 @@ fn every_turn_extends_the_previous_turns_window() {
             "{source:?} kept a single live block"
         );
     }
+}
+
+// ---------------------------------------------------------------------------
+// Images in the window
+// ---------------------------------------------------------------------------
+
+/// An `ImageContent` of `bytes` decoded size, with placeholder data.
+fn image(bytes: u64) -> ImageContent {
+    ImageContent::new("image/png", "QUJD", bytes)
+}
+
+#[test]
+fn an_attached_image_is_charged_to_the_window() {
+    // An image accounted as free would let fullness drift below the truth and delay
+    // compaction — precisely on the runs that read the most reference material.
+    let mut with_image = model(Some(100_000));
+    with_image.push_file_view(
+        Some("ref.png".to_string()),
+        "c1",
+        "`ref.png` — PNG image, 400 KB.",
+        vec![image(400 * 1024)],
+    );
+
+    let mut without = model(Some(100_000));
+    without.push_file_view(
+        Some("ref.png".to_string()),
+        "c1",
+        "`ref.png` — PNG image, 400 KB.",
+        Vec::new(),
+    );
+
+    assert!(
+        with_image.total_tokens() > without.total_tokens() + 100,
+        "the picture costs materially more than its caption alone"
+    );
+    // And it is attributed to the file-view band, so eviction can reclaim it.
+    assert!(with_image.tokens_for(GgContextSource::FileView) > 100);
+}
+
+#[test]
+fn estimate_image_scales_with_size_and_has_a_floor() {
+    assert!(estimate_image(1024 * 1024) > estimate_image(64 * 1024));
+    // Even a tiny icon is charged something rather than nothing.
+    assert!(estimate_image(0) > 0);
+}
+
+#[test]
+fn evicting_a_file_view_reclaims_its_image_too() {
+    let mut ctx = model(Some(100_000));
+    ctx.push_file_view(
+        Some("ref.png".to_string()),
+        "c1",
+        "`ref.png` — PNG image.",
+        vec![image(400 * 1024)],
+    );
+    let result = ctx.evict_file_views(Some("ref.png"));
+    assert_eq!(result.items, 1);
+    assert!(result.tokens > 100, "the image's cost came back");
+    assert_eq!(ctx.tokens_for(GgContextSource::FileView), 0);
+}
+
+#[test]
+fn strip_images_drops_pictures_but_keeps_the_conversation_well_formed() {
+    let mut ctx = model(Some(100_000));
+    ctx.push_system("system");
+    ctx.push_assistant(None, vec![call("c1", "read_file")]);
+    ctx.push_file_view(
+        Some("ref.png".to_string()),
+        "c1",
+        "`ref.png` — PNG image, 400 KB.",
+        vec![image(400 * 1024)],
+    );
+    let before = ctx.total_tokens();
+
+    let stripped = ctx.strip_images("[note]");
+    assert_eq!(stripped, 1);
+
+    let messages = ctx.messages();
+    let result = messages
+        .iter()
+        .find(|m| m.role == Role::Tool)
+        .expect("the tool result survives");
+    // The picture is gone…
+    assert!(result.images.is_empty());
+    // …but the result still answers the assistant's call, so the provider does not see
+    // a tool call with no matching result.
+    assert_eq!(result.tool_call_id.as_deref(), Some("c1"));
+    // The model is told where the image went rather than left to notice it vanished.
+    let content = result.content.as_deref().unwrap_or_default();
+    assert!(content.contains("ref.png"), "{content}");
+    assert!(content.contains("[note]"), "{content}");
+    // And the window is re-accounted, reclaiming what the image cost.
+    assert!(ctx.total_tokens() < before);
+}
+
+#[test]
+fn strip_images_is_a_no_op_when_there_are_none() {
+    // The loop uses this to decide whether a provider refusal is recoverable at all: a
+    // zero here means dropping pictures cannot help, so retrying would only spin.
+    let mut ctx = model(Some(100_000));
+    ctx.push_tool_result(GgContextSource::ToolOutput, "c1", "shell output");
+    let before = ctx.total_tokens();
+    assert_eq!(ctx.strip_images("[note]"), 0);
+    assert_eq!(ctx.total_tokens(), before);
 }

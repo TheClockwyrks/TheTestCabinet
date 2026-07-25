@@ -255,6 +255,10 @@ impl ModelClient for OpenRouterClient {
         let body = build_request_body(&self.model_id, messages, tools);
         let url = self.endpoint();
         let mut last_err = String::new();
+        // Whether this request carries a picture at all. A provider's "no image route"
+        // refusal is only recoverable-by-dropping-images if there were images to drop;
+        // without that check a coincidentally-similar error body would be misread as one.
+        let carries_images = messages.iter().any(|message| !message.images.is_empty());
 
         for attempt in 1..=self.retry.max_attempts {
             let sent = self
@@ -284,6 +288,16 @@ impl ModelClient for OpenRouterClient {
                         }
                         StatusClass::Fatal => {
                             let body = resp.text().await.unwrap_or_default();
+                            // A refusal of the *images* rather than of the request: the
+                            // loop can recover from this one by dropping them and
+                            // retrying, so it is reported as its own error rather than
+                            // ending the run as an ordinary fatal 4xx.
+                            if carries_images && is_image_unsupported(status, &body) {
+                                return Err(ModelError::VisionUnsupported {
+                                    model_id: self.model_id.clone(),
+                                    message: truncate(&body),
+                                });
+                            }
                             return Err(ModelError::Fatal {
                                 status,
                                 message: truncate(&body),
@@ -311,6 +325,41 @@ impl ModelClient for OpenRouterClient {
     fn model_id(&self) -> &str {
         &self.model_id
     }
+}
+
+/// Whether a fatal response says the request's **images** were the problem — the model
+/// has no provider route that accepts image input.
+///
+/// OpenRouter answers such a request with `404 {"error":{"message":"No endpoints found
+/// that support image input"}}`, and upstream providers word it their own way. The
+/// match is therefore on the error body's wording rather than the status alone: a `404`
+/// on its own means an unknown or deprecated model, which is not recoverable by
+/// dropping a picture. Pure, so the recognized wordings are unit tested against recorded
+/// bodies with no network.
+pub fn is_image_unsupported(status: u16, body: &str) -> bool {
+    // `400` covers providers that reject the multi-part content shape outright rather
+    // than routing on it; `404` is OpenRouter's own "no endpoint supports this" answer.
+    if !matches!(status, 400 | 404 | 422) {
+        return false;
+    }
+    let body = body.to_lowercase();
+    // Every recognized phrasing pairs an image/vision/multimodal noun with a
+    // refusal, so an unrelated 404 that merely mentions an image cannot match.
+    const PHRASES: &[&str] = &[
+        "support image input",
+        "support image_url",
+        "support images",
+        "image input is not supported",
+        "does not support image",
+        "do not support image",
+        "not support vision",
+        "does not support vision",
+        "no vision support",
+        "image input not supported",
+        "multimodal input is not supported",
+        "invalid content type",
+    ];
+    PHRASES.iter().any(|phrase| body.contains(phrase))
 }
 
 /// Truncate a provider error body to [`ERROR_BODY_CAP`] so a huge HTML error page
@@ -366,9 +415,30 @@ pub fn build_request_body(model_id: &str, messages: &[Message], tools: &[ToolDef
 
 /// Serialize one [`Message`] into the OpenAI wire shape. Assistant tool-call arguments
 /// are re-encoded as a JSON **string**, as the API expects.
+///
+/// A message carrying [images](Message::images) becomes a **multi-part** content array
+/// (`{type: "text"}` then one `{type: "image_url"}` per image, each a `data:` URL)
+/// instead of a bare string; a text-only message is serialized exactly as before, so
+/// the shape only changes where a picture is actually attached. Images ride on the
+/// `tool` message answering the `read_file` that produced them — OpenRouter accepts
+/// image parts there across providers, and keeping the picture attached to its own tool
+/// result means the read and what it returned stay one item the context model can
+/// account for, evict, and (if the provider turns out to refuse images) strip.
 fn wire_message(message: &Message) -> Value {
     let mut obj = json!({ "role": role_str(message.role) });
-    if let Some(content) = &message.content {
+    if !message.images.is_empty() {
+        let mut parts: Vec<Value> = Vec::with_capacity(message.images.len() + 1);
+        if let Some(content) = &message.content {
+            parts.push(json!({ "type": "text", "text": content }));
+        }
+        for image in &message.images {
+            parts.push(json!({
+                "type": "image_url",
+                "image_url": { "url": image.data_url() },
+            }));
+        }
+        obj["content"] = Value::Array(parts);
+    } else if let Some(content) = &message.content {
         obj["content"] = json!(content);
     }
     if !message.tool_calls.is_empty() {

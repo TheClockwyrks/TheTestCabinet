@@ -1677,6 +1677,7 @@ async fn price_observations_dedup_and_latest() {
         output: Some(2.0),
         context_length: Some(200_000),
         released_at: None,
+        input_modalities: Some("text,image".to_string()),
     };
     db.insert_price_observation(obs(1.0, "2026-01-01T00:00:00Z"))
         .await

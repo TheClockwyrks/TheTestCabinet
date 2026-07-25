@@ -118,7 +118,7 @@ pub use playable::{
     serve_build_file, serve_proof_file, serve_validation_file,
 };
 pub use preview::{AssetPreview, LivePreview, LivePreviewEndpoint, PreviewSink};
-pub use pricing::{ModelDetails, OpenRouterPrices};
+pub use pricing::{MODALITY_IMAGE, ModelDetails, ModelLaunchFacts, OpenRouterPrices};
 pub use prompt::{render_prompt, render_prompt_from_template};
 pub use publish::{
     BackendPublisher, CommandOutput, CommandRunner, PublishConfig, Publisher, ReleaseRequest,
@@ -223,6 +223,16 @@ pub struct RunRequest {
     /// falls back to a conservative default. Meaningless for a non-gg run, which leaves
     /// it empty.
     pub gg_model_windows: BTreeMap<String, u64>,
+    /// The input modalities each model a **gg** run may bind accepts, as resolved from
+    /// the model catalog alongside [`gg_model_windows`](Self::gg_model_windows). Passed
+    /// straight through to
+    /// [`GgInvocation::model_modalities`](crate::gg::GgInvocation::model_modalities).
+    ///
+    /// A model absent from the map has **unknown** modalities, not text-only ones, and
+    /// gg treats it optimistically (it will attempt an image and recover if the provider
+    /// refuses it). Unlike the windows, this is never required: it decides whether one
+    /// tool result may carry a picture, not how the run is measured.
+    pub gg_model_modalities: BTreeMap<String, Vec<String>>,
 }
 
 impl RunRequest {

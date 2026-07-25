@@ -109,6 +109,14 @@ export type ModelOut = {
    * The latest observed release date (RFC 3339), or null.
    */
   releasedAt: string | null;
+  /**
+   * The input modalities OpenRouter reports the model accepts (`text`,
+   * `image`, `file`, …), lowercased. **Empty means unobserved**, not "text
+   * only" — the catalog has simply not recorded a modality list for this model
+   * yet, and a consumer deciding whether it may send an image treats that as
+   * unknown rather than as a refusal.
+   */
+  inputModalities: Array<string>;
 };
 
 /**

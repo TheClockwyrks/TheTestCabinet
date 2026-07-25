@@ -102,7 +102,7 @@ use crate::fsm::{
 };
 use crate::git;
 use crate::memories::{MemoriesRuntime, MemoryCaps};
-use crate::model::{Message, ModelClient, ModelResponse, ToolCall, ToolDefinition};
+use crate::model::{Message, ModelClient, ModelError, ModelResponse, ToolCall, ToolDefinition};
 use crate::planning::PlanningRuntime;
 use crate::prompts::{
     self, BoardView, FsmView, MemoriesView, ReadFileView, SystemContext, TasksView, ToolView,
@@ -113,6 +113,7 @@ use crate::skills::{DEFAULT_SKILLS_DIR, ReadRecord, SkillLibrary, SkillsRuntime}
 use crate::subagents::{AgentCtx, AgentReturn, ChildHandle, ParentWait, Scheduler, SubagentConfig};
 use crate::tasks::{TasksRuntime, resolve_max_tasks};
 use crate::telemetry::Emitter;
+use crate::tools::VisionContext;
 use crate::tools::{
     ARCHIVE_THREAD_TOOL, COMPLETE_ISSUE_TOOL, DEFAULT_ARCHIVE_KEEP_RECENT, ENTER_PLAN_MODE_TOOL,
     EVICT_FILE_VIEW_TOOL, READ_FILE_TOOL, READ_SKILL_TOOL, RUN_WORKFLOW_TOOL, ReadPolicy,
@@ -122,6 +123,7 @@ use crate::tools::{
     is_task_tool, parse_archive_keep_recent, parse_evict_path, plan_mode_offers, read_policy,
     unknown_disabled_tools,
 };
+use crate::vision::VisionSupport;
 
 /// The default per-run turn ceiling, used when no `maxTurns` capability param sets
 /// one. Bounds a runaway loop so a session always terminates cleanly.
@@ -730,6 +732,11 @@ struct Orchestrator {
     /// [multi-model](https://docs.testcabinet.ai/gg/multi-model/) run measures each agent against
     /// its own model's window.
     model_windows: BTreeMap<String, u64>,
+    /// Which of this run's models may be shown an image, seeded from the invocation's
+    /// [catalog modalities](GgInvocation::model_modalities) and updated when a provider
+    /// refuses one. Shared (`Arc`) across every agent so a model denied on one agent's
+    /// turn stops being sent pictures by all of them — see [`crate::vision`].
+    vision: Arc<VisionSupport>,
     /// The resolved loop bounds shared by every agent.
     bounds: LoopBounds,
     /// The optional shared wall-clock deadline (from run start) every agent stops at.
@@ -793,6 +800,7 @@ impl Orchestrator {
             skills_enabled: set.is_enabled(CAPABILITY_SKILLS),
             estimator: Arc::new(BpeTokenEstimator::new()),
             model_windows: invocation.model_windows.clone(),
+            vision: Arc::new(VisionSupport::new(invocation.model_modalities.clone())),
             bounds,
             deadline,
             tasks: Mutex::new(Vec::new()),
@@ -1167,7 +1175,10 @@ async fn run_agent(
         } => wt.path.clone(),
         _ => orch.workspace_dir.clone(),
     };
-    let tool_ctx = ToolContext::new(workspace_dir);
+    // The tool context carries this agent's model alongside its workspace root, because
+    // one tool's answer depends on it: `read_file` attaches a picture only when the model
+    // asking can see one. The registry behind it is the run's, not this agent's.
+    let tool_ctx = ToolContext::new(workspace_dir).with_vision(&model_id, Arc::clone(&orch.vision));
 
     // Announce the run's configuration once, on the root's stream, so the console shows the enabled
     // capabilities from the start; subagents inherit the same configuration and stay quiet.
@@ -3691,6 +3702,7 @@ impl Agent {
             planning: &planning,
             fsm: &fsm,
             read_policy,
+            vision: &tool_ctx.vision,
             code_reviews: code_reviews_active,
             speculative: speculative_active,
             responses_as_code,
@@ -3852,7 +3864,15 @@ impl Agent {
                 emitter.emit(context.breakdown_event());
             }
 
-            let response = match client.complete(&context.messages(), &tools).await {
+            let response = match complete_with_vision_recovery(
+                client,
+                &mut context,
+                &tools,
+                &tool_ctx.vision.support,
+                emitter,
+            )
+            .await
+            {
                 Ok(response) => response,
                 Err(err) => {
                     // Surface the failure loudly — a `Log(error)` and a `model_error`
@@ -4649,6 +4669,9 @@ struct PromptInputs<'a> {
     fsm: &'a FsmRuntime,
     /// How much of a file one `read_file` call returns, so a capped run says so up front.
     read_policy: ReadPolicy,
+    /// This agent's model and the run's vision registry, so the prompt can state whether a
+    /// reference image can actually be shown to it.
+    vision: &'a VisionContext,
     /// Whether Code Reviews gate issue acceptance this run.
     code_reviews: bool,
     /// Whether `speculate` is available this run.
@@ -4676,6 +4699,7 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
         planning,
         fsm,
         read_policy,
+        vision,
         code_reviews,
         speculative,
         responses_as_code,
@@ -4691,14 +4715,16 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
         })
         .collect();
     // The read cap is only worth stating when `read_file` is actually offered and actually
-    // capped; an unlimited (or withheld) read contributes no prompt text.
-    let read_file = match read_policy.line_cap() {
-        Some(line_cap) if registry.offers(READ_FILE_TOOL) => ReadFileView {
-            capped: true,
-            hard_cap: matches!(read_policy, ReadPolicy::HardCap(_)),
-            line_cap,
-        },
-        _ => ReadFileView::default(),
+    // capped; an unlimited (or withheld) read contributes no prompt text. Whether the model
+    // can be shown an image is stated whenever `read_file` is offered at all — a text-only
+    // model that is not told so spends turns re-reading a mockup it will never see.
+    let offers_read = registry.offers(READ_FILE_TOOL);
+    let read_file = ReadFileView {
+        offered: offers_read,
+        capped: offers_read && read_policy.line_cap().is_some(),
+        hard_cap: matches!(read_policy, ReadPolicy::HardCap(_)),
+        line_cap: read_policy.line_cap().unwrap_or_default(),
+        images: offers_read && !vision.declared_text_only(),
     };
 
     prompts::render_system(&SystemContext {
@@ -5215,6 +5241,9 @@ fn record_tool_result(
     // Tag the result by source so the breakdown separates file views (evictable) from
     // other tool output. A `read_file` result is a file view tagged with its path, so
     // agent-managed context can evict it by path (`evict_file_view { path }`).
+    // A `read_file` of a picture attaches the image to its own result, so the read and
+    // what it returned stay one item: one thing to account for, one thing to evict, and
+    // one thing to strip if the provider turns out to refuse images.
     let source = tool_output_source(&call.name);
     if source == GgContextSource::FileView {
         let path = call
@@ -5222,11 +5251,76 @@ fn record_tool_result(
             .get("path")
             .and_then(Value::as_str)
             .map(str::to_string);
-        context.push_file_view(path, &call.id, outcome.output);
+        context.push_file_view(path, &call.id, outcome.output, outcome.images);
     } else {
-        context.push_tool_result(source, &call.id, outcome.output);
+        context.push_tool_result_with_images(source, &call.id, outcome.output, outcome.images);
     }
 }
+
+/// Run one model turn, recovering from a provider that will not accept the images the
+/// conversation carries.
+///
+/// The ordinary path is one `complete` call. The recovery path exists because a model's
+/// image support cannot always be known in advance: the catalog may have no modality
+/// list for a just-released model, and gg deliberately treats that as "try it" rather
+/// than withholding a test case's reference mockups from a model that can probably see
+/// them. When that optimism is wrong, the provider answers with
+/// [`VisionUnsupported`](ModelError::VisionUnsupported), and this:
+///
+/// 1. **records the model as unable to see images** in the run-wide
+///    [registry](crate::vision::VisionSupport) — shared across agents, so every other
+///    agent and subagent on the same model stops attaching images too, and no later turn
+///    repeats the mistake;
+/// 2. **strips the images from the context**, leaving each affected tool result's text
+///    and its `tool_call_id` in place (so every assistant tool call still has its
+///    matching result and the conversation stays well-formed) plus a note explaining
+///    where the picture went;
+/// 3. **re-runs the same turn** against the now image-free conversation.
+///
+/// Reading a reference image therefore costs a text-only run one wasted request, not the
+/// run. If there was nothing to strip the original error is returned unchanged — the
+/// refusal was not actually about images gg put there, and retrying identically would
+/// spin.
+async fn complete_with_vision_recovery(
+    client: &dyn ModelClient,
+    context: &mut ContextModel,
+    tools: &[ToolDefinition],
+    vision: &Arc<VisionSupport>,
+    emitter: &Emitter,
+) -> Result<ModelResponse, ModelError> {
+    let err = match client.complete(&context.messages(), tools).await {
+        Ok(response) => return Ok(response),
+        Err(err) => err,
+    };
+    let Some(model_id) = err.vision_unsupported_model() else {
+        return Err(err);
+    };
+    let first = vision.deny(model_id);
+    let stripped = context.strip_images(IMAGE_STRIPPED_NOTE);
+    if stripped == 0 {
+        return Err(err);
+    }
+    if first {
+        emitter.emit(log(
+            "warn",
+            format!(
+                "`{model_id}` does not accept image input, so {stripped} image(s) were removed \
+                 from the context and the turn retried. Images will not be shown to this model \
+                 again for the rest of the run."
+            ),
+        ));
+    }
+    client.complete(&context.messages(), tools).await
+}
+
+/// The line appended to a tool result whose image was [stripped](ContextModel::strip_images).
+///
+/// The model is told plainly rather than left to notice a picture it was shown is gone:
+/// a tool result that quietly changed shape between turns reads as a glitch, and a model
+/// that does not know it cannot see images will keep reading them.
+const IMAGE_STRIPPED_NOTE: &str = "[The image could not be shown: the model running this session \
+     does not accept image input. Reading it again will not help — work from the written \
+     specification instead.]";
 
 /// Emit a [`Usage`](GgTelemetryKind::Usage) event for a turn when it reported any
 /// tokens or cost.

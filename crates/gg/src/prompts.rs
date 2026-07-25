@@ -201,6 +201,9 @@ pub struct ToolView {
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReadFileView {
+    /// Whether `read_file` is offered at all this run. Everything else here describes how it
+    /// behaves, so a run that withholds the tool states none of it.
+    pub offered: bool,
     /// Whether a line cap is in force at all. False when `read_file` is not offered, or when it
     /// reads whole files.
     pub capped: bool,
@@ -210,6 +213,16 @@ pub struct ReadFileView {
     /// The cap, in lines. Meaningless (and unreferenced by the template) when not
     /// [capped](Self::capped).
     pub line_cap: usize,
+    /// Whether this run's model can be shown an **image**.
+    ///
+    /// A test case's specs ship reference mockups, and whether reading one shows the
+    /// model a picture or only describes it is a fact about the model, not the file.
+    /// Stating it up front is what keeps a text-only run from spending turns re-reading
+    /// a `.png` hoping for a different answer — the alternative is the model learning it
+    /// one wasted read at a time. `false` **only** when the catalog positively declared
+    /// the model text-only; a model whose modalities are unknown is described as able to
+    /// see images, matching the optimistic default the tool itself takes.
+    pub images: bool,
 }
 
 /// One available skill as the system prompt lists it.

@@ -20,6 +20,7 @@ function model(name: string, aliases: ModelAlias[], curated = true): Model {
     priceHistory: [],
     contextLength: null,
     releasedAt: null,
+    inputModalities: [],
   };
 }
 

@@ -191,6 +191,9 @@ impl Config {
             // never resolves them itself: the catalog lives on the backend, and this
             // is the pushed answer.
             gg_model_windows: launch.gg_model_windows.clone(),
+            // The per-model input modalities resolved alongside the windows, which tell
+            // gg which of its models may be shown a reference image.
+            gg_model_modalities: launch.gg_model_modalities.clone(),
         }
     }
 }

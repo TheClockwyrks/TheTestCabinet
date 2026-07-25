@@ -43,6 +43,10 @@ export interface ModelSummary {
   contextLength: number | null;
   /** Release date as an RFC 3339 UTC timestamp, or null. */
   releasedAt: string | null;
+  /** The input modalities the model accepts (`text`, `image`, …), lowercased.
+   * Empty means the catalog has not observed a list yet, which is "unknown"
+   * rather than "text only". */
+  inputModalities: string[];
 }
 
 /** Map a wire `Model` (from the backend or the snapshot) to a display summary. */
@@ -61,6 +65,7 @@ export function toModelSummary(model: Model): ModelSummary {
     priceHistory: model.priceHistory,
     contextLength: model.contextLength,
     releasedAt: model.releasedAt,
+    inputModalities: model.inputModalities ?? [],
   };
 }
 

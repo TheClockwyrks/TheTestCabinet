@@ -26,14 +26,31 @@
 //! or a [default cap](ReadPolicy::DefaultCap) (N lines unless the model explicitly asks for
 //! more). The capped modes take `offset`/`limit` so the agent can page through a file; the
 //! unlimited mode offers neither, because there is nothing to page.
+//!
+//! # Reading images
+//!
+//! A test case's specs ship **reference mockups**, so `read_file` on a `.png` has to do
+//! something better than hand the model a screenful of mojibake — which is exactly what
+//! decoding image bytes as lossy UTF-8 produces. An image read is therefore detected by
+//! its content ([`sniff_image`], magic bytes rather than the extension) and answered with
+//! the picture itself, attached to the tool result for the model to look at.
+//!
+//! Whether it *can* be attached depends on the model, not the file: a text-only model
+//! answers an image-bearing request with a hard error. The decision is delegated to the
+//! run's [vision registry](crate::vision::VisionSupport) via
+//! [`ToolContext::vision`] — a model the catalog declared without image input (or that a
+//! provider has already refused an image for) gets a description of the file instead, and
+//! the run carries on. See [`crate::vision`] for the two-stage rule.
 
 use std::path::{Component, Path, PathBuf};
 
 use async_trait::async_trait;
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use serde_json::{Value, json};
 
 use super::{Tool, ToolContext, ToolOutcome, required_str};
-use crate::model::ToolDefinition;
+use crate::model::{ImageContent, ToolDefinition};
 
 /// The `read_file` tool name — also what the [system prompt](crate::prompts) checks for when it
 /// decides whether to state this run's [line cap](ReadPolicy).
@@ -43,6 +60,16 @@ pub const READ_FILE_TOOL: &str = "read_file";
 /// context. Applied **after** any [line window](ReadPolicy), as the last-resort backstop
 /// against a file with enormous lines; the returned text carries a truncation note.
 const READ_FILE_CAP: usize = 256 * 1024;
+
+/// Ceiling on the **decoded** size of an image `read_file` will attach, in bytes.
+///
+/// An inline image is base64'd into the request body (≈4/3 its size) and charged to the
+/// context window at a rate no estimator can pin down, so an unbounded one is the single
+/// easiest way for a run to blow its window on one call. 8 MiB clears every reference
+/// mockup a test case ships by a wide margin while still refusing, say, a captured video
+/// frame dump. A larger image is described rather than attached — the read still
+/// succeeds.
+const IMAGE_ATTACH_CAP: u64 = 8 * 1024 * 1024;
 
 /// The read-file capability's `lineCap` param: how many lines a
 /// [capped](ReadPolicy::HardCap) read returns, and the default a
@@ -225,6 +252,78 @@ fn floor_char_boundary(text: &str, max: usize) -> usize {
 }
 
 // ---------------------------------------------------------------------------
+// Image detection
+// ---------------------------------------------------------------------------
+
+/// An image format `read_file` recognizes, and the media type it is sent under.
+///
+/// Deliberately small: these are the formats a provider behind OpenRouter actually
+/// accepts inline. A picture in some other format is not an image as far as this tool is
+/// concerned — it reads as the binary file it is, which is the honest answer rather than
+/// a request the provider will reject.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ImageFormat {
+    /// The IANA media type sent with the image.
+    pub media_type: &'static str,
+    /// A short human name for the tool result's prose (`PNG`, `JPEG`, …).
+    pub label: &'static str,
+}
+
+/// Identify `bytes` as an image by its **magic number**, not its extension.
+///
+/// Content-sniffing is the right test here: the tool has already read the file, an
+/// extension is a claim rather than a fact, and a reference mockup saved as `.txt` is
+/// still a picture (while a `.png` that is really text should be read as text). Returns
+/// `None` for anything not recognized, which reads as an ordinary file.
+pub fn sniff_image(bytes: &[u8]) -> Option<ImageFormat> {
+    const PNG: &[u8] = b"\x89PNG\r\n\x1a\n";
+    const GIF87: &[u8] = b"GIF87a";
+    const GIF89: &[u8] = b"GIF89a";
+
+    if bytes.starts_with(PNG) {
+        return Some(ImageFormat {
+            media_type: "image/png",
+            label: "PNG",
+        });
+    }
+    // JPEG: SOI marker. The rest of the header varies by encoder, so the two-byte
+    // start plus a third marker byte is the reliable test.
+    if bytes.len() >= 3 && bytes.starts_with(&[0xFF, 0xD8]) && bytes[2] == 0xFF {
+        return Some(ImageFormat {
+            media_type: "image/jpeg",
+            label: "JPEG",
+        });
+    }
+    if bytes.starts_with(GIF87) || bytes.starts_with(GIF89) {
+        return Some(ImageFormat {
+            media_type: "image/gif",
+            label: "GIF",
+        });
+    }
+    // WebP is a RIFF container whose form type is `WEBP` at offset 8.
+    if bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP" {
+        return Some(ImageFormat {
+            media_type: "image/webp",
+            label: "WebP",
+        });
+    }
+    None
+}
+
+/// A human-readable byte size for the tool result's prose (`412 KB`, `1.2 MB`).
+fn human_bytes(bytes: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = 1024 * KB;
+    if bytes >= MB {
+        format!("{:.1} MB", bytes as f64 / MB as f64)
+    } else if bytes >= KB {
+        format!("{} KB", bytes.div_ceil(KB))
+    } else {
+        format!("{bytes} bytes")
+    }
+}
+
+// ---------------------------------------------------------------------------
 // read_file
 // ---------------------------------------------------------------------------
 
@@ -238,6 +337,71 @@ impl ReadFileTool {
     /// A `read_file` tool enforcing `policy`.
     pub fn new(policy: ReadPolicy) -> Self {
         Self { policy }
+    }
+
+    /// Answer a read of a recognized image.
+    ///
+    /// Three outcomes, all of them *successful* reads — a picture is never an error:
+    ///
+    /// - the model can see images and this one is within [`IMAGE_ATTACH_CAP`]: the image
+    ///   is attached to the tool result, with a line of prose naming it so the model
+    ///   knows what it is looking at and can refer to it later;
+    /// - the model cannot see images: the file is described (format and size) and the
+    ///   model is told plainly that it cannot view it, so it stops trying to and works
+    ///   from the written spec instead of silently assuming it saw the mockup;
+    /// - the image is too large to attach: likewise described, with the reason.
+    ///
+    /// The bytes are **never** decoded as text. Lossy-UTF-8 image data is thousands of
+    /// tokens of noise that tells the model nothing and crowds out everything that would.
+    fn read_image(
+        rel_path: &str,
+        format: ImageFormat,
+        bytes: &[u8],
+        ctx: &ToolContext,
+    ) -> ToolOutcome {
+        let size = bytes.len() as u64;
+        let label = format.label;
+        let human = human_bytes(size);
+
+        if !ctx.vision.allows_images() {
+            // Word it by *why*: a catalog-declared text-only model is a permanent fact
+            // about this run, while a runtime denial followed a provider refusal. Either
+            // way the instruction to the model is the same — do not keep trying.
+            let why = if ctx.vision.declared_text_only() {
+                "the model running this session does not accept image input"
+            } else {
+                "the provider refused image input for the model running this session"
+            };
+            return ToolOutcome::ok(
+                format!(
+                    "`{rel_path}` is a {label} image ({human}). It cannot be shown to you: \
+                     {why}. Reading it again will not help — work from the written \
+                     specification, and treat any file named as a reference image the same way."
+                ),
+                format!("{label} image, {human} (not shown: no image input)"),
+            );
+        }
+
+        if size > IMAGE_ATTACH_CAP {
+            return ToolOutcome::ok(
+                format!(
+                    "`{rel_path}` is a {label} image ({human}). It is too large to display \
+                     (the limit is {}); work from the written specification instead.",
+                    human_bytes(IMAGE_ATTACH_CAP)
+                ),
+                format!("{label} image, {human} (too large to show)"),
+            );
+        }
+
+        ToolOutcome::ok(
+            format!("`{rel_path}` — {label} image, {human}. The image follows."),
+            format!("{label} image, {human}"),
+        )
+        .with_images(vec![ImageContent::new(
+            format.media_type,
+            BASE64.encode(bytes),
+            size,
+        )])
     }
 
     /// The whole-file read: gg's original behavior, offered under
@@ -331,8 +495,10 @@ impl Tool for ReadFileTool {
         let Some(cap) = self.policy.line_cap() else {
             return ToolDefinition::new(
                 "read_file",
-                "Read a UTF-8 text file from the workspace and return its contents \
-                 (truncated if very large).",
+                "Read a file from the workspace and return its contents (truncated if very \
+                 large). Text files are returned as text; a PNG, JPEG, GIF, or WebP image \
+                 is returned as the image itself when the session's model can see one, and \
+                 otherwise described.",
                 json!({
                     "type": "object",
                     "properties": { "path": path },
@@ -345,10 +511,12 @@ impl Tool for ReadFileTool {
         let (description, limit_description) = match self.policy {
             ReadPolicy::HardCap(cap) => (
                 format!(
-                    "Read a UTF-8 text file from the workspace. A call returns at most \
-                     {cap} lines, so read a long file a window at a time by passing \
+                    "Read a file from the workspace. A text file returns at most {cap} \
+                     lines per call, so read a long one a window at a time by passing \
                      `offset`; the result tells you how many lines the file has and where \
-                     to continue from."
+                     to continue from. A PNG, JPEG, GIF, or WebP image is returned whole, \
+                     as the image itself, when the session's model can see one — \
+                     `offset`/`limit` do not apply to it."
                 ),
                 format!(
                     "How many lines to return (default and maximum {cap}; a larger value \
@@ -357,10 +525,12 @@ impl Tool for ReadFileTool {
             ),
             _ => (
                 format!(
-                    "Read a UTF-8 text file from the workspace. A call returns {cap} lines \
-                     by default, starting at `offset`; pass a larger `limit` when you need \
+                    "Read a file from the workspace. A text file returns {cap} lines by \
+                     default, starting at `offset`; pass a larger `limit` when you need \
                      more of the file at once. The result tells you how many lines the file \
-                     has and where to continue from."
+                     has and where to continue from. A PNG, JPEG, GIF, or WebP image is \
+                     returned whole, as the image itself, when the session's model can see \
+                     one — `offset`/`limit` do not apply to it."
                 ),
                 format!("How many lines to return (default {cap}; larger is allowed)."),
             ),
@@ -391,9 +561,13 @@ impl Tool for ReadFileTool {
     }
 
     async fn invoke(&self, args: Value, ctx: &ToolContext) -> ToolOutcome {
-        let path = match resolve_arg(&args, "path", "read_file", &ctx.workspace_dir) {
-            Ok(path) => path,
+        let rel_path = match required_str(&args, "path", "read_file") {
+            Ok(rel) => rel,
             Err(message) => return ToolOutcome::error(message),
+        };
+        let path = match resolve_within(&ctx.workspace_dir, &rel_path) {
+            Ok(path) => path,
+            Err(why) => return ToolOutcome::error(format!("`read_file`: {why}")),
         };
         let offset = match positive_arg(&args, "offset", "read_file") {
             Ok(offset) => offset.unwrap_or(1),
@@ -408,6 +582,13 @@ impl Tool for ReadFileTool {
             Ok(bytes) => bytes,
             Err(err) => return ToolOutcome::error(format!("read_file: {err}")),
         };
+
+        // An image is answered as an image, before any line windowing: `offset`/`limit`
+        // describe lines of text and mean nothing for a picture, and decoding the bytes
+        // as lossy UTF-8 would return noise.
+        if let Some(format) = sniff_image(&bytes) {
+            return Self::read_image(&rel_path, format, &bytes, ctx);
+        }
 
         match self.policy.window(limit) {
             (Some(window), reduced) => Self::read_window(&bytes, offset, window, reduced),
@@ -657,3 +838,7 @@ mod tests;
 #[cfg(test)]
 #[path = "filesystem.read.test.rs"]
 mod read_tests;
+
+#[cfg(test)]
+#[path = "filesystem.image.test.rs"]
+mod image_tests;

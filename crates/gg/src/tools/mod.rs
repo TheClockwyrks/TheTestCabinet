@@ -69,9 +69,10 @@ use test_cabinet_core::gg::{
 use crate::archive::ArchiveStore;
 use crate::board::BoardStore;
 use crate::memories::MemoryStore;
-use crate::model::{ToolCall, ToolDefinition};
+use crate::model::{ImageContent, ToolCall, ToolDefinition};
 use crate::skills::SkillLibrary;
 use crate::tasks::TaskStore;
+use crate::vision::VisionSupport;
 
 pub use board::{COMPLETE_ISSUE_TOOL, is_board_tool};
 pub use context::{
@@ -207,14 +208,72 @@ pub struct ToolContext {
     /// The workspace root every tool is rooted at — the invocation's
     /// [`workspace_dir`](crate::config::GgInvocation::workspace_dir).
     pub workspace_dir: PathBuf,
+    /// The model this agent is running, and the run's shared record of which models may
+    /// be shown a picture. `read_file` consults these to decide whether reading an image
+    /// attaches the image itself or only describes it — the one tool whose result
+    /// depends on the model rather than only on the workspace.
+    pub vision: VisionContext,
+}
+
+/// The model-dependent half of a [`ToolContext`]: who is asking, and whether they can
+/// see images.
+#[derive(Debug, Clone)]
+pub struct VisionContext {
+    /// The model id the calling agent is bound to.
+    pub model_id: String,
+    /// The run-wide [vision registry](VisionSupport), shared across every agent so a
+    /// model denied on one agent's turn is denied on all of them.
+    pub support: Arc<VisionSupport>,
+}
+
+impl Default for VisionContext {
+    /// Nothing declared, nothing denied — so images are allowed. The optimistic default,
+    /// and what a dispatch with no model behind it gets.
+    fn default() -> Self {
+        Self {
+            model_id: String::new(),
+            support: VisionSupport::unknown(),
+        }
+    }
+}
+
+impl VisionContext {
+    /// A context for a caller with no model behind it — see [`Default`].
+    pub fn unknown() -> Self {
+        Self::default()
+    }
+
+    /// Whether an image read by this agent may be attached to the tool result.
+    pub fn allows_images(&self) -> bool {
+        self.support.allows_images(&self.model_id)
+    }
+
+    /// Whether the catalog positively declared this agent's model text-only (as opposed
+    /// to it merely having been denied at runtime, or being unknown). Wording only.
+    pub fn declared_text_only(&self) -> bool {
+        self.support.declared_text_only(&self.model_id)
+    }
 }
 
 impl ToolContext {
-    /// A context rooted at `workspace_dir`.
+    /// A context rooted at `workspace_dir`, with no model bound — images are allowed,
+    /// since nothing has declared or denied them.
     pub fn new(workspace_dir: impl Into<PathBuf>) -> Self {
         Self {
             workspace_dir: workspace_dir.into(),
+            vision: VisionContext::unknown(),
         }
+    }
+
+    /// This context bound to the calling agent's `model_id` and the run's shared vision
+    /// `support`, which is what lets `read_file` decide whether a picture may be
+    /// attached to its result.
+    pub fn with_vision(mut self, model_id: impl Into<String>, support: Arc<VisionSupport>) -> Self {
+        self.vision = VisionContext {
+            model_id: model_id.into(),
+            support,
+        };
+        self
     }
 }
 
@@ -239,6 +298,11 @@ pub struct ToolOutcome {
     pub output: String,
     /// A short human-readable summary for telemetry, when one is worth recording.
     pub summary: Option<String>,
+    /// Images the call produced, carried into the tool result alongside its text —
+    /// today only a `read_file` of a picture the calling model can actually see. Empty
+    /// for every other outcome, so nothing but an image read pays for the field.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub images: Vec<ImageContent>,
 }
 
 impl ToolOutcome {
@@ -249,6 +313,7 @@ impl ToolOutcome {
             ok: true,
             output: output.into(),
             summary: Some(summary.into()),
+            images: Vec::new(),
         }
     }
 
@@ -260,7 +325,14 @@ impl ToolOutcome {
             ok: false,
             output: message.clone(),
             summary: Some(message),
+            images: Vec::new(),
         }
+    }
+
+    /// This outcome with `images` attached to the tool result.
+    pub fn with_images(mut self, images: Vec<ImageContent>) -> Self {
+        self.images = images;
+        self
     }
 }
 

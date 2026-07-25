@@ -1,5 +1,7 @@
 use super::*;
-use crate::model::{FinishReason, Message, ModelClient, ToolCall, ToolDefinition};
+use crate::model::{
+    FinishReason, ImageContent, Message, ModelClient, ModelError, ToolCall, ToolDefinition,
+};
 use serde_json::json;
 use std::time::Duration;
 use test_cabinet_core::gg::{GgSlotBinding, PRIMARY_SLOT};
@@ -80,6 +82,110 @@ fn build_request_body_omits_tools_when_none() {
     let body = build_request_body("m", &[Message::user("hi")], &[]);
     assert!(body.get("tools").is_none());
     assert!(body.get("tool_choice").is_none());
+}
+
+// ---------------------------------------------------------------------------
+// Images on the wire
+// ---------------------------------------------------------------------------
+
+/// A tool result carrying an image becomes a multi-part content array: the text part
+/// first, then one `image_url` part per image as a base64 `data:` URL. This is the shape
+/// OpenRouter routes to every provider's own image encoding.
+#[test]
+fn build_request_body_sends_an_attached_image_as_a_content_part() {
+    let read = Message::tool_result("call_1", "`ref.png` — PNG image, 12 bytes.")
+        .with_images(vec![ImageContent::new("image/png", "QUJD", 3)]);
+    let body = build_request_body("m", &[Message::user("look at ref.png"), read], &[]);
+
+    let tool_msg = &body["messages"][1];
+    assert_eq!(tool_msg["role"], json!("tool"));
+    // The pairing back to the assistant's call survives — an image-bearing result is
+    // still a tool result, not a loose user message.
+    assert_eq!(tool_msg["tool_call_id"], json!("call_1"));
+
+    let parts = tool_msg["content"]
+        .as_array()
+        .expect("an image-bearing message sends multi-part content");
+    assert_eq!(parts.len(), 2);
+    assert_eq!(parts[0]["type"], json!("text"));
+    assert_eq!(parts[0]["text"], json!("`ref.png` — PNG image, 12 bytes."));
+    assert_eq!(parts[1]["type"], json!("image_url"));
+    assert_eq!(
+        parts[1]["image_url"]["url"],
+        json!("data:image/png;base64,QUJD")
+    );
+}
+
+/// A message with no images keeps the plain-string content shape, so the overwhelmingly
+/// common text-only turn is byte-identical to what gg has always sent.
+#[test]
+fn build_request_body_keeps_plain_content_without_images() {
+    let body = build_request_body("m", &[Message::user("hi")], &[]);
+    assert_eq!(body["messages"][0]["content"], json!("hi"));
+}
+
+/// OpenRouter's own refusal — a `404` whose body says no endpoint supports image input —
+/// is recognized, along with the wordings upstream providers use.
+#[test]
+fn is_image_unsupported_recognizes_provider_refusals() {
+    // Recorded verbatim from OpenRouter for a text-only model.
+    assert!(is_image_unsupported(
+        404,
+        r#"{"error":{"message":"No endpoints found that support image input","code":404}}"#
+    ));
+    assert!(is_image_unsupported(
+        400,
+        r#"{"error":{"message":"Invalid content type. tool messages support text only"}}"#
+    ));
+    assert!(is_image_unsupported(
+        400,
+        r#"{"error":{"message":"This model does not support image input."}}"#
+    ));
+}
+
+/// A `404` that is merely an unknown or deprecated model is **not** an image refusal:
+/// dropping the pictures would not help, and retrying identically would spin. The match
+/// is on the wording, not the status.
+#[test]
+fn is_image_unsupported_ignores_unrelated_failures() {
+    assert!(!is_image_unsupported(
+        404,
+        r#"{"error":{"message":"Grok 4.1 Fast is deprecated. xAI recommends switching to Grok 4.3","code":404}}"#
+    ));
+    assert!(!is_image_unsupported(
+        404,
+        r#"{"error":{"message":"No allowed providers are available for the selected model."}}"#
+    ));
+    // A retryable/5xx status never routes here at all.
+    assert!(!is_image_unsupported(
+        500,
+        "No endpoints found that support image input"
+    ));
+    assert!(!is_image_unsupported(
+        401,
+        "No endpoints found that support image input"
+    ));
+}
+
+/// A `ModelError::VisionUnsupported` is the one error the loop can recover from, and it
+/// names the model to deny. Every other variant answers `None`.
+#[test]
+fn vision_unsupported_is_distinguishable_from_other_failures() {
+    let vision = ModelError::VisionUnsupported {
+        model_id: "z-ai/glm-5.2".to_string(),
+        message: "No endpoints found that support image input".to_string(),
+    };
+    assert_eq!(vision.vision_unsupported_model(), Some("z-ai/glm-5.2"));
+    // It is not an auth failure, so it must not be scored as the credential being
+    // refused, and it is not "retry the whole turn later" either.
+    assert!(!vision.is_auth_failure());
+    assert!(!vision.is_retryable_exhausted());
+
+    let fatal = ModelError::Fatal {
+        status: 404,
+        message: "unknown model".to_string(),
+    };
+    assert_eq!(fatal.vision_unsupported_model(), None);
 }
 
 // ---------------------------------------------------------------------------

@@ -29,7 +29,7 @@ use crate::planning::PlanningRuntime;
 use crate::skills::{SkillLibrary, SkillsRuntime};
 use crate::tasks::TasksRuntime;
 use crate::telemetry::{CollectingSink, Emitter};
-use crate::tools::{RuntimeSet, ToolContext, ToolRegistry};
+use crate::tools::{RuntimeSet, ToolContext, ToolRegistry, VisionContext};
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_CODE_REVIEWS, CAPABILITY_COMPACTION,
     CAPABILITY_CONTEXT_VISIBILITY, CAPABILITY_EPICS_ISSUES, CAPABILITY_FSM, CAPABILITY_MULTI_MODEL,
@@ -59,6 +59,9 @@ fn invocation(dir: &Path, set: GgCapabilitySet) -> GgInvocation {
         prompt: "Build a tiny game.".to_string(),
         capability_set: set,
         model_windows,
+        // No declared modalities: the offline default, under which every model is
+        // treated optimistically about image input (see `crate::vision`).
+        model_modalities: BTreeMap::new(),
     }
 }
 
@@ -918,6 +921,51 @@ fn system_prompt_states_the_configured_read_cap() {
     assert!(!uncapped.contains("42 lines"));
 }
 
+/// A rendered prompt with every run of whitespace collapsed to one space, so a phrase check
+/// does not depend on where the template happens to hard-wrap.
+fn flat(rendered: &str) -> String {
+    rendered.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// The system prompt states, up front, whether this run's model can be shown an image.
+///
+/// A test case's specs point at reference mockups, so the model *will* try to read one.
+/// Telling it which world it is in is what keeps a text-only run from spending turns
+/// re-reading a `.png` hoping for a different answer.
+#[test]
+fn system_prompt_states_whether_images_can_be_seen() {
+    let set = GgCapabilitySet::minimal("mock/x");
+    let library = Arc::new(SkillLibrary::empty());
+    let registry = ToolRegistry::from_run(&set, &RuntimeSet::new(&library));
+
+    let seeing = DisabledRuntimes::new();
+    let prompt = system_prompt(seeing.inputs(&registry));
+    assert!(flat(&prompt).contains("You can **see images**"), "{prompt}");
+
+    // A model the catalog declared text-only is told so, and told that retrying will not
+    // help — the alternative is it learning that one wasted read at a time.
+    let blind = DisabledRuntimes::text_only("mock/x");
+    let prompt = system_prompt(blind.inputs(&registry));
+    assert!(
+        flat(&prompt).contains("You **cannot see images**"),
+        "{prompt}"
+    );
+    assert!(prompt.contains("will not change that"), "{prompt}");
+}
+
+/// With `read_file` withheld entirely, the prompt says nothing about images either way —
+/// there is no tool that could show or describe one, so a claim about them would be noise.
+#[test]
+fn system_prompt_omits_image_guidance_without_read_file() {
+    let mut set = GgCapabilitySet::minimal("mock/x");
+    set.disabled_tools.push(READ_FILE_TOOL.to_string());
+    let library = Arc::new(SkillLibrary::empty());
+    let registry = ToolRegistry::from_run(&set, &RuntimeSet::new(&library));
+
+    let prompt = system_prompt(DisabledRuntimes::new().inputs(&registry));
+    assert!(!prompt.contains("see images"), "{prompt}");
+}
+
 /// Every capability runtime, disabled — owned by the caller so a prompt test can borrow
 /// [`PromptInputs`] from it without binding six locals of its own.
 #[derive(Default)]
@@ -928,6 +976,9 @@ struct DisabledRuntimes {
     board: Option<BoardRuntime>,
     planning: Option<PlanningRuntime>,
     fsm: Option<FsmRuntime>,
+    /// The vision context the prompt reads to decide whether to promise images. Owned here
+    /// for the same reason as the runtimes: `PromptInputs` borrows it.
+    vision: VisionContext,
 }
 
 impl DisabledRuntimes {
@@ -940,6 +991,22 @@ impl DisabledRuntimes {
             board: Some(BoardRuntime::disabled()),
             planning: Some(PlanningRuntime::disabled()),
             fsm: Some(FsmRuntime::disabled()),
+            // Nothing declared: the optimistic default, under which the prompt promises
+            // the model it can see images.
+            vision: VisionContext::unknown(),
+        }
+    }
+
+    /// The same base, but with the model declared **text-only** — the arm in which the
+    /// prompt must tell the model it cannot see images.
+    fn text_only(model_id: &str) -> Self {
+        let declared = BTreeMap::from([(model_id.to_string(), vec!["text".to_string()])]);
+        Self {
+            vision: VisionContext {
+                model_id: model_id.to_string(),
+                support: Arc::new(crate::vision::VisionSupport::new(declared)),
+            },
+            ..Self::new()
         }
     }
 
@@ -955,6 +1022,7 @@ impl DisabledRuntimes {
             planning: self.planning.as_ref().expect("built"),
             fsm: self.fsm.as_ref().expect("built"),
             read_policy: ReadPolicy::default(),
+            vision: &self.vision,
             code_reviews: false,
             speculative: false,
             responses_as_code: false,
@@ -6738,4 +6806,147 @@ async fn a_captured_run_reconstructs_from_its_record() {
         replayed, original,
         "the reconstruction reproduces the original telemetry step for step"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Reading images: attaching them, and surviving a model that cannot see them
+// ---------------------------------------------------------------------------
+
+/// A minimal valid PNG header, so the workspace holds something `sniff_image` accepts.
+const TEST_PNG: &[u8] = &[
+    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+];
+
+/// A client that plays a fixed script but **refuses any request carrying an image**, the
+/// way OpenRouter answers a text-only model. It records every request it saw so a test
+/// can prove the retry went out without the picture.
+struct VisionRefusingClient {
+    model_id: String,
+    turn: AtomicUsize,
+    /// Whether each received request carried an image, in order.
+    seen: Mutex<Vec<bool>>,
+}
+
+impl VisionRefusingClient {
+    fn new(model_id: &str) -> Arc<Self> {
+        Arc::new(Self {
+            model_id: model_id.to_string(),
+            turn: AtomicUsize::new(0),
+            seen: Mutex::new(Vec::new()),
+        })
+    }
+
+    /// Whether each request this client received carried an image, in order.
+    fn requests(&self) -> Vec<bool> {
+        self.seen.lock().unwrap().clone()
+    }
+}
+
+#[async_trait::async_trait]
+impl ModelClient for VisionRefusingClient {
+    async fn complete(
+        &self,
+        messages: &[Message],
+        _tools: &[ToolDefinition],
+    ) -> Result<ModelResponse, ModelError> {
+        let carries_images = messages.iter().any(|m| !m.images.is_empty());
+        self.seen.lock().unwrap().push(carries_images);
+        if carries_images {
+            return Err(ModelError::VisionUnsupported {
+                model_id: self.model_id.clone(),
+                message: "No endpoints found that support image input".to_string(),
+            });
+        }
+        // Turn 1 reads the mockup; every later turn finishes.
+        let tool_calls = if self.turn.fetch_add(1, Ordering::SeqCst) == 0 {
+            vec![ToolCall {
+                id: "call_read".to_string(),
+                name: "read_file".to_string(),
+                arguments: json!({ "path": "ref.png" }),
+            }]
+        } else {
+            Vec::new()
+        };
+        Ok(ModelResponse {
+            text: Some("done".to_string()),
+            finish_reason: if tool_calls.is_empty() {
+                FinishReason::Stop
+            } else {
+                FinishReason::ToolCalls
+            },
+            tool_calls,
+            usage: TokenCounts::default(),
+            cost: None,
+        })
+    }
+
+    fn model_id(&self) -> &str {
+        &self.model_id
+    }
+}
+
+/// The load-bearing guarantee: a model that turns out not to accept image input does not
+/// fail the run. The read succeeds, the provider refuses the follow-up turn, gg strips
+/// the picture and retries, and the session completes.
+#[tokio::test]
+async fn a_provider_refusing_images_does_not_fail_the_run() {
+    let dir = TempDir::new().unwrap();
+    std::fs::write(dir.path().join("ref.png"), TEST_PNG).unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-vision".to_string()), Box::new(sink.clone()));
+
+    let client = VisionRefusingClient::new("mock/text-only");
+    let produced = Arc::clone(&client);
+    let factory = Arc::new(ScriptedFactory::new().slot(PRIMARY_SLOT, move |_| {
+        Box::new(SharedClient(Arc::clone(&produced)))
+    }));
+
+    let inv = invocation(dir.path(), GgCapabilitySet::minimal("mock/text-only"));
+    assert_eq!(
+        run_with_factory(&inv, &emitter, factory).await,
+        SessionOutcome::Ran,
+        "a refused image must not discard the run"
+    );
+
+    // Turn 1 (no image) → the read → turn 2 carrying the image, refused → the same turn
+    // retried without it. The retry is the proof the recovery actually re-ran the turn.
+    assert_eq!(
+        client.requests(),
+        vec![false, true, false],
+        "the refused turn was retried with the image removed"
+    );
+
+    let events = sink.events();
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::Log { level, message }
+                if level == "warn" && message.contains("does not accept image input")
+        )),
+        "the discovery is reported once, loudly"
+    );
+    assert!(
+        events.iter().any(
+            |e| matches!(&e.kind, GgTelemetryKind::SessionEnded { status } if status == "completed")
+        ),
+        "the session completed normally"
+    );
+}
+
+/// A newtype letting several agents share one scripted client through the factory.
+struct SharedClient(Arc<VisionRefusingClient>);
+
+#[async_trait::async_trait]
+impl ModelClient for SharedClient {
+    async fn complete(
+        &self,
+        messages: &[Message],
+        tools: &[ToolDefinition],
+    ) -> Result<ModelResponse, ModelError> {
+        self.0.complete(messages, tools).await
+    }
+
+    fn model_id(&self) -> &str {
+        self.0.model_id()
+    }
 }
