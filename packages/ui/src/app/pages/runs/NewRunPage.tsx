@@ -743,19 +743,8 @@ export function NewRunPage() {
       </div>
 
       <p className={`${styles.sectionLabel} ${styles.sectionLabelBackdrop}`}>
-        {isGg
-          ? "gg configuration / model combinations"
-          : "Harness / model combinations"}
+        {isGg ? "gg configuration" : "Harness / model combinations"}
       </p>
-      {isGg && (
-        <p className={styles.muted}>
-          Each row launches a saved gg configuration — a named capability set —
-          supplying a model for every model slot it declares. A role the
-          configuration pinned to a model itself is already decided and is not
-          asked for here. Manage your configurations under{" "}
-          <Link to={routes.accountGgConfigs()}>Account → gg</Link>.
-        </p>
-      )}
       <div className={styles.comboList}>
         {combinations.map((combo) => (
           <div key={combo.id} className={styles.comboRow}>
