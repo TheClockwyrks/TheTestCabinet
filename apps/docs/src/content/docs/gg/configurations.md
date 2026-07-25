@@ -108,8 +108,10 @@ the model is a model comparison.
 
 A launched gg run is watched on gg's own live monitor, which renders its
 [telemetry](/gg/telemetry/) — the agent tree, the epic/issue board, and the
-context-fill graphs — rather than a harness event feed. That view is not only for the
-session that launched the run:
+context-fill graphs. The **panel selector leads the view**, and everything about the
+run is one of the panels it selects, starting with **Dashboard**: the run's status,
+its running token/cost tally, the configuration it is running under, and the enforced
+[FSM](/gg/fsms/) process. That view is not only for the session that launched the run:
 
 - The **Runs** list opens an in-flight gg run on gg's monitor, not the generic
   harness feed.
@@ -117,7 +119,13 @@ session that launched the run:
   same panels from the recorded telemetry stream.
 - The panels offered are **only the ones the run's capability set justifies** — gg
   announces its configuration on the stream's first event, so a run with no board and
-  no planning pass is not asked to show empty Board and Plan panels.
+  no planning pass is not asked to show empty Board and Plan panels. Three panels are
+  unconditional, because they read gg's own account of the run rather than the product
+  of a capability: **Dashboard**, **Activity**, and **Context**.
+- The **Activity** panel is gg's telemetry rendered through the *same* feed every
+  other harness's events render through, so it honors the layout picked in
+  **Settings → Appearance** and a gg run doesn't read differently from every other
+  run.
 
 ## Analyzing across them
 

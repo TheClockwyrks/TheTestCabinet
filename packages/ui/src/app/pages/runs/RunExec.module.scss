@@ -508,9 +508,10 @@
   }
 }
 
-// The live event feed itself now lives in the shared `EventFeed` component
-// (`components/EventFeed.module.scss`), which owns its own styling so the run
-// monitor and the Appearance settings preview render it identically.
+// The live event feed itself now lives in the shared feed component
+// (`components/FeedView.module.scss`), which owns its own styling so the run
+// monitor, the gg activity panel, and the Appearance settings preview render it
+// identically.
 
 // The header row above the live feed: the "Live Event Feed" label stacked over
 // the run id on the left, and the Follow toggle pinned to the right. Aligns to

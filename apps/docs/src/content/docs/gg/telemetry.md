@@ -28,6 +28,11 @@ planning pass is never asked to show an empty Board or Plan. A stream recorded b
 gg announced it simply omits the field, and the recorded set on the run record stands
 in.
 
+The panels that read gg's own account of the run rather than the product of a
+capability — the Dashboard (what the run is and what it cost), the Activity feed
+(every session emits a stream), and the Context breakdown — are **always** offered,
+gated by nothing.
+
 This telemetry is **custom** — a purpose-built structured stream to The Test
 Cabinet, designed to carry the live, hierarchical, high-cardinality state above (the
 agent tree and the issue board), which pure metrics and plain spans model poorly. A

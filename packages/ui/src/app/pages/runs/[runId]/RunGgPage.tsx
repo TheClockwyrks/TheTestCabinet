@@ -5,7 +5,7 @@ import type { RunRecord } from "@test-cabinet/run-record";
 import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
 import { useRunEvents } from "../../../data/useRunEvents";
 import { routes } from "../../../routes";
-import { FsmStateStrip } from "../gg/FsmStateStrip";
+import { GgDashboard } from "../gg/GgDashboard";
 import { GgRunPanels } from "../gg/GgRunPanels";
 import { reduceGgEvents } from "../gg/useGgRunState";
 import styles from "./RunEventsPage.module.scss";
@@ -74,17 +74,33 @@ function RunGgBody({ run }: { run: RunRecord }) {
 
   return (
     <section className={`${styles.section} ${styles.sectionFill}`}>
-      <FsmStateStrip fsm={derived.fsm} />
-      {replayCaptured && (
-        <p className={styles.notice}>
-          This run was captured for replay —{" "}
-          <Link to={routes.ggReplay(run.id)}>
-            step through what each agent saw and did
-          </Link>{" "}
-          (debug).
-        </p>
-      )}
-      <GgRunPanels state={derived} capabilitySet={capabilitySet} live={false} />
+      <GgRunPanels
+        state={derived}
+        capabilitySet={capabilitySet}
+        live={false}
+        // The same Dashboard the live monitor leads with, minus the status card:
+        // the run's state is already the detail page's own header, so restating it
+        // here would only repeat it. What is *not* elsewhere on the page — what the
+        // run cost, the configuration it ran under, the enforced process — reads
+        // exactly as it did live.
+        dashboard={
+          <GgDashboard
+            usage={derived.usage}
+            fsm={derived.fsm}
+            capabilitySet={capabilitySet}
+          >
+            {replayCaptured && (
+              <p className={styles.notice}>
+                This run was captured for replay —{" "}
+                <Link to={routes.ggReplay(run.id)}>
+                  step through what each agent saw and did
+                </Link>{" "}
+                (debug).
+              </p>
+            )}
+          </GgDashboard>
+        }
+      />
     </section>
   );
 }

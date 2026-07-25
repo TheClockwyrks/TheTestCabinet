@@ -1,9 +1,13 @@
 @use "../styles/tokens" as t;
 
-// The harness event feed. The container is style-agnostic; the chosen layout is
-// selected by `data-feed-style` below. Each line resolves its accent from the
+// The console's activity feed. The container is style-agnostic; the chosen layout
+// is selected by `data-feed-style` below. Each line resolves its accent from the
 // shared `--ttc-event-*` tokens (set per `data-event-type`), so the feed matches
 // the CLI's terminal palette in every layout.
+//
+// Shared by every feed in the console — the normalized harness event stream and
+// gg's own first-party telemetry stream — so a run reads the same way whichever
+// harness produced it, in whichever layout the user picked.
 //
 // In the streaming feeds the container is a fixed- or fill-height box that clips
 // to its radius while react-virtuoso scrolls the rows inside it; in the settings
@@ -80,6 +84,44 @@
   &[data-event-type="error"] {
     --event-color: var(--ttc-event-error);
   }
+
+  // --- gg's telemetry tones --------------------------------------------------
+  // gg's first-party stream renders through this same feed, so its tones map onto
+  // the same palette (see `ggFeedLine`): a tool call reads like a command, a
+  // result like a write, a failure like an error. The three *process* tones keep
+  // their own fixed hues — the plan hue ties to the plan band on the context
+  // graph and the FSM hue to the current-state strip — and all three read on both
+  // the light and dark console themes.
+  &[data-event-type="tool"] {
+    --event-color: var(--ttc-event-command);
+  }
+  &[data-event-type="ok"] {
+    --event-color: var(--ttc-event-write);
+  }
+  &[data-event-type="fail"] {
+    --event-color: var(--ttc-event-error);
+  }
+  &[data-event-type="warn"] {
+    --event-color: var(--ttc-event-warning);
+  }
+  &[data-event-type="compact"] {
+    --event-color: var(--ttc-event-search);
+  }
+  &[data-event-type="plan"] {
+    --event-color: #818cf8;
+  }
+  &[data-event-type="fsm"] {
+    --event-color: #2dd4bf;
+  }
+
+  // Context reclaims, planning transitions, and FSM transitions are structural
+  // moments in a run, not another agent/tool line, so they take a faint wash of
+  // their own hue and lift out of the stream in every layout.
+  &[data-event-type="compact"],
+  &[data-event-type="plan"],
+  &[data-event-type="fsm"] {
+    background: color-mix(in srgb, var(--event-color) 8%, transparent);
+  }
 }
 
 .gutter {
@@ -98,16 +140,43 @@
   color: t.$color-text-muted;
 }
 
+// A small identity chip in the gutter — gg uses it to attribute a line to its
+// node in the subagent tree. Muted and monospace so it reads as an id without
+// competing with the type-colored label.
+.chip {
+  font-family: monospace;
+  font-size: 0.68rem;
+  color: t.$color-text-muted;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 60%, transparent);
+  border-radius: t.$radius-sm;
+  padding: 0 t.$space-2xs;
+  width: fit-content;
+}
+
 .body {
   color: t.$color-text;
-  white-space: pre-wrap;
-  word-break: break-word;
   min-width: 0;
 }
 
-// A reasoning row's body is a collapsed <details>. The summary is the one-line
-// preview (muted, click to expand); the expanded reasoning text reads in the
-// event's accent color to set it apart from a normal agent message.
+.detail {
+  color: t.$color-text;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+// The compact secondary line under a detail (a tool call's arguments, a
+// compaction's retained state): present but never competing with the detail.
+.args {
+  margin-top: t.$space-2xs;
+  color: t.$color-text-muted;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+// A collapsible row's body is a <details>. The summary is the one-line preview
+// (muted, click to expand); the expanded text reads in the line's accent color to
+// set it apart from a normal message.
 .summary {
   color: t.$color-text-muted;
   cursor: pointer;
@@ -119,7 +188,7 @@
   }
 }
 
-.reasoning {
+.collapsed {
   margin-top: t.$space-xs;
   color: var(--event-color);
   white-space: pre-wrap;

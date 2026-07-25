@@ -176,8 +176,8 @@ export function ContextFillGraph({
   if (!latest) {
     return (
       <p className={styles.empty}>
-        Context visibility not enabled — turn on the context-visibility
-        capability to stream a per-source breakdown of the window each turn.
+        No context breakdown yet — gg streams a per-source breakdown of the
+        window on every turn when the context-visibility capability is on.
       </p>
     );
   }

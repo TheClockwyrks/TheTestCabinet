@@ -1,0 +1,173 @@
+@use "../../../styles/tokens" as t;
+@use "../../../styles/surfaces" as s;
+
+// The gg Dashboard panel: the run-level read-out (status, the token/cost tally,
+// the configuration) shown as the first panel on both surfaces a gg run is read
+// through. Everything textual reuses the shared run-execution styles
+// (`../RunExec.module.scss`); this stylesheet owns the cards.
+
+.dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+}
+
+// The card row: as many cards as fit, each keeping a readable minimum width and
+// collapsing to one column when cramped.
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: t.$space-md;
+  align-items: start;
+}
+
+.card {
+  padding: t.$space-md;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
+.cardLabel {
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$color-text-muted;
+}
+
+// The status line: a phase pill plus its detail, on one row, with the kill
+// control (when running) pushed to the trailing edge.
+.statusLine {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  flex-wrap: wrap;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-xs;
+  padding: t.$space-xs t.$space-md;
+  border-radius: t.$radius-md;
+  border: t.$border-hairline solid t.$color-border;
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$color-text-muted;
+  white-space: nowrap;
+}
+
+// A live (queued/running) phase glows in the accent; a terminal phase takes the
+// positive/negative cue by outcome.
+.pillLive {
+  border-color: t.$color-accent;
+  color: t.$color-accent;
+  box-shadow: var(--ttc-glow);
+}
+
+.pillOk {
+  border-color: t.$color-positive;
+  color: t.$color-positive;
+}
+
+.pillFail {
+  border-color: t.$color-negative;
+  color: t.$color-negative;
+}
+
+.statusDetail {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  min-width: 0;
+}
+
+// The kill control sits at the far edge of the status line.
+.statusAction {
+  margin-left: auto;
+}
+
+// The token/cost tally: a big total over a per-class breakdown.
+.metricValue {
+  font-size: t.$font-lg;
+  font-weight: 600;
+  color: t.$color-text;
+  font-variant-numeric: tabular-nums;
+}
+
+.metricCost {
+  color: t.$color-text;
+  font-variant-numeric: tabular-nums;
+}
+
+// The unit beside a figure ("tokens", "(actual …)") — present but subordinate to
+// the number it qualifies.
+.metricUnit {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  font-weight: 400;
+}
+
+.breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-xs t.$space-md;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+.breakdownKey {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-right: t.$space-xs;
+}
+
+// --- The configuration card --------------------------------------------------
+
+.configPreset {
+  color: t.$color-text;
+}
+
+.slots {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  font-size: t.$font-sm;
+  color: t.$color-text;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.slotName {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: t.$color-text-muted;
+  margin-right: t.$space-xs;
+}
+
+// The enabled capabilities as chips: the run's independent variable, legible at a
+// glance and countable without reading prose.
+.capabilities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-2xs;
+}
+
+.capability {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 60%, transparent);
+  border-radius: t.$radius-sm;
+  padding: 0 t.$space-xs;
+}
+
+.capabilityNone {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}

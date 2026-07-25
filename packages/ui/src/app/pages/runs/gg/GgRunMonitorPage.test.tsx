@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   GgContextSource,
   GgContextSourceUsage,
@@ -14,6 +14,7 @@ import {
   type WorkersContextValue,
 } from "../../../../client/context";
 import type { WorkerClient, RunSubscription } from "../../../../client/clients";
+import { useAppSettings } from "../../../store/appSettings";
 import { GgRunMonitorPage } from "./GgRunMonitorPage";
 
 // gg is headless, so this live monitor is the only window into a run. The page's
@@ -339,18 +340,59 @@ function renderMonitor(events: HarnessEvent[] = EVENTS) {
   );
 }
 
+// Select a panel from the selector that leads the view. The run-level read-out is
+// itself a panel (Dashboard, the first one and the default), so reading the activity
+// feed — or anything else — starts here.
+function openPanel(name: string) {
+  fireEvent.click(screen.getByRole("radio", { name }));
+}
+
 describe("GgRunMonitorPage", () => {
+  // The feed style is a persisted, app-wide preference; hold it at the default so
+  // one test's choice can't leak into the next.
+  beforeEach(() => {
+    useAppSettings.getState().setEventFeedStyle("gutter");
+  });
+
+  it("leads with the Dashboard panel, carrying the run-level read-out", () => {
+    renderMonitor();
+    // Dashboard is the first panel and the one selected by default, so the run's
+    // status, its running token/cost tally, and the configuration it is running
+    // under all read without touching the selector.
+    expect(screen.getByRole("radio", { name: "Dashboard" })).toBeChecked();
+    expect(screen.getByText("Running")).toBeInTheDocument();
+    expect(screen.getByText("Tokens & cost")).toBeInTheDocument();
+    expect(screen.getByText("Configuration")).toBeInTheDocument();
+    expect(screen.getByText("mock/scripted-builder")).toBeInTheDocument();
+  });
+
   it("renders the gg-native activity feed from the folded stream", () => {
     renderMonitor();
-    // The session started, so the cockpit reads Running (not Queued) and the
-    // agent's message shows in the Activity feed.
-    expect(screen.getByText("Running")).toBeInTheDocument();
+    openPanel("Activity");
     expect(screen.getByText("Planning the build.")).toBeInTheDocument();
+  });
+
+  it("renders gg activity through the shared feed, in the layout the user picked", () => {
+    // gg's telemetry is not a bespoke list: it renders through the very same feed
+    // every other harness's events do, so the Appearance setting applies to it and a
+    // gg run doesn't read differently from every other run.
+    useAppSettings.getState().setEventFeedStyle("stacked");
+    renderMonitor();
+    openPanel("Activity");
+    const feed = document.querySelector("[data-feed-style]");
+    expect(feed).toHaveAttribute("data-feed-style", "stacked");
+    // And each row carries its tone as the palette key the shared feed colors by.
+    expect(
+      document.querySelector('[data-event-type="agent"]'),
+    ).toBeInTheDocument();
+    expect(
+      document.querySelector('[data-event-type="compact"]'),
+    ).toBeInTheDocument();
   });
 
   it("shows the context-fill graph with its fullness signal", () => {
     renderMonitor();
-    fireEvent.click(screen.getByRole("radio", { name: "Context" }));
+    openPanel("Context");
     // The fullness meter (the signal compaction acts on) and the per-source
     // legend both render from the latest breakdown snapshot.
     expect(
@@ -361,7 +403,7 @@ describe("GgRunMonitorPage", () => {
 
   it("renders the task DAG with derived ready/blocked/done grouping", () => {
     renderMonitor();
-    fireEvent.click(screen.getByRole("radio", { name: "Tasks" }));
+    openPanel("Tasks");
     // Titles unique to a task node (t2's title also appears as t3's outstanding
     // blocker chip, so assert on the ones that are not echoed as edges).
     expect(screen.getByText("Scaffold the project")).toBeInTheDocument();
@@ -372,7 +414,7 @@ describe("GgRunMonitorPage", () => {
 
   it("renders the epic/issue board with grouping and derived readiness", () => {
     renderMonitor();
-    fireEvent.click(screen.getByRole("radio", { name: "Board" }));
+    openPanel("Board");
     // Issues group under their epic, and an issue with no epicId falls into the
     // Ungrouped bucket.
     expect(screen.getByText("Rendering")).toBeInTheDocument();
@@ -390,6 +432,7 @@ describe("GgRunMonitorPage", () => {
   it("renders the plan view and marks the plan→implement transition in the feed", () => {
     renderMonitor();
     // The planning transitions read as distinct rows in the Activity feed.
+    openPanel("Activity");
     expect(
       screen.getByText(
         "Entered plan mode — read-only exploration, no mutations.",
@@ -402,14 +445,14 @@ describe("GgRunMonitorPage", () => {
     ).toBeInTheDocument();
     // The Plan tab shows the current phase banner (Implementing) and the submitted
     // plan text.
-    fireEvent.click(screen.getByRole("radio", { name: "Plan" }));
+    openPanel("Plan");
     expect(screen.getByText("Implementing")).toBeInTheDocument();
     expect(screen.getByText(/Scaffold the project/)).toBeInTheDocument();
   });
 
   it("renders the skills and memories knowledge views", () => {
     renderMonitor();
-    fireEvent.click(screen.getByRole("radio", { name: "Knowledge" }));
+    openPanel("Knowledge");
     expect(screen.getByText("gg-render")).toBeInTheDocument();
     expect(screen.getByText("1 of 2 read")).toBeInTheDocument();
     expect(screen.getByText("controls")).toBeInTheDocument();
@@ -417,6 +460,7 @@ describe("GgRunMonitorPage", () => {
 
   it("renders compaction boundaries and evict actions in the activity feed", () => {
     renderMonitor();
+    openPanel("Activity");
     // The compaction boundary reads as a distinct row: before→after tokens and the
     // retained-state proof (the pinned state carried across verbatim).
     expect(
@@ -435,7 +479,7 @@ describe("GgRunMonitorPage", () => {
 
   it("marks compaction boundaries with their retained state on the context tab", () => {
     renderMonitor();
-    fireEvent.click(screen.getByRole("radio", { name: "Context" }));
+    openPanel("Context");
     // The boundary caption under the graph names the turn, the drop, and the pinned
     // state the retention contract carried across.
     expect(
@@ -448,7 +492,7 @@ describe("GgRunMonitorPage", () => {
 
   it("shows retained state carrying over on the knowledge tab", () => {
     renderMonitor();
-    fireEvent.click(screen.getByRole("radio", { name: "Knowledge" }));
+    openPanel("Knowledge");
     // The Knowledge tab keeps showing the skills/memories after a compaction, with a
     // note that they survived the boundary verbatim.
     expect(screen.getByText("gg-render")).toBeInTheDocument();
@@ -520,7 +564,7 @@ describe("GgRunMonitorPage", () => {
       }),
     ];
     renderMonitor(events);
-    fireEvent.click(screen.getByRole("radio", { name: "Agents" }));
+    openPanel("Agents");
     // A three-node tree: the two subagents both appear as nodes.
     expect(screen.getByText("agent-0")).toBeInTheDocument();
     expect(screen.getByText("agent-1")).toBeInTheDocument();
@@ -539,13 +583,15 @@ describe("GgRunMonitorPage", () => {
     expect(
       screen.getByText("Renderer looks correct; one nit filed."),
     ).toBeInTheDocument();
-    // The per-slot usage breakdown lists the (slot, model) with its cost — and the
-    // header total is the sum of the rollups, so the same figure appears twice
-    // (the reconciliation: header total ↔ per-slot breakdown).
-    expect(screen.getAllByText("$0.0021").length).toBeGreaterThanOrEqual(2);
+    // The per-slot usage breakdown lists the (slot, model) with its cost.
+    expect(screen.getByText("$0.0021")).toBeInTheDocument();
     // The workflow strip labels the declared stage and its fan-out count.
     expect(screen.getByText("review")).toBeInTheDocument();
     expect(screen.getByText("×3")).toBeInTheDocument();
+    // The Dashboard's run total is the sum of those rollups, so the two reconcile
+    // across the panels (the same figure, read two ways).
+    openPanel("Dashboard");
+    expect(screen.getByText("$0.0021")).toBeInTheDocument();
   });
 
   it("shows the FSM current-state strip and marks transitions in the feed", () => {
@@ -568,11 +614,13 @@ describe("GgRunMonitorPage", () => {
       }),
     ];
     renderMonitor(events);
-    // The strip names the machine and its ordered states (past + current chips).
+    // The strip names the machine and its ordered states (past + current chips) on
+    // the Dashboard, where the run's enforced process belongs.
     expect(screen.getByText("tdd")).toBeInTheDocument();
     expect(screen.getByText("write_tests")).toBeInTheDocument();
     expect(screen.getByText("implement")).toBeInTheDocument();
     // Each FSM transition is marked as a distinct row in the Activity feed.
+    openPanel("Activity");
     expect(screen.getByText("tdd → write_tests")).toBeInTheDocument();
     expect(screen.getByText("tdd → implement")).toBeInTheDocument();
   });
@@ -613,7 +661,7 @@ describe("GgRunMonitorPage", () => {
       ggIssue("i2", { type: "code_review", phase: "approved" }),
     ];
     renderMonitor(events);
-    fireEvent.click(screen.getByRole("radio", { name: "Board" }));
+    openPanel("Board");
     // i1's review requested changes — the badge and its actionable items show, so
     // the acceptance gate and the remaining work are legible on the board.
     expect(screen.getByText("changes requested")).toBeInTheDocument();
@@ -686,7 +734,7 @@ describe("GgRunMonitorPage", () => {
       }),
     ];
     renderMonitor(events);
-    fireEvent.click(screen.getByRole("radio", { name: "Agents" }));
+    openPanel("Agents");
     // The speculation summary: best-of-3, merged, with the winning attempt named.
     // ("merged" appears both as the speculation phase and the winner's worktree
     // outcome, so assert at least one is present.)
@@ -711,15 +759,19 @@ describe("GgRunMonitorPage", () => {
 
   it("shows empty states when no gg telemetry arrives", () => {
     renderMonitor([]);
-    // No session_started yet ⇒ Queued; the feed shows its waiting state.
+    // No session_started yet ⇒ Queued on the Dashboard, and the feed shows its
+    // waiting state.
     expect(screen.getByText("Queued")).toBeInTheDocument();
+    openPanel("Activity");
     expect(screen.getByText("Waiting for telemetry…")).toBeInTheDocument();
     // With no announced configuration there is nothing to shape the view to, so only
-    // the unconditional Activity panel is offered — never the full bar, which is what
-    // the gating exists to avoid.
-    expect(screen.getByRole("radio", { name: "Activity" })).toBeInTheDocument();
-    expect(screen.queryByRole("radio", { name: "Context" })).toBeNull();
+    // the unconditional panels are offered — never the full bar, which is what the
+    // gating exists to avoid.
+    for (const name of ["Dashboard", "Activity", "Context"]) {
+      expect(screen.getByRole("radio", { name })).toBeInTheDocument();
+    }
     expect(screen.queryByRole("radio", { name: "Board" })).toBeNull();
+    expect(screen.queryByRole("radio", { name: "Plan" })).toBeNull();
   });
 
   it("offers only the panels the announced capability set justifies", () => {
@@ -728,17 +780,25 @@ describe("GgRunMonitorPage", () => {
       sessionStarted(["shell", "tasks", "memories"]),
       gg({ type: "assistant_message", text: "Working." }),
     ]);
-    for (const name of ["Activity", "Tasks", "Knowledge"]) {
+    // The three unconditional panels — they read gg's own account of the run, not
+    // the product of a capability — plus the two this configuration justifies.
+    for (const name of [
+      "Dashboard",
+      "Activity",
+      "Context",
+      "Tasks",
+      "Knowledge",
+    ]) {
       expect(screen.getByRole("radio", { name })).toBeInTheDocument();
     }
-    // Context visibility, planning, the board, and subagents are all off, so their
-    // panels are not offered at all.
-    for (const name of ["Context", "Plan", "Board", "Agents"]) {
+    // Planning, the board, and subagents are all off, so their panels are not
+    // offered at all.
+    for (const name of ["Plan", "Board", "Agents"]) {
       expect(screen.queryByRole("radio", { name })).toBeNull();
     }
     // Knowledge is offered because memories is on — and shows only that half, not an
     // empty Skills column beside it.
-    fireEvent.click(screen.getByRole("radio", { name: "Knowledge" }));
+    openPanel("Knowledge");
     expect(screen.getByText("Memories")).toBeInTheDocument();
     expect(screen.queryByText("Skills")).toBeNull();
   });

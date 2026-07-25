@@ -1,11 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { SegmentedControl, type SegmentedOption } from "@test-cabinet/ui";
 import type { GgCapabilitySet } from "@test-cabinet/run-record/gg";
-import { formatEventTime } from "../../../eventFeed";
+import { FeedView, type FeedLine } from "../../../components/FeedView";
+import { useAppSettings } from "../../../store/appSettings";
 import runExec from "../RunExec.module.scss";
-import styles from "./GgRunMonitorPage.module.scss";
 import panels from "./GgPanels.module.scss";
-import type { FeedTone, GgRunState } from "./useGgRunState";
+import type { FeedRow, GgRunState } from "./useGgRunState";
 import { ContextFillGraph } from "./ContextFillGraph";
 import { AgentTreeView } from "./AgentTreeView";
 import { PlanView } from "./PlanView";
@@ -15,15 +15,17 @@ import { SkillsList } from "./SkillsList";
 import { MemoriesList } from "./MemoriesList";
 
 // The panels a gg run is read through. gg is headless, so these are the only window
-// into what it did: Activity is the gg-native event feed; Context, Plan, Board,
-// Tasks, and Knowledge are the views over the context-window breakdown, the planning
-// pass, the live epic/issue board, the blocked-by task DAG, and the model's
-// skills/memories. Plan sits ahead of the two work tiers (Board and Tasks) it
-// precedes.
+// into what it did: Dashboard is the run-level read-out (status, tokens and cost,
+// the configuration) the panels used to sit beneath; Activity is the gg-native event
+// feed; Context, Plan, Board, Tasks, and Knowledge are the views over the
+// context-window breakdown, the planning pass, the live epic/issue board, the
+// blocked-by task DAG, and the model's skills/memories. Plan sits ahead of the two
+// work tiers (Board and Tasks) it precedes.
 // Agents sits beside Activity — the subagent tree is the signature multi-agent view,
 // and like Activity it is a live window into the run's shape (who spawned whom, who
 // is running vs blocked) rather than a work tier.
 export type MonitorTab =
+  | "dashboard"
   | "activity"
   | "agents"
   | "context"
@@ -39,12 +41,15 @@ export type MonitorTab =
 //
 // The whole point of a first-party harness is that The Test Cabinet knows exactly
 // what a run can do, so the console shapes itself to the run rather than offering
-// surfaces the configuration disabled. Activity is unconditional: every run emits a
-// stream.
+// surfaces the configuration disabled. Three panels are unconditional, because they
+// read gg's own account of the run rather than the product of a capability:
+// Dashboard (what the run is and what it cost), Activity (every run emits a stream),
+// and Context (the window breakdown gg reports as it fills).
 const TAB_CAPABILITIES: Record<MonitorTab, ReadonlyArray<string>> = {
+  dashboard: [],
   activity: [],
   agents: ["subagents", "workflows", "speculative-execution"],
-  context: ["context-visibility"],
+  context: [],
   plan: ["planning"],
   board: ["epics-and-issues"],
   tasks: ["tasks"],
@@ -52,6 +57,7 @@ const TAB_CAPABILITIES: Record<MonitorTab, ReadonlyArray<string>> = {
 };
 
 const TAB_LABELS: ReadonlyArray<SegmentedOption<MonitorTab>> = [
+  { value: "dashboard", label: "Dashboard" },
   { value: "activity", label: "Activity" },
   { value: "agents", label: "Agents" },
   { value: "context", label: "Context" },
@@ -69,13 +75,18 @@ export function capabilityOn(set: GgCapabilitySet | null, id: string): boolean {
 /**
  * The panels this run's configuration justifies offering. Until the capability set is
  * known — a run still queued, before gg has announced it on `session_started` — only
- * Activity is offered: nothing else can have produced anything yet, and guessing
- * would put back exactly the surfaces this gating exists to remove.
+ * the unconditional panels are offered: nothing gated can have produced anything yet,
+ * and guessing would put back exactly the surfaces this gating exists to remove.
+ *
+ * Dashboard is offered only when the host supplies one (`hasDashboard`); both hosts
+ * do today, but the panel set is the host's to compose.
  */
 export function ggTabsFor(
   set: GgCapabilitySet | null,
+  hasDashboard: boolean,
 ): ReadonlyArray<SegmentedOption<MonitorTab>> {
   return TAB_LABELS.filter(({ value }) => {
+    if (value === "dashboard") return hasDashboard;
     const needed = TAB_CAPABILITIES[value];
     if (needed.length === 0) return true;
     if (!set) return false;
@@ -114,6 +125,11 @@ interface GgRunPanelsProps {
    * neither.
    */
   live: boolean;
+  /**
+   * The Dashboard panel's content — the host's run-level read-out (see `GgDashboard`).
+   * When given it becomes the first panel offered, and the one selected by default.
+   */
+  dashboard?: ReactNode;
 }
 
 /**
@@ -121,9 +137,16 @@ interface GgRunPanelsProps {
  *
  * Shared by the live monitor (`/runs/gg/:jobId/live`) and a finished run's gg tab
  * (`/runs/:runId/gg`) so a run reads the same way while it happens and afterwards —
- * the rich view is not something that disappears once the run ends.
+ * the rich view is not something that disappears once the run ends. The selector
+ * leads the view: everything about the run, the run-level summary included, is a
+ * panel it selects.
  */
-export function GgRunPanels({ state, capabilitySet, live }: GgRunPanelsProps) {
+export function GgRunPanels({
+  state,
+  capabilitySet,
+  live,
+  dashboard,
+}: GgRunPanelsProps) {
   const {
     feed,
     agents,
@@ -142,44 +165,47 @@ export function GgRunPanels({ state, capabilitySet, live }: GgRunPanelsProps) {
     codeReviews,
   } = state;
 
-  const tabs = ggTabsFor(capabilitySet);
-  const [tab, setTab] = useState<MonitorTab>("activity");
+  const hasDashboard = dashboard != null;
+  const tabs = useMemo(
+    () => ggTabsFor(capabilitySet, hasDashboard),
+    [capabilitySet, hasDashboard],
+  );
+  const [tab, setTab] = useState<MonitorTab>(
+    () => tabs[0]?.value ?? "activity",
+  );
   // The offered set grows the moment gg announces its configuration. A tab that is no
   // longer offered (a configuration resolved differently than the one last watched)
   // must not leave the panel body showing something the strip no longer selects.
   useEffect(() => {
-    if (!tabs.some((t) => t.value === tab)) setTab("activity");
+    if (!tabs.some((t) => t.value === tab))
+      setTab(tabs[0]?.value ?? "activity");
   }, [tabs, tab]);
 
   // Whether the Activity feed auto-follows the newest row. On by default while live;
   // scrolling up turns it off, and toggling it back on snaps to the bottom and
-  // resumes.
+  // resumes. A finished run's feed is a fixed record, so it never follows.
   const [following, setFollowing] = useState(true);
-  const feedRef = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    if (!live || !following) return;
-    const el = feedRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [feed.length, following, tab, live]);
-
-  const onFeedScroll = () => {
-    const el = feedRef.current;
-    if (!el) return;
-    // Within a row's height of the bottom counts as "at the bottom".
-    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
-    setFollowing(atBottom);
-  };
 
   // Whether the run went multi-agent. When it did, feed rows carry a small agent
   // chip so a line is attributable to its node in the tree; a root-only run stays
   // unchanged (no chips), keeping the common case unobtrusive.
   const multiAgent = agents.size > 1;
+  // gg's telemetry renders through the same feed every other harness uses, so it
+  // honors the layout the user picked in the Appearance settings instead of being a
+  // gg-only look.
+  const feedStyle = useAppSettings((s) => s.eventFeedStyle);
+  const lines = useMemo(
+    () => feed.map((row) => ggFeedLine(row, multiAgent)),
+    [feed, multiAgent],
+  );
+
   const showSkills = capabilityOn(capabilitySet, "skills");
   const showMemories = capabilityOn(capabilitySet, "memories");
 
   return (
     <>
-      {/* The panel selector, carrying only what this run's configuration turned on. */}
+      {/* The panel selector, leading the view and carrying only what this run's
+          configuration turned on. */}
       <div className={panels.tabBar}>
         <SegmentedControl
           options={tabs}
@@ -189,14 +215,23 @@ export function GgRunPanels({ state, capabilitySet, live }: GgRunPanelsProps) {
         />
       </div>
 
+      {/* The Dashboard's own content is a set of cards, each already a panel, so it
+          is not wrapped in the shared panel body — that would frame a frame. */}
+      {tab === "dashboard" && (
+        <>
+          <span className={runExec.sectionLabel}>dashboard</span>
+          {dashboard}
+        </>
+      )}
+
       {tab === "activity" && (
         <>
-          <div className={styles.feedHeader}>
+          <div className={runExec.feedHeader}>
             <span className={runExec.sectionLabel}>gg activity</span>
             {live && (
               <button
                 type="button"
-                className={styles.followButton}
+                className={runExec.followButton}
                 data-active={following ? "" : undefined}
                 aria-pressed={following}
                 onClick={() => setFollowing((on) => !on)}
@@ -205,38 +240,16 @@ export function GgRunPanels({ state, capabilitySet, live }: GgRunPanelsProps) {
               </button>
             )}
           </div>
-          <div className={styles.feed} ref={feedRef} onScroll={onFeedScroll}>
-            {feed.length === 0 ? (
-              <p className={styles.empty}>
-                {live ? "Waiting for telemetry…" : "No telemetry was recorded."}
-              </p>
-            ) : (
-              feed.map((row) => (
-                <div
-                  key={row.key}
-                  className={`${styles.row} ${toneClass(row.tone)}`}
-                >
-                  <div className={styles.rowGutter}>
-                    <span className={styles.rowLabel}>{row.label}</span>
-                    {multiAgent && row.agentId && (
-                      <span className={styles.rowAgent}>
-                        {row.agentId === "root" ? "root" : row.agentId}
-                      </span>
-                    )}
-                    <span className={styles.rowTime}>
-                      {formatEventTime(row.timestamp)}
-                    </span>
-                  </div>
-                  <div className={styles.rowBody}>
-                    {row.detail}
-                    {row.args && (
-                      <div className={styles.rowArgs}>{row.args}</div>
-                    )}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
+          <FeedView
+            lines={lines}
+            feedStyle={feedStyle}
+            fill
+            follow={live ? following : undefined}
+            onFollowChange={live ? setFollowing : undefined}
+            emptyLabel={
+              live ? "Waiting for telemetry…" : "No telemetry was recorded."
+            }
+          />
         </>
       )}
 
@@ -329,6 +342,22 @@ export function GgRunPanels({ state, capabilitySet, live }: GgRunPanelsProps) {
   );
 }
 
+// One gg telemetry row as a shared feed line. The tone doubles as the palette key
+// (the stylesheet maps gg's tones onto the same `--ttc-event-*` tokens the harness
+// event types use), and the emitting agent rides in the gutter chip once the run has
+// more than one agent to attribute a line to.
+function ggFeedLine(row: FeedRow, multiAgent: boolean): FeedLine {
+  const line: FeedLine = {
+    eventType: row.tone,
+    label: row.label.toUpperCase(),
+    timestamp: row.timestamp,
+    detail: row.detail,
+  };
+  if (row.args) line.args = row.args;
+  if (multiAgent && row.agentId) line.chip = row.agentId;
+  return line;
+}
+
 // What the Knowledge panel's retention note calls what it kept, named for the halves
 // this run actually has.
 function knowledgeLabel(skills: boolean, memories: boolean): string {
@@ -348,27 +377,4 @@ function RetainedNote({ count, what }: { count: number; what: string }) {
       {what} carried over.
     </p>
   );
-}
-
-function toneClass(tone: FeedTone): string {
-  switch (tone) {
-    case "agent":
-      return styles.toneAgent ?? "";
-    case "tool":
-      return styles.toneTool ?? "";
-    case "ok":
-      return styles.toneOk ?? "";
-    case "fail":
-      return styles.toneFail ?? "";
-    case "warn":
-      return styles.toneWarn ?? "";
-    case "compact":
-      return styles.toneCompact ?? "";
-    case "plan":
-      return styles.tonePlan ?? "";
-    case "fsm":
-      return styles.toneFsm ?? "";
-    case "system":
-      return "";
-  }
 }
