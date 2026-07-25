@@ -11,7 +11,9 @@ every definition does — a git checkout the backend re-ingests — so publishin
 needs **no `tcab` release** and stores nothing only in a cluster.
 
 See [Errata](/testing/end-to-end/manifests/#errata) for the full field reference
-(it applies to every test type).
+(it applies to every test type), and [Authoring Errata](/guides/devops/authoring-errata/)
+for how to decide what to put in one — especially the choice between an advisory
+`affects_scoring` flag and a mechanical `exclude_from_score`.
 
 ## Prerequisites
 
