@@ -300,3 +300,62 @@ select {
 .inline input {
   width: 64px;
 }
+
+/* --- Grid presets --- */
+.presets {
+  display: inline-flex;
+  gap: 4px;
+}
+.preset {
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.preset.active {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+/* --- Recipe info --- */
+.recipe-info {
+  margin-top: 8px;
+  padding: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.recipe-line {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  margin-bottom: 4px;
+}
+.recipe-line:last-child {
+  margin-bottom: 0;
+}
+.recipe-tag {
+  flex: 0 0 58px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.recipe-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+.recipe-item {
+  color: var(--text);
+}
+.recipe-count {
+  color: var(--accent);
+  font-weight: 600;
+}
+.recipe-craft {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: italic;
+}

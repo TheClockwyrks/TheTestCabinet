@@ -14,6 +14,7 @@ import {
   type DesignEntity,
   type Dir,
 } from "../model";
+import { RecipeInfo } from "./RecipeInfo";
 
 interface InspectorProps {
   index: number | null;
@@ -145,6 +146,7 @@ export function Inspector({
               </option>
             ))}
           </select>
+          <RecipeInfo recipe={entity.recipe} />
         </Field>
       )}
 
@@ -162,6 +164,7 @@ export function Inspector({
               </option>
             ))}
           </select>
+          <RecipeInfo recipe={entity.recipe} />
         </Field>
       )}
 

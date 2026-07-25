@@ -7,7 +7,7 @@
 // sensible steady-state length.
 
 import { useState } from "react";
-import { exportJson, type Design } from "../model";
+import { exportJson, GRID_PRESETS, type Design } from "../model";
 import type { SimStatus } from "../sim";
 
 const SPEEDS = [0.5, 1, 2, 4] as const;
@@ -90,6 +90,23 @@ export function Toolbar({
             }
           />
         </label>
+        <div className="presets">
+          {GRID_PRESETS.map((p) => {
+            const active =
+              design.grid.width === p.width && design.grid.height === p.height;
+            return (
+              <button
+                key={p.name}
+                type="button"
+                className={active ? "preset active" : "preset"}
+                title={`${p.name} scored grid: ${p.width}×${p.height}`}
+                onClick={() => onResize(p.width, p.height)}
+              >
+                {p.name} {p.width}×{p.height}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       <div className="group">
@@ -127,6 +144,7 @@ export function Toolbar({
           <input
             type="number"
             min={1}
+            style={{ width: 88 }}
             value={ticks}
             onChange={(e) =>
               setTicks(Math.max(1, Math.floor(Number(e.target.value)) || 1))

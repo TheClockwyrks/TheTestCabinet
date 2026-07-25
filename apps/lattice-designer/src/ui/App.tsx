@@ -39,8 +39,10 @@ const INITIAL_DESIGN: Design = {
 
 export function App() {
   const [design, setDesign] = useState<Design>(INITIAL_DESIGN);
+  // Start in the neutral Select mode: no placement tool armed, so the cursor moves
+  // freely (no ghost) and right-click deletes without any risk of misplacing.
   const [tool, setTool] = useState<Tool>({
-    kind: "belt",
+    kind: "select",
     dir: "E",
     opts: DEFAULT_TOOL_OPTIONS,
   });
@@ -132,8 +134,15 @@ export function App() {
 
   // --- Tool mutations ------------------------------------------------------
 
+  // Selecting a kind arms it; clicking the armed kind again disarms back to Select,
+  // so a placement tool is easy to put down.
   const setKind = useCallback(
-    (kind: EntityKind | "select") => setTool((t) => ({ ...t, kind })),
+    (kind: EntityKind | "select") =>
+      setTool((t) => ({ ...t, kind: t.kind === kind ? "select" : kind })),
+    [],
+  );
+  const deselect = useCallback(
+    () => setTool((t) => ({ ...t, kind: "select" })),
     [],
   );
   const rotate = useCallback(
@@ -179,6 +188,7 @@ export function App() {
           onDelete={remove}
           onSelect={select}
           onRotate={rotate}
+          onDeselect={deselect}
         />
         <Inspector
           index={selected}

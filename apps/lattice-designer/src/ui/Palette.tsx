@@ -18,6 +18,7 @@ import {
   type ToolOptions,
 } from "../model";
 import type { Tool } from "./App";
+import { RecipeInfo } from "./RecipeInfo";
 
 interface PaletteProps {
   tool: Tool;
@@ -149,6 +150,7 @@ export function Palette({ tool, onKind, onRotate, onOpts }: PaletteProps) {
               </option>
             ))}
           </select>
+          <RecipeInfo recipe={tool.opts.assemblerRecipe} />
         </Field>
       )}
 
@@ -168,12 +170,16 @@ export function Palette({ tool, onKind, onRotate, onOpts }: PaletteProps) {
               </option>
             ))}
           </select>
+          <RecipeInfo recipe={tool.opts.furnaceRecipe} />
         </Field>
       )}
 
       <p className="hint">
-        Left-click to place (drag to paint belts). Right-click deletes a
-        component and anything riding it. Press <kbd>R</kbd> to rotate.
+        Pick a component, then left-click to place (drag to paint belts). With{" "}
+        <strong>Select</strong>, click a component to edit it. Right-click
+        always deletes it and anything riding it. <kbd>R</kbd> rotates;{" "}
+        <kbd>Esc</kbd>
+        puts the tool down.
       </p>
     </aside>
   );

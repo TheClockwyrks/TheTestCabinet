@@ -33,6 +33,7 @@ interface GridProps {
   onDelete: (x: number, y: number) => void;
   onSelect: (x: number, y: number) => void;
   onRotate: () => void;
+  onDeselect: () => void;
 }
 
 /** A tile under the cursor. */
@@ -50,6 +51,7 @@ export function Grid({
   onDelete,
   onSelect,
   onRotate,
+  onDeselect,
 }: GridProps) {
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const [hover, setHover] = useState<Hover | null>(null);
@@ -133,17 +135,21 @@ export function Grid({
     [design.grid.width, design.grid.height, onDelete],
   );
 
-  // `R` rotates the current tool.
+  // `R` rotates the current tool; `Escape` puts it down (back to Select).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.key === "r" || e.key === "R") && !isTypingTarget(e.target)) {
+      if (isTypingTarget(e.target)) return;
+      if (e.key === "r" || e.key === "R") {
         e.preventDefault();
         onRotate();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        onDeselect();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onRotate]);
+  }, [onRotate, onDeselect]);
 
   // Redraw the overlay whenever what it shows changes.
   useEffect(() => {

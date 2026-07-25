@@ -67,6 +67,104 @@ export const ASSEMBLER_RECIPES = [
 /** Recipes that run on a **furnace** (the two smelting recipes; each burns a coal). */
 export const FURNACE_RECIPES = ["iron-plate", "copper-plate"] as const;
 
+/** One side of a recipe: an item and how many of it. */
+export interface RecipeIO {
+  item: Item;
+  count: number;
+}
+
+/** A recipe's inputs, outputs, and craft cost — for showing what a machine needs. */
+export interface Recipe {
+  inputs: RecipeIO[];
+  outputs: RecipeIO[];
+  /** Ticks from craft start (inputs consumed) to finish (outputs deposited). */
+  craft: number;
+  smelting: boolean;
+}
+
+/**
+ * The recipe table, mirroring `specs/prototypes.md`. Held here only so the editor
+ * can show a machine's required inputs; the engine owns the authoritative copy.
+ */
+export const RECIPES: Record<string, Recipe> = {
+  "iron-plate": {
+    inputs: [
+      { item: "iron-ore", count: 1 },
+      { item: "coal", count: 1 },
+    ],
+    outputs: [{ item: "iron-plate", count: 1 }],
+    craft: 32,
+    smelting: true,
+  },
+  "copper-plate": {
+    inputs: [
+      { item: "copper-ore", count: 1 },
+      { item: "coal", count: 1 },
+    ],
+    outputs: [{ item: "copper-plate", count: 1 }],
+    craft: 32,
+    smelting: true,
+  },
+  "iron-gear": {
+    inputs: [{ item: "iron-plate", count: 2 }],
+    outputs: [{ item: "iron-gear", count: 1 }],
+    craft: 64,
+    smelting: false,
+  },
+  "copper-cable": {
+    inputs: [{ item: "copper-plate", count: 1 }],
+    outputs: [{ item: "copper-cable", count: 2 }],
+    craft: 32,
+    smelting: false,
+  },
+  circuit: {
+    inputs: [
+      { item: "iron-plate", count: 1 },
+      { item: "copper-cable", count: 3 },
+    ],
+    outputs: [{ item: "circuit", count: 1 }],
+    craft: 96,
+    smelting: false,
+  },
+  "transport-belt": {
+    inputs: [
+      { item: "iron-plate", count: 1 },
+      { item: "iron-gear", count: 1 },
+    ],
+    outputs: [{ item: "transport-belt", count: 2 }],
+    craft: 48,
+    smelting: false,
+  },
+  inserter: {
+    inputs: [
+      { item: "iron-gear", count: 1 },
+      { item: "circuit", count: 1 },
+    ],
+    outputs: [{ item: "inserter", count: 1 }],
+    craft: 64,
+    smelting: false,
+  },
+  assembler: {
+    inputs: [
+      { item: "transport-belt", count: 2 },
+      { item: "circuit", count: 1 },
+    ],
+    outputs: [{ item: "assembler", count: 1 }],
+    craft: 96,
+    smelting: false,
+  },
+};
+
+/**
+ * Board-size presets matching the case's scored scenarios (`cases/*.json`), so a
+ * design targets a real grid rather than a guessed one.
+ */
+export const GRID_PRESETS = [
+  { name: "Small", width: 24, height: 12 },
+  { name: "Medium", width: 48, height: 32 },
+  { name: "Large", width: 72, height: 40 },
+] as const;
+
 /** The kinds of entity that can be placed, in palette order. */
 export const ENTITY_KINDS = [
   "belt",
