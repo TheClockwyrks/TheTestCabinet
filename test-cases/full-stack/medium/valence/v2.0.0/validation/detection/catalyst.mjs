@@ -28,7 +28,12 @@ export default function item() {
       const s0 = g.length * 0.18;
       await placeCovering(api, "catalyst", g, s0);
       await placeCovering(api, "emitter", g, s0);
-      id = await spawnAt(api, { type: "noble", pathId: 0, s: s0 });
+      // Give the Noble a full six-electron shell. A default 1-electron Noble is
+      // neutralised by the Emitter's very first shot (~tick 2), before `act` reads its
+      // `revealed` flag (~tick 6) — the read raced the kill and dereferenced a dead unit.
+      // Six shells outlast the reveal read while still letting the "a nearby tower can
+      // now fire on it" assertion observe hp fall on the first hit.
+      id = await spawnAt(api, { type: "noble", electrons: 6, pathId: 0, s: s0 });
     },
 
     // The reveal and the shot that follows it — the whole of what is checked, and the
