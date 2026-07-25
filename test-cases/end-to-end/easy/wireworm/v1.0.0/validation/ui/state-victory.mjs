@@ -2,7 +2,7 @@
 // debug API captures it. The state is
 // reached the real way — clearing the worm on level 12.
 
-import { actFireAndResolve, setWorm, tileCX } from "../_helpers.mjs";
+import { TICK, actFireAndResolve, setWorm, tileCX } from "../_helpers.mjs";
 
 export default function item() {
   let snap;
@@ -12,6 +12,7 @@ export default function item() {
 
     async arrange(api) {
       await api.reset({ seed: 1 });
+      await api.call("enterPlay"); // reach live play; no control op starts a run
       await api.call("setLevel", 12);
       await api.call("clearField");
       // Low, just above the band: the level-12 worm steps fast enough that a higher
@@ -21,7 +22,14 @@ export default function item() {
     },
 
     async act(api) {
-      snap = await actFireAndResolve(api);
+      await actFireAndResolve(api);
+      // The Victory state arrives a tick or two after the bolt resolves, so wait for
+      // it rather than sampling the frame the shot landed on.
+      const r = await api.until((s) => s.screen !== "playing", {
+        max: 120,
+        poll: TICK,
+      });
+      snap = r.snap;
       await api.settle(300); // a real pause so the Victory screen has painted
       await api.screenshot("victory");
     },
