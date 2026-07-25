@@ -6,6 +6,7 @@
 // playing — read back from the snapshot.
 
 import {
+  TICK,
   actFireAndResolve,
   freshBoard,
   setWorm,
@@ -29,7 +30,16 @@ export default function item() {
     // and this is the clip: the reviewer watches the level roll over.
     async act(api) {
       startLevel = (await api.snapshot()).level;
-      snap = await actFireAndResolve(api);
+      await actFireAndResolve(api);
+      // The advance is a CONSEQUENCE of the shot, not part of resolving it: the worm
+      // is cleared when the bolt lands, but the level rolls over on a later tick,
+      // once the emptied worm has been reaped. Reading the snapshot `actFireAndResolve`
+      // hands back would sample the frame before that, so wait for the advance itself.
+      const r = await api.until((s) => s.level !== startLevel, {
+        max: 120, // 1s — far longer than the roll-over needs
+        poll: TICK,
+      });
+      snap = r.snap;
       // Every operand is captured; the sim runs on only so the new level's banner is
       // legible at the end of the clip.
       await api.advance(120); // 1s of visible aftermath

@@ -26,6 +26,11 @@ export default function item() {
     },
 
     async act(api) {
+      // `enterPlay` grants no spawn-in invulnerability (specs/instrumentation.md), so
+      // this normally passes straight through. It is here so the check still measures
+      // the hit — rather than a shielded cursor — on a build that reaches this state
+      // carrying some, which specs/progression.md explicitly encourages.
+      await api.until((s) => !s.cursor.invulnerable, { max: 600, poll: 6 });
       before = (await api.snapshot()).lives;
       await api.advance(6); // 6 ticks = the old 0.05s — one sim beat, enough for the touch
       after = (await api.snapshot()).lives;

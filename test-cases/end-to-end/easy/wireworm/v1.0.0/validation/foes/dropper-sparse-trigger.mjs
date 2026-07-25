@@ -6,7 +6,7 @@
 // dropper in; a dense one draws none. Nothing fabricates the spawn — the real check
 // decides.
 
-import { foesOf, freshBoard, straightWorm, setWorm } from "../_helpers.mjs";
+import { COLS, foesOf, freshBoard, straightWorm, setWorm } from "../_helpers.mjs";
 
 // The dense scenario's dwell: 720 ticks = the old 6 SECONDS. (The old call was
 // literally `api.step(6)`, which under the seconds-based contract meant six seconds.
@@ -39,8 +39,15 @@ export default function item() {
       await freshBoard(api);
       await api.call("setLevel", 3);
       await api.call("clearField");
-      for (let r = 10; r <= 15; r++)
-        for (const c of [8, 20]) await api.call("setNode", c, r, 0); // 12 nodes
+      // SATURATE the lower rows rather than posing some particular count. The trigger
+      // is "below a threshold YOU choose" (specs/foes.md) — the threshold is the
+      // build's to pick, so a check that poses a fixed count is really asserting a
+      // number the spec deliberately left open, and fails any build that chose a
+      // higher one. Filling every other column across rows 10..17 is 160 nodes: dense
+      // under any threshold a sane build could pick, so this tests the BEHAVIOR (a
+      // full field draws nothing in) instead of the constant.
+      for (let r = 10; r <= 17; r++)
+        for (let c = 0; c < COLS; c += 2) await api.call("setNode", c, r, 0);
       await api.call("setCursor", 16, 704); // out of the way
     },
 

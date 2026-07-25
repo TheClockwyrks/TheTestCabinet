@@ -94,6 +94,21 @@ play uses, arranging the world rather than faking outcomes. To see a mechanic fi
 arrange its precondition with these, then `step()` and read the result from
 `snapshot()`.
 
+None of these operations starts a run on its own. `step()` only advances live play,
+so a scenario that wants to run the simulation must first reach it — with
+`enterPlay()` below (instant, for a posed scenario) or `startRun()` (a real run,
+opening on its banner). Posing the world while the game sits on a menu is legal, but
+nothing will move until you do.
+
+- `enterPlay()` puts the game directly into live play (`screen` `"playing"`, `phase`
+  `"active"`) and returns immediately, so a posed scenario is live the instant the
+  call returns. It lays a fresh scattered field and leaves the board clear of worms
+  and foes, the cursor centred in the band, and — unlike a real respawn — with **no
+  level banner and no spawn-in invulnerability**, so a posed hit lands on the very
+  next tick. Score, lives, and level are left as they are, so it can be called in any
+  order with the other control operations. If live play is already running it does
+  nothing. This is the operation a scripted check uses to reach a playable state
+  without spending ticks; `startRun()` is for exercising the real entry path.
 - `startRun()` starts a real run at level 1, exactly as choosing `DESCEND` from the
   menu would. The run opens on its level banner; step past it to reach live play.
 - `setLevel(n)` sets the current level to `n` (`1..12`) as a precondition, and
@@ -124,10 +139,11 @@ arrange its precondition with these, then `step()` and read the result from
   bypassing the fire cadence so a scenario can shoot on demand. The bolt travels
   and resolves its hit through the real shot code as the simulation steps.
 
-A typical check calls `startRun()`, steps past the banner, uses `clearField`,
-`setNode`, `setWorm`, and `setCursor` to arrange the exact situation wanted, calls
-`fire()`, then `step()` a handful of ticks to run the real resolution and reads the
-result from `snapshot()`.
+A typical check calls `enterPlay()`, uses `clearField`, `setNode`, `setWorm`, and
+`setCursor` to arrange the exact situation wanted, calls `fire()`, then `step()` a
+handful of ticks to run the real resolution and reads the result from `snapshot()`.
+A check that means to exercise the real entry path uses `startRun()` instead and
+steps past the banner to reach live play.
 
 ### Input operations
 
@@ -189,6 +205,11 @@ pass) so the cursor moves or a bolt fires, then `keyUp` to release it, reading
   foes: [
     {
       kind: "glitch" | "dropper" | "corruptor",
+      // `vx`/`vy` are the foe's ACTUAL current velocity in logical px/s — what its
+      // position is changing by right now, including any weave or dart its movement
+      // applies. A foe whose horizontal motion reverses reports a `vx` that reverses
+      // sign with it; reporting only an underlying drift while the foe visibly moves
+      // some other way does not meet this contract.
       x: <number>, y: <number>, vx: <number>, vy: <number>,
       firstHit: <boolean>,  // a dropper that has taken its speed-up hit
     },
