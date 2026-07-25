@@ -222,7 +222,7 @@ describe("NewRunPage", () => {
       (c: { id: string }) => c.id,
     );
     expect(ids).toContain("shell");
-    expect(ids).toContain("filesystem");
+    expect(ids).toContain("read-file");
   });
 
   it("asks only for the configuration's declared model slots, pre-filled with their defaults", async () => {

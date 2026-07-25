@@ -4,7 +4,9 @@ use super::*;
 use serde_json::json;
 use tempfile::TempDir;
 use test_cabinet_core::gg::{
-    CAPABILITY_FILESYSTEM, CAPABILITY_SHELL, CAPABILITY_SKILLS, GgCapabilityConfig, GgCapabilitySet,
+    CAPABILITY_EDIT_FILE, CAPABILITY_FILESYSTEM, CAPABILITY_LIST_DIR, CAPABILITY_READ_FILE,
+    CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_WRITE_FILE, FILESYSTEM_TOOL_CAPABILITIES,
+    GgCapabilityConfig, GgCapabilitySet,
 };
 
 use crate::model::ToolCall;
@@ -19,6 +21,15 @@ fn set_with(capabilities: Vec<GgCapabilityConfig>) -> GgCapabilitySet {
         slots: Vec::new(),
         disabled_tools: Vec::new(),
     }
+}
+
+/// The four per-tool filesystem capabilities, all enabled — the modern spelling of what
+/// used to be one `filesystem` capability.
+fn filesystem_enabled() -> Vec<GgCapabilityConfig> {
+    FILESYSTEM_TOOL_CAPABILITIES
+        .iter()
+        .map(|id| GgCapabilityConfig::enabled(*id))
+        .collect()
 }
 
 /// Whether the registry offers a tool with the given name (via its definitions).
@@ -50,10 +61,9 @@ fn registry_offers_all_phase0_tools_when_both_capabilities_enabled() {
 /// tools remain. This is the concrete toolset-ablation behavior.
 #[test]
 fn registry_excludes_shell_tool_when_shell_capability_disabled() {
-    let registry = ToolRegistry::from_capabilities(&set_with(vec![
-        GgCapabilityConfig::disabled(CAPABILITY_SHELL),
-        GgCapabilityConfig::enabled(CAPABILITY_FILESYSTEM),
-    ]));
+    let mut capabilities = vec![GgCapabilityConfig::disabled(CAPABILITY_SHELL)];
+    capabilities.extend(filesystem_enabled());
+    let registry = ToolRegistry::from_capabilities(&set_with(capabilities));
 
     assert!(!offers(&registry, "shell"));
     assert!(offers(&registry, "read_file"));
@@ -61,20 +71,139 @@ fn registry_excludes_shell_tool_when_shell_capability_disabled() {
     assert_eq!(registry.len(), 4);
 }
 
-/// Disabling the filesystem capability withholds all four filesystem tools while the
+/// Disabling every filesystem capability withholds all four filesystem tools while the
 /// shell tool remains.
 #[test]
-fn registry_excludes_filesystem_tools_when_filesystem_capability_disabled() {
-    let registry = ToolRegistry::from_capabilities(&set_with(vec![
-        GgCapabilityConfig::enabled(CAPABILITY_SHELL),
-        GgCapabilityConfig::disabled(CAPABILITY_FILESYSTEM),
-    ]));
+fn registry_excludes_filesystem_tools_when_their_capabilities_are_disabled() {
+    let mut capabilities = vec![GgCapabilityConfig::enabled(CAPABILITY_SHELL)];
+    capabilities.extend(
+        FILESYSTEM_TOOL_CAPABILITIES
+            .iter()
+            .map(|id| GgCapabilityConfig::disabled(*id)),
+    );
+    let registry = ToolRegistry::from_capabilities(&set_with(capabilities));
 
     assert!(offers(&registry, "shell"));
     for name in ["read_file", "write_file", "edit_file", "list_dir"] {
         assert!(!offers(&registry, name), "expected `{name}` to be withheld");
     }
     assert_eq!(registry.len(), 1);
+}
+
+/// Each filesystem primitive is its own capability, so turning one off leaves the other
+/// three offered — the coarse lever now cuts per tool, not per bundle.
+#[test]
+fn registry_gates_each_filesystem_tool_on_its_own_capability() {
+    for (capability, withheld) in [
+        (CAPABILITY_READ_FILE, "read_file"),
+        (CAPABILITY_WRITE_FILE, "write_file"),
+        (CAPABILITY_EDIT_FILE, "edit_file"),
+        (CAPABILITY_LIST_DIR, "list_dir"),
+    ] {
+        let capabilities = FILESYSTEM_TOOL_CAPABILITIES
+            .iter()
+            .map(|id| {
+                if *id == capability {
+                    GgCapabilityConfig::disabled(*id)
+                } else {
+                    GgCapabilityConfig::enabled(*id)
+                }
+            })
+            .collect();
+        let registry = ToolRegistry::from_capabilities(&set_with(capabilities));
+
+        assert!(
+            !offers(&registry, withheld),
+            "`{capability}` off should withhold `{withheld}`"
+        );
+        assert_eq!(
+            registry.len(),
+            3,
+            "`{capability}` off should leave the other three filesystem tools"
+        );
+    }
+}
+
+/// A capability set saved before the filesystem split names only the umbrella id. It stays
+/// launchable: all four tools are offered, and `read_file` reads whole files, exactly as it
+/// did when that set was written.
+#[test]
+fn registry_honors_the_legacy_filesystem_capability() {
+    let set = set_with(vec![GgCapabilityConfig::enabled(CAPABILITY_FILESYSTEM)]);
+    let registry = ToolRegistry::from_capabilities(&set);
+
+    for name in ["read_file", "write_file", "edit_file", "list_dir"] {
+        assert!(offers(&registry, name), "expected `{name}` to be offered");
+    }
+    assert_eq!(read_policy(&set), ReadPolicy::Unlimited);
+
+    // And a legacy set that turned the umbrella *off* still offers nothing.
+    let off = set_with(vec![GgCapabilityConfig::disabled(CAPABILITY_FILESYSTEM)]);
+    assert!(ToolRegistry::from_capabilities(&off).is_empty());
+}
+
+/// An explicit per-tool capability wins over the legacy umbrella beside it, so an ablation
+/// arm that deliberately withholds one tool is not overridden by a stale `filesystem` row.
+#[test]
+fn an_explicit_filesystem_tool_capability_overrides_the_legacy_umbrella() {
+    let registry = ToolRegistry::from_capabilities(&set_with(vec![
+        GgCapabilityConfig::enabled(CAPABILITY_FILESYSTEM),
+        GgCapabilityConfig::disabled(CAPABILITY_EDIT_FILE),
+    ]));
+
+    assert!(!offers(&registry, "edit_file"));
+    assert!(offers(&registry, "read_file"));
+    assert_eq!(registry.len(), 3);
+}
+
+/// The read-file capability's implementation and `lineCap` param decide the
+/// [`ReadPolicy`] the offered `read_file` enforces — the configuration seam behind the
+/// three read modes.
+#[test]
+fn read_policy_comes_from_the_read_file_capability() {
+    let with_mode = |implementation: &str, params| {
+        set_with(vec![GgCapabilityConfig {
+            id: CAPABILITY_READ_FILE.to_string(),
+            enabled: true,
+            implementation: Some(implementation.to_string()),
+            params,
+        }])
+    };
+
+    assert_eq!(
+        read_policy(&with_mode("hard-cap", json!({ "lineCap": 250 }))),
+        ReadPolicy::HardCap(250)
+    );
+    assert_eq!(
+        read_policy(&with_mode("default-cap", json!({ "lineCap": 500 }))),
+        ReadPolicy::DefaultCap(500)
+    );
+    assert_eq!(
+        read_policy(&with_mode("unlimited", json!({}))),
+        ReadPolicy::Unlimited
+    );
+    // An unconfigured capability keeps the historical whole-file read.
+    assert_eq!(
+        read_policy(&set_with(vec![GgCapabilityConfig::enabled(
+            CAPABILITY_READ_FILE
+        )])),
+        ReadPolicy::Unlimited
+    );
+
+    // The policy actually reaches the offered tool: a capped mode declares paging args.
+    let registry =
+        ToolRegistry::from_capabilities(&with_mode("hard-cap", json!({ "lineCap": 250 })));
+    let definition = registry
+        .definitions()
+        .into_iter()
+        .find(|def| def.name == "read_file")
+        .expect("read_file is offered");
+    assert!(
+        definition.parameters["properties"]
+            .as_object()
+            .unwrap()
+            .contains_key("offset")
+    );
 }
 
 /// A capability that is *absent* from the set (not merely disabled) also contributes
@@ -392,11 +521,10 @@ fn plan_mode_offers_restricts_to_read_only_tools() {
 /// notch below toggling a whole capability (the `apply-patch` vs `write-file` study).
 #[test]
 fn per_tool_override_withholds_only_the_named_tool() {
-    // Filesystem on, but `edit_file` individually disabled.
-    let mut set = set_with(vec![
-        GgCapabilityConfig::enabled(CAPABILITY_SHELL),
-        GgCapabilityConfig::enabled(CAPABILITY_FILESYSTEM),
-    ]);
+    // Every filesystem capability on, but `edit_file` individually disabled.
+    let mut capabilities = vec![GgCapabilityConfig::enabled(CAPABILITY_SHELL)];
+    capabilities.extend(filesystem_enabled());
+    let mut set = set_with(capabilities);
     set.disabled_tools = vec!["edit_file".to_string()];
     let registry = ToolRegistry::from_capabilities(&set);
 
@@ -510,9 +638,9 @@ fn all_tool_names_matches_a_maximal_registry() {
     let board = Arc::new(Mutex::new(BoardStore::new(BoardCaps::default())));
     let archive = Arc::new(Mutex::new(ArchiveStore::new()));
 
-    let set = set_with(vec![
-        GgCapabilityConfig::enabled(CAPABILITY_SHELL),
-        GgCapabilityConfig::enabled(CAPABILITY_FILESYSTEM),
+    let mut capabilities = vec![GgCapabilityConfig::enabled(CAPABILITY_SHELL)];
+    capabilities.extend(filesystem_enabled());
+    capabilities.extend([
         GgCapabilityConfig::enabled(CAPABILITY_SKILLS),
         GgCapabilityConfig::enabled(CAPABILITY_MEMORIES),
         GgCapabilityConfig::enabled(CAPABILITY_TASKS),
@@ -524,6 +652,7 @@ fn all_tool_names_matches_a_maximal_registry() {
         GgCapabilityConfig::enabled(CAPABILITY_WORKFLOWS),
         GgCapabilityConfig::enabled(CAPABILITY_SPECULATIVE),
     ]);
+    let set = set_with(capabilities);
     let registry = ToolRegistry::from_run(
         &set,
         &RuntimeSet::new(&library)

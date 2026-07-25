@@ -175,6 +175,8 @@ saved, launched, and analyzed in the console is
 
 **Models & tools**
 
+- [Filesystem tools](/gg/filesystem/) — read, write, edit, and list files; one
+  capability per tool, and `read_file`'s capped read modes.
 - [Multi-model](/gg/multi-model/) — bind multiple, possibly cross-provider models
   to slots.
 - [Toolset ablation](/gg/toolset-ablation/) — treat the offered toolset as an

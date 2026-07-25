@@ -25,11 +25,16 @@
 //! enabled capabilities of a [`GgCapabilitySet`]: a disabled (or absent) capability
 //! contributes no tools, so the model is never shown their schemas and never sees
 //! them in a prompt. This is the concrete basis for toolset ablation. The Phase 0
-//! toolset is the two capabilities the core loop needs to build a test case:
+//! toolset is what the core loop needs to build a test case:
 //! [`shell`](test_cabinet_core::gg::CAPABILITY_SHELL) (run commands in the run
-//! container) and
-//! [`filesystem`](test_cabinet_core::gg::CAPABILITY_FILESYSTEM) (read/write/edit/list
-//! files in the workspace).
+//! container) plus one capability per filesystem primitive —
+//! [`read-file`](test_cabinet_core::gg::CAPABILITY_READ_FILE),
+//! [`write-file`](test_cabinet_core::gg::CAPABILITY_WRITE_FILE),
+//! [`edit-file`](test_cabinet_core::gg::CAPABILITY_EDIT_FILE), and
+//! [`list-dir`](test_cabinet_core::gg::CAPABILITY_LIST_DIR). They are separate
+//! capabilities rather than one umbrella so each carries its own implementation and
+//! params: `read_file`'s implementation, for instance, selects its
+//! [line-cap mode](ReadPolicy).
 //!
 //! The loop presents the offered tools to the model via [`ToolRegistry::definitions`]
 //! and routes each requested [`ToolCall`] through [`ToolRegistry::dispatch`], which
@@ -54,9 +59,10 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use test_cabinet_core::gg::{
-    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_EPICS_ISSUES, CAPABILITY_FILESYSTEM,
-    CAPABILITY_FSM, CAPABILITY_MEMORIES, CAPABILITY_PLANNING, CAPABILITY_SHELL, CAPABILITY_SKILLS,
-    CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WORKFLOWS,
+    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_EDIT_FILE, CAPABILITY_EPICS_ISSUES,
+    CAPABILITY_FSM, CAPABILITY_LIST_DIR, CAPABILITY_MEMORIES, CAPABILITY_PLANNING,
+    CAPABILITY_READ_FILE, CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE,
+    CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WORKFLOWS, CAPABILITY_WRITE_FILE,
     GgCapabilitySet,
 };
 
@@ -72,6 +78,7 @@ pub use context::{
     ARCHIVE_THREAD_TOOL, DEFAULT_ARCHIVE_KEEP_RECENT, EVICT_FILE_VIEW_TOOL, SEARCH_ARCHIVE_TOOL,
     is_context_reclaim_tool, parse_archive_keep_recent, parse_evict_path,
 };
+pub use filesystem::ReadPolicy;
 pub use fsm::{ADVANCE_STATE_TOOL, is_fsm_tool};
 pub use memories::is_memory_tool;
 pub use planning::{ENTER_PLAN_MODE_TOOL, SUBMIT_PLAN_TOOL, is_planning_tool};
@@ -141,6 +148,19 @@ pub fn unknown_disabled_tools(capabilities: &GgCapabilitySet) -> Vec<String> {
         .filter(|name| !ALL_TOOL_NAMES.contains(&name.as_str()))
         .cloned()
         .collect()
+}
+
+/// The [read policy](ReadPolicy) `read_file` runs under for a capability set: the
+/// [read-file](CAPABILITY_READ_FILE) capability's implementation and params.
+///
+/// The lookup is **exact** rather than following the legacy `filesystem` alias: an umbrella
+/// capability configures no individual tool, so a set that predates the split reads files
+/// the way it always did ([unlimited](ReadPolicy::Unlimited)).
+fn read_policy(capabilities: &GgCapabilitySet) -> ReadPolicy {
+    capabilities
+        .capability(CAPABILITY_READ_FILE)
+        .map(|cap| ReadPolicy::resolve(cap.implementation.as_deref(), &cap.params))
+        .unwrap_or_default()
 }
 
 /// The tool names that are **read-only** — they inspect the workspace or gg's own state but
@@ -363,8 +383,10 @@ impl ToolRegistry {
     /// Each capability contributes its tools only when
     /// [`is_enabled`](GgCapabilitySet::is_enabled) reports it on: the
     /// [`shell`](CAPABILITY_SHELL) capability contributes the `shell` tool; the
-    /// [`filesystem`](CAPABILITY_FILESYSTEM) capability contributes the
-    /// `read_file`/`write_file`/`edit_file`/`list_dir` tools; the
+    /// [`read-file`](CAPABILITY_READ_FILE), [`write-file`](CAPABILITY_WRITE_FILE),
+    /// [`edit-file`](CAPABILITY_EDIT_FILE), and [`list-dir`](CAPABILITY_LIST_DIR)
+    /// capabilities each contribute their one filesystem tool (`read_file` under the
+    /// [read policy](read_policy) its capability configures); the
     /// [`skills`](CAPABILITY_SKILLS) capability contributes the `read_skill` tool — but only
     /// when the bound library is **non-empty**, since there would be nothing to read; the
     /// [`memories`](CAPABILITY_MEMORIES) capability contributes the
@@ -394,10 +416,21 @@ impl ToolRegistry {
             tools.push(Box::new(shell::ShellTool::new()));
         }
 
-        if capabilities.is_enabled(CAPABILITY_FILESYSTEM) {
-            tools.push(Box::new(filesystem::ReadFileTool));
+        // Each filesystem primitive is its own capability, so a study can withhold or
+        // reconfigure one without disturbing the others. `read_file` additionally reads its
+        // capability's implementation/params to decide how much of a file one call returns.
+        if capabilities.is_enabled(CAPABILITY_READ_FILE) {
+            tools.push(Box::new(filesystem::ReadFileTool::new(read_policy(
+                capabilities,
+            ))));
+        }
+        if capabilities.is_enabled(CAPABILITY_WRITE_FILE) {
             tools.push(Box::new(filesystem::WriteFileTool));
+        }
+        if capabilities.is_enabled(CAPABILITY_EDIT_FILE) {
             tools.push(Box::new(filesystem::EditFileTool));
+        }
+        if capabilities.is_enabled(CAPABILITY_LIST_DIR) {
             tools.push(Box::new(filesystem::ListDirTool));
         }
 

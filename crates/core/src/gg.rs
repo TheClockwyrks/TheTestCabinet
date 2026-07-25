@@ -33,9 +33,57 @@ pub const PRIMARY_SLOT: &str = "primary";
 /// commands in the run container.
 pub const CAPABILITY_SHELL: &str = "shell";
 
-/// The stable id of the Phase 0 filesystem capability: the agent's ability to read
-/// and write files in the run workspace.
+/// The stable id of the **legacy** umbrella filesystem capability: one switch for the
+/// agent's whole ability to read and write files in the run workspace.
+///
+/// It was split into the four per-tool capabilities below —
+/// [`read-file`](CAPABILITY_READ_FILE), [`write-file`](CAPABILITY_WRITE_FILE),
+/// [`edit-file`](CAPABILITY_EDIT_FILE), and [`list-dir`](CAPABILITY_LIST_DIR) — because a
+/// filesystem tool is exactly the kind of thing gg exists to vary one at a time, and an
+/// umbrella capability has only one [implementation](GgCapabilityConfig::implementation)
+/// and one [params](GgCapabilityConfig::params) bag to share among four tools. Splitting
+/// gives each tool its own A/B lever (the first of them: `read_file`'s
+/// [line-cap modes](https://docs.testcabinet.ai/gg/filesystem/)).
+///
+/// Nothing constructs it any more, but capability sets that predate the split are stored
+/// on accounts and recorded on runs, so it stays a **live alias**: a set that names it and
+/// none of the four is read as enabling all four, via
+/// [`effective_capability`](GgCapabilitySet::effective_capability). It carries no per-tool
+/// configuration of its own — a legacy set gets each tool's *default* behavior, which is
+/// what it had.
 pub const CAPABILITY_FILESYSTEM: &str = "filesystem";
+
+/// The stable id of the read-file capability: the agent's ability to read a file in the
+/// run workspace (the `read_file` tool).
+///
+/// Its [implementation](GgCapabilityConfig::implementation) selects how much of a file one
+/// call may return — the *unlimited*, *hard-cap*, and *default-cap*
+/// [read modes](https://docs.testcabinet.ai/gg/filesystem/) — and its `lineCap` param sets
+/// the cap the two capped modes enforce. How a coding agent copes when it can only see a
+/// file a window at a time is a first-class experimental variable, so it is configured
+/// rather than hardcoded.
+pub const CAPABILITY_READ_FILE: &str = "read-file";
+
+/// The stable id of the write-file capability: the agent's ability to create or overwrite
+/// a file in the run workspace (the `write_file` tool).
+pub const CAPABILITY_WRITE_FILE: &str = "write-file";
+
+/// The stable id of the edit-file capability: the agent's ability to patch a file in the
+/// run workspace by exact, unique string replacement (the `edit_file` tool).
+pub const CAPABILITY_EDIT_FILE: &str = "edit-file";
+
+/// The stable id of the list-dir capability: the agent's ability to list a directory in
+/// the run workspace (the `list_dir` tool).
+pub const CAPABILITY_LIST_DIR: &str = "list-dir";
+
+/// The per-tool capabilities the [legacy umbrella](CAPABILITY_FILESYSTEM) stands in for
+/// when a stored capability set predates the split.
+pub const FILESYSTEM_TOOL_CAPABILITIES: &[&str] = &[
+    CAPABILITY_READ_FILE,
+    CAPABILITY_WRITE_FILE,
+    CAPABILITY_EDIT_FILE,
+    CAPABILITY_LIST_DIR,
+];
 
 /// The stable id of the Phase 1 context-visibility capability: the per-source
 /// accounting of what fills the context window (skills, memories, file contents, the
@@ -406,7 +454,8 @@ impl Default for GgCapabilitySet {
 
 impl GgCapabilitySet {
     /// The reasonable "minimal" set: the [`PRIMARY_SLOT`] bound to `model_id` and the
-    /// default capabilities ([`CAPABILITY_SHELL`], [`CAPABILITY_FILESYSTEM`],
+    /// default capabilities ([`CAPABILITY_SHELL`], the four
+    /// [filesystem tools](FILESYSTEM_TOOL_CAPABILITIES),
     /// [`CAPABILITY_CONTEXT_VISIBILITY`], [`CAPABILITY_SKILLS`], [`CAPABILITY_MEMORIES`],
     /// and [`CAPABILITY_TASKS`]) present and enabled. This is a launchable configuration —
     /// the smallest set that runs a gg session end to end. (Skills is inert unless the
@@ -433,15 +482,36 @@ impl GgCapabilitySet {
 
     /// The configuration for the capability with the given id, or `None` when the
     /// capability is absent from this set (which is distinct from present-but-disabled).
+    ///
+    /// This lookup is **exact**: it never falls back to a
+    /// [legacy alias](Self::effective_capability), so it is the right one for reading a
+    /// capability's own [implementation](GgCapabilityConfig::implementation) and
+    /// [params](GgCapabilityConfig::params) — an alias configures nothing, and inheriting
+    /// another capability's params would be a fabrication.
     pub fn capability(&self, id: &str) -> Option<&GgCapabilityConfig> {
         self.capabilities.iter().find(|c| c.id == id)
     }
 
-    /// Whether the capability with the given id is present **and** enabled. An absent
-    /// capability and a present-but-disabled one both report `false`; use
-    /// [`Self::capability`] to tell them apart.
+    /// The configuration that decides whether the capability with the given id is on: its
+    /// own, or — only when this set does not mention it at all — that of the
+    /// [legacy capability](CAPABILITY_FILESYSTEM) it was split out of.
+    ///
+    /// The alias is what keeps capability sets stored before a split launchable and
+    /// readable without a data migration. It is deliberately one-way and one-deep: a set
+    /// that names a modern id uses it verbatim (so an explicitly disabled `read-file` stays
+    /// off even beside a legacy `filesystem`), and the alias supplies *presence and
+    /// enabledness only*.
+    pub fn effective_capability(&self, id: &str) -> Option<&GgCapabilityConfig> {
+        self.capability(id)
+            .or_else(|| legacy_alias(id).and_then(|legacy| self.capability(legacy)))
+    }
+
+    /// Whether the capability with the given id is present **and** enabled, honoring the
+    /// [legacy aliases](Self::effective_capability). An absent capability and a
+    /// present-but-disabled one both report `false`; use [`Self::capability`] to tell them
+    /// apart.
     pub fn is_enabled(&self, id: &str) -> bool {
-        self.capability(id).is_some_and(|c| c.enabled)
+        self.effective_capability(id).is_some_and(|c| c.enabled)
     }
 
     /// The model id bound to the named slot, or `None` when no such slot is bound —
@@ -477,9 +547,22 @@ impl GgCapabilitySet {
     }
 }
 
-/// The default enabled capabilities: the shell and filesystem tools the core agent loop
-/// needs to build a test case, plus [context visibility](CAPABILITY_CONTEXT_VISIBILITY),
+/// The capability a legacy umbrella id stands in for `id`, when `id` is one that was split
+/// out of it. Drives [`GgCapabilitySet::effective_capability`].
+fn legacy_alias(id: &str) -> Option<&'static str> {
+    FILESYSTEM_TOOL_CAPABILITIES
+        .contains(&id)
+        .then_some(CAPABILITY_FILESYSTEM)
+}
+
+/// The default enabled capabilities: the shell and the four
+/// [filesystem tools](FILESYSTEM_TOOL_CAPABILITIES) the core agent loop needs to build a
+/// test case, plus [context visibility](CAPABILITY_CONTEXT_VISIBILITY),
 /// [skills](CAPABILITY_SKILLS), [memories](CAPABILITY_MEMORIES), and [tasks](CAPABILITY_TASKS).
+///
+/// The filesystem tools are listed one capability apiece rather than under the
+/// [umbrella](CAPABILITY_FILESYSTEM) they used to share, so each carries its own
+/// implementation and params; all four are on, which is the same default toolset as before.
 ///
 /// Context visibility is on by default because the per-source window accounting is
 /// foundational and adds no tools. Skills is on by default because it is inert unless a
@@ -496,7 +579,10 @@ impl GgCapabilitySet {
 fn default_capabilities() -> Vec<GgCapabilityConfig> {
     vec![
         GgCapabilityConfig::enabled(CAPABILITY_SHELL),
-        GgCapabilityConfig::enabled(CAPABILITY_FILESYSTEM),
+        GgCapabilityConfig::enabled(CAPABILITY_READ_FILE),
+        GgCapabilityConfig::enabled(CAPABILITY_WRITE_FILE),
+        GgCapabilityConfig::enabled(CAPABILITY_EDIT_FILE),
+        GgCapabilityConfig::enabled(CAPABILITY_LIST_DIR),
         GgCapabilityConfig::enabled(CAPABILITY_CONTEXT_VISIBILITY),
         GgCapabilityConfig::enabled(CAPABILITY_SKILLS),
         GgCapabilityConfig::enabled(CAPABILITY_MEMORIES),

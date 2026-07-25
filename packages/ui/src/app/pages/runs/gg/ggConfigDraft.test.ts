@@ -82,9 +82,9 @@ describe("gg model slots", () => {
     // The old shape: nothing bound at all, the launch form supplying the one model.
     const legacy = set({ preset: "minimal", slots: [] });
     expect(launchModelSlots(legacy)).toEqual([{ name: "primary" }]);
-    expect(bindModelSlots(legacy, { primary: "openai/gpt-5.6-sol" }).slots).toEqual(
-      [{ slot: "primary", modelId: "openai/gpt-5.6-sol" }],
-    );
+    expect(
+      bindModelSlots(legacy, { primary: "openai/gpt-5.6-sol" }).slots,
+    ).toEqual([{ slot: "primary", modelId: "openai/gpt-5.6-sol" }]);
     // Opening it in the editor reads as the new shape rather than a broken binding.
     const draft = draftFromCapabilitySet(legacy);
     expect(draft.modelSlots).toEqual([
@@ -121,9 +121,77 @@ describe("gg model slots", () => {
   it("refuses to save a role bound to a slot that was never declared", () => {
     const draft = emptyDraft();
     expect(draftSaveError(draft)).toBeNull();
-    draft.slots = [
-      { ...draft.slots[0]!, modelSlot: "nope" },
-    ];
+    draft.slots = [{ ...draft.slots[0]!, modelSlot: "nope" }];
     expect(draftSaveError(draft)).toContain("nope");
+  });
+});
+
+describe("gg filesystem capabilities", () => {
+  it("expands a legacy `filesystem` capability into the per-tool ones", () => {
+    const legacy = set({
+      capabilities: [
+        { id: "shell", enabled: true, params: {} },
+        { id: "filesystem", enabled: true, params: {} },
+      ],
+    });
+    const draft = draftFromCapabilitySet(legacy);
+
+    for (const id of ["read-file", "write-file", "edit-file", "list-dir"]) {
+      expect(draft.capabilities[id]?.enabled, id).toBe(true);
+    }
+    // The expansion carries no per-tool configuration: an umbrella configured none,
+    // so `read_file` keeps its default (unlimited) read mode.
+    expect(draft.capabilities["read-file"]?.implementation).toBe("");
+
+    // Saving the reopened configuration writes the modern ids and drops the umbrella.
+    const saved = capabilitySetFromDraft(draft, null);
+    const ids = saved.capabilities.map((cap) => cap.id);
+    expect(ids).toContain("read-file");
+    expect(ids).not.toContain("filesystem");
+  });
+
+  it("carries a disabled legacy capability through as four off rows", () => {
+    const legacy = set({
+      capabilities: [{ id: "filesystem", enabled: false, params: {} }],
+    });
+    const draft = draftFromCapabilitySet(legacy);
+    for (const id of ["read-file", "write-file", "edit-file", "list-dir"]) {
+      expect(draft.capabilities[id]?.enabled, id).toBe(false);
+    }
+  });
+
+  it("lets an explicit per-tool capability override the legacy umbrella", () => {
+    const mixed = set({
+      capabilities: [
+        { id: "filesystem", enabled: true, params: {} },
+        { id: "edit-file", enabled: false, params: {} },
+      ],
+    });
+    const draft = draftFromCapabilitySet(mixed);
+    expect(draft.capabilities["edit-file"]?.enabled).toBe(false);
+    expect(draft.capabilities["read-file"]?.enabled).toBe(true);
+  });
+
+  it("round-trips a capped read mode and its line cap", () => {
+    const configured = set({
+      capabilities: [
+        {
+          id: "read-file",
+          enabled: true,
+          implementation: "hard-cap",
+          params: { lineCap: 250 },
+        },
+      ],
+    });
+    const draft = draftFromCapabilitySet(configured);
+    expect(draft.capabilities["read-file"]?.implementation).toBe("hard-cap");
+    // A dedicated param control holds text; the JSON escape hatch stays empty.
+    expect(draft.capabilities["read-file"]?.params?.lineCap).toBe("250");
+    expect(draft.capabilities["read-file"]?.paramsText).toBe("");
+
+    const back = capabilitySetFromDraft(draft, null);
+    const readFile = back.capabilities.find((cap) => cap.id === "read-file");
+    expect(readFile?.implementation).toBe("hard-cap");
+    expect(readFile?.params).toEqual({ lineCap: 250 });
   });
 });

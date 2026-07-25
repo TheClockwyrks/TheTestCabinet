@@ -229,21 +229,44 @@ export function GgConfigEditor({
                                   <span className={runExec.fieldLabel}>
                                     {cap.implementationLabel}
                                   </span>
-                                  <input
-                                    className={runExec.input}
-                                    type="text"
-                                    value={draft.implementation ?? ""}
-                                    disabled={readOnly}
-                                    onChange={(e) =>
-                                      updateDraft(cap.id, {
-                                        implementation: e.target.value,
-                                      })
-                                    }
-                                    placeholder={
-                                      cap.implementationPlaceholder ?? "default"
-                                    }
-                                    spellCheck={false}
-                                  />
+                                  {/* A closed set of implementations is a picker, so
+                                      an operator never has to remember how a mode is
+                                      spelled; an open-ended one stays free text. */}
+                                  {cap.implementationOptions ? (
+                                    <select
+                                      className={runExec.select}
+                                      value={draft.implementation ?? ""}
+                                      disabled={readOnly}
+                                      onChange={(e) =>
+                                        updateDraft(cap.id, {
+                                          implementation: e.target.value,
+                                        })
+                                      }
+                                    >
+                                      {cap.implementationOptions.map((o) => (
+                                        <option key={o.value} value={o.value}>
+                                          {o.label}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  ) : (
+                                    <input
+                                      className={runExec.input}
+                                      type="text"
+                                      value={draft.implementation ?? ""}
+                                      disabled={readOnly}
+                                      onChange={(e) =>
+                                        updateDraft(cap.id, {
+                                          implementation: e.target.value,
+                                        })
+                                      }
+                                      placeholder={
+                                        cap.implementationPlaceholder ??
+                                        "default"
+                                      }
+                                      spellCheck={false}
+                                    />
+                                  )}
                                 </label>
                               )}
                               {(cap.params ?? []).map((p) => (

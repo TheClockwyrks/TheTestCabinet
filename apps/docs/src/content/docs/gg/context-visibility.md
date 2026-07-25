@@ -53,6 +53,10 @@ it again, which appends. This is also the honest reading: the earlier view is wh
 agent actually saw at that point, and editing history to show contents the agent never
 read would be a lie about the thread as well as a cache miss.
 
+How much *enters* the window per read is configurable: under a capped
+[read mode](/gg/filesystem/#read-modes) a view holds only the window that call returned,
+and paging through a file appends one view per page.
+
 Three things do remove material from the middle of the window, and each is a deliberate
 choice whose point is to reclaim tokens: `evict_file_view` and `archive_thread`, both
 [invoked by the agent](/gg/agent-managed-context/), and a

@@ -523,6 +523,7 @@ export default defineConfig({
               label: "Capabilities",
               collapsed: true,
               items: [
+                "gg/filesystem",
                 "gg/compaction",
                 "gg/context-visibility",
                 "gg/agent-managed-context",

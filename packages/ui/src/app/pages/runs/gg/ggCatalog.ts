@@ -30,6 +30,7 @@ export const COMMON_ROLE_SLOTS = [
 // an 18-row wall on open.
 export type CapGroup =
   | "Context"
+  | "Filesystem"
   | "Knowledge"
   | "Work tracking"
   | "Delegation"
@@ -42,6 +43,7 @@ export const CAP_GROUPS: ReadonlyArray<{
   startOpen: boolean;
 }> = [
   { group: "Models & tools", startOpen: true },
+  { group: "Filesystem", startOpen: true },
   { group: "Context", startOpen: true },
   { group: "Knowledge", startOpen: true },
   { group: "Work tracking", startOpen: true },
@@ -74,6 +76,11 @@ export interface CapSpec {
   // free-text implementation field is shown, labelled with this.
   implementationLabel?: string;
   implementationPlaceholder?: string;
+  // When the implementations are a known, closed set (rather than a strategy name
+  // gg resolves at run time), the field becomes a picker over these instead of free
+  // text — an operator should not have to remember how a mode is spelled. An empty
+  // `value` is the capability's default implementation.
+  implementationOptions?: ReadonlyArray<{ value: string; label: string }>;
   // Dedicated param controls; anything else goes in the generic JSON editor.
   params?: ReadonlyArray<ParamSpec>;
   // The tool names this capability offers — the toolset-ablation surface withholds
@@ -81,6 +88,40 @@ export interface CapSpec {
   // `toolOffered` facet targets.
   tools?: ReadonlyArray<string>;
 }
+
+// The legacy umbrella capability the four filesystem tool capabilities were split out
+// of. Nothing writes it any more, but capability sets saved before the split still
+// name it, so the editor expands one into the four (and the backend/gg treat it as an
+// alias). Kept here as a named constant so that migration has one spelling.
+export const LEGACY_FILESYSTEM_CAP_ID = "filesystem";
+
+// The per-tool filesystem capabilities, in editor order — the modern spelling of
+// [LEGACY_FILESYSTEM_CAP_ID].
+export const FILESYSTEM_CAP_IDS = [
+  "read-file",
+  "write-file",
+  "edit-file",
+  "list-dir",
+] as const;
+
+// How much of a file one `read_file` call returns — the read-file capability's
+// implementation, and the first per-tool A/B lever the split exists to allow. The
+// values are gg's implementation ids (`crates/gg/src/tools/filesystem.rs`); the empty
+// value is the default (unlimited), which is what gg has always done.
+export const READ_MODE_OPTIONS = [
+  { value: "", label: "unlimited — the whole file in one call (default)" },
+  {
+    value: "hard-cap",
+    label: "hard cap — never more than the line cap, per call",
+  },
+  {
+    value: "default-cap",
+    label: "default cap — the line cap unless the model asks for more",
+  },
+] as const;
+
+// The line cap gg falls back to when a capped read mode names none.
+export const DEFAULT_READ_LINE_CAP = 250;
 
 export const FSM_MACHINE_OPTIONS = [
   { value: "", label: "(none — no state machine)" },
@@ -100,13 +141,55 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     defaultOn: true,
     tools: ["shell"],
   },
+  // --- Filesystem -------------------------------------------------------------
+  //
+  // One capability per filesystem primitive rather than a single `filesystem`
+  // umbrella: each tool is its own experimental variable, with its own
+  // implementation and params. Capability sets saved before the split name the
+  // umbrella; `draftFromCapabilitySet` expands one into these four.
   {
-    id: "filesystem",
-    name: "Filesystem",
-    group: "Models & tools",
-    purpose: "Read, write, edit, and list files in the run's workspace.",
+    id: "read-file",
+    name: "Read file",
+    group: "Filesystem",
+    purpose: "Read a file from the run's workspace.",
     defaultOn: true,
-    tools: ["read_file", "write_file", "edit_file", "list_dir"],
+    implementationLabel: "Read mode",
+    implementationOptions: READ_MODE_OPTIONS,
+    params: [
+      {
+        key: "lineCap",
+        label: "Line cap",
+        kind: "number",
+        placeholder: `e.g. ${DEFAULT_READ_LINE_CAP}`,
+        hint: `Lines per call under either capped mode (default ${DEFAULT_READ_LINE_CAP}). Ignored when unlimited.`,
+      },
+    ],
+    tools: ["read_file"],
+  },
+  {
+    id: "write-file",
+    name: "Write file",
+    group: "Filesystem",
+    purpose: "Create or overwrite a whole file in the run's workspace.",
+    defaultOn: true,
+    tools: ["write_file"],
+  },
+  {
+    id: "edit-file",
+    name: "Edit file",
+    group: "Filesystem",
+    purpose:
+      "Patch a file by exact, unique string replacement — the alternative to rewriting it whole.",
+    defaultOn: true,
+    tools: ["edit_file"],
+  },
+  {
+    id: "list-dir",
+    name: "List directory",
+    group: "Filesystem",
+    purpose: "List a directory's entries in the run's workspace.",
+    defaultOn: true,
+    tools: ["list_dir"],
   },
   {
     id: "responses-as-code",

@@ -109,7 +109,7 @@ describe("GgConfigEditPage", () => {
       (c: { id: string }) => c.id,
     );
     expect(ids).toContain("shell");
-    expect(ids).toContain("filesystem");
+    expect(ids).toContain("read-file");
     // The primary role defers to a declared `primary` model slot rather than pinning
     // a model, which is what keeps one configuration reusable across models: the
     // binding names the slot, and the New run page supplies the model per run.

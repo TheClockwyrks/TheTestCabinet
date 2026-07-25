@@ -23,6 +23,8 @@ import {
   ALL_CAP_IDS,
   CAPABILITIES,
   DEFAULT_CAP_IDS,
+  FILESYSTEM_CAP_IDS,
+  LEGACY_FILESYSTEM_CAP_ID,
   MOCK_MODEL_ID,
   MOCK_PROVIDER,
   PRIMARY_SLOT,
@@ -233,11 +235,28 @@ export function emptyDraft(): GgConfigDraft {
 /**
  * Fill a draft from a stored capability set, so every catalog capability has a row
  * even if the set predates it (or omits it, which means off).
+ *
+ * A set saved before the `filesystem` capability was split into one capability per
+ * tool names only the umbrella. It is expanded here rather than being read as four
+ * capabilities that are all off: the operator opens the configuration they saved,
+ * expressed the new way, and the umbrella row is not resurrected (an expanded
+ * capability carries no implementation or params, which is exactly the behavior it
+ * had). gg honors the same alias when it assembles a run's toolset, so a stored
+ * configuration nobody has reopened keeps launching too.
  */
 export function draftFromCapabilitySet(set: GgCapabilitySet): GgConfigDraft {
   const stored = new Map(
     (set.capabilities ?? []).map((cap) => [cap.id, cap] as const),
   );
+  const legacyFilesystem = stored.get(LEGACY_FILESYSTEM_CAP_ID);
+  if (legacyFilesystem) {
+    for (const id of FILESYSTEM_CAP_IDS) {
+      // An explicit per-tool row wins over the umbrella beside it.
+      if (!stored.has(id)) {
+        stored.set(id, { id, enabled: legacyFilesystem.enabled, params: {} });
+      }
+    }
+  }
   const capabilities: Record<string, GgCapabilityDraft> = {};
   for (const cap of CAPABILITIES) {
     const from = stored.get(cap.id);

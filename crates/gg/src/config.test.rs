@@ -15,7 +15,13 @@ fn deserializes_a_full_invocation_file() {
             "preset": "minimal",
             "capabilities": [
                 { "id": "shell", "enabled": true },
-                { "id": "filesystem", "enabled": true }
+                {
+                    "id": "read-file",
+                    "enabled": true,
+                    "implementation": "hard-cap",
+                    "params": { "lineCap": 250 }
+                },
+                { "id": "write-file", "enabled": true }
             ],
             "slots": [
                 { "slot": "primary", "modelId": "anthropic/claude-opus-4-8" }
@@ -34,7 +40,15 @@ fn deserializes_a_full_invocation_file() {
         Some("anthropic/claude-opus-4-8")
     );
     assert!(invocation.capability_set.is_enabled("shell"));
-    assert!(invocation.capability_set.is_enabled("filesystem"));
+    assert!(invocation.capability_set.is_enabled("read-file"));
+    // A capability's implementation and params survive the file, which is how a run's
+    // read mode reaches gg.
+    let read_file = invocation
+        .capability_set
+        .capability("read-file")
+        .expect("read-file is configured");
+    assert_eq!(read_file.implementation.as_deref(), Some("hard-cap"));
+    assert_eq!(read_file.params["lineCap"], 250);
 }
 
 /// The capability set is optional in the file; when omitted it defaults to the

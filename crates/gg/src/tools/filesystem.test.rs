@@ -11,6 +11,12 @@ fn workspace() -> (TempDir, ToolContext) {
     (dir, ctx)
 }
 
+/// The `read_file` tool in its default (whole-file) mode. The
+/// [read modes](super::ReadPolicy) have their own test file.
+fn reader() -> ReadFileTool {
+    ReadFileTool::new(ReadPolicy::Unlimited)
+}
+
 // ---------------------------------------------------------------------------
 // write_file / read_file round-trip
 // ---------------------------------------------------------------------------
@@ -29,7 +35,7 @@ async fn write_then_read_round_trips() {
     // Parent directories are created.
     assert!(dir.path().join("src/game.js").exists());
 
-    let read = ReadFileTool
+    let read = reader()
         .invoke(json!({ "path": "src/game.js" }), &ctx)
         .await;
     assert!(read.ok);
@@ -48,16 +54,14 @@ async fn write_overwrites_existing_file() {
         .await;
     assert!(second.ok);
 
-    let read = ReadFileTool.invoke(json!({ "path": "a.txt" }), &ctx).await;
+    let read = reader().invoke(json!({ "path": "a.txt" }), &ctx).await;
     assert_eq!(read.output, "two");
 }
 
 #[tokio::test]
 async fn read_missing_file_is_an_error() {
     let (_dir, ctx) = workspace();
-    let read = ReadFileTool
-        .invoke(json!({ "path": "nope.txt" }), &ctx)
-        .await;
+    let read = reader().invoke(json!({ "path": "nope.txt" }), &ctx).await;
     assert!(!read.ok);
     assert!(read.output.contains("read_file"));
 }
@@ -190,7 +194,7 @@ fn resolve_within_rejects_absolute_paths() {
 async fn tools_reject_escaping_paths() {
     let (_dir, ctx) = workspace();
 
-    let read = ReadFileTool
+    let read = reader()
         .invoke(json!({ "path": "../../etc/passwd" }), &ctx)
         .await;
     assert!(!read.ok);

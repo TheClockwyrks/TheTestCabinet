@@ -10,7 +10,10 @@ fn minimal_capability_set_binds_the_primary_slot_and_phase0_capabilities() {
     let set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
     assert_eq!(set.preset.as_deref(), Some("minimal"));
     assert!(set.is_enabled(CAPABILITY_SHELL));
-    assert!(set.is_enabled(CAPABILITY_FILESYSTEM));
+    // Each filesystem primitive is its own capability, so each carries its own config.
+    for capability in FILESYSTEM_TOOL_CAPABILITIES {
+        assert!(set.is_enabled(capability), "expected `{capability}` on");
+    }
     // Context visibility is a default-on capability (it adds no tools, only accounting).
     assert!(set.is_enabled(CAPABILITY_CONTEXT_VISIBILITY));
     // An absent capability is distinguishable from a present one. Both Phase 2 backstops are
@@ -32,8 +35,55 @@ fn default_capability_set_needs_no_model_and_binds_no_slot() {
     assert!(set.preset.is_none());
     // The default capabilities are still present, just unbound to any model.
     assert!(set.is_enabled(CAPABILITY_SHELL));
-    assert!(set.is_enabled(CAPABILITY_FILESYSTEM));
+    assert!(set.is_enabled(CAPABILITY_READ_FILE));
     assert!(set.is_enabled(CAPABILITY_CONTEXT_VISIBILITY));
+}
+
+/// A capability set written before the filesystem split names only the umbrella id. It
+/// keeps working: each per-tool capability reads as enabled through the alias, without any
+/// stored data being migrated.
+#[test]
+fn the_legacy_filesystem_capability_stands_in_for_the_per_tool_ones() {
+    let set = GgCapabilitySet {
+        model_slots: Vec::new(),
+        preset: None,
+        capabilities: vec![GgCapabilityConfig::enabled(CAPABILITY_FILESYSTEM)],
+        slots: Vec::new(),
+        disabled_tools: Vec::new(),
+    };
+    for capability in FILESYSTEM_TOOL_CAPABILITIES {
+        assert!(set.is_enabled(capability), "expected `{capability}` on");
+        // The alias supplies enabledness only: the per-tool capability is still absent, so
+        // nothing reads another capability's params as if they were its own.
+        assert!(set.capability(capability).is_none());
+        assert_eq!(
+            set.effective_capability(capability).map(|c| c.id.as_str()),
+            Some(CAPABILITY_FILESYSTEM)
+        );
+    }
+
+    // Turning the umbrella off turns all four off.
+    let off = GgCapabilitySet {
+        capabilities: vec![GgCapabilityConfig::disabled(CAPABILITY_FILESYSTEM)],
+        ..set.clone()
+    };
+    for capability in FILESYSTEM_TOOL_CAPABILITIES {
+        assert!(!off.is_enabled(capability));
+    }
+
+    // An explicit per-tool capability wins over the umbrella beside it, in both directions.
+    let mixed = GgCapabilitySet {
+        capabilities: vec![
+            GgCapabilityConfig::enabled(CAPABILITY_FILESYSTEM),
+            GgCapabilityConfig::disabled(CAPABILITY_EDIT_FILE),
+        ],
+        ..set.clone()
+    };
+    assert!(!mixed.is_enabled(CAPABILITY_EDIT_FILE));
+    assert!(mixed.is_enabled(CAPABILITY_READ_FILE));
+
+    // The alias is one-way: a modern set does not answer to the legacy id.
+    assert!(!GgCapabilitySet::default().is_enabled(CAPABILITY_FILESYSTEM));
 }
 
 #[test]
