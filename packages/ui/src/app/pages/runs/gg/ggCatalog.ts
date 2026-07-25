@@ -16,12 +16,6 @@ export function capabilityOn(set: GgCapabilitySet | null, id: string): boolean {
 // The backend 400s a capability set that leaves it unbound.
 export const PRIMARY_SLOT = "primary";
 
-// The offline mock model: an in-repo scripted "builder" that drives a gg run with
-// no provider API key, so a run can be launched and watched end to end without
-// credentials. Offered as a per-slot toggle.
-export const MOCK_MODEL_ID = "mock/scripted-builder";
-export const MOCK_PROVIDER = "mock";
-
 // The role slots multi-model runs commonly bind, beyond the primary. Free text is
 // allowed too; these seed the datalist so the common ones are one click away, and
 // the analyze page offers them as `slotModel` facet targets.

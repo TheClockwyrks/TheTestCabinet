@@ -32,13 +32,6 @@ pub enum Command {
     /// Run validation over a produced implementation.
     Validate(ValidateArgs),
 
-    /// Execute a **gg** run locally, in-process, against a real container runtime —
-    /// the offline developer path for gg, distinct from `tcab run` (which enqueues a
-    /// third-party-harness run on the backend). Binds gg's `primary` model slot to the
-    /// scripted mock provider by default, so it needs no credentials and no network.
-    #[command(name = "gg-run")]
-    GgRun(GgRunArgs),
-
     /// Reconstruct a **gg** run from a captured replay record — a debug-only tool. Loads a
     /// `.gg/replay.json` record (written by a run with the `replay` capability on) and re-runs the
     /// session from its pinned model I/O and tool results, with no live model and no real tools,
@@ -192,50 +185,6 @@ pub struct RunArgs {
     /// to write nothing to disk.
     #[arg(long, value_name = "DIR")]
     pub out_dir: Option<std::path::PathBuf>,
-}
-
-/// Arguments for `tcab gg-run` — a local, in-process gg run.
-///
-/// Like `tcab seed` and unlike `tcab run`, this executes locally (it resolves the
-/// case from a `test-cases/` checkout, seeds a fresh repo, and drives a real
-/// container runtime) so the whole gg path is exercisable offline without the
-/// backend or the UI. `disable_version_flag` frees `--version` for the test case
-/// version.
-#[derive(Debug, Args)]
-#[command(disable_version_flag = true)]
-pub struct GgRunArgs {
-    /// Slug of the test case to run (for example, `carom`).
-    #[arg(long, value_name = "SLUG")]
-    pub test_case: String,
-
-    /// Exact, immutable test case version to run.
-    #[arg(long, value_name = "VERSION")]
-    pub version: String,
-
-    /// Variant of the test case to run (for example, `base`).
-    #[arg(long, value_name = "VARIANT", default_value = "base")]
-    pub variant: String,
-
-    /// Path to a JSON `GgCapabilitySet` file to configure the run. Omit to use the
-    /// Phase 0 minimal set with the `primary` slot bound to `--model`.
-    #[arg(long, value_name = "FILE")]
-    pub gg_capabilities: Option<std::path::PathBuf>,
-
-    /// The model id bound to gg's `primary` slot when no `--gg-capabilities` file is
-    /// given. Defaults to the scripted mock provider (`mock/echo`), which needs no
-    /// credentials or network — a `mock/…` id (or a `mock` provider) selects gg's
-    /// built-in mock client.
-    #[arg(long, value_name = "MODEL", default_value = "mock/echo")]
-    pub model: String,
-
-    /// Maximum gg runtime in hours before the run is stopped. Overrides the test
-    /// case's `max_runtime_hours` default; omit to use that default.
-    #[arg(long, value_name = "HOURS")]
-    pub max_runtime: Option<f64>,
-
-    /// Directory to write the produced run record and collected implementation into.
-    #[arg(long, value_name = "DIR", default_value = "gg-runs")]
-    pub out_dir: std::path::PathBuf,
 }
 
 /// Arguments for `tcab gg-replay` — a local, debug-only reconstruction of a gg run from its

@@ -240,14 +240,6 @@
   }
 }
 
-// The mock-model toggle line.
-.mockToggle {
-  display: flex;
-  align-items: center;
-  gap: t.$space-sm;
-  cursor: pointer;
-}
-
 // The real-model binding row: the model picker flexes, the provider stays compact.
 .slotFields {
   display: flex;

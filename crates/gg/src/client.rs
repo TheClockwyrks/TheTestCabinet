@@ -45,6 +45,18 @@
 //! and returns [`ModelError::MissingApiKey`]
 //! when it is absent — a real binding with no key fails loudly rather than silently
 //! falling back to the mock.
+//!
+//! # The mock is test infrastructure, not a launchable model
+//!
+//! [`MockClient`] exists so gg's own suite can drive the **real** binary offline —
+//! the whole spawn → wait → return path and its worktree, workflow, Code Review, FSM,
+//! and speculative variants are exercised through [`mock_client_for`], not around it.
+//! It is **not** a model anyone can run a real test case on: the launch path resolves
+//! every bound model's [context window](test_cabinet_core::gg::GgInvocation::model_windows)
+//! from the model catalog and refuses a run it cannot resolve one for, and no catalog
+//! or provider lists a `mock/…` id. A mock binding therefore reaches gg only from a
+//! test that constructs the invocation itself (supplying the windows a launch would
+//! have), which is exactly the intended blast radius.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;

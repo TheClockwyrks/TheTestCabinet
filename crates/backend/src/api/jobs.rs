@@ -67,7 +67,9 @@ pub async fn launch(
     Json(mut body): Json<LaunchBody>,
 ) -> Result<Response, ApiError> {
     let now = now_rfc3339()?;
-    resolve_gg_model_windows(&state.db, &mut body).await;
+    resolve_gg_model_windows(&state.db, &state.prices, &mut body)
+        .await
+        .map_err(ApiError::bad_request)?;
     let new = build_new_job(&body, &now).map_err(ApiError::bad_request)?;
     let id = new.id.clone();
 
@@ -118,11 +120,16 @@ pub async fn launch_batch(
     let mut to_insert: Vec<crate::db::NewJob> = Vec::with_capacity(body.runs.len());
     for run in &body.runs {
         // Resolve each run's model windows against the catalog before minting it, so a
-        // batched gg run is configured exactly as a singly-launched one is.
+        // batched gg run is configured exactly as a singly-launched one is — and, exactly
+        // as in the single case, a run whose window cannot be resolved is rejected. It is
+        // reported at its own index like any other validation failure, so one unresolvable
+        // model does not sink the rest of the batch.
         let mut run = run.clone();
-        resolve_gg_model_windows(&state.db, &mut run).await;
-        let run = &run;
-        match build_new_job(run, &now) {
+        let minted = match resolve_gg_model_windows(&state.db, &state.prices, &mut run).await {
+            Ok(()) => build_new_job(&run, &now),
+            Err(reason) => Err(reason),
+        };
+        match minted {
             Ok(new) => {
                 items.push(LaunchBatchItem {
                     job_id: Some(new.id.clone()),
@@ -146,24 +153,39 @@ pub async fn launch_batch(
     Ok((StatusCode::ACCEPTED, Json(LaunchBatchAck { jobs: items })).into_response())
 }
 
-/// Fill in a **gg** launch's [`gg_model_windows`](LaunchBody::gg_model_windows) from the
-/// model catalog: the context window of every model the run's capability set binds.
+/// Fill in a **gg** launch's [`gg_model_windows`](LaunchBody::gg_model_windows): the context
+/// window of every model the run's capability set binds, or the reason the run cannot start.
 ///
 /// This is the push that lets gg hold no model table of its own. The catalog is the
 /// backend's, so the backend answers the question here — once, at the moment the run is
-/// triggered — and the figure travels with the launch request to the driver, into the gg
-/// invocation, and out to the agent loop, which measures window fullness (and therefore
-/// the compaction trigger) against it. A run container never has to reach back for it.
+/// triggered — and the figures travel with the launch request to the driver, into the gg
+/// invocation, and out to the agent loop, which measures window fullness (and therefore the
+/// compaction trigger) against them. A run container never has to reach back for one.
 ///
-/// Deliberately best-effort and non-fatal: a model the catalog has no observation for, or
-/// a lookup that errors, simply contributes no entry, and gg falls back to its conservative
-/// default. Losing a window is a slightly-wrong fullness denominator; refusing the launch
-/// over it would be worse. Whatever the client sent is discarded — this is a
-/// backend-resolved fact, not a client input.
-pub(super) async fn resolve_gg_model_windows(db: &crate::db::Db, body: &mut LaunchBody) {
+/// Resolution is two steps per model, and **fails the launch** if neither answers:
+///
+/// 1. the [catalog](super::models::context_window_for) — the observations the backend
+///    already holds; then
+/// 2. a live [per-model fetch](test_cabinet_core::OpenRouterPrices::model_context_window)
+///    from OpenRouter, for a model the catalog has not observed yet (the first run against a
+///    just-released model). Only the models this run needs are fetched, not the catalog.
+///
+/// There is deliberately **no fallback**. An assumed window is not a smaller version of the
+/// right answer: it silently mis-scales every fullness figure, moves the compaction trigger,
+/// and misreports the fullness signal the agent itself steers by — a run that looks fine and
+/// measured the wrong thing. Refusing to enqueue is the honest outcome, and the operator can
+/// see why.
+///
+/// Whatever the client sent is discarded first — this is a backend-resolved fact, not a
+/// client input.
+pub(super) async fn resolve_gg_model_windows(
+    db: &crate::db::Db,
+    prices: &test_cabinet_core::OpenRouterPrices,
+    body: &mut LaunchBody,
+) -> Result<(), String> {
     body.gg_model_windows.clear();
     let Some(set) = body.gg_capability_set.as_ref() else {
-        return;
+        return Ok(());
     };
     // Every model the set can run an agent on, plus the launch's own model id (the
     // primary, which the form also records outside the set).
@@ -174,22 +196,49 @@ pub(super) async fn resolve_gg_model_windows(db: &crate::db::Db, body: &mut Laun
     }
     let mut resolved = std::collections::BTreeMap::new();
     for model_id in models {
-        match super::models::context_window_for(db, model_id, body.harness).await {
-            Ok(Some(window)) => {
-                resolved.insert(model_id.to_string(), window);
-            }
-            Ok(None) => tracing::debug!(
-                model_id,
-                "model catalog has no context window; gg will use its default"
-            ),
-            Err(err) => tracing::warn!(
-                model_id,
-                error = %err,
-                "could not read the model catalog's context window; gg will use its default"
-            ),
-        }
+        let window = resolve_one_model_window(db, prices, model_id, body.harness).await?;
+        resolved.insert(model_id.to_string(), window);
     }
     body.gg_model_windows = resolved;
+    Ok(())
+}
+
+/// One model's context window: the catalog's observation, else a live per-model fetch from
+/// OpenRouter, else the reason this run cannot start.
+async fn resolve_one_model_window(
+    db: &crate::db::Db,
+    prices: &test_cabinet_core::OpenRouterPrices,
+    model_id: &str,
+    harness: test_cabinet_core::run_record::HarnessSlug,
+) -> Result<u64, String> {
+    match super::models::context_window_for(db, model_id, harness).await {
+        Ok(Some(window)) => return Ok(window),
+        Ok(None) => {}
+        // A catalog read that fails is not "no window" — it is an unknown. Say so rather
+        // than papering over a database problem with a live fetch.
+        Err(err) => {
+            return Err(format!(
+                "could not read the model catalog's context window for `{model_id}`: {err}"
+            ));
+        }
+    }
+    // Not observed yet: ask OpenRouter for this one model. The id to ask under is the same
+    // one prices are looked up by, so a curated model resolves through its configured slug.
+    let lookup = crate::bootstrap::openrouter_lookup_id(db, model_id, harness)
+        .await
+        .unwrap_or_else(|_| test_cabinet_core::model_id::openrouter_price_id(model_id, harness));
+    match prices.model_context_window(&lookup).await {
+        Ok(Some(window)) => Ok(window),
+        Ok(None) => Err(format!(
+            "OpenRouter lists `{lookup}` but reports no context window for it; a gg run is \
+             measured against its model's context window and none is assumed"
+        )),
+        Err(err) => Err(format!(
+            "no context window is known for `{model_id}`: it is not in the model catalog, and \
+             looking it up as `{lookup}` failed ({err}). A gg run is measured against its \
+             model's context window and none is assumed."
+        )),
+    }
 }
 
 /// Validate a launch request and build the `queued` job to enqueue for it: mint the

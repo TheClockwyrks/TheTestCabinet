@@ -25,8 +25,6 @@ import {
   DEFAULT_CAP_IDS,
   FILESYSTEM_CAP_IDS,
   LEGACY_FILESYSTEM_CAP_ID,
-  MOCK_MODEL_ID,
-  MOCK_PROVIDER,
   PRIMARY_SLOT,
   type CapSpec,
 } from "./ggCatalog";
@@ -61,13 +59,12 @@ export type GgSlotSource = "model-slot" | "model";
 // One role binding as the editor holds it. The role (`slot` — "primary",
 // "reviewer", …) is what capabilities reference; `source` decides where its model
 // comes from. A `model-slot` binding names a declared [GgModelSlotDraft] and is
-// filled in at launch; a `model` binding pins the offline mock model or a real model
-// id (with an optional provider) and is never asked about again.
+// filled in at launch; a `model` binding pins a model id (with an optional
+// provider) and is never asked about again.
 export interface GgSlotDraft {
   slot: string;
   source: GgSlotSource;
   modelSlot: string;
-  mockModel: boolean;
   modelId: string;
   provider: string;
 }
@@ -99,7 +96,6 @@ export function blankPrimarySlot(): GgSlotDraft {
     slot: PRIMARY_SLOT,
     source: "model-slot",
     modelSlot: PRIMARY_SLOT,
-    mockModel: false,
     modelId: "",
     provider: "",
   };
@@ -116,7 +112,6 @@ export function blankSlot(): GgSlotDraft {
     slot: "",
     source: "model-slot",
     modelSlot: PRIMARY_SLOT,
-    mockModel: false,
     modelId: "",
     provider: "",
   };
@@ -286,9 +281,8 @@ export function draftFromCapabilitySet(set: GgCapabilitySet): GgConfigDraft {
     slot: s.slot,
     source: s.modelSlot ? "model-slot" : "model",
     modelSlot: s.modelSlot ?? "",
-    mockModel: s.modelId === MOCK_MODEL_ID,
-    modelId: s.modelId === MOCK_MODEL_ID ? "" : s.modelId,
-    provider: s.modelId === MOCK_MODEL_ID ? "" : (s.provider ?? ""),
+    modelId: s.modelId,
+    provider: s.provider ?? "",
   }));
   const modelSlots: GgModelSlotDraft[] = (set.modelSlots ?? []).map((s) => ({
     name: s.name,
@@ -374,13 +368,13 @@ export function capabilityParams(
 }
 
 /**
- * Whether a role binding resolves to something: a pinned model (the mock counts), or
- * a named model slot the launch will fill in.
+ * Whether a role binding resolves to something: a pinned model, or a named model
+ * slot the launch will fill in.
  */
 export function slotHasBinding(slot: GgSlotDraft): boolean {
   return slot.source === "model-slot"
     ? slot.modelSlot.trim().length > 0
-    : slot.mockModel || slot.modelId.trim().length > 0;
+    : slot.modelId.trim().length > 0;
 }
 
 /** The per-capability param errors of a draft, keyed by capability id (`null` = ok). */
@@ -477,13 +471,10 @@ export function capabilitySetFromDraft(
           modelSlot: s.modelSlot.trim(),
         };
       }
-      const modelId = s.mockModel ? MOCK_MODEL_ID : s.modelId.trim();
-      const provider = s.mockModel
-        ? MOCK_PROVIDER
-        : s.provider.trim() || undefined;
+      const provider = s.provider.trim() || undefined;
       return {
         slot: s.slot.trim(),
-        modelId,
+        modelId: s.modelId.trim(),
         ...(provider ? { provider } : {}),
       };
     });
@@ -551,8 +542,8 @@ export function launchModelSlots(set: GgCapabilitySet): GgModelSlot[] {
  * name), and the declarations dropped — what runs is a fully pinned set, which is
  * also what the run records and what result aggregation slices by.
  *
- * The model slot's declared provider is carried onto each binding it feeds (the mock
- * model gets the mock provider); a role the configuration pinned itself is untouched.
+ * The model slot's declared provider is carried onto each binding it feeds; a role the
+ * configuration pinned itself is untouched.
  */
 export function bindModelSlots(
   set: GgCapabilitySet,
@@ -561,10 +552,8 @@ export function bindModelSlots(
   const declared = new Map(
     (set.modelSlots ?? []).map((s) => [s.name, s] as const),
   );
-  const resolve = (name: string): GgSlotBinding["provider"] => {
-    if (models[name] === MOCK_MODEL_ID) return MOCK_PROVIDER;
-    return declared.get(name)?.provider;
-  };
+  const resolve = (name: string): GgSlotBinding["provider"] =>
+    declared.get(name)?.provider;
   const slots: GgSlotBinding[] = (set.slots ?? []).map((binding) => {
     if (!binding.modelSlot) return binding;
     const provider = resolve(binding.modelSlot);

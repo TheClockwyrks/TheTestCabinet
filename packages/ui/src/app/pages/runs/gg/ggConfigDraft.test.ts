@@ -66,18 +66,6 @@ describe("gg model slots", () => {
     expect(launched.preset).toBe("critic-sweep");
   });
 
-  it("binds the mock model to its own provider", () => {
-    const launched = bindModelSlots(
-      set({ slots: [{ slot: "primary", modelId: "", modelSlot: "primary" }] }),
-      { primary: "mock/scripted-builder" },
-    );
-    expect(launched.slots[0]).toEqual({
-      slot: "primary",
-      modelId: "mock/scripted-builder",
-      provider: "mock",
-    });
-  });
-
   it("keeps a configuration saved before model slots existed launchable", () => {
     // The old shape: nothing bound at all, the launch form supplying the one model.
     const legacy = set({ preset: "minimal", slots: [] });

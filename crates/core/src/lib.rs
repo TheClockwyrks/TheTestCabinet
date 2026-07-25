@@ -234,23 +234,60 @@ impl RunRequest {
         self.harness == crate::run_record::HarnessSlug::Gg
     }
 
-    /// Enforce the gg configuration invariant: a
+    /// Enforce the gg configuration invariants: a
     /// [capability set](crate::gg::GgCapabilitySet) is carried **iff** the harness
-    /// is [`HarnessSlug::Gg`]. Called at the top
-    /// of a run so a mismatch fails fast, before any container work, with a clear
-    /// message rather than a silent skip of the gg path (or a stray capability set
-    /// on a third-party-harness run).
+    /// is [`HarnessSlug::Gg`], and a gg run carries a
+    /// [context window](Self::gg_model_windows) for every model it binds. Called at
+    /// the top of a run so a mismatch fails fast, before any container work, with a
+    /// clear message rather than a silent skip of the gg path (or a stray capability
+    /// set on a third-party-harness run).
     pub fn validate(&self) -> Result<()> {
         match (self.is_gg(), self.gg_capability_set.is_some()) {
-            (true, false) => Err(Error::GgConfiguration(
-                "a gg run requires a capability set, but none was supplied".to_string(),
-            )),
-            (false, true) => Err(Error::GgConfiguration(format!(
-                "a gg capability set was supplied for a `{}` run, which is not a gg run",
-                self.harness.as_str(),
-            ))),
-            _ => Ok(()),
+            (true, false) => {
+                return Err(Error::GgConfiguration(
+                    "a gg run requires a capability set, but none was supplied".to_string(),
+                ));
+            }
+            (false, true) => {
+                return Err(Error::GgConfiguration(format!(
+                    "a gg capability set was supplied for a `{}` run, which is not a gg run",
+                    self.harness.as_str(),
+                )));
+            }
+            _ => {}
         }
+        self.validate_model_windows()
+    }
+
+    /// Every model a gg run binds must carry the model catalog's
+    /// [context window](Self::gg_model_windows) for it.
+    ///
+    /// gg measures window fullness — and triggers [compaction](crate::gg) — against that
+    /// figure, and has no fallback to invent one with, so a run missing it would produce
+    /// context accounting that is quietly wrong rather than absent. The launch path
+    /// resolves the windows (the backend, at enqueue), so reaching here without one means
+    /// the catalog could not answer: fail before the container is even pulled.
+    fn validate_model_windows(&self) -> Result<()> {
+        let Some(set) = self.gg_capability_set.as_ref() else {
+            return Ok(());
+        };
+        let missing: Vec<&str> = set
+            .bound_model_ids()
+            .into_iter()
+            .filter(|id| !self.gg_model_windows.contains_key(*id))
+            .collect();
+        if missing.is_empty() {
+            return Ok(());
+        }
+        Err(Error::GgConfiguration(format!(
+            "no context window was resolved for the model(s) {} — a gg run is measured against \
+             the model catalog's window for each model it binds, and none is assumed",
+            missing
+                .iter()
+                .map(|id| format!("`{id}`"))
+                .collect::<Vec<_>>()
+                .join(", "),
+        )))
     }
 
     /// The gg [capability set](crate::gg::GgCapabilitySet) for this run, or a clear

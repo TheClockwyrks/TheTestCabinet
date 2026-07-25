@@ -145,14 +145,6 @@ const PARAM_WINDOW_LIMIT: &str = "windowLimit";
 /// given. When absent, [`DEFAULT_SKILLS_DIR`] under the workspace is used.
 const PARAM_SKILLS_DIR: &str = "dir";
 
-/// The context-window limit assumed when neither the [`PARAM_WINDOW_LIMIT`] param nor the
-/// [catalog's figures](GgInvocation::model_windows) resolve one — an offline mock run, or a
-/// model the catalog has no observation for. A conservative modern default (128k): the
-/// accounting is an estimate and the exact figure only sets the fullness denominator, so a
-/// run whose window could not be resolved still reports a plausible ratio, and errs toward
-/// compacting early rather than overflowing.
-const DEFAULT_CONTEXT_WINDOW: u64 = 128_000;
-
 /// The base system prompt seeding the loop. The available tools are appended per run
 /// (see [`system_prompt`]) so the prompt reflects the enabled capabilities.
 const GG_SYSTEM_PROMPT_BASE: &str = "You are gg, The Test Cabinet's autonomous coding agent. \
@@ -425,7 +417,8 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
 /// [`run`], but with an injectable [`ClientFactory`] so a test can drive the root and its
 /// subagents from scripted offline clients. Owns the session frame: it scopes the root emitter,
 /// emits [`SessionStarted`](GgTelemetryKind::SessionStarted), performs the launch checks (slot
-/// validation and the root's client resolution — the only two [launch failures](SessionOutcome)),
+/// validation, the [context windows](validate_model_windows) every bound model must carry, and
+/// the root's client resolution — the only three [launch failures](SessionOutcome)),
 /// builds the [`Orchestrator`], drives the [root agent](ROOT_AGENT_ID), then joins every spawned
 /// subagent, streams the [per-slot](SlotAccounting) rollups the run accumulated, and emits the
 /// terminal [`SessionEnded`](GgTelemetryKind::SessionEnded).
@@ -466,7 +459,16 @@ pub(crate) async fn run_with_factory(
         }
     };
 
-    // Launch check 2: the root's model client must resolve (a missing credential fails here). A
+    // Launch check 2: every bound model must have a context window to be measured against. gg
+    // has no fallback to guess one with, by design, so this is a hard launch failure rather
+    // than a run with silently mis-scaled context accounting.
+    if let Err(err) = validate_model_windows(set, &invocation.model_windows) {
+        root_emitter.emit(log("error", err));
+        root_emitter.emit(session_ended("error"));
+        return SessionOutcome::LaunchFailed;
+    }
+
+    // Launch check 3: the root's model client must resolve (a missing credential fails here). A
     // subagent's client is resolved at spawn time instead, where a failure is reported to its
     // spawner rather than failing the whole process.
     let client = match factory.client_for(&binding) {
@@ -4341,31 +4343,60 @@ fn apply_context_reclaim(
 /// 2. **The working window**, [reduced by the summary headroom](crate::compaction::working_window)
 ///    when compaction is on, reserving room for the summarization call itself.
 ///
-/// When the catalog knows no window for the model there is nothing to clamp against, so an
-/// explicit override stands as given — it is then the operator supplying the fact the
-/// catalog lacked — and with neither, [`DEFAULT_CONTEXT_WINDOW`] backstops it. gg
-/// deliberately keeps **no table of its own** to fall back on: a second store of model facts
-/// is a second thing to get wrong, and it would silently mask a catalog gap instead of
-/// showing it.
-///
-/// The limit is always known (the default backstops it); it is an [`Option`] on the wire so
-/// a future estimator can report "unknown" without a schema change.
+/// Returns `None` when `windows` carries no figure for `model_id`. **There is no fallback**:
+/// gg keeps no model table of its own and will not guess a window from a model id, because a
+/// guessed denominator silently mis-scales every fullness figure, the compaction trigger, and
+/// the agent's own fullness signal. A run whose window cannot be resolved must not start —
+/// [`validate_model_windows`] refuses it at launch, so this `None` is unreachable once a
+/// session is running.
 fn resolve_window_limit(
     set: &GgCapabilitySet,
     windows: &BTreeMap<String, u64>,
     model_id: &str,
 ) -> Option<u64> {
+    let model_window = windows.get(model_id).copied()?;
     // The override lives on context-visibility by convention, but it governs compaction and
     // the fullness signal too — so, like the loop bounds, it is honored on any capability
     // that carries it rather than being silently ignored when visibility is ablated off.
-    let override_limit = param_u64(set, PARAM_WINDOW_LIMIT).filter(|&n| n > 0);
-    let configured = match (windows.get(model_id).copied(), override_limit) {
-        (Some(model_window), Some(limit)) => limit.min(model_window),
-        (Some(model_window), None) => model_window,
-        (None, Some(limit)) => limit,
-        (None, None) => DEFAULT_CONTEXT_WINDOW,
-    };
+    let configured = param_u64(set, PARAM_WINDOW_LIMIT)
+        .filter(|&n| n > 0)
+        .map_or(model_window, |limit| limit.min(model_window));
     Some(compaction::working_window(set, configured))
+}
+
+/// Check that every model `set` binds has a [context window](GgInvocation::model_windows) —
+/// the launch check that makes gg's lack of a fallback safe.
+///
+/// The window is the denominator of every fullness figure, the basis of the
+/// [compaction](crate::compaction) trigger, and part of the fullness signal the agent itself
+/// reads. Running without it would mean inventing one, so a session that cannot measure its
+/// own window does not start: the run fails loudly here rather than producing a run whose
+/// context accounting is quietly wrong.
+///
+/// This is the last of three lines of defence — the backend refuses to enqueue such a run and
+/// `core` refuses to launch one — and the one that also covers an invocation written by hand.
+fn validate_model_windows(
+    set: &GgCapabilitySet,
+    windows: &BTreeMap<String, u64>,
+) -> Result<(), String> {
+    let missing: Vec<&str> = set
+        .bound_model_ids()
+        .into_iter()
+        .filter(|id| !windows.contains_key(*id))
+        .collect();
+    if missing.is_empty() {
+        return Ok(());
+    }
+    Err(format!(
+        "the invocation carries no context window for the model(s) {} — a gg run is measured \
+         against the model catalog's window and will not guess one; re-launch once the catalog \
+         knows the model",
+        missing
+            .iter()
+            .map(|id| format!("`{id}`"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    ))
 }
 
 /// Build the run's [`SkillsRuntime`] from the capability set and workspace: when the

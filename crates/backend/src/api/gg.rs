@@ -198,8 +198,12 @@ pub async fn launch_gg(
     let mut launch = body.into_launch_body().map_err(ApiError::bad_request)?;
     // Tell the run what the catalog knows about the models it binds — the context
     // window each agent's fullness accounting and compaction trigger are measured
-    // against. gg keeps no model table of its own, so this push is where it learns.
-    resolve_gg_model_windows(&state.db, &mut launch).await;
+    // against. gg keeps no model table of its own and assumes no default, so a model
+    // whose window cannot be resolved (not in the catalog, and not listed by
+    // OpenRouter either) is rejected here rather than run against a guess.
+    resolve_gg_model_windows(&state.db, &state.prices, &mut launch)
+        .await
+        .map_err(ApiError::bad_request)?;
     let now = now_rfc3339()?;
     let new = build_new_job(&launch, &now).map_err(ApiError::bad_request)?;
     let id = new.id.clone();

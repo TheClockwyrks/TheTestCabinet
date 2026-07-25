@@ -392,7 +392,8 @@ fn gg_request(model: &str) -> RunRequest {
         max_runtime_override: None,
         container_image: None,
         gg_capability_set: Some(GgCapabilitySet::minimal(model)),
-        gg_model_windows: Default::default(),
+        // What a launch pushes in: a context window per bound model.
+        gg_model_windows: std::collections::BTreeMap::from([(model.to_string(), 200_000)]),
     }
 }
 
@@ -423,8 +424,14 @@ fn build_invocation_carries_the_resolved_model_windows() {
         Some(&200_000)
     );
 
-    // An unresolved one is simply absent, not zero — gg then falls back to its default.
-    let invocation =
-        build_invocation(&gg_request("mock/echo"), "prompt", "/work", "run-123").unwrap();
-    assert!(invocation.model_windows.is_empty());
+    // A request carrying no window for a model it binds never reaches here: the run is
+    // refused before any container work, because gg assumes no default.
+    let mut request = gg_request("mock/echo");
+    request.gg_model_windows.clear();
+    let err = build_invocation(&request, "prompt", "/work", "run-123")
+        .expect_err("a bound model with no window is a configuration error");
+    assert!(
+        err.to_string().contains("mock/echo"),
+        "unexpected error: {err}"
+    );
 }

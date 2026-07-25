@@ -42,16 +42,33 @@ use test_cabinet_core::gg::{
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
-/// An invocation over `dir` configured with `set`, with no catalog windows pushed in
-/// (the offline mock models have none), so window resolution falls back to the default.
+/// The context window these tests run every scripted model against. gg has no fallback —
+/// a run whose window cannot be resolved does not start — so a test must supply the same
+/// thing a launch would: a window per bound model. The scripted models are not real, so
+/// the figure is nominal; what matters is that it is *stated*, exactly as the backend
+/// states a real model's.
+const TEST_CONTEXT_WINDOW: u64 = 200_000;
+
+/// An invocation over `dir` configured with `set`, carrying the per-model context windows
+/// a launch would have pushed in — one for every model the set binds.
 fn invocation(dir: &Path, set: GgCapabilitySet) -> GgInvocation {
+    let model_windows = test_windows(&set);
     GgInvocation {
         session_id: "run-test".to_string(),
         workspace_dir: dir.to_path_buf(),
         prompt: "Build a tiny game.".to_string(),
         capability_set: set,
-        model_windows: BTreeMap::new(),
+        model_windows,
     }
+}
+
+/// The window map a launch would push for `set`: [`TEST_CONTEXT_WINDOW`] for every model it
+/// binds.
+fn test_windows(set: &GgCapabilitySet) -> BTreeMap<String, u64> {
+    set.bound_model_ids()
+        .into_iter()
+        .map(|id| (id.to_string(), TEST_CONTEXT_WINDOW))
+        .collect()
 }
 
 /// The catalog-pushed window map for one model, as a launch supplies it.
@@ -532,6 +549,39 @@ async fn run_reports_launch_failure_when_no_slot_is_bound() {
     ));
 }
 
+/// A bound model the launch pushed no context window for is a launch failure, not a run
+/// against a guessed window: the session ends `error` before a single turn, naming the
+/// model. This is what makes gg's absence of a fallback safe.
+#[tokio::test]
+async fn run_reports_launch_failure_when_a_model_has_no_context_window() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-x".to_string()), Box::new(sink.clone()));
+    let mut inv = invocation(dir.path(), GgCapabilitySet::minimal("mock/echo"));
+    inv.model_windows.clear();
+
+    assert_eq!(run(&inv, &emitter).await, SessionOutcome::LaunchFailed);
+
+    let events = sink.events();
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::Log { level, message } if level == "error" && message.contains("mock/echo")
+        )),
+        "the failure names the model with no window"
+    );
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e.kind, GgTelemetryKind::TurnStarted {})),
+        "no turn runs against a window gg had to invent"
+    );
+    assert!(matches!(
+        &events.last().unwrap().kind,
+        GgTelemetryKind::SessionEnded { status } if status == "error"
+    ));
+}
+
 // ---------------------------------------------------------------------------
 // Termination conditions of the driven loop
 // ---------------------------------------------------------------------------
@@ -964,8 +1014,8 @@ async fn run_emits_context_breakdown_each_turn_when_visibility_enabled() {
         by_source.iter().map(|b| b.tokens).sum::<u64>(),
         "the total equals the sum of the bands"
     );
-    // An unrecognized model id falls back to the default window; fullness follows.
-    assert_eq!(*window_limit, Some(DEFAULT_CONTEXT_WINDOW));
+    // The window is the one the launch pushed in for this model; fullness follows.
+    assert_eq!(*window_limit, Some(TEST_CONTEXT_WINDOW));
     let f = fullness.expect("fullness is known when the window is");
     assert!(f > 0.0 && f < 1.0);
 
@@ -1014,10 +1064,10 @@ async fn run_omits_context_breakdown_when_visibility_disabled() {
 }
 
 /// The window a run is measured against is the catalog's figure for the model, pushed in
-/// with the invocation — and, with no figure and no override, the conservative default. gg
-/// holds no model table of its own to guess from.
+/// with the invocation — and **nothing** when the launch pushed none. gg holds no model
+/// table of its own to guess from and no default to fall back on.
 #[test]
-fn resolve_window_limit_takes_the_catalog_window_then_the_default() {
+fn resolve_window_limit_takes_the_catalog_window_and_never_guesses() {
     let set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
     let catalog = windows("anthropic/claude-opus-4.8", 200_000);
     assert_eq!(
@@ -1025,16 +1075,38 @@ fn resolve_window_limit_takes_the_catalog_window_then_the_default() {
         Some(200_000)
     );
 
-    // A model the launch pushed no window for — an offline mock, or a model the catalog
-    // has no observation for — falls back to the default rather than being guessed at.
-    assert_eq!(
-        resolve_window_limit(&set, &catalog, "mock/echo"),
-        Some(DEFAULT_CONTEXT_WINDOW)
-    );
+    // A model the launch pushed no window for resolves to nothing at all — a guessed
+    // denominator would silently mis-scale every fullness figure and the compaction
+    // trigger, so the launch check refuses the run instead.
+    assert_eq!(resolve_window_limit(&set, &catalog, "mock/echo"), None);
     assert_eq!(
         resolve_window_limit(&set, &BTreeMap::new(), "anthropic/claude-opus-4.8"),
-        Some(DEFAULT_CONTEXT_WINDOW)
+        None
     );
+}
+
+/// The launch check names every bound model the invocation carries no window for, and passes
+/// only when all of them are covered.
+#[test]
+fn validate_model_windows_requires_every_bound_model() {
+    let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
+    set.slots
+        .push(GgSlotBinding::new("subagent", "openai/gpt-5.4-mini"));
+
+    let err = validate_model_windows(&set, &windows("anthropic/claude-opus-4.8", 200_000))
+        .expect_err("a bound model with no window is a launch failure");
+    assert!(
+        err.contains("openai/gpt-5.4-mini"),
+        "unexpected error: {err}"
+    );
+    assert!(
+        !err.contains("anthropic/claude-opus-4.8"),
+        "the covered model should not be named: {err}"
+    );
+
+    assert!(validate_model_windows(&set, &test_windows(&set)).is_ok());
+    // A set that binds nothing has nothing to cover.
+    assert!(validate_model_windows(&GgCapabilitySet::default(), &BTreeMap::new()).is_ok());
 }
 
 /// The `windowLimit` param narrows the catalog's figure, and a zero (or non-integer) one is
@@ -1080,11 +1152,11 @@ fn resolve_window_limit_clamps_an_override_above_the_model_window() {
         Some(200_000)
     );
 
-    // With no catalog figure there is nothing to clamp against, so the override stands as
-    // given — it is then the operator supplying the fact the catalog lacked.
+    // An override cannot conjure a window for a model the launch pushed none for, either:
+    // there is no figure to clamp it against, so the run does not start.
     assert_eq!(
         resolve_window_limit(&set, &BTreeMap::new(), "anthropic/claude-opus-4.8"),
-        Some(2_000_000)
+        None
     );
 }
 

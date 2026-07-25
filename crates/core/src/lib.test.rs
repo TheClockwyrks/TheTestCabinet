@@ -1,6 +1,7 @@
 //! Tests for the crate root: the working-tree copy that produces a run's
 //! published `implementation/` directory, and the per-run JSONL stream files.
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use super::{
@@ -383,6 +384,9 @@ fn a_gg_run_with_a_capability_set_is_gg_and_yields_its_set() {
     let request = RunRequest {
         harness: HarnessSlug::Gg,
         gg_capability_set: Some(set.clone()),
+        // The launch resolves a context window for every bound model; a gg run
+        // carrying none is refused (see the test below).
+        gg_model_windows: BTreeMap::from([("mock/primary".to_string(), 200_000)]),
         ..request_with_override(None)
     };
     assert!(request.is_gg());
@@ -408,6 +412,32 @@ fn a_gg_run_without_a_capability_set_is_a_configuration_error() {
     assert!(
         matches!(request.validate(), Err(Error::GgConfiguration(_))),
         "a gg run requires a capability set",
+    );
+}
+
+/// A gg run whose bound model carries no context window is refused before any container
+/// work. gg measures fullness — and triggers compaction — against that figure and assumes
+/// no default, so a run without one would report context accounting that is quietly wrong.
+#[test]
+fn a_gg_run_without_a_model_window_is_a_configuration_error() {
+    let mut set = crate::gg::GgCapabilitySet::minimal("mock/primary");
+    set.slots.push(crate::gg::GgSlotBinding::new(
+        "subagent",
+        "openai/gpt-5.4-mini",
+    ));
+    let request = RunRequest {
+        harness: HarnessSlug::Gg,
+        gg_capability_set: Some(set),
+        // Only the primary is covered; the subagent's model is not.
+        gg_model_windows: BTreeMap::from([("mock/primary".to_string(), 200_000)]),
+        ..request_with_override(None)
+    };
+    let err = request
+        .validate()
+        .expect_err("a bound model with no window is refused");
+    assert!(
+        matches!(&err, Error::GgConfiguration(msg) if msg.contains("openai/gpt-5.4-mini")),
+        "the error names the uncovered model: {err}",
     );
 }
 

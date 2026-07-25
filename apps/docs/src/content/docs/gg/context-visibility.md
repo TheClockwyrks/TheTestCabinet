@@ -25,25 +25,42 @@ steps:
 
 **gg holds no model table of its own.** The catalog the backend owns is the single
 store of model facts, so the window is resolved *where the catalog lives* and
-**pushed into the run** when it is triggered: the backend looks up every model the
-capability set binds at enqueue and stamps the figures onto the launch, which carry
+**pushed into the run** when it is triggered: at enqueue the backend looks up every
+model the capability set binds and stamps the figures onto the launch, which carry
 through the driver into gg's invocation. A [multi-model](/gg/multi-model/) run
 carries one entry per bound model, so each agent is measured against its own model's
 window rather than the primary's. A run container never reaches back out for this.
-(The local `tcab gg-run` path has no backend behind it, so it reads the same catalog
-over `GET /models` from whichever backend is configured.)
 
-A model the catalog has no observation for contributes no figure, and gg falls back
-to a conservative 128k default — it deliberately does not guess from the model id,
-because a second store of model facts is a second thing to get wrong, and guessing
-would hide the catalog gap instead of showing it.
+A model the catalog has not observed yet — the first run against a just-released
+model — is fetched from OpenRouter at that moment, for **that model only**, not the
+whole catalog.
+
+## A run with no window does not start
+
+If neither the catalog nor a live lookup can answer, **the launch is rejected**.
+There is no default window and no guess from the model id.
+
+This is deliberate, and it is the one place gg refuses to degrade gracefully. An
+assumed window is not a slightly-worse answer: it is the denominator of every
+fullness figure, it decides when [compaction](/gg/compaction/) fires, and it is the
+number in the fullness signal the agent itself steers by. A run against a guessed
+window looks completely healthy and measures the wrong thing — and an ablation study
+built on it compares runs that were never measured the same way. A rejected launch
+tells you the catalog needs the model; a fabricated one tells you nothing.
+
+The check is enforced three times over — the backend refuses to enqueue such a run,
+`core` refuses to launch one, and gg refuses to start a session — so no path reaches
+a turn without a stated window.
+
+One consequence worth knowing: gg's scripted `mock/…` provider is **test-only
+infrastructure**, not a launchable model. No catalog or provider lists it, so it is
+refused by this same rule rather than by a special case; it reaches gg only from a
+test that builds the invocation itself and supplies the windows a launch would have.
 
 `windowLimit` can only make the window *smaller*. The model's real window is a hard
 limit, so a larger value is not a configuration gg can honor; it is clamped back
 down to the catalog's figure rather than rejected, so a study that misjudged a window
-still runs. (With no catalog figure there is nothing to clamp against, so an explicit
-`windowLimit` stands as given — it is then you supplying the fact the catalog
-lacked.) Narrowing it is how you exercise compaction against a million-token model
+still runs. Narrowing it is how you exercise compaction against a million-token model
 **without spending a million tokens of input per boundary**: give the run a 100k
 window and the same summarize-and-restart behavior plays out an order of magnitude
 sooner and cheaper.

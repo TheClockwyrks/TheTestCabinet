@@ -51,7 +51,6 @@ async fn main() -> anyhow::Result<()> {
 async fn dispatch(command: Command) -> anyhow::Result<()> {
     match command {
         Command::Run(args) => commands::run::execute(args).await,
-        Command::GgRun(args) => commands::gg_run::execute(args).await,
         Command::GgReplay(args) => commands::gg_replay::execute(args).await,
         Command::Validate(args) => commands::validate::execute(args).await,
         Command::Register(args) => commands::auth::register(args).await,
@@ -72,7 +71,6 @@ async fn dispatch(command: Command) -> anyhow::Result<()> {
 fn command_name(command: &Command) -> &'static str {
     match command {
         Command::Run(_) => "run",
-        Command::GgRun(_) => "gg-run",
         Command::GgReplay(_) => "gg-replay",
         Command::Validate(_) => "validate",
         Command::Register(_) => "register",

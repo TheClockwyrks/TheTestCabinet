@@ -106,6 +106,48 @@ impl OpenRouterPrices {
             .collect())
     }
 
+    /// Look up **one** model's context window in tokens, fetching only that model.
+    ///
+    /// Unlike [`model_details`](Self::model_details) — which serves the completion-time
+    /// price lookup and reads the whole catalog — this hits OpenRouter's per-model
+    /// endpoint (`/models/{id}/endpoints`, a few KB rather than the ~half-megabyte
+    /// listing). It exists for the launch path, which needs the window for the one or
+    /// two models a run binds and must not pay for the entire catalog to get them.
+    ///
+    /// That endpoint reports a context length **per provider route** rather than one
+    /// headline figure, and the routes can differ (a model may be served at 1M tokens by
+    /// most providers and 200k by one). The **maximum** is taken because that is exactly
+    /// what the listing's top-level `context_length` reports, so a window resolved here
+    /// agrees with the one the periodic refresh records rather than fighting it.
+    ///
+    /// `Ok(None)` means OpenRouter lists the model but reports no context length for any
+    /// route; an unlisted model is an `Err`.
+    pub async fn model_context_window(&self, model_id: &str) -> Result<Option<u64>> {
+        let url = format!("{}/{model_id}/endpoints", self.endpoint);
+        let response = reqwest::get(&url).await.map_err(|err| {
+            Error::Validation(format!(
+                "fetching the OpenRouter context window for `{model_id}`: {err}"
+            ))
+        })?;
+        if !response.status().is_success() {
+            return Err(Error::Validation(format!(
+                "model `{model_id}` not found in OpenRouter catalog (HTTP {})",
+                response.status().as_u16()
+            )));
+        }
+        let body: ModelEndpointsResponse = response.json().await.map_err(|err| {
+            Error::Validation(format!(
+                "parsing the OpenRouter context window for `{model_id}`: {err}"
+            ))
+        })?;
+        Ok(body
+            .data
+            .endpoints
+            .iter()
+            .filter_map(|endpoint| endpoint.context_length)
+            .max())
+    }
+
     /// Fetch OpenRouter's full model catalog.
     async fn fetch_catalog(&self) -> Result<Vec<Model>> {
         let response = reqwest::get(&self.endpoint)
@@ -188,6 +230,30 @@ struct Model {
     pricing: Pricing,
     #[serde(default)]
     created: Option<i64>,
+    #[serde(default)]
+    context_length: Option<u64>,
+}
+
+/// The OpenRouter `/models/{id}/endpoints` response envelope — the single-model read
+/// [`model_context_window`](OpenRouterPrices::model_context_window) uses.
+#[derive(Debug, Deserialize)]
+struct ModelEndpointsResponse {
+    data: ModelEndpoints,
+}
+
+/// One model's provider routes. Only the context lengths are read here; the endpoint
+/// carries per-route pricing too, but prices are recorded from the listing (whose
+/// top-level block is the headline the catalog stores), so reading them here would
+/// invite two sources disagreeing.
+#[derive(Debug, Deserialize)]
+struct ModelEndpoints {
+    #[serde(default)]
+    endpoints: Vec<ModelEndpoint>,
+}
+
+/// One provider route for a model. A route may report no context length.
+#[derive(Debug, Deserialize)]
+struct ModelEndpoint {
     #[serde(default)]
     context_length: Option<u64>,
 }

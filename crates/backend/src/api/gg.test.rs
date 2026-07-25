@@ -152,10 +152,16 @@ fn window_observation(model_id: &str, context_length: i64) -> crate::db::PriceWr
     }
 }
 
+/// The offline price source used by these tests: an endpoint that cannot be reached, so a
+/// model the catalog does not know resolves to a launch rejection without any network.
+fn unreachable_prices() -> test_cabinet_core::OpenRouterPrices {
+    // Port 0 is never connectable, so the fetch fails fast and deterministically.
+    test_cabinet_core::OpenRouterPrices::with_endpoint("http://127.0.0.1:0/models")
+}
+
 /// Enqueuing a gg run resolves the context window of **every model it binds** from the
 /// model catalog and stamps it onto the launch body, so the figure travels to the run
-/// rather than being looked up from inside the run container. A bound model the catalog
-/// knows nothing about (the offline mock) simply contributes no entry.
+/// rather than being looked up from inside the run container.
 #[tokio::test]
 async fn launch_resolves_the_bound_models_context_windows() {
     let db = Db::connect_in_memory().await.unwrap();
@@ -171,11 +177,6 @@ async fn launch_resolves_the_bound_models_context_windows() {
         "subagent",
         "openai/gpt-5.4-mini",
     ));
-    // A third slot on a model the catalog has never priced.
-    set.slots.push(test_cabinet_core::gg::GgSlotBinding::new(
-        "judge",
-        "mock/echo",
-    ));
     let mut launch = GgRunRequest {
         capability_set: set,
         ..sample_request()
@@ -183,7 +184,9 @@ async fn launch_resolves_the_bound_models_context_windows() {
     .into_launch_body()
     .unwrap();
 
-    resolve_gg_model_windows(&db, &mut launch).await;
+    resolve_gg_model_windows(&db, &unreachable_prices(), &mut launch)
+        .await
+        .expect("every bound model is in the catalog");
 
     assert_eq!(
         launch.gg_model_windows,
@@ -194,8 +197,46 @@ async fn launch_resolves_the_bound_models_context_windows() {
     );
 }
 
-/// A client cannot smuggle a window in: the resolution overwrites whatever arrived,
-/// because this is a backend-owned fact and not a launch input.
+/// A bound model whose window resolves nowhere — not in the catalog, and not from a live
+/// lookup either — **rejects the launch**, naming the model. There is no default window: a
+/// run measured against an assumed figure would report fullness, trigger compaction, and
+/// steer the agent by a number nobody chose.
+#[tokio::test]
+async fn launch_is_rejected_when_a_models_window_cannot_be_resolved() {
+    let db = Db::connect_in_memory().await.unwrap();
+    let mut launch = sample_request().into_launch_body().unwrap();
+
+    let err = resolve_gg_model_windows(&db, &unreachable_prices(), &mut launch)
+        .await
+        .expect_err("an unresolvable window is a launch failure");
+    assert!(err.contains("mock/echo"), "unexpected reason: {err}");
+}
+
+/// The scripted mock provider is test-only infrastructure, not a launchable model: it is in
+/// no catalog and no provider lists it, so it is rejected by the same rule as any other
+/// unknown model rather than by a special case.
+#[tokio::test]
+async fn launch_rejects_the_scripted_mock_provider() {
+    let db = Db::connect_in_memory().await.unwrap();
+    let mut launch = GgRunRequest {
+        capability_set: GgCapabilitySet::minimal("mock/scripted-builder"),
+        ..sample_request()
+    }
+    .into_launch_body()
+    .unwrap();
+
+    let err = resolve_gg_model_windows(&db, &unreachable_prices(), &mut launch)
+        .await
+        .expect_err("a mock model cannot be launched");
+    assert!(
+        err.contains("mock/scripted-builder"),
+        "unexpected reason: {err}"
+    );
+}
+
+/// A client cannot smuggle a window in: the resolution overwrites whatever arrived, because
+/// this is a backend-owned fact and not a launch input — so a client-supplied window cannot
+/// buy a launch the catalog would have refused.
 #[tokio::test]
 async fn launch_overwrites_client_supplied_windows() {
     let db = Db::connect_in_memory().await.unwrap();
@@ -204,19 +245,19 @@ async fn launch_overwrites_client_supplied_windows() {
         .gg_model_windows
         .insert("mock/echo".to_string(), 999_999);
 
-    resolve_gg_model_windows(&db, &mut launch).await;
-
+    assert!(
+        resolve_gg_model_windows(&db, &unreachable_prices(), &mut launch)
+            .await
+            .is_err()
+    );
     assert!(launch.gg_model_windows.is_empty());
 }
 
-/// A conventional (non-gg) launch carries no capability set and so resolves nothing —
-/// the windows are a gg concern only.
+/// A conventional (non-gg) launch carries no capability set and so resolves nothing — the
+/// windows are a gg concern only, and an unknown model never blocks a third-party-harness run.
 #[tokio::test]
 async fn launch_resolves_nothing_for_a_conventional_run() {
     let db = Db::connect_in_memory().await.unwrap();
-    db.insert_price_observation(window_observation("anthropic/claude-opus-4.8", 200_000))
-        .await
-        .unwrap();
     let mut launch = LaunchBody {
         test_case: "pong".to_string(),
         version: "v1.0.0".to_string(),
@@ -231,7 +272,8 @@ async fn launch_resolves_nothing_for_a_conventional_run() {
         gg_model_windows: Default::default(),
     };
 
-    resolve_gg_model_windows(&db, &mut launch).await;
-
+    resolve_gg_model_windows(&db, &unreachable_prices(), &mut launch)
+        .await
+        .expect("a non-gg run resolves nothing");
     assert!(launch.gg_model_windows.is_empty());
 }

@@ -201,6 +201,21 @@ pub async fn observe_completion(
     }
 }
 
+/// The id to ask OpenRouter about for a run's model: a **curated** model's configured
+/// OpenRouter slug when the run's canonical id is one of its aliases, else the canonical
+/// id mapped onto OpenRouter's spelling.
+///
+/// The single spelling of this rule, shared by everything that reaches OpenRouter about one
+/// model — the completion-time price observation, the periodic refresh, and the launch-time
+/// context-window fill — so all three ask about the same model.
+pub async fn openrouter_lookup_id(db: &Db, model_id: &str, harness: HarnessSlug) -> Result<String> {
+    let canonical = canonical_model_id(model_id, harness);
+    Ok(match db.openrouter_slug_for_alias(&canonical).await? {
+        Some(slug) => slug,
+        None => openrouter_price_id(model_id, harness),
+    })
+}
+
 async fn try_observe_completion(
     db: &Db,
     prices: &OpenRouterPrices,
@@ -208,10 +223,7 @@ async fn try_observe_completion(
     harness: HarnessSlug,
 ) -> Result<()> {
     let canonical = canonical_model_id(model_id, harness);
-    let lookup = match db.openrouter_slug_for_alias(&canonical).await? {
-        Some(slug) => slug,
-        None => openrouter_price_id(model_id, harness),
-    };
+    let lookup = openrouter_lookup_id(db, model_id, harness).await?;
     let details = match prices.model_details(&lookup).await {
         Ok(details) => details,
         // A model absent from OpenRouter's catalog (a provider-native id, an
@@ -249,10 +261,7 @@ pub async fn refresh_all_prices(db: &Db, prices: &OpenRouterPrices) -> Result<us
     for (model_id, harness_slug) in db.distinct_run_models().await? {
         let harness = parse_harness(&harness_slug);
         let canonical = canonical_model_id(&model_id, harness);
-        let lookup = match db.openrouter_slug_for_alias(&canonical).await? {
-            Some(slug) => slug,
-            None => openrouter_price_id(&model_id, harness),
-        };
+        let lookup = openrouter_lookup_id(db, &model_id, harness).await?;
         targets.entry(canonical).or_insert(lookup);
     }
 

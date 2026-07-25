@@ -128,10 +128,14 @@ what a [gg](/gg/overview/) run's window-fullness accounting and
 [compaction](/gg/compaction/) trigger are measured against: when a gg run is
 enqueued, the backend looks the window up here for every model the run's capability
 set binds and **pushes** the figures onto the launch, so gg keeps no model table of
-its own and never queries for one from inside the run container. A model with no
-observation yet contributes no window, and gg falls back to a conservative default —
-so a brand-new model is worth running (or waiting for the refresh) once before
-drawing conclusions from its context graph.
+its own and never queries for one from inside the run container.
+
+A model with no observation yet — the first gg run against a just-released model — is
+fetched from OpenRouter right there at enqueue, for that one model rather than the
+whole catalog. If neither the catalog nor that lookup can answer, **the launch is
+rejected**: gg assumes no default window, because a run measured against a guessed
+one looks healthy and reports the wrong thing. See
+[A run with no window does not start](/gg/context-visibility/#a-run-with-no-window-does-not-start).
 
 ## Updating an existing model
 

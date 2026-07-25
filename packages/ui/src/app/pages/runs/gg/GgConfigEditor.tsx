@@ -5,8 +5,6 @@ import {
   CAPABILITIES,
   CAP_GROUPS,
   COMMON_ROLE_SLOTS,
-  MOCK_MODEL_ID,
-  MOCK_PROVIDER,
   PRIMARY_SLOT,
   type CapGroup,
 } from "./ggCatalog";
@@ -501,19 +499,6 @@ export function GgConfigEditor({
                     <option value="model">a specific model (fixed here)</option>
                   </select>
                 </label>
-                {!fromModelSlot && (
-                  <label className={gg.mockToggle}>
-                    <input
-                      type="checkbox"
-                      checked={slot.mockModel}
-                      disabled={readOnly}
-                      onChange={(e) =>
-                        updateSlot(i, { mockModel: e.target.checked })
-                      }
-                    />
-                    <span>Mock (offline — no API key)</span>
-                  </label>
-                )}
                 {!isPrimary && !readOnly && (
                   <button
                     type="button"
@@ -555,11 +540,6 @@ export function GgConfigEditor({
                     </span>
                   )}
                 </div>
-              ) : slot.mockModel ? (
-                <p className={runExec.muted}>
-                  Binds <code>{MOCK_MODEL_ID}</code> ({MOCK_PROVIDER}) — runs
-                  offline against the scripted builder, no credentials required.
-                </p>
               ) : (
                 <div className={gg.slotFields}>
                   <label className={`${runExec.field} ${gg.slotModelField}`}>
