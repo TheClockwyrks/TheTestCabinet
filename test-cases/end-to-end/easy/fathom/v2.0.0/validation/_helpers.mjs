@@ -506,6 +506,54 @@ export function findFarTile(snap, from, minMan) {
   throw unmetPrecondition(`no open tile at least ${minMan} tiles away`);
 }
 
+const clamp01 = (v) => Math.max(0, Math.min(1, v));
+
+/** Distance in px from point (px, py) to the segment (ax, ay)-(bx, by). */
+export function distToSegment(px, py, ax, ay, bx, by) {
+  const vx = bx - ax;
+  const vy = by - ay;
+  const len2 = vx * vx + vy * vy;
+  const t = len2 === 0 ? 0 : clamp01(((px - ax) * vx + (py - ay) * vy) / len2);
+  return Math.hypot(px - (ax + t * vx), py - (ay + t * vy));
+}
+
+/**
+ * An open tile to SLIP AWAY to while a predator is pathing to a stale fix: far enough
+ * from every point the predator can occupy on its way there that a shrunken detection
+ * range cannot re-find the forager, yet still within `maxFromFix` of the fix itself.
+ *
+ * `pred` is where the predator started and `fix` the tile it is pathing to; while it
+ * lingers it can be anywhere on that run, so the clearance is measured against the whole
+ * segment, not just its endpoints. Keeping the tile inside `maxFromFix` (the range the
+ * predator HAD while the forager was bright) is what makes a lost fix attributable to the
+ * dimming rather than to the distance alone.
+ */
+export function findSlipTile(snap, { pred, fix, minClear, maxFromFix }) {
+  const a = tileCenter(snap.grid, pred.tx, pred.ty);
+  const b = tileCenter(snap.grid, fix.tx, fix.ty);
+  let best = null;
+  let bestClear = -Infinity;
+  for (const [c, r] of openTiles(snap)) {
+    const p = tileCenter(snap.grid, c, r);
+    if (Math.hypot(p.x - b.x, p.y - b.y) > maxFromFix) continue;
+    const clear = distToSegment(p.x, p.y, a.x, a.y, b.x, b.y);
+    if (clear < minClear) continue;
+    // Prefer the roomiest tile, so a build whose predator overshoots the fix slightly
+    // still cannot stumble back into range.
+    if (clear > bestClear) {
+      bestClear = clear;
+      best = { tx: c, ty: r };
+    }
+  }
+  if (!best) {
+    throw unmetPrecondition(
+      `no open tile at least ${minClear} px clear of the run to the fix and still ` +
+        `within ${maxFromFix} px of it`,
+    );
+  }
+  return best;
+}
+
 // ---- The den (central predator chamber) --------------------------------------
 // The snapshot tiles mark the den interior as 'd' and the den gate as 'g'
 // (specs/instrumentation.md). The maze is the build's own invention, so these reads
@@ -828,6 +876,48 @@ export async function denAllExcept(api, except = []) {
     if (!except.includes(kind))
       await api.call("setPredator", kind, { mode: "den" });
   }
+}
+
+/**
+ * Eat the single plankton `poseLastPlankton` left on the board, whichever open neighbor
+ * the build put it on, and return the `until` result of the maze clearing.
+ *
+ * `poseLastPlankton` (specs/instrumentation.md) promises only "a single one placed on an
+ * open tile adjacent to the forager" — WHICH neighbor is the build's own choice, and
+ * `snapshot` does not report plankton positions, so a check cannot read it off the board.
+ * Guessing one direction only tests builds that happen to break the tie the same way the
+ * reference does, so this tries each open neighbor in turn instead: it returns the forager
+ * to its home tile between attempts (a control op, arranging the retry) and lets the real
+ * eat-and-clear path decide the outcome. Nothing here fabricates the clear.
+ *
+ * Call it with the forager still standing where `poseLastPlankton` was called, since that
+ * is the tile the plankton was placed adjacent to.
+ */
+export async function actEatLastPlankton(api, { perTry = 60 } = {}) {
+  const snap = await api.snapshot();
+  const home = { tx: snap.forager.tx, ty: snap.forager.ty };
+  const dirs = openNeighborDirs(snap, home.tx, home.ty);
+  if (!dirs.length) {
+    throw unmetPrecondition(
+      "the forager's tile has no open neighbor to pose a plankton on",
+    );
+  }
+  let last = null;
+  for (const dir of dirs) {
+    // Back to the tile the plankton was posed around, facing the neighbor under test, so
+    // each attempt starts from the same place regardless of where the last one wandered.
+    await api.call("setForager", { tx: home.tx, ty: home.ty, dir });
+    await api.call("keyDown", DIR_KEY[dir]);
+    // `perTry` defaults to 60 ticks = 0.5 s, twice the ~0.25 s the forager needs to cross
+    // one tile at 128 px/s; poll 2 pins down the moment the maze clears.
+    last = await api.until(
+      (s) => s.screen !== "playing" || s.planktonRemaining === 0,
+      { max: perTry, poll: 2 },
+    );
+    await api.call("keyUp", DIR_KEY[dir]);
+    if (last.hit) return last;
+  }
+  return last;
 }
 
 // NOTE: the old `clip(api, ms)` helper is GONE. It switched the build to wall-clock
