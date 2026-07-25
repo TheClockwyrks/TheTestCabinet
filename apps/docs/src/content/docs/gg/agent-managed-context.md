@@ -33,8 +33,10 @@ the *current* window accounting and pins it just before the model acts:
 
 It reflects the live [`ContextModel`](/gg/context-visibility/) each turn, names the
 biggest consuming [sources](/gg/context-visibility/) so the agent knows *where* the
-window is going, and is refreshed **in place** (never accreting turn over turn) so it
-stays cheap — one short line whose own cost is excluded from the numbers it reports.
+window is going, and is a single short line whose own cost is excluded from the numbers it
+reports. Only one signal is ever live: when the figures move, the previous line is
+superseded in place — retagged as ordinary history rather than deleted, so the prompt stays
+[append-only](/gg/context-visibility/) — and a fresh line is appended.
 
 Every token figure is reported to a resolution of **one percent of the window** — the
 same precision as the percentage beside it — and a source is named as a consumer only
@@ -71,9 +73,11 @@ each `Assistant` message and the tool results and file views that follow it; a l
 run of items with no preceding assistant (such as a prior compaction summary) forms the
 oldest turn. `keep_recent_turns: 0` archives all ephemeral history; a value at least the
 number of turns archives nothing. The **pinned** prefix — the system prompt, the build
-prompt, read skills, memories, the task list, and the fullness signal — is never
-archived. This is a clean, predictable "section": *everything but my most recent
-turn(s)*.
+prompt, read skills, and the *live* memory, task-list, board, and fullness-signal blocks —
+is never archived. This is a clean, predictable "section": *everything but my most recent
+turn(s)*. Superseded copies of those blocks are ordinary history by then
+([append-only](/gg/context-visibility/)), so they are archived and summarized like any
+other thread material.
 
 The archive is append-only and grows for the life of the session; `search_archive` does
 a case-insensitive substring match over each archived message's text (including the tool

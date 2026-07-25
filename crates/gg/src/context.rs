@@ -325,31 +325,41 @@ impl ContextModel {
         });
     }
 
-    /// Replace every item currently attributed to `source` with a single new item (or
-    /// with nothing, when `message` is `None`), pushed at the end.
+    /// Bring the **mutable, single-block** `source` up to date with `message` (or with
+    /// nothing, when `message` is `None`), so exactly one *live* block carries that source.
     ///
-    /// This is how the loop keeps a **mutable, single-block** source in sync with its
-    /// backing state — notably the [`Memory`](GgContextSource::Memory) block, which the
-    /// model rewrites through `write_memory`/`update_memory`/`delete_memory` as it works:
-    /// each turn the loop rebuilds the block from the memory store so the window always
-    /// reflects the current memories (and Phase 2 compaction retains them). Because the old
-    /// block is removed and the new one appended, the rebuild must happen at a turn
-    /// boundary (before this turn's assistant message and its tool results), never between
-    /// an assistant tool-call message and the tool results answering it.
+    /// This is how the loop keeps such a source in sync with its backing state — notably the
+    /// [`Memory`](GgContextSource::Memory) block, which the model rewrites through
+    /// `write_memory`/`update_memory`/`delete_memory` as it works: each turn the loop rebuilds
+    /// the block from the memory store so the window always reflects the current memories (and
+    /// [compaction](https://docs.testcabinet.ai/gg/compaction/) retains them). The rebuild must
+    /// happen at a turn boundary (before this turn's assistant message and its tool results),
+    /// never between an assistant tool-call message and the tool results answering it.
     ///
-    /// # Unchanged blocks are left exactly where they are
+    /// # The rendered prompt only ever grows
     ///
-    /// When the rebuilt block is **byte-identical** to the one already in the window, this
-    /// is a no-op: the existing item keeps its position instead of being removed and
-    /// re-appended behind the history that has accumulated since. That is not a micro
-    /// optimization — it is what makes the rendered prompt **cacheable**. A provider prompt
-    /// cache only serves a prefix of a request it has already seen, so a turn only reads the
-    /// cache when its message list *extends* the previous turn's. Moving an unchanged block
-    /// to the tail every turn rewrites the prompt just before its end, so no turn ever
-    /// extends the last one and every turn re-reads its whole context as uncached input.
-    /// Holding the block still keeps each turn an append-only extension of the last, and a
-    /// block that genuinely changed still moves to the tail — costing one uncached turn,
-    /// which is also the turn on which the block has news for the model.
+    /// The rule this follows is that a turn's message list must **extend** the previous
+    /// turn's, because that is the only thing a provider prompt cache can read: it serves a
+    /// prefix of a request it has already seen, so any edit *behind* the end of the prompt
+    /// costs the run everything after the edit. On a long run that is most of its token bill.
+    /// Two rules together keep the render append-only:
+    ///
+    /// - **An unchanged block does not move.** When the rebuilt block is byte-identical to the
+    ///   live one, this is a no-op and the existing item keeps its position, rather than being
+    ///   lifted to the tail behind the history accumulated since. Re-appending an unchanged
+    ///   block rewrites the prompt just before its end *every turn*, so no turn would ever
+    ///   extend the last one.
+    /// - **A changed block is superseded, not removed.** The live item is
+    ///   [retagged](Self::supersede_source) as ordinary ephemeral
+    ///   [`History`](GgContextSource::History) — left exactly where it sits, since deleting it
+    ///   would invalidate every message after it — and the new block is appended at the tail.
+    ///   Removing it instead would be at its most expensive precisely when the block had held
+    ///   still longest, which is when the most history sits behind it.
+    ///
+    /// A superseded copy is the honest record of what the model was told at that point in the
+    /// thread, no different from a tool result, and the model reads the newest block as
+    /// current. It costs one block's worth of tokens per real change, is accounted as history
+    /// rather than inflating the source's own band, and a compaction summarizes it away.
     pub fn replace_source(
         &mut self,
         source: GgContextSource,
@@ -359,9 +369,27 @@ impl ContextModel {
         if self.source_block_is(source, message.as_ref()) {
             return;
         }
-        self.items.retain(|item| item.source != source);
+        self.supersede_source(source);
         if let Some(message) = message {
             self.push(source, retention, message);
+        }
+    }
+
+    /// Retag every item currently attributed to `source` as ordinary ephemeral
+    /// [`History`](GgContextSource::History), in place.
+    ///
+    /// This is how a mutable block is retired without touching the rendered message list: the
+    /// item keeps its position and its message, so the prompt is unchanged behind its end (see
+    /// [`replace_source`](Self::replace_source)), while the source's own accounting band drops
+    /// back to just its live block and the superseded copy becomes summarizable, evictable
+    /// history like any other thread material.
+    fn supersede_source(&mut self, source: GgContextSource) {
+        for item in self.items.iter_mut().filter(|item| item.source == source) {
+            item.source = GgContextSource::History;
+            item.retention = Retention::Ephemeral;
+            // The label was a selector for the live block (the fullness-signal sentinel); a
+            // superseded copy must not answer to it.
+            item.label = None;
         }
     }
 
@@ -578,36 +606,48 @@ impl ContextModel {
     /// state, so the model sees an up-to-date signal it can act on each turn (the model-facing
     /// half of [agent-managed context](https://docs.testcabinet.ai/gg/agent-managed-context/)).
     ///
-    /// The prior signal is removed first and the numbers are computed **without** it, so the
-    /// line never accounts for itself and cannot ratchet the window up turn over turn; it is a
-    /// single short line, kept cheap by design. It is a [`System`](GgContextSource::System)
-    /// pinned item tagged with [`FULLNESS_SIGNAL_LABEL`] so it refreshes in place without
-    /// disturbing the base system prompt, and — being pinned — it survives compaction (and is
-    /// rebuilt fresh the next turn regardless). A no-op when no window limit is known (there is
-    /// no fullness to report).
+    /// The numbers are computed **without** the live signal, so the line never accounts for
+    /// itself and cannot ratchet the window up turn over turn; it is a single short line, kept
+    /// cheap by design. It is a [`System`](GgContextSource::System) pinned item tagged with
+    /// [`FULLNESS_SIGNAL_LABEL`] so it is found without disturbing the base system prompt, and
+    /// — being pinned — it survives compaction (and is rebuilt fresh the next turn regardless).
+    /// A no-op when no window limit is known (there is no fullness to report).
+    ///
+    /// It follows the same append-only rule as the other mutable blocks (see
+    /// [`replace_source`](Self::replace_source)): an unchanged line stays exactly where it is,
+    /// and a changed one leaves the superseded copy in place as ephemeral history rather than
+    /// being deleted out of the middle of the prompt.
     pub fn refresh_fullness_signal(&mut self) {
-        // Lift the prior signal out (remembering where it sat) so the numbers below are
-        // computed without it, then decide whether it moves at all.
-        let prior = self.items.iter().position(is_fullness_signal);
-        let prior = prior.map(|index| (index, self.items.remove(index)));
         let Some(text) = self.fullness_signal_text() else {
             return;
         };
-        // An unchanged line goes back exactly where it was rather than to the tail, so this
-        // turn's prompt still extends the last one and stays cacheable — the same rule
-        // [`replace_source`](Self::replace_source) follows for the other pinned blocks.
-        if let Some((index, item)) = prior
-            && item.message.content.as_deref() == Some(text.as_str())
-        {
-            self.items.insert(index, item);
+        let live = self.items.iter().find(|item| is_fullness_signal(item));
+        // An unchanged line does not move, so this turn's prompt still extends the last one.
+        if live.is_some_and(|item| item.message.content.as_deref() == Some(text.as_str())) {
             return;
         }
+        self.supersede_fullness_signal();
         self.push_labeled(
             GgContextSource::System,
             Retention::Pinned,
             Message::system(text),
             Some(FULLNESS_SIGNAL_LABEL.to_string()),
         );
+    }
+
+    /// Retire the live fullness signal in place, as ephemeral
+    /// [`History`](GgContextSource::History) — the [`supersede_source`](Self::supersede_source)
+    /// treatment, matched on the sentinel label so the base system prompt is untouched.
+    fn supersede_fullness_signal(&mut self) {
+        for item in self
+            .items
+            .iter_mut()
+            .filter(|item| is_fullness_signal(item))
+        {
+            item.source = GgContextSource::History;
+            item.retention = Retention::Ephemeral;
+            item.label = None;
+        }
     }
 
     /// The text of the fullness signal for the current window, or `None` when no window limit
@@ -627,7 +667,16 @@ impl ContextModel {
             return None;
         }
         let granularity = fullness_report_granularity(limit);
-        let total = round_to(self.total_tokens(), granularity);
+        // The live signal is excluded from its own figures, so the line never accounts for
+        // itself and computing it is idempotent. A *superseded* copy is ordinary history by
+        // then and counts like any other history, which is what it is.
+        let own_tokens: u64 = self
+            .items
+            .iter()
+            .filter(|item| is_fullness_signal(item))
+            .map(|item| item.tokens as u64)
+            .sum();
+        let total = round_to(self.total_tokens().saturating_sub(own_tokens), granularity);
         // Derived from the rounded total so the reported figures agree with each other.
         let percent = ((total as f64 / limit as f64) * 100.0).round() as u64;
 
@@ -637,6 +686,11 @@ impl ContextModel {
             .usage_by_source()
             .into_iter()
             .map(|usage| (usage.source, usage.tokens))
+            .map(|(source, tokens)| match source {
+                // Net out the live signal's own cost from the band it sits in.
+                GgContextSource::System => (source, tokens.saturating_sub(own_tokens)),
+                other => (other, tokens),
+            })
             .collect();
         // Stable sort by tokens descending; ties keep `GgContextSource::ALL` order (the
         // order `usage_by_source` produced), so the hint is deterministic. Sorted on the

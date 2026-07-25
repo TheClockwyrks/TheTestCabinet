@@ -473,18 +473,75 @@ fn replacing_a_source_with_a_changed_block_moves_it_to_the_tail() {
     assert_eq!(
         messages.last().unwrap().content.as_deref(),
         Some("# Your tasks\n\n- [ ] scaffold\n- [ ] core"),
-        "a block with news for the model is re-appended at the tail"
+        "a block with news for the model is appended at the tail"
+    );
+    // The superseded copy stays exactly where it was: deleting it out of the middle would
+    // invalidate the cache for every message after it, which is the whole cost being avoided.
+    assert_eq!(
+        messages[1].content.as_deref(),
+        Some("# Your tasks\n\n- [ ] scaffold"),
+        "the superseded copy is left in place"
+    );
+    // ...but it is no longer the live block: it counts as ordinary ephemeral history, so the
+    // task-list band reflects only the current list and a compaction summarizes the old one.
+    let task_items: Vec<_> = ctx
+        .items()
+        .iter()
+        .filter(|item| item.source() == GgContextSource::TaskList)
+        .collect();
+    assert_eq!(task_items.len(), 1, "exactly one live block");
+    assert_eq!(
+        task_items[0].message().content.as_deref(),
+        Some("# Your tasks\n\n- [ ] scaffold\n- [ ] core")
+    );
+    let superseded = &ctx.items()[1];
+    assert_eq!(superseded.source(), GgContextSource::History);
+    assert!(!superseded.retention().is_pinned());
+}
+
+#[test]
+fn a_changed_block_still_extends_the_previous_window() {
+    // The regression the first fix missed: holding an unchanged block still meant that when it
+    // *did* change it was yanked out of the middle, invalidating every message behind it — and
+    // the longer it had held still, the more that cost. Superseding in place keeps the render
+    // append-only across the change too.
+    let mut ctx = model(Some(100_000));
+    ctx.push_system("system");
+    ctx.replace_source(
+        GgContextSource::TaskList,
+        Retention::Pinned,
+        Some(Message::user("# Your tasks\n\n- [ ] verify")),
+    );
+    // A long stretch of history accumulates behind the block while it holds still.
+    for turn in 0..6 {
+        let id = format!("c{turn}");
+        ctx.push_assistant(None, vec![call(&id, "shell")]);
+        ctx.push_tool_result(GgContextSource::ToolOutput, &id, "exit code: 0");
+        ctx.replace_source(
+            GgContextSource::TaskList,
+            Retention::Pinned,
+            Some(Message::user("# Your tasks\n\n- [ ] verify")),
+        );
+    }
+    let before = ctx.messages();
+
+    // Now the model completes the task, so the block genuinely changes.
+    ctx.push_assistant(None, vec![call("done", "complete_task")]);
+    ctx.push_tool_result(GgContextSource::ToolOutput, "done", "Marked `verify` done.");
+    ctx.replace_source(
+        GgContextSource::TaskList,
+        Retention::Pinned,
+        Some(Message::user("# Your tasks\n\n- [x] verify")),
+    );
+
+    let after = ctx.messages();
+    assert!(
+        after.starts_with(&before),
+        "a changed block must not rewrite the window behind it"
     );
     assert_eq!(
-        messages
-            .iter()
-            .filter(|m| m
-                .content
-                .as_deref()
-                .is_some_and(|c| c.starts_with("# Your tasks")))
-            .count(),
-        1,
-        "the stale copy is gone"
+        after.last().unwrap().content.as_deref(),
+        Some("# Your tasks\n\n- [x] verify")
     );
 }
 
@@ -525,14 +582,17 @@ fn an_unchanged_fullness_signal_stays_where_it_is() {
     let mut ctx = model(Some(100_000));
     ctx.push_system("system");
     ctx.refresh_fullness_signal();
+    // The *live* signal: a superseded copy is retagged to `History`, so it no longer matches.
     let signal_index = |ctx: &ContextModel| {
         ctx.items()
             .iter()
             .position(|item| {
-                item.message()
-                    .content
-                    .as_deref()
-                    .is_some_and(|c| c.starts_with("Context window:"))
+                item.source() == GgContextSource::System
+                    && item
+                        .message()
+                        .content
+                        .as_deref()
+                        .is_some_and(|c| c.starts_with("Context window:"))
             })
             .expect("a signal is present")
     };
@@ -551,14 +611,17 @@ fn an_unchanged_fullness_signal_stays_where_it_is() {
     assert_eq!(signal_index(&ctx), 1);
     assert_eq!(count_signal_items(&ctx), 1);
 
-    // Growth past the reporting resolution does move it — the line still tracks the window.
+    // Growth past the reporting resolution appends a fresh line — the signal still tracks the
+    // window — while the superseded copy stays put so the prompt is still an extension.
     ctx.push_tool_result(GgContextSource::ToolOutput, "c2", "x".repeat(40_000));
+    let before = ctx.messages();
     ctx.refresh_fullness_signal();
-    assert_eq!(count_signal_items(&ctx), 1);
+    assert!(ctx.messages().starts_with(&before));
+    assert_eq!(count_signal_items(&ctx), 1, "exactly one live signal");
     assert_eq!(
         signal_index(&ctx),
         ctx.items().len() - 1,
-        "a meaningfully changed signal is re-appended at the tail"
+        "a meaningfully changed signal is appended at the tail"
     );
 }
 
@@ -579,17 +642,20 @@ fn fullness_figures_are_reported_at_one_percent_of_the_window() {
 
 #[test]
 fn every_turn_extends_the_previous_turns_window() {
-    // The property a provider prompt cache needs: with the pinned blocks refreshed each turn
-    // from an unchanged store, turn N+1's rendered messages start with turn N's.
+    // The property a provider prompt cache needs, and the one this module owes the loop: turn
+    // N+1's rendered messages always start with turn N's. Every mutable block is refreshed each
+    // turn here — the memory block, the task list, the board, and the fullness signal — some
+    // holding still, some genuinely changing, and the window still only ever grows.
     let mut ctx = model(Some(100_000));
     ctx.push_system("system");
     ctx.push_user_prompt("build a game");
 
-    let tasks = Message::user("# Your tasks\n\n- [ ] scaffold");
     let memories = Message::user("# Memories\n\n- plan");
     let mut previous: Option<Vec<Message>> = None;
 
-    for turn in 0..5 {
+    for turn in 0..12 {
+        // The memory block never changes; the task list changes on some turns and the board on
+        // others, so changes land both together and apart.
         ctx.replace_source(
             GgContextSource::Memory,
             Retention::Pinned,
@@ -598,8 +664,18 @@ fn every_turn_extends_the_previous_turns_window() {
         ctx.replace_source(
             GgContextSource::TaskList,
             Retention::Pinned,
-            Some(tasks.clone()),
+            Some(Message::user(format!(
+                "# Your tasks\n\n- [ ] step {}",
+                turn / 3
+            ))),
         );
+        ctx.replace_source(
+            GgContextSource::Board,
+            Retention::Pinned,
+            Some(Message::user(format!("# Board\n\n- issue {}", turn / 4))),
+        );
+        // Growing tool output pushes the fullness figures past their reporting resolution now
+        // and then, so the signal changes on its own schedule as well.
         ctx.refresh_fullness_signal();
 
         let rendered = ctx.messages();
@@ -614,6 +690,22 @@ fn every_turn_extends_the_previous_turns_window() {
 
         let id = format!("c{turn}");
         ctx.push_assistant(None, vec![call(&id, "shell")]);
-        ctx.push_tool_result(GgContextSource::ToolOutput, &id, "exit code: 0");
+        ctx.push_tool_result(GgContextSource::ToolOutput, &id, "x".repeat(4_000));
+    }
+
+    // Each mutable source still has exactly one live block at the end.
+    for source in [
+        GgContextSource::Memory,
+        GgContextSource::TaskList,
+        GgContextSource::Board,
+    ] {
+        assert_eq!(
+            ctx.items()
+                .iter()
+                .filter(|item| item.source() == source)
+                .count(),
+            1,
+            "{source:?} kept a single live block"
+        );
     }
 }
