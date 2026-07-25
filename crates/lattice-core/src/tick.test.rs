@@ -541,6 +541,127 @@ fn an_inserter_takes_the_closer_lane_first() {
     );
 }
 
+/// The inserter used by the crafter-pickup tests below: it sits at `(2,2)` facing
+/// N, picks from the belt at `(2,3)` behind it, and drops into the crafter that
+/// covers the tile `(2,1)` in front. For the E belt the north side is the LEFT lane
+/// (`left_offset(E)`), and the inserter is north of the belt, so LEFT is the lane
+/// physically CLOSER to it.
+const CLOSER: LaneSide = LaneSide::Left;
+const FARTHER: LaneSide = LaneSide::Right;
+
+#[test]
+fn an_inserter_fills_a_furnaces_fuel_before_its_ore() {
+    // A furnace's inserter picks from a belt carrying ore on the CLOSER lane and coal
+    // (the fuel) on the farther lane. Fuel comes first: the inserter reaches past the
+    // closer ore to grab coal, so the fuel buffer fills before any ore is loaded. This
+    // is the crafter-aware pickup overriding the plain closer-lane preference.
+    let mut w = world(
+        r#"{ "version": 1, "grid": { "width": 5, "height": 5 }, "ticks": 50, "snapshots": [50],
+             "entities": [
+                { "type": "furnace", "x": 2, "y": 0, "recipe": "iron-plate" },
+                { "type": "inserter", "x": 2, "y": 2, "dir": "N" },
+                { "type": "belt", "x": 2, "y": 3, "dir": "E", "tier": "fast" } ] }"#,
+    );
+    let ore = item_index("iron-ore").unwrap();
+    let coal = item_index("coal").unwrap();
+    if let Machine::Belt(b) = &mut w.machines[2] {
+        b.lanes[CLOSER.index()] = vec![LaneItem { pos: 0, item: ore }];
+        b.lanes[FARTHER.index()] = vec![LaneItem { pos: 0, item: coal }];
+    }
+    w.advance();
+    let held = match &w.machines[1] {
+        Machine::Inserter(i) => i.held,
+        _ => panic!("entity 1 is the inserter"),
+    };
+    assert_eq!(
+        held,
+        Some(coal),
+        "the inserter grabbed the farther-lane fuel before the closer ore"
+    );
+}
+
+#[test]
+fn an_inserter_reaches_across_for_a_furnaces_missing_input() {
+    // The user's case: the CLOSER lane carries coal, the farther lane ore, and the
+    // furnace's fuel buffer is already full. The old rule stalled — it kept peeking the
+    // full-buffer coal on the closer lane and never reached the ore. Now the inserter
+    // reaches across and grabs the ore the furnace still needs.
+    let mut w = world(
+        r#"{ "version": 1, "grid": { "width": 5, "height": 5 }, "ticks": 50, "snapshots": [50],
+             "entities": [
+                { "type": "furnace", "x": 2, "y": 0, "recipe": "iron-plate" },
+                { "type": "inserter", "x": 2, "y": 2, "dir": "N" },
+                { "type": "belt", "x": 2, "y": 3, "dir": "E", "tier": "fast" } ] }"#,
+    );
+    let ore = item_index("iron-ore").unwrap();
+    let coal = item_index("coal").unwrap();
+    // Fuel buffer full; no ore yet.
+    if let Machine::Furnace(f) = &mut w.machines[0] {
+        f.inputs.insert(coal, crate::prototypes::INPUT_CAP);
+    }
+    if let Machine::Belt(b) = &mut w.machines[2] {
+        b.lanes[CLOSER.index()] = vec![LaneItem { pos: 0, item: coal }];
+        b.lanes[FARTHER.index()] = vec![LaneItem { pos: 0, item: ore }];
+    }
+    w.advance();
+    let held = match &w.machines[1] {
+        Machine::Inserter(i) => i.held,
+        _ => panic!("entity 1 is the inserter"),
+    };
+    assert_eq!(
+        held,
+        Some(ore),
+        "with fuel full, the inserter reaches past the closer coal to the ore it still needs"
+    );
+    // The closer-lane coal is left on the belt — it was not grabbed and stalled.
+    let (closer, _) = belt_lanes(&w, 2);
+    assert!(
+        closer.iter().any(|i| i.item == coal),
+        "the un-needed closer coal stays on the belt"
+    );
+}
+
+#[test]
+fn an_inserter_switches_to_an_assemblers_missing_component() {
+    // An assembler whose closer-lane component is already full: the inserter skips it
+    // and grabs the farther-lane component the recipe is still short of, instead of
+    // stalling on the full one.
+    let mut w = world(
+        r#"{ "version": 1, "grid": { "width": 6, "height": 6 }, "ticks": 50, "snapshots": [50],
+             "entities": [
+                { "type": "assembler", "x": 2, "y": 0, "recipe": "circuit" },
+                { "type": "inserter", "x": 2, "y": 3, "dir": "N" },
+                { "type": "belt", "x": 2, "y": 4, "dir": "E", "tier": "fast" } ] }"#,
+    );
+    // `circuit` = iron-plate x1 + copper-cable x3. Fill the plate buffer; leave cable
+    // empty.
+    let plate = item_index("iron-plate").unwrap();
+    let cable = item_index("copper-cable").unwrap();
+    if let Machine::Assembler(a) = &mut w.machines[0] {
+        a.inputs.insert(plate, crate::prototypes::INPUT_CAP);
+    }
+    if let Machine::Belt(b) = &mut w.machines[2] {
+        b.lanes[CLOSER.index()] = vec![LaneItem {
+            pos: 0,
+            item: plate,
+        }];
+        b.lanes[FARTHER.index()] = vec![LaneItem {
+            pos: 0,
+            item: cable,
+        }];
+    }
+    w.advance();
+    let held = match &w.machines[1] {
+        Machine::Inserter(i) => i.held,
+        _ => panic!("entity 1 is the inserter"),
+    };
+    assert_eq!(
+        held,
+        Some(cable),
+        "the inserter skipped the full closer component for the missing farther one"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Splitter: round-robin balancing of a saturated input.
 // ---------------------------------------------------------------------------

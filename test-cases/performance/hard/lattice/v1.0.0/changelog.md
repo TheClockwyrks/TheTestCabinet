@@ -263,3 +263,24 @@ A side-load lands each feeder lane at its contact point (checksums regenerated):
   `side-load` smoke and training reference, and the curve chains that feed side-loads);
   scenarios without one keep identical checksums. Fuel gate re-confirmed under the 40B
   ceiling — transport **20.1B / 22.8B** for medium / large, naive exhausts.
+
+A single inserter loading a crafter is now Factorio-style filtered (checksums unchanged):
+
+- **An inserter feeding a furnace or assembler picks the item the crafter still needs,
+  not just the closer lane's item.** Previously the pickup was target-agnostic — the
+  closer lane's head, and if the crafter could not take it the arm waited, even when a
+  needed item sat on the other lane. So a single inserter loading a furnace from a belt
+  carrying coal on one lane and ore on the other would fill the buffer of whichever
+  item was on the closer lane and then stall on it, starving the furnace of the other
+  input. Now, when the drop target is a crafter, the inserter grabs an item the recipe
+  still has room for, reaching **across lanes** as needed: a **furnace fills its fuel
+  (coal) before its ore**, and an **assembler fills its emptiest input first** (moving
+  on to the components it is still missing once one is full). The plain closer-lane
+  preference is unchanged everywhere else — dropping onto a belt or into a sink, and as
+  the **tiebreak** when both lanes offer the same, equally-needed item.
+- **No checksums regenerated.** Every committed scenario feeds each crafter with a
+  **separate single-item inserter** (the pattern the scored factories already use), so
+  none exercised the mixed-belt case and all reference outputs are byte-identical; the
+  new behavior is covered by unit tests. `rules.md` (Pickup + the idle phase) documents
+  it, and `replay/assets/lattice-core.wasm` was rebuilt so browser playback and the
+  factory designer match the graded engine.

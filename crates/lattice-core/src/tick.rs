@@ -28,9 +28,9 @@
 //! compaction clamp item-by-item; an efficient submission stores gaps and updates
 //! lines in constant time, but must land on the *same* state this produces.
 
-use crate::prototypes::{INPUT_CAP, OUTPUT_CAP, SPACING, TILE};
+use crate::prototypes::{self, INPUT_CAP, OUTPUT_CAP, SPACING, TILE};
 use crate::scenario::{Dir, Lane};
-use crate::world::{LaneItem, LaneSide, Machine, World};
+use crate::world::{Belt, Crafter, LaneItem, LaneSide, Machine, World};
 
 impl World {
     /// Advance the world by one tick, running the six phases in order.
@@ -114,21 +114,17 @@ impl World {
                     // the inserter (opposite its facing); the drop tile is in front.
                     let (px, py) = opposite(dir).step(x, y);
                     let (dx, dy) = dir.step(x, y);
-                    // Only grab when the target can take what we would carry *right
-                    // now*: otherwise the arm waits empty at the pickup rather than
-                    // grabbing an item and then stalling with it held over a full
-                    // target. The look-ahead peeks the item without removing it and
-                    // asks the target whether it would accept that item, then repeats
-                    // the identical selection with `try_pickup` to actually take it.
+                    // Choose and take what to grab this tick (or nothing) — see
+                    // `idle_pickup`. It only ever grabs an item the drop target can
+                    // take right now, so the arm never lifts an item it could not
+                    // deposit and then stalls holding it.
                     //
-                    // Two inserters racing one buffer both peek room and both grab in
+                    // Two inserters racing one buffer both see room and both grab in
                     // the same tick — when their swings finish, only one drop lands and
                     // the loser keeps holding (`swing_left == 1`, below). That is the
                     // one sanctioned case where an inserter hovers over its target with
                     // an item; a lone inserter never does.
-                    if let Some(peeked) = self.peek_pickup(px, py, dir)
-                        && self.would_accept_drop(dx, dy, dir, peeked)
-                        && let Some(item) = self.try_pickup(px, py, dir)
+                    if let Some(item) = self.idle_pickup(px, py, dir, dx, dy)
                         && let Machine::Inserter(ins) = &mut self.machines[index]
                     {
                         ins.held = Some(item);
@@ -164,11 +160,70 @@ impl World {
         }
     }
 
+    /// Choose and take the item an idle inserter grabs this tick, or `None` to wait.
+    ///
+    /// For a belt feeding a **crafter** (assembler or furnace) the selection is
+    /// target-aware ([`crafter_belt_choice`]): it grabs an item the crafter still
+    /// needs — reaching across to the far lane rather than stalling on a closer item
+    /// the crafter cannot currently take — filling a furnace's **fuel before its ore**
+    /// and an assembler's **emptiest input first**. For every other pickup or drop
+    /// target the behaviour is the original one: peek the closer lane's head (or the
+    /// source / output-buffer item) and take it only if the drop target would accept
+    /// it now. Either way the grabbed item is always one the target can accept this
+    /// tick, so the arm never lifts an item it cannot then deposit.
+    fn idle_pickup(&mut self, px: i32, py: i32, dir: Dir, dx: i32, dy: i32) -> Option<u16> {
+        let pickup = self.machine_at(px, py);
+        let drop = self.machine_at(dx, dy);
+        let belt_into_crafter = matches!(
+            (
+                pickup.map(|i| &self.machines[i]),
+                drop.map(|i| &self.machines[i]),
+            ),
+            (
+                Some(Machine::Belt(_)),
+                Some(Machine::Assembler(_) | Machine::Furnace(_)),
+            )
+        );
+        if belt_into_crafter {
+            let (pickup, drop) = (pickup.unwrap(), drop.unwrap());
+            // Decide which lane/item the crafter most needs, then take that lane's head.
+            let choice = {
+                let Machine::Belt(belt) = &self.machines[pickup] else {
+                    unreachable!()
+                };
+                let (Machine::Assembler(crafter) | Machine::Furnace(crafter)) =
+                    &self.machines[drop]
+                else {
+                    unreachable!()
+                };
+                crafter_belt_choice(belt, dir, crafter)
+            };
+            let (side, _item) = choice?;
+            let Machine::Belt(belt) = &mut self.machines[pickup] else {
+                unreachable!()
+            };
+            return Some(belt.lanes[side.index()].remove(0).item);
+        }
+
+        // General case (belt → belt/sink, source, assembler output): the closer lane's
+        // head (or the source / output-buffer item), taken only if the drop target
+        // accepts it right now. The peek mirrors the take exactly.
+        let peeked = self.peek_pickup(px, py, dir)?;
+        if !self.would_accept_drop(dx, dy, dir, peeked) {
+            return None;
+        }
+        self.try_pickup(px, py, dir)
+    }
+
     /// Pick one item up from the tile at `(x, y)` for an inserter facing `dir`.
     /// From a belt it takes the **far lane first, then the near** (relative to the
     /// inserter); from an assembler's output buffer it takes any available output
     /// item; from a source it takes the source's item (infinite supply). Returns
     /// the picked item's index, or `None` if nothing was available.
+    ///
+    /// This is the target-agnostic selection used for every drop target except a
+    /// crafter; a belt feeding a crafter is routed through [`crafter_belt_choice`]
+    /// instead (see [`World::idle_pickup`]).
     fn try_pickup(&mut self, x: i32, y: i32, dir: Dir) -> Option<u16> {
         let target = self.machine_at(x, y)?;
         match &mut self.machines[target] {
@@ -283,40 +338,25 @@ impl World {
                 lane_accepts(&belt.lanes[near.index()], TILE - SPACING)
             }
             Machine::Assembler(crafter) | Machine::Furnace(crafter) => {
-                let is_input = crafter
-                    .recipe
-                    .inputs
-                    .iter()
-                    .any(|t| crate::prototypes::item_index(t.item) == Some(item));
-                is_input && crafter.inputs.get(&item).copied().unwrap_or(0) < INPUT_CAP
+                crafter_accepts(crafter, item)
             }
             Machine::Sink(_) => true,
             _ => false,
         }
     }
 
-    /// Add one `item` to a crafter's (assembler or furnace) input buffer if it is a
-    /// recipe input and there is room (`< INPUT_CAP` of it). Returns whether it
-    /// landed.
+    /// Add one `item` to a crafter's (assembler or furnace) input buffer if the crafter
+    /// can take it — [`crafter_accepts`]: a recipe input with room, and, for a furnace,
+    /// only once its fuel buffer is full for a non-fuel input. Returns whether it landed.
     fn try_crafter_input(&mut self, index: usize, item: u16) -> bool {
         let (Machine::Assembler(crafter) | Machine::Furnace(crafter)) = &mut self.machines[index]
         else {
             return false;
         };
-        // Only accept items the recipe actually consumes.
-        let is_input = crafter
-            .recipe
-            .inputs
-            .iter()
-            .any(|t| crate::prototypes::item_index(t.item) == Some(item));
-        if !is_input {
+        if !crafter_accepts(crafter, item) {
             return false;
         }
-        let count = crafter.inputs.entry(item).or_insert(0);
-        if *count >= INPUT_CAP {
-            return false;
-        }
-        *count += 1;
+        *crafter.inputs.entry(item).or_insert(0) += 1;
         true
     }
 
@@ -776,6 +816,70 @@ fn near_far_lanes(belt_dir: Dir, actor_dir: Dir) -> (LaneSide, LaneSide) {
     } else {
         (LaneSide::Right, LaneSide::Left)
     }
+}
+
+/// Whether a crafter can take `item` right now: it is one of the recipe's inputs and
+/// its buffered count is below the cap. The single source of truth for crafter input
+/// acceptance — used by the inserter's pickup selection and by both the drop
+/// look-ahead ([`World::would_accept_drop`]) and the drop itself
+/// ([`World::try_crafter_input`]).
+fn crafter_accepts(crafter: &Crafter, item: u16) -> bool {
+    let is_input = crafter
+        .recipe
+        .inputs
+        .iter()
+        .any(|t| prototypes::item_index(t.item) == Some(item));
+    is_input && crafter.inputs.get(&item).copied().unwrap_or(0) < INPUT_CAP
+}
+
+/// The pickup priority of `item` for a crafter, **lowest first**. A **furnace** fills
+/// its **fuel** (coal) before its ore, so fuel ranks ahead of everything else; then,
+/// for either machine, the **emptiest** input wins (its buffered count is the
+/// tiebreak), so an assembler fills whichever component it is shortest of. Equal ranks
+/// are broken by the caller toward the physically closer lane.
+///
+/// This is a **preference**, not a gate: a furnace still accepts ore whenever it has
+/// room (see [`crafter_accepts`]), so it never stalls waiting on fuel — a single loader
+/// simply takes coal ahead of ore whenever both are reachable at once.
+fn crafter_pickup_rank(crafter: &Crafter, item: u16) -> (u8, u16) {
+    let is_fuel = crafter.recipe.smelting && prototypes::item_index("coal") == Some(item);
+    let buffered = crafter.inputs.get(&item).copied().unwrap_or(0);
+    (if is_fuel { 0 } else { 1 }, buffered)
+}
+
+/// Which lane and item an inserter dropping into `crafter` should take off `belt`.
+///
+/// The candidates are the two lanes' head items, considered **closer lane first** (so
+/// a tie keeps the closer one — the same "prefer the near side" rule used when both
+/// sides offer the same item). Only items the crafter can currently take are eligible
+/// ([`crafter_accepts`]), so the inserter reaches across to the far lane instead of
+/// stalling on a closer item the crafter is full of or does not use; among the
+/// eligible ones it takes the highest priority ([`crafter_pickup_rank`]) — fuel before
+/// ore for a furnace, the emptiest input for an assembler. `None` when the belt offers
+/// nothing the crafter can take this tick.
+fn crafter_belt_choice(
+    belt: &Belt,
+    inserter_dir: Dir,
+    crafter: &Crafter,
+) -> Option<(LaneSide, u16)> {
+    let (near, far) = near_far_lanes(belt.dir, inserter_dir);
+    let mut best: Option<(LaneSide, u16, (u8, u16))> = None;
+    // `far` is the lane physically closer to the inserter (see `near_far_lanes`); take
+    // it first so a rank tie keeps the closer lane.
+    for side in [far, near] {
+        let Some(head) = belt.lanes[side.index()].first() else {
+            continue;
+        };
+        let item = head.item;
+        if !crafter_accepts(crafter, item) {
+            continue;
+        }
+        let rank = crafter_pickup_rank(crafter, item);
+        if best.is_none_or(|(_, _, best_rank)| rank < best_rank) {
+            best = Some((side, item, rank));
+        }
+    }
+    best.map(|(side, item, _)| (side, item))
 }
 
 /// Map a source's `lane` selector onto concrete lane sides of the downstream

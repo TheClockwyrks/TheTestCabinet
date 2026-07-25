@@ -285,9 +285,10 @@ It is a swing on an integer timer, run as a small state machine with three phase
 the loaded swing out, the empty swing back, and idle at rest:
 
 - **`idle`** (empty-handed, back at the pickup): it grabs an item **only when the
-  drop tile can accept it right now**. It peeks the item it _would_ pick up (without
-  removing it) and checks the drop target: if the target can currently take that
-  item, it takes the item, sets `phase = swing`, and sets `swing_left = SWING`;
+  drop tile can accept it right now**. It selects the item it _would_ pick up (without
+  removing it) — for a belt feeding a crafter, the item the crafter still needs (see
+  **Pickup** below) — and checks the drop target: if the target can currently take
+  that item, it takes it, sets `phase = swing`, and sets `swing_left = SWING`;
   otherwise it **waits empty** — it does **not** grab an item it could not deposit.
   An inserter facing a target that can never accept (a wall, or the wrong assembler
   input) therefore never picks up.
@@ -316,20 +317,33 @@ A base inserter carries **one item per swing**.
 
 From the pickup tile, in order of what it is:
 
-- From a **belt**: take the most-downstream item (smallest `pos`, the head of
-  the lane) from the **far lane first, then the near lane** (far/near relative to
-  the inserter's facing). Because an inserter picks from _behind_ itself, the
-  "far" lane — far from the direction it faces — is the one physically **closer**
-  to the inserter, so this takes the closer item first and reaches across to the
-  other lane only when the closer one is empty. It does not require the item to be
-  at the output edge — it takes the lead item of the lane.
+- From a **belt**, which lane and item is taken depends on the **drop target**:
+  - **Onto a belt or into a sink** (a target that takes any item): take the
+    most-downstream item (smallest `pos`, the head of the lane) from the **far lane
+    first, then the near lane** (far/near relative to the inserter's facing). Because
+    an inserter picks from _behind_ itself, the "far" lane — far from the direction it
+    faces — is the one physically **closer** to the inserter, so this takes the closer
+    item first and reaches across to the other lane only when the closer one is empty.
+    It does not require the item to be at the output edge — it takes the lead item of
+    the lane.
+  - **Into a crafter** (an assembler or furnace): take a lane's lead item that the
+    crafter can accept **right now** — a recipe input whose buffer has room —
+    selecting by **what the crafter still needs**, not merely by which lane is closer.
+    A **furnace** fills its **fuel (coal) before its ore**; an **assembler** fills its
+    **emptiest input first**, so once one component's buffer is full it moves on to the
+    ones it is still missing. This is the Factorio-style filtered pickup for a single
+    loader feeding a machine. The **closer lane is still preferred on a tie** — in
+    particular when the **same item sits on both lanes**, the closer one is taken (the
+    same near-side preference as above). If neither lane's lead item is something the
+    crafter can currently take, the inserter waits: it does **not** grab an item it
+    could not deposit, and it does **not** stall on a closer item the crafter is full
+    of or does not use while a needed item sits on the other lane.
 - From an **assembler** or **furnace**: take one of any item present in the output
   buffer (lowest item index first, for determinism), decrementing that item's count.
 - From a **source**: take the source's item (infinite supply).
 
-If nothing is available — **or** the drop target cannot currently accept the item
-that would be picked up (see the `idle` phase above) — the inserter stays `idle`
-with empty claws.
+If nothing the drop target can currently accept is available (see the `idle` phase
+above), the inserter stays `idle` with empty claws.
 
 ### Drop
 
