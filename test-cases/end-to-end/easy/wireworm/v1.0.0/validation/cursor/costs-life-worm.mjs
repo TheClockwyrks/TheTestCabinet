@@ -22,6 +22,15 @@ export default function item() {
     },
 
     async act(api) {
+      // `enterPlay` grants no spawn-in invulnerability (specs/instrumentation.md), so
+      // this normally passes straight through. It is here so the check still measures
+      // the hit on a build that reaches this state carrying some, which
+      // specs/progression.md explicitly encourages. The segment is re-posed
+      // UNCONDITIONALLY afterwards — a worm left winding for the length of an
+      // invulnerability would have stepped off the cursor's tile, and branching on
+      // whether any time was actually spent would let the two passes diverge.
+      await api.until((s) => !s.cursor.invulnerable, { max: 600, poll: 6 });
+      await setWorm(api, [{ c: 20, r: 19 }], 1, 1);
       before = (await api.snapshot()).lives;
       await api.advance(6); // 6 ticks = the old 0.05s — one sim beat, enough for the touch
       after = (await api.snapshot()).lives;

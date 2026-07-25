@@ -38,13 +38,24 @@ const SLICES = 28;
 // Release `wave` and collect every distinct type that actually spawns. Nothing is
 // built, so units simply walk the empty floor and leak; lives are posed high enough
 // that the run cannot end mid-sample.
+//
+// Only units THIS wave spawns are evidence about this wave. An earlier release
+// sampled here can still have units walking the floor — a volume wave fields dozens,
+// and `setWave` poses the run's progression without clearing the surge — so every
+// unit already out there is recorded first and ignored. Counting the floor wholesale
+// instead reports a single-type wave as a mixture, failing a build that spawned
+// exactly one type, and it does so only for the LATER wave sampled, which is what
+// makes the mistake look like a real per-wave bug.
 async function spawnedTypes(api, wave) {
   await api.call("setWave", wave);
+  const carriedOver = new Set((await api.snapshot()).surge.map((u) => u.id));
   await api.call("startWave");
   const seen = new Set();
   for (let i = 0; i < SLICES; i += 1) {
     await api.advance(SLICE_TICKS);
-    for (const u of (await api.snapshot()).surge) seen.add(u.type);
+    for (const u of (await api.snapshot()).surge) {
+      if (!carriedOver.has(u.id)) seen.add(u.type);
+    }
   }
   return [...seen];
 }

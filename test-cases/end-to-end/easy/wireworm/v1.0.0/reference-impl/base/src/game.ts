@@ -747,6 +747,14 @@ export class Game {
     this.phase = "active";
   }
 
+  // Enter live play directly, for a posed scenario: no level banner and no spawn-in
+  // invulnerability, so the caller can read the result of a posed hit on the very
+  // next tick without spending ticks getting there. A no-op if play is already live.
+  // This is `ensureRun` under its contract name (specs/instrumentation.md).
+  debugEnterPlay(): void {
+    this.ensureRun();
+  }
+
   // Begin a real run at level 1, exactly as choosing DESCEND from the menu. Opens
   // on the level banner; step past it to reach live play.
   debugStartRun(): void {

@@ -23,6 +23,12 @@ const VERDICT_CLASS = {
 // than a run's completed review (the Verdict tab).
 const UNANSWERED = "☐";
 
+// The status-gutter label for a point excluded from scoring (an erratum's
+// `excludeFromScore`) that the reviewer left unrated: "Skip", styled like the
+// Pass/Fail labels but tinted amber, so the row is acknowledged in line with its
+// rated siblings while clearly reading as not considered.
+const NOT_SCORED_MARK = "Skip";
+
 // The id used to group review items that belong to no declared domain.
 const GENERAL = "__general__";
 
@@ -152,12 +158,16 @@ export function ReviewChecklist({
     for (const item of model.items) {
       const subItems = item.subItems ?? [];
       if (subItems.length === 0) continue;
-      // Definition: show every point unanswered. Verdict: only the points the
-      // reviewer actually graded, so a category nobody touched is skipped.
+      // Definition: show every point unanswered. Verdict: the points the reviewer
+      // graded, plus any excluded from scoring (surfaced "not scored" even unrated so
+      // they don't vanish); a category with neither is skipped.
       const visible = definition
         ? subItems
-        : subItems.filter((sub) =>
-            verdictById.has(subItemVerdictId(item.id, sub.id)),
+        : subItems.filter(
+            (sub) =>
+              verdictById.has(subItemVerdictId(item.id, sub.id)) ||
+              item.scored === false ||
+              sub.scored === false,
           );
       if (visible.length === 0) continue;
       sections.push({
@@ -265,7 +275,13 @@ function ChecklistItemGroup({
     : subItems
         .map((sub) => verdictById.get(subItemVerdictId(item.id, sub.id)))
         .filter((v): v is { status: VerdictStatus; note?: string } => !!v);
-  if (!definition && graded.length === 0) return null;
+  // A category with no graded sub-items is skipped — unless it carries a point
+  // excluded from scoring (an erratum's `excludeFromScore`), which is still surfaced
+  // "not scored" so it does not vanish. The tally below counts only graded verdicts,
+  // so an excluded (unrated) point never inflates it.
+  const anyExcluded =
+    item.scored === false || subItems.some((sub) => sub.scored === false);
+  if (!definition && graded.length === 0 && !anyExcluded) return null;
   const passed = graded.filter((v) => v.status === "pass").length;
   // The definition view has no verdict to stand in the status gutter, so it drops
   // the tally column and reads flush left rather than hanging off an empty gutter.
@@ -336,20 +352,29 @@ function ChecklistRow({
   definition?: boolean;
 }) {
   // The definition view always shows a row (unanswered); the verdict view shows a
-  // row only where the reviewer recorded a verdict.
-  if (!verdict && !definition) return null;
+  // row where the reviewer recorded a verdict — or where the point is excluded from
+  // scoring (an erratum's `excludeFromScore`), which is surfaced marked "not scored"
+  // even when unrated so it does not silently vanish from the review.
+  if (!verdict && !definition && !notScored) return null;
   const status = verdict?.status;
   const grade = status && isGrade(status) ? GRADE_META[status] : null;
-  const rowClass = !status
-    ? styles.verdictUnanswered
-    : grade
-      ? styles.verdictGraded
-      : VERDICT_CLASS[status as "pass" | "fail"];
-  const marker = !status
-    ? UNANSWERED
-    : grade
-      ? grade.emoji
-      : VERDICT_META[status].label;
+  // A point excluded from scoring the reviewer left unrated: shown with an amber dash
+  // rather than the unanswered box, so it reads as deliberately not considered.
+  const notScoredMark = Boolean(notScored) && !status;
+  const rowClass = notScoredMark
+    ? styles.notScoredRow
+    : !status
+      ? styles.verdictUnanswered
+      : grade
+        ? styles.verdictGraded
+        : VERDICT_CLASS[status as "pass" | "fail"];
+  const marker = notScoredMark
+    ? NOT_SCORED_MARK
+    : !status
+      ? UNANSWERED
+      : grade
+        ? grade.emoji
+        : VERDICT_META[status].label;
   // A point excluded from scoring shows no point value (it earns nothing either
   // way); every other row trails its weight as usual.
   const pointsLabel =
@@ -358,9 +383,12 @@ function ChecklistRow({
       : graded
         ? `${grade ? grade.points * weight : 0} / ${weight * GRADE_MAX_POINTS} pts`
         : pts(weight);
-  // Without a verdict (the read-only definition view) there is no marker to sit in
-  // the status gutter, so the row drops the gutter and reads flush left.
-  const bare = !status;
+  // In the definition view there are no verdicts, so the status gutter holds no
+  // marker and every row reads flush left. In verdict mode the gutter is always kept
+  // so rows stay aligned: a rated row shows its Pass/Fail (or grade) marker, and a
+  // not-scored point left unrated shows the blank unanswered marker rather than
+  // collapsing the gutter and hanging left of its rated siblings.
+  const bare = definition ?? false;
   return (
     <div
       className={`${styles.verdictRow} ${bare ? styles.verdictRowBare : rowClass}`}

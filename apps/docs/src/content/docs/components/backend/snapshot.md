@@ -207,4 +207,18 @@ is a gallery of published runs, so a case with no run has nothing to show. The
 site keys lookups by `(slug, version)` from each run's subject, so it fetches
 exactly the case files that are present.
 
+This metadata is read from the backend's **ingested definition store**, not from
+the run record (which carries only the run's `(slug, version, variant)` subject).
+The store is regenerable — on a deployment where it lives on ephemeral local disk
+(the managed-Postgres shape, where only Postgres is durable), a pod reschedule
+empties it and the ingest sidecar re-populates it. So a snapshot regenerated while
+the store is momentarily empty would emit each published run but **no** case file
+for it, and the gallery would show the run with no case to browse. To keep the
+snapshot self-consistent, **an ingest that actually (re)ingests a version queues a
+snapshot refresh** — the same coalesced regeneration a publish triggers — so a
+repopulated or edited catalog re-exports a corrected snapshot rather than leaving
+the gallery frozen on one built while the store was empty. A no-op ingest (every
+version already present and unchanged) does not, so the periodic refresh does not
+rebuild the gallery on every cycle.
+
 Schema: [`snapshot/case.schema.json`](https://docs.testcabinet.ai/schema/snapshot/case.schema.json).

@@ -136,6 +136,15 @@ pub fn router(state: AppState) -> Router {
             "/test-cases/{slug}/versions/{version}/artifacts/{*path}",
             get(test_cases::artifact),
         )
+        // A variant's full seeded spec set with each body rendered for that variant
+        // (a `.hbs` spec's conditionals resolved, a plain spec verbatim), in seed
+        // order — the spec analogue of the rendered prompt on the version response.
+        // The console's Inputs tab reads this so it shows handlebars-free text rather
+        // than the raw templates the per-key `artifacts` route serves.
+        .route(
+            "/test-cases/{slug}/versions/{version}/specs/{variant}",
+            get(test_cases::variant_specs),
+        )
         .route(
             "/test-cases/{slug}/versions/{version}/references/{scope}/{view}",
             get(test_cases::reference),
