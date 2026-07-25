@@ -31,14 +31,14 @@ use crate::tasks::TasksRuntime;
 use crate::telemetry::{CollectingSink, Emitter};
 use crate::tools::{RuntimeSet, ToolContext, ToolRegistry};
 use test_cabinet_core::gg::{
-    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_CODE_REVIEWS, CAPABILITY_CONTEXT_VISIBILITY,
-    CAPABILITY_EPICS_ISSUES, CAPABILITY_FSM, CAPABILITY_MULTI_MODEL, CAPABILITY_PLANNING,
-    CAPABILITY_REPLAY, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE,
-    CAPABILITY_SUBAGENTS, CAPABILITY_WORKFLOWS, CAPABILITY_WORKTREES, GG_REPLAY_ARTIFACT_PATH,
-    GgAgentStatus, GgCapabilityConfig, GgCapabilitySet, GgCodeReviewPhase, GgContextAction,
-    GgContextSource, GgIssueStatus, GgPlanPhase, GgReplayEntryKind, GgReplayRecord,
-    GgSessionSummary, GgSlotBinding, GgSpeculationPhase, GgTelemetryEvent, GgTelemetryKind,
-    GgWorkflowPhase, PRIMARY_SLOT,
+    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_CODE_REVIEWS, CAPABILITY_COMPACTION,
+    CAPABILITY_CONTEXT_VISIBILITY, CAPABILITY_EPICS_ISSUES, CAPABILITY_FSM, CAPABILITY_MULTI_MODEL,
+    CAPABILITY_PLANNING, CAPABILITY_REPLAY, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL,
+    CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS, CAPABILITY_WORKFLOWS,
+    CAPABILITY_WORKTREES, GG_REPLAY_ARTIFACT_PATH, GgAgentStatus, GgCapabilityConfig,
+    GgCapabilitySet, GgCodeReviewPhase, GgContextAction, GgContextSource, GgIssueStatus,
+    GgPlanPhase, GgReplayEntryKind, GgReplayRecord, GgSessionSummary, GgSlotBinding,
+    GgSpeculationPhase, GgTelemetryEvent, GgTelemetryKind, GgWorkflowPhase, PRIMARY_SLOT,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
@@ -102,7 +102,10 @@ fn no_compaction() -> CompactionSetup {
 fn compaction_at(trigger_fullness: f64) -> CompactionSetup {
     CompactionSetup {
         enabled: true,
-        policy: crate::compaction::CompactionPolicy { trigger_fullness },
+        policy: crate::compaction::CompactionPolicy {
+            trigger_fullness,
+            ..Default::default()
+        },
         summarizer: crate::compaction::resolve_summarizer(None),
     }
 }
@@ -1007,7 +1010,7 @@ async fn run_omits_context_breakdown_when_visibility_disabled() {
 /// table, then the default.
 #[test]
 fn resolve_window_limit_prefers_param_then_table_then_default() {
-    // An explicit param on the context-visibility capability wins over the table.
+    // An explicit param on the context-visibility capability narrows the table's figure.
     let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
     for cap in &mut set.capabilities {
         if cap.id == CAPABILITY_CONTEXT_VISIBILITY {
@@ -1048,6 +1051,71 @@ fn resolve_window_limit_prefers_param_then_table_then_default() {
     assert_eq!(
         resolve_window_limit(&set, "mock/echo"),
         Some(DEFAULT_CONTEXT_WINDOW)
+    );
+}
+
+/// The window-limit override may only *narrow* the model's window: the real window is a hard
+/// limit, so an override above it is clamped back down to it rather than believed.
+#[test]
+fn resolve_window_limit_clamps_an_override_above_the_model_window() {
+    let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
+    for cap in &mut set.capabilities {
+        if cap.id == CAPABILITY_CONTEXT_VISIBILITY {
+            cap.params = json!({ "windowLimit": 2_000_000 });
+        }
+    }
+    assert_eq!(
+        resolve_window_limit(&set, "anthropic/claude-opus-4.8"),
+        Some(200_000)
+    );
+
+    // And an unrecognized model is clamped to the conservative default it falls back to.
+    assert_eq!(
+        resolve_window_limit(&set, "mock/echo"),
+        Some(DEFAULT_CONTEXT_WINDOW)
+    );
+}
+
+/// Enabling compaction reserves the summary headroom out of the window the agent is
+/// measured against — including out of a narrowed override — so the summarization call has
+/// room to run. The override and the reserve compose.
+#[test]
+fn resolve_window_limit_reserves_compaction_headroom() {
+    let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
+    set.capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_COMPACTION));
+    assert_eq!(
+        resolve_window_limit(&set, "anthropic/claude-opus-4.8"),
+        Some(160_000)
+    );
+
+    for cap in &mut set.capabilities {
+        if cap.id == CAPABILITY_CONTEXT_VISIBILITY {
+            cap.params = json!({ "windowLimit": 50_000 });
+        }
+    }
+    assert_eq!(
+        resolve_window_limit(&set, "anthropic/claude-opus-4.8"),
+        Some(40_000)
+    );
+}
+
+/// The override is honored wherever it is declared — it governs compaction and the fullness
+/// signal, not just the visibility capability it sits on by convention, so ablating
+/// context-visibility off must not silently restore the model's full window.
+#[test]
+fn resolve_window_limit_honors_the_override_on_any_capability() {
+    let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
+    set.capabilities
+        .retain(|cap| cap.id != CAPABILITY_CONTEXT_VISIBILITY);
+    for cap in &mut set.capabilities {
+        if cap.id == CAPABILITY_SHELL {
+            cap.params = json!({ "windowLimit": 32_000 });
+        }
+    }
+    assert_eq!(
+        resolve_window_limit(&set, "anthropic/claude-opus-4.8"),
+        Some(32_000)
     );
 }
 

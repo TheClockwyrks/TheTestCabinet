@@ -70,6 +70,88 @@ fn setup_resolves_from_the_capability_set() {
     assert_eq!(on.policy.trigger_fullness, 0.7);
 }
 
+/// The summary headroom defaults, honors a valid fraction, and ignores one that would leave
+/// the agent no window to work in.
+#[test]
+fn policy_defaults_then_honors_a_valid_summary_headroom() {
+    assert_eq!(
+        CompactionPolicy::resolve(&json!({})).summary_headroom,
+        DEFAULT_SUMMARY_HEADROOM
+    );
+    assert_eq!(
+        CompactionPolicy::resolve(&json!({ "summaryHeadroom": 0.35 })).summary_headroom,
+        0.35
+    );
+    // Zero headroom is a legitimate (if reckless) choice — the operator asking for the whole
+    // window is honored, unlike a negative or window-consuming value.
+    assert_eq!(
+        CompactionPolicy::resolve(&json!({ "summaryHeadroom": 0.0 })).summary_headroom,
+        0.0
+    );
+    assert_eq!(
+        CompactionPolicy::resolve(&json!({ "summaryHeadroom": 0.95 })).summary_headroom,
+        DEFAULT_SUMMARY_HEADROOM
+    );
+    assert_eq!(
+        CompactionPolicy::resolve(&json!({ "summaryHeadroom": -0.1 })).summary_headroom,
+        DEFAULT_SUMMARY_HEADROOM
+    );
+}
+
+/// The working window reserves the headroom, never returns zero, and never exceeds the
+/// window it narrows.
+#[test]
+fn policy_working_window_reserves_the_headroom() {
+    let default = CompactionPolicy::default();
+    assert_eq!(default.working_window(200_000), 160_000);
+    // A tiny window still leaves the agent something to fill, rather than a zero
+    // denominator that would make every fullness ratio infinite.
+    assert_eq!(default.working_window(1), 1);
+    assert_eq!(
+        CompactionPolicy {
+            summary_headroom: 0.0,
+            ..CompactionPolicy::default()
+        }
+        .working_window(200_000),
+        200_000
+    );
+}
+
+/// The window is only reduced when compaction is actually on: an off arm keeps the model's
+/// whole window, since there is no summarization call to reserve for.
+#[test]
+fn working_window_only_reserves_when_compaction_is_on() {
+    use test_cabinet_core::gg::{CAPABILITY_COMPACTION, GgCapabilityConfig, GgCapabilitySet};
+
+    let off = GgCapabilitySet::minimal("mock/x");
+    assert_eq!(working_window(&off, 200_000), 200_000);
+
+    let mut on = GgCapabilitySet::minimal("mock/x");
+    on.capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_COMPACTION));
+    assert_eq!(working_window(&on, 200_000), 160_000);
+
+    // A disabled compaction capability that carries params is still an off arm.
+    let mut disabled = GgCapabilitySet::minimal("mock/x");
+    disabled.capabilities.push(GgCapabilityConfig {
+        id: CAPABILITY_COMPACTION.to_string(),
+        enabled: false,
+        implementation: None,
+        params: json!({ "summaryHeadroom": 0.5 }),
+    });
+    assert_eq!(working_window(&disabled, 200_000), 200_000);
+
+    // The headroom param is honored on the enabled arm.
+    let mut tuned = GgCapabilitySet::minimal("mock/x");
+    tuned.capabilities.push(GgCapabilityConfig {
+        id: CAPABILITY_COMPACTION.to_string(),
+        enabled: true,
+        implementation: None,
+        params: json!({ "summaryHeadroom": 0.5 }),
+    });
+    assert_eq!(working_window(&tuned, 200_000), 100_000);
+}
+
 // ---------------------------------------------------------------------------
 // The swappable summarizer, offline
 // ---------------------------------------------------------------------------
@@ -117,6 +199,7 @@ async fn does_not_compact_when_disabled() {
         enabled: false,
         policy: CompactionPolicy {
             trigger_fullness: 0.0,
+            ..CompactionPolicy::default()
         },
         summarizer: Box::new(ModelSummarizer),
     };
@@ -136,6 +219,7 @@ async fn does_not_compact_below_the_threshold() {
         enabled: true,
         policy: CompactionPolicy {
             trigger_fullness: 0.9,
+            ..CompactionPolicy::default()
         },
         summarizer: Box::new(ModelSummarizer),
     };
@@ -155,6 +239,7 @@ async fn does_not_compact_with_no_ephemeral_history() {
         enabled: true,
         policy: CompactionPolicy {
             trigger_fullness: 0.1,
+            ..CompactionPolicy::default()
         },
         summarizer: Box::new(ModelSummarizer),
     };
@@ -183,6 +268,7 @@ async fn compacts_and_retains_pinned_state_verbatim() {
         enabled: true,
         policy: CompactionPolicy {
             trigger_fullness: 0.5,
+            ..CompactionPolicy::default()
         },
         summarizer: Box::new(ModelSummarizer),
     };

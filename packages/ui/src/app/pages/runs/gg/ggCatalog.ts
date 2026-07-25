@@ -5,6 +5,13 @@
 // configured with. The ids, params, and tool names are the real core contract
 // (`crates/core/src/gg.rs` + `crates/gg/src/tools/mod.rs`), not guesses.
 
+import type { GgCapabilitySet } from "@test-cabinet/run-record/gg";
+
+/** Whether a run's capability set has the named capability on. */
+export function capabilityOn(set: GgCapabilitySet | null, id: string): boolean {
+  return set?.capabilities.some((c) => c.id === id && c.enabled) ?? false;
+}
+
 // The slot every gg run must bind — the primary model that drives the agent loop.
 // The backend 400s a capability set that leaves it unbound.
 export const PRIMARY_SLOT = "primary";
@@ -221,6 +228,15 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     purpose:
       "Per-source accounting of what fills the window, streamed as the stacked context graph.",
     defaultOn: true,
+    params: [
+      {
+        key: "windowLimit",
+        label: "Window limit (tokens)",
+        kind: "number",
+        placeholder: "e.g. 100000",
+        hint: "Run the model against a smaller window than it really has — the way to exercise compaction on a million-token model without paying for a million tokens. Can only narrow: a value above the model's real window is clamped to it.",
+      },
+    ],
   },
   {
     id: "compaction",
@@ -237,6 +253,13 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         kind: "fraction",
         placeholder: "0.0 – 1.0",
         hint: "Window-fullness threshold that triggers a compaction.",
+      },
+      {
+        key: "summaryHeadroom",
+        label: "Summary headroom",
+        kind: "fraction",
+        placeholder: "0.0 – 0.9",
+        hint: "Fraction of the window held back from the agent so the summarization call — which reads the whole thread and writes a summary — fits. Default 0.2.",
       },
     ],
   },

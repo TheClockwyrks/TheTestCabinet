@@ -92,7 +92,7 @@ use tokio::task::JoinHandle;
 use crate::archive::ArchiveStore;
 use crate::board::{BoardCaps, BoardRuntime};
 use crate::client::{ClientFactory, DefaultClientFactory, provider_for};
-use crate::compaction::{CompactionSetup, RetainedCounts, compact_if_needed};
+use crate::compaction::{self, CompactionSetup, RetainedCounts, compact_if_needed};
 use crate::config::GgInvocation;
 use crate::context::{
     BpeTokenEstimator, ContextModel, Retention, TokenEstimator, tool_output_source,
@@ -132,9 +132,12 @@ const PARAM_MAX_TURNS: &str = "maxTurns";
 /// so a runaway loop ends with `"timed_out"` rather than being killed from outside.
 const PARAM_MAX_RUNTIME_SECS: &str = "maxRuntimeSecs";
 
-/// Context-visibility capability param naming the active model's context-window limit
-/// in tokens. When present it overrides the [built-in table](builtin_window_for); a
-/// value of `0` or a non-integer is ignored.
+/// Capability param (context-visibility by convention, read from any capability that
+/// carries it) naming the context window to run the model against, in tokens. It may only
+/// *narrow* the [built-in table's](builtin_window_for) figure — the model's real window is a
+/// hard limit — so a larger value is clamped to it, and a value of `0` or a non-integer is
+/// ignored. Narrowing it is how a study exercises compaction against a 1M-token model
+/// without paying for a million tokens of input.
 const PARAM_WINDOW_LIMIT: &str = "windowLimit";
 
 /// Skills capability param naming the directory authored skills are loaded from. A
@@ -4318,21 +4321,28 @@ fn apply_context_reclaim(
     }
 }
 
-/// Resolve the active model's context-window limit for the fullness ratio: an explicit
-/// [`PARAM_WINDOW_LIMIT`] on the context-visibility capability wins, else the
-/// [built-in per-model table](builtin_window_for), else [`DEFAULT_CONTEXT_WINDOW`]. The
-/// limit is always known (the default backstops it); it is an [`Option`] on the wire so
+/// Resolve the context window the active model's fullness ratio is measured against, in two
+/// steps:
+///
+/// 1. **The model's window**, from the [built-in per-model table](builtin_window_for) or
+///    [`DEFAULT_CONTEXT_WINDOW`], **narrowed** by an explicit [`PARAM_WINDOW_LIMIT`]
+///    override. The override may only make the window *smaller*: the model's real window is
+///    a hard limit, so a larger "override" is not a configuration gg can honor — it is
+///    clamped rather than rejected, so a study that raises a window it misjudged still runs.
+/// 2. **The working window**, [reduced by the summary headroom](crate::compaction::working_window)
+///    when compaction is on, reserving room for the summarization call itself.
+///
+/// The limit is always known (the default backstops it); it is an [`Option`] on the wire so
 /// a future estimator can report "unknown" without a schema change.
 fn resolve_window_limit(set: &GgCapabilitySet, model_id: &str) -> Option<u64> {
-    if let Some(limit) = set
-        .capability(CAPABILITY_CONTEXT_VISIBILITY)
-        .and_then(|cap| cap.params.get(PARAM_WINDOW_LIMIT))
-        .and_then(Value::as_u64)
+    let model_window = builtin_window_for(model_id).unwrap_or(DEFAULT_CONTEXT_WINDOW);
+    // The override lives on context-visibility by convention, but it governs compaction and
+    // the fullness signal too — so, like the loop bounds, it is honored on any capability
+    // that carries it rather than being silently ignored when visibility is ablated off.
+    let configured = param_u64(set, PARAM_WINDOW_LIMIT)
         .filter(|&n| n > 0)
-    {
-        return Some(limit);
-    }
-    Some(builtin_window_for(model_id).unwrap_or(DEFAULT_CONTEXT_WINDOW))
+        .map_or(model_window, |n| n.min(model_window));
+    Some(compaction::working_window(set, configured))
 }
 
 /// Build the run's [`SkillsRuntime`] from the capability set and workspace: when the

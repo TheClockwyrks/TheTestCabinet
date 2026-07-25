@@ -23,6 +23,29 @@ Requirements:
 Compaction is a prime candidate for a **swappable summarization tool** so we can
 study which strategy retains the most useful state.
 
+## Enabling compaction shrinks the window the agent gets
+
+Summarizing is itself a model call over (nearly) the whole thread: at the trigger the
+summarizer has to fit the transcript **and** write a summary within the same context
+window. Measured against the model's full window, a run can therefore trip the
+trigger at a point where the compaction meant to save it no longer fits.
+
+So gg makes the reserve explicit. When compaction is on, the window the agent is
+given — the denominator of every fullness figure, the graph's ceiling, and the
+trigger's basis — is the model's window **less the `summaryHeadroom` fraction**,
+20% by default. The agent works against the reduced window; the held-back slice is
+the room the summarization round-trip runs in. Against a 200k model that is 160k of
+working window, with the default 0.85 trigger firing at ~136k.
+
+With compaction off nothing is reserved, since there is no summarization call to
+make room for — which is also why the `no-compaction` [configuration](/gg/configurations/)
+is a clean overflow arm: it gets the whole window and simply runs out of it.
+
+`summaryHeadroom` is a capability parameter like the trigger, accepting `0.0`–`0.9`
+(a value outside that keeps the default). Set it to `0` to hand the agent the whole
+window and accept the risk; raise it for a summarizer whose prompt is heavier than
+the default's.
+
 Compaction summarizes the *history* and carries the following state forward
 verbatim, forming the fixed prefix of the post-compaction context window:
 

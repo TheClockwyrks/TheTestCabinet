@@ -305,6 +305,14 @@ interface StackedAreaLabels {
    */
   reference?: { value: number; label: string };
   /**
+   * An explicit top of the y scale, so the plot can be framed to the data rather
+   * than to a ceiling far above it (e.g. a context window the run uses a sliver
+   * of). Marks are clipped to the frame when set, so a stack that runs past the
+   * cap is cut off at it instead of overflowing the plot. Omit to let the data
+   * (and any `reference`) size the scale.
+   */
+  yMax?: number;
+  /**
    * Vertical markers drawn across the plot at chosen x positions (e.g. gg
    * compaction boundaries), each a dashed rule with a small top label, so the
    * sawtooth of the window filling then dropping is legible. Omit to draw none.
@@ -332,8 +340,12 @@ export function stackedAreaChart(
   const order = series.map((s) => s.name);
   const ref = labels.reference;
   const markers = labels.markers ?? [];
+  const yMax = labels.yMax;
   return {
     ...basePlotOptions(palette),
+    // A capped y scale only frames the plot; without clipping, a stack taller than
+    // the cap would draw straight over the axis and the title.
+    ...(yMax != null ? { clip: true } : {}),
     x: {
       label: labels.x ?? null,
       // Whole-number turn ticks; a fractional tick between turns is meaningless.
@@ -344,6 +356,7 @@ export function stackedAreaChart(
       grid: true,
       zero: true,
       tickFormat: labels.yTickFormat,
+      ...(yMax != null ? { domain: [0, yMax] } : {}),
     },
     color: {
       legend: false,

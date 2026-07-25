@@ -35,6 +35,12 @@ consume them (below), and the per-tool [ablation](/gg/toolset-ablation/) overrid
 an ablation arm is to duplicate the arm beside it and change the one thing under
 test.
 
+One param is worth knowing about before you run a compaction study: context
+visibility's [**window limit**](/gg/context-visibility/#the-window-a-run-is-measured-against)
+narrows the window a run is measured against, so a compaction arm can be exercised
+against a million-token model without spending a million tokens of input to reach a
+boundary. It can only narrow — the model's real window is a hard limit.
+
 A configuration is deliberately **test-case-free**, and it does not have to name the
 models it runs on.
 

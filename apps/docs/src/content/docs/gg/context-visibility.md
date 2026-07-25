@@ -12,6 +12,43 @@ memories, file contents, the thread/history, tool output, and so on.
   in the console as a **stacked line graph** showing how an agent's context window
   fills over the course of a run, by category.
 
+## The window a run is measured against
+
+gg resolves the fullness denominator per agent, from the agent's own model, in two
+steps:
+
+1. **The model's window**, from a built-in per-model table (with a conservative
+   128k fallback for an id it does not recognize), optionally **narrowed** by the
+   `windowLimit` capability parameter.
+2. **The working window** — that figure less the summary reserve when
+   [compaction](/gg/compaction/#enabling-compaction-shrinks-the-window-the-agent-gets)
+   is on.
+
+`windowLimit` can only make the window *smaller*. The model's real window is a hard
+limit, so a larger value is not a configuration gg can honor; it is clamped back
+down to the model's window rather than rejected, so a study that misjudged a window
+still runs. Narrowing it is how you exercise compaction against a million-token
+model **without spending a million tokens of input per boundary**: give the run a
+100k window and the same summarize-and-restart behavior plays out an order of
+magnitude sooner and cheaper.
+
+The parameter sits on this capability by convention, but gg honors it on whichever
+capability carries it — it governs compaction and the fullness signal too, so
+ablating context visibility off must not silently restore the model's full window.
+
+## Reading the graph
+
+The graph is framed to **what the run used**, not to the window: its top is the
+tallest stack so far plus a quarter again, capped at the window limit. A run that
+uses 40k of a million-token window would otherwise draw as a flat line along the
+axis — the composition the graph exists to show, unreadable. The dashed window-limit
+rule appears once the frame actually reaches it.
+
+The legend lists only the sources this run's [configuration](/gg/configurations/)
+can produce: with [skills](/gg/skills/) disabled there is no Skills band to explain.
+A source that holds tokens is never hidden, whatever the configuration says, so
+nothing can silently drop out of the stack.
+
 ## The window renders as an append-only prompt
 
 **A turn never rewrites what an earlier turn already sent.** Everything already in the

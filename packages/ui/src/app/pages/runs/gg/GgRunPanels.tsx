@@ -6,6 +6,7 @@ import { useAppSettings } from "../../../store/appSettings";
 import runExec from "../RunExec.module.scss";
 import panels from "./GgPanels.module.scss";
 import type { FeedRow, GgRunState } from "./useGgRunState";
+import { capabilityOn } from "./ggCatalog";
 import { ContextFillGraph } from "./ContextFillGraph";
 import { AgentTreeView } from "./AgentTreeView";
 import { PlanView } from "./PlanView";
@@ -66,11 +67,6 @@ const TAB_LABELS: ReadonlyArray<SegmentedOption<MonitorTab>> = [
   { value: "tasks", label: "Tasks" },
   { value: "knowledge", label: "Knowledge" },
 ];
-
-/** Whether the run's capability set has the named capability on. */
-export function capabilityOn(set: GgCapabilitySet | null, id: string): boolean {
-  return set?.capabilities.some((c) => c.id === id && c.enabled) ?? false;
-}
 
 /**
  * The panels this run's configuration justifies offering. Until the capability set is
@@ -274,6 +270,7 @@ export function GgRunPanels({
             <ContextFillGraph
               series={contextSeries}
               latest={latestContext}
+              capabilitySet={capabilitySet}
               compactions={compactions}
               planImplementTurn={plan?.implementTurn ?? null}
             />

@@ -20,13 +20,17 @@ import {
   type StackedAreaPoint,
   type StackedSeries,
 } from "@test-cabinet/ui";
-import type { GgContextSource } from "@test-cabinet/run-record/gg";
+import type {
+  GgCapabilitySet,
+  GgContextSource,
+} from "@test-cabinet/run-record/gg";
 import {
   retainedSummary,
   shortTokens,
   type CompactionBoundary,
   type ContextSnapshot,
 } from "./useGgRunState";
+import { capabilityOn, LEGACY_FILESYSTEM_CAP_ID } from "./ggCatalog";
 import styles from "./GgPanels.module.scss";
 
 // The eleven context sources in their fixed, stable order (mirrors
@@ -82,13 +86,63 @@ export const CONTEXT_SOURCE_COLORS: Record<GgContextSource, string> = {
   history: "#9aa5b1",
 };
 
-// The chart's series, in fixed stacking/legend order (baseline = first source).
-const AREA_SERIES: readonly StackedSeries[] = CONTEXT_SOURCES.map((source) => ({
-  name: CONTEXT_SOURCE_LABELS[source],
-  color: CONTEXT_SOURCE_COLORS[source],
-}));
+// The capabilities each context source is the product of — a source whose
+// capabilities are all ablated off cannot fill the window, so listing it is noise.
+// Sources with no entry are unconditional: system/user prompt/assistant/tool output
+// are what any run is made of, and history accrues in every run (a superseded block
+// is retagged as history whether or not compaction ever fires).
+const SOURCE_CAPABILITIES: Partial<Record<GgContextSource, readonly string[]>> =
+  {
+    // The umbrella capability that sets saved before the per-tool filesystem split
+    // still name counts as read-file, exactly as gg resolves it.
+    file_view: ["read-file", LEGACY_FILESYSTEM_CAP_ID],
+    skill: ["skills"],
+    memory: ["memories"],
+    task_list: ["tasks"],
+    board: ["epics-and-issues"],
+    plan: ["planning"],
+  };
+
+// How much room to leave above the tallest plotted stack, so the fill has somewhere
+// to grow into rather than riding the top of the frame.
+const Y_HEADROOM = 0.25;
 
 const numberFmt = new Intl.NumberFormat("en-US");
+
+// The top of the graph's y scale: the tallest stack plus [Y_HEADROOM] again, never
+// above the window limit and never zero.
+//
+// Framing the plot to the window instead would draw a run that used 40k of a
+// million-token window as a flat line along the axis — the composition the graph
+// exists to show, unreadable. The window still caps the frame, so the fullness a
+// stack represents is never overstated by the scale.
+export function contextYMax(
+  series: readonly ContextSnapshot[],
+  windowLimit: number | null,
+): number {
+  const peak = series.reduce((max, s) => Math.max(max, s.totalTokens), 0);
+  const capped = Math.max(Math.ceil(peak * (1 + Y_HEADROOM)), 1);
+  return windowLimit != null ? Math.min(capped, windowLimit) : capped;
+}
+
+// The sources worth drawing and listing: the ones this run's configuration can
+// produce, plus any that hold tokens regardless. The second clause is what keeps the
+// filter honest — a band with real tokens is never hidden (that would drop it out of
+// the stack and misstate the total), so an unexpected source still shows up.
+export function visibleSources(
+  set: GgCapabilitySet | null,
+  series: readonly ContextSnapshot[],
+): readonly GgContextSource[] {
+  return CONTEXT_SOURCES.filter((source) => {
+    const needed = SOURCE_CAPABILITIES[source];
+    if (!needed) return true;
+    // Before the capability set is known, show everything rather than guess a run's
+    // shape from an empty configuration.
+    if (!set) return true;
+    if (needed.some((id) => capabilityOn(set, id))) return true;
+    return series.some((snapshot) => sourceTokens(snapshot, source) > 0);
+  });
+}
 
 // Tokens held by one source in a snapshot (0 when the band is absent, though gg
 // always emits all eleven).
@@ -111,6 +165,10 @@ function snapshotFullness(snapshot: ContextSnapshot): number | null {
 interface ContextFillGraphProps {
   series: ContextSnapshot[];
   latest: ContextSnapshot | null;
+  // The run's configuration, which decides which sources are worth listing at all —
+  // there is no reason to show a Skills band to a run with skills disabled. Null
+  // until gg announces it, which shows every source.
+  capabilitySet?: GgCapabilitySet | null;
   // Compaction boundaries to mark on the graph — each drops the window (the
   // sawtooth's fall). Empty when compaction is off or never tripped.
   compactions?: CompactionBoundary[];
@@ -123,25 +181,48 @@ interface ContextFillGraphProps {
 export function ContextFillGraph({
   series,
   latest,
+  capabilitySet = null,
   compactions = [],
   planImplementTurn = null,
 }: ContextFillGraphProps) {
+  // The sources this run's configuration justifies drawing and listing.
+  const sources = useMemo(
+    () => visibleSources(capabilitySet, series),
+    [capabilitySet, series],
+  );
+
+  // The chart's series, in fixed stacking/legend order (baseline = first source).
+  const areaSeries = useMemo<readonly StackedSeries[]>(
+    () =>
+      sources.map((source) => ({
+        name: CONTEXT_SOURCE_LABELS[source],
+        color: CONTEXT_SOURCE_COLORS[source],
+      })),
+    [sources],
+  );
+
   // Flatten every snapshot into per-source points for the stacked area. Memoized
   // so the chart only re-plots when a new snapshot arrives.
   const points = useMemo<StackedAreaPoint[]>(
     () =>
       series.flatMap((snapshot) =>
-        CONTEXT_SOURCES.map((source) => ({
+        sources.map((source) => ({
           x: snapshot.turn,
           series: CONTEXT_SOURCE_LABELS[source],
           value: sourceTokens(snapshot, source),
         })),
       ),
-    [series],
+    [series, sources],
   );
 
   // The window limit to draw as the reference ceiling — the latest known limit.
   const windowLimit = latest?.windowLimit ?? null;
+
+  // Frame the plot to what the run actually used rather than to the window.
+  const yMax = useMemo(
+    () => contextYMax(series, windowLimit),
+    [series, windowLimit],
+  );
 
   // Compaction boundaries as vertical markers at their post-compaction turn, so the
   // fill-then-drop sawtooth is legible. Only those within the plotted turn range.
@@ -160,17 +241,20 @@ export function ContextFillGraph({
 
   const spec = useMemo(
     () => (palette: ChartPalette) =>
-      stackedAreaChart(points, palette, AREA_SERIES, {
+      stackedAreaChart(points, palette, areaSeries, {
         x: "turn",
         y: "tokens",
         yTickFormat: "~s",
+        // Only draw the ceiling when the frame reaches it; below that it would be a
+        // rule pinned to the top of every plot, saying nothing.
         reference:
-          windowLimit != null
+          windowLimit != null && windowLimit <= yMax
             ? { value: windowLimit, label: "window limit" }
             : undefined,
+        yMax,
         markers,
       }),
-    [points, windowLimit, markers],
+    [points, areaSeries, windowLimit, yMax, markers],
   );
 
   if (!latest) {
@@ -261,16 +345,18 @@ export function ContextFillGraph({
         </ul>
       )}
 
-      {/* Current per-source composition — also the chart's color legend. */}
+      {/* Current per-source composition — also the chart's color legend. Only the
+          sources this run can produce; the swatch index is the source's fixed
+          position, not its position in the filtered list, so a hue never shifts. */}
       <ul className={styles.sourceList}>
-        {CONTEXT_SOURCES.map((source, i) => {
+        {sources.map((source) => {
           const tokens = sourceTokens(latest, source);
           const pct = (tokens / total) * 100;
           return (
             <li key={source} className={styles.sourceRow}>
               <span
                 className={styles.swatch}
-                data-source-index={i}
+                data-source-index={CONTEXT_SOURCES.indexOf(source)}
                 aria-hidden="true"
               />
               <span className={styles.sourceName}>

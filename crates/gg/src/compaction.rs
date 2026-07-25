@@ -21,6 +21,12 @@
 //!   replaced by a single summary item via
 //!   [`ContextModel::compact_history`](crate::context::ContextModel::compact_history). The
 //!   post-compaction window is *pinned prefix + summary*, and the run continues from there.
+//! - **The reserve.** Summarizing is itself a model call over the whole thread, so enabling
+//!   compaction **shrinks the window the agent is given** by
+//!   [`summary_headroom`](CompactionPolicy::summary_headroom) (20% by default) via
+//!   [`working_window`]. The held-back slice is the room the summarization call needs to
+//!   read the transcript and emit its summary; without it a run can trip the trigger at a
+//!   point where the compaction that was meant to save it cannot fit.
 //! - **The summarizer.** Summarization is a **swappable strategy** behind the
 //!   [`Summarizer`] trait, selected by the capability's
 //!   [`implementation`](test_cabinet_core::gg::GgCapabilityConfig::implementation). The
@@ -51,6 +57,20 @@ const PARAM_TRIGGER_FULLNESS: &str = "triggerFullness";
 /// The default [`trigger_fullness`](CompactionPolicy::trigger_fullness): compact once the
 /// window is ~85% full, leaving headroom for the turn that trips it plus the summary call.
 const DEFAULT_TRIGGER_FULLNESS: f64 = 0.85;
+
+/// The compaction capability param naming the
+/// [summary headroom](CompactionPolicy::summary_headroom) — a `0.0..=0.9` fraction of the
+/// model's window held back from the agent so the summarization call fits.
+const PARAM_SUMMARY_HEADROOM: &str = "summaryHeadroom";
+
+/// The default [`summary_headroom`](CompactionPolicy::summary_headroom): reserve 20% of the
+/// model's window for the summarization round-trip.
+const DEFAULT_SUMMARY_HEADROOM: f64 = 0.2;
+
+/// The largest accepted [`summary_headroom`](CompactionPolicy::summary_headroom). Reserving
+/// more than 90% of the window would leave the agent no room to work at all, so a larger
+/// value is treated as a misconfiguration and ignored.
+const MAX_SUMMARY_HEADROOM: f64 = 0.9;
 
 /// A sentinel embedded in the [summarization prompt](SUMMARY_SYSTEM_PROMPT) so the offline
 /// [`MockClient`](crate::client::MockClient) can recognize a compaction summary request and
@@ -181,29 +201,74 @@ pub fn resolve_summarizer(implementation: Option<&str>) -> Box<dyn Summarizer> {
 pub struct CompactionPolicy {
     /// The window-fullness fraction at (or above) which a compaction fires.
     pub trigger_fullness: f64,
+    /// The fraction of the model's window **withheld from the agent** so that a compaction
+    /// can actually be performed — see [`working_window`](Self::working_window).
+    pub summary_headroom: f64,
 }
 
 impl Default for CompactionPolicy {
     fn default() -> Self {
         Self {
             trigger_fullness: DEFAULT_TRIGGER_FULLNESS,
+            summary_headroom: DEFAULT_SUMMARY_HEADROOM,
         }
     }
 }
 
 impl CompactionPolicy {
     /// Resolve the policy from a compaction-capability `params` object: `triggerFullness`
-    /// overrides the default when present as a number in `(0.0, 1.0]`; anything else keeps
-    /// the default (a zero, negative, or absurd threshold would compact every turn or
-    /// never, so it is ignored).
+    /// overrides its default when present as a number in `(0.0, 1.0]` and `summaryHeadroom`
+    /// when present as a number in `[0.0, 0.9]`; anything else keeps the default (a
+    /// negative or absurd value would compact every turn, never, or leave the agent no
+    /// window at all, so it is ignored).
     pub fn resolve(params: &Value) -> Self {
         let trigger_fullness = params
             .get(PARAM_TRIGGER_FULLNESS)
             .and_then(Value::as_f64)
             .filter(|&f| f > 0.0 && f <= 1.0)
             .unwrap_or(DEFAULT_TRIGGER_FULLNESS);
-        Self { trigger_fullness }
+        let summary_headroom = params
+            .get(PARAM_SUMMARY_HEADROOM)
+            .and_then(Value::as_f64)
+            .filter(|&f| (0.0..=MAX_SUMMARY_HEADROOM).contains(&f))
+            .unwrap_or(DEFAULT_SUMMARY_HEADROOM);
+        Self {
+            trigger_fullness,
+            summary_headroom,
+        }
     }
+
+    /// The portion of a `window`-token context window the agent may actually fill, given
+    /// this policy's [`summary_headroom`](Self::summary_headroom).
+    ///
+    /// Summarization is itself a model call over (nearly) the whole thread: at the trigger
+    /// the summarizer must fit the transcript **and** emit a summary within the same window.
+    /// Measuring fullness against the model's full window therefore lets a run trip the
+    /// trigger at a point where the summary call cannot fit — the compaction that was meant
+    /// to save the run overflows instead. Holding a fraction back makes the reserve
+    /// explicit: the agent works against the reduced window, and what is left over is the
+    /// space the summarization round-trip runs in.
+    ///
+    /// Never returns zero (a degenerate window would make every fullness ratio infinite),
+    /// and never exceeds `window`.
+    pub fn working_window(&self, window: u64) -> u64 {
+        let usable = (window as f64 * (1.0 - self.summary_headroom)).floor();
+        (usable.max(1.0) as u64).min(window)
+    }
+}
+
+/// The window an agent configured with `set` may actually fill, out of a model window of
+/// `window` tokens: [reduced by the summary headroom](CompactionPolicy::working_window) when
+/// [compaction](CAPABILITY_COMPACTION) is on, and `window` unchanged when it is off (nothing
+/// needs to be reserved for a summarization call that will never happen).
+pub fn working_window(set: &GgCapabilitySet, window: u64) -> u64 {
+    if !set.is_enabled(CAPABILITY_COMPACTION) {
+        return window;
+    }
+    set.capability(CAPABILITY_COMPACTION)
+        .map(|cap| CompactionPolicy::resolve(&cap.params))
+        .unwrap_or_default()
+        .working_window(window)
 }
 
 /// The compaction configuration threaded into the [turn loop](crate::agent): whether the
