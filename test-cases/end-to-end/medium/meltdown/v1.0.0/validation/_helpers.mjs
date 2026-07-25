@@ -76,14 +76,26 @@ export function ticks(seconds) {
 export const LEFT_VENT_ROWS = [16, 17, 18, 19];
 export const TOP_VENT_COLS = [22, 23, 24, 25, 26, 27, 28, 29];
 
-// The eight shop tower types in hotkey/shop order (Digit1..8; specs/controls.md).
-export const TOWER_ORDER = [
+// The eight shop tower types: the six emitters of `specs/towers.md` plus the Forge
+// and Sink.
+//
+// A SET, deliberately not a shop layout. `specs/controls.md` ties the number keys to
+// "the eight tower types in shop order (top to bottom, left to right)", but the shop's
+// order is the build's own presentation choice — `specs/ui.md` asks for "a grid of
+// buyable towers, one button per type" without fixing their sequence, and the debug API
+// exposes no way to read the layout back (there is no shop listing in `snapshot()`, and
+// `hoverShop` sets a hover rather than enumerating). So no automated check can know
+// which type sits in slot 4, and any hardcoded order here would fail conformant builds
+// that chose a different one. What IS checkable is that the eight digits arm these
+// eight types, one apiece; the positional claim belongs to `controls.arm-hotkeys`'s
+// clip and human review.
+export const TOWER_TYPES = [
   "arc",
   "stutter",
-  "lance",
-  "bloom",
   "rime",
   "flak",
+  "bloom",
+  "lance",
   "forge",
   "sink",
 ];
@@ -193,6 +205,17 @@ export async function heatOf(api, id) {
  * (the newest tower whose footprint top-left and type match), or null if the
  * placement was refused. Routes through canPlaceAt, so an invalid placement builds
  * nothing and returns null.
+ *
+ * The held placement is CANCELLED afterward. Placement legitimately stays armed
+ * after a place (`specs/controls.md`, and `building.place-stays-armed` is the item
+ * that checks it), but the preview then sits on the footprint just built — which is
+ * now occupied, so the preview is INVALID and the build paints the invalid-footprint
+ * highlight (`#ff4d4d`, `specs/controls.md`) over it. Any check that samples the
+ * rendered tower afterward would read that overlay instead of the tower's own body:
+ * a correct cold emitter (`#3a7bd5`) reads warm-red through it. Since this helper is
+ * for LAYING OUT a floor rather than for exercising the shop, it drops the preview
+ * so what the floor draws is the towers themselves. A check whose subject IS the
+ * armed state drives `armTower`/`movePreview`/`place` directly instead.
  */
 export async function build(api, type, col, row, rot = 0) {
   await api.call("placeTower", type, col, row, rot);
@@ -200,6 +223,9 @@ export async function build(api, type, col, row, rot = 0) {
     (t) => t.type === type && t.col === col && t.row === row,
   );
   if (matches.length === 0) return null;
+  // Esc cancels a held placement (`specs/controls.md`). Consumes no time, so this
+  // stays arrange-callable.
+  await api.call("press", "Escape");
   return matches.reduce((a, b) => (b.id > a.id ? b : a)).id;
 }
 
@@ -278,9 +304,17 @@ export function colorDist(a, b) {
  * pixel script did by hand before calling `sampleTowerBody`. See `api.settle` in
  * validation.mjs.
  *
+ * The settle is generous because it is the ONLY lever a pixel check has against the
+ * renderer. `getImageData` happily returns the last frame that was painted, so a
+ * settle that comes up short does not fail loudly — it silently reads the canvas as it
+ * was BEFORE the state this check posed, and reports a confident wrong colour. At 90 ms
+ * that raced often enough to flake roughly one full-suite run in two; the only two
+ * items that sample pixels are this one's callers, so the wider margin costs a fraction
+ * of a second across the whole suite.
+ *
  * Returns `{ r, g, b }` (0–255), or null if the tower is gone.
  */
-export async function actSampleTowerBody(api, id, { settleMs = 90 } = {}) {
+export async function actSampleTowerBody(api, id, { settleMs = 300 } = {}) {
   await api.settle(settleMs);
   const t = await tower(api, id);
   return t ? sampleTowerBody(api, t) : null;
