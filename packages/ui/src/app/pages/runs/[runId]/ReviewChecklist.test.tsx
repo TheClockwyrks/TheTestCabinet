@@ -150,4 +150,43 @@ describe("ReviewChecklist (categories grammar, no domained items)", () => {
     expect(screen.queryByText(/Match win at 11/)).toBeNull();
     expect(screen.queryByRole("heading", { name: "Ball" })).toBeNull();
   });
+
+  it("surfaces a scoring-excluded (errata) point 'not scored' even when unrated", () => {
+    // A category whose middle sub-item an erratum excluded from scoring
+    // (`scored: false`), which the reviewer left unrated — it must still show,
+    // marked "not scored", while an ordinary unrated sibling stays hidden.
+    const withExcluded: ReviewModel = {
+      domains: [],
+      items: [
+        {
+          id: "foundations",
+          title: "Foundations",
+          text: "",
+          weight: 3,
+          subItems: [
+            { id: "ace-only", title: "Ace only", weight: 1 },
+            { id: "reject-offsuit", title: "Reject off-suit", weight: 1, scored: false },
+            { id: "build-up", title: "Build up", weight: 1 },
+          ],
+        },
+      ],
+    };
+    render(
+      <ReviewChecklist
+        model={withExcluded}
+        verdicts={[{ id: "foundations.ace-only", status: "pass" }]}
+      />,
+    );
+    // The graded point renders with its marker…
+    expect(screen.getByText(/Ace only/)).toBeTruthy();
+    // …the excluded point renders too, marked "not scored", despite no verdict…
+    expect(screen.getByText(/Reject off-suit/)).toBeTruthy();
+    expect(screen.getByText("not scored")).toBeTruthy();
+    // …keeping the status gutter, marked "Skip" (not the unanswered box), so it reads
+    // as not considered while staying aligned with its rated sibling…
+    expect(screen.getByText("Skip")).toBeTruthy();
+    expect(screen.queryByText("☐")).toBeNull();
+    // …while the ordinary ungraded sibling stays hidden.
+    expect(screen.queryByText(/Build up/)).toBeNull();
+  });
 });

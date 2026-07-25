@@ -534,6 +534,16 @@ $verdict-gutter: 3.5rem;
   }
 }
 
+// A point excluded from scoring (an erratum's `excludeFromScore`) the reviewer left
+// unrated: its status gutter holds an amber "Skip" label — same weight and position
+// as the Pass/Fail labels the other rows show, just tinted amber, so it reads as
+// acknowledged-but-not-considered rather than pending.
+.notScoredRow {
+  .verdictStatus {
+    color: t.$color-warning;
+  }
+}
+
 // A graded (game-jam) category row: the status gutter holds the tier emoji, which
 // carries its own color, so it is sized up a touch rather than tinted.
 .verdictGraded {
