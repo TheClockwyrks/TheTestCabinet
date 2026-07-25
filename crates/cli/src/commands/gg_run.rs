@@ -11,14 +11,16 @@
 //! default) makes the whole path runnable with no credentials and no network, so the
 //! integration can be exercised end to end before any backend or UI wiring exists.
 
+use std::collections::BTreeMap;
+
 use anyhow::{Context, bail};
 use tempfile::TempDir;
 use test_cabinet_core::gg::{GgCapabilitySet, PRIMARY_SLOT};
 use test_cabinet_core::{
-    BrowserRenderer, CliArtifactCollector, CliContainerRuntime, DefaultHarnessRegistry,
-    DispatchValidator, FsRepoSeeder, HarnessSlug, OpenRouterPrices, OrchestratorCatalog,
-    OrchestratorSelection, ReferenceRenderer, RunEngine, RunRequest, TestCaseCatalog,
-    runtime_hours_to_seconds,
+    BackendClient, BrowserRenderer, CliArtifactCollector, CliContainerRuntime,
+    DefaultHarnessRegistry, DispatchValidator, FsRepoSeeder, HarnessSlug, HttpBackendClient,
+    OpenRouterPrices, OrchestratorCatalog, OrchestratorSelection, ReferenceRenderer, RunEngine,
+    RunRequest, TestCaseCatalog, runtime_hours_to_seconds,
 };
 
 use crate::cli::GgRunArgs;
@@ -34,6 +36,13 @@ pub async fn execute(args: GgRunArgs) -> anyhow::Result<()> {
         "tcab gg-run: {}@{} [{}] via gg (primary model {})",
         args.test_case, args.version, args.variant, model_id,
     );
+
+    // The per-model context windows gg is measured against. The model catalog is the
+    // single store of that fact, and on the backend-driven path the backend resolves
+    // it at enqueue; this local path has no backend behind it, so it asks the
+    // configured one directly for the same figures. With none configured (a fully
+    // offline mock run) gg falls back to its conservative default.
+    let model_windows = resolve_model_windows(&capability_set).await;
 
     // Resolve the case from the local checkout, exactly like `tcab seed`.
     let catalog = TestCaseCatalog::new(catalog_root());
@@ -87,6 +96,7 @@ pub async fn execute(args: GgRunArgs) -> anyhow::Result<()> {
         max_runtime_override: args.max_runtime.map(runtime_hours_to_seconds),
         container_image: None,
         gg_capability_set: Some(capability_set),
+        gg_model_windows: model_windows,
     };
 
     // A live sink that prints each event, mirroring `tcab run`'s watch. gg produces no
@@ -146,6 +156,39 @@ fn load_capability_set(args: &GgRunArgs) -> anyhow::Result<GgCapabilitySet> {
 /// the run's `model_id`.
 fn primary_model(set: &GgCapabilitySet) -> &str {
     set.model_for_slot(PRIMARY_SLOT).unwrap_or("<unbound>")
+}
+
+/// Resolve the context window of every model `set` binds from the **model catalog**,
+/// narrowed to the models this run can actually use.
+///
+/// The catalog is the single store of model facts, so this local path reads the same
+/// figures the backend pushes onto a queued run rather than keeping a table of its own.
+/// Best-effort throughout: with no backend configured, or one that cannot be reached,
+/// the map is empty and gg falls back to its conservative default (an offline mock run
+/// has no catalog entry anyway). A note is printed either way so the resolved window is
+/// never a mystery.
+async fn resolve_model_windows(set: &GgCapabilitySet) -> BTreeMap<String, u64> {
+    let Some(backend) = crate::config::backend_url() else {
+        println!(
+            "  note: no backend configured (TCAB_BACKEND_URL), so no model context windows \
+             were resolved; gg will use its default"
+        );
+        return BTreeMap::new();
+    };
+    let catalog = match HttpBackendClient::new(backend).model_windows().await {
+        Ok(catalog) => catalog,
+        Err(err) => {
+            println!(
+                "  note: could not read the model catalog ({err}); gg will use its default \
+                 context window"
+            );
+            return BTreeMap::new();
+        }
+    };
+    set.bound_model_ids()
+        .into_iter()
+        .filter_map(|id| catalog.get(id).map(|&window| (id.to_string(), window)))
+        .collect()
 }
 
 /// An [`EventSink`](test_cabinet_core::EventSink) that prints each event through the

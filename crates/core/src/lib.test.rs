@@ -339,6 +339,7 @@ fn request_with_override(max_runtime_override: Option<u64>) -> RunRequest {
         max_runtime_override,
         container_image: None,
         gg_capability_set: None,
+        gg_model_windows: Default::default(),
     }
 }
 

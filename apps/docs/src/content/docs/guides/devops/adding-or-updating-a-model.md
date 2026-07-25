@@ -122,6 +122,17 @@ single committed number:
 A model's detail page shows this history as a **graph** and a **table**, with one
 table row per newly-observed price.
 
+Each observation also carries the model's **context window** as OpenRouter reported
+it at that moment, which makes the catalog the single store of that fact too. It is
+what a [gg](/gg/overview/) run's window-fullness accounting and
+[compaction](/gg/compaction/) trigger are measured against: when a gg run is
+enqueued, the backend looks the window up here for every model the run's capability
+set binds and **pushes** the figures onto the launch, so gg keeps no model table of
+its own and never queries for one from inside the run container. A model with no
+observation yet contributes no window, and gg falls back to a conservative default —
+so a brand-new model is worth running (or waiting for the refresh) once before
+drawing conclusions from its context graph.
+
 ## Updating an existing model
 
 Open the model in the **Models** section, click **Edit**, change any field

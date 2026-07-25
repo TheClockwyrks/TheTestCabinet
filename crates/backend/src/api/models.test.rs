@@ -177,3 +177,93 @@ fn normalize_aliases_strips_prefix_and_dedups() {
         ]
     );
 }
+
+// ---------------------------------------------------------------------------
+// The context-window lookup (the single store gg is told its window from)
+// ---------------------------------------------------------------------------
+
+/// A price observation for `model_id` carrying `context_length`.
+fn window_observation(model_id: &str, context_length: i64) -> crate::db::PriceWrite {
+    crate::db::PriceWrite {
+        model_id: model_id.to_string(),
+        observed_at: "2026-01-01T00:00:00Z".to_string(),
+        uncached_input: Some(1.0),
+        cached_input: None,
+        output: Some(2.0),
+        context_length: Some(context_length),
+        released_at: None,
+    }
+}
+
+/// The window is the latest observation's `context_length`, keyed by the run's
+/// canonical model id — the `openrouter/` routing prefix and a `:free`-style variant
+/// tag collapse onto the same model, exactly as pricing does.
+#[tokio::test]
+async fn context_window_reads_the_latest_observation_by_canonical_id() {
+    let db = crate::db::Db::connect_in_memory().await.unwrap();
+    db.insert_price_observation(window_observation("anthropic/claude-opus-4.8", 200_000))
+        .await
+        .unwrap();
+    // A later observation supersedes the earlier one.
+    let mut newer = window_observation("anthropic/claude-opus-4.8", 400_000);
+    newer.observed_at = "2026-02-01T00:00:00Z".to_string();
+    db.insert_price_observation(newer).await.unwrap();
+
+    for id in [
+        "anthropic/claude-opus-4.8",
+        "openrouter/anthropic/claude-opus-4.8",
+        "anthropic/claude-opus-4.8:free",
+    ] {
+        assert_eq!(
+            context_window_for(&db, id, HarnessSlug::Gg).await.unwrap(),
+            Some(400_000),
+            "{id}"
+        );
+    }
+}
+
+/// A curated model's observations are stored under its configured OpenRouter slug, so
+/// a run launched under one of its *aliases* still resolves the same window.
+#[tokio::test]
+async fn context_window_follows_a_curated_model_alias() {
+    let db = crate::db::Db::connect_in_memory().await.unwrap();
+    db.upsert_model_config(ModelConfigWrite {
+        slug: "opus".to_string(),
+        display_name: "Opus".to_string(),
+        provider: "anthropic".to_string(),
+        provider_logo_url: None,
+        provider_logo_svg: None,
+        description_md: None,
+        openrouter_slug: Some("anthropic/claude-opus-4.8".to_string()),
+        aliases: vec![AliasEntry {
+            alias: "claude-opus-4-8".to_string(),
+            family: HarnessFamily::Claude,
+        }],
+        now: "2026-01-01T00:00:00Z".to_string(),
+    })
+    .await
+    .unwrap();
+    db.insert_price_observation(window_observation("anthropic/claude-opus-4.8", 200_000))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        context_window_for(&db, "claude-opus-4-8", HarnessSlug::Claude)
+            .await
+            .unwrap(),
+        Some(200_000)
+    );
+}
+
+/// A model the catalog has no observation for has no window — the caller (and so gg)
+/// treats that as "unknown" rather than guessing.
+#[tokio::test]
+async fn context_window_is_none_for_an_unknown_model() {
+    let db = crate::db::Db::connect_in_memory().await.unwrap();
+    assert_eq!(
+        context_window_for(&db, "mock/scripted-builder", HarnessSlug::Gg)
+            .await
+            .unwrap(),
+        None
+    );
+}

@@ -234,7 +234,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         label: "Window limit (tokens)",
         kind: "number",
         placeholder: "e.g. 100000",
-        hint: "Run the model against a smaller window than it really has — the way to exercise compaction on a million-token model without paying for a million tokens. Can only narrow: a value above the model's real window is clamped to it.",
+        hint: "Run the model against a smaller window than it really has — the way to exercise compaction on a million-token model without paying for a million tokens. Can only narrow: a value above the model catalog's figure for the model is clamped to it.",
       },
     ],
   },

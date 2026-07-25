@@ -28,6 +28,7 @@ fn claim() -> ClaimedJob {
             auth_mode: None,
             retry_count: None,
             gg_capability_set: None,
+            gg_model_windows: Default::default(),
         },
     }
 }

@@ -214,6 +214,15 @@ pub struct RunRequest {
     /// [`Self::model_id`] for a non-gg run; for a gg run the primary model is the
     /// [`PRIMARY_SLOT`](crate::gg::PRIMARY_SLOT) binding inside the set.
     pub gg_capability_set: Option<crate::gg::GgCapabilitySet>,
+    /// The context window, in tokens, of each model a **gg** run may bind, as resolved
+    /// from the model catalog by whoever triggered the run (the backend at enqueue, or
+    /// the CLI against a configured backend). Passed straight through to
+    /// [`GgInvocation::model_windows`](crate::gg::GgInvocation::model_windows).
+    ///
+    /// Empty is always legal — it simply means no catalog figure was available, and gg
+    /// falls back to a conservative default. Meaningless for a non-gg run, which leaves
+    /// it empty.
+    pub gg_model_windows: BTreeMap<String, u64>,
 }
 
 impl RunRequest {

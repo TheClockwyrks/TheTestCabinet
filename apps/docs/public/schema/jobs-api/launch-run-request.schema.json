@@ -19,6 +19,15 @@
       ],
       "description": "The declarative [capability set](GgCapabilitySet) configuring a **gg** run —\nwhich capabilities are on, their implementations/params, and the model-slot\nbindings. Present when (and only when) [`Self::harness`] is\n[`HarnessSlug::Gg`]: a gg run is\nconfigured by this set rather than by the `(model, orchestrator)` dimensions\na third-party harness run uses. Omitted for every non-gg run. The driver maps\nit into [`RunRequest::gg_capability_set`](crate::RunRequest), whose\n`validate` enforces the gg⇔capability-set invariant."
     },
+    "ggModelWindows": {
+      "additionalProperties": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "description": "The context window, in tokens, of each model this **gg** run may bind — the\nmodel catalog's figure for each id in\n[`GgCapabilitySet::bound_model_ids`](crate::gg::GgCapabilitySet::bound_model_ids).\n\n**Filled in by the backend at enqueue, not sent by a client.** The catalog the\nbackend owns is the single store of model facts; resolving the window here — once,\nwhere the catalog lives — is what lets gg carry no model table of its own and\nmakes the figure a *pushed* input to the run rather than something the run\ncontainer has to go and fetch. A client that sends it is overwritten. Empty when\nthe catalog knows no window for any bound model, and for every non-gg run.",
+      "type": "object"
+    },
     "harness": {
       "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/HarnessSlug",
       "description": "Agent harness to drive."

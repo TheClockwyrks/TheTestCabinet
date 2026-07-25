@@ -42,14 +42,21 @@ use test_cabinet_core::gg::{
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
-/// An invocation over `dir` configured with `set`.
+/// An invocation over `dir` configured with `set`, with no catalog windows pushed in
+/// (the offline mock models have none), so window resolution falls back to the default.
 fn invocation(dir: &Path, set: GgCapabilitySet) -> GgInvocation {
     GgInvocation {
         session_id: "run-test".to_string(),
         workspace_dir: dir.to_path_buf(),
         prompt: "Build a tiny game.".to_string(),
         capability_set: set,
+        model_windows: BTreeMap::new(),
     }
+}
+
+/// The catalog-pushed window map for one model, as a launch supplies it.
+fn windows(model_id: &str, window: u64) -> BTreeMap<String, u64> {
+    BTreeMap::from([(model_id.to_string(), window)])
 }
 
 /// Seed the default-skills directory (`.gg/skills`) in `dir` with the skill the default
@@ -1006,56 +1013,59 @@ async fn run_omits_context_breakdown_when_visibility_disabled() {
     ));
 }
 
-/// The window limit prefers an explicit capability param, then the built-in per-model
-/// table, then the default.
+/// The window a run is measured against is the catalog's figure for the model, pushed in
+/// with the invocation — and, with no figure and no override, the conservative default. gg
+/// holds no model table of its own to guess from.
 #[test]
-fn resolve_window_limit_prefers_param_then_table_then_default() {
-    // An explicit param on the context-visibility capability narrows the table's figure.
+fn resolve_window_limit_takes_the_catalog_window_then_the_default() {
+    let set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
+    let catalog = windows("anthropic/claude-opus-4.8", 200_000);
+    assert_eq!(
+        resolve_window_limit(&set, &catalog, "anthropic/claude-opus-4.8"),
+        Some(200_000)
+    );
+
+    // A model the launch pushed no window for — an offline mock, or a model the catalog
+    // has no observation for — falls back to the default rather than being guessed at.
+    assert_eq!(
+        resolve_window_limit(&set, &catalog, "mock/echo"),
+        Some(DEFAULT_CONTEXT_WINDOW)
+    );
+    assert_eq!(
+        resolve_window_limit(&set, &BTreeMap::new(), "anthropic/claude-opus-4.8"),
+        Some(DEFAULT_CONTEXT_WINDOW)
+    );
+}
+
+/// The `windowLimit` param narrows the catalog's figure, and a zero (or non-integer) one is
+/// ignored in favor of it.
+#[test]
+fn resolve_window_limit_narrows_with_the_param() {
     let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
     for cap in &mut set.capabilities {
         if cap.id == CAPABILITY_CONTEXT_VISIBILITY {
             cap.params = json!({ "windowLimit": 42_000 });
         }
     }
+    let catalog = windows("anthropic/claude-opus-4.8", 200_000);
     assert_eq!(
-        resolve_window_limit(&set, "anthropic/claude-opus-4.8"),
+        resolve_window_limit(&set, &catalog, "anthropic/claude-opus-4.8"),
         Some(42_000)
     );
 
-    // No param: the built-in table resolves by a model-id substring.
-    let set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
+    for cap in &mut set.capabilities {
+        if cap.id == CAPABILITY_CONTEXT_VISIBILITY {
+            cap.params = json!({ "windowLimit": 0 });
+        }
+    }
     assert_eq!(
-        resolve_window_limit(&set, "anthropic/claude-opus-4.8"),
+        resolve_window_limit(&set, &catalog, "anthropic/claude-opus-4.8"),
         Some(200_000)
-    );
-
-    // The table covers the catalogued families, and a more specific entry wins over the
-    // family-wide one it is a prefix of.
-    assert_eq!(
-        resolve_window_limit(&set, "openai/gpt-5.6-sol"),
-        Some(1_050_000)
-    );
-    assert_eq!(
-        resolve_window_limit(&set, "openai/gpt-5.4-mini"),
-        Some(400_000)
-    );
-    assert_eq!(resolve_window_limit(&set, "x-ai/grok-4.5"), Some(500_000));
-    assert_eq!(resolve_window_limit(&set, "x-ai/grok-4.3"), Some(1_000_000));
-    assert_eq!(resolve_window_limit(&set, "z-ai/glm-5.1"), Some(202_752));
-    assert_eq!(
-        resolve_window_limit(&set, "qwen/qwen3.7-max"),
-        Some(1_000_000)
-    );
-
-    // An unrecognized id (and a zero param, which is ignored) falls back to the default.
-    assert_eq!(
-        resolve_window_limit(&set, "mock/echo"),
-        Some(DEFAULT_CONTEXT_WINDOW)
     );
 }
 
-/// The window-limit override may only *narrow* the model's window: the real window is a hard
-/// limit, so an override above it is clamped back down to it rather than believed.
+/// The window-limit override may only *narrow* the model's window: the catalog's figure is a
+/// hard limit, so an override above it is clamped back down to it rather than believed.
 #[test]
 fn resolve_window_limit_clamps_an_override_above_the_model_window() {
     let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
@@ -1064,28 +1074,31 @@ fn resolve_window_limit_clamps_an_override_above_the_model_window() {
             cap.params = json!({ "windowLimit": 2_000_000 });
         }
     }
+    let catalog = windows("anthropic/claude-opus-4.8", 200_000);
     assert_eq!(
-        resolve_window_limit(&set, "anthropic/claude-opus-4.8"),
+        resolve_window_limit(&set, &catalog, "anthropic/claude-opus-4.8"),
         Some(200_000)
     );
 
-    // And an unrecognized model is clamped to the conservative default it falls back to.
+    // With no catalog figure there is nothing to clamp against, so the override stands as
+    // given — it is then the operator supplying the fact the catalog lacked.
     assert_eq!(
-        resolve_window_limit(&set, "mock/echo"),
-        Some(DEFAULT_CONTEXT_WINDOW)
+        resolve_window_limit(&set, &BTreeMap::new(), "anthropic/claude-opus-4.8"),
+        Some(2_000_000)
     );
 }
 
 /// Enabling compaction reserves the summary headroom out of the window the agent is
 /// measured against — including out of a narrowed override — so the summarization call has
-/// room to run. The override and the reserve compose.
+/// room to run. The catalog window, the override, and the reserve compose.
 #[test]
 fn resolve_window_limit_reserves_compaction_headroom() {
     let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
     set.capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_COMPACTION));
+    let catalog = windows("anthropic/claude-opus-4.8", 200_000);
     assert_eq!(
-        resolve_window_limit(&set, "anthropic/claude-opus-4.8"),
+        resolve_window_limit(&set, &catalog, "anthropic/claude-opus-4.8"),
         Some(160_000)
     );
 
@@ -1095,8 +1108,28 @@ fn resolve_window_limit_reserves_compaction_headroom() {
         }
     }
     assert_eq!(
-        resolve_window_limit(&set, "anthropic/claude-opus-4.8"),
+        resolve_window_limit(&set, &catalog, "anthropic/claude-opus-4.8"),
         Some(40_000)
+    );
+}
+
+/// Each agent is measured against **its own** model's window: a multi-model run carries one
+/// catalog entry per bound model, and a subagent on a smaller model must not be measured
+/// against the primary's window.
+#[test]
+fn resolve_window_limit_is_per_model() {
+    let set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
+    let catalog = BTreeMap::from([
+        ("anthropic/claude-opus-4.8".to_string(), 200_000),
+        ("openai/gpt-5.4-mini".to_string(), 400_000),
+    ]);
+    assert_eq!(
+        resolve_window_limit(&set, &catalog, "anthropic/claude-opus-4.8"),
+        Some(200_000)
+    );
+    assert_eq!(
+        resolve_window_limit(&set, &catalog, "openai/gpt-5.4-mini"),
+        Some(400_000)
     );
 }
 
@@ -1114,7 +1147,11 @@ fn resolve_window_limit_honors_the_override_on_any_capability() {
         }
     }
     assert_eq!(
-        resolve_window_limit(&set, "anthropic/claude-opus-4.8"),
+        resolve_window_limit(
+            &set,
+            &windows("anthropic/claude-opus-4.8", 200_000),
+            "anthropic/claude-opus-4.8"
+        ),
         Some(32_000)
     );
 }

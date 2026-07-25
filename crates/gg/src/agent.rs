@@ -70,7 +70,7 @@
 //! for any other reason is a *run outcome* recorded in the telemetry, not a process
 //! failure, and exits `0`.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -134,8 +134,8 @@ const PARAM_MAX_RUNTIME_SECS: &str = "maxRuntimeSecs";
 
 /// Capability param (context-visibility by convention, read from any capability that
 /// carries it) naming the context window to run the model against, in tokens. It may only
-/// *narrow* the [built-in table's](builtin_window_for) figure — the model's real window is a
-/// hard limit — so a larger value is clamped to it, and a value of `0` or a non-integer is
+/// *narrow* the [catalog's figure](GgInvocation::model_windows) — the model's real window is
+/// a hard limit — so a larger value is clamped to it, and a value of `0` or a non-integer is
 /// ignored. Narrowing it is how a study exercises compaction against a 1M-token model
 /// without paying for a million tokens of input.
 const PARAM_WINDOW_LIMIT: &str = "windowLimit";
@@ -145,10 +145,12 @@ const PARAM_WINDOW_LIMIT: &str = "windowLimit";
 /// given. When absent, [`DEFAULT_SKILLS_DIR`] under the workspace is used.
 const PARAM_SKILLS_DIR: &str = "dir";
 
-/// The context-window limit assumed when neither the [`PARAM_WINDOW_LIMIT`] param nor
-/// the [built-in table](builtin_window_for) resolves one. A conservative modern default
-/// (128k) — the accounting is an estimate and the exact figure only sets the fullness
-/// denominator, so a run without a configured window still reports a plausible ratio.
+/// The context-window limit assumed when neither the [`PARAM_WINDOW_LIMIT`] param nor the
+/// [catalog's figures](GgInvocation::model_windows) resolve one — an offline mock run, or a
+/// model the catalog has no observation for. A conservative modern default (128k): the
+/// accounting is an estimate and the exact figure only sets the fullness denominator, so a
+/// run whose window could not be resolved still reports a plausible ratio, and errs toward
+/// compacting early rather than overflowing.
 const DEFAULT_CONTEXT_WINDOW: u64 = 128_000;
 
 /// The base system prompt seeding the loop. The available tools are appended per run
@@ -725,6 +727,11 @@ struct Orchestrator {
     /// The shared token estimator (built once — the BPE vocab is expensive), backing every agent's
     /// context accounting.
     estimator: Arc<dyn TokenEstimator>,
+    /// The [model catalog's context window](GgInvocation::model_windows) for each model this run
+    /// can bind, as pushed in with the invocation. Consulted per agent, since a
+    /// [multi-model](https://docs.testcabinet.ai/gg/multi-model/) run measures each agent against
+    /// its own model's window.
+    model_windows: BTreeMap<String, u64>,
     /// The resolved loop bounds shared by every agent.
     bounds: LoopBounds,
     /// The optional shared wall-clock deadline (from run start) every agent stops at.
@@ -787,6 +794,7 @@ impl Orchestrator {
             skills_library: skills.library(),
             skills_enabled: set.is_enabled(CAPABILITY_SKILLS),
             estimator: Arc::new(BpeTokenEstimator::new()),
+            model_windows: invocation.model_windows.clone(),
             bounds,
             deadline,
             tasks: Mutex::new(Vec::new()),
@@ -815,7 +823,7 @@ impl Orchestrator {
     fn context_setup(&self, model_id: &str) -> ContextSetup {
         ContextSetup {
             estimator: Arc::clone(&self.estimator),
-            window_limit: resolve_window_limit(&self.caps, model_id),
+            window_limit: resolve_window_limit(&self.caps, &self.model_windows, model_id),
             emit_breakdown: self.caps.is_enabled(CAPABILITY_CONTEXT_VISIBILITY),
         }
     }
@@ -4324,24 +4332,39 @@ fn apply_context_reclaim(
 /// Resolve the context window the active model's fullness ratio is measured against, in two
 /// steps:
 ///
-/// 1. **The model's window**, from the [built-in per-model table](builtin_window_for) or
-///    [`DEFAULT_CONTEXT_WINDOW`], **narrowed** by an explicit [`PARAM_WINDOW_LIMIT`]
-///    override. The override may only make the window *smaller*: the model's real window is
-///    a hard limit, so a larger "override" is not a configuration gg can honor — it is
-///    clamped rather than rejected, so a study that raises a window it misjudged still runs.
+/// 1. **The model's window**, from `windows` — the model catalog's figure for each bound
+///    model, [pushed in with the invocation](GgInvocation::model_windows) — **narrowed** by
+///    an explicit [`PARAM_WINDOW_LIMIT`] override. The override may only make the window
+///    *smaller*: the model's real window is a hard limit, so a larger "override" is not a
+///    configuration gg can honor — it is clamped rather than rejected, so a study that
+///    raises a window it misjudged still runs.
 /// 2. **The working window**, [reduced by the summary headroom](crate::compaction::working_window)
 ///    when compaction is on, reserving room for the summarization call itself.
 ///
+/// When the catalog knows no window for the model there is nothing to clamp against, so an
+/// explicit override stands as given — it is then the operator supplying the fact the
+/// catalog lacked — and with neither, [`DEFAULT_CONTEXT_WINDOW`] backstops it. gg
+/// deliberately keeps **no table of its own** to fall back on: a second store of model facts
+/// is a second thing to get wrong, and it would silently mask a catalog gap instead of
+/// showing it.
+///
 /// The limit is always known (the default backstops it); it is an [`Option`] on the wire so
 /// a future estimator can report "unknown" without a schema change.
-fn resolve_window_limit(set: &GgCapabilitySet, model_id: &str) -> Option<u64> {
-    let model_window = builtin_window_for(model_id).unwrap_or(DEFAULT_CONTEXT_WINDOW);
+fn resolve_window_limit(
+    set: &GgCapabilitySet,
+    windows: &BTreeMap<String, u64>,
+    model_id: &str,
+) -> Option<u64> {
     // The override lives on context-visibility by convention, but it governs compaction and
     // the fullness signal too — so, like the loop bounds, it is honored on any capability
     // that carries it rather than being silently ignored when visibility is ablated off.
-    let configured = param_u64(set, PARAM_WINDOW_LIMIT)
-        .filter(|&n| n > 0)
-        .map_or(model_window, |n| n.min(model_window));
+    let override_limit = param_u64(set, PARAM_WINDOW_LIMIT).filter(|&n| n > 0);
+    let configured = match (windows.get(model_id).copied(), override_limit) {
+        (Some(model_window), Some(limit)) => limit.min(model_window),
+        (Some(model_window), None) => model_window,
+        (None, Some(limit)) => limit,
+        (None, None) => DEFAULT_CONTEXT_WINDOW,
+    };
     Some(compaction::working_window(set, configured))
 }
 
@@ -4570,41 +4593,6 @@ fn worktrees_root_for(workspace_dir: &Path) -> PathBuf {
 /// The first 12 characters of a commit sha, for a compact log line.
 fn short_sha(sha: &str) -> &str {
     sha.get(..12).unwrap_or(sha)
-}
-
-/// A small built-in table of **approximate** context-window sizes keyed by a substring
-/// of the model id (matched case-insensitively). Deliberately coarse: it only sets the
-/// fullness denominator, and a run can override it with [`PARAM_WINDOW_LIMIT`]. Returns
-/// `None` for an id it does not recognize, so the caller can fall back to a default.
-fn builtin_window_for(model_id: &str) -> Option<u64> {
-    /// `(id substring, window tokens)`, first match wins; ordered most-specific first.
-    /// The families here are the ones the model catalog actually lists, so a run
-    /// against a current model measures fullness against roughly the right
-    /// denominator rather than silently taking the 128k default — which, for the
-    /// million-token families below, overstates fullness by ~8×.
-    const TABLE: &[(&str, u64)] = &[
-        ("gpt-4.1", 1_047_576),
-        ("gpt-4o", 128_000),
-        ("gpt-5.4-mini", 400_000),
-        ("gpt-5.4-nano", 400_000),
-        ("gpt-5", 1_050_000),
-        ("o200k", 128_000),
-        ("claude", 200_000),
-        ("gemini", 1_048_576),
-        ("grok-4.5", 500_000),
-        ("grok", 1_000_000),
-        ("qwen", 1_000_000),
-        ("glm-5.1", 202_752),
-        ("glm", 1_048_576),
-        ("deepseek", 1_048_576),
-        ("kimi", 262_144),
-        ("llama", 128_000),
-    ];
-    let id = model_id.to_ascii_lowercase();
-    TABLE
-        .iter()
-        .find(|(needle, _)| id.contains(needle))
-        .map(|&(_, window)| window)
 }
 
 /// The system prompt for a run, reflecting the tools the enabled capabilities offer

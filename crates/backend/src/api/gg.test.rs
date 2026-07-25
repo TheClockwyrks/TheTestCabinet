@@ -98,6 +98,7 @@ fn build_new_job_leaves_gg_config_null_for_a_conventional_run() {
         auth_mode: None,
         retry_count: None,
         gg_capability_set: None,
+        gg_model_windows: Default::default(),
     };
     let new = build_new_job(&launch, "2026-07-23T00:00:00Z").unwrap();
     assert!(new.gg_config_json.is_none());
@@ -132,4 +133,105 @@ async fn enqueue_persists_and_retrieves_the_gg_capability_set() {
         claimed.gg_capability_set,
         Some(sample_request().capability_set)
     );
+}
+
+// ---------------------------------------------------------------------------
+// The per-model context windows pushed onto a gg launch
+// ---------------------------------------------------------------------------
+
+/// A price observation carrying `context_length` for `model_id`.
+fn window_observation(model_id: &str, context_length: i64) -> crate::db::PriceWrite {
+    crate::db::PriceWrite {
+        model_id: model_id.to_string(),
+        observed_at: "2026-01-01T00:00:00Z".to_string(),
+        uncached_input: Some(1.0),
+        cached_input: None,
+        output: Some(2.0),
+        context_length: Some(context_length),
+        released_at: None,
+    }
+}
+
+/// Enqueuing a gg run resolves the context window of **every model it binds** from the
+/// model catalog and stamps it onto the launch body, so the figure travels to the run
+/// rather than being looked up from inside the run container. A bound model the catalog
+/// knows nothing about (the offline mock) simply contributes no entry.
+#[tokio::test]
+async fn launch_resolves_the_bound_models_context_windows() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.insert_price_observation(window_observation("anthropic/claude-opus-4.8", 200_000))
+        .await
+        .unwrap();
+    db.insert_price_observation(window_observation("openai/gpt-5.4-mini", 400_000))
+        .await
+        .unwrap();
+
+    let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
+    set.slots.push(test_cabinet_core::gg::GgSlotBinding::new(
+        "subagent",
+        "openai/gpt-5.4-mini",
+    ));
+    // A third slot on a model the catalog has never priced.
+    set.slots.push(test_cabinet_core::gg::GgSlotBinding::new(
+        "judge",
+        "mock/echo",
+    ));
+    let mut launch = GgRunRequest {
+        capability_set: set,
+        ..sample_request()
+    }
+    .into_launch_body()
+    .unwrap();
+
+    resolve_gg_model_windows(&db, &mut launch).await;
+
+    assert_eq!(
+        launch.gg_model_windows,
+        std::collections::BTreeMap::from([
+            ("anthropic/claude-opus-4.8".to_string(), 200_000),
+            ("openai/gpt-5.4-mini".to_string(), 400_000),
+        ])
+    );
+}
+
+/// A client cannot smuggle a window in: the resolution overwrites whatever arrived,
+/// because this is a backend-owned fact and not a launch input.
+#[tokio::test]
+async fn launch_overwrites_client_supplied_windows() {
+    let db = Db::connect_in_memory().await.unwrap();
+    let mut launch = sample_request().into_launch_body().unwrap();
+    launch
+        .gg_model_windows
+        .insert("mock/echo".to_string(), 999_999);
+
+    resolve_gg_model_windows(&db, &mut launch).await;
+
+    assert!(launch.gg_model_windows.is_empty());
+}
+
+/// A conventional (non-gg) launch carries no capability set and so resolves nothing —
+/// the windows are a gg concern only.
+#[tokio::test]
+async fn launch_resolves_nothing_for_a_conventional_run() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.insert_price_observation(window_observation("anthropic/claude-opus-4.8", 200_000))
+        .await
+        .unwrap();
+    let mut launch = LaunchBody {
+        test_case: "pong".to_string(),
+        version: "v1.0.0".to_string(),
+        variant: "base".to_string(),
+        harness: HarnessSlug::Claude,
+        model: "anthropic/claude-opus-4.8".to_string(),
+        orchestrator: None,
+        max_runtime_seconds: None,
+        auth_mode: None,
+        retry_count: None,
+        gg_capability_set: None,
+        gg_model_windows: Default::default(),
+    };
+
+    resolve_gg_model_windows(&db, &mut launch).await;
+
+    assert!(launch.gg_model_windows.is_empty());
 }

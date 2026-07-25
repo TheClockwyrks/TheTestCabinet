@@ -15,6 +15,7 @@
 //! resolution into the on-disk inputs the seeder, prompt renderer, and validator
 //! consume unchanged.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
@@ -385,6 +386,24 @@ pub trait BackendClient: Send + Sync {
         _model_id: &str,
     ) -> Result<Vec<PriorGameJamEntry>> {
         Ok(Vec::new())
+    }
+
+    /// The model catalog's context window, in tokens, for every model it lists one
+    /// for — keyed by every id a model answers to (its slug and each of its
+    /// aliases). (`GET /models`)
+    ///
+    /// The catalog is the single store of model facts, so this is how a client that
+    /// launches a run **outside** the backend's own enqueue path (the CLI's local
+    /// `tcab gg-run`) resolves the same windows the backend would have pushed. A
+    /// [gg](crate::gg) run carries them into its
+    /// [invocation](crate::gg::GgInvocation::model_windows) so the agent loop never
+    /// has to hold a model table of its own.
+    ///
+    /// Defaults to empty so a backend client without this route (or a test stub)
+    /// simply resolves no windows, and gg falls back to its default; the HTTP client
+    /// overrides it.
+    async fn model_windows(&self) -> Result<BTreeMap<String, u64>> {
+        Ok(BTreeMap::new())
     }
 
     /// Enqueue a run on the backend's job queue. (`POST /jobs`, bearer auth)
@@ -854,6 +873,24 @@ impl BackendClient for HttpBackendClient {
             .get_json(&format!("/test-cases/{}/versions", encode(slug)))
             .await?;
         Ok(body.versions)
+    }
+
+    async fn model_windows(&self) -> Result<BTreeMap<String, u64>> {
+        let body: ModelCatalogBody = self.get_json("/models").await?;
+        let mut windows = BTreeMap::new();
+        for model in body.models {
+            let Some(window) = model.context_length else {
+                continue;
+            };
+            // A model is launched under one of its aliases (the canonical ids), while
+            // the entry is named by its curated slug; key both so a lookup by the id a
+            // run actually names resolves.
+            windows.insert(model.slug, window);
+            for alias in model.aliases {
+                windows.insert(alias.slug, window);
+            }
+        }
+        Ok(windows)
     }
 
     async fn resolve_version(&self, slug: &str, version: &str) -> Result<TestCaseVersion> {
@@ -1519,6 +1556,34 @@ impl HttpBackendClient {
 #[serde(rename_all = "camelCase")]
 struct CatalogBody {
     test_cases: Vec<CatalogCaseBody>,
+}
+
+/// The slice of `GET /models` this client reads: each entry's ids and its observed
+/// context window. Deliberately a narrow local shape rather than the backend's full
+/// `ModelOut` — `core` must not depend on the backend crate, and everything else the
+/// catalog carries (prices, logos, prose) is a console concern.
+#[derive(Deserialize)]
+struct ModelCatalogBody {
+    models: Vec<ModelCatalogEntry>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ModelCatalogEntry {
+    /// The curated slug, or the canonical model id for a derived entry.
+    slug: String,
+    /// The canonical ids this entry claims — a curated model is launched under one of
+    /// these, not under its display slug, so both must resolve to the same window.
+    #[serde(default)]
+    aliases: Vec<ModelCatalogAlias>,
+    /// The latest observed context window in tokens, when the catalog has one.
+    #[serde(default)]
+    context_length: Option<u64>,
+}
+
+#[derive(Deserialize)]
+struct ModelCatalogAlias {
+    slug: String,
 }
 
 #[derive(Deserialize)]

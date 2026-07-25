@@ -420,7 +420,10 @@ pub(crate) async fn run_gg(
 }
 
 /// Construct the [`GgInvocation`] for this run: the run id as the session id, the
-/// seeded workspace, the rendered prompt, and the run's validated capability set.
+/// seeded workspace, the rendered prompt, the run's validated capability set, and the
+/// [per-model context windows](GgInvocation::model_windows) the launch resolved from the
+/// model catalog (gg holds no model table of its own, so what it is told here is all it
+/// knows about the models it runs).
 fn build_invocation(
     request: &RunRequest,
     base_prompt: &str,
@@ -432,6 +435,7 @@ fn build_invocation(
         workspace_dir: PathBuf::from(workspace_dir),
         prompt: base_prompt.to_string(),
         capability_set: request.gg_capability_set()?.clone(),
+        model_windows: request.gg_model_windows.clone(),
     })
 }
 

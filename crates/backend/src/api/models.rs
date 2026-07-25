@@ -393,6 +393,47 @@ pub async fn logo(
     Ok(Json(LogoFetchOut { logo_svg }))
 }
 
+/// The catalog's context window, in tokens, for the model a run names — the latest
+/// observed `context_length` for it — or `None` when the catalog has no figure.
+///
+/// The catalog is the **single store of model facts**, so this is the one place a
+/// context window is looked up: a run that needs one (a [gg](test_cabinet_core::gg)
+/// run, whose fullness accounting and compaction trigger are measured against it) is
+/// told the answer at launch rather than keeping a table of its own.
+///
+/// The lookup mirrors how prices are recorded: observations are keyed by the run's
+/// canonical model id, except for a **curated** model, whose observations are stored
+/// under its configured OpenRouter slug so every alias shares one history. So the
+/// canonical id is tried first and the curated slug second.
+///
+/// Best-effort by construction: a model with no price observation yet (the catalog
+/// learns one when the model is first priced) simply has no window, which the caller
+/// treats as "unknown" rather than an error.
+pub async fn context_window_for(
+    db: &crate::db::Db,
+    model_id: &str,
+    harness: HarnessSlug,
+) -> crate::error::Result<Option<u64>> {
+    let canonical = canonical_model_id(model_id, harness);
+    if let Some(window) = latest_context_length(db, &canonical).await? {
+        return Ok(Some(window));
+    }
+    let Some(slug) = db.openrouter_slug_for_alias(&canonical).await? else {
+        return Ok(None);
+    };
+    latest_context_length(db, &slug).await
+}
+
+/// The `context_length` on the latest price observation stored under `key`, when it
+/// carries one (an older observation, recorded before the column existed, may not).
+async fn latest_context_length(db: &crate::db::Db, key: &str) -> crate::error::Result<Option<u64>> {
+    Ok(db
+        .latest_price(key)
+        .await?
+        .and_then(|row| row.context_length)
+        .and_then(|length| u64::try_from(length).ok()))
+}
+
 /// Compose the merged catalog from curated configs, the full price history, and
 /// the distinct `(model_id, harness_slug)` pairs some runs reference.
 ///

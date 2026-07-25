@@ -93,6 +93,18 @@ pub struct LaunchBody {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub gg_capability_set: Option<GgCapabilitySet>,
+    /// The context window, in tokens, of each model this **gg** run may bind — the
+    /// model catalog's figure for each id in
+    /// [`GgCapabilitySet::bound_model_ids`](crate::gg::GgCapabilitySet::bound_model_ids).
+    ///
+    /// **Filled in by the backend at enqueue, not sent by a client.** The catalog the
+    /// backend owns is the single store of model facts; resolving the window here — once,
+    /// where the catalog lives — is what lets gg carry no model table of its own and
+    /// makes the figure a *pushed* input to the run rather than something the run
+    /// container has to go and fetch. A client that sends it is overwritten. Empty when
+    /// the catalog knows no window for any bound model, and for every non-gg run.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub gg_model_windows: std::collections::BTreeMap<String, u64>,
 }
 
 /// The claimed job the dispatcher receives from `POST /jobs/next`: the id, the

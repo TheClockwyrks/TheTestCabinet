@@ -186,6 +186,11 @@ impl Config {
             // engine's `RunRequest::validate` enforces that invariant at the top of
             // the run.
             gg_capability_set: launch.gg_capability_set.clone(),
+            // The per-model context windows the backend resolved from the model
+            // catalog at enqueue, carried through to the gg invocation. The driver
+            // never resolves them itself: the catalog lives on the backend, and this
+            // is the pushed answer.
+            gg_model_windows: launch.gg_model_windows.clone(),
         }
     }
 }

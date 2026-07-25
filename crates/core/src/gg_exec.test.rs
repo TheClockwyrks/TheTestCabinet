@@ -392,6 +392,7 @@ fn gg_request(model: &str) -> RunRequest {
         max_runtime_override: None,
         container_image: None,
         gg_capability_set: Some(GgCapabilitySet::minimal(model)),
+        gg_model_windows: Default::default(),
     }
 }
 
@@ -406,4 +407,24 @@ fn build_invocation_carries_the_run_id_workspace_prompt_and_set() {
         invocation.capability_set.model_for_slot(PRIMARY_SLOT),
         Some("mock/echo")
     );
+}
+
+/// The per-model context windows the launch resolved from the model catalog travel into
+/// the invocation verbatim — this is how gg learns a window without holding a model table
+/// (or reaching back out of the run container) of its own.
+#[test]
+fn build_invocation_carries_the_resolved_model_windows() {
+    let mut request = gg_request("anthropic/claude-opus-4.8");
+    request.gg_model_windows =
+        std::collections::BTreeMap::from([("anthropic/claude-opus-4.8".to_string(), 200_000)]);
+    let invocation = build_invocation(&request, "the build prompt", "/work", "run-123").unwrap();
+    assert_eq!(
+        invocation.model_windows.get("anthropic/claude-opus-4.8"),
+        Some(&200_000)
+    );
+
+    // An unresolved one is simply absent, not zero — gg then falls back to its default.
+    let invocation =
+        build_invocation(&gg_request("mock/echo"), "prompt", "/work", "run-123").unwrap();
+    assert!(invocation.model_windows.is_empty());
 }

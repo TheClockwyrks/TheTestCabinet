@@ -16,6 +16,7 @@
 //! `crates/contract-codegen` — never edited by hand. Regenerate with
 //! `npm run gen:contract` after any change here. JSON is camelCase.
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
@@ -532,6 +533,29 @@ impl GgCapabilitySet {
         self.model_slots.iter().find(|s| s.name == name)
     }
 
+    /// Every distinct model this set can actually run an agent on, in binding order —
+    /// the resolved [slot bindings'](GgSlotBinding) model ids, deduplicated.
+    ///
+    /// This is the list a launch resolves per-model facts for (the context window each
+    /// model's agents are measured against, pushed in via
+    /// [`GgInvocation::model_windows`]): a [multi-model](https://docs.testcabinet.ai/gg/multi-model/)
+    /// run spans several models, so one figure for "the run's model" would be wrong for
+    /// every agent off the primary slot. A still-[deferred](GgSlotBinding::model_slot)
+    /// binding names no model and is skipped.
+    pub fn bound_model_ids(&self) -> Vec<&str> {
+        let mut ids: Vec<&str> = Vec::new();
+        for binding in &self.slots {
+            if !binding.is_resolved() {
+                continue;
+            }
+            let id = binding.model_id.trim();
+            if !ids.contains(&id) {
+                ids.push(id);
+            }
+        }
+        ids
+    }
+
     /// The role slots whose binding is still [deferred](GgSlotBinding::model_slot) to a
     /// [model slot](GgModelSlot) — the launch inputs a configuration is still waiting
     /// on, in binding order.
@@ -799,6 +823,20 @@ pub struct GgInvocation {
     /// configuration that parses but cannot launch a real session).
     #[serde(default)]
     pub capability_set: GgCapabilitySet,
+    /// The context window, in tokens, of each model this run may bind — the **model
+    /// catalog's** figure for it, resolved when the run was triggered and pushed in
+    /// here. Keyed by the model id the [binding](GgSlotBinding::model_id) names, so a
+    /// [multi-model](https://docs.testcabinet.ai/gg/multi-model/) run carries one entry
+    /// per bound model and each agent is measured against its own model's window.
+    ///
+    /// gg keeps **no model table of its own**. The catalog the backend owns is the
+    /// single store of model facts, and a run is *told* what it needs at launch rather
+    /// than querying for it from inside the run container — where it has neither the
+    /// backend's address nor a reason to reach it. A model the catalog has no window for
+    /// is simply absent from the map, and gg falls back to a conservative default (or to
+    /// an explicitly configured `windowLimit`).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub model_windows: BTreeMap<String, u64>,
 }
 
 /// The **source** a context-window contribution is attributed to, for the per-source

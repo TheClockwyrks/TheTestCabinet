@@ -43,7 +43,7 @@ use crate::snapshot::run_summary_score;
 use crate::store::StoredManifest;
 
 use super::AppState;
-use super::jobs::{LaunchAck, build_new_job, now_rfc3339};
+use super::jobs::{LaunchAck, build_new_job, now_rfc3339, resolve_gg_model_windows};
 
 /// The default variant a gg run targets when the request omits one — the same
 /// baseline variant every case defines.
@@ -144,6 +144,9 @@ impl GgRunRequest {
             auth_mode: None,
             retry_count: self.retry_count,
             gg_capability_set: Some(self.capability_set),
+            // Resolved from the model catalog by the handler, which has the database
+            // this lowering does not; never taken from the request.
+            gg_model_windows: Default::default(),
         })
     }
 }
@@ -192,7 +195,11 @@ pub async fn launch_gg(
         )));
     }
 
-    let launch = body.into_launch_body().map_err(ApiError::bad_request)?;
+    let mut launch = body.into_launch_body().map_err(ApiError::bad_request)?;
+    // Tell the run what the catalog knows about the models it binds — the context
+    // window each agent's fullness accounting and compaction trigger are measured
+    // against. gg keeps no model table of its own, so this push is where it learns.
+    resolve_gg_model_windows(&state.db, &mut launch).await;
     let now = now_rfc3339()?;
     let new = build_new_job(&launch, &now).map_err(ApiError::bad_request)?;
     let id = new.id.clone();

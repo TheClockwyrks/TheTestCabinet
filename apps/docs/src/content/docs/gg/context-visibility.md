@@ -17,20 +17,36 @@ memories, file contents, the thread/history, tool output, and so on.
 gg resolves the fullness denominator per agent, from the agent's own model, in two
 steps:
 
-1. **The model's window**, from a built-in per-model table (with a conservative
-   128k fallback for an id it does not recognize), optionally **narrowed** by the
-   `windowLimit` capability parameter.
+1. **The model's window**, from the [model catalog](/quickstarts/devops/add-or-update-a-model/),
+   optionally **narrowed** by the `windowLimit` capability parameter.
 2. **The working window** — that figure less the summary reserve when
    [compaction](/gg/compaction/#enabling-compaction-shrinks-the-window-the-agent-gets)
    is on.
 
+**gg holds no model table of its own.** The catalog the backend owns is the single
+store of model facts, so the window is resolved *where the catalog lives* and
+**pushed into the run** when it is triggered: the backend looks up every model the
+capability set binds at enqueue and stamps the figures onto the launch, which carry
+through the driver into gg's invocation. A [multi-model](/gg/multi-model/) run
+carries one entry per bound model, so each agent is measured against its own model's
+window rather than the primary's. A run container never reaches back out for this.
+(The local `tcab gg-run` path has no backend behind it, so it reads the same catalog
+over `GET /models` from whichever backend is configured.)
+
+A model the catalog has no observation for contributes no figure, and gg falls back
+to a conservative 128k default — it deliberately does not guess from the model id,
+because a second store of model facts is a second thing to get wrong, and guessing
+would hide the catalog gap instead of showing it.
+
 `windowLimit` can only make the window *smaller*. The model's real window is a hard
 limit, so a larger value is not a configuration gg can honor; it is clamped back
-down to the model's window rather than rejected, so a study that misjudged a window
-still runs. Narrowing it is how you exercise compaction against a million-token
-model **without spending a million tokens of input per boundary**: give the run a
-100k window and the same summarize-and-restart behavior plays out an order of
-magnitude sooner and cheaper.
+down to the catalog's figure rather than rejected, so a study that misjudged a window
+still runs. (With no catalog figure there is nothing to clamp against, so an explicit
+`windowLimit` stands as given — it is then you supplying the fact the catalog
+lacked.) Narrowing it is how you exercise compaction against a million-token model
+**without spending a million tokens of input per boundary**: give the run a 100k
+window and the same summarize-and-restart behavior plays out an order of magnitude
+sooner and cheaper.
 
 The parameter sits on this capability by convention, but gg honors it on whichever
 capability carries it — it governs compaction and the fullness signal too, so

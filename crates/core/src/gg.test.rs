@@ -168,6 +168,31 @@ fn a_deferred_binding_is_unresolved_until_a_launch_fills_its_model_slot() {
     );
 }
 
+/// The models a launch resolves per-model facts for: every distinct model an agent can
+/// run on, deduplicated, with a still-deferred binding (which names no model) skipped.
+#[test]
+fn bound_model_ids_lists_each_resolved_model_once() {
+    let set = GgCapabilitySet {
+        model_slots: Vec::new(),
+        preset: None,
+        capabilities: Vec::new(),
+        slots: vec![
+            GgSlotBinding::new(PRIMARY_SLOT, "anthropic/claude-opus-4.8"),
+            GgSlotBinding::new("subagent", "openai/gpt-5.4-mini"),
+            // Two roles sharing one model contribute one entry.
+            GgSlotBinding::new("judge", "openai/gpt-5.4-mini"),
+            GgSlotBinding::deferred("reviewer", "critic"),
+        ],
+        disabled_tools: Vec::new(),
+    };
+    assert_eq!(
+        set.bound_model_ids(),
+        vec!["anthropic/claude-opus-4.8", "openai/gpt-5.4-mini"]
+    );
+
+    assert!(GgCapabilitySet::default().bound_model_ids().is_empty());
+}
+
 #[test]
 fn a_set_without_model_slots_deserializes_unchanged() {
     // Every configuration saved before model slots existed omits both fields.

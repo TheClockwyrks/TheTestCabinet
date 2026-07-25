@@ -64,9 +64,10 @@ use super::AppState;
 pub async fn launch(
     State(state): State<AppState>,
     _user: AuthUser,
-    Json(body): Json<LaunchBody>,
+    Json(mut body): Json<LaunchBody>,
 ) -> Result<Response, ApiError> {
     let now = now_rfc3339()?;
+    resolve_gg_model_windows(&state.db, &mut body).await;
     let new = build_new_job(&body, &now).map_err(ApiError::bad_request)?;
     let id = new.id.clone();
 
@@ -116,6 +117,11 @@ pub async fn launch_batch(
     let mut items: Vec<LaunchBatchItem> = Vec::with_capacity(body.runs.len());
     let mut to_insert: Vec<crate::db::NewJob> = Vec::with_capacity(body.runs.len());
     for run in &body.runs {
+        // Resolve each run's model windows against the catalog before minting it, so a
+        // batched gg run is configured exactly as a singly-launched one is.
+        let mut run = run.clone();
+        resolve_gg_model_windows(&state.db, &mut run).await;
+        let run = &run;
         match build_new_job(run, &now) {
             Ok(new) => {
                 items.push(LaunchBatchItem {
@@ -138,6 +144,52 @@ pub async fn launch_batch(
         .map_err(ApiError::from)?;
 
     Ok((StatusCode::ACCEPTED, Json(LaunchBatchAck { jobs: items })).into_response())
+}
+
+/// Fill in a **gg** launch's [`gg_model_windows`](LaunchBody::gg_model_windows) from the
+/// model catalog: the context window of every model the run's capability set binds.
+///
+/// This is the push that lets gg hold no model table of its own. The catalog is the
+/// backend's, so the backend answers the question here — once, at the moment the run is
+/// triggered — and the figure travels with the launch request to the driver, into the gg
+/// invocation, and out to the agent loop, which measures window fullness (and therefore
+/// the compaction trigger) against it. A run container never has to reach back for it.
+///
+/// Deliberately best-effort and non-fatal: a model the catalog has no observation for, or
+/// a lookup that errors, simply contributes no entry, and gg falls back to its conservative
+/// default. Losing a window is a slightly-wrong fullness denominator; refusing the launch
+/// over it would be worse. Whatever the client sent is discarded — this is a
+/// backend-resolved fact, not a client input.
+pub(super) async fn resolve_gg_model_windows(db: &crate::db::Db, body: &mut LaunchBody) {
+    body.gg_model_windows.clear();
+    let Some(set) = body.gg_capability_set.as_ref() else {
+        return;
+    };
+    // Every model the set can run an agent on, plus the launch's own model id (the
+    // primary, which the form also records outside the set).
+    let mut models = set.bound_model_ids();
+    let launch_model = body.model.trim();
+    if !launch_model.is_empty() && !models.contains(&launch_model) {
+        models.push(launch_model);
+    }
+    let mut resolved = std::collections::BTreeMap::new();
+    for model_id in models {
+        match super::models::context_window_for(db, model_id, body.harness).await {
+            Ok(Some(window)) => {
+                resolved.insert(model_id.to_string(), window);
+            }
+            Ok(None) => tracing::debug!(
+                model_id,
+                "model catalog has no context window; gg will use its default"
+            ),
+            Err(err) => tracing::warn!(
+                model_id,
+                error = %err,
+                "could not read the model catalog's context window; gg will use its default"
+            ),
+        }
+    }
+    body.gg_model_windows = resolved;
 }
 
 /// Validate a launch request and build the `queued` job to enqueue for it: mint the
