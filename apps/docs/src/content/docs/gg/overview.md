@@ -69,9 +69,9 @@ section. Every capability is:
 
 - **Toggleable.** It can be switched off entirely. With a capability off, gg
   behaves as if the feature does not exist — no tools for it are exposed to the
-  model, no prompt text describes it, and it consumes no context. This is the basis
-  for **ablation studies**: run the same model on the same test case with a
-  capability on and off, and the difference is attributable to it.
+  model, no [prompt text](/gg/prompts/) describes it, and it consumes no context.
+  This is the basis for **ablation studies**: run the same model on the same test
+  case with a capability on and off, and the difference is attributable to it.
 - **Configurable.** A capability that is on can be parameterized (for example the
   compaction trigger threshold, the subagent parallelism cap, or the memory
   budget).

@@ -36,7 +36,7 @@
 //! - [`TaskStore`] — the mutable, cycle-rejecting DAG, shared (`Arc<Mutex>`) between the
 //!   loop and the [task tools](crate::tools).
 //! - [`TasksRuntime`] — the loop's live view: whether the capability is on, the shared
-//!   store, and the derivations the loop needs (the system-prompt section, the
+//!   store, and the derivations the loop needs (the count cap the system prompt states, the
 //!   [`TasksState`](test_cabinet_core::gg::GgTelemetryKind::TasksState) telemetry, and the
 //!   pinned context block).
 //!
@@ -52,6 +52,7 @@ use test_cabinet_core::gg::{GgTaskEntry, GgTaskStatus, GgTelemetryKind};
 
 use crate::dag::{self, DagNode};
 use crate::model::Message;
+use crate::prompts::{self, TaskItemView, TasksBlockContext};
 
 /// Default ceiling on the number of tasks the list may hold at once. Generous — a task
 /// list is the model's plan, not a transcript — but bounded so a runaway loop cannot fill
@@ -530,44 +531,41 @@ impl TaskStore {
     /// The pinned context block rendering the whole list — each task's status, title, and
     /// whether it is *ready* or *blocked by* specific incomplete tasks — or `None` when
     /// there are no tasks to show.
+    ///
+    /// The block is **state only**: a heading and the current list. How to build and revise the
+    /// list is stated once, in the [system prompt](crate::prompts::SystemContext::tasks), gated on
+    /// the capability being enabled — so the tool instructions are not re-sent every turn the
+    /// block is refreshed.
     fn context_block(&self) -> Option<Message> {
         if self.tasks.is_empty() {
             return None;
         }
-        let mut block = String::from(
-            "# Your tasks\n\nThis is your plan for the rest of this session. You maintain it \
-             with `add_task`, `update_task`, `set_blocked_by`, `complete_task`, and \
-             `remove_task`. It is retained even when your context is compacted. A task is \
-             ready to work only once every task it is blocked by is done; the DAG cannot \
-             contain cycles.",
-        );
-        for task in &self.tasks {
-            let title = &task.title;
-            let mut line = format!(
-                "\n\n- {} `{}` ({}) — {}",
-                task.status.marker(),
-                task.id,
-                task.status.word(),
-                title
-            );
-            if let Some(description) = &task.description {
-                line.push_str(&format!(": {description}"));
-            }
-            if task.status != TaskStatus::Done {
-                if self.is_ready(task) {
-                    line.push_str("  [ready]");
-                } else {
-                    let blockers: Vec<String> = self
-                        .incomplete_blockers(task)
-                        .iter()
-                        .map(|id| format!("`{id}`"))
-                        .collect();
-                    line.push_str(&format!("  [blocked by {}]", blockers.join(", ")));
+        let tasks = self
+            .tasks
+            .iter()
+            .map(|task| {
+                let open = task.status != TaskStatus::Done;
+                let ready = open && self.is_ready(task);
+                TaskItemView {
+                    id: task.id.clone(),
+                    title: task.title.clone(),
+                    description: task.description.clone(),
+                    status: task.status.word().to_string(),
+                    marker: task.status.marker().to_string(),
+                    ready,
+                    blocked_by: (open && !ready).then(|| {
+                        self.incomplete_blockers(task)
+                            .iter()
+                            .map(|id| format!("`{id}`"))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    }),
                 }
-            }
-            block.push_str(&line);
-        }
-        Some(Message::user(block))
+            })
+            .collect();
+        Some(Message::user(prompts::render_tasks(&TasksBlockContext {
+            tasks,
+        })))
     }
 }
 
@@ -584,7 +582,7 @@ fn clean_description(description: Option<&str>) -> Option<String> {
 ///
 /// Constructed [enabled](Self::new) with a count cap or [disabled](Self::disabled) (an
 /// ablation's off arm). It hands the [`store`](Self::store) to the task tools, produces the
-/// system-prompt [section](Self::prompt_section), the
+/// count cap the [system prompt](crate::prompts::SystemContext::tasks) states, the
 /// [`TasksState`](GgTelemetryKind::TasksState) [telemetry](Self::state_event), and the
 /// pinned [context block](Self::context_block) the loop keeps in the window.
 #[derive(Debug, Clone)]
@@ -604,7 +602,7 @@ impl TasksRuntime {
         }
     }
 
-    /// A disabled runtime (the tasks capability is off): no tools, no prompt section, no
+    /// A disabled runtime (the tasks capability is off): no tools, no prompt text, no
     /// context block, no telemetry.
     pub fn disabled() -> Self {
         Self {
@@ -634,28 +632,6 @@ impl TasksRuntime {
     /// Zero when the capability is off (the store is empty).
     pub fn count(&self) -> usize {
         self.store.lock().expect("task store lock").count()
-    }
-
-    /// The system-prompt section telling the model it can plan with tasks and how the DAG
-    /// behaves, or `None` when the capability is off. The current tasks themselves are
-    /// injected as the pinned [context block](Self::context_block), not the prompt.
-    pub fn prompt_section(&self) -> Option<String> {
-        if !self.enabled {
-            return None;
-        }
-        Some(format!(
-            "You can keep a **task list** — your plan for this session. Call `add_task` \
-             (with a unique `id`, a `title`, optional `description`, and an optional \
-             `blockedBy` list of task ids) to add work; `update_task` to change a task's \
-             title/description/status; `set_blocked_by` to declare which tasks must finish \
-             first; `complete_task` to mark one done; and `remove_task` to drop one. The \
-             list is a **DAG**: a task can be blocked by others, and gg refuses any edge \
-             that would create a cycle. A task is ready to work only once all of its \
-             blockers are done. Your current tasks (with what is ready vs blocked) are \
-             shown back to you under \"Your tasks\", and the list survives context \
-             compaction, so keep it up to date as your plan. Hold at most {} tasks.",
-            self.max_tasks()
-        ))
     }
 
     /// The [`TasksState`](GgTelemetryKind::TasksState) telemetry for the current store, or

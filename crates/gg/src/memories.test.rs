@@ -233,21 +233,17 @@ fn caps_resolve_each_param_when_present() {
 fn disabled_runtime_offers_nothing() {
     let runtime = MemoriesRuntime::disabled();
     assert!(!runtime.offers_memories());
-    assert!(runtime.prompt_section().is_none());
     assert!(runtime.state_event().is_none());
     assert!(runtime.context_block().is_none());
 }
 
+/// An enabled runtime reports the caps the [system prompt](crate::prompts::SystemContext::memories)
+/// states up front, so the model knows its budget before it writes a note.
 #[test]
-fn enabled_runtime_lists_the_capability_and_caps_up_front() {
+fn enabled_runtime_reports_its_caps() {
     let runtime = MemoriesRuntime::new(tiny_caps());
     assert!(runtime.offers_memories());
-    let section = runtime.prompt_section().expect("enabled");
-    assert!(section.contains("write_memory"));
-    assert!(section.contains("update_memory"));
-    assert!(section.contains("delete_memory"));
-    // The caps are stated so the model knows the budget.
-    assert!(section.contains('2') && section.contains("10") && section.contains("15"));
+    assert_eq!(runtime.caps(), tiny_caps());
 }
 
 #[test]

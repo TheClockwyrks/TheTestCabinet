@@ -33,11 +33,11 @@ use crate::tools::{RuntimeSet, ToolContext, ToolRegistry};
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_CODE_REVIEWS, CAPABILITY_COMPACTION,
     CAPABILITY_CONTEXT_VISIBILITY, CAPABILITY_EPICS_ISSUES, CAPABILITY_FSM, CAPABILITY_MULTI_MODEL,
-    CAPABILITY_PLANNING, CAPABILITY_REPLAY, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL,
-    CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS, CAPABILITY_WORKFLOWS,
-    CAPABILITY_WORKTREES, GG_REPLAY_ARTIFACT_PATH, GgAgentStatus, GgCapabilityConfig,
-    GgCapabilitySet, GgCodeReviewPhase, GgContextAction, GgContextSource, GgIssueStatus,
-    GgPlanPhase, GgReplayEntryKind, GgReplayRecord, GgSessionSummary, GgSlotBinding,
+    CAPABILITY_PLANNING, CAPABILITY_READ_FILE, CAPABILITY_REPLAY, CAPABILITY_RESPONSES_AS_CODE,
+    CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS,
+    CAPABILITY_WORKFLOWS, CAPABILITY_WORKTREES, GG_REPLAY_ARTIFACT_PATH, GgAgentStatus,
+    GgCapabilityConfig, GgCapabilitySet, GgCodeReviewPhase, GgContextAction, GgContextSource,
+    GgIssueStatus, GgPlanPhase, GgReplayEntryKind, GgReplayRecord, GgSessionSummary, GgSlotBinding,
     GgSpeculationPhase, GgTelemetryEvent, GgTelemetryKind, GgWorkflowPhase, PRIMARY_SLOT,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
@@ -615,6 +615,7 @@ async fn drive_exhausts_the_turn_ceiling_when_the_model_never_stops() {
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
+            ReadPolicy::default(),
             false,
             false,
             false,
@@ -666,6 +667,7 @@ async fn drive_times_out_at_a_passed_deadline() {
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
+            ReadPolicy::default(),
             false,
             false,
             false,
@@ -718,6 +720,7 @@ async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
+            ReadPolicy::default(),
             false,
             false,
             false,
@@ -769,6 +772,7 @@ async fn drive_ends_model_error_on_exhausted_retries() {
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
+            ReadPolicy::default(),
             false,
             false,
             false,
@@ -818,6 +822,7 @@ async fn drive_ends_auth_error_when_the_credential_is_refused() {
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
+            ReadPolicy::default(),
             false,
             false,
             false,
@@ -862,21 +867,14 @@ fn resolve_bounds_reads_params_or_defaults() {
     assert_eq!(resolve_bounds(&set).max_turns, DEFAULT_MAX_TURNS);
 }
 
-/// The system prompt lists the enabled tools, and notes when none are available.
+/// The system prompt lists the enabled tools, and notes when none are available. (What each
+/// capability's section *says* is covered by the [prompt template tests](crate::prompts); this
+/// covers the wiring from a run's registry and runtimes into the rendering context.)
 #[test]
 fn system_prompt_reflects_the_offered_tools() {
-    let full = system_prompt(
-        &ToolRegistry::from_capabilities(&GgCapabilitySet::minimal("mock/x")),
-        &SkillsRuntime::disabled(),
-        &MemoriesRuntime::disabled(),
-        &TasksRuntime::disabled(),
-        &BoardRuntime::disabled(),
-        &PlanningRuntime::disabled(),
-        &FsmRuntime::disabled(),
-        false,
-        false,
-        false,
-    );
+    let runtimes = DisabledRuntimes::new();
+    let registry = ToolRegistry::from_capabilities(&GgCapabilitySet::minimal("mock/x"));
+    let full = system_prompt(runtimes.inputs(&registry));
     assert!(full.contains("write_file"));
     assert!(full.contains("shell"));
 
@@ -887,19 +885,81 @@ fn system_prompt_reflects_the_offered_tools() {
         slots: Vec::new(),
         disabled_tools: Vec::new(),
     };
-    let empty = system_prompt(
-        &ToolRegistry::from_capabilities(&empty_set),
-        &SkillsRuntime::disabled(),
-        &MemoriesRuntime::disabled(),
-        &TasksRuntime::disabled(),
-        &BoardRuntime::disabled(),
-        &PlanningRuntime::disabled(),
-        &FsmRuntime::disabled(),
-        false,
-        false,
-        false,
-    );
+    let empty_registry = ToolRegistry::from_capabilities(&empty_set);
+    let empty = system_prompt(runtimes.inputs(&empty_registry));
     assert!(empty.contains("no tools"));
+}
+
+/// The system prompt states the run's `read_file` line cap — a per-run configuration value the
+/// prompt interpolates rather than restating a default — and says nothing about reads when the
+/// mode is uncapped.
+#[test]
+fn system_prompt_states_the_configured_read_cap() {
+    let mut set = GgCapabilitySet::minimal("mock/x");
+    let read_file = set
+        .capabilities
+        .iter_mut()
+        .find(|cap| cap.id == CAPABILITY_READ_FILE)
+        .expect("the minimal set offers read_file");
+    read_file.implementation = Some("hard-cap".to_string());
+    read_file.params = json!({ "lineCap": 42 });
+
+    let library = Arc::new(SkillLibrary::empty());
+    let registry = ToolRegistry::from_run(&set, &RuntimeSet::new(&library));
+    let runtimes = DisabledRuntimes::new();
+    let capped = system_prompt(PromptInputs {
+        read_policy: read_policy(&set),
+        ..runtimes.inputs(&registry)
+    });
+    assert!(capped.contains("at most **42 lines**"), "{capped}");
+
+    // The default (unlimited) mode says nothing about a cap.
+    let uncapped = system_prompt(runtimes.inputs(&registry));
+    assert!(!uncapped.contains("42 lines"));
+}
+
+/// Every capability runtime, disabled — owned by the caller so a prompt test can borrow
+/// [`PromptInputs`] from it without binding six locals of its own.
+#[derive(Default)]
+struct DisabledRuntimes {
+    skills: Option<SkillsRuntime>,
+    memories: Option<MemoriesRuntime>,
+    tasks: Option<TasksRuntime>,
+    board: Option<BoardRuntime>,
+    planning: Option<PlanningRuntime>,
+    fsm: Option<FsmRuntime>,
+}
+
+impl DisabledRuntimes {
+    /// Build every runtime in its disabled (ablated-off) form.
+    fn new() -> Self {
+        Self {
+            skills: Some(SkillsRuntime::disabled()),
+            memories: Some(MemoriesRuntime::disabled()),
+            tasks: Some(TasksRuntime::disabled()),
+            board: Some(BoardRuntime::disabled()),
+            planning: Some(PlanningRuntime::disabled()),
+            fsm: Some(FsmRuntime::disabled()),
+        }
+    }
+
+    /// [`PromptInputs`] over `registry` with every capability off — the base a prompt test
+    /// varies one field of.
+    fn inputs<'a>(&'a self, registry: &'a ToolRegistry) -> PromptInputs<'a> {
+        PromptInputs {
+            registry,
+            skills: self.skills.as_ref().expect("built"),
+            memories: self.memories.as_ref().expect("built"),
+            tasks: self.tasks.as_ref().expect("built"),
+            board: self.board.as_ref().expect("built"),
+            planning: self.planning.as_ref().expect("built"),
+            fsm: self.fsm.as_ref().expect("built"),
+            read_policy: ReadPolicy::default(),
+            code_reviews: false,
+            speculative: false,
+            responses_as_code: false,
+        }
+    }
 }
 
 /// Running totals sum reported classes and keep a class unknown only when neither
@@ -1355,6 +1415,7 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
+            ReadPolicy::default(),
             false,
             false,
             false,
@@ -1538,6 +1599,7 @@ async fn drive_enforces_memory_caps_end_to_end() {
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
+            ReadPolicy::default(),
             false,
             false,
             false,
@@ -1734,6 +1796,7 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
+            ReadPolicy::default(),
             false,
             false,
             false,
@@ -2038,6 +2101,7 @@ async fn drive_compacts_at_the_threshold_and_retains_pinned_state() {
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
+            ReadPolicy::default(),
             false,
             false,
             false,
@@ -2198,6 +2262,7 @@ async fn drive_never_compacts_when_capability_off() {
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
+            ReadPolicy::default(),
             false,
             false,
             false,
@@ -2293,6 +2358,7 @@ async fn drive_manages_context_end_to_end() {
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
+            ReadPolicy::default(),
             false,
             false,
             false,
@@ -2403,6 +2469,7 @@ async fn drive_without_amc_offers_no_context_management() {
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
+            ReadPolicy::default(),
             false,
             false,
             false,
@@ -2489,6 +2556,7 @@ async fn drive_plans_then_implements_from_a_fresh_context() {
             BoardRuntime::disabled(),
             PlanningRuntime::resolve(&set),
             FsmRuntime::disabled(),
+            ReadPolicy::default(),
             false,
             false,
             false,
@@ -2649,6 +2717,7 @@ async fn drive_without_planning_offers_no_planning() {
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
+            ReadPolicy::default(),
             false,
             false,
             false,

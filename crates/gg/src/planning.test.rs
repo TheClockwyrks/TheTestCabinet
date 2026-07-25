@@ -1,12 +1,12 @@
 use super::*;
 use test_cabinet_core::gg::{CAPABILITY_PLANNING, GgCapabilityConfig, GgCapabilitySet};
 
-/// A disabled runtime offers nothing: no planning tools, no prompt section.
+/// A disabled runtime offers nothing: no planning tools, and so no prompt section (the
+/// [system prompt](crate::prompts::SystemContext::planning) gates its section on this).
 #[test]
 fn disabled_runtime_offers_no_planning() {
     let runtime = PlanningRuntime::disabled();
     assert!(!runtime.offers_planning());
-    assert!(runtime.prompt_section().is_none());
 }
 
 /// `resolve` off (the capability absent) yields a disabled runtime.
@@ -17,18 +17,15 @@ fn resolve_without_capability_is_disabled() {
     assert!(!runtime.offers_planning());
 }
 
-/// `resolve` with the capability enabled yields an enabled runtime with a prompt section that
-/// advertises both tools.
+/// `resolve` with the capability enabled yields an enabled runtime, which is what turns the
+/// system prompt's planning section (advertising both tools) on.
 #[test]
-fn resolve_with_capability_is_enabled_and_advertises_tools() {
+fn resolve_with_capability_is_enabled() {
     let mut set = GgCapabilitySet::minimal("mock/x");
     set.capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_PLANNING));
     let runtime = PlanningRuntime::resolve(&set);
     assert!(runtime.offers_planning());
-    let section = runtime.prompt_section().expect("a prompt section");
-    assert!(section.contains("enter_plan_mode"));
-    assert!(section.contains("submit_plan"));
 }
 
 /// The default planner's guidance tells the model it is read-only and how to submit; its plan

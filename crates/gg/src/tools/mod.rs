@@ -78,7 +78,7 @@ pub use context::{
     ARCHIVE_THREAD_TOOL, DEFAULT_ARCHIVE_KEEP_RECENT, EVICT_FILE_VIEW_TOOL, SEARCH_ARCHIVE_TOOL,
     is_context_reclaim_tool, parse_archive_keep_recent, parse_evict_path,
 };
-pub use filesystem::ReadPolicy;
+pub use filesystem::{READ_FILE_TOOL, ReadPolicy};
 pub use fsm::{ADVANCE_STATE_TOOL, is_fsm_tool};
 pub use memories::is_memory_tool;
 pub use planning::{ENTER_PLAN_MODE_TOOL, SUBMIT_PLAN_TOOL, is_planning_tool};
@@ -100,7 +100,7 @@ pub use tasks::is_task_tool;
 /// added or renamed tool cannot drift out of sync.
 pub const ALL_TOOL_NAMES: &[&str] = &[
     "shell",
-    "read_file",
+    READ_FILE_TOOL,
     "write_file",
     "edit_file",
     "list_dir",
@@ -156,7 +156,11 @@ pub fn unknown_disabled_tools(capabilities: &GgCapabilitySet) -> Vec<String> {
 /// The lookup is **exact** rather than following the legacy `filesystem` alias: an umbrella
 /// capability configures no individual tool, so a set that predates the split reads files
 /// the way it always did ([unlimited](ReadPolicy::Unlimited)).
-fn read_policy(capabilities: &GgCapabilitySet) -> ReadPolicy {
+///
+/// Resolved both here (to build the tool) and by the [loop](crate::agent), which states the
+/// resulting cap in the [system prompt](crate::prompts) — one resolution, so what the prompt
+/// promises and what the tool enforces cannot drift apart.
+pub fn read_policy(capabilities: &GgCapabilitySet) -> ReadPolicy {
     capabilities
         .capability(CAPABILITY_READ_FILE)
         .map(|cap| ReadPolicy::resolve(cap.implementation.as_deref(), &cap.params))
@@ -171,7 +175,7 @@ fn read_policy(capabilities: &GgCapabilitySet) -> ReadPolicy {
 pub fn is_read_only_tool(name: &str) -> bool {
     matches!(
         name,
-        "read_file" | "list_dir" | READ_SKILL_TOOL | SEARCH_ARCHIVE_TOOL
+        READ_FILE_TOOL | "list_dir" | READ_SKILL_TOOL | SEARCH_ARCHIVE_TOOL
     )
 }
 
@@ -564,6 +568,13 @@ impl ToolRegistry {
             .iter()
             .map(|tool| tool.name().to_string())
             .collect()
+    }
+
+    /// Whether the tool named `name` is offered this run — after capability gating and per-tool
+    /// [overrides](GgCapabilitySet::disabled_tools). The [system prompt](crate::prompts) asks this
+    /// before describing a specific tool's configuration, so a withheld tool is never explained.
+    pub fn offers(&self, name: &str) -> bool {
+        self.tools.iter().any(|tool| tool.name() == name)
     }
 
     /// Whether any tool is offered. An empty registry (every capability off) means the

@@ -300,7 +300,6 @@ fn resolve_max_tasks_reads_the_param_or_defaults() {
 fn disabled_runtime_offers_nothing() {
     let runtime = TasksRuntime::disabled();
     assert!(!runtime.offers_tasks());
-    assert!(runtime.prompt_section().is_none());
     assert!(runtime.state_event().is_none());
     assert!(runtime.context_block().is_none());
 }
@@ -309,7 +308,8 @@ fn disabled_runtime_offers_nothing() {
 fn enabled_runtime_emits_empty_state_and_no_block_until_a_task_exists() {
     let runtime = TasksRuntime::new(50);
     assert!(runtime.offers_tasks());
-    assert!(runtime.prompt_section().is_some());
+    // The count cap the system prompt states comes from the runtime.
+    assert_eq!(runtime.max_tasks(), 50);
     assert!(runtime.context_block().is_none(), "no tasks yet, no block");
     let GgTelemetryKind::TasksState { tasks } = runtime.state_event().unwrap() else {
         panic!("expected TasksState");

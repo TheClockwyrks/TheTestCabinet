@@ -6263,6 +6263,7 @@ dependencies = [
  "async-trait",
  "clap",
  "gg-rac-interp",
+ "handlebars",
  "reqwest 0.12.28",
  "serde",
  "serde_json",

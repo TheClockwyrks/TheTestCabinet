@@ -40,13 +40,13 @@
 //! - [`BoardStore`] — the mutable, invariant-enforcing, cycle-rejecting owner of the board,
 //!   shared (`Arc<Mutex>`) between the loop and the [board tools](crate::tools).
 //! - [`BoardRuntime`] — the loop's live view: whether the capability is on, the shared store,
-//!   and the derivations the loop needs (the system-prompt section, the
+//!   and the derivations the loop needs (the caps the system prompt states, the
 //!   [`BoardState`](test_cabinet_core::gg::GgTelemetryKind::BoardState) telemetry, and the
 //!   pinned context block).
 //!
 //! The capability is **ablatable**: when it is off the loop builds a
 //! [`disabled`](BoardRuntime::disabled) runtime, so there are no board tools, no prompt
-//! section, no context block, and no telemetry — the feature vanishes.
+//! text, no context block, and no telemetry — the feature vanishes.
 
 use std::fmt;
 use std::sync::{Arc, Mutex};
@@ -56,6 +56,7 @@ use test_cabinet_core::gg::{GgBoardEpic, GgBoardIssue, GgIssueStatus, GgTelemetr
 
 use crate::dag::{self, DagNode};
 use crate::model::Message;
+use crate::prompts::{self, BoardBlockContext, EpicItemView, IssueItemView};
 
 /// Default ceiling on the number of epics the board may hold at once.
 pub const DEFAULT_MAX_EPICS: usize = 50;
@@ -806,31 +807,24 @@ impl BoardStore {
         if self.epics.is_empty() && self.issues.is_empty() {
             return None;
         }
-        let mut block = String::from(
-            "# Your epic/issue board\n\nThis is your decomposition of the build for this \
-             session. You maintain it with `create_epic`, `create_issue`, `update_issue`, \
-             `set_issue_blocked_by`, `complete_issue`, `remove_epic`, and `remove_issue`. It is \
-             retained even when your context is compacted. Issues form a **DAG**: an issue is \
-             ready to work only once every issue it is blocked by is done, and gg refuses any \
-             edge that would create a cycle. Each issue's in-scope, out-of-scope, and \
-             completion-criteria are its brief — keep them precise enough to hand off.",
-        );
-        if !self.epics.is_empty() {
-            block.push_str("\n\n## Epics");
-            for epic in &self.epics {
-                block.push_str(&format!(
-                    "\n\n- `{}` — {}: {}",
-                    epic.id, epic.title, epic.description
-                ));
-            }
-        }
-        if !self.issues.is_empty() {
-            block.push_str("\n\n## Issues");
-            for issue in &self.issues {
-                block.push_str(&self.render_issue(issue));
-            }
-        }
-        Some(Message::user(block))
+        let epics = self
+            .epics
+            .iter()
+            .map(|epic| EpicItemView {
+                id: epic.id.clone(),
+                title: epic.title.clone(),
+                description: epic.description.clone(),
+            })
+            .collect();
+        let issues = self
+            .issues
+            .iter()
+            .map(|issue| self.issue_view(issue))
+            .collect();
+        Some(Message::user(prompts::render_board(&BoardBlockContext {
+            epics,
+            issues,
+        })))
     }
 
     /// The dispatch **brief** for the issue with id `id` — its title, optional overview, and the
@@ -850,37 +844,31 @@ impl BoardStore {
         Some(brief)
     }
 
-    /// Render one issue as a block for the pinned [context block](Self::context_block).
-    fn render_issue(&self, issue: &Issue) -> String {
-        let mut line = format!(
-            "\n\n- {} `{}` ({}) — {}",
-            issue.status.marker(),
-            issue.id,
-            issue.status.word(),
-            issue.title
-        );
-        if let Some(epic_id) = &issue.epic_id {
-            line.push_str(&format!("  [epic: `{epic_id}`]"));
-        }
-        if issue.status != IssueStatus::Done {
-            if self.is_ready(issue) {
-                line.push_str("  [ready]");
-            } else {
-                let blockers: Vec<String> = self
-                    .incomplete_blockers(issue)
+    /// One issue as the pinned [context block](Self::context_block) renders it: its line (status,
+    /// epic grouping, ready/blocked state) plus the structured brief. The DAG derivations are done
+    /// here, in the store that owns the graph; the template only lays the result out.
+    fn issue_view(&self, issue: &Issue) -> IssueItemView {
+        let open = issue.status != IssueStatus::Done;
+        let ready = open && self.is_ready(issue);
+        IssueItemView {
+            id: issue.id.clone(),
+            title: issue.title.clone(),
+            description: issue.description.clone(),
+            status: issue.status.word().to_string(),
+            marker: issue.status.marker().to_string(),
+            epic_id: issue.epic_id.clone(),
+            ready,
+            blocked_by: (open && !ready).then(|| {
+                self.incomplete_blockers(issue)
                     .iter()
                     .map(|id| format!("`{id}`"))
-                    .collect();
-                line.push_str(&format!("  [blocked by {}]", blockers.join(", ")));
-            }
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            }),
+            in_scope: issue.in_scope.clone(),
+            out_of_scope: issue.out_of_scope.clone(),
+            completion_criteria: issue.completion_criteria.clone(),
         }
-        if let Some(description) = &issue.description {
-            line.push_str(&format!("\n  - overview: {description}"));
-        }
-        line.push_str(&format!("\n  - in scope: {}", issue.in_scope));
-        line.push_str(&format!("\n  - out of scope: {}", issue.out_of_scope));
-        line.push_str(&format!("\n  - done when: {}", issue.completion_criteria));
-        line
     }
 }
 
@@ -919,7 +907,8 @@ fn clean_optional(value: Option<&str>) -> Option<String> {
 ///
 /// Constructed [enabled](Self::new) with caps or [disabled](Self::disabled) (an ablation's off
 /// arm). It hands the [`store`](Self::store) to the board tools, produces the system-prompt
-/// [section](Self::prompt_section), the [`BoardState`](GgTelemetryKind::BoardState)
+/// [caps](Self::caps) the [system prompt](crate::prompts::SystemContext::board) states, the
+/// [`BoardState`](GgTelemetryKind::BoardState)
 /// [telemetry](Self::state_event), and the pinned [context block](Self::context_block) the loop
 /// keeps in the window.
 #[derive(Debug, Clone)]
@@ -939,7 +928,7 @@ impl BoardRuntime {
         }
     }
 
-    /// A disabled runtime (the capability is off): no tools, no prompt section, no context
+    /// A disabled runtime (the capability is off): no tools, no prompt text, no context
     /// block, no telemetry.
     pub fn disabled() -> Self {
         Self {
@@ -976,33 +965,6 @@ impl BoardRuntime {
     #[allow(dead_code)]
     pub fn epic_count(&self) -> usize {
         self.store.lock().expect("board store lock").epic_count()
-    }
-
-    /// The system-prompt section telling the model it can decompose the build into epics and
-    /// issues and how the DAG behaves, or `None` when the capability is off. The board itself is
-    /// injected as the pinned [context block](Self::context_block), not the prompt.
-    pub fn prompt_section(&self) -> Option<String> {
-        if !self.enabled {
-            return None;
-        }
-        let caps = self.caps();
-        Some(format!(
-            "For a substantial build you can decompose the work on an **epic/issue board** — \
-             the heavyweight counterpart to a task list. Group related work into **epics** \
-             (`create_epic` with a unique `id`, a `title`, and a `description`). Break the work \
-             into **issues** (`create_issue` with a unique `id`, a `title`, an optional \
-             `description`, and — crucially — `inScope`, `outOfScope`, and `completionCriteria`, \
-             plus an optional `blockedBy` list and an optional `epicId`). Fill in an issue's \
-             scope and completion criteria precisely: they are the brief that lets the issue be \
-             handed off and judged done. Revise an issue with `update_issue`, set its \
-             dependencies with `set_issue_blocked_by`, mark it done with `complete_issue`, and \
-             drop epics/issues with `remove_epic`/`remove_issue`. Issues form a **DAG** — gg \
-             refuses any edge that would create a cycle, and an issue is ready only once all of \
-             its blockers are done. Your board is shown back to you under \"Your epic/issue \
-             board\" and survives context compaction, so keep it current. Hold at most {} epics \
-             and {} issues.",
-            caps.max_epics, caps.max_issues
-        ))
     }
 
     /// The [`BoardState`](GgTelemetryKind::BoardState) telemetry for the current board, or

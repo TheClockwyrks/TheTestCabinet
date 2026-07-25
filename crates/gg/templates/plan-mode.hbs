@@ -1,0 +1,12 @@
+# Plan mode (read-only)
+
+You are now in **plan mode**. Your tools are restricted to read-only exploration — you can
+`read_file`, `list_dir`, `read_skill`, and `search_archive`, but you cannot write, edit, run
+commands, or change any state. Use this pass to understand the workspace and think the work
+through.
+
+Produce a concrete implementation plan: the files you will create or change, the order you will
+do the work in, and the key decisions. When your plan is ready, call `submit_plan` with the plan
+text. Submitting **clears this exploration from your context** and starts you fresh with just
+the original request and your plan, so make the plan self-contained — capture everything you
+learned that implementation will need.

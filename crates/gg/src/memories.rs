@@ -30,13 +30,13 @@
 //! - [`MemoryStore`] — the mutable, cap-enforcing set of memories, shared (`Arc<Mutex>`)
 //!   between the loop and the memory tools.
 //! - [`MemoriesRuntime`] — the loop's live view: whether the capability is on, the shared
-//!   store, and the derivations the loop needs (the system-prompt section, the
+//!   store, and the derivations the loop needs (the caps the system prompt states, the
 //!   [`MemoryState`](test_cabinet_core::gg::GgTelemetryKind::MemoryState) telemetry, and
 //!   the pinned context block).
 //!
 //! The capability is **ablatable**: when it is off the loop builds a
 //! [`disabled`](MemoriesRuntime::disabled) runtime, so there are no memory tools, no prompt
-//! section, no context block, and no telemetry — the feature vanishes.
+//! text, no context block, and no telemetry — the feature vanishes.
 
 use std::fmt;
 use std::sync::{Arc, Mutex};
@@ -45,6 +45,7 @@ use serde_json::Value;
 use test_cabinet_core::gg::{GgMemoryCaps, GgMemoryEntry, GgTelemetryKind};
 
 use crate::model::Message;
+use crate::prompts::{self, MemoriesBlockContext, MemoryItemView};
 
 /// Default [maximum number of memories](MemoryCaps::max_count). A small ceiling — the
 /// point is a curated handful of durable facts, not a second transcript.
@@ -423,25 +424,27 @@ impl MemoryStore {
 
     /// The pinned context block rendering every in-play memory (name, description, body),
     /// or `None` when there are no memories to show.
+    ///
+    /// The block is **state only**: a heading and the notes themselves. How to curate them, and
+    /// the budget they live within, is stated once in the
+    /// [system prompt](crate::prompts::SystemContext::memories) rather than re-sent every turn
+    /// the block is refreshed.
     fn context_block(&self) -> Option<Message> {
         if self.memories.is_empty() {
             return None;
         }
-        let mut block = format!(
-            "# Your memories\n\nYou maintain these notes yourself with `write_memory`, \
-             `update_memory`, and `delete_memory`. They persist for the rest of this session \
-             and are retained even when your context is compacted, so use them for durable \
-             facts and decisions. Keep them concise and within the limits (at most {} \
-             memories, {} characters each, {} characters total).",
-            self.caps.max_count, self.caps.max_len_per_memory, self.caps.max_total_len
-        );
-        for memory in &self.memories {
-            block.push_str(&format!(
-                "\n\n## {} — {}\n{}",
-                memory.name, memory.description, memory.body
-            ));
-        }
-        Some(Message::user(block))
+        let memories = self
+            .memories
+            .iter()
+            .map(|memory| MemoryItemView {
+                name: memory.name.clone(),
+                description: memory.description.clone(),
+                body: memory.body.clone(),
+            })
+            .collect();
+        Some(Message::user(prompts::render_memories(
+            &MemoriesBlockContext { memories },
+        )))
     }
 }
 
@@ -473,8 +476,8 @@ fn validate_fields(
 ///
 /// Constructed [enabled](Self::new) with resolved caps or [disabled](Self::disabled) (an
 /// ablation's off arm). It hands the [`store`](Self::store) to the memory tools, produces
-/// the system-prompt [section](Self::prompt_section), the
-/// [`MemoryState`](GgTelemetryKind::MemoryState) [telemetry](Self::state_event), and the
+/// the [caps](Self::caps) the [system prompt](crate::prompts::SystemContext::memories) states,
+/// the [`MemoryState`](GgTelemetryKind::MemoryState) [telemetry](Self::state_event), and the
 /// pinned [context block](Self::context_block) the loop keeps in the window.
 #[derive(Debug, Clone)]
 pub struct MemoriesRuntime {
@@ -493,7 +496,7 @@ impl MemoriesRuntime {
         }
     }
 
-    /// A disabled runtime (the memories capability is off): no tools, no prompt section,
+    /// A disabled runtime (the memories capability is off): no tools, no prompt text,
     /// no context block, no telemetry.
     pub fn disabled() -> Self {
         Self {
@@ -523,27 +526,6 @@ impl MemoriesRuntime {
     /// Zero when the capability is off (the store is empty).
     pub fn count(&self) -> usize {
         self.store.lock().expect("memory store lock").count()
-    }
-
-    /// The system-prompt section telling the model it can curate memories and within what
-    /// limits, or `None` when the capability is off. The current memories themselves are
-    /// injected as the pinned [context block](Self::context_block), not the prompt.
-    pub fn prompt_section(&self) -> Option<String> {
-        if !self.enabled {
-            return None;
-        }
-        let caps = self.caps();
-        Some(format!(
-            "You can keep your own **memories** — short, durable notes you curate as you \
-             work. Call `write_memory` (with a `name`, a one-line `description`, and a \
-             `body`) to record a fact or decision worth keeping; `update_memory` to revise \
-             one; and `delete_memory` to remove one. Memories persist for the whole session \
-             and survive context compaction, and their descriptions and bodies are shown \
-             back to you under \"Your memories\". They are bounded: at most {} memories, {} \
-             characters of body each, and {} characters total — when you hit a limit, revise \
-             or delete an existing memory rather than letting notes pile up.",
-            caps.max_count, caps.max_len_per_memory, caps.max_total_len
-        ))
     }
 
     /// The [`MemoryState`](GgTelemetryKind::MemoryState) telemetry for the current store,

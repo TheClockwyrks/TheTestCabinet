@@ -34,6 +34,8 @@ use std::sync::Arc;
 
 use test_cabinet_core::gg::{GgSkillState, GgTelemetryKind};
 
+use crate::prompts::SkillView;
+
 /// The default directory skills are loaded from, relative to the run workspace, when the
 /// capability does not configure one via its `dir` param. `core`'s workspace seeding may
 /// place authored skills here before the run starts.
@@ -163,8 +165,9 @@ impl SkillLibrary {
 /// skills read so far.
 ///
 /// Constructed [enabled](Self::new) with a loaded library or [disabled](Self::disabled)
-/// (an ablation's off arm). It produces the system-prompt catalog
-/// ([`prompt_section`](Self::prompt_section)), the
+/// (an ablation's off arm). It produces the catalog the
+/// [system prompt](crate::prompts::SystemContext::skills) lists
+/// ([`prompt_entries`](Self::prompt_entries)), the
 /// [`SkillsState`](GgTelemetryKind::SkillsState) telemetry
 /// ([`state_event`](Self::state_event)), and records reads
 /// ([`record_read`](Self::record_read)) — the loop uses the result to pin a freshly read
@@ -233,23 +236,23 @@ impl SkillsRuntime {
         self.read.len()
     }
 
-    /// The system-prompt section listing each skill's name and description, or `None` when
-    /// no skills are offered. This is the "shown up front" affordance: the model sees what
-    /// skills exist and reads one by name when it is relevant.
-    pub fn prompt_section(&self) -> Option<String> {
+    /// Each offered skill's name and description, for the
+    /// [system prompt](crate::prompts::SystemContext::skills) to list — empty when no skills are
+    /// offered, which is what makes the prompt's skills section vanish. This is the "shown up
+    /// front" affordance: the model sees what skills exist and reads one by name when it is
+    /// relevant.
+    pub fn prompt_entries(&self) -> Vec<SkillView> {
         if !self.offers_skills() {
-            return None;
+            return Vec::new();
         }
-        let mut section = String::from(
-            "You have skills available — short authored guides for parts of this task. \
-             Each is listed below with a one-line description; call `read_skill` with a \
-             skill's name to load its full contents (they stay available for the rest of \
-             the session). Available skills:",
-        );
-        for skill in self.library.skills() {
-            section.push_str(&format!("\n- {}: {}", skill.name(), skill.description()));
-        }
-        Some(section)
+        self.library
+            .skills()
+            .iter()
+            .map(|skill| SkillView {
+                name: skill.name().to_string(),
+                description: skill.description().to_string(),
+            })
+            .collect()
     }
 
     /// The [`SkillsState`](GgTelemetryKind::SkillsState) telemetry for the current read

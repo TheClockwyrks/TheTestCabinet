@@ -35,6 +35,10 @@ use serde_json::{Value, json};
 use super::{Tool, ToolContext, ToolOutcome, required_str};
 use crate::model::ToolDefinition;
 
+/// The `read_file` tool name — also what the [system prompt](crate::prompts) checks for when it
+/// decides whether to state this run's [line cap](ReadPolicy).
+pub const READ_FILE_TOOL: &str = "read_file";
+
 /// Ceiling on the bytes `read_file` returns to the model, so a huge file cannot flood
 /// context. Applied **after** any [line window](ReadPolicy), as the last-resort backstop
 /// against a file with enormous lines; the returned text carries a truncation note.
@@ -118,8 +122,10 @@ impl ReadPolicy {
         }
     }
 
-    /// The line cap in force, or `None` under [`Unlimited`](Self::Unlimited).
-    fn cap(&self) -> Option<usize> {
+    /// The line cap in force, or `None` under [`Unlimited`](Self::Unlimited). Read by the tool
+    /// itself (to window a read) and by the [system prompt](crate::prompts), which states the cap
+    /// up front so the model is not left to discover it one truncated read at a time.
+    pub fn line_cap(&self) -> Option<usize> {
         match *self {
             Self::Unlimited => None,
             Self::HardCap(cap) | Self::DefaultCap(cap) => Some(cap),
@@ -311,7 +317,7 @@ impl ReadFileTool {
 #[async_trait]
 impl Tool for ReadFileTool {
     fn name(&self) -> &str {
-        "read_file"
+        READ_FILE_TOOL
     }
 
     fn definition(&self) -> ToolDefinition {
@@ -322,7 +328,7 @@ impl Tool for ReadFileTool {
         // The unlimited mode offers no paging arguments at all: with the whole file in
         // every result there is nothing for the agent to page through, and offering knobs
         // that never bind would misrepresent the arm.
-        let Some(cap) = self.policy.cap() else {
+        let Some(cap) = self.policy.line_cap() else {
             return ToolDefinition::new(
                 "read_file",
                 "Read a UTF-8 text file from the workspace and return its contents \

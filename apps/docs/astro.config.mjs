@@ -517,6 +517,10 @@ export default defineConfig({
             // How a capability set is named, saved, and launched in the console —
             // the operator-facing counterpart to the overview's design material.
             "gg/configurations",
+            // How gg's model-facing prose is authored (Handlebars templates) and
+            // how the system prompt is assembled from the capability set. Not a
+            // capability: it cuts across all of them.
+            "gg/prompts",
             // One page per capability. Grouped by concern for reading order; the
             // grouping is editorial, matching the index on the overview page.
             {

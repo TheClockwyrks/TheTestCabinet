@@ -104,6 +104,9 @@ use crate::git;
 use crate::memories::{MemoriesRuntime, MemoryCaps};
 use crate::model::{Message, ModelClient, ModelResponse, ToolCall, ToolDefinition};
 use crate::planning::PlanningRuntime;
+use crate::prompts::{
+    self, BoardView, FsmView, MemoriesView, ReadFileView, SystemContext, TasksView, ToolView,
+};
 use crate::rac::{RacError, RacLimits, RacRun, ScriptToolInvoker, run_script};
 use crate::replay::{GgRecorder, RecordingClient};
 use crate::skills::{DEFAULT_SKILLS_DIR, ReadRecord, SkillLibrary, SkillsRuntime};
@@ -112,11 +115,12 @@ use crate::tasks::{TasksRuntime, resolve_max_tasks};
 use crate::telemetry::Emitter;
 use crate::tools::{
     ARCHIVE_THREAD_TOOL, COMPLETE_ISSUE_TOOL, DEFAULT_ARCHIVE_KEEP_RECENT, ENTER_PLAN_MODE_TOOL,
-    EVICT_FILE_VIEW_TOOL, READ_SKILL_TOOL, RUN_WORKFLOW_TOOL, RuntimeSet, SEND_MESSAGE_TOOL,
-    SPAWN_SUBAGENT_TOOL, SPECULATE_TOOL, SUBMIT_PLAN_TOOL, ToolContext, ToolOutcome, ToolRegistry,
-    WAIT_FOR_SUBAGENTS_TOOL, is_board_tool, is_context_reclaim_tool, is_fsm_tool, is_memory_tool,
-    is_planning_tool, is_subagent_tool, is_task_tool, parse_archive_keep_recent, parse_evict_path,
-    plan_mode_offers, unknown_disabled_tools,
+    EVICT_FILE_VIEW_TOOL, READ_FILE_TOOL, READ_SKILL_TOOL, RUN_WORKFLOW_TOOL, ReadPolicy,
+    RuntimeSet, SEND_MESSAGE_TOOL, SPAWN_SUBAGENT_TOOL, SPECULATE_TOOL, SUBMIT_PLAN_TOOL,
+    ToolContext, ToolOutcome, ToolRegistry, WAIT_FOR_SUBAGENTS_TOOL, is_board_tool,
+    is_context_reclaim_tool, is_fsm_tool, is_memory_tool, is_planning_tool, is_subagent_tool,
+    is_task_tool, parse_archive_keep_recent, parse_evict_path, plan_mode_offers, read_policy,
+    unknown_disabled_tools,
 };
 
 /// The default per-run turn ceiling, used when no `maxTurns` capability param sets
@@ -144,14 +148,6 @@ const PARAM_WINDOW_LIMIT: &str = "windowLimit";
 /// relative value is resolved against the run workspace; an absolute one is used as
 /// given. When absent, [`DEFAULT_SKILLS_DIR`] under the workspace is used.
 const PARAM_SKILLS_DIR: &str = "dir";
-
-/// The base system prompt seeding the loop. The available tools are appended per run
-/// (see [`system_prompt`]) so the prompt reflects the enabled capabilities.
-const GG_SYSTEM_PROMPT_BASE: &str = "You are gg, The Test Cabinet's autonomous coding agent. \
-    You are building a game in the current workspace directory. Work incrementally: inspect \
-    the workspace, then create and edit files to implement the game the user describes. When \
-    the game is complete and the task is done, stop calling tools and give a short final \
-    summary of what you built.";
 
 /// The [`SessionEnded`](GgTelemetryKind::SessionEnded) status for a session a model
 /// turn failed in — the model was reached and did not deliver a usable turn.
@@ -1281,6 +1277,7 @@ async fn run_agent(
             board,
             planning,
             fsm,
+            read_policy(&orch.caps),
             orch.code_reviews_active(),
             orch.speculative_active(),
             orch.responses_as_code,
@@ -3655,6 +3652,7 @@ impl Agent {
         board: BoardRuntime,
         planning: PlanningRuntime,
         mut fsm: FsmRuntime,
+        read_policy: ReadPolicy,
         code_reviews: bool,
         speculative: bool,
         responses_as_code: bool,
@@ -3684,18 +3682,19 @@ impl Agent {
         // window can be accounted by source and the pinned/ephemeral split is available for
         // Phase 2 compaction.
         let mut context = ContextModel::new(context_setup.estimator, context_setup.window_limit);
-        context.push_system(system_prompt(
+        context.push_system(system_prompt(PromptInputs {
             registry,
-            &skills,
-            &memories,
-            &tasks,
-            &board,
-            &planning,
-            &fsm,
-            code_reviews_active,
-            speculative_active,
+            skills: &skills,
+            memories: &memories,
+            tasks: &tasks,
+            board: &board,
+            planning: &planning,
+            fsm: &fsm,
+            read_policy,
+            code_reviews: code_reviews_active,
+            speculative: speculative_active,
             responses_as_code,
-        ));
+        }));
         context.push_user_prompt(prompt);
 
         // FSM start: emit the machine's entry state and inject its guidance, so the run is driven
@@ -4626,100 +4625,112 @@ fn short_sha(sha: &str) -> &str {
     sha.get(..12).unwrap_or(sha)
 }
 
-/// The system prompt for a run, reflecting the tools the enabled capabilities offer
-/// so the model is told exactly what it can do (and, when nothing is enabled, that it
-/// can only reply in text), plus the catalog of any available [skills](crate::skills)
-/// (their names and descriptions), and — when the [memories](crate::memories) and
-/// [tasks](crate::tasks) capabilities are on — how to curate memories and how to plan with
-/// the task DAG.
-#[allow(clippy::too_many_arguments)]
-fn system_prompt(
-    registry: &ToolRegistry,
-    skills: &SkillsRuntime,
-    memories: &MemoriesRuntime,
-    tasks: &TasksRuntime,
-    board: &BoardRuntime,
-    planning: &PlanningRuntime,
-    fsm: &FsmRuntime,
+/// Everything the [system prompt](system_prompt) is built from: the offered toolset, the
+/// capability runtimes (each of which contributes a section only when it is enabled), the
+/// `read_file` [read policy](ReadPolicy), and the three loop-level toggles.
+///
+/// Grouped into a struct rather than passed as a dozen positional arguments because the set
+/// grows with every capability gg gains, and because the prompt is assembled in exactly one
+/// place — [`Agent::drive`], which builds this from the resources the orchestrator handed it.
+struct PromptInputs<'a> {
+    /// The tools offered this run, after capability gating and per-tool overrides.
+    registry: &'a ToolRegistry,
+    /// The skills library whose descriptions are listed up front.
+    skills: &'a SkillsRuntime,
+    /// The memories capability, for its budget.
+    memories: &'a MemoriesRuntime,
+    /// The tasks capability, for its count ceiling.
+    tasks: &'a TasksRuntime,
+    /// The epic/issue board capability, for its ceilings.
+    board: &'a BoardRuntime,
+    /// The planning capability.
+    planning: &'a PlanningRuntime,
+    /// The FSM driving the run, when one does.
+    fsm: &'a FsmRuntime,
+    /// How much of a file one `read_file` call returns, so a capped run says so up front.
+    read_policy: ReadPolicy,
+    /// Whether Code Reviews gate issue acceptance this run.
     code_reviews: bool,
+    /// Whether `speculate` is available this run.
     speculative: bool,
+    /// Whether the run responds with programs rather than native tool calls.
     responses_as_code: bool,
-) -> String {
-    // In responses-as-code mode the tools are described as functions a program calls, not native
-    // tool calls, so the "tools available" section is replaced by the gg-script guidance.
-    let capabilities_section = if responses_as_code {
-        code_mode_prompt_section(registry)
-    } else {
-        let names: Vec<String> = registry
-            .definitions()
-            .into_iter()
-            .map(|tool| tool.name)
-            .collect();
-        if names.is_empty() {
-            "You have no tools available this run, so you can only reply in text.".to_string()
-        } else {
-            format!(
-                "You have these tools available: {}. Use them to inspect the workspace and \
-                 build the game.",
-                names.join(", ")
-            )
-        }
+}
+
+/// The system prompt for a run: the [`system.hbs`](crate::prompts) template rendered against the
+/// run's actual configuration.
+///
+/// Every capability section is gated on that capability being enabled, so the prompt describes
+/// exactly what this run can do — the tools it offers (and, when it offers none, that the model
+/// can only reply in text), the catalog of available [skills](crate::skills), and how to use the
+/// [memories](crate::memories), [tasks](crate::tasks), [board](crate::board), and
+/// [planning](crate::planning) capabilities, each stating that run's configured limits. A
+/// disabled capability contributes nothing at all: no tools, no prose, no context.
+fn system_prompt(inputs: PromptInputs<'_>) -> String {
+    let PromptInputs {
+        registry,
+        skills,
+        memories,
+        tasks,
+        board,
+        planning,
+        fsm,
+        read_policy,
+        code_reviews,
+        speculative,
+        responses_as_code,
+    } = inputs;
+
+    let tools: Vec<ToolView> = registry
+        .definitions()
+        .into_iter()
+        .map(|def| ToolView {
+            args: param_names(&def.parameters).join(", "),
+            description: first_line(&def.description).to_string(),
+            name: def.name,
+        })
+        .collect();
+    // The read cap is only worth stating when `read_file` is actually offered and actually
+    // capped; an unlimited (or withheld) read contributes no prompt text.
+    let read_file = match read_policy.line_cap() {
+        Some(line_cap) if registry.offers(READ_FILE_TOOL) => ReadFileView {
+            capped: true,
+            hard_cap: matches!(read_policy, ReadPolicy::HardCap(_)),
+            line_cap,
+        },
+        _ => ReadFileView::default(),
     };
-    let mut prompt = format!("{GG_SYSTEM_PROMPT_BASE}\n\n{capabilities_section}");
-    if let Some(section) = skills.prompt_section() {
-        prompt.push_str("\n\n");
-        prompt.push_str(&section);
-    }
-    if let Some(section) = memories.prompt_section() {
-        prompt.push_str("\n\n");
-        prompt.push_str(&section);
-    }
-    if let Some(section) = tasks.prompt_section() {
-        prompt.push_str("\n\n");
-        prompt.push_str(&section);
-    }
-    if let Some(section) = board.prompt_section() {
-        prompt.push_str("\n\n");
-        prompt.push_str(&section);
-    }
-    if let Some(section) = planning.prompt_section() {
-        prompt.push_str("\n\n");
-        prompt.push_str(&section);
-    }
-    if fsm.is_active() {
-        prompt.push_str(&format!(
-            "\n\nThis run is driven through a fixed **{}** process: you are placed in an ordered \
-             sequence of states and must complete each before the next. Follow the guidance for \
-             your current state, and call `advance_state` to move on once its condition is met — gg \
-             **refuses** the advance while the condition is unmet, so you cannot skip ahead (for \
-             example, you cannot start implementing before your tests exist). Some states restrict \
-             which tools you may use.",
-            fsm.machine_name()
-        ));
-    }
-    if code_reviews {
-        prompt.push_str(
-            "\n\nCode Reviews are enabled: when you mark an issue done with `complete_issue`, it \
-             is not accepted immediately. gg triggers a **Code Review** — a reviewer agent inspects \
-             the changes against the issue's completion criteria and either approves or returns \
-             actionable items. If it returns items, a fix agent addresses them and the work is \
-             re-reviewed, repeating until a review approves; only then is the issue marked done. So \
-             fill in each issue's completion criteria precisely — they are what the Code Review \
-             holds the work to — and expect `complete_issue` to take a while (it runs the review \
-             and any fixes before returning).",
-        );
-    }
-    if speculative {
-        prompt.push_str(
-            "\n\nSpeculative execution is enabled: for a hard or open-ended piece of work, you can \
-             call `speculate` to make several parallel attempts at the SAME task (best-of-K) — each \
-             in its own isolated workspace — after which a judge keeps only the best one and merges \
-             it back, discarding the rest. It costs K× the tokens of one attempt, so reach for it \
-             when one careful attempt may not be enough and the quality is worth the spend; use \
-             `spawn_subagent` for ordinary single-attempt delegation.",
-        );
-    }
-    prompt
+
+    prompts::render_system(&SystemContext {
+        tools,
+        responses_as_code,
+        read_file,
+        skills: skills.prompt_entries(),
+        memories: memories.offers_memories().then(|| {
+            let caps = memories.caps();
+            MemoriesView {
+                max_count: caps.max_count,
+                max_len_per_memory: caps.max_len_per_memory,
+                max_total_len: caps.max_total_len,
+            }
+        }),
+        tasks: tasks.offers_tasks().then(|| TasksView {
+            max_tasks: tasks.max_tasks(),
+        }),
+        board: board.offers_board().then(|| {
+            let caps = board.caps();
+            BoardView {
+                max_epics: caps.max_epics,
+                max_issues: caps.max_issues,
+            }
+        }),
+        planning: planning.offers_planning(),
+        fsm: fsm.is_active().then(|| FsmView {
+            machine: fsm.machine_name().to_string(),
+        }),
+        code_reviews,
+        speculative,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -4753,56 +4764,10 @@ fn resolve_rac_limits(set: &GgCapabilitySet) -> RacLimits {
     limits
 }
 
-/// The system-prompt section for a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) run: the
-/// `gg-script` language, how to shape a turn (one fenced program, or a plain-text message to finish),
-/// and the available tools rendered as callable functions (name + argument names + one-line
-/// description), so the model knows exactly what it can compose.
-fn code_mode_prompt_section(registry: &ToolRegistry) -> String {
-    let mut section = String::new();
-    section.push_str(
-        "## Responses as code\n\n\
-         Instead of calling tools one at a time, each turn you respond with a small PROGRAM that gg \
-         runs in a sandbox. Express what you want to do as a program over the available tools — \
-         loops, conditionals, intermediate values, and several tool calls composed together — and \
-         gg runs it and feeds you back the result (its return value, anything you `print`, and how \
-         each tool call went).\n\n\
-         Emit exactly one program per turn, inside a single fenced code block:\n\n\
-         ```gg\n// your program here\nreturn something;\n```\n\n\
-         When the whole task is complete, reply with a short plain-text message and NO code block to \
-         finish.\n\n\
-         The gg-script language:\n\
-         - Statements: `let x = expr;`, assignment `x = expr;` (including `a[i].k = v;`), \
-         `if cond { .. } else { .. }`, `while cond { .. }`, `for x in iterable { .. }`, \
-         `return expr;`, and `// line comments`.\n\
-         - Values are JSON: `null`, booleans, numbers, strings, lists `[..]`, and maps `{ k: v }`.\n\
-         - Operators: `|| && == != < <= > >= + - * / %` and unary `! -`.\n\
-         - Builtins: `len keys values has get push range str num contains type print`.\n\
-         - A tool call looks like `tool_name({ arg: value })` and returns a map `{ ok, output, \
-         summary }`, so you can branch on `result.ok` and read `result.output`.\n\n",
-    );
-    let defs = registry.definitions();
-    if defs.is_empty() {
-        section.push_str(
-            "No tools are available this run, so your program can only compute with the builtins.",
-        );
-    } else {
-        section.push_str("Available tools (call them as functions in your program):\n");
-        for def in defs {
-            let args = param_names(&def.parameters).join(", ");
-            section.push_str(&format!(
-                "- `{}({{ {} }})` — {}\n",
-                def.name,
-                args,
-                first_line(&def.description)
-            ));
-        }
-    }
-    section
-}
-
 /// The top-level property names of a tool's JSON-Schema `parameters` object, in schema order — the
-/// argument names shown to the model in the [code-mode prompt](code_mode_prompt_section). Empty when
-/// the schema declares no `properties`.
+/// argument names each tool is shown with in the [system prompt](system_prompt)'s
+/// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) section, where a tool is a function a program
+/// calls rather than a native tool call. Empty when the schema declares no `properties`.
 fn param_names(schema: &Value) -> Vec<String> {
     schema
         .get("properties")

@@ -32,9 +32,11 @@
 //!
 //! The capability is **ablatable**: when it is off the loop builds a
 //! [`disabled`](PlanningRuntime::disabled) runtime, so there are no planning tools, no prompt
-//! section, no read-only mode, and no telemetry — the feature vanishes.
+//! text, no read-only mode, and no telemetry — the feature vanishes.
 
 use test_cabinet_core::gg::{CAPABILITY_PLANNING, GgCapabilitySet};
+
+use crate::prompts;
 
 /// A **swappable** planning strategy for [planning](https://docs.testcabinet.ai/gg/planning/).
 ///
@@ -64,26 +66,11 @@ pub struct DefaultPlanner;
 
 impl Planner for DefaultPlanner {
     fn plan_mode_guidance(&self) -> String {
-        "# Plan mode (read-only)\n\nYou are now in **plan mode**. Your tools are restricted to \
-         read-only exploration — you can `read_file`, `list_dir`, `read_skill`, and \
-         `search_archive`, but you cannot write, edit, run commands, or change any state. Use \
-         this pass to understand the workspace and think the work through.\n\nProduce a concrete \
-         implementation plan: the files you will create or change, the order you will do the \
-         work in, and the key decisions. When your plan is ready, call `submit_plan` with the \
-         plan text. Submitting **clears this exploration from your context** and starts you fresh \
-         with just the original request and your plan, so make the plan self-contained — capture \
-         everything you learned that implementation will need."
-            .to_string()
+        prompts::render_plan_mode()
     }
 
     fn frame_plan(&self, plan: &str) -> String {
-        format!(
-            "# Implementation plan\n\nYou completed a read-only planning pass and submitted the \
-             plan below. Your exploration has been cleared to give you a clean window; the \
-             original build request is still above. Implement this plan now — you have your full \
-             toolset back. If you discover the plan needs to change as you go, adapt it.\n\n{}",
-            plan.trim()
-        )
+        prompts::render_plan_framing(plan)
     }
 }
 
@@ -101,23 +88,14 @@ pub fn resolve_planner(implementation: Option<&str>) -> Box<dyn Planner> {
     }
 }
 
-/// The system-prompt section telling the model the planning tools exist and when to reach for
-/// them. The plan-mode guidance and the accepted plan are injected into the *context* (by the
-/// loop, from the [`Planner`]); this is only the up-front advertisement of the capability.
-const PLANNING_PROMPT: &str = "For substantial or unfamiliar work you can **plan before you \
-    build**. Call `enter_plan_mode` to enter a read-only planning pass: your tools are restricted \
-    to exploration (read files, list directories, read skills, search your archive) so you can \
-    understand the workspace and think without touching it. When your plan is ready, call \
-    `submit_plan` with the plan — gg then clears your exploration history (your skills, memories, \
-    tasks, and board are kept), seeds your context with the original request plus your plan, and \
-    restores your full toolset so you implement from a clean, deliberate starting point.";
-
 /// The loop's live view of the planning capability: whether it is on and the selected
 /// [`Planner`].
 ///
 /// Constructed [enabled](Self::new) with a planner or [disabled](Self::disabled) (an ablation's
-/// off arm). It supplies the loop with the system-prompt [section](Self::prompt_section), the
-/// plan-mode [guidance](Self::plan_mode_guidance) injected on entry, and the accepted-plan
+/// off arm). It supplies the loop with whether the capability
+/// [is offered](Self::offers_planning) (which is what gates its
+/// [system-prompt section](crate::prompts::SystemContext::planning)), the plan-mode
+/// [guidance](Self::plan_mode_guidance) injected on entry, and the accepted-plan
 /// [framing](Self::frame_plan) used to seed the fresh implementation context.
 pub struct PlanningRuntime {
     /// Whether the planning capability is enabled for this run.
@@ -135,7 +113,7 @@ impl PlanningRuntime {
         }
     }
 
-    /// A disabled runtime (the capability is off): no planning tools, no prompt section, no
+    /// A disabled runtime (the capability is off): no planning tools, no prompt text, no
     /// read-only mode, no telemetry. Carries the default planner so its accessors are total, but
     /// they are never consulted while disabled.
     pub fn disabled() -> Self {
@@ -163,12 +141,6 @@ impl PlanningRuntime {
     /// Whether the capability offers the planning tools this run (simply whether it is enabled).
     pub fn offers_planning(&self) -> bool {
         self.enabled
-    }
-
-    /// The system-prompt section advertising the planning tools, or `None` when the capability
-    /// is off.
-    pub fn prompt_section(&self) -> Option<String> {
-        self.enabled.then(|| PLANNING_PROMPT.to_string())
     }
 
     /// The plan-mode guidance the loop injects into the context when the agent enters plan mode.

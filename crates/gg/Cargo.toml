@@ -23,6 +23,12 @@ gg-rac-interp = { path = "../gg-rac-interp" }
 
 serde = { workspace = true }
 serde_json = { workspace = true }
+# gg's model-facing prose (the system prompt, the pinned context blocks, the plan-mode
+# guidance) is authored as Handlebars templates under `templates/` and embedded at compile
+# time; see `src/prompts.rs`. Same engine, and the same strict-mode/no-escape configuration,
+# `core` renders a test case's `prompt.hbs` with, so there is one templating idiom in the
+# workspace.
+handlebars = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
 # The invocation config is parsed and the (future) turn loop is async, so the

@@ -444,22 +444,17 @@ fn caps_resolve_from_params_or_default() {
 fn disabled_runtime_offers_nothing() {
     let runtime = BoardRuntime::disabled();
     assert!(!runtime.offers_board());
-    assert!(runtime.prompt_section().is_none());
     assert!(runtime.state_event().is_none());
     assert!(runtime.context_block().is_none());
     assert_eq!(runtime.issue_count(), 0);
 }
 
 #[test]
-fn enabled_runtime_offers_prompt_and_state() {
+fn enabled_runtime_offers_caps_and_state() {
     let runtime = BoardRuntime::new(BoardCaps::default());
     assert!(runtime.offers_board());
-    assert!(
-        runtime
-            .prompt_section()
-            .unwrap()
-            .contains("epic/issue board")
-    );
+    // The ceilings the system prompt states come from the runtime.
+    assert_eq!(runtime.caps(), BoardCaps::default());
     // At session start the board is empty: a state event exists, but no context block yet.
     assert!(matches!(
         runtime.state_event(),

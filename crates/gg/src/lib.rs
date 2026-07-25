@@ -31,6 +31,7 @@ mod git;
 mod memories;
 mod model;
 mod planning;
+mod prompts;
 mod rac;
 mod replay;
 pub mod replay_driver;
