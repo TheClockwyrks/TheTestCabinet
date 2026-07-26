@@ -733,13 +733,79 @@ reference = "gameplay"
 proof = "gameplay"
 
 # --- Audio --------------------------------------------------------------------
+# All audio is synthesized with the Web Audio API (specs/ui.md — no audio files), so
+# the validator reads the sources a build starts and confirms a distinct cue fires on
+# each event. The build must not autoplay, so each check arms audio with a real gesture
+# (a key press and a corner click) first; the exact sound is the model's own, only that
+# a cue plays is scored. Each mandated cue is its own review item so a build fails
+# exactly the cue it omits. The muteable / never-fail-to-load / silent-until-interaction
+# properties are reviewed by a person from play (see `graceful`).
 [[review.categories]]
 id = "audio"
 title = "Audio"
 [[review.categories.items]]
-id = "cues"
-title = "Distinct synthesized cues"
-description = "Distinct short cues, synthesized with the Web Audio API (no audio files), play for firing a bolt, cutting a worm segment, a chain-arc discharge, a node reaching critical, killing a foe, losing a life, clearing a level, and the Victory / Game-over stings."
+id = "fire"
+title = "Fire cue"
+description = "A distinct short cue, synthesized with the Web Audio API (no audio files), plays when the cursor fires a bolt."
+validation = { script = "validation/audio/fire.mjs", outputs = [
+  { id = "fire", name = "The fire whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "cut"
+title = "Cut cue"
+description = "A distinct cue plays when a bolt cuts a worm segment."
+validation = { script = "validation/audio/cut.mjs", outputs = [
+  { id = "cut", name = "The cut whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "discharge"
+title = "Discharge cue"
+description = "A distinct cue plays when a chain-arc discharge goes off."
+validation = { script = "validation/audio/discharge.mjs", outputs = [
+  { id = "discharge", name = "The discharge whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "critical"
+title = "Critical cue"
+description = "A distinct cue plays when a node reaches critical."
+validation = { script = "validation/audio/critical.mjs", outputs = [
+  { id = "critical", name = "The node reaching critical whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "foe"
+title = "Foe-kill cue"
+description = "A distinct cue plays when a foe is killed."
+validation = { script = "validation/audio/foe.mjs", outputs = [
+  { id = "foe", name = "The foe kill whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "life"
+title = "Life-lost cue"
+description = "A distinct cue plays when a life is lost."
+validation = { script = "validation/audio/life.mjs", outputs = [
+  { id = "life", name = "The life lost whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "level-clear"
+title = "Level-clear cue"
+description = "A distinct cue plays when a level is cleared."
+validation = { script = "validation/audio/level-clear.mjs", outputs = [
+  { id = "clear", name = "The level clear whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "victory"
+title = "Victory sting"
+description = "The Victory sting plays when the final level is cleared and the run is won."
+validation = { script = "validation/audio/victory.mjs", outputs = [
+  { id = "victory", name = "The victory whose sting is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "game-over"
+title = "Game-over sting"
+description = "The Game-over sting plays when the last life is lost."
+validation = { script = "validation/audio/game-over.mjs", outputs = [
+  { id = "gameover", name = "The game over whose sting is checked", kind = "video" },
+] }
 [[review.categories.items]]
 id = "graceful"
 title = "Muted-playable, no autoplay, working mute"

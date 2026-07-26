@@ -354,3 +354,39 @@ export function colorDistance(a, b) {
 export function brightness(c) {
   return 0.299 * c.r + 0.587 * c.g + 0.114 * c.b;
 }
+
+// ---- Audio (reads the Web Audio cues the build actually schedules) ----------
+//
+// Wireworm's cues are synthesized with the Web Audio API (specs/ui.md), so the
+// driver reports every source the build starts (see `api.audio`). The game must
+// not autoplay: it creates (or resumes) its AudioContext only on the first real
+// user interaction, so before driving an event whose cue is checked, arm audio
+// with a GENUINE browser gesture. A build may feed the debug API through a purely
+// logical input path and unlock audio only from a real DOM event (a keydown OR a
+// pointer), so arming uses both `api.userKey` and a corner `api.userClick` rather
+// than a debug `press` — a debug press would leave a conformant build's
+// AudioContext uncreated, so no cue would ever be scheduled though it plays fine
+// for a real player. `KeyZ` has no game binding, and Wireworm has no pointer
+// input at all (keyboard only, specs/controls.md), so the click cannot disturb
+// game state at any position — (4, 4) is used for consistency with other cases.
+// From there a cue is confirmed by the audio log growing across the driven event.
+//
+// The genuine keydown only reaches the game's own audio-unlock code (Wireworm
+// resumes its AudioContext from `handleInput`, called once per real animation
+// frame — every mechanic-driven cue below is scheduled from the fixed-step
+// simulation instead, never from `handleInput` itself) once a real frame has run,
+// and every mechanic this file drives (`fire`, a shot, a bump, a touch) is posed
+// through control ops that never wait on one. The trailing `settle` is a genuine
+// wall-clock pause (unlike `advance`, which is instant in the validate pass) that
+// gives the build's own render loop the frame it needs to notice the gesture and
+// unlock audio BEFORE a check drives the event whose cue depends on it.
+export async function armAudio(api) {
+  await api.userKey("KeyZ");
+  await api.userClick(4, 4);
+  await api.settle(50);
+}
+
+/** The number of Web Audio sources the build has started so far. */
+export async function audioCount(api) {
+  return (await api.audio()).length;
+}
