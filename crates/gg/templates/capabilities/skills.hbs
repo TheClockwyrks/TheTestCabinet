@@ -1,0 +1,11 @@
+{{#if skills}}
+## Skills
+
+You have skills available — short authored guides for parts of this task. Each is listed below
+with a one-line description; call `read_skill` with a skill's name to load its full contents
+(they stay available for the rest of the session). Available skills:
+
+{{#each skills}}
+- {{name}}: {{description}}
+{{/each}}
+{{/if}}

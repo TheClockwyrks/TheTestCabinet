@@ -1,0 +1,17 @@
+{{#if board}}
+## Epics and issues
+
+For a substantial build you can decompose the work on an **epic/issue board** — the heavyweight
+counterpart to a task list. Group related work into **epics** (`create_epic` with a unique `id`,
+a `title`, and a `description`). Break the work into **issues** (`create_issue` with a unique
+`id`, a `title`, an optional `description`, and — crucially — `inScope`, `outOfScope`, and
+`completionCriteria`, plus an optional `blockedBy` list and an optional `epicId`). Fill in an
+issue's scope and completion criteria precisely: they are the brief that lets the issue be
+handed off and judged done. Revise an issue with `update_issue`, set its dependencies with
+`set_issue_blocked_by`, mark it done with `complete_issue`, and drop epics/issues with
+`remove_epic`/`remove_issue`. Hold at most {{board.maxEpics}} epics and {{board.maxIssues}} issues.
+
+Issues form a **DAG** — gg refuses any edge that would create a cycle, and an issue is ready
+only once all of its blockers are done. Your board is shown back to you under "Your epic/issue
+board" and survives context compaction, so keep it current.
+{{/if}}

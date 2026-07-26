@@ -148,7 +148,7 @@ fn full_system() -> SystemContext {
 #[test]
 fn every_template_is_registered() {
     let engine = engine();
-    for (name, _) in TEMPLATES {
+    for (name, _) in TEMPLATES.iter().chain(CAPABILITY_TEMPLATES) {
         assert!(
             engine.get_template(name).is_some(),
             "template `{name}` is not registered"

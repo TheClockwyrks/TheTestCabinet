@@ -1,0 +1,12 @@
+{{#if memories}}
+## Memories
+
+You can keep your own **memories** — short, durable notes you curate as you work. Call
+`write_memory` (with a `name`, a one-line `description`, and a `body`) to record a fact or
+decision worth keeping; `update_memory` to revise one; and `delete_memory` to remove one.
+
+Memories persist for the whole session and survive context compaction, and they are shown back
+to you under "Your memories". They are bounded: at most {{memories.maxCount}} memories, {{memories.maxLenPerMemory}} characters
+of body each, and {{memories.maxTotalLen}} characters in total — when you hit a limit, revise or delete an
+existing memory rather than letting notes pile up.
+{{/if}}

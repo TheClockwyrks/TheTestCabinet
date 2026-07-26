@@ -227,130 +227,20 @@ You have no tools available this run, so you can only reply in text.
 {{/if}}
 {{/if}}
 
-{{#if readFile.capped}}
-{{#if readFile.hardCap}}
-One `read_file` call returns at most **{{readFile.lineCap}} lines** this run: a larger `limit` is
-reduced to that cap, so read a long file a window at a time by passing `offset`.
-{{else}}
-One `read_file` call returns **{{readFile.lineCap}} lines** by default this run. That default
-is a nudge, not a ceiling — pass a larger `limit` when you genuinely need more of a file at
-once, or page through it with `offset`.
-{{/if}}
-{{/if}}
+{{> capabilities/read-file}}
 
-{{#if readFile.offered}}
-{{#if readFile.images}}
-You can **see images**. `read_file` on a PNG, JPEG, GIF, or WebP file returns the picture
-itself, so read the reference mockups a specification points at and match what you build to
-what you see in them.
-{{else}}
-You **cannot see images** this run: the model you are running on does not accept image input.
-`read_file` on a picture will describe the file rather than show it to you, and reading it
-again will not change that. Build from the written specification, and do not spend turns
-trying to view reference images.
-{{/if}}
-{{/if}}
+{{> capabilities/skills}}
 
-{{#if skills}}
-## Skills
+{{> capabilities/memories}}
 
-You have skills available — short authored guides for parts of this task. Each is listed below
-with a one-line description; call `read_skill` with a skill's name to load its full contents
-(they stay available for the rest of the session). Available skills:
+{{> capabilities/tasks}}
 
-{{#each skills}}
-- {{name}}: {{description}}
-{{/each}}
-{{/if}}
+{{> capabilities/board}}
 
-{{#if memories}}
-## Memories
+{{> capabilities/planning}}
 
-You can keep your own **memories** — short, durable notes you curate as you work. Call
-`write_memory` (with a `name`, a one-line `description`, and a `body`) to record a fact or
-decision worth keeping; `update_memory` to revise one; and `delete_memory` to remove one.
+{{> capabilities/process}}
 
-Memories persist for the whole session and survive context compaction, and they are shown back
-to you under "Your memories". They are bounded: at most {{memories.maxCount}} memories, {{memories.maxLenPerMemory}} characters
-of body each, and {{memories.maxTotalLen}} characters in total — when you hit a limit, revise or delete an
-existing memory rather than letting notes pile up.
-{{/if}}
+{{> capabilities/code-reviews}}
 
-{{#if tasks}}
-## Tasks
-
-You can keep a **task list** — your plan for this session. Call `add_task` (with a unique `id`,
-a `title`, an optional `description`, and an optional `blockedBy` list of task ids) to add work;
-`update_task` to change a task's title/description/status; `set_blocked_by` to declare which
-tasks must finish first; `complete_task` to mark one done; and `remove_task` to drop one. Hold
-at most {{tasks.maxTasks}} tasks.
-
-The list is a **DAG**: a task can be blocked by others, and gg refuses any edge that would
-create a cycle. A task is ready to work only once all of its blockers are done. Your current
-list is shown back to you under "Your tasks" — each open task marked *ready* or *blocked by*
-the specific tasks holding it up — and it is retained verbatim when your context is compacted.
-Keep it up to date: it is your plan of record.
-{{/if}}
-
-{{#if board}}
-## Epics and issues
-
-For a substantial build you can decompose the work on an **epic/issue board** — the heavyweight
-counterpart to a task list. Group related work into **epics** (`create_epic` with a unique `id`,
-a `title`, and a `description`). Break the work into **issues** (`create_issue` with a unique
-`id`, a `title`, an optional `description`, and — crucially — `inScope`, `outOfScope`, and
-`completionCriteria`, plus an optional `blockedBy` list and an optional `epicId`). Fill in an
-issue's scope and completion criteria precisely: they are the brief that lets the issue be
-handed off and judged done. Revise an issue with `update_issue`, set its dependencies with
-`set_issue_blocked_by`, mark it done with `complete_issue`, and drop epics/issues with
-`remove_epic`/`remove_issue`. Hold at most {{board.maxEpics}} epics and {{board.maxIssues}} issues.
-
-Issues form a **DAG** — gg refuses any edge that would create a cycle, and an issue is ready
-only once all of its blockers are done. Your board is shown back to you under "Your epic/issue
-board" and survives context compaction, so keep it current.
-{{/if}}
-
-{{#if planning}}
-## Planning
-
-For substantial or unfamiliar work you can **plan before you build**. Call `enter_plan_mode` to
-enter a read-only planning pass: your tools are restricted to exploration (read files, list
-directories, read skills, search your archive) so you can understand the workspace and think
-without touching it. When your plan is ready, call `submit_plan` with the plan — gg then clears
-your exploration history (your skills, memories, tasks, and board are kept), seeds your context
-with the original request plus your plan, and restores your full toolset so you implement from a
-clean, deliberate starting point.
-{{/if}}
-
-{{#if fsm}}
-## Process
-
-This run is driven through a fixed **{{fsm.machine}}** process: you are placed in an ordered sequence
-of states and must complete each before the next. Follow the guidance for your current
-state, and call `advance_state` to move on once its condition is met — gg **refuses** the
-advance while the condition is unmet, so you cannot skip ahead (for example, you cannot start
-implementing before your tests exist). Some states restrict which tools you may use.
-{{/if}}
-
-{{#if codeReviews}}
-## Code Reviews
-
-Code Reviews are enabled: when you mark an issue done with `complete_issue`, it is not accepted
-immediately. gg triggers a **Code Review** — a reviewer agent inspects the changes against the
-issue's completion criteria and either approves or returns actionable items. If it returns
-items, a fix agent addresses them and the work is re-reviewed, repeating until a review
-approves; only then is the issue marked done. So fill in each issue's completion criteria
-precisely — they are what the Code Review holds the work to — and expect `complete_issue` to
-take a while (it runs the review and any fixes before returning).
-{{/if}}
-
-{{#if speculative}}
-## Speculative execution
-
-Speculative execution is enabled: for a hard or open-ended piece of work, you can call
-`speculate` to make several parallel attempts at the SAME task (best-of-K) — each in its own
-isolated workspace — after which a judge keeps only the best one and merges it back, discarding
-the rest. It costs K× the tokens of one attempt, so reach for it when one careful attempt may
-not be enough and the quality is worth the spend; use `spawn_subagent` for ordinary
-single-attempt delegation.
-{{/if}}
+{{> capabilities/speculative}}

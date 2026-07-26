@@ -1,0 +1,23 @@
+{{#if readFile.capped}}
+{{#if readFile.hardCap}}
+One `read_file` call returns at most **{{readFile.lineCap}} lines** this run: a larger `limit` is
+reduced to that cap, so read a long file a window at a time by passing `offset`.
+{{else}}
+One `read_file` call returns **{{readFile.lineCap}} lines** by default this run. That default
+is a nudge, not a ceiling — pass a larger `limit` when you genuinely need more of a file at
+once, or page through it with `offset`.
+{{/if}}
+{{/if}}
+
+{{#if readFile.offered}}
+{{#if readFile.images}}
+You can **see images**. `read_file` on a PNG, JPEG, GIF, or WebP file returns the picture
+itself, so read the reference mockups a specification points at and match what you build to
+what you see in them.
+{{else}}
+You **cannot see images** this run: the model you are running on does not accept image input.
+`read_file` on a picture will describe the file rather than show it to you, and reading it
+again will not change that. Build from the written specification, and do not spend turns
+trying to view reference images.
+{{/if}}
+{{/if}}
