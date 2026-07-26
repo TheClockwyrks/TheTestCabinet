@@ -21,6 +21,7 @@ convention. Each entity is seeded at its case's declared canvas.
 | --- | --- | --- | --- |
 | `belt` | 48 | 32×32 | three tiers of a straight loop (8) then a curve loop (8); tread scrolls at 12 / 16 / 20 fps |
 | `splitter` | 8 | 32×64 | scrolling loop, 12 fps |
+| `lane-splitter` | 8 | 32×64 | scrolling loop with two outward-riding spreader heads, 12 fps — **provisional** |
 | `inserter` | 36 | 64×64 | three tiers of a 12-frame swing cycle, 12 / 16 / 20 fps |
 | `assembler` | 24 | 96×96 | three tiers of an 8-frame craft loop, 8 / 11 / 13 fps |
 | `source` | 6 | 32×32 | emit pulse, 8 fps |
@@ -43,7 +44,8 @@ tier yet, so the renderer draws tier 1 and the higher tiers wait for it.
 ## Using them
 
 **Grid and canvas.** The grid cell is 32 px. A belt, source, and sink each fill one
-cell. A splitter spans two cells along its cross-flow axis. The furnace covers 2×2
+cell. A splitter — and the `lane-splitter`, which shares its two-cell footprint —
+spans two cells along its cross-flow axis. The furnace covers 2×2
 cells; the assembler covers 3×3 cells. The inserter's canvas is *larger than its
 cell* — its swing arm reaches
 beyond the tile it is anchored to — so it is drawn centred on its anchor cell with
@@ -65,6 +67,12 @@ rather than one: `sheet.json` records an `off` and a `smelting` state, and the
 renderer plays the state the furnace is in. Like the machine item icons it is
 **provisional** — the engine places no furnace yet, so nothing resolves it
 until the engine gains the entity.
+
+The `lane-splitter` is **provisional** in the same way: `lattice-core` has no
+lane-splitter entity yet, so nothing places one and the renderer never resolves its
+row. It is seeded now — a scrolling belt loop with two spreader heads that ride
+outward, unzipping the flow to the outer lanes — so the art is ready when the engine
+gains the entity.
 
 **Item icons.** Frame index is item identity, not a time step. Frames 0–6 are the
 seven items the simulation carries today, **in the engine's own order**, so the

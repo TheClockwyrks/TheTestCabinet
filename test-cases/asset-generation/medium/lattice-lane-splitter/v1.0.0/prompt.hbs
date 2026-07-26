@@ -1,0 +1,56 @@
+Draw the **Lattice lane splitter**, an 8-frame **sprite sheet** of the two-tile belt
+unzipper, using only the drawing tool.
+
+The lane splitter is a piece of the **Lattice** factory: a top-down **belt
+unzipper** that spans **two tiles** across the flow — a standalone machine with
+**two belt inputs on one side and two belt outputs on the other** that pulls the two
+streams apart, routing each incoming belt out to the **outer lane** of its output
+rather than evening them out. The splitting happens inside, **hidden under a solid
+housing** between the inputs and outputs; you see the belts feeding in and out at
+the edges and the closed housing in the middle. To show the machine at work, the
+housing carries a raised **splitting ridge down its centre** and **two moving
+spreader heads that ride outward** toward the outer lanes, and its output end is
+drawn as an East-pointing arrow so its feed direction is clear. You are drawing the
+*device* seen from above — a component belts plug into, not a length of belt — with
+the belt surface at its mouths and the two spreader heads animated frame to frame.
+
+## How drawing works
+
+The only way to make a mark is the `draw-sheet` binary already on your `PATH`. You
+build the sheet by calling it **one operation at a
+time**, each targeting a frame with `--frame <index>`. The ordered operations you
+issue are recorded to a per-frame action log, and that log is your submission.
+
+Each frame is its **own separate 32×64 image**. After each call the binary
+re-renders that frame to `frames/<index>.png` and appends the operation to that
+frame's log. Blank starting frames and empty logs are already in place at
+`{{workspace}}`.
+
+Each operation is an ordinary subcommand with flags, naming its frame:
+
+```
+draw-sheet fill-rect --frame 0 --x 0 --y 0 --w 32 --h 64 --color "#34383d"
+```
+
+Run `draw-sheet --help` to list every operation and `draw-sheet <operation>
+--help` for one operation's exact flags — that help text is the authoritative
+contract. **Read `frames/<index>.png` after your calls** to see your progress and
+decide what to do next.
+
+## What to read first
+
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Read all of it before you start, and produce an
+implementation that matches the specification exactly.
+
+## What to deliver
+
+Build the lane splitter sprite sheet up operation by operation until each
+`frames/<index>.png` matches the brief: one two-tile unzipper spanning both 32×32
+cells, with two belt inputs on the West edge and two outputs on the East, a solid
+grey-blue housing hiding the mechanism between them, a central East-West splitting
+ridge, two spreader heads that ride outward toward the outer lanes to convey the
+flow being pulled apart, an East-pointing arrow on the housing's output end, and the
+amber chevrons at the belt mouths scrolling East across the eight frames in a
+seamless loop. When you are satisfied, stop: the recorded per-frame action logs are
+your finished submission.

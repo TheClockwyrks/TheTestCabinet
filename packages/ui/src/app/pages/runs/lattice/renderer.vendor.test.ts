@@ -157,6 +157,7 @@ describe("lattice atlas contract", () => {
       "belt",
       "furnace",
       "inserter",
+      "lane-splitter",
       "sink",
       "source",
       "splitter",
@@ -180,7 +181,7 @@ describe("lattice atlas contract", () => {
     // Flat ground entities are drawn facing east and rotated by the renderer; the
     // assembler is a symmetric square machine with no facing.
     expect(entity("assembler").rotatable).toBe(false);
-    for (const name of ["belt", "splitter", "inserter", "source", "sink"]) {
+    for (const name of ["belt", "splitter", "lane-splitter", "inserter", "source", "sink"]) {
       expect(entity(name).rotatable).toBe(true);
     }
   });
@@ -267,7 +268,7 @@ describe("lattice atlas contract", () => {
         h: number;
       }[]),
     ];
-    expect(all.length).toBe(157);
+    expect(all.length).toBe(165);
     for (const r of all) {
       expect(r.x).toBeGreaterThanOrEqual(0);
       expect(r.y).toBeGreaterThanOrEqual(0);

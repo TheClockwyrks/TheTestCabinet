@@ -76,6 +76,16 @@ const ENTITIES = [
     ],
   },
   { name: "splitter", frames: 8, size: [32, 64], fps: 12, cells: [1, 2], offset: [0, 0], rotatable: true },
+  // The lane splitter (an "unzipper"): same two-cell footprint and scrolling loop as
+  // the splitter, but it routes each input out to its output's OUTER lane rather than
+  // balancing — a central splitting ridge and two spreader heads that ride outward.
+  //
+  // PROVISIONAL, like the furnace below: `lattice-core` has no lane-splitter entity
+  // yet, so nothing places one and the renderer never resolves this row. Its
+  // `cells`/`offset`/`rotatable` mirror the splitter's (a 1x2 device in its canonical
+  // east orientation), to be verified against `World::footprints()` when the engine
+  // gains the entity — as the non-provisional rows above were.
+  { name: "lane-splitter", frames: 8, size: [32, 64], fps: 12, cells: [1, 2], offset: [0, 0], rotatable: true },
   // Three tiers of a 12-frame swing cycle. No engine tier field exists for
   // inserters yet, so the renderer draws tier 1 until one does; tiers 2-3 are
   // seeded and ready for it.

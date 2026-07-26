@@ -335,6 +335,7 @@ stackable
 chippable
 mapselect
 unslowed
+unzipper
 unbonded
 bondsnap
 hitpoints

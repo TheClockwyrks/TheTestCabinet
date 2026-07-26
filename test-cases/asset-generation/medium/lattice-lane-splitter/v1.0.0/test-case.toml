@@ -1,0 +1,246 @@
+slug = "lattice-lane-splitter"
+experimental = true
+name = "Lattice Lane Splitter"
+difficulty = "medium"
+tags = ["sprite-sheet", "belt"]
+summary = """
+Draw the Lattice lane splitter — the two-tile belt UNZIPPER — as a 32x64 sprite \
+sheet: a top-down machine with two belt inputs on one side and two outputs on the \
+other that pulls the two streams APART, routing each belt out to the outer lane of \
+its output rather than balancing them. Its housing, arrow-shaped output end, a \
+raised East-West splitting ridge down the centre seam, and two amber spreader \
+heads that ride outward toward the outer corners are drawn on a separate \
+`mechanism` layer over a CONTINUOUS belt bed, so items ride the belt and pass under \
+the machine rather than being hidden — the amber chevrons scrolling East, produced \
+one drawing operation at a time."""
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1
+type = "asset-generation"
+asset_kind = "sprite-sheet"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# Each frame is its own 32x64 transparent canvas (a separate file). An East-flowing
+# lane splitter occupies one tile in the flow direction by two tiles across it, so
+# the frame is 32 wide x 64 tall = two stacked 32x32 tile cells.
+[canvas]
+width = 32
+height = 64
+background = "transparent"
+
+# The drawing tool. `draw-sheet` is the only way to make a mark; each operation
+# targets a frame with `--frame`, records to that frame's action log, and
+# re-renders that frame's preview. Run `draw-sheet --help` for the operations.
+[tool]
+binary = "draw-sheet"
+preview = "frames/{frame}.png"
+
+# The recorded action logs — one per frame, the authoritative output each
+# frame's regenerated image is built from.
+[output]
+actions = "frames/{frame}.actions.json"
+
+# The frames the model draws — each a separate 32x64 file — and the named
+# animation sequence a reviewer plays back.
+[sheet]
+
+[[sheet.frame]]
+index = 0
+
+[[sheet.frame]]
+index = 1
+
+[[sheet.frame]]
+index = 2
+
+[[sheet.frame]]
+index = 3
+
+[[sheet.frame]]
+index = 4
+
+[[sheet.frame]]
+index = 5
+
+[[sheet.frame]]
+index = 6
+
+[[sheet.frame]]
+index = 7
+
+[[sheet.sequence]]
+slug = "lane-splitter-flow"
+name = "Lane splitter — unzipping"
+frames = [0, 1, 2, 3, 4, 5, 6, 7]
+fps = 12
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How faithfully the regenerated sheet matches the Lattice lane splitter — a single \
+two-tile UNZIPPER with two belt inputs and two belt outputs, a solid grey-blue \
+housing hiding the mechanism between them, a raised East-West splitting ridge down \
+the centre seam and two amber spreader heads that ride outward toward the outer \
+output corners to convey the flow being pulled apart to the outer lanes, an \
+East-pointing arrow on the housing's output end, the amber chevrons at the belt \
+mouths scrolling East in a seamless loop and matching the belt look, and the pinned \
+belt-family palette. It must read as a machine belts plug into that visibly SPLITS \
+the two streams outward, not as a length of belt and not as a symmetric \
+side-to-side balancer."""
+
+[[review_item]]
+id = "one-two-tile-device"
+title = "One two-tile lane splitter"
+text = """
+The whole 32x64 frame reads as a SINGLE lane splitter spanning both stacked 32x32 \
+tile cells — one 2-wide device, not two separate belts or two unrelated tiles. The \
+housing brackets both cells so they clearly belong to the same machine."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "central-housing-hides-mechanism"
+title = "Central housing hides the mechanism"
+text = """
+The middle of the device is a solid grey-blue housing spanning both cells — a \
+closed lid, the dominant mass of the sprite — drawn on the `mechanism` layer so it \
+OCCLUDES the belt beneath it: in the composited sprite no belt surface, chevrons, \
+or lanes show through the housing. Underneath, on the base layer, the belt bed runs \
+whole (see "The mechanism is a separate layer"), so items ride it and pass under \
+the housing rather than vanishing into a gap. This housing is what makes the device \
+read as a machine, not a belt."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "mechanism-on-its-own-layer"
+title = "The mechanism is a separate layer over a continuous belt bed"
+text = """
+The device is built in two layers. The belt bed is painted straight into each frame \
+(on no layer) as a continuous transport-belt surface running the FULL width of both \
+lanes — unbroken from the West edge to the East edge, INCLUDING the stretch beneath \
+the machine. The mechanism — the housing shell, the output arrow, the central \
+splitting ridge, and the moving spreader heads — is registered on a separate \
+`mechanism` layer that composites on top. The belt must be whole underneath: an \
+item riding it slides from an input, under the mechanism, and out an output without \
+the belt ever breaking, so the renderer can draw items BETWEEN the two layers and \
+have them pass under the machine rather than fading out. A sprite that paints the \
+housing straight onto a belt that stops at the mouths — leaving a gap with no belt \
+under the machine — fails this: there is then nothing for an item to travel on \
+beneath the mechanism."""
+weight = 4
+domain = "fidelity"
+
+[[review_item]]
+id = "two-inputs-two-outputs"
+title = "Two inputs and two outputs"
+text = """
+The device has two belt mouths on the West (left) edge and two on the East (right) \
+edge — one per tile cell — each exactly one belt wide (one full 32 px cell) so a \
+transport belt tile lines up flush with it, neither wider nor narrower, and each \
+reaching its frame edge so an adjoining belt butts up to it. The inputs feed into \
+the housing and the outputs lead out of it, so it reads as a component belts \
+CONNECT to, not a length of belt."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "belt-scrolls-east"
+title = "Belt mouths scroll East"
+text = """
+Playing frames 0 through 7 shows the amber chevrons at the input and output mouths \
+scrolling steadily to the right (East) by a fixed step each frame and looping \
+seamlessly — frame 7 hands off to frame 0 with no jump — exactly like a running \
+transport belt feeding into and out of the machine. The housing shell and the \
+splitting ridge stay static (the two spreader heads are what move on it)."""
+sequences = ["lane-splitter-flow"]
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "splitting-ridge"
+title = "Central East-West splitting ridge"
+text = """
+A raised splitting ridge (a spine/keel) runs along the flow (East-West) down the \
+centre seam of the housing, over the divider between the two lanes, static in every \
+frame. It reads as the blade that parts the flow between the top and bottom lanes — \
+the defining silhouette of this machine — and is unmistakably a lengthwise central \
+ridge, not a cross-lane bar or a plain flat lid."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "spreader-unzip-motion"
+title = "Two spreader heads route the flow to the outer lanes"
+text = """
+The housing carries TWO amber-accented spreader heads, one over the top lane and \
+one over the bottom, that ride outward from the central ridge toward the two OUTER \
+corners of the outputs (the top head toward the top edge, the bottom head toward the \
+bottom edge) and draw back, in mirror symmetry about the centre line. Playing frames \
+0 through 7 they must actually move through a smooth continuous cycle that loops \
+seamlessly (frame 7 hands to frame 0 with no jump), at a distinct state each frame \
+rather than jittering between two spots, so the pair reads as the machine \
+UNZIPPING the two streams apart and routing each out to its outer lane — a diverging \
+outward motion, not a side-to-side sweep across the lanes."""
+sequences = ["lane-splitter-flow"]
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "output-arrow"
+title = "Arrow-shaped output end"
+text = """
+The East (output) end of the housing is shaped as a bold arrowhead / chevron \
+pointing East, not a flat vertical edge, so the housing's own silhouette points \
+toward the outputs and the feed direction is unmistakable when the lane splitter \
+stands alone. It points East (toward the outputs), not any other way, and stays \
+static across the frames."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "matches-belt-look"
+title = "Belt mouths match the belt family"
+text = """
+The moving surface at the four mouths reads as the same belt as a plain Lattice \
+transport belt — a single central row of amber chevrons pointing East over the dark \
+belt metal with side rails, one row per mouth — so a belt and the lane splitter's \
+mouths visibly carry the same items in the same style."""
+sequences = ["lane-splitter-flow"]
+weight = 1
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Belt-family palette"
+text = """
+Uses only the brief's pinned palette — dark outline, belt metal base/mid/edge, \
+amber chevron with its highlight and shadow, and the grey-blue housing with the \
+amber accent — with no out-of-palette colors and no anti-aliased fringe of stray \
+pixels."""
+weight = 1
+domain = "fidelity"
+
+[[review_item]]
+id = "framing"
+title = "Frame framing"
+text = """
+The device fills the 32x64 frame with only small margins, centered across both \
+cells, and the belt mouths line up at the left and right edges so they tile \
+seamlessly with an adjoining belt rather than sitting tiny or clipped."""
+weight = 1
+domain = "fidelity"
