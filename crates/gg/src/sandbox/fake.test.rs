@@ -25,6 +25,23 @@ use crate::tools::{
     WorkflowData,
 };
 
+/// Whether this test has a process to itself — the guarantee the process-global compile counter in
+/// [`engine`](super::engine) depends on.
+///
+/// The repo mandates `cargo nextest`, which runs one process per test and advertises that by setting
+/// `NEXTEST` in the test's environment. Under the forbidden `cargo test` every test shares one
+/// process, and at startup its threads *race* to compile the `OnceLock` component in parallel — the
+/// compile is deliberately race-idempotent, so the loser threads each still bump [`compiles`] before
+/// one `set` wins. The counter therefore reflects however many threads lost the race, not a per-turn
+/// truth, and no assertion on its absolute value can hold. The engine and error tests read the
+/// counter only when this is true, so they stay exact under the mandated runner and skip the
+/// unprovable check under `cargo test` instead of failing spuriously.
+///
+/// [`compiles`]: super::engine::compiles
+pub(crate) fn process_isolated() -> bool {
+    std::env::var_os("NEXTEST").is_some()
+}
+
 /// One call the double received, as the membrane made it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RecordedCall {

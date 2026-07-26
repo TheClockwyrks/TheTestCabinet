@@ -7,7 +7,7 @@
 //! `sandbox.test.rs` are consolidated into a handful of functions instead of one per behaviour.
 
 use super::*;
-use crate::sandbox::fake::{CallLog, FakeInvoker};
+use crate::sandbox::fake::{CallLog, FakeInvoker, process_isolated};
 use crate::sandbox::{SandboxLimits, run_program};
 
 /// **HR2: the component is compiled once per process, never per turn.**
@@ -21,6 +21,15 @@ use crate::sandbox::{SandboxLimits, run_program};
 /// two whole [`run_program`] calls that prove nothing on the turn path reaches around the cache.
 #[test]
 fn the_component_compiles_once_per_process() {
+    // The whole property here is about the process-global compile counter and the cold 0→1
+    // transition, which only exist when this test owns its process. `cargo nextest` — the runner the
+    // repo mandates and CI uses — guarantees that; under the forbidden `cargo test` the parallel
+    // threads race to compile the shared component and the counter is meaningless, so there is
+    // nothing to prove. See [`process_isolated`] for the full reasoning.
+    if !process_isolated() {
+        return;
+    }
+
     assert_eq!(compiles(), 0, "nothing has compiled yet in this process");
 
     // Warming up is what moves the compile off the first code turn's critical path. On a one-core
@@ -126,6 +135,15 @@ fn the_committed_component_is_within_the_documented_size_band() {
 /// sibling runs.
 #[test]
 fn the_program_that_pays_the_compile_reports_what_it_cost() {
+    // "The first program pays the compile" is a process-global, once-per-process fact: it is only
+    // observable when this test owns its process and is therefore the caller that compiles the
+    // component. `cargo nextest` (the mandated runner, and CI) guarantees that; under `cargo test`
+    // some sibling thread may already have compiled it — or several may be racing to — so neither the
+    // counter nor `compile_wait` is a truth to assert. See [`process_isolated`].
+    if !process_isolated() {
+        return;
+    }
+
     let log = CallLog::default();
     let cold = run_program(
         "return 1;",
