@@ -20,8 +20,27 @@ Requirements:
   compaction verbatim rather than be summarized away. Compaction is the capability
   that makes "retained across compaction" mean something.
 
-Compaction is a prime candidate for a **swappable summarization tool** so we can
-study which strategy retains the most useful state.
+## Summarization strategies
+
+How the dropped history is summarized is a **swappable strategy**, so a study can
+compare which one retains the most useful state without changing anything else
+about a run. The compaction capability's **Summarization strategy** field selects
+it (empty picks the default):
+
+- **Model summary** (`model`, the default) — one model call that writes a focused
+  prose recap of the thread being dropped: what the agent is building, the key
+  decisions and discoveries, files changed, what is in progress, and the next
+  step.
+- **Structured extract** (`structured`) — the same model call, but steered to emit
+  that state under fixed headings (`Building`, `Decisions`, `Files`,
+  `In progress`, `Next step`) rather than free prose — a more predictable shape to
+  compare across runs.
+
+Both carry the pinned state forward verbatim (below); they differ only in how the
+*history* is condensed. A run naming a strategy gg doesn't recognize falls back to
+the default rather than failing to launch, so a sweep can reference a
+not-yet-built strategy without breaking. Adding a strategy is a drop-in behind the
+`Summarizer` trait in `crates/gg/src/compaction.rs`.
 
 ## Enabling compaction shrinks the window the agent gets
 

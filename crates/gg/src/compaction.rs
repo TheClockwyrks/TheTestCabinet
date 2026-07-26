@@ -30,8 +30,9 @@
 //! - **The summarizer.** Summarization is a **swappable strategy** behind the
 //!   [`Summarizer`] trait, selected by the capability's
 //!   [`implementation`](test_cabinet_core::gg::GgCapabilityConfig::implementation). The
-//!   default [`ModelSummarizer`] reuses the run's primary [`ModelClient`] with a focused
-//!   summarization prompt; a different prompt/structure is a drop-in.
+//!   default [`ModelSummarizer`] reuses the run's primary [`ModelClient`] with a focused prose
+//!   summarization prompt; [`StructuredSummarizer`] (`structured`) asks the same call for fixed
+//!   sections instead. A different prompt/structure is a drop-in — see [`resolve_summarizer`].
 //!
 //! # Offline testability
 //!
@@ -89,6 +90,19 @@ const SUMMARY_SYSTEM_PROMPT: &str = "You are gg's context-compaction summarizer 
     memories, or task list — those are retained separately. Be concise and factual; output \
     only the summary.";
 
+/// The system prompt the [`StructuredSummarizer`] steers its summarization call with: the same
+/// task as [`SUMMARY_SYSTEM_PROMPT`] but asking for the working state as **fixed sections** rather
+/// than free prose. It carries the [`SUMMARIZATION_MARKER`] so an offline mock detects the request.
+const STRUCTURED_SUMMARY_SYSTEM_PROMPT: &str = "You are gg's context-compaction summarizer \
+    <<gg-compaction-summary-request>>. You are given the earlier portion of a coding agent's \
+    thread that is about to be dropped to reclaim context. Extract the working state under these \
+    exact headings, one per line, each a terse bullet list (write \"none\" if a heading has \
+    nothing): `Building:` (what the agent is building), `Decisions:` (key decisions and \
+    discoveries so far), `Files:` (files created or changed), `In progress:` (what is currently \
+    underway), `Next step:` (the immediate next action). Do not restate the agent's skills, \
+    memories, or task list — those are retained separately. Be concise and factual; output only \
+    the sections.";
+
 /// The heading prepended to the summary item placed in the compacted window, so the model
 /// reads it as a recap of dropped history rather than fresh instruction.
 const SUMMARY_PREFACE: &str = "# Summary of earlier work (context was compacted)\n\n\
@@ -115,10 +129,12 @@ pub struct SummaryRequest<'a> {
 
 /// A **swappable** summarization strategy for [compaction](https://docs.testcabinet.ai/gg/compaction/).
 ///
-/// The default is [`ModelSummarizer`] (a focused model call); the trait keeps it a
-/// drop-in so a study can compare strategies — a different prompt, a structured extract, a
-/// cheaper model — by [selecting an implementation](resolve_summarizer) without touching the
-/// loop. `Send + Sync` so a boxed summarizer can back the async loop.
+/// Two ship today, both a single model call that differ only in the prompt they steer it
+/// with: [`ModelSummarizer`] (the default — a focused prose recap) and [`StructuredSummarizer`]
+/// (the same working state in fixed sections). The trait keeps the choice a drop-in so a study
+/// can compare strategies — a different prompt, a structured extract, a cheaper model — by
+/// [selecting an implementation](resolve_summarizer) without touching the loop. `Send + Sync`
+/// so a boxed summarizer can back the async loop.
 #[async_trait]
 pub trait Summarizer: Send + Sync {
     /// Summarize `request.history` into working-state text the agent can continue from.
@@ -137,21 +153,44 @@ pub struct ModelSummarizer;
 #[async_trait]
 impl Summarizer for ModelSummarizer {
     async fn summarize(&self, request: SummaryRequest<'_>) -> String {
-        let messages = vec![
-            Message::system(SUMMARY_SYSTEM_PROMPT),
-            Message::user(render_history(request.history)),
-        ];
-        // No tools are offered for the summary turn; the summarizer wants prose, not a
-        // tool call. Usage from this call is intentionally not folded into the run totals
-        // in P2a (a clean seam for later per-role accounting).
-        match request.client.complete(&messages, &[]).await {
-            Ok(response) => response
-                .text
-                .map(|text| text.trim().to_string())
-                .filter(|text| !text.is_empty())
-                .unwrap_or_else(|| FALLBACK_SUMMARY.to_string()),
-            Err(_) => FALLBACK_SUMMARY.to_string(),
-        }
+        summarize_with_prompt(SUMMARY_SYSTEM_PROMPT, request).await
+    }
+}
+
+/// The [`Summarizer`] selected by `structured`: like [`ModelSummarizer`] it is a single call to
+/// the run's primary [`ModelClient`], but steered to emit the working state as **fixed sections**
+/// (what is being built, key decisions, files changed, work in progress, next step) rather than
+/// free prose — a more predictable shape for a study comparing what each strategy retains. Offline
+/// it is answered by the same scripted mock (its prompt carries [`SUMMARIZATION_MARKER`] too), and
+/// a model or transport error degrades to [`FALLBACK_SUMMARY`] so compaction never aborts the run.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct StructuredSummarizer;
+
+#[async_trait]
+impl Summarizer for StructuredSummarizer {
+    async fn summarize(&self, request: SummaryRequest<'_>) -> String {
+        summarize_with_prompt(STRUCTURED_SUMMARY_SYSTEM_PROMPT, request).await
+    }
+}
+
+/// The single-model-call summarize shared by [`ModelSummarizer`] and [`StructuredSummarizer`]:
+/// one turn steered by `system_prompt` over the rendered history, degrading to
+/// [`FALLBACK_SUMMARY`] on an empty or errored response so compaction never aborts the run.
+async fn summarize_with_prompt(system_prompt: &str, request: SummaryRequest<'_>) -> String {
+    let messages = vec![
+        Message::system(system_prompt),
+        Message::user(render_history(request.history)),
+    ];
+    // No tools are offered for the summary turn; the summarizer wants prose, not a
+    // tool call. Usage from this call is intentionally not folded into the run totals
+    // in P2a (a clean seam for later per-role accounting).
+    match request.client.complete(&messages, &[]).await {
+        Ok(response) => response
+            .text
+            .map(|text| text.trim().to_string())
+            .filter(|text| !text.is_empty())
+            .unwrap_or_else(|| FALLBACK_SUMMARY.to_string()),
+        Err(_) => FALLBACK_SUMMARY.to_string(),
     }
 }
 
@@ -182,17 +221,25 @@ fn render_history(history: &[Message]) -> String {
     out
 }
 
-/// Select the [`Summarizer`] for a compaction capability's
-/// [`implementation`](test_cabinet_core::gg::GgCapabilityConfig::implementation). `None`
-/// (or an unrecognized name) selects the default [`ModelSummarizer`]; the match is the
-/// drop-in seam for alternate strategies.
-pub fn resolve_summarizer(implementation: Option<&str>) -> Box<dyn Summarizer> {
+/// The canonical name of the summarization strategy an
+/// [`implementation`](test_cabinet_core::gg::GgCapabilityConfig::implementation) selects — the
+/// single place the mapping lives, so [`resolve_summarizer`] and any diagnostics agree. `model`
+/// (the default) covers `model`/`default`/empty/`None` **and** any unrecognized name, so a study
+/// naming a not-yet-built strategy still launches rather than failing; `structured` is the only
+/// alternate today. Add an arm here (and in [`resolve_summarizer`]) to ship a new one.
+fn strategy_name(implementation: Option<&str>) -> &'static str {
     match implementation {
-        // The only strategy in P2a; future strategies add arms here.
-        Some("model") | Some("default") | None => Box::new(ModelSummarizer),
-        // An unrecognized implementation falls back to the default rather than failing to
-        // launch — a study naming a not-yet-built strategy still runs.
-        Some(_) => Box::new(ModelSummarizer),
+        Some("structured") => "structured",
+        _ => "model",
+    }
+}
+
+/// Select the [`Summarizer`] for a compaction capability's `implementation`, per
+/// [`strategy_name`]. The match is the drop-in seam for alternate strategies.
+pub fn resolve_summarizer(implementation: Option<&str>) -> Box<dyn Summarizer> {
+    match strategy_name(implementation) {
+        "structured" => Box::new(StructuredSummarizer),
+        _ => Box::new(ModelSummarizer),
     }
 }
 

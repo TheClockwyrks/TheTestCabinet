@@ -241,6 +241,22 @@ export const FSM_MACHINE_OPTIONS = [
 export const FSM_MACHINE_HINT =
   "None runs no state machine. tdd: write tests → implement → verify. review-gated: develop → review → accept. plan-first: plan pass → implement pass.";
 
+// The compaction summarization strategies gg resolves at run time
+// (`crates/gg/src/compaction.rs`), in editor order. Both are a single model call
+// that differ only in the prompt: the empty value is the default (a focused prose
+// recap), `structured` asks for the same state in fixed sections. An unrecognized
+// name falls back to the default rather than failing to launch, so the field stays
+// a closed picker rather than free text.
+export const SUMMARIZER_OPTIONS = [
+  { value: "", label: "Model summary (default)" },
+  { value: "structured", label: "Structured extract" },
+] as const;
+
+// What each summarization strategy does — the detail lifted off the picker's option
+// labels into the field's help tooltip.
+export const SUMMARIZER_HINT =
+  "Model summary asks the model for a focused prose recap of the thread being dropped. Structured extract asks the same call for the state under fixed headings (what it's building, key decisions, files changed, work in progress, next step).";
+
 export const CAPABILITIES: ReadonlyArray<CapSpec> = [
   // --- Models & tools ---------------------------------------------------------
   {
@@ -357,7 +373,8 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     purpose:
       "Summarize-and-restart backstop that lets a run continue past the model's context window.",
     implementationLabel: "Summarization strategy",
-    implementationPlaceholder: "default",
+    implementationOptions: SUMMARIZER_OPTIONS,
+    implementationHint: SUMMARIZER_HINT,
     params: [
       {
         key: "triggerFullness",

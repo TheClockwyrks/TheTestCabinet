@@ -118,7 +118,7 @@ pub const CAPABILITY_TASKS: &str = "tasks";
 /// it in its [`GgCapabilitySet`] to enable the backstop — so an ablation's off arm
 /// simply never compacts. Its `triggerFullness` param sets the fullness threshold and
 /// its [`implementation`](GgCapabilityConfig::implementation) selects the summarization
-/// strategy.
+/// strategy — `model` (the default: a prose recap) or `structured` (fixed sections).
 ///
 /// [compaction]: https://docs.testcabinet.ai/gg/compaction/
 pub const CAPABILITY_COMPACTION: &str = "compaction";

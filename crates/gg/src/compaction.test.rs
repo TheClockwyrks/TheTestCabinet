@@ -156,6 +156,20 @@ fn working_window_only_reserves_when_compaction_is_on() {
 // The swappable summarizer, offline
 // ---------------------------------------------------------------------------
 
+/// The `implementation` string classifies to a strategy: `structured` selects the structured
+/// summarizer, and `model`/`default`/empty/`None` — plus any unrecognized name — fall back to
+/// the model summarizer, so a study naming a not-yet-built strategy still launches.
+#[test]
+fn strategy_name_classifies_the_implementation() {
+    assert_eq!(strategy_name(Some("structured")), "structured");
+    assert_eq!(strategy_name(Some("model")), "model");
+    assert_eq!(strategy_name(Some("default")), "model");
+    assert_eq!(strategy_name(Some("")), "model");
+    assert_eq!(strategy_name(None), "model");
+    // An unrecognized strategy falls back to the default rather than failing to launch.
+    assert_eq!(strategy_name(Some("not-a-strategy")), "model");
+}
+
 /// The default model summarizer is answered offline by the mock's marker path, returning
 /// the deterministic canned summary — and **without** consuming a scripted turn, so the
 /// mock's main script stays in step across a compaction boundary.
@@ -178,6 +192,37 @@ async fn mock_summarizer_answers_offline_without_consuming_the_script() {
 
     // The next ordinary (unmarked) turn returns the *first* scripted response — proof the
     // summarization call did not advance the cursor.
+    let next = client
+        .complete(&[Message::user("go")], &[])
+        .await
+        .expect("mock completes");
+    assert_eq!(
+        next.tool_calls.first().map(|c| c.name.as_str()),
+        Some("read_skill")
+    );
+}
+
+/// The `structured` summarizer's prompt carries the marker too, so it is likewise answered
+/// offline by the mock — returning the canned summary without advancing the scripted cursor.
+/// This proves the second strategy is wired and offline-safe (its section prompt keeps the
+/// marker), even though its output is indistinguishable from the default's under the mock.
+#[tokio::test]
+async fn structured_summarizer_answers_offline_without_consuming_the_script() {
+    let client = MockClient::with_default_script("mock/echo");
+    let summarizer = StructuredSummarizer;
+
+    let history = vec![
+        Message::user("build a game"),
+        Message::assistant(Some("working on it".to_string()), Vec::new()),
+    ];
+    let summary = summarizer
+        .summarize(SummaryRequest {
+            history: &history,
+            client: &client,
+        })
+        .await;
+    assert_eq!(summary, MOCK_COMPACTION_SUMMARY);
+
     let next = client
         .complete(&[Message::user("go")], &[])
         .await
