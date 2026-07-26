@@ -48,6 +48,14 @@ export class Input {
     return this.down.has(code);
   }
 
+  // Release every held key and discard queued edge events. The debug API's
+  // reset() calls this so a driven scenario starts from a clean input state
+  // (specs/instrumentation.md).
+  releaseAll(): void {
+    this.down.clear();
+    this.queue = [];
+  }
+
   // Drain and return the edge events queued since the last frame.
   drain(): string[] {
     const q = this.queue;

@@ -41,22 +41,30 @@ pub struct BeltTier {
     pub speed: u32,
 }
 
-/// The belt tiers, in declaration order. `slow`/`fast` divide `SPACING` cleanly;
-/// `express` exceeds `SPACING`, which is legal — the compaction clamp
-/// `min(pos + SPEED, ahead + SPACING, head_limit)` still holds an item to
-/// standard spacing.
+/// The uniform speed every belt runs at, in position units advanced per tick by an
+/// unobstructed item. At `TILE = 256` this crosses one tile in four ticks, and
+/// [`INSERTER_SWING`] is set to match it, so an item moves at the **same linear
+/// speed** whether it rides a belt or is carried by an inserter.
+pub const BELT_SPEED: u32 = 64;
+
+/// The belt tiers, in declaration order. The three names are retained so existing
+/// scenarios (and the generator) that name a `tier` still validate, but they now
+/// **all resolve to the same [`BELT_SPEED`]**: every transport belt moves at one
+/// speed, so the tier is cosmetic. (v1 briefly varied belt speed by tier —
+/// `slow`/`fast`/`express` at 32/64/128 — but mixed speeds made otherwise-identical
+/// lines run at visibly different rates, so all belts now share one speed.)
 pub const BELT_TIERS: &[BeltTier] = &[
     BeltTier {
         name: "slow",
-        speed: 32,
+        speed: BELT_SPEED,
     },
     BeltTier {
         name: "fast",
-        speed: 64,
+        speed: BELT_SPEED,
     },
     BeltTier {
         name: "express",
-        speed: 128,
+        speed: BELT_SPEED,
     },
 ];
 
@@ -66,37 +74,21 @@ pub fn belt_speed(name: &str) -> Option<u32> {
     BELT_TIERS.iter().find(|t| t.name == name).map(|t| t.speed)
 }
 
-/// An inserter tier: how many ticks the arm is held between picking an item up
-/// and dropping it (`SWING`). A faster tier has a smaller `SWING`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct InserterTier {
-    /// The tier name as it appears in a scenario (`"base"`, `"fast"`).
-    pub name: &'static str,
-    /// Ticks held between pickup and drop.
-    pub swing: u16,
-}
-
-/// The inserter tiers, in declaration order. A base inserter carries exactly one
-/// item per swing.
-pub const INSERTER_TIERS: &[InserterTier] = &[
-    InserterTier {
-        name: "base",
-        swing: 12,
-    },
-    InserterTier {
-        name: "fast",
-        swing: 6,
-    },
-];
-
-/// Look up an inserter tier's `SWING` by name. Returns `None` for an unknown
-/// tier.
-pub fn inserter_swing(name: &str) -> Option<u16> {
-    INSERTER_TIERS
-        .iter()
-        .find(|t| t.name == name)
-        .map(|t| t.swing)
-}
+/// Ticks an inserter holds an item between pickup and drop.
+///
+/// There is exactly **one** kind of inserter, so this is a single constant
+/// rather than a tier table: every inserter in the world swings at the same
+/// rate, independent of where it sits or which belts it touches. (v1 briefly
+/// had `base`/`fast` tiers, but a tier only makes sense once there is more than
+/// one inserter *entity* to choose between; a lone entity with a speed knob just
+/// made otherwise-identical inserters run at visibly different rates.)
+///
+/// Its value is tied to [`BELT_SPEED`] so an inserter carries an item at the **same
+/// linear speed** a belt moves it. An inserter spans two tiles (it picks from the
+/// tile behind and drops on the tile in front), and a belt crosses one tile in
+/// `TILE / BELT_SPEED` ticks, so matching the speed gives
+/// `2 * TILE / BELT_SPEED = 512 / 64 = 8`.
+pub const INSERTER_SWING: u16 = (2 * TILE / BELT_SPEED) as u16;
 
 /// The complete set of item ids v1 uses, in their **stable index order**. The
 /// index (the position in this slice) is part of the canonical-bytes contract:

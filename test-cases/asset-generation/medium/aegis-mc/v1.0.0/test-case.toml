@@ -69,78 +69,14 @@ actions = "actions.json"
 [[spec]]
 source = "specs/brief.md.hbs"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the emitted mesh reads as the Aegis — a colossal, \
-standing six-legged war-fortress with a tiered, prowed armored citadel carrying a \
-big forward-firing main turret, a side turret out on each sponson, and a sensor \
-vane above — rendered with clean bilateral symmetry, the disciplined Duneforged \
-palette, and a form that embraces the bold, chunky, faceted low-poly character of \
-Marching Cubes while filling the volume."""
-
-[[review_item]]
-id = "reads-as-fortress"
-title = "Reads as a giant six-legged war-fortress"
-text = """
-From more than one angle the mesh reads unmistakably as a colossal six-legged \
-walking fortress standing at rest — plainly far bigger and broader than an ordinary \
-war machine: a tiered, prowed armored citadel (not a plain box) riding raised on six \
-heavy legs (three down each side), a big main turret with a long forward cannon on \
-top, a rotating-style secondary turret out on each side sponson, and a sensor vane \
-above. It is a bristling, detailed multi-gun stronghold, not an abstract stack of \
-blocks on posts."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "low-poly-faceted"
-title = "Bold, faceted low-poly character"
-text = """
-The surface leans INTO the Marching Cubes look: a chunky, boldly faceted low-poly \
-mesh with confident planar faces and hard silhouettes, its forms built by \
-compositing solid primitives — mostly HARD unions that leave crisp creases where \
-armor plates and decks meet, with rounded fillets (`--blend`) reserved for a few \
-deliberate soft joins. It does not fight the coarse grid by chasing fine detail the \
-algorithm cannot hold; the blocky facets read as an intentional stylized aesthetic, \
-not as noise or accidental blobbiness."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "symmetry"
-title = "Bilateral symmetry"
-text = """
-The fortress is cleanly symmetric about its lengthwise vertical centerplane: the \
-three legs down each side, the two side sponsons and their \
-turrets, and any intakes or vents mirror each other, with the main turret, cannon, \
-and sensor vane centered on the plane — so it reads as a deliberate war machine \
-rather than a lopsided hull. Compositing one half of the field and reflecting it \
-with `mirror` is a clean way to guarantee this."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "clean-field"
-title = "Clean, watertight, well-composited surface"
-text = """
-The emitted mesh is a single clean, watertight surface built from a well-composited \
-field: the hull, legs, turrets, and vane read as one solid fortress, with no stray \
-floating primitives drifting off it, no primitive left poking out where it should \
-have been unioned or carved, and each leg meeting the hull and the ground as a \
-connected form rather than a loose stack."""
-weight = 1
-domain = "fidelity"
-
-[[review_item]]
-id = "palette-fills-volume"
-title = "Duneforged palette; fills the volume"
-text = """
-Uses only the Duneforged colors from the brief (brass and bronze armor, iron legs \
-and gun barrels, dark-iron recesses, and the solar-amber accent) with a clear amber \
-accent and no out-of-palette colors, and the fortress uses most of the \
-volume — broad and long, riding raised on its legs — with a little margin on every \
-side, neither shrunk into a corner nor clipped where it runs past a face."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

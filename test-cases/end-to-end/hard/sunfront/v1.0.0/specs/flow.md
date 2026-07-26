@@ -137,8 +137,8 @@ opponent, not a scripted script:
   and it commits its Aegis when it gets one.
 - It must be **clearly beatable** by a thinking player — a well-read composition,
   a timely Reliquary push, or a better economy beats it. It is competent, not
-  omniscient, and not a resource-cheating wall. Tune it so a first-time player can
-  lose but a player who understands the counters can win.
+  omniscient, and not a resource-cheating wall. It is balanced so a first-time player
+  can lose but a player who understands the counters can win.
 
 ## Out of scope
 

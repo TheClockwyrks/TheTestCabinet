@@ -3,7 +3,7 @@
 import type { Band } from "./constants";
 import type { Path } from "./paths";
 
-// The game's state machine (specs/flow.md).
+// The game's state machine (specs/gameplay.md).
 export type GameState =
   | "title"
   | "howto"
@@ -15,7 +15,7 @@ export type GameState =
 
 export type DroneKind = "shard" | "flux" | "prism";
 
-// A drone's movement phase (specs/enemies.md).
+// A drone's movement phase (specs/drones.md).
 export type DronePhase = "entering" | "formation" | "diving" | "returning";
 
 // A live bullet. `band` is the band it was fired as, fixed for life. During a
@@ -33,6 +33,9 @@ export interface Bullet {
 
 // A drone. Prism-specific fields are only meaningful for kind === "prism".
 export interface Drone {
+  // A stable id, assigned when the drone is born, that appears in snapshot() and
+  // that the debug API's spawnDrone/forceDive address (specs/instrumentation.md).
+  id: number;
   kind: DroneKind;
   // A drone's stored band. For a Shard this is fixed; for a Flux it is the
   // currently held band (meaningless during a shimmer, see `shimmer`); for a
@@ -55,10 +58,10 @@ export interface Drone {
   // For a diving drone: scheduled firing distances still pending.
   fireAt: number[];
   // True while this drone is in a fast, straight headlong plunge — a Shard's
-  // Overload reaction (specs/mode.md). Only meaningful in Overload mode.
+  // Overload reaction (specs/gameplay.md). Only meaningful in Overload mode.
   headlong: boolean;
 
-  // --- Overload mode (specs/mode.md) ---
+  // --- Overload mode (specs/gameplay.md) ---
   // Mismatched-shot charge. A wrong-band shot adds 1; at OVERLOAD_CHARGE the drone
   // overloads (its per-type reaction) and this resets to 0. Always 0 in Sortie.
   charge: number;

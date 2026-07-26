@@ -68,9 +68,8 @@ are the authoritative output.
 ## Variants
 
 Caldera Basalt ships a single default variant — `base`, declared in
-`variants/base.toml`. It seeds the common brief and is rated on the case's two
-scoring domains (`fidelity` and `craft`); it adds no specs, review items, or
-domains of its own.
+`variants/base.toml`. It seeds the common brief and is rated on the case's
+single `overall` scoring domain; it adds no specs or domains of its own.
 
 ## Versioning
 

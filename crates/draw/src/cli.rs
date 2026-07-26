@@ -9,241 +9,47 @@
 //!
 //! The operation subcommands' help text is the contract a model reads: an
 //! asset-generation case seeds no operations schema, it tells the model to run
-//! the binary's `--help`. So the doc comments here mirror [`Operation`]'s and are
-//! the authoritative description of the drawing vocabulary.
+//! the binary's `--help`. So the doc comments in [`OpCommand`] and
+//! [`LayerCommand`] mirror the library types' and are the authoritative
+//! description of the drawing vocabulary.
+//!
+//! The subcommands themselves live in sibling files — [`OpCommand`] in
+//! `cli.ops.rs`, the layer and animation commands in `cli.layers.rs` — so no one
+//! file carries the whole surface. This module holds the config the binaries read
+//! and the file plumbing they share.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use clap::{Args, Subcommand};
+use clap::Args;
 use serde::Deserialize;
 
-use crate::color::Rgba;
-use crate::{Background, Canvas, Operation, render};
+use crate::layer::Document;
+use crate::{Background, Canvas, Operation, render_frame};
 
-/// A single drawing operation, expressed as a `clap` subcommand.
+#[path = "cli.layers.rs"]
+pub mod layers;
+#[path = "cli.ops.rs"]
+mod ops_command;
+
+pub use layers::{AnimateArgs, ClearKeyframesArgs, Handle, InterpArg, LayerCommand, PropertyArg};
+pub use ops_command::OpCommand;
+
+/// The run-workspace-relative path the layer document is seeded to, and the path
+/// `render` reads when none is given. Mirrors `core`'s `ASSET_LAYERS_DEST`.
+pub const DEFAULT_LAYER_DOCUMENT: &str = "layers.json";
+
+/// The shared `render` subcommand: regenerate an image from a run's recorded
+/// artifacts without modifying them — the same rendering `crates/core` performs to
+/// produce the scored image. Identical for both binaries; it needs no canvas
+/// config, so authors can render any log (including a per-frame target log) at an
+/// explicit size.
 ///
-/// The variants and their arguments mirror [`Operation`] one-for-one;
-/// [`OpCommand::into_operation`] is the single place the CLI form and the
-/// recorded wire form meet. Coordinates are signed so a shape may be placed
-/// partially off-canvas (the off-canvas portion is clipped); sizes and radii are
-/// unsigned. Operations **replace** the pixels they touch rather than
-/// alpha-compositing, so the recorded log regenerates to an exact, order-only
-/// image.
-#[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
-pub enum OpCommand {
-    /// Flood the entire canvas with one color, discarding everything drawn so
-    /// far. Useful as a first call to lay down a base.
-    FillBackground {
-        /// The fill color, as `#rrggbb` or `#rrggbbaa`.
-        #[arg(long, value_parser = parse_color)]
-        color: Rgba,
-    },
-    /// Set a single pixel.
-    SetPixel {
-        /// Column (0 at the left).
-        #[arg(long)]
-        x: i64,
-        /// Row (0 at the top).
-        #[arg(long)]
-        y: i64,
-        /// The pixel color, as `#rrggbb` or `#rrggbbaa`.
-        #[arg(long, value_parser = parse_color)]
-        color: Rgba,
-    },
-    /// Fill an axis-aligned rectangle. `(x, y)` is the top-left corner.
-    FillRect {
-        /// Left edge column.
-        #[arg(long)]
-        x: i64,
-        /// Top edge row.
-        #[arg(long)]
-        y: i64,
-        /// Width in pixels.
-        #[arg(long)]
-        width: u32,
-        /// Height in pixels.
-        #[arg(long)]
-        height: u32,
-        /// The fill color, as `#rrggbb` or `#rrggbbaa`.
-        #[arg(long, value_parser = parse_color)]
-        color: Rgba,
-    },
-    /// Draw the 1px outline of an axis-aligned rectangle.
-    StrokeRect {
-        /// Left edge column.
-        #[arg(long)]
-        x: i64,
-        /// Top edge row.
-        #[arg(long)]
-        y: i64,
-        /// Width in pixels.
-        #[arg(long)]
-        width: u32,
-        /// Height in pixels.
-        #[arg(long)]
-        height: u32,
-        /// The outline color, as `#rrggbb` or `#rrggbbaa`.
-        #[arg(long, value_parser = parse_color)]
-        color: Rgba,
-    },
-    /// Draw a 1px line between two points (inclusive of both endpoints).
-    Line {
-        /// Start column.
-        #[arg(long)]
-        x0: i64,
-        /// Start row.
-        #[arg(long)]
-        y0: i64,
-        /// End column.
-        #[arg(long)]
-        x1: i64,
-        /// End row.
-        #[arg(long)]
-        y1: i64,
-        /// The line color, as `#rrggbb` or `#rrggbbaa`.
-        #[arg(long, value_parser = parse_color)]
-        color: Rgba,
-    },
-    /// Fill a disc centered at `(cx, cy)` with radius `r`.
-    FillCircle {
-        /// Center column.
-        #[arg(long)]
-        cx: i64,
-        /// Center row.
-        #[arg(long)]
-        cy: i64,
-        /// Radius in pixels.
-        #[arg(long)]
-        r: u32,
-        /// The fill color, as `#rrggbb` or `#rrggbbaa`.
-        #[arg(long, value_parser = parse_color)]
-        color: Rgba,
-    },
-    /// Draw the 1px outline of a circle centered at `(cx, cy)` with radius `r`.
-    StrokeCircle {
-        /// Center column.
-        #[arg(long)]
-        cx: i64,
-        /// Center row.
-        #[arg(long)]
-        cy: i64,
-        /// Radius in pixels.
-        #[arg(long)]
-        r: u32,
-        /// The outline color, as `#rrggbb` or `#rrggbbaa`.
-        #[arg(long, value_parser = parse_color)]
-        color: Rgba,
-    },
-    /// Replace the contiguous, 4-connected region of pixels sharing the start
-    /// pixel's current color with a new color. No-op if the start is off-canvas
-    /// or already the target color.
-    FloodFill {
-        /// Seed column.
-        #[arg(long)]
-        x: i64,
-        /// Seed row.
-        #[arg(long)]
-        y: i64,
-        /// The replacement color, as `#rrggbb` or `#rrggbbaa`.
-        #[arg(long, value_parser = parse_color)]
-        color: Rgba,
-    },
-    /// Mirror the columns left of `axis_x` onto the columns to its right,
-    /// reflecting across the vertical line between column `axis_x - 1` and column
-    /// `axis_x`. The single highest-leverage op for a left/right-symmetric sprite.
-    MirrorHorizontal {
-        /// The mirror axis: columns `0..axis_x` are copied onto `axis_x..`.
-        #[arg(long)]
-        axis_x: u32,
-    },
-}
-
-impl OpCommand {
-    /// Convert the parsed subcommand into the [`Operation`] recorded in the
-    /// action log and replayed by the renderer.
-    pub fn into_operation(self) -> Operation {
-        match self {
-            OpCommand::FillBackground { color } => Operation::FillBackground { color },
-            OpCommand::SetPixel { x, y, color } => Operation::SetPixel { x, y, color },
-            OpCommand::FillRect {
-                x,
-                y,
-                width,
-                height,
-                color,
-            } => Operation::FillRect {
-                x,
-                y,
-                width,
-                height,
-                color,
-            },
-            OpCommand::StrokeRect {
-                x,
-                y,
-                width,
-                height,
-                color,
-            } => Operation::StrokeRect {
-                x,
-                y,
-                width,
-                height,
-                color,
-            },
-            OpCommand::Line {
-                x0,
-                y0,
-                x1,
-                y1,
-                color,
-            } => Operation::Line {
-                x0,
-                y0,
-                x1,
-                y1,
-                color,
-            },
-            OpCommand::FillCircle { cx, cy, r, color } => {
-                Operation::FillCircle { cx, cy, r, color }
-            }
-            OpCommand::StrokeCircle { cx, cy, r, color } => {
-                Operation::StrokeCircle { cx, cy, r, color }
-            }
-            OpCommand::FloodFill { x, y, color } => Operation::FloodFill { x, y, color },
-            OpCommand::MirrorHorizontal { axis_x } => Operation::MirrorHorizontal { axis_x },
-        }
-    }
-
-    /// The wire tag of the operation this subcommand produces, for the
-    /// human-readable confirmation line the binaries print.
-    pub fn name(&self) -> &'static str {
-        match self {
-            OpCommand::FillBackground { .. } => "fill_background",
-            OpCommand::SetPixel { .. } => "set_pixel",
-            OpCommand::FillRect { .. } => "fill_rect",
-            OpCommand::StrokeRect { .. } => "stroke_rect",
-            OpCommand::Line { .. } => "line",
-            OpCommand::FillCircle { .. } => "fill_circle",
-            OpCommand::StrokeCircle { .. } => "stroke_circle",
-            OpCommand::FloodFill { .. } => "flood_fill",
-            OpCommand::MirrorHorizontal { .. } => "mirror_horizontal",
-        }
-    }
-}
-
-/// Parse a `--color` value (`#rrggbb` or `#rrggbbaa`) into an [`Rgba`], mapping a
-/// parse error to the string `clap` shows the user.
-fn parse_color(value: &str) -> Result<Rgba, String> {
-    Rgba::parse_hex(value).map_err(|err| err.to_string())
-}
-
-/// The shared `render` subcommand: regenerate an image from an action log without
-/// modifying it — the same rendering `crates/core` performs to produce the scored
-/// image. Identical for both binaries; it operates on one log and one output and
-/// needs no canvas config, so authors can render any log (including a per-frame
-/// target log) at an explicit size.
+/// It renders the **whole image**: the action log with every layer composited over
+/// it, exactly as the preview and the post-run regeneration do. Layers are part of
+/// the image, not an add-on, so reproducing the final asset must never depend on
+/// remembering an extra flag. The flags below only narrow that default, for a model
+/// inspecting one piece of its own work.
 #[derive(Debug, Args)]
 pub struct RenderArgs {
     /// Path to the action log JSON (an array of operations).
@@ -261,11 +67,25 @@ pub struct RenderArgs {
     /// Initial background: `transparent` or a hex color.
     #[arg(long, default_value = "transparent")]
     pub background: String,
+    /// Path to the layer document. Defaults to the seeded `layers.json`; give this
+    /// only when the document lives somewhere else.
+    #[arg(long)]
+    pub layer_document: Option<PathBuf>,
+    /// Composite only this layer, not every layer. Repeatable. For checking one
+    /// piece in place; the finished image is what you get without it.
+    #[arg(long)]
+    pub only_layer: Vec<String>,
+    /// Render the action log alone, with no layers composited at all. Shows what
+    /// was drawn directly onto the canvas, which is only the finished image if the
+    /// run registered no layers.
+    #[arg(long, conflicts_with = "only_layer")]
+    pub no_layers: bool,
 }
 
 impl RenderArgs {
-    /// Render the action log to the output PNG at the requested size.
-    pub fn run(&self) -> Result<(), String> {
+    /// Render the log with its layers composited over it, resolving any keyframes
+    /// at `frame`, and write the PNG.
+    pub fn run(&self, frame: u32) -> Result<(), String> {
         let background = Background::parse(&self.background)
             .map_err(|err| format!("invalid background: {err}"))?;
         let canvas = Canvas {
@@ -274,9 +94,63 @@ impl RenderArgs {
             background,
         };
         let operations = read_actions(&self.actions)?;
-        render(&canvas, &operations)
+        let document = self.document()?;
+        render_frame(&canvas, &operations, &document, frame)
             .encode_png(&self.out)
             .map_err(|err| format!("writing {}: {err}", self.out.display()))
+    }
+
+    /// The layer document to composite, after applying `--no-layers`/`--only-layer`.
+    ///
+    /// A document named explicitly must exist — asking for a specific file and
+    /// silently getting an empty one is how a wrong image passes for a right one.
+    /// The *default* path is allowed to be absent, because a run that registered no
+    /// layer legitimately has no document.
+    fn document(&self) -> Result<Document, String> {
+        if self.no_layers {
+            return Ok(Document::new());
+        }
+        let document = match &self.layer_document {
+            Some(path) => {
+                if !path.exists() {
+                    return Err(format!(
+                        "layer document `{}` does not exist",
+                        path.display()
+                    ));
+                }
+                read_document(path)?
+            }
+            None => read_document(Path::new(DEFAULT_LAYER_DOCUMENT))?,
+        };
+        self.restrict(document)
+    }
+
+    /// Keep only the layers named by `--only-layer`, preserving their order.
+    fn restrict(&self, document: Document) -> Result<Document, String> {
+        if self.only_layer.is_empty() {
+            return Ok(document);
+        }
+        // A misspelled name would otherwise quietly render nothing, which looks
+        // exactly like a layer that failed to draw.
+        for name in &self.only_layer {
+            if document.layer(name).is_none() {
+                return Err(format!(
+                    "no layer named `{name}` in the document (it has: {})",
+                    if document.is_empty() {
+                        "none".to_string()
+                    } else {
+                        document.names().join(", ")
+                    }
+                ));
+            }
+        }
+        Ok(Document {
+            layers: document
+                .layers
+                .into_iter()
+                .filter(|layer| self.only_layer.contains(&layer.name))
+                .collect(),
+        })
     }
 }
 
@@ -297,6 +171,10 @@ pub struct Config {
     /// Run-workspace-relative path the current image is re-rendered to.
     #[serde(default = "default_preview")]
     pub preview: PathBuf,
+    /// Run-workspace-relative path of the layer document. Seeded empty; a run that
+    /// registers no layer never touches it.
+    #[serde(default = "default_layers")]
+    pub layers: PathBuf,
     /// The live-preview endpoint, when a viewer is observing this run. Absent for
     /// an unobserved run (a plain `tcab run` or `tcab validate`).
     #[serde(default)]
@@ -353,6 +231,11 @@ pub struct SheetConfig {
     /// frame index (for example `frames/{frame}.png`).
     #[serde(default = "default_sheet_preview")]
     pub preview: String,
+    /// Path of the layer document. Unlike the logs and previews this is **not** a
+    /// `{frame}` template: layers and their keyframes are sheet-wide, which is what
+    /// lets one painted layer move across frames.
+    #[serde(default = "default_layers")]
+    pub layers: PathBuf,
     /// The live-preview endpoint, when a viewer is observing this run. See
     /// [`Config::live`].
     #[serde(default)]
@@ -403,6 +286,10 @@ fn default_preview() -> PathBuf {
     PathBuf::from("canvas.png")
 }
 
+fn default_layers() -> PathBuf {
+    PathBuf::from(DEFAULT_LAYER_DOCUMENT)
+}
+
 fn default_sheet_actions() -> String {
     "frames/{frame}.actions.json".to_string()
 }
@@ -438,44 +325,100 @@ pub fn write_actions(path: &Path, operations: &[Operation]) -> Result<(), String
     fs::write(path, json).map_err(|err| format!("writing {}: {err}", path.display()))
 }
 
-/// Re-render the whole log to `preview`, creating parent directories as needed.
+/// Read the layer document, treating an absent file as an empty document so a run
+/// that never registers a layer needs nothing seeded.
+pub fn read_document(path: &Path) -> Result<Document, String> {
+    match fs::read_to_string(path) {
+        Ok(raw) => serde_json::from_str(&raw)
+            .map_err(|err| format!("invalid layer document {}: {err}", path.display())),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(Document::new()),
+        Err(err) => Err(format!("reading {}: {err}", path.display())),
+    }
+}
+
+/// Write the layer document as pretty JSON, creating parent directories as needed.
+pub fn write_document(path: &Path, document: &Document) -> Result<(), String> {
+    ensure_parent(path)?;
+    let mut json = serde_json::to_string_pretty(document)
+        .map_err(|err| format!("serializing layer document: {err}"))?;
+    json.push('\n');
+    fs::write(path, json).map_err(|err| format!("writing {}: {err}", path.display()))
+}
+
+/// Render one frame — its action log with every layer composited over it — and
+/// write it to `preview`. Returns the PNG bytes written, so a caller streaming a
+/// live view can forward the exact frame without re-reading it from disk.
 pub fn render_preview(
     canvas: &Canvas,
     operations: &[Operation],
+    document: &Document,
+    frame: u32,
     preview: &Path,
-) -> Result<(), String> {
+) -> Result<Vec<u8>, String> {
+    let bytes = render_frame(canvas, operations, document, frame).to_png_bytes();
     ensure_parent(preview)?;
-    render(canvas, operations)
-        .encode_png(preview)
-        .map_err(|err| format!("writing preview {}: {err}", preview.display()))
+    fs::write(preview, &bytes)
+        .map_err(|err| format!("writing preview {}: {err}", preview.display()))?;
+    Ok(bytes)
+}
+
+/// Re-render one frame from the files on disk. The path a layer edit takes, since
+/// changing a layer changes every frame rather than the one being drawn into.
+pub fn refresh_preview(
+    canvas: &Canvas,
+    actions: &Path,
+    preview: &Path,
+    document: &Document,
+    frame: u32,
+) -> Result<Vec<u8>, String> {
+    let operations = read_actions(actions)?;
+    render_preview(canvas, &operations, document, frame, preview)
 }
 
 /// Initialize one canvas: write an empty action log and render its blank preview,
 /// so the surface starts from a known, empty state.
 pub fn init_canvas(canvas: &Canvas, actions: &Path, preview: &Path) -> Result<(), String> {
     write_actions(actions, &[])?;
-    render_preview(canvas, &[], preview)
+    render_preview(canvas, &[], &Document::new(), 0, preview).map(|_| ())
 }
 
 /// Append one operation to `actions` and re-render `preview` from the **whole**
-/// log, keeping the recorded log the single source of truth and the preview a
-/// faithful reflection of it. Returns the new operation count and the PNG bytes
-/// the preview was written from, so a caller streaming a live view can forward the
-/// exact rendered frame without re-reading it from disk.
+/// log plus the layer document, keeping the recorded files the single source of
+/// truth and the preview a faithful reflection of them. Returns the new operation
+/// count and the PNG bytes the preview was written from.
 pub fn apply(
     canvas: &Canvas,
     actions: &Path,
     preview: &Path,
+    document: &Document,
+    frame: u32,
     operation: Operation,
 ) -> Result<(usize, Vec<u8>), String> {
     let mut operations = read_actions(actions)?;
     operations.push(operation);
     write_actions(actions, &operations)?;
-    let bytes = render(canvas, &operations).to_png_bytes();
-    ensure_parent(preview)?;
-    fs::write(preview, &bytes)
-        .map_err(|err| format!("writing preview {}: {err}", preview.display()))?;
+    let bytes = render_preview(canvas, &operations, document, frame, preview)?;
     Ok((operations.len(), bytes))
+}
+
+/// Append one operation to a layer's content, returning the layer's new operation
+/// count. The caller writes the document back and re-renders the affected previews.
+pub fn apply_to_layer(
+    document: &mut Document,
+    name: &str,
+    operation: Operation,
+) -> Result<usize, String> {
+    let layer = document
+        .layer_mut(name)
+        .ok_or_else(|| unknown_layer(name))?;
+    layer.ops.push(operation);
+    Ok(layer.ops.len())
+}
+
+/// The error a command reports when it names a layer that was never registered,
+/// listing what does exist so the model can correct itself in one step.
+pub fn unknown_layer(name: &str) -> String {
+    format!("no layer named `{name}` — register it first with `register-layer`")
 }
 
 /// Stream a just-rendered frame to the run's live-preview endpoint, best-effort.

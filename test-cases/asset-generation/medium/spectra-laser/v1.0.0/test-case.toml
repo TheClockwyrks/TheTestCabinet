@@ -48,62 +48,14 @@ actions = "actions.json"
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the clip reads as the Spectra fighter's laser fire the brief \
-describes — a short, bright, synthetic "pew" with a fast downward pitch sweep, a \
-crisp attack, and a quick decay, energetic and arcade-retro."""
-
-[[review_item]]
-id = "reads-as-laser"
-title = "Reads as a laser 'pew'"
-text = """
-Played blind, the clip is unmistakably an arcade laser blip — a bright, snappy \
-"pew" a fighter fires — not a hum, a beep, an explosion, or an ambiguous tone. It \
-sounds energetic and playful, the sort of shot a fast formation shooter fires \
-many times a second."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "pitch-sweep"
-title = "Fast downward pitch zap"
-text = """
-The tone sweeps clearly DOWNWARD in pitch over its length — the falling "zap" \
-that gives the shot its motion — starting bright and high and dropping fast, \
-rather than holding a steady pitch or sliding up."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "attack-decay"
-title = "Crisp attack, quick decay"
-text = """
-The sound begins on a sharp transient attack — an instant, percussive onset with \
-no slow fade-in — and decays quickly to silence, the whole event tight and short \
-(well under the 800 ms cap), leaving no long tail or dead air."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "synthetic-character"
-title = "Bright, synthetic, arcade-retro"
-text = """
-The timbre is overtly electronic — clean oscillator tone (with a touch of noise \
-grit on the attack if it helps), bright and retro, reading as synthesized rather \
-than a recorded or organic sound. It fits the neon, chiptune-adjacent voice of \
-Spectra."""
-weight = 1
-domain = "fidelity"
-
-[[review_item]]
-id = "well-formed-mono"
-title = "Mono, in-format, not silent"
-text = """
-The rendered clip is a single mono channel at 44.1 kHz, no longer than the 800 ms \
-cap, and audibly present (not silent or clipped into distortion) — a clean, \
-well-formed asset a game could drop straight in."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

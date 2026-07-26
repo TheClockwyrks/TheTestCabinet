@@ -1,0 +1,573 @@
+@use "../../styles/tokens" as t;
+@use "../../styles/surfaces" as s;
+@use "../../styles/halo" as h;
+
+.empty {
+  color: t.$color-text-muted;
+  @include h.halo;
+}
+
+// A coverage plan / group opened on its own reads like a test-case or model
+// detail page rather than a tab of the account section: a back chevron and the
+// plan/group name on the left, the primary action (Edit plan) pushed to the
+// right edge. No account tab strip — those belong on the section's list pages.
+.detailHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: t.$space-sm t.$space-md;
+  margin-bottom: t.$space-lg;
+}
+
+// The back chevron sat immediately before the title, both vertically centered.
+.detailTitleRow {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
+// The plan/group name, styled like the other detail-page titles: accent with the
+// neon glow. Truncates rather than wrapping the header onto a second line.
+.detailTitle {
+  margin: 0;
+  min-width: 0;
+  font-size: t.$font-xl;
+  color: t.$color-accent;
+  text-shadow: var(--ttc-glow);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// The empty-plan call to action: the explanatory line stacked over a single
+// primary action, so the "set up your plan" affordance reads as its own button
+// rather than a link buried mid-sentence.
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: t.$space-md;
+
+  .empty {
+    margin: 0;
+    max-width: 42rem;
+  }
+}
+
+// The rollup strip above the matrix: covered-cell and missing-run stats plus the
+// "trigger all missing" action.
+.summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: t.$space-lg;
+  margin-bottom: t.$space-xl;
+}
+
+.summaryStat {
+  color: t.$color-text-muted;
+  font-family: var(--ttc-font);
+  font-size: t.$font-md;
+
+  strong {
+    color: t.$color-text;
+    font-size: t.$font-lg;
+  }
+}
+
+// Push the "trigger all missing" action to the far right of the summary strip,
+// away from the stats it acts on.
+.summaryTrigger {
+  margin-left: auto;
+}
+
+.matrix {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-lg;
+  margin-bottom: t.$space-xl;
+}
+
+// One test case's block of cells.
+.group {
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  padding: t.$space-md t.$space-lg;
+}
+
+.groupHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: t.$space-md;
+  margin-bottom: t.$space-sm;
+}
+
+// A collapsed case block shows only its header (with the overall progress bar), so
+// the header drops the bottom margin that separated it from the now-hidden rows.
+.groupHeadCollapsed {
+  margin-bottom: 0;
+}
+
+// The clickable left region of a collapsible case header (the twisty + title). A
+// reset button that grows to fill the row up to the right-aligned progress, so a
+// click anywhere on the left toggles the block. It is a sibling of the stale-badge
+// button (which stays on the right), so no button is nested inside another.
+.groupToggle {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+  flex: 1 1 auto;
+  min-width: 0;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+
+  &:focus-visible {
+    outline: none;
+  }
+}
+
+// The ▸/▾ disclosure glyph leading a collapsible case header.
+.twisty {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  flex: none;
+}
+
+.groupTitle {
+  display: flex;
+  align-items: baseline;
+  // 50% wider than the standard row gap, to separate the (orange) case name from
+  // its muted variant/version.
+  gap: calc(#{t.$space-sm} * 1.5);
+  // The case name takes the theme's orange; the variant/version span below stays
+  // muted via its own color.
+  color: t.$color-accent;
+  font-size: t.$font-lg;
+}
+
+.groupVersion {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+// The right side of a case's header row: the optional staleness pill followed by
+// the case-wide progress rollup, kept together and pushed to the far right by the
+// header's space-between.
+.groupRight {
+  display: flex;
+  align-items: center;
+  gap: t.$space-md;
+}
+
+// The case-wide progress: a bar over every combination's runs, plus its
+// done/desired count. Mirrors the per-cell bar but reads as the row's summary.
+.groupProgress {
+  display: flex;
+  align-items: center;
+  // Match the per-cell row's label/bar/count spacing (`.cell` uses `$space-md`).
+  gap: t.$space-md;
+}
+
+.groupBar {
+  display: flex;
+  width: 8rem;
+  height: 0.5rem;
+  background: t.$color-bg-2;
+  border-radius: t.$radius-sm;
+  overflow: hidden;
+}
+
+// The completed (green) and in-flight (amber) segments, laid side by side.
+.groupBarDone {
+  display: block;
+  height: 100%;
+  background: t.$color-positive;
+  transition: width 0.2s ease;
+}
+
+.groupBarFlight {
+  display: block;
+  height: 100%;
+  background: t.$color-warning;
+  transition: width 0.2s ease;
+}
+
+.groupCount {
+  color: t.$color-text-muted;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  white-space: nowrap;
+}
+
+// The "v1.2.0 → v1.3.0 ↑" pill: shown when the pinned version is stale, and a
+// one-click bump to the newest ingested version.
+.staleBadge {
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  color: t.$color-bg;
+  background: t.$color-accent-2;
+  border: none;
+  border-radius: t.$radius-sm;
+  padding: t.$space-2xs t.$space-sm;
+  cursor: pointer;
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+}
+
+.cellList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+// One combination's coverage against this case: label, progress bar, count, and
+// the trigger button.
+.cell {
+  display: grid;
+  grid-template-columns: minmax(10rem, 1fr) minmax(4rem, 8rem) auto auto;
+  align-items: center;
+  gap: t.$space-md;
+  padding: t.$space-2xs 0;
+}
+
+.cellDone .cellLabel {
+  color: t.$color-text-muted;
+}
+
+.cellLabel {
+  color: t.$color-text;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cellBar {
+  display: flex;
+  height: 0.5rem;
+  background: t.$color-bg-2;
+  border-radius: t.$radius-sm;
+  overflow: hidden;
+}
+
+// The completed (green) and in-flight (amber) segments, laid side by side.
+.cellBarDone {
+  display: block;
+  height: 100%;
+  background: t.$color-positive;
+  transition: width 0.2s ease;
+}
+
+.cellBarFlight {
+  display: block;
+  height: 100%;
+  background: t.$color-warning;
+  transition: width 0.2s ease;
+}
+
+.cellCount {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  white-space: nowrap;
+}
+
+// Hold the trigger button's width steady across its "Trigger one" / "Covered"
+// states so the column edge never jumps as cells fill. Sized to the wider
+// "Trigger one" label exactly: in the monospace `--ttc-font`, 11 chars == 11ch,
+// plus the shared button's 1.5rem side padding and 1px borders (border-box). A
+// plain rem min-width has to be guessed against the font's advance and silently
+// fails to engage if it undershoots.
+.cellButton {
+  min-width: calc(11ch + #{t.$space-lg} * 2 + #{t.$border-hairline} * 2);
+  text-align: center;
+}
+
+// The in-page plan editor.
+.editor {
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  padding: t.$space-lg;
+  margin-bottom: t.$space-xl;
+}
+
+// The plan editor's action row — its own, not the shared new-run `.actions`, so
+// its spacing can be tuned for this widget. The gap above the buttons is double
+// the standard row gap (so the buttons sit clear of the test-case row), and the
+// row carries no bottom margin so the space below the buttons matches the
+// editor's top padding rather than exceeding it.
+.editorActions {
+  display: flex;
+  align-items: center;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+  margin-top: calc(#{t.$space-md} * 2);
+}
+
+// The pills for a section (a harness, or a test-case category) are stacked as a
+// column of groups, each a labelled header + divider over its own pill row.
+.chipGroups {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+  margin-bottom: t.$space-md;
+}
+
+// A group's header row: the section title on the left, the "Clear all" action on
+// the far right, with a hairline divider underneath separating it from the pills.
+.chipGroupHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-md;
+  padding-bottom: t.$space-2xs;
+  margin-bottom: t.$space-sm;
+  border-bottom: t.$border-hairline solid t.$color-border;
+}
+
+.chipGroupTitle {
+  color: t.$color-accent;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+// The group's "Clear all": a bare text control (no border or fill) that brightens
+// to the negative cue on hover, matching the per-pill remove glyph's affordance.
+.chipGroupClear {
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    color: t.$color-negative;
+  }
+
+  &:focus-visible {
+    outline: none;
+  }
+}
+
+.chipList {
+  list-style: none;
+  margin: 0 0 t.$space-md;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-sm;
+}
+
+// Inside a group the surrounding column controls spacing, so the pill row drops
+// its own bottom margin.
+.chipGroup .chipList {
+  margin-bottom: 0;
+}
+
+// An added combination/case reads as a pill: fully-rounded ends (a large radius
+// resolves to the pill shape at any height), so a row of them looks like tags
+// rather than boxed cards.
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-xs;
+  padding: t.$space-2xs t.$space-sm t.$space-2xs t.$space-md;
+  background: t.$color-bg-2;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: 999px;
+  color: t.$color-text;
+  font-size: t.$font-sm;
+}
+
+// The chip's remove control: a bare glyph (no border or fill of its own) that
+// brightens to the negative cue on hover, so it reads as an inline "x" on the
+// pill rather than a nested button.
+.chipRemove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 t.$space-2xs;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  line-height: 1;
+  color: t.$color-text-muted;
+  background: none;
+  border: 0;
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    color: t.$color-negative;
+  }
+
+  &:focus-visible {
+    outline: none;
+  }
+}
+
+// The add-a-combination / add-a-case row on the plan editor. It already sits
+// inside the editor widget, so — unlike the batch-launch row on the new-run form
+// — it draws no panel of its own: just the fields laid out inline, aligned to
+// their bottom edge with the "+ Add" button.
+.inputRow {
+  display: flex;
+  align-items: flex-end;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+  margin-bottom: t.$space-md;
+}
+
+// A vertical list of plan or group cards (the Coverage and Groups tab bodies).
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+  margin-bottom: t.$space-xl;
+}
+
+// One plan or group as a card: the name + a muted subtitle on the left, roll-up
+// stats and row actions on the right.
+.rowCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: t.$space-md;
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  padding: t.$space-md t.$space-lg;
+}
+
+// The card's left column: the name over its muted subtitle.
+.rowMain {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  min-width: 0;
+}
+
+.rowTitle {
+  color: t.$color-accent;
+  font-size: t.$font-lg;
+}
+
+// A whole-card link that carries the accent title without underlining it until
+// hover, so a plan card reads as one clickable block into its dashboard.
+.rowTitleLink {
+  color: t.$color-accent;
+  font-size: t.$font-lg;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.rowSub {
+  color: t.$color-text-muted;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+}
+
+// The card's right column: the roll-up stats beside the row's actions.
+.rowRight {
+  display: flex;
+  align-items: center;
+  gap: t.$space-lg;
+  flex: none;
+}
+
+.rowActions {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+}
+
+// A card's roll-up progress: the same bar/count used per case, reused as the
+// plan's summary in the plans list.
+.rowProgress {
+  display: flex;
+  align-items: center;
+  gap: t.$space-md;
+}
+
+// The pick-a-group toggle pills on the plan editor: a wrapping row of selectable
+// chips, one per existing group, with the selected ones filled in the accent.
+.groupPicks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-sm;
+  margin-bottom: t.$space-md;
+}
+
+.groupPick {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-xs;
+  padding: t.$space-2xs t.$space-md;
+  background: t.$color-bg-2;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: 999px;
+  color: t.$color-text;
+  font-size: t.$font-sm;
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: none;
+    border-color: t.$color-accent;
+  }
+}
+
+// A selected group pill: filled in the accent to read as "included in this plan".
+.groupPickOn {
+  background: t.$color-accent;
+  border-color: t.$color-accent;
+  color: t.$color-bg;
+}
+
+// The muted member count trailing a group pill / card subtitle.
+.groupPickCount {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+.groupPickOn .groupPickCount {
+  color: color-mix(in srgb, t.$color-bg 70%, transparent);
+}
+
+// The name field on the plan / group editor.
+.nameField {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  margin-bottom: t.$space-lg;
+  max-width: 28rem;
+}
+
+// The kind selector on the group editor: two radio pills (Models / Cases), locked
+// once the group exists (a group's kind is fixed after create).
+.kindRow {
+  display: flex;
+  gap: t.$space-sm;
+  margin-bottom: t.$space-lg;
+}

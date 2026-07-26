@@ -1,0 +1,33 @@
+{
+  "$defs": {
+    "LaunchBatchItem": {
+      "description": "One entry in a batch launch's response, aligned by index to the request's\n`runs`. Carries the enqueued job id on success, or a human-readable reason for a\nrun that could not be enqueued — a single rejected run (e.g. a malformed request)\nnever aborts the rest of the batch, mirroring the per-item isolation the console\nhad when it launched runs one request at a time.",
+      "properties": {
+        "error": {
+          "description": "Why this run was rejected, present when it was not enqueued.",
+          "type": ["string", "null"]
+        },
+        "jobId": {
+          "description": "The enqueued job's id, present when this run was accepted.",
+          "type": ["string", "null"]
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$id": "https://docs.testcabinet.ai/schema/jobs-api/launch-batch-ack.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The response to `POST /jobs/batch`: one [`LaunchBatchItem`] per requested run,\nin request order.",
+  "properties": {
+    "jobs": {
+      "description": "One result per requested run, aligned by index to the request's `runs`.",
+      "items": {
+        "$ref": "#/$defs/LaunchBatchItem"
+      },
+      "type": "array"
+    }
+  },
+  "required": ["jobs"],
+  "title": "LaunchBatchAck",
+  "type": "object"
+}

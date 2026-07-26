@@ -2,12 +2,15 @@
 title: Reviewing Test Run Results
 ---
 
-The Test Cabinet's real evaluation is a person playing the produced
-implementation and judging how well it matches the spec — automation only catches
-gross failures cheaply (see the [home page](/) and
-[Review](/terminology/#review) terminology). That judgement is what produces a
-run's numbers: a per-[domain](/terminology/#domain) **rating** and a numeric
-**[score](/terminology/#score)** in points. This guide covers assessing a
+The Test Cabinet evaluates a run in two stages. Automated
+[validation](/components/core/validation/) catches gross failures cheaply and,
+through a case's [instrumentation](/testing/end-to-end/instrumentation/), drives
+the build to decide the objective, mechanically-checkable requirements. A
+person's **review** then makes the judgement automation cannot: how well the
+build *plays* and matches the spec's intent (see the [home page](/) and
+[Review](/terminology/#review) terminology). That human judgement is what produces
+a run's subjective numbers: a per-[domain](/terminology/#domain) **rating** and
+the checklist verdicts automation does not decide. This guide covers assessing a
 finished run: reading its automated signals, playing the build, and writing a
 **review**.
 
@@ -36,12 +39,19 @@ produced implementation. The record summarizes
 build, whether the implementation **loaded** in a headless browser, and a
 similarity signal for each declared [check](/components/core/validation/#checks).
 
-Treat these as signals, not the score. Validation exists to catch gross failures
-cheaply and to compare a few deterministic views against their baselines; it is
-**not** a pass/fail gate and it does not produce the run's score — that comes from
-the review you write. A run that fails to load is the clearest possible negative
-signal, but a clean load says only that the page rendered — the assessment is
-still yours to make by playing it.
+Validation catches gross failures cheaply, compares a few deterministic views
+against their baselines, and — through the case's
+[instrumentation](/testing/end-to-end/instrumentation/) — decides the objective,
+mechanically-checkable checklist items, automatically failing any whose check the
+build's
+[debug API](/testing/end-to-end/instrumentation/#the-debug-api-is-load-bearing)
+was too broken to answer (those arrive pre-filled as failed, and you can override
+one where the build clearly does the right thing regardless). What is left to you
+is the **subjective** judgement automation cannot make honestly: the per-domain
+ratings and the verdicts that turn on how the build actually plays. A run that
+fails to load — or arrives with most of its checks auto-failed — is a clear
+negative signal; a clean load says only that the page rendered, and the feel of
+the game is still yours to assess by playing it.
 
 ## Play the build
 
@@ -121,10 +131,13 @@ The **writeup** is the short prose the site shows before the playable build. The
 **ratings** travel with it in the frontmatter (not in the run record). You rate
 each [domain](/terminology/#domain) in the run variant's **effective** set — the
 case's common domains plus any the run's variant declares in its own file —
-independently, choosing one of four hand-assigned tiers per domain:
+independently, choosing one of five hand-assigned tiers per domain:
 
 - **flawless** — implemented to spec with no noticeable bugs.
 - **great** — to spec; may have minor issues so long as they don't impact
+  playability.
+- **passable** — to spec and playable, but with rough edges beyond a great run's
+  minor issues; noticeable, though not enough to deviate from the spec or impair
   playability.
 - **scuffed** — mostly to spec. Playable, but may deviate from the spec or have
   bugs that impact playability.

@@ -1,0 +1,9 @@
+{
+  "name": "well-well-well",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A Well, Well, Well game-jam entry that runs entirely in the browser.",
+  "devDependencies": {
+    "playwright": "1.61.0"
+  }
+}

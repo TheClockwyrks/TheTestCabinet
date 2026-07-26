@@ -1,0 +1,29 @@
+# The default (and only) Deepcore variant: the standard expedition. Listed first in
+# the case manifest's `variants`, so it is the default. The mode (Standard / Hardcore)
+# is chosen on the in-game MODE SELECT menu and changes only what happens on death
+# (`specs/modes.md`), so it is NOT a variant — there is one expedition, and this variant
+# carries no per-variant mode spec. Every path here resolves against the version folder,
+# exactly like the main manifest.
+slug = "base"
+name = "Base"
+description = "The standard expedition: start on the surface with tier-1 gear and 0 Credits, dig to the core, and build the five-part escape rocket, with Standard/Hardcore chosen in-game (they change only what happens on death)."
+
+# This variant seeds no spec of its own: the single expedition / campaign start (its
+# main-menu `NEW EXPEDITION` entry and the expedition framing) is folded into the common
+# `specs/gameplay.md`. The mode itself stays in-game (`specs/modes.md`).
+
+# This variant's own `title` reference: the main menu (NEW EXPEDITION / HOW TO PLAY),
+# captured from this variant's reference-impl build and served as-is. The menu is
+# variant-specific; `mine`, `surface`, and `game-over` are common (declared in the main
+# manifest).
+reference = [{ view = "title", media = "reference/screenshots/base/title.png" }]
+
+# The authored, *correct* static build of this variant — the case-variant analogue of a
+# run's playable build. A bare directory path (resolved against the version folder)
+# holding a buildable web project, built with this case's `[build]` install/build
+# commands and deployed like a published run build via `tcab publish-reference`, then
+# shown on the case's "Reference" tab. It is **never seeded into a run**. This is a
+# full-stack case, so this build also PRODUCED its own art, animation, VFX, and audio
+# during authoring (committed under `reference-impl/base/assets/`); the build itself only
+# loads them, so `npm ci && npm run build` is self-contained.
+reference_implementation = "reference-impl/base"

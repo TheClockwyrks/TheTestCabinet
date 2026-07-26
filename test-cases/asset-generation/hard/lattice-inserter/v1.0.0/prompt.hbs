@@ -1,18 +1,21 @@
 Draw the **Lattice inserter**, a 12-frame **sprite sheet** of an animated
 swing-arm machine, using only the drawing tool.
 
-The inserter is a renderer sprite for **Lattice**, a factory simulation rendered
-in **Factorio's high-angle, pseudo-3D style** — you are looking *down* on the
-machine, consistent with the assembler, **not** drawing a side elevation. You are
-drawing one inserter mounted on the centre tile, viewed in its canonical
-orientation: it **picks an item up from the tile on its left**, swings the item in
-an arc **across the floor**, and **drops it on the tile to its right**. Across the
-twelve frames the arm sweeps from left to right carrying the item, then swings back
-empty, so the animation loops seamlessly. The pivot base sits at the centre of the
-frame and the arm's raised height reads from shading and a contact shadow on the
-floor, not from the arm climbing up the screen. The renderer rotates this one
-sprite for the other facings, so you draw this one orientation only. The brief's
-**The look** section is the thing to get right.
+The inserter is a renderer sprite for **Lattice**, a top-down factory simulation
+drawn **flat** — you are looking *down* on the machine, consistent with the
+assembler, **not** drawing a side elevation and with **no faux-3D height**. You
+are drawing one inserter mounted on the centre tile, viewed in its canonical
+orientation: it **takes hold of an item on the tile to its left**, swings in an
+arc **across the floor**, and **releases it onto the tile to its right**. Across
+the twelve frames the arm sweeps from left to right holding, then swings back
+empty, so the animation loops seamlessly. Draw the arm and hand only — **no
+item** — but **leave a clear slot at the hand** for the renderer to draw the cargo
+into; the design of the gripping hand is yours, as long as holding versus empty
+reads from the hand itself and the slot stays clear. The pivot base sits at the
+centre of the frame; the arm sweeps across the ground plane, not up the screen.
+The renderer rotates this one sprite for the other facings, so you draw this one
+orientation only. The brief's **The style** and **The item slot** sections are the
+things to get right.
 
 ## How drawing works
 
@@ -47,7 +50,8 @@ implementation that matches the specification exactly.
 
 Build the inserter sprite sheet up operation by operation until each
 `frames/<index>.png` matches the brief: a fixed grey-blue base with an amber swing
-arm and claw, sweeping a held steel plate in an arc from the left pickup to the
-right drop over frames 0→5 and swinging back empty over frames 6→11, so the loop
-reads as one continuous pickup-swing-drop-return cycle. When you are satisfied,
-stop: the recorded per-frame action logs are your finished submission.
+arm and gripping hand, the hand holding as it sweeps an arc from the left pickup
+to the right drop over frames 0→5 and empty as it swings back over frames 6→11 —
+no item drawn, but a clear slot left at the hand for the renderer's cargo — so the
+loop reads as one continuous grip-swing-release-return cycle. When you are
+satisfied, stop: the recorded per-frame action logs are your finished submission.

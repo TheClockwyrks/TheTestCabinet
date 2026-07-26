@@ -2,7 +2,67 @@
 
 use std::io::BufWriter;
 
-use super::{Image, decode_png, image_similarity, score};
+use super::{Image, decode_png, image_similarity, score, script_verdicts, validation_media_name};
+use crate::browser::ScriptVerdict;
+use crate::test_case::MediaKind;
+
+#[test]
+fn validation_media_name_is_flat() {
+    // A synthesized output is stored under the flat `<item>__<output>.<ext>` — the
+    // same name for the model's *actual* media and the case's *baseline* media, which
+    // are told apart by their directory, not their name. Kept in lockstep with
+    // `serve_validation_file` and the case-scoped baseline route.
+    assert_eq!(
+        validation_media_name("ball-spin", "rally", MediaKind::Video),
+        "ball-spin__rally.webm"
+    );
+    assert_eq!(
+        validation_media_name("states-complete", "title", MediaKind::Image),
+        "states-complete__title.png"
+    );
+}
+
+#[test]
+fn a_script_that_could_not_run_fails_the_point_it_backs() {
+    let decided = vec![ScriptVerdict {
+        id: "spin".to_string(),
+        pass: true,
+        assertions: Vec::new(),
+    }];
+
+    // A script that ran contributes exactly what it decided.
+    let ran = script_verdicts("spin", true, false, None, decided.clone());
+    assert_eq!(ran.len(), 1);
+    assert!(ran[0].pass);
+
+    // A script that could not expose the contract fails the point it backs, keyed to
+    // that point's verdict id so it pre-fills the reviewer's checklist, and carries
+    // the driver's detail as the proof of why.
+    let broken = script_verdicts(
+        "spin",
+        false,
+        false,
+        Some("window.__demo.setSpin is not a function"),
+        Vec::new(),
+    );
+    assert_eq!(broken.len(), 1);
+    assert_eq!(broken[0].id, "spin");
+    assert!(!broken[0].pass);
+    assert_eq!(
+        broken[0].assertions[0].actual.as_deref(),
+        Some("window.__demo.setSpin is not a function")
+    );
+
+    // The synthesized verdict uses the SUB-item's verdict id when the script drives
+    // one, so it lands on that sub-item rather than the whole category.
+    let sub = script_verdicts("spin.topspin", false, false, None, Vec::new());
+    assert_eq!(sub[0].id, "spin.topspin");
+
+    // But an unmet precondition decided nothing about the model, so no verdict is
+    // synthesized: the point is left unanswered for the reviewer to judge, rather
+    // than the machine failing a point it could not actually test.
+    assert!(script_verdicts("spin", false, true, Some("no blind corner"), Vec::new()).is_empty());
+}
 
 /// A solid image of `value` in every channel.
 fn solid(width: usize, height: usize, channels: usize, value: u8) -> Image {
@@ -125,6 +185,7 @@ fn base_variant() -> crate::test_case::Variant {
 /// A minimal asset-generation version drawing on a 4x4 transparent canvas.
 fn asset_version() -> TestCaseVersion {
     TestCaseVersion {
+        instrumentation: None,
         slug: "sprite".to_string(),
         version: "v1.0.0".to_string(),
         experimental: false,
@@ -176,6 +237,7 @@ fn asset_version() -> TestCaseVersion {
         common_review_items: Vec::new(),
         domains: Vec::new(),
         cases: Vec::new(),
+        errata: Vec::new(),
     }
 }
 
@@ -367,6 +429,7 @@ use crate::test_case::{ContractSpec, SandboxSpec, SimulationSpec};
 /// is `module_rel` (relative to the run root).
 fn dispatch_adversarial_version(root: std::path::PathBuf, module_rel: &str) -> TestCaseVersion {
     TestCaseVersion {
+        instrumentation: None,
         slug: "foray".to_string(),
         version: "v1.0.0".to_string(),
         experimental: false,
@@ -426,6 +489,7 @@ fn dispatch_adversarial_version(root: std::path::PathBuf, module_rel: &str) -> T
         common_review_items: Vec::new(),
         domains: Vec::new(),
         cases: Vec::new(),
+        errata: Vec::new(),
     }
 }
 

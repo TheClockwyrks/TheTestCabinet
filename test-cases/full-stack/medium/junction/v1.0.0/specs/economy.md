@@ -102,7 +102,7 @@ in `specs/flow.md`). This is the pressure that ends the game.
   raising the rate, growing the tax base — before it hits the limit is the tense part
   of the game.
 
-Tune income, upkeep, and demand so a well-run city grows and stays comfortably solvent,
+Balance income, upkeep, and demand so a well-run city grows and stays comfortably solvent,
 a careless or over-eager one slides toward bankruptcy, and a neglected one can be pulled
 back from the edge.
 

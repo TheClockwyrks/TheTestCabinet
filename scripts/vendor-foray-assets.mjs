@@ -23,7 +23,7 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 const SRC = join(
   repoRoot,
-  "test-cases/adversarial/hard/foray/v1.0.0/replay/assets",
+  "test-cases/adversarial/easy/foray/v1.0.0/replay/assets",
 );
 const DST = join(repoRoot, "packages/ui/src/app/pages/runs/foray/assets");
 

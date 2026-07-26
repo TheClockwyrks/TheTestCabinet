@@ -96,12 +96,14 @@ fps    = 4                   # playback rate in frames per second (required, > 0
 [[spec]]
 source = "specs/brief.md"    # dest defaults to "specs/brief.md"
 
-# Common scoring domains, rated for EVERY variant (at least one required); a
-# variant may add its own domains in its file.
+# The single scoring domain every asset-generation case declares — and its whole
+# review. A produced asset is judged as a WHOLE against its brief, so a case
+# declares NO [[review_item]]s: the one rating the reviewer gives here is the run's
+# overall rating (see "Judged on one overall rating" below).
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
-description = "How faithfully the regenerated asset matches the brief." # required
+id = "overall"
+name = "Overall"
+description = "How good the produced asset is overall, judged against the brief." # required
 ```
 
 Each `variants` entry points at a standalone variant file, exactly as for an
@@ -119,8 +121,6 @@ too](#variants-vary-the-volume-too)):
 slug = "base"                # stable slug, recorded in the run record
 name = "Base"                # display name (optional; default humanizes the slug)
 spec = []                    # ADDITIVE specs on top of the common specs (dest defaults to source)
-# review_item = [...]        # ADDITIVE reviewer items; may name a common or this variant's own domain
-# [[domain]]                 # ADDITIONAL scoring domains, rated only when this variant runs
 # [voxel]                    # VOXEL cases only: OVERRIDE the case's bounding volume for this variant
 ```
 
@@ -184,6 +184,45 @@ spec = []                    # ADDITIVE specs on top of the common specs (dest d
   you can within its constraints — is prepended to every asset-generation prompt at
   render time (the same wording for every case; it is *not* added for other test
   types), so a case's own `prompt.hbs` stays factual and need not restate it.
+- `reference_implementation` is an **optional** per-variant key, declared in a
+  **variant file** exactly as it is for an
+  [end-to-end case](/testing/end-to-end/manifests/) — but what it points at is
+  different, because an asset-generation case has no `[build]` table and produces
+  no site. Here it names a directory (by convention `reference-impl/<variant>/`)
+  holding a **`draw.sh`**: a script of nothing but calls to the case's own drawing
+  binary, drawing the authored *correct* sheet the same one-operation-at-a-time way
+  a model must. Running it reproduces both the images and the action logs exactly,
+  which is why **neither is committed** — the script is the only source of truth,
+  and a committed image could silently drift from it.
+
+  The script runs against a workspace seeded from **this manifest** (the same
+  seeding a run gets), so it must never write `draw.config.json`, never call
+  `draw-sheet init`, and never restate the `[canvas]` size or the declared frames:
+  a script that disagrees with its case fails against the seeded config instead of
+  quietly producing an off-size reference. Like an end-to-end one it is **never
+  seeded** into a run — it is the answer. It is published out-of-band by
+  [`tcab publish-reference`](/components/cli/overview/#commands), which runs the
+  script and uploads the frames and logs it produced, and then appears on the case
+  page's **Reference** tab as playable sequences and per-frame images rather than
+  an embedded site. Do not confuse it with `[[reference]]` — an asset-generation
+  case still declares **none** of those (see above); the two keys are unrelated
+  despite the shared word.
+
+  Because the images are never committed, there is nothing in the repository to
+  look at while authoring one. Render them locally instead:
+
+  ```sh
+  node scripts/preview-asset-reference.mjs <slug>
+  # or point it straight at a script you are iterating on:
+  node scripts/preview-asset-reference.mjs path/to/reference-impl/<variant>/draw.sh
+  ```
+
+  It seeds a workspace from the manifest exactly as a publish does, runs the
+  script, and writes the per-frame images, the action logs, and one animated GIF
+  per declared sequence to `tmp/asset-previews/<slug>/<variant>/` (ignored, but
+  inside the repo so it is one click away). Open the `index.html` it writes to see
+  everything at once. The GIFs use the same encoder and settings as the console's
+  own download button, so a preview shows what a reviewer will actually see.
 - The `[canvas]` table fixes the image the model works on: its `width` and
   `height` in pixels and its initial `background`. For a single sprite this is the
   whole canvas; for a sprite sheet it is one frame. Fixing it keeps runs
@@ -207,38 +246,36 @@ spec = []                    # ADDITIVE specs on top of the common specs (dest d
   (and the blank canvas/config the binary writes into) — no goal image, and no
   `[[reference]]`.
 
-## Review items can reference sequences and frames
+## Judged on one overall rating
 
-A sprite-sheet case's `[[review_item]]` entries (the
-[reviewer checklist](/testing/end-to-end/manifests/), shared by every test type)
-may additionally name the **sheet sequences and frames the item is about**. When
-an item names them, the review UI surfaces exactly those animations and frames
-beside the item — with a toggle between the live animation and the still frames —
-so a reviewer checks the item against the relevant assets without scrolling to the
-generated-asset section or hunting for which frame a number refers to.
+Unlike an [end-to-end](/testing/end-to-end/manifests/) or
+[full-stack](/testing/full-stack/manifests/) case, an asset-generation case
+declares **no reviewer checklist** — no `[[review_item]]` on the case and none on
+any variant. Whether a sprite reads as the creature the brief describes, whether a
+walk cycle has weight, whether a material sits right under light: these are
+judgments about the asset as a **whole**, too subjective to decide as a list of
+pass/fail points without inventing false precision.
+
+So the whole review is **one rating**. Every asset-generation case declares the
+same single scoring domain:
 
 ```toml
-[[review_item]]
-id     = "four-directions"
-title  = "Four readable directions"
-text   = "The movement frames read as the creature swimming in four directions…"
-sequences = ["walk-down", "walk-up", "walk-left", "walk-right"] # sequence slugs (optional)
-frames    = [8, 9]                                              # frame indices (optional)
-weight = 3
-domain = "fidelity"
+[[domain]]
+id = "overall"
+name = "Overall"
+description = "How good the produced asset is overall, judged against the brief."
 ```
 
-- `sequences` lists `[[sheet.sequence]]` **slugs**; the animation view plays each
-  named sequence. `frames` lists `[[sheet.frame]]` **indices**; the frames view
-  shows every referenced frame — the explicit `frames` plus the frames the named
-  `sequences` cover.
-- Both are **optional**. An item that names neither applies to the asset as a
-  whole (the reviewer uses the full generated-asset section). An item that names
-  only `frames` shows just those frames (there is nothing to animate).
-- Resolution validates that every slug names a declared sequence and every index a
-  declared frame. Both are valid **only** for a sprite-sheet case (`asset_kind =
-  "sprite-sheet"`): a single sprite, or any non-asset case, has no sheet, so
-  declaring either is rejected.
+The reviewer looks at the regenerated asset (and, for a sheet, plays back every
+declared `[[sheet.sequence]]`), reads the brief, and gives it one
+[rating](/components/core/results/#reviews). Because a run's overall rating is the
+worst across its domains and there is exactly one, that rating **is** the run's
+rating. The run's point **score** — the earned-over-available weight a checklist
+produces — is simply empty for these cases; the rating carries the whole verdict.
+
+That puts the weight on the **brief**: every requirement a checklist item would
+have named must be stated there, since the brief is both what the model is asked
+to satisfy and what the reviewer rates it against.
 
 ## UI cases
 
@@ -248,7 +285,7 @@ asset](/testing/asset-generation/overview/#user-interface-assets) — one image 
 [`paint` and `ui` binaries](/testing/asset-generation/ui-binaries/). It reuses
 `[canvas]` for the base element size and adds an **optional `[ui]`** table declaring
 the kit's elements; omit `[ui]` for a single full-canvas image. Everything else on
-the page — `type`, `variants`, `[[spec]]`, `[[domain]]`, `[[review_item]]`, the
+the page — `type`, `variants`, `[[spec]]`, the single `[[domain]]`, the
 no-`[[reference]]`/no-`[build]`/no-`[[check]]` rules — behaves exactly as above.
 
 ```toml
@@ -379,7 +416,7 @@ Every voxel kind replaces the `[canvas]` table with a `[voxel]` table and reuses
 [required animations](/testing/asset-generation/overview/#the-rig-parts-and-joints)
 the model must author (the rig's parts and joints are the model's to invent).
 Everything else
-on the page — `type`, `variants`, `[[spec]]`, `[[domain]]`, `[[review_item]]`, the
+on the page — `type`, `variants`, `[[spec]]`, the single `[[domain]]`, the
 no-`[[reference]]`/no-`[build]`/no-`[[check]]` rules — behaves exactly as above.
 
 ```toml
@@ -604,8 +641,8 @@ for the extents and `{{voxel.maxX}}`/`{{voxel.maxY}}`/`{{voxel.maxZ}}` for the h
 index on each axis (so an inclusive coordinate range reads `` `0`–`{{voxel.maxX}}` ``).
 The same `{{voxel}}` context is available in the case's `prompt.hbs`. One brief then
 reads correctly at every size. (Because coordinates are size-dependent, a voxel case's
-`[[review_item]]` and `[[domain]]` text should describe the form **without** citing
-specific coordinates or exact extents — a reviewer judges the shape, not numbers.)
+brief and `[[domain]]` text should describe the form **without** citing specific
+coordinates or exact extents — a reviewer judges the shape, not numbers.)
 
 ## Skinned cases
 
@@ -927,7 +964,11 @@ actions = "actions.json"     # the recorded op record; the rendered clip.wav (an
   the **`sample_pack`** it mixes over, and a **`music`** case names the
   **`instrument_bank`** it plays — each a `name@version` identifying the palette
   **baked into the run-container image**, never a path in this repo (see [the sample
-  library](/testing/asset-generation/audio-binaries/#the-sample-library)). A
+  library](/testing/asset-generation/audio-binaries/#the-sample-library)). The `music`
+  image bakes **every** instrument bank, so `instrument_bank` *selects* which one; the
+  banks available today are **`gm-lite@0.1.0`** (broad general-MIDI), **`cinematic@0.1.0`**
+  (epic orchestral — strings, brass, choir, orchestral percussion), and
+  **`synthwave@0.1.0`** (analog synths, pads, FM bells, an electronic drum machine). A
   `sfx-synth` case names neither — it synthesizes from oscillators alone.
 - Core emits the rendered **`clip.wav`** (and, for `music`, a portable **`clip.mid`**
   score) automatically; neither is manifest-declared. Because the asset is a finished

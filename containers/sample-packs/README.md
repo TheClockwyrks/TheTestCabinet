@@ -41,6 +41,23 @@ See the sample-library sections of
   entries are `pitched = false` (played native). Unlike the elemental sfx library, a bank
   entry is **named by its instrument** (`grand_piano`, `violin`) — a `music` case measures
   composition, not identification, so a real instrument name is correct here.
+- **`cinematic.toml`** — a **real** domain-tailored **epic-orchestral** instrument bank
+  for `music` (`kind = "instrument-bank"`, stereo), the big voices `gm-lite` lacks:
+  sectioned strings (tremolo, pizzicato), french horns and low brass, mixed choir
+  (`choir_aah`/`choir_ooh`), oboe/flute, celesta/harp, and orchestral percussion (taiko,
+  bass drum, cymbal). Curated the same way (`curate-instrument-bank.mjs --bank cinematic`).
+- **`synthwave.toml`** — a **real** domain-tailored **synthwave / electronic** instrument
+  bank for `music` (`kind = "instrument-bank"`, stereo): analog leads and basses, pads,
+  FM bells, synth brass/strings, and an electronic drum machine (`kick_808`, electronic
+  snare/clap, hats, tom). Curated with `curate-instrument-bank.mjs --bank synthwave`.
+
+  The `music` run-container image bakes **every** instrument bank as a per-name
+  subdirectory, and a case's `instrument_bank = "<name>@<version>"` selects which one it
+  plays (see [`select_pack_dir`](../../crates/audio-core/src/config.rs) and
+  [`containers/music/Dockerfile`](../music/Dockerfile)). To add another bank, extend the
+  `BANKS` registry in `curate-instrument-bank.mjs`, curate + `--publish` it, then add its
+  three build args (and per-name subdir) to the music Dockerfile and
+  [`build.sh`](../build.sh)'s `build_music_image`.
 - **`sfx-core.toml`** — an EXAMPLE general-purpose game-SFX sample pack for
   `sfx-sample` (`kind = "sample-pack"`, mono), kept as a format reference.
 

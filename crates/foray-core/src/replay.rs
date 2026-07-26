@@ -5,7 +5,7 @@
 //! re-run the engine and reproduce the match bit-for-bit: the map id, the seed,
 //! the timestep, the participants, every tick's two action sets, and the
 //! committed result. [`Replay::reconstruct`] re-runs the recorded actions through
-//! the *same* [`Match`](crate::engine::Match) the producer used, and a
+//! the *same* [`Match`] the producer used, and a
 //! [`ReplayDrift`] is raised if the reconstructed result disagrees with the
 //! committed one — that means the engine changed under the replay and is a bug,
 //! not a re-scoring.
@@ -98,7 +98,11 @@ pub struct Replay {
     /// renderer; this carries `max_ticks` too).
     #[serde(default)]
     pub simulation: Simulation,
-    /// One entry per tick, in order.
+    /// One entry per tick that was **played**, in order — so
+    /// `ticks.len() == result.ticks` in every ending, and replaying the whole log
+    /// lands on the state the match ended in. A forfeit ends the match *at* its tick:
+    /// that tick is never advanced, so it is not recorded here either (the forfeiting
+    /// controller never produced an action to record).
     pub ticks: Vec<TickInput>,
     /// The committed result the reconstruction must reproduce.
     pub result: ReplayResult,
@@ -209,11 +213,21 @@ impl Replay {
             reconstructed = game.step(&input.red, &input.blue);
         }
 
-        // A forfeit cannot be re-derived from inputs alone (the host decides it),
-        // so for a forfeit we trust the committed result and stamp it onto the
-        // reconstructed state rather than checking the engine reproduced it.
+        // Only *how it ended* is beyond the engine's reach on a forfeit: the host
+        // decides that (a controller trapped, starved of fuel, or broke the contract)
+        // and no tick log can re-derive it. Everything the rules produce — the score,
+        // the kills, the number of ticks played — is still checked, because the log
+        // holds exactly the ticks that were played and replaying them must land on the
+        // state the match ended in. Taking the whole result on trust (as this once did)
+        // let a forfeit replay skip the drift check altogether.
         let reproduced: ReplayResult = match self.result.ended {
-            Ended::Forfeit => self.result,
+            Ended::Forfeit => ReplayResult {
+                winner: self.result.winner,
+                ended: self.result.ended,
+                score: game.state.score,
+                kills: game.state.kills,
+                ticks: game.state.tick,
+            },
             _ => reconstructed
                 .map(ReplayResult::from)
                 .ok_or(ReplayError::Incomplete)?,

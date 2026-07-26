@@ -61,57 +61,14 @@ actions = "actions.json"
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How faithfully the emitted maps realize the brief's surface, palette, and tiling \
-scale — weathered near-black basalt cut by ashen, faintly glowing fissures, at \
-the stated ~2 m tile span."""
-
-[[domain]]
-id = "craft"
-name = "Craft"
-description = """
-How cleanly the material tiles, how coherently the relief, roughness, and AO read \
-against the base-color on the lit preview, and how convincingly it dresses a \
-surface as cooled volcanic rock."""
-
-[[review_item]]
-id = "seamless"
-title = "Tiles without a visible seam"
-text = """
-In the 2x2 tiling the base-color and normal show no repeat line, edge join, or \
-hotspot — no fissure or crust patch obviously interrupted at a map edge."""
-weight = 3
-domain = "craft"
-
-[[review_item]]
-id = "maps-coherent"
-title = "Maps describe the same surface"
-text = """
-The normal, roughness, and AO agree with the base-color: the fissures read as \
-recessed (normal), glassier (lower roughness), and occluded (AO) all at once, and \
-the crusted highlights read raised, matte, and unoccluded — one coherent relief."""
-weight = 2
-domain = "craft"
-
-[[review_item]]
-id = "palette"
-title = "On-palette weathered basalt"
-text = """
-The albedo stays within the brief's basalt-black / cooled-fissure / mineral-crust \
-/ ash / faint-ember palette, with no out-of-palette colors, and reads as weathered \
-volcanic rock at the stated tile scale rather than generic grey stone."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "relief"
-title = "Believable basalt relief"
-text = """
-The baked normal and AO carry real mesoscale structure — a hairline fissure \
-network, vesicle pitting, and raised crust lips — legible at the ~2 m tile span, \
-not a flat swatch or uniform noise."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

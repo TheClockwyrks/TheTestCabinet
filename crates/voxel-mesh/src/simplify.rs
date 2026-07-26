@@ -72,7 +72,7 @@ type Quadric = [f64; 10];
 /// Simplify `mesh` with manifold-preserving QEM edge collapses, returning a new mesh
 /// whose vertex buffer holds only the surviving vertices — each keeping its original
 /// position, normal, and color — with the index buffer remapped to match. Empty or
-/// sub-[`MIN_TRIANGLES`] meshes are returned unchanged.
+/// sub-`MIN_TRIANGLES` meshes are returned unchanged.
 pub fn simplify_mesh(mesh: &Mesh) -> Mesh {
     let vertex_count = mesh.positions.len() / 3;
     let triangle_count = mesh.indices.len() / 3;

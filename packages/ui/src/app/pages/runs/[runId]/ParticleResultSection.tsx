@@ -1,5 +1,9 @@
 import { Suspense, lazy, useEffect, useState } from "react";
-import { SegmentedControl, type SegmentedOption } from "@test-cabinet/ui";
+import {
+  SegmentedControl,
+  Spinner,
+  type SegmentedOption,
+} from "@test-cabinet/ui";
 import {
   fetchParticleSystem,
   useParticleSystem,
@@ -62,7 +66,7 @@ function ParticleFallback({
   }
   return (
     <div style={{ display: "grid", placeItems: "center", height: "100%" }}>
-      <span className={styles.secondary}>{message}</span>
+      <Spinner variant="squadron" label={message} />
     </div>
   );
 }

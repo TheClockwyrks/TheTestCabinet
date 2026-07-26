@@ -121,6 +121,4 @@ any base path, including a per-run sub-path.
   `@test-cabinet/particle-runtime`.
 - [`scripts/`](scripts/) — the asset generators that produced [`assets/`](assets/)
   (`gen-sprites.sh`, `gen-animations.sh`, `gen-particles.sh`, `gen-audio.sh`, invoking the
-  `PATH` tools) and [`proof.mjs`](scripts/proof.mjs), which captures the `proof/` artifacts
-  with the project-local Playwright.
-- [`proof/`](proof/) — the proof-of-implementation captures (`specs/proof.md`).
+  `PATH` tools).

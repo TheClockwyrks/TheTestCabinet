@@ -5,10 +5,11 @@ difficulty = "hard"
 tags = ["sprite-sheet", "machine"]
 summary = """
 Draw the Lattice inserter: a swing-arm machine for a deterministic factory \
-simulation, drawn in Factorio's high-angle pseudo-3D style, as twelve 64x64 \
-frames whose arm sweeps an item across the floor from the left pickup tile to the \
-right drop tile and swings back empty in a seamless loop, produced one drawing \
-operation at a time."""
+simulation, drawn flat and top-down, as twelve 64x64 frames whose arm sweeps \
+across the floor from the left pickup tile to the right drop tile holding an item, \
+then swings back empty, in a seamless loop — item-agnostic, since the renderer \
+draws the cargo into a reserved slot at the hand — produced one drawing operation \
+at a time."""
 description = "description.md"
 # Optional per-version changelog entry (Markdown, relative to this version
 # folder), recording what changed in THIS version — the first version simply reads
@@ -96,100 +97,14 @@ fps = 12
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How faithfully the regenerated sheet matches the Lattice inserter — its high-angle \
-pseudo-3D viewpoint (consistent with the assembler, never a side elevation), its \
-fixed grey-blue pivot base at the centre, the amber swing arm and claw that sweep \
-an arc across the floor from the left pickup to the right drop with height read \
-from shading and a tracking contact shadow, the held steel plate that appears only \
-on the delivery stroke, the strict amber-on-grey palette, and the seamless loop \
-from frame 11 back to frame 0."""
-
-[[review_item]]
-id = "pickup-swing-drop"
-title = "Pickup-left, swing-across, drop-right arc"
-text = """
-Played in order, the twelve frames read as one swing-arm motion seen from above: \
-the claw starts over the LEFT pickup tile, sweeps in a smooth arc across the floor \
-(bowing out through the far side of the centre tile at mid-swing), and reaches the \
-RIGHT drop tile — then returns. The hand traces a clean arc between the two sides, \
-not a jump, a straight slide, or a vertical pendulum lift, and the left side is \
-clearly the pickup and the right the drop."""
-sequences = ["swing"]
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "pseudo-3d-viewpoint"
-title = "High-angle pseudo-3D viewpoint"
-text = """
-The inserter is drawn from Lattice's high-angle, pseudo-3D camera — looking DOWN \
-on it, consistent with the assembler and belts — NOT as a side elevation. The \
-pivot base sits on the floor at the centre of the frame (not on a ground line at \
-the bottom), the two worked tiles lie flat to its left and right, and the arm's \
-raised height reads from shading plus a contact shadow tracking on the floor \
-beneath the hand, not from the arm climbing up the screen."""
-sequences = ["swing"]
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "held-item-loaded-empty"
-title = "Held item on delivery, empty on return"
-text = """
-The delivery stroke (frames 0-5, left-to-right) carries a small steel-grey plate \
-visibly gripped in the claw; the return stroke (frames 6-11, right-to-left) shows \
-the claw EMPTY, with no item. The loaded-versus-empty difference must be obvious \
-at a glance so the cycle reads as carry-one-over-then-swing-back."""
-sequences = ["swing"]
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "anchored-base"
-title = "Anchored base, only the arm moves"
-text = """
-A small grey-blue base/mount sits fixed at the centre of every frame and does not \
-move, jitter, or change between frames. Only the arm and claw pivot from it; the \
-base is the still anchor the whole swing rotates around."""
-sequences = ["swing"]
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "seamless-loop"
-title = "Seamless swing loop"
-text = """
-The arm ends frame 11 back at the LEFT pickup position so frame 11 returns to \
-frame 0 with no jump, stutter, or backward slip — a clean continuous loop of one \
-pickup-swing-drop-return cycle. The arc step between consecutive frames is even \
-across the whole sweep."""
-sequences = ["swing"]
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Amber arm, grey base palette"
-text = """
-Uses only the inserter palette from the brief — the dark outline, the grey-blue \
-base tones, the amber arm with its highlight and shadow, and the steel-plate tones \
-for the held item — with no out-of-palette colors and no halo of stray or \
-anti-aliased pixels. The arm is amber; the base is grey-blue; the two never bleed \
-into each other's colors."""
-weight = 1
-domain = "fidelity"
-
-[[review_item]]
-id = "framing"
-title = "Centred framing with the reach fitting"
-text = """
-The base is centred in the 64x64 frame as the pivot and the arm's full reach to \
-the left pickup and right drop fits inside the frame with a small margin — neither \
-clipped at the edges nor cramped into the centre. The 64x64 box reads as a \
-2x2-tile span with the pivot at the centre."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

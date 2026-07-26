@@ -1,0 +1,141 @@
+@use "../styles/tokens" as t;
+
+.spinner {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+.art {
+  display: block;
+  height: auto;
+  // Preserve the pixel-art edges when the browser scales the mark.
+  image-rendering: pixelated;
+  user-select: none;
+}
+
+// Small inline spinner: a single flapping sprite that sits on a line of text.
+.flap .art {
+  width: 2.25rem;
+}
+
+// Mid-size marching column, kept on hand for medium loading spots.
+.march .art {
+  width: 8rem;
+}
+
+// Large, full-panel squadron for heavyweight loads (e.g. an implementation
+// that hasn't loaded in yet). Unlike the two small marks, which sit inline in
+// whatever surface called for them, the squadron draws its own arcade cabinet
+// screen: a bezel around a darkened glass panel, the sprites flying inside it,
+// the caption burned in underneath, and CRT scanlines ruled over the lot. On a
+// page that is still loading there is no panel behind it, so without the screen
+// the sprites read as art dropped onto the backdrop rather than a machine
+// booting up.
+//
+// `--bezel` is the frame thickness: the screen (`::before`) and its scanlines
+// (`::after`) are inset by it, and the content is padded past it.
+.squadron {
+  --bezel: #{t.$space-md};
+
+  position: relative;
+  max-width: 100%;
+  padding: calc(var(--bezel) + #{t.$space-lg})
+    calc(var(--bezel) + #{t.$space-xl});
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-lg;
+  // The moulded bezel: lit from above, and lighter than the glass it surrounds
+  // so the frame stays legible against the deep-black backdrop.
+  background: linear-gradient(
+    to bottom,
+    t.$color-surface-2 0%,
+    t.$color-surface 60%,
+    t.$color-bg-2 100%
+  );
+  box-shadow: 0 0 1.5rem color-mix(in srgb, t.$color-accent 20%, transparent);
+}
+
+// The glass: a vignetted panel, brightest at the centre where the squadron
+// flies, sunk into the bezel by an inset shadow and ringed by its edge.
+.squadron::before {
+  content: "";
+  position: absolute;
+  inset: var(--bezel);
+  border-radius: t.$radius-md;
+  background: radial-gradient(
+    ellipse at 50% 45%,
+    t.$color-surface-2 0%,
+    t.$color-bg 100%
+  );
+  box-shadow:
+    inset 0 0 0 t.$border-hairline
+      color-mix(in srgb, t.$color-border 60%, transparent),
+    inset 0 0 1.5rem color-mix(in srgb, t.$color-bg 90%, transparent);
+}
+
+// The scanlines and the top-edge sheen, ruled *over* the sprites and caption
+// (hence `::after`, above the content) rather than under them.
+.squadron::after {
+  content: "";
+  position: absolute;
+  inset: var(--bezel);
+  z-index: 2;
+  border-radius: t.$radius-md;
+  pointer-events: none;
+  background:
+    linear-gradient(
+      to bottom,
+      color-mix(in srgb, t.$color-text 7%, transparent) 0%,
+      transparent 35%
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      var(--tcab-scanline) 0 1px,
+      transparent 1px 3px
+    );
+}
+
+// Lift the mark and its caption off the glass and under the scanlines.
+.squadron .art,
+.squadron .label {
+  position: relative;
+  z-index: 1;
+}
+
+.squadron .art {
+  width: min(18rem, 55vw);
+}
+
+.label {
+  color: var(--tcab-muted);
+  font-family: var(--tcab-font);
+  font-size: 0.9rem;
+  letter-spacing: 0.04em;
+}
+
+// On-screen text: amber phosphor, spaced out like a cabinet's attract-mode
+// prompt, breathing slowly so the screen reads as live while the wait lasts.
+.squadron .label {
+  margin-top: t.$space-md;
+  color: t.$color-accent;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  text-shadow: var(--tcab-glow);
+  animation: phosphor 1.8s ease-in-out infinite;
+}
+
+@keyframes phosphor {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+// The squadron animation itself already stands down under reduced motion (it
+// is a CSS animation inside the SVG); the caption follows suit.
+@media (prefers-reduced-motion: reduce) {
+  .squadron .label {
+    animation: none;
+  }
+}

@@ -1,7 +1,9 @@
 import type { ReactNode } from "react";
 import { Link, NavLink, useParams } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
+import { LoadingState } from "../../components/LoadingState";
 import { AddModelFromRunControl } from "../../components/AddModelFromRunControl";
+import { BackChevron } from "../../components/BackChevron";
 import { ModelProviderMark } from "../../components/ModelProviderMark";
 import type { ModelSummary } from "../../data/models";
 import { useModelConfig } from "../../data/useModelConfig";
@@ -28,7 +30,7 @@ interface ModelDetailLayoutProps {
 // tab pages stay thin and never duplicate it.
 export function ModelDetailLayout({ tab, children }: ModelDetailLayoutProps) {
   const { modelId } = useParams<{ modelId: string }>();
-  const { models } = useModels();
+  const { models, status: modelsStatus } = useModels();
   // The edit affordance shows only where curating models is possible; null (and
   // thus hidden) on a read-only or logged-out host.
   const config = useModelConfig();
@@ -37,6 +39,17 @@ export function ModelDetailLayout({ tab, children }: ModelDetailLayoutProps) {
   );
 
   if (!model) {
+    // While the catalog is still loading the model isn't resolvable yet, so show
+    // the branded full-body loading state (the topbar stays) rather than the
+    // unknown-model text, which is reserved for a model genuinely absent from a
+    // catalog that has finished loading.
+    if (modelsStatus === "loading") {
+      return (
+        <PageLayout>
+          <LoadingState label="Loading model…" />
+        </PageLayout>
+      );
+    }
     return (
       <PageLayout>
         <p className={styles.empty}>Unknown model: {modelId}</p>
@@ -57,13 +70,11 @@ export function ModelDetailLayout({ tab, children }: ModelDetailLayoutProps) {
   return (
     <PageLayout>
       <header className={styles.identity}>
-        <p className={styles.crumb}>
-          <Link to={routes.models()}>&larr; Models</Link>
-        </p>
         <div className={styles.titleRow}>
-          {/* Provider mark hugging the model name, then the OpenRouter link
-              pushed to the right edge. */}
+          {/* The back chevron and provider mark hugging the model name, then the
+              OpenRouter link pushed to the right edge. */}
           <span className={styles.nameGroup}>
+            <BackChevron to={routes.models()} label="All models" />
             <ModelProviderMark
               logoSvg={model.logoSvg}
               provider={model.provider}
@@ -73,7 +84,10 @@ export function ModelDetailLayout({ tab, children }: ModelDetailLayoutProps) {
             {/* A model the catalog only knows from its runs (no curated config)
                 reads with a subtle tag so it's distinct from a curated entry. */}
             {!model.isConfigured && (
-              <span className={styles.derivedTag} title="Derived from runs — not yet curated">
+              <span
+                className={styles.derivedTag}
+                title="Derived from runs — not yet curated"
+              >
                 derived
               </span>
             )}
@@ -113,21 +127,18 @@ export function ModelDetailLayout({ tab, children }: ModelDetailLayoutProps) {
         {/* A curated model offers a gated Edit link; a derived one offers the
             "Add this model" affordance to promote it to a curated config. Both are
             hidden where configuring models isn't possible. */}
-        {model.isConfigured
-          ? config && (
-              <Link
-                className={styles.editLink}
-                to={routes.modelEdit(model.slug)}
-              >
-                Edit
-              </Link>
-            )
-          : (
-              <AddModelFromRunControl
-                alias={model.modelIds[0] ?? model.slug}
-                className={styles.headerAction}
-              />
-            )}
+        {model.isConfigured ? (
+          config && (
+            <Link className={styles.editLink} to={routes.modelEdit(model.slug)}>
+              Edit
+            </Link>
+          )
+        ) : (
+          <AddModelFromRunControl
+            alias={model.modelIds[0] ?? model.slug}
+            className={styles.headerAction}
+          />
+        )}
       </div>
 
       {children({ model })}

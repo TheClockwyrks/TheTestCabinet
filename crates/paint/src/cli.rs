@@ -5,7 +5,7 @@
 //! The four binaries (`paint`, `ui`, `texture`, `pbr`) differ only in their clap
 //! operation vocabulary; the file/preview/stream mechanics live here so paint and ui
 //! (and texture and pbr) interleave over one shared log and layer store, exactly as
-//! the [`draw`](test_cabinet_draw) tools share their `cli` module.
+//! the `draw` tools share their `cli` module.
 
 use std::fs;
 use std::path::Path;
@@ -285,7 +285,7 @@ pub fn nine_slice_preview(
 
 /// Stream a just-rendered frame to the run's live-preview endpoint, best-effort.
 ///
-/// Identical wire form to the [`draw`](test_cabinet_draw) tool: one JSON header line
+/// Identical wire form to the `draw` tool: one JSON header line
 /// (`{ token, frame, operation, operationCount, length }`) then exactly `length` raw
 /// PNG bytes. `frame` carries the element/map index. Every error is swallowed — a
 /// paint operation never fails because the live view is slow or absent.

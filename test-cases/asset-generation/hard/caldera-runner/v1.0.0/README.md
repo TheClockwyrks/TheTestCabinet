@@ -37,10 +37,10 @@ contradict the required `move` and `attack`.
 
 The Runner's **dorsal ridge** must be sculpted in `#4a4358` and that color must appear
 nowhere else on the model. This is not decoration: the `caldera` build finds every voxel
-of that color and repaints it per tier (obsidian for Tier I, steel for Tier II, violet for
-Tier III), so one model serves all three tiers without new geometry. The contract is
-documented in the end-to-end case's `specs/assets.md`, and a review item scores whether the
-region is contiguous, correctly colored, and visible from the side and above.
+of that color and repaints it per tier (obsidian for Tier I, steel for Tier II, violet
+for Tier III), so one model serves all three tiers without new geometry. The contract is
+documented in the end-to-end case's `specs/assets.md`, and the reviewer checks whether
+the region is contiguous, correctly colored, and visible from the side and above.
 
 The brief also forbids steel `#c9ced6` and violet `#b56bff` anywhere on the model, since a
 game paints those on at run time.
@@ -68,8 +68,8 @@ The Runner ships three variants, sculpting the same creature at three sizes: `ba
 case's 20×24×44 volume, the default), `half` (each extent ~halved), and `double` (each
 doubled). The `half` and `double` variant files override `[voxel]`, and the brief is
 rendered at the selected variant's dimensions. All three seed the common brief and are
-rated on the case's single `fidelity` scoring domain; they add no specs, review items,
-or domains of their own.
+rated on the case's single `overall` scoring domain; they add no specs or domains of
+their own.
 
 ## Versioning
 

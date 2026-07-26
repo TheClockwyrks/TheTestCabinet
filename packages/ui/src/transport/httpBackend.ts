@@ -9,6 +9,7 @@
 // worker the console registers or talks to anymore.
 import type {
   BackendClient,
+  BatchLaunchResult,
   WorkerClient,
   RunSubscription,
   NotificationSubscription,
@@ -19,6 +20,7 @@ import type {
   AuthResult,
   BackendIdentity,
   Domain,
+  Erratum,
   HarnessConfigEntry,
   HarnessEvent,
   InProgressRun,
@@ -27,18 +29,19 @@ import type {
   Model,
   ModelInput,
   ModelSeed,
+  MyReviewsPage,
   ProgressCallback,
   PublishProgress,
   PublishResult,
   ReviewDocumentInput,
   ReviewItem,
+  ReviewStats,
   RunEventStreams,
   RunJob,
   RunNotification,
   RunPage,
   RunSummaryPage,
   Specification,
-  SpecDocument,
   SpecRole,
   StoredReview,
   StoredRun,
@@ -54,20 +57,28 @@ import type {
 } from "@test-cabinet/run-record";
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import type {
+  CoverageGroup,
+  CoverageGroupInput,
   CoverageMatrix,
-  ReviewPlan,
-} from "@test-cabinet/run-record/review-plan";
+  CoveragePlan,
+  CoveragePlanInput,
+  CoveragePlanSummary,
+} from "@test-cabinet/run-record/coverage";
 import {
   delJson,
   delVoid,
   getJson,
   getJsonStreamed,
-  getText,
   joinUrl,
   postJson,
+  putBytes,
   putJson,
-  putVoid,
 } from "./http";
+import {
+  applyScoreExclusions,
+  excludedVerdictIds,
+  mergeReviewItems,
+} from "../ratings";
 
 // `GET /healthz` — the shape the backend reports.
 interface HealthzResponse {
@@ -158,6 +169,9 @@ interface ResolvedVersion {
   // `ModelSpec`), present only for a voxel-animation case. Carried through
   // verbatim, the 3D analog of `sheet`.
   model?: ModelSpec | null;
+  // Known-issue errata recorded for this version. Absent on a backend that
+  // predates the field.
+  errata?: Erratum[];
   variants: {
     slug: string;
     name: string;
@@ -174,6 +188,11 @@ interface ResolvedVersion {
     // backend's `case_reference_build` table. Null when the variant declares none;
     // absent on a backend that predates the field.
     referenceBuild?: string | null;
+    // An ASSET-GENERATION variant's published reference frames: the indices whose
+    // rendered image + action log `tcab publish-reference` uploaded to the public
+    // snapshot bucket. Null when none is published; absent on a backend that
+    // predates the field (which is why the whole feature degrades to "no tab").
+    referenceSheet?: { frames: number[] } | null;
   }[];
 }
 
@@ -187,6 +206,8 @@ interface ReviewResponse {
   writeup: string;
   checklist: StoredReview["checklist"];
   reviewedAt?: string | null;
+  editedAt?: string | null;
+  revisions?: StoredReview["revisions"];
 }
 
 // `GET /runs/{id}` (and each entry of `GET /runs`): a stored run — its full
@@ -219,14 +240,11 @@ interface RunSummaryPageResponse {
   total?: number | null;
 }
 
-// The backend serves the record with its links already populated, so the run's
-// id and links are taken from the record itself. Every review is carried through
-// with its attribution; a backend-served run is always a published one.
-function toStoredRun(r: StoredRunResponse): StoredRun {
-  const record = r.links
-    ? { ...r.record, links: { ...r.record.links, ...r.links } }
-    : r.record;
-  const reviews: StoredReview[] = (r.reviews ?? []).map((rv) => ({
+// Map one wire review (`ReviewResponse`) to the transport-neutral `StoredReview`.
+// The reviewer avatar URL is attached separately (it needs the auth service base
+// URL, which only the exec transport holds); left absent here.
+function toStoredReview(rv: ReviewResponse): StoredReview {
+  return {
     reviewerId: rv.reviewerId,
     reviewer: rv.reviewer,
     username: rv.username ?? null,
@@ -234,8 +252,74 @@ function toStoredRun(r: StoredRunResponse): StoredRun {
     writeup: rv.writeup,
     checklist: rv.checklist,
     reviewedAt: rv.reviewedAt ?? null,
-  }));
+    editedAt: rv.editedAt ?? null,
+    revisions: rv.revisions ?? [],
+  };
+}
+
+// The backend serves the record with its links already populated, so the run's
+// id and links are taken from the record itself. Every review is carried through
+// with its attribution; a backend-served run is always a published one.
+function toStoredRun(r: StoredRunResponse): StoredRun {
+  const record = r.links
+    ? { ...r.record, links: { ...r.record.links, ...r.links } }
+    : r.record;
+  const reviews: StoredReview[] = (r.reviews ?? []).map(toStoredReview);
   return { id: record.id, record, reviews, published: r.published ?? true };
+}
+
+// Resolve an account/reviewer id to its profile-picture URL on the auth service
+// (`GET /auth/users/{id}/picture`). `version` (the account's `pictureUpdatedAt`)
+// cache-busts a replaced picture; omitted for a reviewer whose version is unknown,
+// in which case the avatar simply relies on the endpoint's short cache.
+function pictureUrlFor(
+  authUrl: string,
+  id: string,
+  version?: string | null,
+): string {
+  const query = version ? `?v=${encodeURIComponent(version)}` : "";
+  return joinUrl(
+    authUrl,
+    `/auth/users/${encodeURIComponent(id)}/picture${query}`,
+  );
+}
+
+// Attach the transport-resolved `pictureUrl` to an account: a ready-to-use avatar
+// URL when the account has a picture (`pictureUpdatedAt` set), else null. Every
+// consumer (top bar, profile) then reads one field rather than re-deriving the URL.
+function accountWithPicture(
+  authUrl: string,
+  account: AuthResult["account"],
+): AuthResult["account"] {
+  return {
+    ...account,
+    pictureUrl: account.pictureUpdatedAt
+      ? pictureUrlFor(authUrl, account.id, account.pictureUpdatedAt)
+      : null,
+  };
+}
+
+// Attach a reviewer's avatar URL to a review for display. Emitted unconditionally
+// (the wire review carries no "has picture" flag): a reviewer with no picture
+// simply 404s and the avatar falls back to their initials.
+function reviewWithPicture(
+  authUrl: string,
+  review: StoredReview,
+): StoredReview {
+  return {
+    ...review,
+    reviewerPictureUrl: pictureUrlFor(authUrl, review.reviewerId),
+  };
+}
+
+// One `GET /account/reviews` entry (`MyReviewOut`) and the page envelope.
+interface MyReviewResponse {
+  run: RunSummary;
+  review: ReviewResponse;
+}
+interface MyReviewsResponseBody {
+  reviews: MyReviewResponse[];
+  total: number;
 }
 
 export function createHttpBackend(baseUrl: string): BackendClient {
@@ -289,6 +373,8 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         domains: r.domains ?? [],
         sheet: r.sheet ?? null,
         model: r.model ?? null,
+        // Known-issue errata for this version; empty on a backend that predates it.
+        errata: r.errata ?? [],
         variants: r.variants.map((v) => ({
           slug: v.slug,
           name: v.name,
@@ -308,11 +394,16 @@ export function createHttpBackend(baseUrl: string): BackendClient {
             url: joinUrl(baseUrl, ref.mediaUrl),
           })),
           // The common checklist items apply to every variant; the variant's own
-          // follow. They carry the point weights used to score runs.
-          reviewItems: [
-            ...(r.commonReviewItems ?? []),
-            ...(v.reviewItems ?? []),
-          ],
+          // follow, merged by id so a variant that reuses a common category's id
+          // extends that category rather than forming a duplicate group. They
+          // carry the point weights used to score runs. Points the version's errata
+          // exclude from scoring (`excludeFromScore`) are marked non-scoring here so
+          // every consumer scores this effective list uniformly (mirrors the Rust
+          // `review_items_for`).
+          reviewItems: applyScoreExclusions(
+            mergeReviewItems(r.commonReviewItems ?? [], v.reviewItems ?? []),
+            excludedVerdictIds(r.errata ?? [], v.slug),
+          ),
           // The common scoring domains apply to every variant; the variant's own
           // additive domains follow. This effective set is what a run of this
           // variant is rated against.
@@ -322,6 +413,12 @@ export function createHttpBackend(baseUrl: string): BackendClient {
           // records exactly what `tcab publish-reference` deployed). Null when the
           // variant declares none.
           referenceBuild: v.referenceBuild ?? null,
+          // An asset-generation variant's published reference frames. Carried as
+          // indices only — the frame images and action logs live in the public
+          // snapshot bucket, addressed by key (see `referenceMediaKey`). Null on a
+          // backend that predates the field, so the Reference tab simply never
+          // appears rather than pointing at objects that were never published.
+          referenceSheet: v.referenceSheet ?? null,
         })),
       };
     },
@@ -331,31 +428,16 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       version: string,
       variant: string,
     ): Promise<Specification> {
-      // The backend serves spec bodies as artifacts by key, not as one bundle,
-      // so resolve the version and fetch each seeded spec for the variant.
-      const r = await getJson<ResolvedVersion>(
+      // The backend renders each seeded spec for the selected variant and returns
+      // the whole set as one bundle — a template spec's `{{#if (eq variant.slug …)}}`
+      // branches already resolved server-side — so the Inputs tab shows the exact,
+      // handlebars-free files the harness receives (the spec analogue of the
+      // rendered prompt). This is why we no longer fetch the raw `/artifacts` bytes
+      // per spec and stitch them here: those are the unrendered templates.
+      return getJson<Specification>(
         baseUrl,
-        `/test-cases/${encodeURIComponent(slug)}/versions/${encodeURIComponent(version)}`,
+        `/test-cases/${encodeURIComponent(slug)}/versions/${encodeURIComponent(version)}/specs/${encodeURIComponent(variant)}`,
       );
-      const chosen = r.variants.find((v) => v.slug === variant);
-      const descriptors = [...(r.commonSpecs ?? []), ...(chosen?.specs ?? [])];
-      const specs: SpecDocument[] = await Promise.all(
-        descriptors.map(async (d) => ({
-          dest: d.dest,
-          body: await getText(
-            baseUrl,
-            `/test-cases/${encodeURIComponent(slug)}/versions/${encodeURIComponent(version)}/artifacts/${d.source}`,
-          ),
-          kind: (d.kind ?? "spec") as SpecRole,
-        })),
-      );
-      return {
-        slug: r.slug,
-        version: r.version,
-        variant,
-        description: r.description,
-        specs,
-      };
     },
 
     async readReviewItems(
@@ -370,7 +452,10 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         `/test-cases/${encodeURIComponent(slug)}/versions/${encodeURIComponent(version)}`,
       );
       const chosen = r.variants.find((v) => v.slug === variant);
-      return [...(r.commonReviewItems ?? []), ...(chosen?.reviewItems ?? [])];
+      return applyScoreExclusions(
+        mergeReviewItems(r.commonReviewItems ?? [], chosen?.reviewItems ?? []),
+        excludedVerdictIds(r.errata ?? [], variant),
+      );
     },
 
     async listModels(): Promise<Model[]> {
@@ -429,19 +514,121 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       );
     },
 
-    async getReviewPlan(token: string): Promise<ReviewPlan> {
-      // The backend returns an empty plan (runsPerCell 0, no cases/combinations)
-      // when the account has saved none, so the caller never has to special-case
-      // absence. Bearer-scoped to the signed-in reviewer.
-      return getJson<ReviewPlan>(baseUrl, "/review-plan", token);
+    async listCoverageGroups(token: string): Promise<CoverageGroup[]> {
+      return getJson<CoverageGroup[]>(baseUrl, "/coverage-groups", token);
     },
 
-    async putReviewPlan(plan: ReviewPlan, token: string): Promise<void> {
-      await putVoid(baseUrl, "/review-plan", plan, token);
+    async createCoverageGroup(
+      input: CoverageGroupInput,
+      token: string,
+    ): Promise<CoverageGroup> {
+      return postJson<CoverageGroup>(baseUrl, "/coverage-groups", input, token);
     },
 
-    async getCoverage(token: string): Promise<CoverageMatrix> {
-      return getJson<CoverageMatrix>(baseUrl, "/review-plan/coverage", token);
+    async updateCoverageGroup(
+      id: string,
+      input: CoverageGroupInput,
+      token: string,
+    ): Promise<CoverageGroup> {
+      return putJson<CoverageGroup>(
+        baseUrl,
+        `/coverage-groups/${encodeURIComponent(id)}`,
+        input,
+        token,
+      );
+    },
+
+    async deleteCoverageGroup(id: string, token: string): Promise<void> {
+      await delVoid(
+        baseUrl,
+        `/coverage-groups/${encodeURIComponent(id)}`,
+        token,
+      );
+    },
+
+    async listCoveragePlans(token: string): Promise<CoveragePlan[]> {
+      return getJson<CoveragePlan[]>(baseUrl, "/coverage-plans", token);
+    },
+
+    async createCoveragePlan(
+      input: CoveragePlanInput,
+      token: string,
+    ): Promise<CoveragePlan> {
+      return postJson<CoveragePlan>(baseUrl, "/coverage-plans", input, token);
+    },
+
+    async updateCoveragePlan(
+      id: string,
+      input: CoveragePlanInput,
+      token: string,
+    ): Promise<CoveragePlan> {
+      return putJson<CoveragePlan>(
+        baseUrl,
+        `/coverage-plans/${encodeURIComponent(id)}`,
+        input,
+        token,
+      );
+    },
+
+    async deleteCoveragePlan(id: string, token: string): Promise<void> {
+      await delVoid(
+        baseUrl,
+        `/coverage-plans/${encodeURIComponent(id)}`,
+        token,
+      );
+    },
+
+    async getCoveragePlansSummary(
+      token: string,
+    ): Promise<CoveragePlanSummary[]> {
+      return getJson<CoveragePlanSummary[]>(
+        baseUrl,
+        "/coverage-plans/summary",
+        token,
+      );
+    },
+
+    async getCoveragePlanCoverage(
+      id: string,
+      token: string,
+    ): Promise<CoverageMatrix> {
+      return getJson<CoverageMatrix>(
+        baseUrl,
+        `/coverage-plans/${encodeURIComponent(id)}/coverage`,
+        token,
+      );
+    },
+
+    async listMyReviews(
+      opts: { limit?: number; offset?: number } | undefined,
+      token: string,
+    ): Promise<MyReviewsPage> {
+      // `GET /account/reviews` — the signed-in account's own reviews, newest-first,
+      // with a numbered pager (limit + offset) and the total count. Each row is a
+      // reviewed run's summary card plus this account's review of it.
+      const params = new URLSearchParams();
+      if (opts?.limit != null) params.set("limit", String(opts.limit));
+      if (opts?.offset != null) params.set("offset", String(opts.offset));
+      const query = params.toString();
+      const body = await getJson<MyReviewsResponseBody>(
+        baseUrl,
+        `/account/reviews${query ? `?${query}` : ""}`,
+        token,
+      );
+      return {
+        reviews: body.reviews.map((entry) => ({
+          run: entry.run,
+          review: toStoredReview(entry.review),
+        })),
+        total: body.total,
+      };
+    },
+
+    async getReviewStats(token: string): Promise<ReviewStats> {
+      // `GET /account/review-stats` — the signed-in account's recent-review
+      // breakdowns. The wire shape matches `ReviewStats` field-for-field (camelCase),
+      // so it needs no mapping.
+      return getJson<ReviewStats>(baseUrl, "/account/review-stats", token);
     },
 
     async listRuns(opts): Promise<RunPage> {
@@ -540,13 +727,13 @@ async function listRunsPage(
 async function listAllRuns(
   baseUrl: string,
   state: string,
-  resolveBuild: (run: StoredRun) => StoredRun,
+  resolveBuild: (run: StoredRun) => Promise<StoredRun>,
 ): Promise<StoredRun[]> {
   const acc: StoredRun[] = [];
   let before: string | undefined;
   for (;;) {
     const page = await listRunsPage(baseUrl, state, { before });
-    for (const run of page.runs) acc.push(resolveBuild(run));
+    for (const run of page.runs) acc.push(await resolveBuild(run));
     if (!page.nextCursor || page.runs.length === 0) break;
     before = page.nextCursor;
   }
@@ -565,6 +752,16 @@ interface ClientConfigResponse {
   // tournaments are executed separately from the control-plane backend — or null
   // when adversarial execution is not served (a single-box dev setup).
   arenaUrl?: string | null;
+  // Grafana's base URL — non-null when the deployment runs the observability
+  // stack — or null when it does not (local/desktop, or any overlay without the
+  // observability component). Used to link a run to the traces it emitted.
+  grafanaUrl?: string | null;
+  // The public **read** base URL of the snapshot bucket (the R2 bucket the backend
+  // exports the public snapshot to), or null when no bucket is configured. Distinct
+  // from `artifactsUrl`: a case's published asset-reference frames live in that
+  // bucket, not in any run tree the artifact service holds. Absent on a backend
+  // that predates the field.
+  snapshotUrl?: string | null;
 }
 
 // The backend's `POST /jobs` ack (`LaunchAck`): the enqueued job id plus the URLs
@@ -574,6 +771,31 @@ interface LaunchAckResponse {
   jobId: string;
   statusUrl?: string;
   liveUrl?: string;
+}
+
+// The backend's `POST /jobs/batch` ack (`LaunchBatchAck`): one result per
+// submitted run, aligned by index — the enqueued job id, or the reason it was
+// rejected.
+interface LaunchBatchAckResponse {
+  jobs: { jobId?: string; error?: string }[];
+}
+
+// The backend's `LaunchBody` (camelCase) for one run. Shared by the single
+// (`POST /jobs`) and batch (`POST /jobs/batch`) enqueue paths so the two never
+// drift on how a `LaunchConfig` is put on the wire.
+function launchBodyOf(config: LaunchConfig) {
+  return {
+    testCase: config.testCase,
+    version: config.version,
+    variant: config.variant,
+    harness: config.harness,
+    model: config.modelId,
+    orchestrator: config.orchestrator,
+    ...(config.maxRuntimeOverride != null
+      ? { maxRuntimeSeconds: config.maxRuntimeOverride }
+      : {}),
+    ...(config.retryCount != null ? { retryCount: config.retryCount } : {}),
+  };
 }
 
 // The backend's `GET /jobs/{id}` status (`JobStatusOut`): the job's lifecycle
@@ -626,6 +848,19 @@ function mapActiveState(state: string): InProgressRun["state"] {
   }
 }
 
+// The artifact service's base URL as the execution client consumes it. It is
+// fetched (`GET /config`), so a host that hands over only the value it happens to
+// hold at construction time forces every consumer to cope with "not known yet" —
+// which the synchronous, re-rendered media resolvers do fine but the record's
+// build link cannot (see `resolveBuild`). Supplying both forms lets each consumer
+// take the one it can actually use.
+export interface ArtifactsUrlSource {
+  /** The resolved URL if the config fetch has landed, else null. */
+  current: string | null;
+  /** Resolves to the URL (or null) once the config fetch has settled. */
+  settled: Promise<string | null>;
+}
+
 // Resolve the artifact service's base URL from the backend's `GET /config`, or
 // null when artifacts are not served separately. Best-effort: a backend that
 // can't be reached resolves null, so pre-publish build/media links are simply
@@ -656,23 +891,92 @@ export async function fetchArenaUrl(
   }
 }
 
+// Resolve Grafana's base URL from the backend's `GET /config`, or null when the
+// deployment runs no observability stack. Best-effort: a backend that can't be
+// reached resolves null, which reads the same as "no Grafana" — the run's link to
+// its traces is simply not offered, which is the correct degradation for a
+// convenience link.
+export async function fetchGrafanaUrl(
+  backendUrl: string,
+): Promise<string | null> {
+  try {
+    const config = await getJson<ClientConfigResponse>(backendUrl, "/config");
+    return config.grafanaUrl ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// Resolve the public snapshot bucket's read base URL from the backend's
+// `GET /config`, or null when no bucket is configured (a single-box dev setup, or
+// a backend that predates the field). Best-effort like the resolvers above: an
+// unreachable backend resolves null, which reads the same as "no bucket" — a case's
+// published asset-reference frames are then simply not offered, rather than
+// resolved against a base that would 404.
+export async function fetchSnapshotUrl(
+  backendUrl: string,
+): Promise<string | null> {
+  try {
+    const config = await getJson<ClientConfigResponse>(backendUrl, "/config");
+    return config.snapshotUrl ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// The object key one published asset-reference file sits at inside the snapshot
+// bucket, relative to its base: `media/references/<slug>/<version>/<variant>/<file>`,
+// where `file` is `frames/<index>.png` or `frames/<index>.actions.json`.
+//
+// This MIRRORS the Rust helpers that write the objects — `reference_prefix` /
+// `reference_image_key` / `reference_actions_key` in
+// `crates/core/src/asset_reference.rs` — and must change with them. It is
+// reconstructed here (rather than served per-frame) because the layout is
+// deterministic: the backend sends only which frame indices exist. The static
+// site's build-time plugin (`apps/site/vite-plugin-snapshot.ts`) reconstructs the
+// same layout for the same reason; it cannot import this module, since it must not
+// pull the React UI package into a Vite plugin.
+export function referenceMediaKey(
+  slug: string,
+  version: string,
+  variant: string,
+  file: string,
+): string {
+  return `media/references/${slug}/${version}/${variant}/${file}`;
+}
+
 // The web console's run-execution client: the `WorkerClient` interface the shared
 // UI drives, implemented against the backend's `/jobs` control plane (launch /
 // live stream / active list / completion feed), the backend's run-lifecycle
 // endpoints (review, publish), and the standalone auth service (register/login).
 //
 // `backendUrl` is the single backend the console talks to; `authUrl` is the auth
-// service it registers/logs in against; `artifactsUrl` is the artifact service's
-// base URL (or null) used to resolve a pre-publish run's build and media links.
+// service it registers/logs in against; `artifacts` is the artifact service's base
+// URL used to resolve a pre-publish run's build and media links.
 // The driver pushes a finished run's record to the backend itself, so there is no
 // `POST /push` here — `push` is a no-op that echoes the run's already-resolved
 // links.
 export function createBackendExec(
   backendUrl: string,
   authUrl: string,
-  artifactsUrl: string | null,
+  artifacts: ArtifactsUrlSource | string | null,
 ): WorkerClient {
   const backend = createHttpBackend(backendUrl);
+  // The artifact service's base URL is itself fetched (`GET /config`), so it has
+  // two forms here and they are not interchangeable. `artifactsNow` is the
+  // best-known value *this instant*, for the synchronous media resolvers below —
+  // they are called during render, so a null early on is corrected when the host
+  // re-renders with the resolved URL. `artifactsSettled` resolves once the config
+  // fetch has actually finished, for the link resolution that snapshots a URL into
+  // a fetched record — that one must await, because nothing re-renders it later.
+  const artifactsNow =
+    typeof artifacts === "string" || artifacts === null
+      ? artifacts
+      : artifacts.current;
+  const artifactsSettled =
+    typeof artifacts === "string" || artifacts === null
+      ? Promise.resolve(artifacts)
+      : artifacts.settled;
 
   // Prefix the artifact service's base URL to a root-relative media path. When no
   // artifact service is configured the path is left unresolved (null), matching
@@ -682,9 +986,9 @@ export function createBackendExec(
     kind: string,
     file: string,
   ): string | null => {
-    if (!artifactsUrl) return null;
+    if (!artifactsNow) return null;
     const path = `/runs/${encodeURIComponent(runId)}/${kind}/${encodeURIComponent(file)}`;
-    return joinUrl(artifactsUrl, path);
+    return joinUrl(artifactsNow, path);
   };
 
   // Resolve a run's root-relative playable-build link (`/runs/{id}/build/`)
@@ -693,9 +997,22 @@ export function createBackendExec(
   // absolute (a published run whose build the snapshot pipeline placed) is left
   // as-is; with no artifact service configured a root-relative link is left
   // unresolved, exactly as today's unpublished-run behavior.
-  const resolveBuild = (run: StoredRun): StoredRun => {
+  //
+  // This **awaits** the artifact URL rather than reading whatever is known now.
+  // The resolved link is snapshotted into the returned record, and the run-detail
+  // chrome fetches that record exactly once per run id, so a link left unresolved
+  // because the config fetch had not landed yet is never corrected — the Play tab
+  // then loads `/runs/{id}/build/` against the console's own origin, which serves
+  // the SPA shell instead of the build. That is only observable on a cold
+  // deep-link to /runs/:id/play (opened in a new tab, reloaded, or duplicated),
+  // where the record fetch races the config fetch; arriving via another tab gives
+  // the config time to land, which is why switching to Verdict and back "fixed"
+  // it. Awaiting removes the race outright.
+  const resolveBuild = async (run: StoredRun): Promise<StoredRun> => {
     const link = run.record.links.playableBuild;
-    if (!artifactsUrl || !link || !link.startsWith("/")) return run;
+    if (!link || !link.startsWith("/")) return run;
+    const artifactsUrl = await artifactsSettled;
+    if (!artifactsUrl) return run;
     return {
       ...run,
       record: {
@@ -725,25 +1042,35 @@ export function createBackendExec(
       // backend gates `POST /jobs` on the launching account, so the signed-in
       // account's token rides along as `Authorization: Bearer` — without it the
       // enqueue is rejected `401`.
-      const body = {
-        testCase: config.testCase,
-        version: config.version,
-        variant: config.variant,
-        harness: config.harness,
-        model: config.modelId,
-        orchestrator: config.orchestrator,
-        ...(config.maxRuntimeOverride != null
-          ? { maxRuntimeSeconds: config.maxRuntimeOverride }
-          : {}),
-        ...(config.retryCount != null ? { retryCount: config.retryCount } : {}),
-      };
       const ack = await postJson<LaunchAckResponse>(
         backendUrl,
         "/jobs",
-        body,
+        launchBodyOf(config),
         token,
       );
       return ack.jobId;
+    },
+
+    async launchRunBatch(
+      configs: LaunchConfig[],
+      token?: string | null,
+    ): Promise<BatchLaunchResult[]> {
+      // Enqueue the whole set in one `POST /jobs/batch` (same account gate as
+      // `POST /jobs`) instead of a request per run — the fan-out a coverage
+      // "trigger all missing" or a multi-combination new-run submit produces. An
+      // empty set needs no round-trip. The ack returns one entry per run, aligned
+      // by index, each an enqueued job id or a per-run rejection reason.
+      if (configs.length === 0) return [];
+      const ack = await postJson<LaunchBatchAckResponse>(
+        backendUrl,
+        "/jobs/batch",
+        { runs: configs.map(launchBodyOf) },
+        token,
+      );
+      return ack.jobs.map((entry) => ({
+        runId: entry.jobId,
+        error: entry.error,
+      }));
     },
 
     async getRun(runId: string): Promise<RunJob> {
@@ -757,7 +1084,8 @@ export function createBackendExec(
       const state = mapJobState(status.state);
       let record: RunRecord | null = null;
       if (state === "completed" && status.recordId) {
-        record = resolveBuild(await backend.readRun(status.recordId)).record;
+        record = (await resolveBuild(await backend.readRun(status.recordId)))
+          .record;
       }
       return {
         runId,
@@ -816,7 +1144,8 @@ export function createBackendExec(
     },
 
     async listFailures(): Promise<StoredRun[]> {
-      // The publishable failures (catastrophic + timed-out, pending and published)
+      // The publishable failures (catastrophic, timed-out;
+      // pending and published)
       // for the dedicated publish-failures worklist. `listRuns` already carries the
       // unpublished ones, but this filtered view (which also includes the published
       // ones) is what the publish page reads.
@@ -824,7 +1153,15 @@ export function createBackendExec(
     },
 
     async readRun(id: string): Promise<StoredRun> {
-      return resolveBuild(await backend.readRun(id));
+      // Resolve the pre-publish build link, and attach each reviewer's avatar URL
+      // (the run-detail Verdict tab shows a reviewer's picture beside their name).
+      const run = await resolveBuild(await backend.readRun(id));
+      return {
+        ...run,
+        reviews: run.reviews.map((review) =>
+          reviewWithPicture(authUrl, review),
+        ),
+      };
     },
 
     readRunEvents(
@@ -844,18 +1181,59 @@ export function createBackendExec(
       password: string,
       displayName: string,
     ): Promise<AuthResult> {
-      return postJson<AuthResultResponse>(authUrl, "/auth/register", {
-        username,
-        password,
-        displayName,
-      });
+      const result = await postJson<AuthResultResponse>(
+        authUrl,
+        "/auth/register",
+        { username, password, displayName },
+      );
+      return {
+        ...result,
+        account: accountWithPicture(authUrl, result.account),
+      };
     },
 
     async login(username: string, password: string): Promise<AuthResult> {
-      return postJson<AuthResultResponse>(authUrl, "/auth/login", {
-        username,
-        password,
-      });
+      const result = await postJson<AuthResultResponse>(
+        authUrl,
+        "/auth/login",
+        {
+          username,
+          password,
+        },
+      );
+      return {
+        ...result,
+        account: accountWithPicture(authUrl, result.account),
+      };
+    },
+
+    async setProfilePicture(
+      picture: Blob,
+      token: string,
+    ): Promise<AuthResult["account"]> {
+      // `PUT /auth/profile/picture` — the body is the (already downscaled) image
+      // bytes and the `Content-Type` names their type; the auth service stores them
+      // and returns the updated account. Attach the fresh avatar URL so the caller
+      // can update the session immediately.
+      const account = await putBytes<AuthResultResponse["account"]>(
+        authUrl,
+        "/auth/profile/picture",
+        picture,
+        picture.type || "application/octet-stream",
+        token,
+      );
+      return accountWithPicture(authUrl, account);
+    },
+
+    async removeProfilePicture(token: string): Promise<AuthResult["account"]> {
+      // `DELETE /auth/profile/picture` — clear the account's picture; the auth
+      // service returns the updated (picture-less) account.
+      const account = await delJson<AuthResultResponse["account"]>(
+        authUrl,
+        "/auth/profile/picture",
+        token,
+      );
+      return accountWithPicture(authUrl, account);
     },
 
     // --- Run lifecycle: review -> publish ---
@@ -878,6 +1256,8 @@ export function createBackendExec(
           ratings: review.ratings,
           writeup: review.writeup,
           checklist: review.checklist,
+          // Only meaningful on an edit; the backend ignores it on a first submission.
+          editNote: review.editNote,
         },
         token,
       );
@@ -937,6 +1317,21 @@ export function createBackendExec(
     assetMediaUrl(runId: string, file: string): string | null {
       return mediaUrl(runId, "asset", file);
     },
+    validationMediaUrl(runId: string, file: string): string | null {
+      return mediaUrl(runId, "validation", file);
+    },
+
+    // The whole run tree as one gzip tar, served by the artifact service (which
+    // holds the tree; the control-plane backend is not in the artifact path). Null
+    // when no artifact service is configured, in which case the console offers no
+    // download rather than linking somewhere that 404s.
+    runArchiveUrl(runId: string): string | null {
+      if (!artifactsNow) return null;
+      return joinUrl(
+        artifactsNow,
+        `/runs/${encodeURIComponent(runId)}/archive.tar.gz`,
+      );
+    },
   };
 }
 
@@ -947,7 +1342,7 @@ export function createBackendExec(
 // artifact-service prefix to the completed run's build link.
 async function streamLive(
   backendUrl: string,
-  resolveBuild: (run: StoredRun) => StoredRun,
+  resolveBuild: (run: StoredRun) => Promise<StoredRun>,
   runId: string,
   handlers: RunSubscription,
   controller: AbortController,
@@ -988,8 +1383,8 @@ async function streamLive(
       `/jobs/${encodeURIComponent(runId)}`,
     );
     if (mapJobState(status.state) === "completed" && status.recordId) {
-      const record = resolveBuild(
-        await backend.readRun(status.recordId),
+      const record = (
+        await resolveBuild(await backend.readRun(status.recordId))
       ).record;
       handlers.onDone({ kind: "completed", record });
     } else if (status.state === "canceled") {

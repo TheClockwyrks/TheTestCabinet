@@ -11,7 +11,7 @@ colony's age and the game's primary score (`specs/flow.md`).
 
 Time is measured in **days** (cycles), each a fixed span of simulation time run on the
 fixed tick (`specs/controls.md`). A day advances through **daylight** and **night** —
-you may model as many phases as you like (dawn / day / dusk / night, or simply day and
+you may model any number of phases (dawn / day / dusk / night, or simply day and
 night), but the two that must be legible and felt are **day** and **night**. The
 current day and the time-of-day are shown on the HUD clock (`specs/flow.md`).
 

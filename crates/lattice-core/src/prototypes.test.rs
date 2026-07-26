@@ -25,15 +25,24 @@ fn item_index_and_item_name_are_inverses() {
 }
 
 #[test]
-fn belt_and_inserter_tiers_match_the_pinned_table() {
-    assert_eq!(belt_speed("slow"), Some(32));
-    assert_eq!(belt_speed("fast"), Some(64));
-    assert_eq!(belt_speed("express"), Some(128));
+fn every_belt_tier_resolves_to_the_one_uniform_speed() {
+    // All transport belts move at one speed: the three tier names are retained for
+    // scenario compatibility but every one resolves to BELT_SPEED (the tier is
+    // cosmetic). An unknown tier is still a validation error.
+    assert_eq!(belt_speed("slow"), Some(BELT_SPEED));
+    assert_eq!(belt_speed("fast"), Some(BELT_SPEED));
+    assert_eq!(belt_speed("express"), Some(BELT_SPEED));
+    assert_eq!(BELT_SPEED, 64);
     assert_eq!(belt_speed("nope"), None);
+}
 
-    assert_eq!(inserter_swing("base"), Some(12));
-    assert_eq!(inserter_swing("fast"), Some(6));
-    assert_eq!(inserter_swing("nope"), None);
+#[test]
+fn every_inserter_swings_at_the_one_pinned_rate() {
+    // There is a single kind of inserter: no tier table, no per-entity speed. Its
+    // swing is tied to BELT_SPEED so an item moves at the same linear speed in a
+    // claw as on a belt: 2 * TILE / BELT_SPEED = 512 / 64 = 8.
+    assert_eq!(INSERTER_SWING, 8);
+    assert_eq!(INSERTER_SWING as u32, 2 * TILE / BELT_SPEED);
 }
 
 #[test]

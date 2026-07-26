@@ -31,6 +31,18 @@
   @include h.halo;
 }
 
+// The test case name links to its detail page. It reads in the accent at rest so
+// it's legible as a link without the global underline-on-hover (which we drop
+// here); hover deepens the accent glow as the interactive affordance.
+.titleLink {
+  color: t.$color-accent;
+
+  &:hover {
+    text-decoration: none;
+    text-shadow: var(--ttc-glow);
+  }
+}
+
 .harness {
   font-size: t.$font-lg;
   color: t.$color-accent-2;
@@ -56,6 +68,18 @@
   text-shadow: var(--ttc-glow);
 }
 
+// The model name links to its detail page. It lifts out of the muted subject
+// line in the accent so it reads as a link, with no underline on hover — the
+// glow is the interactive affordance instead.
+.modelLink {
+  color: t.$color-accent;
+
+  &:hover {
+    text-decoration: none;
+    text-shadow: var(--ttc-glow);
+  }
+}
+
 .harnessVersion {
   color: t.$color-text-muted;
   font-variant-numeric: tabular-nums;
@@ -71,6 +95,51 @@
   gap: t.$space-md;
   margin-bottom: t.$space-xl;
   border-bottom: t.$border-hairline solid t.$color-border;
+}
+
+// The trailing action cluster: the download, traces, and delete controls grouped
+// together at the strip's right edge. `margin-left: auto` on the group (rather
+// than on each control) claims the gap after the tabs so the controls sit
+// together at the normal control gap instead of spreading apart. `align-self:
+// center` overrides the strip's `flex-end` cross-axis so the cluster reads
+// vertically centered against the tab row rather than pinned to its baseline.
+.controlActions {
+  margin-left: auto;
+  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+}
+
+// The right-hand icon controls: out to the run's traces in Grafana, and down to
+// the run's produced tree as one archive. They sit inside `.controlActions`
+// beside the delete control, which handles their placement.
+.tracesLink,
+.downloadLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: t.$space-xs;
+  color: t.$color-text-muted;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  background: transparent;
+  text-decoration: none;
+  @include h.halo;
+
+  &:hover,
+  &:focus-visible {
+    color: t.$color-text;
+    border-color: t.$color-text-muted;
+  }
+}
+
+// The line-art mark inside an icon-only control (download, traces). Sized here so
+// all three controls in the strip present the same square icon footprint.
+.controlIcon {
+  width: 1.15rem;
+  height: 1.15rem;
+  display: block;
 }
 
 .tabs {

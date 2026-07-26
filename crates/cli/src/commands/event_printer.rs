@@ -48,8 +48,8 @@ const ERROR: Style = fg(AnsiColor::Red).bold();
 /// Activity goes to standard output; harness warnings and errors go to standard
 /// error. The `anstream` macros decide per stream whether to keep or strip the
 /// color escapes, so a redirected stream stays plain even when the other is a
-/// terminal. This is the shared formatter the live `tcab run` watch and the
-/// [`PrintingEventSink`] both render through.
+/// terminal. This is the shared formatter the live `tcab run` watch renders
+/// through.
 pub fn render_event(event: &HarnessEvent) {
     let line = render(event);
     match event.kind {

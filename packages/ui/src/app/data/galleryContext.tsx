@@ -11,6 +11,7 @@ import type {
   AssetSheet,
   ControllerRef,
   MatchSummary,
+  MediaKind,
   ModelSpec,
   NineSlice,
   RunRecord,
@@ -31,7 +32,7 @@ import type {
   RunEventStreams,
   StoredReview,
 } from "../../client/types";
-import { type ParsedWriteup, parseWriteup } from "./ratings";
+import { type ParsedWriteup, parseWriteup, subItemVerdictId } from "./ratings";
 import { extensionFor } from "./proofMedia";
 import { findModelByModelId, type ModelSummary } from "./models";
 import type {
@@ -239,6 +240,40 @@ export interface HarnessAuthApi {
   refreshSubscription(slug: string): Promise<HarnessAuth[]>;
 }
 
+/**
+ * One automated-validation media output resolved for display: a debug script's
+ * declared output, captured twice — from the model's build (the *actual*) and from
+ * the case's reference implementation (the *baseline*) — each as a loadable URL (or
+ * null when it was not produced, or the host cannot serve it). The reviewer shows
+ * the two side by side for the verdict unit the script backs. See {@link
+ * GalleryData.validationMediaFor}.
+ */
+export interface ValidationMedia {
+  /** The review item this output belongs to. */
+  itemId: string;
+  /** The sub-item this output backs when it is a per-sub-item driver, or null when the
+   * whole item is validated. */
+  subItemId: string | null;
+  /** The verdict unit this output backs — the item's own id, or the composite
+   * `<item>.<sub>` for a sub-item. The join key the reviewer groups media by, so a
+   * proof pair sits beside the exact verdict (item or sub-item) it proves. */
+  verdictId: string;
+  /** The output id, unique within its script. */
+  id: string;
+  /** Human-readable display name, carried through from the declared output. */
+  name: string;
+  /** Whether the output is an image or a video clip. */
+  kind: MediaKind;
+  /** The model build's captured output (run-scoped), or null when it was not
+   * produced/served. */
+  actualUrl: string | null;
+  /** The reference implementation's captured output — a fixed, **case-scoped**
+   * property of the case version (synthesized once at publish-reference time),
+   * resolved from the catalog rather than the run tree. Null when the case ships no
+   * baseline for this output, or the host cannot serve case-scoped media. */
+  baselineUrl: string | null;
+}
+
 // The value each host builds and provides. `findReview` is derived by the
 // provider from `writeups`, so hosts do not supply it.
 export interface GalleryDataInput {
@@ -294,6 +329,14 @@ export interface GalleryDataInput {
    * connections drawer).
    */
   canExecute: boolean;
+  /**
+   * Grafana's base URL, or null when this UI has no observability stack behind it
+   * (the static gallery site always; a console whose backend reports no
+   * `grafanaUrl`). Non-null enables the run detail view's link out to the traces a
+   * run emitted. Purely a convenience link: nothing else depends on it, so null
+   * simply hides the affordance rather than degrading anything.
+   */
+  grafanaUrl: string | null;
   /**
    * Answer one page of a filtered/sorted summary query — the host-agnostic paged
    * listing the run-log pages drive. The console forwards it to the backend's
@@ -352,6 +395,64 @@ export interface GalleryDataInput {
    * Omitted by a host that serves no asset media.
    */
   assetMediaUrl?: (runId: string, file: string) => string | null;
+  /**
+   * Resolve the loadable URL for one **asset-generation case variant's** published
+   * reference media — a rendered reference frame (`frames/<index>.png`) or the
+   * action log it was drawn from (`frames/<index>.actions.json`) — or null when the
+   * host cannot serve it.
+   *
+   * Unlike {@link assetMediaUrl} this is **case-scoped** (keyed by slug/version/
+   * variant, like {@link validationBaselineUrl}) *and* served from somewhere else
+   * entirely: an asset reference is published to the public snapshot **R2 bucket**
+   * under deterministic keys, not into a run tree the artifact service holds. That
+   * is why it needs its own base rather than riding on the artifact/backend media
+   * plumbing. `file` is the portion of the key below the variant's prefix, so the
+   * page names `frames/<index>.png` and each host prepends the layout defined in
+   * `crates/core/src/asset_reference.rs`.
+   *
+   * Omitted (or returning null) by a host with no snapshot bucket configured — the
+   * end-to-end analogue of a variant that declares no {@link referenceBuild}, and
+   * the Reference tab degrades to a short placeholder rather than broken images.
+   */
+  referenceMediaUrl?: (
+    slug: string,
+    version: string,
+    variant: string,
+    file: string,
+  ) => string | null;
+  /**
+   * Resolve the loadable URL for one run's **actual** automated-validation media
+   * file — a debug script's synthesized `<item>__<output>.<ext>`, captured from the
+   * model's build — or null when the host cannot serve it. Run-scoped, wired the
+   * same way {@link proofMediaUrl} and {@link assetMediaUrl} are: the consoles point
+   * at the backend (published) or worker (produced) validation endpoint, the static
+   * site at the snapshot asset. Omitted by a host that serves no validation media.
+   */
+  validationMediaUrl?: (runId: string, file: string) => string | null;
+  /**
+   * Resolve the URL to download a run's entire produced tree from as one gzip tar
+   * (source, build, media, and logs), or null when the host cannot serve it.
+   *
+   * Unlike the media resolvers above this is never loaded into the page — it backs
+   * a download link, so a reviewer can pull a run onto their machine in a single
+   * transfer rather than driving `scripts/extract-cluster-assets.sh`, whose only
+   * channel into a deployed cluster moves the tree in ~320 KiB base64 chunks at one
+   * pod round trip each. Omitted by a host that serves no run trees — which is what
+   * keeps the affordance off the public static site.
+   */
+  runArchiveUrl?: (runId: string) => string | null;
+  /**
+   * Resolve the loadable URL for one case variant's **baseline** validation media
+   * file — the `<item>__<output>.<ext>` a debug script produced from the reference
+   * implementation. Unlike {@link validationMediaUrl} this is **case-scoped**: the
+   * baseline is a fixed property of the case version (synthesized once at
+   * publish-reference time and committed under the version folder), so it is keyed by
+   * the run's {@link RunSubject} (slug/version/variant) rather than the run id, and
+   * served by the backend's `/test-cases/.../validation-baseline/...` route — the way
+   * {@link TestCaseSummary.referenceScreenshots} are resolved. Null / omitted when
+   * the host cannot serve case-scoped media.
+   */
+  validationBaselineUrl?: (subject: RunSubject, file: string) => string | null;
   /**
    * The adversarial-arena capability, present only on a host that can run and read
    * matches and tournaments (the consoles with a worker). Omitted by the static
@@ -613,6 +714,32 @@ export interface ReplayResultView {
   replays: ReplayMatchView[];
 }
 
+/** One scored case resolved for playback: what to load, and what to check it against. */
+export interface PerformanceScenarioView {
+  /** The case's position in the manifest, which its scenario is addressed by. */
+  caseIndex: number;
+  /** The case-relative input path, so a viewer can tell the scenarios apart. */
+  input: string;
+  /** Loadable URL of the scored scenario, or null if it cannot be served. */
+  scenarioUrl: string | null;
+  /** The fuel the engine burned on this case. */
+  fuel: number | null;
+}
+
+/** A performance run's playable scenarios. */
+export interface PerformancePlaybackView {
+  /** Whether the run passed every scored case. */
+  correct: boolean;
+  /**
+   * Loadable URL of the run's own engine module (`engine.wasm`), or null when the
+   * run published none. There is one module per run — every scenario's playback
+   * steps the same wasm — so it is resolved once at the run level, not per case.
+   */
+  moduleUrl: string | null;
+  /** One entry per case the engine got right; empty when none did. */
+  scenarios: PerformanceScenarioView[];
+}
+
 export interface GalleryData extends GalleryDataInput {
   /**
    * Resolve a run's review. A caller-supplied `override` map (a run's local
@@ -647,6 +774,13 @@ export interface GalleryData extends GalleryDataInput {
    * be served. Empty when the run declares no proofs.
    */
   proofMediaFor(run: RunRecord): ProofMedia[];
+  /**
+   * The run's automated-validation media, one entry per debug-script output,
+   * carrying the item it backs and the actual/baseline URLs resolved via
+   * {@link validationMediaUrl}. Each URL is null when the side was not produced or
+   * the media cannot be served here. Empty when the run declares no debug scripts.
+   */
+  validationMediaFor(run: RunRecord): ValidationMedia[];
   /**
    * An asset-generation run's result resolved for display, or null when the run
    * is not asset-generation (its `validation.asset` is absent). Media URLs are
@@ -692,6 +826,14 @@ export interface GalleryData extends GalleryDataInput {
    */
   replayResultFor(run: RunRecord): ReplayResultView | null;
   /**
+   * Resolve a performance run's playable scenarios — one per case its engine got
+   * right, each with the loadable scenario URL browser playback re-simulates.
+   * Null when the run is not a performance run; an empty list when no case passed. Scenario URLs are resolved
+   * via {@link assetMediaUrl}, the same per-run asset plumbing an adversarial
+   * replay uses.
+   */
+  performancePlaybackFor(run: RunRecord): PerformancePlaybackView | null;
+  /**
    * The scoring model for a run's subject: the effective (common + variant)
    * weighted checklist items and the effective (common + variant) scoring
    * domains, resolved from the catalog this host holds. Items and domains are
@@ -727,6 +869,8 @@ export function GalleryDataProvider({
       reviews,
       proofMediaUrl,
       assetMediaUrl,
+      validationMediaUrl,
+      validationBaselineUrl,
       testCases,
       models,
     } = value;
@@ -781,6 +925,46 @@ export function GalleryDataProvider({
               ? proofMediaUrl(run.id, `${proof.id}.${extensionFor(proof.dest)}`)
               : null,
         }));
+      },
+      validationMediaFor(run) {
+        const media: ValidationMedia[] = [];
+        // Each debug script's outputs share one flat name, `<verdict>__<outputId>.<ext>`,
+        // with the extension fixed by the output's kind — `png` for a still, `webm`
+        // for a clip. The verdict id is the item's own id, or the composite
+        // `<item>.<sub>` for a per-sub-item driver, so a sub-item's proof is addressed
+        // (and grouped) separately from its siblings'. The *actual* media is run-scoped
+        // (served like proof media, keyed by run id); the *baseline* media is
+        // case-scoped (a fixed property of the case version, keyed by the run's subject
+        // slug/version/variant), so the two resolve through different endpoints from the
+        // same flat name.
+        for (const script of run.validation.debugScripts ?? []) {
+          const verdictId = script.subItemId
+            ? subItemVerdictId(script.itemId, script.subItemId)
+            : script.itemId;
+          for (const output of script.outputs) {
+            const ext = output.kind === "video" ? "webm" : "png";
+            const file = `${verdictId}__${output.id}.${ext}`;
+            media.push({
+              itemId: script.itemId,
+              subItemId: script.subItemId ?? null,
+              verdictId,
+              id: output.id,
+              name: output.name,
+              kind: output.kind,
+              actualUrl:
+                output.actualPresent && validationMediaUrl
+                  ? validationMediaUrl(run.id, file)
+                  : null,
+              // The baseline is invariant per case version and always present when
+              // the case ships one, so it is resolved case-scoped from the subject
+              // rather than gated on any per-run presence flag.
+              baselineUrl: validationBaselineUrl
+                ? validationBaselineUrl(run.subject, file)
+                : null,
+            });
+          }
+        }
+        return media;
       },
       assetResultFor(run) {
         const asset = run.validation.asset;
@@ -967,6 +1151,39 @@ export function GalleryDataProvider({
                 },
               ];
         return { submissionTeam: adversarial.submissionTeam, replays };
+      },
+      performancePlaybackFor(run) {
+        const performance = run.validation.performance;
+        if (!performance) return null;
+        // One playable scenario per case whose ANSWER was correct — including a
+        // case that answered right but ran over the fuel ceiling on its runway (the
+        // grader publishes its scenario so its inefficiency can be watched); a
+        // wrong case records none. The recorded name is already the flat,
+        // index-addressed served name (`scenario.json`, `scenario-1.json`), so it
+        // needs no flattening here.
+        const scenarios: PerformanceScenarioView[] = performance.cases.flatMap(
+          (scored, index) =>
+            scored.scenarioJson
+              ? [
+                  {
+                    caseIndex: index,
+                    input: scored.input,
+                    scenarioUrl: assetMediaUrl
+                      ? assetMediaUrl(run.id, scored.scenarioJson)
+                      : null,
+                    fuel: scored.fuel,
+                  },
+                ]
+              : [],
+        );
+        // The run's own engine module, resolved once at the run level — browser
+        // playback loads and steps it (never the reference engine) over each
+        // scenario. Null when the build emitted no module.
+        const moduleUrl =
+          performance.moduleWasm && assetMediaUrl
+            ? assetMediaUrl(run.id, performance.moduleWasm)
+            : null;
+        return { correct: performance.correct, moduleUrl, scenarios };
       },
     };
   }, [value]);

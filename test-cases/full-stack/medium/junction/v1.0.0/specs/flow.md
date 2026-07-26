@@ -28,7 +28,7 @@ large and how prosperous a city you can grow and hold. The pressure is the pull 
   just when you need it. Holding traffic, services, pollution, and the budget in balance
   as the city grows **is** the game.
 
-Tune the demand, costs, and upkeep so a competent player grows a healthy, solvent city
+Balance the demand, costs, and upkeep so a competent player grows a healthy, solvent city
 and a careless one slides toward bankruptcy — the pressure should be real but
 recoverable.
 

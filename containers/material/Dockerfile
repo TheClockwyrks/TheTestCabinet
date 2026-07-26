@@ -24,7 +24,7 @@
 ARG BASE_IMAGE=test-cabinet-base:latest
 
 # --- Stage 1: compile the `texture` and `pbr` binaries from this repository -
-FROM docker.io/library/rust:1-bookworm AS paint-build
+FROM docker.io/library/rust:1.97.1-bookworm AS paint-build
 WORKDIR /build
 # The whole workspace is copied (minus `.dockerignore`'d paths) so cargo can resolve
 # the workspace graph; `-p test-cabinet-paint --bin texture --bin pbr` compiles only

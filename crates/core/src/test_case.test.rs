@@ -3,8 +3,8 @@
 use std::fs;
 
 use super::{
-    AssetKind, BuildCommands, SpecKind, TestCaseCatalog, TestType, is_shippable_package,
-    shippable_package_description,
+    AssetKind, BuildCommands, ErratumSeverity, MediaKind, SpecKind, TestCaseCatalog, TestType,
+    is_shippable_package, shippable_package_description,
 };
 
 /// Write a minimal resolvable version (`prompt.hbs` + `test-case.toml`) under a
@@ -1143,6 +1143,61 @@ fn a_review_item_id_colliding_across_common_and_variant_is_rejected() {
 }
 
 #[test]
+fn a_variant_extends_a_common_category_in_the_categories_grammar() {
+    // In the categories grammar (`[review] format = 2`), a `gyre` variant reuses the
+    // common `gameplay` category's id to add its own review item to that category
+    // (rather than declaring a category of its own). The effective checklist folds
+    // the variant's item into the common category instead of forming a second
+    // same-id group.
+    let manifest = "slug = \"demo\"\nname = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
+         changelog = \"changelog.md\"\n\
+         variants = [\"variants/base.toml\", \"variants/gyre.toml\"]\n\
+         [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
+         [review]\nformat = 2\n\
+         [[review.categories]]\nid = \"gameplay\"\ntitle = \"Gameplay\"\n\
+         [[review.categories.items]]\nid = \"scoring\"\ntitle = \"Scores\"\n\
+         [[domain]]\nid = \"play\"\ndescription = \"Core gameplay.\"\n"
+        .to_string();
+    let (_dir, catalog) = catalog_with_files(
+        &manifest,
+        &[(
+            "variants/gyre.toml",
+            "slug = \"gyre\"\n[[review.categories]]\nid = \"gameplay\"\ntitle = \"Gameplay\"\n\
+             [[review.categories.items]]\nid = \"serve-direction\"\ntitle = \"Serve direction\"\n",
+        )],
+    );
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+
+    // The gyre variant's effective checklist is ONE `gameplay` category holding both
+    // the common item and the variant's addition, in that order.
+    let gyre = version.variant("gyre").expect("gyre variant");
+    let items = version.review_items_for(gyre);
+    assert_eq!(
+        items.len(),
+        1,
+        "the variant extends, not duplicates, the category"
+    );
+    assert_eq!(items[0].id, "gameplay");
+    let sub_ids: Vec<&str> = items[0].sub_items.iter().map(|s| s.id.as_str()).collect();
+    assert_eq!(sub_ids, ["scoring", "serve-direction"]);
+    assert_eq!(
+        items[0].verdict_ids(),
+        vec![
+            "gameplay.scoring".to_string(),
+            "gameplay.serve-direction".to_string(),
+        ]
+    );
+    // Its weight is the sum of its (now two) points' weights.
+    assert_eq!(items[0].weight, 2);
+
+    // The base variant, which adds nothing, sees just the common single-item category.
+    let base = version.variant("base").expect("base variant");
+    let base_items = version.review_items_for(base);
+    assert_eq!(base_items.len(), 1);
+    assert_eq!(base_items[0].sub_items.len(), 1);
+}
+
+#[test]
 fn resolves_review_item_sub_items() {
     // A review item declaring name-only sub-items (inline table array).
     let manifest = "slug = \"demo\"\nname = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
@@ -1645,7 +1700,7 @@ fn packages_are_end_to_end_only() {
         .resolve("sprite", "v1.0.0")
         .expect_err("`packages` on an asset-generation case is rejected");
     assert!(
-        format!("{err}").contains("only valid for an end-to-end or full-stack case"),
+        format!("{err}").contains("only valid for an end-to-end, full-stack, or game-jam case"),
         "got: {err}"
     );
 }
@@ -2329,4 +2384,556 @@ fn a_reference_implementation_is_never_seeded_into_the_run() {
             source.display(),
         );
     }
+}
+
+/// Write a resolvable game jam under a fresh catalog laid out like the real repo — a
+/// `test-cases/` root with a sibling `game-jams/` folder discovery folds in — and
+/// return the temp dir (kept alive) plus the catalog rooted at `test-cases/`.
+/// `manifest` is the full `game-jam.toml` body.
+fn catalog_with_jam(manifest: &str) -> (tempfile::TempDir, TestCaseCatalog) {
+    let dir = tempfile::tempdir().expect("temp dir");
+    // An (empty) test-cases root so discovery has a catalog root to walk; the jam
+    // lives in the sibling game-jams/ folder that `case_folders` folds in.
+    let cases_root = dir.path().join("test-cases");
+    fs::create_dir_all(&cases_root).expect("create test-cases root");
+    let version = dir.path().join("game-jams/trains/v1.0.0");
+    fs::create_dir_all(&version).expect("create jam version dir");
+    fs::write(
+        version.join("prompt.hbs"),
+        "Build a game. You have {{time_limit_hours}} hours.",
+    )
+    .expect("write prompt");
+    fs::write(version.join("changelog.md"), "Introduced.").expect("write changelog");
+    fs::write(version.join("game-jam.toml"), manifest).expect("write jam manifest");
+    let catalog = TestCaseCatalog::new(&cases_root);
+    (dir, catalog)
+}
+
+/// The smallest valid `game-jam.toml`: identity, prompt, changelog, and a `[build]`.
+/// No `difficulty`, no `variants`, none of the spec-driven tables.
+const MINIMAL_JAM: &str = "slug = \"trains\"\nname = \"Trains\"\nprompt = \"prompt.hbs\"\n\
+     changelog = \"changelog.md\"\nmax_runtime_hours = 8\n\
+     [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n";
+
+#[test]
+fn resolves_a_game_jam_from_its_own_manifest() {
+    let (_dir, catalog) = catalog_with_jam(MINIMAL_JAM);
+    let version = catalog.resolve("trains", "v1.0.0").expect("resolve jam");
+
+    assert_eq!(version.test_type, TestType::GameJam);
+    // A jam declares no difficulty; resolution carries the internal placeholder.
+    assert_eq!(version.difficulty, "unrated");
+    // It has the build interface a full-stack case does.
+    assert_eq!(
+        version.build,
+        Some(BuildCommands {
+            install: "npm ci".to_string(),
+            build: "npm run build".to_string(),
+            module: None,
+        })
+    );
+    // It has no scoring domains, and exactly one synthesized theme variant.
+    assert!(version.domains.is_empty());
+    let variant_slugs: Vec<&str> = version.variants.iter().map(|v| v.slug.as_str()).collect();
+    assert_eq!(variant_slugs, vec!["default"]);
+    // With no authored categories it gets the generic graded checklist.
+    assert!(!version.common_review_items.is_empty());
+    assert!(version.common_review_items.iter().all(|item| item.graded));
+}
+
+#[test]
+fn game_jam_surfaces_the_time_limit_in_its_prompt() {
+    let (_dir, catalog) = catalog_with_jam(MINIMAL_JAM);
+    let version = catalog.resolve("trains", "v1.0.0").expect("resolve jam");
+    let variant = version.variants.first().expect("one variant");
+    let prompt = crate::render_prompt(&version, variant, &[]).expect("render prompt");
+    // `{{time_limit_hours}}` renders the case's max_runtime_hours (8) for the model.
+    assert!(
+        prompt.contains("You have 8 hours."),
+        "prompt should state the time budget, got: {prompt}"
+    );
+}
+
+#[test]
+fn game_jam_rejects_a_difficulty_field() {
+    // `difficulty` is a test-case-only key; a jam manifest that declares it is
+    // rejected at parse (deny_unknown_fields), not silently carried.
+    let manifest = format!("difficulty = \"medium\"\n{MINIMAL_JAM}");
+    let (_dir, catalog) = catalog_with_jam(&manifest);
+    let err = catalog
+        .resolve("trains", "v1.0.0")
+        .expect_err("a jam declaring difficulty is rejected");
+    assert!(
+        format!("{err}").contains("difficulty"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn game_jam_rejects_a_variants_field() {
+    // A jam has no variants; declaring the test-case `variants` key is rejected.
+    let manifest = format!("variants = [\"variants/base.toml\"]\n{MINIMAL_JAM}");
+    let (_dir, catalog) = catalog_with_jam(&manifest);
+    let err = catalog
+        .resolve("trains", "v1.0.0")
+        .expect_err("a jam declaring variants is rejected");
+    assert!(
+        format!("{err}").contains("variants"),
+        "unexpected error: {err}"
+    );
+}
+
+/// Build an end-to-end manifest with a `[build]` table, splicing in the given
+/// `[instrumentation]` and `[[review_item]]` bodies, for the auto-validation tests.
+fn instrumented_manifest(instrumentation: &str, review_item: &str) -> String {
+    format!(
+        "slug = \"demo\"\nname = \"Demo\"\ndifficulty = \"easy\"\ntags = []\n\
+         prompt = \"prompt.hbs\"\nchangelog = \"changelog.md\"\n\
+         variants = [\"variants/base.toml\"]\n\
+         [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
+         {instrumentation}\n{review_item}\n\
+         [[domain]]\nid = \"g\"\ndescription = \"d\"\n"
+    )
+}
+
+#[test]
+fn instrumentation_and_item_validation_resolve() {
+    let manifest = instrumented_manifest(
+        "[instrumentation]\nhandle = \"__demo\"",
+        "[[review_item]]\nid = \"spin\"\ntitle = \"Spin\"\ntext = \"t\"\nweight = 1\n\
+         validation = { script = \"validation/spin.mjs\", outputs = [ \
+         { id = \"clip\", kind = \"video\" }, { id = \"still\", name = \"A still\", kind = \"image\" } ] }",
+    );
+    let (_dir, catalog) = catalog_with_files(
+        &manifest,
+        &[("validation/spin.mjs", "export default async () => ({});")],
+    );
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    let instrumentation = version.instrumentation.as_ref().expect("instrumentation");
+    assert_eq!(instrumentation.handle, "__demo");
+    // A case that declares no rate is real-time-clocked: the driver gets no
+    // `--tick-hz` and falls back to its own timing.
+    assert_eq!(instrumentation.tick_hz, None);
+    let item = version
+        .common_review_items
+        .iter()
+        .find(|item| item.id == "spin")
+        .expect("review item");
+    let validation = item.validation.as_ref().expect("validation");
+    assert_eq!(validation.script_rel, "validation/spin.mjs");
+    assert!(validation.script.is_file());
+    assert_eq!(validation.outputs.len(), 2);
+    assert_eq!(validation.outputs[0].id, "clip");
+    assert_eq!(validation.outputs[0].kind, MediaKind::Video);
+    // An unnamed output humanizes its id; an explicit name is kept.
+    assert_eq!(validation.outputs[0].name, "Clip");
+    assert_eq!(validation.outputs[1].name, "A still");
+}
+
+#[test]
+fn item_validation_without_instrumentation_is_rejected() {
+    let manifest = instrumented_manifest(
+        "",
+        "[[review_item]]\nid = \"spin\"\ntitle = \"Spin\"\ntext = \"t\"\nweight = 1\n\
+         validation = { script = \"validation/spin.mjs\" }",
+    );
+    let (_dir, catalog) = catalog_with_files(
+        &manifest,
+        &[("validation/spin.mjs", "export default async () => ({});")],
+    );
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("validation without instrumentation is rejected");
+    assert!(
+        format!("{err}").contains("no [instrumentation] handle"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn a_missing_validation_script_is_rejected() {
+    let manifest = instrumented_manifest(
+        "[instrumentation]\nhandle = \"__demo\"",
+        "[[review_item]]\nid = \"spin\"\ntitle = \"Spin\"\ntext = \"t\"\nweight = 1\n\
+         validation = { script = \"validation/missing.mjs\" }",
+    );
+    let (_dir, catalog) = catalog_with_files(&manifest, &[]);
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a validation script naming a missing file is rejected");
+    assert!(
+        format!("{err}").contains("is not a file"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn duplicate_validation_output_ids_are_rejected() {
+    let manifest = instrumented_manifest(
+        "[instrumentation]\nhandle = \"__demo\"",
+        "[[review_item]]\nid = \"spin\"\ntitle = \"Spin\"\ntext = \"t\"\nweight = 1\n\
+         validation = { script = \"validation/spin.mjs\", outputs = [ \
+         { id = \"a\", kind = \"image\" }, { id = \"a\", kind = \"image\" } ] }",
+    );
+    let (_dir, catalog) = catalog_with_files(
+        &manifest,
+        &[("validation/spin.mjs", "export default async () => ({});")],
+    );
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("duplicate output ids are rejected");
+    assert!(
+        format!("{err}").contains("two validation outputs with id"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn more_than_one_video_output_is_rejected() {
+    let manifest = instrumented_manifest(
+        "[instrumentation]\nhandle = \"__demo\"",
+        "[[review_item]]\nid = \"spin\"\ntitle = \"Spin\"\ntext = \"t\"\nweight = 1\n\
+         validation = { script = \"validation/spin.mjs\", outputs = [ \
+         { id = \"a\", kind = \"video\" }, { id = \"b\", kind = \"video\" } ] }",
+    );
+    let (_dir, catalog) = catalog_with_files(
+        &manifest,
+        &[("validation/spin.mjs", "export default async () => ({});")],
+    );
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a second video output is rejected");
+    assert!(
+        format!("{err}").contains("more than one video"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn sub_item_validation_resolves() {
+    // An item broken into sub-items carries its validation on the sub-items, not on
+    // the item: each validated sub-item resolves its own driver, and a human-judged
+    // sub-item has none.
+    let manifest = instrumented_manifest(
+        "[instrumentation]\nhandle = \"__demo\"",
+        "[[review_item]]\nid = \"spin\"\ntitle = \"Spin\"\ntext = \"t\"\nweight = 1\n\
+         [[review_item.sub_item]]\nid = \"a\"\ntitle = \"A\"\n\
+         validation = { script = \"validation/a.mjs\", outputs = [ { id = \"clip\", kind = \"video\" } ] }\n\
+         [[review_item.sub_item]]\nid = \"b\"\ntitle = \"B\"",
+    );
+    let (_dir, catalog) = catalog_with_files(
+        &manifest,
+        &[("validation/a.mjs", "export default async () => ({});")],
+    );
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    let item = version
+        .common_review_items
+        .iter()
+        .find(|item| item.id == "spin")
+        .expect("review item");
+    // The item itself carries no validation; each validated sub-item does.
+    assert!(item.validation.is_none());
+    let a = item.sub_items.iter().find(|s| s.id == "a").expect("sub a");
+    let validation = a.validation.as_ref().expect("sub-item validation");
+    assert_eq!(validation.script_rel, "validation/a.mjs");
+    assert!(validation.script.is_file());
+    assert_eq!(validation.outputs.len(), 1);
+    assert_eq!(validation.outputs[0].id, "clip");
+    assert_eq!(validation.outputs[0].kind, MediaKind::Video);
+    // A human-judged sub-item has none.
+    let b = item.sub_items.iter().find(|s| s.id == "b").expect("sub b");
+    assert!(b.validation.is_none());
+}
+
+#[test]
+fn item_validation_alongside_sub_items_is_rejected() {
+    // Validation attaches to the graded unit: an item with sub-items is verdicted per
+    // sub-item, so an item-level `validation` alongside sub-items is a manifest error.
+    let manifest = instrumented_manifest(
+        "[instrumentation]\nhandle = \"__demo\"",
+        "[[review_item]]\nid = \"spin\"\ntitle = \"Spin\"\ntext = \"t\"\nweight = 1\n\
+         sub_items = [ { id = \"a\", title = \"A\" } ]\n\
+         validation = { script = \"validation/spin.mjs\" }",
+    );
+    let (_dir, catalog) = catalog_with_files(
+        &manifest,
+        &[("validation/spin.mjs", "export default async () => ({});")],
+    );
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("item-level validation alongside sub-items is rejected");
+    assert!(
+        format!("{err}").contains("both `sub_items` and an item-level `validation`"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn sub_item_validation_without_instrumentation_is_rejected() {
+    // The same handle requirement applies to a sub-item's driver, and the error names
+    // the sub-item so an author knows exactly which point is misdeclared.
+    let manifest = instrumented_manifest(
+        "",
+        "[[review_item]]\nid = \"spin\"\ntitle = \"Spin\"\ntext = \"t\"\nweight = 1\n\
+         [[review_item.sub_item]]\nid = \"a\"\ntitle = \"A\"\n\
+         validation = { script = \"validation/a.mjs\" }",
+    );
+    let (_dir, catalog) = catalog_with_files(
+        &manifest,
+        &[("validation/a.mjs", "export default async () => ({});")],
+    );
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("sub-item validation without instrumentation is rejected");
+    let msg = format!("{err}");
+    assert!(
+        msg.contains("no [instrumentation] handle"),
+        "unexpected error: {msg}"
+    );
+    assert!(
+        msg.contains("sub-item `a`"),
+        "error should name the sub-item: {msg}"
+    );
+}
+
+#[test]
+fn an_instrumentation_tick_rate_resolves_and_must_be_positive() {
+    // A fixed-step case declares its simulation rate so the validation runtime can
+    // convert exact stepping into real time.
+    let manifest =
+        instrumented_manifest("[instrumentation]\nhandle = \"__demo\"\ntick_hz = 120", "");
+    let (_dir, catalog) = catalog_with_files(&manifest, &[]);
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    let instrumentation = version.instrumentation.as_ref().expect("instrumentation");
+    assert_eq!(instrumentation.tick_hz, Some(120));
+
+    // A rate that cannot be divided by is meaningless — reject it at resolution
+    // rather than hand it to the driver.
+    let manifest = instrumented_manifest("[instrumentation]\nhandle = \"__demo\"\ntick_hz = 0", "");
+    let (_dir, catalog) = catalog_with_files(&manifest, &[]);
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a zero tick rate is rejected");
+    assert!(
+        format!("{err}").contains("must be a positive number of ticks per second"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn an_instrumentation_handle_must_be_a_plain_identifier() {
+    let manifest = instrumented_manifest("[instrumentation]\nhandle = \"win.dow\"", "");
+    let (_dir, catalog) = catalog_with_files(&manifest, &[]);
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a non-identifier handle is rejected");
+    assert!(
+        format!("{err}").contains("plain identifier"),
+        "unexpected error: {err}"
+    );
+}
+
+// --- errata resolution ------------------------------------------------------
+
+#[test]
+fn a_version_without_errata_resolves_with_none() {
+    // The `errata.toml` file is optional; a version that ships none resolves with
+    // an empty errata list rather than failing.
+    let (_dir, catalog) = catalog_with_files(&manifest_with("", ""), &[]);
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    assert!(version.errata.is_empty());
+}
+
+#[test]
+fn errata_resolve_with_defaults_and_carry_fields() {
+    // A present `errata.toml` is parsed: fields carry through, `severity` defaults
+    // to `minor`, and `affects_scoring` defaults to `false`.
+    let errata = "\
+[[erratum]]\n\
+id = \"cue-clips-rail\"\n\
+title = \"Cue ball clips the rail at high speed\"\n\
+date = \"2026-07-17\"\n\
+severity = \"major\"\n\
+affects_scoring = true\n\
+resolved_in = \"v1.1.0\"\n\
+body = \"The cue ball can tunnel through a rail above a certain speed.\"\n\
+\n\
+[[erratum]]\n\
+id = \"minor-note\"\n\
+title = \"A minor note\"\n\
+body = \"Just a note.\"\n";
+    let (_dir, catalog) = catalog_with_files(&manifest_with("", ""), &[("errata.toml", errata)]);
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    assert_eq!(version.errata.len(), 2);
+
+    let first = &version.errata[0];
+    assert_eq!(first.id, "cue-clips-rail");
+    assert_eq!(first.severity, ErratumSeverity::Major);
+    assert!(first.affects_scoring);
+    assert_eq!(first.date.as_deref(), Some("2026-07-17"));
+    assert_eq!(first.resolved_in.as_deref(), Some("v1.1.0"));
+
+    let second = &version.errata[1];
+    // Defaults: severity is `minor`, scoring is not affected, optionals are `None`.
+    assert_eq!(second.severity, ErratumSeverity::Minor);
+    assert!(!second.affects_scoring);
+    assert_eq!(second.date, None);
+    assert_eq!(second.resolved_in, None);
+    assert_eq!(second.variant, None);
+    assert_eq!(second.review, None);
+}
+
+#[test]
+fn a_duplicate_erratum_id_is_rejected() {
+    let errata = "\
+[[erratum]]\nid = \"dup\"\ntitle = \"One\"\nbody = \"a\"\n\
+[[erratum]]\nid = \"dup\"\ntitle = \"Two\"\nbody = \"b\"\n";
+    let (_dir, catalog) = catalog_with_files(&manifest_with("", ""), &[("errata.toml", errata)]);
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a duplicate erratum id is rejected");
+    assert!(
+        format!("{err}").contains("duplicate erratum id `dup`"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn an_erratum_with_an_empty_body_is_rejected() {
+    let errata = "[[erratum]]\nid = \"e\"\ntitle = \"Title\"\nbody = \"   \"\n";
+    let (_dir, catalog) = catalog_with_files(&manifest_with("", ""), &[("errata.toml", errata)]);
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("an empty erratum body is rejected");
+    assert!(
+        format!("{err}").contains("empty `body`"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn an_erratum_scoped_to_an_unknown_variant_is_rejected() {
+    let errata = "\
+[[erratum]]\nid = \"e\"\ntitle = \"Title\"\nbody = \"b\"\nvariant = \"nope\"\n";
+    let (_dir, catalog) = catalog_with_files(&manifest_with("", ""), &[("errata.toml", errata)]);
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("an unknown variant scope is rejected");
+    assert!(
+        format!("{err}").contains("scoped to variant `nope`"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn an_erratum_referencing_an_unknown_review_id_is_rejected() {
+    // The manifest declares a single review item `plays`; a `review` link to any
+    // other id is rejected.
+    let after_build =
+        "[[review_item]]\nid = \"plays\"\ntitle = \"Plays\"\ntext = \"It plays.\"\nweight = 1\n";
+    let errata = "\
+[[erratum]]\nid = \"e\"\ntitle = \"Title\"\nbody = \"b\"\nreview = \"missing\"\n";
+    let (_dir, catalog) =
+        catalog_with_files(&manifest_with("", after_build), &[("errata.toml", errata)]);
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("an unknown review link is rejected");
+    assert!(
+        format!("{err}").contains("references review id `missing`"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn an_erratum_may_reference_a_declared_review_id() {
+    // A `review` link that names a declared review item id resolves.
+    let after_build =
+        "[[review_item]]\nid = \"plays\"\ntitle = \"Plays\"\ntext = \"It plays.\"\nweight = 1\n";
+    let errata = "\
+[[erratum]]\nid = \"e\"\ntitle = \"Title\"\nbody = \"b\"\nreview = \"plays\"\n";
+    let (_dir, catalog) =
+        catalog_with_files(&manifest_with("", after_build), &[("errata.toml", errata)]);
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    assert_eq!(version.errata[0].review.as_deref(), Some("plays"));
+}
+
+#[test]
+fn an_erratum_excluding_from_score_without_a_review_link_is_rejected() {
+    // `exclude_from_score` names nothing to remove without a `review` link, so it is
+    // rejected at resolution rather than silently doing nothing.
+    let after_build =
+        "[[review_item]]\nid = \"plays\"\ntitle = \"Plays\"\ntext = \"It plays.\"\nweight = 1\n";
+    let errata = "\
+[[erratum]]\nid = \"e\"\ntitle = \"Title\"\nbody = \"b\"\nexclude_from_score = true\n";
+    let (_dir, catalog) =
+        catalog_with_files(&manifest_with("", after_build), &[("errata.toml", errata)]);
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("exclude_from_score without a review link is rejected");
+    assert!(
+        format!("{err}").contains("names no `review` point to exclude"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn an_erratum_excluding_a_review_point_marks_it_non_scoring() {
+    // An erratum with `exclude_from_score` linked to a declared review point resolves,
+    // records the flag, and drops the point from the variant's effective checklist
+    // score — while `errata_for` still surfaces it so the reason stays visible.
+    let after_build = "[[review_item]]\nid = \"plays\"\ntitle = \"Plays\"\ntext = \"It plays.\"\nweight = 1\n\
+[[review_item]]\nid = \"scores\"\ntitle = \"Scores\"\ntext = \"It scores.\"\nweight = 2\n";
+    let errata = "\
+[[erratum]]\nid = \"buggy-check\"\ntitle = \"Buggy check\"\nbody = \"b\"\n\
+review = \"plays\"\nexclude_from_score = true\n";
+    let (_dir, catalog) =
+        catalog_with_files(&manifest_with("", after_build), &[("errata.toml", errata)]);
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    let base = version.variant("base").expect("base variant");
+
+    assert!(version.errata[0].exclude_from_score);
+    // The excluded verdict id is reported for the variant.
+    assert_eq!(
+        version.excluded_verdict_ids(base),
+        std::collections::HashSet::from(["plays".to_string()])
+    );
+    // The effective checklist keeps `plays` (still checked and shown) but marks it
+    // non-scoring; `scores` is untouched.
+    let items = version.review_items_for(base);
+    let plays = items.iter().find(|i| i.id == "plays").expect("plays item");
+    let scores = items
+        .iter()
+        .find(|i| i.id == "scores")
+        .expect("scores item");
+    assert!(!plays.scored, "excluded point should be non-scoring");
+    assert!(scores.scored, "unrelated point should still score");
+    // The erratum is still surfaced to reviewers for the variant.
+    assert!(
+        version
+            .errata_for(base)
+            .iter()
+            .any(|e| e.id == "buggy-check")
+    );
+}
+
+#[test]
+fn errata_for_filters_case_wide_and_variant_scoped_entries() {
+    // One case-wide erratum (no `variant`) and one scoped to `base`; both apply to
+    // the `base` variant. A `variant` scope must name a declared variant, so this
+    // uses `base` (the default variant `catalog_with_files` provides).
+    let errata = "\
+[[erratum]]\nid = \"global\"\ntitle = \"Global\"\nbody = \"applies everywhere\"\n\
+[[erratum]]\nid = \"base-only\"\ntitle = \"Base only\"\nbody = \"base\"\nvariant = \"base\"\n";
+    let (_dir, catalog) = catalog_with_files(&manifest_with("", ""), &[("errata.toml", errata)]);
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    let base = version.variant("base").expect("base variant");
+    let applicable: Vec<String> = version
+        .errata_for(base)
+        .iter()
+        .map(|e| e.id.clone())
+        .collect();
+    assert_eq!(
+        applicable,
+        vec!["global".to_string(), "base-only".to_string()]
+    );
 }

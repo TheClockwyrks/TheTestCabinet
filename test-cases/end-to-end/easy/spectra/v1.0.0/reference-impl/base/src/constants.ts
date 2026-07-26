@@ -4,7 +4,7 @@
 // the specification (origin top-left, x right, y down). Rendering scales this
 // space uniformly to the window; gameplay never leaves it. See specs/overview.md
 // (coordinate system, palette), specs/playfield.md (geometry), specs/polarity.md,
-// specs/controls.md, specs/enemies.md, and specs/flow.md.
+// specs/controls.md, specs/drones.md, and specs/gameplay.md.
 
 export const FIELD_W = 1280;
 export const FIELD_H = 720;
@@ -48,6 +48,15 @@ export function bandColor(b: Band): string {
 }
 export function bandName(b: Band): string {
   return b === CYAN ? "CYAN" : "MAGENTA";
+}
+// Lowercase band strings, the form the debug API reports and accepts
+// (specs/instrumentation.md).
+export type BandStr = "cyan" | "magenta";
+export function bandStr(b: Band): BandStr {
+  return b === CYAN ? "cyan" : "magenta";
+}
+export function parseBand(s: string): Band {
+  return s === "magenta" ? MAGENTA : CYAN;
 }
 
 // ---- Player ship ----------------------------------------------------------
@@ -139,7 +148,7 @@ export const FIXED_STEP = 1 / 120; // physics timestep (Hz)
 export const STAGE_INTRO_TIME = 2.0; // hold before a wave
 export const STAGE_CLEARED_TIME = 2.6; // interstitial
 
-// ---- Stage scaling (specs/flow.md) ----------------------------------------
+// ---- Stage scaling (specs/gameplay.md) ----------------------------------------
 export function droneSpeedMult(stage: number): number {
   return Math.min(1.5, 1 + 0.06 * (stage - 1));
 }

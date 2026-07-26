@@ -4,7 +4,7 @@
 //! This crate loads two competing controller wasm modules, drives a single match
 //! through [`foray-core`](foray_core)'s authoritative rules, meters each per-tick
 //! controller invocation against a wasmtime fuel ceiling and a linear-memory cap,
-//! and returns the published [`Replay`](foray_core::replay::Replay).
+//! and returns the published [`Replay`].
 //!
 //! ## Why this lives here, not in the CLI or in core
 //!
@@ -12,7 +12,7 @@
 //! (lead decision 7):
 //!
 //! - The [`foray` CLI](../../../crates/foray-cli) is a thin clap wrapper that
-//!   reads files, builds a [`Match`](foray_core::engine::Match), and calls
+//!   reads files, builds a [`Match`], and calls
 //!   [`run_match`].
 //! - The core `AdversarialValidator` (a later phase) depends on this crate to
 //!   score a submission, rather than re-implementing the host.
@@ -26,8 +26,8 @@
 //! [`run_match`] runs the single canonical match the validator scores (lead
 //! decision 4): the submission as one team, the case's committed baseline
 //! opponent as the other, on the case's map and seed. The per-tick loop, the
-//! controller ABI, and the sandbox enforcement live in [`match_runner`] and
-//! [`controller`].
+//! controller ABI, and the sandbox enforcement live in `match_runner` and
+//! `controller`.
 
 mod controller;
 mod match_runner;

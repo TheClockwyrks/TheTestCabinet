@@ -28,6 +28,20 @@ pub mod user {
         pub password_hash: String,
         /// RFC 3339 of when the account was created.
         pub created_at: String,
+        /// The account's profile picture, base64-encoded, or `NULL` when unset.
+        /// Avatars are downscaled to a small square before upload, so base64 in a
+        /// `Text` column stays small and is portable across SQLite and PostgreSQL.
+        /// The bytes are served (decoded) by `GET /auth/users/{id}/picture`.
+        #[sea_orm(column_type = "Text", nullable)]
+        pub picture: Option<String>,
+        /// The picture's content type (e.g. `image/webp`), or `NULL` when unset.
+        #[sea_orm(nullable)]
+        pub picture_content_type: Option<String>,
+        /// RFC 3339 of when the picture was last set, or `NULL` when unset. Surfaced
+        /// on the public [`Account`](test_cabinet_core::accounts::Account) as a
+        /// "has picture" flag and cache-bust version.
+        #[sea_orm(nullable)]
+        pub picture_updated_at: Option<String>,
     }
 
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

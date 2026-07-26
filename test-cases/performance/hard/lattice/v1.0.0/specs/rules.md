@@ -10,7 +10,8 @@ This document is the **complete and authoritative** definition of how every
 entity behaves and the exact order each tick runs in. Nothing about an entity's
 behavior is left to infer from the training examples — Lattice is a
 _reimplement-this-exactly_ problem. The fixed constants (`TILE`, `SPACING`,
-belt/inserter tiers, recipes, buffer caps, the direction/lane convention, the
+belt tiers, the inserter swing, recipes, buffer caps, the direction/lane
+convention, the
 multi-tile footprints) live in `specs/prototypes.md`; this document references
 them by name.
 
@@ -22,7 +23,8 @@ craft progress — so the state after _N_ ticks is a single well-defined value.
 The six entity kinds are:
 
 - **Belt** — moves items in a direction, with two independent lanes.
-- **Splitter** — balances items across two belts in and two belts out.
+- **Splitter** — balances items across two belts in and two belts out, evenly
+  over all four output lanes.
 - **Inserter** — swings a single item from the tile behind it onto the tile in
   front.
 - **Assembler** — consumes input items and crafts an output to a recipe.
@@ -39,7 +41,8 @@ A belt occupies one tile, faces one of `N`/`S`/`E`/`W`, and carries items in
 that direction. Every belt has a **left** and a **right** lane (relative to
 travel; see the lane convention in `specs/prototypes.md`), and the two lanes are
 **fully independent** 1-D tracks. An item lives on exactly one lane and never
-changes lanes on a straight belt. A belt's tier sets its `SPEED`.
+changes lanes on a straight belt. Every belt moves at the one uniform `SPEED` (see
+`specs/prototypes.md`); a belt's `tier` is cosmetic and does not change its speed.
 
 ### The fixed-point item model
 
@@ -51,81 +54,122 @@ on the same lane may never be closer than `SPACING`.
 A lane's items are kept in **ascending `pos`** order — the lead item (smallest
 `pos`, closest to the output) first.
 
+### Runs: a line of belts moves as one lane
+
+Movement is defined over a **run**, not a single tile. A run is a maximal chain
+of **collinear, same-direction** belts that end-feed one another — a straight
+line of belts of the same facing, one flowing into the next's input edge. A run's
+two lanes are each one continuous track spanning every tile in the run; the tile
+boundaries inside a run are seams in the _addressing_ (each item still reports a
+per-tile `pos`), not breaks in the flow.
+
+A run **breaks** wherever continuous same-direction flow stops: at a belt facing
+a **splitter**, a **sink**, an **inserter**'s pickup tile, empty space, or a
+**perpendicular** belt (a curve or a side-load — those connect by _forcing_, not
+by run flow; see "Belt-to-belt feeding"). So a splitter, a sink, or a turn each
+starts a fresh run on its far side.
+
+Address an item on run tile `i` (counting `0` from the run's **output** end) at
+position `p` by the run-global coordinate `g = i * TILE + p`. The run's output
+edge is `g = 0`.
+
 ### Movement and compaction
 
-Each tick, each lane is advanced by walking its items **from the output end
-backward** (lead item first) and moving each one as far forward as it can go.
-Writing the clamp with the decreasing-`pos` convention:
+Each tick, each **run** lane is advanced by walking its items **from the output
+end backward** (lead item first) and moving each one as far forward as it can go.
+Writing the clamp in run-global `g` (an item moves by the `SPEED` of the tile it
+currently sits on):
 
 ```
-new_pos = max(pos - SPEED,            // its own speed (forward = decreasing pos)
-              ahead_pos + SPACING)    // never closer than SPACING to the item ahead
+new_g = max(g - SPEED,            // its own speed (forward = decreasing g)
+            ahead_g + SPACING)    // never closer than SPACING to the item ahead
 ```
 
-- The **lead item** (no item ahead of it) clamps only against the output edge:
-  `new_pos = max(pos - SPEED, 0)`.
+- The **lead item** (no item ahead of it) clamps only against the run's output
+  edge: `new_g = max(g - SPEED, 0)`.
 - Every following item clamps against the item ahead of it **after that item has
   already moved this tick** (you walk lead-first), so
-  `new_pos = max(pos - SPEED, ahead_new_pos + SPACING)`.
+  `new_g = max(g - SPEED, ahead_new_g + SPACING)`.
+
+Because the whole run is one lane, an item crossing a tile seam is an ordinary
+`SPEED`-sized step — it simply lands on the next tile down (`g` decreasing across
+`i * TILE`) with no jump or extra spacing. There is no separate per-tile hand-off
+for collinear belts.
 
 Two consequences fall straight out, and they are the entire compaction story:
 
 - A gap **larger** than `SPACING` shrinks by up to `SPEED` each tick as the
   trailing item rolls forward, until it closes to exactly `SPACING`. Belt
   movement **compresses** a stream toward standard spacing on its own.
-- Belt movement **can never create** a gap smaller than `SPACING`, and once a
-  run of items is packed at `SPACING` it moves forward as a rigid block. _Once a
-  belt compresses, it stays that way_ — and that is exactly the property an
-  efficient engine exploits (see `specs/contract.md` and the overview).
+- Belt movement **can never create** a gap smaller than `SPACING`, and once a run
+  is packed at `SPACING` **the entire run moves forward as a single rigid block**.
+  A packed run reads as **frozen** — its per-tile positions are the same every
+  tick — and when its front item is consumed the whole run shifts one slot in the
+  _same_ tick, the freed slot appearing only at the run's very back (never a hole
+  crawling backward tile by tile). _Once a belt compresses, it stays that way_ —
+  and that is exactly the property an efficient engine exploits (see
+  `specs/contract.md` and the overview).
 
 A gap **smaller** than `SPACING` can only ever appear when something **forces**
-an item in — an inserter dropping, a source emitting, or a belt
-**side-loading**.
+an item in at a non-standard coordinate — an inserter dropping, a source
+emitting, or a belt **side-loading** into a lane whose items are not on the
+standard grid.
 
 ### Forcing an item onto a lane
 
-An item may be forced into a gap **strictly larger than `SPACING`**: for a brief
-moment the two items sit squashed closer than `SPACING`, and the next time the
-belt moves the gap re-expands to standard. A gap that is **not** strictly larger
-than `SPACING` cannot accept a forced item — the inserter or source **stalls**
-and holds its item until room opens.
+An item may be forced into a gap of **at least `SPACING`**: it may land closer
+than standard spacing to its new neighbors, and the next time the belt moves
+the gap re-expands to standard. A gap **smaller** than `SPACING` cannot accept a
+forced item — the inserter or source **stalls** and holds its item until room
+opens.
 
 Concretely, a forced item lands at a target position `pos` on a lane iff
-**both** neighbors (the nearest item with a smaller `pos` and the nearest with
-a larger `pos`, if any) are strictly more than `SPACING` away — and there is no
-item exactly at `pos`. Otherwise the force fails and the item is not placed this
-tick.
+**both** neighbors (the nearest item with a smaller `pos` and the nearest with a
+larger `pos`, if any) are at least `SPACING` away — and there is no item exactly
+at `pos`. Otherwise the force fails and the item is not placed this tick.
+
+Note the bound is `>= SPACING`, not `> SPACING`. The standard entry coordinate
+is `TILE - SPACING`, and on a lane already compacted to standard spacing the
+item ahead of that slot sits at `TILE - 2 * SPACING` — exactly `SPACING` away. A
+strict bound would refuse every such force, so the last slot of each tile could
+never be filled and a "full" belt would run at three items per tile with a
+permanent gap. The inclusive bound is what lets a belt actually saturate at four
+items per tile per lane.
 
 - A **source** and an **inserter dropping onto a belt** force at the belt's
   **input end**, at the standard entry coordinate `pos = TILE - SPACING` (one
   standard spacing inside the input edge). The force lands iff that slot's
-  neighbors are more than `SPACING` away.
+  neighbors are at least `SPACING` away.
 
 ### Belt-to-belt feeding
 
-A belt hands its lead item to the belt one tile ahead in its facing **when that
-item has reached the output edge** (`pos == 0`). The item is removed from this
-belt and reattached on the downstream belt one full tile back from _its_ output
-end, at the arrival coordinate `pos = TILE - SPACING`, **iff the downstream lane
-can accept it under the forcing rule** above; otherwise it stays put and the
-lane behind it stays blocked.
+- **End-feeding** (the two belts are collinear, same facing) is **not** a
+  hand-off — the two belts are part of the same **run** and move as one lane
+  (above). An item crosses the shared seam as an ordinary `SPEED`-step and each
+  lane flows into the **same** lane of the downstream belt (left → left,
+  right → right). Nothing special happens at the boundary.
 
-- **End-feeding** (the two belts are collinear, same facing): each lane flows
-  into the **same** lane of the downstream belt (left → left, right → right).
+The remaining cases are **cross-run forcings**: the feeder's lead item, once it
+has reached that belt's output edge (`pos == 0`), is forced onto the target
+belt's lane at the standard entry coordinate `pos = TILE - SPACING`, **iff the
+target lane can accept it under the forcing rule** above (one item per tick);
+otherwise it stays put and the run behind it stays blocked.
+
 - **Curves** (the downstream belt faces a perpendicular direction): the lanes
   remap **equal-length** in the base ruleset — the physical (outer/inner) side
   is carried across the turn, so the lane on a given physical side stays on that
   side. (Factorio's realistic inner-lane-shorter curve geometry is a future
   variant; in v1 both lanes are equal length through a curve.)
-- **Side-loading** is the same hand-off seen from the target: when a belt faces
-  into the _side_ of another belt, its arriving items are forced onto the
-  downstream belt's lane on the matching physical side, merging into that lane's
-  flow under the forcing rule. The target belt's other lane is untouched. This
-  is the canonical way one lane is filled while the other keeps flowing.
+- **Side-loading**: when a belt faces into the _side_ of another belt, its
+  arriving items are forced onto the target belt's lane on the matching physical
+  side, merging into that lane's flow under the forcing rule. The target belt's
+  other lane is untouched. This is the canonical way one lane is filled while the
+  other keeps flowing.
 
-A belt facing into a non-belt (a splitter, a sink, or empty space) does not hand
-off here — the splitter pulls from it and the sink drains it in their own phases
-(below); a belt facing into nothing simply piles items at its output edge.
+A belt facing into a non-belt (a splitter, a sink, or empty space) does not feed
+across here — the splitter pulls from it and the sink drains it in their own
+phases (below); a belt facing into nothing simply piles items at its output edge
+(and its run ends there).
 
 ## Splitters
 
@@ -133,28 +177,58 @@ A splitter spans two tiles across the flow (footprint in `specs/prototypes.md`):
 up to two input belts behind it and two output belts ahead of it, all sharing
 its facing. It **balances** throughput:
 
-- It pulls items from its two input belts in **round-robin** order (`rr_in`
-  alternates `0`/`1`) and pushes them to its two output belts in **round-robin**
-  order (`rr_out` alternates `0`/`1`).
-- **Lanes are preserved**: an item pulled from a left lane is pushed onto a left
-  lane, right onto right. The splitter balances _which belt_, not _which lane_.
-- A **base splitter holds no items between ticks** — each item it pulls is
-  pushed in the same tick. Its only retained state is the two round-robin
-  cursors `rr_in` and `rr_out`.
+- It processes **every input lane that has an item at its output edge this tick** —
+  both lanes of both input belts — so two items arriving **side by side on one input
+  belt** move **together**, on the same tick, not one lane this tick and the other
+  next.
+- **The input lane is preserved.** An item moves across **belts**, never across
+  **lanes**: a left-lane item can only land on an output belt's **left** lane, a
+  right-lane item on a **right** lane. Which output _belt_ it goes to is the only
+  choice the splitter makes.
+- **Each (item type, lane) alternates its output belt** (the Factorio splitter). The
+  splitter keeps, per **(item type, lane)**, which output belt that stream's next item
+  prefers; after routing one, that preference **flips to the other belt**, so the
+  following item of the same type on the same lane goes the other way. Keeping the
+  cursor **per lane** — not merely per item type — is what makes one input belt
+  carrying the **same item on both lanes** spread over **both lanes of both outputs**
+  (the two outputs each take a full both-lane row in turn), rather than the two lanes
+  flipping against each other and **unzipping** — one output getting only the left
+  lane, the other only the right. Two full input belts of two _different_ items — a
+  top belt of iron, a bottom belt of copper — still split so **each output belt
+  receives one iron and one copper** (across its two lanes), never one belt all iron
+  and the other all copper.
+- **The two input belts are tried in a fair, alternating order.** Within a lane the
+  splitter pulls from its two input belts starting with the one named by `in_first`,
+  then the other; `in_first` **flips every tick**, so when both input belts compete
+  for one output lane neither is starved.
+- A **base splitter holds no items between ticks** — each item it processes is pushed
+  the same tick. Its only retained state is its two cursors: **`out_pref`** — the
+  per-(item-type, lane) output-preference bitfield, in which bit `t*2 + L` is the
+  output belt for item type `t` on lane `L` (`L = 0` the left lane, `L = 1` the right)
+  — and **`in_first`**, which of the two input belts is tried first this tick.
 
-Exact base-splitter step, run each tick: attempt up to **two** transfers (so a
-saturated pair of inputs both make progress). For each attempt:
+Exact base-splitter step, run each tick — **for each lane (left then right)**, and
+within that lane **each input belt starting from `in_first`, then the other**:
 
-1. Look at input belt `rr_in`. If there is no input belt there, flip `rr_in` and
-   continue to the next attempt.
-2. Pull the **lead item** that has reached the output edge (`pos == 0`) of that
-   input belt — **left lane first, then right**. If neither lane has an item at
-   the edge, flip `rr_in` and continue.
-3. Push that item (preserving its lane) onto output belt `rr_out` under the
-   forcing rule. If it lands, flip `rr_out`, then flip `rr_in`, and continue to
-   the next attempt. If the push **stalls** (no output belt, or the force
-   fails), **return the item to the input belt it came from** (at `pos == 0`)
-   and stop advancing this splitter for the rest of this tick.
+1. Take that belt-and-lane's **lead item** only if it has reached the output edge
+   (`pos == 0`); otherwise skip it.
+2. Let `pref` be this **(item type, lane)**'s preferred output belt — its `out_pref`
+   bit `t*2 + L`. Try to force the item onto belt `pref`, on the **same lane** it came
+   in on. If that output belt does not exist or its lane is full, try the **other**
+   belt (same lane).
+3. If it lands, set this (item type, lane)'s `out_pref` bit to the belt **opposite**
+   the one it landed on, so the next such item alternates. If **neither** output belt
+   can take it, **return the item to its lane** (`pos == 0`) — real back pressure — and
+   it retries next tick.
+
+After all four input lanes are processed, **flip `in_first`** so the next tick tries
+the other input belt first.
+
+A missing output belt is simply an unavailable destination (never back pressure), so
+a splitter with one output belt sends everything to that belt, alternating its two
+lanes as items alternate. A belt that **exists but is full** is real back pressure and
+stalls, backing the inputs up — that is what makes a saturated line back up rather
+than silently drop throughput.
 
 A splitter **breaks a transport line**: the compressed runs of belt on either
 side cannot be merged across it. Priority and filter splitter modes are a future
@@ -164,16 +238,42 @@ variant.
 
 An inserter sits on a tile. Its `dir` sets the tile it **drops onto** (the tile
 in front, one step in `dir`) and the tile it **picks up from** (the tile behind,
-one step opposite `dir`). It is a swing on an integer timer, run as a small
-state machine with two phases:
+one step opposite `dir`).
 
-- **`idle`** (empty-handed): attempt to pick one item from the pickup tile. On
-  success, take the item, set `phase = swing`, and set `swing_left = SWING`.
-- **`swing`** (holding an item): if `swing_left > 1`, decrement it. When
-  `swing_left == 1`, the swing is complete — attempt the **drop** onto the drop
-  tile. If the drop lands, clear the held item, set `phase = idle` and
-  `swing_left = 0`. If the drop **stalls** (no room), keep holding the item with
-  `swing_left == 1` and retry the drop every following tick until it lands.
+There is exactly **one kind of inserter**. It carries no tier, and every
+inserter in the world swings at the same rate, `SWING` (see
+`specs/prototypes.md`) — independent of where it sits and of the tier of any
+belt it picks from or drops onto. An inserter entity therefore declares only
+`x`, `y`, and `dir`.
+
+It is a swing on an integer timer, run as a small state machine with three phases —
+the loaded swing out, the empty swing back, and idle at rest:
+
+- **`idle`** (empty-handed, back at the pickup): it grabs an item **only when the
+  drop tile can accept it right now**. It peeks the item it _would_ pick up (without
+  removing it) and checks the drop target: if the target can currently take that
+  item, it takes the item, sets `phase = swing`, and sets `swing_left = SWING`;
+  otherwise it **waits empty** — it does **not** grab an item it could not deposit.
+  An inserter facing a target that can never accept (a wall, or the wrong assembler
+  input) therefore never picks up.
+- **`swing`** (holding an item, swinging out): if `swing_left > 1`, decrement it.
+  When `swing_left == 1`, the swing is complete — attempt the **drop** onto the drop
+  tile. If the drop lands, clear the held item and **begin the return**: set
+  `phase = return` and `swing_left = SWING`. If the drop **stalls** (no room), keep
+  holding the item with `swing_left == 1` and retry the drop every following tick
+  until it lands.
+- **`return`** (empty-handed, swinging back): decrement `swing_left` each tick. The
+  empty return costs the **same `SWING` ticks** as the loaded swing — the arm
+  actually travels back, it does **not** teleport back and re-grab the instant it
+  drops. When `swing_left` reaches `0` the arm is back at the pickup and the phase
+  becomes `idle`, ready to grab again. A full pick-and-place cycle is therefore
+  `SWING` out + `SWING` back.
+
+Because the pickup is gated on the target accepting, a lone inserter never hovers
+over its target holding an item. That **only** happens in a race: two inserters
+targeting one buffer both peek room and both grab in the same tick, and when their
+swings finish only one drop lands — the loser then holds and retries, the one
+sanctioned hold-with-item case.
 
 A base inserter carries **one item per swing**.
 
@@ -189,7 +289,9 @@ From the pickup tile, in order of what it is:
   (lowest item index first, for determinism), decrementing that item's count.
 - From a **source**: take the source's item (infinite supply).
 
-If nothing is available, the inserter stays `idle`.
+If nothing is available — **or** the drop target cannot currently accept the item
+that would be picked up (see the `idle` phase above) — the inserter stays `idle`
+with empty claws.
 
 ### Drop
 
@@ -197,7 +299,7 @@ Onto the drop tile, by what it is:
 
 - Onto a **belt**: **force** the item onto the **near lane** (relative to the
   inserter) at the standard entry coordinate `pos = TILE - SPACING`, under the
-  forcing rule. Stalls if the gap is not strictly larger than `SPACING`.
+  forcing rule. Stalls if the gap is smaller than `SPACING`.
 - Into an **assembler**: add one to the input buffer **iff** the item is one the
   recipe consumes **and** that item's buffered count is `< INPUT_CAP`. Otherwise
   the drop stalls.
@@ -242,7 +344,7 @@ one tile downstream (one step in the source's `dir`), once every `period` ticks
   the tick being _advanced into_.)
 - The emission targets the downstream belt's near-lane entry slot
   (`pos = TILE - SPACING`) and lands under the **forcing rule**: if the gap is
-  not strictly larger than `SPACING`, the emission for that tick is simply
+  smaller than `SPACING`, the emission for that tick is simply
   **dropped** (the source has infinite supply but does not queue — a backed-up
   source's emissions are not produced). For `lane = "both"`, attempt left then
   right independently.
@@ -266,8 +368,8 @@ the scenario's `entities` array):
 1. **Sources** emit.
 2. **Inserters** advance their swing state machine (pickup → swing countdown →
    drop).
-3. **Belts** advance: first compact every lane, then hand off lead items to
-   downstream belts.
+3. **Belts** advance: first compact every run (each as one lane), then force the
+   perpendicular curve / side-load merges across runs.
 4. **Splitters** balance.
 5. **Assemblers** craft.
 6. **Sinks** consume.

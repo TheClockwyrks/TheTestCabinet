@@ -21,9 +21,10 @@
 //
 // Usage:
 //   node scripts/curate-instrument-bank.mjs               # curate + write gm-lite.toml
+//   node scripts/curate-instrument-bank.mjs --bank cinematic  # curate a different bank (see BANKS)
 //   node scripts/curate-instrument-bank.mjs --dry-run     # search + detect, print a table, no write
 //   node scripts/curate-instrument-bank.mjs --per 10      # candidates to consider per instrument
-//   node scripts/curate-instrument-bank.mjs --out <path>  # output manifest (default gm-lite.toml)
+//   node scripts/curate-instrument-bank.mjs --out <path>  # output manifest (default <bank>.toml)
 
 import { createHash } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -34,12 +35,7 @@ import { fileURLToPath } from "node:url";
 import { loadDotEnv } from "./lib/env.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-const OUT_DEFAULT = join(
-  repoRoot,
-  "containers",
-  "sample-packs",
-  "gm-lite.toml",
-);
+const PACKS_DIR = join(repoRoot, "containers", "sample-packs");
 const CACHE = join(repoRoot, "dist", "sample-packs", ".curate-cache");
 
 const CC0 = "http://creativecommons.org/publicdomain/zero/1.0/";
@@ -49,7 +45,7 @@ const CC0 = "http://creativecommons.org/publicdomain/zero/1.0/";
 // errors / garbage. `pitched: false` entries are percussion one-shots. Descriptions
 // name the instrument (a `music` case measures composition, not identification, so a
 // real instrument name is correct — unlike the neutral sfx sample library).
-const SPEC = [
+const GM_LITE_SPEC = [
   // Keys
   inst(
     "grand_piano",
@@ -236,6 +232,86 @@ const SPEC = [
   ),
 ];
 
+// A domain-tailored EPIC ORCHESTRAL bank for trailer/boss/cinematic cues — the big
+// voices gm-lite lacks: sectioned strings (staccato, tremolo, pizzicato), heroic brass,
+// mixed choir, and thunderous orchestral percussion.
+const CINEMATIC_SPEC = [
+  // Strings
+  inst("staccato_strings", "staccato strings", ["strings", "staccato", "cinematic"], "A short, sharp staccato string-section stab.", [48, 88]),
+  inst("tremolo_strings", "tremolo strings", ["strings", "tremolo", "tension"], "A tense sustained tremolo string note.", [48, 88]),
+  inst("string_ensemble", "string ensemble", ["strings", "ensemble", "pad"], "A lush sustained string-ensemble note.", [48, 84]),
+  inst("solo_cello", "cello note", ["strings", "bowed", "solo"], "An expressive sustained solo-cello note.", [36, 74]),
+  inst("pizzicato_strings", "pizzicato strings", ["strings", "pizzicato", "plucked"], "A short plucked pizzicato string note.", [40, 84]),
+  // Brass
+  inst("horns", "french horn", ["brass", "horns"], "A bold sustained french-horn note.", [40, 77]),
+  inst("low_brass", "trombone note", ["brass", "low"], "A heavy sustained low-brass note.", [36, 67]),
+  inst("trumpet", "trumpet note", ["brass"], "A bright, heroic sustained trumpet note.", [52, 88]),
+  // Choir
+  inst("choir_aah", "choir aah", ["choir", "voice", "aah"], "A sustained mixed-choir 'aah' vowel.", [48, 84]),
+  inst("choir_ooh", "choir ooh", ["choir", "voice", "ooh"], "A sustained mixed-choir 'ooh' vowel.", [48, 84]),
+  // Woodwind
+  inst("oboe", "oboe note", ["woodwind", "reed"], "A plaintive sustained oboe note.", [58, 91]),
+  inst("flute", "flute note", ["woodwind"], "A breathy sustained flute note.", [60, 96]),
+  // Keys / plucked
+  inst("celesta", "celesta", ["mallets", "bells", "keys"], "A delicate, bell-like celesta note.", [60, 108]),
+  inst("harp", "harp note", ["plucked", "harp"], "A resonant plucked-harp note.", [36, 96]),
+  // Percussion (unpitched one-shots)
+  perc("timpani", "timpani", ["percussion", "timpani", "drum"], "A deep, resonant orchestral timpani hit."),
+  perc("taiko", "taiko", ["percussion", "taiko", "drum"], "A thunderous taiko drum hit."),
+  perc("bass_drum", "orchestral bass drum", ["percussion", "drum", "low"], "A deep orchestral bass-drum hit."),
+  perc("cymbal", "cymbal crash", ["percussion", "cymbal"], "A large orchestral cymbal crash."),
+  perc("orchestral_hit", "orchestral hit", ["percussion", "hit", "stab"], "A punchy full-orchestra hit/stab."),
+];
+
+// A domain-tailored SYNTHWAVE / ELECTRONIC bank for retro-synth, EDM, and lo-fi cues —
+// analog leads and basses, pads, FM bells, and an electronic drum machine.
+const SYNTHWAVE_SPEC = [
+  // Leads / plucks
+  inst("saw_lead", "saw synth", ["synth", "lead", "saw"], "A bright sawtooth synth-lead note.", [40, 96]),
+  inst("square_lead", "square synth", ["synth", "lead", "square"], "A hollow square-wave synth note.", [40, 96]),
+  inst("pluck", "synth pluck", ["synth", "pluck"], "A short, bright synth-pluck note.", [40, 96]),
+  // Bass
+  inst("synth_bass", "synth bass", ["synth", "bass"], "A round analog synth-bass note.", [28, 60]),
+  inst("sub_bass", "sub bass", ["synth", "bass", "sub"], "A deep sub-bass synth note.", [24, 55]),
+  // Pads / keys
+  inst("warm_pad", "synth pad", ["synth", "pad"], "A warm sustained synth-pad note.", [40, 88]),
+  inst("analog_pad", "analog pad", ["synth", "pad", "analog"], "A lush analog synth-pad note.", [40, 88]),
+  inst("fm_bell", "fm bell", ["synth", "bell", "fm"], "A glassy FM synth-bell note.", [52, 96]),
+  inst("synth_brass", "synth brass", ["synth", "brass"], "A punchy synth-brass note.", [40, 84]),
+  inst("synth_strings", "synth strings", ["synth", "strings", "pad"], "A shimmering synth-strings note.", [48, 84]),
+  // Percussion (unpitched one-shots)
+  perc("kick_808", "808 kick", ["drum", "kick", "808", "electronic"], "A deep, booming 808-style kick."),
+  perc("snare_electronic", "electronic snare", ["drum", "snare", "electronic"], "A snappy electronic snare."),
+  perc("clap", "clap one shot", ["drum", "clap", "electronic"], "A tight electronic hand-clap."),
+  perc("hat_closed", "closed hihat", ["drum", "hihat", "electronic"], "A crisp electronic closed hi-hat."),
+  perc("hat_open", "open hihat", ["drum", "hihat", "open", "electronic"], "A sizzling electronic open hi-hat."),
+  perc("tom_electronic", "electronic tom", ["drum", "tom", "electronic"], "A synthetic electronic tom."),
+];
+
+// The bank registry. Each bank names its output manifest (`<name>.toml`), its starting
+// `version`, a one-line `blurb` for the manifest header, and its instrument `spec`.
+// gm-lite keeps its original identity so re-curating it is a no-op in shape.
+const BANKS = {
+  "gm-lite": {
+    name: "gm-lite",
+    version: "0.1.0",
+    blurb: "A general-MIDI-flavoured instrument bank",
+    spec: GM_LITE_SPEC,
+  },
+  cinematic: {
+    name: "cinematic",
+    version: "0.1.0",
+    blurb: "An epic-orchestral instrument bank (strings, brass, choir, orchestral percussion)",
+    spec: CINEMATIC_SPEC,
+  },
+  synthwave: {
+    name: "synthwave",
+    version: "0.1.0",
+    blurb: "A synthwave / electronic instrument bank (analog synths, pads, drum machine)",
+    spec: SYNTHWAVE_SPEC,
+  },
+};
+
 function inst(name, query, tags, description, range) {
   return { name, query, tags, description, pitched: true, range };
 }
@@ -255,15 +331,16 @@ function fail(m) {
 }
 
 function parseArgs(argv) {
-  const o = { dryRun: false, per: 8, out: OUT_DEFAULT };
+  const o = { dryRun: false, per: 8, out: null, bank: "gm-lite" };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--dry-run") o.dryRun = true;
     else if (a === "--per") o.per = Number(argv[++i]);
     else if (a === "--out") o.out = argv[++i];
+    else if (a === "--bank") o.bank = argv[++i];
     else if (a === "--help" || a === "-h") {
       log(
-        "usage: node scripts/curate-instrument-bank.mjs [--dry-run] [--per N] [--out path]",
+        `usage: node scripts/curate-instrument-bank.mjs [--bank <${Object.keys(BANKS).join("|")}>] [--dry-run] [--per N] [--out path]`,
       );
       process.exit(0);
     } else fail(`unknown arg ${a}`);
@@ -388,6 +465,11 @@ function detectPitch(pcm, rate) {
 async function main() {
   loadDotEnv();
   const opts = parseArgs(process.argv.slice(2));
+  const bank = BANKS[opts.bank];
+  if (!bank) {
+    fail(`unknown --bank "${opts.bank}" (one of: ${Object.keys(BANKS).join(", ")})`);
+  }
+  const outPath = opts.out ?? join(PACKS_DIR, `${bank.name}.toml`);
   const key = process.env.FREESOUND_API_KEY;
   if (!key) fail("FREESOUND_API_KEY not set (repo-root .env)");
   try {
@@ -395,10 +477,11 @@ async function main() {
   } catch {
     fail("ffmpeg not on PATH (needed to decode previews for pitch detection)");
   }
+  log(`curating bank ${bank.name}@${bank.version} (${bank.spec.length} instruments)`);
 
   const chosen = [];
   const missed = [];
-  for (const spec of SPEC) {
+  for (const spec of bank.spec) {
     const cands = await search(spec.query, key, opts.per);
     let pick = null;
     for (const rec of cands) {
@@ -444,17 +527,17 @@ async function main() {
   }
 
   log(
-    `\n${chosen.length}/${SPEC.length} instruments sourced${missed.length ? `; missing: ${missed.join(", ")}` : ""}`,
+    `\n${chosen.length}/${bank.spec.length} instruments sourced${missed.length ? `; missing: ${missed.join(", ")}` : ""}`,
   );
   if (opts.dryRun) {
-    log("\n(dry run — gm-lite.toml not written)");
+    log(`\n(dry run — ${bank.name}.toml not written)`);
     return;
   }
   if (chosen.length < 8) fail("too few instruments sourced to write a bank");
 
-  writeFileSync(opts.out, renderManifest(chosen));
-  log(`\nwrote ${opts.out} (${chosen.length} instruments)`);
-  log("Next: node scripts/build-sample-pack.mjs gm-lite --publish");
+  writeFileSync(outPath, renderManifest(bank, chosen));
+  log(`\nwrote ${outPath} (${chosen.length} instruments)`);
+  log(`Next: node scripts/build-sample-pack.mjs ${bank.name} --publish`);
 }
 
 /** MIDI number → note name (for logs). */
@@ -476,26 +559,26 @@ function midiName(m) {
   return `${names[m % 12]}${Math.floor(m / 12) - 1}`;
 }
 
-/** Render the full gm-lite.toml from the chosen candidates. */
-function renderManifest(chosen) {
+/** Render the full <bank>.toml from the chosen candidates. */
+function renderManifest(bank, chosen) {
   const esc = (s) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-  const head = `# Instrument bank — gm-lite
+  const head = `# Instrument bank — ${bank.name}
 #
-# A general-MIDI-flavoured instrument bank for the \`music\` sequencer: one representative
+# ${bank.blurb} for the \`music\` sequencer: one representative
 # CC0 one-shot per instrument, which the renderer pitch-shifts across a track's notes
 # (a percussion one-shot, \`pitched = false\`, plays at its native pitch). The audio is NOT
 # committed here — this manifest lists each source's Freesound preview \`url\` + content
 # \`sha256\`; the pack is built + published with:
 #
-#   node scripts/build-sample-pack.mjs gm-lite --publish
+#   node scripts/build-sample-pack.mjs ${bank.name} --publish
 #
 # Sourced from Freesound (CC0 only) by \`scripts/curate-instrument-bank.mjs\`, which
 # detects each melodic sample's recorded pitch (\`root_note\`, a MIDI number) so the
 # sequencer transposes it correctly. Re-run that script to refresh or extend the bank
 # (any content change is a new \`version\`).
 
-name = "gm-lite"
-version = "0.1.0"
+name = "${bank.name}"
+version = "${bank.version}"
 kind = "instrument-bank"
 
 # Instrument one-shots are baked stereo at full rate; the sequencer resamples per note.

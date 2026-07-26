@@ -145,15 +145,19 @@ export function RunsPage() {
           comment={<>// every result the cabinet has produced</>}
         />
         {canExecute && (
-          <Link className={exec.primary} to={routes.runNew()}>
-            + New run
-          </Link>
+          <div className={exec.headerActions}>
+            <Link className={exec.secondary} to={routes.accountCoverage()}>
+              Coverage plans
+            </Link>
+            <Link className={exec.primary} to={routes.runNew()}>
+              + New run
+            </Link>
+          </div>
         )}
       </div>
 
-      <RunsTabs active="runs" />
-
       <div className={styles.controls}>
+        <RunsTabs active="runs" />
         <input
           className={styles.search}
           type="search"
@@ -183,6 +187,7 @@ export function RunsPage() {
             rows={table.rows}
             active={showActive ? activeRuns : []}
             controls={table.controls}
+            selectable
           />
           <Pagination
             page={current}

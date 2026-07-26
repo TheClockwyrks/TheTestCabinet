@@ -95,70 +95,14 @@ auto_play = false
 [[spec]]
 source = "specs/brief.md.hbs"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the regenerated, rigged model reads as the Sunfront Lumen and \
-poses correctly — a floating beacon drone whose front emitter nods on its mount \
-while its two rings counter-rotate on their own around a glowing solar-hot core and \
-the whole legless craft bobs in place, with a bright solar-hot core accent and the \
-disciplined Duneforged palette. The model invents the rig; the fixed contract is \
-the three animations it authors."""
-
-[[review_item]]
-id = "reads-as-lumen"
-title = "Reads as a floating beacon drone"
-text = """
-From more than one angle the model reads unmistakably as a floating beacon drone: \
-a compact hovering core carrying a glowing solar-hot heart, a pair of rings \
-orbiting it on either side, and a beam emitter projecting forward from the core \
-face. It hovers with no legs, not an abstract stack of boxes."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "emitter-nods"
-title = "Emitter nods and rings spin"
-text = """
-Playing `pulse` tilts the front beam emitter up and down about its mount cleanly, \
-with no part of the emitter tearing away from the core or clipping into it across \
-the full range — the beam projector moving as one solid piece. The two rings turn \
-on their own through `ring_spin`, spinning in opposite directions around the core. \
-The model had to invent a hinge for the emitter and a spin axis for each ring for \
-these to read."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "hovers-in-place"
-title = "Hovers in place with weight"
-text = """
-Playing `hover` bobs the whole legless craft gently up and down so it reads as \
-floating in place — a weighted rise and settle that eases rather than sliding in a \
-straight saw-tooth. The craft hovers as one body without shedding, tearing, or \
-distorting its parts."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "body-fixed-attached"
-title = "Body stays put; rings and emitter stay attached"
-text = """
-Only the moving parts move on their own: the emitter nods under `pulse` and the \
-rings spin under `ring_spin` without dragging the core body around with them. Each \
-moving piece stays attached across its full range — the rings hold their orbit at \
-the sides as they spin and the emitter meets the core face, with no gap and never \
-floating free or detaching as the rings turn and the beam tilts."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Duneforged palette discipline"
-text = """
-Uses only the Duneforged colors from the brief (brass and bronze shell, iron \
-rings, and the solar-hot core with its amber emitter) with a bright solar-hot core \
-accent, no out-of-palette colors, and no stray voxels drifting off the parts."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

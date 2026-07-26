@@ -2,11 +2,22 @@
 @use "../../styles/surfaces" as s;
 @use "../../styles/halo" as h;
 
+// The runs tab bar sits on its own full-width row above the full-width search
+// field, matching the Test Cases page's controls block.
 .controls {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: t.$space-md;
+  margin-top: t.$space-md;
   margin-bottom: t.$space-xl;
+
+  // `RunsTabs` carries the `$space-lg` gap it needs when it sits directly above
+  // a page body (Failures, Unreviewed); here the flex gap owns the spacing, so
+  // the two index pages put the same distance between tabs and search field.
+  > nav {
+    margin-bottom: 0;
+  }
 }
 
 // Mirrors the Test Cases search field so the two index pages read identically.

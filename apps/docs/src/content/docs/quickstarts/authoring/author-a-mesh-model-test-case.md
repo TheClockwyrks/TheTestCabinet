@@ -23,7 +23,7 @@ reference it — revise by adding a new version.
 
 ```text
 test-cases/<type>/<difficulty>/<slug>/<version>/
-  test-case.toml   # manifest: type, asset_kind, [voxel], [tool], [output], domains
+  test-case.toml   # manifest: type, asset_kind, [voxel], [tool], [output], the overall domain
   variants/        # one standalone TOML file per variant (listed in `variants`)
   prompt.hbs       # rendered into the harness instruction (NOT seeded)
   description.md   # site blurb (NOT seeded)
@@ -59,8 +59,8 @@ binary's `--help` is the contract.
    a `variants` list (a root key, so it precedes the first table; first = default), the
    `[voxel]` volume, and the `[tool]`/`[output]` tables. `[tool].binary` is the meshing
    binary; `[tool].preview` (e.g. `model.png`) and `[output].actions` (the op log) are
-   each a **single file — no `{part}` token**. Add the `[[domain]]`/`[[review_item]]`s a
-   human reviews under (each carries only a `domain` — no `reference`). The extracted
+   each a **single file — no `{part}` token**. Add the single `overall` `[[domain]]` a
+   human rates under; there is **no `[[review_item]]` checklist**. The extracted
    `mesh.glb` is emitted by core on `render`, **not** declared in the manifest.
 6. Reject the wrong tables: a meshed case declares **no `[canvas]`**, **no `[model]`**
    (a static model has no rig), **no `[[reference]]`** (no target), **no `[build]`**,

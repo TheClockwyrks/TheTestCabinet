@@ -545,6 +545,14 @@ impl<R: CommandRunner, B: BackendClient> Publisher for BackendPublisher<R, B> {
     async fn release_code(&self, request: &ReleaseRequest<'_>) -> Result<Option<String>> {
         let record = request.record;
 
+        // A harness-error run is recorded only as a per-model statistic — it produced
+        // no evaluable output worth releasing, so nothing is committed or pushed and
+        // the run carries no source link. (The other publishable failure tiers do
+        // release their source; see `RunState::publishes_artifacts`.)
+        if !record.status.state.publishes_artifacts() {
+            return Ok(None);
+        }
+
         // Asset-generation runs produce no code — their authoritative output is the
         // recorded drawing operations, uploaded separately to the backend. There is
         // nothing to commit or push, so no per-run GitHub repository is created and
@@ -593,6 +601,12 @@ impl<R: CommandRunner, B: BackendClient> Publisher for BackendPublisher<R, B> {
     }
 
     async fn release_playable_build(&self, request: &ReleaseRequest<'_>) -> Result<Option<String>> {
+        // A harness-error run releases nothing (it is a per-model statistic only), so
+        // no build is deployed even if a partial tree happened to build; see
+        // `RunState::publishes_artifacts`.
+        if !request.record.status.state.publishes_artifacts() {
+            return Ok(None);
+        }
         let Some(build_dir) = request.build_dir else {
             return Ok(None);
         };
@@ -630,7 +644,7 @@ impl<R: CommandRunner, B: BackendClient> Publisher for BackendPublisher<R, B> {
 ///
 /// The steps, in order:
 ///
-/// 1. **Redact.** [`scrub_build_dir`] rewrites any leaked provider API key out of
+/// 1. **Redact.** `scrub_build_dir` rewrites any leaked provider API key out of
 ///    every text file under `build_dir` in place, so a key the model (or an
 ///    author) left in a source file cannot ship to the public site through a
 ///    built asset.

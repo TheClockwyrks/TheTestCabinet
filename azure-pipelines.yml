@@ -42,6 +42,17 @@ variables:
   # cache on single-shot CI builds.
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: "0"
+  # Debug info is by far the largest thing the dev/test build writes: measured on
+  # this workspace it is ~84% of a test executable, and the workspace's ~290 test
+  # binaries dominate `target/`. CI never attaches a debugger — it only needs
+  # readable panic backtraces — so emit line tables alone. That keeps file:line in
+  # backtraces while dropping the type/variable DWARF (`.debug_info`/`.debug_str`),
+  # cutting test executables ~69% and the whole `target/` from ~36 GB to ~14 GB.
+  # Without this the tree plus the tar the cache save writes beside it no longer
+  # fits on the hosted agent, which is what broke the "Cache cargo target" save.
+  # `test` inherits `dev`, but set both so the intent survives a profile change.
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
+  CARGO_PROFILE_TEST_DEBUG: line-tables-only
 
 jobs:
   - job: rust
@@ -63,9 +74,15 @@ jobs:
       - task: Cache@2
         displayName: Cache cargo target
         inputs:
-          key: 'cargo-target | "$(Agent.OS)" | Cargo.lock'
+          # The debug level is part of the key: artifacts built at a different
+          # `debug` setting have a different fingerprint, so cargo rebuilds them
+          # but never evicts the originals — restoring a full-debug cache into a
+          # line-tables build would leave both in `target/` and put the disk
+          # straight back over the edge. Keying on it namespaces each setting to
+          # its own cache instead.
+          key: 'cargo-target | "$(Agent.OS)" | "$(CARGO_PROFILE_DEV_DEBUG)" | Cargo.lock'
           restoreKeys: |
-            cargo-target | "$(Agent.OS)"
+            cargo-target | "$(Agent.OS)" | "$(CARGO_PROFILE_DEV_DEBUG)"
           path: target
       # Installs the channel + components pinned by rust-toolchain.toml on first
       # cargo use; print what resolved for easier debugging.
@@ -73,6 +90,8 @@ jobs:
         displayName: Show Rust toolchain
       - script: ./scripts/ci/rust-lint.sh
         displayName: Lint (rustfmt + clippy)
+      - script: ./scripts/ci/install-nextest.sh
+        displayName: Install cargo-nextest
       - script: ./scripts/ci/rust-test.sh
         displayName: Build & test
 
@@ -120,7 +139,9 @@ jobs:
       - script: rustup show
         displayName: Show Rust toolchain
       # `bash` runs Git Bash on the Windows agent, so the one script drives every
-      # platform identically.
+      # platform identically — including the cross-platform nextest install.
+      - bash: ./scripts/ci/install-nextest.sh
+        displayName: Install cargo-nextest
       - bash: ./scripts/ci/binary-smoke.sh
         displayName: Release build & smoke
 
@@ -132,7 +153,7 @@ jobs:
       - task: UseNode@1
         displayName: Use Node 22
         inputs:
-          version: 22.x
+          version: 22.23.1
       - task: Cache@2
         displayName: Cache npm
         inputs:
@@ -151,9 +172,19 @@ jobs:
       - task: UseNode@1
         displayName: Use Node 22
         inputs:
-          version: 22.x
+          version: 22.23.1
       - script: ./scripts/ci/specs-lint.sh
         displayName: Lint specs
+
+  # Needs no toolchain and no history: the check reads the checked-out index, so
+  # a shallow clone is enough.
+  - job: frozen
+    displayName: "Frozen: test-case versions with recorded runs are unchanged"
+    steps:
+      - checkout: self
+        fetchDepth: 1
+      - script: ./scripts/ci/frozen-check.sh
+        displayName: Verify frozen directories
 
   - job: contract
     displayName: "Contract: regenerate & check for drift"
@@ -170,7 +201,7 @@ jobs:
       - task: UseNode@1
         displayName: Use Node 22
         inputs:
-          version: 22.x
+          version: 22.23.1
       - task: Cache@2
         displayName: Cache cargo home
         inputs:
@@ -181,9 +212,15 @@ jobs:
       - task: Cache@2
         displayName: Cache cargo target
         inputs:
-          key: 'cargo-target | "$(Agent.OS)" | Cargo.lock'
+          # The debug level is part of the key: artifacts built at a different
+          # `debug` setting have a different fingerprint, so cargo rebuilds them
+          # but never evicts the originals — restoring a full-debug cache into a
+          # line-tables build would leave both in `target/` and put the disk
+          # straight back over the edge. Keying on it namespaces each setting to
+          # its own cache instead.
+          key: 'cargo-target | "$(Agent.OS)" | "$(CARGO_PROFILE_DEV_DEBUG)" | Cargo.lock'
           restoreKeys: |
-            cargo-target | "$(Agent.OS)"
+            cargo-target | "$(Agent.OS)" | "$(CARGO_PROFILE_DEV_DEBUG)"
           path: target
       - script: rustup show
         displayName: Show Rust toolchain

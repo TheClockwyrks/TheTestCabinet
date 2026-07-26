@@ -1,4 +1,4 @@
-// Coil — all drawing (specs/overview.md palette, specs/flow.md HUD & screens).
+// Coil — all drawing (specs/overview.md palette, specs/ui.md HUD & screens).
 //
 // The board, walls, grid, pellet, obstacles, HUD, menus, and overlays are drawn in code in
 // the Coil palette; the SNAKE is drawn entirely from the produced sprite set — the head
@@ -122,7 +122,7 @@ function drawBoard(ctx: CanvasRenderingContext2D, sim: Sim, view: RenderView): v
     ctx.restore();
   }
 
-  drawPellet(ctx, sim.pellet, view.time);
+  if (sim.pellet) drawPellet(ctx, sim.pellet, view.time);
   drawSnake(ctx, sim, view.biteFrame);
 }
 
@@ -401,7 +401,7 @@ function drawTitle(ctx: CanvasRenderingContext2D, game: Game, view: RenderView):
 }
 
 // A small dim coil + pellet behind the tagline, so the title has board furniture without a
-// full board (specs/flow.md: "The board furniture … may show dimmed behind the menu").
+// full board (specs/ui.md: "The board furniture … may show dimmed behind the menu").
 function drawTitleFurniture(ctx: CanvasRenderingContext2D, _time: number): void {
   if (!ASSETS) return;
   ctx.save();
@@ -515,6 +515,52 @@ function drawPausePanel(ctx: CanvasRenderingContext2D, game: Game): void {
   drawMenuList(ctx, items, game.menuIndex, cx, py + 168, 50, 26);
 }
 
+// ---- debug overlay ------------------------------------------------------------
+//
+// A read-only diagnostic layer toggled by the backtick key (specs/instrumentation.md). It
+// reports the same facts snapshot() does and never changes gameplay — it only draws. Kept
+// visually plain and clearly separate from the HUD.
+function drawDebugOverlay(ctx: CanvasRenderingContext2D, game: Game): void {
+  const s = game.debugSnapshot();
+  const head = s.snake[0];
+  const lines: string[] = [
+    `screen  ${s.screen}   mode ${s.mode}`,
+    `score   ${s.score}   best ${s.best}`,
+    `combo   x${s.combo}   window ${s.comboWindow.toFixed(2)}s`,
+    `dir     ${s.dir}   length ${s.length}`,
+    `head    ${head ? `${head.col},${head.row}` : "-"}`,
+    `pellet  ${s.pellet ? `${s.pellet.col},${s.pellet.row}` : "none"}`,
+    `ticks   ${s.ticks}   sim ${s.simTime.toFixed(2)}s`,
+  ];
+
+  const padX = 14;
+  const headerH = 24;
+  const lineH = 20;
+  const w = 320;
+  const x = 24;
+  const y = 130;
+  const h = padX * 2 + headerH + lines.length * lineH;
+
+  ctx.save();
+  ctx.fillStyle = "rgba(7,9,14,0.82)";
+  roundRect(ctx, x, y, w, h, 8);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(42,53,80,0.9)";
+  ctx.lineWidth = 1;
+  roundRect(ctx, x, y, w, h, 8);
+  ctx.stroke();
+  ctx.restore();
+
+  // text() draws with an alphabetic baseline, so offset each line by its size to sit it
+  // inside the panel from the top.
+  text(ctx, "DEBUG", x + padX, y + padX + 12, { size: 12, color: C.obstacle, bold: true, spacing: 4 });
+  let ly = y + padX + headerH + 15;
+  for (const line of lines) {
+    text(ctx, line, x + padX, ly, { size: 15, color: C.textDim });
+    ly += lineH;
+  }
+}
+
 // ---- top-level frame ----------------------------------------------------------
 
 export function render(ctx: CanvasRenderingContext2D, game: Game, view: RenderView): void {
@@ -546,4 +592,6 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, view: RenderVi
       drawEndPanel(ctx, game, game.state === "cleared");
       break;
   }
+
+  if (game.debugOverlay) drawDebugOverlay(ctx, game);
 }

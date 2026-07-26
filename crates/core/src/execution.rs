@@ -23,6 +23,14 @@ use crate::test_case::{SpecFile, TestCaseVersion, Variant, WorkspaceFile};
 /// in-container paths.
 pub const WORKSPACE_DIR: &str = "/work";
 
+/// The workspace-relative folder a game-jam run's *previous entries* are seeded
+/// into: the gameplay READMEs of earlier runs of the same jam with the same harness
+/// and model. It is reference material for building something distinct, not part of
+/// the submission, so seeding git-ignores it (see [`crate::seeding`]). Both the
+/// seeder (which writes it) and the prompt (which points the model at it) name it
+/// through this constant so they never drift.
+pub const GAME_JAM_PRIOR_ENTRIES_DIR: &str = "previous-entries";
+
 /// A request to seed a run's repository.
 ///
 /// Seeding creates a fresh git repository with a clean initial commit, no
@@ -53,6 +61,13 @@ pub struct SeedRequest<'a> {
     /// `draw.config.json` so the drawing binary streams each frame back to the
     /// host; `None` for an unobserved run, which seeds no live endpoint.
     pub live_preview: Option<&'a LivePreviewEndpoint>,
+    /// Earlier game-jam entries — the gameplay READMEs of prior runs of the same
+    /// jam with the same harness and model — to seed as reference material so this
+    /// run can build something distinct. Seeded into
+    /// [`GAME_JAM_PRIOR_ENTRIES_DIR`]
+    /// and deliberately git-ignored (they are context, not part of the submission).
+    /// Empty for every non-game-jam run and for a jam's first run.
+    pub prior_game_jam_entries: &'a [crate::run_record::PriorGameJamEntry],
 }
 
 /// A seeded run repository, ready to be copied into a container.
@@ -87,11 +102,25 @@ pub struct ContainerSpec {
     /// Secrets (such as API keys) supplied to the container. These must never be
     /// written into the seeded repository or committed anywhere.
     pub secrets: BTreeMap<String, String>,
+    /// Non-secret environment variables supplied to the container, alongside
+    /// [`secrets`](Self::secrets).
+    ///
+    /// Kept separate from `secrets` precisely because these carry nothing
+    /// sensitive: they are safe to log, to record on a tracing span, and to show
+    /// in a diagnostic. Today this channel carries the harness telemetry
+    /// configuration (the `OTEL_*` variables and the `TRACEPARENT` that links a
+    /// harness's spans into the run's trace); see
+    /// [`harness_telemetry`](crate::harness_telemetry). A value that *is*
+    /// sensitive — an OTLP authorization header, for instance — belongs in
+    /// `secrets` instead.
+    pub env: BTreeMap<String, String>,
     /// Files materialized inside the container before the session, at absolute
     /// paths under the run user's home. This is how subscription-authentication
-    /// credential files are made visible to a harness's CLI; it is empty for an
-    /// API-key run. Like [`secrets`](Self::secrets), these may carry credentials
-    /// and must never be written into the seeded repository or committed.
+    /// credential files are made visible to a harness's CLI, and how a harness
+    /// that configures telemetry from a file rather than the environment (Codex,
+    /// OpenCode) gets that file. Like [`secrets`](Self::secrets), these may carry
+    /// credentials and must never be written into the seeded repository or
+    /// committed.
     pub files: Vec<ContainerFile>,
     /// Whether the container is granted outbound network access. Isolation
     /// protects the host filesystem and other runs, not the network, so this is
@@ -216,18 +245,27 @@ pub trait ContainerRuntime: Send + Sync {
     /// Run a command inside the container, forwarding each output line to `sink`
     /// as it is produced, and return the full captured output once it finishes.
     ///
+    /// When `idle_timeout` is set, a command that produces no output at all for
+    /// that long is killed and the returned output is flagged
+    /// [`idle_timed_out`](ExecOutput::idle_timed_out); see
+    /// [`exec_stream`](crate::exec_stream) for why that bound exists.
+    ///
     /// The default implementation falls back to the buffered [`exec`] and replays
     /// the captured output to the sink afterwards, so a runtime that does not
-    /// stream still drives observers correctly. Runtimes that can stream override
-    /// this to deliver lines live.
+    /// stream still drives observers correctly. It cannot observe idleness — the
+    /// output only arrives once the command has already finished — so it ignores
+    /// `idle_timeout`. Runtimes that can stream override this to deliver lines
+    /// live and to honour the watchdog.
     ///
     /// [`exec`]: ContainerRuntime::exec
     async fn exec_streamed(
         &self,
         container: &ContainerHandle,
         command: &[String],
+        idle_timeout: Option<Duration>,
         sink: &mut dyn OutputSink,
     ) -> Result<ExecOutput> {
+        let _ = idle_timeout;
         let output = self.exec(container, command).await?;
         for line in output.stdout.lines() {
             sink.on_line(OutputStream::Stdout, line);
@@ -279,6 +317,15 @@ pub struct ExecOutput {
     pub stdout: String,
     /// Captured standard error.
     pub stderr: String,
+    /// Whether the command was killed by the idle watchdog because it produced
+    /// no output for
+    /// [`HARNESS_IDLE_TIMEOUT`](crate::exec_stream::HARNESS_IDLE_TIMEOUT) rather
+    /// than exiting on its own.
+    ///
+    /// A hung command has no meaningful exit code, so this is what distinguishes
+    /// "the harness stopped responding" from "the harness failed" — see
+    /// [`exec_stream`](crate::exec_stream).
+    pub idle_timed_out: bool,
 }
 
 /// The collected output of a finished run.

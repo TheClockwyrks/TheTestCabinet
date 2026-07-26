@@ -3,9 +3,9 @@
 //! `maps/mirror-32x16.toml` map file.
 //!
 //! Run from the crate root: `cargo run -p foray-core --bin gen-artifacts`. A test
-//! ([`crate::tests`]) asserts the on-disk copies match what this would emit, so
-//! the schemas can never drift from the `World`/`Action` types and the committed
-//! map can never drift from the generator.
+//! in the `foray-core` library's own test suite asserts the on-disk copies match
+//! what this would emit, so the schemas can never drift from the `World`/`Action`
+//! types and the committed map can never drift from the generator.
 
 use std::path::Path;
 

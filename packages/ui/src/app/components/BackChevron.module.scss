@@ -1,0 +1,23 @@
+@use "../styles/tokens" as t;
+@use "../styles/halo" as h;
+
+// The back chevron: an accent glyph sized to the run/test-case detail titles it
+// sits beside (a touch smaller than the larger model title, which reads well),
+// carrying the dark readability halo so it lifts off the animated backdrop.
+// Hover deepens the glow as the interactive affordance, matching the detail-page
+// title links.
+.back {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  font-size: t.$font-xl;
+  line-height: 1;
+  color: t.$color-accent;
+  @include h.halo;
+
+  &:hover {
+    text-decoration: none;
+    text-shadow: var(--ttc-glow);
+  }
+}

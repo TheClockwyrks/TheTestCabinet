@@ -1,0 +1,87 @@
+@use "../../../styles/tokens" as t;
+
+// The Reviewing tab body: the read-only grading rubric (scoring domains, the
+// rating scale, and the reviewer checklist) for a case's selected variant. The
+// checklist itself is styled by the shared ReviewChecklist component; these styles
+// cover only the surrounding rubric chrome.
+
+.intro {
+  margin: 0;
+  color: t.$color-text-muted;
+}
+
+// A rubric section (Scoring domains, Rating scale) set off from the intro and the
+// checklist below it, matching the spacing the Verdict tab puts between its own
+// domains block and checklist.
+.rubric {
+  margin-top: t.$space-xl;
+}
+
+.rubricHeading {
+  font-size: t.$font-md;
+  margin: 0 0 t.$space-sm;
+}
+
+.rubricNote {
+  margin: 0 0 t.$space-sm;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+// A definition list of term + description rows (a domain and what it covers, or a
+// rating tier and what it means), each with the same left rule the Verdict tab's
+// domain rows carry so the two surfaces read as kin.
+.defList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+.defRow {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  font-size: t.$font-sm;
+  border-left: 3px solid t.$color-border;
+  padding: t.$space-xs 0 t.$space-xs t.$space-md;
+}
+
+// A rating-scale row carries its tier's own color on the left rule (the same
+// `--tcab-rating-*` tokens the RatingBadge uses as its primary color), so the scale
+// reads as the color-coded ladder it is rather than a stack of neutral rules. Only
+// rating rows set `data-rating`; the scoring-domain rows keep the default border.
+.defRow[data-rating] {
+  border-left-color: var(--rating-color);
+}
+.defRow[data-rating="flawless"] {
+  --rating-color: var(--tcab-rating-flawless);
+}
+.defRow[data-rating="great"] {
+  --rating-color: var(--tcab-rating-great);
+}
+.defRow[data-rating="passable"] {
+  --rating-color: var(--tcab-rating-passable);
+}
+.defRow[data-rating="scuffed"] {
+  --rating-color: var(--tcab-rating-scuffed);
+}
+.defRow[data-rating="broken"] {
+  --rating-color: var(--tcab-rating-broken);
+}
+
+.defTerm {
+  color: t.$color-text;
+  font-weight: 600;
+}
+
+.defDesc {
+  color: t.$color-text-muted;
+}
+
+.empty {
+  margin: t.$space-lg 0 0;
+  color: t.$color-text-muted;
+}

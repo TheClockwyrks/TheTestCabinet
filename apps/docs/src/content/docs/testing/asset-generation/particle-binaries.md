@@ -133,6 +133,52 @@ into their emitters and forces, so there is no separate baked artifact a model
 could produce outside the tool. The only output is the system the model built
 through the binary; every consumer simulates it.
 
+## The live-particle budget
+
+Because every consumer **simulates the system live, every frame, forever**, the
+number of particles alive at once is a cost the reviewer's browser and the
+consuming game pay continuously — and it is a cost the authoring flags hide.
+Nothing in `--rate 20000 --lifetime 1600` announces that it means **thirty-two
+thousand** live particles, and the binary's own preview cannot show the
+difference, because it draws at most 8,000 billboards a frame however many the
+system holds. An effect can look right in the run and stutter in the review UI.
+
+So the binaries enforce a **hard ceiling of 10,000 live particles** for the whole
+system, at **authoring time**. Every operation is projected forward to the peak
+live count the system would settle at, and one that would push it over the
+ceiling is **rejected** — nothing is recorded, and the tool reports the
+projection, the emitters spending it, and the flags to turn down:
+
+```
+particle-3d: this system would hold about 35200 particles alive at once, over the
+10000-particle budget an effect has to fit in (every consumer simulates the system
+live, every frame). ...
+
+What the system spends its particles on:
+  flood                ~32000 live
+  fall                 ~3200 live
+```
+
+The projection mirrors the simulator's own rules, as an **upper bound**:
+
+- a **rate** emitter holds roughly `rate x lifetime` particles alive
+  (`--rate 2000 --lifetime 1500` is ~3000 live), counting a `--lifetime-spread`
+  at its maximum;
+- a **burst** holds its `--burst` count — re-fired every cycle on a looping
+  timeline, so a lifetime longer than the loop window overlaps into itself;
+- a **sub-emitter** child is projected from the traffic its parent hands it (one
+  child burst per parent death, or a trail along every live parent particle),
+  generation by generation, so a chain that multiplies is caught where it
+  multiplies rather than at render.
+
+This is a ceiling on **count**, not on density: a fuller-looking effect comes
+from particle **size, opacity, and color**, which cost nothing per frame. Ten
+thousand particles is already denser than any preview a model can see. The
+[simulator](#the-effect-is-simulated-live-not-baked) and the
+[browser runtime](/components/particle-runtime/overview/) enforce the same
+ceiling as a hard backstop — a system that reaches it another way stops spawning
+rather than growing without bound.
+
 ## How a call records; rendering is on request
 
 Each operation **only appends itself to the run's operation log** — that is all

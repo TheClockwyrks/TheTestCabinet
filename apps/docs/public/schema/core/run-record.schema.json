@@ -245,6 +245,29 @@
       "required": ["joint", "keyframes"],
       "type": "object"
     },
+    "Assertion": {
+      "description": "One assertion a validation script checked on its way to an [`AutoVerdict`] — a\nsingle mechanical fact, recorded pass or fail, exactly like one `assert` in a\ncode test framework. Both the passing and the failing assertions are kept, so the\nreviewer sees the full proof of what the script observed, not just the outcome.",
+      "properties": {
+        "actual": {
+          "description": "For a comparison assertion, the value actually observed. Paired with\n[`expected`](Self::expected); `None` for a bare boolean fact.",
+          "type": ["string", "null"]
+        },
+        "expected": {
+          "description": "For a comparison assertion (`expectEq`, `expectClose`, …), the value the\ncheck required — what it *should* have been. A reviewer sees this beside the\n[`actual`](Self::actual) on a failing assertion, so the mismatch is legible\nwithout the label having to bake the number in. `None` for a bare boolean\nfact (`expectOk`), which has no value pair to show.",
+          "type": ["string", "null"]
+        },
+        "label": {
+          "description": "A short human-readable statement of what was checked, phrased so it reads\ntrue when it passes — e.g. \"the ball reflects and stays on the near side\".",
+          "type": "string"
+        },
+        "pass": {
+          "description": "Whether this individual check held.",
+          "type": "boolean"
+        }
+      },
+      "required": ["label", "pass"],
+      "type": "object"
+    },
     "AssetFrameResult": {
       "description": "The regenerate result for one frame of an asset-generation run.\n\nFor a single sprite this is the whole run's one frame (index 0); for a sprite\nsheet there is one per declared frame, each a completely separate file. One\nsignal comes out of each, recorded rather than gated (the same stance as\nend-to-end [checks](CheckResult)): the [divergence](Self::cheat_divergence)\nbetween the regenerated image and the pixels the model left on disk — a high\ndivergence means the model drew outside the tool. There is no target image and\nno fidelity score; the regenerated image is reviewed against the brief.",
       "properties": {
@@ -444,6 +467,29 @@
         }
       ]
     },
+    "AutoVerdict": {
+      "description": "One auto-decided checklist verdict produced by a [`DebugScriptResult`].\n\nAuto verdicts are strictly binary — an objective mechanic either fired or it did\nnot — so this carries a plain [`pass`](Self::pass) rather than the graded\n`VerdictStatus` a human review uses. The reviewer UI pre-fills the checklist from\nthese (shown desaturated to mark them auto-set) and the reviewer may override any.\n\nThe verdict is decided by a list of [`Assertion`]s — the individual mechanical\nfacts the script checked, each recorded pass or fail exactly as a code test\nframework reports every `assert`. The verdict [`pass`](Self::pass)es iff every\nassertion passed. The assertions are the machine-readable *proof* of the verdict:\nthey show a reviewer precisely what was checked and which parts held, rather than\na single opaque pass/fail.",
+      "properties": {
+        "assertions": {
+          "default": [],
+          "description": "The individual assertions the script checked to reach this verdict — the\nproof, both the parts that held and the parts that failed. Empty only for a\nlegacy script that reported a bare pass with no assertions.",
+          "items": {
+            "$ref": "#/$defs/Assertion"
+          },
+          "type": "array"
+        },
+        "id": {
+          "description": "The verdict id this decides — the [review item](crate::test_case::ReviewItem)'s\nown id, or the composite `<item>.<sub-item>` id for a sub-item.",
+          "type": "string"
+        },
+        "pass": {
+          "description": "Whether the mechanic passed. `true` earns the item (or sub-item) its weight.\nSet by the script from its assertions — true iff every [`Assertion`] passed.",
+          "type": "boolean"
+        }
+      },
+      "required": ["id", "pass"],
+      "type": "object"
+    },
     "AxisSpec": {
       "description": "A principal axis a [`JointSpec`] acts about or along.",
       "oneOf": [
@@ -506,6 +552,93 @@
           "type": ["number", "null"]
         }
       },
+      "type": "object"
+    },
+    "DebugScriptOutput": {
+      "description": "A single media artifact a [`DebugScriptResult`] declares and produces.\n\nThe *actual* media (from the model's build) is synthesized per run and recorded\nhere by presence. Its *baseline* counterpart — the same output driven from the\ncase's reference implementation — is a fixed property of the case *version*,\nsynthesized once at publish-reference time and served case-scoped (keyed by\nslug/version/variant/item/output), so it is **not** recorded per run: the reviewer\nUI resolves the baseline from the catalog, not the run tree. The actual bytes live\nin the collected implementation tree and are addressed through the run's\nvalidation-media route; this records only presence and the metadata a UI needs to\nlay the pair out.",
+      "properties": {
+        "actualPresent": {
+          "description": "Whether the model's build produced this output (the *actual* media).",
+          "type": "boolean"
+        },
+        "id": {
+          "description": "The output id, unique within its script — the media file's stem.",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/MediaKind",
+          "description": "Whether this output is an image or a video clip."
+        },
+        "name": {
+          "description": "Human-readable display name, carried through from the declared output.",
+          "type": "string"
+        }
+      },
+      "required": ["id", "name", "kind", "actualPresent"],
+      "type": "object"
+    },
+    "DebugScriptResult": {
+      "description": "The outcome of driving one review item's **debug script** against the build's\n[instrumentation](https://…/testing/end-to-end/instrumentation/) — the reporter-side\nautomation a case authors to decide an objective review item without a human.\n\nThe script drives the build's declared debug-API handle (see\n[`crate::test_case::Instrumentation`]) to set up a scenario, step the real\nsimulation forward, and read the outcome back, producing (a) an auto **verdict**\nper verdict id the item covers and (b) the declared media **outputs** — captured\ntwice, once from the model's build (the *actual*) and once from the case's\nreference implementation (the *baseline*), for the reviewer's side-by-side.\n\nA script that could be run but did not complete against a conformant build (a\nmissing handle, a thrown call, a malformed return, or a declared output the build\nnever produced) is recorded with [`ran`](Self::ran) `false`. That **fails the\nchecklist point the script backs** — a failed [`verdicts`](Self::verdicts) entry\nis synthesized for it, pre-filled into the review like any auto verdict and\noverridable by the reviewer — rather than failing the whole run: a build with a\nbroken debug API is still reviewed, and is scored down by exactly the points its\nchecks could not answer. A script the host could not run *at all* (no browser) is\nnot recorded here — that degrades like a [check](CheckResult).",
+      "properties": {
+        "categoryTitle": {
+          "default": "",
+          "description": "The backing category/item's title, so the script list can group each result\nunder its category. Equal to [`Self::title`] for a whole-item driver.",
+          "type": "string"
+        },
+        "detail": {
+          "default": null,
+          "description": "Detail about a failed or degraded script (the handle was missing, a call\nthrew, an output was not produced), or `None` when it ran clean.",
+          "type": ["string", "null"]
+        },
+        "gates": {
+          "default": true,
+          "description": "Whether a failed drive of this script **gates** the run. `true` for every\nordinary scripted point; `false` only when the backing review point is excluded\nfrom scoring for the version (an [`Erratum`](crate::test_case::Erratum) with\n[`exclude_from_score`](crate::test_case::Erratum::exclude_from_score) links its\nverdict id). An excluded point is still driven and its media captured, but it\nis not scored, so a `ran == false` on it costs nothing. Defaults to `true` so a\nresult recorded before the field existed still counts.",
+          "type": "boolean"
+        },
+        "itemId": {
+          "description": "The id of the [review item](crate::test_case::ReviewItem) this script backs.",
+          "type": "string"
+        },
+        "outputs": {
+          "default": [],
+          "description": "The media outputs the script declares, each captured from the model's build\n(the *actual*). The matching *baseline* media is a case property served\ncase-scoped, not recorded per run. Empty when the script declares none.",
+          "items": {
+            "$ref": "#/$defs/DebugScriptOutput"
+          },
+          "type": "array"
+        },
+        "preconditionUnmet": {
+          "default": false,
+          "description": "Whether a `false` [`ran`](Self::ran) records an UNMET PRECONDITION rather than\na debug-API contract failure.\n\nA script's `arrange` often searches the model's own world for a spot to pose\nits scenario — a blind corner in an invented maze, a legal build tile. That\nsearch can come up empty against a fully conformant build: every call was\nanswered correctly, there was simply no such spot. That is INCONCLUSIVE about\nthe model, so it is held apart from a genuine contract failure: no failed\nverdict is synthesized for it and the point is left for the reviewer to decide\nby hand. Only ever `true` alongside `ran == false`.",
+          "type": "boolean"
+        },
+        "ran": {
+          "description": "Whether the script executed to completion against a **conformant** build:\nthe handle was installed, every call returned, the return value was\nwell-formed, and every declared output was produced. `false` records a\ndebug-API contract failure, which fails the checklist point this script backs\n(unless it was only a [precondition](Self::precondition_unmet) that went\nunmet).",
+          "type": "boolean"
+        },
+        "script": {
+          "description": "The reporter-side script path that was run (relative to the case version\nfolder), for display — e.g. `validation/ball-spin.mjs`.",
+          "type": "string"
+        },
+        "subItemId": {
+          "default": null,
+          "description": "The id of the sub-item this script backs when it is a per-sub-item driver, or\n`None` when the whole item is validated. Together with [`Self::item_id`] it forms\nthe verdict id (`<item>.<sub>` or `<item>`) that keys this result's auto verdict\n(see [`AutoVerdict::id`]) and its media (see [`crate::validation_media_name`]).",
+          "type": ["string", "null"]
+        },
+        "title": {
+          "description": "The verdict unit's own title, carried through for display in the script list —\nthe sub-item's title for a per-sub-item driver, or the review item's title when\nthe whole item is validated. Carries no category prefix.",
+          "type": "string"
+        },
+        "verdicts": {
+          "default": [],
+          "description": "The auto verdicts the script decided. A per-unit driver decides its one verdict\n(this result's verdict id), so this normally carries a single entry; it is kept a\nlist because a script returns a `verdicts` map and the driver preserves whatever\nids it emits. Empty when the script did not run.",
+          "items": {
+            "$ref": "#/$defs/AutoVerdict"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["itemId", "title", "script", "ran"],
       "type": "object"
     },
     "DriveKindSpec": {
@@ -921,11 +1054,26 @@
       "required": ["system", "emitterCount"],
       "type": "object"
     },
+    "PerformanceCaseKind": {
+      "description": "Which phase of the held-out scored set a case belongs to.\n\nA performance run's scored set is run in two phases. **Smoke** cases are a cheap\ncorrectness pre-flight — tiny scenarios that each exercise one behaviour in\nisolation (a belt, a side-load, a splitter, an inserter, an assembler). Every\nsmoke case must reproduce the oracle before any **stress** case runs; if one\nfails, the stress cases are skipped and counted as failed, so a broken engine is\ncaught in milliseconds rather than after burning through the large scenarios.\nSmoke cases are graded on **correctness alone** — their fuel is not metered into\nthe score. **Stress** cases are the large held-out scenarios whose consumed fuel,\nsummed, is the comparable performance result.",
+      "oneOf": [
+        {
+          "const": "smoke",
+          "description": "A correctness pre-flight case: it gates the stress cases and its fuel is not\nscored.",
+          "type": "string"
+        },
+        {
+          "const": "stress",
+          "description": "A scored stress case: its consumed fuel counts toward the run's total. The\ndefault, so records and manifests written before smoke tests existed read as\nstress cases.",
+          "type": "string"
+        }
+      ]
+    },
     "PerformanceCaseResult": {
       "description": "The result of scoring one held-out input case of a performance run.",
       "properties": {
         "correct": {
-          "description": "Whether the engine produced the oracle's exact answer for this case.",
+          "description": "Whether this case **passed**: the oracle's exact answer produced *within*\nthe fuel ceiling. An answer that is correct but over the ceiling is not a\npass — see [`Self::over_ceiling`].",
           "type": "boolean"
         },
         "detail": {
@@ -940,7 +1088,7 @@
           "type": ["integer", "null"]
         },
         "fuel": {
-          "description": "The fuel the engine consumed on this case. `Some` whenever the engine ran\n(recorded for diagnostics even when incorrect); `None` when the engine could\nnot be run on this case at all (a host failure).",
+          "description": "The fuel the engine consumed on this case. `Some` whenever the engine ran to\ncompletion — including an over-ceiling run, whose consumed fuel is exactly\nthe overshoot to display; `None` when the engine could not be run or\nexhausted even its runway (there is no finished total to report).",
           "format": "uint64",
           "minimum": 0,
           "type": ["integer", "null"]
@@ -948,9 +1096,36 @@
         "input": {
           "description": "The case-relative path of the input instance this result records under, so a\nreviewer can tie the result back to its case.",
           "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/PerformanceCaseKind",
+          "default": "stress",
+          "description": "Which phase this case belongs to: a correctness pre-flight [smoke\ntest](PerformanceCaseKind::Smoke) or a scored [stress\ncase](PerformanceCaseKind::Stress). Defaults to `Stress` for records written\nbefore smoke tests existed."
+        },
+        "overCeiling": {
+          "description": "The engine produced the oracle's exact answer but consumed **more fuel than\nthe ceiling** (it finished only because the case granted a\n[runway](crate::test_case::PerformanceCase)). The answer is right, so it is\nnot \"incorrect\", but it does not pass — the point of recording it is to show\n*how far* over the ceiling the engine ran, with playback still available.\nMutually exclusive with [`Self::correct`]. `false` for a passing, wrong, or\nunrunnable case.",
+          "type": "boolean"
+        },
+        "scenarioJson": {
+          "default": null,
+          "description": "Run-root-relative path to the published, browser-playable scenario, or\n`None` when the case's input could not be read.\n\nBrowser playback loads the run's own engine module (see\n[`PerformanceResult::module_wasm`]) and steps it over this scenario to\nreconstruct the factory the submission actually computed — a run records only\na handful of scheduled snapshots, thousands of ticks apart, so there is\nnothing to interpolate between. Publishing the scenario alongside the result\nis what feeds that playback, exactly as an adversarial run publishes its\n[`replay_json`](AdversarialReplay::replay_json).",
+          "type": ["string", "null"]
+        },
+        "skipped": {
+          "default": false,
+          "description": "The case was **not run** because a smoke test failed first, so the stress\ncases were skipped to save the fuel and wall-clock of running them. It counts\nas a failure (the run is incorrect), but is distinct from an engine that ran\nand produced the wrong answer — the engine never saw this case. Only ever\n`true` for a [stress](PerformanceCaseKind::Stress) case; defaults to `false`.",
+          "type": "boolean"
+        },
+        "snapshots": {
+          "default": [],
+          "description": "The per-snapshot checksums the submission actually produced, in schedule\norder. Empty when the engine could not be run at all.\n\nRecorded so [browser playback](crate::validation) can *prove* what it is\ndrawing: playback loads the run's **own** engine module and steps it, and at\neach scheduled snapshot tick can compare the module's checksum against the one\nrecorded here — a cheap assertion that the wasm it is animating is the engine\nthe run graded, not a stand-in.\n\n`#[serde(default)]` because run records written before this field existed\nmust still load.",
+          "items": {
+            "$ref": "#/$defs/PerformanceSnapshotCheck"
+          },
+          "type": "array"
         }
       },
-      "required": ["input", "correct"],
+      "required": ["input", "correct", "overCeiling"],
       "type": "object"
     },
     "PerformanceResult": {
@@ -964,12 +1139,22 @@
           "type": "array"
         },
         "correct": {
-          "description": "Whether **every** scored input case produced the oracle's exact answer.",
+          "description": "Whether **every** scored input case passed — the oracle's exact answer\nproduced *within* the fuel ceiling.",
           "type": "boolean"
         },
         "detail": {
           "default": null,
           "description": "Detail about a run that could not be scored at all (for example a missing or\nunloadable module), or `None` when every case ran.",
+          "type": ["string", "null"]
+        },
+        "fuelLimit": {
+          "description": "The per-scenario fuel **pass line** (`[sandbox].fuel_limit`), so a viewer\ncan render a case's overshoot (\"26% over the ceiling\") without the manifest.\nA case may run past it on its [runway](crate::test_case::PerformanceCase)\nand still record its fuel; the pass line is what that fuel is judged against.\n`None` on a run that could not be scored at all.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "moduleWasm": {
+          "description": "Run-root-relative path to the published **engine module** — the submission's\nown `engine.wasm`, the one artifact a performance run authoritatively\nproduces — or `None` when the build emitted no module.\n\nPublished so browser playback can load and step the **run's own engine** over\neach case's [scenario](PerformanceCaseResult::scenario_json), reconstructing\nthe factory the submission actually computed (divergences and all) rather than\nre-simulating with the reference engine. There is one module per run — every\ncase's playback drives the same wasm — so it is recorded here at the run\nlevel, not per case. The module built by the buildkit exports the tick-at-a-\ntime playback ABI the renderer drives, alongside the scored `simulate` entry.",
           "type": ["string", "null"]
         },
         "totalFuel": {
@@ -980,6 +1165,23 @@
         }
       },
       "required": ["correct", "cases"],
+      "type": "object"
+    },
+    "PerformanceSnapshotCheck": {
+      "description": "One scored snapshot: the tick it was taken at and the checksum the submission\nproduced there. The checksum is the canonical\n[`Snapshot::checksum`](lattice_core::state::Snapshot) — the validator's whole\ncomparison key — so a recorded run carries the same evidence the grader used.",
+      "properties": {
+        "checksum": {
+          "description": "The checksum the submission produced, formatted `fnv1a64:%016x`.",
+          "type": "string"
+        },
+        "tick": {
+          "description": "The tick this snapshot was taken at.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["tick", "checksum"],
       "type": "object"
     },
     "ProofResult": {
@@ -994,7 +1196,7 @@
           "type": ["string", "null"]
         },
         "id": {
-          "description": "The proof id this result records under (matches a declared\n[`ProofFile`](crate::test_case::ProofFile)).",
+          "description": "The proof id this result records under (matches a declared\n[`ProofFile`]).",
           "type": "string"
         },
         "kind": {
@@ -1071,7 +1273,7 @@
       "type": "object"
     },
     "RunState": {
-      "description": "The terminal state of a run — the single axis that decides publishability and\nhow a run scores. Classified objectively at the point a run ends: a clean\nharness exit splits into [`Completed`](RunState::Completed) vs\n[`Catastrophic`](RunState::Catastrophic) on whether the output could be\nevaluated; a run stopped before the harness finished is\n[`TimedOut`](RunState::TimedOut) (the runtime cap) or\n[`Infrastructure`](RunState::Infrastructure) (everything else).",
+      "description": "The terminal state of a run — the single axis that decides publishability and\nhow a run scores. Classified objectively at the point a run ends: a clean\nharness exit splits into [`Completed`](RunState::Completed) and\n[`Catastrophic`](RunState::Catastrophic) (nothing to evaluate — the output\nnever built or loaded);\na harness that exits **non-zero** is a\n[`HarnessError`](RunState::HarnessError) and one that stops responding\naltogether is [`Hung`](RunState::Hung); a run stopped before the harness\nfinished is [`TimedOut`](RunState::TimedOut) (the runtime cap) or\n[`Infrastructure`](RunState::Infrastructure) (everything else).",
       "oneOf": [
         {
           "const": "completed",
@@ -1080,7 +1282,7 @@
         },
         {
           "const": "catastrophic",
-          "description": "The harness exited cleanly — the model claimed completion — but the produced\noutput did not build/load and could not be evaluated. The *model* is the\nreason: a catastrophic failure is real signal at the benchmark's edge, so it\nis publishable (carrying its broken source), but it has no review checklist\nto score and is reported as a separate catastrophic-failure statistic.",
+          "description": "The harness exited cleanly — the model claimed completion — but the produced\noutput did not build/load, so there is nothing to evaluate and **no playable\nbuild**. The *model* is the reason: a catastrophic failure is real signal at\nthe benchmark's edge, so it is publishable (carrying its broken source), but\nit has no review checklist to score and is reported as a separate\ncatastrophic-failure statistic.\n\nReserved for a total failure to produce a runnable artifact. An output that\nbuilds and loads is reviewable however badly it behaves: a missing or\nnon-conformant debug API fails the individual checklist points its validation\nscripts back (see\n[`DebugScriptResult`](crate::validation::DebugScriptResult)), scoring the run\ndown rather than removing it from review.",
           "type": "string"
         },
         {
@@ -1089,8 +1291,18 @@
           "type": "string"
         },
         {
+          "const": "harness_error",
+          "description": "The agent harness (or the orchestrator runner driving it) exited **non-zero**\n— the model drove the harness to exit early, a real and reportable signal\nabout that model. Publishable **without** a review (recorded only as a\nper-model harness-error statistic on the model page), but — unlike the other\nfailure tiers — it releases **no** source repo and no playable build: a\nharness-error run produced no evaluable output worth releasing.\n\nPublishing is never automatic: a subscription auth-token refresh also\nsurfaces here as a non-zero exit and must **not** be reported, so a human\ndecides per run (through the same publish-failures affordance the other\ntiers use) which harness errors to record.",
+          "type": "string"
+        },
+        {
+          "const": "hung",
+          "description": "The agent harness stopped producing output entirely and was killed as hung\n— it neither finished nor failed, it stalled (a provider request that never\nreturns, a subagent that never reports back).\n\nTreated exactly like a [`HarnessError`](RunState::HarnessError): publishable\n**without** a review as a per-model statistic, releasing no source repo and\nno playable build, and never published automatically. It is a distinct state\nbecause the cause is distinct — nothing exited, so there is no exit code to\nreport — and because a hung run is the one failure the Test Cabinet ends on\nits own timer rather than observing.",
+          "type": "string"
+        },
+        {
           "const": "infrastructure",
-          "description": "The Test Cabinet's own infrastructure failed: the harness binary errored or\nexited non-zero, the container would not start or pull, a pod was OOM-killed,\nor seeding / the case's init step failed. Not the model's fault — retained\nwith a diagnostic [`RunStatus::detail`] for debugging, but **never**\npublishable and excluded from every model statistic.",
+          "description": "The Test Cabinet's own infrastructure failed: the container would not start\nor pull, a pod was OOM-killed, or seeding / the case's init step failed. Not\nthe model's fault — retained with a diagnostic [`RunStatus::detail`] for\ndebugging, but **never** publishable and excluded from every model statistic.\nA harness that merely exited non-zero is a\n[`HarnessError`](RunState::HarnessError), not this.",
           "type": "string"
         }
       ]
@@ -1222,6 +1434,13 @@
           },
           "type": "array"
         },
+        "debugScripts": {
+          "description": "Per-verdict-unit debug-script results (one per validated whole item or\nsub-item), for an end-to-end run whose case mandates\n[instrumentation](DebugScriptResult) and whose items opt into automated\nvalidation. Empty when the case declares no auto-validated units\n(so an unchanged case serializes with no new field at all). Unlike the\ninformational proofs, a script that did not run costs the run the checklist\npoint it backs: see [`DebugScriptResult`].",
+          "items": {
+            "$ref": "#/$defs/DebugScriptResult"
+          },
+          "type": "array"
+        },
         "detail": {
           "description": "Detail about a fatal load failure (build failure, uncaught runtime error,\nor a missing browser that prevented capture).",
           "type": ["string", "null"]
@@ -1339,6 +1558,11 @@
         {
           "const": "full-stack",
           "description": "Build a working program that must also **produce its own assets** during the\nrun, using the asset-generation binaries (`draw`, `draw-sheet`, `particle-2d`,\n`sfx-synth`, `sfx-sample`, `music`, …) baked onto `PATH` in the full-stack run\nimage. Behaves like [`Self::EndToEnd`] in every other respect — it releases a\nsource repo, has a `[build]` table, may declare `packages`, and is judged by\nrunning the built program — but selects the full-stack image instead of the\nbare base image. See `docs/testing/full-stack/`.",
+          "type": "string"
+        },
+        {
+          "const": "game-jam",
+          "description": "Build an **entire game of any genre from a theme alone** — no spec, no\nreference mockups — that must be *playable* and *enjoyable*. Like\n[`Self::FullStack`] the model also **produces its own assets** during the\nrun (it selects the same full-stack run image), releases a source repo, has\na `[build]` table, and may declare `packages`; unlike it, a game jam seeds\nno `[[spec]]`/`[[reference]]` and is reviewed on a **graded** scale over\ngeneral categories (see [`crate::review::VerdictStatus::GRADES`]) rather\nthan pass/fail against a spec. See `docs/testing/game-jam/`.",
           "type": "string"
         },
         {
@@ -1560,6 +1784,10 @@
     "finishedAt": {
       "description": "RFC 3339 timestamp for when the run finished.",
       "type": "string"
+    },
+    "gameJamReadme": {
+      "description": "The gameplay `README.md` a **game-jam** run produced, captured verbatim from\nthe produced tree at run finish (trimmed to a sane cap). `None` for every\nother test type, and for a game-jam run that shipped no README.\n\nThis is what makes a later jam run aware of what earlier runs already built:\nthe backend serves the prior runs' READMEs (matched on the same jam, harness,\nand model) back to a new run, which seeds them and is asked to build something\ndistinct. Kept out of a run's other surfaces — it exists to brief the *next*\nrun, not to be displayed. Defaulted and omitted when absent so records written\nbefore the field existed still deserialize and non-jam records stay slim.",
+      "type": ["string", "null"]
     },
     "id": {
       "description": "A unique run ID.",

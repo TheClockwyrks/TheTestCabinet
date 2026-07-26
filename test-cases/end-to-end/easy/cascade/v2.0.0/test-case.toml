@@ -1,0 +1,632 @@
+slug = "cascade"
+# The Test Cabinet test case manifest.
+#
+# Declares, for this exact version, which files are seeded into a run, which
+# reference views are rendered and seeded as visual targets, and which validation
+# checks run. The testing harness reads this file to resolve a `TestCaseVersion`.
+
+# Human-readable display name for this test case.
+name = "Cascade"
+
+# Relative difficulty (easy | medium | hard), surfaced on the site. Cascade asks
+# for a full deck model, legal-move validation across foundations and tableau,
+# drag-and-drop of single cards and ordered runs, an auto-move to foundation, win
+# detection, a physics-driven victory animation, and the menus and states that tie
+# it together — a contained front-end build, so it sits at easy.
+difficulty = "easy"
+
+# Free-form classification tags, surfaced on the site for browsing and search.
+tags = ["cards", "solitaire", "klondike", "2d"]
+
+# Short site-facing abstract, shown on the test case card. Authored inline as
+# plain text (not a file); NOT seeded into a run.
+summary = """
+A green-felt Klondike solitaire built from the classic rules, capped by a \
+physics-driven victory cascade — every foundation card bouncing off the table \
+and painting the screen when you win."""
+
+# Site-facing prose describing the case, relative to this version folder. NOT
+# seeded into a run; it exists only to introduce the case on the site.
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+
+# Handlebars prompt template, relative to this version folder. Rendered per run
+# (with the seeded specs and the selected variant) and handed to the model as the
+# build instruction. It injects absolute in-container paths via template variables
+# rather than hardcoding them.
+prompt = "prompt.hbs"
+
+# Maximum wall-clock runtime, in hours, for the harness session before the run is
+# stopped. Cascade is a medium build with several interacting systems (rules,
+# drag-and-drop, the win animation), so two hours is comfortable headroom for a
+# healthy build while still bounding a runaway session.
+max_runtime_hours = 2.0
+
+# Starter workspace seeded into the root of every run before the specs. It gives
+# the model a baseline project to build on: a `package.json` that pins
+# `playwright` as a dev dependency, so the in-container browser tooling is a
+# visible, project-local dependency. The seeded files land at the run root
+# (`workspaces/base/package.json` seeds to `package.json`).
+workspace = "workspaces/base"
+
+# Init command, run in the run container once the workspace and specs are seeded
+# and before the harness starts. It installs the workspace's dependencies and
+# downloads the Playwright Chromium build (the base image ships the OS libraries
+# Chromium links against, but not the browser binary), so the model can build and
+# verify immediately against a project-local Playwright.
+init = "npm install && npx playwright install chromium"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# Each is declared in its own file under `variants/` and listed here in order —
+# the first is the default. Both seed the same common specs; the deal mode is not a
+# separate per-variant spec but a branch inside `specs/rules.md.hbs` (and the
+# snapshot's `wasteVisibleCount` field in `specs/instrumentation.md.hbs`), rendered
+# for the selected variant before it lands, so each variant's seeded set reads as
+# one self-contained game. Each variant declares its own `title` menu mockup (the
+# menu shows the deal mode) and the review item for its turn count. The two differ
+# in the stock's turn count and how the waste is shown, so each also declares its
+# own `gameplay` mockup; only the `victory` view is common to both.
+#   - draw-three — the classic Klondike deal (turns three; the default).
+#   - draw-one   — the gentler deal (turns one; more winnable).
+# This list is a root key, so it must precede the first table header (`[build]`).
+variants = [
+  "variants/draw-three.toml",
+  "variants/draw-one.toml",
+]
+
+# How the validator (and the per-run Cloudflare Pages deploy) turns a produced
+# implementation into a served static site. These run verbatim from the build's
+# repository root: dependencies are installed, then the static build is produced
+# into `dist/`, `build/`, or `out/`. `npm ci` requires a committed
+# `package-lock.json`, so the validated build installs exactly what the deploy
+# will. Both commands are required — there are no defaults.
+[build]
+install = "npm ci"
+build = "npm run build"
+
+# Instrumentation: the debug-and-automation surface every build installs, named
+# once here so a review item's `validation` driver (and the validator that runs it)
+# knows which `window` global to drive. The seeded specification documents the same
+# handle independently as an ordinary game debug feature (see
+# specs/instrumentation.md); this entry is reporter-side and never seeded.
+[instrumentation]
+handle = "__cascade"
+# The fixed simulation rate, in Hz. Cascade's one time-driven system is the victory
+# cascade, and its debug API advances that system in whole simulation ticks
+# (`step(ticks)`) rather than in seconds, so there is no rounding and no ambiguity
+# about what a step means. This is the rate the validation runtime uses to relate
+# that exact stepping back to real time — one tick is 1/120 of a second, so a second
+# of game time is 120 ticks. It must match the timestep `specs/victory.md` mandates.
+tick_hz = 120
+
+# Common specs: seeded for EVERY variant, at the `dest` path within the run
+# workspace. The specification is decomposed by concern. The deal mode is folded
+# into `specs/rules.md.hbs` as a branch on the selected variant (turn count, waste
+# fan, and menu label), so there is no separate deal-mode spec and no per-variant
+# spec file — the whole set below is common, and a run sees the single deal mode
+# baked into its rendered `rules.md`.
+#
+# Most specs are plain Markdown, seeded verbatim. Two are `.hbs` templates, rendered
+# with the selected variant before landing: `specs/rules.md.hbs` (the deal-mode
+# branch) and `specs/instrumentation.md.hbs` (the snapshot's `wasteVisibleCount`
+# field, present only in Draw Three). Both branch on `variant.slug`.
+# A spec's `dest` defaults to its `source` (with a trailing `.hbs` stripped), so
+# these need only name the source they seed (an `.md.hbs` source seeds to the same
+# `.md` path).
+[[spec]]
+source = "specs/overview.md"
+
+[[spec]]
+source = "specs/table.md"
+
+[[spec]]
+source = "specs/rules.md.hbs"
+
+[[spec]]
+source = "specs/states.md"
+
+[[spec]]
+source = "specs/victory.md"
+
+# The debugging and automation surface every variant must expose: a deterministic,
+# seedable, render-free core; a `window.__cascade` API to drive and inspect the
+# game from code; and a read-only debug overlay. Seeded for every variant and
+# framed as an ordinary developer affordance of the game.
+[[spec]]
+source = "specs/instrumentation.md.hbs"
+
+# Proof of implementation: instructs the build to capture evidence (screenshots
+# and the cascade clip) at the exact paths the `[[proof]]` entries below declare.
+# The paths in this spec and in the `[[proof]]` entries must match.
+[[spec]]
+source = "specs/proof.md"
+
+# Common reference views, seeded for EVERY variant. Each `media` is a screenshot
+# captured (with Playwright) from this case's playable reference-impl builds — the
+# authored, correct games under `reference-impl/` — and served as-is (seeded into
+# the run as a visual target, never rendered). See `reference/README.md` for how
+# they are regenerated. References are not validated unless a `[[check]]` below
+# names them. The `title` and `gameplay` views are variant-specific (declared per
+# variant above): the menu shows the active deal mode, and the waste is fanned
+# (Draw Three) or a single card (Draw One). Only `victory` looks the same in every
+# variant, so it is common.
+[[reference]]
+view = "victory"
+media = "reference/screenshots/victory.png"
+
+# Proof of implementation, requested for every variant. Each declares a `dest`
+# path (relative to the run workspace root) the build must write a screenshot
+# or `.webm` clip to as evidence; `specs/proof.md` instructs the build to produce
+# them at exactly these paths. Validation records whether each turned up
+# (informational — a missing proof does not fail the run), and a reviewer pairs
+# each with its expected reference (see the review items that carry `reference` /
+# `proof` links below). The media
+# kind is inferred from the extension: `.png` is an image, `.webm` a video (the
+# format Playwright records natively; the public gallery transcodes it to mp4).
+[[proof]]
+id = "title"
+name = "Title menu"
+dest = "proof/title.png"
+
+[[proof]]
+id = "gameplay"
+name = "Gameplay"
+dest = "proof/gameplay.png"
+
+[[proof]]
+id = "win"
+name = "Win screen"
+dest = "proof/win.png"
+
+[[proof]]
+id = "cascade"
+name = "Victory cascade clip"
+dest = "proof/cascade.webm"
+
+# Reference-similarity checks (opt-in) are intentionally not declared. The
+# reference screenshots are seeded as illustrative examples of the screens, not
+# layouts to reproduce, so menus and screens are left to the model's design and
+# are reviewed by a human rather than scored against a baseline. The automated
+# load check still runs.
+
+# Scoring domains. A reviewer rates each independently while playing the build,
+# and the run's overall rating is the worst across them. Cascade is a single
+# solitaire game, so it declares one domain.
+[[domain]]
+id = "klondike"
+name = "Klondike Play"
+description = "The full game: dealing, legal moves across the tableau and foundations, the stock and waste, winning, and the victory cascade."
+
+# Reviewer checklist, common to every variant, in the categories grammar
+# (`[review] format = 2`). Each `[[review.categories]]` is a CATEGORY — a bare name
+# grouping the points a reviewer grades — and each `[[review.categories.items]]`
+# under it is one graded review item, worth one point (the default weight), so a
+# category is worth the number of items it holds (no fractional scoring). A category
+# carries no prose of its own; each item states its own requirement in
+# `description`. Categories are common to every variant here; the per-variant point
+# (the deal-mode turn count) lives in that variant's own file, which reuses the
+# `stock` category id to add it. The checklist is reporter-side material — never
+# seeded into a run, so the model never sees it; each item restates a requirement the
+# seeded specification already states. An item with a `validation` script is decided
+# automatically (the reviewer can override); one without is left to the reviewer.
+#
+# The items with no validation script (left to the reviewer) are the two under UI that concern
+# the look of the table — the window fit and the card legibility. Everything else is
+# a single, observable rule the debug API can establish and read back, so each such
+# item carries a `validation` script and a synthesized image or clip. The taxonomy is
+# deliberately narrow — one observable behavior per item, with every edge case (each
+# rejection, each boundary) split into its own item — so a build fails exactly the
+# rule it breaks rather than a broad item averaging several behaviors together.
+[review]
+format = 2
+
+# --- Deal ---------------------------------------------------------------------
+# The opening deal is checked as four separate facts — the tableau shape, the stock
+# size, the empty piles, and the reshuffle — so a build that gets one wrong fails
+# only that one.
+[[review.categories]]
+id = "deal"
+title = "Deal"
+[[review.categories.items]]
+id = "columns"
+title = "Seven columns of 1..7, top card face-up"
+description = "A new game deals seven tableau columns holding 1, 2, ... 7 cards, with exactly the top card of each face-up and the rest face-down."
+reference = "gameplay"
+# Automated validation: deal a fresh game and read the tableau back. See
+# validation/deal/columns.mjs.
+validation = { script = "validation/deal/columns.mjs", outputs = [
+  { id = "layout", name = "The freshly dealt tableau", kind = "image" },
+] }
+[[review.categories.items]]
+id = "stock-count"
+title = "Twenty-four cards in the stock"
+description = "After the tableau takes its 28 cards, the remaining 24 form the face-down stock."
+validation = { script = "validation/deal/stock-count.mjs", outputs = [
+  { id = "stock", name = "The face-down stock after the deal", kind = "image" },
+] }
+[[review.categories.items]]
+id = "empties"
+title = "Waste and foundations start empty"
+description = "A fresh deal leaves the waste and all four foundations empty."
+validation = { script = "validation/deal/empties.mjs", outputs = [
+  { id = "empties", name = "Empty waste and foundations after the deal", kind = "image" },
+] }
+[[review.categories.items]]
+id = "reshuffled"
+title = "Reshuffled every new game"
+description = "The deal is reshuffled and different every new game (the shuffle is seedable, so a given seed reproduces its deal)."
+validation = { script = "validation/deal/reshuffled.mjs", outputs = [
+  { id = "deal", name = "A shuffled deal", kind = "image" },
+] }
+
+# --- Foundations --------------------------------------------------------------
+# Foundation building is checked as an acceptance plus three distinct rejections, so
+# a build that accepts the wrong card fails exactly the rule it breaks.
+[[review.categories]]
+id = "foundations"
+title = "Foundations"
+[[review.categories.items]]
+id = "ace-only"
+title = "Empty foundation takes only an Ace"
+description = "An empty foundation accepts an Ace and rejects any other rank."
+validation = { script = "validation/foundations/ace-only.mjs", outputs = [
+  { id = "ace", name = "An Ace accepted onto an empty foundation", kind = "image" },
+] }
+[[review.categories.items]]
+id = "build-up"
+title = "Builds up by suit"
+description = "On a started foundation, the next-higher card of the same suit is accepted (Ace, then 2, then 3, ...)."
+validation = { script = "validation/foundations/build-up.mjs", outputs = [
+  { id = "build", name = "A foundation built up by suit", kind = "image" },
+] }
+[[review.categories.items]]
+id = "reject-offsuit"
+title = "Rejects the wrong suit"
+description = "A next-rank card of the wrong suit is rejected — a foundation is a single suit."
+validation = { script = "validation/foundations/reject-offsuit.mjs", outputs = [
+  { id = "offsuit", name = "A wrong-suit card rejected", kind = "image" },
+] }
+[[review.categories.items]]
+id = "reject-gap"
+title = "Rejects a rank gap"
+description = "A same-suit card that skips a rank is rejected — the foundation builds up strictly by one."
+validation = { script = "validation/foundations/reject-gap.mjs", outputs = [
+  { id = "gap", name = "A rank-skipping card rejected", kind = "image" },
+] }
+
+# --- Tableau ------------------------------------------------------------------
+# Tableau building is checked as an acceptance and four distinct rejections (color,
+# rank, and the two empty-column rules), one item each.
+[[review.categories]]
+id = "tableau"
+title = "Tableau"
+[[review.categories.items]]
+id = "build-down"
+title = "Builds down, alternating color"
+description = "A card is accepted onto a face-up card one rank higher and of the opposite color."
+validation = { script = "validation/tableau/build-down.mjs", outputs = [
+  { id = "build", name = "A tableau build-down move", kind = "image" },
+] }
+[[review.categories.items]]
+id = "reject-same-color"
+title = "Rejects the same color"
+description = "A one-lower card of the same color is rejected — the build must alternate color."
+validation = { script = "validation/tableau/reject-same-color.mjs", outputs = [
+  { id = "same-color", name = "A same-color build rejected", kind = "image" },
+] }
+[[review.categories.items]]
+id = "reject-rank"
+title = "Rejects the wrong rank"
+description = "An opposite-color card that is not exactly one lower in rank is rejected."
+validation = { script = "validation/tableau/reject-rank.mjs", outputs = [
+  { id = "rank", name = "A wrong-rank build rejected", kind = "image" },
+] }
+[[review.categories.items]]
+id = "king-to-empty"
+title = "King onto an empty column"
+description = "A King is accepted onto an empty column."
+validation = { script = "validation/tableau/king-to-empty.mjs", outputs = [
+  { id = "king", name = "A King placed on an empty column", kind = "image" },
+] }
+[[review.categories.items]]
+id = "reject-nonking-empty"
+title = "Only a King onto an empty column"
+description = "A non-King card is rejected onto an empty column."
+validation = { script = "validation/tableau/reject-nonking-empty.mjs", outputs = [
+  { id = "nonking", name = "A non-King rejected on an empty column", kind = "image" },
+] }
+
+# --- Ordered runs -------------------------------------------------------------
+# Moving a multi-card run is checked as a legal unit move, an illegal one returning
+# intact, and the King-run-to-empty case, one item each.
+[[review.categories]]
+id = "runs"
+title = "Ordered runs"
+[[review.categories.items]]
+id = "move-unit"
+title = "A valid run moves as a unit"
+description = "A descending, alternating-color run of face-up cards moves together onto a legal target, carrying every card above the grabbed card with it."
+validation = { script = "validation/runs/move-unit.mjs", outputs = [
+  { id = "run", name = "A run moving as a unit", kind = "image" },
+] }
+[[review.categories.items]]
+id = "reject-illegal"
+title = "An illegal run returns intact"
+description = "A run dropped onto an illegal target is rejected and returns to its source column intact."
+validation = { script = "validation/runs/reject-illegal.mjs", outputs = [
+  { id = "reject", name = "An illegal run returning intact", kind = "image" },
+] }
+[[review.categories.items]]
+id = "king-run-empty"
+title = "A King-headed run onto an empty column"
+description = "A run headed by a King moves onto an empty column (the empty-column rule applies to the run's head)."
+validation = { script = "validation/runs/king-run-empty.mjs", outputs = [
+  { id = "king-run", name = "A King-headed run on an empty column", kind = "image" },
+] }
+
+# --- Stock and waste ----------------------------------------------------------
+# The turn count itself is per-variant (Draw Three vs Draw One) and lives in each
+# variant file, which reuses this `stock` category id to add its `turn-count` point.
+[[review.categories]]
+id = "stock"
+title = "Stock and waste"
+[[review.categories.items]]
+id = "top-waste-only"
+title = "Only the top waste card is playable"
+description = "Only the top card of the waste is playable; playing it exposes the card beneath it."
+validation = { script = "validation/stock/top-waste-only.mjs", outputs = [
+  { id = "top", name = "Playing the top waste card exposes the next", kind = "image" },
+] }
+[[review.categories.items]]
+id = "waste-fan-shrink"
+title = "Playing off the waste shrinks the fan, never refills it"
+description = "The waste fans only the cards from the most recent stock turn, so playing the top card shrinks the fan (Draw Three: three, then two, then one) rather than pulling a buried card up to keep it full; once that turned group is played off, the waste squares back to a single visible top card over the buried ones."
+validation = { script = "validation/stock/waste-fan-shrink.mjs", outputs = [
+  { id = "shrink", name = "The waste fan counting down as its cards are played", kind = "video" },
+] }
+[[review.categories.items]]
+id = "recycle"
+title = "Empty stock recycles the waste"
+description = "When the stock empties, clicking its slot recycles the whole waste back into the stock, face-down, preserving order for another pass."
+validation = { script = "validation/stock/recycle.mjs", outputs = [
+  { id = "recycle", name = "The waste recycled into the stock", kind = "image" },
+] }
+[[review.categories.items]]
+id = "recycle-unlimited"
+title = "Recycling has no pass limit"
+description = "The stock can be emptied and recycled repeatedly across multiple passes, with no limit."
+validation = { script = "validation/stock/recycle-unlimited.mjs", outputs = [
+  { id = "passes", name = "Recycling the stock across several passes", kind = "video" },
+] }
+
+# --- Auto-move and flip -------------------------------------------------------
+[[review.categories]]
+id = "moves"
+title = "Auto-move and flip"
+[[review.categories.items]]
+id = "automove-waste"
+title = "Double-click the waste sends it home"
+description = "Double-clicking the top of the waste sends it to its foundation when that move is legal."
+validation = { script = "validation/moves/automove-waste.mjs", outputs = [
+  { id = "waste", name = "The waste top auto-moved home", kind = "image" },
+] }
+[[review.categories.items]]
+id = "automove-column"
+title = "Double-click a column card sends it home"
+description = "Double-clicking a column's bottom face-up card sends it to its foundation when that move is legal."
+validation = { script = "validation/moves/automove-column.mjs", outputs = [
+  { id = "column", name = "A column card auto-moved home", kind = "image" },
+] }
+[[review.categories.items]]
+id = "automove-illegal"
+title = "Auto-move does nothing when illegal"
+description = "The double-click auto-move does nothing when the card has no legal foundation."
+validation = { script = "validation/moves/automove-illegal.mjs", outputs = [
+  { id = "illegal", name = "An illegal auto-move leaving the board unchanged", kind = "image" },
+] }
+[[review.categories.items]]
+id = "flip-exposed"
+title = "Exposed card flips face-up"
+description = "When a move leaves a column's new bottom card face-down, that card is immediately turned face-up."
+validation = { script = "validation/moves/flip-exposed.mjs", outputs = [
+  { id = "flip", name = "A newly exposed card flipped face-up", kind = "image" },
+] }
+[[review.categories.items]]
+id = "no-early-flip"
+title = "Lifting a card does not flip the card beneath"
+description = "Lifting a column's face-up card off a face-down card does not turn the exposed card face-up; the flip happens only when a move commits, so returning the lifted card (an illegal drop that snaps back) leaves the column intact with the buried card still face-down — never two face-up cards."
+validation = { script = "validation/moves/no-early-flip.mjs", outputs = [
+  { id = "no-flip", name = "A lifted card snapping back, the buried card staying face-down", kind = "video" },
+] }
+[[review.categories.items]]
+id = "facedown-not-draggable"
+title = "Face-down cards are not draggable"
+description = "A face-down card cannot be picked up or dragged; only a face-up card lifts."
+validation = { script = "validation/moves/facedown-not-draggable.mjs", outputs = [
+  { id = "facedown", name = "A face-down card refusing to lift, then a face-up card lifting", kind = "video" },
+] }
+
+# --- Drag and drop ------------------------------------------------------------
+# Drag feel is checked as three observable facts driven through real pointer input:
+# the held card tracks the cursor, a legal target highlights, and an illegal drop
+# snaps back.
+[[review.categories]]
+id = "dragdrop"
+title = "Drag and drop"
+[[review.categories.items]]
+id = "follows-cursor"
+title = "Held card follows the cursor"
+description = "The held card or run follows the cursor and floats above the table, detached from its source pile."
+validation = { script = "validation/dragdrop/follows-cursor.mjs", outputs = [
+  { id = "follow", name = "A held card following the cursor", kind = "video" },
+] }
+[[review.categories.items]]
+id = "highlight"
+title = "Legal target is highlighted"
+description = "A legal drop target under the held card is highlighted, and moving off it clears the highlight."
+validation = { script = "validation/dragdrop/highlight.mjs", outputs = [
+  { id = "highlight", name = "A legal drop target highlighting under the card", kind = "video" },
+] }
+[[review.categories.items]]
+id = "snap-back"
+title = "Illegal drop snaps back"
+description = "Releasing the card over an illegal spot returns it to its origin, unchanged."
+validation = { script = "validation/dragdrop/snap-back.mjs", outputs = [
+  { id = "snap", name = "A card snapping back from an illegal drop", kind = "video" },
+] }
+
+# --- Winning ------------------------------------------------------------------
+[[review.categories]]
+id = "winning"
+title = "Winning"
+[[review.categories.items]]
+id = "detect"
+title = "All 52 home is a win"
+description = "Completing all four foundations (all 52 cards home) is detected as a win, stops normal play, and begins the victory cascade."
+proof = "win"
+validation = { script = "validation/winning/detect.mjs", outputs = [
+  { id = "win", name = "The win detected and the cascade beginning", kind = "video" },
+] }
+[[review.categories.items]]
+id = "no-false-win"
+title = "51 home is not a win"
+description = "The win fires only when every foundation is complete; 51 cards home is not a win and play continues."
+validation = { script = "validation/winning/no-false-win.mjs", outputs = [
+  { id = "not-won", name = "51 cards home, no false win", kind = "image" },
+] }
+
+# --- Victory cascade ----------------------------------------------------------
+# The signature animation is checked as its distinct, observable facts: the launch
+# cadence, the exact gravity integration, the exact floor bounce, retirement to
+# completion, the painted trail (read from the rendered pixels), and the closing
+# YOU WIN prompt.
+[[review.categories]]
+id = "cascade"
+title = "Victory cascade"
+[[review.categories.items]]
+id = "launch-cadence"
+title = "Cards launch one at a time on cadence"
+description = "The foundation cards launch one at a time on a steady 0.18 s cadence."
+validation = { script = "validation/cascade/launch-cadence.mjs", outputs = [
+  { id = "cadence", name = "Cards launching on a steady cadence", kind = "video" },
+] }
+[[review.categories.items]]
+id = "gravity-arc"
+title = "Cards arc under gravity"
+description = "A launched card pops up then falls under gravity: every fixed step its vertical velocity gains 1800·dt."
+validation = { script = "validation/cascade/gravity-arc.mjs", outputs = [
+  { id = "arc", name = "A card arcing up and falling under gravity", kind = "video" },
+] }
+[[review.categories.items]]
+id = "floor-bounce"
+title = "Cards bounce off the floor"
+description = "A card bouncing off the table floor reflects and damps its vertical velocity to 0.80×, reseats on the floor, and keeps its horizontal velocity (no floor friction)."
+validation = { script = "validation/cascade/floor-bounce.mjs", outputs = [
+  { id = "bounce", name = "A card bouncing off the floor", kind = "video" },
+] }
+[[review.categories.items]]
+id = "retire"
+title = "Every card retires and the cascade ends"
+description = "Each card drifts off a side edge and retires; when all 52 have launched and retired, the cascade completes."
+validation = { script = "validation/cascade/retire.mjs", outputs = [
+  { id = "retire", name = "Cards drifting off the edges to completion", kind = "video" },
+] }
+[[review.categories.items]]
+id = "painted-trail"
+title = "The trail paints the table"
+description = "Each in-flight card is drawn onto a persistent layer that is never cleared, so the table fills with arcs of overlapping card images."
+validation = { script = "validation/cascade/painted-trail.mjs", outputs = [
+  { id = "trail", name = "The table filled by the painted trail", kind = "image" },
+] }
+[[review.categories.items]]
+id = "you-win"
+title = "Ends with YOU WIN, click for a new game"
+description = "The cascade ends with a YOU WIN prompt over the painted table, and a click starts a fresh game."
+reference = "victory"
+proof = "cascade"
+validation = { script = "validation/cascade/you-win.mjs", outputs = [
+  { id = "you-win", name = "The YOU WIN prompt and a new deal on click", kind = "video" },
+] }
+
+# --- Color (sampled from the rendered canvas) ---------------------------------
+# Each point samples the pixels the build actually RENDERS and confirms the elements
+# are told apart by color — reading what is painted, not any value the game reports.
+# The exact palette is the model's own; only the distinctions are scored.
+[[review.categories]]
+id = "color"
+title = "Color"
+[[review.categories.items]]
+id = "suit-distinction"
+title = "Red and black suits are distinct"
+description = "Red-suit and black-suit cards render in clearly distinct colors, so a card's color is readable at a glance."
+validation = { script = "validation/color/suit-distinction.mjs", outputs = [
+  { id = "suits", name = "A red card beside a black card", kind = "image" },
+] }
+[[review.categories.items]]
+id = "card-back"
+title = "Card back is distinct"
+description = "A face-down card back renders in a color clearly distinct from a face-up card face and from the table felt."
+validation = { script = "validation/color/card-back.mjs", outputs = [
+  { id = "back", name = "A face-down back beside a face-up card and the felt", kind = "image" },
+] }
+[[review.categories.items]]
+id = "drop-highlight"
+title = "Drop highlight is a distinct color"
+description = "A hovered legal drop target is drawn in a distinct highlight color, clearly set off from the table."
+validation = { script = "validation/color/drop-highlight.mjs", outputs = [
+  { id = "highlight", name = "A highlighted legal drop target", kind = "image" },
+] }
+
+# --- UI -----------------------------------------------------------------------
+# The window-fit and card-legibility points are left to the reviewer (they carry a
+# reference and a submitted proof for context, no validation script). Each game
+# state carries a validation script too, but only to REACH and CAPTURE the screen
+# through the debug API (its auto-verdict confirms the state is reachable); how each
+# screen reads and lays out is still reviewed by a person from the capture.
+[[review.categories]]
+id = "ui"
+title = "UI"
+[[review.categories.items]]
+id = "window-fit"
+title = "Window fit"
+description = "The entire 1280x720 table — stock, waste, all four foundations, every tableau column at its full extent, and the HUD — stays visible, fitted, and centered at any window size and pixel density, including on load before any input."
+reference = "title"
+proof = "title"
+[[review.categories.items]]
+id = "card-legibility"
+title = "Card legibility"
+description = "Cards are drawn with a legible rank and suit pips, and the table reads cleanly, so the game is easy to follow at a glance."
+reference = "gameplay"
+proof = "gameplay"
+[[review.categories.items]]
+id = "state-title"
+title = "Title / main menu"
+description = "The title / main menu state is reachable and correct, with the menu rendered cleanly and navigable."
+validation = { script = "validation/ui/state-title.mjs", outputs = [
+  { id = "title", name = "The title / main menu", kind = "image" },
+] }
+[[review.categories.items]]
+id = "state-howto"
+title = "How to play"
+description = "The how-to-play state is reachable and correct."
+validation = { script = "validation/ui/state-howto.mjs", outputs = [
+  { id = "howto", name = "The how-to-play screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "state-playing"
+title = "The live table"
+description = "The live playing table is reachable and correct, with the piles laid out as specified."
+validation = { script = "validation/ui/state-playing.mjs", outputs = [
+  { id = "playing", name = "The live table", kind = "image" },
+] }
+[[review.categories.items]]
+id = "state-won"
+title = "The won / victory screen"
+description = "The won / victory screen is reachable and correct, showing the cascade over the table."
+validation = { script = "validation/ui/state-won.mjs", outputs = [
+  { id = "won", name = "The won / victory screen", kind = "image" },
+] }

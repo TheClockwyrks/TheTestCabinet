@@ -5,10 +5,10 @@ slug = "base"
 name = "Base"
 description = "The standard Sortie defense only."
 
-# This variant's mode spec, seeded to the stable path `specs/mode.md` that every
-# variant seeds its mode spec to (so the common specs can reference it by name).
-# It defines only the standard Sortie mode.
-spec = [{ source = "specs/mode-base.md", dest = "specs/mode.md" }]
+# This variant seeds no spec of its own: the standard Sortie mode is the default
+# branch of the common `specs/gameplay.md.hbs` (menu entry `LAUNCH`, and a
+# mismatched shot simply wasted), selected by the variant slug when that template
+# is rendered for this variant.
 
 # The main menu lists a different mode per variant, so each variant supplies its
 # own `title` reference, captured from this variant's reference-impl build and
@@ -23,14 +23,23 @@ reference = [{ view = "title", media = "reference/screenshots/base/title.png" }]
 # **never seeded into a run**.
 reference_implementation = "reference-impl/base"
 
-# ADDITIVE review item for the base Sortie mode. The common `match-destroys` item
-# only asserts that a mismatched shot never destroys the drone and defers what
+# ADDITIVE review category for the base Sortie mode. The common `mismatch-no-destroy`
+# item only asserts that a mismatched shot never destroys the drone and defers what
 # ELSE it does to the mode; Sortie's rule is that a mismatch is simply wasted, so
-# this item (mirroring Overload's `overload-feeds`) checks that base-mode
-# behavior. Rolls up to the common `polarity` domain.
-[[review_item]]
+# this category's one point (mirroring Overload's `mode` category) checks that
+# base-mode behavior. The `format` is inherited from the case manifest
+# (`[review] format = 2`); a variant only adds `[[review.categories]]`. The point is
+# rated within the case's common `polarity` domain (Sortie changes only the band
+# system), which the reviewer scores separately from this checklist.
+[[review.categories]]
+id = "mode"
+title = "Sortie"
+[[review.categories.items]]
 id = "mismatch-wasted"
-title = "Mismatch is wasted"
-text = "In Sortie, a mismatched (wrong-band) shot is simply wasted: the bullet is absorbed and consumed, dealing no damage and having no other effect on the drone. You cannot harm a drone of the band you are not tuned to, and a wrong-band shot never charges, redirects, or otherwise changes it."
-weight = 1
-domain = "polarity"
+title = "A mismatch is wasted"
+description = "In Sortie a mismatched (wrong-band) shot is simply wasted: the bullet is consumed, and the drone is unchanged — still alive, still in formation, neither redirected nor otherwise altered. You cannot harm a drone of the band you are not tuned to."
+# Automated validation: fire a wrong-band shot into a formation Shard and confirm it
+# is left untouched. See validation/mode/mismatch-wasted.mjs.
+validation = { script = "validation/mode/mismatch-wasted.mjs", outputs = [
+  { id = "wasted", name = "A wrong-band shot wasted on a drone", kind = "video" },
+] }

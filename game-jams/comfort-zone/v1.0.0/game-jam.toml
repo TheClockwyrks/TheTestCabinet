@@ -1,0 +1,80 @@
+# The Test Cabinet game-jam manifest.
+#
+# A game jam is NOT a test case, so it is authored through its own manifest format
+# (`game-jam.toml`, parsed as a `GameJamManifest`) rather than the shared
+# `test-case.toml`. It hands the model only a THEME — no specification and no
+# reference mockups — and asks it to conceive and build a complete, playable,
+# enjoyable game of any genre, producing its own 2D assets during the run exactly as
+# a full-stack case does. There is nothing to reproduce and no rubric to satisfy
+# point-for-point; the run is judged by a human who plays it and grades it on general
+# categories (see the review model below).
+#
+# Because a jam is not a test case, this manifest declares NEITHER `difficulty` (a jam
+# is unclassified) NOR `variants` (a jam is one theme; a differently themed jam is a
+# different jam). It likewise declares none of the `[[spec]]`, `[[reference]]`, or
+# `[[domain]]` tables a spec-driven case does. Unknown/test-case-only keys are
+# rejected at parse.
+
+# The jam's stable identity, recorded in every run and used as the definition-store
+# key. Must be a valid slug and identical on every version of the folder.
+slug = "comfort-zone"
+
+# Human-readable display name.
+name = "Comfort Zone"
+
+# Free-form classification tags, surfaced on the site for browsing and search. A jam
+# is not tiered, so its tags describe only its theme.
+tags = ["game-jam", "cozy", "2d", "open-genre"]
+
+# Short site-facing abstract, shown on the jam card. NOT seeded.
+summary = """
+A game jam on the theme COMFORT ZONE. Conceive and build a complete, playable, \
+enjoyable cozy game — a warm, low-pressure little world a player sinks into and does \
+not want to leave — inventing the world and what the player does in it yourself, and \
+producing its own art, effects, and sound during the run."""
+
+# Site-facing prose describing the jam, relative to this version folder. NOT seeded
+# into a run; it introduces the jam on the site.
+description = "description.md"
+# Per-version changelog entry (Markdown, relative to this version folder). The site
+# aggregates every version's entry, newest first. Like `description`, NOT seeded.
+changelog = "changelog.md"
+
+# The theme brief handed to the model, rendered per run. The harness auto-prepends
+# the standing game-jam preamble (what a jam is, and how it is judged) above a
+# divider, so this template does not restate that framing; it carries the specific
+# theme, the asset-generation tooling and build/serve requirements, the time budget
+# (`{{time_limit_hours}}`), and how to verify and commit. Injects the absolute
+# in-container workspace path via `{{workspace}}`.
+prompt = "prompt.hbs"
+
+# Maximum wall-clock runtime, in hours, for the harness session — also surfaced to
+# the model in the prompt as its time budget. A jam is a whole small game built from
+# scratch — design, code, and a full asset pass — so it gets eight hours, matching a
+# medium full-stack build.
+max_runtime_hours = 8
+
+# Starter workspace seeded into the run root: a `package.json` pinning Playwright as a
+# dev dependency (so the model can build and verify immediately) and a `.gitignore`.
+# There are no specs to seed — a jam provides only the theme.
+workspace = "workspaces/base"
+
+# Init command, run once after the workspace is seeded and before the harness starts:
+# install dependencies and download Playwright's Chromium (the base image ships the OS
+# libraries Chromium links against, but not the browser binary).
+init = "npm install && npx playwright install chromium"
+
+# How the validator (and the per-run Cloudflare Pages deploy) turns the produced game
+# into a served static site — the same fixed build interface a full-stack case uses.
+# Both commands are required. `npm ci` requires the build to commit a
+# `package-lock.json`.
+[build]
+install = "npm ci"
+build = "npm run build"
+
+# NOTE: no `[[spec]]`, `[[reference]]`, `[[domain]]`, or `[[review_item]]` tables. A
+# jam seeds no specification and no reference mockups, and it is reviewed on the
+# GENERIC graded checklist (Playability, Fun, Theme, Presentation, Audio, Polish,
+# Creativity) that core injects when a jam declares no categories of its own, plus a
+# whole-game overall grade the reviewer supplies. A future jam may author its own
+# `[[review_item]]` categories to weight or specialize them.

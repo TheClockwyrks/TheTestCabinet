@@ -33,8 +33,9 @@ crates/
 ```
 
 - **`foray-core`** owns everything authoritative: the board model, agent state,
-  the tick advance (movement, eating, carry-weight cadence, tagging, banking,
-  jelly), legality checks, scoring, and the **replay (de)serialization**. It has
+  the tick advance (movement, eating, carry-weight cadence, banking, tagging,
+  jelly and its respawn, and the large-seed drift/recall), legality checks, scoring,
+  and the **replay (de)serialization**. It has
   **no I/O and no wasm-host dependency** — it is pure rules plus data types, so
   the exact same crate compiles for the native CLI and for
   `wasm32-unknown-unknown` in the browser. The controller-facing
@@ -103,10 +104,21 @@ Each tick the CLI:
    observation — never the authoritative state, and never the opponent's view.
 2. Hands both action sets to `foray-core`, which advances the world by one
    **fixed, faked [timestep](/testing/adversarial/overview/#lockstep-simulation-and-replays)**
-   (movement → eating → tagging → banking, with the carry-weight speed model
-   deciding which agents have banked enough charge to step this tick, and only the
-   tag-dodging tile-swap — a soldier and an enemy raider trading places — cancelled
-   so a raider cannot pass *through* a defender; other head-on swaps resolve).
+   (movement → eating → **banking → tagging** → jelly → large-seed drift/recall, with
+   the carry-weight speed model deciding which agents have banked enough charge to
+   step this tick). Two orderings are load-bearing. **Eating precedes tagging**, so a
+   raider can be tagged on the very tile it just ate. **Banking precedes tagging**, so
+   an ant that reaches home banks *before* it can be killed there — which matters now
+   that a soldier is killable: tag first and an immune enemy could kill a returning
+   carrier whose load came from the *other* half, scattering those seeds onto the
+   wrong side and quietly breaking seed conservation.
+
+   Only the tag-dodging tile-swap — a soldier and an enemy raider trading places — is
+   cancelled, so a raider cannot pass *through* a defender; other head-on swaps
+   resolve. A cancelled swap is then **settled in the tagging phase as though the two
+   had met** (the defender catches the raider). Cancelling *alone* was a deadlock: the
+   pair never shares a tile, so tagging never saw them, and two controllers each
+   re-issuing the swap would hold forever.
 3. Appends the tick's inputs to the replay log.
 
 The loop ends at a win condition or `max_ticks`. Because the timestep is faked,
@@ -182,15 +194,20 @@ limited enemy sensing is a planned variant. Shape (illustrative):
   "score": { "red": 7, "blue": 5 },
   "seeds_remaining": { "red_half": 13, "blue_half": 11 },
   "my_agents": [                  // always this team's three agents
-    { "id": 0, "x": 14, "y": 8, "role": "raider",  "carrying": 4, "immune_ticks": 0, "can_move_this_tick": false },
-    { "id": 1, "x": 6,  "y": 2, "role": "soldier", "carrying": 0, "immune_ticks": 0, "can_move_this_tick": true  },
-    { "id": 2, "x": 9,  "y": 11,"role": "raider",  "carrying": 0, "immune_ticks": 12,"can_move_this_tick": true  }
+    // `load` = carrying + 3 * carrying_large: what it banks AND what it weighs.
+    { "id": 0, "x": 14, "y": 8, "role": "raider",  "carrying": 4, "carrying_large": 0, "load": 4, "immune_ticks": 0, "can_move_this_tick": false },
+    { "id": 1, "x": 6,  "y": 2, "role": "soldier", "carrying": 0, "carrying_large": 0, "load": 0, "immune_ticks": 0, "can_move_this_tick": true  },
+    { "id": 2, "x": 9,  "y": 11,"role": "raider",  "carrying": 0, "carrying_large": 1, "load": 3, "immune_ticks": 12,"can_move_this_tick": true  }
   ],
   "enemies": [                    // the opposing colony's three agents
-    { "id": 0, "x": 20, "y": 8, "role": "soldier", "carrying": 0, "immune_ticks": 0 }
+    { "id": 0, "x": 20, "y": 8, "role": "soldier", "carrying": 0, "carrying_large": 0, "load": 0, "immune_ticks": 0 }
   ],
-  "seeds": [ [18,3], [21,9], ... ],          // every uneaten cache (incl. dropped, recoverable ones)
-  "jelly": [ { "x": 24, "y": 1, "active": true } ]
+  "seeds": [ [18,3], [21,9], [15,6], ... ],  // EVERY takeable seed tile — ordinary AND large
+  "large_seeds": [                           // the large seeds, with what `seeds` cannot say
+    { "x": 15, "y": 6, "home_x": 1, "home_y": 6, "half": "red", "value": 3, "ticks_to_drift": 128 }
+  ],
+  "jelly": [ { "x": 24, "y": 1, "active": true } ]   // ACTIVE nodes; a spent one leaves the
+                                                     // list and returns when it regrows
 }
 ```
 

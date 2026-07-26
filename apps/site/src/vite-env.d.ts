@@ -37,4 +37,24 @@ declare module "virtual:tcab-snapshot" {
    * or a sprite sheet's per-frame `regenerated-<index>.png` (etc.).
    */
   export const assetMediaUrls: Record<string, Record<string, string>>;
+  /**
+   * Resolved *actual* automated-validation media URLs (the model build's debug-script
+   * outputs), keyed by run id then by the flat `<item>__<output>.<ext>` name the
+   * reviewer UI requests.
+   */
+  export const validationMediaUrls: Record<string, Record<string, string>>;
+  /**
+   * Resolved *baseline* automated-validation media URLs (the reference
+   * implementation's debug-script outputs), keyed by a `<slug>/<version>/<variant>`
+   * subject key then by the flat `<item>__<output>.<ext>` name. Case-scoped.
+   */
+  export const validationBaselineUrls: Record<string, Record<string, string>>;
+  /**
+   * Resolved **asset-reference** media URLs (an asset-generation case variant's
+   * published reference frames), keyed by a `<slug>/<version>/<variant>` subject key
+   * then by the file below that variant's prefix — `frames/<index>.png` and the
+   * `frames/<index>.actions.json` log it was drawn from. Case-scoped, like the
+   * validation baselines.
+   */
+  export const referenceMediaUrls: Record<string, Record<string, string>>;
 }

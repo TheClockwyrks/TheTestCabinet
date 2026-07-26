@@ -24,10 +24,14 @@
 //! The two differences from the adversarial validator: the contract entry is
 //! invoked **once per case** (not per tick — the engine runs the whole simulation
 //! in one metered call), and scoring is **correctness (checksum) + fuel**, not a
-//! head-to-head match. There is no replay renderer in v1, so — unlike the
-//! adversarial validator — this writes no browser-playable artifact; it does write
-//! the engine's produced `state` JSON per case into the run tree so a reviewer can
-//! diff it against the oracle.
+//! head-to-head match.
+//!
+//! Like the adversarial validator, it writes browser-playable material into the run
+//! tree: the engine's produced `state` JSON per case (so a reviewer can diff it
+//! against the oracle), and — for a case the engine got *right* — the scored
+//! scenario itself, which is what browser playback re-simulates. The scenario is
+//! republished rather than replayed because a run records only its scheduled
+//! snapshots, thousands of ticks apart, with nothing to interpolate between.
 //!
 //! A submission that fails to *load* (it did not build, does not export the
 //! contract entry, or cannot instantiate) is recorded with `correct = false` and a
@@ -36,21 +40,23 @@
 //! exhaustion) makes that case — and the run — incorrect, with the reason recorded.
 
 use lattice_core::Snapshot;
-use lattice_host::{RunError, SandboxLimits, run_submission, score_against};
+use lattice_host::{InvokeError, RunError, SandboxLimits, run_submission, score_against};
 
 use crate::error::Result;
 use crate::execution::ArtifactCollection;
 use crate::reference::RenderedReference;
 use crate::test_case::{PerformanceCase, ProofFile, TestCaseVersion, Variant};
 use crate::validation::{
-    PerformanceCaseResult, PerformanceResult, ProofResult, ValidationSummary, Validator,
+    PerformanceCaseKind, PerformanceCaseResult, PerformanceResult, PerformanceSnapshotCheck,
+    ProofResult, ValidationSummary, Validator,
 };
 use crate::validator::proof_results;
 
 /// The run-tree subdirectory the validator writes each case's produced `state`
-/// JSON into, so a reviewer can diff a submission's output against the oracle. This
-/// is debuggability material, not a scored artifact (there is no replay renderer in
-/// v1), so a write failure here is non-fatal.
+/// JSON and (for a passing case) its scored scenario into. Neither is a scored
+/// artifact — the state is there so a reviewer can diff a submission's output
+/// against the oracle, and the scenario is there so browser playback can
+/// reconstruct the factory — so a write failure is non-fatal in both cases.
 const STATE_DIR: &str = "performance";
 
 /// A validator for performance runs. It keeps no state: every output is derived
@@ -120,7 +126,11 @@ impl Validator for PerformanceValidator {
             ));
         }
 
-        let limits = SandboxLimits {
+        // `fuel_limit` is the pass line. Each case runs on its own **run ceiling**
+        // (`case.fuel_ceiling`, which is `fuel_limit` widened by the case's runway)
+        // so a too-slow engine can finish and have its overshoot recorded; the
+        // pass/fail comparison is still against `fuel_limit`.
+        let base_limits = SandboxLimits {
             fuel_limit,
             max_memory_bytes: sandbox.max_memory_bytes as usize,
         };
@@ -143,34 +153,100 @@ impl Validator for PerformanceValidator {
             }
         };
 
-        // Score every held-out case. A run is correct only when every case is; the
-        // total fuel a correct engine consumes is the comparable result. `loaded`
-        // tracks whether the engine ran on every case without a *host* failure —
-        // correctness is carried separately, mirroring the adversarial type's
-        // "presented a controller" load signal.
-        let mut case_results = Vec::with_capacity(test_case.cases.len());
+        // Score the held-out set in two phases, keeping every result in its declared
+        // manifest order (a published scenario is addressed by its case index, so the
+        // order must not shift).
+        //
+        // Phase 1 — the SMOKE cases: a cheap correctness pre-flight, each a tiny
+        // scenario exercising one behaviour. Phase 2 — the STRESS cases: the large
+        // scored scenarios whose fuel is the comparable result. Every smoke case must
+        // reproduce the oracle before ANY stress case runs; if one fails, the stress
+        // cases are skipped and counted as failures, so a broken engine is caught in
+        // milliseconds instead of after burning through the large scenarios.
+        let mut results: Vec<Option<PerformanceCaseResult>> =
+            (0..test_case.cases.len()).map(|_| None).collect();
+
+        // Phase 1: run every smoke case.
+        for (index, case) in test_case.cases.iter().enumerate() {
+            if case.kind != PerformanceCaseKind::Smoke {
+                continue;
+            }
+            results[index] = Some(score_case(
+                repo,
+                test_case,
+                &module_wasm,
+                base_limits,
+                &contract.entry,
+                case,
+                index,
+            ));
+        }
+        // The gate: every smoke case must have passed. (Vacuously true when a case
+        // declares no smoke tests, so a case without them behaves exactly as before.)
+        let smoke_ok = results
+            .iter()
+            .flatten()
+            .all(|r| r.kind != PerformanceCaseKind::Smoke || r.correct);
+
+        // Phase 2: the stress cases — run them only if the smoke gate passed, else
+        // record each as skipped (a failure, but distinct from a wrong answer).
+        for (index, case) in test_case.cases.iter().enumerate() {
+            if case.kind != PerformanceCaseKind::Stress {
+                continue;
+            }
+            results[index] = Some(if smoke_ok {
+                score_case(
+                    repo,
+                    test_case,
+                    &module_wasm,
+                    base_limits,
+                    &contract.entry,
+                    case,
+                    index,
+                )
+            } else {
+                skipped_case(input_label(test_case, case))
+            });
+        }
+
+        let case_results: Vec<PerformanceCaseResult> = results
+            .into_iter()
+            .map(|r| r.expect("every case is scored or skipped"))
+            .collect();
+
+        // Roll up. A run is correct only when every case — smoke and stress — passed.
+        // The comparable score is the fuel a correct engine burned across the STRESS
+        // cases; smoke fuel is a pre-flight, not scored. `loaded` tracks whether the
+        // engine ran without a *host* failure on the cases that actually ran — a
+        // skipped case never ran, so it neither raises nor lowers that signal.
         let mut all_correct = true;
         let mut loaded = true;
         let mut total_fuel: u64 = 0;
-        for case in &test_case.cases {
-            let result = score_case(repo, test_case, &module_wasm, limits, &contract.entry, case);
-            if result.correct {
-                total_fuel = total_fuel.saturating_add(result.fuel.unwrap_or(0));
-            } else {
+        for result in &case_results {
+            if !result.correct {
                 all_correct = false;
             }
-            // A host failure (the engine could not be run at all) means it never
-            // truly loaded for that case; a wrong-but-runnable answer still loaded.
-            if result.fuel.is_none() {
+            if result.correct && result.kind == PerformanceCaseKind::Stress {
+                total_fuel = total_fuel.saturating_add(result.fuel.unwrap_or(0));
+            }
+            // A host failure (the engine could not be run) means it never truly
+            // loaded for that case; a wrong-but-runnable answer still loaded, and a
+            // skipped case was never offered to the engine at all.
+            if !result.skipped && result.fuel.is_none() {
                 loaded = false;
             }
-            case_results.push(result);
         }
 
         let result = PerformanceResult {
             correct: all_correct,
             total_fuel: all_correct.then_some(total_fuel),
+            fuel_limit: Some(fuel_limit),
             cases: case_results,
+            // Publish the run's own engine so browser playback can load and step it
+            // over each scenario — the same wasm that graded every case, drawing the
+            // factory the submission actually computed. Non-fatal (like the scenario
+            // write): a failure just leaves playback unavailable.
+            module_wasm: write_module(repo, &module_wasm),
             detail: None,
         };
         Ok(ValidationSummary {
@@ -183,6 +259,7 @@ impl Validator for PerformanceValidator {
             build: None,
             checks: Vec::new(),
             proofs: proof_results,
+            debug_scripts: Vec::new(),
             asset: None,
             voxel: None,
             ui: None,
@@ -204,35 +281,42 @@ fn score_case(
     repo: &std::path::Path,
     test_case: &TestCaseVersion,
     module_wasm: &[u8],
-    limits: SandboxLimits,
+    // `fuel_limit` here is the **pass/fail line**; the case's `fuel_ceiling` is the
+    // (possibly wider) run ceiling the engine actually gets. `max_memory_bytes` is
+    // the memory cap for the run.
+    base_limits: SandboxLimits,
     entry: &str,
     case: &PerformanceCase,
+    // The case's position in the manifest — the index playback addresses its
+    // published scenario by.
+    index: usize,
 ) -> PerformanceCaseResult {
+    let pass_limit = base_limits.fuel_limit;
     // The case-relative input path is what a reviewer ties the result back to.
-    let input_label = case
-        .input
-        .strip_prefix(&test_case.root)
-        .unwrap_or(&case.input)
-        .to_string_lossy()
-        .replace('\\', "/");
+    let input_label = input_label(test_case, case);
 
     // The committed scenario and the reference oracle's `state` answer both live in
     // the version folder (the secret scored set). A read or parse failure here is a
     // case-authoring error, not the submission's fault.
-    let scenario = match std::fs::read(&case.input) {
-        Ok(bytes) => match lattice_core::Scenario::parse(&bytes) {
-            Ok(scenario) => scenario,
-            Err(err) => {
-                return case_authoring_error(
-                    input_label,
-                    format!("input scenario is invalid: {err}"),
-                );
-            }
-        },
+    // Kept as bytes as well as parsed: a passing run republishes them into its own
+    // tree so browser playback can reconstruct the factory (see `write_scenario`).
+    let scenario_bytes = match std::fs::read(&case.input) {
+        Ok(bytes) => bytes,
         Err(err) => {
             return case_authoring_error(
                 input_label,
+                case.kind,
                 format!("could not read input scenario: {err}"),
+            );
+        }
+    };
+    let scenario = match lattice_core::Scenario::parse(&scenario_bytes) {
+        Ok(scenario) => scenario,
+        Err(err) => {
+            return case_authoring_error(
+                input_label,
+                case.kind,
+                format!("input scenario is invalid: {err}"),
             );
         }
     };
@@ -242,6 +326,7 @@ fn score_case(
             Err(err) => {
                 return case_authoring_error(
                     input_label,
+                    case.kind,
                     format!("expected answer is not a valid state array: {err}"),
                 );
             }
@@ -249,31 +334,48 @@ fn score_case(
         Err(err) => {
             return case_authoring_error(
                 input_label,
+                case.kind,
                 format!("could not read expected answer: {err}"),
             );
         }
     };
 
-    // Run the engine once on this scenario through the shared host. A module that
-    // fails to load or fails mid-run is a host-level failure for this case — there
-    // is no fuel to record and the case is incorrect.
-    let run = match run_submission(module_wasm, &scenario, limits, entry) {
+    // Run the engine once on this scenario through the shared host, at this case's
+    // **run ceiling** (`fuel_ceiling` = the pass line widened by its runway). A
+    // module that fails to load, exhausts even the runway, or otherwise fails
+    // mid-run is a host-level failure for this case — no fuel to record, and no
+    // produced state to play back.
+    // The run ceiling is the case's resolved `fuel_ceiling` — the pass line widened
+    // by its runway (`>= fuel_limit` by resolution). The engine may burn up to here;
+    // the pass/fail comparison below is still against `pass_limit`.
+    let run_ceiling = case.fuel_ceiling;
+    let run_limits = SandboxLimits {
+        fuel_limit: run_ceiling,
+        max_memory_bytes: base_limits.max_memory_bytes,
+    };
+    let run = match run_submission(module_wasm, &scenario, run_limits, entry) {
         Ok(run) => run,
         Err(err) => {
             return PerformanceCaseResult {
                 input: input_label,
+                kind: case.kind,
                 correct: false,
+                over_ceiling: false,
+                skipped: false,
                 fuel: None,
                 first_mismatch_tick: None,
-                detail: Some(host_failure_detail(&err)),
+                detail: Some(run_failure_detail(&err, pass_limit, run_ceiling)),
+                // The engine never produced a full answer, so there is nothing to
+                // play back.
+                snapshots: Vec::new(),
+                scenario_json: None,
             };
         }
     };
 
     // Compare per-snapshot checksums against the oracle's answer through the shared
     // scoring rule, so the validator and the `lattice run` CLI can never disagree on
-    // what "correct" means. The fuel is recorded either way (it is meaningless when
-    // incorrect, but kept for diagnostics).
+    // what a *correct answer* is. Fuel is a separate axis, judged below.
     let score = score_against(&expected, &run);
 
     // Write the engine's produced state into the run tree so a reviewer can diff it
@@ -281,12 +383,60 @@ fn score_case(
     // artifact (v1 has no replay renderer).
     write_state_debug(repo, case, &run.snapshots);
 
+    // Republish the scored scenario for playback only when the *answer* was correct
+    // — an over-ceiling run answered right, so it earns playback (that is the whole
+    // point of the runway: see how a correct-but-slow engine behaves). A wrong run
+    // does not, keeping the held-out input out of a tree that never solved it.
+    let scenario_json = if score.correct {
+        write_scenario(repo, index, &scenario_bytes)
+    } else {
+        None
+    };
+
+    // Two independent axes: the answer (checksums) and the fuel (consumed vs the
+    // pass line). A STRESS case needs both — a correct answer over the pass line is
+    // `over_ceiling`, not a pass, but not "incorrect" either. A SMOKE case is a
+    // correctness pre-flight only: its fuel is not scored, so a correct answer passes
+    // regardless of what it burned, and it is never over the ceiling.
+    let answer_correct = score.correct;
+    let (over_ceiling, passed) = match case.kind {
+        PerformanceCaseKind::Smoke => (false, answer_correct),
+        PerformanceCaseKind::Stress => (
+            answer_correct && run.fuel_consumed > pass_limit,
+            answer_correct && run.fuel_consumed <= pass_limit,
+        ),
+    };
+    let detail = if over_ceiling {
+        Some(format!(
+            "correct answer, but over the fuel ceiling: consumed {} fuel against a {} limit",
+            run.fuel_consumed, pass_limit
+        ))
+    } else {
+        // Correct-and-passing: no detail. Wrong: the checksum-mismatch detail.
+        score.detail
+    };
+
     PerformanceCaseResult {
         input: input_label,
-        correct: score.correct,
-        fuel: Some(score.fuel),
+        kind: case.kind,
+        correct: passed,
+        over_ceiling,
+        skipped: false,
+        fuel: Some(run.fuel_consumed),
         first_mismatch_tick: score.first_mismatch_tick,
-        detail: score.detail,
+        detail,
+        // Recorded whether or not the run passed: for a passing run this is what
+        // playback verifies itself against, and for a wrong or over-ceiling one it
+        // shows exactly what the engine produced at each snapshot.
+        snapshots: run
+            .snapshots
+            .iter()
+            .map(|snapshot| PerformanceSnapshotCheck {
+                tick: snapshot.tick,
+                checksum: snapshot.checksum.clone(),
+            })
+            .collect(),
+        scenario_json,
     }
 }
 
@@ -294,21 +444,74 @@ fn score_case(
 /// could not be read or parsed — a case-authoring error, not the submission's
 /// fault. `fuel = None` (the engine never ran) so the run's load signal reflects
 /// the gap.
-fn case_authoring_error(input: String, detail: String) -> PerformanceCaseResult {
+fn case_authoring_error(
+    input: String,
+    kind: PerformanceCaseKind,
+    detail: String,
+) -> PerformanceCaseResult {
     PerformanceCaseResult {
         input,
+        kind,
         correct: false,
+        over_ceiling: false,
+        skipped: false,
         fuel: None,
         first_mismatch_tick: None,
         detail: Some(detail),
+        // The case files could not be read, so the engine never ran.
+        snapshots: Vec::new(),
+        scenario_json: None,
     }
 }
 
+/// A [`PerformanceCaseResult`] for a stress case that was **not run** because a
+/// smoke test failed first. It counts as a failure (the run is incorrect), but is
+/// marked [`skipped`](PerformanceCaseResult::skipped) so it reads as "not run to
+/// save time" rather than "the engine ran and got it wrong". `fuel = None`, but
+/// unlike a host failure it does not lower the run's load signal — the engine was
+/// never given the case.
+fn skipped_case(input: String) -> PerformanceCaseResult {
+    PerformanceCaseResult {
+        input,
+        kind: PerformanceCaseKind::Stress,
+        correct: false,
+        over_ceiling: false,
+        skipped: true,
+        fuel: None,
+        first_mismatch_tick: None,
+        detail: Some(
+            "Skipped — a smoke test failed, so the stress scenarios were not run.".to_string(),
+        ),
+        snapshots: Vec::new(),
+        scenario_json: None,
+    }
+}
+
+/// The case-relative input path a result records under, so a reviewer can tie it
+/// back to its case (forward-slashed, relative to the version folder).
+fn input_label(test_case: &TestCaseVersion, case: &PerformanceCase) -> String {
+    case.input
+        .strip_prefix(&test_case.root)
+        .unwrap_or(&case.input)
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
 /// A human-readable reason for a host-level failure on one case, distinguishing a
-/// module that failed to *load* from one that failed *during* its single run.
-fn host_failure_detail(err: &RunError) -> String {
+/// module that failed to *load*, one that burned through even its **runway** before
+/// finishing (the case is beyond hope of a fuel reading), and any other mid-run
+/// failure. `pass_limit`/`run_ceiling` frame the runway when it was exhausted.
+fn run_failure_detail(err: &RunError, pass_limit: u64, run_ceiling: u64) -> String {
     match err {
         RunError::Load(inner) => format!("the engine failed to load: {inner}"),
+        RunError::Invoke(InvokeError::OutOfFuel) if run_ceiling > pass_limit => format!(
+            "the engine exhausted its runway ({run_ceiling} fuel, {}x the {pass_limit} ceiling) \
+             before finishing — too slow to even measure",
+            run_ceiling / pass_limit.max(1)
+        ),
+        RunError::Invoke(InvokeError::OutOfFuel) => {
+            format!("the engine exhausted the {pass_limit} fuel ceiling before finishing")
+        }
         other => format!("the engine failed during the run: {other}"),
     }
 }
@@ -318,11 +521,7 @@ fn host_failure_detail(err: &RunError) -> String {
 /// oracle. Best-effort: any failure is swallowed (it is debuggability material, not
 /// a scored artifact).
 fn write_state_debug(repo: &std::path::Path, case: &PerformanceCase, snapshots: &[Snapshot]) {
-    let stem = case
-        .input
-        .file_stem()
-        .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_else(|| "case".to_string());
+    let stem = case_stem(case);
     let dir = repo.join(STATE_DIR);
     if std::fs::create_dir_all(&dir).is_err() {
         return;
@@ -330,6 +529,50 @@ fn write_state_debug(repo: &std::path::Path, case: &PerformanceCase, snapshots: 
     if let Ok(json) = serde_json::to_vec_pretty(snapshots) {
         let _ = std::fs::write(dir.join(format!("{stem}.state.json")), json);
     }
+}
+
+/// Copy a case's scored scenario to the run root as `scenario.json` (case 0) or
+/// `scenario-<index>.json`, returning that name, so the published run carries what
+/// browser playback needs to reconstruct the factory.
+///
+/// The name is deliberately **flat and index-addressed**, mirroring an adversarial
+/// run's `replay.json` / `replay-1.json`: assets are served through a one-segment
+/// `/runs/{id}/asset/{file}` route, so a name carrying a directory could not be
+/// requested. The index is the case's position in the manifest, which is what
+/// [`crate::playable::serve_asset_file`] resolves back.
+///
+/// The scored scenario is deliberately not seeded into the run's workspace — the
+/// engine must never see it — so it does not otherwise exist in the produced tree;
+/// this copies it in only once the engine has already been run and graded. Returns
+/// `None` if the copy fails, which simply means this case has no playback.
+/// Publish the run's engine module into the run tree so browser playback can fetch
+/// and step it. One module per run (every case's playback drives the same wasm), so
+/// it is written once at a fixed name. Non-fatal — a write failure just leaves
+/// playback unavailable, exactly as a failed scenario write does.
+fn write_module(repo: &std::path::Path, module: &[u8]) -> Option<String> {
+    let name = "engine.wasm";
+    std::fs::create_dir_all(repo).ok()?;
+    std::fs::write(repo.join(name), module).ok()?;
+    Some(name.to_string())
+}
+
+fn write_scenario(repo: &std::path::Path, index: usize, scenario: &[u8]) -> Option<String> {
+    let name = if index == 0 {
+        "scenario.json".to_string()
+    } else {
+        format!("scenario-{index}.json")
+    };
+    std::fs::create_dir_all(repo).ok()?;
+    std::fs::write(repo.join(&name), scenario).ok()?;
+    Some(name)
+}
+
+/// The `<input-stem>` a case's produced files are named after.
+fn case_stem(case: &PerformanceCase) -> String {
+    case.input
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "case".to_string())
 }
 
 /// A [`ValidationSummary`] for a performance run that could not be scored at all (a
@@ -343,6 +586,7 @@ fn failed(detail: &str, proofs: Vec<ProofResult>) -> ValidationSummary {
         build: None,
         checks: Vec::new(),
         proofs,
+        debug_scripts: Vec::new(),
         asset: None,
         voxel: None,
         ui: None,
@@ -370,6 +614,7 @@ fn incorrect(
         build: None,
         checks: Vec::new(),
         proofs,
+        debug_scripts: Vec::new(),
         asset: None,
         voxel: None,
         ui: None,
@@ -380,7 +625,13 @@ fn incorrect(
         performance: Some(PerformanceResult {
             correct: false,
             total_fuel: None,
+            fuel_limit: None,
             cases,
+            // A run that failed before scoring has no engine to publish for
+            // playback (the module was missing, unloadable, or the manifest was
+            // incomplete) — so there is nothing to step, and playback is simply
+            // unavailable rather than falling back to the reference engine.
+            module_wasm: None,
             detail: Some(detail),
         }),
     }

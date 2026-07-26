@@ -153,6 +153,7 @@ fn serve_asset_file_resolves_voxel_parts_by_flat_index() {
     };
     let dir = run_dir_with_validation(
         ValidationSummary {
+            debug_scripts: Vec::new(),
             voxel: Some(voxel),
             ..Default::default()
         },
@@ -181,6 +182,69 @@ fn serve_asset_file_resolves_voxel_parts_by_flat_index() {
 }
 
 #[test]
+fn serve_asset_file_resolves_performance_scenarios_by_case_index() {
+    // Browser playback fetches a run's scored scenario over the same
+    // `/asset/{file}` path everything else uses, addressed by case index:
+    // `scenario.json` is case 0, `scenario-<i>.json` selects case `i`.
+    let case = |input: &str, scenario: Option<&str>| crate::validation::PerformanceCaseResult {
+        input: input.to_string(),
+        kind: crate::validation::PerformanceCaseKind::Stress,
+        correct: scenario.is_some(),
+        over_ceiling: false,
+        skipped: false,
+        fuel: Some(10),
+        first_mismatch_tick: None,
+        detail: None,
+        snapshots: Vec::new(),
+        scenario_json: scenario.map(|s| s.to_string()),
+    };
+    let performance = crate::validation::PerformanceResult {
+        correct: false,
+        total_fuel: None,
+        fuel_limit: Some(5_000_000_000),
+        cases: vec![
+            case("cases/small.json", Some("performance/small.scenario.json")),
+            case(
+                "cases/medium.json",
+                Some("performance/medium.scenario.json"),
+            ),
+            // A failing case records no scenario, so it has nothing to serve.
+            case("cases/large.json", None),
+        ],
+        module_wasm: Some("engine.wasm".to_string()),
+        detail: None,
+    };
+    let dir = run_dir_with_validation(
+        ValidationSummary {
+            performance: Some(performance),
+            ..Default::default()
+        },
+        &[
+            (
+                "performance/small.scenario.json",
+                b"{\"version\":1,\"n\":0}",
+            ),
+            (
+                "performance/medium.scenario.json",
+                b"{\"version\":1,\"n\":1}",
+            ),
+        ],
+    );
+
+    let served = serve_asset_file(dir.path(), "scenario.json").expect("case 0");
+    assert_eq!(served.content_type, "application/json");
+    assert_eq!(served.body, b"{\"version\":1,\"n\":0}");
+    let served = serve_asset_file(dir.path(), "scenario-1.json").expect("case 1");
+    assert_eq!(served.body, b"{\"version\":1,\"n\":1}");
+    // A case that recorded no scenario is a miss, not a panic.
+    assert!(serve_asset_file(dir.path(), "scenario-2.json").is_none());
+    // So is an out-of-range case index.
+    assert!(serve_asset_file(dir.path(), "scenario-9.json").is_none());
+    // A performance run serves nothing else through this path.
+    assert!(serve_asset_file(dir.path(), "regenerated.png").is_none());
+}
+
+#[test]
 fn serve_asset_file_resolves_static_voxel_under_bare_names() {
     // A static model has one part served under bare names (frame `None`).
     let voxel = VoxelGenResult {
@@ -201,6 +265,7 @@ fn serve_asset_file_resolves_static_voxel_under_bare_names() {
     };
     let dir = run_dir_with_validation(
         ValidationSummary {
+            debug_scripts: Vec::new(),
             voxel: Some(voxel),
             ..Default::default()
         },
@@ -228,6 +293,7 @@ fn serve_asset_file_resolves_the_new_asset_families() {
     };
     let dir = run_dir_with_validation(
         ValidationSummary {
+            debug_scripts: Vec::new(),
             ui: Some(UiGenResult {
                 elements: vec![
                     element("panel", "elements/panel.png"),
@@ -258,6 +324,7 @@ fn serve_asset_file_resolves_the_new_asset_families() {
     // Material: each map by its declared index, plus `material.json`.
     let dir = run_dir_with_validation(
         ValidationSummary {
+            debug_scripts: Vec::new(),
             material: Some(MaterialGenResult {
                 maps: vec![
                     MaterialMapResult {
@@ -296,6 +363,7 @@ fn serve_asset_file_resolves_the_new_asset_families() {
     // Particle: the authored `system.json` and the preview GIF (new content type).
     let dir = run_dir_with_validation(
         ValidationSummary {
+            debug_scripts: Vec::new(),
             particle: Some(ParticleGenResult {
                 system: "system.json".to_string(),
                 preview: Some("effect.gif".to_string()),
@@ -318,6 +386,7 @@ fn serve_asset_file_resolves_the_new_asset_families() {
     // Audio: `clip.wav`, the music-only `score.mid`, and the waveform preview PNG.
     let dir = run_dir_with_validation(
         ValidationSummary {
+            debug_scripts: Vec::new(),
             audio: Some(AudioGenResult {
                 clip: "clip.wav".to_string(),
                 midi: Some("clip.mid".to_string()),
@@ -361,6 +430,7 @@ fn missing_file_is_none() {
 /// `implementation/`.
 fn run_dir_with_proofs(proofs: &[(&str, &str, MediaKind)], media: &[(&str, &[u8])]) -> TempDir {
     let validation = ValidationSummary {
+        debug_scripts: Vec::new(),
         proofs: proofs
             .iter()
             .map(|(id, dest, kind)| ProofResult {
@@ -426,6 +496,7 @@ fn run_dir_with_validation(validation: ValidationSummary, media: &[(&str, &[u8])
             state: RunState::Completed,
             detail: None,
         },
+        game_jam_readme: None,
     };
     fs::write(
         dir.path().join("run-record.json"),
@@ -514,4 +585,35 @@ fn declared_proof_with_no_media_on_disk_is_none() {
 fn proof_without_a_record_is_none() {
     let dir = TempDir::new().unwrap();
     assert_eq!(serve_proof_file(dir.path(), "title.png"), None);
+}
+
+#[test]
+fn serves_synthesized_validation_media_from_the_collected_tree() {
+    // Validation media is stored flat under `.tcab/validation/` and served by its
+    // exact addressable name — actual and its `.baseline` sibling.
+    let dir = run_dir_with_validation(
+        ValidationSummary::default(),
+        &[
+            (".tcab/validation/spin__rally.webm", b"webm-bytes"),
+            (
+                ".tcab/validation/spin__rally.baseline.webm",
+                b"baseline-bytes",
+            ),
+        ],
+    );
+    let actual = serve_validation_file(dir.path(), "spin__rally.webm").expect("actual served");
+    assert_eq!(actual.content_type, "video/webm");
+    assert_eq!(actual.body, b"webm-bytes");
+    let baseline =
+        serve_validation_file(dir.path(), "spin__rally.baseline.webm").expect("baseline served");
+    assert_eq!(baseline.body, b"baseline-bytes");
+}
+
+#[test]
+fn validation_media_requests_cannot_escape_the_dir() {
+    let dir = run_dir_with_validation(ValidationSummary::default(), &[]);
+    // A traversal or nested path is refused; a missing file is a plain miss.
+    assert!(serve_validation_file(dir.path(), "../run-record.json").is_none());
+    assert!(serve_validation_file(dir.path(), "sub/inner.png").is_none());
+    assert!(serve_validation_file(dir.path(), "missing.png").is_none());
 }

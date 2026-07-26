@@ -18,6 +18,18 @@ self-contained procedure; the paired **quickstart** is a short refresher. The
 authoritative for **what** each manifest field means — read them first, as the
 guides instruct.
 
+## Before writing any spec or prompt (end-to-end / full-stack)
+
+For a playable case — end-to-end or full-stack — read
+[`guides/authoring/writing-case-specifications.md`](../../../apps/docs/src/content/docs/guides/authoring/writing-case-specifications.md)
+**in addition to** the type guide below, whether you are authoring a new case,
+revising an existing one, or adding a variant. It is the editorial rulebook for
+everything that gets seeded: specs must be authoritative and self-contained, must
+carry no history, must never reveal that this is a test, must not warn about edge
+cases (those become review items with validation scripts), must not mention other
+variants or modes, and prompts must not give behavioral advice. It ends with a
+revision checklist to run before you call the work done.
+
 ## Pick your guide
 
 Pick the `asset_kind` from

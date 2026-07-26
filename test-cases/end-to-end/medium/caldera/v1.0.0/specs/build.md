@@ -5,15 +5,15 @@ upgrade**, every buildable structure and where the terrain lets you place it, an
 repair and demolish. How the fluids those structures produce and consume actually
 flow is in `specs/fluids.md`; the towers' combat stats are in `specs/towers.md`;
 the terrain rules the placement checks against are in `specs/world.md`. All costs
-are in **funds (`$`)**; values are best-effort defaults and **tunable**.
+are in **funds (`$`)**.
 
 ## Funds — the one currency
 
 Everything is built and repaired with **funds (`$`)**, a single currency the
 **Core** produces over time:
 
-- The run begins with **`$600`** in the treasury (tunable).
-- The Core produces a **base income of `$10` per second** (tunable), credited
+- The run begins with **`$600`** in the treasury.
+- The Core produces a **base income of `$10` per second**, credited
   continuously (not in lump sums). The current balance and the live income rate are
   shown on the HUD (`specs/flow.md`).
 - Funds are spent to place structures and pipes, to repair damage, and to upgrade
@@ -41,7 +41,7 @@ and too late can leave you unable to afford the defense the late waves demand.
   | Level 1 → 2 | `$900` | `$24/s` |
   | Level 2 → 3 | `$1600` | `$34/s` |
 
-  (Costs and rates tunable; the shape — rising cost, rising income, a real
+  (The shape — rising cost, rising income, a real
   opportunity cost against buying defense now — is the requirement.)
 - Upgrading is instant on purchase and shown on the Core and the HUD. Upgrading does
   **not** heal the Core or change its health pool (`specs/world.md`).
@@ -113,10 +113,10 @@ play:
 
 - **Repair.** Select a damaged structure or pipe and **repair** it to full health for
   a fraction of its build cost (about **half** the remaining damage as a share of
-  build cost; tunable). A destroyed structure is gone — it must be **rebuilt**, not
+  build cost). A destroyed structure is gone — it must be **rebuilt**, not
   repaired.
 - **Demolish.** Select any structure or pipe you built and **demolish** it, removing
-  it and refunding **50%** of its build cost (tunable). Demolishing frees the cell and
+  it and refunding **50%** of its build cost. Demolishing frees the cell and
   lets you re-route.
 
 ## Health of what you build

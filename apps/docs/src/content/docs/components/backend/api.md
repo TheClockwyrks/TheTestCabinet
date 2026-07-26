@@ -26,9 +26,9 @@ this contract.
 - Timestamps are **RFC 3339** strings.
 - Harness slugs are the eight defined in
   [Harnesses](/components/core/harnesses/).
-- Ratings are the four tiers defined in
+- Ratings are the five tiers defined in
   [Reviews](/components/core/results/#reviews):
-  `flawless`, `great`, `scuffed`, `broken`.
+  `flawless`, `great`, `passable`, `scuffed`, `broken`.
 - **Reads are open; mutations require a bearer token.** Reachability is the first
   line of access control — the backend sits on a private network — but the
   mutating run endpoints (review, publish) additionally require an
@@ -202,7 +202,10 @@ A representative response:
       "description": null,
       "specs": [],
       "references": [
-        { "view": "title", "screenshotUrl": "/test-cases/carom/v1.0.0/references/base/title.png" }
+        {
+          "view": "title",
+          "screenshotUrl": "/test-cases/carom/v1.0.0/references/base/title.png"
+        }
       ],
       // Variant-specific reviewer checklist items, for the consoles' guided
       // review (see Reviews). Empty when the variant declares none.
@@ -210,10 +213,18 @@ A representative response:
     }
   ],
   "commonReferences": [
-    { "view": "gameplay", "screenshotUrl": "/test-cases/carom/v1.0.0/references/_common/gameplay.png" }
+    {
+      "view": "gameplay",
+      "screenshotUrl": "/test-cases/carom/v1.0.0/references/_common/gameplay.png"
+    }
   ],
   "checks": [
-    { "view": "title", "name": "Title", "referenceView": "title", "actions": [ { "type": "wait", "ms": 500 } ] }
+    {
+      "view": "title",
+      "name": "Title",
+      "referenceView": "title",
+      "actions": [{ "type": "wait", "ms": 500 }]
+    }
   ],
   // Reviewer checklist items common to every variant.
   "commonReviewItems": [
@@ -238,6 +249,18 @@ them. The path is validated to resolve inside the version's store directory.
 Fetch a rendered reference screenshot as `image/png`. `scope` is `_common` for a
 common reference or a variant slug for a variant-specific one. The `screenshotUrl`
 fields in the resolved version point here.
+
+### `GET /test-cases/{slug}/versions/{version}/validation-files`
+
+List the store-relative keys of every file under the version's reporter-side
+automated-validation script directory (`validation/`) — the debug drivers plus any
+shared modules they import (for example `validation/_helpers.mjs`) — as a JSON
+string array, walked recursively and sorted. A backend-driven run fetches this whole
+set (each via the `artifacts` route above) into its definition store so a script's
+sibling `import`s resolve when the [validator](/components/core/validation/) runs it;
+the review-item-named scripts alone are not enough. Like the scripts themselves,
+these are **reporter-side** and never seeded into the model's run container. Empty
+for a version that declares no scripted items.
 
 ## Container images
 
@@ -316,7 +339,7 @@ List stored runs, newest first. A `state` query parameter selects which runs:
   yet published, plus published ones), ordered by finish time, so a reviewer can
   find runs to assess. The failure tiers are excluded — they carry no review
   checklist.
-- `state=failures` — the **publishable-failure worklist**: catastrophic and
+- `state=failures` — the **publishable-failure worklist**: catastrophic, validation-error, and
   timed-out runs (pending and published), for the publish-failures affordance.
   Infrastructure failures are excluded (never publishable).
 - `state=unpublished` — **every** unpublished run whatever its terminal

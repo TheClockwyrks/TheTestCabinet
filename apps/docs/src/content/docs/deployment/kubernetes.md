@@ -359,6 +359,16 @@ The backend also carries two values that wire it into the new run path:
   queue never drains.
 - **`TCAB_ARTIFACTS_PUBLIC_URL`** — the console-facing artifact base URL the
   backend reports to the console via `GET /config`.
+- **`TCAB_SNAPSHOT_PUBLIC_URL`** — the **public read** base of the snapshot
+  bucket, reported through the same `GET /config` so the console can load an
+  asset-generation case's published
+  [reference frames](/components/core/results/#script-references-asset-generation).
+  Do not confuse it with `TCAB_R2_ENDPOINT`, the S3 **write** endpoint the backend
+  uploads the snapshot through: this is the CDN hostname those objects are *served*
+  from, and it carries the same value the static site is built with as
+  `TCAB_SNAPSHOT_URL`. Unlike the data-plane URLs above it is not VPN-only — the
+  bucket is public-read, which is what lets the public gallery work. Left unset,
+  the console simply shows no Reference tab for asset-generation cases.
 
 Constraints 1 and 2 are properties of the **SQLite** store, not the backend
 itself. Point `TCAB_BACKEND_DATABASE_URL` at a managed **PostgreSQL** instance
@@ -439,21 +449,35 @@ and pass it as `PGPASSWORD`. Run it once per database, substituting each identit
 **object (principal) id**:
 
 ```sql
--- On the backend database (tcab_backend), as the Entra admin:
-SELECT pgaadauth_create_principal_with_oid(
-  'tcab-backend-db-<env>', '<backend-identity-object-id>', 'service', false, false);
-GRANT CONNECT ON DATABASE tcab_backend TO "tcab-backend-db-<env>";
-GRANT USAGE, CREATE ON SCHEMA public TO "tcab-backend-db-<env>";
-GRANT ALL PRIVILEGES ON ALL TABLES    IN SCHEMA public TO "tcab-backend-db-<env>";
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO "tcab-backend-db-<env>";
--- Future objects the migration creates as tcabadmin stay reachable:
-ALTER DEFAULT PRIVILEGES IN SCHEMA public
-  GRANT ALL ON TABLES    TO "tcab-backend-db-<env>";
-ALTER DEFAULT PRIVILEGES IN SCHEMA public
-  GRANT ALL ON SEQUENCES TO "tcab-backend-db-<env>";
+-- On the backend database (tcab_backend), as the Entra admin.
+-- Register the managed identity as an Entra-authable login role. Newer Azure
+-- Flexible Server images (PG 17/18) do NOT expose the pgaadauth_create_principal*
+-- SQL wrappers by default — the primitive underneath them is a CREATE ROLE plus a
+-- pgaadauth SECURITY LABEL carrying the identity's object id, which is what the
+-- server itself uses to register the Entra admin. Use that directly:
+CREATE ROLE "tcab-backend-db-<env>" WITH LOGIN;
+SECURITY LABEL FOR "pgaadauth" ON ROLE "tcab-backend-db-<env>"
+  IS 'aadauth,oid=<backend-identity-object-id>,type=service';
+-- Give it everything the current password owner-role has — existing AND future
+-- objects, plus the ownership rights migrations need (ALTER/DROP on owned tables) —
+-- by making it a member of the role that OWNS the database. That owner role name is
+-- environment-specific — do NOT assume it: staging uses `tcab_backend` / `tcab_auth`,
+-- but prod uses `tcab_backend_app` / `tcab_auth_app`. Confirm it first (it is also the
+-- username in the current password-form connection string):
+--   SELECT pg_catalog.pg_get_userbyid(datdba) FROM pg_database WHERE datname = 'tcab_backend';
+GRANT "<owner-role>" TO "tcab-backend-db-<env>";  -- e.g. tcab_backend (staging) / tcab_backend_app (prod)
 ```
 
-Repeat on `tcab_auth` for `tcab-auth-db-<env>`. The object ids as provisioned:
+(`type=service` is the label form for a managed identity / service principal;
+the Entra admin's own label is the same shape with `type=user,admin`. If a server
+*does* have the wrappers installed, `SELECT pgaadauth_create_principal_with_oid(
+'tcab-backend-db-<env>', '<oid>', 'service', false, false);` is the equivalent
+one-liner for the CREATE ROLE + SECURITY LABEL, but do not rely on it being
+present.) Membership in the owner role subsumes the older per-object `GRANT … ON
+ALL TABLES/SEQUENCES` + `ALTER DEFAULT PRIVILEGES` recipe, and — unlike bare
+grants — lets the app run schema-altering migrations under its Entra role.
+
+Repeat on `tcab_auth` for `tcab-auth-db-<env>` (member of the auth database's owner role — `tcab_auth` on staging, `tcab_auth_app` on prod; confirm the same way). The object ids as provisioned:
 `tcab-backend-db-staging` `2a3ced7d-9476-43e4-ad60-8e0426e34bcf`,
 `tcab-auth-db-staging` `018baf38-0dbe-4c94-9b21-23115f4f9ec1`,
 `tcab-backend-db-prod` `71b6b5cf-0731-4510-982a-8582cfa1e210`,

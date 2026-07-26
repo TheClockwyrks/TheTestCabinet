@@ -80,65 +80,14 @@ auto_play = false
 [[spec]]
 source = "specs/brief.md.hbs"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the regenerated, rigged model reads as the Ironward siege tank \
-and poses correctly — a low, tracked hull carrying a turret that swivels on its \
-mount without detaching while the hull stays put, a long gun that stays attached to \
-the turret and swings with it, and the disciplined Ironward palette."""
-
-[[review_item]]
-id = "reads-as-tank"
-title = "Reads as a siege tank"
-text = """
-From more than one angle the model reads unmistakably as a heavy tank: a low, \
-boxy hull riding on a pair of tracks down its sides, a turret sitting on top, \
-and a long gun barrel projecting forward from the turret. It is a tracked \
-fighting vehicle, not an abstract stack of boxes."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "turret-swivels"
-title = "Turret swivels cleanly on its mount"
-text = """
-Playing `turret_sweep` swings the turret smoothly left and right about a vertical \
-mount at the top-center of the hull, aiming the gun across its arc and easing at the \
-extremes rather than sliding at a constant rate. Across the full traverse no part of \
-the turret tears away from its mount or clips down into the hull — the turret and its \
-gun rotate together as one solid piece about a single vertical axis."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "hull-fixed"
-title = "Hull stays put; only the turret moves"
-text = """
-The tracked hull is the fixed base of the machine: it stays put, never carried along \
-by the turret. When `turret_sweep` plays, the turret (and the gun with it) swings \
-while the hull and its tracks hold still. Nothing but the moving turret assembly \
-moves."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "gun-attached"
-title = "Gun stays attached to the turret"
-text = """
-The long gun projects forward from the turret and swings with it as `turret_sweep` \
-plays — riding the turret's rotation as though bolted to it, always meeting the \
-turret with no gap and never floating free or detaching."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Ironward palette discipline"
-text = """
-Uses only the Ironward colors from the brief (olive hull, dark olive underside, \
-dark track, gunmetal gun, and the warm accent) with no out-of-palette colors \
-and no stray voxels drifting off the parts."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

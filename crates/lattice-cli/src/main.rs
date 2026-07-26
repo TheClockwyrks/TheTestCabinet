@@ -94,6 +94,10 @@ struct GenArgs {
     /// The number of ticks to simulate.
     #[arg(long, value_name = "N", default_value_t = 100_000)]
     ticks: u64,
+    /// Which layout strategy to lay down: `lines` (independent east-flowing belt
+    /// lines) or `bus` (an interconnected main-bus factory).
+    #[arg(long, value_enum, default_value = "lines")]
+    layout: generate::Layout,
     /// Where to write the scenario JSON. Omit for stdout.
     #[arg(long, value_name = "FILE")]
     out: Option<PathBuf>,
@@ -191,8 +195,8 @@ fn run(args: RunArgs) -> Result<()> {
 fn generate_scenario(args: GenArgs) -> Result<()> {
     let seed = parse_seed(&args.seed).with_context(|| format!("parsing --seed {:?}", args.seed))?;
     let (width, height) = parse_grid(&args.grid)?;
-    let scenario =
-        generate::scenario(seed, width, height, args.ticks).context("generating the scenario")?;
+    let scenario = generate::scenario_with_layout(seed, width, height, args.ticks, args.layout)
+        .context("generating the scenario")?;
     // The generator must only ever emit valid scenarios — verify before writing so
     // a generator bug surfaces here, not deep in a downstream solve.
     scenario

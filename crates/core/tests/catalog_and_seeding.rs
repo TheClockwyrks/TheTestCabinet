@@ -36,8 +36,17 @@ fn every_catalog_case_and_variant_resolves() {
                 case.slug,
                 version
             );
+            // Two types carry no per-domain reviewer rating, so the domain
+            // assertions apply only to the domain-scored types. A game jam is graded
+            // on categories plus a whole-game overall grade; a performance case is
+            // graded automatically on correctness and fuel, with no human review at
+            // all.
+            let undomained = matches!(
+                resolved.test_type,
+                test_cabinet_core::TestType::GameJam | test_cabinet_core::TestType::Performance
+            );
             assert!(
-                !resolved.domains.is_empty(),
+                undomained || !resolved.domains.is_empty(),
                 "{}@{} declares no common domains",
                 case.slug,
                 version
@@ -50,9 +59,10 @@ fn every_catalog_case_and_variant_resolves() {
                     )
                 });
                 // Every variant's effective domain set (common ∪ its own) is what a
-                // reviewer rates, so it must be non-empty.
+                // reviewer rates, so it must be non-empty — except for the types
+                // with no per-domain rating to give.
                 assert!(
-                    !resolved.domains_for(variant).is_empty(),
+                    undomained || !resolved.domains_for(variant).is_empty(),
                     "{}@{} variant {} has no effective domains",
                     case.slug,
                     version,
@@ -61,6 +71,124 @@ fn every_catalog_case_and_variant_resolves() {
             }
         }
     }
+}
+
+/// Carom v2.0.0's instrumentation spec is a `.hbs` template whose ball-count
+/// wording is chosen by the variant slug, so a seeded run reads correctly for one
+/// ball or three without ever naming the other. Seed the single-ball `base` and
+/// `gyre` variants and the three-ball `multi` variant and confirm each lands
+/// rendered, with the right wording and no surviving template tags or blank-line
+/// artifacts where the block tags stood.
+#[test]
+fn carom_instrumentation_renders_per_variant_ball_count() {
+    let catalog = TestCaseCatalog::new(catalog_root());
+    let version = catalog
+        .resolve("carom", "v2.0.0")
+        .expect("resolve carom v2.0.0");
+
+    let seed_instrumentation = |variant_slug: &str| -> String {
+        let variant = version.variant(variant_slug).expect("variant");
+        let specs = version.seeded_specs(variant);
+        let workspace = version.workspace_for(variant);
+
+        let seed_base = tempfile::tempdir().expect("temp dir");
+        let fake_image = seed_base.path().join("title-source.png");
+        std::fs::write(&fake_image, b"not-a-real-png").expect("write fake image");
+        let references = [RenderedReference {
+            view: "title".to_string(),
+            kind: test_cabinet_core::MediaKind::Image,
+            media_path: fake_image,
+        }];
+
+        let seeder = FsRepoSeeder::new(seed_base.path());
+        let seeded = seeder
+            .seed(&SeedRequest {
+                test_case: &version,
+                variant,
+                specs: &specs,
+                workspace,
+                references: &references,
+                live_preview: None,
+                prior_game_jam_entries: &[],
+            })
+            .expect("seed carom v2.0.0");
+
+        std::fs::read_to_string(seeded.path.join("specs/instrumentation.md"))
+            .expect("read seeded instrumentation")
+    };
+
+    let base = seed_instrumentation("base");
+    let gyre = seed_instrumentation("gyre");
+    let multi = seed_instrumentation("multi");
+
+    // Every variant lands the API surface rendered, with no Handlebars tags left
+    // and no triple newline where a standalone block tag was stripped.
+    for (slug, text) in [("base", &base), ("gyre", &gyre), ("multi", &multi)] {
+        assert!(
+            text.contains("window.__carom") && !text.contains("{{"),
+            "{slug}: instrumentation should render with no surviving tags"
+        );
+        assert!(
+            !text.contains("\n\n\n"),
+            "{slug}: rendered instrumentation should have no blank-line artifact"
+        );
+    }
+
+    // The single-ball variants describe one ball and never mention three.
+    for (slug, text) in [("base", &base), ("gyre", &gyre)] {
+        assert!(
+            text.contains("single ball in play"),
+            "{slug}: should describe a single ball"
+        );
+        assert!(
+            !text.contains("three balls"),
+            "{slug}: single-ball variant must not mention three balls"
+        );
+    }
+
+    // The three-ball variant describes all three and never says a single ball.
+    assert!(
+        multi.contains("All three balls, in play order")
+            && multi.contains("selects one of the three"),
+        "multi: should describe three balls: {multi}"
+    );
+    assert!(
+        !multi.contains("single ball"),
+        "multi: three-ball variant must not mention a single ball"
+    );
+}
+
+#[test]
+fn resolves_dead_mans_switch_game_jam() {
+    let catalog = TestCaseCatalog::new(catalog_root());
+    let resolved = catalog
+        .resolve("dead-mans-switch", "v1.0.0")
+        .expect("resolve the dead-mans-switch jam");
+
+    // A game jam: full-stack-style build, no domains, and the generic graded
+    // checklist injected because the manifest declares no categories of its own.
+    assert_eq!(resolved.test_type, test_cabinet_core::TestType::GameJam);
+    assert!(
+        resolved.domains.is_empty(),
+        "a game jam declares no scoring domains"
+    );
+    assert!(
+        !resolved.common_review_items.is_empty(),
+        "a game jam with no authored categories gets the generic checklist"
+    );
+    assert!(
+        resolved.common_review_items.iter().all(|item| item.graded),
+        "every game-jam review category is graded"
+    );
+    // The reserved `overall` id is never a declared category — it carries the
+    // reviewer's whole-game grade separately.
+    assert!(
+        !resolved
+            .common_review_items
+            .iter()
+            .any(|item| item.id == test_cabinet_core::review::OVERALL_VERDICT_ID),
+        "the `overall` id is reserved for the whole-game grade, not a category"
+    );
 }
 
 #[test]
@@ -87,10 +215,10 @@ fn resolves_carom_from_its_manifest() {
         .expect("resolve latest carom by folder name");
     assert_eq!(version.slug, "pong");
     // The prompt template and the decomposed common specs are resolved from the
-    // manifest. Every variant seeds the overview spec and the common modes spec;
-    // the obstacle and ball rules that differ per variant are seeded from each
-    // variant's own file (to the stable `specs/obstacles.md` and `specs/balls.md`
-    // paths the common specs reference).
+    // manifest. Every variant seeds the overview spec and both common per-mode
+    // specs (Solo and Versus, decomposed by concern under `specs/modes/`); the
+    // rules that differ per variant are not separate per-variant files but
+    // branches inside the common `.hbs` specs (see the multi assertions below).
     assert!(version.prompt_path.ends_with("prompt.hbs"));
     assert!(
         version
@@ -103,8 +231,15 @@ fn resolves_carom_from_its_manifest() {
         version
             .common_specs
             .iter()
-            .any(|spec| spec.dest == Path::new("specs/modes.md")),
-        "the modes spec should be common to every variant"
+            .any(|spec| spec.dest == Path::new("specs/modes/single-player.md")),
+        "the single-player mode spec should be common to every variant"
+    );
+    assert!(
+        version
+            .common_specs
+            .iter()
+            .any(|spec| spec.dest == Path::new("specs/modes/versus.md")),
+        "the versus mode spec should be common to every variant"
     );
     // Site-facing metadata is surfaced from the manifest. Carom declares all of
     // it, including a site-facing description that is resolved but never seeded.
@@ -134,16 +269,32 @@ fn resolves_carom_from_its_manifest() {
     // independent balls), and gyre (swaying, rotating obstacles).
     let variant_slugs: Vec<&str> = version.variants.iter().map(|v| v.slug.as_str()).collect();
     assert_eq!(variant_slugs, ["base", "multi", "gyre"]);
-    // The multi variant seeds its own ball rules on top of the common specs,
-    // replacing the single ball at the stable `specs/balls.md` path the common
-    // specs reference.
+    // Under the decomposed layout no variant seeds a spec of its own: the rules
+    // that differ per variant (multi's three balls, gyre's moving obstacles) are
+    // branches inside the common `.hbs` specs, rendered for the selected variant
+    // before they land. So multi's ball rules ride the common `specs/balls.md`
+    // (rendered from `specs/balls.md.hbs`) rather than a variant-specific file.
     let multi = version.variant("multi").expect("multi variant");
     assert!(
-        multi
-            .specs
+        multi.specs.is_empty(),
+        "multi seeds no spec of its own; its rules branch inside the common .hbs specs"
+    );
+    assert!(
+        version
+            .common_specs
             .iter()
             .any(|spec| spec.dest == Path::new("specs/balls.md")),
-        "multi should seed its ball rules to specs/balls.md"
+        "the common balls spec seeds to specs/balls.md for every variant"
+    );
+    // What multi actually adds over the common case is its reviewer checklist: the
+    // `multi-ball` category (three balls, distinct spawns, ball-to-ball collision,
+    // …) rides along only when multi is the selected variant.
+    assert!(
+        version
+            .review_items_for(multi)
+            .iter()
+            .any(|item| item.id == "multi-ball"),
+        "multi contributes its multi-ball review category"
     );
     // The `gameplay` and `game-over` views are common to every variant; the
     // `title` view is variant-specific because the main menu differs per variant,
@@ -212,6 +363,7 @@ fn seeding_includes_spec_and_reference_images_but_not_source() {
             workspace,
             references: &references,
             live_preview: None,
+            prior_game_jam_entries: &[],
         })
         .expect("seed carom");
 
@@ -322,6 +474,7 @@ fn seeding_vendors_declared_packages_into_the_repo_and_commits_them() {
             workspace: version.workspace_for(base),
             references: &[],
             live_preview: None,
+            prior_game_jam_entries: &[],
         })
         .expect("seed demo");
 
@@ -589,7 +742,7 @@ fn resolves_foray_from_its_manifest() {
     // The on-disk slug matches the in-fiction title "Foray".
     assert_eq!(version.name, "Foray");
     assert_eq!(version.test_type, TestType::Adversarial);
-    assert_eq!(version.difficulty, "hard");
+    assert_eq!(version.difficulty, "easy");
 
     // The adversarial build emits a wasm controller module the validator loads as
     // the submission — `build.module` is resolved (it is rejected on other types).
@@ -753,10 +906,41 @@ fn resolves_lattice_performance_from_its_manifest() {
     assert_eq!(sandbox.fuel_per_tick, None);
     assert_eq!(sandbox.max_memory_bytes, 268_435_456);
 
-    // The held-out scored set resolves: the three [[case]] entries, each an
-    // input/expected pair that exists inside the version folder (and is NOT seeded).
-    assert_eq!(version.cases.len(), 3, "small/medium/large scored cases");
+    // The held-out scored set resolves: eight smoke tests (the correctness pre-flight)
+    // and three stress scenarios (small/medium/large), each an input/expected pair
+    // that exists inside the version folder (and is NOT seeded).
+    use test_cabinet_core::validation::PerformanceCaseKind;
+    let smoke: Vec<_> = version
+        .cases
+        .iter()
+        .filter(|c| c.kind == PerformanceCaseKind::Smoke)
+        .collect();
+    let stress: Vec<_> = version
+        .cases
+        .iter()
+        .filter(|c| c.kind == PerformanceCaseKind::Stress)
+        .collect();
+    assert_eq!(version.cases.len(), 11, "8 smoke + 3 stress scored cases");
+    assert_eq!(smoke.len(), 8, "the eight smoke tests");
+    assert_eq!(stress.len(), 3, "small/medium/large stress scenarios");
+    // A smoke test declares no runway, so its run ceiling is exactly the 5B pass line.
+    for case in &smoke {
+        assert_eq!(
+            case.fuel_ceiling, 5_000_000_000,
+            "a smoke test runs at the pass line (no runway)"
+        );
+    }
+    // Each stress case's run ceiling resolves as `fuel_limit * fuel_runway` (10/5/2),
+    // which widens the runway but leaves the 5B pass line untouched. Order is manifest
+    // order: small, medium, large.
+    assert_eq!(
+        stress.iter().map(|c| c.fuel_ceiling).collect::<Vec<_>>(),
+        vec![50_000_000_000, 25_000_000_000, 10_000_000_000],
+        "runway ceilings resolve from fuel_limit * fuel_runway"
+    );
     for case in &version.cases {
+        // A runway only ever widens: the run ceiling is at least the pass line.
+        assert!(case.fuel_ceiling >= 5_000_000_000);
         assert!(
             case.input.is_file(),
             "scored case input {} should exist",
@@ -789,74 +973,82 @@ fn resolves_lattice_performance_from_its_manifest() {
     let variant_slugs: Vec<&str> = version.variants.iter().map(|v| v.slug.as_str()).collect();
     assert_eq!(variant_slugs, ["base"]);
 
-    // The single qualitative scoring domain a human review works through.
-    let domain_ids: Vec<&str> = version.domains.iter().map(|d| d.id.as_str()).collect();
-    assert_eq!(domain_ids, ["approach"]);
+    // A performance run is graded entirely by the harness — correctness against the
+    // reference oracle, then the fuel a correct engine burned — and carries no human
+    // review, so the case declares neither scoring domains nor a reviewer checklist.
+    // The recorded correctness + fuel result is the whole verdict.
+    assert!(
+        version.domains.is_empty(),
+        "an auto-graded performance case declares no scoring domains"
+    );
+    assert!(
+        version.common_review_items.is_empty(),
+        "an auto-graded performance case declares no reviewer checklist"
+    );
+    for variant in &version.variants {
+        assert!(
+            version.domains_for(variant).is_empty(),
+            "variant {} should carry no domains",
+            variant.slug
+        );
+        assert!(
+            version.review_items_for(variant).is_empty(),
+            "variant {} should carry no review items",
+            variant.slug
+        );
+    }
 }
 
 #[test]
-fn resolves_sprite_sheet_cases_with_review_item_sequence_refs() {
-    // The bundled sprite-sheet asset-generation cases resolve through the real
-    // catalog, and their animation-centric review items name the sheet sequences
-    // they are about so the reviewer UI can surface exactly those animations. Each
-    // referenced slug must name a declared `[[sheet.sequence]]` — the resolution
-    // that rejects an unknown slug is what makes this a real check of the manifests.
+fn asset_generation_cases_are_reviewed_on_one_overall_rating() {
+    // A produced asset is judged as a WHOLE against its brief — too subjective to
+    // break into pass/fail checklist items — so every asset-generation case is
+    // reviewed on a single `overall` scoring domain with no reviewer checklist at
+    // all: the one rating the reviewer gives is the run's rating. Only each case's
+    // LATEST version is held to this; a frozen version keeps whatever checklist the
+    // runs recorded against it were judged by.
     let catalog = TestCaseCatalog::new(catalog_root());
-
-    // (case, review item id, the sequence slugs it should reference).
-    let expected: &[(&str, &str, &[&str])] = &[
-        (
-            "flarefish",
-            "four-directions",
-            &["walk-down", "walk-up", "walk-left", "walk-right"],
-        ),
-        (
-            "gloamfin",
-            "four-directions",
-            &["walk-down", "walk-up", "walk-left", "walk-right"],
-        ),
-        (
-            "lanternjaw",
-            "four-directions",
-            &["walk-down", "walk-up", "walk-left", "walk-right"],
-        ),
-        ("lanternjaw", "jellyfish-disguise", &["disguise"]),
-        (
-            "glimmerfin",
-            "four-directions",
-            &["graze-down", "graze-up", "graze-left", "graze-right"],
-        ),
-        (
-            "glimmerfin",
-            "chomp",
-            &["graze-down", "graze-up", "graze-left", "graze-right"],
-        ),
-        ("drifter", "sway-loop", &["drift"]),
-        (
-            "flare-bloom",
-            "charge-to-bloom",
-            &["flare-charge", "flare-bloom", "flare-fade"],
-        ),
-        (
-            "trench-walls",
-            "corners-junctions",
-            &["corners", "junctions"],
-        ),
-    ];
-
-    for (slug, item_id, sequences) in expected {
+    let mut checked = 0;
+    for case in catalog.list().expect("list catalog") {
         let version = catalog
-            .resolve_latest(slug)
-            .unwrap_or_else(|e| panic!("resolve {slug}: {e}"));
-        // The referenced items here are all common items, shared by every variant.
-        let item = version
-            .common_review_items
-            .iter()
-            .find(|item| &item.id == item_id)
-            .unwrap_or_else(|| panic!("{slug} should declare review item `{item_id}`"));
+            .resolve_latest(&case.slug)
+            .unwrap_or_else(|e| panic!("resolve {}: {e}", case.slug));
+        if version.test_type != TestType::AssetGeneration {
+            continue;
+        }
+        let domains: Vec<&str> = version.domains.iter().map(|d| d.id.as_str()).collect();
         assert_eq!(
-            item.sequences, *sequences,
-            "{slug}/{item_id} should reference {sequences:?}"
+            domains,
+            ["overall"],
+            "{} should declare the single `overall` domain",
+            case.slug
         );
+        assert!(
+            version.common_review_items.is_empty(),
+            "{} should declare no review items",
+            case.slug
+        );
+        for variant in &version.variants {
+            let effective = version.domains_for(variant);
+            let domains: Vec<&str> = effective.iter().map(|d| d.id.as_str()).collect();
+            assert_eq!(
+                domains,
+                ["overall"],
+                "{} variant {} should be rated on `overall` alone",
+                case.slug,
+                variant.slug
+            );
+            assert!(
+                version.review_items_for(variant).is_empty(),
+                "{} variant {} should declare no review items",
+                case.slug,
+                variant.slug
+            );
+        }
+        checked += 1;
     }
+    assert!(
+        checked > 100,
+        "expected the bundled asset-generation catalog, checked only {checked} cases"
+    );
 }

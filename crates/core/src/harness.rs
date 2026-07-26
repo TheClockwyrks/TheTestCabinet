@@ -37,6 +37,16 @@ const BASE_WASM_IMAGE_NAME: &str = "test-cabinet-base-wasm";
 /// `PATH`, so a model can both build a program and produce its own assets in one
 /// run (see `containers/full-stack-2d/Dockerfile`).
 const FULL_STACK_2D_IMAGE_NAME: &str = "test-cabinet-full-stack-2d";
+/// The name of the game-jam run-container image, used by every game-jam run. A jam
+/// is a full-stack-style build (it produces its own 2D assets and ships a browser
+/// game) but is deliberately **not** a full-stack case, so it resolves its own image
+/// rather than borrowing full-stack's. The image is the full-stack-2d image (the six
+/// 2D asset-generation binaries and the audio packs on `PATH`, over the base-wasm
+/// Rust → WebAssembly toolchain, so a jam may author its core in Rust and ship it as
+/// committed wasm) — plus nothing but its own identity, so a deployment can pin the
+/// jam image independently and coreutils `date` is present for a model to check its
+/// time budget. See `containers/game-jam/Dockerfile`.
+const GAME_JAM_IMAGE_NAME: &str = "test-cabinet-game-jam";
 /// The name of the sprite run-container image, used by every single-sprite
 /// asset-generation run (`asset_kind = "sprite"`). It is the base image plus the
 /// baked-in `draw` binary (see `containers/sprite/Dockerfile`).
@@ -121,6 +131,8 @@ const BASE_WASM_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_BASE_WASM";
 /// The environment variable that pins a verbatim override for the full-stack (2D)
 /// image.
 const FULL_STACK_2D_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_FULL_STACK_2D";
+/// The environment variable that pins a verbatim override for the game-jam image.
+const GAME_JAM_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_GAME_JAM";
 /// The environment variable that pins a verbatim override for the sprite image.
 const SPRITE_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_SPRITE";
 /// The environment variable that pins a verbatim override for the sprite-sheet
@@ -191,6 +203,7 @@ const PERFORMANCE_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_PERFORMANCE";
 pub const RUN_IMAGE_OVERRIDE_ENVS: &[&str] = &[
     BASE_WASM_IMAGE_OVERRIDE_ENV,
     FULL_STACK_2D_IMAGE_OVERRIDE_ENV,
+    GAME_JAM_IMAGE_OVERRIDE_ENV,
     SPRITE_IMAGE_OVERRIDE_ENV,
     SPRITE_SHEET_IMAGE_OVERRIDE_ENV,
     VOXEL_IMAGE_OVERRIDE_ENV,
@@ -250,6 +263,14 @@ fn image_spec_for(test_type: TestType, asset_kind: AssetKind) -> ImageSpec {
         TestType::FullStack => ImageSpec {
             name: FULL_STACK_2D_IMAGE_NAME,
             override_env: FULL_STACK_2D_IMAGE_OVERRIDE_ENV,
+        },
+        // A game jam produces its own 2D assets and builds a browser game like a
+        // full-stack run, but it is not a full-stack case: it resolves its own
+        // (full-stack-2d-derived) image so a deployment can pin the jam image on its
+        // own.
+        TestType::GameJam => ImageSpec {
+            name: GAME_JAM_IMAGE_NAME,
+            override_env: GAME_JAM_IMAGE_OVERRIDE_ENV,
         },
         TestType::AssetGeneration => match asset_kind {
             AssetKind::Sprite => ImageSpec {
@@ -369,10 +390,10 @@ fn image_spec_for(test_type: TestType, asset_kind: AssetKind) -> ImageSpec {
 ///    at a private build. There is no override that applies to every image: they
 ///    differ, so each is pinned on its own.
 /// 2. `{registry}/{name}:{tag}`, where `name` is the run's image
-///    ([`BASE_WASM_IMAGE_NAME`], [`SPRITE_IMAGE_NAME`], or [`SPRITE_SHEET_IMAGE_NAME`]),
+///    (`BASE_WASM_IMAGE_NAME`, `SPRITE_IMAGE_NAME`, or `SPRITE_SHEET_IMAGE_NAME`),
 ///    `registry` is `TCAB_CONTAINER_REGISTRY` (default
-///    [`DEFAULT_CONTAINER_REGISTRY`]) and `tag` is `TCAB_CONTAINER_TAG` (default
-///    [`DEFAULT_CONTAINER_TAG`]). The registry and tag are shared across images but
+///    `DEFAULT_CONTAINER_REGISTRY`) and `tag` is `TCAB_CONTAINER_TAG` (default
+///    `DEFAULT_CONTAINER_TAG`). The registry and tag are shared across images but
 ///    compose with the per-image name, so one setting still yields distinct images.
 ///    An explicitly empty `TCAB_CONTAINER_REGISTRY` drops the registry prefix,
 ///    naming a local image (`{name}:{tag}`) for offline development.

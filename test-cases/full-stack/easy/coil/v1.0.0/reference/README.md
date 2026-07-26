@@ -31,7 +31,7 @@ in all three:
 - the **title** menu lists that variant's single mode (`CLASSIC` for `base`, `MAZE`
   for `maze`, each above `HOW TO PLAY`);
 - the **gameplay** board differs by mode — Maze laces the board with the fixed, fatal
-  obstacle course (see [`../specs/mode-maze.md`](../specs/mode-maze.md)) that a
+  obstacle course (see [`../specs/gameplay.md`](../specs/gameplay.md)) that a
   Classic board does not have; and
 - the **game-over** frame shows the dimmed board behind the end panel — obstacle bars
   included — and the HUD's mode tag, so it too differs by mode.
@@ -69,7 +69,7 @@ single stable set of paths.
 ## Regenerating the screenshots
 
 The images are a capture of real builds, so regenerate them whenever a build's look
-changes. A build implements exactly one mode (the one its seeded `specs/mode.md`
+changes. A build implements exactly one mode (the one its seeded `specs/gameplay.md`
 describes), so the Base views come from a Classic build and the Maze views from a
 Maze build:
 

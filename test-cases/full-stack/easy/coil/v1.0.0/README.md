@@ -41,17 +41,18 @@ right, without the scale of the harder cases.
 | `variants/`           | No             | One TOML file per variant (listed in `variants`).                  |
 | `README.md`           | No             | This overview.                                                     |
 
-The specification is split across `specs/` by concern: `overview.md`,
-`playfield.md`, `mechanics.md`, `flow.md`, `assets.md` (the production contract
-for the assets the model must make), and a single **mode spec**. The playable mode
-is not a common spec: each variant seeds its own self-contained mode spec to the
-shared dest `specs/mode.md`, so a run's seeded set describes exactly one mode and
-reads as fully self-contained (following Fathom v1.1.0's per-variant spec pattern).
-The common specs describe the universal game and reference the mode through the
-stable `specs/mode.md` path. This version offers two variants, each a single mode:
-`base` (Classic mode on the open board, `specs/mode-base.md`) and `maze` (Maze mode
-on a board laced with fatal interior obstacles, `specs/mode-maze.md`, which also
-declares its own `maze` scoring domain). Each variant is a standalone TOML file
+The specification is split across `specs/` by concern: `overview.md`, `board.md`,
+`movement.md`, `combo.md`, `gameplay.md` (the playable mode and its main-menu
+entry), `ui.md` (the game states, controls, audio, and the HUD), `assets.md` (the
+production contract for the assets the model must make), and `instrumentation.md`
+(the debug and automation surface the build exposes). Every spec is common, seeded
+for both variants. What differs between the two modes — the mode's menu entry and,
+for Maze, the interior obstacle course — is branched by variant slug inside
+`specs/gameplay.md.hbs` (rendered per variant to `specs/gameplay.md`), so a run's
+seeded set describes exactly one mode and reads as fully self-contained. This
+version offers two variants, each a single mode: `base` (Classic mode on the open
+board) and `maze` (Maze mode on a board laced with fatal interior obstacles, which
+also declares its own `maze` scoring domain). Each variant is a standalone TOML file
 under `variants/`, listed in the manifest's `variants` key.
 
 This version ships **no pre-made assets**: as a full-stack case, the run image

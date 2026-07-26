@@ -19,13 +19,17 @@ import styles from "./RunFailuresPage.module.scss";
 import exec from "./RunExec.module.scss";
 
 // The Publish-failures worklist (`/runs/failures`, consoles only): the produced
-// catastrophic / timed-out runs the console holds locally. Unlike a completed
-// run these carry no review checklist — a publishable failure is real model
-// signal that publishes without a review — so they never appear in the review
-// flow and would otherwise be invisible until published. Each row shows the
+// catastrophic / timed-out / harness-error / hung runs the
+// console holds locally. Unlike
+// a completed run these carry no review checklist — a publishable failure is real
+// model signal that publishes without a review — so they never appear in the
+// review flow and would otherwise be invisible until published. Each row shows the
 // run's identity, its failure tier, and the recorded failure detail, with a
-// Publish button that clears the publish gate. Infrastructure failures are the
-// Test Cabinet's own fault and are never publishable, so they are excluded.
+// Publish button that clears the publish gate. A harness error records only a
+// per-model statistic (no code/build released), so eyeball each before publishing:
+// a subscription auth-token refresh also lands here and should be left unpublished.
+// Infrastructure failures are the Test Cabinet's own fault and are never
+// publishable, so they are excluded.
 export function RunFailuresPage() {
   const { canExecute } = useGalleryData();
   const { active: worker } = useWorkers();
@@ -62,7 +66,8 @@ export function RunFailuresPage() {
   }, [client, refreshToken]);
 
   // The publishable-failure runs, newest first. `listFailures` already scopes to
-  // publishable (catastrophic / timed-out) failures, but the state guard keeps an
+  // publishable (catastrophic / timed-out) failures, but the
+  // state guard keeps an
   // infrastructure failure out defensively.
   const publishable = useMemo(() => {
     return failures

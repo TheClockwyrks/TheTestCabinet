@@ -106,13 +106,9 @@ pub enum Entity {
     Splitter { x: i32, y: i32, dir: Dir },
     /// A swing arm. Picks up from the tile *behind* it and drops onto the tile
     /// *in front*, set by `dir`.
-    Inserter {
-        x: i32,
-        y: i32,
-        dir: Dir,
-        /// An inserter tier name from the prototype table (`"base"`/`"fast"`).
-        tier: String,
-    },
+    /// There is one kind of inserter, so this carries no tier — every inserter
+    /// swings at the single `SWING` constant from the prototype table.
+    Inserter { x: i32, y: i32, dir: Dir },
     /// A 3×3 crafting machine anchored at `(x, y)`, covering `(x..x+3, y..y+3)`.
     Assembler {
         x: i32,
@@ -185,8 +181,6 @@ pub enum ScenarioError {
     BadSnapshots,
     /// A belt referenced an unknown tier.
     UnknownBeltTier(String),
-    /// An inserter referenced an unknown tier.
-    UnknownInserterTier(String),
     /// An assembler referenced an unknown recipe.
     UnknownRecipe(String),
     /// A source referenced an unknown item.
@@ -216,7 +210,6 @@ impl std::fmt::Display for ScenarioError {
                 write!(f, "snapshots must be strictly ascending, each in 1..=ticks")
             }
             ScenarioError::UnknownBeltTier(t) => write!(f, "unknown belt tier {t:?}"),
-            ScenarioError::UnknownInserterTier(t) => write!(f, "unknown inserter tier {t:?}"),
             ScenarioError::UnknownRecipe(r) => write!(f, "unknown recipe {r:?}"),
             ScenarioError::UnknownItem(i) => write!(f, "unknown item {i:?}"),
             ScenarioError::ZeroPeriod => write!(f, "a source's period must be positive"),
@@ -273,11 +266,6 @@ impl Scenario {
                         return Err(ScenarioError::UnknownBeltTier(tier.clone()));
                     }
                 }
-                Entity::Inserter { tier, .. } => {
-                    if prototypes::inserter_swing(tier).is_none() {
-                        return Err(ScenarioError::UnknownInserterTier(tier.clone()));
-                    }
-                }
                 Entity::Assembler { recipe, .. } => {
                     if prototypes::recipe(recipe).is_none() {
                         return Err(ScenarioError::UnknownRecipe(recipe.clone()));
@@ -291,7 +279,8 @@ impl Scenario {
                         return Err(ScenarioError::ZeroPeriod);
                     }
                 }
-                Entity::Splitter { .. } | Entity::Sink { .. } => {}
+                // Nothing to validate: these carry no prototype reference.
+                Entity::Splitter { .. } | Entity::Inserter { .. } | Entity::Sink { .. } => {}
             }
         }
         Ok(())

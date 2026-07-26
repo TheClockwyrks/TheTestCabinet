@@ -1,24 +1,22 @@
 @use "../styles/tokens" as t;
 @use "../styles/halo" as h;
 
-// Sits in the run-detail control strip, pushed to the trailing edge opposite the
-// tabs. Bottom-aligned so the button's baseline meets the strip's hairline border
-// like the tabs do.
+// Sits in the run-detail control strip's trailing action cluster
+// (`.controlActions`), which right-aligns and vertically centers the group; this
+// control just lays out its own button and inline error.
 .deleteControl {
   display: flex;
   align-items: center;
   gap: t.$space-sm;
-  margin-left: auto;
-  margin-bottom: t.$space-xs;
 }
 
-// A muted destructive button: it reads as the negative action without shouting,
-// brightening to the negative color only on hover/focus.
+// A muted destructive icon button: it reads as the negative action without
+// shouting, brightening to the negative color only on hover/focus.
 .deleteButton {
-  padding: t.$space-xs t.$space-md;
-  font-size: t.$font-sm;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: t.$space-xs;
   color: t.$color-text-muted;
   border: t.$border-hairline solid t.$color-border;
   border-radius: t.$radius-sm;
@@ -37,6 +35,14 @@
     opacity: 0.6;
     cursor: progress;
   }
+}
+
+// The trash mark; sized to match the download/traces icons in the run-detail
+// control strip so the three controls share one square footprint.
+.deleteIcon {
+  width: 1.15rem;
+  height: 1.15rem;
+  display: block;
 }
 
 .deleteError {

@@ -21,11 +21,13 @@ name = "lattice_sdk"
 crate-type = ["rlib"]
 
 [dependencies]
-# The scenario/state contract types the submission consumes and produces.
-# `default-features = false` drops the schema feature (schemars) a submission
-# never needs, keeping the guest wasm lean — an engine decodes the scenario and
-# emits snapshots; it does not emit JSON Schemas.
-lattice-core = { path = "../lattice-core", default-features = false }
+# The scenario/state contract types the submission consumes and produces, plus the
+# playback `board` serializer. `default-features = false` drops the schema feature
+# (schemars) a submission never needs; `playback` pulls in only the ordinary-Rust
+# board serializer (`board_json`) the SDK's playback ABI publishes — NOT the wasm
+# C-ABI exports (those are gated behind `playback-abi`, which the SDK never enables),
+# so lattice-core's playback symbols never collide with the SDK's own.
+lattice-core = { path = "../lattice-core", default-features = false, features = ["playback"] }
 serde_json = { workspace = true }
 
 [lints]

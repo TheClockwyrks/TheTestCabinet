@@ -6,7 +6,7 @@
 //! spectrogram shows the spectral content over time (a transient, a pitch sweep, a
 //! filter sweep are all visible), and the piano-roll shows the sequenced notes. There
 //! is no 3D render here — these are ordinary 2D panels drawn on the small
-//! [`crate::canvas`] surface.
+//! `crate::canvas` surface.
 
 use crate::canvas::{Canvas, Rgb};
 use crate::fft::spectrogram;

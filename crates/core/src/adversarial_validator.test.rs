@@ -70,6 +70,7 @@ fn entry(result: ReplayResult, decided: Decided) -> AdversarialReplay {
 /// is `module_rel` (relative to the run root).
 fn adversarial_version(root: PathBuf, module_rel: &str) -> TestCaseVersion {
     TestCaseVersion {
+        instrumentation: None,
         slug: "foray".to_string(),
         version: "v1.0.0".to_string(),
         experimental: false,
@@ -129,6 +130,7 @@ fn adversarial_version(root: PathBuf, module_rel: &str) -> TestCaseVersion {
         common_review_items: Vec::new(),
         domains: Vec::new(),
         cases: Vec::new(),
+        errata: Vec::new(),
     }
 }
 
@@ -199,7 +201,7 @@ fn a_missing_baseline_opponent_is_a_failed_load() {
 fn validate_writes_a_replay_per_opponent_and_records_them() {
     // The committed Foray case root, where the reference opponents live.
     let case_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../test-cases/adversarial/hard/foray/v1.0.0");
+        .join("../../test-cases/adversarial/easy/foray/v1.0.0");
     let dir = tempfile::tempdir().expect("temp dir");
     let repo = dir.path().join("impl");
     std::fs::create_dir_all(&repo).expect("repo");

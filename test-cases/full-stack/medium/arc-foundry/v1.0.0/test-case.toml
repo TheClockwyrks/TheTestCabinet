@@ -1,0 +1,849 @@
+slug = "arc-foundry"
+# The Test Cabinet test case manifest.
+#
+# Declares, for this exact version, which files are seeded into a run, which
+# reference views are rendered and seeded as visual targets, and which validation
+# checks run. The testing harness reads this file to resolve a `TestCaseVersion`.
+
+# Human-readable display name for this test case.
+name = "Arc Foundry"
+
+# Test type. Arc Foundry is a `full-stack` case: an end-to-end (playable-browser-game)
+# case with one addition — the model under test must PRODUCE the game's own assets
+# DURING the run, using the asset-generation binaries on the run image's `PATH`, and
+# then build a game that uses them. It is NOT the older two-run pattern where a
+# separate asset-gen run makes an asset a later game merely consumes; here one model
+# both produces the art/effects/audio and builds the game around it. The `full-stack`
+# type schedules the run onto the `test-cabinet-full-stack-2d` image, which carries
+# exactly six binaries on `PATH` — `draw`, `draw-sheet`, `particle-2d`, `sfx-synth`,
+# `sfx-sample`, and `music` — and no others; every asset the game needs is produced
+# with one of them (`specs/assets.md` is the production contract). A root identity
+# field, so it sits above the first table.
+type = "full-stack"
+
+# Relative difficulty (easy | medium | hard), surfaced on the site. Arc Foundry is
+# medium: it asks for a GemTD-style tower defense — a fixed-step simulation of the Load
+# pathfinding an ORDERED-WAYPOINT maze (with 4-tile waypoint platforms) across three
+# chosen maps with a never-seal rule, a random scrap-press build with
+# the place-and-reveal stamp, the keep-one-per-level rule, inert blockers, a quality-combine
+# climb and an UPGRADE QUALITY track over a five-rung quality ladder, eight base component
+# types (seven firing plus a non-firing support Regulator) with automatic targeting and
+# traveling electrical projectiles, a dozen recipe-assembled COMBINATION TOWERS with exotic
+# abilities (splash/chain/slow/burn/crit/multishot/aura), a scarce Charge / Grid
+# Integrity economy (free placement, no interest), an escalating wave campaign that ends in a Dynamo boss, an in-game
+# Easy/Medium/Hard difficulty menu,
+# and multiple states — AND, on top of that, for the model to author every sprite,
+# animation, particle effect, and sound the game plays, with the produced ELECTRICAL VFX
+# as the headline. The interacting simulation plus a full asset-production pass make this
+# a demanding medium case.
+difficulty = "medium"
+
+# Free-form classification tags, surfaced on the site for browsing and search.
+tags = ["tower-defense", "strategy", "2d", "gemtd"]
+
+# Short site-facing abstract, shown on the test case card. Authored inline (not a
+# file) so it renders safely inside the card's link and stays brief; NOT seeded.
+summary = """
+An electro-industrial GemTD: place rocks at a scrap-press that roll a random salvaged \
+electrical component (one of eight base types) at a random quality tier on placement, \
+keep exactly one per level firing while the rest harden into inert blockers, climb the \
+Scrap-to-Tesla-Prime ladder by quality-combining matches, fold whole recipes of parts \
+into a dozen exotic COMBINATION TOWERS, and refine the press with UPGRADE QUALITY — while \
+every rock is also a maze wall the Load must crawl around an ordered chain of waypoint \
+platforms, and you produce every sprite, arc, chain-lightning, discharge, and sound with \
+the on-PATH asset tools."""
+
+# Site-facing prose describing the case, relative to this version folder. NOT seeded
+# into a run; it exists only to introduce the case on the site.
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version folder),
+# recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+
+# Handlebars prompt template, relative to this version folder. Rendered per run (with
+# the seeded specs and the selected variant) and handed to the model as the build
+# instruction. Injects absolute in-container paths via template variables. The
+# harness auto-prepends the standing full-stack asset-quality preamble to the
+# rendered prompt, so this template does NOT restate a global quality directive.
+prompt = "prompt.hbs"
+
+# Maximum wall-clock runtime, in hours, for the harness session before the run is
+# stopped. Arc Foundry is a large build — a fixed-step GemTD simulation with waypoint
+# mazing, a random scrap-press build loop over a five-rung quality
+# ladder, eight base component types plus a dozen recipe-assembled combination towers,
+# three maps, an in-game difficulty menu, a dozens-of-waves
+# campaign, and multiple states, plus a full asset-production pass through six tools — so
+# it gets eight hours: comfortably more than a healthy build needs while still bounding a
+# runaway session.
+max_runtime_hours = 8
+
+# Starter workspace seeded into the root of every run before the specs. It gives the
+# model a baseline project to build on: a `package.json` that pins `playwright` as a
+# dev dependency and declares the produced-effect runtime (`packages`, below) as a
+# baked-in `file:` dependency. The seeded files land at the run root
+# (`workspaces/base/package.json` seeds to `package.json`).
+workspace = "workspaces/base"
+
+# Init command, run in the run container once the workspace and specs are seeded and
+# before the harness starts. `npm install` — NOT `npm ci` — because `packages`
+# injects the `@test-cabinet/particle-runtime` `file:` dependency this build plays
+# its produced particle systems with, so the lockfile is completed at seed time; the
+# same command downloads the Playwright Chromium build (the base image ships the OS
+# libraries Chromium links against, but not the browser binary), so the model can
+# build and verify immediately against a project-local Playwright.
+init = "npm install && npx playwright install chromium"
+
+# NOTE: this case declares NO `assets = [...]` of pre-made game art. That is the
+# whole point of a full-stack case: the model PRODUCES the game's art, effects, and
+# audio itself, during the run, with the six binaries on the run image's `PATH` (see
+# `type` above and `specs/assets.md`). The `reference/` mockups below are
+# harness-side visual targets rendered via `[[reference]]`, not seeded game assets.
+
+# Test Cabinet runtime libraries installed into the run so the build can play the
+# particle systems it produces. `@test-cabinet/particle-runtime` is the same library
+# the review UI plays a produced effect with; core bakes it into the run image and
+# the seeded workspace `package.json` depends on it via its baked-in `file:` path, so
+# the build imports it (its `/canvas` binding) like any other dependency and plays
+# each produced `system.json` by simulating it live. The electrical VFX — the build
+# spark, combine flash, arc bolts, chain-lightning, spark sprays, discharge rings,
+# impacts, deaths, and the leak alarm — are all produced `particle-2d` systems played
+# this way; see `specs/assets.md` for the consumption contract. (A root key, so it
+# must sit above the first `[table]` header.)
+packages = ["@test-cabinet/particle-runtime"]
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# Arc Foundry offers a single `base` variant (the standard SALVAGE campaign),
+# declared in its own file under `variants/`. Difficulty (Easy / Medium / Hard) is an
+# IN-GAME menu — it changes only the wave count and enemy toughness — not a variant, so
+# there is no per-variant mode file; the campaign is one and the same at every
+# difficulty (`specs/modes.md`). This list is a root key, so it must sit above the
+# first `[table]` header below.
+variants = [
+  "variants/base.toml",
+]
+
+# How the validator (and the per-run Cloudflare Pages deploy) turns a produced
+# implementation into a served static site. These run verbatim from the build's
+# repository root. `npm ci` is deliberate — it requires the build to commit a
+# `package-lock.json`. Both commands are required; there are no defaults. The build
+# must be self-contained: it bundles the committed produced assets without invoking the
+# asset tools, which are on `PATH` only while the run is live (`specs/assets.md`).
+[build]
+install = "npm ci"
+build = "npm run build"
+
+# Instrumentation: the debug-and-automation surface every build installs, named once
+# here so a review item's `validation` driver (and the validator that runs it) knows
+# which `window` global to drive. The seeded specification documents the same handle
+# independently as an ordinary game debug feature (see specs/instrumentation.md); this
+# entry is reporter-side and never seeded.
+[instrumentation]
+handle = "__foundry"
+
+# The fixed simulation rate, in Hz. Arc Foundry's debug API advances time in whole
+# simulation ticks (`step(ticks)`) rather than in seconds, so there is no rounding
+# and no ambiguity about what a step means. This is the rate the validation runtime
+# uses to relate that exact stepping back to real time — one tick is 1/60 of a
+# second, so a second of game time is 60 ticks. It must match the timestep
+# `specs/controls.md` mandates.
+tick_hz = 60
+
+# Common specs: seeded for EVERY variant, at the `dest` path within the run
+# workspace. The specification is decomposed by concern: the overview, the board and
+# maps, the Load, the components, the scrap-press build loop, the gameplay (the
+# economy, Grid Integrity, the wave campaign and victory/overload, the post-final maze
+# rating, the SALVAGE start, and the key behaviors), the UI (the game states, the
+# required menus, the HUD, and out-of-scope), the difficulty and map/difficulty menus,
+# the controls, the asset-production contract, the debugging surface, and the proof.
+# All common specs are plain Markdown, seeded verbatim. A spec's `dest` defaults to its
+# `source` (with a trailing `.hbs` stripped), so these need only name the source they
+# seed.
+[[spec]]
+source = "specs/overview.md"
+
+[[spec]]
+source = "specs/board.md"
+
+[[spec]]
+source = "specs/enemies.md"
+
+[[spec]]
+source = "specs/towers.md"
+
+[[spec]]
+source = "specs/build.md"
+
+[[spec]]
+source = "specs/gameplay.md"
+
+[[spec]]
+source = "specs/ui.md"
+
+[[spec]]
+source = "specs/modes.md"
+
+[[spec]]
+source = "specs/controls.md"
+
+# The asset-production contract: every asset the game needs, which of the six
+# on-PATH binaries produces it, where it lands in the workspace, and how it is wired
+# into the build. Seeded for every variant so the produced-asset review items and
+# this spec stay in lockstep. This is the defining spec of a full-stack case, and its
+# electrical-VFX section is the headline of what this build is judged on.
+[[spec]]
+source = "specs/assets.md"
+
+# The debugging and automation surface every build must expose: a deterministic,
+# steppable core; a `window.__foundry` API to drive and inspect the game from code;
+# and a read-only debug overlay. Seeded for every variant and framed as an ordinary
+# developer affordance of the game.
+[[spec]]
+source = "specs/instrumentation.md"
+
+# Proof of implementation: instructs the build to capture evidence at the exact paths
+# the `[[proof]]` entries below declare. The paths in this spec and in the `[[proof]]`
+# entries must match.
+[[spec]]
+source = "specs/proof.md"
+
+# Common reference views, seeded for EVERY variant. Each `media` is a screenshot
+# captured (with Playwright) from this case's playable reference-impl build — the
+# authored, correct game under `reference-impl/` — and served as-is (seeded into the
+# run as a visual target, never rendered). See `reference/README.md` for how they are
+# regenerated. The `title` view is variant-specific (declared per variant) because the
+# menu differs by variant; `map-select`, `gameplay`, and `game-over` look the same in
+# every variant.
+[[reference]]
+view = "map-select"
+media = "reference/screenshots/map-select.png"
+
+[[reference]]
+view = "gameplay"
+media = "reference/screenshots/gameplay.png"
+
+[[reference]]
+view = "game-over"
+media = "reference/screenshots/game-over.png"
+
+# Proof of implementation, requested for every variant. Each declares a `dest` path
+# (relative to the run workspace root) the build must write a screenshot or `.webm`
+# clip to; `specs/proof.md` instructs the build to produce them at exactly these
+# paths. Validation records whether each turned up (informational). The media kind is
+# inferred from the extension: `.png` is an image, `.webm` a video (the format
+# Playwright records natively; the public gallery transcodes it to mp4).
+[[proof]]
+id = "title"
+name = "Title menu"
+dest = "proof/title.png"
+
+[[proof]]
+id = "gameplay"
+name = "Live board"
+dest = "proof/gameplay.png"
+
+[[proof]]
+id = "game-over"
+name = "Overload"
+dest = "proof/game-over.png"
+
+[[proof]]
+id = "systems"
+name = "Scrap-press build loop clip"
+dest = "proof/systems.webm"
+
+[[proof]]
+id = "pressure"
+name = "Late-wave pressure clip"
+dest = "proof/pressure.webm"
+
+# Reference-similarity checks (opt-in) are intentionally not declared. The reference
+# screenshots are seeded as illustrative examples of the screens, not layouts to
+# reproduce, so menus and screens are left to the model's design and are reviewed by
+# a human rather than scored against a baseline. The automated load check still runs.
+
+# Scoring domains. The reviewer rates each independently while playing the build, and
+# the run's overall rating is the WORST across them — flawless GemTD systems cannot
+# mask crude, un-produced art, and gorgeous produced VFX cannot mask a maze that does
+# not path. Domains are case-level; an individual review item rolls up to one through
+# its optional `domain`, while a general item (states, window fit) omits it.
+[[domain]]
+id = "simulation"
+name = "Gameplay"
+description = "How the foundry actually plays: the three ordered-waypoint maps and the maze the player builds across them, the random scrap-press build loop and its keep-one-per-level harvest, the quality and recipe combines, the components and their targeting and abilities, the Load, the Charge / Grid Integrity economy, the wave campaign, and difficulty."
+
+[[domain]]
+id = "presentation"
+name = "Visuals"
+description = "What the build looks and sounds like: the tool-produced component, combination-tower, blocker, projectile, and Load sprites across the quality ladder, the yard art, the produced electrical particle VFX and audio, and the in-code HUD, map-select, and build panel that present them."
+
+# Reviewer checklist, common to every variant, in the categories grammar
+# (`[review] format = 2`). Each `[[review.categories]]` is a CATEGORY — a bare name
+# grouping the points a reviewer grades — and each `[[review.categories.items]]`
+# under it is one graded review item, worth `weight` points (default 1), so a
+# category is worth the number of items it holds. A category carries no prose of its
+# own; each item states its own requirement in `description`. This is reporter-side
+# material — never seeded into a run, so the model never sees it; each item restates a
+# requirement the seeded specification already states. An item with a `validation`
+# script is decided automatically (a control-op / snapshot / rendered-pixel drive of
+# window.__foundry, the reviewer may override); one without is reviewed by a person.
+#
+# The items are narrowly scoped — one observable behavior each — and taxonomize the
+# whole spec: the maze and pathing, the economy, the scrap-press build loop, the
+# quality ladder and Refinement, the components/targeting/abilities, the combination
+# towers, the Load, difficulty, the game states, and the accelerator controls are all
+# automated; the produced ART, VFX, and AUDIO — inherently visual/aural — stay
+# human-judged (paired with the seeded references and the run's proof captures), as do
+# the window-fit and the two feel-of-play captures.
+[review]
+format = 2
+
+# --- Pathing & the Maze -------------------------------------------------------
+[[review.categories]]
+id = "pathing"
+title = "Pathing & the Maze"
+[[review.categories.items]]
+id = "ordered-waypoints"
+title = "The Load walks the waypoint chain in order"
+description = "A ground unit spawned at the Entry heads to each waypoint platform in sequence (Entry, then WP1..WPk in order, then the Collector) and grounds out at the Collector — it never skips or reorders a waypoint."
+validation = { script = "validation/pathing/ordered-waypoints.mjs", outputs = [{ id = "walk", name = "A unit walking the ordered waypoint chain", kind = "video" }] }
+[[review.categories.items]]
+id = "shortest-open-route"
+title = "Building lengthens the shortest open route"
+description = "Towers are walls: placing a rock across a leg lengthens the ground route the Load must take around it (the maze length rises), and the unit routes around the wall rather than through it."
+validation = { script = "validation/pathing/shortest-open-route.mjs", outputs = [{ id = "reroute", name = "A wall lengthening the route", kind = "video" }] }
+[[review.categories.items]]
+id = "never-seal-refused"
+title = "A placement that would seal a segment is refused"
+description = "The never-seal rule: a placement that would fully seal a waypoint segment is refused and changes nothing (no candidate lands, the stamp allowance is unchanged), while a legal placement elsewhere is accepted."
+validation = { script = "validation/pathing/never-seal-refused.mjs", outputs = [{ id = "refused", name = "The board after a refused seal and an accepted placement", kind = "image" }] }
+[[review.categories.items]]
+id = "no-build-on-waypoint"
+title = "A waypoint platform is not buildable"
+description = "A placement whose footprint would cover ANY tile of a 4-tile waypoint platform is refused — the anchor, either arm, or the stem — so a waypoint can never be walled off, and it is not merely the anchor tile that is protected."
+validation = { script = "validation/pathing/no-build-on-waypoint.mjs", outputs = [{ id = "refused", name = "A refused placement on a waypoint platform", kind = "image" }] }
+[[review.categories.items]]
+id = "build-beside-waypoint"
+title = "The tiles beside a waypoint platform are buildable"
+description = "Only the platform's own four tiles are protected: a placement that merely touches the platform — hugging an arm, the anchor row, or the stem without covering any platform tile — is ACCEPTED, so the non-buildable zone is not dilated to the tiles around the waypoint."
+validation = { script = "validation/pathing/build-beside-waypoint.mjs", outputs = [{ id = "beside", name = "Accepted placements hugging a waypoint platform", kind = "image" }] }
+[[review.categories.items]]
+id = "dismantle-repath"
+title = "Dismantling a wall re-paths and shortens the route"
+description = "Dismantling a structure frees its footprint and re-paths the floor: the ground route through the chain shortens back."
+validation = { script = "validation/pathing/dismantle-repath.mjs", outputs = [{ id = "shorten", name = "The route shortening after a dismantle", kind = "video" }] }
+[[review.categories.items]]
+id = "flyer-ignores-maze"
+title = "The Filament flyer ignores the maze"
+description = "The Filament flies a straight line from the Entry through the waypoints to the Collector over the walls — heavy walls on the ground route do not divert or slow it."
+validation = { script = "validation/pathing/flyer-ignores-maze.mjs", outputs = [{ id = "flyover", name = "The Filament flying straight over the walls", kind = "video" }] }
+[[review.categories.items]]
+id = "combine-wall-neutral"
+title = "A combine is wall-neutral"
+description = "A combine consumes its partner in place — the footprint hardens into a blocker rather than opening — so the maze length (the ground route) is unchanged across the combine."
+validation = { script = "validation/pathing/combine-wall-neutral.mjs", outputs = [{ id = "neutral", name = "A combine leaving the maze wall intact", kind = "video" }] }
+[[review.categories.items]]
+id = "map-c-housings"
+title = "Map C's transformer housings are fixed and unbuildable"
+description = "On The Transformer Yard the two housing rectangles are pre-blocked and never buildable (a placement on a housing tile is refused), while the base waypoint route is open."
+validation = { script = "validation/pathing/map-c-housings.mjs", outputs = [{ id = "housings", name = "A refused placement on a transformer housing", kind = "image" }] }
+[[review.categories.items]]
+id = "three-maps"
+title = "Three maps with distinct waypoint topologies"
+description = "The three maps (The Substation, The Switchyard, The Transformer Yard) define different ordered waypoint chains at pinned coordinates — chosen, not randomly generated — so they differ in topology, not in numbers."
+validation = { script = "validation/pathing/three-maps.mjs", outputs = [{ id = "maps", name = "The three maps' waypoint layouts", kind = "image" }] }
+
+# --- Economy & Grid Integrity -------------------------------------------------
+[[review.categories]]
+id = "economy"
+title = "Economy & Grid Integrity"
+[[review.categories.items]]
+id = "kill-bounty"
+title = "A kill pays its bounty in Charge"
+description = "Destroying a unit pays exactly its bounty in Charge the instant it dies (a Mote pays 1)."
+validation = { script = "validation/economy/kill-bounty.mjs", outputs = [{ id = "kill", name = "A kill paying its bounty", kind = "video" }] }
+[[review.categories.items]]
+id = "leak-integrity"
+title = "A leak costs Grid Integrity"
+description = "A unit that grounds out at the Collector costs the player its leak value in Grid Integrity (a Slug leaks 2)."
+validation = { script = "validation/economy/leak-integrity.mjs", outputs = [{ id = "leak", name = "A unit leaking Grid Integrity", kind = "video" }] }
+[[review.categories.items]]
+id = "placement-free"
+title = "Placing a rock is free"
+description = "Placing a rock costs no Charge (GemTD-faithful): Charge is unchanged across a placement — the five-per-level stamp allowance is the only placement limit."
+validation = { script = "validation/economy/placement-free.mjs", outputs = [{ id = "hud", name = "The build board after a free placement", kind = "image" }] }
+[[review.categories.items]]
+id = "wave-clear-bonus"
+title = "Clearing a wave pays a small bonus"
+description = "Clearing a wave pays a small flat wave-clear bonus in Charge (8 + 2*wave = 10 on Wave 1) and nothing else — there is no interest on banked Charge."
+validation = { script = "validation/economy/wave-clear-bonus.mjs", outputs = [{ id = "hud", name = "Charge after a cleared wave", kind = "image" }] }
+[[review.categories.items]]
+id = "dismantle-no-refund"
+title = "Dismantle refunds nothing"
+description = "Dismantling a structure returns nothing — no Charge and no stamp — so the roll cannot be reclaimed and re-rolled."
+validation = { script = "validation/economy/dismantle-no-refund.mjs", outputs = [{ id = "hud", name = "The board after a no-refund dismantle", kind = "image" }] }
+[[review.categories.items]]
+id = "overload-at-zero"
+title = "Grid Integrity reaching zero overloads the run"
+description = "When Grid Integrity is driven to 0 by a leak the run overloads and ends (the Overload/defeat screen), even mid-wave."
+validation = { script = "validation/economy/overload-at-zero.mjs", outputs = [{ id = "overload", name = "The overload at zero Grid Integrity", kind = "video" }] }
+
+# --- The Scrap-Press Build Loop -----------------------------------------------
+[[review.categories]]
+id = "build"
+title = "The Scrap-Press Build Loop"
+[[review.categories.items]]
+id = "roll-on-placement"
+title = "The roll happens when the rock lands"
+description = "A rock rolls its component type and quality on placement (when it lands), not when the press is pulled — so re-seeded placements produce a varying spread of types across the eight."
+validation = { script = "validation/build/roll-on-placement.mjs", outputs = [{ id = "roll", name = "Rocks rolling their component on placement", kind = "video" }] }
+[[review.categories.items]]
+id = "r0-only-scrap"
+title = "The unrefined press rolls only Scrap"
+description = "At Refinement R0 every placed rock rolls Scrap (T1) quality — the unrefined press hands out only the lowest tier."
+validation = { script = "validation/build/r0-only-scrap.mjs", outputs = [{ id = "scrap", name = "R0 rolls landing only Scrap", kind = "image" }] }
+[[review.categories.items]]
+id = "type-uniform"
+title = "The type roll spans all eight types"
+description = "The component TYPE roll is uniform across the eight base types: over many re-seeded rolls, every one of the eight appears."
+validation = { script = "validation/build/type-uniform.mjs", outputs = [{ id = "types", name = "The spread of rolled types", kind = "image" }] }
+[[review.categories.items]]
+id = "five-stamps-cap"
+title = "Five stamps a level, capped"
+description = "A level grants five stamps; a sixth placement is refused once the allowance is spent, and the cap is five regardless of how much Charge is held."
+validation = { script = "validation/build/five-stamps-cap.mjs", outputs = [{ id = "cap", name = "The five-stamp allowance exhausted", kind = "image" }] }
+[[review.categories.items]]
+id = "cancel-free"
+title = "Cancelling a held rock is free"
+description = "Cancelling a held (un-dropped) rock costs no stamp and no Charge — the allowance is unchanged."
+validation = { script = "validation/build/cancel-free.mjs", outputs = [{ id = "cancel", name = "A cancelled held rock costing nothing", kind = "image" }] }
+[[review.categories.items]]
+id = "stamp-onto-blocker"
+title = "Stamping onto a blocker rerolls it"
+description = "Dropping a rock onto an existing blocker rerolls that blocker into a fresh candidate in place."
+validation = { script = "validation/build/stamp-onto-blocker.mjs", outputs = [{ id = "reroll", name = "A blocker rerolled into a candidate", kind = "video" }] }
+[[review.categories.items]]
+id = "keep-one-harvest"
+title = "Keep exactly one; the rest harden into blockers"
+description = "KEEPing a candidate takes exactly one firing component off the level, hardens every other candidate into an inert blocker, and launches the wave (there is no SEND)."
+validation = { script = "validation/build/keep-one-harvest.mjs", outputs = [{ id = "harvest", name = "One kept, the rest hardened into blockers", kind = "video" }] }
+[[review.categories.items]]
+id = "combine-actions-only"
+title = "Folding offers a quality climb and a recipe, and nothing else"
+description = "The only two ways to fold pieces together are COMBINE (a matching same-type, same-quality pair climbs one quality tier) and COMBINE SPECIAL (a recipe multiset assembles a combination tower). No action folds a pair into a result of the same type and quality, which would spend a piece for no gain."
+validation = { script = "validation/build/combine-actions-only.mjs", outputs = [{ id = "combine", name = "A matching pair climbing a quality tier", kind = "video" }] }
+[[review.categories.items]]
+id = "downgrade-keeps-lower"
+title = "Downgrade keeps a candidate one tier lower"
+description = "DOWNGRADE harvests the selected candidate as a firing component one quality tier lower and, being the harvest, launches the wave."
+validation = { script = "validation/build/downgrade-keeps-lower.mjs", outputs = [{ id = "downgrade", name = "A candidate kept one tier lower", kind = "video" }] }
+[[review.categories.items]]
+id = "downgrade-restrictions"
+title = "Downgrade applies only to a Tuned+ candidate"
+description = "Only a candidate at Tuned (T2) or above can be downgraded; a Scrap (T1) candidate cannot, so the control is a fresh-roll-only correction."
+validation = { script = "validation/build/downgrade-restrictions.mjs", outputs = [{ id = "restrict", name = "A Scrap candidate refusing to downgrade", kind = "image" }] }
+
+# --- The Quality Ladder -------------------------------------------------------
+[[review.categories]]
+id = "quality"
+title = "The Quality Ladder"
+[[review.categories.items]]
+id = "combine-climbs"
+title = "A quality-combine climbs one tier"
+description = "Folding two matching pieces (same type and quality) produces one component a tier higher at the initiating piece's footprint, and the consumed partner hardens into a blocker."
+validation = { script = "validation/quality/combine-climbs.mjs", outputs = [{ id = "climb", name = "Two Scrap pieces combining a tier higher", kind = "video" }] }
+[[review.categories.items]]
+id = "teslaprime-terminal"
+title = "Tesla-Prime is the quality apex"
+description = "A Tesla-Prime (T5) piece offers no quality-combine — the top rung cannot climb further."
+validation = { script = "validation/quality/teslaprime-terminal.mjs", outputs = [{ id = "apex", name = "Two Tesla-Prime pieces that will not combine", kind = "image" }] }
+[[review.categories.items]]
+id = "damage-scales"
+title = "Damage multiplies steeply up the ladder"
+description = "A component's damage multiplies x1 / x3 / x9 / x40 / x110 over Scrap across the five tiers — quality is the power axis."
+validation = { script = "validation/quality/damage-scales.mjs", outputs = [{ id = "damage", name = "Damage across the five quality tiers", kind = "image" }] }
+[[review.categories.items]]
+id = "range-and-firerate"
+title = "Range nudges up; fire rate stays flat"
+description = "Range nudges up a little per tier (about 8 px per rung) while fire rate is flat across quality."
+validation = { script = "validation/quality/range-and-firerate.mjs", outputs = [{ id = "rangerate", name = "Range and fire rate across the tiers", kind = "image" }] }
+[[review.categories.items]]
+id = "auto-resolve-prefers-fresh"
+title = "Auto-resolve prefers consuming a fresh candidate"
+description = "An un-targeted combine (no explicit multiset) prefers consuming a fresh candidate over a standing tower, so it spends the expendable roll first."
+validation = { script = "validation/quality/auto-resolve-prefers-fresh.mjs", outputs = [{ id = "fresh", name = "Auto-resolve consuming the fresh candidate", kind = "image" }] }
+[[review.categories.items]]
+id = "plain-combine-midwave"
+title = "A standing-only combine is allowed mid-wave"
+description = "A plain COMBINE of only standing towers is allowed during a live wave, climbs their quality, and does NOT end the wave or start a new one."
+validation = { script = "validation/quality/plain-combine-midwave.mjs", outputs = [{ id = "midwave", name = "A standing combine during a live wave", kind = "video" }] }
+
+# --- UPGRADE QUALITY (the Refinement track) -----------------------------------
+[[review.categories]]
+id = "refinement"
+title = "UPGRADE QUALITY (Refinement)"
+[[review.categories.items]]
+id = "biases-rolls"
+title = "Refinement biases the roll upward"
+description = "Buying Refinement biases the stamp's quality roll toward higher tiers: at a high Refinement level rolls land above Scrap, whereas at R0 they never do."
+validation = { script = "validation/refinement/biases-rolls.mjs", outputs = [{ id = "bias", name = "Higher-tier rolls after refining the press", kind = "video" }] }
+[[review.categories.items]]
+id = "odds-table"
+title = "The roll odds match the Refinement table"
+description = "The reported quality-roll odds at each Refinement level match the pinned distribution (R0 is 100% Scrap; each rung shifts weight upward)."
+validation = { script = "validation/refinement/odds-table.mjs", outputs = [{ id = "odds", name = "The quality-roll odds across Refinement levels", kind = "image" }] }
+[[review.categories.items]]
+id = "cost-and-cap"
+title = "Refinement costs Charge and caps at R8"
+description = "Each Refinement level costs the pinned Charge amount (20 / 50 / 80 / ... up the track), is refused when unaffordable, and is disabled at the R8 apex."
+validation = { script = "validation/refinement/cost-and-cap.mjs", outputs = [{ id = "cost", name = "A Refinement purchase and the R8 cap", kind = "image" }] }
+[[review.categories.items]]
+id = "top-tiers-gated"
+title = "Primed and Tesla-Prime are gated to the top rungs"
+description = "The press never rolls Primed (T4) below R4 nor Tesla-Prime (T5) below R8, so a single press roll never exceeds Charged until the press is deeply refined."
+validation = { script = "validation/refinement/top-tiers-gated.mjs", outputs = [{ id = "gated", name = "The top tiers gated in the roll odds", kind = "image" }] }
+
+# --- Components & Firing ------------------------------------------------------
+[[review.categories]]
+id = "towers"
+title = "Components & Firing"
+[[review.categories.items]]
+id = "auto-fire"
+title = "A firing component fires automatically"
+description = "A firing component fires automatically at a valid in-range unit with no manual trigger, and the unit takes HP loss."
+validation = { script = "validation/towers/auto-fire.mjs", outputs = [{ id = "fire", name = "A component firing on its own", kind = "video" }] }
+[[review.categories.items]]
+id = "projectile-carries-hit"
+title = "A shot is a traveling projectile, not hitscan"
+description = "Every shot is a visible traveling projectile that carries the hit on impact: the projectile is in flight before the target loses HP, so damage lands on arrival, not at the instant of firing."
+validation = { script = "validation/towers/projectile-carries-hit.mjs", outputs = [{ id = "travel", name = "A projectile carrying the hit to its target", kind = "video" }] }
+[[review.categories.items]]
+id = "head-rotates"
+title = "The firing head rotates to aim"
+description = "A firing component's head rotates to point at the target it is firing at."
+validation = { script = "validation/towers/head-rotates.mjs", outputs = [{ id = "aim", name = "A head rotating to track the target", kind = "video" }] }
+[[review.categories.items]]
+id = "hits-air"
+title = "A component can hit an airborne Filament"
+description = "A firing component in range hits the airborne Filament flyer as readily as a ground unit — every type hits ground and air."
+validation = { script = "validation/towers/hits-air.mjs", outputs = [{ id = "air", name = "A component hitting a flyer", kind = "video" }] }
+[[review.categories.items]]
+id = "coil-chain"
+title = "The Coil chains to nearby units"
+description = "The Coil's bolt leaps from the struck unit to nearby extra units, each leap dealing less than the last, so a pack takes damage on several units from one shot."
+validation = { script = "validation/towers/coil-chain.mjs", outputs = [{ id = "chain", name = "Chain-lightning forking through a pack", kind = "video" }] }
+[[review.categories.items]]
+id = "arcnode-splash"
+title = "The Arc-Node splashes an area"
+description = "The Arc-Node's shot detonates a discharge that damages every unit within its splash radius of the impact point."
+validation = { script = "validation/towers/arcnode-splash.mjs", outputs = [{ id = "splash", name = "An area discharge hitting a cluster", kind = "video" }] }
+[[review.categories.items]]
+id = "regulator-nonfiring"
+title = "The Regulator never fires"
+description = "The Regulator is a non-firing support node: it never fires, launches no projectile, and does not rotate a head or damage a unit in range — it only projects an aura."
+validation = { script = "validation/towers/regulator-nonfiring.mjs", outputs = [{ id = "regulator", name = "The non-firing Regulator beside a unit in range", kind = "image" }] }
+
+# --- Targeting Priority -------------------------------------------------------
+[[review.categories]]
+id = "targeting"
+title = "Targeting Priority"
+[[review.categories.items]]
+id = "first"
+title = "First targets the unit furthest along (default)"
+description = "A firing component defaults to the `first` priority and, under it, aims at the unit furthest along the waypoint chain."
+validation = { script = "validation/targeting/first.mjs", outputs = [{ id = "first", name = "Firing at the unit furthest along", kind = "video" }] }
+[[review.categories.items]]
+id = "last"
+title = "Last targets the unit least far along"
+description = "Under the `last` priority a firing component aims at the unit least far along the chain."
+validation = { script = "validation/targeting/last.mjs", outputs = [{ id = "last", name = "Firing at the unit least far along", kind = "video" }] }
+[[review.categories.items]]
+id = "nearest"
+title = "Nearest targets the closest unit"
+description = "Under the `nearest` priority a firing component aims at the unit closest to it in straight-line distance."
+validation = { script = "validation/targeting/nearest.mjs", outputs = [{ id = "nearest", name = "Firing at the nearest unit", kind = "video" }] }
+[[review.categories.items]]
+id = "strongest"
+title = "Strongest targets the highest-HP unit"
+description = "Under the `strongest` priority a firing component aims at the unit with the most remaining HP."
+validation = { script = "validation/targeting/strongest.mjs", outputs = [{ id = "strongest", name = "Firing at the strongest unit", kind = "video" }] }
+[[review.categories.items]]
+id = "weakest"
+title = "Weakest targets the lowest-HP unit"
+description = "Under the `weakest` priority a firing component aims at the unit with the least remaining HP."
+validation = { script = "validation/targeting/weakest.mjs", outputs = [{ id = "weakest", name = "Firing at the weakest unit", kind = "video" }] }
+
+# --- Status Effects & Combo Abilities -----------------------------------------
+[[review.categories]]
+id = "abilities"
+title = "Status Effects & Combo Abilities"
+[[review.categories.items]]
+id = "slow"
+title = "Slow scales a unit's speed for a duration"
+description = "A Choke hit slows the struck unit — its effective speed becomes base x (1 - amt) for a duration, the slow amount growing with quality — while only its speed, never its HP loss path, changes."
+validation = { script = "validation/abilities/slow.mjs", outputs = [{ id = "slow", name = "A unit slowed by a Choke hit", kind = "video" }] }
+[[review.categories.items]]
+id = "slow-nostack"
+title = "Slow does not stack"
+description = "Repeated slows on one unit do not compound: the effective slow stays the strongest single value (refreshed on hit), never the product of the two."
+validation = { script = "validation/abilities/slow-nostack.mjs", outputs = [{ id = "nostack", name = "A twice-slowed unit at the single strongest slow", kind = "image" }] }
+[[review.categories.items]]
+id = "burn"
+title = "Burn ticks damage over time"
+description = "A Rectifier hit lights an overcurrent burn — a damage-over-time (burnDps = shotDamage x frac) that keeps ticking HP loss after the shot lands, for a duration."
+validation = { script = "validation/abilities/burn.mjs", outputs = [{ id = "burn", name = "A burn ticking after the shot lands", kind = "video" }] }
+[[review.categories.items]]
+id = "burn-nostack"
+title = "Burn does not stack"
+description = "Repeated burns on one unit do not add up: the burn damage-per-second stays the strongest single value (refreshed on hit), not the sum."
+validation = { script = "validation/abilities/burn-nostack.mjs", outputs = [{ id = "nostack", name = "A twice-burned unit at the single strongest burn", kind = "image" }] }
+[[review.categories.items]]
+id = "aura"
+title = "An aura buffs nearby firing towers"
+description = "A Regulator's aura multiplies the damage of a firing tower whose center lies within its radius by (1 + auraBonus); the aura source never buffs itself."
+validation = { script = "validation/abilities/aura.mjs", outputs = [{ id = "aura", name = "A tower buffed by a Regulator aura", kind = "video" }] }
+[[review.categories.items]]
+id = "crit"
+title = "A crit combo can land a critical hit"
+description = "A crit-carrying combination tower can land a shot dealing x critMult damage; base components never crit."
+validation = { script = "validation/abilities/crit.mjs", outputs = [{ id = "crit", name = "A combination tower landing a crit", kind = "video" }] }
+[[review.categories.items]]
+id = "multishot"
+title = "A multishot combo fires at several targets at once"
+description = "A multishot combination tower fires at up to N distinct in-range targets per cadence, each a separate traveling projectile; base components fire one shot at one target."
+validation = { script = "validation/abilities/multishot.mjs", outputs = [{ id = "multishot", name = "A multishot combo firing at several targets", kind = "video" }] }
+
+# --- Combination Towers -------------------------------------------------------
+[[review.categories]]
+id = "combos"
+title = "Combination Towers"
+[[review.categories.items]]
+id = "recipe-assembles"
+title = "A recipe folds base parts into a combination tower"
+description = "A recipe-combine folds a specific multiset of base (type, quality) ingredients into one combination tower at the initiating piece's footprint, and every consumed ingredient footprint hardens into a blocker."
+validation = { script = "validation/combos/recipe-assembles.mjs", outputs = [{ id = "assemble", name = "A recipe assembling a combination tower", kind = "video" }] }
+[[review.categories.items]]
+id = "lands-level0"
+title = "A combo lands at upgrade level 0"
+description = "A newly assembled combination tower lands at upgrade level 0 (its reduced landing block), so assembling it is a step up, not a cliff."
+validation = { script = "validation/combos/lands-level0.mjs", outputs = [{ id = "level0", name = "A freshly assembled combo at level 0", kind = "image" }] }
+[[review.categories.items]]
+id = "upgrade-climbs"
+title = "Upgrading a combo climbs its level for Charge"
+description = "UPGRADE raises a combination tower's level (up to 3) for Charge, scaling its damage and range up, in any phase."
+validation = { script = "validation/combos/upgrade-climbs.mjs", outputs = [{ id = "upgrade", name = "A combo climbing an upgrade level", kind = "video" }] }
+[[review.categories.items]]
+id = "terminal"
+title = "A combination tower is terminal"
+description = "A combination tower has no quality tier and cannot be quality-combined or fed as an ingredient into another recipe — it is single-grade and terminal."
+validation = { script = "validation/combos/terminal.mjs", outputs = [{ id = "terminal", name = "A combo that will not combine further", kind = "image" }] }
+[[review.categories.items]]
+id = "recipe-book"
+title = "The recipe book lists every combination tower"
+description = "The COMBOS overlay opens an in-game reference listing every combination tower with its recipe and stats, read against the live board: each recipe ingredient is drawn distinctly as the current selection, as a base piece the player already owns, or as one they are still missing. Reachability is auto-checked; how the book reads, lays out, and distinguishes the three ingredient states is left to the reviewer."
+validation = { script = "validation/combos/recipe-book.mjs", outputs = [{ id = "book", name = "The combinations recipe book overlay", kind = "image" }] }
+
+# --- The Load -----------------------------------------------------------------
+[[review.categories]]
+id = "enemies"
+title = "The Load"
+[[review.categories.items]]
+id = "roster-stats"
+title = "Each Load type has its pinned base stats"
+description = "Each of the six Load types spawns with its pinned base stats (HP, speed, bounty, leak) — a fast fragile Spark, a slow tanky Slug leaking 2, a swarming Cluster, and so on."
+validation = { script = "validation/enemies/roster-stats.mjs", outputs = [{ id = "roster", name = "The Load roster's base stats", kind = "image" }] }
+[[review.categories.items]]
+id = "hp-scales-by-wave"
+title = "Only HP scales across waves"
+description = "As the waves deepen only HP scales (per the pinned formula); speed, bounty, and leak are unchanged wave to wave."
+validation = { script = "validation/enemies/hp-scales-by-wave.mjs", outputs = [{ id = "scale", name = "HP scaling with the wave, speed unchanged", kind = "image" }] }
+[[review.categories.items]]
+id = "filament-every-fourth"
+title = "The Filament flyer appears only every fourth wave"
+description = "The Filament contingent appears only on waves that are a multiple of four, and never otherwise."
+validation = { script = "validation/enemies/filament-every-fourth.mjs", outputs = [{ id = "flyer", name = "The flyer present on a fourth wave and absent otherwise", kind = "image" }] }
+[[review.categories.items]]
+id = "overload-dynamo"
+title = "The post-final Overload Dynamo is invincible"
+description = "After the final wave an invincible Overload Dynamo walks the maze once: it takes no HP loss (its damage tallies to the Maze Rating), costs no integrity, and grounding out wins the run."
+validation = { script = "validation/enemies/overload-dynamo.mjs", outputs = [{ id = "overload", name = "The invincible Overload Dynamo walk", kind = "video" }] }
+
+# --- Difficulty ---------------------------------------------------------------
+[[review.categories]]
+id = "difficulty"
+title = "Difficulty"
+[[review.categories.items]]
+id = "only-waves-toughness"
+title = "Difficulty changes only wave count and toughness"
+description = "Easy / Medium / Hard change only the wave count (40 / 50 / 60) and the enemy HP scaling; starting Charge, Grid Integrity, the five-stamp allowance, and every economy value are identical on all three."
+validation = { script = "validation/difficulty/only-waves-toughness.mjs", outputs = [{ id = "diff", name = "The three difficulties' wave counts and shared economy", kind = "image" }] }
+[[review.categories.items]]
+id = "select-menu"
+title = "Difficulty select reads what each entry changes"
+description = "After MAP SELECT a DIFFICULTY SELECT lets the player pick Easy / Medium / Hard. Reachability is auto-checked; how each entry reads what it changes is left to the reviewer."
+validation = { script = "validation/difficulty/select-menu.mjs", outputs = [{ id = "select", name = "The difficulty-select screen", kind = "image" }] }
+
+# --- Game States --------------------------------------------------------------
+# Each state is reached through the debug API and captured, so a reviewer sees the actual
+# screen; the auto-verdict confirms the state is reachable, and how it reads is left to
+# the reviewer (as in Carom's state captures).
+[[review.categories]]
+id = "states"
+title = "Game States"
+[[review.categories.items]]
+id = "title"
+title = "Title / main menu"
+description = "The title / main menu (SALVAGE, HOW TO PLAY) is the initial state and reads correctly."
+validation = { script = "validation/states/title.mjs", outputs = [{ id = "title", name = "The title / main menu", kind = "image" }] }
+[[review.categories.items]]
+id = "mapselect"
+title = "Map select"
+description = "The map-select state is reachable and offers the three maps, with a back to the menu."
+validation = { script = "validation/states/mapselect.mjs", outputs = [{ id = "mapselect", name = "The map-select screen", kind = "image" }] }
+[[review.categories.items]]
+id = "difficultyselect"
+title = "Difficulty select"
+description = "The difficulty-select state is reachable after a map is chosen, offering Easy / Medium / Hard, with a back to map select."
+validation = { script = "validation/states/difficultyselect.mjs", outputs = [{ id = "difficultyselect", name = "The difficulty-select screen", kind = "image" }] }
+[[review.categories.items]]
+id = "howto"
+title = "How to play"
+description = "The how-to-play state is reachable from the title and reads correctly."
+validation = { script = "validation/states/howto.mjs", outputs = [{ id = "howto", name = "The how-to-play screen", kind = "image" }] }
+[[review.categories.items]]
+id = "inplace-pause"
+title = "In-place pause freezes the board with no menu"
+description = "The in-place pause freezes all ticks (the sim time stops advancing) while the screen stays on the board with no menu, reading clearly as paused, and resumes."
+validation = { script = "validation/states/inplace-pause.mjs", outputs = [{ id = "pause", name = "The board frozen by the in-place pause", kind = "video" }] }
+[[review.categories.items]]
+id = "pause-menu"
+title = "The Esc pause menu"
+description = "The Esc pause menu is reachable over a frozen board, offering Resume / Restart / Quit to menu, distinct from the in-place pause."
+validation = { script = "validation/states/pause-menu.mjs", outputs = [{ id = "menu", name = "The pause menu", kind = "image" }] }
+[[review.categories.items]]
+id = "victory"
+title = "Victory"
+description = "Clearing the final wave and the post-final Overload walk reaches the Victory screen."
+validation = { script = "validation/states/victory.mjs", outputs = [{ id = "victory", name = "The Victory screen", kind = "image" }] }
+[[review.categories.items]]
+id = "overload"
+title = "Overload (defeat)"
+description = "Driving Grid Integrity to 0 reaches the Overload (defeat) screen."
+validation = { script = "validation/states/overload.mjs", outputs = [{ id = "overload", name = "The Overload (defeat) screen", kind = "image" }] }
+[[review.categories.items]]
+id = "dmgboard"
+title = "Damage leaderboard overlay"
+description = "The DMG BOARD overlay opens a live tower ranking. Reachability is auto-checked; how the ranking reads is left to the reviewer."
+validation = { script = "validation/states/dmgboard.mjs", outputs = [{ id = "board", name = "The damage leaderboard overlay", kind = "image" }] }
+[[review.categories.items]]
+id = "window-fit"
+title = "Window fit"
+description = "The entire 1280x720 stage — the board, the top status bar, the right build panel, and all four edges — stays visible, fitted, and centered at any window size and pixel density, including on load before any input."
+reference = "title"
+proof = "title"
+
+# --- Controls (keyboard accelerators) -----------------------------------------
+# Each is driven by injected keyboard input through the debug API (specs/controls.md,
+# specs/instrumentation.md) and its effect read back, so the real key bindings are exercised.
+[[review.categories]]
+id = "controls"
+title = "Controls"
+[[review.categories.items]]
+id = "stamp-b"
+title = "B pulls the scrap-press"
+description = "Pressing B during a build phase pulls the scrap-press, arming a blank rock on the cursor."
+validation = { script = "validation/controls/stamp-b.mjs", outputs = [{ id = "stamp", name = "B arming a rock", kind = "video" }] }
+[[review.categories.items]]
+id = "keep-k"
+title = "K keeps the selected candidate"
+description = "With a candidate selected in the build phase, pressing K harvests it — it becomes a firing component and the wave launches."
+validation = { script = "validation/controls/keep-k.mjs", outputs = [{ id = "keep", name = "K keeping a candidate and launching the wave", kind = "video" }] }
+[[review.categories.items]]
+id = "combine-c"
+title = "C combines the current selection"
+description = "Pressing C folds the current selection — a matching quality pair or a recipe multiset — immediately."
+validation = { script = "validation/controls/combine-c.mjs", outputs = [{ id = "combine", name = "C combining a matched pair", kind = "video" }] }
+[[review.categories.items]]
+id = "pause-space"
+title = "Space toggles the in-place pause during a wave"
+description = "Once a wave is live, pressing Space toggles the in-place pause (and does nothing in the build phase)."
+validation = { script = "validation/controls/pause-space.mjs", outputs = [{ id = "pause", name = "Space pausing a live wave", kind = "video" }] }
+[[review.categories.items]]
+id = "mute-m"
+title = "M toggles mute"
+description = "Pressing M toggles audio mute."
+validation = { script = "validation/controls/mute-m.mjs", outputs = [{ id = "mute", name = "The title after toggling mute", kind = "image" }] }
+[[review.categories.items]]
+id = "panel-layout-stable"
+title = "The inspector's controls never move on their own"
+description = "Every action a selected structure can offer holds a fixed slot and is disabled rather than removed when it is momentarily unusable, so a change in game state the player did not trigger (a wave starting or ending, Charge accruing, a partner appearing) never adds, removes, or moves a control under the pointer."
+validation = { script = "validation/controls/panel-layout-stable.mjs", outputs = [{ id = "panel", name = "The inspector's fixed action slots", kind = "image" }] }
+
+# --- Produced Art -------------------------------------------------------------
+# The produced sprites, animations, VFX, and audio are inherently visual/aural, so they
+# are reviewed by a person against the seeded references and the run's proof captures rather
+# than by a script.
+[[review.categories]]
+id = "presentation"
+title = "Produced Art & Electrical VFX"
+[[review.categories.items]]
+id = "component-sprites"
+title = "Produced component sprites across all five tiers"
+description = "The eight base component types are drawn from produced sprites at each of the five quality tiers (a rotatable firing head on a fixed base; the Regulator a static support node), and the dozen combination towers each a unique gold-accented sprite — the tier reading by more than color."
+reference = "gameplay"
+proof = "gameplay"
+[[review.categories.items]]
+id = "blocker-candidate-read"
+title = "Blocker, candidate, and kept component read apart"
+description = "An inert blocker reads as unmistakably dead (a fused scrap rock, no head, no glow), and a still-selectable candidate reads as distinct from a kept firing component — not flat rectangles or ad-hoc fills."
+reference = "gameplay"
+proof = "gameplay"
+[[review.categories.items]]
+id = "load-and-yard"
+title = "Produced, animated Load and yard art"
+description = "The six Load types and the Dynamo are produced sprites that visibly animate (a charge/crackle cycle; the Filament airborne; the Dynamo an unstable wobble), and the yard art — substrate, feeder-vent Entry, grounding Collector, waypoint platforms, and Map C's housings — is produced too."
+reference = "gameplay"
+proof = "gameplay"
+[[review.categories.items]]
+id = "electrical-vfx"
+title = "Produced electrical particle VFX (the headline)"
+description = "The build spark, combine flash, arc bolt, chain-lightning, spark spray, discharge ring, slow snap, burn ember, aura pulse ring, impacts, death discharge, and leak alarm are produced particle systems simulated live through @test-cabinet/particle-runtime — varying shot to shot, not a flat flash or a hand-coded loop."
+reference = "gameplay"
+proof = "systems"
+[[review.categories.items]]
+id = "vfx-escalates"
+title = "Firing VFX intensity escalates with quality"
+description = "A firing effect's intensity escalates with the component's quality tier, so the quality ladder reads in the VFX as well as the sprite."
+proof = "pressure"
+[[review.categories.items]]
+id = "readable-hud"
+title = "Readable board, HUD, and build panel"
+description = "A player can tell at a glance — even at fast speed — each component's type and quality, read Charge, Grid Integrity, and the wave/BUILD indicator, and read the scrap-press, UPGRADE QUALITY, inspector, and next-wave-preview controls, all drawn in code in the palette."
+reference = "gameplay"
+proof = "gameplay"
+
+# --- Audio --------------------------------------------------------------------
+[[review.categories]]
+id = "audio"
+title = "Audio"
+[[review.categories.items]]
+id = "sfx-cues"
+title = "Produced fire, stamp, combine, kill, and leak cues"
+description = "The yard has produced sound: a stamp clunk, a fire cue per component family, a combine chime, a kill pop, a rock-settle thunk, and a leak alarm, played on the matching events via Web Audio (no downloaded or hand-oscillated stand-in)."
+proof = "pressure"
+[[review.categories.items]]
+id = "status-cues"
+title = "Produced slow and burn status cues"
+description = "A slow hum plays while a unit is slowed and a burn sizzle while a burn DoT ticks — distinct produced status cues."
+proof = "pressure"
+[[review.categories.items]]
+id = "music"
+title = "Produced industrial-electro music bed"
+description = "A tense, driving industrial-electro reactor music bed the build produced with the music tool loops under play."
+proof = "pressure"
+[[review.categories.items]]
+id = "no-autostart-mute"
+title = "Audio waits for interaction and can be muted"
+description = "Audio does not autostart before the player first interacts, and a mute toggle silences it."
+proof = "pressure"

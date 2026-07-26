@@ -22,9 +22,11 @@ use crate::{FuelStats, MatchSetup, MatchSummary, RunError};
 ///
 /// Each tick: observe → invoke → validate (per team), then advance the engine once
 /// with both action sets. A controller that traps, runs out of fuel/memory, or
-/// returns a contract-invalid action **forfeits** — its moves become all-`Stop`,
-/// the *other* team is declared the winner by forfeit, and the loop stops — but
-/// the inputs recorded so far still produce a playable replay.
+/// returns a contract-invalid action **forfeits**: the *other* team is declared the
+/// winner by forfeit and the loop stops, with the score frozen where it stood. The
+/// forfeited tick is neither played nor recorded, so the log holds exactly the ticks
+/// that were played (`ticks.len() == result.ticks`) and still replays everything up
+/// to the forfeit.
 ///
 /// The returned [`ForfeitInfo`] is `Some` exactly when the match ended on a
 /// forfeit; it carries the tick and the offending team's [`ForfeitReason`] so a
@@ -46,33 +48,40 @@ pub fn run_loaded_match(
     while !game.is_over() {
         // Decide both teams *before* advancing: each controller sees the same
         // pre-advance state, neither reacts to the other's move within a tick
-        // (lockstep). A forfeit by either team ends the match this tick.
-        let red_decision = decide(game, Team::Red, red);
-        let blue_decision = decide(game, Team::Blue, blue);
-
-        let (red_action, red_forfeit) = split(red_decision);
-        let (blue_action, blue_forfeit) = split(blue_decision);
+        // (lockstep). Both are asked even if the first already failed — a double
+        // forfeit is a draw, so both reasons are needed.
+        let (red_action, blue_action) =
+            match (decide(game, Team::Red, red), decide(game, Team::Blue, blue)) {
+                (Ok(red_action), Ok(blue_action)) => (red_action, blue_action),
+                // A forfeit ends the match *at* this tick, which is therefore never
+                // advanced — the score freezes where it stood. Crucially the tick is not
+                // *recorded* either: the log holds exactly the ticks that were played
+                // (`ticks.len() == result.ticks`), so nothing replaying it can execute a
+                // tick the engine never did. Recording it while skipping the `step` below
+                // is what let browser playback advance one tick past the forfeit, banking
+                // seeds for the surviving colony that the recorded score never counted.
+                (red_decision, blue_decision) => {
+                    let (red_reason, blue_reason) = (red_decision.err(), blue_decision.err());
+                    result = Some(forfeit_result(
+                        game,
+                        red_reason.is_some(),
+                        blue_reason.is_some(),
+                    ));
+                    // Keep the offending team's reason(s) and the tick so the caller can
+                    // report *why* — the replay records only that a forfeit happened.
+                    forfeit = Some(ForfeitInfo {
+                        tick: game.state.tick,
+                        red: red_reason,
+                        blue: blue_reason,
+                    });
+                    break;
+                }
+            };
 
         ticks.push(TickInput {
             red: red_action.clone(),
             blue: blue_action.clone(),
         });
-
-        if red_forfeit.is_some() || blue_forfeit.is_some() {
-            result = Some(forfeit_result(
-                game,
-                red_forfeit.is_some(),
-                blue_forfeit.is_some(),
-            ));
-            // Keep the offending team's reason(s) and the tick so the caller can
-            // report *why* — the replay records only that a forfeit happened.
-            forfeit = Some(ForfeitInfo {
-                tick: game.state.tick,
-                red: red_forfeit,
-                blue: blue_forfeit,
-            });
-            break;
-        }
 
         result = game.step(&red_action, &blue_action);
     }
@@ -86,13 +95,6 @@ pub fn run_loaded_match(
         .expect("a finished match has a result");
 
     (Replay::record(record_header(setup), ticks, result), forfeit)
-}
-
-/// A controller's decision for one tick: either a contract-valid action, or a
-/// forfeit carrying the reason and the all-`Stop` action recorded in its place.
-enum Decision {
-    Action(Action),
-    Forfeit(Action, ForfeitReason),
 }
 
 /// Why a controller forfeited, kept for the recorded outcome and diagnostics. Its
@@ -123,44 +125,31 @@ pub struct ForfeitInfo {
     pub blue: Option<ForfeitReason>,
 }
 
-/// Observe `team`'s view, invoke its controller, and validate the result. Any
-/// failure becomes a forfeit decision carrying all-`Stop` so the match can still
-/// advance and a replay is produced.
-fn decide(game: &Match, team: Team, controller: &mut Controller) -> Decision {
+/// Observe `team`'s view, invoke its controller, and validate the result: either the
+/// contract-valid [`Action`] it returned, or the [`ForfeitReason`] it forfeited on.
+///
+/// A forfeit yields no action at all. This used to substitute an all-`Stop` so the
+/// loop had something to record, but the forfeited tick is neither played nor
+/// recorded, so there is nothing for a substitute to stand in for.
+fn decide(game: &Match, team: Team, controller: &mut Controller) -> Result<Action, ForfeitReason> {
     let world = game.observe(team);
     let world_json = world.to_json();
 
-    let bytes = match controller.invoke(&world_json) {
-        Ok(bytes) => bytes,
-        Err(err) => return Decision::Forfeit(Action::all_stop(), ForfeitReason::Invoke(err)),
-    };
+    let bytes = controller
+        .invoke(&world_json)
+        .map_err(ForfeitReason::Invoke)?;
 
-    let action: Action = match serde_json::from_slice(&bytes) {
-        Ok(action) => action,
-        Err(err) => {
-            return Decision::Forfeit(
-                Action::all_stop(),
-                ForfeitReason::Invoke(InvokeError::BadJson(err.to_string())),
-            );
-        }
-    };
+    let action: Action = serde_json::from_slice(&bytes)
+        .map_err(|err| ForfeitReason::Invoke(InvokeError::BadJson(err.to_string())))?;
 
     // Schema-shaped but structurally wrong (wrong agent id set, duplicates,
     // omissions) is a forfeit; a well-formed-but-blocked *move* is clamped to
     // Stop by the engine, not here (architecture.md's two legality tiers).
-    if let Err(err) = action.validate_for(team, &game.state) {
-        return Decision::Forfeit(Action::all_stop(), ForfeitReason::Contract(err));
-    }
+    action
+        .validate_for(team, &game.state)
+        .map_err(ForfeitReason::Contract)?;
 
-    Decision::Action(action)
-}
-
-/// Split a decision into the action to record and the forfeit reason, if any.
-fn split(decision: Decision) -> (Action, Option<ForfeitReason>) {
-    match decision {
-        Decision::Action(action) => (action, None),
-        Decision::Forfeit(action, reason) => (action, Some(reason)),
-    }
+    Ok(action)
 }
 
 /// Build the forfeit [`MatchResult`]: the non-forfeiting team wins; if *both*

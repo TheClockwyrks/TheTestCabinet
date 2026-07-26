@@ -75,10 +75,9 @@ reference-impl/base/
   README.md   DESIGN.md   ASSETS.md
   src/            the game (§4)
   sim/            headless balance harness, dev-only, excluded from the build (§7)
-  scripts/        gen-assets.sh (produce assets), proof.mjs (capture proofs)
+  scripts/        gen-assets.sh (produce assets)
   assets/         the produced sprites, frames, particle systems, audio (ASSETS.md)
   vendor/particle-runtime/   vendored prebuilt runtime
-  proof/          the five committed proof artifacts (§8)
 ```
 
 ---
@@ -381,26 +380,7 @@ Mirror valence: a headless, deterministic harness that drives the exact `Game` f
 
 ---
 
-## 8. Proof plan (`specs/proof.md` → `proof/`, captured by `scripts/proof.mjs`)
-
-Playwright serves the **built** `dist/` under a non-root sub-path (`/runs/demo/build`,
-proving base-path safety), drives the game via `window.__hollowdeep` dev hooks, asserts
-no console/request errors, and writes each artifact to the exact path. Dev API on
-`window.__hollowdeep`: `{ game, audio, startColony(), digRect(x0,y0,x1,y1),
-place(kind,tx,ty), grant({ore,material,food}), fillCavern(o2), sealAndSpend(), setSpeed(n),
-tick(n) }`.
-
-| Path | What to drive & capture |
-| --- | --- |
-| `proof/title.png` | Load; move pointer off the menu; screenshot the **title** with both items visible (`NEW COLONY`, `HOW TO PLAY`). Click once so audio decodes; assert no error. |
-| `proof/gameplay.png` | `startColony()`; `grant` a little material; `digRect` a small room + a downward tunnel; `place` a generator + wires + a **diffuser** + a refinery + a **farm**; `grant` fuel ore; run `tick`s until the diffuser is **running** (steam venting), delvers are mid-task (produced sheets), and the gas overlay shows **oxygen** high in the room and **CO2** pooled low in the tunnel. Screenshot with the **full HUD** (top vitals + bottom roster & palette). |
-| `proof/game-over.png` | `startColony()`; `sealAndSpend()` (no oxygen generation, delvers keep breathing) + `setSpeed(3)`; run `tick`s until `game.state === "gameover"`; screenshot the **colony-lost** screen showing **cycles survived**. |
-| `proof/systems.webm` | ~6–8 s at 1×: queue a **dig**, a delver walks to it and **mines** it (**dig dust** puffs), the tile **opens** and yields **ore**; a delver **refines** ore→material and **builds** a placed order; a powered **diffuser** runs (steam) and the **gas overlay visibly responds** as the space opens / air is added. |
-| `proof/survival.webm` | ~7 s at 2×, audio unmuted: the air **trending down** / a room souring with the **low-oxygen alert** lit, and a delver in danger **fleeing toward better air** (or the colony reaching its loss state). |
-
----
-
-## 9. Asset production & the environment constraint
+## 8. Asset production & the environment constraint
 
 `scripts/gen-assets.sh` produces **every** committed asset with the six on-`PATH` tools
 (`draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `music`) — see [`ASSETS.md`](ASSETS.md)

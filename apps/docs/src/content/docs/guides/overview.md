@@ -30,6 +30,11 @@ guide when you are doing the task for the first time, or when you need to know
 
 ### Authoring — end-to-end
 
+- [Writing Case Specifications and Prompts](/guides/authoring/writing-case-specifications/)
+  — the editorial rules every playable case's seeded specs and prompt must
+  follow: authoritative and self-contained, no history, no sign that this is a
+  test, edge cases as review items rather than warnings, and no advice in the
+  prompt.
 - [Authoring an End-to-End Test Case](/guides/authoring/authoring-an-end-to-end-test-case/)
   — write a new playable-game case or version: its specification, prompt,
   references, and manifest.

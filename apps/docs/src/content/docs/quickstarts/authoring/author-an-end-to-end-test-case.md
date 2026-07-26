@@ -35,9 +35,15 @@ test-cases/<type>/<difficulty>/<slug>/<version>/
 2. In the overview spec, fix the **coordinate system**, **palette/type**, and
    **screens** every other spec leans on.
 3. Decompose the spec into focused, seeded files that cross-reference each other
-   **by name** (overview, playfield, physics, flow, plus mode specs). Keep them
+   **by name** (overview, playfield, physics, flow, an
+   [instrumentation](/testing/end-to-end/instrumentation/) spec, plus mode specs).
+   Keep them
    [self-contained](/testing/end-to-end/overview/#self-contained-specifications):
    no links outside the seeded set, no dependence on the reference source.
+   Mandate the [instrumentation](/testing/end-to-end/instrumentation/) a run is
+   validated through — a debug API on a case-specific global, a deterministic
+   core, and a read-only debug overlay — framed as an ordinary debugging feature
+   of the game, never as something for grading.
 4. Write `prompt.hbs` using only the documented template variables
    (`{{workspace}}`, `{{variant.*}}`, `{{#each specs}}`) — it renders in strict
    mode.
@@ -50,7 +56,10 @@ test-cases/<type>/<difficulty>/<slug>/<version>/
    `[[check]]`. A spec's `dest` defaults to its `source`.
 
 [Authoring an End-to-End Test Case](/guides/authoring/authoring-an-end-to-end-test-case/)
-is the full procedure to follow while doing this; read it before you start. The
+is the full procedure to follow while doing this, and
+[Writing Case Specifications and Prompts](/guides/authoring/writing-case-specifications/)
+is the editorial rulebook for what goes into the seeded specs and the prompt.
+Read both before you start. The
 `carom` case (`test-cases/end-to-end/easy/carom/v1.0.0/`) is the worked example a new case should
 resemble.
 

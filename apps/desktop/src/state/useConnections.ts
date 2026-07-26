@@ -30,9 +30,10 @@ import { authUrl, backendUrl } from "../api";
 // IPC call resolves and stays null when the shell has no backend configured (the
 // console then reads as unconfigured, exactly like the web console with no URL).
 function useShellUrls(): { backend: string | null; auth: string | null } {
-  const [urls, setUrls] = useState<{ backend: string | null; auth: string | null }>(
-    { backend: null, auth: null },
-  );
+  const [urls, setUrls] = useState<{
+    backend: string | null;
+    auth: string | null;
+  }>({ backend: null, auth: null });
   useEffect(() => {
     let active = true;
     Promise.all([backendUrl().catch(() => null), authUrl().catch(() => null)])
@@ -113,17 +114,26 @@ export function useExecConnection(
 ): WorkersContextValue {
   const [artifactsUrl, setArtifactsUrl] = useState<string | null>(null);
 
+  // Keep the in-flight `/config` promise, not just the value it lands on: a
+  // consumer that snapshots the artifact URL into fetched data has to await it,
+  // since re-rendering with the value later cannot correct what it already stored
+  // (see `resolveBuild`).
+  const artifactsSettled = useMemo(
+    () =>
+      backendUrlValue
+        ? fetchArtifactsUrl(backendUrlValue)
+        : Promise.resolve(null),
+    [backendUrlValue],
+  );
+
   useEffect(() => {
     setArtifactsUrl(null);
-    if (!backendUrlValue) return;
     let active = true;
-    fetchArtifactsUrl(backendUrlValue)
-      .then((u) => active && setArtifactsUrl(u))
-      .catch(() => {});
+    artifactsSettled.then((u) => active && setArtifactsUrl(u)).catch(() => {});
     return () => {
       active = false;
     };
-  }, [backendUrlValue]);
+  }, [artifactsSettled]);
 
   const worker = useMemo<WorkerHandle | null>(() => {
     if (!backendUrlValue) return null;
@@ -138,12 +148,19 @@ export function useExecConnection(
       // exactly like the web console — so the editor offers the split
       // push/review/publish web flow (push is a no-op; the driver already pushed).
       local: false,
-      client: createBackendExec(backendUrlValue, auth, artifactsUrl),
-      identity: { url: backendUrlValue, version: null, backendId: backendUrlValue },
+      client: createBackendExec(backendUrlValue, auth, {
+        current: artifactsUrl,
+        settled: artifactsSettled,
+      }),
+      identity: {
+        url: backendUrlValue,
+        version: null,
+        backendId: backendUrlValue,
+      },
       // The execution path *is* the backend, so it trivially matches it.
       backendMatch: "match",
     };
-  }, [backendUrlValue, authUrlValue, artifactsUrl]);
+  }, [backendUrlValue, authUrlValue, artifactsUrl, artifactsSettled]);
 
   const workers = useMemo(() => (worker ? [worker] : []), [worker]);
 

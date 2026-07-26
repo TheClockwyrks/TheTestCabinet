@@ -1,5 +1,5 @@
 // The Foray browser replay renderer, vendored into the UI library from the
-// case's replay bundle (`test-cases/adversarial/hard/foray/v1.0.0/replay/renderer.mjs`).
+// case's replay bundle (`test-cases/adversarial/easy/foray/v1.0.0/replay/renderer.mjs`).
 //
 // This module holds NO game rules. It loads `foray-core` compiled to wasm (the
 // SAME authoritative engine the CLI ran) through the hand-rolled C ABI
@@ -99,6 +99,13 @@ export interface Snapshot {
   score: { red: number; blue: number };
   agents: SnapshotAgent[];
   seeds: Point[];
+  /**
+   * Large seeds currently on the board (not carried, not banked). Worth three
+   * ordinary seeds and, unlike every other fixture, they MOVE — drifting a tile at a
+   * time toward the border. Optional so a replay recorded before they existed still
+   * renders.
+   */
+  large_seeds?: Point[];
   jelly: Point[];
   result?: SnapshotResult;
 }
@@ -413,6 +420,14 @@ export class Renderer {
     }
     for (const [x, y] of a.jelly) this.blitCell(this.sheet.neutral, "jelly_active", x, y);
     for (const [x, y] of a.seeds) this.blitCell(this.sheet.neutral, "seed", x, y);
+    // Large seeds last, so they sit on top of an ordinary seed if one is ever laid on
+    // the same tile by a scattered load. They MOVE (drifting a tile at a time toward
+    // the border) but they are not interpolated: a drift step is a discrete hop every
+    // few hundred ticks, not a walk, so sliding it would read as a bug rather than
+    // motion. They simply pop to the new tile, like a seed appearing.
+    for (const [x, y] of a.large_seeds ?? []) {
+      this.blitCell(this.sheet.neutral, "large_seed", x, y);
+    }
 
     // Agents, interpolated and tinted by team. Match this tick's agent to the
     // next tick's by team:id; lerp the position, animate the walk by cell

@@ -1,16 +1,16 @@
 //! The shared layered raster engine behind the UI and material asset-generation
 //! binaries (`paint`, `ui`, `texture`, `pbr`).
 //!
-//! Unlike the [`draw`](test_cabinet_draw) tool's flat replace-pixel canvas, this is
-//! a full **layered compositor**: named [`Layer`](layer::Layer)s with opacity, one
-//! of twelve [`BlendMode`](blend::BlendMode)s, an optional mask, and alpha
+//! Unlike the `draw` tool's flat replace-pixel canvas, this is
+//! a full **layered compositor**: named [`Layer`]s with opacity, one
+//! of twelve [`BlendMode`]s, an optional mask, and alpha
 //! compositing into a flattened element or map. On top of it sit brushes and
 //! strokes, fills and gradients, [`select`]ions, [`filters`], layer
 //! [`effects`], [`transform`]s, crisp anti-aliased [`vector`] shapes and [`text`],
 //! seamless procedural generators ([`proc`]), PBR [`bake`]s, and [`nine_slice`]
 //! authoring. Every mark is one [`op::Action`] in a single shared log; a preview (or
 //! core's parse) is produced by [replaying](op::replay) that log into a
-//! [`Workspace`](layer::Workspace).
+//! [`Workspace`].
 //!
 //! The four binaries are thin CLIs over this library (the [`cli`] module, behind the
 //! `cli` feature). See the binary docs under

@@ -36,8 +36,14 @@ additive spec: a tighter palette, a stricter operation budget, a required drawin
 technique (flat fills only; no dithering), or a different stylistic constraint. If
 you need a genuinely different subject, that is a new **case**, not a variant.
 
-A variant's `spec` and `review_item` entries are **additive** — they layer on top
-of the common ones rather than replacing them.
+A variant's `spec` entries are **additive** — they layer on top of the common ones
+rather than replacing them. A variant adds **no review items**, because an
+asset-generation case has no reviewer checklist at all: the sprite is judged as a
+whole against the brief it was seeded with, on the case's single `overall` domain
+(see
+[Judged on one overall rating](/testing/asset-generation/manifests/#judged-on-one-overall-rating)).
+So the variant brief is the *only* place its constraint is recorded — write it
+precisely enough that a reviewer can weigh it.
 
 ## Procedure
 
@@ -67,16 +73,7 @@ subject, silhouette, and palette as the brief, except …"):
 A variant spec **may** reference the common specs freely (they are always seeded)
 but must **not** reference another variant's spec.
 
-### 3. Add review items for what the variation makes observable
-
-In the manifest, add `[[review_item]]`s under the variant for the thing the
-variation makes checkable that the base does not — for example "uses flat fills
-only, with no gradients or dithering." Each item is reporter-side (never seeded),
-carries a stable `id` unique within the variant's effective set, and a scoring
-`domain`. It must **not** carry a `reference` field — there is no target to point
-at, and one is rejected.
-
-### 4. Create the variant file and list it
+### 3. Create the variant file and list it
 
 Write `variants/<slug>.toml` as a standalone TOML document whose **top-level keys
 are the variant's fields**, then add its path to the `variants` array in
@@ -90,9 +87,6 @@ slug = "flat"
 name = "Flat Shading"
 description = "Same brief, drawn with flat fills only — no gradients or dithering."
 spec = [{ source = "specs/flat.md" }]
-review_item = [
-  { id = "flat-fills", title = "Flat fills only", text = "Every region is a flat color with no gradients or dithering.", domain = "technique" },
-]
 ```
 
 ```toml
@@ -107,9 +101,8 @@ Rules enforced at resolution:
 - **No `reference` entry** — references are rejected for this test type entirely
   (an asset-generation case has no target image), so neither the case nor a variant
   may declare one.
-- `review_item` entries are additive on the common ones; an item `id` must be
-  unique within the variant's effective set, and an item must not carry a
-  `reference`.
+- **No `review_item` entries** — an asset-generation case declares no reviewer
+  checklist, on the case or on a variant.
 
 Also update the human-readable comment in the manifest that enumerates the
 variants so the list stays accurate.

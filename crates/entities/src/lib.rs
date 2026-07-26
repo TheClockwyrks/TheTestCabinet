@@ -1,6 +1,6 @@
 //! SeaORM entity models for the backend's system of record.
 //!
-//! These mirror the four tables created by [`test-cabinet-migration`] and are the
+//! These mirror the four tables created by `test-cabinet-migration` and are the
 //! typed surface `crates/backend/src/db.rs` reads and writes. They are
 //! driver-agnostic: the same models serve the SQLite (local/dev/tests) and
 //! PostgreSQL (deployment) backends SeaORM connects to.
@@ -11,6 +11,9 @@
 //! `snapshot_state` holding the snapshot coalescing flags.
 
 pub mod case_reference_build;
+pub mod case_reference_sheet;
+pub mod coverage_group;
+pub mod coverage_plan;
 pub mod harness_config;
 pub mod job;
 pub mod model;
@@ -19,6 +22,7 @@ pub mod model_price;
 pub mod publish_job;
 pub mod review;
 pub mod review_plan;
+pub mod review_revision;
 pub mod run;
 pub mod run_link;
 pub mod snapshot_state;

@@ -1,0 +1,134 @@
+@use "../../../styles/tokens" as t;
+@use "../../../styles/breakpoints" as bp;
+
+// The asset-generation Reference tab's body: the published reference frames of the
+// selected variant, played as their named sequences and then listed one by one.
+// Deliberately close to the run Verdict tab's generated-asset section — a reviewer
+// comparing a run against the reference should not have to re-read a new layout —
+// but without any of that section's run-only signals (cheat divergence, operation
+// counts, the model's own preview), which a reference has no analogue of.
+
+// The panels stack with the same rhythm the run detail tabs use between blocks.
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-lg;
+}
+
+.heading {
+  margin: 0 0 t.$space-sm;
+  font-size: t.$font-md;
+}
+
+.note {
+  margin: 0 0 t.$space-md;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+// The named sequences, two-up so the wide panel's horizontal space is used rather
+// than left empty beside each row; a single column once that no longer fits.
+.sequenceGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: t.$space-sm;
+
+  @include bp.below(t.$bp-md) {
+    grid-template-columns: 1fr;
+  }
+}
+
+// One sequence as a row: a left meta column (name + frame count/fps) with the
+// animation playing to its right, mirroring the run view's `.sequenceRow`.
+.sequenceRow {
+  display: grid;
+  grid-template-columns: minmax(9rem, 14rem) 1fr;
+  gap: t.$space-md;
+  align-items: center;
+  padding: t.$space-sm t.$space-md;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+
+  // Side-by-side gets cramped on a narrow viewport; stack the meta above the player.
+  @include bp.below(t.$bp-sm) {
+    grid-template-columns: 1fr;
+    gap: t.$space-sm;
+    justify-items: start;
+  }
+}
+
+.sequenceMeta {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  min-width: 0;
+}
+
+.sequenceName {
+  font-weight: 600;
+}
+
+.sequenceSub {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+// The individual frames: as many fixed-width cells per row as fit, so a long sheet
+// wraps into a compact block instead of one very tall column.
+.frameGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
+  gap: t.$space-md;
+}
+
+.frame {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: t.$space-xs;
+}
+
+// The frame image itself, scaled up with crisp (nearest-neighbour) sampling over a
+// checkerboard so transparent pixels read as transparent rather than as background.
+.frameImage {
+  width: 100%;
+  max-width: 7rem;
+  aspect-ratio: 1;
+  object-fit: contain;
+  image-rendering: pixelated;
+  background: repeating-conic-gradient(#3a3a3a 0% 25%, #2a2a2a 0% 50%) 50% /
+    16px 16px;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+}
+
+// The "unavailable" stand-in occupying the same box as a frame image, so a partial
+// reference doesn't reflow the grid.
+.frameMissing {
+  display: grid;
+  place-items: center;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+// The caption under each frame: its index, and the link to the action log it was
+// drawn from. The log is the authoritative output an asset run is scored on, so it
+// is one click from every frame — but set small and muted, so the images still lead.
+.frameCaption {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+  font-size: t.$font-sm;
+}
+
+.frameLog {
+  color: t.$color-text-muted;
+}
+
+// The whole-tab stand-in when the host cannot serve reference media at all. Matches
+// the `ReferencePlayable` placeholder a variant with no reference build shows.
+.placeholder {
+  margin: 0;
+  color: t.$color-text-muted;
+}

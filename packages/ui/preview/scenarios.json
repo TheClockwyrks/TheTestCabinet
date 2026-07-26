@@ -1,0 +1,662 @@
+[
+  {
+    "name": "1. One belt, both lanes, two outputs",
+    "blurb": "One input belt (iron-ore top lane, iron-plate bottom lane) into two outputs. Both lanes of BOTH outputs should fill — iron-ore alternating across the two top lanes, iron-plate across the two bottom lanes. This is the unzip that was broken.",
+    "scenario": {
+      "version": 1,
+      "grid": {
+        "width": 11,
+        "height": 10
+      },
+      "ticks": 100000,
+      "snapshots": [
+        100000
+      ],
+      "entities": [
+        {
+          "type": "splitter",
+          "x": 5,
+          "y": 4,
+          "dir": "E"
+        },
+        {
+          "type": "source",
+          "x": 2,
+          "y": 4,
+          "dir": "E",
+          "item": "iron-plate",
+          "lane": "right",
+          "period": 1
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 4,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 4,
+          "y": 4,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "source",
+          "x": 3,
+          "y": 2,
+          "dir": "S",
+          "item": "iron-ore",
+          "lane": "both",
+          "period": 1
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 3,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 6,
+          "y": 4,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 7,
+          "y": 4,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "sink",
+          "x": 8,
+          "y": 4,
+          "dir": "W"
+        },
+        {
+          "type": "belt",
+          "x": 6,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 7,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "sink",
+          "x": 8,
+          "y": 5,
+          "dir": "W"
+        }
+      ]
+    }
+  },
+  {
+    "name": "2. One belt, one lane, one output",
+    "blurb": "One input belt with only the top lane populated (iron-ore) into a single output. It stays on the top lane of that output.",
+    "scenario": {
+      "version": 1,
+      "grid": {
+        "width": 11,
+        "height": 10
+      },
+      "ticks": 100000,
+      "snapshots": [
+        100000
+      ],
+      "entities": [
+        {
+          "type": "splitter",
+          "x": 5,
+          "y": 4,
+          "dir": "E"
+        },
+        {
+          "type": "source",
+          "x": 2,
+          "y": 4,
+          "dir": "E",
+          "item": "iron-ore",
+          "lane": "left",
+          "period": 1
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 4,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 4,
+          "y": 4,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 6,
+          "y": 4,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 7,
+          "y": 4,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "sink",
+          "x": 8,
+          "y": 4,
+          "dir": "W"
+        }
+      ]
+    }
+  },
+  {
+    "name": "3. Two belts, both lanes, one output",
+    "blurb": "Two full input belts (top: iron-ore/iron-plate, bottom: copper-ore/copper-plate) into ONE output. Each output lane interleaves its two same-side inputs (top lane alternates iron-ore/copper-ore, bottom lane iron-plate/copper-plate); the inputs back up since one belt cannot absorb two.",
+    "scenario": {
+      "version": 1,
+      "grid": {
+        "width": 11,
+        "height": 10
+      },
+      "ticks": 100000,
+      "snapshots": [
+        100000
+      ],
+      "entities": [
+        {
+          "type": "splitter",
+          "x": 5,
+          "y": 4,
+          "dir": "E"
+        },
+        {
+          "type": "source",
+          "x": 2,
+          "y": 4,
+          "dir": "E",
+          "item": "iron-plate",
+          "lane": "right",
+          "period": 1
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 4,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 4,
+          "y": 4,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "source",
+          "x": 3,
+          "y": 2,
+          "dir": "S",
+          "item": "iron-ore",
+          "lane": "both",
+          "period": 1
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 3,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "source",
+          "x": 2,
+          "y": 5,
+          "dir": "E",
+          "item": "copper-ore",
+          "lane": "left",
+          "period": 1
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 4,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "source",
+          "x": 3,
+          "y": 7,
+          "dir": "N",
+          "item": "copper-plate",
+          "lane": "both",
+          "period": 1
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 6,
+          "dir": "N",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 6,
+          "y": 4,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 7,
+          "y": 4,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "sink",
+          "x": 8,
+          "y": 4,
+          "dir": "W"
+        }
+      ]
+    }
+  },
+  {
+    "name": "4. Two belts, both lanes, two outputs",
+    "blurb": "Two full input belts into two outputs. Every output lane carries a balanced mix of its two same-side inputs, and no item ever crosses lanes.",
+    "scenario": {
+      "version": 1,
+      "grid": {
+        "width": 11,
+        "height": 10
+      },
+      "ticks": 100000,
+      "snapshots": [
+        100000
+      ],
+      "entities": [
+        {
+          "type": "splitter",
+          "x": 5,
+          "y": 4,
+          "dir": "E"
+        },
+        {
+          "type": "source",
+          "x": 2,
+          "y": 4,
+          "dir": "E",
+          "item": "iron-plate",
+          "lane": "right",
+          "period": 1
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 4,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 4,
+          "y": 4,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "source",
+          "x": 3,
+          "y": 2,
+          "dir": "S",
+          "item": "iron-ore",
+          "lane": "both",
+          "period": 1
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 3,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "source",
+          "x": 2,
+          "y": 5,
+          "dir": "E",
+          "item": "copper-ore",
+          "lane": "left",
+          "period": 1
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 4,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "source",
+          "x": 3,
+          "y": 7,
+          "dir": "N",
+          "item": "copper-plate",
+          "lane": "both",
+          "period": 1
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 6,
+          "dir": "N",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 6,
+          "y": 4,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 7,
+          "y": 4,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "sink",
+          "x": 8,
+          "y": 4,
+          "dir": "W"
+        },
+        {
+          "type": "belt",
+          "x": 6,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 7,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "sink",
+          "x": 8,
+          "y": 5,
+          "dir": "W"
+        }
+      ]
+    }
+  },
+  {
+    "name": "5. Two belts (one full, one half), one output",
+    "blurb": "Top belt full (iron-ore/iron-plate), bottom belt only its top lane (copper-ore), into ONE output. The output's top lane interleaves iron-ore/copper-ore; its bottom lane carries iron-plate only.",
+    "scenario": {
+      "version": 1,
+      "grid": {
+        "width": 11,
+        "height": 10
+      },
+      "ticks": 100000,
+      "snapshots": [
+        100000
+      ],
+      "entities": [
+        {
+          "type": "splitter",
+          "x": 5,
+          "y": 4,
+          "dir": "E"
+        },
+        {
+          "type": "source",
+          "x": 2,
+          "y": 4,
+          "dir": "E",
+          "item": "iron-plate",
+          "lane": "right",
+          "period": 1
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 4,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 4,
+          "y": 4,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "source",
+          "x": 3,
+          "y": 2,
+          "dir": "S",
+          "item": "iron-ore",
+          "lane": "both",
+          "period": 1
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 3,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "source",
+          "x": 2,
+          "y": 5,
+          "dir": "E",
+          "item": "copper-ore",
+          "lane": "left",
+          "period": 1
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 4,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 6,
+          "y": 4,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 7,
+          "y": 4,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "sink",
+          "x": 8,
+          "y": 4,
+          "dir": "W"
+        }
+      ]
+    }
+  },
+  {
+    "name": "6. Two belts (one full, one half), two outputs",
+    "blurb": "Top belt full, bottom belt only its top lane, into two outputs. The two top-lane inputs spread across both outputs' top lanes; the single bottom-lane input spreads across both outputs' bottom lanes.",
+    "scenario": {
+      "version": 1,
+      "grid": {
+        "width": 11,
+        "height": 10
+      },
+      "ticks": 100000,
+      "snapshots": [
+        100000
+      ],
+      "entities": [
+        {
+          "type": "splitter",
+          "x": 5,
+          "y": 4,
+          "dir": "E"
+        },
+        {
+          "type": "source",
+          "x": 2,
+          "y": 4,
+          "dir": "E",
+          "item": "iron-plate",
+          "lane": "right",
+          "period": 1
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 4,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 4,
+          "y": 4,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "source",
+          "x": 3,
+          "y": 2,
+          "dir": "S",
+          "item": "iron-ore",
+          "lane": "both",
+          "period": 1
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 3,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "source",
+          "x": 2,
+          "y": 5,
+          "dir": "E",
+          "item": "copper-ore",
+          "lane": "left",
+          "period": 1
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 4,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 6,
+          "y": 4,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 7,
+          "y": 4,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "sink",
+          "x": 8,
+          "y": 4,
+          "dir": "W"
+        },
+        {
+          "type": "belt",
+          "x": 6,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 7,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "sink",
+          "x": 8,
+          "y": 5,
+          "dir": "W"
+        }
+      ]
+    }
+  }
+]

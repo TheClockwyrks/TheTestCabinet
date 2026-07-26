@@ -4,7 +4,7 @@
 // inversion. Simulation runs on a fixed timestep (main.ts) decoupled from render.
 //
 // See specs/polarity.md (bands, shield, discharge), specs/controls.md,
-// specs/enemies.md (drones), specs/flow.md (stages, scoring, states), and
+// specs/drones.md (drones), specs/gameplay.md (stages, scoring, states), and
 // specs/playfield.md (geometry).
 
 import {
@@ -53,6 +53,8 @@ import {
   START_LIVES,
   DIVE_SPEED,
   bandName,
+  bandStr,
+  parseBand,
   diveGapMult,
   droneSpeedMult,
   enemyBulletMult,
@@ -61,7 +63,9 @@ import {
   opposite,
   swayOffset,
   type Band,
+  type BandStr,
 } from "./constants";
+import { makeRng, DEFAULT_SEED } from "./rng";
 import type { Assets } from "./assets";
 import { Audio } from "./audio";
 import { Bursts } from "./particles";
@@ -81,17 +85,17 @@ import {
   isPause,
 } from "./input";
 import { buildChallenge, buildWave, type Entrant } from "./waves";
-import type { Bullet, Drone, GameState } from "./types";
+import type { Bullet, Drone, DroneKind, DronePhase, GameState } from "./types";
 
 // This variant seeds the single Overload mode (it replaces the base Sortie), so
 // the title menu lists just OVERLOAD and HOW TO PLAY (see
-// reference/menu-overload.html and specs/mode.md "Menu entry").
+// reference/menu-overload.html and specs/gameplay.md "Menu entry").
 const TITLE_MENU = ["OVERLOAD", "HOW TO PLAY"];
 const PAUSE_MENU = ["RESUME", "RESTART", "QUIT TO MENU"];
 const GAMEOVER_MENU = ["PLAY AGAIN", "MENU"];
 
 // The playable mode. Overload replaces the base Sortie's "mismatch is wasted"
-// rule with the charge/overload mechanic (specs/mode.md). The "sortie" member is
+// rule with the charge/overload mechanic (specs/gameplay.md). The "sortie" member is
 // retained for the shared rule paths but is not offered by this variant's menu.
 export type Mode = "sortie" | "overload";
 
@@ -135,7 +139,7 @@ export class Game {
   dischargeR = 0;
   private dischargeTimer = 0;
 
-  // Spectral inversion (specs/enemies.md).
+  // Spectral inversion (specs/drones.md).
   inversionTimer = 0;
 
   // Challenge stage bookkeeping.
@@ -145,6 +149,24 @@ export class Game {
   challengeResult = "";
 
   readonly audio = new Audio();
+
+  // Accumulated simulation time (seconds), advanced by every fixed step.
+  simTime = 0;
+
+  // ---- Debug / automation state (see debug.ts; inert in normal play) --------
+  // The manual step clock (specs/instrumentation.md). While true (ordinary play)
+  // the animation-frame loop advances the sim from the wall clock; while false
+  // it renders every frame but advances only when step() is called. reset() and
+  // step() set it false; setAutoStep toggles it.
+  autoStep = true;
+  // When on, render.ts draws the read-only debug overlay. Toggled with backtick;
+  // off by default; never affects gameplay.
+  debugOverlay = false;
+  // All of the game's randomness runs through this seedable generator, so
+  // reset({ seed }) reproduces a run exactly (specs/instrumentation.md).
+  private rng: () => number = makeRng(DEFAULT_SEED);
+  // Monotonic source of stable drone ids.
+  private nextDroneId = 1;
 
   constructor(
     private readonly input: Input,
@@ -168,6 +190,11 @@ export class Game {
     for (const code of this.input.drain()) {
       if (isMute(code)) {
         this.audio.toggleMute();
+        continue;
+      }
+      if (code === "Backquote") {
+        // Toggle the read-only debug overlay (specs/instrumentation.md).
+        this.debugOverlay = !this.debugOverlay;
         continue;
       }
       switch (this.state) {
@@ -271,8 +298,10 @@ export class Game {
       this.entrants = cs.map((c) => ({ drone: c.drone, releaseAt: c.releaseAt }));
       this.challengeReleased = false;
     } else {
-      this.entrants = buildWave(this.stage);
+      this.entrants = buildWave(this.stage, this.rng);
     }
+    // Assign each freshly-built drone a stable id.
+    for (const e of this.entrants) e.drone.id = this.nextDroneId++;
   }
 
   // ---- Fixed-step simulation ----------------------------------------------
@@ -298,6 +327,7 @@ export class Game {
         break;
       // title / howto / paused / gameOver are static.
     }
+    this.simTime += dt;
   }
 
   // Visual-only advance (particles). Real time so bursts read smoothly.
@@ -415,7 +445,7 @@ export class Game {
         }
         case "diving": {
           // A Shard in its Overload headlong plunge travels faster than a normal
-          // dive (specs/mode.md).
+          // dive (specs/gameplay.md).
           const diveSpeed = d.headlong ? OVERLOAD_DIVE_SPEED : DIVE_SPEED;
           d.pathDist += diveSpeed * speedMult * dt;
           const p = d.path!.at(d.pathDist);
@@ -522,7 +552,7 @@ export class Game {
     const spd = EBULLET_SPEED * enemyBulletMult(this.stage);
     const aim = Math.max(-0.35, Math.min(0.35, (this.shipX - d.x) / 400));
     if (d.kind === "prism") {
-      // A two-band burst: one cyan, one magenta (specs/enemies.md).
+      // A two-band burst: one cyan, one magenta (specs/drones.md).
       this.spawnEnemyBullet(d.x - 6, d.y, aim, spd, CYAN);
       this.spawnEnemyBullet(d.x + 6, d.y, aim, spd, MAGENTA);
     } else if (d.kind === "flux") {
@@ -560,18 +590,25 @@ export class Game {
     this.diveTimer -= dt;
     if (this.diveTimer > 0) return;
     const gap =
-      (DIVE_GAP_MIN + Math.random() * (DIVE_GAP_MAX - DIVE_GAP_MIN)) *
+      (DIVE_GAP_MIN + this.rng() * (DIVE_GAP_MAX - DIVE_GAP_MIN)) *
       diveGapMult(this.stage);
     this.diveTimer = gap;
-    const pair = Math.random() < 0.25 ? 2 : 1;
+    const pair = this.rng() < 0.25 ? 2 : 1;
     for (let i = 0; i < pair; i++) this.launchDive();
   }
 
   private launchDive(): void {
     const candidates = this.drones.filter((d) => d.phase === "formation");
     if (candidates.length === 0) return;
-    const d = candidates[Math.floor(Math.random() * candidates.length)]!;
-    const exit = Math.random() < 0.4;
+    const d = candidates[Math.floor(this.rng() * candidates.length)]!;
+    this.diveDrone(d);
+  }
+
+  // Send a specific formation drone into a real dive. Shared by the automatic
+  // assault (launchDive) and the debug API's forceDive (specs/instrumentation.md),
+  // so a driven dive is byte-for-byte a played one.
+  private diveDrone(d: Drone): void {
+    const exit = this.rng() < 0.4;
     const px = this.shipX; // snapshot: the dive bends toward the player, not homing
     const startX = d.x;
     const startY = d.y;
@@ -602,7 +639,7 @@ export class Game {
     d.invertedThisDive = false;
     const len = d.path.length;
     d.fireAt = d.kind === "prism" ? [len * 0.42] : [len * 0.4];
-    if (d.kind !== "prism" && Math.random() < 0.5) d.fireAt.push(len * 0.6);
+    if (d.kind !== "prism" && this.rng() < 0.5) d.fireAt.push(len * 0.6);
   }
 
   // ---- Bullets ------------------------------------------------------------
@@ -767,7 +804,7 @@ export class Game {
     }
   }
 
-  // ---- Overload mode (specs/mode.md) ----------------------------
+  // ---- Overload mode (specs/gameplay.md) ----------------------------
   // A mismatched shot adds a charge; at OVERLOAD_CHARGE the drone overloads with
   // its per-type reaction and its charge resets to 0 (it can overload again).
   private chargeDrone(d: Drone): void {
@@ -831,7 +868,7 @@ export class Game {
   // Spawn a fresh Shard escort (random band) that flies in beside the Prism and
   // joins the formation — growing the swarm around a wrongly-fed Prism.
   private spawnShardEscort(prism: Drone): void {
-    const band: Band = Math.random() < 0.5 ? CYAN : MAGENTA;
+    const band: Band = this.rng() < 0.5 ? CYAN : MAGENTA;
     const side = prism.slotX <= FORM_CENTER_X ? -1 : 1;
     const sx = prism.slotX + side * SLOT_DX * 0.5;
     const sy = prism.slotY + SLOT_DY * 0.5;
@@ -843,6 +880,7 @@ export class Game {
     ];
     const path = smoothPath(knots);
     const escort: Drone = {
+      id: this.nextDroneId++,
       kind: "shard",
       band,
       x: sx + side * 260,
@@ -964,4 +1002,332 @@ export class Game {
   effBand(b: Band): Band {
     return this.eff(b);
   }
+
+  // ---- Debug driver surface (used by debug.ts; inert in normal play) --------
+  //
+  // Each control method routes through the same transitions, systems, and state
+  // the game uses in normal play — it sets up a situation, it never fabricates an
+  // outcome. See specs/instrumentation.md.
+
+  setAutoStep(enabled: boolean): void {
+    this.autoStep = enabled;
+  }
+
+  // Return to the title, reseed all randomness, and re-arm manual stepping.
+  debugReset(seed?: number): void {
+    this.rng = makeRng(seed ?? DEFAULT_SEED);
+    this.nextDroneId = 1;
+    this.autoStep = false;
+    this.input.releaseAll();
+    this.simTime = 0;
+    this.score = 0;
+    this.stage = 1;
+    this.lives = START_LIVES;
+    this.resonance = 0;
+    this.extraLifeGiven = false;
+    this.stageReached = 1;
+    this.mode = "overload";
+    this.shipX = 640;
+    this.shipBand = CYAN;
+    this.shipAlive = true;
+    this.readyTimer = 0;
+    this.fireCd = 0;
+    this.lockout = 0;
+    this.drones = [];
+    this.entrants = [];
+    this.bullets = [];
+    this.bursts.clear();
+    this.waveTime = 0;
+    this.diveTimer = 0;
+    this.formationAssembled = false;
+    this.dischargeActive = false;
+    this.dischargeR = 0;
+    this.inversionTimer = 0;
+    this.isChallenge = false;
+    this.challengeDestroyed = 0;
+    this.challengeReleased = false;
+    this.challengeResult = "";
+    this.toTitle();
+  }
+
+  // Advance past the stage-intro hold straight into the live wave, launching it
+  // through the real wave code.
+  private enterWaveNow(): void {
+    if (this.state === "stageIntro") {
+      this.launchWave();
+      this.state = "inWave";
+      this.waveTime = 0;
+      this.stateTimer = 0;
+    }
+  }
+
+  // Start this build's mode (Overload) from the title and land in stage 1's wave.
+  debugStartGame(): void {
+    this.startGame("overload");
+    this.enterWaveNow();
+  }
+
+  // Begin a real stage and enter its live wave directly (its scaled speeds /
+  // formation / challenge reachable without playing up).
+  debugStartStage(stage: number): void {
+    this.stage = stage;
+    this.beginStage();
+    this.enterWaveNow();
+  }
+
+  debugSetShipX(x: number): void {
+    this.shipX = Math.max(SHIP_MIN_X, Math.min(SHIP_MAX_X, x));
+  }
+
+  debugSetShipBand(band: BandStr): void {
+    this.shipBand = parseBand(band); // a precondition: no fire lockout
+  }
+
+  debugFlip(): void {
+    this.flip(); // a real flip: instant band change + 0.30s lockout
+  }
+
+  debugDischarge(): void {
+    this.tryDischarge(); // fires only if the meter is full; spends it
+  }
+
+  debugSetResonance(value: number): void {
+    this.resonance = Math.max(0, Math.min(RES_MAX, value));
+  }
+
+  debugSetLives(n: number): void {
+    this.lives = n;
+  }
+
+  debugSetScore(n: number): void {
+    this.score = n; // a raw precondition; award thresholds are crossed by real kills
+  }
+
+  // Place one drone into the live wave through real drone construction and reach
+  // its requested phase via the real motion systems; return its stable id.
+  debugSpawnDrone(spec: SpawnDroneSpec): number {
+    const band = parseBand(spec.band);
+    const slotX = spec.slotX ?? spec.x;
+    const slotY = spec.slotY ?? spec.y;
+    const shellBand = spec.shellBand !== undefined ? parseBand(spec.shellBand) : band;
+    const coreBand = opposite(shellBand);
+    const d: Drone = {
+      id: this.nextDroneId++,
+      kind: spec.kind,
+      band: spec.kind === "prism" ? shellBand : band,
+      x: spec.x,
+      y: spec.y,
+      col: 0,
+      row: 0,
+      slotX,
+      slotY,
+      phase: "formation",
+      angle: 0,
+      dead: false,
+      path: null,
+      pathDist: 0,
+      fireAt: [],
+      headlong: false,
+      charge: 0,
+      fluxBase: band,
+      fluxClock: spec.fluxClock ?? 0,
+      shimmer: false,
+      shellBand,
+      coreBand,
+      shellAlive: spec.kind === "prism",
+      invertedThisDive: false,
+    };
+    this.drones.push(d);
+    if (spec.phase === "diving") {
+      this.diveDrone(d);
+    } else if (spec.phase === "returning") {
+      this.startReturn(d, swayOffset(this.waveTime));
+    } else if (spec.phase === "entering") {
+      d.phase = "entering";
+      d.path = smoothPath([
+        { x: spec.x, y: spec.y },
+        { x: (spec.x + slotX) / 2, y: Math.max(PLAY_TOP + 20, (spec.y + slotY) / 2) },
+        { x: slotX, y: slotY },
+      ]);
+      d.pathDist = 0;
+    }
+    return d.id;
+  }
+
+  debugForceDive(id: number): void {
+    const d = this.drones.find((x) => x.id === id && !x.dead);
+    if (d) this.diveDrone(d);
+  }
+
+  // OVERLOAD only: set a drone's mismatched-shot charge as a precondition, so a
+  // real mismatch then tips it into its overload reaction (specs/gameplay.md).
+  debugSetDroneCharge(id: number, charge: number): void {
+    const d = this.drones.find((x) => x.id === id && !x.dead);
+    if (d) d.charge = Math.max(0, Math.min(OVERLOAD_CHARGE, Math.round(charge)));
+  }
+
+  debugSpawnPlayerBullet(spec: SpawnBulletSpec): void {
+    this.bullets.push({
+      x: spec.x,
+      y: spec.y,
+      vx: spec.vx ?? 0,
+      vy: spec.vy ?? -PBULLET_SPEED,
+      band: parseBand(spec.band),
+      friendly: true,
+      dead: false,
+    });
+  }
+
+  debugSpawnEnemyBullet(spec: SpawnBulletSpec): void {
+    this.bullets.push({
+      x: spec.x,
+      y: spec.y,
+      vx: spec.vx ?? 0,
+      vy: spec.vy ?? EBULLET_SPEED * enemyBulletMult(this.stage),
+      band: parseBand(spec.band),
+      friendly: false,
+      dead: false,
+    });
+  }
+
+  // Remove every drone (formed, entering, diving, pending) and every bullet, so a
+  // caller can pose an exact scenario. Stage, score, lives, resonance, and ship
+  // are untouched.
+  debugClearField(): void {
+    this.drones = [];
+    this.entrants = [];
+    this.bullets = [];
+    this.formationAssembled = false;
+    this.challengeReleased = false;
+  }
+
+  // A read of the full observable state, shared by the debug API's snapshot() and
+  // the debug overlay.
+  debugSnapshot(): SpectraSnapshot {
+    return {
+      version: 1,
+      screen: this.state,
+      menuIndex: this.menuIndex,
+      mode: this.mode,
+      stage: this.stage,
+      isChallenge: this.isChallenge,
+      score: this.score,
+      lives: this.lives,
+      resonance: this.resonance,
+      dischargeReady: this.resonance >= RES_MAX && !this.dischargeActive,
+      muted: this.audio.muted,
+      inversionActive: this.inversionActive,
+      ship: {
+        x: this.shipX,
+        band: bandStr(this.shipBand),
+        alive: this.shipAlive,
+        canFire: this.shipAlive && this.lockout <= 0 && this.fireCd <= 0,
+        lockout: this.lockout,
+      },
+      discharge: { active: this.dischargeActive, radius: this.dischargeR },
+      drones: this.drones.map((d) => ({
+        id: d.id,
+        kind: d.kind,
+        band: bandStr(d.band),
+        effectiveBand: bandStr(this.eff(d.band)),
+        x: d.x,
+        y: d.y,
+        phase: d.phase,
+        slotX: d.slotX,
+        slotY: d.slotY,
+        shimmer: d.shimmer,
+        shellAlive: d.shellAlive,
+        shellBand: bandStr(d.shellBand),
+        coreBand: bandStr(d.coreBand),
+        charge: d.charge,
+      })),
+      bullets: this.bullets.map((b) => ({
+        x: b.x,
+        y: b.y,
+        vx: b.vx,
+        vy: b.vy,
+        band: bandStr(b.band),
+        effectiveBand: bandStr(b.friendly ? b.band : this.eff(b.band)),
+        friendly: b.friendly,
+      })),
+      bursts: this.bursts.list(),
+      simTime: this.simTime,
+    };
+  }
+}
+
+// ---- Debug snapshot shape (specs/instrumentation.md) ----------------------
+
+export interface SpawnDroneSpec {
+  kind: DroneKind;
+  band: BandStr;
+  x: number;
+  y: number;
+  phase: DronePhase;
+  slotX?: number;
+  slotY?: number;
+  shellBand?: BandStr;
+  fluxClock?: number;
+}
+
+export interface SpawnBulletSpec {
+  x: number;
+  y: number;
+  band: BandStr;
+  vx?: number;
+  vy?: number;
+}
+
+export interface DroneSnapshot {
+  id: number;
+  kind: DroneKind;
+  band: BandStr;
+  effectiveBand: BandStr;
+  x: number;
+  y: number;
+  phase: DronePhase;
+  slotX: number;
+  slotY: number;
+  shimmer: boolean;
+  shellAlive: boolean;
+  shellBand: BandStr;
+  coreBand: BandStr;
+  charge: number;
+}
+
+export interface BulletSnapshot {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  band: BandStr;
+  effectiveBand: BandStr;
+  friendly: boolean;
+}
+
+export interface SpectraSnapshot {
+  version: number;
+  screen: GameState;
+  menuIndex: number;
+  mode: Mode;
+  stage: number;
+  isChallenge: boolean;
+  score: number;
+  lives: number;
+  resonance: number;
+  dischargeReady: boolean;
+  muted: boolean;
+  inversionActive: boolean;
+  ship: {
+    x: number;
+    band: BandStr;
+    alive: boolean;
+    canFire: boolean;
+    lockout: number;
+  };
+  discharge: { active: boolean; radius: number };
+  drones: DroneSnapshot[];
+  bullets: BulletSnapshot[];
+  bursts: Array<{ x: number; y: number; size: number }>;
+  simTime: number;
 }

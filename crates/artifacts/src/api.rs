@@ -15,16 +15,17 @@
 //!   proof/asset media — `GET /runs/{id}/build` (and the trailing-slash
 //!   `/runs/{id}/build/` the console actually loads), `/runs/{id}/build/{*path}`,
 //!   `/runs/{id}/proof/{file}`, `/runs/{id}/asset/{file}`, and the recorded
-//!   `/runs/{id}/events.jsonl`/`raw.jsonl` logs. These are **not** token-gated: the
-//!   console loads them as `<img src>`/`<iframe>`/relative build sub-resources,
-//!   which carry no `Authorization` header, so read protection is the
-//!   private-network boundary, exactly as for the backend's run reads.
+//!   `/runs/{id}/events.jsonl`/`raw.jsonl` logs — and downloads the run's whole
+//!   produced tree as one gzip tar, `GET /runs/{id}/archive.tar.gz`. These are
+//!   **not** token-gated: the console loads them as
+//!   `<img src>`/`<iframe>`/relative build sub-resources (and offers the archive as
+//!   a plain download link), none of which carry an `Authorization` header, so read
+//!   protection is the private-network boundary, exactly as for the backend's run
+//!   reads.
 //!
 //! The serve handlers **reuse the core resolvers**
-//! ([`find_build_output`](test_cabinet_core::find_build_output),
-//! [`serve_build_file`](test_cabinet_core::serve_build_file),
-//! [`serve_proof_file`](test_cabinet_core::serve_proof_file),
-//! [`serve_asset_file`](test_cabinet_core::serve_asset_file)) exactly as the
+//! ([`find_build_output`], [`serve_build_file`], [`serve_proof_file`],
+//! [`serve_asset_file`]) exactly as the
 //! worker did, only reading from the artifact store's per-run root instead of the
 //! worker's out_dir — so the per-run base-href rewrite and the path-traversal
 //! guard are identical.
@@ -41,7 +42,9 @@ use axum::{Json, Router};
 use tower_http::cors::{AllowHeaders, CorsLayer};
 use tower_http::trace::TraceLayer;
 
-use test_cabinet_core::{find_build_output, serve_asset_file, serve_build_file, serve_proof_file};
+use test_cabinet_core::{
+    find_build_output, serve_asset_file, serve_build_file, serve_proof_file, serve_validation_file,
+};
 
 use crate::auth::{verify_job_token, verify_publish_job_token};
 use crate::error::ApiError;
@@ -105,8 +108,14 @@ pub fn router(state: AppState) -> Router {
         .route("/runs/{id}/build", get(build_root))
         .route("/runs/{id}/build/", get(build_root))
         .route("/runs/{id}/build/{*path}", get(build_path))
+        // Download the run's whole stored tree as one gzip tar (reviewer → service,
+        // ungated). Same posture, and the same reason, as the media reads below: the
+        // console offers it as a plain `<a href download>`, which carries no
+        // Authorization header.
+        .route("/runs/{id}/archive.tar.gz", get(archive))
         .route("/runs/{id}/proof/{file}", get(proof_file))
         .route("/runs/{id}/asset/{file}", get(asset_file))
+        .route("/runs/{id}/validation/{file}", get(validation_file))
         .route("/runs/{id}/events.jsonl", get(events_file))
         .route("/runs/{id}/raw.jsonl", get(raw_file))
         .layer(axum::middleware::from_fn(accept_trace))
@@ -280,6 +289,58 @@ async fn tree_tar(
     Ok(([(header::CONTENT_TYPE, "application/x-tar")], tarball).into_response())
 }
 
+/// `GET /runs/{id}/archive.tar.gz` — download run `{id}`'s entire stored tree as a
+/// single gzip tar, for a reviewer pulling a run's produced output onto their
+/// machine.
+///
+/// This exists to replace a transfer that was becoming unusable:
+/// `scripts/extract-cluster-assets.sh` can only reach a deployed cluster through
+/// `az aks command invoke`, which is a command channel with no file channel, so it
+/// moves the tree as base64 over stdout in ~320 KiB chunks — one helper-pod round
+/// trip (~15s) each. A full-stack run's tree runs to ~150 chunks, i.e. tens of
+/// minutes. The console can reach this service directly, so it can just take the
+/// bytes in one response.
+///
+/// **Ungated**, like the build/proof/asset reads and unlike
+/// [`tree_tar`]: the console offers this as an ordinary download link,
+/// which carries no `Authorization` header, and the artifact service is reachable
+/// only across the private-network boundary. That boundary — not a token — is what
+/// protects every read here. `tree_tar` stays gated because it is a
+/// server-to-server pull whose caller *can* hold a token.
+///
+/// The whole run root is archived (not `tree_tar`'s publisher-shaped subset) under
+/// an `<id>/` prefix, matching what the extract script produced. `Content-Disposition`
+/// carries the filename because the console's link is cross-origin, where the
+/// anchor's own `download` attribute is ignored by the browser.
+#[tracing::instrument(name = "artifacts.archive", skip(state), fields(run.id = %id), err(Debug))]
+async fn archive(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Response, ApiError> {
+    // Building the archive is blocking (it reads and compresses the whole tree);
+    // run it off the async runtime so a large run does not stall other connections.
+    let store = state.store.clone();
+    let id_for_task = id.clone();
+    let archive = tokio::task::spawn_blocking(move || store.read_run_archive(&id_for_task))
+        .await
+        .map_err(|err| ApiError::internal(format!("artifact archive task failed: {err}")))?
+        .map_err(map_store_error)?;
+
+    // The id is a UUID (`read_run_archive` rejects anything that is not a single
+    // safe path segment before we get here), so it cannot break out of the quoted
+    // filename or inject a header.
+    let disposition = format!("attachment; filename=\"run-{id}.tar.gz\"");
+    tracing::info!(run.id = %id, bytes = archive.len(), "served run archive");
+    Ok((
+        [
+            (header::CONTENT_TYPE, "application/gzip".to_string()),
+            (header::CONTENT_DISPOSITION, disposition),
+        ],
+        archive,
+    )
+        .into_response())
+}
+
 /// `GET /runs/{id}/build` — serve a produced run's playable build at its root (the
 /// build's `index.html`). Ungated (browser-loaded).
 async fn build_root(
@@ -340,6 +401,22 @@ async fn asset_file(
     let run_dir = state.store.run_dir(&id);
     let served = serve_asset_file(&run_dir, &file)
         .ok_or_else(|| ApiError::not_found(format!("run `{id}` has no asset media `{file}`")))?;
+    Ok(([(header::CONTENT_TYPE, served.content_type)], served.body).into_response())
+}
+
+/// `GET /runs/{id}/validation/{file}` — a run's synthesized validation media
+/// (`{file}` is the flat `<item>__<output>[.baseline].<ext>` a debug script
+/// produced), resolved from the collected tree via [`serve_validation_file`], the
+/// same resolver the worker used. Ungated (browser-loaded). `404` when the run or
+/// the media is absent.
+async fn validation_file(
+    State(state): State<AppState>,
+    Path((id, file)): Path<(String, String)>,
+) -> Result<Response, ApiError> {
+    let run_dir = state.store.run_dir(&id);
+    let served = serve_validation_file(&run_dir, &file).ok_or_else(|| {
+        ApiError::not_found(format!("run `{id}` has no validation media `{file}`"))
+    })?;
     Ok(([(header::CONTENT_TYPE, served.content_type)], served.body).into_response())
 }
 

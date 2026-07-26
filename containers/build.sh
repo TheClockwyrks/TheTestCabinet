@@ -121,6 +121,10 @@ readonly BASE_IMAGE="${IMAGE_NAME_PREFIX}base:${IMAGE_TAG}"
 # adversarial, and performance images are each built `FROM` it (they no longer install
 # a Rust toolchain of their own), so it stays in lockstep with the base within a build.
 readonly BASE_WASM_IMAGE="${IMAGE_NAME_PREFIX}base-wasm:${IMAGE_TAG}"
+# The full-stack-2d image tag. Referenced by name because the game-jam image is built
+# `FROM` it (it inherits the six asset binaries, the audio packs, and the Rust/wasm
+# toolchain), so the jam image stays in lockstep with full-stack-2d within a build.
+readonly FULL_STACK_2D_IMAGE="${IMAGE_NAME_PREFIX}full-stack-2d:${IMAGE_TAG}"
 readonly ADVERSARIAL_IMAGE="${IMAGE_NAME_PREFIX}adversarial:${IMAGE_TAG}"
 readonly PERFORMANCE_IMAGE="${IMAGE_NAME_PREFIX}performance:${IMAGE_TAG}"
 
@@ -271,6 +275,54 @@ build_audio_image() {
 	fi
 }
 
+# Build the music image, which bakes EVERY instrument bank as a per-name subdirectory
+# so a `music` case's `instrument_bank` selects which palette it plays (see
+# `select_pack_dir` in crates/audio-core/src/config.rs and containers/music/Dockerfile).
+# Each bank is a separately-pinned, content-addressed pack presigned from the private R2
+# bucket at build time; a missing pin or a failed presign for ANY bank is a HARD error
+# (the image is never shipped with a missing palette). The FIRST bank is the default
+# recorded in TCAB_INSTRUMENT_BANK. Each bank's build-arg prefix pairs with the matching
+# ARG block in the Dockerfile, and each name must match its per-name subdir there.
+build_music_image() {
+	local image="${IMAGE_NAME_PREFIX}music:${IMAGE_TAG}"
+	local lock="${SCRIPT_DIR}/sample-packs/packs.lock.json"
+	# The banks baked into the music image, and the Dockerfile ARG prefix each maps to.
+	local banks=("gm-lite@0.1.0" "cinematic@0.1.0" "synthwave@0.1.0")
+	local prefixes=("INSTRUMENT_BANK" "INSTRUMENT_BANK_CINEMATIC" "INSTRUMENT_BANK_SYNTHWAVE")
+
+	local build_args=(--build-arg "BASE_IMAGE=${BASE_IMAGE}")
+	local i ref presign lines
+	for i in "${!banks[@]}"; do
+		ref="${banks[$i]}"
+		if [[ ! -f "${lock}" ]] || ! grep -q "\"${ref}\"" "${lock}"; then
+			echo "ERROR: cannot build ${image}: bank ${ref} is not published (no pin in ${lock#"${SCRIPT_DIR}/"})." >&2
+			echo "       Publish it with: node scripts/build-sample-pack.mjs <bank> --publish" >&2
+			exit 1
+		fi
+		if ! presign="$(node "${SCRIPT_DIR}/../scripts/presign-sample-pack.mjs" "${ref}")"; then
+			echo "ERROR: ${ref} is pinned but presigning failed (need node + the PRESIGN R2 credentials)." >&2
+			exit 1
+		fi
+		mapfile -t lines <<<"${presign}"
+		build_args+=(
+			--build-arg "${prefixes[$i]}=${ref}"
+			--build-arg "${prefixes[$i]}_URL=${lines[0]}"
+			--build-arg "${prefixes[$i]}_SHA256=${lines[1]}"
+		)
+	done
+
+	echo "==> building ${image} (FROM ${BASE_IMAGE}) with banks: ${banks[*]}"
+	"$DOCKER" build "${build_args[@]}" \
+		-t "${image}" \
+		-f "${SCRIPT_DIR}/music/Dockerfile" "${SCRIPT_DIR}/.."
+
+	if [[ -n "${PUSH}" ]]; then
+		local reference
+		reference="$(push_and_pin "${image}" music)"
+		echo "==> music reference: ${reference}"
+	fi
+}
+
 # Build the 2D full-stack image: base-wasm plus the six 2D asset-generation binaries
 # (draw, draw-sheet, particle-2d, sfx-synth, sfx-sample, music) AND the two audio packs
 # those tools need (the combat-core sample pack for `sfx-sample`, the gm-lite instrument
@@ -327,6 +379,30 @@ build_full_stack_2d() {
 		local reference
 		reference="$(push_and_pin "${image}" full-stack-2d)"
 		echo "==> full-stack-2d reference: ${reference}"
+	fi
+}
+
+# Build the game-jam image: the full-stack-2d image plus nothing but its own
+# identity (see containers/game-jam/Dockerfile). A game jam is a full-stack-style
+# build but not a full-stack test case, so it resolves its own image; giving it a
+# dedicated tag lets a deployment pin it independently. It is built `FROM` the
+# full-stack-2d image built alongside it (passed as the BASE_IMAGE build arg, the
+# local tag), so it inherits the six asset binaries, the baked audio packs, and the
+# Rust/wasm toolchain — and needs NO R2 credentials of its own (those packs are
+# already baked into the parent). The build context is the repository root like the
+# others.
+build_game_jam() {
+	local image="${IMAGE_NAME_PREFIX}game-jam:${IMAGE_TAG}"
+	echo "==> building ${image} (FROM ${FULL_STACK_2D_IMAGE})"
+	"$DOCKER" build \
+		--build-arg "BASE_IMAGE=${FULL_STACK_2D_IMAGE}" \
+		-t "${image}" \
+		-f "${SCRIPT_DIR}/game-jam/Dockerfile" "${SCRIPT_DIR}/.."
+
+	if [[ -n "${PUSH}" ]]; then
+		local reference
+		reference="$(push_and_pin "${image}" game-jam)"
+		echo "==> game-jam reference: ${reference}"
 	fi
 }
 
@@ -397,10 +473,10 @@ build_performance() {
 	fi
 }
 
-# Build one image by its short name, dispatching to the right builder: the audio
-# images (sfx-sample/music) carry their pack ref + build-arg names; base,
-# adversarial, and performance have dedicated builders; everything else is a plain
-# asset-generation image built `FROM` the base.
+# Build one image by its short name, dispatching to the right builder: the sfx-sample
+# image carries its pack ref + build-arg names; music bakes every instrument bank
+# (build_music_image); base, adversarial, and performance have dedicated builders;
+# everything else is a plain asset-generation image built `FROM` the base.
 build_one() {
 	case "$1" in
 		base)         build_base ;;
@@ -411,12 +487,18 @@ build_one() {
 		# packs pulled from the private R2 bucket at build time (see
 		# build_full_stack_2d). Both packs must be published + pinned first.
 		full-stack-2d) build_full_stack_2d ;;
+		# The game-jam image is built `FROM` the full-stack-2d image (see
+		# build_game_jam); the layered build below ensures full-stack-2d is present
+		# first when only game-jam is selected.
+		game-jam)     build_game_jam ;;
 		# The sfx-sample and music images bake a content-addressed audio pack pulled
 		# from the private R2 bucket at build time (see build_audio_image). Each pack
 		# ref must match the SAMPLE_PACK / INSTRUMENT_BANK default in its Dockerfile and
 		# be published + pinned in packs.lock.json first.
 		sfx-sample)   build_audio_image sfx-sample combat-core@0.1.0 SAMPLE_PACK SAMPLE_PACK_URL SAMPLE_PACK_SHA256 ;;
-		music)        build_audio_image music gm-lite@0.1.0 INSTRUMENT_BANK INSTRUMENT_BANK_URL INSTRUMENT_BANK_SHA256 ;;
+		# The music image bakes ALL instrument banks (one per-name subdir) so a case's
+		# `instrument_bank` selects its palette — see build_music_image.
+		music)        build_music_image ;;
 		# The Blender character image is self-contained (FROM ubuntu:26.04, NOT the base),
 		# so it has its own builder and takes no BASE_IMAGE arg — see build_blender.
 		blender)      build_blender ;;
@@ -476,14 +558,27 @@ select_needs_base() {
 }
 
 # Whether the selection includes any image built `FROM` base-wasm (the Rust/wasm
-# middle layer): the full-stack-2d, adversarial, and performance images. Such a
-# selection needs base-wasm present, which in turn needs base — both handled below.
+# middle layer): the full-stack-2d, adversarial, and performance images. `game-jam`
+# is `FROM` full-stack-2d (which is `FROM` base-wasm), so it needs base-wasm present
+# too. Such a selection needs base-wasm present, which in turn needs base — all
+# handled below.
 select_needs_base_wasm() {
 	local x
 	for x in "${selected[@]}"; do
 		case "$x" in
-			full-stack-2d | adversarial | performance) return 0 ;;
+			full-stack-2d | game-jam | adversarial | performance) return 0 ;;
 		esac
+	done
+	return 1
+}
+
+# Whether the selection includes the game-jam image, which is built `FROM` the
+# full-stack-2d image — so full-stack-2d must be present first (it in turn needs
+# base-wasm and base, covered above).
+select_needs_full_stack_2d() {
+	local x
+	for x in "${selected[@]}"; do
+		[[ "$x" == game-jam ]] && return 0
 	done
 	return 1
 }
@@ -506,7 +601,22 @@ elif select_needs_base_wasm && ! image_present "${BASE_WASM_IMAGE}"; then
 	build_base_wasm
 fi
 
-# Build each selected image (base and base-wasm are already handled above).
+# Layer 3 — full-stack-2d (the parent of game-jam). When full-stack-2d itself is
+# selected it is built in the main loop below; but when only game-jam is selected we
+# must build its parent first so the `FROM ${FULL_STACK_2D_IMAGE}` resolves. An
+# existing full-stack-2d is reused untouched — select `full-stack-2d` explicitly to
+# rebuild it. (Building it needs the R2 pack credentials; a bare game-jam rebuild
+# against an already-present full-stack-2d does not.)
+if ! select_has full-stack-2d \
+	&& select_needs_full_stack_2d \
+	&& ! image_present "${FULL_STACK_2D_IMAGE}"; then
+	echo "==> full-stack-2d image ${FULL_STACK_2D_IMAGE} not present; building it first (game-jam is FROM it)"
+	build_full_stack_2d
+fi
+
+# Build each selected image (base and base-wasm are already handled above). The
+# canonical order in image-names.sh places full-stack-2d before game-jam, so a full
+# build builds the parent before the jam image.
 for name in "${selected[@]}"; do
 	[[ "$name" == base || "$name" == base-wasm ]] && continue
 	build_one "$name"

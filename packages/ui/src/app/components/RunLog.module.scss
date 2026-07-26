@@ -86,6 +86,24 @@
   min-width: max(100%, 40rem);
 }
 
+.log[data-scope="reviews"] .row {
+  // caret · test · harness · variant · model · rating · reviewed (the account
+  // Reviews tab — the reviewed run's identity, the account's own rating, and when
+  // it reviewed). Resizable via `--ttc-cols` (see the global scope above); the
+  // fallback is the resting template used until the user drags a header boundary.
+  grid-template-columns: var(
+    --ttc-cols,
+    1.2rem 1fr 7rem 6rem 1.6fr 6rem 9rem
+  );
+  min-width: max(100%, 46rem);
+}
+
+// Dim the reviews table while a new page loads, keeping the prior rows in place
+// (the reviews log is server-paged; the run log pages its own way).
+.log[data-scope="reviews"][aria-busy="true"] {
+  opacity: 0.6;
+}
+
 a.row {
   border-top: t.$border-hairline solid
     color-mix(in srgb, t.$color-accent 28%, transparent);
@@ -157,6 +175,132 @@ a.row {
   }
 }
 
+// --- Multi-select (the caret gutter's checkbox) ----------------------------
+//
+// When the log is selectable the caret gutter hosts a checkbox instead of the
+// hover caret. Like the caret it stays out of the way at rest — the box inside is
+// invisible until the row is hovered or selected — so an unselected log reads
+// exactly as before. The *cell* is the checkbox control (it carries the role and
+// the click handler), not the little box: it fills the whole gutter column and,
+// via the `::before` below, extends its hit area over the row's own padding, so
+// clicking anywhere in the gutter — top to bottom, out to the row's left edge —
+// toggles the selection and never falls through to the row's link and opens the
+// run. The box we style ourselves (not a native <input>) so it can live inside the
+// row's link and be driven entirely by the cell's hover/selected state.
+.selectCell,
+.selectAllCell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  // Stretch to the full cell so the hit area is the whole column, not just the
+  // centered box (grid `align-items: center` on the row would otherwise shrink it
+  // to the box's own height).
+  align-self: stretch;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+
+  // The row pads its whole grid (`.row` has `padding: $space-sm $space-md`), so the
+  // gutter cell stops short of the row's top, bottom, and left edges — that inset
+  // strip belongs to the row's link and would open the run on a near-miss. Reclaim
+  // it as click target with a transparent layer that bleeds over exactly that
+  // padding: full row height, and left to the row's edge. It's a hit area only —
+  // the visible box and every other column stay exactly where they were, so this
+  // needs no change to the row's padding or the grid tracks. The insets mirror the
+  // row's padding; `right: 0` stops at the cell so it never eats the next column.
+  &::before {
+    content: "";
+    position: absolute;
+    top: calc(-1 * #{t.$space-sm});
+    bottom: calc(-1 * #{t.$space-sm});
+    left: calc(-1 * #{t.$space-md});
+    right: 0;
+  }
+
+  &:focus-visible {
+    outline: none;
+
+    .selectBox {
+      opacity: 1;
+      outline: t.$border-hairline solid t.$color-accent;
+      outline-offset: 2px;
+    }
+  }
+}
+
+.selectBox {
+  box-sizing: border-box;
+  width: 0.85rem;
+  height: 0.85rem;
+  border: t.$border-hairline solid t.$color-accent;
+  border-radius: t.$radius-sm;
+  background: transparent;
+  opacity: 0;
+  transition: opacity 0.1s ease;
+
+  // The row's box overlays the live spinner it shares the gutter with; the header
+  // box below resets this to sit in normal flow.
+  position: absolute;
+  inset: 0;
+  margin: auto;
+
+  // A centered check when picked; a dash for the header's "some selected" state.
+  &::after {
+    display: block;
+    line-height: 0.72rem;
+    font-size: 0.62rem;
+    text-align: center;
+    color: t.$color-bg;
+  }
+}
+
+// Reveal the box on row hover (mirrors the caret it stands in for) and whenever
+// the cell is selected; hide the live spinner behind it so the gutter shows one
+// control at a time.
+a.row:hover .selectBox,
+.selectCell[data-selected] .selectBox {
+  opacity: 1;
+}
+
+a.row:hover .selectCell .spinner,
+.selectCell[data-selected] .spinner {
+  opacity: 0;
+}
+
+// The picked state: a filled box with a check. Shared by the row cell and the
+// header select-all.
+.selectCell[data-selected] .selectBox,
+.selectAllCell[data-selected] .selectBox {
+  opacity: 1;
+  background: t.$color-accent;
+  box-shadow: var(--ttc-glow);
+
+  &::after {
+    content: "✓";
+  }
+}
+
+// The header's select-all box sits in normal flow and is always visible so the
+// affordance is discoverable. Its "mixed" (some-but-not-all) state reads as a
+// half-filled box with a dash.
+.selectAllCell .selectBox {
+  position: static;
+  inset: auto;
+  margin: 0;
+  opacity: 1;
+}
+
+.selectAllCell[data-mixed] .selectBox {
+  opacity: 1;
+  background: color-mix(in srgb, t.$color-accent 45%, transparent);
+
+  &::after {
+    content: "–";
+    color: t.$color-text;
+  }
+}
+
 // The status cell of an active row, in place of a rating: "running…" or "failed".
 .activeStatus {
   display: flex;
@@ -166,6 +310,14 @@ a.row {
 
   .row[data-failed] & {
     color: t.$color-negative;
+  }
+
+  // A harness error is a distinct kind of failure (the harness exited early), and
+  // a hang is its silent twin, so tint both with the caution color to set them
+  // apart from the model-output tiers.
+  &[data-state="harness_error"],
+  &[data-state="hung"] {
+    color: t.$color-warning;
   }
 }
 
@@ -317,7 +469,8 @@ a.row {
   // overflow. Scoped selectors out-specify the bare `.row` above, so re-state.
   .log[data-scope="global"] .row,
   .log[data-scope="variant"] .row,
-  .log[data-scope="model"] .row {
+  .log[data-scope="model"] .row,
+  .log[data-scope="reviews"] .row {
     grid-template-columns: none;
     min-width: 0;
   }
@@ -325,6 +478,18 @@ a.row {
   // Cards read top-down, so cells are full-width lines rather than grid cells.
   // The caret gutter collapses (no hover affordance on touch).
   .rowCaret {
+    display: none;
+  }
+
+  // The multi-select box has no place on a phone — the batch actions it feeds
+  // live on the right-click menu, a desktop-only gesture — so hide it. Collapse
+  // its wrapper to `display: contents` (rather than hiding it) so an active row's
+  // spinner still flows into the card and pins to its corner via the rule below.
+  .selectCell {
+    display: contents;
+  }
+
+  .selectBox {
     display: none;
   }
 

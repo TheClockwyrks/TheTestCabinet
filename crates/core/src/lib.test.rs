@@ -5,12 +5,105 @@ use std::path::PathBuf;
 
 use super::{
     Error, EventFormat, EventKind, EventParser, HarnessEvent, HarnessOutcome, HarnessSlug,
-    OrchestratorSelection, OutputStream, RawOutputLine, RunRequest, RunState, TestCaseVersion,
-    Usage, build_failed_record, copy_tree, init_failure_detail, with_runtime_cap,
-    write_run_streams,
+    MAX_GAME_JAM_README_BYTES, OrchestratorSelection, OutputStream, RawOutputLine, RunRequest,
+    RunState, TestCaseVersion, TestType, Usage, build_failed_record, completed_state, copy_tree,
+    init_failure_detail, read_game_jam_readme, with_runtime_cap, write_run_streams,
 };
 use crate::execution::ExecOutput;
+use crate::validation::{DebugScriptResult, ValidationSummary};
 use time::OffsetDateTime;
+
+#[test]
+fn a_build_that_loaded_is_reviewed_however_badly_its_debug_api_behaved() {
+    // A broken debug API costs the run the checklist points its scripts back — it
+    // does NOT divert the run out of review. The build compiled, loaded, and is
+    // playable, so it stays Completed and keeps its Play tab; only a build that
+    // never loaded is Catastrophic.
+    let failed_script = DebugScriptResult {
+        item_id: "spin".to_string(),
+        sub_item_id: None,
+        title: "Spin".to_string(),
+        category_title: "Spin".to_string(),
+        script: "validation/spin.mjs".to_string(),
+        gates: true,
+        ran: false,
+        precondition_unmet: false,
+        detail: Some("window.__demo was not installed".to_string()),
+        verdicts: Vec::new(),
+        outputs: Vec::new(),
+    };
+    let broken_api = ValidationSummary {
+        loaded: true,
+        debug_scripts: vec![failed_script.clone()],
+        ..Default::default()
+    };
+    assert_eq!(
+        completed_state(TestType::EndToEnd, &broken_api),
+        RunState::Completed
+    );
+    // ...and it keeps the playable build the reviewer needs to open.
+    assert!(RunState::Completed.has_playable_build());
+
+    // A build that never loaded stays Catastrophic — nothing to host, nothing to
+    // review — even when the same script also failed to run against it.
+    let never_loaded = ValidationSummary {
+        loaded: false,
+        debug_scripts: vec![failed_script],
+        ..Default::default()
+    };
+    assert_eq!(
+        completed_state(TestType::EndToEnd, &never_loaded),
+        RunState::Catastrophic
+    );
+    assert!(!RunState::Catastrophic.has_playable_build());
+
+    // A clean load with no failing scripts completes normally.
+    let clean = ValidationSummary {
+        loaded: true,
+        ..Default::default()
+    };
+    assert_eq!(
+        completed_state(TestType::EndToEnd, &clean),
+        RunState::Completed
+    );
+}
+
+#[test]
+fn read_game_jam_readme_captures_only_game_jam_readmes() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    std::fs::write(dir.path().join("README.md"), "# My Game\n\nHow to play.").expect("write");
+
+    // Captured for a game jam.
+    assert_eq!(
+        read_game_jam_readme(TestType::GameJam, dir.path()).as_deref(),
+        Some("# My Game\n\nHow to play."),
+    );
+    // Never captured for another test type, even when a README is present.
+    assert_eq!(read_game_jam_readme(TestType::FullStack, dir.path()), None);
+}
+
+#[test]
+fn read_game_jam_readme_treats_missing_or_blank_as_absent() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    // No README at all.
+    assert_eq!(read_game_jam_readme(TestType::GameJam, dir.path()), None);
+    // A whitespace-only README is absent, not an empty entry.
+    std::fs::write(dir.path().join("README.md"), "   \n\t\n").expect("write");
+    assert_eq!(read_game_jam_readme(TestType::GameJam, dir.path()), None);
+}
+
+#[test]
+fn read_game_jam_readme_truncates_an_oversized_readme_on_a_char_boundary() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    // A multi-byte char repeated past the cap, so a naive byte cut could split it.
+    let big = "é".repeat(MAX_GAME_JAM_README_BYTES);
+    std::fs::write(dir.path().join("README.md"), &big).expect("write");
+
+    let captured = read_game_jam_readme(TestType::GameJam, dir.path()).expect("captured");
+    // Valid UTF-8 (no split char), bounded, and marked as truncated.
+    assert!(captured.len() <= MAX_GAME_JAM_README_BYTES + "\n\n…(README truncated)".len());
+    assert!(captured.ends_with("…(README truncated)"));
+}
 
 #[test]
 fn init_failure_detail_prefers_stderr_and_reports_the_exit_code() {
@@ -18,6 +111,7 @@ fn init_failure_detail_prefers_stderr_and_reports_the_exit_code() {
         exit_code: 7,
         stdout: "installing…\n".to_string(),
         stderr: "npm ERR! missing script: build\n".to_string(),
+        idle_timed_out: false,
     };
     let detail = init_failure_detail(&output);
     assert!(detail.contains("code 7"), "{detail}");
@@ -30,6 +124,7 @@ fn init_failure_detail_falls_back_to_stdout_when_stderr_is_empty() {
         exit_code: 1,
         stdout: "boom on stdout".to_string(),
         stderr: "   \n".to_string(),
+        idle_timed_out: false,
     };
     let detail = init_failure_detail(&output);
     assert!(detail.contains("boom on stdout"), "{detail}");
@@ -181,6 +276,7 @@ fn copy_tree_copies_nested_files() {
 /// irrelevant to the cap and left empty.
 fn version_with_cap(seconds: u64) -> TestCaseVersion {
     TestCaseVersion {
+        instrumentation: None,
         slug: "pong".to_string(),
         version: "v1.0.0".to_string(),
         experimental: false,
@@ -227,6 +323,7 @@ fn version_with_cap(seconds: u64) -> TestCaseVersion {
         common_review_items: Vec::new(),
         domains: Vec::new(),
         cases: Vec::new(),
+        errata: Vec::new(),
     }
 }
 

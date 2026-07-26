@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Coil — produce the game's AUDIO with the on-PATH audio tools (specs/assets.md §Audio,
-# specs/flow.md §Audio). Everything here is PURE SYNTH: in this run image the baked
+# specs/ui.md §Audio). Everything here is PURE SYNTH: in this run image the baked
 # `sfx-sample` pack and the `music` instrument bank are EMPTY, so every SFX is authored
 # with `sfx-synth` (oscillator/noise voices) and the music bed uses `music`
 # synth-waveform tracks only (`define-track --instrument sine|triangle|saw|square` —
@@ -10,7 +10,7 @@
 #   eat.wav  combo.wav  death.wav        (sfx-synth)
 #   music.wav (+ music.mid)              (music)
 #
-# Cues (specs/flow.md): eat = short bright blip on a pellet eaten; combo = a
+# Cues (specs/ui.md): eat = short bright blip on a pellet eaten; combo = a
 # brighter/higher blip when the combo multiplier M rises; death = a distinct
 # descending tone on a fatal collision; music = a low-key looping background bed.
 #

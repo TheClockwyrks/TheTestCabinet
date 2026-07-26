@@ -76,4 +76,22 @@ describe("toRunSummary", () => {
     expect(summary.publishedAt).toBe("");
     expect(summary.links).toEqual({ sourceRepo: null, playableBuild: null });
   });
+
+  it("carries null performance for a non-performance run", () => {
+    expect(toRunSummary(record(), []).performance).toBeNull();
+  });
+
+  it("lifts a performance run's correctness and fuel onto the card", () => {
+    const summary = toRunSummary(
+      record({
+        validation: {
+          loaded: true,
+          performance: { correct: true, totalFuel: 1234, cases: [] },
+        },
+      } as unknown as Partial<RunRecord>),
+      [],
+    );
+    // So a local, not-yet-published performance run still ranks on the fuel board.
+    expect(summary.performance).toEqual({ correct: true, totalFuel: 1234 });
+  });
 });

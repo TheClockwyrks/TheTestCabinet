@@ -223,6 +223,77 @@ fn stored_manifest_carries_adversarial_specs() {
 }
 
 #[test]
+fn stored_manifest_carries_instrumentation_and_item_validation() {
+    // An end-to-end case's `[instrumentation]` handle and each auto-validated review
+    // item's `validation` (script key + outputs) must survive into the stored manifest
+    // — they are what the deployed driver's validator needs to drive the build's debug
+    // API and decide the item. Resolving the real Carom v2.0.0 case (which mandates
+    // instrumentation and auto-validates several items) and building its manifest
+    // guards the full path. The reporter-side script files themselves ride along in the
+    // copied version tree (`copy_tree`) and are served by the artifact endpoint; they
+    // must never appear in the seed sets (specs/assets/workspace).
+    let test_cases = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test-cases");
+    let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(test_cases);
+    let resolved = catalog.resolve("carom", "v2.0.0").unwrap();
+
+    let manifest = build_stored_manifest(&resolved).unwrap();
+
+    let instrumentation = manifest
+        .instrumentation
+        .expect("instrumentation handle survives ingest");
+    assert_eq!(instrumentation.handle, "__carom");
+
+    // The `spin` category is broken into review items (sub-items), so its validation
+    // lives on each item (not on the category), each with its own driver + outputs —
+    // the per-sub-item shape.
+    let spin = manifest
+        .common_review_items
+        .iter()
+        .find(|item| item.id == "spin")
+        .expect("the spin review category is present");
+    assert!(
+        spin.validation.is_none(),
+        "a sub-divided item carries no item-level validation"
+    );
+    let stationary = spin
+        .sub_items
+        .iter()
+        .find(|sub| sub.id == "stationary")
+        .expect("the stationary review item is present");
+    let validation = stationary
+        .validation
+        .as_ref()
+        .expect("the sub-item's validation driver survives ingest");
+    assert_eq!(validation.script, "validation/spin/stationary.mjs");
+    assert!(
+        !validation.outputs.is_empty(),
+        "the validation outputs survive ingest"
+    );
+
+    // At least one item is human-judged (no validation), and the seed sets never carry
+    // a debug script — the model must never see the checklist or its drivers.
+    let seed_sources: Vec<&str> = manifest
+        .common_specs
+        .iter()
+        .map(|spec| spec.source.as_str())
+        .chain(manifest.assets.iter().map(|asset| asset.source.as_str()))
+        .chain(manifest.workspace.iter().map(|file| file.source.as_str()))
+        .chain(
+            manifest
+                .variants
+                .iter()
+                .flat_map(|variant| variant.specs.iter().map(|spec| spec.source.as_str())),
+        )
+        .collect();
+    assert!(
+        seed_sources
+            .iter()
+            .all(|source| !source.contains("validation/")),
+        "a validation debug script must never be seeded into the run: {seed_sources:?}"
+    );
+}
+
+#[test]
 fn ingest_tolerates_a_variant_reference_implementation_key() {
     // A variant that declares `reference_implementation` must ingest cleanly. The
     // reference implementation is the authored, correct static build, hosted
@@ -297,10 +368,47 @@ fn stored_manifest_carries_performance_specs() {
     let sandbox = manifest.sandbox.expect("sandbox survives ingest");
     assert!(sandbox.fuel_limit.unwrap_or(0) > 0);
     assert!(sandbox.fuel_per_tick.is_none());
-    // The held-out scored set survives ingest (small/medium/large).
-    assert_eq!(manifest.cases.len(), 3);
+    // The held-out scored set survives ingest — the eight smoke tests (the
+    // correctness pre-flight, under `smoke/`) and the three stress scenarios
+    // (small/medium/large, under `cases/`) — each keyed by its STORE-RELATIVE path
+    // exactly as specs/workspace/assets are, never an absolute host path. Keying them
+    // absolutely (the prior bug) left the driver's `materialize_version` unable to
+    // fetch or locate them, so every backend-driven performance run resolved an empty
+    // scored set and aborted with "requires at least one [[case]]" before scoring.
+    use test_cabinet_core::validation::PerformanceCaseKind;
+    let smoke = manifest
+        .cases
+        .iter()
+        .filter(|c| c.kind == PerformanceCaseKind::Smoke)
+        .count();
+    let stress = manifest
+        .cases
+        .iter()
+        .filter(|c| c.kind == PerformanceCaseKind::Stress)
+        .count();
+    assert_eq!(
+        smoke, 8,
+        "the eight smoke tests survive ingest with their kind"
+    );
+    assert_eq!(stress, 3, "the three stress scenarios survive ingest");
     for case in &manifest.cases {
-        assert!(!case.input.is_empty() && !case.expected.is_empty());
+        let dir = match case.kind {
+            PerformanceCaseKind::Smoke => "smoke/",
+            PerformanceCaseKind::Stress => "cases/",
+        };
+        for key in [&case.input, &case.expected] {
+            assert!(!key.is_empty(), "case key is non-empty");
+            assert!(
+                !key.starts_with('/') && !key.contains(':') && !key.contains(".."),
+                "case key `{key}` is a store-relative key, not an absolute/host path",
+            );
+            assert!(
+                key.starts_with(dir),
+                "case key `{key}` sits under the version's `{dir}` folder",
+            );
+        }
+        assert!(case.input.ends_with(".json"));
+        assert!(case.expected.ends_with(".out"));
     }
     // None of the adversarial loop tables apply to a performance case.
     assert!(manifest.simulation.is_none());

@@ -40,7 +40,7 @@ pub struct AudioConfig {
     #[serde(default = "default_channels")]
     pub channels: Channels,
     /// Cap on the rendered clip's length in ms (defaults to
-    /// [`default_max_duration`] when the config omits it).
+    /// `default_max_duration` when the config omits it).
     #[serde(default = "default_max_duration")]
     pub max_duration_ms: u32,
     /// The fixed synthesis seed (reproducible noise).
@@ -98,21 +98,46 @@ impl AudioConfig {
     /// config, not the on-disk directory, so without this fallback the baked pack would
     /// never load and the library would silently degrade to empty. A `music` run
     /// prefers the instrument-bank dir; an `sfx-sample` run the sample-pack dir.
+    ///
+    /// A `music` image bakes **every** instrument bank as a per-name subdirectory under
+    /// the env var's root (`<root>/gm-lite/`, `<root>/cinematic/`, …), so the requested
+    /// `instrument_bank` selects which one this run plays (see `select_pack_dir`). An
+    /// image that bakes a single palette directly at the root still resolves correctly.
     pub fn resolve_pack_dir(&self) -> Option<PathBuf> {
         if let Some(dir) = &self.pack_dir {
             return Some(dir.clone());
         }
-        let env_key = if self.instrument_bank.is_some() {
-            "TCAB_INSTRUMENT_BANK_DIR"
-        } else if self.sample_pack.is_some() {
-            "TCAB_SAMPLE_PACK_DIR"
+        let (env_key, name) = if let Some(bank) = &self.instrument_bank {
+            ("TCAB_INSTRUMENT_BANK_DIR", Some(bank.as_str()))
+        } else if let Some(pack) = &self.sample_pack {
+            ("TCAB_SAMPLE_PACK_DIR", Some(pack.as_str()))
         } else {
             return None;
         };
-        std::env::var_os(env_key)
+        let root = std::env::var_os(env_key)
             .filter(|v| !v.is_empty())
-            .map(PathBuf::from)
+            .map(PathBuf::from)?;
+        Some(select_pack_dir(root, name))
     }
+}
+
+/// Resolve the concrete pack directory within a baked palette `root`. A run-container
+/// image may bake several palettes as per-name subdirectories (`<root>/<name>/`); when
+/// the requested pack/bank `name` (`name@version`, so the part before `@`) has such a
+/// subdirectory carrying the loader's `pack.toml`, that subdirectory is selected.
+/// Otherwise the `root` itself is the pack directory — a single-palette image, the
+/// original layout — so an older image (or one that bakes just one bank) still works.
+fn select_pack_dir(root: PathBuf, name: Option<&str>) -> PathBuf {
+    if let Some(name) = name {
+        let bank = name.split('@').next().unwrap_or(name);
+        if !bank.is_empty() {
+            let sub = root.join(bank);
+            if sub.join("pack.toml").is_file() {
+                return sub;
+            }
+        }
+    }
+    root
 }
 
 fn default_sample_rate() -> u32 {

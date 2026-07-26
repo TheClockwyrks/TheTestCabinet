@@ -22,7 +22,7 @@ reference it — revise by adding a new version, not by editing a published one.
 
 ```text
 test-cases/<type>/<difficulty>/<slug>/<version>/
-  test-case.toml         # manifest: type, asset_kind, particle, tool, output, domains
+  test-case.toml         # manifest: type, asset_kind, particle, tool, output, the overall domain
   variants/              # one standalone TOML file per variant (listed in `variants`)
   prompt.hbs             # rendered into the harness instruction (NOT seeded)
   specs/brief.md         # the effect + how the tool behaves — SEEDED
@@ -58,10 +58,10 @@ reviewed by a human simulating it live.
    table (`width`/`height`, plus `depth` for 3D only, `duration_ms`, `fps` > 0,
    `loop`, `background` — it replaces `[canvas]`/`[voxel]`), `[tool]` (the `binary`
    and `preview` path), `[output]` (only `actions` — core emits `system.json`
-   automatically), and the `[[domain]]`/`[[review_item]]`s a human reviews the
-   simulated effect under. The case declares **no `[[reference]]`**, **no `[model]`**,
-   **no `[build]`**, and **no `[[check]]`**; a review item carries only a `domain`
-   (an added `reference` is rejected — there is no target).
+   automatically), and the single `overall` `[[domain]]` a human rates the simulated
+   effect under — there is **no `[[review_item]]` checklist**; the effect is judged as
+   a whole against its brief. The case declares **no `[[reference]]`**, **no
+   `[model]`**, **no `[build]`**, and **no `[[check]]`**.
 
 [Authoring a Particle Test Case](/guides/authoring/authoring-a-particle-test-case/)
 is the full procedure — read it before you start, alongside the worked example

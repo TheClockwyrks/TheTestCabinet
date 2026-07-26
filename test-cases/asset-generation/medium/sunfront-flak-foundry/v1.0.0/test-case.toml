@@ -87,68 +87,14 @@ auto_play = true
 [[spec]]
 source = "specs/brief.md.hbs"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the regenerated, rigged model reads as the Sunfront Flak Foundry \
-and runs correctly — a blocky works crowned with a radar dish that sweeps around \
-while a flank piston bobs up and down on their own self-playing animations and the \
-works body stays put, with a clear solar-amber energy accent and the disciplined \
-Duneforged palette."""
-
-[[review_item]]
-id = "reads-as-foundry"
-title = "Reads as a flak works"
-text = """
-From more than one angle the model reads unmistakably as a Duneforged works: a \
-tall, blocky masonry structure crowned with a broad radar dish and carrying a \
-charging piston on its flank. It is a working foundry building, not an abstract \
-stack of boxes."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "elements-cycle"
-title = "Dish sweeps and piston bobs on their own"
-text = """
-The animated elements cycle on their own, continuously, with no caller: `dish_sweep` \
-turns the radar dish a full revolution around its vertical axis so it scans the sky, \
-and `piston_bob` drives the piston straight down and back up so it pumps. Across each \
-cycle no part of the dish or piston tears away from its mount or clips into the works \
-below — each moves as one solid piece about the correct axis, with an eased, weighted \
-cadence rather than a mechanical linear slide."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "base-fixed"
-title = "Works body stays fixed"
-text = """
-Only the moving elements move — the dish as it sweeps and the piston as it bobs. The \
-masonry works and its foundation stay put throughout: they are the fixed base of the \
-machine, never carried along, twisted, or dragged by the dish or the piston."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "parts-attached"
-title = "Dish and piston stay attached"
-text = """
-The dish and the piston each stay attached to the works across the whole of their \
-motion: the dish meets its mast at the crown as it sweeps, and the piston meets the \
-works' flank at its mount as it bobs, with no gap and never floating free or \
-detaching."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Duneforged palette discipline"
-text = """
-Uses only the Duneforged colors from the brief (brass and bronze masonry, \
-sandstone panels, iron mechanisms, and the solar-amber energy accent) with a clear \
-amber accent, no out-of-palette colors, and no stray voxels drifting off the \
-parts."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

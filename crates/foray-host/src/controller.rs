@@ -51,8 +51,8 @@ pub enum InvokeError {
 }
 
 /// One loaded controller, ready to be invoked once per tick. Holds the wasmtime
-/// [`Store`] (fuel + memory-limit state) and the resolved [`alloc`](Self::alloc)
-/// / [`tick`](Self::tick) exports, so per-tick invocation does no re-resolution.
+/// [`Store`] (fuel + memory-limit state) and the resolved `alloc` / `tick`
+/// exports, so per-tick invocation does no re-resolution.
 pub struct Controller {
     store: Store<StoreState>,
     memory: Memory,

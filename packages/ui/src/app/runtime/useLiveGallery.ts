@@ -1,11 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+import type { RunSubject } from "@test-cabinet/run-record";
 import {
   NotSupportedError,
   type BackendClient,
   type WorkerClient,
 } from "../../client/clients";
 import { useBackend, useWorkers } from "../../client/context";
+import {
+  fetchGrafanaUrl,
+  fetchSnapshotUrl,
+  referenceMediaKey,
+} from "../../transport";
 import type {
   ProgressCallback,
   StoredReview,
@@ -26,6 +32,7 @@ import type {
 import type { RunQuery, RunQueryResult } from "../data/runQuery";
 import type {
   ChangelogEntry,
+  ErrataEntry,
   SeededInput,
   TestCaseSummary,
 } from "../data/testCases";
@@ -124,6 +131,7 @@ async function toTestCaseSummary(
   tc: TestCase,
   info: VersionInfo,
   changelog: ChangelogEntry[],
+  errata: ErrataEntry[],
 ): Promise<TestCaseSummary> {
   const variants = await Promise.all(
     info.variants.map(async (v) => ({
@@ -156,10 +164,23 @@ async function toTestCaseSummary(
         sequences: item.sequences ?? [],
         frames: item.frames ?? [],
         weight: item.weight,
+        graded: item.graded ?? false,
         domain: item.domain ?? null,
+        // Whether this point counts toward the score. `false` only when the
+        // version's errata (`excludeFromScore`) retired it — carried through so the
+        // reviewer UIs can flag it "not scored". Dropping it here left the console
+        // (unlike the static site) silently unable to mark excluded points.
+        scored: item.scored,
         subItems: (item.subItems ?? []).map((sub) => ({
           id: sub.id,
           title: sub.title,
+          description: sub.description ?? null,
+          weight: sub.weight,
+          reference: sub.reference ?? null,
+          proof: sub.proof ?? null,
+          // Same as the whole-item `scored` above: preserved so an erratum that
+          // excludes one sub-item of a category still surfaces as "not scored".
+          scored: sub.scored,
         })),
       })),
       // The variant's effective scoring domains (common + its own), already
@@ -174,6 +195,10 @@ async function toTestCaseSummary(
       // variant, or null when it declares none. Drives whether the case-detail
       // Reference tab appears for the selected variant.
       referenceBuild: v.referenceBuild ?? null,
+      // An asset-generation variant's published reference frames (indices only —
+      // the images and action logs live in the snapshot bucket). Null on a backend
+      // that predates the field, so the tab simply never appears.
+      referenceSheet: v.referenceSheet ?? null,
     })),
   );
   return {
@@ -188,6 +213,7 @@ async function toTestCaseSummary(
     summary: info.summary,
     description: info.description ?? null,
     changelog,
+    errata,
     versions: tc.versions,
     latestVersion: tc.versions[0] ?? info.version,
     variants,
@@ -230,11 +256,20 @@ async function fetchTestCases(
           version: info.version,
           body: info.changelog,
         }));
+        // Errata, aggregated newest-version-first like the changelog, but only for
+        // versions that actually record any (a version with none is omitted).
+        const errata: ErrataEntry[] = infos
+          .filter((info) => (info.errata ?? []).length > 0)
+          .map((info) => ({
+            version: info.version,
+            errata: info.errata ?? [],
+          }));
         return toTestCaseSummary(
           backend,
           { ...tc, versions },
           infos[0]!,
           changelog,
+          errata,
         );
       }),
   );
@@ -252,6 +287,43 @@ export function useLiveGallery(
   const { client: backend, url: backendUrl } = useBackend();
   const { active: worker } = useWorkers();
   const { refreshToken } = useRunsRuntime();
+
+  // Grafana's base URL, reported by the backend's `GET /config`. Resolved here
+  // rather than in the app shells so the web and desktop consoles both pick it up
+  // without each wiring its own fetch. Best-effort by construction: a backend that
+  // is unreachable, or one whose deployment runs no observability stack, leaves
+  // this null and the run view simply omits its link to the run's traces.
+  const [grafanaUrl, setGrafanaUrl] = useState<string | null>(null);
+  useEffect(() => {
+    setGrafanaUrl(null);
+    if (!backendUrl) return;
+    let active = true;
+    fetchGrafanaUrl(backendUrl)
+      .then((url) => active && setGrafanaUrl(url))
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [backendUrl]);
+
+  // The public snapshot bucket's read base URL, reported by the same
+  // `GET /config`. Resolved here for the same reason Grafana's is — both consoles
+  // pick it up without wiring their own fetch — and kept separate from the artifact
+  // service's base because a case's published asset-reference frames live in the
+  // bucket, not in any run tree. Best-effort: an unreachable backend (or one with no
+  // bucket) leaves this null and the asset Reference tab degrades to a placeholder.
+  const [snapshotUrl, setSnapshotUrl] = useState<string | null>(null);
+  useEffect(() => {
+    setSnapshotUrl(null);
+    if (!backendUrl) return;
+    let active = true;
+    fetchSnapshotUrl(backendUrl)
+      .then((url) => active && setSnapshotUrl(url))
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [backendUrl]);
 
   const [producedSummaries, setProducedSummaries] = useState<RunSummary[]>([]);
   const [localIds, setLocalIds] = useState<ReadonlySet<string>>(new Set());
@@ -306,6 +378,79 @@ export function useLiveGallery(
       return backendUrl ? joinPath(backendUrl, path) : null;
     },
     [backendUrl, workerUrl, workerClient, localIds],
+  );
+
+  // A run's automated-validation media (a debug script's synthesized actual/baseline
+  // clips and stills) resolves exactly the way proof and asset media do: the desktop
+  // transport may supply a custom-scheme resolver, the web worker/backend an HTTP
+  // endpoint under `/runs/{id}/validation/{file}`.
+  const validationMediaUrl = useCallback(
+    (runId: string, file: string): string | null => {
+      const path = `/runs/${encodeURIComponent(runId)}/validation/${encodeURIComponent(file)}`;
+      if (localIds.has(runId)) {
+        if (workerClient?.validationMediaUrl) {
+          return workerClient.validationMediaUrl(runId, file);
+        }
+        return workerUrl ? joinPath(workerUrl, path) : null;
+      }
+      return backendUrl ? joinPath(backendUrl, path) : null;
+    },
+    [backendUrl, workerUrl, workerClient, localIds],
+  );
+
+  // A run's whole-tree download resolves differently from the media above: it is
+  // served **only** by the artifact service, which holds every uploaded tree —
+  // publishing a run copies its media to the backend but does not move (or remove)
+  // the tree. So there is no published-vs-local split and no backend fallback; the
+  // transport's own resolver is the single source, and a transport that has none
+  // (the built-in Tauri worker, whose runs are already on the user's disk) resolves
+  // null and the console simply offers no download.
+  const runArchiveUrl = useCallback(
+    (runId: string): string | null =>
+      workerClient?.runArchiveUrl?.(runId) ?? null,
+    [workerClient],
+  );
+
+  // A case variant's **baseline** validation media is case-scoped — a fixed property
+  // of the case version — so, unlike the run-scoped actual media above, it resolves
+  // against the backend's `/test-cases/.../validation-baseline/...` route keyed by the
+  // run's subject (slug/version/variant), the same way reference screenshots resolve.
+  // This holds for local and published runs alike; a host with no backend (no
+  // case-scoped source) resolves it to null.
+  const validationBaselineUrl = useCallback(
+    (subject: RunSubject, file: string): string | null => {
+      if (!backendUrl) return null;
+      const path =
+        `/test-cases/${encodeURIComponent(subject.testCaseSlug)}` +
+        `/versions/${encodeURIComponent(subject.testCaseVersion)}` +
+        `/validation-baseline/${encodeURIComponent(subject.variant)}` +
+        `/${encodeURIComponent(file)}`;
+      return joinPath(backendUrl, path);
+    },
+    [backendUrl],
+  );
+
+  // An asset-generation case variant's published reference frames. Case-scoped like
+  // the validation baseline above, but resolved against the public snapshot BUCKET
+  // rather than the backend: `tcab publish-reference` uploads the frames straight to
+  // R2 under a deterministic layout, so the console reconstructs the key and points
+  // at the bucket's public read base. Null until the config fetch lands (the page
+  // re-renders when it does) and null when the deployment configures no bucket, in
+  // which case the tab shows a placeholder instead of broken images.
+  const referenceMediaUrl = useCallback(
+    (
+      slug: string,
+      version: string,
+      variant: string,
+      file: string,
+    ): string | null => {
+      if (!snapshotUrl) return null;
+      return joinPath(
+        snapshotUrl,
+        `/${referenceMediaKey(slug, version, variant, file)}`,
+      );
+    },
+    [snapshotUrl],
   );
 
   useEffect(() => {
@@ -445,18 +590,30 @@ export function useLiveGallery(
         reviews: stored.reviews ?? [],
       });
       try {
-        if (localIds.has(runId) && workerClient) {
-          return toDetail(await workerClient.readRun(runId));
-        }
-        if (backend) return toDetail(await backend.readRun(runId));
+        // Prefer the worker (execution) client whenever one is connected. In the
+        // consoles it reads the same backend store as `backend` (the same
+        // `GET /runs/{id}`) but additionally resolves a pre-publish run's
+        // root-relative playable-build link against the artifact service, so it is
+        // a strict superset. Gating that resolution on the produced worklist
+        // (`localIds`) was a race: a run reached by a cold deep-link — the Play tab
+        // opened straight into a new tab, that URL reloaded, or the tab duplicated
+        // — is read before the async worklist has loaded, so `localIds` is still
+        // empty and the run would fall to the non-resolving `backend` path. The
+        // detail chrome fetches the record only once (deps `[runId]`, read through
+        // a ref) and never re-fetches when the worklist later loads, so the Play
+        // tab would keep an unresolved link, which the console origin then serves
+        // as its own shell instead of the build. The static gallery has no worker
+        // and reads published runs — whose links are already absolute — from the
+        // backend.
         if (workerClient) return toDetail(await workerClient.readRun(runId));
+        if (backend) return toDetail(await backend.readRun(runId));
         return null;
       } catch (e) {
         if (e instanceof NotSupportedError) return null;
         return null;
       }
     },
-    [backend, workerClient, localIds],
+    [backend, workerClient],
   );
 
   return {
@@ -470,11 +627,16 @@ export function useLiveGallery(
     models,
     modelsStatus,
     canExecute: true,
+    grafanaUrl,
     queryRunSummaries,
     fetchRunEvents,
     readRun,
     proofMediaUrl,
     assetMediaUrl,
+    validationMediaUrl,
+    validationBaselineUrl,
+    referenceMediaUrl,
+    runArchiveUrl,
     arena,
     harnessAuth,
   };

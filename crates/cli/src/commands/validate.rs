@@ -84,6 +84,52 @@ pub async fn execute(args: ValidateArgs) -> anyhow::Result<()> {
             }
         }
     }
+    if !summary.debug_scripts.is_empty() {
+        // A script that did not run no longer fails the run — it fails the checklist
+        // point it backs — so report the count rather than a pass/fail gate.
+        let not_run = summary
+            .debug_scripts
+            .iter()
+            .filter(|script| !script.ran)
+            .count();
+        println!(
+            "  debug scripts: {} ({not_run} did not run)",
+            summary.debug_scripts.len(),
+        );
+        for script in &summary.debug_scripts {
+            println!(
+                "    {} [{}] ran={}{}",
+                script.item_id,
+                script.script,
+                script.ran,
+                script
+                    .detail
+                    .as_deref()
+                    .map(|d| format!(" — {d}"))
+                    .unwrap_or_default()
+            );
+            for verdict in &script.verdicts {
+                println!(
+                    "      verdict {}: {}",
+                    verdict.id,
+                    if verdict.pass { "pass" } else { "fail" },
+                );
+                for assertion in &verdict.assertions {
+                    println!(
+                        "        [{}] {}",
+                        if assertion.pass { "pass" } else { "fail" },
+                        assertion.label,
+                    );
+                }
+            }
+            for output in &script.outputs {
+                println!(
+                    "      output {}: actual={}",
+                    output.id, output.actual_present
+                );
+            }
+        }
+    }
     if let Some(asset) = &summary.asset {
         let kind = if asset.sheet.is_some() {
             "sprite sheet"

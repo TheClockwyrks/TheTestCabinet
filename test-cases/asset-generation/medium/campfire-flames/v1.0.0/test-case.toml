@@ -1,0 +1,73 @@
+slug = "campfire-flames"
+experimental = false
+name = "Campfire Flames"
+difficulty = "medium"
+tags = ["vfx", "particle", "3d", "fire"]
+summary = """
+Author a cozy, seamlessly looping campfire: licking flame tongues that rise and \
+flicker — yellow-white at the base, cooling to orange then red at the tips — with \
+small embers popping upward on the turbulence and a faint smoke wisp curling above, \
+as a steady-state particle-3d emitter system, built one recorded operation at a \
+time."""
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 0.75
+type = "asset-generation"
+
+# A 3D particle effect: a warm, cozy campfire the model authors as an emitter
+# SYSTEM, simulated live by the review UI. It is a STEADY-STATE loop — the fire is
+# already lit and keeps burning; the effect plays forever without a start or an end,
+# so it must loop seamlessly with no burst-and-die.
+asset_kind = "particle-3d"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The volume the effect plays in. particle-3d gives width/height/depth (a volume,
+# like [voxel]); the fire burns UPWARD along +y from a small hearth footprint near
+# the floor. duration_ms is the loop window; loop = true, so the tail of the window
+# flows continuously back into its head with no visible seam.
+[particle]
+width       = 32             # extent along x — across the fire bed
+height      = 32             # extent along y — up; flames rise toward +y
+depth       = 32             # extent along z — across the fire bed
+duration_ms = 2000           # the seamless loop window (steady-state fire)
+fps         = 60             # preview/playback frame rate
+loop        = true           # LOOPING — a fire already burning, no start or end
+background  = "transparent"  # preview clear color only
+
+# The particle tool. `particle-3d` is the only way to shape the effect; it records
+# every operation to the action log and, on `render`, simulates the system and
+# emits system.json. Run `particle-3d --help` for the operations; none are seeded.
+[tool]
+binary  = "particle-3d"
+preview = "effect.gif"
+
+# The recorded operation log — the authoritative output. Core emits the authored
+# system.json (the emitter/force/curve definition) automatically; it is not
+# declared here.
+[output]
+actions = "actions.json"
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
+[[domain]]
+id = "overall"
+name = "Overall"
+description = """
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

@@ -4,7 +4,7 @@
 //! This crate loads a single submission engine wasm module, hands it the
 //! `scenario` JSON, runs it **once** under a wasmtime fuel ceiling and a
 //! linear-memory cap, reads back the canonical `state` JSON, and reports both the
-//! parsed [`Snapshot`](lattice_core::Snapshot)s and the fuel consumed. It also
+//! parsed [`Snapshot`]s and the fuel consumed. It also
 //! [scores](score_submission) a submission against the [`lattice-core`](lattice_core)
 //! oracle by comparing per-snapshot checksums.
 //!

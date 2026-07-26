@@ -35,6 +35,13 @@ pub struct Account {
     pub username: String,
     /// The human-facing name shown beside the account's reviews.
     pub display_name: String,
+    /// RFC 3339 of when the account's profile picture was last set, or `None` when
+    /// the account has no picture. Doubles as a "has picture" flag and a cache-bust
+    /// version: the picture bytes themselves are served separately
+    /// (`GET /auth/users/{id}/picture`), never carried inline on this shape.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional = nullable))]
+    pub picture_updated_at: Option<String>,
 }
 
 /// A request to create a new account (`POST /auth/register`). Self-registration
@@ -81,6 +88,18 @@ pub struct AuthnResponse {
     pub token: String,
     /// The account the token authenticates as.
     pub account: Account,
+}
+
+/// An account's profile picture as the auth service serves it: the raw image
+/// bytes and their content type. Not a wire-contract shape — it is the decoded
+/// body of `GET /auth/users/{id}/picture`, used by the backend to embed a
+/// reviewer's picture in the public snapshot.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReviewerPicture {
+    /// The image bytes.
+    pub bytes: Vec<u8>,
+    /// The image's content type (e.g. `image/webp`).
+    pub content_type: String,
 }
 
 /// An HTTP client for the standalone auth service.
@@ -157,6 +176,42 @@ impl AccountsClient {
             .await
             .map_err(|err| auth_err(&url, err))?;
         Ok(Some(account))
+    }
+
+    /// Fetch an account's profile picture bytes (`GET /auth/users/{id}/picture`).
+    /// Returns `Ok(None)` when the account has no picture (the service answers
+    /// `404`), so the caller can skip it, and `Err` only on a transport or server
+    /// fault. This is the source the backend's snapshot bake reads reviewer pictures
+    /// from to embed them in the public snapshot.
+    #[instrument(skip(self), fields(otel.kind = "client", http.request.method = "GET", url.path = "/auth/users/{id}/picture", user.id = %id), err)]
+    pub async fn picture(&self, id: &str) -> Result<Option<ReviewerPicture>> {
+        let url = self.url(&format!("/auth/users/{id}/picture"));
+        let response = self
+            .http
+            .get(&url)
+            .headers(traced_headers())
+            .send()
+            .await
+            .map_err(|err| auth_err(&url, err))?;
+        if response.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        let response = error_for_status(&url, response).await?;
+        let content_type = response
+            .headers()
+            .get(http::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("application/octet-stream")
+            .to_string();
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|err| auth_err(&url, err))?
+            .to_vec();
+        Ok(Some(ReviewerPicture {
+            bytes,
+            content_type,
+        }))
     }
 
     /// Revoke a bearer `token` (`POST /auth/logout`). A token already unknown to

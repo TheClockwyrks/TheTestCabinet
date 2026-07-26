@@ -1,0 +1,702 @@
+slug = "floe"
+# The Test Cabinet test case manifest.
+#
+# Declares, for this exact version, which files are seeded into a run, which
+# reference views are rendered and seeded as visual targets, and which validation
+# checks run. The testing harness reads this file to resolve a `TestCaseVersion`.
+
+# Human-readable display name for this test case.
+name = "Floe"
+
+# Relative difficulty (easy | medium | hard), surfaced on the site. Floe asks for
+# tile-based hopping across lanes of sliding hazards and drifting carry-floes, a
+# pursuing hunter with real pathfinding across the hazard board and the water, a
+# row of goal bays, a timer, an 8-level progression with a win and a loss, and
+# multiple states — a self-contained 2D build, so it sits at easy.
+difficulty = "easy"
+
+# Free-form classification tags, surfaced on the site for browsing and search.
+tags = ["arcade", "2d", "crossing"]
+
+# Short site-facing abstract, shown on the test case card. Authored inline (not a
+# file) so it renders safely inside the card's link and stays brief; NOT seeded.
+summary = """
+A single-screen crossing game where a small critter hops across lanes of sliding \
+ice hazards and drifting floes to reach the far-shore bays — while a polar bear \
+hunts it across the whole strait, dodging the same hazards and swimming out after \
+it. Its one limit is speed, so keep moving: hesitate and it catches you."""
+
+# Site-facing prose describing the case, relative to this version folder. NOT
+# seeded into a run; it exists only to introduce the case on the site.
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+
+# Handlebars prompt template, relative to this version folder. Rendered per run
+# (with the seeded specs and the selected variant) and handed to the model as the
+# build instruction. Injects absolute in-container paths via template variables.
+prompt = "prompt.hbs"
+
+# Maximum wall-clock runtime, in hours, for the harness session before the run is
+# stopped. Floe is a substantial build (tile hopping with carry-floes, a pursuing
+# hunter with pathfinding, the bays, a timer, an 8-level progression, multiple
+# states), so it gets a full five hours despite being an easy case.
+max_runtime_hours = 5
+
+# Starter workspace seeded into the root of every run before the specs. It gives
+# the model a baseline project to build on: a `package.json` that pins `playwright`
+# as a dev dependency. The seeded files land at the run root
+# (`workspaces/base/package.json` seeds to `package.json`).
+workspace = "workspaces/base"
+
+# Provided art assets, seeded into the run root under `assets/`. A directory is
+# seeded recursively, so every sprite frame under `assets/` reaches the run. The
+# build must render the game with these (see specs/assets.md) and load them with
+# page-relative URLs so it works under any base path.
+assets = ["assets"]
+
+# Init command, run in the run container once the workspace and specs are seeded
+# and before the harness starts. Installs the workspace's dependencies and
+# downloads the Playwright Chromium build (the base image ships the OS libraries
+# Chromium links against, but not the browser binary), so the model can build and
+# verify immediately against a project-local Playwright.
+init = "npm install && npx playwright install chromium"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This version offers a single `base` variant (the standard Crossing run on the one
+# strait), declared in its own file under `variants/`. It supplies the `title`
+# view's menu; `gameplay` and `game-over` are common. Future
+# versions/variants are expected to add rule twists (e.g. a longer endless run or a
+# fog-of-war strait) as additional variants on top of this base. This list is a
+# root key, so it must precede the first table header (`[build]`).
+variants = ["variants/base.toml"]
+
+# How the validator (and the per-run Cloudflare Pages deploy) turns a produced
+# implementation into a served static site. These run verbatim from the build's
+# repository root. `npm ci` is deliberate — it requires the build to commit a
+# `package-lock.json`. Both commands are required; there are no defaults.
+[build]
+install = "npm ci"
+build = "npm run build"
+
+# Instrumentation: the debug-and-automation surface every build installs, named
+# once here so a review item's `validation` driver (and the validator that runs it)
+# knows which `window` global to drive. The seeded specification documents the same
+# handle independently as an ordinary game debug feature (see
+# specs/instrumentation.md); this entry is reporter-side and never seeded. It is
+# required because review items declare `validation` scripts.
+[instrumentation]
+handle = "__floe"
+# The fixed simulation rate, in Hz. Floe's debug API advances time in whole
+# simulation ticks (`step(ticks)`) rather than in seconds, so there is no rounding
+# and no ambiguity about what a step means. This is the rate the validation
+# runtime uses to relate that exact stepping back to real time — one tick is
+# 1/120 of a second, so a second of game time is 120 ticks. It must match the
+# timestep the seeded `specs/gameplay.md` mandates.
+tick_hz = 120
+
+# Common specs: seeded for EVERY variant, at the `dest` path within the run
+# workspace. The specification is decomposed by concern. All common specs are
+# plain Markdown, seeded verbatim.
+[[spec]]
+source = "specs/overview.md"
+
+[[spec]]
+source = "specs/playfield.md"
+
+[[spec]]
+source = "specs/hunter.md"
+
+[[spec]]
+source = "specs/hazards.md"
+
+[[spec]]
+source = "specs/water.md"
+
+[[spec]]
+source = "specs/controls.md"
+
+[[spec]]
+source = "specs/gameplay.md"
+
+[[spec]]
+source = "specs/ui.md"
+
+[[spec]]
+source = "specs/assets.md"
+
+# The debugging and automation surface every build must expose: a deterministic,
+# steppable core; a `window.__floe` API to drive and inspect the game from code; and
+# a read-only debug overlay. Seeded for every variant and framed as an ordinary
+# developer affordance of the game.
+[[spec]]
+source = "specs/instrumentation.md"
+
+# Proof of implementation: instructs the build to capture evidence at the exact
+# paths the `[[proof]]` entries below declare. The paths in this spec and in the
+# `[[proof]]` entries must match.
+[[spec]]
+source = "specs/proof.md"
+
+# Common reference views, seeded for EVERY variant. Each `media` is a screenshot
+# captured (with Playwright) from this case's playable reference-impl build — the
+# authored, correct game under `reference-impl/` — and served as-is (seeded into
+# the run as a visual target, never rendered). See `reference/README.md` for how
+# they are regenerated. The `title` view is variant-specific (declared per variant
+# below); `gameplay` and `game-over` look the same in every variant.
+[[reference]]
+view = "gameplay"
+media = "reference/screenshots/gameplay.png"
+
+[[reference]]
+view = "game-over"
+media = "reference/screenshots/game-over.png"
+
+# Proof of implementation, requested for every variant. Each declares a `dest`
+# path (relative to the run workspace root) the build must write a screenshot
+# or `.webm` clip to; `specs/proof.md` instructs the build to produce them at
+# exactly these paths. Validation records whether each turned up (informational).
+# The media kind is inferred from the extension: `.png` is an image, `.webm` a
+# video (the format Playwright records natively; the public gallery transcodes
+# it to mp4).
+[[proof]]
+id = "title"
+name = "Title menu"
+dest = "proof/title.png"
+
+[[proof]]
+id = "gameplay"
+name = "In-game"
+dest = "proof/gameplay.png"
+
+[[proof]]
+id = "game-over"
+name = "End screen"
+dest = "proof/game-over.png"
+
+[[proof]]
+id = "hunt"
+name = "Hunter-pursuit clip"
+dest = "proof/hunt.webm"
+
+[[proof]]
+id = "cross"
+name = "Crossing clip"
+dest = "proof/cross.webm"
+
+# Reference-similarity checks (opt-in) are intentionally not declared. The
+# reference screenshots are seeded as illustrative examples of the screens, not
+# layouts to reproduce, so menus and screens are left to the model's design and
+# are reviewed by a human rather than scored against a baseline. The automated
+# load check still runs.
+
+# Scoring domains. The reviewer rates each independently while playing the build,
+# and the run's overall rating is the WORST across them — a flawless hunter cannot
+# mask a broken crossing, and vice versa. Domains are case-level; an individual
+# review item rolls up to one through its optional `domain`, while a general item
+# (states, window fit) omits it.
+[[domain]]
+id = "hunter"
+name = "The Hunter"
+description = "The signature: the bear emerging at the near shore and chasing the critter continuously (pacman-style, turning only at tile centers) across the whole strait, navigating around the hazards (and being reset if one slides into it), swimming out onto the water after it while staying visible, catching a critter that hesitates or errs, resetting fairly between crossings, and speeding up (and doubling) with the level."
+
+[[domain]]
+id = "crossing"
+name = "The Crossing"
+description = "The crossing core: one-tile hopping, the solid ice lanes of sliding hazards, the deadly water crossed on drifting carry-floes (with fall-in and off-edge death), filling the five far-shore bays, the timer, and the 8-level progression with its win and loss."
+
+# Reviewer checklist, common to every variant, in the categories grammar
+# (`[review] format = 2`). Each `[[review.categories]]` is a CATEGORY — a bare name
+# grouping the points a reviewer grades — and each `[[review.categories.items]]`
+# under it is one graded review item, worth one point (the default weight), so a
+# category is worth the number of items it holds (no fractional scoring). A category
+# carries no prose of its own; each review item states its own requirement in
+# `description`. The checklist is reporter-side material — never seeded into a run,
+# so the model never sees it; each item restates a requirement the seeded
+# specification already states. An item with a `validation` script is decided
+# automatically (the reviewer can override); one without is reviewed by a person.
+#
+# The taxonomy is deliberately narrow: each item asserts ONE observable behavior,
+# split out from the broader v1 items so a build fails exactly the rule it breaks.
+# The genuinely subjective points — the bear's submerged visibility, the HUD and
+# window fit, whether each provided sprite set is drawn correctly, and everything
+# under Audio — carry NO validation and are left to the reviewer. The UI game-state items carry a
+# validation script only to REACH and CAPTURE each screen through the debug API (its
+# auto-verdict confirms the state is reachable); how each screen reads is left to the
+# reviewer from the capture. The scoring domains (`hunter`, `crossing`, above) are rated
+# separately by the reviewer; the categories grammar attaches no domain to a point.
+[review]
+format = 2
+
+# --- Controls (input-injected through the debug API) --------------------------
+# Each control is driven with injected keyboard input (window.__floe keyDown/keyUp/
+# press, see specs/instrumentation.md) and its effect read back, so the checks
+# confirm the actual key bindings from specs/controls.md.
+[[review.categories]]
+id = "controls"
+title = "Controls"
+[[review.categories.items]]
+id = "hop-up"
+title = "Up arrow hops the critter up"
+description = "Pressing the Up arrow hops the critter one tile up (its row decreases by one)."
+validation = { script = "validation/controls/hop-up.mjs", outputs = [{ id = "hop", name = "Hopping up", kind = "video" }] }
+[[review.categories.items]]
+id = "hop-down"
+title = "Down arrow hops the critter down"
+description = "Pressing the Down arrow hops the critter one tile down (its row increases by one)."
+validation = { script = "validation/controls/hop-down.mjs", outputs = [{ id = "hop", name = "Hopping down", kind = "video" }] }
+[[review.categories.items]]
+id = "hop-left"
+title = "Left arrow hops the critter left"
+description = "Pressing the Left arrow hops the critter one tile left (its column decreases by one)."
+validation = { script = "validation/controls/hop-left.mjs", outputs = [{ id = "hop", name = "Hopping left", kind = "video" }] }
+[[review.categories.items]]
+id = "hop-right"
+title = "Right arrow hops the critter right"
+description = "Pressing the Right arrow hops the critter one tile right (its column increases by one)."
+validation = { script = "validation/controls/hop-right.mjs", outputs = [{ id = "hop", name = "Hopping right", kind = "video" }] }
+[[review.categories.items]]
+id = "hop-w"
+title = "W hops the critter up"
+description = "Pressing W hops the critter one tile up (its row decreases by one), the same as the Up arrow."
+validation = { script = "validation/controls/hop-w.mjs", outputs = [{ id = "hop", name = "Hopping up with W", kind = "video" }] }
+[[review.categories.items]]
+id = "hop-a"
+title = "A hops the critter left"
+description = "Pressing A hops the critter one tile left (its column decreases by one), the same as the Left arrow."
+validation = { script = "validation/controls/hop-a.mjs", outputs = [{ id = "hop", name = "Hopping left with A", kind = "video" }] }
+[[review.categories.items]]
+id = "hop-s"
+title = "S hops the critter down"
+description = "Pressing S hops the critter one tile down (its row increases by one), the same as the Down arrow."
+validation = { script = "validation/controls/hop-s.mjs", outputs = [{ id = "hop", name = "Hopping down with S", kind = "video" }] }
+[[review.categories.items]]
+id = "hop-d"
+title = "D hops the critter right"
+description = "Pressing D hops the critter one tile right (its column increases by one), the same as the Right arrow."
+validation = { script = "validation/controls/hop-d.mjs", outputs = [{ id = "hop", name = "Hopping right with D", kind = "video" }] }
+[[review.categories.items]]
+id = "one-tile"
+title = "One tile per press; a held key auto-repeats"
+description = "A single press moves exactly one tile — no charged or multi-tile jump — while a held direction key auto-repeats hops at the hop cooldown."
+validation = { script = "validation/controls/one-tile.mjs", outputs = [{ id = "hop", name = "One-tile hops and auto-repeat", kind = "video" }] }
+[[review.categories.items]]
+id = "pause-p"
+title = "P pauses"
+description = "Pressing P while playing pauses the game (the screen becomes the pause state)."
+validation = { script = "validation/controls/pause-p.mjs", outputs = [{ id = "pause", name = "Pausing with P", kind = "video" }] }
+[[review.categories.items]]
+id = "pause-escape"
+title = "Esc pauses"
+description = "Pressing Escape while playing pauses the game (the screen becomes the pause state)."
+validation = { script = "validation/controls/pause-escape.mjs", outputs = [{ id = "pause", name = "Pausing with Esc", kind = "video" }] }
+[[review.categories.items]]
+id = "mute"
+title = "M toggles mute"
+description = "Pressing M toggles mute on and off."
+validation = { script = "validation/controls/mute.mjs", outputs = [{ id = "title", name = "Title after toggling mute", kind = "image" }] }
+
+# --- Movement (blocking rules) ------------------------------------------------
+# One-tile hops are refused — never fatal — when they would leave the strait, hit
+# the solid far-shore wall or a filled bay, or step into a vehicle-occupied tile.
+[[review.categories]]
+id = "movement"
+title = "Movement"
+[[review.categories.items]]
+id = "refuse-edge"
+title = "A hop off the strait is refused"
+description = "A hop that would leave the strait (past a side edge, or below the near shore) is refused — the critter does not move and does not die."
+validation = { script = "validation/movement/refuse-edge.mjs", outputs = [{ id = "refuse", name = "A refused edge hop", kind = "video" }] }
+[[review.categories.items]]
+id = "refuse-shore"
+title = "A hop into the solid far-shore is refused"
+description = "Hopping up into the solid far-shore wall between the bays is refused — the critter does not move and does not die."
+validation = { script = "validation/movement/refuse-shore.mjs", outputs = [{ id = "refuse", name = "A refused far-shore hop", kind = "video" }] }
+[[review.categories.items]]
+id = "refuse-filled-bay"
+title = "A hop into a filled bay is refused"
+description = "Hopping up into an already-filled bay is refused (an open bay accepts the hop) — the critter does not move and does not die."
+validation = { script = "validation/movement/refuse-filled-bay.mjs", outputs = [{ id = "refuse", name = "A refused filled-bay hop", kind = "video" }] }
+[[review.categories.items]]
+id = "refuse-vehicle"
+title = "Stepping into a vehicle is refused (no death)"
+description = "Hopping into a tile a vehicle already occupies is refused like a wall — the critter does not move and does not die (you die only when traffic runs into you)."
+validation = { script = "validation/movement/refuse-vehicle.mjs", outputs = [{ id = "refuse", name = "A refused hop into traffic", kind = "video" }] }
+
+# --- Ice band (sliding hazards) ----------------------------------------------
+[[review.categories]]
+id = "ice"
+title = "Ice band"
+[[review.categories.items]]
+id = "lanes"
+title = "Eight lanes of alternating traffic"
+description = "The ice band is eight solid lanes (rows 11..18), each carrying sliding multi-tile vehicles (a 3-tile plow, a 2-tile dogsled, a 2-tile car), moving in alternating directions."
+validation = { script = "validation/ice/lanes.mjs", outputs = [{ id = "scene", name = "The ice band of traffic", kind = "image" }] }
+[[review.categories.items]]
+id = "slides"
+title = "Vehicles slide at a set speed"
+description = "Each ice lane's vehicles slide along the lane by its own direction and speed as the simulation advances."
+validation = { script = "validation/ice/slides.mjs", outputs = [{ id = "slide", name = "Traffic sliding along the lanes", kind = "video" }] }
+[[review.categories.items]]
+id = "crush"
+title = "A vehicle sliding into the critter is death"
+description = "A vehicle that slides into the critter's own tile crushes it — a life is lost."
+validation = { script = "validation/ice/crush.mjs", outputs = [{ id = "crush", name = "A vehicle crushing the critter", kind = "video" }] }
+[[review.categories.items]]
+id = "speeds"
+title = "Lane speeds scale with the level"
+description = "The base lane speeds sit in a slow range, and each level speeds them up (about 1.06x per level)."
+validation = { script = "validation/ice/speeds.mjs", outputs = [{ id = "scene", name = "The ice band", kind = "image" }] }
+
+# --- Water band (drifting floes) ---------------------------------------------
+[[review.categories]]
+id = "water"
+title = "Water band"
+[[review.categories.items]]
+id = "lanes"
+title = "Eight lanes of drifting floes"
+description = "The water band is eight lanes (rows 2..9) of drifting floes, in alternating directions."
+validation = { script = "validation/water/lanes.mjs", outputs = [{ id = "scene", name = "The water band of floes", kind = "image" }] }
+[[review.categories.items]]
+id = "drift"
+title = "Floes drift at a set speed"
+description = "Each water lane's floes drift along the lane by its own direction and speed as the simulation advances."
+validation = { script = "validation/water/drift.mjs", outputs = [{ id = "drift", name = "Floes drifting along the lanes", kind = "video" }] }
+[[review.categories.items]]
+id = "drown"
+title = "Open water is death"
+description = "Standing on a water tile with no floe under it is death — a life is lost."
+validation = { script = "validation/water/drown.mjs", outputs = [{ id = "drown", name = "Drowning in open water", kind = "video" }] }
+[[review.categories.items]]
+id = "carry"
+title = "A floe carries the critter"
+description = "A floe carries the critter sideways at the lane velocity while it stands on it, and it survives there."
+validation = { script = "validation/water/carry.mjs", outputs = [{ id = "carry", name = "A floe carrying the critter", kind = "video" }] }
+[[review.categories.items]]
+id = "off-edge"
+title = "Riding a floe off the edge is death"
+description = "Being carried by a floe off the side edge of the strait is death — a life is lost."
+validation = { script = "validation/water/off-edge.mjs", outputs = [{ id = "sweep", name = "A floe carrying the critter off the edge", kind = "video" }] }
+[[review.categories.items]]
+id = "floe-mix"
+title = "A mix of pans and solid rafts"
+description = "Floes are a mix of 1-tile pans and solid 3-tile and 4-tile rafts (each raft one continuous piece, not tiled pans)."
+validation = { script = "validation/water/floe-mix.mjs", outputs = [{ id = "scene", name = "The mix of floe sizes", kind = "image" }] }
+
+# --- Bays (the goal) ----------------------------------------------------------
+[[review.categories]]
+id = "bays"
+title = "Bays"
+[[review.categories.items]]
+id = "fill"
+title = "Hopping into an open bay fills it"
+description = "Hopping up into an open far-shore bay completes the crossing, fills the bay, and scores."
+validation = { script = "validation/bays/fill.mjs", outputs = [{ id = "fill", name = "Filling a bay", kind = "video" }] }
+[[review.categories.items]]
+id = "clear-level"
+title = "Filling all five bays clears the level"
+description = "Filling the last of the five bays clears the level: the level advances and the bays reset."
+validation = { script = "validation/bays/clear-level.mjs", outputs = [{ id = "clear", name = "Clearing a level by filling the last bay", kind = "video" }] }
+[[review.categories.items]]
+id = "layout"
+title = "Five bays at the expected columns"
+description = "There are five bays, each enterable at its own far-shore column, with solid shore between them that cannot be entered."
+validation = { script = "validation/bays/layout.mjs", outputs = [{ id = "scene", name = "The far-shore bays", kind = "image" }] }
+
+# --- Hunter (the signature) ---------------------------------------------------
+# Each check drives the REAL pursuit brain (setBear / placeCritter / setLane, see
+# specs/instrumentation.md): it poses the world, then steps the real simulation and
+# reads whether the bear emerges, glides, pursues, routes, resets, swims, catches,
+# and resets fairly — never fabricating the outcome.
+[[review.categories]]
+id = "hunter"
+title = "Hunter"
+[[review.categories.items]]
+id = "emerges"
+title = "Emerges after the critter advances"
+description = "No bear is present at the start of a crossing; one emerges from the near shore only once the critter has advanced a few rows."
+validation = { script = "validation/hunter/emerges.mjs", outputs = [{ id = "emerge", name = "The bear emerging", kind = "video" }] }
+[[review.categories.items]]
+id = "continuous"
+title = "Glides continuously, one axis at a time"
+description = "The bear moves continuously (pacman-style): each step is a smooth sub-tile glide along a single axis — never diagonal, never a whole-tile jump."
+validation = { script = "validation/hunter/continuous.mjs", outputs = [{ id = "glide", name = "The bear gliding", kind = "video" }] }
+[[review.categories.items]]
+id = "pursues"
+title = "Closes on the critter"
+description = "The bear pursues the critter's position: over time the distance between them shrinks."
+validation = { script = "validation/hunter/pursues.mjs", outputs = [{ id = "pursue", name = "The bear closing in", kind = "video" }] }
+[[review.categories.items]]
+id = "stays-ahead"
+title = "A clean crossing stays ahead of it"
+description = "Steady forward hopping down a clear column reaches the far shore without being caught — the bear is a touch slower than a cleanly-played critter."
+validation = { script = "validation/hunter/stays-ahead.mjs", outputs = [{ id = "ahead", name = "Outrunning the bear", kind = "video" }] }
+[[review.categories.items]]
+id = "routes-around"
+title = "Routes around a hazard wall"
+description = "Facing a wall of vehicles across its path, the bear detours sideways to a gap and gets past it rather than driving straight into the traffic."
+validation = { script = "validation/hunter/routes-around.mjs", outputs = [{ id = "route", name = "The bear routing around a wall", kind = "video" }] }
+[[review.categories.items]]
+id = "reset-on-hit"
+title = "A vehicle resets it, then it returns"
+description = "A vehicle sliding into the bear resets it (removed from the strait), and it re-emerges from the near shore after a delay — not permanently gone, not merely staggered."
+validation = { script = "validation/hunter/reset-on-hit.mjs", outputs = [{ id = "reset", name = "The bear reset by traffic", kind = "video" }] }
+[[review.categories.items]]
+id = "swims"
+title = "Swims the open water, slower"
+description = "Over open water the bear swims, and it moves slower swimming than it does on ice."
+validation = { script = "validation/hunter/swims.mjs", outputs = [{ id = "swim", name = "The bear swimming", kind = "video" }] }
+[[review.categories.items]]
+id = "stays-visible"
+title = "Submerged, it stays visible"
+description = "While swimming the bear stays trackable — drawn as a silhouette with a wake/ripple — so it is never invisible, even passing under a floe."
+reference = "gameplay"
+proof = "hunt"
+[[review.categories.items]]
+id = "catches"
+title = "Catches a critter it reaches"
+description = "A bear that reaches the critter catches it — a life is lost."
+validation = { script = "validation/hunter/catches.mjs", outputs = [{ id = "catch", name = "The bear catching the critter", kind = "video" }] }
+[[review.categories.items]]
+id = "fair-reset-death"
+title = "Fair reset after a death"
+description = "After a death ends the crossing, the bear is removed and does not re-emerge onto the just-respawned critter — only once the fresh critter has advanced a few tiles."
+validation = { script = "validation/hunter/fair-reset-death.mjs", outputs = [{ id = "reset", name = "A fair reset after a death, no bear on top", kind = "video" }] }
+[[review.categories.items]]
+id = "fair-reset-bay"
+title = "Fair reset after a completed crossing"
+description = "After a crossing is completed into a bay, the bear is removed and does not re-emerge onto the just-respawned critter — only once the fresh critter has advanced a few tiles."
+validation = { script = "validation/hunter/fair-reset-bay.mjs", outputs = [{ id = "reset", name = "A fair reset after a bay, no bear on top", kind = "video" }] }
+[[review.categories.items]]
+id = "safe-bays"
+title = "Never enters the far shore"
+description = "The bear never enters the far-shore wall or a bay, so a critter safe in a filled bay is permanently safe from it."
+validation = { script = "validation/hunter/safe-bays.mjs", outputs = [{ id = "safe", name = "The bear kept off the far shore", kind = "video" }] }
+[[review.categories.items]]
+id = "second-bear"
+title = "A second bear from level 5"
+description = "From level 5 the strait fields two hunters; both eventually emerge and pursue."
+validation = { script = "validation/hunter/second-bear.mjs", outputs = [{ id = "two", name = "Two hunters at level 5", kind = "video" }] }
+
+# --- Progression (lives, timer, levels, win/loss) ----------------------------
+[[review.categories]]
+id = "progression"
+title = "Progression"
+[[review.categories.items]]
+id = "lives"
+title = "Three lives to start"
+description = "A new run starts with three lives."
+validation = { script = "validation/progression/lives.mjs", outputs = [{ id = "start", name = "A new run's HUD", kind = "image" }] }
+[[review.categories.items]]
+id = "timer-life"
+title = "The timer costs a life"
+description = "Letting the crossing timer run out costs a life."
+validation = { script = "validation/progression/timer-life.mjs", outputs = [{ id = "expire", name = "The timer expiring", kind = "video" }] }
+[[review.categories.items]]
+id = "gameover"
+title = "Zero lives ends the game"
+description = "Losing the last life ends the game (the game-over screen appears)."
+validation = { script = "validation/progression/gameover.mjs", outputs = [{ id = "gameover", name = "The game-over screen", kind = "image" }] }
+[[review.categories.items]]
+id = "levels"
+title = "Levels advance and speed up"
+description = "Clearing a level advances to the next, which runs faster than the last."
+validation = { script = "validation/progression/levels.mjs", outputs = [{ id = "advance", name = "Advancing a level", kind = "video" }] }
+[[review.categories.items]]
+id = "victory"
+title = "Clearing level 8 wins"
+description = "Clearing the eighth level wins the game (the victory screen appears)."
+validation = { script = "validation/progression/victory.mjs", outputs = [{ id = "victory", name = "The victory screen", kind = "image" }] }
+
+# --- Respawn (where the fresh critter reappears) ------------------------------
+# A crossing ends two ways — a death, or a completed crossing into a bay — and each
+# begins a fresh crossing with a new critter on the near shore (specs/gameplay.md,
+# specs/playfield.md). These check WHERE the critter comes back, split by which end
+# it came from; the bear's matching fairness is under Hunter (`fair-reset-*`).
+[[review.categories]]
+id = "respawn"
+title = "Respawn"
+[[review.categories.items]]
+id = "critter-after-death"
+title = "Respawns on the near shore after a death"
+description = "After a death (with lives to spare), a fresh critter respawns on the near shore, on solid footing, with the crossing timer reset — not mid-strait and not on the water."
+validation = { script = "validation/respawn/critter-after-death.mjs", outputs = [{ id = "respawn", name = "The critter respawning after a death", kind = "video" }] }
+[[review.categories.items]]
+id = "critter-after-score"
+title = "Respawns on the near shore after a bay"
+description = "After completing a crossing into a bay (without clearing the level), a fresh critter respawns on the near shore, on solid footing, with the crossing timer reset for the next crossing."
+validation = { script = "validation/respawn/critter-after-score.mjs", outputs = [{ id = "respawn", name = "The critter respawning after a bay", kind = "video" }] }
+
+# --- Scoring ------------------------------------------------------------------
+[[review.categories]]
+id = "scoring"
+title = "Scoring"
+[[review.categories.items]]
+id = "row"
+title = "Advancing a row scores"
+description = "Advancing to a new row scores ten points per net new row."
+validation = { script = "validation/scoring/row.mjs", outputs = [{ id = "advance", name = "Scoring by advancing", kind = "video" }] }
+[[review.categories.items]]
+id = "bay"
+title = "A bay scores 50 plus a time bonus"
+description = "Reaching a bay scores fifty points plus a per-second bonus for the time left on the crossing timer."
+validation = { script = "validation/scoring/bay.mjs", outputs = [{ id = "bay", name = "Scoring a bay with a time bonus", kind = "video" }] }
+[[review.categories.items]]
+id = "level-clear"
+title = "Clearing a level scores 100*level"
+description = "Clearing a level awards a bonus of one hundred points times the level, on top of the bay it was filled with."
+validation = { script = "validation/scoring/level-clear.mjs", outputs = [{ id = "clear", name = "Scoring a level clear", kind = "video" }] }
+[[review.categories.items]]
+id = "bonus-life"
+title = "A bonus life every 10,000 points"
+description = "Crossing a 10,000-point milestone awards an extra life."
+validation = { script = "validation/scoring/bonus-life.mjs", outputs = [{ id = "bonus", name = "A bonus life at a milestone", kind = "video" }] }
+[[review.categories.items]]
+id = "bonus-catch"
+title = "The bonus catch scores +200"
+description = "A fish appears in an open bay from time to time; completing a crossing into the bay holding the fish scores an extra 200 points."
+validation = { script = "validation/scoring/bonus-catch.mjs", outputs = [{ id = "catch", name = "Scoring the bonus catch", kind = "video" }] }
+
+# --- Color (sampled from the rendered canvas) --------------------------------
+# Each point samples the pixels the build actually RENDERS at a known on-strait
+# location and confirms the CODE-DRAWN strait elements are drawn in distinct,
+# visible colors — reading what is painted, not any value the game reports. The
+# exact palette is the model's own; only that the bands and the bays are told apart
+# is scored. The critter and the bear are drawn from PROVIDED sprites
+# (specs/assets.md), so their readability is a property of the seeded art, not the
+# build's to make — they are not color-checked here; that the correct sprite is
+# drawn is covered under Assets.
+[[review.categories]]
+id = "color"
+title = "Color"
+[[review.categories.items]]
+id = "bands"
+title = "The bands read distinct"
+description = "The water band, the ice band, and the median each render in a distinct color, so the strait's bands are told apart at a glance."
+validation = { script = "validation/color/bands.mjs", outputs = [{ id = "scene", name = "The posed strait", kind = "image" }] }
+[[review.categories.items]]
+id = "bays"
+title = "An open bay reads warm and distinct"
+description = "An open bay renders in a distinct, inviting color, clearly different from the solid shore beside it."
+validation = { script = "validation/color/bays.mjs", outputs = [{ id = "scene", name = "The posed strait", kind = "image" }] }
+
+# --- UI (reached + captured via the debug API) -------------------------------
+# The game states are each reached through the debug API and captured, so a
+# reviewer sees the actual screens rather than only a submitted proof. The
+# auto-verdict confirms the state is reachable; whether each screen reads and lays
+# out well is left to the reviewer. The HUD and window-fit points carry no script.
+[[review.categories]]
+id = "ui"
+title = "UI"
+[[review.categories.items]]
+id = "state-title"
+title = "Title / main menu"
+description = "The title / main menu state is reachable and correct, with the menu rendered cleanly and navigable."
+validation = { script = "validation/ui/state-title.mjs", outputs = [{ id = "title", name = "The title / main menu", kind = "image" }] }
+[[review.categories.items]]
+id = "state-howto"
+title = "How to play"
+description = "The how-to-play state is reachable from the menu and correct."
+validation = { script = "validation/ui/state-howto.mjs", outputs = [{ id = "howto", name = "The how-to-play screen", kind = "image" }] }
+[[review.categories.items]]
+id = "state-pause"
+title = "Pause (resume/restart/quit)"
+description = "The pause state is reachable and correct, offering resume, restart, and quit."
+validation = { script = "validation/ui/state-pause.mjs", outputs = [{ id = "pause", name = "The pause menu", kind = "image" }] }
+[[review.categories.items]]
+id = "state-victory"
+title = "Victory"
+description = "The victory state is reachable and correct."
+validation = { script = "validation/ui/state-victory.mjs", outputs = [{ id = "victory", name = "The victory screen", kind = "image" }] }
+[[review.categories.items]]
+id = "state-gameover"
+title = "Game over"
+description = "The game-over state is reachable and correct, offering play again and menu."
+validation = { script = "validation/ui/state-gameover.mjs", outputs = [{ id = "gameover", name = "The game-over screen", kind = "image" }] }
+[[review.categories.items]]
+id = "hud"
+title = "The HUD"
+description = "The HUD shows the score, lives, bays, timer, and level clearly and legibly during play."
+proof = "gameplay"
+reference = "gameplay"
+[[review.categories.items]]
+id = "window-fit"
+title = "Window fit"
+description = "The entire 1280x720 stage — the full HUD bar, the whole strait, and all four edges — stays visible, fitted, and centered at any window size and pixel density, including on load before any input."
+proof = "title"
+reference = "title"
+
+# --- Assets -------------------------------------------------------------------
+# One point per provided sprite set (specs/assets.md): each is drawn from the seeded
+# art at its native size with nearest-neighbor scaling — crisp, not restyled or
+# substituted. The bear is two points, its land frames and its submerged swim frames,
+# since they are separate sets used in separate states. Which sprite is correct is a
+# read of the seeded art (all sets are provided), so these are reviewed by eye against
+# the proof and reference views rather than scored automatically.
+[[review.categories]]
+id = "assets"
+title = "Assets"
+[[review.categories.items]]
+id = "sprite-crosser"
+title = "The critter renders from its sprites"
+description = "The critter renders from its provided `assets/crosser/` frames (the four-direction, two-frame crouch-and-leap hop) at native 32×32 size with nearest-neighbor scaling — crisp, not restyled or substituted."
+proof = "gameplay"
+reference = "gameplay"
+[[review.categories.items]]
+id = "sprite-bear-land"
+title = "The bear renders from its land sprites"
+description = "On ice or a floe the bear renders from its provided `assets/bear/` land frames (the four-direction run, and the lunge as it catches) at native 32×32 size with nearest-neighbor scaling."
+proof = "gameplay"
+reference = "gameplay"
+[[review.categories.items]]
+id = "sprite-bear-water"
+title = "The bear renders from its swim sprites"
+description = "Over open water the bear renders from its provided `assets/bear/` submerged swim frames (the four-direction swim set) at native 32×32 size with nearest-neighbor scaling, so it stays visible as a silhouette."
+proof = "hunt"
+reference = "gameplay"
+[[review.categories.items]]
+id = "sprite-plow"
+title = "The snow plow renders from its sprite"
+description = "The 3-tile snow plow renders from its provided `assets/plow/` sprite at its native 96×32 size with nearest-neighbor scaling, mirrored to face a left-moving lane."
+proof = "gameplay"
+reference = "gameplay"
+[[review.categories.items]]
+id = "sprite-dogsled"
+title = "The dogsled renders from its sprite"
+description = "The 2-tile dogsled renders from its provided `assets/dogsled/` sprite at its native 64×32 size with nearest-neighbor scaling, mirrored to face a left-moving lane."
+proof = "gameplay"
+reference = "gameplay"
+[[review.categories.items]]
+id = "sprite-car"
+title = "The car renders from its sprite"
+description = "The 2-tile car renders from its provided `assets/car/` sprite at its native 64×32 size with nearest-neighbor scaling, mirrored to face a left-moving lane."
+proof = "gameplay"
+reference = "gameplay"
+[[review.categories.items]]
+id = "sprite-pan"
+title = "The small floe renders from its sprite"
+description = "The 1-tile small floe renders from its provided `assets/pan/` sprite at its native 32×32 size with nearest-neighbor scaling."
+proof = "gameplay"
+reference = "gameplay"
+[[review.categories.items]]
+id = "sprite-raft"
+title = "The rafts render from their sprites"
+description = "The long floes render from the provided `assets/raft/` frames (the 3-tile floe from frame 0's left 96 px, the 4-tile floe from frame 1) at native size with nearest-neighbor scaling, each one continuous slab rather than tiled pans."
+proof = "gameplay"
+reference = "gameplay"
+
+# --- Audio --------------------------------------------------------------------
+[[review.categories]]
+id = "audio"
+title = "Audio"
+[[review.categories.items]]
+id = "cues"
+title = "Distinct synthesized cues"
+description = "Distinct short cues, synthesized with the Web Audio API (no audio files), play for a hop, a water splash, a hazard crush, the bear catching you, filling a bay, a level clear, and the Victory / Game-over stings."
+[[review.categories.items]]
+id = "graceful"
+title = "Muteable and gracefully silent"
+description = "Audio stays fully playable muted (a mute toggle is provided), never fails the game if audio cannot start, and does not begin until the player first interacts."

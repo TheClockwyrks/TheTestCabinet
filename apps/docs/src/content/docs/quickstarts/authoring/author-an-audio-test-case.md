@@ -28,7 +28,7 @@ reference it — revise by adding a new version, not by editing a published one.
 
 ```text
 test-cases/<type>/<difficulty>/<slug>/<version>/
-  test-case.toml         # manifest: type, asset_kind, audio, tool, output, domains
+  test-case.toml         # manifest: type, asset_kind, audio, tool, output, the overall domain
   variants/              # one standalone TOML file per variant (listed in `variants`)
   prompt.hbs             # rendered into the harness instruction (NOT seeded)
   specs/brief.md         # what to build + how the tool behaves — SEEDED
@@ -66,8 +66,8 @@ declares no references and is reviewed by a human (by ear) against its brief.
      spectrogram; a piano-roll too, for `music`). No operations schema.
    - **`[output]`** — the `actions` op log (authoritative). `clip.wav` (and `.mid`
      for `music`) is emitted automatically — not manifest-declared.
-   - **`[[domain]]`** / **`[[review_item]]`** the reviewer scores under; a review
-     item carries **no `reference`**.
+   - the single **`[[domain]]`** (`overall`) the reviewer rates under, and **no
+     `[[review_item]]`s** — the clip is judged as a whole against its brief.
    - **No `[model]`**, **no `[[reference]]`**, **no `[build]`**, **no `[[check]]`** —
      each is rejected.
 

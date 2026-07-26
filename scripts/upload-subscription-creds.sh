@@ -67,7 +67,7 @@ while [[ $# -gt 0 ]]; do
     *) echo "unknown argument: $1 (usage: $0 --env <prod|staging>)" >&2; exit 2 ;;
   esac
 done
-# shellcheck source=scripts/lib/env.sh
+# shellcheck source=/dev/null
 source "${script_dir}/lib/env.sh"
 tcab_env_resolve "$env" || exit $?
 VAULT="$TCAB_VAULT"
@@ -100,7 +100,10 @@ fi
 # Build the trimmed ~/.claude.json into a private temp file.
 trimmed="$(mktemp)"
 chmod 600 "$trimmed"
-# Turn the comma list into a jq `del(.a, .b, …)` and apply it.
+# Turn the comma list into a jq `del(.a, .b, …)` and apply it. The unquoted
+# expansion is intentional: word-splitting the space-separated list is what makes
+# printf repeat its `.%s,` format once per key.
+# shellcheck disable=SC2086
 jq_del="del($(printf '.%s,' ${CLAUDE_JSON_DROP_KEYS//,/ } | sed 's/,$//'))"
 jq -c "$jq_del" "$CLAUDE_CONFIG" > "$trimmed"
 

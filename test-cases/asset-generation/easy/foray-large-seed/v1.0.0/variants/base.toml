@@ -1,0 +1,4 @@
+# The default (and only) variant of this case. Every path here resolves against
+# the version folder, exactly like the main manifest.
+slug = "base"
+name = "Base"
