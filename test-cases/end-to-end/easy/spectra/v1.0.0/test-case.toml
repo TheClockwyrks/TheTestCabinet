@@ -819,13 +819,72 @@ reference = "title"
 proof = "title"
 
 # --- Audio --------------------------------------------------------------------
+# All audio is synthesized with the Web Audio API (specs/ui.md — no audio files), so
+# the validator reads the sources a build starts and confirms a distinct cue fires on
+# each event. The build must not autoplay, so each check arms audio with a real gesture
+# (a key press and a corner click) first; the exact sound is the model's own, only that
+# a cue plays is scored. Each mandated cue is its own review item so a build fails
+# exactly the cue it omits. The muteable / never-fail-to-load / silent-until-interaction
+# properties are reviewed by a person from play (see `graceful`).
 [[review.categories]]
 id = "audio"
 title = "Audio"
 [[review.categories.items]]
-id = "cues"
-title = "Distinct synthesized cues"
-description = "Distinct short synthesized cues (Web Audio API, no audio files) play for firing, flipping bands, absorbing a same-band bullet, a matching kill, a discharge, a spectral inversion, getting hit, and clearing a stage."
+id = "fire"
+title = "Fire cue"
+description = "A distinct short cue, synthesized with the Web Audio API (no audio files), plays when the ship fires."
+validation = { script = "validation/audio/fire.mjs", outputs = [
+  { id = "fire", name = "The shot whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "flip"
+title = "Flip cue"
+description = "A distinct cue plays when the ship flips its band."
+validation = { script = "validation/audio/flip.mjs", outputs = [
+  { id = "flip", name = "The flip whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "absorb"
+title = "Absorb cue"
+description = "A distinct cue plays when the ship's shield absorbs a same-band bullet."
+validation = { script = "validation/audio/absorb.mjs", outputs = [
+  { id = "absorb", name = "The absorb whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "kill"
+title = "Matching-kill cue"
+description = "A distinct cue plays when a matching shot destroys a drone."
+validation = { script = "validation/audio/kill.mjs", outputs = [
+  { id = "kill", name = "The kill whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "discharge"
+title = "Discharge cue"
+description = "A distinct cue plays when the ship fires a discharge."
+validation = { script = "validation/audio/discharge.mjs", outputs = [
+  { id = "discharge", name = "The discharge whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "inversion"
+title = "Spectral-inversion cue"
+description = "A distinct cue plays when a Prism triggers a spectral inversion."
+validation = { script = "validation/audio/inversion.mjs", outputs = [
+  { id = "inversion", name = "The inversion whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "hit"
+title = "Hit cue"
+description = "A distinct cue plays when an opposite-band bullet costs the ship a life."
+validation = { script = "validation/audio/hit.mjs", outputs = [
+  { id = "hit", name = "The hit whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "clear"
+title = "Stage-clear cue"
+description = "A distinct cue plays when a stage is cleared."
+validation = { script = "validation/audio/clear.mjs", outputs = [
+  { id = "clear", name = "The stage clear whose cue is checked", kind = "video" },
+] }
 [[review.categories.items]]
 id = "graceful"
 title = "Audio is graceful and optional"
