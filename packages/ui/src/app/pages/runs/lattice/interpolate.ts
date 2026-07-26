@@ -36,6 +36,7 @@ export interface BoardEntity {
   type:
     | "belt"
     | "splitter"
+    | "lane-splitter"
     | "inserter"
     | "assembler"
     | "furnace"
@@ -78,6 +79,7 @@ export interface BeltItem {
 export type EntityState =
   | { belt: { left: BeltItem[]; right: BeltItem[] } }
   | { splitter: { out_pref: number; in_first: number } }
+  | { lanesplitter: Record<string, never> }
   | {
       inserter: {
         // idle = empty at the pickup; swing = loaded, going out; return = empty,
@@ -289,7 +291,7 @@ export function placeItems(
   const splitterTiles = new Set<string>();
   const sinkTiles = new Set<string>();
   for (const e of board.entities) {
-    if (e.type === "splitter")
+    if (e.type === "splitter" || e.type === "lane-splitter")
       for (const [tx, ty] of e.tiles) splitterTiles.add(`${tx},${ty}`);
     if (e.type === "sink")
       for (const [tx, ty] of e.tiles) sinkTiles.add(`${tx},${ty}`);

@@ -10,6 +10,7 @@ fn kind(entity: &Entity) -> &'static str {
     match entity {
         Entity::Belt { .. } => "belt",
         Entity::Splitter { .. } => "splitter",
+        Entity::LaneSplitter { .. } => "lane-splitter",
         Entity::Inserter { .. } => "inserter",
         Entity::Assembler { .. } => "assembler",
         Entity::Furnace { .. } => "furnace",
@@ -80,6 +81,7 @@ fn a_generous_grid_exercises_every_entity_kind() {
         .map(|e| match e {
             Entity::Belt { .. } => "belt",
             Entity::Splitter { .. } => "splitter",
+            Entity::LaneSplitter { .. } => "lane-splitter",
             Entity::Inserter { .. } => "inserter",
             Entity::Assembler { .. } => "assembler",
             Entity::Furnace { .. } => "furnace",

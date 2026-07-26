@@ -31,6 +31,7 @@ const KIND_LABELS: Record<EntityKind | "select", string> = {
   select: "Select",
   belt: "Belt",
   splitter: "Splitter",
+  "lane-splitter": "Lane Splitter",
   inserter: "Inserter",
   assembler: "Assembler",
   furnace: "Furnace",

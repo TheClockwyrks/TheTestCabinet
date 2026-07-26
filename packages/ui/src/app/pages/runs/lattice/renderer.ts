@@ -364,7 +364,8 @@ export class Renderer {
       else if (
         (e.type === "source" ||
           e.type === "inserter" ||
-          e.type === "splitter") &&
+          e.type === "splitter" ||
+          e.type === "lane-splitter") &&
         e.dir
       ) {
         for (const [tx, ty] of e.tiles) feedDir.set(`${tx},${ty}`, e.dir);

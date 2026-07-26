@@ -134,6 +134,33 @@
           ]
         },
         {
+          "description": "A two-tile **unzip** splitter. Same footprint as\n[`Splitter`](Entity::Splitter), but it takes a **single input** (the belt\nbehind its anchor tile) and routes each of that belt's lanes to an output belt\n**by lane**: the left lane to the top output belt's left (outer) lane, the\nright lane to the bottom output belt's right (outer) lane. Only the two outer\nlanes of the outputs carry items.",
+          "type": "object",
+          "properties": {
+            "dir": {
+              "$ref": "#/$defs/Dir"
+            },
+            "type": {
+              "type": "string",
+              "const": "lane-splitter"
+            },
+            "x": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "y": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          "required": [
+            "type",
+            "x",
+            "y",
+            "dir"
+          ]
+        },
+        {
           "description": "A swing arm. Picks up from the tile *behind* it and drops onto the tile\n*in front*, set by `dir`.\nThere is one kind of inserter, so this carries no tier — every inserter\nswings at the single `SWING` constant from the prototype table.",
           "type": "object",
           "properties": {

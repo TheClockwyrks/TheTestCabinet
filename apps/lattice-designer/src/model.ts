@@ -169,6 +169,7 @@ export const GRID_PRESETS = [
 export const ENTITY_KINDS = [
   "belt",
   "splitter",
+  "lane-splitter",
   "inserter",
   "assembler",
   "furnace",
@@ -225,6 +226,8 @@ export function makeEntity(
       return { type: "belt", x, y, dir, tier: opts.tier };
     case "splitter":
       return { type: "splitter", x, y, dir };
+    case "lane-splitter":
+      return { type: "lane-splitter", x, y, dir };
     case "inserter":
       return { type: "inserter", x, y, dir };
     case "assembler":
@@ -260,6 +263,19 @@ export interface BeltEntity {
 /** A two-tile balancer anchored at `(x, y)`, facing `dir`. */
 export interface SplitterEntity {
   type: "splitter";
+  x: number;
+  y: number;
+  dir: Dir;
+}
+
+/**
+ * A two-tile **unzip** splitter anchored at `(x, y)`, facing `dir`. Same footprint as
+ * a splitter, but it takes a single input (the belt behind its anchor) and routes each
+ * of that belt's lanes to an output belt by lane, so only the outer lanes of the two
+ * outputs carry items.
+ */
+export interface LaneSplitterEntity {
+  type: "lane-splitter";
   x: number;
   y: number;
   dir: Dir;
@@ -311,6 +327,7 @@ export interface SinkEntity {
 export type DesignEntity =
   | BeltEntity
   | SplitterEntity
+  | LaneSplitterEntity
   | InserterEntity
   | AssemblerEntity
   | FurnaceEntity
@@ -346,7 +363,8 @@ export function tileKey(x: number, y: number): string {
 export function footprint(entity: DesignEntity): [number, number][] {
   const { x, y } = entity;
   switch (entity.type) {
-    case "splitter": {
+    case "splitter":
+    case "lane-splitter": {
       const second: [number, number] =
         entity.dir === "E" || entity.dir === "W" ? [x, y + 1] : [x + 1, y];
       return [[x, y], second];

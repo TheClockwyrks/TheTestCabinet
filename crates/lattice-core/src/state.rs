@@ -143,14 +143,20 @@ pub enum EntityState {
     },
     Sink(SinkState),
     Furnace(FurnaceState),
+    /// The unzip splitter holds **no per-tick state**: its routing is fully
+    /// deterministic (a left-lane item always goes to the top output belt's left
+    /// (outer) lane, a right-lane item to the bottom output belt's right (outer)
+    /// lane), with no cursor and no retained items, so its body is empty.
+    LaneSplitter {},
 }
 
 impl EntityState {
     /// The canonical 1-byte kind tag for this entity in the byte stream:
-    /// `belt=0, splitter=1, inserter=2, assembler=3, source=4, sink=5, furnace=6`.
-    /// The furnace was added after the original six, so it takes the next tag (6);
-    /// the existing tags are never renumbered, which keeps every furnace-free
-    /// scenario's bytes — and therefore its checksum — identical.
+    /// `belt=0, splitter=1, inserter=2, assembler=3, source=4, sink=5, furnace=6,
+    /// lanesplitter=7`. Each new kind takes the next free tag (the furnace took 6,
+    /// the lane splitter 7); the existing tags are never renumbered, which keeps
+    /// every scenario that uses none of the newer kinds byte- — and therefore
+    /// checksum- — identical.
     fn kind_tag(&self) -> u8 {
         match self {
             EntityState::Belt(_) => 0,
@@ -160,6 +166,7 @@ impl EntityState {
             EntityState::Source { .. } => 4,
             EntityState::Sink(_) => 5,
             EntityState::Furnace(_) => 6,
+            EntityState::LaneSplitter {} => 7,
         }
     }
 }
@@ -368,6 +375,8 @@ pub fn canonical_bytes_checked(
                 push_u16_map(&mut out, &furnace.output)?;
                 out.extend_from_slice(&furnace.craft_left.to_le_bytes());
             }
+            // The unzip splitter is stateless: the kind tag is its whole entry.
+            EntityState::LaneSplitter {} => {}
         }
     }
     Ok(out)

@@ -179,6 +179,19 @@
             "furnace"
           ],
           "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The unzip splitter holds **no per-tick state**: its routing is fully\ndeterministic (a left-lane item always goes to the top output belt's left\n(outer) lane, a right-lane item to the bottom output belt's right (outer)\nlane), with no cursor and no retained items, so its body is empty.",
+          "properties": {
+            "lanesplitter": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "lanesplitter"
+          ],
+          "type": "object"
         }
       ]
     },

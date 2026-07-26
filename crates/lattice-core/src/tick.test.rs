@@ -891,6 +891,109 @@ fn a_splitter_spreads_one_belt_across_both_lanes_of_both_outputs() {
 }
 
 #[test]
+fn a_lane_splitter_unzips_its_single_input_onto_the_outer_output_lanes() {
+    // The lane splitter takes ONE input (the belt behind its anchor, the top cell) and
+    // unzips that belt's two lanes onto the two outputs. With the input carrying iron
+    // on its left lane and copper on its right, every left-lane item must land on the
+    // TOP output belt's LEFT lane (its OUTER lane) and every right-lane item on the
+    // BOTTOM output belt's RIGHT lane (also outer). The two INNER lanes — the top
+    // belt's right lane and the bottom belt's left lane — must stay EMPTY every tick.
+    // That "outer lanes only" invariant is the whole point of the unzip.
+    let mut w = world(
+        r#"{ "version": 1, "grid": { "width": 6, "height": 6 }, "ticks": 10, "snapshots": [10],
+             "entities": [
+                { "type": "belt", "x": 1, "y": 1, "dir": "E", "tier": "fast" },
+                { "type": "lane-splitter", "x": 2, "y": 1, "dir": "E" },
+                { "type": "belt", "x": 3, "y": 1, "dir": "E", "tier": "fast" },
+                { "type": "belt", "x": 3, "y": 2, "dir": "E", "tier": "fast" } ] }"#,
+    );
+    let iron = item_index("iron-ore").unwrap();
+    let copper = item_index("copper-ore").unwrap();
+    // machines: 0 = the single input belt, 1 = lane splitter, 2 = top output, 3 = bottom.
+    let mut iron_top_left = false; // left-lane iron reached the top belt's outer lane
+    let mut copper_bottom_right = false; // right-lane copper reached the bottom belt's outer lane
+    for _ in 0..6 {
+        // Re-saturate the ONE input belt: left = iron, right = copper, at the edge.
+        if let Machine::Belt(b) = &mut w.machines[0] {
+            b.lanes[LaneSide::Left.index()] = vec![LaneItem { pos: 0, item: iron }];
+            b.lanes[LaneSide::Right.index()] = vec![LaneItem {
+                pos: 0,
+                item: copper,
+            }];
+        }
+        // Drain the outputs so each tick shows only that tick's placement.
+        for o in [2usize, 3] {
+            if let Machine::Belt(b) = &mut w.machines[o] {
+                b.lanes[0].clear();
+                b.lanes[1].clear();
+            }
+        }
+        w.advance();
+
+        let (top_left, top_right) = belt_lanes(&w, 2);
+        let (bottom_left, bottom_right) = belt_lanes(&w, 3);
+        if top_left.iter().any(|i| i.item == iron) {
+            iron_top_left = true;
+        }
+        if bottom_right.iter().any(|i| i.item == copper) {
+            copper_bottom_right = true;
+        }
+        assert!(
+            top_right.is_empty(),
+            "the top belt's right (inner) lane stays empty (got {top_right:?})"
+        );
+        assert!(
+            bottom_left.is_empty(),
+            "the bottom belt's left (inner) lane stays empty (got {bottom_left:?})"
+        );
+        assert!(
+            !top_left.iter().any(|i| i.item == copper),
+            "copper (a right-lane item) never reaches the top belt"
+        );
+        assert!(
+            !bottom_right.iter().any(|i| i.item == iron),
+            "iron (a left-lane item) never reaches the bottom belt"
+        );
+    }
+    assert!(
+        iron_top_left,
+        "left-lane iron is routed to the TOP output belt's outer (left) lane"
+    );
+    assert!(
+        copper_bottom_right,
+        "right-lane copper is routed to the BOTTOM output belt's outer (right) lane"
+    );
+}
+
+#[test]
+fn a_lane_splitter_ignores_a_belt_behind_its_second_tile() {
+    // The lane splitter has only ONE input — the belt behind its anchor. A belt placed
+    // behind its SECOND (bottom) tile is not an input and must be left untouched: the
+    // machine never pulls from it.
+    let mut w = world(
+        r#"{ "version": 1, "grid": { "width": 6, "height": 6 }, "ticks": 10, "snapshots": [10],
+             "entities": [
+                { "type": "belt", "x": 1, "y": 2, "dir": "E", "tier": "fast" },
+                { "type": "lane-splitter", "x": 2, "y": 1, "dir": "E" },
+                { "type": "belt", "x": 3, "y": 1, "dir": "E", "tier": "fast" },
+                { "type": "belt", "x": 3, "y": 2, "dir": "E", "tier": "fast" } ] }"#,
+    );
+    let iron = item_index("iron-ore").unwrap();
+    // machines: 0 = belt behind the SECOND tile (2,2) at (1,2); 1 = lane splitter.
+    if let Machine::Belt(b) = &mut w.machines[0] {
+        b.lanes[LaneSide::Left.index()] = vec![LaneItem { pos: 0, item: iron }];
+    }
+    w.advance();
+    // The item is still on that belt's left lane at the edge — the machine never took it.
+    let (left, _right) = belt_lanes(&w, 0);
+    assert_eq!(
+        left.len(),
+        1,
+        "the belt behind the second tile is not an input; its item is untouched"
+    );
+}
+
+#[test]
 fn a_splitter_routes_a_lane_item_agnostically() {
     // Item-agnostic routing: a splitter keeps ONE cursor per lane, not one per (type,
     // lane). Feeding a single lane a run of items whose TYPES alternate, the output belt

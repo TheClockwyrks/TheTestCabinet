@@ -114,6 +114,13 @@ pub enum Entity {
     /// perpendicular-clockwise of `dir` (for E/W: `(x, y+1)`; for N/S:
     /// `(x+1, y)`).
     Splitter { x: i32, y: i32, dir: Dir },
+    /// A two-tile **unzip** splitter. Same footprint as
+    /// [`Splitter`](Entity::Splitter), but it takes a **single input** (the belt
+    /// behind its anchor tile) and routes each of that belt's lanes to an output belt
+    /// **by lane**: the left lane to the top output belt's left (outer) lane, the
+    /// right lane to the bottom output belt's right (outer) lane. Only the two outer
+    /// lanes of the outputs carry items.
+    LaneSplitter { x: i32, y: i32, dir: Dir },
     /// A swing arm. Picks up from the tile *behind* it and drops onto the tile
     /// *in front*, set by `dir`.
     /// There is one kind of inserter, so this carries no tier — every inserter
@@ -163,6 +170,7 @@ impl Entity {
         match self {
             Entity::Belt { x, y, .. }
             | Entity::Splitter { x, y, .. }
+            | Entity::LaneSplitter { x, y, .. }
             | Entity::Inserter { x, y, .. }
             | Entity::Assembler { x, y, .. }
             | Entity::Furnace { x, y, .. }
@@ -325,7 +333,10 @@ impl Scenario {
                     }
                 }
                 // Nothing to validate: these carry no prototype reference.
-                Entity::Splitter { .. } | Entity::Inserter { .. } | Entity::Sink { .. } => {}
+                Entity::Splitter { .. }
+                | Entity::LaneSplitter { .. }
+                | Entity::Inserter { .. }
+                | Entity::Sink { .. } => {}
             }
         }
         Ok(())

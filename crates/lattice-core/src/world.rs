@@ -68,6 +68,7 @@ pub struct LaneItem {
 pub enum Machine {
     Belt(Belt),
     Splitter(Splitter),
+    LaneSplitter(LaneSplitter),
     Inserter(Inserter),
     Assembler(Crafter),
     /// A 2×2 coal-fired smelter. Structurally a [`Crafter`] like the assembler —
@@ -108,6 +109,20 @@ pub struct Splitter {
     /// Which input belt (`0`/`1`) is tried first this tick, flipped each tick so that
     /// when two input belts compete for one output lane neither starves.
     pub in_first: u8,
+}
+
+/// A two-tile **unzip** splitter. Same footprint as the balancing [`Splitter`], but
+/// it takes a **single input** (the belt behind its anchor tile — the bottom cell has
+/// no input) and unzips that one belt's two lanes onto the two outputs: a **left**-lane
+/// item goes to the top output belt's **left** (outer) lane, a **right**-lane item to
+/// the bottom output belt's **right** (outer) lane. So the two inner lanes of the
+/// outputs stay empty and the flow is split onto the two outer lanes. The routing is
+/// fully deterministic and holds no items between ticks, so it retains no state.
+#[derive(Debug, Clone)]
+pub struct LaneSplitter {
+    pub x: i32,
+    pub y: i32,
+    pub dir: Dir,
 }
 
 /// A swing arm running a small state machine on an integer timer.
@@ -221,6 +236,18 @@ impl World {
                         dir: *dir,
                         out_pref: 0,
                         in_first: 0,
+                    })
+                }
+                Entity::LaneSplitter { x, y, dir } => {
+                    // Same two-tile footprint as the balancing splitter: the anchor
+                    // plus one step perpendicular-clockwise of `dir`.
+                    let (sx, sy) = splitter_second_tile(*x, *y, *dir);
+                    tiles.insert((*x, *y), index);
+                    tiles.insert((sx, sy), index);
+                    Machine::LaneSplitter(LaneSplitter {
+                        x: *x,
+                        y: *y,
+                        dir: *dir,
                     })
                 }
                 Entity::Inserter { x, y, dir } => {
@@ -389,6 +416,7 @@ pub(crate) fn belt_is_pure_curve(
             Machine::Source(s) if s.dir == into => return false,
             Machine::Inserter(ins) if ins.dir == into => return false,
             Machine::Splitter(sp) if sp.dir == into => return false,
+            Machine::LaneSplitter(sp) if sp.dir == into => return false,
             _ => {}
         }
     }
@@ -493,6 +521,7 @@ impl Machine {
                 out_pref: splitter.out_pref,
                 in_first: splitter.in_first,
             }),
+            Machine::LaneSplitter(_) => EntityState::LaneSplitter {},
             Machine::Inserter(inserter) => EntityState::Inserter(InserterState {
                 // Loaded → swinging out; empty but still mid-motion → swinging back;
                 // empty and at rest → idle, ready to grab.

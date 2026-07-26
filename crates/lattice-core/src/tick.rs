@@ -17,7 +17,10 @@
 //!    force the true perpendicular **side-load** merges across runs (near lane) — a
 //!    side-load being a belt that also has its own straight feed, or a second feeder.
 //! 4. **Splitters** balance (round-robin pull from two inputs, round-robin push to
-//!    two outputs, lanes preserved).
+//!    two outputs, lanes preserved), then **lane splitters** unzip (pull the single
+//!    input and route each of its lanes to an output belt by lane, so only the outer
+//!    lanes of the outputs fill). Both are one phase over disjoint machines, so the
+//!    split into two passes within it is immaterial to the result.
 //! 5. **Crafters** — assemblers and furnaces alike, in placement order — craft
 //!    (gate check, consume one input set, count `CRAFT` down, deposit one output
 //!    set). A furnace's recipe lists coal, so it smelts only while fuelled.
@@ -39,6 +42,7 @@ impl World {
         self.advance_inserters();
         self.advance_belts();
         self.advance_splitters();
+        self.advance_lane_splitters();
         self.advance_crafters();
         self.advance_sinks();
         self.tick += 1;
@@ -619,6 +623,55 @@ impl World {
             if let Machine::Splitter(s) = &mut self.machines[index] {
                 s.out_pref = out_pref;
                 s.in_first = in_first;
+            }
+        }
+    }
+
+    /// Unzip every lane splitter: pull the **single input** (the belt behind the anchor
+    /// tile — the bottom cell has no input) and route each of its lanes to an output
+    /// belt **by lane**, not by balancing. Like the base splitter it retains no items
+    /// between ticks — each pulled item is placed this tick or returned to its input.
+    ///
+    /// The routing is fully deterministic (no cursor, hence no retained state):
+    ///
+    ///  - **The lane is preserved:** a left-lane item can only land on an output's LEFT
+    ///    lane, a right-lane item on a RIGHT lane.
+    ///  - **The output belt is chosen by lane:** a LEFT-lane item goes to output belt
+    ///    `0` (the top belt, downstream of the anchor); a RIGHT-lane item to output belt
+    ///    `1` (the bottom belt). Combined with lane preservation this lands the input's
+    ///    left lane on the top belt's left lane — its OUTER lane — and the input's right
+    ///    lane on the bottom belt's right lane, also outer. The two inner lanes never
+    ///    fill. There is no fallback to the other belt: if the target output is full or
+    ///    absent the item stalls (back pressure), so the outer-lanes-only invariant is
+    ///    exact. The two lanes route to different belts, so they never contend and no
+    ///    input-order fairness is needed.
+    fn advance_lane_splitters(&mut self) {
+        for index in 0..self.machines.len() {
+            let Machine::LaneSplitter(lane_splitter) = &self.machines[index] else {
+                continue;
+            };
+            let (x, y, dir) = (lane_splitter.x, lane_splitter.y, lane_splitter.dir);
+            // The single input is the belt behind the anchor tile; `inputs[1]` (behind
+            // the second tile) is ignored — this machine has no second input.
+            let inputs = splitter_input_belts(self, x, y, dir);
+            let outputs = splitter_output_belts(self, x, y, dir);
+            let Some(in_belt) = inputs[0] else {
+                continue;
+            };
+
+            for side in [LaneSide::Left, LaneSide::Right] {
+                let Some(item) = pull_lane_lead(self, in_belt, side) else {
+                    continue;
+                };
+                // Route by lane to the single outer lane; no fallback. Left → belt 0
+                // (top), right → belt 1 (bottom), lane preserved.
+                let landed = match outputs[side.index()] {
+                    Some(out_belt) => self.try_force_onto_belt(out_belt, side, item),
+                    None => false,
+                };
+                if !landed {
+                    push_back(self, in_belt, side, item);
+                }
             }
         }
     }
