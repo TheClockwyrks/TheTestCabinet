@@ -79,13 +79,6 @@
   grid-column: span 4;
 }
 
-// A stat tile whose content is short (the agent count) sits beside a taller
-// neighbor; center its label+figure in the shared row height so it reads as a
-// deliberate KPI tile rather than a value stranded at the top of empty space.
-.cardCenter {
-  justify-content: center;
-}
-
 .cardLabel {
   font-size: t.$font-sm;
   text-transform: uppercase;
@@ -421,6 +414,179 @@
 }
 
 .capabilityNone {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+// --- The agents overview card ------------------------------------------------
+// In place of a bare agent count: one row per agent (root first, subagents indented),
+// each carrying its peak context, its share of the run's tokens, and the tools it
+// used, and — where the panels wire it — clickable to open that agent's files.
+
+.agentsHint {
+  text-transform: none;
+  letter-spacing: 0;
+  color: t.$color-text-muted;
+}
+
+.agentOverview {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+.agentRow {
+  min-width: 0;
+}
+
+// The row's clickable and static variants share a layout so both read identically;
+// only the button variant takes hover/focus affordances. Flex-wrap keeps a narrow
+// dashboard column from overflowing — the metrics and tools drop below the identity
+// rather than forcing a horizontal scroll.
+.agentRowButton,
+.agentRowStatic {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: t.$space-xs t.$space-md;
+  width: 100%;
+  padding: t.$space-xs t.$space-sm;
+  border: t.$border-hairline solid transparent;
+  border-radius: t.$radius-sm;
+  background: none;
+  text-align: left;
+  color: t.$color-text;
+  min-width: 0;
+}
+
+.agentRowButton {
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease;
+
+  &:hover {
+    background: color-mix(in srgb, t.$color-accent 8%, transparent);
+    border-color: color-mix(in srgb, t.$color-accent 40%, transparent);
+  }
+  &:focus-visible {
+    outline: 2px solid t.$color-accent;
+    outline-offset: 1px;
+  }
+}
+
+.agentIdentity {
+  flex: 1 1 9rem;
+  display: flex;
+  align-items: center;
+  gap: t.$space-xs;
+  min-width: 0;
+}
+
+// A status dot keyed to the agent's lifecycle, the same palette as the explorer's
+// tree dots so an agent reads the same in both places.
+.agentDot {
+  flex: 0 0 auto;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: t.$color-text-muted;
+
+  &[data-status="running"] {
+    background: t.$color-accent;
+  }
+  &[data-status="blocked"] {
+    background: t.$color-accent-2;
+  }
+  &[data-status="done"] {
+    background: t.$color-positive;
+  }
+  &[data-status="failed"] {
+    background: t.$color-negative;
+  }
+}
+
+.agentName {
+  font-family: monospace;
+  color: t.$color-text;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agentSlot {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+// A labeled mini-meter (peak context, token share): a caption, a proportional bar,
+// and the figure, sized to sit several-across on a wide row and wrap on a narrow one.
+.agentMetric {
+  flex: 0 1 8.5rem;
+  display: flex;
+  align-items: center;
+  gap: t.$space-xs;
+  min-width: 0;
+}
+
+.agentMetricLabel {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  white-space: nowrap;
+}
+
+.agentMeter {
+  flex: 1 1 2.5rem;
+  height: 0.4rem;
+  border-radius: t.$radius-sm;
+  background: color-mix(in srgb, t.$color-border 50%, transparent);
+  overflow: hidden;
+  min-width: 2rem;
+}
+
+.agentMeterFill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: t.$color-accent;
+
+  // Peak context takes the same low/mid/high cue the agent Overview's fullness bar
+  // uses; the token-share meter carries no level and stays the accent.
+  &[data-level="mid"] {
+    background: t.$color-accent-2;
+  }
+  &[data-level="high"] {
+    background: t.$color-negative;
+  }
+}
+
+.agentMetricValue {
+  font-size: t.$font-sm;
+  color: t.$color-text;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.agentTools {
+  flex: 1 1 11rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: t.$space-2xs;
+  min-width: 0;
+}
+
+.agentToolsNone {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.agentToolsMore {
   font-size: t.$font-sm;
   color: t.$color-text-muted;
 }

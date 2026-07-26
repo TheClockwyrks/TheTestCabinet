@@ -710,6 +710,112 @@ export interface DerivedGgState {
   speculations: SpeculationState[];
 }
 
+// --- Per-agent tool usage (derived) ------------------------------------------
+
+// One tool's usage within a single agent: how many times the agent called it, and
+// how many tokens the results it returned contributed to the agent's window.
+export interface GgToolUsage {
+  name: string;
+  // How many times this agent called the tool. Counted from its activity feed, so it
+  // is known whatever the context-visibility capability is set to.
+  calls: number;
+  // The tokens this tool's results added to the window, summed from the message log
+  // (the tool-result messages answering this tool's calls). 0 when context visibility
+  // is off — there is then no message log to attribute from — so read
+  // `outputTokensKnown` on the breakdown to tell 0-because-absent from 0-because-cheap.
+  outputTokens: number;
+}
+
+// An agent's tool usage: every tool it called, most-used first, plus the totals a
+// per-tool share is taken against.
+export interface GgToolBreakdown {
+  tools: GgToolUsage[];
+  totalCalls: number;
+  // Whether per-tool output tokens could be attributed (the message log was present).
+  outputTokensKnown: boolean;
+  // The agent's total context material — the sum of every distinct message that
+  // entered its window — the denominator for a tool's share of the window. 0 when the
+  // message log is absent.
+  totalContextTokens: number;
+}
+
+// Derive one agent's tool usage from its reduced slice: call counts from the activity
+// feed (a `tool_call` is a `tool`-toned row whose detail is the tool name) and
+// per-tool result tokens from the de-duplicated message log (each tool-result message
+// answers a `toolCallId` a prior assistant message named). Kept here beside the
+// reduction it reads so the Dashboard's agent overview and an agent's own Overview
+// compute the breakdown the same way.
+export function ggToolBreakdown(state: DerivedGgState): GgToolBreakdown {
+  const calls = new Map<string, number>();
+  for (const row of state.feed) {
+    if (row.tone === "tool" && row.detail)
+      calls.set(row.detail, (calls.get(row.detail) ?? 0) + 1);
+  }
+
+  // Map each logged tool call's id to its tool name, then attribute each tool-result
+  // message's tokens to the tool it answered. The pool is per agent and deduplicated,
+  // so summing every message's tokens is the window's total distinct material.
+  const idToName = new Map<string, string>();
+  let totalContextTokens = 0;
+  for (const message of state.messagePool.values()) {
+    totalContextTokens += message.tokens;
+    for (const call of message.toolCalls) idToName.set(call.id, call.name);
+  }
+  const outputTokens = new Map<string, number>();
+  for (const message of state.messagePool.values()) {
+    if (message.toolCallId == null) continue;
+    const name = idToName.get(message.toolCallId);
+    if (name == null) continue;
+    outputTokens.set(name, (outputTokens.get(name) ?? 0) + message.tokens);
+  }
+
+  const names = new Set<string>([...calls.keys(), ...outputTokens.keys()]);
+  const tools: GgToolUsage[] = [...names]
+    .map((name) => ({
+      name,
+      calls: calls.get(name) ?? 0,
+      outputTokens: outputTokens.get(name) ?? 0,
+    }))
+    .sort(
+      (a, b) =>
+        b.calls - a.calls ||
+        b.outputTokens - a.outputTokens ||
+        a.name.localeCompare(b.name),
+    );
+
+  return {
+    tools,
+    totalCalls: tools.reduce((sum, t) => sum + t.calls, 0),
+    outputTokensKnown: state.messagePool.size > 0,
+    totalContextTokens,
+  };
+}
+
+// The high-water mark of an agent's context window over the run — as a fullness
+// fraction when the window is known, and always as a raw token total. This is the
+// "maximum context usage" the Dashboard's agent overview reports, distinct from the
+// *latest* fullness an agent's Overview bar shows. Null when no breakdown snapshot
+// ever arrived (context visibility off, or nothing streamed yet).
+export interface GgPeakContext {
+  tokens: number;
+  fullness: number | null;
+}
+export function ggPeakContext(state: DerivedGgState): GgPeakContext | null {
+  if (state.contextSeries.length === 0) return null;
+  let tokens = 0;
+  let fullness: number | null = null;
+  for (const snap of state.contextSeries) {
+    if (snap.totalTokens > tokens) tokens = snap.totalTokens;
+    const f =
+      snap.fullness ??
+      (snap.windowLimit != null && snap.windowLimit > 0
+        ? snap.totalTokens / snap.windowLimit
+        : null);
+    if (f != null && (fullness == null || f > fullness)) fullness = f;
+  }
+  return { tokens, fullness };
+}
+
 const EMPTY_USAGE: UsageTally = {
   uncachedInput: 0,
   cachedInput: 0,

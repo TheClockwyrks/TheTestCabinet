@@ -10,13 +10,14 @@ import type {
   AgentTreeNode,
   DerivedGgState,
   FeedRow,
+  GgToolBreakdown,
   SpeculationState,
   Workflow,
 } from "./useGgRunState";
-import { ROOT_ID } from "./useGgRunState";
+import { ROOT_ID, ggToolBreakdown, shortTokens } from "./useGgRunState";
 import { capabilityOn } from "./ggCatalog";
 import { soleModelId, useGgCostBreakdown } from "./ggCost";
-import { CostWidget, TokensWidget } from "./GgOverviewWidgets";
+import { CostWidget, TokensWidget, formatPercent } from "./GgOverviewWidgets";
 import {
   AgentIdentity,
   SpeculationPanel,
@@ -25,6 +26,7 @@ import {
   type SpeculationRole,
 } from "./AgentTreeView";
 import { ContextFillGraph, ContextUsageBar } from "./ContextFillGraph";
+import { PromptView } from "./PromptView";
 import { RequestsView } from "./RequestsView";
 import { CompactionView } from "./CompactionView";
 import { PlanView } from "./PlanView";
@@ -42,6 +44,7 @@ import {
   KnowledgeIcon,
   OverviewIcon,
   PlanIcon,
+  PromptIcon,
   RequestsIcon,
   TasksIcon,
 } from "./ggIcons";
@@ -82,6 +85,7 @@ function ggFeedLine(row: FeedRow): FeedLine {
 // about one agent.
 export type AgentFileKind =
   | "overview"
+  | "prompt"
   | "activity"
   | "context"
   | "requests"
@@ -91,11 +95,14 @@ export type AgentFileKind =
   | "tasks"
   | "knowledge";
 
-// The order files list in a folder. Requests sits beside Context — it is the itemized,
+// The order files list in a folder. Prompt sits right after Overview — reading an
+// agent starts with what it *is* and then what it was *told* (for a subagent, the
+// brief its parent handed it). Requests sits beside Context — it is the itemized,
 // message-level companion to the stacked Context graph — and Compaction follows, the
 // detail behind the Context graph's compaction markers.
 const FILE_ORDER: ReadonlyArray<AgentFileKind> = [
   "overview",
+  "prompt",
   "activity",
   "context",
   "requests",
@@ -116,6 +123,12 @@ const FILE_ORDER: ReadonlyArray<AgentFileKind> = [
 // absent — and hides a file only for a capability the run does not have at all.
 const FILE_CAPABILITIES: Record<AgentFileKind, ReadonlyArray<string>> = {
   overview: [],
+  // Unconditional: a subagent's brief rides on the (always-present) spawn event, and
+  // the root's opening prompt is a first-class thing to read. When the *rendered*
+  // prompt isn't recorded (context visibility off), the file shows the brief or says
+  // so rather than being absent — the same "offered, may be empty" contract as
+  // overview and activity.
+  prompt: [],
   activity: [],
   context: [],
   // The message log rides on the same capability as the breakdown graph (see
@@ -134,6 +147,7 @@ const FILE_CAPABILITIES: Record<AgentFileKind, ReadonlyArray<string>> = {
 
 const FILE_LABELS: Record<AgentFileKind, string> = {
   overview: "overview",
+  prompt: "prompt",
   activity: "activity",
   context: "context",
   requests: "requests",
@@ -151,6 +165,7 @@ const FILE_ICONS: Record<
   ComponentType<{ className?: string }>
 > = {
   overview: OverviewIcon,
+  prompt: PromptIcon,
   activity: ActivityIcon,
   context: ContextIcon,
   requests: RequestsIcon,
@@ -192,6 +207,13 @@ interface GgAgentsExplorerProps {
   // Whether the stream is still arriving — a live activity feed auto-follows its
   // newest row and says it is waiting on telemetry; a finished one does neither.
   live: boolean;
+  // An agent to jump to, set when the Dashboard's agent overview is clicked. When it
+  // names a known agent the explorer selects that agent's Overview and opens the
+  // folders on the path to it, then calls `onFocusHandled` so the request is consumed
+  // once (the user is free to navigate away afterwards). Null/undefined most of the
+  // time — this is a one-shot request, not a controlled selection.
+  focusAgent?: string | null;
+  onFocusHandled?: () => void;
 }
 
 interface Selection {
@@ -211,6 +233,8 @@ export function GgAgentsExplorer({
   workflows,
   speculations,
   live,
+  focusAgent,
+  onFocusHandled,
 }: GgAgentsExplorerProps) {
   // A flat id → tree-node index, so the content pane can resolve the selected agent
   // to its node (for its identity card) without re-walking the tree.
@@ -263,6 +287,27 @@ export function GgAgentsExplorer({
       return;
     setSelection({ agentId: ROOT_ID, file: "overview" });
   }, [nodeById, capabilitySet, selection]);
+
+  // Honor a jump-to-agent request from the Dashboard's overview: select the agent's
+  // Overview and open every folder on the path down to it so it is visible in the
+  // tree, then tell the parent the request was consumed. Guarded on the agent being
+  // known, so a request that races ahead of the agent's spawn is simply ignored.
+  useEffect(() => {
+    if (focusAgent == null || !nodeById.has(focusAgent)) return;
+    setSelection({ agentId: focusAgent, file: "overview" });
+    setCollapsed((prev) => {
+      if (prev.size === 0) return prev;
+      const next = new Set(prev);
+      let cur: string | null = focusAgent;
+      while (cur != null) {
+        next.delete(`folder:${cur}`);
+        next.delete(`sub:${cur}`);
+        cur = nodeById.get(cur)?.parentId ?? null;
+      }
+      return next.size === prev.size ? prev : next;
+    });
+    onFocusHandled?.();
+  }, [focusAgent, nodeById, onFocusHandled]);
 
   const selectedState = perAgent.get(selection.agentId);
   const selectedNode = nodeById.get(selection.agentId);
@@ -496,6 +541,17 @@ function FileContent({
           speculations={speculations}
         />
       );
+    case "prompt":
+      return (
+        <div className={panels.panelBody}>
+          <PromptView
+            node={node}
+            prompts={state.prompts}
+            pool={state.messagePool}
+            live={live}
+          />
+        </div>
+      );
     case "activity":
       return <ActivityFeed feed={state.feed} live={live} />;
     case "context":
@@ -631,13 +687,14 @@ function ActivityFeed({ feed, live }: { feed: FeedRow[]; live: boolean }) {
 }
 
 // An agent's Overview file: the same read-out the whole-run Dashboard gives, scoped
-// to this one agent. Its identity card, how full its context window is, and its own
+// to this one agent. Its identity card, how full its context window is, its own
 // Tokens and Cost widgets (the very components the Dashboard uses, fed this agent's
 // usage) — so a subagent's cost is legible in the same shape as the run's, not a
-// different-looking summary. The run's delegation structure (workflows,
+// different-looking summary — and its tool-usage breakdown (the itemized version of
+// the Dashboard row's tool chips). The run's delegation structure (workflows,
 // speculations) is a whole-run fact, so it hangs off the root agent only; a
-// session-scoped card (status, agent count, the configuration, the per-slot usage
-// tally) has no place on one agent, so none appears here — those read on the
+// session-scoped card (status, the agent overview, the configuration, the per-slot
+// usage tally) has no place on one agent, so none appears here — those read on the
 // Dashboard.
 function OverviewFile({
   node,
@@ -664,6 +721,8 @@ function OverviewFile({
     state.usage,
     node.modelId ?? soleModelId(capabilitySet),
   );
+  // The agent's tool usage — the breakdown behind the Dashboard overview's chips.
+  const tools = useMemo(() => ggToolBreakdown(state), [state]);
   return (
     <div className={panels.panelBody}>
       <div className={panels.overview}>
@@ -676,6 +735,7 @@ function OverviewFile({
           <TokensWidget usage={state.usage} />
           <CostWidget usage={state.usage} breakdown={costBreakdown} />
         </div>
+        {tools.tools.length > 0 && <AgentToolsPanel breakdown={tools} />}
         {/* The run's delegation structure hangs off the main agent — it is a
             whole-run fact, not one subagent's, so it reads on the root. */}
         {isRoot && workflows.length > 0 && (
@@ -686,6 +746,53 @@ function OverviewFile({
         )}
       </div>
     </div>
+  );
+}
+
+// An agent's tool-usage breakdown, shown on its Overview: every tool it called, most
+// used first, with how many times it called it and — where the message log recorded
+// it — how many tokens that tool's results added to the window, as a share of all the
+// tokens that entered the agent's context. The Dashboard's agent overview shows the
+// same tools as bare chips; this is the itemized version behind them.
+function AgentToolsPanel({ breakdown }: { breakdown: GgToolBreakdown }) {
+  const { tools, totalContextTokens, outputTokensKnown } = breakdown;
+  return (
+    <section className={panels.agentSection}>
+      <span className={panels.subPanelLabel}>Tools</span>
+      <ul className={panels.toolList}>
+        {tools.map((tool) => {
+          const share =
+            outputTokensKnown && totalContextTokens > 0
+              ? tool.outputTokens / totalContextTokens
+              : null;
+          return (
+            <li key={tool.name} className={panels.toolRow}>
+              <span className={panels.toolName}>{tool.name}</span>
+              <span className={panels.toolCalls}>
+                {tool.calls}
+                {"×"}
+              </span>
+              <span className={panels.toolBar} aria-hidden="true">
+                <span
+                  className={panels.toolBarFill}
+                  style={{ width: `${(share ?? 0) * 100}%` }}
+                />
+              </span>
+              <span className={panels.toolTokens}>
+                {share != null
+                  ? `${shortTokens(tool.outputTokens)} · ${formatPercent(share)}`
+                  : "—"}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      <p className={panels.toolNote}>
+        {outputTokensKnown
+          ? "Calls, and each tool’s result tokens as a share of all tokens that entered this agent’s window."
+          : "Call counts only — result-token attribution needs the context-visibility capability."}
+      </p>
+    </section>
   );
 }
 

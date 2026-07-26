@@ -1752,7 +1752,6 @@ $fsm-hue: #2dd4bf;
   gap: t.$space-lg;
 }
 
-
 // --- Requests view (the de-duplicated message log) ---------------------------
 
 // The itemized companion to the Context graph: a stack of turn cards, each holding
@@ -2061,4 +2060,140 @@ details[open] > summary .reqCaret {
   font-size: t.$font-sm;
   color: t.$color-text-muted;
   font-style: italic;
+}
+
+// --- Prompt view (the instruction an agent was given) ------------------------
+// The brief a subagent's parent handed it, then the rendered opening prompt (system
+// framing + build/user prompt) the agent started its first turn from.
+
+.promptView {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-lg;
+}
+
+.promptSection {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
+// The brief reads as the delegation's own words — a quoted block, not a form field.
+.promptBrief {
+  margin: 0;
+  padding: t.$space-sm t.$space-md;
+  border-left: 2px solid t.$color-accent-2;
+  border-radius: t.$radius-sm;
+  background: color-mix(in srgb, t.$color-accent-2 7%, #{s.$panel-bg});
+  color: t.$color-text;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.promptMessages {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+// One prompt message: a band-colored left rule (matching the Context graph), a head
+// with its band tag and role/tokens, and its full text below.
+.promptMessage {
+  border: t.$border-hairline solid t.$color-border;
+  border-left-width: 2px;
+  border-radius: t.$radius-md;
+  padding: t.$space-sm;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  min-width: 0;
+}
+
+.promptMessageHead {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
+.promptMessageMeta {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+// --- Tools panel (an agent's per-tool usage) ---------------------------------
+// On an agent's Overview: every tool it called, most used first, with call counts and
+// each tool's result tokens as a share of all tokens that entered its window.
+
+.toolList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+.toolRow {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
+.toolName {
+  flex: 0 1 12rem;
+  font-family: monospace;
+  font-size: t.$font-sm;
+  color: t.$color-text;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toolCalls {
+  flex: 0 0 auto;
+  min-width: 2.5rem;
+  text-align: right;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+.toolBar {
+  flex: 1 1 4rem;
+  height: 0.4rem;
+  border-radius: t.$radius-sm;
+  background: color-mix(in srgb, t.$color-border 50%, transparent);
+  overflow: hidden;
+  min-width: 2rem;
+}
+
+.toolBarFill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  // The tool-output band's hue on the Context graph, so a tool's result share reads
+  // as a slice of that same band.
+  background: #ff924c;
+}
+
+.toolTokens {
+  flex: 0 0 auto;
+  min-width: 5.5rem;
+  text-align: right;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+.toolNote {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
 }

@@ -284,9 +284,14 @@ const EVENTS: HarnessEvent[] = [
     afterTokens: 1800,
     summaryTokens: 300,
     retained: { skills: 1, tasks: 3, memories: 1, issues: 2 },
-    beforeBySource: bySource({ system: 1000, assistant: 2400, tool_output: 1000 }),
+    beforeBySource: bySource({
+      system: 1000,
+      assistant: 2400,
+      tool_output: 1000,
+    }),
     afterBySource: bySource({ system: 1000, user_prompt: 500, history: 300 }),
-    summary: "Summary of earlier work: scaffolded the project and wired the renderer.",
+    summary:
+      "Summary of earlier work: scaffolded the project and wired the renderer.",
     summaryFallback: false,
   }),
   gg({
@@ -379,8 +384,9 @@ describe("GgRunMonitorPage", () => {
     expect(screen.getByText("Cost")).toBeInTheDocument();
     expect(screen.getByText("Configuration")).toBeInTheDocument();
     expect(screen.getByText("mock/scripted-builder")).toBeInTheDocument();
-    // A single-agent run reads as one agent.
-    expect(screen.getByText("agent")).toBeInTheDocument();
+    // A single-agent run's overview lists the one (root) agent.
+    expect(screen.getByText("Agents · 1")).toBeInTheDocument();
+    expect(screen.getAllByText("root").length).toBeGreaterThan(0);
   });
 
   it("charts the caching and reasoning token splits as rings with the raw counts", () => {
@@ -621,14 +627,15 @@ describe("GgRunMonitorPage", () => {
       }),
     ];
     renderMonitor(events);
-    // The Dashboard counts all three agents.
-    expect(screen.getByText("3")).toBeInTheDocument();
-    expect(screen.getByText("agents")).toBeInTheDocument();
+    // The Dashboard's agent overview lists all three agents.
+    expect(screen.getByText("Agents · 3")).toBeInTheDocument();
     // The per-slot usage breakdown is a whole-run cost fact, so it reads on the
     // Dashboard: the reviewer slot's model, and its cost both as the Cost widget's
     // total and in the per-slot row — so more than one node carries the figure.
+    // ("reviewer" reads twice now — the per-slot row and the agent overview's slot
+    // chip.)
     expect(screen.getByText("Per-slot usage")).toBeInTheDocument();
-    expect(screen.getByText("reviewer")).toBeInTheDocument();
+    expect(screen.getAllByText("reviewer").length).toBeGreaterThan(0);
     expect(screen.getAllByText("$0.0021").length).toBeGreaterThan(1);
 
     openTab("Agents");
@@ -659,6 +666,80 @@ describe("GgRunMonitorPage", () => {
     // The builder is still running.
     openFile("agent-1 overview");
     expect(screen.getByText("running")).toBeInTheDocument();
+  });
+
+  it("overviews the agents on the Dashboard and jumps into an agent's files", () => {
+    // The root reads two files and spawns a reviewer with a brief; the reviewer is
+    // given a rendered prompt (system + user) and greps once.
+    const events: HarnessEvent[] = [
+      sessionStarted(),
+      gg({ type: "tool_call", name: "read_file", args: {} }),
+      gg({ type: "tool_call", name: "read_file", args: {} }),
+      ggFrom("agent-0", "root", {
+        type: "agent_spawned",
+        slot: "reviewer",
+        modelId: "claude-haiku-4-8",
+        depth: 1,
+        brief: "Review the renderer for correctness.",
+      }),
+      ggFrom("agent-0", "root", {
+        type: "context_message",
+        id: "s",
+        role: "system",
+        content: "you are a reviewer",
+        toolCalls: [],
+        images: [],
+        tokens: 8,
+      }),
+      ggFrom("agent-0", "root", {
+        type: "context_message",
+        id: "p",
+        role: "user",
+        content: "Please review the renderer carefully.",
+        toolCalls: [],
+        images: [],
+        tokens: 12,
+      }),
+      ggFrom("agent-0", "root", {
+        type: "prompt",
+        request: [
+          { id: "s", source: "system" },
+          { id: "p", source: "user_prompt" },
+        ],
+        totalTokens: 20,
+        finishReason: "stop",
+        tokens: {
+          uncachedInput: 20,
+          cachedInput: 0,
+          output: 0,
+          reasoning: null,
+        },
+      }),
+      ggFrom("agent-0", "root", { type: "tool_call", name: "grep", args: {} }),
+    ];
+    renderMonitor(events);
+
+    // The Dashboard overviews both agents in place of a bare count, with each agent's
+    // tools read as chips — the root's read_file, the reviewer's grep.
+    expect(screen.getByText("Agents · 2")).toBeInTheDocument();
+    expect(screen.getByText("read_file")).toBeInTheDocument();
+
+    // Clicking the reviewer's row switches to the Agents tab and lands on its Overview,
+    // where its tool usage is broken down (grep, called once).
+    fireEvent.click(screen.getByRole("button", { name: "Open agent-0" }));
+    expect(screen.getByRole("radio", { name: "Agents" })).toBeChecked();
+    expect(screen.getByText("Tools")).toBeInTheDocument();
+    expect(screen.getByText("grep")).toBeInTheDocument();
+
+    // Its Prompt file carries the brief its parent handed it and the rendered prompt.
+    openFile("agent-0 prompt");
+    expect(screen.getByText("Brief from parent")).toBeInTheDocument();
+    expect(
+      screen.getByText("Review the renderer for correctness."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Please review the renderer carefully."),
+    ).toBeInTheDocument();
   });
 
   it("reconciles the root agent to the session outcome once the run concludes", () => {

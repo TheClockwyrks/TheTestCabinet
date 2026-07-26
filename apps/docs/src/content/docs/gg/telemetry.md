@@ -35,10 +35,14 @@ through **two** surfaces:
 
 - The **Dashboard** — the whole-run read-out: status, the token/cost tally with its
   **caching** (cached vs uncached input) and **reasoning** (reasoning vs non-reasoning
-  output) splits shown as rings, how many agents ran, the enforced FSM process, and
-  the configuration the run's [independent variable](/gg/overview/) is.
-- The **Agents** explorer — everything else. The rich views (activity, context-window
-  breakdown, the [message log](/gg/context-visibility/#the-message-log-the-exact-requests-de-duplicated),
+  output) splits shown as rings, an **overview of the agents** that ran, the enforced
+  FSM process, and the configuration the run's [independent variable](/gg/overview/)
+  is. The agent overview is more than a count: each agent reads as a row carrying the
+  **peak** its context window reached, its **share of the run's tokens**, and the
+  **tools it used** — and each row is a link into that agent's files in the Agents
+  explorer, so the whole-run view and the per-agent one are one click apart.
+- The **Agents** explorer — everything else. The rich views (the prompt the agent was
+  given, activity, context-window breakdown, the [message log](/gg/context-visibility/#the-message-log-the-exact-requests-de-duplicated),
   plan, board, tasks, knowledge) are inherently **per agent** — *whose*
   window filled, *whose* task list this is — so they cannot honestly be shown as one
   global panel. The explorer lays the run out as a **filesystem**: every agent is a
@@ -49,7 +53,13 @@ through **two** surfaces:
   to have arrived: a capability the run **has** always has its file (showing its own
   "nothing yet" state until the first event streams), a capability the run **lacks**
   has none, and **Context** is always offered because every run has a window that
-  fills. Overview and activity are unconditional too.
+  fills. Overview, **Prompt**, and activity are unconditional too — every agent was
+  given *something* (for a subagent, the **brief its parent handed it**, which rides
+  on the always-present spawn event; for the main agent, its opening prompt), so the
+  Prompt file is always there. The **Overview** also carries the agent's own
+  **tool-usage breakdown** — the itemized version of the Dashboard row's tool chips:
+  every tool it called, how many times, and how much each tool's results added to its
+  window.
 
 ## Two events every run may end on
 

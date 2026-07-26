@@ -82,6 +82,18 @@ export function ContextIcon({ className }: IconProps) {
   );
 }
 
+// Prompt — a speech bubble of instruction lines: the prompt the agent was given
+// (for a subagent, the brief its parent handed it).
+export function PromptIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <path d="M21 12a7 7 0 0 1-7 7H9l-5 3v-4a7 7 0 0 1 5-12h5a7 7 0 0 1 7 6Z" />
+      <path d="M8.5 10h7" />
+      <path d="M8.5 13.5h4" />
+    </Icon>
+  );
+}
+
 // Requests — a request/response exchange (two opposed message chevrons), the exact
 // messages sent to and returned from the model.
 export function RequestsIcon({ className }: IconProps) {

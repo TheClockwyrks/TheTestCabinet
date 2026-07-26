@@ -1,21 +1,31 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { SegmentedControl, type SegmentedOption } from "@test-cabinet/ui";
 import type { GgCapabilitySet } from "@test-cabinet/run-record/gg";
 import panels from "./GgPanels.module.scss";
 import type { GgRunState } from "./useGgRunState";
 import { GgAgentsExplorer } from "./GgAgentsExplorer";
+import { GgExplorerNavContext, type GgExplorerNav } from "./GgExplorerNav";
 
 // The two surfaces a gg run is read through. gg is headless, so these are the only
 // window into what it did:
 //
 // - Dashboard is the whole-run read-out — status, the token/cost tally and its
-//   caching/reasoning split, how many agents ran, the configuration.
-// - Agents is everything else. The rich per-agent views (activity, context, plan,
-//   board, tasks, knowledge) are inherently *per agent* — whose window filled,
-//   whose task list this is — so they cannot be shown as one global panel; instead
-//   they live inside the Agents explorer, which lays the run out as a filesystem
-//   (an agent is a folder, the things you can monitor about it are its files, and a
-//   subagent is a folder under its spawner). See {@link GgAgentsExplorer}.
+//   caching/reasoning split, an overview of the agents that ran, the configuration.
+//   An agent row on that overview links into the Agents explorer, which the panels
+//   wire through {@link GgExplorerNavContext}.
+// - Agents is everything else. The rich per-agent views (the prompt the agent was
+//   given, activity, context, plan, board, tasks, knowledge) are inherently *per
+//   agent* — whose window filled, whose task list this is — so they cannot be shown
+//   as one global panel; instead they live inside the Agents explorer, which lays the
+//   run out as a filesystem (an agent is a folder, the things you can monitor about it
+//   are its files, and a subagent is a folder under its spawner). See
+//   {@link GgAgentsExplorer}.
 export type MonitorTab = "dashboard" | "agents";
 
 const TAB_LABELS: ReadonlyArray<SegmentedOption<MonitorTab>> = [
@@ -86,8 +96,23 @@ export function GgRunPanels({
     if (!tabs.some((t) => t.value === tab)) setTab(tabs[0]?.value ?? "agents");
   }, [tabs, tab]);
 
+  // The agent to focus when the Dashboard's overview jumps to one: switching to the
+  // Agents tab and handing the explorer the id to select. A one-shot request the
+  // explorer clears once it has revealed the agent.
+  const [focusAgent, setFocusAgent] = useState<string | null>(null);
+  const nav: GgExplorerNav = useMemo(
+    () => ({
+      openAgent: (agentId) => {
+        setTab("agents");
+        setFocusAgent(agentId);
+      },
+    }),
+    [],
+  );
+  const onFocusHandled = useCallback(() => setFocusAgent(null), []);
+
   return (
-    <>
+    <GgExplorerNavContext.Provider value={nav}>
       {/* The tab selector, leading the view. */}
       <div className={panels.tabBar}>
         <SegmentedControl
@@ -112,8 +137,10 @@ export function GgRunPanels({
           workflows={workflows}
           speculations={speculations}
           live={live}
+          focusAgent={focusAgent}
+          onFocusHandled={onFocusHandled}
         />
       )}
-    </>
+    </GgExplorerNavContext.Provider>
   );
 }
