@@ -315,3 +315,27 @@ export async function arrangeColorScene(api) {
 export async function actColorSettle(api, { settleMs = 80 } = {}) {
   await api.settle(settleMs);
 }
+
+// ---- Audio (reads the Web Audio cues the build actually schedules) ----------
+//
+// Floe's cues are synthesized with the Web Audio API (specs/ui.md), so the driver
+// reports every source the build starts (see `api.audio`). The game must not
+// autoplay: it creates (or resumes) its AudioContext only on the first real user
+// interaction, so before driving an event whose cue is checked, arm audio with a
+// GENUINE browser gesture. A build may feed the debug API through a purely logical
+// input path and unlock audio only from a real DOM event (a keydown OR a pointer),
+// so arming uses both `api.userKey` and a corner `api.userClick` rather than a debug
+// `press` — a debug press would leave a conformant build's AudioContext uncreated,
+// so no cue would ever be scheduled though it plays fine for a real player. `KeyZ`
+// has no game binding and the (4, 4) click lands in the inert HUD corner (Floe binds
+// no pointer input), so arming never disturbs game state. From there a cue is
+// confirmed by the audio log growing across the driven event.
+export async function armAudio(api) {
+  await api.userKey("KeyZ");
+  await api.userClick(4, 4);
+}
+
+/** The number of Web Audio sources the build has started so far. */
+export async function audioCount(api) {
+  return (await api.audio()).length;
+}

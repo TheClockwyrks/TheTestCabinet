@@ -689,13 +689,72 @@ proof = "gameplay"
 reference = "gameplay"
 
 # --- Audio --------------------------------------------------------------------
+# All audio is synthesized with the Web Audio API (specs/ui.md — no audio files), so
+# the validator reads the sources a build starts and confirms a distinct cue fires on
+# each event. The build must not autoplay, so each check arms audio with a real gesture
+# (a key press and a corner click) first; the exact sound is the model's own, only that
+# a cue plays is scored. Each mandated cue is its own review item so a build fails
+# exactly the cue it omits. The muteable / never-fail-to-load / silent-until-interaction
+# properties are reviewed by a person from play (see `graceful`).
 [[review.categories]]
 id = "audio"
 title = "Audio"
 [[review.categories.items]]
-id = "cues"
-title = "Distinct synthesized cues"
-description = "Distinct short cues, synthesized with the Web Audio API (no audio files), play for a hop, a water splash, a hazard crush, the bear catching you, filling a bay, a level clear, and the Victory / Game-over stings."
+id = "hop"
+title = "Hop cue"
+description = "A distinct short cue, synthesized with the Web Audio API (no audio files), plays when the critter hops."
+validation = { script = "validation/audio/hop.mjs", outputs = [
+  { id = "hop", name = "The hop whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "splash"
+title = "Splash cue"
+description = "A distinct cue plays when the critter drops into open water and drowns."
+validation = { script = "validation/audio/splash.mjs", outputs = [
+  { id = "splash", name = "The drowning whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "crush"
+title = "Crush cue"
+description = "A distinct cue plays when a vehicle crushes the critter on the ice band."
+validation = { script = "validation/audio/crush.mjs", outputs = [
+  { id = "crush", name = "The crush whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "caught"
+title = "Caught cue"
+description = "A distinct cue plays when a hunter's bear catches the critter."
+validation = { script = "validation/audio/caught.mjs", outputs = [
+  { id = "caught", name = "The catch whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "bay"
+title = "Bay-fill cue"
+description = "A distinct cue plays when the critter fills a goal bay."
+validation = { script = "validation/audio/bay.mjs", outputs = [
+  { id = "bay", name = "The bay fill whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "level-clear"
+title = "Level-clear cue"
+description = "A distinct cue plays when a level is cleared (its last bay filled)."
+validation = { script = "validation/audio/level-clear.mjs", outputs = [
+  { id = "clear", name = "The level clear whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "victory"
+title = "Victory sting"
+description = "The Victory sting plays when the final level is cleared and the run is won."
+validation = { script = "validation/audio/victory.mjs", outputs = [
+  { id = "victory", name = "The victory whose sting is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "game-over"
+title = "Game-over sting"
+description = "The Game-over sting plays when the last life is lost."
+validation = { script = "validation/audio/game-over.mjs", outputs = [
+  { id = "gameover", name = "The game over whose sting is checked", kind = "video" },
+] }
 [[review.categories.items]]
 id = "graceful"
 title = "Muteable and gracefully silent"
