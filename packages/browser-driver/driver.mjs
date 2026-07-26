@@ -282,6 +282,15 @@ function makeScriptApi(page, handle, outDir, producedImages) {
     // A real tap here arms such a build. `code` is a `KeyboardEvent.code`; pass a
     // key the game does not bind so arming never disturbs game state.
     userKey: (code) => page.keyboard.press(String(code)),
+    // The pointer counterpart to `userKey`: a genuine, browser-trusted click at
+    // viewport coordinates `(x, y)` through Chromium's own input pipeline. It
+    // dispatches the real `pointerdown`/`mousedown`/`mouseup`/`click` sequence a
+    // build's listeners catch and counts as the autoplay gesture — for a build
+    // that takes its first interaction (and unlocks audio) from a pointer rather
+    // than a key. The driver cannot know a build's UI layout, so the caller passes
+    // coordinates it expects to be INERT — a field corner, typically — and arming
+    // never triggers a game action (placing a unit, firing, moving a menu).
+    userClick: (x, y) => page.mouse.click(Number(x) || 0, Number(y) || 0),
     // Real wall-clock pause: unlike `step` (which advances the simulation
     // instantly), this lets the build's render loop animate on screen, so a video
     // output captures real motion.

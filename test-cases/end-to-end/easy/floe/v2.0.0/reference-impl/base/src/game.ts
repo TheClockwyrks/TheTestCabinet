@@ -671,12 +671,14 @@ export class Game implements WorldView {
       const lane = this.waterLaneForRow(c.row)!;
       const floe = this.floeUnder(lane, c.centerX());
       if (!floe) {
+        this.audio.splash();
         this.die(COLOR.splash);
         return;
       }
       c.x += laneVelocity(lane) * dt; // carried by the floe
       const center = c.centerX();
       if (center < 0 || center > STRAIT_W) {
+        this.audio.splash();
         this.die(COLOR.splash); // swept off the edge
         return;
       }
@@ -684,6 +686,7 @@ export class Game implements WorldView {
       // A vehicle can only end up on the critter's tile by sliding INTO it (the
       // critter can never hop onto an occupied tile), so this is always a crush.
       if (this.vehicleAtTile(c.col(), c.row)) {
+        this.audio.crush();
         this.die("#4a5560");
         return;
       }
