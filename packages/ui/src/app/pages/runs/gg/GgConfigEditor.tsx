@@ -338,7 +338,10 @@ export function GgConfigEditor({
                             <div className={gg.capParamGrid}>
                               {cap.implementationLabel && (
                                 <label className={gg.capParamField}>
-                                  <FieldLabel label={cap.implementationLabel} />
+                                  <FieldLabel
+                                    label={cap.implementationLabel}
+                                    hint={cap.implementationHint}
+                                  />
                                   {/* A closed set of implementations is a picker, so
                                       an operator never has to remember how a mode is
                                       spelled; an open-ended one stays free text. */}
@@ -578,7 +581,9 @@ export function GgConfigEditor({
           const unused = !referenced.has(modelSlot.name.trim());
           return (
             <div key={i} className={gg.slotBlock}>
-              <div className={gg.slotTop}>
+              {/* Slot name and its optional default model on one row, with the
+                  remove control aligned to their bottom edge. */}
+              <div className={gg.slotFields}>
                 <label className={`${runExec.field} ${gg.slotNameField}`}>
                   <span className={runExec.fieldLabel}>Slot name</span>
                   <input
@@ -592,18 +597,6 @@ export function GgConfigEditor({
                     placeholder="e.g. primary"
                   />
                 </label>
-                {!readOnly && (
-                  <button
-                    type="button"
-                    className={gg.slotRemove}
-                    onClick={() => removeModelSlot(i)}
-                    aria-label={`Remove the ${modelSlot.name || "unnamed"} model slot`}
-                  >
-                    ✕
-                  </button>
-                )}
-              </div>
-              <div className={gg.slotFields}>
                 <label className={`${runExec.field} ${gg.slotModelField}`}>
                   <span className={runExec.fieldLabel}>
                     Default model (optional)
@@ -618,6 +611,16 @@ export function GgConfigEditor({
                     placeholder="left to the launcher"
                   />
                 </label>
+                {!readOnly && (
+                  <button
+                    type="button"
+                    className={gg.slotRemove}
+                    onClick={() => removeModelSlot(i)}
+                    aria-label={`Remove the ${modelSlot.name || "unnamed"} model slot`}
+                  >
+                    ✕
+                  </button>
+                )}
               </div>
               {unused && (
                 <p className={gg.fieldError}>

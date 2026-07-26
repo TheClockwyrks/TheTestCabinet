@@ -102,7 +102,12 @@ export interface GgConfigDraft {
   disabledTools: string[];
 }
 
-/** Every ceiling left empty — no guardrail beyond gg's default turn ceiling. */
+/**
+ * Every ceiling left empty — the true "nothing set" state. This is the base the
+ * load path fills stored values onto, so a stored configuration that declared no
+ * ceiling round-trips to one that still declares none. Fresh drafts use
+ * {@link seededRunLimits} instead, which seeds gg's documented defaults.
+ */
 export function blankRunLimits(): GgRunLimitsDraft {
   return {
     maxTurns: "",
@@ -112,6 +117,29 @@ export function blankRunLimits(): GgRunLimitsDraft {
     errorRateWindow: "",
     maxCost: "",
   };
+}
+
+/**
+ * A fresh configuration's ceilings, with every ceiling that has a documented default
+ * (only the turn ceiling) seeded to it, so a new configuration shows gg's real
+ * default rather than an empty box. Clearing a seeded field is exactly leaving the
+ * ceiling empty.
+ */
+export function seededRunLimits(): GgRunLimitsDraft {
+  const draft = blankRunLimits();
+  for (const spec of RUN_LIMIT_SPECS) {
+    if (spec.defaultValue !== undefined) draft[spec.key] = spec.defaultValue;
+  }
+  return draft;
+}
+
+/** A capability's dedicated param controls seeded to their documented defaults. */
+function seededParams(cap: CapSpec): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const p of cap.params ?? []) {
+    if (p.defaultValue !== undefined) out[p.key] = p.defaultValue;
+  }
+  return out;
 }
 
 /** A capability row that is off, unconfigured, and carries no params. */
@@ -160,7 +188,9 @@ function draftsFor(
     out[cap.id] = {
       enabled: enabledIds.includes(cap.id),
       implementation: "",
-      params: paramDefaults[cap.id] ? { ...paramDefaults[cap.id] } : {},
+      // Seed the catalog's documented defaults, then let a built-in's own overrides
+      // win — so a fresh field shows gg's real default instead of an empty box.
+      params: { ...seededParams(cap), ...(paramDefaults[cap.id] ?? {}) },
       extraParams: {},
     };
   }
@@ -200,10 +230,12 @@ function builtIn(
       capabilities: draftsFor(enabledIds, paramDefaults),
       modelSlots: [blankPrimaryModelSlot()],
       slots: [blankPrimarySlot()],
-      // No built-in arms a ceiling: they are the arms of an ablation, and a shared
-      // read-only configuration that quietly capped cost or errors would change what
-      // every study measured without saying so.
-      limits: blankRunLimits(),
+      // No built-in arms a ceiling beyond gg's own default turn ceiling: the others
+      // are the arms of an ablation, and a shared read-only configuration that
+      // quietly capped cost or errors would change what every study measured without
+      // saying so. The turn ceiling is seeded to its default (50), which is what gg
+      // does anyway, so it documents the default without changing any measurement.
+      limits: seededRunLimits(),
       disabledTools: [],
     },
   };
@@ -262,7 +294,7 @@ export function emptyDraft(): GgConfigDraft {
     capabilities: draftsFor([]),
     modelSlots: [blankPrimaryModelSlot()],
     slots: [blankPrimarySlot()],
-    limits: blankRunLimits(),
+    limits: seededRunLimits(),
     disabledTools: [],
   };
 }

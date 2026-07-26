@@ -26,7 +26,7 @@
   flex: 0 0 auto;
   width: 1.05rem;
   height: 1.05rem;
-  margin-left: t.$space-xs;
+  margin-left: t.$space-sm;
   border-radius: 50%;
   border: t.$border-hairline solid t.$color-border;
   color: t.$color-text-muted;
@@ -396,12 +396,19 @@
   min-width: 0;
 }
 
+// The remove control: a proper button box (not a bare glyph), sized to sit on the
+// row's inputs and aligned to their bottom edge. Mirrors the batch form's
+// `.comboRemove`.
 .slotRemove {
+  flex: 0 0 auto;
   margin-left: auto;
-  padding: 0 t.$space-sm;
-  background: none;
+  width: 2.4rem;
+  height: 2.4rem;
+  font-family: var(--ttc-font);
+  font-size: t.$font-md;
+  background: s.$panel-bg;
   border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-sm;
+  border-radius: t.$radius-md;
   color: t.$color-text-muted;
   cursor: pointer;
 
@@ -439,10 +446,13 @@
 // Lives inside a capability's expanded config (there is no standalone ablation
 // section any more): each slider covers a bundle of tools that move together.
 
+// Set the feature toggles off from the param grid above them: the capBody's own gap
+// is tight for a fields row, so give the "Features" heading extra breathing room.
 .ablationGroup {
   display: flex;
   flex-direction: column;
   gap: t.$space-xs;
+  margin-top: t.$space-sm;
 }
 
 .ablationList {

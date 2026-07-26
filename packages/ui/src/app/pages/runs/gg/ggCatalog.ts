@@ -75,6 +75,13 @@ export interface ParamSpec {
   kind: "fraction" | "number" | "bytes" | "select" | "text" | "toggles";
   hint?: string;
   placeholder?: string;
+  // The value gg falls back to when this param is left unset, seeded into the field
+  // of a fresh configuration so an operator sees the real default rather than an
+  // empty box. Set only where the param has a genuine, documented default (not an
+  // "e.g." example); an unset field still means "gg's default", so clearing a seeded
+  // field is exactly leaving it empty. `toggles` params seed nothing (their default
+  // arm is the empty string already).
+  defaultValue?: string;
   // The closed set of values a `select` offers, or the independently switchable
   // members a `toggles` param is made of.
   options?: ReadonlyArray<{ value: string; label: string }>;
@@ -103,8 +110,12 @@ export interface CapSpec {
   // When the implementations are a known, closed set (rather than a strategy name
   // gg resolves at run time), the field becomes a picker over these instead of free
   // text — an operator should not have to remember how a mode is spelled. An empty
-  // `value` is the capability's default implementation.
+  // `value` is the capability's default implementation. Option labels stay terse
+  // (the mode's name); what each mode does belongs in `implementationHint`.
   implementationOptions?: ReadonlyArray<{ value: string; label: string }>;
+  // The help-tooltip text for the implementation field — what the modes mean, kept
+  // off the picker's option labels so the dropdown reads as a list of names.
+  implementationHint?: string;
   // Dedicated param controls; anything else goes in the generic JSON editor.
   params?: ReadonlyArray<ParamSpec>;
   // The tool names this capability offers — a run's toolset withholds individual
@@ -147,16 +158,15 @@ export const FILESYSTEM_CAP_IDS = [
 // values are gg's implementation ids (`crates/gg/src/tools/filesystem.rs`); the empty
 // value is the default (unlimited), which is what gg has always done.
 export const READ_MODE_OPTIONS = [
-  { value: "", label: "unlimited — the whole file in one call (default)" },
-  {
-    value: "hard-cap",
-    label: "hard cap — never more than the line cap, per call",
-  },
-  {
-    value: "default-cap",
-    label: "default cap — the line cap unless the model asks for more",
-  },
+  { value: "", label: "Unlimited (default)" },
+  { value: "hard-cap", label: "Hard cap" },
+  { value: "default-cap", label: "Default cap" },
 ] as const;
+
+// What each read mode does — the detail lifted off the picker's option labels into
+// the field's help tooltip.
+export const READ_MODE_HINT =
+  "Unlimited returns the whole file in one call. Hard cap never returns more than the line cap per call. Default cap returns the line cap unless the model asks for more.";
 
 // The line cap gg falls back to when a capped read mode names none.
 export const DEFAULT_READ_LINE_CAP = 250;
@@ -220,11 +230,16 @@ export const DEFAULT_MEMORY_MAX_LEN_PER = 2000;
 export const DEFAULT_MEMORY_MAX_TOTAL_LEN = 8000;
 
 export const FSM_MACHINE_OPTIONS = [
-  { value: "", label: "(none — no state machine)" },
-  { value: "tdd", label: "tdd — write tests → implement → verify" },
-  { value: "review-gated", label: "review-gated — develop → review → accept" },
-  { value: "plan-first", label: "plan-first — plan pass → implement pass" },
+  { value: "", label: "(none)" },
+  { value: "tdd", label: "tdd" },
+  { value: "review-gated", label: "review-gated" },
+  { value: "plan-first", label: "plan-first" },
 ] as const;
+
+// What each state machine does — the detail lifted off the picker's option labels
+// into the Machine field's help tooltip.
+export const FSM_MACHINE_HINT =
+  "None runs no state machine. tdd: write tests → implement → verify. review-gated: develop → review → accept. plan-first: plan pass → implement pass.";
 
 export const CAPABILITIES: ReadonlyArray<CapSpec> = [
   // --- Models & tools ---------------------------------------------------------
@@ -251,13 +266,14 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     defaultOn: true,
     implementationLabel: "Read mode",
     implementationOptions: READ_MODE_OPTIONS,
+    implementationHint: READ_MODE_HINT,
     params: [
       {
         key: "lineCap",
         label: "Line cap",
         kind: "number",
-        placeholder: `e.g. ${DEFAULT_READ_LINE_CAP}`,
-        hint: `Lines per call under either capped mode (default ${DEFAULT_READ_LINE_CAP}). Ignored when unlimited.`,
+        defaultValue: String(DEFAULT_READ_LINE_CAP),
+        hint: "Lines per call under either capped mode; ignored when the mode is unlimited.",
       },
     ],
     tools: ["read_file"],
@@ -354,8 +370,8 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         key: "summaryHeadroom",
         label: "Summary headroom",
         kind: "fraction",
-        placeholder: "0.0 – 0.9",
-        hint: "Fraction of the window held back from the agent so the summarization call — which reads the whole thread and writes a summary — fits. Default 0.2.",
+        defaultValue: "0.2",
+        hint: "Fraction of the window held back from the agent so the summarization call — which reads the whole thread and writes a summary — fits.",
       },
     ],
   },
@@ -388,8 +404,8 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         key: "dir",
         label: "Skills directory",
         kind: "text",
-        placeholder: DEFAULT_SKILLS_DIR,
-        hint: `Where in the workspace gg reads authored skills from. Relative paths are joined onto the workspace; an absolute path is used as-is. Default ${DEFAULT_SKILLS_DIR}.`,
+        defaultValue: DEFAULT_SKILLS_DIR,
+        hint: "Where in the workspace gg reads authored skills from. Relative paths are joined onto the workspace; an absolute path is used as-is.",
       },
     ],
     tools: ["read_skill"],
@@ -406,22 +422,22 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         key: "maxCount",
         label: "Max memories",
         kind: "number",
-        placeholder: `e.g. ${DEFAULT_MEMORY_MAX_COUNT}`,
-        hint: `How many notes the model may keep at once (default ${DEFAULT_MEMORY_MAX_COUNT}).`,
+        defaultValue: String(DEFAULT_MEMORY_MAX_COUNT),
+        hint: "How many notes the model may keep at once.",
       },
       {
         key: "maxLenPerMemory",
         label: "Max length each (chars)",
         kind: "number",
-        placeholder: `e.g. ${DEFAULT_MEMORY_MAX_LEN_PER}`,
-        hint: `Character ceiling on any one note (default ${DEFAULT_MEMORY_MAX_LEN_PER}).`,
+        defaultValue: String(DEFAULT_MEMORY_MAX_LEN_PER),
+        hint: "Character ceiling on any one note.",
       },
       {
         key: "maxTotalLen",
         label: "Max length total (chars)",
         kind: "number",
-        placeholder: `e.g. ${DEFAULT_MEMORY_MAX_TOTAL_LEN}`,
-        hint: `Character ceiling across all notes together (default ${DEFAULT_MEMORY_MAX_TOTAL_LEN}).`,
+        defaultValue: String(DEFAULT_MEMORY_MAX_TOTAL_LEN),
+        hint: "Character ceiling across all notes together.",
       },
     ],
     tools: ["write_memory", "update_memory", "delete_memory"],
@@ -446,8 +462,8 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         key: "maxTasks",
         label: "Max tasks",
         kind: "number",
-        placeholder: `e.g. ${DEFAULT_MAX_TASKS}`,
-        hint: `How many tasks the list may hold at once (default ${DEFAULT_MAX_TASKS}).`,
+        defaultValue: String(DEFAULT_MAX_TASKS),
+        hint: "How many tasks the list may hold at once.",
       },
     ],
     tools: [
@@ -477,15 +493,15 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         key: "maxEpics",
         label: "Max epics",
         kind: "number",
-        placeholder: `e.g. ${DEFAULT_MAX_EPICS}`,
-        hint: `How many epics the board may hold (default ${DEFAULT_MAX_EPICS}).`,
+        defaultValue: String(DEFAULT_MAX_EPICS),
+        hint: "How many epics the board may hold.",
       },
       {
         key: "maxIssues",
         label: "Max issues",
         kind: "number",
-        placeholder: `e.g. ${DEFAULT_MAX_ISSUES}`,
-        hint: `How many issues the board may hold (default ${DEFAULT_MAX_ISSUES}).`,
+        defaultValue: String(DEFAULT_MAX_ISSUES),
+        hint: "How many issues the board may hold.",
       },
     ],
     tools: [
@@ -592,6 +608,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         key: "machine",
         label: "Machine",
         kind: "select",
+        hint: FSM_MACHINE_HINT,
         options: FSM_MACHINE_OPTIONS,
       },
     ],
@@ -652,6 +669,10 @@ export interface RunLimitSpec {
   kind: "count" | "fraction" | "amount";
   placeholder?: string;
   hint: string;
+  // The value gg falls back to when this ceiling is unset, seeded into a fresh
+  // configuration's field. Only the turn ceiling has one (gg has always had a turn
+  // ceiling); every other ceiling is simply off when empty, so it seeds nothing.
+  defaultValue?: string;
 }
 
 // The six ceilings, in the order they read as a sentence: how long a run may go on
@@ -665,8 +686,8 @@ export const RUN_LIMIT_SPECS: ReadonlyArray<RunLimitSpec> = [
     key: "maxTurns",
     label: "Max turns per agent",
     kind: "count",
-    placeholder: String(DEFAULT_MAX_TURNS),
-    hint: `Empty uses gg's default of ${DEFAULT_MAX_TURNS}. An agent that reaches it ends exhausted.`,
+    defaultValue: String(DEFAULT_MAX_TURNS),
+    hint: `gg's default is ${DEFAULT_MAX_TURNS}; clearing the field falls back to it. An agent that reaches it ends exhausted.`,
   },
   {
     key: "maxRuntimeSecs",

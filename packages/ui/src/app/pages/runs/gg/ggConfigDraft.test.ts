@@ -9,7 +9,7 @@ import {
   launchModelSlots,
   runLimitsWarning,
 } from "./ggConfigDraft";
-import { RUN_LIMIT_SPECS } from "./ggCatalog";
+import { DEFAULT_MAX_TURNS, RUN_LIMIT_SPECS } from "./ggCatalog";
 
 // A capability set as the wire carries it, with only the fields these assertions
 // care about (the capability list is irrelevant to slot resolution).
@@ -339,8 +339,14 @@ describe("gg capability params", () => {
 });
 
 describe("gg run limits", () => {
-  it("emits no `limits` key from a form nobody touched", () => {
-    expect(capabilitySetFromDraft(emptyDraft(), null).limits).toBeUndefined();
+  it("seeds gg's default turn ceiling into a fresh form, and no other ceiling", () => {
+    // A fresh configuration now shows gg's real defaults rather than empty boxes, so
+    // the one ceiling that has a default — the turn ceiling — is emitted at it, while
+    // every other ceiling stays off until set. (Seeding 50 documents the default; gg
+    // uses it anyway, so no measurement changes.)
+    expect(capabilitySetFromDraft(emptyDraft(), null).limits).toEqual({
+      maxTurns: DEFAULT_MAX_TURNS,
+    });
     // And every declared ceiling has a control, so none of them can only be set by
     // hand-editing the stored JSON.
     expect(RUN_LIMIT_SPECS.map((spec) => spec.key).sort()).toEqual(
