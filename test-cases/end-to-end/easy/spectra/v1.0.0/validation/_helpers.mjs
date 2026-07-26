@@ -426,6 +426,29 @@ export async function sampleSaturated(api, x0, y0, x1, y1, nx = 9, ny = 9) {
   return best;
 }
 
+// ---- Audio (reads the Web Audio cues the build actually schedules) ----------
+//
+// Spectra's cues are synthesized with the Web Audio API (specs/ui.md), so the
+// driver reports every source the build starts (see `api.audio`). The game must
+// not autoplay: it starts audio only on the first user gesture (a keydown, in this
+// build's `onFirstPress`). A build may instead unlock audio only from a real DOM
+// pointer event rather than a key, so arming uses both `api.userKey` and a corner
+// `api.userClick` rather than a debug `press` — exactly the genuine gesture a real
+// player's first interaction would be. `KeyZ` is not one of `input.ts`'s
+// `GAME_KEYS`, and Spectra is keyboard-only (`specs/ui.md` Out of scope — no
+// pointer input is ever read), so the (4, 4) corner click can never disturb game
+// state either way. From there a cue is confirmed by the audio log growing across
+// the driven event.
+export async function armAudio(api) {
+  await api.userKey("KeyZ");
+  await api.userClick(4, 4);
+}
+
+/** The number of Web Audio sources the build has started so far. */
+export async function audioCount(api) {
+  return (await api.audio()).length;
+}
+
 /**
  * Average the rendered color over a grid across a logical box. Used where the
  * element is drawn across a region (a drone with its glow, the HUD indicator) so
