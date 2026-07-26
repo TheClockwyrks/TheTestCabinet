@@ -2,17 +2,19 @@ Draw the **Lattice lane splitter**, an 8-frame **sprite sheet** of the two-tile 
 unzipper, using only the drawing tool.
 
 The lane splitter is a piece of the **Lattice** factory: a top-down **belt
-unzipper** that spans **two tiles** across the flow — a standalone machine with
-**two belt inputs on one side and two belt outputs on the other** that pulls the two
-streams apart, routing each incoming belt out to the **outer lane** of its output
-rather than evening them out. The splitting happens inside, **hidden under a solid
-housing** between the inputs and outputs; you see the belts feeding in and out at
-the edges and the closed housing in the middle. To show the machine at work, the
-housing carries a raised **splitting ridge down its centre** and **two moving
-spreader heads that ride outward** toward the outer lanes, and its output end is
-drawn as an East-pointing arrow so its feed direction is clear. You are drawing the
-*device* seen from above — a component belts plug into, not a length of belt — with
-the belt surface at its mouths and the two spreader heads animated frame to frame.
+unzipper** that spans **two tiles** across the flow — a standalone machine that takes
+**a single belt input on one side and unzips it into two belt outputs on the other**,
+splitting that one belt's two lanes apart and routing each lane out to the **outer
+lane** of its own output. The one input sits on the **top (anchor) cell** — aligned to
+that tile so a belt butts up flush — and the bottom cell's West is closed off by the
+housing. The splitting happens inside, **hidden under a solid housing**; you see the
+single belt feeding in on the West, the two belts leaving on the East, and the closed
+housing in the middle. To show the machine at work, the housing carries a raised **splitting
+ridge down its centre** aimed at the input and **two moving spreader heads that ride
+outward** toward the two outputs, and its output end is drawn as an East-pointing
+arrow so its feed direction is clear. You are drawing the *device* seen from above —
+a component belts plug into, not a length of belt — with the belt surface at its
+mouths and the two spreader heads animated frame to frame.
 
 ## How drawing works
 
@@ -47,10 +49,10 @@ implementation that matches the specification exactly.
 
 Build the lane splitter sprite sheet up operation by operation until each
 `frames/<index>.png` matches the brief: one two-tile unzipper spanning both 32×32
-cells, with two belt inputs on the West edge and two outputs on the East, a solid
-grey-blue housing hiding the mechanism between them, a central East-West splitting
-ridge, two spreader heads that ride outward toward the outer lanes to convey the
-flow being pulled apart, an East-pointing arrow on the housing's output end, and the
-amber chevrons at the belt mouths scrolling East across the eight frames in a
-seamless loop. When you are satisfied, stop: the recorded per-frame action logs are
+cells, with a single belt input on the top (anchor) cell of the West edge (the bottom
+cell's West closed off by the housing) and two outputs on the East, a solid grey-blue
+housing hiding the mechanism, a central East-West splitting ridge, two spreader heads
+that ride outward toward the outputs to convey the input's two lanes being pulled
+apart, an East-pointing arrow on the housing's output end, and the amber chevrons at
+the belt mouths scrolling East across the eight frames in a seamless loop. When you are satisfied, stop: the recorded per-frame action logs are
 your finished submission.
