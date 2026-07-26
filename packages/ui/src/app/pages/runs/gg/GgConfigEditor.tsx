@@ -127,10 +127,7 @@ export function GgConfigEditor({
   function addModelSlot() {
     onChange({
       ...value,
-      modelSlots: [
-        ...value.modelSlots,
-        { name: "", defaultModelId: "", provider: "" },
-      ],
+      modelSlots: [...value.modelSlots, { name: "", defaultModelId: "" }],
     });
   }
   function removeModelSlot(index: number) {
@@ -545,21 +542,6 @@ export function GgConfigEditor({
                     placeholder="left to the launcher"
                   />
                 </label>
-                <label className={`${runExec.field} ${gg.slotProviderField}`}>
-                  <span className={runExec.fieldLabel}>
-                    Provider (optional)
-                  </span>
-                  <input
-                    className={runExec.input}
-                    type="text"
-                    value={modelSlot.provider}
-                    disabled={readOnly}
-                    onChange={(e) =>
-                      updateModelSlot(i, { provider: e.target.value })
-                    }
-                    placeholder="inferred from id"
-                  />
-                </label>
               </div>
               {unused && (
                 <p className={gg.fieldError}>
@@ -695,21 +677,6 @@ export function GgConfigEditor({
                       inputClassName={runExec.input}
                       disabled={readOnly}
                       placeholder="model id (e.g. anthropic/claude-opus-4.8)"
-                    />
-                  </label>
-                  <label className={`${runExec.field} ${gg.slotProviderField}`}>
-                    <span className={runExec.fieldLabel}>
-                      Provider (optional)
-                    </span>
-                    <input
-                      className={runExec.input}
-                      type="text"
-                      value={slot.provider}
-                      disabled={readOnly}
-                      onChange={(e) =>
-                        updateSlot(i, { provider: e.target.value })
-                      }
-                      placeholder="inferred from id"
                     />
                   </label>
                 </div>

@@ -64,11 +64,11 @@ parameters — and each [role binding](/gg/multi-model/#slots) either:
 - **defers to a model slot**, leaving the model to be supplied when a run is
   launched.
 
-A model slot may carry a **default**, which the launch form pre-fills, and a
-**provider** pin carried onto every binding it feeds. Model slots are named
-separately from the roles they feed precisely so two roles can share one: "run the
-reviewer *and* the judge on whatever I pick for `critic`" is one launch input, not
-two.
+A model slot may carry a **default**, which the launch form pre-fills. Model slots are
+named separately from the roles they feed precisely so two roles can share one: "run
+the reviewer *and* the judge on whatever I pick for `critic`" is one launch input, not
+two. gg routes every live model through OpenRouter and infers its provider from the
+model id, so a slot never needs a provider pinned onto it.
 
 The default a fresh configuration starts from is the simple case — one `primary`
 model slot, with the `primary` role deferred to it — so a configuration that says

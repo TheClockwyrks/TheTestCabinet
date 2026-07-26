@@ -33,10 +33,6 @@
         "name": {
           "description": "The slot's name, as the launch form labels it and as a\n[binding](GgSlotBinding::model_slot) refers to it. Unique within a set.",
           "type": "string"
-        },
-        "provider": {
-          "description": "The provider every model bound to this slot is reached through, when the routing\nmust be pinned rather than inferred from the model id. Carried onto each binding\nthe slot resolves.",
-          "type": ["string", "null"]
         }
       },
       "required": ["name"],
@@ -83,7 +79,7 @@
       "type": "object"
     },
     "GgSlotBinding": {
-      "description": "A binding of a model to a named slot in a [`GgCapabilitySet`].\n\nModel selection is expressed through slots so capabilities reference models by\nrole (`\"primary\"`, `\"reviewer\"`, …) rather than by a hardcoded id, and a study can\nre-point a slot — even to a different provider — without touching capability logic.\n\nA binding either **pins** a model — [`model_id`](Self::model_id) names it, and every\nrun of the configuration uses it — or **defers** to a declared\n[model slot](Self::model_slot), leaving the model to be supplied when the run is\nlaunched. Only a pinned binding is [resolved](Self::is_resolved); launching turns\nevery deferred one into a pinned one, so the set a run records has no deferred\nbinding left.",
+      "description": "A binding of a model to a named slot in a [`GgCapabilitySet`].\n\nModel selection is expressed through slots so capabilities reference models by\nrole (`\"primary\"`, `\"reviewer\"`, …) rather than by a hardcoded id, and a study can\nre-point a slot — even to a model from a different provider — without touching\ncapability logic. The provider is always inferred from the model id (gg routes\nevery live model through OpenRouter), so there is nothing to pin here.\n\nA binding either **pins** a model — [`model_id`](Self::model_id) names it, and every\nrun of the configuration uses it — or **defers** to a declared\n[model slot](Self::model_slot), leaving the model to be supplied when the run is\nlaunched. Only a pinned binding is [resolved](Self::is_resolved); launching turns\nevery deferred one into a pinned one, so the set a run records has no deferred\nbinding left.",
       "properties": {
         "modelId": {
           "default": "",
@@ -92,10 +88,6 @@
         },
         "modelSlot": {
           "description": "The [model slot](GgModelSlot) this binding takes its model from at launch, when\nit does not pin one itself. `None` on a pinned binding — which is every binding\non the set a run records, because launching resolves the deferred ones.",
-          "type": ["string", "null"]
-        },
-        "provider": {
-          "description": "The provider the model is reached through, when it must be pinned rather than\ninferred from the id — the seam that makes a slot cross-provider. `None` lets\nthe client resolve the provider from the id.",
           "type": ["string", "null"]
         },
         "slot": {

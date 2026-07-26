@@ -725,7 +725,9 @@ fn tool_calling_mode() -> String {
 ///
 /// Model selection is expressed through slots so capabilities reference models by
 /// role (`"primary"`, `"reviewer"`, …) rather than by a hardcoded id, and a study can
-/// re-point a slot — even to a different provider — without touching capability logic.
+/// re-point a slot — even to a model from a different provider — without touching
+/// capability logic. The provider is always inferred from the model id (gg routes
+/// every live model through OpenRouter), so there is nothing to pin here.
 ///
 /// A binding either **pins** a model — [`model_id`](Self::model_id) names it, and every
 /// run of the configuration uses it — or **defers** to a declared
@@ -744,12 +746,6 @@ pub struct GgSlotBinding {
     /// not filled in yet.
     #[serde(default)]
     pub model_id: String,
-    /// The provider the model is reached through, when it must be pinned rather than
-    /// inferred from the id — the seam that makes a slot cross-provider. `None` lets
-    /// the client resolve the provider from the id.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub provider: Option<String>,
     /// The [model slot](GgModelSlot) this binding takes its model from at launch, when
     /// it does not pin one itself. `None` on a pinned binding — which is every binding
     /// on the set a run records, because launching resolves the deferred ones.
@@ -759,13 +755,11 @@ pub struct GgSlotBinding {
 }
 
 impl GgSlotBinding {
-    /// Bind `model_id` to the named `slot`, with the provider left to be resolved from
-    /// the id.
+    /// Bind `model_id` to the named `slot`. The provider is resolved from the id.
     pub fn new(slot: impl Into<String>, model_id: impl Into<String>) -> Self {
         Self {
             slot: slot.into(),
             model_id: model_id.into(),
-            provider: None,
             model_slot: None,
         }
     }
@@ -776,7 +770,6 @@ impl GgSlotBinding {
         Self {
             slot: slot.into(),
             model_id: String::new(),
-            provider: None,
             model_slot: Some(model_slot.into()),
         }
     }
@@ -818,12 +811,6 @@ pub struct GgModelSlot {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub default_model_id: Option<String>,
-    /// The provider every model bound to this slot is reached through, when the routing
-    /// must be pinned rather than inferred from the model id. Carried onto each binding
-    /// the slot resolves.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub provider: Option<String>,
 }
 
 /// The **run-level execution ceilings** a gg run is bounded by — the guardrails that stop a

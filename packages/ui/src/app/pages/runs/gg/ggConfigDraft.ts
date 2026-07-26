@@ -55,14 +55,12 @@ export interface GgCapabilityDraft {
 }
 
 // One declared **model slot** as the editor holds it: a launch-time model parameter
-// with an optional default the new-run form pre-fills and an optional provider pin
-// carried onto every binding the slot feeds. Declaring these is what makes one saved
-// configuration reusable across models — the operator supplies the models at launch
-// instead of the configuration baking them in.
+// with an optional default the new-run form pre-fills. Declaring these is what makes
+// one saved configuration reusable across models — the operator supplies the models at
+// launch instead of the configuration baking them in.
 export interface GgModelSlotDraft {
   name: string;
   defaultModelId: string;
-  provider: string;
 }
 
 // Where a role binding gets its model: from a declared model slot (supplied at
@@ -72,14 +70,13 @@ export type GgSlotSource = "model-slot" | "model";
 // One role binding as the editor holds it. The role (`slot` — "primary",
 // "reviewer", …) is what capabilities reference; `source` decides where its model
 // comes from. A `model-slot` binding names a declared [GgModelSlotDraft] and is
-// filled in at launch; a `model` binding pins a model id (with an optional
-// provider) and is never asked about again.
+// filled in at launch; a `model` binding pins a model id and is never asked about
+// again.
 export interface GgSlotDraft {
   slot: string;
   source: GgSlotSource;
   modelSlot: string;
   modelId: string;
-  provider: string;
 }
 
 // The run's execution ceilings as the editor holds them: one *string* per ceiling,
@@ -134,13 +131,12 @@ export function blankPrimarySlot(): GgSlotDraft {
     source: "model-slot",
     modelSlot: PRIMARY_SLOT,
     modelId: "",
-    provider: "",
   };
 }
 
 /** The matching `primary` model-slot declaration, with no default. */
 export function blankPrimaryModelSlot(): GgModelSlotDraft {
-  return { name: PRIMARY_SLOT, defaultModelId: "", provider: "" };
+  return { name: PRIMARY_SLOT, defaultModelId: "" };
 }
 
 /** A blank role binding pinned to no model — a freshly added row. */
@@ -150,7 +146,6 @@ export function blankSlot(): GgSlotDraft {
     source: "model-slot",
     modelSlot: PRIMARY_SLOT,
     modelId: "",
-    provider: "",
   };
 }
 
@@ -424,12 +419,10 @@ export function draftFromCapabilitySet(set: GgCapabilitySet): GgConfigDraft {
     source: s.modelSlot ? "model-slot" : "model",
     modelSlot: s.modelSlot ?? "",
     modelId: s.modelId,
-    provider: s.provider ?? "",
   }));
   const modelSlots: GgModelSlotDraft[] = (set.modelSlots ?? []).map((s) => ({
     name: s.name,
     defaultModelId: s.defaultModelId ?? "",
-    provider: s.provider ?? "",
   }));
   // A configuration saved before model slots existed left the primary role unbound
   // and relied on the launch form to bind it. That is exactly a `primary` model slot,
@@ -444,7 +437,6 @@ export function draftFromCapabilitySet(set: GgCapabilitySet): GgConfigDraft {
       modelSlots.push({
         name: referenced.modelSlot,
         defaultModelId: "",
-        provider: "",
       });
     }
   }
@@ -702,11 +694,9 @@ export function capabilitySetFromDraft(
           modelSlot: s.modelSlot.trim(),
         };
       }
-      const provider = s.provider.trim() || undefined;
       return {
         slot: s.slot.trim(),
         modelId: s.modelId.trim(),
-        ...(provider ? { provider } : {}),
       };
     });
   // Only the declarations something actually defers to are worth saving; a slot no
@@ -719,7 +709,6 @@ export function capabilitySetFromDraft(
       ...(s.defaultModelId.trim()
         ? { defaultModelId: s.defaultModelId.trim() }
         : {}),
-      ...(s.provider.trim() ? { provider: s.provider.trim() } : {}),
     }));
   const limits = runLimitsFromDraft(draft.limits);
   return {
@@ -775,36 +764,25 @@ export function launchModelSlots(set: GgCapabilitySet): GgModelSlot[] {
  * name), and the declarations dropped — what runs is a fully pinned set, which is
  * also what the run records and what result aggregation slices by.
  *
- * The model slot's declared provider is carried onto each binding it feeds; a role the
- * configuration pinned itself is untouched.
+ * A role the configuration pinned itself is untouched.
  */
 export function bindModelSlots(
   set: GgCapabilitySet,
   models: Record<string, string>,
 ): GgCapabilitySet {
-  const declared = new Map(
-    (set.modelSlots ?? []).map((s) => [s.name, s] as const),
-  );
-  const resolve = (name: string): GgSlotBinding["provider"] =>
-    declared.get(name)?.provider;
   const slots: GgSlotBinding[] = (set.slots ?? []).map((binding) => {
     if (!binding.modelSlot) return binding;
-    const provider = resolve(binding.modelSlot);
     return {
       slot: binding.slot,
       modelId: (models[binding.modelSlot] ?? "").trim(),
-      ...(provider ? { provider } : {}),
     };
   });
   // The legacy shape: no primary binding at all, its model collected against an
   // implicit `primary` slot.
   if (!slots.some((s) => s.slot === PRIMARY_SLOT)) {
-    const modelId = (models[PRIMARY_SLOT] ?? "").trim();
-    const provider = resolve(PRIMARY_SLOT);
     slots.unshift({
       slot: PRIMARY_SLOT,
-      modelId,
-      ...(provider ? { provider } : {}),
+      modelId: (models[PRIMARY_SLOT] ?? "").trim(),
     });
   }
   const { modelSlots: _declarations, ...rest } = set;

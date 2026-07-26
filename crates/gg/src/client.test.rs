@@ -346,45 +346,36 @@ fn backoff_delay_doubles_and_caps() {
 // Provider selection
 // ---------------------------------------------------------------------------
 
-fn binding(model_id: &str, provider: Option<&str>) -> GgSlotBinding {
+fn binding(model_id: &str) -> GgSlotBinding {
     GgSlotBinding {
         slot: PRIMARY_SLOT.to_string(),
         model_id: model_id.to_string(),
-        provider: provider.map(str::to_string),
         model_slot: None,
     }
 }
 
-/// The `mock` provider, the `mock/…` model prefix, and the fake-model override each
-/// select the mock; a real provider/model does not.
+/// The `mock/…` model prefix and the fake-model override each select the mock; a real
+/// model does not. gg always routes live models through OpenRouter, inferring the
+/// provider from the id, so there is no explicit provider to select on.
 #[test]
-fn resolve_provider_kind_selects_mock_by_provider_prefix_or_override() {
-    // Explicit provider, case-insensitive.
+fn resolve_provider_kind_selects_mock_by_model_prefix_or_override() {
+    // Model-id prefix, either separator.
     assert_eq!(
-        resolve_provider_kind(&binding("anything", Some("mock")), false),
+        resolve_provider_kind(&binding("mock/echo"), false),
         ProviderKind::Mock
     );
     assert_eq!(
-        resolve_provider_kind(&binding("anything", Some("MOCK")), false),
-        ProviderKind::Mock
-    );
-    // Model-id prefix.
-    assert_eq!(
-        resolve_provider_kind(&binding("mock/echo", None), false),
-        ProviderKind::Mock
-    );
-    assert_eq!(
-        resolve_provider_kind(&binding("mock:echo", None), false),
+        resolve_provider_kind(&binding("mock:echo"), false),
         ProviderKind::Mock
     );
     // A real binding resolves to OpenRouter…
     assert_eq!(
-        resolve_provider_kind(&binding("anthropic/claude-opus-4-8", None), false),
+        resolve_provider_kind(&binding("anthropic/claude-opus-4-8"), false),
         ProviderKind::OpenRouter
     );
     // …unless the offline override forces the mock.
     assert_eq!(
-        resolve_provider_kind(&binding("anthropic/claude-opus-4-8", None), true),
+        resolve_provider_kind(&binding("anthropic/claude-opus-4-8"), true),
         ProviderKind::Mock
     );
     assert!(ProviderKind::Mock.is_offline());
@@ -394,7 +385,7 @@ fn resolve_provider_kind_selects_mock_by_provider_prefix_or_override() {
 /// `client_for_slot` builds a working mock client for a mock binding.
 #[test]
 fn client_for_slot_builds_mock_for_mock_binding() {
-    let client = client_for_slot(&binding("mock/echo", None)).expect("mock client");
+    let client = client_for_slot(&binding("mock/echo")).expect("mock client");
     assert_eq!(client.model_id(), "mock/echo");
 }
 

@@ -121,7 +121,6 @@ fn capability_set_round_trips_through_json() {
             GgSlotBinding {
                 slot: "reviewer".to_string(),
                 model_id: "openai/gpt-5.5".to_string(),
-                provider: Some("openrouter".to_string()),
                 model_slot: None,
             },
         ],
@@ -286,7 +285,6 @@ fn a_deferred_binding_is_unresolved_until_a_launch_fills_its_model_slot() {
         model_slots: vec![GgModelSlot {
             name: "critic".to_string(),
             default_model_id: Some("anthropic/claude-haiku-4.5".to_string()),
-            provider: None,
         }],
         preset: None,
         capabilities: Vec::new(),

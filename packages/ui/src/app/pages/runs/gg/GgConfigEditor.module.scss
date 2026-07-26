@@ -221,7 +221,7 @@
   margin-bottom: t.$space-md;
 }
 
-// One model-slot block: the slot name/mock toggle line over the model picker/provider.
+// One model-slot block: the slot name/mock toggle line over the model picker.
 .slotBlock {
   padding: t.$space-md;
   border: t.$border-hairline solid t.$color-border;
@@ -267,7 +267,7 @@
   }
 }
 
-// The real-model binding row: the model picker flexes, the provider stays compact.
+// The real-model binding row: the model picker flexes to fill it.
 .slotFields {
   display: flex;
   align-items: flex-end;
@@ -277,11 +277,6 @@
 
 .slotModelField {
   flex: 2 1 16rem;
-  min-width: 0;
-}
-
-.slotProviderField {
-  flex: 1 1 8rem;
   min-width: 0;
 }
 

@@ -147,7 +147,6 @@ function ConfigurationCard({ set }: { set: GgCapabilitySet }) {
           <span key={slot.slot} className={styles.slot}>
             <span className={styles.slotName}>{slot.slot}</span>
             {slot.modelId}
-            {slot.provider ? ` (${slot.provider})` : ""}
           </span>
         ))}
       </div>

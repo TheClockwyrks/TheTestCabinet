@@ -53,7 +53,6 @@ fn into_launch_body_rejects_a_set_with_a_model_slot_left_unbound() {
     set.model_slots = vec![test_cabinet_core::gg::GgModelSlot {
         name: "critic".to_string(),
         default_model_id: None,
-        provider: None,
     }];
     set.slots
         .push(test_cabinet_core::gg::GgSlotBinding::deferred(

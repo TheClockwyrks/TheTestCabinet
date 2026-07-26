@@ -33,12 +33,11 @@
 //! # Provider selection
 //!
 //! [`client_for_slot`] turns a [`GgSlotBinding`] into a boxed client. It selects the
-//! [`MockClient`] when **any** of these holds (checked in this order):
+//! [`MockClient`] when **either** of these holds (checked in this order):
 //!
 //! 1. the `TCAB_GG_FAKE_MODEL` environment variable is set to a non-empty value — a
 //!    global offline override for CI and local iteration;
-//! 2. the binding's `provider` is `"mock"` (case-insensitive);
-//! 3. the binding's `model_id` names the `mock` provider by prefix (`mock/…` or
+//! 2. the binding's `model_id` names the `mock` provider by prefix (`mock/…` or
 //!    `mock:…`).
 //!
 //! Otherwise it builds an [`OpenRouterClient`], which requires `OPENROUTER_API_KEY`
@@ -2232,13 +2231,6 @@ impl ProviderKind {
 /// testable. See [module docs](self) for the exact rule.
 pub fn resolve_provider_kind(binding: &GgSlotBinding, fake_model: bool) -> ProviderKind {
     if fake_model {
-        return ProviderKind::Mock;
-    }
-    if binding
-        .provider
-        .as_deref()
-        .is_some_and(|provider| provider.eq_ignore_ascii_case(MOCK_PROVIDER))
-    {
         return ProviderKind::Mock;
     }
     if model_provider_prefix(&binding.model_id).eq_ignore_ascii_case(MOCK_PROVIDER) {

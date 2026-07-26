@@ -41,11 +41,11 @@ describe("gg model slots", () => {
   it("resolves every deferred role and drops the declarations", () => {
     const configured = set({
       preset: "critic-sweep",
-      modelSlots: [{ name: "critic", provider: "openrouter" }],
+      modelSlots: [{ name: "critic" }],
       slots: [
         { slot: "primary", modelId: "", modelSlot: "primary" },
         { slot: "reviewer", modelId: "", modelSlot: "critic" },
-        { slot: "judge", modelId: "openai/o-fixed", provider: "openrouter" },
+        { slot: "judge", modelId: "openai/o-fixed" },
       ],
     });
     const launched = bindModelSlots(configured, {
@@ -53,16 +53,15 @@ describe("gg model slots", () => {
       critic: "anthropic/claude-haiku-4.5",
     });
     // Two roles share the `critic` slot only in intent here, but the shape is the
-    // point: what runs is fully pinned, the slot's provider rides along, and the
-    // internally pinned `judge` is untouched.
+    // point: what runs is fully pinned, and the internally pinned `judge` is
+    // untouched.
     expect(launched.slots).toEqual([
       { slot: "primary", modelId: "anthropic/claude-opus-4.8" },
       {
         slot: "reviewer",
         modelId: "anthropic/claude-haiku-4.5",
-        provider: "openrouter",
       },
-      { slot: "judge", modelId: "openai/o-fixed", provider: "openrouter" },
+      { slot: "judge", modelId: "openai/o-fixed" },
     ]);
     expect(launched.modelSlots).toBeUndefined();
     expect(launched.preset).toBe("critic-sweep");
@@ -77,9 +76,7 @@ describe("gg model slots", () => {
     ).toEqual([{ slot: "primary", modelId: "openai/gpt-5.6-sol" }]);
     // Opening it in the editor reads as the new shape rather than a broken binding.
     const draft = draftFromCapabilitySet(legacy);
-    expect(draft.modelSlots).toEqual([
-      { name: "primary", defaultModelId: "", provider: "" },
-    ]);
+    expect(draft.modelSlots).toEqual([{ name: "primary", defaultModelId: "" }]);
     expect(draft.slots[0]).toMatchObject({
       slot: "primary",
       source: "model-slot",
@@ -92,7 +89,7 @@ describe("gg model slots", () => {
       modelSlots: [{ name: "critic", defaultModelId: "anthropic/haiku" }],
       slots: [
         { slot: "primary", modelId: "", modelSlot: "critic" },
-        { slot: "reviewer", modelId: "openai/o-fixed", provider: "openrouter" },
+        { slot: "reviewer", modelId: "openai/o-fixed" },
       ],
     });
     const back = capabilitySetFromDraft(
@@ -104,7 +101,7 @@ describe("gg model slots", () => {
     ]);
     expect(back.slots).toEqual([
       { slot: "primary", modelId: "", modelSlot: "critic" },
-      { slot: "reviewer", modelId: "openai/o-fixed", provider: "openrouter" },
+      { slot: "reviewer", modelId: "openai/o-fixed" },
     ]);
   });
 

@@ -14,7 +14,9 @@ import type { CostMetrics, TokenMetrics } from "./index";
  *
  * Model selection is expressed through slots so capabilities reference models by
  * role (`"primary"`, `"reviewer"`, …) rather than by a hardcoded id, and a study can
- * re-point a slot — even to a different provider — without touching capability logic.
+ * re-point a slot — even to a model from a different provider — without touching
+ * capability logic. The provider is always inferred from the model id (gg routes
+ * every live model through OpenRouter), so there is nothing to pin here.
  *
  * A binding either **pins** a model — [`model_id`](Self::model_id) names it, and every
  * run of the configuration uses it — or **defers** to a declared
@@ -34,12 +36,6 @@ export type GgSlotBinding = {
    * not filled in yet.
    */
   modelId: string;
-  /**
-   * The provider the model is reached through, when it must be pinned rather than
-   * inferred from the id — the seam that makes a slot cross-provider. `None` lets
-   * the client resolve the provider from the id.
-   */
-  provider?: string;
   /**
    * The [model slot](GgModelSlot) this binding takes its model from at launch, when
    * it does not pin one itself. `None` on a pinned binding — which is every binding
@@ -78,12 +74,6 @@ export type GgModelSlot = {
    * the operator must choose one before the run can be launched.
    */
   defaultModelId?: string;
-  /**
-   * The provider every model bound to this slot is reached through, when the routing
-   * must be pinned rather than inferred from the model id. Carried onto each binding
-   * the slot resolves.
-   */
-  provider?: string;
 };
 
 /**
