@@ -195,6 +195,9 @@ fn main() -> Result<()> {
                 gg::GgRetainedState, gg::GgContextAction, gg::GgPlanPhase,
                 gg::GgAgentStatus, gg::GgWorkflowPhase, gg::GgCodeReviewPhase,
                 gg::GgSpeculationPhase,
+                gg::GgRunLimits, gg::GgLimitKind, gg::GgLimitBreach,
+                gg::GgHealingStrategy, gg::GgNotAProgram, gg::GgCandidateShape,
+                gg::GgResponseHealing, gg::GgHealingSummary,
                 gg::GgSlotCost, gg::GgSessionSummary,
                 gg::GgTelemetryKind, gg::GgTelemetryEvent,
                 gg::GgReplayEntryKind, gg::GgReplayEntry, gg::GgReplayRecord,
@@ -311,10 +314,19 @@ fn main() -> Result<()> {
         // subtypes are its own). The telemetry event's `Usage` variant references the
         // shared `TokenMetrics`/`CostMetrics` owned by the run-record document, so
         // those refs are rewritten to cross-document URLs.
+        // The run's execution ceilings (`GgRunLimits`) are owned here rather than by the
+        // session summary, because the capability set is where they are *configured*; the
+        // summary's record of the ceilings actually in force references them across
+        // documents.
         SchemaDoc {
             rel_path: "gg/capability-set.schema.json",
             root: Some("GgCapabilitySet"),
-            owns: &["GgCapabilityConfig", "GgSlotBinding", "GgModelSlot"],
+            owns: &[
+                "GgCapabilityConfig",
+                "GgSlotBinding",
+                "GgModelSlot",
+                "GgRunLimits",
+            ],
             schema: root_schema::<gg::GgCapabilitySet>(),
         },
         // The gg session summary: the aggregatable per-run outcome. Referenced by both the
@@ -322,11 +334,19 @@ fn main() -> Result<()> {
         // `RunSubject.gg_summary`), so — like the capability set — it gets its own document
         // and both references become cross-document `$ref`s. Its per-slot cost rollup
         // (`GgSlotCost`) reuses the shared `TokenMetrics`/`CostMetrics` owned by the
-        // run-record document, which are rewritten to cross-document URLs.
+        // run-record document, which are rewritten to cross-document URLs. The breach it
+        // records (`GgLimitBreach`/`GgLimitKind`) is owned here — the summary is where a
+        // breach is durably recorded, and the telemetry event that announces one references
+        // it cross-document.
         SchemaDoc {
             rel_path: "gg/session-summary.schema.json",
             root: Some("GgSessionSummary"),
-            owns: &["GgSlotCost"],
+            owns: &[
+                "GgSlotCost",
+                "GgHealingSummary",
+                "GgLimitBreach",
+                "GgLimitKind",
+            ],
             schema: root_schema::<gg::GgSessionSummary>(),
         },
         SchemaDoc {
@@ -350,6 +370,15 @@ fn main() -> Result<()> {
                 "GgWorkflowPhase",
                 "GgCodeReviewPhase",
                 "GgSpeculationPhase",
+                // The per-turn healing record and its vocabulary ride on the
+                // `CodeExecution` event and appear nowhere else in the contract, so this
+                // document is their canonical home. The run-level rollup
+                // (`GgHealingSummary`) is the session summary's, and is referenced from
+                // there.
+                "GgResponseHealing",
+                "GgHealingStrategy",
+                "GgNotAProgram",
+                "GgCandidateShape",
             ],
             schema: root_schema::<gg::GgTelemetryEvent>(),
         },

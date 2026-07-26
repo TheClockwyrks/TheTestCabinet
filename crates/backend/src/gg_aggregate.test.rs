@@ -31,10 +31,13 @@ fn summary() -> GgSessionSummary {
         speculations: 0,
         execution_mode: "tool_calling".to_string(),
         code_executions: 0,
+        healing: Default::default(),
         issues_created: 0,
         issues_completed: 0,
         slot_costs: Vec::new(),
         effective_tools: Vec::new(),
+        limits: Default::default(),
+        limit_hit: None,
     }
 }
 

@@ -1,0 +1,13 @@
+{{> healing-note ran=false}}
+{{reason}}
+
+Every turn of this run is a program: gg compiles and runs your **entire reply** as TypeScript. A reply
+that is not code is not a turn — it does nothing, it changes nothing, and it counts as a failed turn.
+
+Reply with a program. Just the code: no code fence, no explanation before or after it, nothing but the
+statements you want run.
+
+If you believe the task is complete, saying so does not end {{#if delegated}}your session{{else}}the run{{/if}} — only `finish` does, and you call
+it from inside a program:
+
+    finish("what you did, in a sentence or two");

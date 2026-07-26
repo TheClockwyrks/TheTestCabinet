@@ -15,13 +15,34 @@
 //! [`SessionSummary`](GgTelemetryKind::SessionSummary) event; `core` then lifts it onto the run
 //! record. Because the summary is derived from the same events it summarizes, the two are
 //! consistent by construction.
+//!
+//! # Folded figures and recorded facts
+//!
+//! Almost every figure is **folded** from the stream by [`observe`](SessionSummaryTracker::observe),
+//! which is what keeps numerator and denominator on one mechanism: the run's
+//! [healing rollup](GgHealingSummary) and the
+//! [`code_executions`](GgSessionSummary::code_executions) it is a rate over are folded from the very
+//! same [`CodeExecution`](GgTelemetryKind::CodeExecution) event, so the two can never come from
+//! different places and drift.
+//!
+//! Four figures cannot be folded and are **recorded** instead, each by its own `record_*` method
+//! that the binary calls once. Three of them —
+//! [`effective_tools`](SessionSummaryTracker::record_effective_tools),
+//! [`execution_mode`](SessionSummaryTracker::record_execution_mode) and
+//! [`limits`](SessionSummaryTracker::record_limits) — are configuration facts no event carries. The
+//! fourth, [`limit_hit`](SessionSummaryTracker::record_limit_hit), is recorded for a sharper reason:
+//! a [`LimitExceeded`](GgTelemetryKind::LimitExceeded) event *is* on the stream, but this one tracker
+//! is shared by every agent, and a subagent that stopped on its own error ceiling is not how the
+//! **run** ended. Folding that event would report a child's ceiling as the run's outcome, so the
+//! binary records the root loop's own breach and this module never looks at the event.
 
 use std::collections::HashSet;
 use std::sync::Mutex;
 
 use test_cabinet_core::gg::{
-    GgCodeReviewPhase, GgIssueStatus, GgSessionSummary, GgSlotCost, GgSpeculationPhase,
-    GgTelemetryKind,
+    GgCandidateShape, GgCodeReviewPhase, GgHealingStrategy, GgHealingSummary, GgIssueStatus,
+    GgLimitBreach, GgNotAProgram, GgResponseHealing, GgRunLimits, GgSessionSummary, GgSlotCost,
+    GgSpeculationPhase, GgTelemetryKind,
 };
 
 /// Accumulates a running session's aggregatable outcome from the telemetry stream it
@@ -66,6 +87,15 @@ struct SummaryState {
     speculations: u64,
     /// One per [`CodeExecution`](GgTelemetryKind::CodeExecution) event (a code-shaped turn).
     code_executions: u64,
+    /// The run's [response-healing](GgHealingSummary) rollup, folded from the healing record on
+    /// each of those same [`CodeExecution`](GgTelemetryKind::CodeExecution) events — so
+    /// [`code_executions`](Self::code_executions) is the exact denominator for every rate over it,
+    /// by construction rather than by convention.
+    ///
+    /// The contract type doubles as the accumulator: it is [`Default`] and every field is a `u64`
+    /// counter, so there is nothing to convert at [finalize](SessionSummaryTracker::finalize) time
+    /// and no second shape that could disagree with the one the run records.
+    healing: GgHealingSummary,
     /// The run's [execution mode](GgSessionSummary::execution_mode) — `"responses_as_code"` or
     /// `"tool_calling"`. Like [`effective_tools`](Self::effective_tools) this is **not**
     /// telemetry-derived (no event carries the configured mode); the binary records it once via
@@ -84,6 +114,89 @@ struct SummaryState {
     /// off the assembled [`ToolRegistry`](crate::tools::ToolRegistry), via
     /// [`record_effective_tools`](SessionSummaryTracker::record_effective_tools).
     effective_tools: Vec<String>,
+    /// The [execution ceilings](GgRunLimits) that were in force for the run — the configured set
+    /// with gg's own turn default filled in. Like [`effective_tools`](Self::effective_tools) this
+    /// is a resolved configuration fact no event carries, recorded once via
+    /// [`record_limits`](SessionSummaryTracker::record_limits). Defaults to "no ceiling declared"
+    /// until set, which is also what a run that never reached the resolver reports.
+    limits: GgRunLimits,
+    /// The ceiling that stopped the **run**, when one did — the root agent's own breach, recorded
+    /// once via [`record_limit_hit`](SessionSummaryTracker::record_limit_hit) from the root loop's
+    /// outcome.
+    ///
+    /// Deliberately **not** folded from [`LimitExceeded`](GgTelemetryKind::LimitExceeded), even
+    /// though that event carries exactly this payload: every agent's stream passes through this one
+    /// tracker, and a subagent that stopped on its own error ceiling reported back through the
+    /// delegation channel while the run carried on. Folding the event would publish that child's
+    /// ceiling as the run's outcome.
+    limit_hit: Option<GgLimitBreach>,
+    /// The [response-healing](crate::healing) strategies that were **armed** for the run — a fourth
+    /// resolved-configuration fact no event carries, recorded once via
+    /// [`record_healing`](SessionSummaryTracker::record_healing).
+    ///
+    /// Empty until set, which is exactly what a tool-calling run reports: healing never runs there,
+    /// so there is no armed set to record.
+    healing_enabled: Vec<GgHealingStrategy>,
+}
+
+impl SummaryState {
+    /// Fold one code-shaped turn's [healing record](GgResponseHealing) into the run's rollup.
+    ///
+    /// Split out of [`observe`](SessionSummaryTracker::observe) because it is the one arm with real
+    /// arithmetic in it, and because the definitions it encodes are worth stating in one place:
+    ///
+    /// * every entry in [`strategies`](GgResponseHealing::strategies) is one **application**, and a
+    ///   strategy that fired twice on one response is two — which is why the record carries a list
+    ///   rather than a set;
+    /// * a response is **healed** exactly when repairs were applied *and* it then became a program
+    ///   ([`not_a_program`](GgResponseHealing::not_a_program) absent). A response that was only
+    ///   classified — `strip-comment-only` deciding a reply of pure comments is not a program — was
+    ///   repaired of nothing, because nothing ran, so it counts an application without counting a
+    ///   heal;
+    /// * [`several_blocks`](GgHealingSummary::several_blocks) is a subset of
+    ///   [`not_a_program`](GgHealingSummary::not_a_program), never an alternative to it, so the
+    ///   two counts stay comparable — and it splits exactly into its two
+    ///   [shapes](GgCandidateShape), which are two different instruction-following failures and are
+    ///   counted apart so a study never has to re-derive one from the other.
+    ///
+    /// The per-strategy `match` is exhaustive on purpose: a strategy added to the contract is a
+    /// compile error here rather than an application silently missing from every run's rollup.
+    fn fold_healing(&mut self, healing: &GgResponseHealing) {
+        let rollup = &mut self.healing;
+        for strategy in &healing.strategies {
+            rollup.applications += 1;
+            let count = match strategy {
+                GgHealingStrategy::StripFences => &mut rollup.strip_fences,
+                GgHealingStrategy::StripProse => &mut rollup.strip_prose,
+                GgHealingStrategy::DropDuplicateProgram => &mut rollup.drop_duplicate_program,
+                GgHealingStrategy::DropImports => &mut rollup.drop_imports,
+                GgHealingStrategy::UnwrapAsync => &mut rollup.unwrap_async,
+                GgHealingStrategy::StripCommentOnly => &mut rollup.strip_comment_only,
+            };
+            *count += 1;
+        }
+        match healing.not_a_program {
+            Some(reason) => {
+                rollup.not_a_program += 1;
+                if reason == GgNotAProgram::SeveralBlocks {
+                    rollup.several_blocks += 1;
+                    // The shape rides on the same record and is populated by the same match that
+                    // set the reason, so this cannot silently drop one: the `match` is exhaustive,
+                    // and the absent arm is reachable only from a record deserialized from before
+                    // the shape was carried, where guessing a shape would be worse than the gap.
+                    match healing.candidate_shape {
+                        Some(GgCandidateShape::Fenced) => rollup.several_blocks_fenced += 1,
+                        Some(GgCandidateShape::Bare) => rollup.several_blocks_bare += 1,
+                        None => {}
+                    }
+                }
+            }
+            None if !healing.strategies.is_empty() => rollup.healed += 1,
+            // A clean response: nothing was repaired and nothing was refused. The overwhelmingly
+            // common shape, and the one that contributes only to the denominator.
+            None => {}
+        }
+    }
 }
 
 impl SessionSummaryTracker {
@@ -95,9 +208,10 @@ impl SessionSummaryTracker {
     /// Record the run's [effective toolset](GgSessionSummary::effective_tools) — the exact set of
     /// tool names offered to the (root) agent, in the order they were presented to the model.
     ///
-    /// This is the one summary figure that is not folded in from the telemetry stream (no event
-    /// carries the offered toolset), so the binary sets it once, off the root agent's assembled
-    /// [`ToolRegistry`](crate::tools::ToolRegistry), before [finalizing](Self::finalize). Recording
+    /// One of the four summary figures that are recorded rather than folded in from the telemetry
+    /// stream (no event carries the offered toolset), so the binary sets it once, off the root
+    /// agent's assembled [`ToolRegistry`](crate::tools::ToolRegistry), before
+    /// [finalizing](Self::finalize). Recording
     /// the *resolved* toolset — a capability's tools only when enabled and, for the stateful ones,
     /// only when their store is non-empty, minus any individually
     /// [withheld](test_cabinet_core::gg::GgCapabilitySet::disabled_tools) tool — makes the toolset a
@@ -120,6 +234,55 @@ impl SessionSummaryTracker {
     pub fn record_execution_mode(&self, mode: impl Into<String>) {
         let mut state = self.inner.lock().expect("summary tracker lock");
         state.execution_mode = Some(mode.into());
+    }
+
+    /// Record the [execution ceilings](GgRunLimits) that were actually **in force** for this run —
+    /// the configured set with gg's own turn default filled in, as the resolver produced it.
+    ///
+    /// A third configuration fact no event carries, so the binary sets it once, immediately after
+    /// the orchestrator resolves it and long before any ceiling could be breached. Recording the
+    /// *resolved* set rather than leaving a query to re-derive it from the
+    /// [capability set](test_cabinet_core::gg::GgCapabilitySet) is what makes "what was this run
+    /// bounded by?" answerable for every run, including one that declared nothing and inherited the
+    /// default — an unrecorded default is an invisible one, and a study that cannot see it cannot
+    /// control for it.
+    pub fn record_limits(&self, limits: GgRunLimits) {
+        let mut state = self.inner.lock().expect("summary tracker lock");
+        state.limits = limits;
+    }
+
+    /// Record the [response-healing](crate::healing) strategies that were **armed** for this run,
+    /// in the order gg applies them.
+    ///
+    /// A fourth configuration fact no event carries, recorded once beside
+    /// [`record_limits`](Self::record_limits) and only for a
+    /// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) run, because a
+    /// tool-calling run never heals anything and an armed set recorded for one would be an
+    /// intention that had no effect.
+    ///
+    /// It exists because every other figure in the [healing rollup](GgHealingSummary) is a
+    /// measurement of what *fired*, and the arm of an ablation in which nothing fired is
+    /// byte-identical to the arm in which nothing could: without this, a study slicing on
+    /// "healing on vs healing off" cannot tell its own arms apart from the telemetry.
+    pub fn record_healing(&self, enabled: Vec<GgHealingStrategy>) {
+        let mut state = self.inner.lock().expect("summary tracker lock");
+        state.healing_enabled = enabled;
+    }
+
+    /// Record the [ceiling](GgRunLimits) that stopped the **run**, or `None` for a run that ended on
+    /// its own terms.
+    ///
+    /// Takes an [`Option`] so the binary can hand over the root loop's outcome unconditionally,
+    /// right before [finalizing](Self::finalize): the caller has one line and no branch, and "the
+    /// run hit no ceiling" is recorded as deliberately as "it hit this one".
+    ///
+    /// This is the one summary figure whose event *is* on the stream and is still recorded rather
+    /// than [folded](Self::observe): every agent shares this tracker, and a subagent that stopped on
+    /// its own error ceiling ended itself and reported back while the run carried on, so its breach
+    /// is not the run's outcome. Only the root's is, and only the root's loop can hand it over.
+    pub fn record_limit_hit(&self, breach: Option<GgLimitBreach>) {
+        let mut state = self.inner.lock().expect("summary tracker lock");
+        state.limit_hit = breach;
     }
 
     /// Fold one emitted telemetry event into the running summary.
@@ -160,7 +323,13 @@ impl SessionSummaryTracker {
                     state.speculations += 1;
                 }
             }
-            GgTelemetryKind::CodeExecution { .. } => state.code_executions += 1,
+            // One event per code-shaped *turn*, including a turn whose reply was not a program at
+            // all — so this count is the exact denominator for the healing rates folded alongside
+            // it, and the two are incremented by the same statement.
+            GgTelemetryKind::CodeExecution { healing, .. } => {
+                state.code_executions += 1;
+                state.fold_healing(healing);
+            }
             GgTelemetryKind::BoardState { issues, .. } => {
                 for issue in issues {
                     state.issues_created.insert(issue.id.clone());
@@ -185,6 +354,11 @@ impl SessionSummaryTracker {
             // knowledge-state snapshots (skills/memories/tasks), planning/agent-status/worktree/
             // workflow/fsm transitions, diagnostic logs, and the terminal summary/ended events
             // this summary itself precedes.
+            //
+            // `LimitExceeded` is here **deliberately** rather than by omission: it carries exactly
+            // the payload `limit_hit` wants, but this tracker observes every agent's stream, and a
+            // subagent that stopped on its own error ceiling is not how the run ended. The root
+            // loop's breach is `record_limit_hit`'s to give.
             _ => {}
         }
     }
@@ -193,6 +367,11 @@ impl SessionSummaryTracker {
     /// `terminal_status` (the [`SessionEnded`](GgTelemetryKind::SessionEnded) status this summary
     /// precedes). Called once at session end; the tracker is not reset (a run computes one
     /// summary).
+    ///
+    /// Copies out both halves of the state — the counts folded from the stream and the four facts
+    /// the binary [recorded](Self::record_limits) — so a figure the binary never recorded reports
+    /// its own default (no ceilings declared, no ceiling hit) rather than being absent, which is
+    /// exactly what a run that ended before the resolver ran should say.
     pub fn finalize(&self, terminal_status: &str) -> GgSessionSummary {
         let state = self.inner.lock().expect("summary tracker lock");
         GgSessionSummary {
@@ -214,10 +393,16 @@ impl SessionSummaryTracker {
                 .clone()
                 .unwrap_or_else(|| "tool_calling".to_string()),
             code_executions: state.code_executions,
+            healing: GgHealingSummary {
+                enabled: state.healing_enabled.clone(),
+                ..state.healing.clone()
+            },
             issues_created: state.issues_created.len() as u64,
             issues_completed: state.issues_completed.len() as u64,
             slot_costs: state.slot_costs.clone(),
             effective_tools: state.effective_tools.clone(),
+            limits: state.limits,
+            limit_hit: state.limit_hit.clone(),
         }
     }
 }

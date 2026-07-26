@@ -98,6 +98,7 @@ fn gg_record(id: &str) -> RunRecord {
         speculations: 0,
         execution_mode: "tool_calling".to_string(),
         code_executions: 0,
+        healing: Default::default(),
         issues_created: 2,
         issues_completed: 2,
         slot_costs: vec![GgSlotCost {
@@ -119,6 +120,8 @@ fn gg_record(id: &str) -> RunRecord {
             "read_file".to_string(),
             "write_file".to_string(),
         ],
+        limits: Default::default(),
+        limit_hit: None,
     });
     record
 }

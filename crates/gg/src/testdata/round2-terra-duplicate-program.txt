@@ -1,0 +1,5 @@
+const files = listDir("src").filter((e) => e.kind === "file").map((e) => e.name);
+return files;
+
+const files = listDir("src").filter((e) => e.kind === "file").map((e) => e.name);
+return files;

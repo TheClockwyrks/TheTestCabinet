@@ -47,6 +47,14 @@ async fn read_ref(ctx: &ToolContext) -> ToolOutcome {
         .await
 }
 
+/// The [`FileImageData`] an outcome carries, or a failure naming what it carried instead.
+fn image_data(outcome: &ToolOutcome) -> &FileImageData {
+    match outcome.data.as_ref() {
+        Some(ToolData::FileImage(data)) => data,
+        other => panic!("expected image data, got {other:?}"),
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Detection
 // ---------------------------------------------------------------------------
@@ -216,6 +224,56 @@ async fn an_oversized_image_is_described_rather_than_attached() {
     assert!(outcome.ok, "too large to show is still a successful read");
     assert!(outcome.images.is_empty());
     assert!(outcome.output.contains("too large"), "{}", outcome.output);
+}
+
+// ---------------------------------------------------------------------------
+// The structured sidecar
+// ---------------------------------------------------------------------------
+
+/// A picture is reported as a picture — a different kind of result from text — so a caller that
+/// asked for a file's contents finds out it got an image instead of silently getting nothing.
+#[tokio::test]
+async fn an_image_read_reports_the_picture_rather_than_text() {
+    let (_dir, ctx) = workspace_with_image(Some(&["text", "image"]));
+    let outcome = read_ref(&ctx).await;
+
+    let data = image_data(&outcome);
+    assert_eq!(data.media_type, "image/png");
+    assert_eq!(data.label, "PNG");
+    assert_eq!(data.bytes, PNG_BYTES.len() as u64);
+    assert!(data.shown);
+    assert_eq!(data.not_shown_reason, None);
+}
+
+/// When the picture is not being shown, the sidecar says so **and** says why — the same two facts
+/// the prose gives the model, for a caller that cannot read the prose.
+#[tokio::test]
+async fn a_picture_that_is_not_shown_reports_why() {
+    let (_dir, ctx) = workspace_with_image(Some(&["text"]));
+    let text_only = read_ref(&ctx).await;
+    let data = image_data(&text_only);
+    assert!(!data.shown);
+    assert_eq!(
+        data.not_shown_reason.as_deref(),
+        Some("the model running this session does not accept image input")
+    );
+
+    // Too large is a different reason, and is reported as one.
+    let dir = TempDir::new().unwrap();
+    let mut huge = PNG_BYTES.to_vec();
+    huge.resize((IMAGE_ATTACH_CAP + 1) as usize, 0);
+    std::fs::write(dir.path().join("ref.png"), &huge).unwrap();
+    let oversized = read_ref(&ToolContext::new(dir.path())).await;
+    let data = image_data(&oversized);
+    assert!(!data.shown);
+    assert!(
+        data.not_shown_reason
+            .as_deref()
+            .is_some_and(|why| why.contains("limit")),
+        "{:?}",
+        data.not_shown_reason
+    );
+    assert_eq!(data.bytes, IMAGE_ATTACH_CAP + 1);
 }
 
 // ---------------------------------------------------------------------------

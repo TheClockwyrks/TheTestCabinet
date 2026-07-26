@@ -8,6 +8,15 @@ use tempfile::TempDir;
 
 use super::*;
 use crate::memories::{MemoryCaps, MemoryStore};
+use crate::tools::ToolFailure;
+
+/// The [`MemoryUsageData`] an outcome carries, or a failure naming what it carried instead.
+fn usage(outcome: &ToolOutcome) -> &MemoryUsageData {
+    match outcome.data.as_ref() {
+        Some(ToolData::MemoryUsage(data)) => data,
+        other => panic!("expected memory usage, got {other:?}"),
+    }
+}
 
 /// A shared store bounded by `caps`, plus a throwaway workspace context.
 fn fixture(caps: MemoryCaps) -> (Arc<Mutex<MemoryStore>>, ToolContext, TempDir) {
@@ -164,6 +173,112 @@ async fn delete_memory_evicts_or_reports_not_found() {
     let outcome = delete.invoke(json!({ "name": "m" }), &ctx).await;
     assert!(!outcome.ok);
     assert!(outcome.output.contains("no memory named `m`"));
+}
+
+// ---------------------------------------------------------------------------
+// The structured sidecar and the classified failures
+// ---------------------------------------------------------------------------
+
+/// Every successful memory mutation reports both capped axes, so a caller near the character
+/// budget can see the ceiling it is about to hit rather than discovering it on the next write.
+#[tokio::test]
+async fn every_memory_mutation_reports_both_capped_axes() {
+    let (store, ctx, _dir) = fixture(tiny_caps());
+    let write = WriteMemoryTool::new(Arc::clone(&store));
+
+    let saved = write
+        .invoke(
+            json!({ "name": "m", "description": "d", "body": "abc" }),
+            &ctx,
+        )
+        .await;
+    assert_eq!(
+        usage(&saved),
+        &MemoryUsageData {
+            count: 1,
+            max_count: 2,
+            total_chars: 3,
+            max_total_chars: 15,
+        }
+    );
+
+    let updated = UpdateMemoryTool::new(Arc::clone(&store))
+        .invoke(
+            json!({ "name": "m", "description": "d", "body": "abcde" }),
+            &ctx,
+        )
+        .await;
+    assert_eq!(usage(&updated).total_chars, 5);
+
+    let deleted = DeleteMemoryTool::new(Arc::clone(&store))
+        .invoke(json!({ "name": "m" }), &ctx)
+        .await;
+    assert_eq!(usage(&deleted).count, 0);
+    assert_eq!(usage(&deleted).total_chars, 0);
+}
+
+/// Each way the store can refuse is classified from its own error variant: a taken name is a
+/// conflict, an unknown name is not-found, and every cap is a limit.
+#[tokio::test]
+async fn each_store_refusal_is_classified_from_its_variant() {
+    let (store, ctx, _dir) = fixture(tiny_caps());
+    let write = WriteMemoryTool::new(Arc::clone(&store));
+
+    write
+        .invoke(
+            json!({ "name": "a", "description": "d", "body": "aa" }),
+            &ctx,
+        )
+        .await;
+
+    let duplicate = write
+        .invoke(
+            json!({ "name": "a", "description": "d", "body": "bb" }),
+            &ctx,
+        )
+        .await;
+    assert_eq!(duplicate.failure, Some(ToolFailure::Conflict));
+
+    let unknown = UpdateMemoryTool::new(Arc::clone(&store))
+        .invoke(
+            json!({ "name": "ghost", "description": "d", "body": "b" }),
+            &ctx,
+        )
+        .await;
+    assert_eq!(unknown.failure, Some(ToolFailure::NotFound));
+
+    let too_long = write
+        .invoke(
+            json!({ "name": "b", "description": "d", "body": "way too long a body" }),
+            &ctx,
+        )
+        .await;
+    assert_eq!(too_long.failure, Some(ToolFailure::LimitExceeded));
+
+    // Fill the count cap, then hit it.
+    write
+        .invoke(
+            json!({ "name": "b", "description": "d", "body": "bb" }),
+            &ctx,
+        )
+        .await;
+    let too_many = write
+        .invoke(
+            json!({ "name": "c", "description": "d", "body": "cc" }),
+            &ctx,
+        )
+        .await;
+    assert_eq!(too_many.failure, Some(ToolFailure::LimitExceeded));
+
+    // And an empty required field is the model's mistake, not the store's ceiling.
+    let empty = write
+        .invoke(json!({ "name": "", "description": "d", "body": "b" }), &ctx)
+        .await;
+    assert_eq!(empty.failure, Some(ToolFailure::InvalidArgument));
+
+    // As is a missing one.
+    let missing = write.invoke(json!({ "name": "d" }), &ctx).await;
+    assert_eq!(missing.failure, Some(ToolFailure::InvalidArgument));
 }
 
 #[test]

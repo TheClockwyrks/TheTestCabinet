@@ -1,0 +1,61 @@
+{{> healing-note ran=true}}
+{{#if error}}
+Your program stopped{{#if error.location}} at {{error.location}}{{/if}}: {{error.message}}
+{{#if calls}}Everything it did before that still stands.
+{{/if}}
+{{#if finishRevoked}}
+You called `finish(...)` in that program, but a program that fails has not finished: the run is
+still going. Fix what threw, check the work, and call `finish(...)` again from a program that runs
+to its end.
+{{/if}}
+{{else}}
+Your program ran to completion.
+{{/if}}
+{{#if unreachable}}
+{{unreachable}}
+{{/if}}
+{{#if calls}}
+It made {{callCount}} tool call(s):
+{{#each calls}}
+- {{name}} → {{#if ok}}ok{{else}}failed: {{error}}{{/if}}
+{{/each}}
+{{#if callsSuppressed}}
+({{callsSuppressed}} further call(s) were made but not listed — a program's roster is capped.)
+{{/if}}
+{{else}}
+It made no tool calls.
+{{/if}}
+{{#each refusals}}
+- refused: {{this}}
+{{/each}}
+{{#if refusalsSuppressed}}
+({{refusalsSuppressed}} further refusal(s) were not listed — a program's refusals are capped.)
+{{/if}}
+{{#if logs}}
+
+Output:
+{{#each logs}}
+{{this}}
+{{/each}}
+{{#if logsSuppressed}}
+({{logsSuppressed}} earlier line(s) were dropped — a program's output is capped, and the capture
+keeps the most recent lines.)
+{{/if}}
+{{/if}}
+{{#if returnedValue}}
+(your program `return`ed a value — return values are discarded, gg never sees them. `console.log()`
+whatever you want to read next turn.)
+{{/if}}
+{{#if silent}}
+(your program logged nothing, so it told you nothing — `console.log()` what you want to read next
+turn)
+{{/if}}
+{{#if deferred}}
+{{deferred}}
+{{/if}}
+{{#if imagesDropped}}
+({{imagesDropped}} image(s) were not attached: a program may show at most {{imageBudget}}.)
+{{/if}}
+
+Continue by emitting your next program. When the work is done and you have checked it, end {{#if delegated}}your session{{else}}the run{{/if}} with
+`finish("...")` from inside a program — nothing else ends it.

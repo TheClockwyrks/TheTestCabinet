@@ -13,9 +13,10 @@ use crate::board::BoardRuntime;
 use crate::client::MockClient;
 use crate::client::{
     ClientFactory, DEFAULT_MOCK_MEMORY, DEFAULT_MOCK_SKILL, DEFAULT_MOCK_TASK_MOVEMENT,
-    DEFAULT_MOCK_TASK_SCAFFOLD, MOCK_CODE_REVIEW_ISSUE_ID, MOCK_FSM_IMPL_FILE, MOCK_FSM_TEST_FILE,
-    MOCK_RAC_LEVEL_FILES, MOCK_REVIEW_FIX_FILE, MOCK_REVIEW_FIX_SENTINEL, MOCK_REVIEW_WORKER_FILE,
-    MOCK_SPECULATE_ATTEMPT_PREFIX, MOCK_SUBAGENT_FILE, MOCK_SUBAGENT_RETURN,
+    DEFAULT_MOCK_TASK_SCAFFOLD, MOCK_CODE_LEVEL_FILES, MOCK_CODE_REVIEW_ISSUE_ID,
+    MOCK_FSM_IMPL_FILE, MOCK_FSM_TEST_FILE, MOCK_REVIEW_FIX_FILE, MOCK_REVIEW_FIX_SENTINEL,
+    MOCK_REVIEW_WORKER_FILE, MOCK_SPECULATE_ATTEMPT_PREFIX, MOCK_SUBAGENT_FILE,
+    MOCK_SUBAGENT_RETURN,
 };
 use crate::compaction::CompactionSetup;
 use crate::config::GgInvocation;
@@ -112,6 +113,266 @@ fn test_context_setup_with_window(emit_breakdown: bool, window_limit: u64) -> Co
         window_limit: Some(window_limit),
         emit_breakdown,
     }
+}
+
+/// A [`LimitsSetup`] bounding a `drive` test by `max_turns` and nothing else: no wall-clock budget,
+/// none of the three configurable [ceilings](crate::limits::RunLimits), and its own unshared
+/// [spend](crate::limits::RunSpend).
+///
+/// This is what every test in this file that is *not* about a ceiling wants, and stating it that way
+/// is the point: a run declares no error or cost ceiling unless it asks for one, so the default
+/// shape of a driven loop here is the default shape of a real run. The ceilings themselves are
+/// driven in `agent.limits.test.rs`.
+fn no_limits(max_turns: usize) -> LimitsSetup {
+    LimitsSetup {
+        limits: RunLimits {
+            max_turns,
+            max_runtime: None,
+            max_consecutive_errors: None,
+            error_rate: None,
+            max_cost: None,
+        },
+        deadline: None,
+        spend: Arc::new(RunSpend::default()),
+    }
+}
+
+/// [`no_limits`] with a wall-clock `deadline`, for the tests that end on one.
+///
+/// The budget is stated as well as the instant, because the breach the loop records reports the
+/// budget as its threshold — a deadline with no declared budget would record a ceiling of zero.
+fn no_limits_until(max_turns: usize, deadline: Instant) -> LimitsSetup {
+    let mut limits = no_limits(max_turns);
+    limits.limits.max_runtime = Some(std::time::Duration::from_secs(1));
+    limits.deadline = Some(deadline);
+    limits
+}
+
+/// A [`CodeSetup`] with responses-as-code **off** — the mode every `drive` test in this file runs
+/// in. The code-shaped path is driven in `agent.sandbox.test.rs`, which pays a component compile
+/// per test and therefore lives apart.
+fn no_code() -> CodeSetup {
+    CodeSetup {
+        enabled: false,
+        limits: SandboxLimits::default(),
+        healing: HealingConfig::default(),
+    }
+}
+
+/// A newtype letting a [`ScriptedFactory`] hand out clones of **one** shared [`MockClient`], so a
+/// test can read its [`turns_taken`](MockClient::turns_taken) after the run.
+///
+/// The factory takes a closure returning a fresh boxed client per agent — deliberately, because a
+/// real client owns per-agent state — so this is how a test keeps a handle on the one it scripted.
+/// It is the only way to prove a loop *stopped*: the telemetry of a run that ended on a ceiling and
+/// one that ran on and reported the ceiling afterwards are identical, and the number of times the
+/// model was actually called is not.
+struct SharedMockClient(Arc<MockClient>);
+
+#[async_trait::async_trait]
+impl ModelClient for SharedMockClient {
+    async fn complete(
+        &self,
+        messages: &[Message],
+        tools: &[ToolDefinition],
+    ) -> Result<ModelResponse, ModelError> {
+        self.0.complete(messages, tools).await
+    }
+
+    fn model_id(&self) -> &str {
+        self.0.model_id()
+    }
+}
+
+/// One model turn whose **whole reply** is `text` — the shape a
+/// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) turn takes, where the reply *is* the program
+/// and there is nothing around it.
+fn code_reply(text: &str) -> ModelResponse {
+    ModelResponse {
+        text: Some(text.to_string()),
+        tool_calls: Vec::new(),
+        finish_reason: FinishReason::Stop,
+        usage: TokenCounts::default(),
+        cost: None,
+    }
+}
+
+/// Drive one root agent against `client` with every capability runtime disabled, so a test varies
+/// only the two things it is about: the [ceilings](LimitsSetup) and the [execution mode](CodeSetup).
+///
+/// Calling [`Agent::drive`] rather than [`run_with_factory`] is deliberate where a test does not need
+/// a whole session: it returns the [`LoopEnd`] (so the turn count and the breach are directly
+/// observable rather than inferred from telemetry) and it skips the session-start sandbox warm-up,
+/// which a test driving prose replies would otherwise pay a component compile for and never use.
+async fn drive_root(
+    client: &dyn ModelClient,
+    dir: &Path,
+    registry: &ToolRegistry,
+    emitter: &Emitter,
+    limits: LimitsSetup,
+    code: CodeSetup,
+) -> LoopEnd {
+    let ctx = ToolContext::new(dir);
+    Agent::root(PRIMARY_SLOT)
+        .drive(
+            client,
+            "go",
+            registry,
+            &ctx,
+            emitter,
+            limits,
+            test_context_setup(false),
+            no_compaction(),
+            no_amc(),
+            SkillsRuntime::disabled(),
+            MemoriesRuntime::disabled(),
+            TasksRuntime::disabled(),
+            BoardRuntime::disabled(),
+            PlanningRuntime::disabled(),
+            FsmRuntime::disabled(),
+            ReadPolicy::default(),
+            false,
+            false,
+            code,
+            None,
+            None,
+        )
+        .await
+}
+
+/// Every [`LimitExceeded`](GgTelemetryKind::LimitExceeded) breach in the stream, in order.
+fn limit_breaches(events: &[GgTelemetryEvent]) -> Vec<GgLimitBreach> {
+    events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::LimitExceeded { breach } => Some(breach.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Every `warn`-level log message in the stream, in order.
+fn warn_messages(events: &[GgTelemetryEvent]) -> Vec<String> {
+    events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::Log { level, message } if level == "warn" => Some(message.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// A capability set with responses-as-code enabled on top of the minimal defaults, optionally with
+/// the given params (for example a low `fuel` ceiling), bound to `model_id`.
+fn code_set(model_id: &str, params: serde_json::Value) -> GgCapabilitySet {
+    let mut set = GgCapabilitySet::minimal(model_id);
+    let mut cap = GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE);
+    cap.params = params;
+    set.capabilities.push(cap);
+    set
+}
+
+/// The program every scripted code-mode run ends with, and the summary it ends with.
+///
+/// There is no prose turn that could end one and there cannot be: under this protocol every reply is
+/// a program, so a reply that is not code is a failed turn rather than a conclusion.
+const FINISHING_PROGRAM: &str = "finish(\"done\");";
+const FINISHING_SUMMARY: &str = "done";
+
+/// A fuel ceiling high enough for the guest engine to start (its own setup floor is a few million)
+/// but far too low for a runaway loop to survive — so what trips is the program, not the shim, and
+/// the test costs milliseconds rather than the ten seconds the real default would take to burn.
+const RUNAWAY_FUEL: u64 = 10_000_000;
+
+/// A client that plays a fixed script and **records the messages it was handed**, in order.
+///
+/// [`MockClient`] discards its input, which is exactly why the defect this exists to guard was
+/// invisible to every other scenario here: a conversation gg builds can be *structurally invalid*
+/// — a `tool`-role message answering a call no assistant turn made — and no assertion about
+/// telemetry or workspace state can see it. A provider can, and rejects the whole request.
+struct RecordingClient {
+    /// The model this client is bound to.
+    model_id: String,
+    /// Which turn is next.
+    turn: AtomicUsize,
+    /// The scripted responses, one per turn.
+    script: Vec<ModelResponse>,
+    /// Every request's messages, in turn order.
+    seen: Mutex<Vec<Vec<Message>>>,
+}
+
+impl RecordingClient {
+    fn new(model_id: &str, script: Vec<ModelResponse>) -> Arc<Self> {
+        Arc::new(Self {
+            model_id: model_id.to_string(),
+            turn: AtomicUsize::new(0),
+            script,
+            seen: Mutex::new(Vec::new()),
+        })
+    }
+
+    /// The messages handed to the model on each turn, in order.
+    fn requests(&self) -> Vec<Vec<Message>> {
+        self.seen.lock().unwrap().clone()
+    }
+}
+
+#[async_trait::async_trait]
+impl ModelClient for RecordingClient {
+    async fn complete(
+        &self,
+        messages: &[Message],
+        _tools: &[ToolDefinition],
+    ) -> Result<ModelResponse, ModelError> {
+        self.seen.lock().unwrap().push(messages.to_vec());
+        let turn = self.turn.fetch_add(1, Ordering::SeqCst);
+        Ok(self
+            .script
+            .get(turn)
+            .cloned()
+            .unwrap_or_else(|| code_reply(FINISHING_PROGRAM)))
+    }
+
+    fn model_id(&self) -> &str {
+        &self.model_id
+    }
+}
+
+/// A newtype letting the factory hand out clones of one [`RecordingClient`].
+struct SharedRecordingClient(Arc<RecordingClient>);
+
+#[async_trait::async_trait]
+impl ModelClient for SharedRecordingClient {
+    async fn complete(
+        &self,
+        messages: &[Message],
+        tools: &[ToolDefinition],
+    ) -> Result<ModelResponse, ModelError> {
+        self.0.complete(messages, tools).await
+    }
+
+    fn model_id(&self) -> &str {
+        self.0.model_id()
+    }
+}
+
+/// Run `script` under `set` through a [`RecordingClient`], returning the outcome, the stream, and
+/// the messages gg handed the model on each turn.
+async fn drive_recorded_code_run(
+    dir: &TempDir,
+    set: GgCapabilitySet,
+    script: Vec<ModelResponse>,
+) -> (SessionOutcome, Vec<GgTelemetryEvent>, Vec<Vec<Message>>) {
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-code".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), set);
+    let client = RecordingClient::new("mock/primary", script);
+    let shared = Arc::clone(&client);
+    let factory = ScriptedFactory::new().slot(PRIMARY_SLOT, move |_| {
+        Box::new(SharedRecordingClient(Arc::clone(&shared)))
+    });
+    let outcome = run_with_factory(&inv, &emitter, Arc::new(factory)).await;
+    (outcome, sink.events(), client.requests())
 }
 
 /// A disabled compaction setup — the `drive` tests that are not about compaction never
@@ -607,8 +868,7 @@ async fn drive_exhausts_the_turn_ceiling_when_the_model_never_stops() {
             &registry,
             &ctx,
             &emitter,
-            2,
-            None,
+            no_limits(2),
             test_context_setup(false),
             no_compaction(),
             no_amc(),
@@ -621,8 +881,7 @@ async fn drive_exhausts_the_turn_ceiling_when_the_model_never_stops() {
             ReadPolicy::default(),
             false,
             false,
-            false,
-            RacLimits::default(),
+            no_code(),
             None,
             None,
         )
@@ -659,8 +918,7 @@ async fn drive_times_out_at_a_passed_deadline() {
             &registry,
             &ctx,
             &emitter,
-            50,
-            Some(Instant::now()),
+            no_limits_until(50, Instant::now()),
             test_context_setup(false),
             no_compaction(),
             no_amc(),
@@ -673,8 +931,7 @@ async fn drive_times_out_at_a_passed_deadline() {
             ReadPolicy::default(),
             false,
             false,
-            false,
-            RacLimits::default(),
+            no_code(),
             None,
             None,
         )
@@ -712,8 +969,7 @@ async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
             &registry,
             &ctx,
             &emitter,
-            5,
-            None,
+            no_limits(5),
             test_context_setup(false),
             no_compaction(),
             no_amc(),
@@ -726,15 +982,16 @@ async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
             ReadPolicy::default(),
             false,
             false,
-            false,
-            RacLimits::default(),
+            no_code(),
             None,
             None,
         )
         .await;
 
     assert_eq!(end.status, "model_error");
-    assert_eq!(end.turns, 0);
+    // The failed turn is counted: it was a model call the run made and paid for, and the loop's
+    // accounting records exactly one outcome per model call however that call went.
+    assert_eq!(end.turns, 1);
     assert!(
         sink.events()
             .iter()
@@ -764,8 +1021,7 @@ async fn drive_ends_model_error_on_exhausted_retries() {
             &registry,
             &ctx,
             &emitter,
-            5,
-            None,
+            no_limits(5),
             test_context_setup(false),
             no_compaction(),
             no_amc(),
@@ -778,8 +1034,7 @@ async fn drive_ends_model_error_on_exhausted_retries() {
             ReadPolicy::default(),
             false,
             false,
-            false,
-            RacLimits::default(),
+            no_code(),
             None,
             None,
         )
@@ -814,8 +1069,7 @@ async fn drive_ends_auth_error_when_the_credential_is_refused() {
             &registry,
             &ctx,
             &emitter,
-            5,
-            None,
+            no_limits(5),
             test_context_setup(false),
             no_compaction(),
             no_amc(),
@@ -828,15 +1082,15 @@ async fn drive_ends_auth_error_when_the_credential_is_refused() {
             ReadPolicy::default(),
             false,
             false,
-            false,
-            RacLimits::default(),
+            no_code(),
             None,
             None,
         )
         .await;
 
     assert_eq!(end.status, "auth_error");
-    assert_eq!(end.turns, 0);
+    // Counted for the same reason a fatal turn is: one recorded outcome per model call made.
+    assert_eq!(end.turns, 1);
     // Still surfaced loudly, and named for what it is.
     assert!(
         sink.events().iter().any(|e| matches!(
@@ -849,26 +1103,8 @@ async fn drive_ends_auth_error_when_the_credential_is_refused() {
 }
 
 // ---------------------------------------------------------------------------
-// Bounds, prompt, and accounting helpers
+// Prompt and accounting helpers
 // ---------------------------------------------------------------------------
-
-/// Bounds come from capability params when present, else the defaults; a zero turn
-/// count is ignored.
-#[test]
-fn resolve_bounds_reads_params_or_defaults() {
-    let default = resolve_bounds(&GgCapabilitySet::minimal("mock/x"));
-    assert_eq!(default.max_turns, DEFAULT_MAX_TURNS);
-    assert_eq!(default.max_runtime_secs, None);
-
-    let mut set = GgCapabilitySet::minimal("mock/x");
-    set.capabilities[0].params = json!({ "maxTurns": 7, "maxRuntimeSecs": 30 });
-    let tuned = resolve_bounds(&set);
-    assert_eq!(tuned.max_turns, 7);
-    assert_eq!(tuned.max_runtime_secs, Some(30));
-
-    set.capabilities[0].params = json!({ "maxTurns": 0 });
-    assert_eq!(resolve_bounds(&set).max_turns, DEFAULT_MAX_TURNS);
-}
 
 /// The system prompt lists the enabled tools, and notes when none are available. (What each
 /// capability's section *says* is covered by the [prompt template tests](crate::prompts); this
@@ -887,6 +1123,7 @@ fn system_prompt_reflects_the_offered_tools() {
         capabilities: Vec::new(),
         slots: Vec::new(),
         disabled_tools: Vec::new(),
+        limits: GgRunLimits::default(),
     };
     let empty_registry = ToolRegistry::from_capabilities(&empty_set);
     let empty = system_prompt(runtimes.inputs(&empty_registry));
@@ -1026,6 +1263,8 @@ impl DisabledRuntimes {
             code_reviews: false,
             speculative: false,
             responses_as_code: false,
+            delegated: false,
+            fences_are_stripped: true,
         }
     }
 }
@@ -1472,8 +1711,7 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
             &registry,
             &ctx,
             &emitter,
-            10,
-            None,
+            no_limits(10),
             test_context_setup(true),
             no_compaction(),
             no_amc(),
@@ -1486,8 +1724,7 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
             ReadPolicy::default(),
             false,
             false,
-            false,
-            RacLimits::default(),
+            no_code(),
             None,
             None,
         )
@@ -1656,8 +1893,7 @@ async fn drive_enforces_memory_caps_end_to_end() {
             &registry,
             &ctx,
             &emitter,
-            10,
-            None,
+            no_limits(10),
             test_context_setup(true),
             no_compaction(),
             no_amc(),
@@ -1670,8 +1906,7 @@ async fn drive_enforces_memory_caps_end_to_end() {
             ReadPolicy::default(),
             false,
             false,
-            false,
-            RacLimits::default(),
+            no_code(),
             None,
             None,
         )
@@ -1853,8 +2088,7 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
             &registry,
             &ctx,
             &emitter,
-            10,
-            None,
+            no_limits(10),
             test_context_setup(true),
             no_compaction(),
             no_amc(),
@@ -1867,8 +2101,7 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
             ReadPolicy::default(),
             false,
             false,
-            false,
-            RacLimits::default(),
+            no_code(),
             None,
             None,
         )
@@ -2158,8 +2391,7 @@ async fn drive_compacts_at_the_threshold_and_retains_pinned_state() {
             &registry,
             &ctx,
             &emitter,
-            10,
-            None,
+            no_limits(10),
             test_context_setup_with_window(true, 4_000),
             compaction_at(0.6),
             no_amc(),
@@ -2172,8 +2404,7 @@ async fn drive_compacts_at_the_threshold_and_retains_pinned_state() {
             ReadPolicy::default(),
             false,
             false,
-            false,
-            RacLimits::default(),
+            no_code(),
             None,
             None,
         )
@@ -2319,8 +2550,7 @@ async fn drive_never_compacts_when_capability_off() {
             &registry,
             &ctx,
             &emitter,
-            10,
-            None,
+            no_limits(10),
             test_context_setup_with_window(true, 4_000),
             no_compaction(),
             no_amc(),
@@ -2333,8 +2563,7 @@ async fn drive_never_compacts_when_capability_off() {
             ReadPolicy::default(),
             false,
             false,
-            false,
-            RacLimits::default(),
+            no_code(),
             None,
             None,
         )
@@ -2415,8 +2644,7 @@ async fn drive_manages_context_end_to_end() {
             &registry,
             &ctx,
             &emitter,
-            20,
-            None,
+            no_limits(20),
             test_context_setup(true),
             no_compaction(),
             amc_with(Arc::clone(&archive)),
@@ -2429,8 +2657,7 @@ async fn drive_manages_context_end_to_end() {
             ReadPolicy::default(),
             false,
             false,
-            false,
-            RacLimits::default(),
+            no_code(),
             None,
             None,
         )
@@ -2526,8 +2753,7 @@ async fn drive_without_amc_offers_no_context_management() {
             &registry,
             &ctx,
             &emitter,
-            20,
-            None,
+            no_limits(20),
             test_context_setup(true),
             no_compaction(),
             no_amc(),
@@ -2540,8 +2766,7 @@ async fn drive_without_amc_offers_no_context_management() {
             ReadPolicy::default(),
             false,
             false,
-            false,
-            RacLimits::default(),
+            no_code(),
             None,
             None,
         )
@@ -2613,8 +2838,7 @@ async fn drive_plans_then_implements_from_a_fresh_context() {
             &registry,
             &ctx,
             &emitter,
-            20,
-            None,
+            no_limits(20),
             test_context_setup(true),
             no_compaction(),
             no_amc(),
@@ -2627,8 +2851,7 @@ async fn drive_plans_then_implements_from_a_fresh_context() {
             ReadPolicy::default(),
             false,
             false,
-            false,
-            RacLimits::default(),
+            no_code(),
             None,
             None,
         )
@@ -2774,8 +2997,7 @@ async fn drive_without_planning_offers_no_planning() {
             &registry,
             &ctx,
             &emitter,
-            20,
-            None,
+            no_limits(20),
             test_context_setup(true),
             no_compaction(),
             no_amc(),
@@ -2788,8 +3010,7 @@ async fn drive_without_planning_offers_no_planning() {
             ReadPolicy::default(),
             false,
             false,
-            false,
-            RacLimits::default(),
+            no_code(),
             None,
             None,
         )
@@ -3091,6 +3312,7 @@ fn validate_slots_enforces_the_binding_invariants() {
         capabilities: Vec::new(),
         slots: vec![GgSlotBinding::new("subagent", "mock/b")],
         disabled_tools: Vec::new(),
+        limits: GgRunLimits::default(),
     };
     assert!(
         validate_slots(&no_primary)
@@ -3106,6 +3328,7 @@ fn validate_slots_enforces_the_binding_invariants() {
         capabilities: Vec::new(),
         slots: vec![GgSlotBinding::deferred(PRIMARY_SLOT, "critic")],
         disabled_tools: Vec::new(),
+        limits: GgRunLimits::default(),
     };
     let err = validate_slots(&deferred).unwrap_err();
     assert!(err.contains("critic"), "unexpected reason: {err}");
@@ -3121,6 +3344,7 @@ fn validate_slots_enforces_the_binding_invariants() {
             GgSlotBinding::new(PRIMARY_SLOT, "mock/b"),
         ],
         disabled_tools: Vec::new(),
+        limits: GgRunLimits::default(),
     };
     assert!(validate_slots(&dup).unwrap_err().contains("more than once"));
 
@@ -3131,6 +3355,7 @@ fn validate_slots_enforces_the_binding_invariants() {
         capabilities: Vec::new(),
         slots: vec![GgSlotBinding::new(PRIMARY_SLOT, "")],
         disabled_tools: Vec::new(),
+        limits: GgRunLimits::default(),
     };
     assert!(validate_slots(&empty_model).is_err());
     let empty_slot = GgCapabilitySet {
@@ -3139,6 +3364,7 @@ fn validate_slots_enforces_the_binding_invariants() {
         capabilities: Vec::new(),
         slots: vec![GgSlotBinding::new("", "mock/a")],
         disabled_tools: Vec::new(),
+        limits: GgRunLimits::default(),
     };
     assert!(validate_slots(&empty_slot).is_err());
 }
@@ -6339,224 +6565,6 @@ fn parse_judge_verdict_reads_the_winner_and_rejects_no_verdict() {
 }
 
 // ---------------------------------------------------------------------------
-// Responses as code: the code-shaped turn runs a program in the sandbox
-// ---------------------------------------------------------------------------
-
-/// A capability set with responses-as-code enabled on top of the minimal defaults, optionally with
-/// the given params (for example a low `fuel` ceiling), bound to `model_id`.
-fn rac_set(model_id: &str, params: serde_json::Value) -> GgCapabilitySet {
-    let mut set = GgCapabilitySet::minimal(model_id);
-    let mut cap = GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE);
-    cap.params = params;
-    set.capabilities.push(cap);
-    set
-}
-
-/// The single `CodeExecution` payload a code-mode turn emits, or `None`.
-fn first_code_execution(
-    events: &[GgTelemetryEvent],
-) -> Option<(bool, u64, Option<u64>, Option<String>)> {
-    events.iter().find_map(|e| match &e.kind {
-        GgTelemetryKind::CodeExecution {
-            ok,
-            tool_calls,
-            fuel_used,
-            error,
-        } => Some((*ok, *tool_calls, *fuel_used, error.clone())),
-        _ => None,
-    })
-}
-
-/// The headline offline e2e: with responses-as-code on, the turn is driven through the code engine —
-/// the model emits a program (a loop + a conditional + composed tool calls), gg runs it in the
-/// wasmtime sandbox, its tool calls fire against the real toolset, and the program's result feeds
-/// back so the loop continues to a clean finish.
-#[tokio::test]
-async fn responses_as_code_routes_the_turn_through_the_code_engine() {
-    let dir = TempDir::new().unwrap();
-    let sink = CollectingSink::new();
-    let emitter = Emitter::with_sink(Some("run-rac".to_string()), Box::new(sink.clone()));
-    let inv = invocation(dir.path(), rac_set("mock/primary", json!({})));
-    let factory = ScriptedFactory::new().slot("primary", |b| {
-        Box::new(MockClient::with_responses_as_code_script(&b.model_id))
-    });
-
-    assert_eq!(
-        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
-        SessionOutcome::Ran
-    );
-
-    // (a) the program's composed `write_file` calls really wrote the `.txt` level files, and its
-    // conditional skipped the `.md` name — proof the loop + conditional ran in the sandbox.
-    for level in MOCK_RAC_LEVEL_FILES {
-        assert!(
-            dir.path().join(level).exists(),
-            "the program should have written {level}"
-        );
-    }
-    assert!(
-        !dir.path().join("notes.md").exists(),
-        "the conditional should have skipped the .md name"
-    );
-
-    let events = sink.events();
-
-    // (b) exactly one code execution, successful, with the four composed tool calls counted
-    // (list_dir + three write_file).
-    let (ok, tool_calls, fuel_used, error) =
-        first_code_execution(&events).expect("a CodeExecution event");
-    assert!(ok, "the program ran successfully");
-    assert_eq!(tool_calls, 4, "list_dir + three write_file were composed");
-    assert!(
-        fuel_used.is_some_and(|f| f > 0),
-        "a successful run reports the fuel it consumed"
-    );
-    assert!(error.is_none(), "a clean run carries no error");
-
-    // (c) the composed calls stay visible as ordinary tool telemetry: a write_file ToolCall before
-    // its successful ToolResult.
-    let call = events.iter().position(
-        |e| matches!(&e.kind, GgTelemetryKind::ToolCall { name, .. } if name == "write_file"),
-    );
-    let result = events.iter().position(|e| {
-        matches!(&e.kind, GgTelemetryKind::ToolResult { name, ok, .. } if name == "write_file" && *ok)
-    });
-    assert!(
-        call.is_some() && result.is_some() && call < result,
-        "a write_file ToolCall precedes its ToolResult"
-    );
-
-    // (d) the session completed, and its summary records the code-shaped mode + one execution.
-    assert!(matches!(
-        &events.last().unwrap().kind,
-        GgTelemetryKind::SessionEnded { status } if status == "completed"
-    ));
-    let summary = session_summary(&events).expect("a session summary");
-    assert_eq!(summary.execution_mode, "responses_as_code");
-    assert_eq!(summary.code_executions, 1);
-}
-
-/// The off arm is unchanged: a run **without** responses-as-code drives the ordinary tool-calling
-/// path, emits no `CodeExecution`, and records the tool-calling execution mode.
-#[tokio::test]
-async fn tool_calling_mode_is_unchanged_and_records_its_mode() {
-    let dir = TempDir::new().unwrap();
-    let sink = CollectingSink::new();
-    let emitter = Emitter::with_sink(Some("run-tc".to_string()), Box::new(sink.clone()));
-    let inv = invocation(dir.path(), GgCapabilitySet::minimal("mock/echo"));
-
-    assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
-
-    let events = sink.events();
-    // The tool-calling path still wrote the default script's file...
-    assert!(dir.path().join("index.html").exists());
-    // ...and emitted no code execution.
-    assert!(
-        first_code_execution(&events).is_none(),
-        "a tool-calling run runs no program"
-    );
-    let summary = session_summary(&events).expect("a session summary");
-    assert_eq!(summary.execution_mode, "tool_calling");
-    assert_eq!(summary.code_executions, 0);
-}
-
-/// A program that exhausts the sandbox's fuel ceiling surfaces cleanly: the failed execution is fed
-/// back as the turn's outcome (a `CodeExecution { ok: false }`) and the run continues to a clean
-/// finish rather than crashing.
-#[tokio::test]
-async fn responses_as_code_fuel_exhaustion_surfaces_cleanly() {
-    let dir = TempDir::new().unwrap();
-    let sink = CollectingSink::new();
-    let emitter = Emitter::with_sink(Some("run-fuel".to_string()), Box::new(sink.clone()));
-    // A low fuel ceiling trips the runaway `while true` program quickly.
-    let inv = invocation(
-        dir.path(),
-        rac_set("mock/primary", json!({ "fuel": 200000 })),
-    );
-    let factory = ScriptedFactory::new().slot("primary", |b| {
-        Box::new(MockClient::with_responses_as_code_runaway_script(
-            &b.model_id,
-        ))
-    });
-
-    // The run did not crash — it ran to a terminal session.
-    assert_eq!(
-        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
-        SessionOutcome::Ran
-    );
-
-    let events = sink.events();
-    let (ok, _tool_calls, _fuel, error) =
-        first_code_execution(&events).expect("a CodeExecution event");
-    assert!(!ok, "a fuel-exhausted program is not a clean execution");
-    assert!(error.is_some(), "the sandbox failure is reported");
-    // The loop continued past the failed program to a clean session end.
-    assert!(matches!(
-        &events.last().unwrap().kind,
-        GgTelemetryKind::SessionEnded { status } if status == "completed"
-    ));
-}
-
-/// A program that calls a delegation tool still goes through the scheduler: the code-mode parent's
-/// program spawns a subagent (also code-driven) and waits for it, the child runs and writes its
-/// file, and the agent tree records the spawn — exactly as a tool-calling delegation would.
-#[tokio::test]
-async fn responses_as_code_program_subagent_honors_the_scheduler() {
-    let dir = TempDir::new().unwrap();
-    let sink = CollectingSink::new();
-    let emitter = Emitter::with_sink(Some("run-rac-sub".to_string()), Box::new(sink.clone()));
-    // Subagents + multi-model + responses-as-code, under a cap of 1 (so the child only runs once the
-    // waiting parent frees its slot — the scheduler's blocked-frees-slot rule).
-    let mut set = subagent_set(1, 3, &["subagent"]);
-    set.capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE));
-    let inv = invocation(dir.path(), set);
-    let factory = ScriptedFactory::new()
-        .slot("primary", |b| {
-            Box::new(MockClient::with_responses_as_code_parent_script(
-                &b.model_id,
-            ))
-        })
-        .slot("subagent", |b| {
-            Box::new(MockClient::with_responses_as_code_child_script(&b.model_id))
-        });
-
-    assert_eq!(
-        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
-        SessionOutcome::Ran
-    );
-
-    // The child actually ran (its program wrote the greeting file in the shared workspace).
-    assert!(
-        dir.path().join(MOCK_SUBAGENT_FILE).exists(),
-        "the code-driven subagent wrote its file, so it ran under the scheduler"
-    );
-
-    let events = sink.events();
-    // A subagent was spawned at depth 1 on the `subagent` slot — the spawn went through the tree.
-    let spawns = agent_spawns(&events);
-    assert!(
-        spawns
-            .iter()
-            .any(|(_, parent, slot, depth, _)| parent.is_some()
-                && slot == "subagent"
-                && *depth == 1),
-        "a subagent was spawned from the program at depth 1: {spawns:?}"
-    );
-    // Both agents ran code-shaped turns (the parent's and the child's programs).
-    let code_execs = events
-        .iter()
-        .filter(|e| matches!(e.kind, GgTelemetryKind::CodeExecution { .. }))
-        .count();
-    assert!(
-        code_execs >= 2,
-        "both the parent and the subagent ran a program, got {code_execs}"
-    );
-    let summary = session_summary(&events).expect("a session summary");
-    assert_eq!(summary.execution_mode, "responses_as_code");
-}
-
-// ---------------------------------------------------------------------------
 // Replay capture (Phase 7a) — recording the non-deterministic inputs
 // ---------------------------------------------------------------------------
 
@@ -6950,3 +6958,40 @@ impl ModelClient for SharedClient {
         self.0.model_id()
     }
 }
+
+// ---------------------------------------------------------------------------
+// Responses as code
+// ---------------------------------------------------------------------------
+
+/// The code-shaped execution mode, end to end through the loop and the wasmtime sandbox. It lives
+/// in its own file because every one of its tests pays a component compile, and because what it
+/// guards — the servicing seam between the sandbox and the loop — is a distinct concern from the
+/// tool-calling turn these tests otherwise cover.
+#[path = "agent.sandbox.test.rs"]
+mod sandbox_tests;
+
+/// The [execution ceilings](crate::limits) driven through the **live loop**: that a breached ceiling
+/// really stops a session rather than only recording that it was breached.
+///
+/// Separate from `limits.test.rs` (which unit-tests the arithmetic with no loop behind it) because
+/// what these guard is liveness, and separate from `agent.sandbox.test.rs` because none of them
+/// needs a program: they drive the ceilings with a scripted client and no component compile at all.
+#[path = "agent.limits.test.rs"]
+mod limits_tests;
+
+/// The seam between [response healing](crate::healing) and the loop: that what gg repaired is
+/// disclosed to the model, counted on the turn's telemetry, and — for a reply that never became a
+/// program — that nothing under `sandbox/` is entered at all.
+///
+/// Healing's own suite proves the algorithm; these prove the wiring, which is the half a pure test
+/// cannot reach.
+#[path = "agent.healing.test.rs"]
+mod healing_tests;
+
+/// The **briefs gg generates for the agents it delegates to**, and the ending each one teaches.
+///
+/// Separate because a brief is model-facing product text rather than loop behaviour: what it has to
+/// get right is that a delegated agent in code mode is told to end by calling `finish`, since every
+/// consumer of a child's work gates on the `completed` only that call produces.
+#[path = "agent.briefs.test.rs"]
+mod brief_tests;

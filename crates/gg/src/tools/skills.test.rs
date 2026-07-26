@@ -8,6 +8,7 @@ use tempfile::TempDir;
 
 use super::*;
 use crate::skills::SkillLibrary;
+use crate::tools::ToolFailure;
 
 /// A tool over a two-skill library (`intro`, `combat`).
 fn tool() -> ReadSkillTool {
@@ -59,6 +60,33 @@ async fn read_skill_errors_on_a_missing_name_argument() {
 
     assert!(!outcome.ok);
     assert!(outcome.output.contains("name"));
+}
+
+/// The skill's body *is* the result, so a successful read carries no sidecar — there is nothing
+/// about it a caller could want that the text does not already hold.
+#[tokio::test]
+async fn a_read_skill_carries_no_sidecar() {
+    let dir = TempDir::new().unwrap();
+    let ctx = ToolContext::new(dir.path());
+    let outcome = tool().invoke(json!({ "name": "intro" }), &ctx).await;
+
+    assert!(outcome.ok);
+    assert_eq!(outcome.data, None);
+    assert_eq!(outcome.failure, None);
+}
+
+/// An unknown skill is `not-found` (the catalogue is finite and listed), while a malformed call is
+/// an argument diagnostic — two different mistakes with two different fixes.
+#[tokio::test]
+async fn an_unknown_skill_is_not_found_and_a_malformed_call_is_not() {
+    let dir = TempDir::new().unwrap();
+    let ctx = ToolContext::new(dir.path());
+
+    let unknown = tool().invoke(json!({ "name": "missing" }), &ctx).await;
+    assert_eq!(unknown.failure, Some(ToolFailure::NotFound));
+
+    let malformed = tool().invoke(json!({}), &ctx).await;
+    assert_eq!(malformed.failure, Some(ToolFailure::InvalidArgument));
 }
 
 #[test]

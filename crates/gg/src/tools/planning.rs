@@ -20,7 +20,7 @@
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
-use super::{Tool, ToolContext, ToolOutcome, required_str};
+use super::{Tool, ToolContext, ToolOutcome, invalid_argument, required_str};
 use crate::model::ToolDefinition;
 
 /// The `enter_plan_mode` tool name.
@@ -115,10 +115,10 @@ impl Tool for SubmitPlanTool {
         // the fresh context and performs the reset.
         let plan = match required_str(&args, "plan", SUBMIT_PLAN_TOOL) {
             Ok(v) => v,
-            Err(m) => return ToolOutcome::error(m),
+            Err(error) => return error.into(),
         };
         if plan.trim().is_empty() {
-            return ToolOutcome::error(
+            return invalid_argument(
                 "`submit_plan`: `plan` must not be empty — provide the implementation plan.",
             );
         }

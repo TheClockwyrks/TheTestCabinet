@@ -16,7 +16,9 @@ use serde_json::{Value, json};
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 
-use super::{Tool, ToolContext, ToolOutcome, required_str};
+use super::{
+    ArgumentError, ShellData, Tool, ToolContext, ToolData, ToolFailure, ToolOutcome, required_str,
+};
 use crate::model::ToolDefinition;
 
 /// The tool's name, matched during dispatch and offered to the model.
@@ -75,12 +77,12 @@ impl Tool for ShellTool {
     async fn invoke(&self, args: Value, ctx: &ToolContext) -> ToolOutcome {
         let command = match required_str(&args, "command", TOOL_NAME) {
             Ok(command) => command,
-            Err(message) => return ToolOutcome::error(message),
+            Err(error) => return error.into(),
         };
 
         let timeout = match parse_timeout(&args) {
             Ok(timeout) => timeout,
-            Err(message) => return ToolOutcome::error(message),
+            Err(error) => return error.into(),
         };
 
         run_command(&command, timeout, ctx).await
@@ -89,18 +91,20 @@ impl Tool for ShellTool {
 
 /// Parse the optional `timeout_secs` argument into a [`Duration`], defaulting to
 /// [`DEFAULT_TIMEOUT_SECS`]. A present-but-non-positive or non-numeric value is an
-/// error the model can correct.
-fn parse_timeout(args: &Value) -> Result<Duration, String> {
+/// [invalid-argument](ToolFailure::InvalidArgument) error the model can correct.
+fn parse_timeout(args: &Value) -> Result<Duration, ArgumentError> {
     match args.get("timeout_secs") {
         None | Some(Value::Null) => Ok(Duration::from_secs_f64(DEFAULT_TIMEOUT_SECS)),
         Some(value) => {
             let secs = value.as_f64().ok_or_else(|| {
-                format!("`{TOOL_NAME}`: argument `timeout_secs` must be a number")
+                ArgumentError(format!(
+                    "`{TOOL_NAME}`: argument `timeout_secs` must be a number"
+                ))
             })?;
             if !secs.is_finite() || secs <= 0.0 {
-                return Err(format!(
+                return Err(ArgumentError(format!(
                     "`{TOOL_NAME}`: argument `timeout_secs` must be a positive number"
-                ));
+                )));
             }
             Ok(Duration::from_secs_f64(secs))
         }
@@ -129,7 +133,12 @@ async fn run_command(command: &str, timeout: Duration, ctx: &ToolContext) -> Too
     let mut child = match command_builder.spawn() {
         Ok(child) => child,
         Err(err) => {
-            return ToolOutcome::error(format!("failed to launch shell command: {err}"));
+            // Nothing ran, so there is no exit code to report and no `ShellData` to attach: this
+            // is the one shell failure that is a failure *of the call* rather than a result of it.
+            return ToolOutcome::failed(
+                ToolFailure::from_io(&err),
+                format!("failed to launch shell command: {err}"),
+            );
         }
     };
 
@@ -178,13 +187,22 @@ async fn run_command(command: &str, timeout: Duration, ctx: &ToolContext) -> Too
             output.push_str("\n\n");
             output.push_str(&body);
         }
-        return ToolOutcome::error(output);
+        // A gg-side ceiling killed a command that was otherwise running fine, which is a different
+        // thing from the command failing — so it is classified as the limit it is, and carries no
+        // `ShellData`: there is no exit code, and whatever the process had printed is already in
+        // the message.
+        return ToolOutcome::failed(ToolFailure::LimitExceeded, output);
     }
 
     let status = match waited {
         Ok(Ok(status)) => status,
         // `child.wait()` itself failed (rare): report it rather than pretend success.
-        Ok(Err(err)) => return ToolOutcome::error(format!("waiting on shell command: {err}")),
+        Ok(Err(err)) => {
+            return ToolOutcome::failed(
+                ToolFailure::from_io(&err),
+                format!("waiting on shell command: {err}"),
+            );
+        }
         Err(_) => unreachable!("the timeout branch is handled above"),
     };
 
@@ -215,6 +233,16 @@ async fn run_command(command: &str, timeout: Duration, ctx: &ToolContext) -> Too
         output,
         summary: Some(summary),
         images: Vec::new(),
+        // The process ran, so its facts are reported whatever it exited with. A non-zero exit
+        // leaves `ok` false (the model is told plainly that the command failed) but `failure`
+        // empty: nothing about the *call* went wrong, and a caller that wants to branch on the
+        // code reads it from here rather than from the first line of `output`.
+        data: Some(ToolData::Shell(ShellData {
+            exit_code: code,
+            body,
+            truncated,
+        })),
+        failure: None,
     }
 }
 

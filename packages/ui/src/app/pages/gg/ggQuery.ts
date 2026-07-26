@@ -61,6 +61,12 @@ export const FACET_KINDS: ReadonlyArray<{
   { kind: "toolOffered", label: "Tool offered", needs: "tool" },
   { kind: "preset", label: "Preset", needs: "none" },
   { kind: "terminalStatus", label: "Terminal status", needs: "none" },
+  // Which execution ceiling stopped the run — `turns`, `runtime`,
+  // `consecutive_errors`, `error_rate`, `cost`, or `none` for a run that hit
+  // none. Distinct from the terminal status because two ceilings share one
+  // status (`limit_exceeded`) and two have statuses of their own (`exhausted`,
+  // `timed_out`), so this is the only facet that answers "which ceiling?".
+  { kind: "limitHit", label: "Limit hit", needs: "none" },
   { kind: "testCase", label: "Test case", needs: "none" },
 ];
 
@@ -101,6 +107,38 @@ export const SUMMARY_FIELDS: ReadonlyArray<{
   { field: "code_executions", label: "Code executions" },
   { field: "issues_created", label: "Issues created" },
   { field: "issues_completed", label: "Issues completed" },
+  // Response healing. Every rate below is over `code_executions` (one per
+  // code-shaped turn), which is why that field is the denominator and there is
+  // no separate "responses" count. The per-strategy figures answer the question
+  // the capability exists to measure — "how often does this model still wrap its
+  // program in a fence after being told not to?" — so they are labelled by the
+  // strategy id an ablation switches off, not by a prettified paraphrase.
+  { field: "responses_healed", label: "Responses healed" },
+  { field: "healing_rate", label: "Responses healed (rate)" },
+  { field: "healing_applications", label: "Healing applications" },
+  { field: "healing_strip_fences", label: "Healing: strip-fences" },
+  { field: "healing_strip_prose", label: "Healing: strip-prose" },
+  {
+    field: "healing_drop_duplicate_program",
+    label: "Healing: drop-duplicate-program",
+  },
+  { field: "healing_drop_imports", label: "Healing: drop-imports" },
+  { field: "healing_unwrap_async", label: "Healing: unwrap-async" },
+  { field: "healing_strip_comment_only", label: "Healing: strip-comment-only" },
+  { field: "responses_not_a_program", label: "Replies that weren't programs" },
+  { field: "responses_several_blocks", label: "Replies with several programs" },
+  // The same count split by how the reply presented its programs, because the two
+  // are different instruction-following failures: a fenced reply is a model still
+  // formatting a reply it was told not to format, while a bare one is a model
+  // sending two answers in one turn. Summed, they are the row above.
+  {
+    field: "responses_several_blocks_fenced",
+    label: "Replies with several programs (fenced)",
+  },
+  {
+    field: "responses_several_blocks_bare",
+    label: "Replies with several programs (bare)",
+  },
 ];
 
 export const AGGREGATIONS: ReadonlyArray<GgAggregation> = [
@@ -221,6 +259,8 @@ export function toFacet(d: FacetDraft): GgFacet {
       return { kind: "preset" };
     case "terminalStatus":
       return { kind: "terminalStatus" };
+    case "limitHit":
+      return { kind: "limitHit" };
     case "capabilityEnabled":
       return { kind: "capabilityEnabled", capability: d.capability };
     case "capabilityImplementation":
@@ -446,6 +486,8 @@ export function facetLabel(f: GgFacet): string {
       return "Preset";
     case "terminalStatus":
       return "Terminal status";
+    case "limitHit":
+      return "Limit hit";
     case "capabilityEnabled":
       return `${capName(f.capability)} on?`;
     case "capabilityImplementation":
@@ -495,9 +537,12 @@ export function formatMetric(metric: GgMetric, value: number): string {
     case "totalTokens":
       return compactFmt.format(value);
     case "summary":
-      // Rates and fullness read best as fractions; the rest are counts.
+      // Rates and fullness read best as fractions; the rest are counts. An
+      // averaged `healing_rate` is a fraction of a fraction, so rounding it to a
+      // whole number would collapse "a third of replies needed repair" to "0".
       return metric.field === "ran_out_of_context" ||
-        metric.field === "final_fullness"
+        metric.field === "final_fullness" ||
+        metric.field === "healing_rate"
         ? value.toFixed(2)
         : numberFmt.format(Math.round(value * 100) / 100);
   }

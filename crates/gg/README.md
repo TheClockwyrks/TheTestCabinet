@@ -92,6 +92,12 @@ completed session.
 
 ## Module layout
 
+The spine of the crate — where a reader should start. Each capability additionally
+owns its own module (`skills.rs`, `memories.rs`, `tasks.rs`, `board.rs`,
+`planning.rs`, `fsm.rs`, `compaction.rs`, `archive.rs`, `subagents.rs`, `git.rs`,
+`dag.rs`, `vision.rs`, `summary.rs`); the authoritative description of each is its
+page in [the docs section](../../apps/docs/src/content/docs/gg/), not this table.
+
 | Module | Role |
 | --- | --- |
 | `main.rs` | Entrypoint: parse `--config`, load the invocation, drive the session, emit telemetry. |
@@ -99,17 +105,12 @@ completed session.
 | `telemetry.rs` | The NDJSON-on-stdout `Emitter` for `GgTelemetryEvent`. |
 | `model.rs` | The provider-agnostic message/tool types (`Message`, `ToolCall`, `ToolDefinition`, `ModelResponse`) and the `ModelClient` trait + `ModelError`. |
 | `client.rs` | The slot-bound model clients: `OpenRouterClient` (with bounded retry/backoff), the scripted offline `MockClient`, and slot → client selection. |
-| `agent.rs` | The agent turn loop (the coarse-grained plug point). |
-| `tools/` | Tool dispatch and the offered toolset (`tools/mod.rs`; future `shell.rs`, `filesystem.rs`). |
-
-## Phase 0 status
-
-The binary parses its invocation, resolves the run's `primary` model slot to a
-concrete client, and drives a minimal turn loop — real against the offline scripted
-`MockClient` (which writes a tiny playable `index.html`), deferred for live
-OpenRouter bindings — streaming the telemetry (`SessionStarted`, `TurnStarted`,
-`AssistantMessage`, `ToolCall`, `Usage`, `SessionEnded`) throughout, then exits `0`.
-Set `TCAB_GG_FAKE_MODEL=1` to force the offline mock for any binding. Tool
-**dispatch** is still a stub (`tools/`), so a called tool is recorded and answered
-with a placeholder result rather than executed; that, driving live providers, and
-`core`'s direct-invocation entrypoint are the remaining `TODO(gg-integration)` work.
+| `agent.rs` | The agent turn loop and the orchestrator above it (the one coarse-grained plug point). |
+| `agent.code.rs` | One [responses-as-code](../../apps/docs/src/content/docs/gg/responses-as-code.md) turn: heal the reply into a program, run it, service every call it composes, and tell the loop what to do next. |
+| `healing.rs` | [Response healing](../../apps/docs/src/content/docs/gg/response-healing.md): the deletion-only, counted, disclosed repairs applied to a model's reply before it is compiled. |
+| `limits.rs` | [Execution limits](../../apps/docs/src/content/docs/gg/execution-limits.md): the single definition of a failed turn, the five ceilings a run is bounded by, and the run-wide spend the cost ceiling is measured against. |
+| `context.rs` | The context window model: what the agent is holding, what is pinned, and what a reclaim frees. |
+| `prompts.rs` | Everything gg *says* to a model, rendered from the `templates/*.hbs` files. |
+| `tools/` | Tool dispatch, the offered toolset, and the typed `ToolData`/`ToolFailure` outcomes every tool emits. |
+| `sandbox.rs` + `sandbox/` | [Responses as code](../../apps/docs/src/content/docs/gg/responses-as-code.md): the wasmtime host, the WIT membrane, the `oxc` type-strip, and the committed interpreter component. |
+| `replay.rs` / `replay_driver.rs` | Capturing a run's non-deterministic inputs, and reconstructing the run from that record. |

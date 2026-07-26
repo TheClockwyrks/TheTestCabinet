@@ -18,7 +18,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
-use super::{Tool, ToolContext, ToolOutcome, required_str};
+use super::{Tool, ToolContext, ToolFailure, ToolOutcome, required_str};
 use crate::model::ToolDefinition;
 use crate::skills::SkillLibrary;
 
@@ -81,10 +81,12 @@ impl Tool for ReadSkillTool {
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
         let name = match required_str(&args, "name", READ_SKILL_TOOL) {
             Ok(name) => name,
-            Err(message) => return ToolOutcome::error(message),
+            Err(error) => return error.into(),
         };
 
         match self.library.get(&name) {
+            // The skill's body *is* the structured result — there is nothing about it to describe
+            // that the text does not already say — so this call carries no sidecar.
             Some(skill) => {
                 ToolOutcome::ok(skill.body().to_string(), format!("read skill `{name}`"))
             }
@@ -95,10 +97,15 @@ impl Tool for ReadSkillTool {
                     .iter()
                     .map(|skill| skill.name())
                     .collect();
-                ToolOutcome::error(format!(
-                    "read_skill: no skill named `{name}`; available skills: {}",
-                    available.join(", ")
-                ))
+                // A name that is not in this run's catalogue: not-found, with the catalogue in the
+                // message so the model can pick a real one on the next call.
+                ToolOutcome::failed(
+                    ToolFailure::NotFound,
+                    format!(
+                        "read_skill: no skill named `{name}`; available skills: {}",
+                        available.join(", ")
+                    ),
+                )
             }
         }
     }

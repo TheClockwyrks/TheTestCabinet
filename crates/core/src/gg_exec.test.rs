@@ -246,6 +246,57 @@ fn bridge_maps_a_failed_tool_result_to_a_warning() {
     assert_eq!(bridge(&ok).len(), 1);
 }
 
+/// Under responses-as-code every assistant message is a page of TypeScript, so the model's actual
+/// conclusion lives only on the turn that called `finish`. Without this mapping a reviewer opening
+/// the run's feed would see N programs and no answer.
+#[test]
+fn a_finished_code_execution_reaches_the_human_facing_feed() {
+    let finished = GgTelemetryEvent::new(
+        "t",
+        GgTelemetryKind::CodeExecution {
+            ok: true,
+            tool_calls: 2,
+            fuel_used: Some(12_000),
+            error: None,
+            finished: Some("Built the game and wrote MANIFEST.md.".to_string()),
+            compile_wait_ms: None,
+            healing: Default::default(),
+        },
+    );
+    let events = bridge(&finished);
+    assert_eq!(events.len(), 2);
+    match &events[0].kind {
+        EventKind::Agent { message } => {
+            assert_eq!(message, "Built the game and wrote MANIFEST.md.");
+        }
+        other => panic!("expected the summary as an agent message, got {other:?}"),
+    }
+    assert!(matches!(events[1].kind, EventKind::Gg { .. }));
+}
+
+/// Only the finishing turn carries a summary, so every other code turn maps to nothing but its
+/// native carry — the feed shows one conclusion per run, not one per program.
+#[test]
+fn a_code_execution_without_a_completion_maps_to_nothing() {
+    for finished in [None, Some("   ".to_string())] {
+        let event = GgTelemetryEvent::new(
+            "t",
+            GgTelemetryKind::CodeExecution {
+                ok: true,
+                tool_calls: 1,
+                fuel_used: Some(900),
+                error: None,
+                finished,
+                compile_wait_ms: None,
+                healing: Default::default(),
+            },
+        );
+        let events = bridge(&event);
+        assert_eq!(events.len(), 1);
+        assert!(matches!(events[0].kind, EventKind::Gg { .. }));
+    }
+}
+
 #[test]
 fn tool_call_kind_classifies_the_phase0_tools() {
     let write = tool_call_kind("write_file", &serde_json::json!({ "path": "a.txt" }));

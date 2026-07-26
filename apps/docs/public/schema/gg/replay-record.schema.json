@@ -21,13 +21,13 @@
           "type": "object"
         },
         {
-          "description": "One tool call's result: the call the agent made and the exact outcome the dispatch returned.\n\nThe [`call`](Self::ToolResult::call) is the `ToolCall` (`id`, `name`, `arguments`) — including\na call a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program composed — and the\n[`outcome`](Self::ToolResult::outcome) is the exact `ToolOutcome` (`ok`, `output`, `summary`)\nit returned. A re-run feeds the recorded outcome instead of actually running the tool, so a\nfilesystem/shell result is reproduced rather than re-executed.",
+          "description": "One tool call's result: the call the agent made and the exact outcome the dispatch returned.\n\nThe [`call`](Self::ToolResult::call) is the `ToolCall` (`id`, `name`, `arguments`) — including\na call a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program composed — and the\n[`outcome`](Self::ToolResult::outcome) is the exact `ToolOutcome` (`ok`, `output`, `summary`,\nplus the optional `images`, `data` and `failure`) it returned. A re-run feeds the recorded\noutcome instead of actually running the tool, so a filesystem/shell result is reproduced\nrather than re-executed.",
           "properties": {
             "call": {
               "description": "The tool call the agent (or a code program) made — a JSON object matching the `gg`\nbinary's `ToolCall` (`id`, `name`, `arguments`)."
             },
             "outcome": {
-              "description": "The exact outcome the dispatch returned — a JSON object matching the `gg` binary's\n`ToolOutcome` (`ok`, `output`, `summary`). Replayed in place of running the tool."
+              "description": "The exact outcome the dispatch returned — a JSON object matching the `gg` binary's\n`ToolOutcome`: `ok`, `output` and `summary`, plus the optional `images` and the\nstructured `data`/`failure` a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program\nbranches on. Those optional members are defaulted on the way back in, so a record\ncaptured before they existed still deserializes and replays. Replayed in place of\nrunning the tool."
             },
             "type": {
               "const": "tool_result",

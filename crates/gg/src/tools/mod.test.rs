@@ -6,7 +6,7 @@ use tempfile::TempDir;
 use test_cabinet_core::gg::{
     CAPABILITY_EDIT_FILE, CAPABILITY_FILESYSTEM, CAPABILITY_LIST_DIR, CAPABILITY_READ_FILE,
     CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_WRITE_FILE, FILESYSTEM_TOOL_CAPABILITIES,
-    GgCapabilityConfig, GgCapabilitySet,
+    GgCapabilityConfig, GgCapabilitySet, GgRunLimits,
 };
 
 use crate::model::ToolCall;
@@ -20,6 +20,7 @@ fn set_with(capabilities: Vec<GgCapabilityConfig>) -> GgCapabilitySet {
         capabilities,
         slots: Vec::new(),
         disabled_tools: Vec::new(),
+        limits: GgRunLimits::default(),
     }
 }
 
@@ -233,6 +234,9 @@ async fn dispatch_unknown_tool_returns_error_outcome() {
     assert!(!outcome.ok);
     assert!(outcome.output.contains("unknown tool"));
     assert!(outcome.output.contains("does_not_exist"));
+    // Classified as the tool being unavailable rather than the call being malformed: the arguments
+    // were never the problem, and a caller told this can stop asking for the tool.
+    assert_eq!(outcome.failure, Some(ToolFailure::Unavailable));
 }
 
 /// A capability that is disabled means its tool is not merely un-listed but genuinely
@@ -255,6 +259,7 @@ async fn dispatch_withheld_tool_returns_error_outcome() {
 
     assert!(!outcome.ok);
     assert!(outcome.output.contains("unknown tool"));
+    assert_eq!(outcome.failure, Some(ToolFailure::Unavailable));
 }
 
 /// Dispatch routes to the named tool and returns its real outcome.
@@ -677,9 +682,131 @@ fn tool_outcome_constructors() {
     assert!(ok.ok);
     assert_eq!(ok.output, "body");
     assert_eq!(ok.summary.as_deref(), Some("did it"));
+    assert_eq!(ok.data, None);
+    assert_eq!(ok.failure, None);
 
     let err = ToolOutcome::error("boom");
     assert!(!err.ok);
     assert_eq!(err.output, "boom");
     assert_eq!(err.summary.as_deref(), Some("boom"));
+    assert_eq!(err.failure, None, "`error` is the unclassified spelling");
+}
+
+/// A classified failure says the same thing to the model as an unclassified one — the class is
+/// additional information for a caller that branches on it, never a substitute for the guidance.
+#[test]
+fn a_classified_failure_reads_exactly_like_an_unclassified_one() {
+    let classified = ToolOutcome::failed(ToolFailure::Conflict, "boom");
+    let plain = ToolOutcome::error("boom");
+
+    assert_eq!(classified.ok, plain.ok);
+    assert_eq!(classified.output, plain.output);
+    assert_eq!(classified.summary, plain.summary);
+    assert_eq!(classified.failure, Some(ToolFailure::Conflict));
+}
+
+/// The sidecar rides along without disturbing anything else on the outcome.
+#[test]
+fn attaching_data_leaves_the_model_facing_text_alone() {
+    let bare = ToolOutcome::ok("wrote 5 bytes", "wrote 5 bytes");
+    let with_data =
+        ToolOutcome::ok("wrote 5 bytes", "wrote 5 bytes").with_data(ToolData::BytesWritten(5));
+
+    assert_eq!(with_data.output, bare.output);
+    assert_eq!(with_data.summary, bare.summary);
+    assert_eq!(with_data.data, Some(ToolData::BytesWritten(5)));
+}
+
+/// The turn-level partition names exactly the three transitions, and every one of them is a real
+/// gg tool — so a consumer that subtracts this list from [`ALL_TOOL_NAMES`] is left with tools
+/// that all exist.
+#[test]
+fn turn_level_tools_are_the_three_transitions() {
+    assert_eq!(
+        TURN_LEVEL_TOOLS,
+        ["enter_plan_mode", "submit_plan", "advance_state"]
+    );
+    for name in TURN_LEVEL_TOOLS {
+        assert!(
+            ALL_TOOL_NAMES.contains(name),
+            "`{name}` must be a real tool"
+        );
+    }
+    // The partition is exactly the planning and FSM tools — the two capabilities whose tools
+    // change the loop's mode rather than producing a value.
+    for name in ALL_TOOL_NAMES {
+        assert_eq!(
+            TURN_LEVEL_TOOLS.contains(name),
+            is_planning_tool(name) || is_fsm_tool(name),
+            "`{name}` is misclassified"
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The serde contract the replay recorder depends on
+// ---------------------------------------------------------------------------
+
+/// An outcome recorded **before** the sidecar existed still deserializes.
+///
+/// The replay recorder captures a dispatch's outcome verbatim and a replay driver feeds it back,
+/// so a record written by an older gg has to keep loading. Both new fields are `#[serde(default)]`
+/// for exactly this reason, and this is the test that would fail if one stopped being.
+#[test]
+fn an_outcome_recorded_before_the_sidecar_still_deserializes() {
+    let recorded = json!({
+        "ok": true,
+        "output": "a\nb/\nc",
+        "summary": "3 entries"
+    });
+
+    let outcome: ToolOutcome = serde_json::from_value(recorded).expect("an older record loads");
+
+    assert!(outcome.ok);
+    assert_eq!(outcome.output, "a\nb/\nc");
+    assert_eq!(outcome.summary.as_deref(), Some("3 entries"));
+    assert!(outcome.images.is_empty());
+    assert_eq!(outcome.data, None, "an older record simply has no sidecar");
+    assert_eq!(outcome.failure, None);
+}
+
+/// An outcome with nothing structured to say serializes to exactly what it always did, so a
+/// recorded session does not grow a field per call for tools that gained nothing.
+#[test]
+fn an_outcome_without_a_sidecar_serializes_unchanged() {
+    let value = serde_json::to_value(ToolOutcome::ok("body", "did it")).unwrap();
+    assert_eq!(
+        value,
+        json!({ "ok": true, "output": "body", "summary": "did it" })
+    );
+}
+
+/// A full outcome round trips, sidecar and classification included — the other half of the replay
+/// contract, since a driver has to hand back exactly what dispatch produced.
+#[test]
+fn an_outcome_with_a_sidecar_round_trips() {
+    let outcome = ToolOutcome::ok("a\nb/", "2 entries").with_data(ToolData::DirEntries(vec![
+        DirEntryData {
+            name: "a".to_string(),
+            kind: DirEntryKind::File,
+        },
+        DirEntryData {
+            name: "b".to_string(),
+            kind: DirEntryKind::Directory,
+        },
+    ]));
+    let json = serde_json::to_string(&outcome).unwrap();
+    assert_eq!(
+        serde_json::from_str::<ToolOutcome>(&json).unwrap(),
+        outcome,
+        "a recorded outcome replays as itself"
+    );
+
+    let failed = ToolOutcome::failed(ToolFailure::LimitExceeded, "out of budget");
+    let json = serde_json::to_string(&failed).unwrap();
+    assert_eq!(serde_json::from_str::<ToolOutcome>(&json).unwrap(), failed);
+    assert!(
+        json.contains("\"failure\":\"limit-exceeded\""),
+        "the class is recorded in its wire spelling: {json}"
+    );
 }

@@ -701,6 +701,27 @@ impl MockClient {
         }
     }
 
+    /// How many turns this mock has actually been asked for — the script cursor, read live.
+    ///
+    /// Test-only, like [`component_bound_tools`](crate::sandbox) and for the same reason: no part of
+    /// a run asks a client how many times it has been called, and a production affordance nothing
+    /// produces is a claim about the design that is not true.
+    ///
+    /// It exists so a test can prove a loop **stopped** rather than merely recorded that it should
+    /// have. A run that ends on an execution ceiling is otherwise indistinguishable, from telemetry
+    /// alone, from one that carried on and reported the ceiling afterwards: both emit the breach.
+    /// The number of times the model was called is the direct evidence, and this is the only place
+    /// it exists.
+    ///
+    /// It counts scripted turns only. The off-script answers the message-driven mocks give (a
+    /// reviewer's verdict, a speculation attempt) deliberately never touch the cursor, so those
+    /// clients report zero — which is correct: they took no turn *of the script* they were built
+    /// from.
+    #[cfg(test)]
+    pub fn turns_taken(&self) -> usize {
+        self.cursor.load(Ordering::SeqCst)
+    }
+
     /// The default script exercising every Phase 1 capability offline:
     ///
     /// 1. `read_skill` loads the [`DEFAULT_MOCK_SKILL`] guide (the skills capability's
@@ -1718,16 +1739,18 @@ impl MockClient {
         Self::new(model_id, vec![write, finish])
     }
 
-    /// The **responses-as-code** script: a run driven by emitting a `gg-script` program instead of
+    /// The **responses-as-code** script: a run driven by emitting a TypeScript program instead of
     /// discrete tool calls, exercising the code path end to end offline.
     ///
-    /// 1. a first turn whose assistant text is a single fenced `gg` program — it calls `list_dir`,
-    ///    then **loops** over a list of names and, for each that ends in `.txt` (a **conditional**),
-    ///    calls `write_file` — so gg extracts the program, runs it in the wasmtime sandbox, and
-    ///    bridges its composed `list_dir`/`write_file` calls to the real toolset (the
-    ///    [`MOCK_RAC_LEVEL_FILES`] appear in the workspace, the `.md` name is skipped);
-    ///    the program returns the list of files it wrote;
-    /// 2. a final plain-text turn with **no** code block, which ends the code-mode session.
+    /// 1. a first turn whose **whole reply** is a program — it calls `listDir`, then **loops** over
+    ///    a list of names and, for each that ends in `.txt` (a **conditional**), calls `writeFile` —
+    ///    so gg heals it (there is nothing to heal), type-strips it, runs it in the wasmtime
+    ///    sandbox, and bridges its composed `list_dir`/`write_file` calls to the real toolset (the
+    ///    [`MOCK_CODE_LEVEL_FILES`] appear in the workspace, the `.md` name is skipped); the program
+    ///    returns the list of files it wrote;
+    /// 2. a second program that calls `finish`, which is the only thing that ends a code-mode
+    ///    session — there is no prose turn gg would read as "done", because under this capability
+    ///    every reply is a program.
     ///
     /// Selected in production by a mock `model_id` naming `responses-as-code` (see
     /// [`mock_client_for`]), so the code path is drivable offline through the real binary with the
@@ -1739,24 +1762,23 @@ impl MockClient {
             output: Some(output),
             reasoning: None,
         };
-        // A program with a loop, a conditional, and a couple of composed tool calls: list the dir,
-        // then write a file per `.txt` name (skipping the `.md` one).
+        // A program with a loop, a conditional, a typed annotation (which only runs because the
+        // types are stripped), and several composed tool calls: list the directory, then write a
+        // file per `.txt` name, skipping the `.md` one.
         let program = ModelResponse {
             text: Some(format!(
-                "I'll scaffold the level files with one program.\n\n\
-                 ```gg\n\
-                 let dir = list_dir({{ path: \".\" }});\n\
-                 let names = [\"{}\", \"{}\", \"notes.md\", \"{}\"];\n\
-                 let written = [];\n\
-                 for name in names {{\n\
-                 \x20   if contains(name, \".txt\") {{\n\
-                 \x20       write_file({{ path: name, contents: \"level data\" }});\n\
-                 \x20       written = push(written, name);\n\
-                 \x20   }}\n\
+                "const entries = listDir(\".\");\n\
+                 const names: string[] = [\"{}\", \"{}\", \"notes.md\", \"{}\"];\n\
+                 const written: string[] = [];\n\
+                 for (const name of names) {{\n\
+                 \x20 if (name.endsWith(\".txt\")) {{\n\
+                 \x20   writeFile(name, \"level data\");\n\
+                 \x20   written.push(name);\n\
+                 \x20 }}\n\
                  }}\n\
-                 return written;\n\
-                 ```",
-                MOCK_RAC_LEVEL_FILES[0], MOCK_RAC_LEVEL_FILES[1], MOCK_RAC_LEVEL_FILES[2],
+                 console.log(`the workspace held ${{entries.length}} entr(ies) to begin with`);\n\
+                 return written;",
+                MOCK_CODE_LEVEL_FILES[0], MOCK_CODE_LEVEL_FILES[1], MOCK_CODE_LEVEL_FILES[2],
             )),
             tool_calls: Vec::new(),
             finish_reason: FinishReason::Stop,
@@ -1767,7 +1789,10 @@ impl MockClient {
             }),
         };
         let finish = ModelResponse {
-            text: Some("The level files are written; the game scaffold is complete.".to_string()),
+            text: Some(
+                "finish(\"The level files are written; the game scaffold is complete.\");"
+                    .to_string(),
+            ),
             tool_calls: Vec::new(),
             finish_reason: FinishReason::Stop,
             usage: usage(900, 30),
@@ -1776,15 +1801,16 @@ impl MockClient {
         Self::new(model_id, vec![program, finish])
     }
 
-    /// A **responses-as-code** script whose program is a **runaway loop** (`while true { .. }`), so
+    /// A **responses-as-code** script whose program is a **runaway loop** (`while (true) {}`), so
     /// the wasmtime fuel ceiling stops it — proving a sandbox failure surfaces as the turn's outcome
     /// (a `CodeExecution { ok: false }`) and the run continues cleanly rather than crashing.
     ///
-    /// 1. a first turn emitting the runaway `gg` program (the sandbox exhausts its fuel);
-    /// 2. a final plain-text turn with no code block, which ends the session.
+    /// 1. a first turn emitting the runaway program (the sandbox exhausts its fuel);
+    /// 2. a second program that calls `finish`, ending the session.
     ///
     /// Pair with a `responses-as-code` capability whose `fuel` param is set low enough to trip
-    /// quickly.
+    /// quickly — but above the guest engine's own setup floor, so what trips is the loop and not
+    /// the shim.
     pub fn with_responses_as_code_runaway_script(model_id: impl Into<String>) -> Self {
         let usage = TokenCounts {
             uncached_input: Some(800),
@@ -1793,17 +1819,14 @@ impl MockClient {
             reasoning: None,
         };
         let runaway = ModelResponse {
-            text: Some(
-                "Computing the level layout.\n\n```gg\nwhile true { let x = 1; }\nreturn 0;\n```"
-                    .to_string(),
-            ),
+            text: Some("let x = 0;\nwhile (true) {\n  x += 1;\n}\nreturn x;".to_string()),
             tool_calls: Vec::new(),
             finish_reason: FinishReason::Stop,
             usage,
             cost: None,
         };
         let finish = ModelResponse {
-            text: Some("I'll keep the scaffold simple; the game is ready.".to_string()),
+            text: Some("finish(\"I kept the scaffold simple; the game is ready.\");".to_string()),
             tool_calls: Vec::new(),
             finish_reason: FinishReason::Stop,
             usage,
@@ -1816,9 +1839,9 @@ impl MockClient {
     /// subagent and waits for it, proving a program's delegation tool still goes through the
     /// scheduler.
     ///
-    /// 1. a first turn emitting a `gg` program that calls `spawn_subagent({ prompt, slot })` then
-    ///    `wait_for_subagents({})` (composed in one program) and returns the collected result;
-    /// 2. a final plain-text turn with no code block, which ends the session.
+    /// 1. a first turn emitting a TypeScript program that calls `spawnSubagent({ prompt, slot })`
+    ///    then `waitForSubagents()` (composed in one program) and returns the collected summaries;
+    /// 2. a second program that calls `finish`, ending the session.
     ///
     /// Pairs with [`with_responses_as_code_child_script`](Self::with_responses_as_code_child_script)
     /// on the `subagent` slot.
@@ -1831,13 +1854,10 @@ impl MockClient {
         };
         let program = ModelResponse {
             text: Some(
-                "I'll delegate the greeting file to a subagent from one program.\n\n\
-                 ```gg\n\
-                 let spawned = spawn_subagent({ prompt: \"Write the greeting file.\", slot: \"subagent\" });\n\
-                 let results = wait_for_subagents({});\n\
-                 return results.output;\n\
-                 ```"
-                .to_string(),
+                "const child = spawnSubagent({ prompt: \"Write the greeting file.\", slot: \"subagent\" });\n\
+                 const results = waitForSubagents([child.id]);\n\
+                 return results.map((r) => r.summary);"
+                    .to_string(),
             ),
             tool_calls: Vec::new(),
             finish_reason: FinishReason::Stop,
@@ -1845,7 +1865,7 @@ impl MockClient {
             cost: None,
         };
         let finish = ModelResponse {
-            text: Some("The subagent finished; the greeting is in place.".to_string()),
+            text: Some("finish(\"The subagent finished; the greeting is in place.\");".to_string()),
             tool_calls: Vec::new(),
             finish_reason: FinishReason::Stop,
             usage: usage(1000, 40),
@@ -1857,9 +1877,9 @@ impl MockClient {
     /// The **responses-as-code child** side of the code-mode delegation e2e: a program that writes
     /// [`MOCK_SUBAGENT_FILE`] (its observable work) then returns a distinctive value.
     ///
-    /// 1. a first turn emitting a `gg` program that calls `write_file(..)` and returns;
-    /// 2. a final plain-text turn ([`MOCK_SUBAGENT_RETURN`]) with no code block, which ends the
-    ///    session and is the value its spawner collects.
+    /// 1. a first turn emitting a TypeScript program that calls `writeFile(..)` and returns;
+    /// 2. a second program that calls `finish` with [`MOCK_SUBAGENT_RETURN`] — the summary that ends
+    ///    its session and is the value its spawner collects.
     pub fn with_responses_as_code_child_script(model_id: impl Into<String>) -> Self {
         let usage = |input: u64, output: u64| TokenCounts {
             uncached_input: Some(input),
@@ -1869,11 +1889,8 @@ impl MockClient {
         };
         let program = ModelResponse {
             text: Some(format!(
-                "Writing the greeting file.\n\n\
-                 ```gg\n\
-                 write_file({{ path: \"{MOCK_SUBAGENT_FILE}\", contents: \"hello from the subagent\\n\" }});\n\
-                 return \"wrote the greeting\";\n\
-                 ```"
+                "writeFile(\"{MOCK_SUBAGENT_FILE}\", \"hello from the subagent\\n\");\n\
+                 return \"wrote the greeting\";"
             )),
             tool_calls: Vec::new(),
             finish_reason: FinishReason::Stop,
@@ -1881,7 +1898,10 @@ impl MockClient {
             cost: None,
         };
         let finish = ModelResponse {
-            text: Some(MOCK_SUBAGENT_RETURN.to_string()),
+            text: Some(format!(
+                "finish({});",
+                serde_json::json!(MOCK_SUBAGENT_RETURN)
+            )),
             tool_calls: Vec::new(),
             finish_reason: FinishReason::Stop,
             usage: usage(520, 30),
@@ -1893,7 +1913,7 @@ impl MockClient {
 
 /// The level files the [responses-as-code script](MockClient::with_responses_as_code_script)'s
 /// program writes (one per `.txt` name in its loop) — its observable work in the workspace.
-pub const MOCK_RAC_LEVEL_FILES: &[&str] = &["level-1.txt", "level-2.txt", "level-3.txt"];
+pub const MOCK_CODE_LEVEL_FILES: &[&str] = &["level-1.txt", "level-2.txt", "level-3.txt"];
 
 /// The file the [subagent child script](MockClient::with_subagent_child_script) writes — its
 /// observable "work" in the shared workspace.
@@ -2304,11 +2324,11 @@ fn mock_client_for(model_id: &str) -> MockClient {
         MockClient::with_speculate_parent_script(model_id)
     } else if model_id.contains("subagent-parent") {
         MockClient::with_subagent_parent_script(model_id)
-    } else if model_id.contains("rac-child") {
+    } else if model_id.contains("code-child") {
         MockClient::with_responses_as_code_child_script(model_id)
-    } else if model_id.contains("rac-parent") {
+    } else if model_id.contains("code-parent") {
         MockClient::with_responses_as_code_parent_script(model_id)
-    } else if model_id.contains("rac-runaway") {
+    } else if model_id.contains("code-runaway") {
         MockClient::with_responses_as_code_runaway_script(model_id)
     } else if model_id.contains("responses-as-code") {
         MockClient::with_responses_as_code_script(model_id)

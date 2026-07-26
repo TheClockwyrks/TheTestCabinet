@@ -169,6 +169,17 @@
           },
           "required": ["kind"],
           "type": "object"
+        },
+        {
+          "description": "Which [execution ceiling](crate::gg::GgLimitKind) stopped the run\n([`limit_hit`](GgSessionSummary::limit_hit)), or `\"none\"` for a run that hit none.\nAbsent only for a run that recorded no session summary.\n\nDistinct from [`TerminalStatus`](Self::TerminalStatus) because two ceilings share a\nstatus and two others have statuses of their own: this facet is the one that answers\n\"which ceiling?\" directly.",
+          "properties": {
+            "kind": {
+              "const": "limitHit",
+              "type": "string"
+            }
+          },
+          "required": ["kind"],
+          "type": "object"
         }
       ]
     },
@@ -386,6 +397,71 @@
         {
           "const": "issues_completed",
           "description": "[`issues_completed`](GgSessionSummary::issues_completed).",
+          "type": "string"
+        },
+        {
+          "const": "responses_healed",
+          "description": "[`healing.healed`](crate::gg::GgHealingSummary::healed) — how many of the run's\nresponses had to be repaired before the program could run.",
+          "type": "string"
+        },
+        {
+          "const": "healing_rate",
+          "description": "[`healing.healed`](crate::gg::GgHealingSummary::healed) over\n[`code_executions`](GgSessionSummary::code_executions) — the run's **healing rate**,\nand `None` for a run that took no code-shaped turn (there is no rate over nothing).\n\nThe one computed field here, on the same footing as\n[`RanOutOfContext`](Self::RanOutOfContext) projecting a bool to `1.0`/`0.0`: it is\nprecomputed per run so that averaging it across a bucket answers \"which models still\nneed their responses repaired?\" in one query.",
+          "type": "string"
+        },
+        {
+          "const": "healing_applications",
+          "description": "[`healing.applications`](crate::gg::GgHealingSummary::applications) — total strategy\napplications, which exceeds [`ResponsesHealed`](Self::ResponsesHealed) when responses\nneeded more than one repair each.",
+          "type": "string"
+        },
+        {
+          "const": "healing_strip_fences",
+          "description": "[`healing.strip_fences`](crate::gg::GgHealingSummary::strip_fences) — the headline\ninstruction-following signal: how often a model still wrapped its program in a code\nfence after being told not to.",
+          "type": "string"
+        },
+        {
+          "const": "healing_strip_prose",
+          "description": "[`healing.strip_prose`](crate::gg::GgHealingSummary::strip_prose).",
+          "type": "string"
+        },
+        {
+          "const": "healing_drop_duplicate_program",
+          "description": "[`healing.drop_duplicate_program`](crate::gg::GgHealingSummary::drop_duplicate_program) —\nhow often a model sent the same program twice in one reply.",
+          "type": "string"
+        },
+        {
+          "const": "healing_drop_imports",
+          "description": "[`healing.drop_imports`](crate::gg::GgHealingSummary::drop_imports).",
+          "type": "string"
+        },
+        {
+          "const": "healing_unwrap_async",
+          "description": "[`healing.unwrap_async`](crate::gg::GgHealingSummary::unwrap_async).",
+          "type": "string"
+        },
+        {
+          "const": "healing_strip_comment_only",
+          "description": "[`healing.strip_comment_only`](crate::gg::GgHealingSummary::strip_comment_only).",
+          "type": "string"
+        },
+        {
+          "const": "responses_not_a_program",
+          "description": "[`healing.not_a_program`](crate::gg::GgHealingSummary::not_a_program) — responses that\nwere not programs at all, and so never ran.",
+          "type": "string"
+        },
+        {
+          "const": "responses_several_blocks",
+          "description": "[`healing.several_blocks`](crate::gg::GgHealingSummary::several_blocks) — of those, the\nones that offered more than one candidate program.",
+          "type": "string"
+        },
+        {
+          "const": "responses_several_blocks_fenced",
+          "description": "[`healing.several_blocks_fenced`](crate::gg::GgHealingSummary::several_blocks_fenced) — of\nthose, the ones that presented their programs as several fenced code blocks.",
+          "type": "string"
+        },
+        {
+          "const": "responses_several_blocks_bare",
+          "description": "[`healing.several_blocks_bare`](crate::gg::GgHealingSummary::several_blocks_bare) — of\nthose, the ones that pasted one program after another with no fence anywhere.\n\nSliceable apart from its fenced sibling because the two are different\ninstruction-following failures: one model is still formatting a reply that was to carry no\nformatting, the other is sending two answers in one turn. Averaged over a bucket grouped by\nmodel, the pair answers which of the two a model is prone to.",
           "type": "string"
         }
       ]

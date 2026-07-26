@@ -7,6 +7,14 @@ use tempfile::TempDir;
 
 use crate::tools::{Tool, ToolContext};
 
+/// The [`FileTextData`] an outcome carries, or a failure naming what it carried instead.
+fn text_data(outcome: &ToolOutcome) -> &FileTextData {
+    match outcome.data.as_ref() {
+        Some(ToolData::FileText(data)) => data,
+        other => panic!("expected file text, got {other:?}"),
+    }
+}
+
 /// A temp workspace holding `lines.txt`, a file of `count` numbered lines
 /// (`line 1`…`line {count}`), and a context rooted at it.
 fn workspace_with_lines(count: usize) -> (TempDir, ToolContext) {
@@ -289,6 +297,136 @@ async fn default_cap_reading_past_the_end_stops_at_the_end() {
 }
 
 // ---------------------------------------------------------------------------
+// The structured sidecar under each mode
+// ---------------------------------------------------------------------------
+
+/// The window the footer describes in prose is reported as three numbers, and the contents it
+/// describes are footer-free — a caller gets the file's text, not gg's rendering of it.
+#[tokio::test]
+async fn a_windowed_read_reports_its_window_without_the_footer() {
+    let (_dir, ctx) = workspace_with_lines(1_000);
+
+    let read = tool(ReadPolicy::HardCap(250))
+        .invoke(json!({ "path": "lines.txt", "offset": 251 }), &ctx)
+        .await;
+
+    let data = text_data(&read);
+    assert_eq!(
+        (data.first_line, data.last_line, data.total_lines),
+        (251, 500, 1_000)
+    );
+    assert!(data.contents.starts_with("line 251\n"));
+    assert!(data.contents.ends_with("line 500\n"));
+    assert!(
+        !data.contents.contains("showing lines"),
+        "the footer belongs to the prose, not to the file: {}",
+        data.contents
+    );
+    assert!(!data.limit_reduced);
+    assert!(!data.byte_truncated);
+}
+
+/// A hard cap that cut the requested `limit` says so as a flag, so a caller can tell "this is all
+/// of it" from "this is all you may have at once" without reading the note.
+#[tokio::test]
+async fn a_reduced_limit_is_reported_in_the_sidecar() {
+    let (_dir, ctx) = workspace_with_lines(1_000);
+
+    let reduced = tool(ReadPolicy::HardCap(250))
+        .invoke(json!({ "path": "lines.txt", "limit": 900 }), &ctx)
+        .await;
+    assert!(text_data(&reduced).limit_reduced);
+
+    // The default cap is a nudge rather than a ceiling, so a larger limit is honoured and nothing
+    // was reduced.
+    let honoured = tool(ReadPolicy::DefaultCap(250))
+        .invoke(json!({ "path": "lines.txt", "limit": 900 }), &ctx)
+        .await;
+    assert!(!text_data(&honoured).limit_reduced);
+}
+
+/// An unlimited read reports the whole file as one window.
+#[tokio::test]
+async fn an_unlimited_read_reports_the_whole_file_as_the_window() {
+    let (_dir, ctx) = workspace_with_lines(12);
+
+    let read = tool(ReadPolicy::Unlimited)
+        .invoke(json!({ "path": "lines.txt" }), &ctx)
+        .await;
+
+    let data = text_data(&read);
+    assert_eq!(
+        (data.first_line, data.last_line, data.total_lines),
+        (1, 12, 12)
+    );
+    assert!(!data.byte_truncated);
+}
+
+/// The byte ceiling is reported as its own flag, separately from the line window: a single
+/// enormous line is cut in bytes even when the whole file was asked for, and the file's real
+/// length is still reported.
+#[tokio::test]
+async fn the_byte_ceiling_is_reported_separately_from_the_window() {
+    let dir = TempDir::new().unwrap();
+    let huge = "x".repeat(READ_FILE_CAP * 2);
+    std::fs::write(dir.path().join("huge.txt"), format!("{huge}\n{huge}\n")).unwrap();
+    let ctx = ToolContext::new(dir.path());
+
+    let whole = tool(ReadPolicy::Unlimited)
+        .invoke(json!({ "path": "huge.txt" }), &ctx)
+        .await;
+    let data = text_data(&whole);
+    assert!(data.byte_truncated);
+    assert!(!data.limit_reduced);
+    assert_eq!(data.total_lines, 2, "the file's length, not the prefix's");
+    assert!(!data.contents.contains("[truncated"));
+
+    let windowed = tool(ReadPolicy::HardCap(250))
+        .invoke(json!({ "path": "huge.txt" }), &ctx)
+        .await;
+    let data = text_data(&windowed);
+    assert!(data.byte_truncated);
+    assert_eq!(
+        (data.first_line, data.last_line, data.total_lines),
+        (1, 2, 2)
+    );
+}
+
+/// An empty file is an empty window — reported honestly rather than as one blank line.
+#[tokio::test]
+async fn an_empty_file_reports_an_empty_window() {
+    let dir = TempDir::new().unwrap();
+    std::fs::write(dir.path().join("empty.txt"), "").unwrap();
+    let ctx = ToolContext::new(dir.path());
+
+    for policy in [ReadPolicy::Unlimited, ReadPolicy::HardCap(250)] {
+        let read = tool(policy)
+            .invoke(json!({ "path": "empty.txt" }), &ctx)
+            .await;
+        let data = text_data(&read);
+        assert_eq!(
+            (data.first_line, data.last_line, data.total_lines),
+            (1, 0, 0),
+            "{policy:?} should report an empty window"
+        );
+        assert!(data.contents.is_empty());
+    }
+}
+
+/// A file whose last line has no trailing newline still counts as ending on that line.
+#[tokio::test]
+async fn an_unterminated_last_line_is_counted() {
+    let dir = TempDir::new().unwrap();
+    std::fs::write(dir.path().join("f.txt"), "one\ntwo").unwrap();
+    let ctx = ToolContext::new(dir.path());
+
+    let read = tool(ReadPolicy::Unlimited)
+        .invoke(json!({ "path": "f.txt" }), &ctx)
+        .await;
+    assert_eq!(text_data(&read).total_lines, 2);
+}
+
+// ---------------------------------------------------------------------------
 // The tool declaration the model sees
 // ---------------------------------------------------------------------------
 
@@ -338,6 +476,46 @@ async fn the_byte_ceiling_still_bounds_a_windowed_read() {
         read.output.len() < READ_FILE_CAP + 256,
         "a windowed read is still bounded in bytes"
     );
+}
+
+/// A read that is both windowed **and** byte-truncated states both facts, in that order: the byte
+/// note (which describes what was cut) before the window note (which describes where to continue).
+///
+/// This is the one combination the other tests do not reach, and it is where the model-facing text
+/// is assembled from the most pieces — so it is pinned exactly rather than by substring.
+#[tokio::test]
+async fn a_windowed_read_that_is_also_byte_truncated_states_both() {
+    let dir = TempDir::new().unwrap();
+    let huge = "x".repeat(READ_FILE_CAP);
+    std::fs::write(
+        dir.path().join("huge.txt"),
+        format!("{huge}\n{huge}\n{huge}\n"),
+    )
+    .unwrap();
+    let ctx = ToolContext::new(dir.path());
+
+    let read = tool(ReadPolicy::HardCap(2))
+        .invoke(json!({ "path": "huge.txt" }), &ctx)
+        .await;
+
+    assert!(read.ok, "{}", read.output);
+    let body = "x".repeat(READ_FILE_CAP);
+    assert_eq!(
+        read.output,
+        format!(
+            "{body}\n\n[truncated: showing {READ_FILE_CAP} of {} bytes]\
+             \n\n[showing lines 1-2 of 3; continue with offset: 3]",
+            READ_FILE_CAP * 2 + 2
+        )
+    );
+
+    let data = text_data(&read);
+    assert!(data.byte_truncated);
+    assert_eq!(
+        (data.first_line, data.last_line, data.total_lines),
+        (1, 2, 3)
+    );
+    assert_eq!(data.contents, body, "the sidecar carries neither footer");
 }
 
 /// Multi-byte characters must not be split by the byte ceiling (which would panic).

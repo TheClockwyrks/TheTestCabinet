@@ -1,0 +1,6 @@
+```ts
+const entries = listDir("src");
+console.log("src entries:", JSON.stringify(entries));
+const lsResult = shell("find src -type f");
+console.log("find output:\n", lsResult.output);
+```Consumed fuel: 24,000 / 1,000,000 budget.

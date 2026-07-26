@@ -29,7 +29,10 @@
 use std::io::Write;
 use std::sync::Arc;
 
-use test_cabinet_core::gg::{GgSessionSummary, GgTelemetryEvent, GgTelemetryKind};
+use test_cabinet_core::gg::{
+    GgHealingStrategy, GgLimitBreach, GgRunLimits, GgSessionSummary, GgTelemetryEvent,
+    GgTelemetryKind,
+};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
@@ -227,6 +230,42 @@ impl Emitter {
     /// before [finalizing](Self::finalize_summary).
     pub fn record_execution_mode(&self, mode: impl Into<String>) {
         self.summary.record_execution_mode(mode);
+    }
+
+    /// Record the [execution ceilings](GgRunLimits) in force for this run on the shared
+    /// [summary tracker](SessionSummaryTracker) — the configured set with gg's own turn default
+    /// filled in, as the orchestrator resolved it.
+    ///
+    /// Another configuration fact no event carries, so the loop records it once (on the root's
+    /// emitter) as soon as the orchestrator has resolved it — long before any ceiling could be
+    /// breached, so a run stopped by one carries both the breach and the ceiling that produced it.
+    pub fn record_limits(&self, limits: GgRunLimits) {
+        self.summary.record_limits(limits);
+    }
+
+    /// Record the [response-healing](crate::healing) strategies armed for this run on the shared
+    /// [summary tracker](SessionSummaryTracker), in the order gg applies them.
+    ///
+    /// A fourth configuration fact no event carries, recorded once (on the root's emitter) beside
+    /// the ceilings and only for a run that actually runs the pipeline. It is what lets a study
+    /// tell an ablation's healing-off arm from its healing-on arm without reading the invocation
+    /// files: every other healing figure counts what fired, and neither arm fires anything on a
+    /// clean run.
+    pub fn record_healing(&self, enabled: Vec<GgHealingStrategy>) {
+        self.summary.record_healing(enabled);
+    }
+
+    /// Record the ceiling that stopped the **run** on the shared
+    /// [summary tracker](SessionSummaryTracker), or `None` for a run that ended on its own terms.
+    ///
+    /// The one summary figure whose event *is* on this stream — a
+    /// [`LimitExceeded`](GgTelemetryKind::LimitExceeded) is emitted by every agent that stops on a
+    /// ceiling — and is still handed over rather than folded, because every agent's events pass
+    /// through the one shared tracker and a subagent's breach is not the run's outcome. The loop
+    /// therefore passes the **root** loop's own breach, immediately before
+    /// [finalizing](Self::finalize_summary).
+    pub fn record_limit_hit(&self, breach: Option<GgLimitBreach>) {
+        self.summary.record_limit_hit(breach);
     }
 }
 

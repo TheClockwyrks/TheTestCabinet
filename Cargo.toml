@@ -4,7 +4,6 @@ members = [
 	"crates/core",
 	"crates/cli",
 	"crates/gg",
-	"crates/gg-rac-interp",
 	"crates/contract-codegen",
 	"crates/draw",
 	"crates/model-core",
@@ -112,14 +111,6 @@ codegen-units = 1
 [profile.dev.package.lattice-ref-transport]
 codegen-units = 1
 
-# The responses-as-code interpreter (`crates/gg-rac-interp`) is a `cdylib` for the
-# same reason the reference engines are (it compiles to `wasm32-unknown-unknown` to
-# load in gg's `rac` sandbox), so on the NATIVE host `cargo test` builds an
-# (otherwise unused) `.so` and hits the same intermittent incremental-codegen
-# `*.rcgu.o` race. Pin it to one codegen unit for parity.
-[profile.dev.package.gg-rac-interp]
-codegen-units = 1
-
 # The desktop shell's library target is built as a `cdylib`/`staticlib` (the Tauri
 # v2 convention — see `crates/desktop/Cargo.toml`) in addition to the plain `lib`.
 # On the NATIVE host `cargo test` compiles this library (incrementally, split
@@ -132,6 +123,29 @@ codegen-units = 1
 # bundle Tauri ships.
 [profile.dev.package.test-cabinet-desktop]
 codegen-units = 1
+
+# Cranelift compiles the ~13 MB responses-as-code sandbox component
+# (`crates/gg/src/sandbox`) on first use in every process that runs a sandbox
+# test, and `cargo nextest` runs ONE PROCESS PER TEST. Unoptimised that compile
+# takes 7.6s; with these five packages optimised it takes 1.2s on a many-core
+# machine and 7.9s on one core — the difference between a comfortable margin and
+# brushing the 120s per-test cap (`.config/nextest.toml`) on a small runner. The
+# cost is one slower first build. These are the code generator's own hot crates,
+# not workspace members, so optimising them changes no behaviour under test.
+[profile.dev.package.cranelift-codegen]
+opt-level = 3
+
+[profile.dev.package.cranelift-frontend]
+opt-level = 3
+
+[profile.dev.package.cranelift-entity]
+opt-level = 3
+
+[profile.dev.package.regalloc2]
+opt-level = 3
+
+[profile.dev.package.wasmparser]
+opt-level = 3
 
 [workspace.dependencies]
 # Shared runtime dependencies inherited by member crates via { workspace = true }.
@@ -333,3 +347,12 @@ tracing-opentelemetry = "0.33"
 # `tiktoken-rs` embeds the BPE vocab (no network, no system deps), matching the
 # workspace's minimal-host stance. Only `crates/gg` pulls it in.
 tiktoken-rs = "0.7"
+
+# In-process TypeScript type-stripping for the gg sandbox
+# (`crates/gg/src/sandbox/transpile.rs`): a model's program is TypeScript, the
+# sandbox's guest runs JavaScript, and the strip measures in microseconds — so no
+# Node, no `tsc`, and no `componentize-js` is ever on a turn's critical path.
+# Pinned to the 0.141 line the host is written against: oxc's parser/transformer
+# API moves between minor releases, and a silent bump would change how a model's
+# syntax error is reported.
+oxc = { version = "0.141", features = ["semantic", "transformer", "codegen"] }

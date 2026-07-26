@@ -89,6 +89,12 @@ impl GgRecorder {
     /// Record one **tool result**: the `call` the agent (or a code program) made and the exact
     /// `outcome` the dispatch returned, tagged with the recording `agent_id` and the next global
     /// sequence.
+    ///
+    /// A program-composed call arrives here under the synthetic id the loop minted for it
+    /// ([`PROGRAM_CALL_ID_PREFIX`](crate::sandbox::PROGRAM_CALL_ID_PREFIX)), and that prefix is the
+    /// only thing distinguishing the two in the record — it is what lets the
+    /// [replay driver](crate::replay_driver) attribute the entry to the open turn's *program*
+    /// instead of to a native tool call the model never made.
     pub fn record_tool_result(&self, agent_id: &str, call: &ToolCall, outcome: &ToolOutcome) {
         let call = serde_json::to_value(call).unwrap_or(Value::Null);
         let outcome = serde_json::to_value(outcome).unwrap_or(Value::Null);

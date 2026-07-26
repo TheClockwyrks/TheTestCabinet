@@ -19,6 +19,11 @@
 //! plus a short `summary` for the [`ToolResult`](test_cabinet_core::gg::GgTelemetryKind::ToolResult)
 //! telemetry event.
 //!
+//! An outcome also carries a **typed sidecar**: the [`ToolData`] a successful call produced and the
+//! [`ToolFailure`] class a failed one was classified as, both computed from the same locals the
+//! prose is formatted from. The model-facing text is untouched by their presence — see
+//! [`data`] for why a consumer that is a program needs facts rather than sentences.
+//!
 //! # Capability gating
 //!
 //! [`ToolRegistry::from_capabilities`] assembles the offered toolset from *only* the
@@ -43,6 +48,7 @@
 
 mod board;
 mod context;
+mod data;
 mod filesystem;
 mod fsm;
 mod memories;
@@ -78,6 +84,17 @@ pub use board::{COMPLETE_ISSUE_TOOL, is_board_tool};
 pub use context::{
     ARCHIVE_THREAD_TOOL, DEFAULT_ARCHIVE_KEEP_RECENT, EVICT_FILE_VIEW_TOOL, SEARCH_ARCHIVE_TOOL,
     is_context_reclaim_tool, parse_archive_keep_recent, parse_evict_path,
+};
+// Every payload shape, including the ones the LOOP produces rather than a tool (a context reclaim
+// and the four delegation results). They are declared beside the outcome they ride on, because that
+// is where their shape has to stay in step with everything else a caller reads, and they are read
+// from here by the [sandbox membrane](crate::sandbox), which turns each one into a typed WIT
+// result.
+pub use data::{
+    AgentStatusData, ArchiveHitData, ArchiveSearchData, BoardUsageData, CompletionData,
+    DirEntryData, DirEntryKind, FileImageData, FileTextData, MemoryUsageData, ReclaimData,
+    ShellData, SpeculationData, SubagentHandleData, SubagentResultData, ToolData, ToolFailure,
+    UsagePair, WorkflowData, saturating_u32, saturating_u64,
 };
 pub use filesystem::{READ_FILE_TOOL, ReadPolicy};
 pub use fsm::{ADVANCE_STATE_TOOL, is_fsm_tool};
@@ -133,6 +150,22 @@ pub const ALL_TOOL_NAMES: &[&str] = &[
     "run_workflow",
     "speculate",
 ];
+
+/// The tools that perform a **turn-level transition** rather than producing a value: they change
+/// the loop's mode — into a read-only planning pass, out of one, or on to the next
+/// [FSM](crate::fsm) state — and the change takes effect between turns, not within one.
+///
+/// They are ordinary tools on the native tool-calling path, where a turn *is* the unit of work. But
+/// a caller that composes several calls into one turn (a program under
+/// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE)) has nothing to compose
+/// them *into*: "the rest of this turn now runs in plan mode" is not a value. Naming them once here
+/// is what lets such a caller withhold exactly these and explain why, rather than each site
+/// re-deriving the list and drifting.
+///
+/// Its readers are [`scope_tools`](crate::sandbox::scope_tools), which withholds exactly these from
+/// a program's scope, and the [system prompt](crate::prompts), which names them as things a program
+/// cannot call.
+pub const TURN_LEVEL_TOOLS: &[&str] = &[ENTER_PLAN_MODE_TOOL, SUBMIT_PLAN_TOOL, ADVANCE_STATE_TOOL];
 
 /// The names in a capability set's per-tool [overrides](GgCapabilitySet::disabled_tools) that are
 /// **unknown** — not a tool gg can offer at all (a typo, or a removed tool), validated against
@@ -288,7 +321,9 @@ impl ToolContext {
 ///
 /// It derives `Serialize`/`Deserialize` (camelCase) so the [replay](test_cabinet_core::gg::CAPABILITY_REPLAY)
 /// recorder can capture the exact outcome a tool dispatch returned and a replay driver can feed it
-/// back verbatim.
+/// back verbatim. Every field added since is therefore `#[serde(default)]` and omitted when empty:
+/// a record captured by an older gg still deserializes, and one captured by this gg is no larger
+/// for the tools that have nothing extra to say.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolOutcome {
@@ -303,22 +338,41 @@ pub struct ToolOutcome {
     /// for every other outcome, so nothing but an image read pays for the field.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub images: Vec<ImageContent>,
+    /// The structured facts about this outcome, for a caller that wants data rather than prose —
+    /// today a program written under
+    /// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE), which branches on
+    /// them. `None` for a tool whose result is a bare confirmation. The native tool-calling path is
+    /// untouched: it keeps reading [`output`](Self::output).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data: Option<ToolData>,
+    /// Why the call failed, when it failed — so a structured caller is handed a typed class
+    /// instead of inferring one from prose. `None` on success, and on a failure raised outside a
+    /// tool implementation (which such a caller reports as unclassified).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure: Option<ToolFailure>,
 }
 
 impl ToolOutcome {
     /// A successful outcome carrying the model-facing `output` and a telemetry
-    /// `summary`.
+    /// `summary`. Attach the call's structured facts with [`with_data`](Self::with_data).
     pub fn ok(output: impl Into<String>, summary: impl Into<String>) -> Self {
         Self {
             ok: true,
             output: output.into(),
             summary: Some(summary.into()),
             images: Vec::new(),
+            data: None,
+            failure: None,
         }
     }
 
-    /// A failed outcome. The `message` is both the model-facing output (so the model
-    /// can recover) and the telemetry summary.
+    /// A failed outcome, **unclassified**. The `message` is both the model-facing output (so the
+    /// model can recover) and the telemetry summary.
+    ///
+    /// Kept alongside [`failed`](Self::failed) for the callers that are not tool implementations —
+    /// the loop's bridge and degradation paths — where there is no tool whose vocabulary a
+    /// [`ToolFailure`] would be drawn from. A tool implementation should use `failed`: an
+    /// unclassified failure tells a structured caller only that something went wrong.
     pub fn error(message: impl Into<String>) -> Self {
         let message = message.into();
         Self {
@@ -326,12 +380,31 @@ impl ToolOutcome {
             output: message.clone(),
             summary: Some(message),
             images: Vec::new(),
+            data: None,
+            failure: None,
+        }
+    }
+
+    /// A failed outcome, **classified**. The `message` is both the model-facing output and the
+    /// telemetry summary, exactly as [`error`](Self::error) — `failure` is additional information
+    /// for a caller that branches on the class, never a substitute for saying what went wrong.
+    pub fn failed(failure: ToolFailure, message: impl Into<String>) -> Self {
+        Self {
+            failure: Some(failure),
+            ..Self::error(message)
         }
     }
 
     /// This outcome with `images` attached to the tool result.
     pub fn with_images(mut self, images: Vec<ImageContent>) -> Self {
         self.images = images;
+        self
+    }
+
+    /// This outcome with its structured [`ToolData`] sidecar attached — the facts the `output`
+    /// states in prose, for a caller that needs to compute with them.
+    pub fn with_data(mut self, data: ToolData) -> Self {
+        self.data = Some(data);
         self
     }
 }
@@ -663,26 +736,71 @@ impl ToolRegistry {
     /// Dispatch a [`ToolCall`] to the tool whose name matches, running it against
     /// `ctx`. An unknown tool name yields an error [`ToolOutcome`] — dispatch never
     /// panics on a name the model invented or a tool a disabled capability withheld.
+    ///
+    /// That outcome is classified [`Unavailable`](ToolFailure::Unavailable) rather than as a bad
+    /// argument: the call was well formed, and what is missing is the tool, either because the
+    /// name does not exist at all or because this run's capabilities withhold it. A caller told
+    /// that can stop asking for it, which is the recovery a name-level typo and a withheld
+    /// capability share.
     pub async fn dispatch(&self, call: &ToolCall, ctx: &ToolContext) -> ToolOutcome {
         match self.tools.iter().find(|tool| tool.name() == call.name) {
             Some(tool) => tool.invoke(call.arguments.clone(), ctx).await,
-            None => ToolOutcome::error(format!(
-                "unknown tool `{}`; it is not offered by this run's capability set",
-                call.name
-            )),
+            None => ToolOutcome::failed(
+                ToolFailure::Unavailable,
+                format!(
+                    "unknown tool `{}`; it is not offered by this run's capability set",
+                    call.name
+                ),
+            ),
         }
     }
 }
 
-/// Extract a required string field from a tool's `args`, or an error message naming
-/// the tool and field. Shared by the tool implementations for uniform argument
-/// diagnostics.
-fn required_str(args: &Value, field: &str, tool: &str) -> Result<String, String> {
+/// A call the model got wrong — a missing, ill-typed, or out-of-range argument — carried as the
+/// diagnostic that names it.
+///
+/// Every argument helper in the crate fails with this, and **only** this, which is what makes the
+/// classification a single fact rather than forty independent decisions: the class is applied once,
+/// in the conversion below, so a helper cannot pick a different one and a call site cannot forget
+/// to pick any.
+///
+/// It carries the message rather than a whole [`ToolOutcome`] for a plain reason: a `Result` is as
+/// wide as its widest variant, and the outcome — with its images and its structured sidecar — is
+/// several times the size of the value these helpers return. The error stays a `String`; the
+/// outcome is built at the one place it is needed, on the way out of `invoke`.
+///
+/// Constructed directly by the argument helpers in this module and its children (a private field
+/// is visible to a module's descendants), and turned into an outcome by `.into()` at the `invoke`
+/// that returns it.
+struct ArgumentError(String);
+
+impl From<ArgumentError> for ToolOutcome {
+    /// The one place an argument diagnostic becomes an outcome, and therefore the one place it is
+    /// classified [`InvalidArgument`](ToolFailure::InvalidArgument).
+    fn from(error: ArgumentError) -> Self {
+        Self::failed(ToolFailure::InvalidArgument, error.0)
+    }
+}
+
+/// Extract a required string field from a tool's `args`, or an [`ArgumentError`] naming the tool
+/// and field. Shared by the tool implementations for uniform argument diagnostics.
+fn required_str(args: &Value, field: &str, tool: &str) -> Result<String, ArgumentError> {
     match args.get(field) {
         Some(Value::String(value)) => Ok(value.clone()),
-        Some(_) => Err(format!("`{tool}`: argument `{field}` must be a string")),
-        None => Err(format!("`{tool}`: missing required argument `{field}`")),
+        Some(_) => Err(ArgumentError(format!(
+            "`{tool}`: argument `{field}` must be a string"
+        ))),
+        None => Err(ArgumentError(format!(
+            "`{tool}`: missing required argument `{field}`"
+        ))),
     }
+}
+
+/// An argument diagnostic as a failed [`ToolOutcome`], for the checks a tool makes inline rather
+/// than through a helper (an empty string where a value was required, a status word that is not
+/// one of the three). The same single class as every helper's, by construction.
+fn invalid_argument(message: impl Into<String>) -> ToolOutcome {
+    ArgumentError(message.into()).into()
 }
 
 #[cfg(test)]

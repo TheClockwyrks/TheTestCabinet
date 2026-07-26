@@ -23,7 +23,10 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
-use super::{Tool, ToolContext, ToolOutcome, required_str};
+use super::{
+    ArchiveHitData, ArchiveSearchData, Tool, ToolContext, ToolData, ToolOutcome, invalid_argument,
+    required_str, saturating_u32,
+};
 use crate::archive::ArchiveStore;
 use crate::model::ToolDefinition;
 
@@ -116,10 +119,12 @@ impl Tool for EvictFileViewTool {
 
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
         // Validate only; the loop performs the reclaim against the live window and rewrites
-        // this result with what was actually reclaimed.
+        // this result — including its `ToolData::Reclaim` sidecar — with what was actually
+        // reclaimed. This placeholder therefore carries no data of its own: it has not yet
+        // happened, and reporting a guess would be worse than reporting nothing.
         match parse_evict_path(&args) {
             Ok(_) => ToolOutcome::ok("evicting file views", "evict file views"),
-            Err(message) => ToolOutcome::error(message),
+            Err(message) => invalid_argument(message),
         }
     }
 }
@@ -162,10 +167,11 @@ impl Tool for ArchiveThreadTool {
     }
 
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
-        // Validate only; the loop performs the archival against the live window.
+        // Validate only; the loop performs the archival against the live window and rewrites this
+        // result (and attaches its `ToolData::Reclaim`) with what it actually moved out.
         match parse_archive_keep_recent(&args) {
             Ok(_) => ToolOutcome::ok("archiving thread history", "archive thread"),
-            Err(message) => ToolOutcome::error(message),
+            Err(message) => invalid_argument(message),
         }
     }
 }
@@ -215,27 +221,46 @@ impl Tool for SearchArchiveTool {
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
         let query = match required_str(&args, "query", SEARCH_ARCHIVE_TOOL) {
             Ok(query) => query,
-            Err(message) => return ToolOutcome::error(message),
+            Err(error) => return error.into(),
         };
         if query.trim().is_empty() {
-            return ToolOutcome::error(format!(
+            return invalid_argument(format!(
                 "`{SEARCH_ARCHIVE_TOOL}`: `query` must not be empty"
             ));
         }
 
         let archive = self.archive.lock().expect("archive store lock");
         if archive.is_empty() {
+            // "Nothing has been archived yet" and "nothing matched" are different answers, and the
+            // sidecar keeps them apart exactly as the prose does: a caller told only that the hit
+            // list was empty would archive its thread again, believing the first attempt failed.
             return ToolOutcome::ok(
                 "The thread archive is empty — nothing has been archived yet.",
                 "archive empty",
-            );
+            )
+            .with_data(ToolData::ArchiveSearch(ArchiveSearchData {
+                archive_empty: true,
+                hits: Vec::new(),
+            }));
         }
         let hits = archive.search(&query, SEARCH_RESULT_CAP);
+        let data = ToolData::ArchiveSearch(ArchiveSearchData {
+            archive_empty: false,
+            hits: hits
+                .iter()
+                .map(|entry| ArchiveHitData {
+                    seq: saturating_u32(entry.seq),
+                    role: entry.role,
+                    text: entry.text.clone(),
+                })
+                .collect(),
+        });
         if hits.is_empty() {
             return ToolOutcome::ok(
                 format!("No archived thread history matches `{query}`."),
                 format!("no archive match for `{query}`"),
-            );
+            )
+            .with_data(data);
         }
 
         let mut out = format!("Archived history matching `{query}`:\n");
@@ -243,7 +268,7 @@ impl Tool for SearchArchiveTool {
             out.push_str(&format!("\n[{}] {}\n", entry.label(), entry.text));
         }
         let summary = format!("{} archive hit(s) for `{query}`", hits.len());
-        ToolOutcome::ok(out, summary)
+        ToolOutcome::ok(out, summary).with_data(data)
     }
 }
 

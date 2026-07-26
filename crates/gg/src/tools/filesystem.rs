@@ -49,7 +49,10 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use serde_json::{Value, json};
 
-use super::{Tool, ToolContext, ToolOutcome, required_str};
+use super::{
+    ArgumentError, DirEntryData, DirEntryKind, FileImageData, FileTextData, Tool, ToolContext,
+    ToolData, ToolFailure, ToolOutcome, invalid_argument, required_str, saturating_u32,
+};
 use crate::model::{ImageContent, ToolDefinition};
 
 /// The `read_file` tool name — also what the [system prompt](crate::prompts) checks for when it
@@ -217,25 +220,55 @@ pub fn resolve_within(root: &Path, rel: &str) -> Result<PathBuf, String> {
 }
 
 /// Resolve `field` from `args` as a required workspace-relative path, mapping both a
-/// missing/ill-typed argument and an escape attempt to a tool error string.
-fn resolve_arg(args: &Value, field: &str, tool: &str, root: &Path) -> Result<PathBuf, String> {
+/// missing/ill-typed argument and an escape attempt to a failed [`ToolOutcome`].
+///
+/// A confinement refusal is an [invalid argument](ToolFailure::InvalidArgument), not a refusal or a
+/// missing file: the path the caller supplied is not one this tool accepts, and the fix is to
+/// supply a different one. (Nothing is revealed about whether the target exists, which is the point
+/// of checking lexically before touching the filesystem.)
+fn resolve_arg(
+    args: &Value,
+    field: &str,
+    tool: &str,
+    root: &Path,
+) -> Result<PathBuf, ArgumentError> {
     let rel = required_str(args, field, tool)?;
-    resolve_within(root, &rel).map_err(|why| format!("`{tool}`: {why}"))
+    resolve_within(root, &rel).map_err(|why| ArgumentError(format!("`{tool}`: {why}")))
 }
 
 /// Read `field` from `args` as an **optional** positive integer (the `offset`/`limit`
 /// paging arguments). Absent or `null` is `None` — the caller's default applies — while a
 /// present value that is not a positive integer is an error rather than a silent default,
 /// so a model passing `0` or `"10"` is told instead of quietly getting something else.
-fn positive_arg(args: &Value, field: &str, tool: &str) -> Result<Option<usize>, String> {
+fn positive_arg(args: &Value, field: &str, tool: &str) -> Result<Option<usize>, ArgumentError> {
     match args.get(field) {
         None | Some(Value::Null) => Ok(None),
         Some(value) => value
             .as_u64()
             .filter(|&n| n > 0)
             .map(|n| Some(n as usize))
-            .ok_or_else(|| format!("`{tool}`: argument `{field}` must be a positive integer")),
+            .ok_or_else(|| {
+                ArgumentError(format!(
+                    "`{tool}`: argument `{field}` must be a positive integer"
+                ))
+            }),
     }
+}
+
+/// How many lines `bytes` holds, counted the way [`ReadFileTool::read_window`] windows them
+/// (`split_inclusive('\n')`): a trailing newline ends the last line rather than starting an empty
+/// one, and empty input is zero lines rather than one.
+///
+/// Counted over the **bytes** rather than a decoded string because `0x0A` never occurs inside a
+/// multi-byte UTF-8 sequence, so the two agree exactly — and lossy decoding a 200 MiB file just to
+/// count its lines would be a real cost for no gain.
+fn count_lines(bytes: &[u8]) -> u32 {
+    if bytes.is_empty() {
+        return 0;
+    }
+    let newlines = bytes.iter().filter(|byte| **byte == b'\n').count();
+    let unterminated = usize::from(bytes.last() != Some(&b'\n'));
+    saturating_u32(newlines + unterminated)
 }
 
 /// The largest index `<= max` that is a char boundary of `text`, so a byte-ceiling
@@ -363,6 +396,19 @@ impl ReadFileTool {
         let label = format.label;
         let human = human_bytes(size);
 
+        // The sidecar says the same three things the prose does — what it is, how big it is, and
+        // whether the model is actually being shown it — so a structured caller never has to
+        // decide whether "cannot be shown to you" appearing in a sentence means it was withheld.
+        let described = |shown: bool, why: Option<&str>| {
+            ToolData::FileImage(FileImageData {
+                media_type: format.media_type.to_string(),
+                label: label.to_string(),
+                bytes: size,
+                shown,
+                not_shown_reason: why.map(str::to_string),
+            })
+        };
+
         if !ctx.vision.allows_images() {
             // Word it by *why*: a catalog-declared text-only model is a permanent fact
             // about this run, while a runtime denial followed a provider refusal. Either
@@ -379,10 +425,15 @@ impl ReadFileTool {
                      specification, and treat any file named as a reference image the same way."
                 ),
                 format!("{label} image, {human} (not shown: no image input)"),
-            );
+            )
+            .with_data(described(false, Some(why)));
         }
 
         if size > IMAGE_ATTACH_CAP {
+            let why = format!(
+                "the image is larger than gg's {} display limit",
+                human_bytes(IMAGE_ATTACH_CAP)
+            );
             return ToolOutcome::ok(
                 format!(
                     "`{rel_path}` is a {label} image ({human}). It is too large to display \
@@ -390,7 +441,8 @@ impl ReadFileTool {
                     human_bytes(IMAGE_ATTACH_CAP)
                 ),
                 format!("{label} image, {human} (too large to show)"),
-            );
+            )
+            .with_data(described(false, Some(&why)));
         }
 
         ToolOutcome::ok(
@@ -402,6 +454,7 @@ impl ReadFileTool {
             BASE64.encode(bytes),
             size,
         )])
+        .with_data(described(true, None))
     }
 
     /// The whole-file read: gg's original behavior, offered under
@@ -414,13 +467,34 @@ impl ReadFileTool {
         } else {
             bytes
         };
-        let mut contents = String::from_utf8_lossy(slice).into_owned();
+        // `contents` is what the file says; `output` is `contents` plus whatever gg has to add
+        // about it. Keeping them apart is what lets the sidecar hand back a file body that is
+        // exactly the file's, with no footer for a caller to strip back off.
+        let contents = String::from_utf8_lossy(slice).into_owned();
+        let mut output = contents.clone();
         if truncated {
-            contents.push_str(&format!(
+            output.push_str(&format!(
                 "\n\n[truncated: showing {READ_FILE_CAP} of {total} bytes]"
             ));
         }
-        ToolOutcome::ok(contents, format!("read {total} bytes"))
+
+        let returned_lines = count_lines(contents.as_bytes());
+        ToolOutcome::ok(output, format!("read {total} bytes")).with_data(ToolData::FileText(
+            FileTextData {
+                first_line: 1,
+                last_line: returned_lines,
+                // The byte ceiling can cut a whole-file read short, so the file's length is
+                // counted over all of its bytes rather than over what came back.
+                total_lines: if truncated {
+                    count_lines(bytes)
+                } else {
+                    returned_lines
+                },
+                byte_truncated: truncated,
+                limit_reduced: false,
+                contents,
+            },
+        ))
     }
 
     /// The windowed read the capped modes offer: `window` lines starting at the 1-based
@@ -437,24 +511,42 @@ impl ReadFileTool {
 
         let start = offset.saturating_sub(1);
         if start >= total && total > 0 {
-            return ToolOutcome::error(format!(
-                "read_file: `offset` {offset} is past the end of the file ({total} lines)"
-            ));
+            // An offset beyond the file is a value out of range, not a missing file: the file was
+            // found, and the message names its length so the next call can be corrected.
+            return ToolOutcome::failed(
+                ToolFailure::InvalidArgument,
+                format!("read_file: `offset` {offset} is past the end of the file ({total} lines)"),
+            );
         }
         let end = start.saturating_add(window).min(total);
 
+        // As in `read_whole`: `contents` is the file's own text (byte-truncated if it had to be),
+        // and `output` is that plus gg's footers.
         let mut contents: String = lines[start..end].concat();
         let bytes_returned = contents.len();
-        if bytes_returned > READ_FILE_CAP {
+        let byte_truncated = bytes_returned > READ_FILE_CAP;
+        if byte_truncated {
             contents.truncate(floor_char_boundary(&contents, READ_FILE_CAP));
-            contents.push_str(&format!(
+        }
+        let mut output = contents.clone();
+        if byte_truncated {
+            output.push_str(&format!(
                 "\n\n[truncated: showing {READ_FILE_CAP} of {bytes_returned} bytes]"
             ));
         }
 
+        let data = ToolData::FileText(FileTextData {
+            contents,
+            first_line: saturating_u32(start + 1),
+            last_line: saturating_u32(end),
+            total_lines: saturating_u32(total),
+            byte_truncated,
+            limit_reduced: reduced,
+        });
+
         let windowed = start > 0 || end < total;
         if !windowed {
-            return ToolOutcome::ok(contents, format!("read {bytes_returned} bytes"));
+            return ToolOutcome::ok(output, format!("read {bytes_returned} bytes")).with_data(data);
         }
 
         let mut note = format!("showing lines {}-{end} of {total}", start + 1);
@@ -466,15 +558,16 @@ impl ReadFileTool {
         if end < total {
             note.push_str(&format!("; continue with offset: {}", end + 1));
         }
-        contents.push_str(&format!("\n\n[{note}]"));
+        output.push_str(&format!("\n\n[{note}]"));
 
         ToolOutcome::ok(
-            contents,
+            output,
             format!(
                 "read lines {}-{end} of {total} ({bytes_returned} bytes)",
                 start + 1
             ),
         )
+        .with_data(data)
     }
 }
 
@@ -563,24 +656,29 @@ impl Tool for ReadFileTool {
     async fn invoke(&self, args: Value, ctx: &ToolContext) -> ToolOutcome {
         let rel_path = match required_str(&args, "path", "read_file") {
             Ok(rel) => rel,
-            Err(message) => return ToolOutcome::error(message),
+            Err(error) => return error.into(),
         };
         let path = match resolve_within(&ctx.workspace_dir, &rel_path) {
             Ok(path) => path,
-            Err(why) => return ToolOutcome::error(format!("`read_file`: {why}")),
+            Err(why) => return invalid_argument(format!("`read_file`: {why}")),
         };
         let offset = match positive_arg(&args, "offset", "read_file") {
             Ok(offset) => offset.unwrap_or(1),
-            Err(message) => return ToolOutcome::error(message),
+            Err(error) => return error.into(),
         };
         let limit = match positive_arg(&args, "limit", "read_file") {
             Ok(limit) => limit,
-            Err(message) => return ToolOutcome::error(message),
+            Err(error) => return error.into(),
         };
 
         let bytes = match std::fs::read(&path) {
             Ok(bytes) => bytes,
-            Err(err) => return ToolOutcome::error(format!("read_file: {err}")),
+            Err(err) => {
+                return ToolOutcome::failed(
+                    ToolFailure::from_io(&err),
+                    format!("read_file: {err}"),
+                );
+            }
         };
 
         // An image is answered as an image, before any line windowing: `offset`/`limit`
@@ -636,20 +734,23 @@ impl Tool for WriteFileTool {
     async fn invoke(&self, args: Value, ctx: &ToolContext) -> ToolOutcome {
         let path = match resolve_arg(&args, "path", "write_file", &ctx.workspace_dir) {
             Ok(path) => path,
-            Err(message) => return ToolOutcome::error(message),
+            Err(error) => return error.into(),
         };
         let contents = match required_str(&args, "contents", "write_file") {
             Ok(contents) => contents,
-            Err(message) => return ToolOutcome::error(message),
+            Err(error) => return error.into(),
         };
 
         if let Some(parent) = path.parent()
             && let Err(err) = std::fs::create_dir_all(parent)
         {
-            return ToolOutcome::error(format!("write_file: creating parent dirs: {err}"));
+            return ToolOutcome::failed(
+                ToolFailure::from_io(&err),
+                format!("write_file: creating parent dirs: {err}"),
+            );
         }
         if let Err(err) = std::fs::write(&path, contents.as_bytes()) {
-            return ToolOutcome::error(format!("write_file: {err}"));
+            return ToolOutcome::failed(ToolFailure::from_io(&err), format!("write_file: {err}"));
         }
 
         let bytes = contents.len();
@@ -657,6 +758,7 @@ impl Tool for WriteFileTool {
             format!("wrote {bytes} bytes"),
             format!("wrote {bytes} bytes"),
         )
+        .with_data(ToolData::BytesWritten(bytes as u64))
     }
 }
 
@@ -705,51 +807,65 @@ impl Tool for EditFileTool {
     async fn invoke(&self, args: Value, ctx: &ToolContext) -> ToolOutcome {
         let path = match resolve_arg(&args, "path", "edit_file", &ctx.workspace_dir) {
             Ok(path) => path,
-            Err(message) => return ToolOutcome::error(message),
+            Err(error) => return error.into(),
         };
         let old_string = match required_str(&args, "old_string", "edit_file") {
             Ok(value) => value,
-            Err(message) => return ToolOutcome::error(message),
+            Err(error) => return error.into(),
         };
         let new_string = match required_str(&args, "new_string", "edit_file") {
             Ok(value) => value,
-            Err(message) => return ToolOutcome::error(message),
+            Err(error) => return error.into(),
         };
 
         if old_string.is_empty() {
-            return ToolOutcome::error("edit_file: `old_string` must not be empty".to_string());
+            return invalid_argument("edit_file: `old_string` must not be empty");
         }
         if old_string == new_string {
-            return ToolOutcome::error(
-                "edit_file: `old_string` and `new_string` are identical; nothing to change"
-                    .to_string(),
+            return invalid_argument(
+                "edit_file: `old_string` and `new_string` are identical; nothing to change",
             );
         }
 
         let contents = match std::fs::read_to_string(&path) {
             Ok(contents) => contents,
-            Err(err) => return ToolOutcome::error(format!("edit_file: {err}")),
+            Err(err) => {
+                return ToolOutcome::failed(
+                    ToolFailure::from_io(&err),
+                    format!("edit_file: {err}"),
+                );
+            }
         };
 
         let occurrences = contents.matches(&old_string).count();
         match occurrences {
+            // Two different failures with two different recoveries: text that is not there has to
+            // be re-read, while text that is there several times has to be disambiguated. A caller
+            // that can tell them apart can do both without a round trip through the prose.
             0 => {
-                return ToolOutcome::error(
-                    "edit_file: `old_string` was not found in the file".to_string(),
+                return ToolOutcome::failed(
+                    ToolFailure::NotFound,
+                    "edit_file: `old_string` was not found in the file",
                 );
             }
             1 => {}
             n => {
-                return ToolOutcome::error(format!(
-                    "edit_file: `old_string` is not unique ({n} occurrences); \
-                     include more surrounding context to make it unique"
-                ));
+                return ToolOutcome::failed(
+                    ToolFailure::Conflict,
+                    format!(
+                        "edit_file: `old_string` is not unique ({n} occurrences); \
+                         include more surrounding context to make it unique"
+                    ),
+                );
             }
         }
 
         let updated = contents.replacen(&old_string, &new_string, 1);
         if let Err(err) = std::fs::write(&path, updated.as_bytes()) {
-            return ToolOutcome::error(format!("edit_file: writing back: {err}"));
+            return ToolOutcome::failed(
+                ToolFailure::from_io(&err),
+                format!("edit_file: writing back: {err}"),
+            );
         }
 
         ToolOutcome::ok("replaced 1 occurrence", "edited (1 replacement)")
@@ -794,40 +910,65 @@ impl Tool for ListDirTool {
             None | Some(Value::Null) => ".".to_string(),
             Some(Value::String(value)) => value.clone(),
             Some(_) => {
-                return ToolOutcome::error(
-                    "`list_dir`: argument `path` must be a string".to_string(),
-                );
+                return invalid_argument("`list_dir`: argument `path` must be a string");
             }
         };
         let dir = match resolve_within(&ctx.workspace_dir, &rel) {
             Ok(dir) => dir,
-            Err(why) => return ToolOutcome::error(format!("`list_dir`: {why}")),
+            Err(why) => return invalid_argument(format!("`list_dir`: {why}")),
         };
 
         let read = match std::fs::read_dir(&dir) {
             Ok(read) => read,
-            Err(err) => return ToolOutcome::error(format!("list_dir: {err}")),
+            Err(err) => {
+                return ToolOutcome::failed(ToolFailure::from_io(&err), format!("list_dir: {err}"));
+            }
         };
 
-        let mut entries: Vec<String> = Vec::new();
+        // Carried as `(display, entry)` so the sort stays byte-for-byte the one the prose has
+        // always used — on the rendered name, `/` suffix and all — while the sidecar keeps the
+        // entry's real name and kind instead of re-deriving them from a trailing slash.
+        let mut entries: Vec<(String, DirEntryData)> = Vec::new();
         for entry in read {
             let entry = match entry {
                 Ok(entry) => entry,
-                Err(err) => return ToolOutcome::error(format!("list_dir: {err}")),
+                Err(err) => {
+                    return ToolOutcome::failed(
+                        ToolFailure::from_io(&err),
+                        format!("list_dir: {err}"),
+                    );
+                }
             };
             let name = entry.file_name().to_string_lossy().into_owned();
-            let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
-            entries.push(if is_dir { format!("{name}/") } else { name });
+            // An unreadable file type is reported as `Other` rather than guessed at — and, as
+            // before, is not suffixed, since gg does not know it to be a directory.
+            let kind = match entry.file_type() {
+                Ok(file_type) if file_type.is_dir() => DirEntryKind::Directory,
+                Ok(file_type) if file_type.is_file() => DirEntryKind::File,
+                Ok(_) | Err(_) => DirEntryKind::Other,
+            };
+            let display = if kind == DirEntryKind::Directory {
+                format!("{name}/")
+            } else {
+                name.clone()
+            };
+            entries.push((display, DirEntryData { name, kind }));
         }
-        entries.sort();
+        entries.sort_by(|(left, _), (right, _)| left.cmp(right));
 
         let count = entries.len();
         let output = if entries.is_empty() {
             "(empty directory)".to_string()
         } else {
-            entries.join("\n")
+            entries
+                .iter()
+                .map(|(display, _)| display.as_str())
+                .collect::<Vec<_>>()
+                .join("\n")
         };
-        ToolOutcome::ok(output, format!("{count} entries"))
+        ToolOutcome::ok(output, format!("{count} entries")).with_data(ToolData::DirEntries(
+            entries.into_iter().map(|(_, entry)| entry).collect(),
+        ))
     }
 }
 

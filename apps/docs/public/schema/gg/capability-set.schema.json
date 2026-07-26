@@ -42,6 +42,46 @@
       "required": ["name"],
       "type": "object"
     },
+    "GgRunLimits": {
+      "description": "The **run-level execution ceilings** a gg run is bounded by — the guardrails that stop a\nsession and record which one stopped it.\n\nDeliberately **not** a [capability](GgCapabilityConfig): a capability is a feature under\nablation, with tools and an on/off arm a study varies; a ceiling is an operator's guardrail\nthat applies to every capability and to both execution modes at once. They live on the\n[capability set](GgCapabilitySet) rather than on the [launch envelope](GgInvocation) because\nthe set is what a run **records**, so a run stopped by a ceiling carries both the\n[breach](GgSessionSummary::limit_hit) and the [ceilings](GgSessionSummary::limits) that\nproduced it — where limits on the invocation would let a run record *which* ceiling was hit\nwhile making *what the ceiling was* unrecoverable.\n\n**Every field is disabled when unset**, except the turn ceiling, whose long-standing default\n(50) is preserved because a gg run has always had one. A value that cannot bound anything — a\nzero window, a negative rate, a rate above `1.0` — is a startup warning and is ignored, never\nan error, on the same terms as an unknown name in\n[`disabled_tools`](GgCapabilitySet::disabled_tools). The run records the ceilings that were\nactually in force on [`GgSessionSummary::limits`], so a default is a recorded fact rather than\na hidden one.\n\nSee the [execution-limits](https://docs.testcabinet.ai/gg/execution-limits/) page for how each\nceiling is accounted (per agent or run-wide) and what breaching it does to the run.",
+      "properties": {
+        "errorRateWindow": {
+          "description": "How many of an agent's most recent turns [`max_error_rate`](Self::max_error_rate) is\nmeasured over — and, deliberately, the minimum sample: the ceiling cannot fire until the\nagent has taken this many turns, so one number does both jobs. The earliest turn this\nceiling can stop a run on is therefore turn `error_rate_window` — at `1` it says \"stop on\nany error\", which is a legitimate declaration rather than an accident.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "maxConsecutiveErrors": {
+          "description": "How many **error turns in a row** end an agent. Absent means the ceiling is off.\n\nA turn is an error when the work it *declared* could not be carried out as declared: a\nmodel call that failed, a reply that was not a program, a program that did not compile, one\nthat threw uncaught, or one the sandbox stopped at a ceiling. A tool call that failed\n**inside** an otherwise successful program is not one — the program handled it, which is\nthe entire point of the typed tool surface, and counting it would make the one capability\nthat expects failures the one capability that cannot survive them.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "maxCost": {
+          "description": "A ceiling on the run's accumulated cost, in the same USD figure the run record reports\n([`Cost::comparable`](crate::metrics::Cost::comparable), falling back to\n[`actual`](crate::metrics::Cost::actual)) — a ceiling measuring something the run record\ndoes not show would be unauditable. Absent means no ceiling.\n\nChecked at each agent's turn boundary, so it bounds **starting new work** rather than\ncapping spend: the turn that crosses the line completes in full (gg has already paid for\nthat response; discarding it would waste the money and abandon work the model asked for),\nand the run's final recorded cost therefore exceeds this by at most one turn's cost per\nconcurrently running agent. The compaction summarizer's own calls are deliberately outside\ngg's run totals, so this measures exactly what the run record reports and no more. A run\nwhose model reports no cost can never be stopped by it — gg does not invent a figure to\nstop a run with.",
+          "format": "double",
+          "type": ["number", "null"]
+        },
+        "maxErrorRate": {
+          "description": "The fraction of recent turns that may be errors before an agent is stopped, in `0.0..=1.0`.\nBreached only **strictly above** the value, matching \"more than X%\": at `0.5` over a window\nof ten, five errors is not a breach and six is. Needs\n[`error_rate_window`](Self::error_rate_window); either alone is a startup warning and no\nceiling.",
+          "format": "double",
+          "type": ["number", "null"]
+        },
+        "maxRuntimeSecs": {
+          "description": "The run's wall-clock budget in seconds, observed by every agent at its own turn boundary.\nAbsent means no budget. A run that spends it ends `timed_out`.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "maxTurns": {
+          "description": "The per-agent turn ceiling. Absent means gg's own default of 50 — the one ceiling that has\na default, because a gg run has always had a turn ceiling and removing it would be a\ndifferent change. An agent that reaches it ends `exhausted`.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        }
+      },
+      "type": "object"
+    },
     "GgSlotBinding": {
       "description": "A binding of a model to a named slot in a [`GgCapabilitySet`].\n\nModel selection is expressed through slots so capabilities reference models by\nrole (`\"primary\"`, `\"reviewer\"`, …) rather than by a hardcoded id, and a study can\nre-point a slot — even to a different provider — without touching capability logic.\n\nA binding either **pins** a model — [`model_id`](Self::model_id) names it, and every\nrun of the configuration uses it — or **defers** to a declared\n[model slot](Self::model_slot), leaving the model to be supplied when the run is\nlaunched. Only a pinned binding is [resolved](Self::is_resolved); launching turns\nevery deferred one into a pinned one, so the set a run records has no deferred\nbinding left.",
       "properties": {
@@ -85,6 +125,10 @@
         "type": "string"
       },
       "type": "array"
+    },
+    "limits": {
+      "$ref": "#/$defs/GgRunLimits",
+      "description": "The **execution ceilings** this run is bounded by — the turn, runtime, error and\ncost guardrails that stop a session and record which one stopped it.\n\nThey ride on the capability set rather than on the [launch envelope](GgInvocation)\nbecause the set is what a run *records*: a ceiling that stopped a run is only\ninterpretable beside the value it was set to. They are deliberately not a\ncapability — a capability is a feature under ablation, a ceiling is an operator's\nguardrail over every capability at once — so they never appear in the\n[`capabilityEnabled`](crate::gg_aggregate::GgFacet::CapabilityEnabled) facet space.\nA set that declares none omits the key entirely, so every configuration stored\nbefore ceilings existed round-trips unchanged."
     },
     "modelSlots": {
       "description": "The [launch-time model parameters](GgModelSlot) this set declares, for the\n[bindings](GgSlotBinding::model_slot) above that defer to one instead of pinning\na model. Empty for a fully pinned set — and empty on the set a run *records*,\nbecause launching resolves every deferred binding first.",

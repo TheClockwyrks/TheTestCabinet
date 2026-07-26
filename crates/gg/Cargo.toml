@@ -16,11 +16,6 @@ path = "src/main.rs"
 # the invocation config that core hands this binary.
 test-cabinet-core = { path = "../core" }
 
-# The responses-as-code interpreter — gg embeds its committed `.wasm` and reads back
-# its `ProgramOutcome` envelope, so it consumes the guest crate's shared types (built
-# here for the native host, embedded as wasm for the sandbox). See `src/rac.rs`.
-gg-rac-interp = { path = "../gg-rac-interp" }
-
 serde = { workspace = true }
 serde_json = { workspace = true }
 # gg's model-facing prose (the system prompt, the pinned context blocks, the plan-mode
@@ -47,12 +42,23 @@ reqwest = { workspace = true }
 # `async fn` in the `ModelClient` trait (`src/model.rs`), so a boxed `dyn ModelClient`
 # can back the async turn loop and be shared across spawned subagents later.
 async-trait = { workspace = true }
-# The wasm runtime backing the responses-as-code sandbox (`src/rac.rs`): it runs an
-# agent's code-shaped response — the committed `gg-rac-interp` interpreter — under a
-# fuel + linear-memory ceiling, mirroring the `foray-host`/`lattice-host` pattern.
-# Same pinned major version and minimal (`cranelift` + `runtime`) feature set as those
-# hosts, so the fuel/memory sandbox semantics stay identical across the workspace.
-wasmtime = { workspace = true }
+# The wasm runtime backing the responses-as-code sandbox (`src/sandbox.rs`). gg adds
+# `component-model` (the sandbox's guest is a WIT component, not a core module) and
+# `parallel-compilation` (the guest embeds a JavaScript engine, so its one-off compile
+# is ~4.8s single-threaded and ~0.66s across cores — a measured 7.3x on the one latency
+# that is paid at all). `cache` is deliberately NOT added: gg runs one process per run in
+# an ephemeral container, so a disk cache is written once and discarded, and it would
+# pull `zstd`'s C compile onto the `tcab` release builds. The process-wide
+# compiled-component cache is what delivers the latency.
+wasmtime = { workspace = true, features = [
+	"component-model",
+	"parallel-compilation",
+] }
+# In-process TypeScript type-stripping for the sandbox (`src/sandbox/transpile.rs`): a
+# model writes TypeScript, the guest evaluates JavaScript, and oxc strips the types in
+# microseconds without a Node process anywhere near the turn path. It strips types; it
+# does not check them — see the workspace pin for why the minor version is fixed.
+oxc = { workspace = true }
 # BPE tokenizer backing the default context-window token estimator (`src/context.rs`).
 # gg accounts every context contribution per source in estimated tokens; the estimator
 # is a trait so this is swappable, but the default counts with a fixed BPE base as a

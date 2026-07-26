@@ -33,7 +33,20 @@ export type GgSummaryField =
   | "speculations"
   | "code_executions"
   | "issues_created"
-  | "issues_completed";
+  | "issues_completed"
+  | "responses_healed"
+  | "healing_rate"
+  | "healing_applications"
+  | "healing_strip_fences"
+  | "healing_strip_prose"
+  | "healing_drop_duplicate_program"
+  | "healing_drop_imports"
+  | "healing_unwrap_async"
+  | "healing_strip_comment_only"
+  | "responses_not_a_program"
+  | "responses_several_blocks"
+  | "responses_several_blocks_fenced"
+  | "responses_several_blocks_bare";
 
 /**
  * A **sliceable facet** of a gg run — a single dimension a query filters or groups
@@ -94,7 +107,8 @@ export type GgFacet =
        */
       tool: string;
     }
-  | { kind: "terminalStatus" };
+  | { kind: "terminalStatus" }
+  | { kind: "limitHit" };
 
 /**
  * One extracted facet of a [`GgCapabilitySet`]: the [facet selector](GgFacet) and

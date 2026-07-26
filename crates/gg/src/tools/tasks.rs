@@ -19,9 +19,12 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
-use super::{Tool, ToolContext, ToolOutcome, required_str};
+use super::{
+    ArgumentError, Tool, ToolContext, ToolData, ToolFailure, ToolOutcome, UsagePair,
+    invalid_argument, required_str, saturating_u32,
+};
 use crate::model::ToolDefinition;
-use crate::tasks::{TaskChange, TaskStatus, TaskStore};
+use crate::tasks::{TaskChange, TaskError, TaskStatus, TaskStore};
 
 /// The `add_task` tool name.
 pub const ADD_TASK_TOOL: &str = "add_task";
@@ -56,26 +59,62 @@ fn usage_note(store: &TaskStore) -> String {
     )
 }
 
+/// The two numbers [`usage_note`] renders into a sentence, as the structured sidecar the two
+/// tools that change how many tasks exist carry.
+fn usage_data(store: &TaskStore) -> ToolData {
+    ToolData::TaskUsage(UsagePair {
+        count: saturating_u32(store.count()),
+        max: saturating_u32(store.max_tasks()),
+    })
+}
+
+/// Classify a [`TaskStore`] refusal, at the one place its error type is matched.
+///
+/// The store's [`Display`](std::fmt::Display) is the model-facing guidance; this mapping is what a
+/// caller branches on, and it is derived from the variant rather than from that text.
+fn failure_for(err: &TaskError) -> ToolFailure {
+    match err {
+        // The call itself was malformed: an empty field, or a revision that revises nothing.
+        TaskError::EmptyField(_) | TaskError::NoUpdateFields => ToolFailure::InvalidArgument,
+        // A named task is simply not there — including one named as a blocker, which is the same
+        // recovery (create it, or correct the id).
+        TaskError::NotFound(_) | TaskError::BlockerNotFound(_) => ToolFailure::NotFound,
+        // Well-formed, but irreconcilable with the DAG as it stands: a taken id, or an edge that
+        // would close a loop (a self-block being the one-node case of exactly that).
+        TaskError::Duplicate(_) | TaskError::SelfBlock(_) | TaskError::Cycle { .. } => {
+            ToolFailure::Conflict
+        }
+        TaskError::CountCap { .. } => ToolFailure::LimitExceeded,
+    }
+}
+
 /// An optional string argument: absent (or JSON `null`) yields `None`; a non-string is an
-/// error.
-fn optional_str(args: &Value, field: &str, tool: &str) -> Result<Option<String>, String> {
+/// [invalid-argument](ToolFailure::InvalidArgument) error.
+fn optional_str(args: &Value, field: &str, tool: &str) -> Result<Option<String>, ArgumentError> {
     match args.get(field) {
         None | Some(Value::Null) => Ok(None),
         Some(Value::String(value)) => Ok(Some(value.clone())),
-        Some(_) => Err(format!("`{tool}`: argument `{field}` must be a string")),
+        Some(_) => Err(ArgumentError(format!(
+            "`{tool}`: argument `{field}` must be a string"
+        ))),
     }
 }
 
 /// A list-of-task-ids argument. When `required`, an absent key is an error; otherwise it
 /// yields an empty list. Every entry must be a string.
-fn id_array(args: &Value, field: &str, tool: &str, required: bool) -> Result<Vec<String>, String> {
+fn id_array(
+    args: &Value,
+    field: &str,
+    tool: &str,
+    required: bool,
+) -> Result<Vec<String>, ArgumentError> {
     match args.get(field) {
         None | Some(Value::Null) => {
             if required {
-                Err(format!(
+                Err(ArgumentError(format!(
                     "`{tool}`: missing required argument `{field}` (a list of task ids; pass \
                      `[]` to clear)"
-                ))
+                )))
             } else {
                 Ok(Vec::new())
             }
@@ -84,14 +123,14 @@ fn id_array(args: &Value, field: &str, tool: &str, required: bool) -> Result<Vec
             .iter()
             .map(|item| match item {
                 Value::String(id) => Ok(id.clone()),
-                _ => Err(format!(
+                _ => Err(ArgumentError(format!(
                     "`{tool}`: every entry in `{field}` must be a task id string"
-                )),
+                ))),
             })
             .collect(),
-        Some(_) => Err(format!(
+        Some(_) => Err(ArgumentError(format!(
             "`{tool}`: argument `{field}` must be an array of task ids"
-        )),
+        ))),
     }
 }
 
@@ -154,28 +193,29 @@ impl Tool for AddTaskTool {
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
         let id = match required_str(&args, "id", ADD_TASK_TOOL) {
             Ok(id) => id,
-            Err(message) => return ToolOutcome::error(message),
+            Err(error) => return error.into(),
         };
         let title = match required_str(&args, "title", ADD_TASK_TOOL) {
             Ok(title) => title,
-            Err(message) => return ToolOutcome::error(message),
+            Err(error) => return error.into(),
         };
         let description = match optional_str(&args, "description", ADD_TASK_TOOL) {
             Ok(description) => description,
-            Err(message) => return ToolOutcome::error(message),
+            Err(error) => return error.into(),
         };
         let blocked_by = match id_array(&args, "blockedBy", ADD_TASK_TOOL, false) {
             Ok(blocked_by) => blocked_by,
-            Err(message) => return ToolOutcome::error(message),
+            Err(error) => return error.into(),
         };
         let mut store = self.store.lock().expect("task store lock");
         match store.add(&id, &title, description.as_deref(), &blocked_by) {
             Ok(TaskChange::Added) => ToolOutcome::ok(
                 format!("Added task `{id}`. {}", usage_note(&store)),
                 format!("added task `{id}`"),
-            ),
+            )
+            .with_data(usage_data(&store)),
             Ok(_) => unreachable!("add yields Added"),
-            Err(err) => ToolOutcome::error(format!("add_task: {err}")),
+            Err(err) => ToolOutcome::failed(failure_for(&err), format!("add_task: {err}")),
         }
     }
 }
@@ -238,37 +278,39 @@ impl Tool for UpdateTaskTool {
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
         let id = match required_str(&args, "id", UPDATE_TASK_TOOL) {
             Ok(id) => id,
-            Err(message) => return ToolOutcome::error(message),
+            Err(error) => return error.into(),
         };
         let title = match optional_str(&args, "title", UPDATE_TASK_TOOL) {
             Ok(title) => title,
-            Err(message) => return ToolOutcome::error(message),
+            Err(error) => return error.into(),
         };
         let description = match optional_str(&args, "description", UPDATE_TASK_TOOL) {
             Ok(description) => description,
-            Err(message) => return ToolOutcome::error(message),
+            Err(error) => return error.into(),
         };
         let status = match optional_str(&args, "status", UPDATE_TASK_TOOL) {
             Ok(Some(raw)) => match TaskStatus::parse(&raw) {
                 Some(status) => Some(status),
                 None => {
-                    return ToolOutcome::error(format!(
+                    return invalid_argument(format!(
                         "update_task: `{raw}` is not a valid status; use `pending`, \
                          `in_progress`, or `done`."
                     ));
                 }
             },
             Ok(None) => None,
-            Err(message) => return ToolOutcome::error(message),
+            Err(error) => return error.into(),
         };
         let mut store = self.store.lock().expect("task store lock");
         match store.update(&id, title.as_deref(), description.as_deref(), status) {
+            // A revision changes no count, so there is nothing structured to report: the caller
+            // asked for a change and got one.
             Ok(TaskChange::Updated) => ToolOutcome::ok(
                 format!("Updated task `{id}`."),
                 format!("updated task `{id}`"),
             ),
             Ok(_) => unreachable!("update yields Updated"),
-            Err(err) => ToolOutcome::error(format!("update_task: {err}")),
+            Err(err) => ToolOutcome::failed(failure_for(&err), format!("update_task: {err}")),
         }
     }
 }
@@ -324,11 +366,11 @@ impl Tool for SetBlockedByTool {
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
         let id = match required_str(&args, "id", SET_BLOCKED_BY_TOOL) {
             Ok(id) => id,
-            Err(message) => return ToolOutcome::error(message),
+            Err(error) => return error.into(),
         };
         let blocked_by = match id_array(&args, "blockedBy", SET_BLOCKED_BY_TOOL, true) {
             Ok(blocked_by) => blocked_by,
-            Err(message) => return ToolOutcome::error(message),
+            Err(error) => return error.into(),
         };
         let mut store = self.store.lock().expect("task store lock");
         match store.set_blocked_by(&id, &blocked_by) {
@@ -341,7 +383,7 @@ impl Tool for SetBlockedByTool {
                 ToolOutcome::ok(format!("Updated the blockers of task `{id}`."), summary)
             }
             Ok(_) => unreachable!("set_blocked_by yields BlockersSet"),
-            Err(err) => ToolOutcome::error(format!("set_blocked_by: {err}")),
+            Err(err) => ToolOutcome::failed(failure_for(&err), format!("set_blocked_by: {err}")),
         }
     }
 }
@@ -390,16 +432,18 @@ impl Tool for CompleteTaskTool {
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
         let id = match required_str(&args, "id", COMPLETE_TASK_TOOL) {
             Ok(id) => id,
-            Err(message) => return ToolOutcome::error(message),
+            Err(error) => return error.into(),
         };
         let mut store = self.store.lock().expect("task store lock");
         match store.complete(&id) {
+            // Completing a task leaves the list the same size, so — like `update_task` — there is
+            // no usage figure worth reporting.
             Ok(TaskChange::Completed) => ToolOutcome::ok(
                 format!("Marked task `{id}` done."),
                 format!("completed task `{id}`"),
             ),
             Ok(_) => unreachable!("complete yields Completed"),
-            Err(err) => ToolOutcome::error(format!("complete_task: {err}")),
+            Err(err) => ToolOutcome::failed(failure_for(&err), format!("complete_task: {err}")),
         }
     }
 }
@@ -448,16 +492,17 @@ impl Tool for RemoveTaskTool {
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
         let id = match required_str(&args, "id", REMOVE_TASK_TOOL) {
             Ok(id) => id,
-            Err(message) => return ToolOutcome::error(message),
+            Err(error) => return error.into(),
         };
         let mut store = self.store.lock().expect("task store lock");
         match store.remove(&id) {
             Ok(TaskChange::Removed) => ToolOutcome::ok(
                 format!("Removed task `{id}`. {}", usage_note(&store)),
                 format!("removed task `{id}`"),
-            ),
+            )
+            .with_data(usage_data(&store)),
             Ok(_) => unreachable!("remove yields Removed"),
-            Err(err) => ToolOutcome::error(format!("remove_task: {err}")),
+            Err(err) => ToolOutcome::failed(failure_for(&err), format!("remove_task: {err}")),
         }
     }
 }

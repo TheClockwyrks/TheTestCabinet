@@ -9,24 +9,29 @@
 // with, and the (de)serialization so the editor and the launcher never drift on
 // what a saved configuration means.
 //
-// The draft keeps param values as *typed text* rather than parsed JSON so an
-// in-progress, not-yet-valid edit survives a re-render (and a save round-trip)
-// instead of being silently dropped.
+// The draft keeps param values — and the run's execution ceilings — as *typed text*
+// rather than parsed JSON or numbers, so an in-progress, not-yet-valid edit survives
+// a re-render (and a save round-trip) instead of being silently dropped, and so an
+// empty ceiling field stays distinguishable from a ceiling deliberately set to zero.
 
 import type {
   GgCapabilityConfig,
   GgCapabilitySet,
   GgModelSlot,
+  GgRunLimits,
   GgSlotBinding,
 } from "@test-cabinet/run-record/gg";
 import {
   ALL_CAP_IDS,
   CAPABILITIES,
   DEFAULT_CAP_IDS,
+  DEFAULT_MAX_TURNS,
   FILESYSTEM_CAP_IDS,
   LEGACY_FILESYSTEM_CAP_ID,
   PRIMARY_SLOT,
+  RUN_LIMIT_SPECS,
   type CapSpec,
+  type ParamSpec,
 } from "./ggCatalog";
 
 // One capability's draft state. `enabled` toggles the capability on/off;
@@ -69,15 +74,39 @@ export interface GgSlotDraft {
   provider: string;
 }
 
+// The run's execution ceilings as the editor holds them: one *string* per ceiling,
+// keyed by its wire field, so the form can hold "empty" (the ceiling is off, or —
+// for the turn ceiling — left to gg's default) distinctly from `0`, which for two
+// of the six is a value gg deliberately reads as "cannot bound anything".
+//
+// A total record over `keyof GgRunLimits` rather than a hand-listed interface: a
+// ceiling added to the contract is then a compile error in every function below,
+// which is the whole reason the console can be trusted to show what a run was
+// actually bounded by.
+export type GgRunLimitsDraft = Record<keyof GgRunLimits, string>;
+
 // A whole gg configuration as the editor holds it, minus the test case/variant
 // (those are per-run, never part of a reusable configuration): the per-capability
 // drafts keyed by capability id, the declared model slots, the role bindings that
-// consume them, and the per-tool ablation overrides.
+// consume them, the run's execution ceilings, and the per-tool ablation overrides.
 export interface GgConfigDraft {
   capabilities: Record<string, GgCapabilityDraft>;
   modelSlots: GgModelSlotDraft[];
   slots: GgSlotDraft[];
+  limits: GgRunLimitsDraft;
   disabledTools: string[];
+}
+
+/** Every ceiling left empty — no guardrail beyond gg's default turn ceiling. */
+export function blankRunLimits(): GgRunLimitsDraft {
+  return {
+    maxTurns: "",
+    maxRuntimeSecs: "",
+    maxConsecutiveErrors: "",
+    maxErrorRate: "",
+    errorRateWindow: "",
+    maxCost: "",
+  };
 }
 
 /** A capability row that is off, unconfigured, and carries no params. */
@@ -168,6 +197,10 @@ function builtIn(
       capabilities: draftsFor(enabledIds, paramDefaults),
       modelSlots: [blankPrimaryModelSlot()],
       slots: [blankPrimarySlot()],
+      // No built-in arms a ceiling: they are the arms of an ablation, and a shared
+      // read-only configuration that quietly capped cost or errors would change what
+      // every study measured without saying so.
+      limits: blankRunLimits(),
       disabledTools: [],
     },
   };
@@ -208,6 +241,7 @@ export function cloneDraft(draft: GgConfigDraft): GgConfigDraft {
     ),
     modelSlots: draft.modelSlots.map((s) => ({ ...s })),
     slots: draft.slots.map((s) => ({ ...s })),
+    limits: { ...draft.limits },
     disabledTools: [...draft.disabledTools],
   };
 }
@@ -221,8 +255,92 @@ export function emptyDraft(): GgConfigDraft {
     capabilities: draftsFor([]),
     modelSlots: [blankPrimaryModelSlot()],
     slots: [blankPrimarySlot()],
+    limits: blankRunLimits(),
     disabledTools: [],
   };
+}
+
+// --- `toggles` params -----------------------------------------------------------
+//
+// A `toggles` param is a JSON object of independently switchable members that are
+// **on unless switched off** — gg's response-healing strategies are the shape it
+// exists for. The draft holds only the switched-off member ids, comma-separated, so
+// it stays a plain string like every other dedicated control, and an all-on set is
+// the empty string, which writes no param at all and so leaves the run on whatever
+// the default arm turns out to be.
+
+const TOGGLE_SEPARATOR = ",";
+
+/** The switched-off member ids a `toggles` draft value stands for, in catalog order. */
+export function togglesOff(
+  spec: ParamSpec,
+  raw: string | undefined,
+): ReadonlyArray<string> {
+  const off = new Set(
+    (raw ?? "")
+      .split(TOGGLE_SEPARATOR)
+      .map((id) => id.trim())
+      .filter(Boolean),
+  );
+  return (spec.options ?? []).map((o) => o.value).filter((id) => off.has(id));
+}
+
+/** The draft value for a `toggles` param with exactly `off` switched off. */
+export function togglesDraftValue(
+  spec: ParamSpec,
+  off: ReadonlyArray<string>,
+): string {
+  return togglesOff(spec, off.join(TOGGLE_SEPARATOR)).join(TOGGLE_SEPARATOR);
+}
+
+/**
+ * The draft value a *stored* `toggles` param decodes to, or `null` when the stored
+ * value is not one this control can represent.
+ *
+ * Returning `null` rather than guessing is what keeps a round trip honest: an
+ * unreadable value (a typo'd member id, a number where a boolean belongs, the
+ * master `false` spelled as `"off"`) is left in the capability's advanced-JSON
+ * field exactly as the operator typed it, so reopening a configuration never
+ * silently rewrites a param gg itself would report as unknown.
+ *
+ * The two shapes that *are* representable and mean "everything on" — `true` and
+ * `{}` — decode to the empty draft, and are therefore written back as no param at
+ * all. That is the same configuration by a shorter name, which is the one
+ * normalisation this function does on purpose.
+ */
+function togglesFromParam(spec: ParamSpec, value: unknown): string | null {
+  const ids = (spec.options ?? []).map((o) => o.value);
+  // The master switch: everything off.
+  if (value === false) return ids.join(TOGGLE_SEPARATOR);
+  if (value === true) return "";
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (
+    entries.some(([id, on]) => !ids.includes(id) || typeof on !== "boolean")
+  ) {
+    return null;
+  }
+  return togglesDraftValue(
+    spec,
+    entries.filter(([, on]) => on === false).map(([id]) => id),
+  );
+}
+
+/**
+ * The JSON a `toggles` draft value writes, or `undefined` for an all-on set (which
+ * writes no param). Only the switched-off members are recorded — see the catalog's
+ * `TOGGLES_HINT` for why an untouched member must stay absent rather than being
+ * pinned to `true`.
+ */
+function togglesToParam(
+  spec: ParamSpec,
+  raw: string,
+): Record<string, boolean> | undefined {
+  const off = togglesOff(spec, raw);
+  if (off.length === 0) return undefined;
+  return Object.fromEntries(off.map((id) => [id, false]));
 }
 
 // --- Capability set <-> draft ---------------------------------------------------
@@ -262,12 +380,25 @@ export function draftFromCapabilitySet(set: GgCapabilitySet): GgConfigDraft {
     // A stored param is JSON; the editor's dedicated controls hold text. Route each
     // param to its dedicated control when the catalog declares one, and leave the
     // rest in the advanced JSON field so nothing is lost on a round-trip.
-    const dedicated = new Set((cap.params ?? []).map((p) => p.key));
+    const dedicated = new Map((cap.params ?? []).map((p) => [p.key, p]));
     const params: Record<string, string> = {};
     const extra: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(from.params ?? {})) {
-      if (dedicated.has(key)) params[key] = String(value);
-      else extra[key] = value;
+      const spec = dedicated.get(key);
+      if (!spec) {
+        extra[key] = value;
+        continue;
+      }
+      if (spec.kind === "toggles") {
+        // A stored value this control cannot represent stays in the advanced-JSON
+        // field verbatim rather than being coerced into checkboxes that would write
+        // back something else.
+        const decoded = togglesFromParam(spec, value);
+        if (decoded === null) extra[key] = value;
+        else params[key] = decoded;
+        continue;
+      }
+      params[key] = String(value);
     }
     capabilities[cap.id] = {
       enabled: from.enabled,
@@ -310,8 +441,23 @@ export function draftFromCapabilitySet(set: GgCapabilitySet): GgConfigDraft {
     capabilities,
     modelSlots,
     slots,
+    limits: runLimitsDraft(set.limits),
     disabledTools: [...(set.disabledTools ?? [])],
   };
+}
+
+/**
+ * A stored ceiling set as the form's six text fields. An absent ceiling stays the
+ * empty string — the form's own spelling of "off" — so reopening a configuration
+ * that declared none and saving it again writes no `limits` key back.
+ */
+function runLimitsDraft(limits: GgRunLimits | undefined): GgRunLimitsDraft {
+  const draft = blankRunLimits();
+  for (const spec of RUN_LIMIT_SPECS) {
+    const value = limits?.[spec.key];
+    if (value !== undefined) draft[spec.key] = String(value);
+  }
+  return draft;
 }
 
 // The result of parsing a capability's params-JSON text: `{}` for an empty field,
@@ -355,6 +501,11 @@ export function capabilityParams(
       out[p.key] = raw;
       continue;
     }
+    if (p.kind === "toggles") {
+      const toggles = togglesToParam(p, raw);
+      if (toggles) out[p.key] = toggles;
+      continue;
+    }
     const n = Number(raw);
     if (!Number.isFinite(n)) {
       return { ok: false, error: `${p.label} must be a number.` };
@@ -375,6 +526,86 @@ export function slotHasBinding(slot: GgSlotDraft): boolean {
   return slot.source === "model-slot"
     ? slot.modelSlot.trim().length > 0
     : slot.modelId.trim().length > 0;
+}
+
+// --- Run limits -----------------------------------------------------------------
+
+/**
+ * Why a draft's execution ceilings cannot be saved, or `null` when they are
+ * well-formed.
+ *
+ * gg itself is deliberately forgiving here — a ceiling that cannot bound anything
+ * resolves to "off" with a startup warning, never an error, so a sweep's shared
+ * configuration document stays interpretable by every arm. The editor is stricter
+ * on purpose: at authoring time there is somebody to tell, and a guardrail that
+ * silently does nothing is the one kind of guardrail worth refusing to save.
+ */
+export function runLimitsError(limits: GgRunLimitsDraft): string | null {
+  for (const spec of RUN_LIMIT_SPECS) {
+    const raw = limits[spec.key].trim();
+    if (!raw) continue;
+    const value = Number(raw);
+    if (!Number.isFinite(value)) return `${spec.label} must be a number.`;
+    if (spec.kind === "count" && (!Number.isInteger(value) || value < 0)) {
+      return `${spec.label} must be a whole number of ${spec.key === "maxRuntimeSecs" ? "seconds" : "turns"}.`;
+    }
+    if (spec.kind === "fraction" && (value < 0 || value > 1)) {
+      return `${spec.label} must be between 0 and 1.`;
+    }
+    if (spec.kind === "amount" && value <= 0) {
+      return `${spec.label} must be greater than zero.`;
+    }
+  }
+  // Neither half of the rate ceiling means anything alone: a rate has nothing to be
+  // measured over, and a window has no threshold to be judged against.
+  const rate = limits.maxErrorRate.trim();
+  const window = limits.errorRateWindow.trim();
+  if (Boolean(rate) !== Boolean(window)) {
+    return "An error-rate ceiling needs both a rate and a window — either one alone is no ceiling at all.";
+  }
+  return null;
+}
+
+/**
+ * The one thing about a well-formed ceiling set worth saying out loud without
+ * refusing the save: a rate window that is not smaller than the turn ceiling can
+ * only ever fill on the last turn an agent is allowed, so the ceiling is armed but
+ * can never stop a run before it is over anyway.
+ */
+export function runLimitsWarning(limits: GgRunLimitsDraft): string | null {
+  const window = Number(limits.errorRateWindow.trim());
+  if (!limits.errorRateWindow.trim() || !Number.isFinite(window)) return null;
+  if (!limits.maxErrorRate.trim()) return null;
+  const declared = Number(limits.maxTurns.trim());
+  const turns =
+    limits.maxTurns.trim() && Number.isFinite(declared)
+      ? declared
+      : DEFAULT_MAX_TURNS;
+  if (window < turns) return null;
+  return `The error-rate window (${window}) isn't smaller than the turn ceiling (${turns}), so the rate ceiling could only ever fire on the last turn an agent is allowed.`;
+}
+
+/**
+ * A draft's ceilings as the wire shape, or `undefined` when it declares none — so a
+ * form nobody touched round-trips to a capability set with no `limits` key at all,
+ * and "this configuration sets no ceilings" and "this configuration sets every
+ * ceiling to nothing" stay the same statement.
+ *
+ * A field that is present but unparseable is dropped rather than written as `NaN`;
+ * [runLimitsError] has already refused to save such a draft, and the same tolerance
+ * is what {@link capabilitySetFromDraft} extends to a capability's params.
+ */
+export function runLimitsFromDraft(
+  limits: GgRunLimitsDraft,
+): GgRunLimits | undefined {
+  const out: GgRunLimits = {};
+  for (const spec of RUN_LIMIT_SPECS) {
+    const raw = limits[spec.key].trim();
+    if (!raw) continue;
+    const value = Number(raw);
+    if (Number.isFinite(value)) out[spec.key] = value;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 /** The per-capability param errors of a draft, keyed by capability id (`null` = ok). */
@@ -420,7 +651,7 @@ export function draftSaveError(draft: GgConfigDraft): string | null {
     ([, error]) => error !== null,
   );
   if (failed) return `Fix the ${failed[0]} params before saving.`;
-  return null;
+  return runLimitsError(draft.limits);
 }
 
 /**
@@ -490,11 +721,13 @@ export function capabilitySetFromDraft(
         : {}),
       ...(s.provider.trim() ? { provider: s.provider.trim() } : {}),
     }));
+  const limits = runLimitsFromDraft(draft.limits);
   return {
     ...(preset ? { preset } : {}),
     capabilities,
     slots,
     ...(modelSlots.length ? { modelSlots } : {}),
+    ...(limits ? { limits } : {}),
     ...(draft.disabledTools.length
       ? { disabledTools: draft.disabledTools }
       : {}),

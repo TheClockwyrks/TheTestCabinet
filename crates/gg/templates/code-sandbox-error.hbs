@@ -1,0 +1,15 @@
+{{> healing-note ran=true}}
+Your program could not be run to completion: {{error}}. This is a sandbox limit, not a tool failure
+— the work you asked for was too heavy for one program, not wrong.
+{{#if outputHeavy}}
+Writing is the expensive direction: every byte you write out of the program costs far more budget
+than a byte you read in. Write fewer or smaller files per program.
+{{/if}}
+Split the task across several smaller programs, one per turn.
+{{#if calls}}The {{calls}} tool call(s) it had already made stand.
+{{/if}}
+{{#if finishRevoked}}
+You called `finish(...)` in that program, but a program the sandbox stopped has not finished: the
+run is still going. Do the remaining work in smaller programs and call `finish(...)` again from one
+that runs to its end.
+{{/if}}

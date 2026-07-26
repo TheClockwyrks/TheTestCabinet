@@ -233,7 +233,15 @@ pub enum EventKind {
     /// [`crate::gg_exec`] for the bridge.
     Gg {
         /// The gg telemetry event, verbatim.
-        event: crate::gg::GgTelemetryEvent,
+        ///
+        /// Boxed so this one variant does not dominate the size of every event in the
+        /// process: it carries a whole foreign document (a capability set, an issue
+        /// board, a session summary) into an enum whose other variants are a handful of
+        /// small strings, and it grows again with every addition to gg's contract.
+        /// `Box<T>` serializes and renders in the contract exactly as `T`, so the wire
+        /// shape is unchanged — the same reasoning boxes the summary inside
+        /// [`SessionSummary`](crate::gg::GgTelemetryKind::SessionSummary).
+        event: Box<crate::gg::GgTelemetryEvent>,
     },
     /// Harness output that could not be classified as any other type.
     Unknown {

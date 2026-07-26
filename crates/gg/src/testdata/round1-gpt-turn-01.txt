@@ -1,0 +1,38 @@
+```ts
+const r = shell("find src -type f -print | sort");
+console.log(r.output);
+return r.exitCode;
+```
+
+```ts
+const entries = listDir("src");
+return entries;
+```
+
+```ts
+const r = shell(`set -eu
+{
+  find src -type f -print | while IFS= read -r file; do
+    lines=$(wc -l < "$file" | tr -d ' ')
+    name=\${file#src/}
+    printf '%s\\t%s\\n' "$name" "$lines"
+  done
+} | sort -k1,1 | awk -F '\\t' '{printf "- %s (%s lines)\\n", $1, $2}' > MANIFEST.md
+ls -la
+printf '\\nMANIFEST.md contents:\\n'
+cat MANIFEST.md`);
+return { exitCode: r.exitCode, output: r.output };
+```
+
+```ts
+const m = readTextFile("MANIFEST.md");
+const listing = shell("ls -la MANIFEST.md");
+return { manifest: m, ls: listing.output, exitCode: listing.exitCode };
+```
+
+```ts
+const check = shell("test -f MANIFEST.md && printf 'exists\\n' && wc -l MANIFEST.md && head -3 MANIFEST.md");
+return check.output;
+```
+
+Created MANIFEST.md at the workspace root listing every file under src/, sorted by name with line counts. Ran ls -la and confirmed that MANIFEST.md exists.

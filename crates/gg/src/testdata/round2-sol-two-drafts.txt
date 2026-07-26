@@ -1,0 +1,31 @@
+const entries = listDir("src");
+console.log(entries);
+const tree = shell("find src -type f -print | sort && printf '\\n-- counts --\\n' && find src -type f -print0 | sort -z | xargs -0 wc -l");
+console.log(tree.output);
+return { exitCode: tree.exitCode, root: listDir() };
+
+
+const files = shell("find src -type f -print | sort");
+if (files.exitCode !== 0) return { error: "Could not list src files", output: files.output };
+
+const paths = files.output.trim().split("\n").filter(Boolean);
+const lines = paths.map((path) => {
+  const content = readTextFile(path);
+  const count = content.length === 0 ? 0 : content.split("\n").length - (content.endsWith("\n") ? 1 : 0);
+  return `- ${path.slice(4)} (${count} lines)`;
+});
+writeFile("MANIFEST.md", lines.join("\n") + "\n");
+
+const manifest = readTextFile("MANIFEST.md");
+const listing = shell("ls -la");
+console.log(listing.output);
+
+if (listing.exitCode !== 0) return { error: "ls -la failed", output: listing.output };
+if (!listDir().some((entry) => entry.kind === "file" && entry.name === "MANIFEST.md")) {
+  return { error: "MANIFEST.md was not found after writing" };
+}
+if (manifest !== lines.join("\n") + "\n") {
+  return { error: "MANIFEST.md verification failed" };
+}
+
+finish(`Created MANIFEST.md listing all ${paths.length} files under src, sorted by name with line counts, and confirmed it exists with ls -la.`);

@@ -1,5 +1,172 @@
 {
   "$defs": {
+    "GgHealingSummary": {
+      "description": "The run's [response-healing](GgResponseHealing) rollup: how much of what the models sent had to\nbe repaired before it could run, and which repairs did the work.\n\nThe denominator for every rate here is [`code_executions`](GgSessionSummary::code_executions),\nwhich is one per code-shaped turn — the same event these counters are folded from, so numerator\nand denominator can never come from different mechanisms and drift. Every counter is `0`, and\n[`enabled`](Self::enabled) empty, for a tool-calling run, because healing never runs there.\n\nRead the per-strategy counts as **what gg's pipeline did**, not as what the model wrote: the\npipeline applies its strategies in a fixed order to a fixpoint, so which strategy gets the\ncredit for a response that several could have repaired is a property of that order.\n\n# What this rollup deliberately does not count\n\nA reply that defeated the pipeline entirely — one whose repairs never reached a fixpoint, so\nevery repair was discarded and the reply was compiled exactly as sent — contributes only to the\ndenominator here, exactly as a clean reply does. That fact lives on the turn's own\n[`GgResponseHealing::did_not_converge`] rather than being totted up per run, because it is a\ndiagnosis of one pathological response rather than a rate a study slices on. It is stated here,\nand on the docs page, so the gap is known rather than inferred from a rollup that looks\ncomplete.",
+      "properties": {
+        "applications": {
+          "description": "Total strategy applications; at least [`healed`](Self::healed), since one response may need\nseveral repairs, and possibly more, since a classification is an application too.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "dropDuplicateProgram": {
+          "description": "Applications of\n[`drop-duplicate-program`](GgHealingStrategy::DropDuplicateProgram) — how often a model sent\nthe same program twice in one reply.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "dropImports": {
+          "description": "Applications of [`drop-imports`](GgHealingStrategy::DropImports).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "enabled": {
+          "default": [],
+          "description": "The [strategies](GgHealingStrategy) that were **armed** for this run, in the order gg\napplies them — the resolved configuration, recorded rather than left to be re-derived from\nthe capability set.\n\nThis is what makes an ablation legible from the telemetry alone. Every counter above is a\nmeasurement of what fired, and a run in which nothing fired is byte-identical whether its\nstrategies were all armed or all disabled — so without this field the healing-off arm of a\nstudy and its healing-on arm are indistinguishable in the data, and a study slicing on the\narm has to go back to the invocation files that produced it.\n\nEmpty means every strategy was disabled **for a responses-as-code run**, and means nothing\nat all for a tool-calling one, where healing never runs;\n[`execution_mode`](GgSessionSummary::execution_mode) is what tells those two apart.\n\nSerialized **always, empty list and all** — deliberately no `skip_serializing_if`. The empty\nlist is the one value this field exists to publish, so a key that vanished exactly when it\nmeant \"every strategy was off\" would leave the healing-off arm byte-identical on the wire to\na build with no such field, reopening one level down the very hole described above. Only\n[`Deserialize`] treats it as optional, so a summary recorded before the field existed still\nreads — as an empty armed set, which for those runs is the truth rather than a guess.",
+          "items": {
+            "$ref": "https://docs.testcabinet.ai/schema/gg/telemetry-event.schema.json#/$defs/GgHealingStrategy"
+          },
+          "type": "array"
+        },
+        "healed": {
+          "description": "Responses that had to be repaired for the program to run.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "notAProgram": {
+          "description": "Responses that were not programs at all, and so never ran.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "severalBlocks": {
+          "description": "Of those, the ones that offered more than one candidate program — the shape that\nsilently broke sessions before gg started refusing to guess between them.\n\nOn every run gg records this is exactly\n[`several_blocks_fenced`](Self::several_blocks_fenced) +\n[`several_blocks_bare`](Self::several_blocks_bare); it is kept beside them rather than left\nto be summed because a query that only wants \"how often did a model send more than one\nprogram?\" should not have to know there are two ways to do it.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "severalBlocksBare": {
+          "default": 0,
+          "description": "Of those, the ones that pasted one program after another with no fence anywhere — the count\nthat answers \"does this model think a turn may carry more than one answer?\".\n\nA different failure from its fenced sibling, and the one real models actually produce now\nthat fences are gone from the contract: the reply is formatted exactly as asked and still\ncould not run, because its second program redeclares what its first already declared.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "severalBlocksFenced": {
+          "default": 0,
+          "description": "Of those, the ones that presented their programs as several **fenced** code blocks — the\ncount that answers \"is this model still formatting its reply after being told its whole\nreply is the program?\".\n\nAlways written, and `default`ed on the way in like its bare sibling, so a rollup recorded\nbefore the split still reads — with both shape counts at `0`, which is why the sum stated on\n[`several_blocks`](Self::several_blocks) is a property of what gg *records* rather than of\nwhat it can *read*: a count that was never taken is not one a re-read may invent.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "stripCommentOnly": {
+          "description": "Applications of [`strip-comment-only`](GgHealingStrategy::StripCommentOnly).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "stripFences": {
+          "description": "Applications of [`strip-fences`](GgHealingStrategy::StripFences) — the count that answers\n\"how often did this model still wrap its program in a code fence after being told not to?\".",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "stripProse": {
+          "description": "Applications of [`strip-prose`](GgHealingStrategy::StripProse).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "unwrapAsync": {
+          "description": "Applications of [`unwrap-async`](GgHealingStrategy::UnwrapAsync).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "healed",
+        "applications",
+        "stripFences",
+        "stripProse",
+        "dropDuplicateProgram",
+        "dropImports",
+        "unwrapAsync",
+        "stripCommentOnly",
+        "notAProgram",
+        "severalBlocks"
+      ],
+      "type": "object"
+    },
+    "GgLimitBreach": {
+      "description": "One [execution ceiling](GgRunLimits) being breached: which one, what it was set to, what was\nactually observed, and where.\n\nEvery figure is an `f64` so one shape carries all five ceilings — a turn count, a number of\nseconds, a consecutive count, a fraction and an amount of money — and one aggregation can slice\nacross them without five parallel fields, four of which would be null on any given run.",
+      "properties": {
+        "agentId": {
+          "description": "The agent that observed the breach — the one whose loop ended on it. For a run-wide ceiling\nthis is whichever agent reached its turn boundary first, which is why it is carried rather\nthan assumed to be the root.",
+          "type": "string"
+        },
+        "limit": {
+          "$ref": "#/$defs/GgLimitKind",
+          "description": "Which ceiling was breached."
+        },
+        "observed": {
+          "description": "What was observed when the check fired, in the same units. For [`Cost`](GgLimitKind::Cost)\nthis is the spend already accumulated — at or **above** the threshold, because that ceiling\nbounds starting new work rather than capping spend.",
+          "format": "double",
+          "type": "number"
+        },
+        "threshold": {
+          "description": "What the ceiling was set to, in its own units (turns, seconds, errors, a fraction, or\ncost).",
+          "format": "double",
+          "type": "number"
+        },
+        "turns": {
+          "description": "How many turns [`agent_id`](Self::agent_id) had taken when the ceiling was breached.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "window": {
+          "description": "The lookback window the rate was measured over, on [`ErrorRate`](GgLimitKind::ErrorRate)\nonly.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        }
+      },
+      "required": ["limit", "threshold", "observed", "turns", "agentId"],
+      "type": "object"
+    },
+    "GgLimitKind": {
+      "description": "Which [execution ceiling](GgRunLimits) stopped a run.\n\nA closed, stable taxonomy (unlike the open capability ids): the console labels each one and the\n[aggregation facet](crate::gg_aggregate::GgFacet::LimitHit) buckets by them, so the set is\nfixed here rather than being a free string.",
+      "oneOf": [
+        {
+          "const": "turns",
+          "description": "[`max_turns`](GgRunLimits::max_turns) — the agent took every turn it was allowed. Its\nterminal status is `exhausted`, not `limit_exceeded`, because that status predates this\nvocabulary and changing it would rewrite the meaning of every historical run.",
+          "type": "string"
+        },
+        {
+          "const": "runtime",
+          "description": "[`max_runtime_secs`](GgRunLimits::max_runtime_secs) — the run spent its wall-clock budget.\nIts terminal status is `timed_out`, for the same reason.",
+          "type": "string"
+        },
+        {
+          "const": "consecutive_errors",
+          "description": "[`max_consecutive_errors`](GgRunLimits::max_consecutive_errors) — the agent failed that\nmany turns in a row.",
+          "type": "string"
+        },
+        {
+          "const": "error_rate",
+          "description": "[`max_error_rate`](GgRunLimits::max_error_rate) — too many of the agent's most recent\n[`error_rate_window`](GgRunLimits::error_rate_window) turns were errors.",
+          "type": "string"
+        },
+        {
+          "const": "cost",
+          "description": "[`max_cost`](GgRunLimits::max_cost) — the run had already accumulated more than the\nceiling when an agent reached its turn boundary.",
+          "type": "string"
+        }
+      ]
+    },
     "GgSlotCost": {
       "description": "One `(slot, model)` token+cost rollup in a [`GgSessionSummary`] — the aggregatable\ntail of the [`SlotUsage`](GgTelemetryKind::SlotUsage) rollups, folded onto the run so a\nquery can total or slice a gg run's spend per model without replaying the stream.\n\nA gg run spans several models (subagents can run on different, possibly cross-provider,\n[slots](GgSlotBinding) than the parent), so cost is accumulated **per slot** rather than\nas one figure for one model. This is the same shape a `SlotUsage` telemetry event carries,\ncaptured once per `(slot, model)` the run touched, so [result aggregation] can answer\n\"does a cheaper subagent slot cost accuracy?\" from the durable record.\n\n[result aggregation]: https://docs.testcabinet.ai/gg/result-aggregation/",
       "properties": {
@@ -42,7 +209,7 @@
       "type": "integer"
     },
     "codeExecutions": {
-      "description": "How many [responses-as-code](GgTelemetryKind::CodeExecution) programs the run executed — one\nper [`CodeExecution`](GgTelemetryKind::CodeExecution) event (a code-shaped turn). `0` when the\nresponses-as-code capability was off (traditional tool calling), so a non-zero count is the\nproof the code path actually ran.",
+      "description": "How many **code-shaped turns** the run took — one per\n[`CodeExecution`](GgTelemetryKind::CodeExecution) event. `0` when the\n[responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability was off (traditional tool\ncalling), so a non-zero count is the proof the code path actually ran.\n\nThis counts turns, not executions: a turn whose reply was **not a program at all** — prose,\nan empty reply, comments only, or several candidate blocks — emits its event like any\nother and is counted here, which is exactly what makes this the denominator for every rate\nin the run's [healing rollup](Self::healing). Numerator and denominator are folded from the\nsame event, so they cannot come from different mechanisms and drift.",
       "format": "uint64",
       "minimum": 0,
       "type": "integer"
@@ -83,6 +250,25 @@
       "format": "double",
       "type": ["number", "null"]
     },
+    "healing": {
+      "$ref": "#/$defs/GgHealingSummary",
+      "default": {
+        "applications": 0,
+        "dropDuplicateProgram": 0,
+        "dropImports": 0,
+        "enabled": [],
+        "healed": 0,
+        "notAProgram": 0,
+        "severalBlocks": 0,
+        "severalBlocksBare": 0,
+        "severalBlocksFenced": 0,
+        "stripCommentOnly": 0,
+        "stripFences": 0,
+        "stripProse": 0,
+        "unwrapAsync": 0
+      },
+      "description": "What gg had to do to the models' responses before it could run them — the run's\n[response-healing](GgHealingSummary) rollup, folded from the same\n[`CodeExecution`](GgTelemetryKind::CodeExecution) events\n[`code_executions`](Self::code_executions) counts. All zeroes for a tool-calling run."
+    },
     "issuesCompleted": {
       "description": "How many distinct issues the run ever drove to [`Done`](GgIssueStatus::Done) — the count of\ndistinct issue ids observed at `Done` at any point (so an issue reopened and re-completed\nstill counts once). At most [`issues_created`](Self::issues_created).",
       "format": "uint64",
@@ -100,6 +286,22 @@
       "format": "uint64",
       "minimum": 0,
       "type": "integer"
+    },
+    "limitHit": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/GgLimitBreach"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The ceiling that stopped the run, when one did — which [ceiling](Self::limits), what it was\nset to, and what was observed. Absent for a run that ended on its own terms.\n\nThis is the **root** agent's breach: a subagent that stops on its own error ceiling ends\nitself and reports back through the delegation channel, and the run carries on, so its\nbreach is not the run's outcome. Distinct from [`terminal_status`](Self::terminal_status),\nwhich cannot answer \"which ceiling?\" — two of the five share `limit_exceeded` and two have\nstatuses of their own."
+    },
+    "limits": {
+      "$ref": "https://docs.testcabinet.ai/schema/gg/capability-set.schema.json#/$defs/GgRunLimits",
+      "default": {},
+      "description": "The [execution ceilings](GgRunLimits) that were actually **in force** for this run — the\nconfigured set with gg's own turn default filled in.\n\nRecorded rather than left to be re-derived from the [capability set](GgCapabilitySet)\nbecause a default is otherwise invisible: \"what ceiling was this run bounded by?\" must be\nanswerable for every run, including one that declared none. All-absent for a run recorded\nbefore ceilings existed."
     },
     "maxSubagentDepth": {
       "description": "The deepest [subagent depth](GgTelemetryKind::AgentSpawned) reached this run: `0` for a\nsingle-agent run (only the root, at depth 0), `1` for a run that spawned children but no\ngrandchildren, and so on — the correlate for \"how does delegation depth relate to score?\".",
@@ -138,7 +340,7 @@
       "type": "integer"
     },
     "terminalStatus": {
-      "description": "How the session ended — the [`SessionEnded`](GgTelemetryKind::SessionEnded) status this\nsummary precedes (for example `\"completed\"`, `\"model_error\"`, `\"exhausted\"`,\n`\"timed_out\"`, or `\"error\"`). A slice-by facet for \"how often does configuration X finish\ncleanly?\".",
+      "description": "How the session ended — the [`SessionEnded`](GgTelemetryKind::SessionEnded) status this\nsummary precedes (for example `\"completed\"`, `\"model_error\"`, `\"exhausted\"`,\n`\"timed_out\"`, `\"limit_exceeded\"`, or `\"error\"`). A slice-by facet for \"how often does\nconfiguration X finish cleanly?\".\n\nUnder [responses-as-code](CAPABILITY_RESPONSES_AS_CODE), `completed` is reachable **only**\nthrough an explicit `finish` call inside a program — there is no implicit completion on\nthat path, so `completed` is a statement the model made rather than an absence of further\noutput.",
       "type": "string"
     }
   },

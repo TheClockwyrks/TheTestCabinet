@@ -186,6 +186,20 @@ export type GgCapabilitySet = {
    * error, so a sweep can list a tool that only some arms offer).
    */
   disabledTools?: Array<string>;
+  /**
+   * The **execution ceilings** this run is bounded by — the turn, runtime, error and
+   * cost guardrails that stop a session and record which one stopped it.
+   *
+   * They ride on the capability set rather than on the [launch envelope](GgInvocation)
+   * because the set is what a run *records*: a ceiling that stopped a run is only
+   * interpretable beside the value it was set to. They are deliberately not a
+   * capability — a capability is a feature under ablation, a ceiling is an operator's
+   * guardrail over every capability at once — so they never appear in the
+   * [`capabilityEnabled`](crate::gg_aggregate::GgFacet::CapabilityEnabled) facet space.
+   * A set that declares none omits the key entirely, so every configuration stored
+   * before ceilings existed round-trips unchanged.
+   */
+  limits?: GgRunLimits;
 };
 
 /**
@@ -594,6 +608,376 @@ export type GgCodeReviewPhase = "requested" | "changes_requested" | "approved";
 export type GgSpeculationPhase = "fanned_out" | "judged" | "merged";
 
 /**
+ * The **run-level execution ceilings** a gg run is bounded by — the guardrails that stop a
+ * session and record which one stopped it.
+ *
+ * Deliberately **not** a [capability](GgCapabilityConfig): a capability is a feature under
+ * ablation, with tools and an on/off arm a study varies; a ceiling is an operator's guardrail
+ * that applies to every capability and to both execution modes at once. They live on the
+ * [capability set](GgCapabilitySet) rather than on the [launch envelope](GgInvocation) because
+ * the set is what a run **records**, so a run stopped by a ceiling carries both the
+ * [breach](GgSessionSummary::limit_hit) and the [ceilings](GgSessionSummary::limits) that
+ * produced it — where limits on the invocation would let a run record *which* ceiling was hit
+ * while making *what the ceiling was* unrecoverable.
+ *
+ * **Every field is disabled when unset**, except the turn ceiling, whose long-standing default
+ * (50) is preserved because a gg run has always had one. A value that cannot bound anything — a
+ * zero window, a negative rate, a rate above `1.0` — is a startup warning and is ignored, never
+ * an error, on the same terms as an unknown name in
+ * [`disabled_tools`](GgCapabilitySet::disabled_tools). The run records the ceilings that were
+ * actually in force on [`GgSessionSummary::limits`], so a default is a recorded fact rather than
+ * a hidden one.
+ *
+ * See the [execution-limits](https://docs.testcabinet.ai/gg/execution-limits/) page for how each
+ * ceiling is accounted (per agent or run-wide) and what breaching it does to the run.
+ */
+export type GgRunLimits = {
+  /**
+   * The per-agent turn ceiling. Absent means gg's own default of 50 — the one ceiling that has
+   * a default, because a gg run has always had a turn ceiling and removing it would be a
+   * different change. An agent that reaches it ends `exhausted`.
+   */
+  maxTurns?: number;
+  /**
+   * The run's wall-clock budget in seconds, observed by every agent at its own turn boundary.
+   * Absent means no budget. A run that spends it ends `timed_out`.
+   */
+  maxRuntimeSecs?: number;
+  /**
+   * How many **error turns in a row** end an agent. Absent means the ceiling is off.
+   *
+   * A turn is an error when the work it *declared* could not be carried out as declared: a
+   * model call that failed, a reply that was not a program, a program that did not compile, one
+   * that threw uncaught, or one the sandbox stopped at a ceiling. A tool call that failed
+   * **inside** an otherwise successful program is not one — the program handled it, which is
+   * the entire point of the typed tool surface, and counting it would make the one capability
+   * that expects failures the one capability that cannot survive them.
+   */
+  maxConsecutiveErrors?: number;
+  /**
+   * The fraction of recent turns that may be errors before an agent is stopped, in `0.0..=1.0`.
+   * Breached only **strictly above** the value, matching "more than X%": at `0.5` over a window
+   * of ten, five errors is not a breach and six is. Needs
+   * [`error_rate_window`](Self::error_rate_window); either alone is a startup warning and no
+   * ceiling.
+   */
+  maxErrorRate?: number;
+  /**
+   * How many of an agent's most recent turns [`max_error_rate`](Self::max_error_rate) is
+   * measured over — and, deliberately, the minimum sample: the ceiling cannot fire until the
+   * agent has taken this many turns, so one number does both jobs. The earliest turn this
+   * ceiling can stop a run on is therefore turn `error_rate_window` — at `1` it says "stop on
+   * any error", which is a legitimate declaration rather than an accident.
+   */
+  errorRateWindow?: number;
+  /**
+   * A ceiling on the run's accumulated cost, in the same USD figure the run record reports
+   * ([`Cost::comparable`](crate::metrics::Cost::comparable), falling back to
+   * [`actual`](crate::metrics::Cost::actual)) — a ceiling measuring something the run record
+   * does not show would be unauditable. Absent means no ceiling.
+   *
+   * Checked at each agent's turn boundary, so it bounds **starting new work** rather than
+   * capping spend: the turn that crosses the line completes in full (gg has already paid for
+   * that response; discarding it would waste the money and abandon work the model asked for),
+   * and the run's final recorded cost therefore exceeds this by at most one turn's cost per
+   * concurrently running agent. The compaction summarizer's own calls are deliberately outside
+   * gg's run totals, so this measures exactly what the run record reports and no more. A run
+   * whose model reports no cost can never be stopped by it — gg does not invent a figure to
+   * stop a run with.
+   */
+  maxCost?: number;
+};
+
+/**
+ * Which [execution ceiling](GgRunLimits) stopped a run.
+ *
+ * A closed, stable taxonomy (unlike the open capability ids): the console labels each one and the
+ * [aggregation facet](crate::gg_aggregate::GgFacet::LimitHit) buckets by them, so the set is
+ * fixed here rather than being a free string.
+ */
+export type GgLimitKind =
+  | "turns"
+  | "runtime"
+  | "consecutive_errors"
+  | "error_rate"
+  | "cost";
+
+/**
+ * One [execution ceiling](GgRunLimits) being breached: which one, what it was set to, what was
+ * actually observed, and where.
+ *
+ * Every figure is an `f64` so one shape carries all five ceilings — a turn count, a number of
+ * seconds, a consecutive count, a fraction and an amount of money — and one aggregation can slice
+ * across them without five parallel fields, four of which would be null on any given run.
+ */
+export type GgLimitBreach = {
+  /**
+   * Which ceiling was breached.
+   */
+  limit: GgLimitKind;
+  /**
+   * What the ceiling was set to, in its own units (turns, seconds, errors, a fraction, or
+   * cost).
+   */
+  threshold: number;
+  /**
+   * What was observed when the check fired, in the same units. For [`Cost`](GgLimitKind::Cost)
+   * this is the spend already accumulated — at or **above** the threshold, because that ceiling
+   * bounds starting new work rather than capping spend.
+   */
+  observed: number;
+  /**
+   * How many turns [`agent_id`](Self::agent_id) had taken when the ceiling was breached.
+   */
+  turns: number;
+  /**
+   * The agent that observed the breach — the one whose loop ended on it. For a run-wide ceiling
+   * this is whichever agent reached its turn boundary first, which is why it is carried rather
+   * than assumed to be the root.
+   */
+  agentId: string;
+  /**
+   * The lookback window the rate was measured over, on [`ErrorRate`](GgLimitKind::ErrorRate)
+   * only.
+   */
+  window?: number;
+};
+
+/**
+ * One [response-healing](https://docs.testcabinet.ai/gg/response-healing/) strategy — a named,
+ * independently toggleable repair gg may apply to a model's response before running it.
+ *
+ * The wire values are the strategy ids, spelled exactly as the
+ * [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability's `healing` param keys are
+ * (`{"healing": {"strip-fences": false}}`), because the id is one thing: a config key, a metric
+ * name, and a telemetry value. Kebab-case rather than this module's usual snake_case for exactly
+ * that reason.
+ *
+ * Every strategy is on unless a configuration turns it off, and every application is disclosed to
+ * the model in its turn feedback — a repair the model is never told about teaches it nothing and
+ * corrupts the ablation, whose whole question is whether models learn the contract.
+ */
+export type GgHealingStrategy =
+  | "strip-fences"
+  | "strip-prose"
+  | "drop-duplicate-program"
+  | "drop-imports"
+  | "unwrap-async"
+  | "strip-comment-only";
+
+/**
+ * Why a response was not a program at all.
+ *
+ * Such a turn is **not** a completion: gg feeds it back to the model as an error turn naming the
+ * shape it sent and telling it to call `finish(summary)` if it meant to end the run, and it
+ * counts towards the run's [error ceilings](GgRunLimits) — which is what stops a model that has
+ * started answering in prose from looping forever. It still emits its own
+ * [`CodeExecution`](GgTelemetryKind::CodeExecution) (with `ok: false` and no fuel figure, because
+ * nothing ran), so [`code_executions`](GgSessionSummary::code_executions) counts code-shaped
+ * *turns* and stays the exact denominator for every healing rate.
+ */
+export type GgNotAProgram =
+  | "empty"
+  | "tool_calls_only"
+  | "prose"
+  | "comment_only"
+  | "no_program_block"
+  | "several_blocks";
+
+/**
+ * How a reply that offered [several programs](GgNotAProgram::SeveralBlocks) presented them.
+ *
+ * The two shapes are the same mistake made two ways, and telling them apart is the point: a model
+ * that wrapped seven programs in seven code fences was told not to fence and fenced anyway, while
+ * a model that pasted two programs one after another with nothing between them obeyed the fence
+ * rule and sent two answers. One is an instruction-following failure about *formatting*, the other
+ * about *how many programs a turn is*, and an aggregate that could not separate them would report
+ * a single number that answers neither question — which is precisely the signal
+ * [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) exists to collect.
+ */
+export type GgCandidateShape = "fenced" | "bare";
+
+/**
+ * What gg had to do to a model's response before it could run it — the healing record of one
+ * code-shaped turn.
+ *
+ * Healing is textual and conservative: it only ever **deletes**, so a healed program is always a
+ * subsequence of the response the model sent, and every repair is disclosed to the model in its
+ * turn feedback — this record is a fact the model was told, never something done behind it.
+ *
+ * A response that needed nothing carries the default and is omitted from the wire entirely, so
+ * the presence of this object *is* "something was unusual about this response".
+ */
+export type GgResponseHealing = {
+  /**
+   * Each strategy application, in the order applied — a strategy may appear more than once (two
+   * nested fences are two applications), which is what makes this a count rather than a flag.
+   * Empty for a clean response.
+   */
+  strategies?: Array<GgHealingStrategy>;
+  /**
+   * Why the response was not a program, when it was not one. Absent for a response that ran.
+   *
+   * A response is **healed** exactly when [`strategies`](Self::strategies) is non-empty *and*
+   * this is absent: a response that was only classified was repaired of nothing, because
+   * nothing ran.
+   */
+  notAProgram?: GgNotAProgram;
+  /**
+   * How many **candidate programs** the response offered. Present only alongside
+   * [`SeveralBlocks`](GgNotAProgram::SeveralBlocks), where it is the instruction-following
+   * signal itself: how many programs the model sent in one turn.
+   *
+   * It counts the same thing in both [shapes](Self::candidate_shape), which is what makes it
+   * aggregatable across them: for a [fenced](GgCandidateShape::Fenced) reply, the candidate
+   * blocks gg found; for a [bare](GgCandidateShape::Bare) one, the segments the reply's
+   * top-level redeclarations cut it into. A redeclared name can only ever fall in a later
+   * segment than the one before it, so the bare figure is a **lower bound** — five programs that
+   * happen to share one name between two of them count as two, because two is all the reply
+   * proves. It is never an over-count in either shape, so an aggregate of it reads "at least
+   * this many programs per offending reply".
+   */
+  blocks?: number;
+  /**
+   * How those candidates were presented. Present exactly when [`blocks`](Self::blocks) is.
+   *
+   * Carried because the two shapes are two different failures with two different fixes — the
+   * fenced one is a model still formatting its reply after being told not to, the bare one is a
+   * model sending two answers in one turn — and a rollup that merged "seven fenced blocks" with
+   * "two bare programs" would report a number that describes neither.
+   */
+  candidateShape?: GgCandidateShape;
+  /**
+   * Whether the healing pipeline failed to reach a fixpoint, so every repair was discarded and
+   * the response ran exactly as sent.
+   *
+   * Carried so that the one response pathological enough to defeat the pipeline is
+   * distinguishable from a clean one, which is otherwise byte-identical on the wire.
+   */
+  didNotConverge?: boolean;
+};
+
+/**
+ * The run's [response-healing](GgResponseHealing) rollup: how much of what the models sent had to
+ * be repaired before it could run, and which repairs did the work.
+ *
+ * The denominator for every rate here is [`code_executions`](GgSessionSummary::code_executions),
+ * which is one per code-shaped turn — the same event these counters are folded from, so numerator
+ * and denominator can never come from different mechanisms and drift. Every counter is `0`, and
+ * [`enabled`](Self::enabled) empty, for a tool-calling run, because healing never runs there.
+ *
+ * Read the per-strategy counts as **what gg's pipeline did**, not as what the model wrote: the
+ * pipeline applies its strategies in a fixed order to a fixpoint, so which strategy gets the
+ * credit for a response that several could have repaired is a property of that order.
+ *
+ * # What this rollup deliberately does not count
+ *
+ * A reply that defeated the pipeline entirely — one whose repairs never reached a fixpoint, so
+ * every repair was discarded and the reply was compiled exactly as sent — contributes only to the
+ * denominator here, exactly as a clean reply does. That fact lives on the turn's own
+ * [`GgResponseHealing::did_not_converge`] rather than being totted up per run, because it is a
+ * diagnosis of one pathological response rather than a rate a study slices on. It is stated here,
+ * and on the docs page, so the gap is known rather than inferred from a rollup that looks
+ * complete.
+ */
+export type GgHealingSummary = {
+  /**
+   * Responses that had to be repaired for the program to run.
+   */
+  healed: number;
+  /**
+   * Total strategy applications; at least [`healed`](Self::healed), since one response may need
+   * several repairs, and possibly more, since a classification is an application too.
+   */
+  applications: number;
+  /**
+   * Applications of [`strip-fences`](GgHealingStrategy::StripFences) — the count that answers
+   * "how often did this model still wrap its program in a code fence after being told not to?".
+   */
+  stripFences: number;
+  /**
+   * Applications of [`strip-prose`](GgHealingStrategy::StripProse).
+   */
+  stripProse: number;
+  /**
+   * Applications of
+   * [`drop-duplicate-program`](GgHealingStrategy::DropDuplicateProgram) — how often a model sent
+   * the same program twice in one reply.
+   */
+  dropDuplicateProgram: number;
+  /**
+   * Applications of [`drop-imports`](GgHealingStrategy::DropImports).
+   */
+  dropImports: number;
+  /**
+   * Applications of [`unwrap-async`](GgHealingStrategy::UnwrapAsync).
+   */
+  unwrapAsync: number;
+  /**
+   * Applications of [`strip-comment-only`](GgHealingStrategy::StripCommentOnly).
+   */
+  stripCommentOnly: number;
+  /**
+   * Responses that were not programs at all, and so never ran.
+   */
+  notAProgram: number;
+  /**
+   * Of those, the ones that offered more than one candidate program — the shape that
+   * silently broke sessions before gg started refusing to guess between them.
+   *
+   * On every run gg records this is exactly
+   * [`several_blocks_fenced`](Self::several_blocks_fenced) +
+   * [`several_blocks_bare`](Self::several_blocks_bare); it is kept beside them rather than left
+   * to be summed because a query that only wants "how often did a model send more than one
+   * program?" should not have to know there are two ways to do it.
+   */
+  severalBlocks: number;
+  /**
+   * Of those, the ones that presented their programs as several **fenced** code blocks — the
+   * count that answers "is this model still formatting its reply after being told its whole
+   * reply is the program?".
+   *
+   * Always written, and `default`ed on the way in like its bare sibling, so a rollup recorded
+   * before the split still reads — with both shape counts at `0`, which is why the sum stated on
+   * [`several_blocks`](Self::several_blocks) is a property of what gg *records* rather than of
+   * what it can *read*: a count that was never taken is not one a re-read may invent.
+   */
+  severalBlocksFenced: number;
+  /**
+   * Of those, the ones that pasted one program after another with no fence anywhere — the count
+   * that answers "does this model think a turn may carry more than one answer?".
+   *
+   * A different failure from its fenced sibling, and the one real models actually produce now
+   * that fences are gone from the contract: the reply is formatted exactly as asked and still
+   * could not run, because its second program redeclares what its first already declared.
+   */
+  severalBlocksBare: number;
+  /**
+   * The [strategies](GgHealingStrategy) that were **armed** for this run, in the order gg
+   * applies them — the resolved configuration, recorded rather than left to be re-derived from
+   * the capability set.
+   *
+   * This is what makes an ablation legible from the telemetry alone. Every counter above is a
+   * measurement of what fired, and a run in which nothing fired is byte-identical whether its
+   * strategies were all armed or all disabled — so without this field the healing-off arm of a
+   * study and its healing-on arm are indistinguishable in the data, and a study slicing on the
+   * arm has to go back to the invocation files that produced it.
+   *
+   * Empty means every strategy was disabled **for a responses-as-code run**, and means nothing
+   * at all for a tool-calling one, where healing never runs;
+   * [`execution_mode`](GgSessionSummary::execution_mode) is what tells those two apart.
+   *
+   * Serialized **always, empty list and all** — deliberately no `skip_serializing_if`. The empty
+   * list is the one value this field exists to publish, so a key that vanished exactly when it
+   * meant "every strategy was off" would leave the healing-off arm byte-identical on the wire to
+   * a build with no such field, reopening one level down the very hole described above. Only
+   * [`Deserialize`] treats it as optional, so a summary recorded before the field existed still
+   * reads — as an empty armed set, which for those runs is the truth rather than a guess.
+   */
+  enabled: Array<GgHealingStrategy>;
+};
+
+/**
  * One `(slot, model)` token+cost rollup in a [`GgSessionSummary`] — the aggregatable
  * tail of the [`SlotUsage`](GgTelemetryKind::SlotUsage) rollups, folded onto the run so a
  * query can total or slice a gg run's spend per model without replaying the stream.
@@ -650,8 +1034,13 @@ export type GgSessionSummary = {
   /**
    * How the session ended — the [`SessionEnded`](GgTelemetryKind::SessionEnded) status this
    * summary precedes (for example `"completed"`, `"model_error"`, `"exhausted"`,
-   * `"timed_out"`, or `"error"`). A slice-by facet for "how often does configuration X finish
-   * cleanly?".
+   * `"timed_out"`, `"limit_exceeded"`, or `"error"`). A slice-by facet for "how often does
+   * configuration X finish cleanly?".
+   *
+   * Under [responses-as-code](CAPABILITY_RESPONSES_AS_CODE), `completed` is reachable **only**
+   * through an explicit `finish` call inside a program — there is no implicit completion on
+   * that path, so `completed` is a statement the model made rather than an absence of further
+   * output.
    */
   terminalStatus: string;
   /**
@@ -734,12 +1123,25 @@ export type GgSessionSummary = {
    */
   executionMode: string;
   /**
-   * How many [responses-as-code](GgTelemetryKind::CodeExecution) programs the run executed — one
-   * per [`CodeExecution`](GgTelemetryKind::CodeExecution) event (a code-shaped turn). `0` when the
-   * responses-as-code capability was off (traditional tool calling), so a non-zero count is the
-   * proof the code path actually ran.
+   * How many **code-shaped turns** the run took — one per
+   * [`CodeExecution`](GgTelemetryKind::CodeExecution) event. `0` when the
+   * [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability was off (traditional tool
+   * calling), so a non-zero count is the proof the code path actually ran.
+   *
+   * This counts turns, not executions: a turn whose reply was **not a program at all** — prose,
+   * an empty reply, comments only, or several candidate blocks — emits its event like any
+   * other and is counted here, which is exactly what makes this the denominator for every rate
+   * in the run's [healing rollup](Self::healing). Numerator and denominator are folded from the
+   * same event, so they cannot come from different mechanisms and drift.
    */
   codeExecutions: number;
+  /**
+   * What gg had to do to the models' responses before it could run them — the run's
+   * [response-healing](GgHealingSummary) rollup, folded from the same
+   * [`CodeExecution`](GgTelemetryKind::CodeExecution) events
+   * [`code_executions`](Self::code_executions) counts. All zeroes for a tool-calling run.
+   */
+  healing: GgHealingSummary;
   /**
    * How many distinct [issues](GgBoardIssue) the run ever created on its
    * [board](GgTelemetryKind::BoardState) — the count of distinct issue ids observed across the
@@ -774,6 +1176,27 @@ export type GgSessionSummary = {
    * set; only the root may additionally be driven by an FSM).
    */
   effectiveTools: Array<string>;
+  /**
+   * The [execution ceilings](GgRunLimits) that were actually **in force** for this run — the
+   * configured set with gg's own turn default filled in.
+   *
+   * Recorded rather than left to be re-derived from the [capability set](GgCapabilitySet)
+   * because a default is otherwise invisible: "what ceiling was this run bounded by?" must be
+   * answerable for every run, including one that declared none. All-absent for a run recorded
+   * before ceilings existed.
+   */
+  limits: GgRunLimits;
+  /**
+   * The ceiling that stopped the run, when one did — which [ceiling](Self::limits), what it was
+   * set to, and what was observed. Absent for a run that ended on its own terms.
+   *
+   * This is the **root** agent's breach: a subagent that stops on its own error ceiling ends
+   * itself and reports back through the delegation channel, and the run carries on, so its
+   * breach is not the run's outcome. Distinct from [`terminal_status`](Self::terminal_status),
+   * which cannot answer "which ceiling?" — two of the five share `limit_exceeded` and two have
+   * statuses of their own.
+   */
+  limitHit?: GgLimitBreach;
 };
 
 /**
@@ -1155,29 +1578,81 @@ export type GgTelemetryKind =
   | {
       type: "code_execution";
       /**
-       * Whether the program returned normally (`true`) or faulted / the sandbox failed
-       * (`false`). A failed code execution is a *turn* outcome fed back to the model, never a
-       * crash of the run.
+       * Whether the program returned normally (`true`) or faulted, was stopped, or never
+       * existed (`false`). A failed code turn is a *turn* outcome fed back to the model, never
+       * a crash of the run. Independent of [`finished`](Self::CodeExecution::finished): a
+       * program that finished the run and then threw is `ok: false` with `finished` present.
        */
       ok: boolean;
       /**
-       * How many tool calls the program composed (bridged to the real toolset), in the order it
-       * made them — each also streamed as its own [`ToolCall`](Self::ToolCall)/[`ToolResult`](Self::ToolResult).
+       * How many tool calls the program composed that **reached the turn loop** (and so were
+       * bridged to the real toolset), in the order it made them — each also streamed as its own
+       * [`ToolCall`](Self::ToolCall)/[`ToolResult`](Self::ToolResult) pair, so this figure is
+       * exactly the number of those pairs the turn produced. A call the sandbox refused before it
+       * got that far — a turn-level transition, or a tool this run did not enable — is not one of
+       * these and never inflates the count.
        */
       toolCalls: number;
       /**
-       * The wasmtime fuel the program's execution consumed, when the sandbox ran to a result. The
-       * same per-run efficiency signal the sibling Foray/Lattice hosts expose; absent when the
-       * sandbox itself failed to complete (for example a fuel-ceiling trap, where the figure is
-       * simply the ceiling).
+       * The wasmtime fuel the program's execution **actually consumed** — the same per-program
+       * efficiency signal the sibling Foray/Lattice hosts expose. Reported on every path that
+       * reached the engine, including a fault or a trap (where it is the fuel burned up to the
+       * trap, not the ceiling); `Some(0)` when the program never reached the engine (a
+       * type-strip failure, or a sandbox that could not be built); and **absent** when there was
+       * no program at all — see [`healing.not_a_program`](GgResponseHealing::not_a_program) —
+       * because a turn that ran nothing has no fuel figure to average into a run's efficiency.
        */
       fuelUsed?: number;
       /**
        * The failure message, when [`ok`](Self::CodeExecution::ok) is `false` — a program fault
-       * (a parse/type error, a runaway-loop step-budget stop) or a sandbox failure (fuel or
-       * memory exhaustion, a trap). Absent on a clean execution.
+       * (a syntax error the type-strip rejected, or a value the program threw), a sandbox
+       * failure (fuel or memory exhaustion, a trap), or, for a reply that was not a program,
+       * the sentence saying which shape it was. Absent on a clean execution.
        */
       error?: string;
+      /**
+       * The summary the program ended the **run** with, when it called `finish` — the one
+       * function on the sandbox's model-facing surface that is not a tool, and the only thing
+       * that ends a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) session.
+       *
+       * Present on exactly the turn that finished, absent on every other, so `finished != null`
+       * is both "did this turn end the run?" and "with what?" — and, over a run, the proof that
+       * the session ended because the model said so rather than because a ceiling stopped it. It
+       * is carried even when the program then threw or trapped: the completion is recorded
+       * before either can exist and nothing retracts it. The same text is the session's final
+       * text (a subagent's return value to its spawner).
+       */
+      finished?: string;
+      /**
+       * How long **this** program spent obtaining the sandbox's compiled interpreter component,
+       * in milliseconds — absent (the ordinary case) when the component was already compiled and
+       * nothing here was on the turn's critical path.
+       *
+       * The component is compiled once per process, and a run that enables the capability starts
+       * that compile before its first model request. But starting it early only **overlaps** it
+       * with the request rather than eliminating it: on a run container with one or two cores the
+       * compile takes seconds, so a model that answers quickly gets its first program back before
+       * the warm-up has finished, and that program compiles the component itself. This is the
+       * figure that says so — without it, "did this program wait on the one shared compile or is
+       * it genuinely slow?" is only answerable by comparing timestamps across sibling runs.
+       */
+      compileWaitMs?: number;
+      /**
+       * What gg had to do to this reply before running it, and whether it was a program at all.
+       * Defaulted and omitted from the wire for a clean response, so the presence of this
+       * object *is* "something was unusual about this response".
+       */
+      healing?: GgResponseHealing;
+    }
+  | {
+      type: "limit_exceeded";
+      /**
+       * Which ceiling was breached, what it was set to, and what was observed. Its own
+       * [`agent_id`](GgLimitBreach::agent_id) duplicates this event's envelope deliberately:
+       * the same payload is also the session summary's, and a self-contained record is worth
+       * one repeated string.
+       */
+      breach: GgLimitBreach;
     }
   | {
       type: "log";
@@ -1626,29 +2101,81 @@ export type GgTelemetryEvent = {
   | {
       type: "code_execution";
       /**
-       * Whether the program returned normally (`true`) or faulted / the sandbox failed
-       * (`false`). A failed code execution is a *turn* outcome fed back to the model, never a
-       * crash of the run.
+       * Whether the program returned normally (`true`) or faulted, was stopped, or never
+       * existed (`false`). A failed code turn is a *turn* outcome fed back to the model, never
+       * a crash of the run. Independent of [`finished`](Self::CodeExecution::finished): a
+       * program that finished the run and then threw is `ok: false` with `finished` present.
        */
       ok: boolean;
       /**
-       * How many tool calls the program composed (bridged to the real toolset), in the order it
-       * made them — each also streamed as its own [`ToolCall`](Self::ToolCall)/[`ToolResult`](Self::ToolResult).
+       * How many tool calls the program composed that **reached the turn loop** (and so were
+       * bridged to the real toolset), in the order it made them — each also streamed as its own
+       * [`ToolCall`](Self::ToolCall)/[`ToolResult`](Self::ToolResult) pair, so this figure is
+       * exactly the number of those pairs the turn produced. A call the sandbox refused before it
+       * got that far — a turn-level transition, or a tool this run did not enable — is not one of
+       * these and never inflates the count.
        */
       toolCalls: number;
       /**
-       * The wasmtime fuel the program's execution consumed, when the sandbox ran to a result. The
-       * same per-run efficiency signal the sibling Foray/Lattice hosts expose; absent when the
-       * sandbox itself failed to complete (for example a fuel-ceiling trap, where the figure is
-       * simply the ceiling).
+       * The wasmtime fuel the program's execution **actually consumed** — the same per-program
+       * efficiency signal the sibling Foray/Lattice hosts expose. Reported on every path that
+       * reached the engine, including a fault or a trap (where it is the fuel burned up to the
+       * trap, not the ceiling); `Some(0)` when the program never reached the engine (a
+       * type-strip failure, or a sandbox that could not be built); and **absent** when there was
+       * no program at all — see [`healing.not_a_program`](GgResponseHealing::not_a_program) —
+       * because a turn that ran nothing has no fuel figure to average into a run's efficiency.
        */
       fuelUsed?: number;
       /**
        * The failure message, when [`ok`](Self::CodeExecution::ok) is `false` — a program fault
-       * (a parse/type error, a runaway-loop step-budget stop) or a sandbox failure (fuel or
-       * memory exhaustion, a trap). Absent on a clean execution.
+       * (a syntax error the type-strip rejected, or a value the program threw), a sandbox
+       * failure (fuel or memory exhaustion, a trap), or, for a reply that was not a program,
+       * the sentence saying which shape it was. Absent on a clean execution.
        */
       error?: string;
+      /**
+       * The summary the program ended the **run** with, when it called `finish` — the one
+       * function on the sandbox's model-facing surface that is not a tool, and the only thing
+       * that ends a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) session.
+       *
+       * Present on exactly the turn that finished, absent on every other, so `finished != null`
+       * is both "did this turn end the run?" and "with what?" — and, over a run, the proof that
+       * the session ended because the model said so rather than because a ceiling stopped it. It
+       * is carried even when the program then threw or trapped: the completion is recorded
+       * before either can exist and nothing retracts it. The same text is the session's final
+       * text (a subagent's return value to its spawner).
+       */
+      finished?: string;
+      /**
+       * How long **this** program spent obtaining the sandbox's compiled interpreter component,
+       * in milliseconds — absent (the ordinary case) when the component was already compiled and
+       * nothing here was on the turn's critical path.
+       *
+       * The component is compiled once per process, and a run that enables the capability starts
+       * that compile before its first model request. But starting it early only **overlaps** it
+       * with the request rather than eliminating it: on a run container with one or two cores the
+       * compile takes seconds, so a model that answers quickly gets its first program back before
+       * the warm-up has finished, and that program compiles the component itself. This is the
+       * figure that says so — without it, "did this program wait on the one shared compile or is
+       * it genuinely slow?" is only answerable by comparing timestamps across sibling runs.
+       */
+      compileWaitMs?: number;
+      /**
+       * What gg had to do to this reply before running it, and whether it was a program at all.
+       * Defaulted and omitted from the wire for a clean response, so the presence of this
+       * object *is* "something was unusual about this response".
+       */
+      healing?: GgResponseHealing;
+    }
+  | {
+      type: "limit_exceeded";
+      /**
+       * Which ceiling was breached, what it was set to, and what was observed. Its own
+       * [`agent_id`](GgLimitBreach::agent_id) duplicates this event's envelope deliberately:
+       * the same payload is also the session summary's, and a self-contained record is worth
+       * one repeated string.
+       */
+      breach: GgLimitBreach;
     }
   | {
       type: "log";
@@ -1719,7 +2246,11 @@ export type GgReplayEntryKind =
       call: Record<string, unknown>;
       /**
        * The exact outcome the dispatch returned — a JSON object matching the `gg` binary's
-       * `ToolOutcome` (`ok`, `output`, `summary`). Replayed in place of running the tool.
+       * `ToolOutcome`: `ok`, `output` and `summary`, plus the optional `images` and the
+       * structured `data`/`failure` a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program
+       * branches on. Those optional members are defaulted on the way back in, so a record
+       * captured before they existed still deserializes and replays. Replayed in place of
+       * running the tool.
        */
       outcome: Record<string, unknown>;
     };
@@ -1773,7 +2304,11 @@ export type GgReplayEntry = {
       call: Record<string, unknown>;
       /**
        * The exact outcome the dispatch returned — a JSON object matching the `gg` binary's
-       * `ToolOutcome` (`ok`, `output`, `summary`). Replayed in place of running the tool.
+       * `ToolOutcome`: `ok`, `output` and `summary`, plus the optional `images` and the
+       * structured `data`/`failure` a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program
+       * branches on. Those optional members are defaulted on the way back in, so a record
+       * captured before they existed still deserializes and replays. Replayed in place of
+       * running the tool.
        */
       outcome: Record<string, unknown>;
     }

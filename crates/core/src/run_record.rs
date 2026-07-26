@@ -274,7 +274,8 @@ pub struct RunSubject {
     /// The compact, aggregatable [summary](GgSessionSummary) of a **gg** run's own
     /// outcome — total agents/subagent depth, compactions, whether it ran out of
     /// context, Code Review and speculation counts, issues created/completed, the
-    /// per-slot cost rollup, and the terminal status — computed by the gg binary from
+    /// per-slot cost rollup, the terminal status, and the execution ceiling that stopped
+    /// it, when one did — computed by the gg binary from
     /// its telemetry and recorded here so
     /// [result aggregation](https://docs.testcabinet.ai/gg/result-aggregation/) can
     /// slice a run's outcome by its [`gg_capability_set`](Self::gg_capability_set)

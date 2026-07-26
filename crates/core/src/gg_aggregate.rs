@@ -73,11 +73,61 @@ pub enum GgSummaryField {
     IssuesCreated,
     /// [`issues_completed`](GgSessionSummary::issues_completed).
     IssuesCompleted,
+    /// [`healing.healed`](crate::gg::GgHealingSummary::healed) — how many of the run's
+    /// responses had to be repaired before the program could run.
+    ResponsesHealed,
+    /// [`healing.healed`](crate::gg::GgHealingSummary::healed) over
+    /// [`code_executions`](GgSessionSummary::code_executions) — the run's **healing rate**,
+    /// and `None` for a run that took no code-shaped turn (there is no rate over nothing).
+    ///
+    /// The one computed field here, on the same footing as
+    /// [`RanOutOfContext`](Self::RanOutOfContext) projecting a bool to `1.0`/`0.0`: it is
+    /// precomputed per run so that averaging it across a bucket answers "which models still
+    /// need their responses repaired?" in one query.
+    HealingRate,
+    /// [`healing.applications`](crate::gg::GgHealingSummary::applications) — total strategy
+    /// applications, which exceeds [`ResponsesHealed`](Self::ResponsesHealed) when responses
+    /// needed more than one repair each.
+    HealingApplications,
+    /// [`healing.strip_fences`](crate::gg::GgHealingSummary::strip_fences) — the headline
+    /// instruction-following signal: how often a model still wrapped its program in a code
+    /// fence after being told not to.
+    HealingStripFences,
+    /// [`healing.strip_prose`](crate::gg::GgHealingSummary::strip_prose).
+    HealingStripProse,
+    /// [`healing.drop_duplicate_program`](crate::gg::GgHealingSummary::drop_duplicate_program) —
+    /// how often a model sent the same program twice in one reply.
+    HealingDropDuplicateProgram,
+    /// [`healing.drop_imports`](crate::gg::GgHealingSummary::drop_imports).
+    HealingDropImports,
+    /// [`healing.unwrap_async`](crate::gg::GgHealingSummary::unwrap_async).
+    HealingUnwrapAsync,
+    /// [`healing.strip_comment_only`](crate::gg::GgHealingSummary::strip_comment_only).
+    HealingStripCommentOnly,
+    /// [`healing.not_a_program`](crate::gg::GgHealingSummary::not_a_program) — responses that
+    /// were not programs at all, and so never ran.
+    ResponsesNotAProgram,
+    /// [`healing.several_blocks`](crate::gg::GgHealingSummary::several_blocks) — of those, the
+    /// ones that offered more than one candidate program.
+    ResponsesSeveralBlocks,
+    /// [`healing.several_blocks_fenced`](crate::gg::GgHealingSummary::several_blocks_fenced) — of
+    /// those, the ones that presented their programs as several fenced code blocks.
+    ResponsesSeveralBlocksFenced,
+    /// [`healing.several_blocks_bare`](crate::gg::GgHealingSummary::several_blocks_bare) — of
+    /// those, the ones that pasted one program after another with no fence anywhere.
+    ///
+    /// Sliceable apart from its fenced sibling because the two are different
+    /// instruction-following failures: one model is still formatting a reply that was to carry no
+    /// formatting, the other is sending two answers in one turn. Averaged over a bucket grouped by
+    /// model, the pair answers which of the two a model is prone to.
+    ResponsesSeveralBlocksBare,
 }
 
 impl GgSummaryField {
     /// Project this field of `summary` to an `f64`, or `None` when the field is
-    /// genuinely absent (only [`FinalFullness`](Self::FinalFullness) ever is).
+    /// genuinely absent — [`FinalFullness`](Self::FinalFullness) (context visibility off)
+    /// and [`HealingRate`](Self::HealingRate) (a run with no code-shaped turn to rate) are
+    /// the only two that ever are.
     pub fn value(self, summary: &GgSessionSummary) -> Option<f64> {
         match self {
             GgSummaryField::AgentsSpawned => Some(summary.agents_spawned as f64),
@@ -96,6 +146,31 @@ impl GgSummaryField {
             GgSummaryField::CodeExecutions => Some(summary.code_executions as f64),
             GgSummaryField::IssuesCreated => Some(summary.issues_created as f64),
             GgSummaryField::IssuesCompleted => Some(summary.issues_completed as f64),
+            GgSummaryField::ResponsesHealed => Some(summary.healing.healed as f64),
+            // A run that took no code-shaped turn has no rate — dividing by zero would
+            // report a NaN as if it were a measurement, and reporting 0.0 would claim the
+            // run healed nothing when it never had the chance.
+            GgSummaryField::HealingRate => (summary.code_executions > 0)
+                .then(|| summary.healing.healed as f64 / summary.code_executions as f64),
+            GgSummaryField::HealingApplications => Some(summary.healing.applications as f64),
+            GgSummaryField::HealingStripFences => Some(summary.healing.strip_fences as f64),
+            GgSummaryField::HealingStripProse => Some(summary.healing.strip_prose as f64),
+            GgSummaryField::HealingDropDuplicateProgram => {
+                Some(summary.healing.drop_duplicate_program as f64)
+            }
+            GgSummaryField::HealingDropImports => Some(summary.healing.drop_imports as f64),
+            GgSummaryField::HealingUnwrapAsync => Some(summary.healing.unwrap_async as f64),
+            GgSummaryField::HealingStripCommentOnly => {
+                Some(summary.healing.strip_comment_only as f64)
+            }
+            GgSummaryField::ResponsesNotAProgram => Some(summary.healing.not_a_program as f64),
+            GgSummaryField::ResponsesSeveralBlocks => Some(summary.healing.several_blocks as f64),
+            GgSummaryField::ResponsesSeveralBlocksFenced => {
+                Some(summary.healing.several_blocks_fenced as f64)
+            }
+            GgSummaryField::ResponsesSeveralBlocksBare => {
+                Some(summary.healing.several_blocks_bare as f64)
+            }
         }
     }
 }
@@ -178,6 +253,14 @@ pub enum GgFacet {
     /// The run's [terminal status](GgSessionSummary::terminal_status), or absent for a
     /// run that recorded no session summary (a launch that never ran).
     TerminalStatus {},
+    /// Which [execution ceiling](crate::gg::GgLimitKind) stopped the run
+    /// ([`limit_hit`](GgSessionSummary::limit_hit)), or `"none"` for a run that hit none.
+    /// Absent only for a run that recorded no session summary.
+    ///
+    /// Distinct from [`TerminalStatus`](Self::TerminalStatus) because two ceilings share a
+    /// status and two others have statuses of their own: this facet is the one that answers
+    /// "which ceiling?" directly.
+    LimitHit {},
 }
 
 impl GgFacet {
@@ -218,9 +301,21 @@ impl GgFacet {
                 summary.map(|s| bool_str(s.effective_tools.iter().any(|t| t == tool)).to_string())
             }
             GgFacet::TerminalStatus {} => summary.map(|s| s.terminal_status.clone()),
+            // A run that recorded a summary always answers "which ceiling stopped you?" —
+            // "none" is a bucket a study compares against, not an absence — so only a run
+            // that never ran a session buckets as absent.
+            GgFacet::LimitHit {} => summary.map(|s| match &s.limit_hit {
+                Some(breach) => breach.limit.as_str().to_string(),
+                None => NO_LIMIT_HIT.to_string(),
+            }),
         }
     }
 }
+
+/// The [`LimitHit`](GgFacet::LimitHit) bucket a run that breached no ceiling falls into.
+/// Deliberately a value rather than an absence: "ran to its own conclusion" is the arm every
+/// ceiling comparison is measured against.
+const NO_LIMIT_HIT: &str = "none";
 
 /// The name a capability with no selected implementation buckets under.
 fn default_impl() -> String {

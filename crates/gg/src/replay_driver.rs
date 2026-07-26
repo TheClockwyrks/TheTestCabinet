@@ -33,6 +33,43 @@
 //! tool result has no model turn that called it, the reconstruction stops with a precise
 //! [`ReplayError`] naming the agent, the `seq`, and the tool — the exact gap the record failed to
 //! pin. A record that reconstructs without error is *provably complete* for the run it captured.
+//!
+//! # A program's calls are attributed by their id prefix, not matched to a request
+//!
+//! [Responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) turns do not have the
+//! one-to-one shape those checks assume. A code turn's model response requests **no** tool calls at
+//! all — a model in code mode is offered no native tools, it writes a TypeScript program instead —
+//! yet the turn still dispatches every call that program composed, and the capture seam pins each of
+//! them as its own tool result. Matched against the response's (empty) call list, every single one
+//! would be reported as an [`ExtraToolResult`](ReplayError::ExtraToolResult), which is exactly what
+//! a code-mode record did before this rule existed.
+//!
+//! So in a run the record's own [capability set](GgReplayRecord::capability_set) says was in code
+//! mode, a recorded call whose id carries the sandbox's synthetic `program:{ordinal}:{tool}` prefix
+//! is attributed to the open turn's *program*: it does not consume one of the turn's requested
+//! calls, and it is not matched on `id` or `name`, because there is no requested call for it to
+//! match. It is otherwise replayed identically — it still requires an open turn (a program only runs
+//! inside one), still drives that turn's step entry, and still re-emits the same
+//! `ToolCall`/`ToolResult` pair the run streamed.
+//!
+//! The relaxation is scoped to the *turn's shape*, never to the id alone. The completeness guarantee
+//! is therefore untouched for every other run: a turn that requested calls must still see every one
+//! of them answered, in order, by id and name, and a `program:` id arriving inside such a turn — a
+//! shape no run can produce, since a turn either offers native tools or runs a program — is reported
+//! as the divergence it is.
+//!
+//! # Why a code turn replays exactly
+//!
+//! Because the driver **reconstructs** it rather than re-running it: it walks the record and
+//! re-emits the recorded `(call, outcome)` pairs the program composed, in recorded order. No
+//! program is transpiled and no sandbox is instantiated here, so replay is exact for the same
+//! reason the native path is — the record pins the answer to every non-deterministic question.
+//!
+//! The guest's own determinism (no clock, no randomness — see
+//! [the sandbox](https://docs.testcabinet.ai/gg/responses-as-code/)) is a *different*, also-real
+//! property: it is what makes a live **re-run** of the same program compose the same calls again,
+//! and therefore what makes two live runs comparable. It is not what makes this reconstruction
+//! faithful.
 
 use std::collections::HashMap;
 use std::collections::VecDeque;
@@ -40,12 +77,13 @@ use std::sync::Mutex;
 
 use serde_json::Value;
 use test_cabinet_core::gg::{
-    GgReplayEntry, GgReplayEntryKind, GgReplayRecord, GgReplayStep, GgReplayToolStep,
-    GgTelemetryKind,
+    CAPABILITY_RESPONSES_AS_CODE, GgReplayEntry, GgReplayEntryKind, GgReplayRecord, GgReplayStep,
+    GgReplayToolStep, GgTelemetryKind,
 };
 use test_cabinet_core::metrics::TokenCounts;
 
 use crate::model::{Message, ModelClient, ModelError, ModelResponse, ToolCall, ToolDefinition};
+use crate::sandbox::PROGRAM_CALL_ID_PREFIX;
 use crate::telemetry::{Emitter, EventSink, StdoutSink};
 use crate::tools::ToolOutcome;
 
@@ -76,7 +114,9 @@ pub enum ReplayError {
     },
 
     /// A recorded tool result exists for an agent that has **no open model turn** — the record is
-    /// missing the model call that would have requested it.
+    /// missing the model call that would have requested it, or (in
+    /// [code mode](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE)) the turn whose program
+    /// composed it.
     #[error(
         "replay divergence: agent `{agent_id}` (seq {seq}) has a recorded result for `{tool}` with \
          no open model turn — the record is missing the model call that requested it"
@@ -90,7 +130,9 @@ pub enum ReplayError {
         tool: String,
     },
 
-    /// An agent recorded **more** tool results in a turn than its model response requested calls.
+    /// An agent recorded **more** native tool results in a turn than its model response requested
+    /// calls. (Program-composed results answer no requested call by construction and are attributed
+    /// by their id prefix instead, so they can never raise this.)
     #[error(
         "replay divergence: agent `{agent_id}` (seq {seq}) recorded more tool results (`{tool}`) \
          than its turn requested calls"
@@ -104,8 +146,8 @@ pub enum ReplayError {
         tool: String,
     },
 
-    /// A recorded tool result does not match the call the model made at that point in the turn — the
-    /// record's tool results are misaligned with its model I/O.
+    /// A recorded **native** tool result does not match the call the model made at that point in the
+    /// turn — the record's tool results are misaligned with its model I/O.
     #[error(
         "replay divergence: agent `{agent_id}` (seq {seq}) recorded a result for `{recorded}` but \
          the model called `{expected}` at this point"
@@ -263,9 +305,20 @@ struct PendingTurn {
     step_index: usize,
     /// The `seq` of the turn's model call — for a precise gap error if a call goes unanswered.
     seq: u64,
-    /// The calls the response requested that have not yet been matched to a recorded outcome, in
-    /// order.
+    /// The **native** calls the response requested that have not yet been matched to a recorded
+    /// outcome, in order. Always empty for a [code turn](Self::code_turn) — the loop dispatches no
+    /// native call in code mode, so even a response that requested one (a model reflex the loop
+    /// warns about and ignores) leaves nothing to answer.
     remaining: VecDeque<ToolCall>,
+    /// Whether this turn ran a **program** rather than requesting native tool calls — the only
+    /// shape a `program:`-prefixed result can belong to.
+    ///
+    /// It is a property of the *run*, not of the individual turn: responses-as-code is a capability
+    /// the whole session is configured with, so every turn of such a run is a program and no turn
+    /// of any other run is. Carrying it here rather than consulting the capability set at each
+    /// result keeps the rule where the check is, which is what stops "attributed by id prefix" from
+    /// quietly becoming "accepted anywhere".
+    code_turn: bool,
 }
 
 /// Reconstruct a run from its [replay record](GgReplayRecord), streaming the reconstructed telemetry
@@ -286,6 +339,14 @@ pub(crate) fn reconstruct_with_sink(
     sink: Box<dyn EventSink>,
 ) -> Result<ReplayReconstruction, ReplayError> {
     let base = Emitter::with_sink(Some(record.session_id.clone()), sink);
+
+    // Whether the recorded run answered its turns with **programs** rather than with native tool
+    // calls. Read from the record's own capability set — which is why the record carries one — so
+    // the shape of every turn is known before a single entry is walked, rather than guessed at from
+    // an empty `toolCalls` list (which a native turn that simply finished also has).
+    let code_mode = record
+        .capability_set
+        .is_enabled(CAPABILITY_RESPONSES_AS_CODE);
 
     // The entries in true recording order — sorting on the globally-monotonic `seq` recovers the
     // exact interleaving of concurrently-running agents.
@@ -400,7 +461,16 @@ pub(crate) fn reconstruct_with_sink(
                 state.pending = Some(PendingTurn {
                     step_index,
                     seq: entry.seq,
-                    remaining: response.tool_calls.iter().cloned().collect(),
+                    // A code turn dispatches nothing the response requested: the model was offered
+                    // no native tools, and the loop drops any call it emitted regardless. Matching
+                    // against them would report a run that behaved correctly as a truncated
+                    // capture.
+                    remaining: if code_mode {
+                        VecDeque::new()
+                    } else {
+                        response.tool_calls.iter().cloned().collect()
+                    },
+                    code_turn: code_mode,
                 });
                 model_calls += 1;
             }
@@ -423,20 +493,34 @@ pub(crate) fn reconstruct_with_sink(
                         tool: call.name.clone(),
                     });
                 };
-                let Some(expected) = pending.remaining.pop_front() else {
-                    return Err(ReplayError::ExtraToolResult {
-                        agent_id: entry.agent_id.clone(),
-                        seq: entry.seq,
-                        tool: call.name.clone(),
-                    });
-                };
-                if expected.id != call.id || expected.name != call.name {
-                    return Err(ReplayError::ToolResultMismatch {
-                        agent_id: entry.agent_id.clone(),
-                        seq: entry.seq,
-                        expected: expected.name,
-                        recorded: call.name,
-                    });
+                // A program-composed call answers no requested call: the turn that ran the program
+                // requested none (the model was offered no native tools), and the loop minted the
+                // call's `program:{ordinal}:{tool}` id itself because a program's call has no
+                // provider-assigned one. It is therefore attributed to the open turn on the strength
+                // of that prefix alone: it takes nothing from `remaining`, and there is no requested
+                // call to match its id or name against. That is what makes a code turn replayable at
+                // all. A native call keeps the full one-to-one check.
+                //
+                // The relaxation is scoped to a **code turn**, not to the id: a `program:` id inside
+                // a turn that requested native calls is a shape no run can produce (a turn either
+                // offers native tools or runs a program), so it falls through to the ordinary checks
+                // and is reported as the divergence it is.
+                if !(pending.code_turn && call.id.starts_with(PROGRAM_CALL_ID_PREFIX)) {
+                    let Some(expected) = pending.remaining.pop_front() else {
+                        return Err(ReplayError::ExtraToolResult {
+                            agent_id: entry.agent_id.clone(),
+                            seq: entry.seq,
+                            tool: call.name.clone(),
+                        });
+                    };
+                    if expected.id != call.id || expected.name != call.name {
+                        return Err(ReplayError::ToolResultMismatch {
+                            agent_id: entry.agent_id.clone(),
+                            seq: entry.seq,
+                            expected: expected.name,
+                            recorded: call.name,
+                        });
+                    }
                 }
 
                 // Re-emit the call/result pair the real loop streamed for this dispatch.
@@ -526,3 +610,7 @@ fn emit_usage(response: &ModelResponse, emitter: &Emitter) {
 #[cfg(test)]
 #[path = "replay_driver.test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "replay_driver.code.test.rs"]
+mod code_tests;

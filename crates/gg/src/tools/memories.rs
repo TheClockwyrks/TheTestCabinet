@@ -18,8 +18,11 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
-use super::{Tool, ToolContext, ToolOutcome, required_str};
-use crate::memories::{MemoryChange, MemoryStore};
+use super::{
+    ArgumentError, MemoryUsageData, Tool, ToolContext, ToolData, ToolFailure, ToolOutcome,
+    required_str, saturating_u32,
+};
+use crate::memories::{MemoryChange, MemoryError, MemoryStore};
 use crate::model::ToolDefinition;
 
 /// The `write_memory` tool name.
@@ -48,6 +51,41 @@ fn usage_note(store: &MemoryStore) -> String {
         store.total_len(),
         caps.max_total_len
     )
+}
+
+/// The same four numbers [`usage_note`] renders into a sentence, as the structured sidecar every
+/// successful memory mutation carries.
+///
+/// Both axes are reported because either can refuse the next write: a caller near the character
+/// budget with room in the count would otherwise have no way to see the cap it was about to hit.
+fn usage_data(store: &MemoryStore) -> ToolData {
+    let caps = store.caps();
+    ToolData::MemoryUsage(MemoryUsageData {
+        count: saturating_u32(store.count()),
+        max_count: saturating_u32(caps.max_count),
+        total_chars: saturating_u32(store.total_len()),
+        max_total_chars: saturating_u32(caps.max_total_len),
+    })
+}
+
+/// Classify a [`MemoryStore`] refusal, at the one place its error type is matched.
+///
+/// The store's [`Display`](std::fmt::Display) is the model-facing guidance and is free to be
+/// reworded; this mapping is what a caller branches on, and it is derived from the variant, never
+/// from that text.
+fn failure_for(err: &MemoryError) -> ToolFailure {
+    match err {
+        // A field the caller supplied was empty — a malformed call.
+        MemoryError::EmptyField(_) => ToolFailure::InvalidArgument,
+        // The name is already taken: well-formed, but in conflict with what is stored.
+        MemoryError::Duplicate(_) => ToolFailure::Conflict,
+        MemoryError::NotFound(_) => ToolFailure::NotFound,
+        // All three caps are gg-side ceilings on how much a run may keep, so a caller that is
+        // pruning knows to evict rather than to rephrase.
+        MemoryError::PerMemoryCap { .. }
+        | MemoryError::CountCap { .. }
+        | MemoryError::TotalCap { .. } => ToolFailure::LimitExceeded,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -110,16 +148,17 @@ impl Tool for WriteMemoryTool {
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
         let (name, description, body) = match write_args(&args, WRITE_MEMORY_TOOL) {
             Ok(fields) => fields,
-            Err(message) => return ToolOutcome::error(message),
+            Err(error) => return error.into(),
         };
         let mut store = self.store.lock().expect("memory store lock");
         match store.write(&name, &description, &body) {
             Ok(MemoryChange::Written) => ToolOutcome::ok(
                 format!("Saved memory `{name}`. {}", usage_note(&store)),
                 format!("wrote memory `{name}`"),
-            ),
+            )
+            .with_data(usage_data(&store)),
             Ok(_) => unreachable!("write yields Written"),
-            Err(err) => ToolOutcome::error(format!("write_memory: {err}")),
+            Err(err) => ToolOutcome::failed(failure_for(&err), format!("write_memory: {err}")),
         }
     }
 }
@@ -178,16 +217,17 @@ impl Tool for UpdateMemoryTool {
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
         let (name, description, body) = match write_args(&args, UPDATE_MEMORY_TOOL) {
             Ok(fields) => fields,
-            Err(message) => return ToolOutcome::error(message),
+            Err(error) => return error.into(),
         };
         let mut store = self.store.lock().expect("memory store lock");
         match store.update(&name, &description, &body) {
             Ok(MemoryChange::Updated) => ToolOutcome::ok(
                 format!("Updated memory `{name}`. {}", usage_note(&store)),
                 format!("updated memory `{name}`"),
-            ),
+            )
+            .with_data(usage_data(&store)),
             Ok(_) => unreachable!("update yields Updated"),
-            Err(err) => ToolOutcome::error(format!("update_memory: {err}")),
+            Err(err) => ToolOutcome::failed(failure_for(&err), format!("update_memory: {err}")),
         }
     }
 }
@@ -236,23 +276,24 @@ impl Tool for DeleteMemoryTool {
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
         let name = match required_str(&args, "name", DELETE_MEMORY_TOOL) {
             Ok(name) => name,
-            Err(message) => return ToolOutcome::error(message),
+            Err(error) => return error.into(),
         };
         let mut store = self.store.lock().expect("memory store lock");
         match store.delete(&name) {
             Ok(MemoryChange::Deleted) => ToolOutcome::ok(
                 format!("Deleted memory `{name}`. {}", usage_note(&store)),
                 format!("deleted memory `{name}`"),
-            ),
+            )
+            .with_data(usage_data(&store)),
             Ok(_) => unreachable!("delete yields Deleted"),
-            Err(err) => ToolOutcome::error(format!("delete_memory: {err}")),
+            Err(err) => ToolOutcome::failed(failure_for(&err), format!("delete_memory: {err}")),
         }
     }
 }
 
 /// Extract the `name`, `description`, and `body` string arguments shared by
 /// `write_memory` and `update_memory`.
-fn write_args(args: &Value, tool: &str) -> Result<(String, String, String), String> {
+fn write_args(args: &Value, tool: &str) -> Result<(String, String, String), ArgumentError> {
     let name = required_str(args, "name", tool)?;
     let description = required_str(args, "description", tool)?;
     let body = required_str(args, "body", tool)?;

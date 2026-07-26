@@ -20,8 +20,11 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
-use super::{Tool, ToolContext, ToolOutcome, required_str};
-use crate::board::{BoardChange, BoardStore, IssueStatus, IssueUpdate};
+use super::{
+    ArgumentError, BoardUsageData, CompletionData, Tool, ToolContext, ToolData, ToolFailure,
+    ToolOutcome, invalid_argument, required_str, saturating_u32,
+};
+use crate::board::{BoardChange, BoardError, BoardStore, IssueStatus, IssueUpdate};
 use crate::model::ToolDefinition;
 
 /// The `create_epic` tool name.
@@ -66,25 +69,69 @@ fn usage_note(store: &BoardStore) -> String {
     )
 }
 
-/// An optional string argument: absent (or JSON `null`) yields `None`; a non-string is an error.
-fn optional_str(args: &Value, field: &str, tool: &str) -> Result<Option<String>, String> {
+/// The four numbers [`usage_note`] renders into a sentence, as the structured sidecar every board
+/// mutation that changes a population carries.
+fn usage_data(store: &BoardStore) -> ToolData {
+    let caps = store.caps();
+    ToolData::BoardUsage(BoardUsageData {
+        epics: saturating_u32(store.epic_count()),
+        max_epics: saturating_u32(caps.max_epics),
+        issues: saturating_u32(store.issue_count()),
+        max_issues: saturating_u32(caps.max_issues),
+    })
+}
+
+/// Classify a [`BoardStore`] refusal, at the one place its error type is matched.
+///
+/// The store's [`Display`](std::fmt::Display) is the model-facing guidance; this mapping is what a
+/// caller branches on, and it is derived from the variant rather than from that text.
+fn failure_for(err: &BoardError) -> ToolFailure {
+    match err {
+        // The call itself was malformed: an empty field, or a revision that revises nothing.
+        BoardError::EmptyField(_) | BoardError::NoUpdateFields => ToolFailure::InvalidArgument,
+        // A named epic or issue is simply not on the board — the same recovery whether it was
+        // named as the subject, as a blocker, or as an `epicId`.
+        BoardError::EpicNotFound(_)
+        | BoardError::IssueNotFound(_)
+        | BoardError::BlockerNotFound(_)
+        | BoardError::UnknownEpic(_) => ToolFailure::NotFound,
+        // Well-formed, but irreconcilable with the board as it stands: a taken id, or an edge that
+        // would close a loop (a self-block being the one-node case of exactly that).
+        BoardError::DuplicateEpic(_)
+        | BoardError::DuplicateIssue(_)
+        | BoardError::SelfBlock(_)
+        | BoardError::Cycle { .. } => ToolFailure::Conflict,
+        BoardError::CountCap { .. } => ToolFailure::LimitExceeded,
+    }
+}
+
+/// An optional string argument: absent (or JSON `null`) yields `None`; a non-string is an
+/// [invalid-argument](ToolFailure::InvalidArgument) error.
+fn optional_str(args: &Value, field: &str, tool: &str) -> Result<Option<String>, ArgumentError> {
     match args.get(field) {
         None | Some(Value::Null) => Ok(None),
         Some(Value::String(value)) => Ok(Some(value.clone())),
-        Some(_) => Err(format!("`{tool}`: argument `{field}` must be a string")),
+        Some(_) => Err(ArgumentError(format!(
+            "`{tool}`: argument `{field}` must be a string"
+        ))),
     }
 }
 
 /// A list-of-issue-ids argument. When `required`, an absent key is an error; otherwise it yields
 /// an empty list. Every entry must be a string.
-fn id_array(args: &Value, field: &str, tool: &str, required: bool) -> Result<Vec<String>, String> {
+fn id_array(
+    args: &Value,
+    field: &str,
+    tool: &str,
+    required: bool,
+) -> Result<Vec<String>, ArgumentError> {
     match args.get(field) {
         None | Some(Value::Null) => {
             if required {
-                Err(format!(
+                Err(ArgumentError(format!(
                     "`{tool}`: missing required argument `{field}` (a list of issue ids; pass \
                      `[]` to clear)"
-                ))
+                )))
             } else {
                 Ok(Vec::new())
             }
@@ -93,14 +140,14 @@ fn id_array(args: &Value, field: &str, tool: &str, required: bool) -> Result<Vec
             .iter()
             .map(|item| match item {
                 Value::String(id) => Ok(id.clone()),
-                _ => Err(format!(
+                _ => Err(ArgumentError(format!(
                     "`{tool}`: every entry in `{field}` must be an issue id string"
-                )),
+                ))),
             })
             .collect(),
-        Some(_) => Err(format!(
+        Some(_) => Err(ArgumentError(format!(
             "`{tool}`: argument `{field}` must be an array of issue ids"
-        )),
+        ))),
     }
 }
 
@@ -151,24 +198,25 @@ impl Tool for CreateEpicTool {
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
         let id = match required_str(&args, "id", CREATE_EPIC_TOOL) {
             Ok(v) => v,
-            Err(m) => return ToolOutcome::error(m),
+            Err(error) => return error.into(),
         };
         let title = match required_str(&args, "title", CREATE_EPIC_TOOL) {
             Ok(v) => v,
-            Err(m) => return ToolOutcome::error(m),
+            Err(error) => return error.into(),
         };
         let description = match required_str(&args, "description", CREATE_EPIC_TOOL) {
             Ok(v) => v,
-            Err(m) => return ToolOutcome::error(m),
+            Err(error) => return error.into(),
         };
         let mut store = self.store.lock().expect("board store lock");
         match store.create_epic(&id, &title, &description) {
             Ok(BoardChange::EpicCreated) => ToolOutcome::ok(
                 format!("Created epic `{id}`. {}", usage_note(&store)),
                 format!("created epic `{id}`"),
-            ),
+            )
+            .with_data(usage_data(&store)),
             Ok(_) => unreachable!("create_epic yields EpicCreated"),
-            Err(err) => ToolOutcome::error(format!("create_epic: {err}")),
+            Err(err) => ToolOutcome::failed(failure_for(&err), format!("create_epic: {err}")),
         }
     }
 }
@@ -244,36 +292,36 @@ impl Tool for CreateIssueTool {
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
         let id = match required_str(&args, "id", CREATE_ISSUE_TOOL) {
             Ok(v) => v,
-            Err(m) => return ToolOutcome::error(m),
+            Err(error) => return error.into(),
         };
         let title = match required_str(&args, "title", CREATE_ISSUE_TOOL) {
             Ok(v) => v,
-            Err(m) => return ToolOutcome::error(m),
+            Err(error) => return error.into(),
         };
         let in_scope = match required_str(&args, "inScope", CREATE_ISSUE_TOOL) {
             Ok(v) => v,
-            Err(m) => return ToolOutcome::error(m),
+            Err(error) => return error.into(),
         };
         let out_of_scope = match required_str(&args, "outOfScope", CREATE_ISSUE_TOOL) {
             Ok(v) => v,
-            Err(m) => return ToolOutcome::error(m),
+            Err(error) => return error.into(),
         };
         let completion_criteria = match required_str(&args, "completionCriteria", CREATE_ISSUE_TOOL)
         {
             Ok(v) => v,
-            Err(m) => return ToolOutcome::error(m),
+            Err(error) => return error.into(),
         };
         let description = match optional_str(&args, "description", CREATE_ISSUE_TOOL) {
             Ok(v) => v,
-            Err(m) => return ToolOutcome::error(m),
+            Err(error) => return error.into(),
         };
         let epic_id = match optional_str(&args, "epicId", CREATE_ISSUE_TOOL) {
             Ok(v) => v,
-            Err(m) => return ToolOutcome::error(m),
+            Err(error) => return error.into(),
         };
         let blocked_by = match id_array(&args, "blockedBy", CREATE_ISSUE_TOOL, false) {
             Ok(v) => v,
-            Err(m) => return ToolOutcome::error(m),
+            Err(error) => return error.into(),
         };
         let mut store = self.store.lock().expect("board store lock");
         match store.create_issue(
@@ -289,9 +337,10 @@ impl Tool for CreateIssueTool {
             Ok(BoardChange::IssueCreated) => ToolOutcome::ok(
                 format!("Created issue `{id}`. {}", usage_note(&store)),
                 format!("created issue `{id}`"),
-            ),
+            )
+            .with_data(usage_data(&store)),
             Ok(_) => unreachable!("create_issue yields IssueCreated"),
-            Err(err) => ToolOutcome::error(format!("create_issue: {err}")),
+            Err(err) => ToolOutcome::failed(failure_for(&err), format!("create_issue: {err}")),
         }
     }
 }
@@ -359,45 +408,45 @@ impl Tool for UpdateIssueTool {
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
         let id = match required_str(&args, "id", UPDATE_ISSUE_TOOL) {
             Ok(v) => v,
-            Err(m) => return ToolOutcome::error(m),
+            Err(error) => return error.into(),
         };
         let title = match optional_str(&args, "title", UPDATE_ISSUE_TOOL) {
             Ok(v) => v,
-            Err(m) => return ToolOutcome::error(m),
+            Err(error) => return error.into(),
         };
         let description = match optional_str(&args, "description", UPDATE_ISSUE_TOOL) {
             Ok(v) => v,
-            Err(m) => return ToolOutcome::error(m),
+            Err(error) => return error.into(),
         };
         let in_scope = match optional_str(&args, "inScope", UPDATE_ISSUE_TOOL) {
             Ok(v) => v,
-            Err(m) => return ToolOutcome::error(m),
+            Err(error) => return error.into(),
         };
         let out_of_scope = match optional_str(&args, "outOfScope", UPDATE_ISSUE_TOOL) {
             Ok(v) => v,
-            Err(m) => return ToolOutcome::error(m),
+            Err(error) => return error.into(),
         };
         let completion_criteria = match optional_str(&args, "completionCriteria", UPDATE_ISSUE_TOOL)
         {
             Ok(v) => v,
-            Err(m) => return ToolOutcome::error(m),
+            Err(error) => return error.into(),
         };
         let epic_id = match optional_str(&args, "epicId", UPDATE_ISSUE_TOOL) {
             Ok(v) => v,
-            Err(m) => return ToolOutcome::error(m),
+            Err(error) => return error.into(),
         };
         let status = match optional_str(&args, "status", UPDATE_ISSUE_TOOL) {
             Ok(Some(raw)) => match IssueStatus::parse(&raw) {
                 Some(status) => Some(status),
                 None => {
-                    return ToolOutcome::error(format!(
+                    return invalid_argument(format!(
                         "update_issue: `{raw}` is not a valid status; use `open`, `in_progress`, \
                          or `done`."
                     ));
                 }
             },
             Ok(None) => None,
-            Err(m) => return ToolOutcome::error(m),
+            Err(error) => return error.into(),
         };
         let update = IssueUpdate {
             title: title.as_deref(),
@@ -410,12 +459,13 @@ impl Tool for UpdateIssueTool {
         };
         let mut store = self.store.lock().expect("board store lock");
         match store.update_issue(&id, update) {
+            // A revision changes neither population, so there is no usage figure worth reporting.
             Ok(BoardChange::IssueUpdated) => ToolOutcome::ok(
                 format!("Updated issue `{id}`."),
                 format!("updated issue `{id}`"),
             ),
             Ok(_) => unreachable!("update_issue yields IssueUpdated"),
-            Err(err) => ToolOutcome::error(format!("update_issue: {err}")),
+            Err(err) => ToolOutcome::failed(failure_for(&err), format!("update_issue: {err}")),
         }
     }
 }
@@ -471,11 +521,11 @@ impl Tool for SetIssueBlockedByTool {
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
         let id = match required_str(&args, "id", SET_ISSUE_BLOCKED_BY_TOOL) {
             Ok(v) => v,
-            Err(m) => return ToolOutcome::error(m),
+            Err(error) => return error.into(),
         };
         let blocked_by = match id_array(&args, "blockedBy", SET_ISSUE_BLOCKED_BY_TOOL, true) {
             Ok(v) => v,
-            Err(m) => return ToolOutcome::error(m),
+            Err(error) => return error.into(),
         };
         let mut store = self.store.lock().expect("board store lock");
         match store.set_issue_blocked_by(&id, &blocked_by) {
@@ -488,7 +538,9 @@ impl Tool for SetIssueBlockedByTool {
                 ToolOutcome::ok(format!("Updated the blockers of issue `{id}`."), summary)
             }
             Ok(_) => unreachable!("set_issue_blocked_by yields BlockersSet"),
-            Err(err) => ToolOutcome::error(format!("set_issue_blocked_by: {err}")),
+            Err(err) => {
+                ToolOutcome::failed(failure_for(&err), format!("set_issue_blocked_by: {err}"))
+            }
         }
     }
 }
@@ -534,16 +586,24 @@ impl Tool for CompleteIssueTool {
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
         let id = match required_str(&args, "id", COMPLETE_ISSUE_TOOL) {
             Ok(v) => v,
-            Err(m) => return ToolOutcome::error(m),
+            Err(error) => return error.into(),
         };
         let mut store = self.store.lock().expect("board store lock");
         match store.complete_issue(&id) {
-            Ok(BoardChange::IssueCompleted) => ToolOutcome::ok(
-                format!("Marked issue `{id}` done."),
-                format!("completed issue `{id}`"),
-            ),
+            Ok(BoardChange::IssueCompleted) => {
+                // The plain acceptance path: no Code Review ran, so a caller is told exactly that
+                // rather than being left to infer it from the absence of a verdict. (With Code
+                // Reviews enabled the loop intercepts this call and reports its own review.)
+                let detail = format!("Marked issue `{id}` done.");
+                ToolOutcome::ok(detail.clone(), format!("completed issue `{id}`")).with_data(
+                    ToolData::Completion(CompletionData {
+                        code_reviewed: false,
+                        detail,
+                    }),
+                )
+            }
             Ok(_) => unreachable!("complete_issue yields IssueCompleted"),
-            Err(err) => ToolOutcome::error(format!("complete_issue: {err}")),
+            Err(err) => ToolOutcome::failed(failure_for(&err), format!("complete_issue: {err}")),
         }
     }
 }
@@ -589,16 +649,17 @@ impl Tool for RemoveEpicTool {
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
         let id = match required_str(&args, "id", REMOVE_EPIC_TOOL) {
             Ok(v) => v,
-            Err(m) => return ToolOutcome::error(m),
+            Err(error) => return error.into(),
         };
         let mut store = self.store.lock().expect("board store lock");
         match store.remove_epic(&id) {
             Ok(BoardChange::EpicRemoved) => ToolOutcome::ok(
                 format!("Removed epic `{id}`. {}", usage_note(&store)),
                 format!("removed epic `{id}`"),
-            ),
+            )
+            .with_data(usage_data(&store)),
             Ok(_) => unreachable!("remove_epic yields EpicRemoved"),
-            Err(err) => ToolOutcome::error(format!("remove_epic: {err}")),
+            Err(err) => ToolOutcome::failed(failure_for(&err), format!("remove_epic: {err}")),
         }
     }
 }
@@ -644,16 +705,17 @@ impl Tool for RemoveIssueTool {
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
         let id = match required_str(&args, "id", REMOVE_ISSUE_TOOL) {
             Ok(v) => v,
-            Err(m) => return ToolOutcome::error(m),
+            Err(error) => return error.into(),
         };
         let mut store = self.store.lock().expect("board store lock");
         match store.remove_issue(&id) {
             Ok(BoardChange::IssueRemoved) => ToolOutcome::ok(
                 format!("Removed issue `{id}`. {}", usage_note(&store)),
                 format!("removed issue `{id}`"),
-            ),
+            )
+            .with_data(usage_data(&store)),
             Ok(_) => unreachable!("remove_issue yields IssueRemoved"),
-            Err(err) => ToolOutcome::error(format!("remove_issue: {err}")),
+            Err(err) => ToolOutcome::failed(failure_for(&err), format!("remove_issue: {err}")),
         }
     }
 }

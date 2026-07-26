@@ -588,7 +588,9 @@ pub(crate) fn bridge(gg: &GgTelemetryEvent) -> Vec<HarnessEvent> {
     }
     events.push(stamped(
         gg.session_id.clone(),
-        EventKind::Gg { event: gg.clone() },
+        EventKind::Gg {
+            event: Box::new(gg.clone()),
+        },
     ));
     events
 }
@@ -624,6 +626,16 @@ fn human_facing(gg: &GgTelemetryEvent) -> Option<HarnessEvent> {
             },
             // An info/debug log has no natural mapped kind; the native carry keeps it.
             _ => return None,
+        },
+        // A code-shaped run's conclusion lives here and nowhere else: under responses-as-code
+        // every assistant message is a program, so without this the feed shows a reviewer N pages
+        // of TypeScript and no answer. Only the finishing turn carries a summary, so this maps at
+        // most once per run.
+        GgTelemetryKind::CodeExecution {
+            finished: Some(summary),
+            ..
+        } if !summary.trim().is_empty() => EventKind::Agent {
+            message: summary.clone(),
         },
         _ => return None,
     };

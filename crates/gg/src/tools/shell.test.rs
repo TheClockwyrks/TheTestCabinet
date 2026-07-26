@@ -2,7 +2,15 @@ use super::*;
 use serde_json::json;
 use tempfile::TempDir;
 
-use crate::tools::{Tool, ToolContext};
+use crate::tools::{Tool, ToolContext, ToolFailure};
+
+/// The [`ShellData`] an outcome carries, or a failure naming what it carried instead.
+fn shell_data(outcome: &ToolOutcome) -> &ShellData {
+    match outcome.data.as_ref() {
+        Some(ToolData::Shell(data)) => data,
+        other => panic!("expected shell data, got {other:?}"),
+    }
+}
 
 /// Invoke the shell tool against a fresh temp workspace.
 async fn run(args: serde_json::Value) -> (ToolOutcome, TempDir) {
@@ -97,6 +105,81 @@ async fn truncates_very_long_output() {
     assert!(outcome.ok);
     assert!(outcome.output.contains("[output truncated"));
     assert!(outcome.output.contains("SENTINEL_TAIL"));
+}
+
+// ---------------------------------------------------------------------------
+// The structured sidecar
+// ---------------------------------------------------------------------------
+
+/// A completed command reports its exit code, its own output (without gg's `exit code:` header)
+/// and whether the cap cut it — the facts the prose states, as values.
+#[tokio::test]
+async fn shell_reports_the_exit_code_and_whether_it_truncated() {
+    let (outcome, _dir) = run(json!({ "command": "echo hello world" })).await;
+
+    let data = shell_data(&outcome);
+    assert_eq!(data.exit_code, Some(0));
+    assert_eq!(data.body, "hello world\n");
+    assert!(!data.truncated);
+    assert!(
+        !data.body.contains("exit code"),
+        "the body is the process's output, not gg's rendering of it: {}",
+        data.body
+    );
+}
+
+/// A non-zero exit is a *result*, not a failed call: the facts come back and nothing is classified
+/// as a failure, so a caller can branch on the code instead of on `ok`.
+#[tokio::test]
+async fn a_non_zero_exit_is_reported_as_data_not_as_a_classified_failure() {
+    let (outcome, _dir) = run(json!({ "command": "echo nope 1>&2; exit 3" })).await;
+
+    assert!(!outcome.ok);
+    assert_eq!(outcome.failure, None);
+    let data = shell_data(&outcome);
+    assert_eq!(data.exit_code, Some(3));
+    assert_eq!(data.body, "nope\n");
+}
+
+/// Truncation is reported as a flag, not only as a bracketed note in the prose.
+#[tokio::test]
+async fn truncation_is_reported_in_the_sidecar() {
+    let command =
+        "for i in $(seq 1 5000); do echo 'padding-line-of-text'; done; echo SENTINEL_TAIL";
+    let (outcome, _dir) = run(json!({ "command": command })).await;
+
+    let data = shell_data(&outcome);
+    assert!(data.truncated);
+    assert!(data.body.len() <= MAX_OUTPUT_BYTES);
+    assert!(data.body.ends_with("SENTINEL_TAIL\n"));
+}
+
+/// A timeout is gg's own ceiling, so it is classified as one — and carries no shell data, because
+/// there is no exit code to report.
+#[tokio::test]
+async fn a_timeout_is_classified_as_a_limit() {
+    let (outcome, _dir) = run(json!({ "command": "sleep 30", "timeout_secs": 0.2 })).await;
+
+    assert_eq!(outcome.failure, Some(ToolFailure::LimitExceeded));
+    assert_eq!(outcome.data, None);
+}
+
+/// Argument diagnostics are classified as bad arguments, whichever one was wrong.
+#[tokio::test]
+async fn argument_diagnostics_are_classified_as_invalid_arguments() {
+    for args in [
+        json!({}),
+        json!({ "command": 7 }),
+        json!({ "command": "echo hi", "timeout_secs": 0 }),
+        json!({ "command": "echo hi", "timeout_secs": "soon" }),
+    ] {
+        let (outcome, _dir) = run(args.clone()).await;
+        assert_eq!(
+            outcome.failure,
+            Some(ToolFailure::InvalidArgument),
+            "{args} should be an argument diagnostic"
+        );
+    }
 }
 
 /// The definition advertises the tool's name and required `command` parameter.

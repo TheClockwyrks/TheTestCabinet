@@ -45,18 +45,29 @@
 //! [`AssistantMessage`](GgTelemetryKind::AssistantMessage), then for every requested
 //! tool emits [`ToolCall`](GgTelemetryKind::ToolCall), dispatches it, and emits
 //! [`ToolResult`](GgTelemetryKind::ToolResult). A turn with no tool calls ends the
-//! session ([`"completed"`](Agent::drive)).
+//! session ([`"completed"`](Agent::drive)). Under
+//! [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) the turn is a **program** instead
+//! ([`run_code_turn`]), and the ending rule is different in kind: every reply is a program, so no
+//! shape of reply means "finished" and only a program calling [`finish`](FINISH_FUNCTION) ends the
+//! session.
 //!
 //! # Termination and error surfacing
 //!
 //! The loop always ends, and always says how in the
 //! [`SessionEnded`](GgTelemetryKind::SessionEnded) status:
 //!
-//! - `"completed"` — the model stopped calling tools;
-//! - `"exhausted"` — the per-run turn ceiling was reached;
+//! - `"completed"` — the model said it was done: it stopped calling tools, or — under
+//!   [responses-as-code](CAPABILITY_RESPONSES_AS_CODE), where every reply is a program and no
+//!   shape of reply means "finished" — a program called [`finish`](FINISH_FUNCTION);
+//! - `"exhausted"` — the per-agent turn ceiling was reached;
 //! - `"timed_out"` — the optional wall-clock deadline was passed;
-//! - `"model_error"` — a model turn failed (retryable-exhausted **or** fatal). gg
-//!   ends the session **loudly** — a `Log(error)` plus this status — never silently:
+//! - `"limit_exceeded"` — one of the three configurable [execution ceilings](crate::limits) was
+//!   breached: too many consecutive error turns, too high a recent error rate, or the run's
+//!   accumulated cost. Which one, and at what value, is on the
+//!   [`LimitExceeded`](GgTelemetryKind::LimitExceeded) event and the session summary;
+//! - `"model_error"` — a model turn failed (retryable-exhausted **or** fatal), or gg's own
+//!   sandbox machinery did. gg ends the session **loudly** — a `Log(error)` plus this status —
+//!   never silently:
 //!   a known failure mode of another harness is discarding a whole run on one API
 //!   error, and gg's whole point is that the failure is visible in the stream;
 //! - `"auth_error"` — the run's credential was refused (absent, or a `401`/`403` from
@@ -74,16 +85,17 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use serde_json::Value;
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_CODE_REVIEWS, CAPABILITY_CONTEXT_VISIBILITY,
     CAPABILITY_EPICS_ISSUES, CAPABILITY_MEMORIES, CAPABILITY_MULTI_MODEL, CAPABILITY_REPLAY,
     CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS,
-    CAPABILITY_TASKS, CAPABILITY_WORKFLOWS, CAPABILITY_WORKTREES, GgAgentStatus, GgCapabilitySet,
-    GgCodeReviewPhase, GgContextAction, GgContextSource, GgPlanPhase, GgSlotBinding,
-    GgSpeculationPhase, GgTelemetryKind, GgWorkflowPhase, PRIMARY_SLOT,
+    CAPABILITY_TASKS, CAPABILITY_WORKFLOWS, CAPABILITY_WORKTREES, GgAgentStatus, GgCandidateShape,
+    GgCapabilitySet, GgCodeReviewPhase, GgContextAction, GgContextSource, GgHealingStrategy,
+    GgLimitBreach, GgLimitKind, GgNotAProgram, GgPlanPhase, GgResponseHealing, GgRunLimits,
+    GgSlotBinding, GgSpeculationPhase, GgTelemetryKind, GgWorkflowPhase, PRIMARY_SLOT,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 use tokio::sync::{mpsc, oneshot};
@@ -101,42 +113,45 @@ use crate::fsm::{
     FsmRuntime, MACHINE_REVIEW_GATED, StateExit, ToolPolicy, configured_machine, is_builtin_machine,
 };
 use crate::git;
+use crate::healing::{
+    self, CandidateShape, Healed, HealingConfig, HealingStrategy, HealingVerdict,
+    NotAProgramReason, plural,
+};
+use crate::limits::{
+    AgentLimits, FatalFault, RunLimits, RunSpend, TurnErrorKind, TurnOutcome, resolve_run_limits,
+};
 use crate::memories::{MemoriesRuntime, MemoryCaps};
-use crate::model::{Message, ModelClient, ModelError, ModelResponse, ToolCall, ToolDefinition};
+use crate::model::{
+    ImageContent, Message, ModelClient, ModelError, ModelResponse, ToolCall, ToolDefinition,
+};
 use crate::planning::PlanningRuntime;
 use crate::prompts::{
-    self, BoardView, FsmView, MemoriesView, ReadFileView, SystemContext, TasksView, ToolView,
+    self, BoardView, CodeCallView, CodeErrorView, CodeNotAProgramContext, CodeResultContext,
+    CodeSandboxErrorContext, CodeTranspileErrorContext, FsmView, MemoriesView, ReadFileView,
+    SystemContext, TasksView, ToolView,
 };
-use crate::rac::{RacError, RacLimits, RacRun, ScriptToolInvoker, run_script};
 use crate::replay::{GgRecorder, RecordingClient};
+use crate::sandbox::{
+    self, FINISH_FUNCTION, PROGRAM_CALL_ID_PREFIX, ProgramResult, SandboxError, SandboxLimits,
+    SandboxOutcome, ToolInvoker, UnreachableTail, run_program, scope_tools,
+};
 use crate::skills::{DEFAULT_SKILLS_DIR, ReadRecord, SkillLibrary, SkillsRuntime};
 use crate::subagents::{AgentCtx, AgentReturn, ChildHandle, ParentWait, Scheduler, SubagentConfig};
 use crate::tasks::{TasksRuntime, resolve_max_tasks};
 use crate::telemetry::Emitter;
 use crate::tools::VisionContext;
 use crate::tools::{
-    ARCHIVE_THREAD_TOOL, COMPLETE_ISSUE_TOOL, DEFAULT_ARCHIVE_KEEP_RECENT, ENTER_PLAN_MODE_TOOL,
-    EVICT_FILE_VIEW_TOOL, READ_FILE_TOOL, READ_SKILL_TOOL, RUN_WORKFLOW_TOOL, ReadPolicy,
-    RuntimeSet, SEND_MESSAGE_TOOL, SPAWN_SUBAGENT_TOOL, SPECULATE_TOOL, SUBMIT_PLAN_TOOL,
-    ToolContext, ToolOutcome, ToolRegistry, WAIT_FOR_SUBAGENTS_TOOL, is_board_tool,
-    is_context_reclaim_tool, is_fsm_tool, is_memory_tool, is_planning_tool, is_subagent_tool,
-    is_task_tool, parse_archive_keep_recent, parse_evict_path, plan_mode_offers, read_policy,
-    unknown_disabled_tools,
+    ARCHIVE_THREAD_TOOL, AgentStatusData, COMPLETE_ISSUE_TOOL, CompletionData,
+    DEFAULT_ARCHIVE_KEEP_RECENT, ENTER_PLAN_MODE_TOOL, EVICT_FILE_VIEW_TOOL, READ_FILE_TOOL,
+    READ_SKILL_TOOL, RUN_WORKFLOW_TOOL, ReadPolicy, ReclaimData, RuntimeSet, SEND_MESSAGE_TOOL,
+    SPAWN_SUBAGENT_TOOL, SPECULATE_TOOL, SUBMIT_PLAN_TOOL, SpeculationData, SubagentHandleData,
+    SubagentResultData, TURN_LEVEL_TOOLS, ToolContext, ToolData, ToolFailure, ToolOutcome,
+    ToolRegistry, WAIT_FOR_SUBAGENTS_TOOL, WorkflowData, is_board_tool, is_context_reclaim_tool,
+    is_fsm_tool, is_memory_tool, is_planning_tool, is_subagent_tool, is_task_tool,
+    parse_archive_keep_recent, parse_evict_path, plan_mode_offers, read_policy, saturating_u32,
+    saturating_u64, unknown_disabled_tools,
 };
 use crate::vision::VisionSupport;
-
-/// The default per-run turn ceiling, used when no `maxTurns` capability param sets
-/// one. Bounds a runaway loop so a session always terminates cleanly.
-const DEFAULT_MAX_TURNS: usize = 50;
-
-/// Capability param naming the per-run turn ceiling (read from any capability that
-/// carries it). A value of `0` or a non-integer is ignored in favor of the default.
-const PARAM_MAX_TURNS: &str = "maxTurns";
-
-/// Capability param naming a self-imposed wall-clock budget in seconds. gg is also
-/// wrapped in an external runtime cap by `core`; this is a belt-and-suspenders bound
-/// so a runaway loop ends with `"timed_out"` rather than being killed from outside.
-const PARAM_MAX_RUNTIME_SECS: &str = "maxRuntimeSecs";
 
 /// Capability param (context-visibility by convention, read from any capability that
 /// carries it) naming the context window to run the model against, in tokens. It may only
@@ -150,6 +165,38 @@ const PARAM_WINDOW_LIMIT: &str = "windowLimit";
 /// relative value is resolved against the run workspace; an absolute one is used as
 /// given. When absent, [`DEFAULT_SKILLS_DIR`] under the workspace is used.
 const PARAM_SKILLS_DIR: &str = "dir";
+
+/// The [`SessionEnded`](GgTelemetryKind::SessionEnded) status for a session that ended because the
+/// **model** said it was done — a tool-calling turn that requested no tools, or, under
+/// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE), a program that called
+/// [`finish`](FINISH_FUNCTION).
+///
+/// Named rather than spelled out at each of its sites because it is also what the worktree merge
+/// gate, the Code Review verdict and the speculation candidate filter test a child agent against:
+/// one string with five readers is one string that must not be typed six times.
+const STATUS_COMPLETED: &str = "completed";
+
+/// The [`SessionEnded`](GgTelemetryKind::SessionEnded) status for an agent that took every turn its
+/// [ceiling](RunLimits::max_turns) allowed without finishing.
+const STATUS_EXHAUSTED: &str = "exhausted";
+
+/// The [`SessionEnded`](GgTelemetryKind::SessionEnded) status for a run that spent its wall-clock
+/// budget ([`RunLimits::max_runtime`]).
+const STATUS_TIMED_OUT: &str = "timed_out";
+
+/// The [`SessionEnded`](GgTelemetryKind::SessionEnded) status for an agent stopped by one of the
+/// three [execution ceilings](RunLimits) that do not predate this vocabulary — consecutive errors,
+/// the recent error rate, or accumulated cost.
+///
+/// The turn and runtime ceilings keep their own long-standing statuses ([`STATUS_EXHAUSTED`],
+/// [`STATUS_TIMED_OUT`]) even though they now record the same [breach](GgLimitBreach), because
+/// re-labelling them would rewrite the meaning of every historical run. Which ceiling stopped a run
+/// is answered by the breach, not by the status.
+///
+/// It is **not** a failure status ([`is_failure_status`]): a spent ceiling is the operator's bound,
+/// not the agent failing at its work, which is exactly why `exhausted` and `timed_out` are excluded
+/// too.
+const STATUS_LIMIT_EXCEEDED: &str = "limit_exceeded";
 
 /// The [`SessionEnded`](GgTelemetryKind::SessionEnded) status for a session a model
 /// turn failed in — the model was reached and did not deliver a usable turn.
@@ -492,15 +539,59 @@ pub(crate) async fn run_with_factory(
 
     // Build the orchestrator: the shared, cross-task state every agent (the root and each
     // subagent) is built and driven from — the scheduler, the per-slot accounting, the offered
-    // model factory, the shared skills library and token estimator, the resolved bounds/deadline,
-    // the worktree isolation state, and the spawned-task registry the session joins on before ending.
+    // model factory, the shared skills library and token estimator, the resolved ceilings, deadline
+    // and shared spend, the worktree isolation state, and the spawned-task registry the session
+    // joins on before ending.
+    let mut launch_warnings = Vec::new();
     let orch = Arc::new(Orchestrator::build(
         invocation,
         emitter,
         factory,
         multi_model,
         worktrees,
+        &mut launch_warnings,
     ));
+
+    // Every declaration gg could not act on, named on the root's stream before the first turn:
+    // a ceiling that cannot bound anything, a ceiling left on a capability where gg no longer reads
+    // it, a healing key that names nothing. None of them ever fails a launch — a sweep's one shared
+    // configuration document must stay interpretable by every arm — so being loud here is the whole
+    // of the defence against a typo silently running the wrong experiment.
+    for warning in launch_warnings {
+        root_emitter.emit(log("warn", warning));
+    }
+    // ...and the ceilings that *are* in force, including the turn ceiling's default, so "what was
+    // this run bounded by?" is answerable from the operator log as well as from the summary.
+    root_emitter.emit(log("info", orch.limits.armed_summary()));
+    root_emitter.record_limits(recorded_limits(&orch.limits));
+    // ...and, for a code-mode run, which response-healing strategies are armed. Recorded and logged
+    // beside the ceilings because it is the same kind of fact — a resolved configuration that
+    // decides how the run behaves — and because it is the one an ablation turns on: every healing
+    // figure gg reports counts what *fired*, and the arm in which nothing fired looks exactly like
+    // the arm in which nothing could. A tool-calling run says nothing, because healing never runs
+    // there and an armed set recorded for one would be an intention with no effect.
+    if orch.code.enabled {
+        root_emitter.emit(log("info", orch.code.healing.armed_summary()));
+        root_emitter.record_healing(
+            orch.code
+                .healing
+                .armed()
+                .into_iter()
+                .map(code::wire_strategy)
+                .collect(),
+        );
+    }
+
+    // Warm the code sandbox, once per run and never from a subagent. The committed interpreter
+    // component takes ~0.7 s to compile on a many-core machine and several seconds on one core, and
+    // that compile is paid exactly once per process — so starting it *here*, concurrently with the
+    // first model request (which takes far longer), takes it off the first code turn's critical
+    // path entirely. Off when the capability is off: a tool-calling run must not pay for a sandbox
+    // it will never enter.
+    let warming = orch
+        .code
+        .enabled
+        .then(|| tokio::task::spawn_blocking(sandbox::precompile));
 
     // Drive the root agent. Its inbox is unused (nothing spawns the root), but every agent owns
     // one for uniformity.
@@ -514,6 +605,45 @@ pub(crate) async fn run_with_factory(
         root_inbox_rx,
     )
     .await;
+
+    // Report the warm-up, and report it *here* rather than from a detached task, so a diagnostic can
+    // never land after the terminal `SessionEnded`. Draining costs nothing: the compile is behind a
+    // `OnceLock`, so by the time the root has finished it has either completed or was never
+    // contended. A failure is only ever a defect in the committed artifact — the first code turn
+    // would have hit it too, and ended the session loudly — so this is a breadcrumb, not a
+    // control-flow signal.
+    //
+    // The success case is logged too, with what the compile cost. It is the one measurement of this
+    // machine's compile latency a reader of the stream can get without timing a turn from outside,
+    // and it is core-count sensitive by a factor of seven — which is exactly the fact needed to
+    // interpret a first program that took seconds. `None` means a code turn got there first and
+    // paid the compile itself; that turn's own `CodeExecution` carries the figure instead.
+    let warmed = match warming {
+        Some(warming) => Some(warming.await),
+        None => None,
+    };
+    match warmed {
+        Some(Ok(Ok(Some(took)))) => root_emitter.emit(log(
+            "info",
+            format!(
+                "the code sandbox's interpreter component compiled in {} ms, off the first turn's \
+                 critical path.",
+                took.as_millis()
+            ),
+        )),
+        Some(Ok(Ok(None))) => root_emitter.emit(log(
+            "info",
+            "a code turn compiled the sandbox's interpreter component before the warm-up reached \
+             it, so that turn paid the compile itself; its `CodeExecution` carries what it cost.",
+        )),
+        Some(Ok(Err(err))) => root_emitter.emit(log(
+            "warn",
+            format!("the code sandbox could not be warmed up ahead of the first turn: {err}"),
+        )),
+        // The blocking task itself failed to join, which only happens if the host panicked. There
+        // is nothing to say about a compile that never reported either way.
+        Some(Err(_)) | None => {}
+    }
 
     // Join every subagent the run spawned (transitively). The root released its slot inside
     // `run_agent`, so cap-limited children that were waiting can now finish; a completed task has
@@ -550,6 +680,11 @@ pub(crate) async fn run_with_factory(
             }
         ),
     ));
+    // Record the ceiling that stopped the **run**, which is the root's and only the root's: every
+    // agent's `LimitExceeded` reaches the telemetry, but a subagent that spent its own error budget
+    // did not end the run, and reporting its breach as the run's outcome would misattribute the one
+    // field a study reads to find out why runs stop.
+    root_emitter.record_limit_hit(end.limit.clone());
     // Compute and emit the run's aggregatable session summary from the telemetry the run emitted
     // (the per-slot rollups above are now folded in), right before the terminal `SessionEnded`, so
     // `core` can lift it onto the run record and result aggregation need not re-parse the stream.
@@ -689,15 +824,11 @@ struct Orchestrator {
     /// the attempts and run the judge), so it only engages when
     /// [`delegation_enabled`](Self::delegation_enabled); worktree isolation is checked at call time.
     speculative_enabled: bool,
-    /// Whether the [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability is on — the run-wide
-    /// toggle that switches every agent's turn from traditional tool calling to emitting a `gg-script`
-    /// [program](crate::rac) gg runs in the wasmtime sandbox. Applies to the root and every subagent
-    /// uniformly (it is a property of how a turn is conducted, not of a single agent).
-    responses_as_code: bool,
-    /// The [sandbox limits](RacLimits) a responses-as-code program runs under — the wasmtime fuel
-    /// ceiling and linear-memory cap, resolved once from the capability's params (`fuel`,
-    /// `maxMemoryBytes`) with generous defaults.
-    rac_limits: RacLimits,
+    /// How a run conducts its turns when [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) is on:
+    /// the run-wide mode flag, the per-program sandbox ceilings, and the armed
+    /// [healing](crate::healing) strategies. Resolved once here and handed to every agent, because
+    /// all three are properties of *how a turn is conducted*, not of a single agent.
+    code: CodeSetup,
     /// Per-[issue](test_cabinet_core::gg::GgBoardIssue) dispatch facts a
     /// [Code Review](handle_code_review) needs: the commit the issue's work began at (its review
     /// baseline) and the [slot](GgSlotBinding) it was worked on (where a fix agent re-runs).
@@ -737,10 +868,22 @@ struct Orchestrator {
     /// refuses one. Shared (`Arc`) across every agent so a model denied on one agent's
     /// turn stops being sent pictures by all of them — see [`crate::vision`].
     vision: Arc<VisionSupport>,
-    /// The resolved loop bounds shared by every agent.
-    bounds: LoopBounds,
-    /// The optional shared wall-clock deadline (from run start) every agent stops at.
+    /// The resolved [execution ceilings](RunLimits) every agent is bounded by. Shared as a value
+    /// rather than behind a lock: five scalars nothing mutates after launch.
+    limits: RunLimits,
+    /// The optional shared wall-clock deadline (from run start) every agent stops at — the
+    /// [runtime ceiling](RunLimits::max_runtime) as an absolute instant, resolved once so every
+    /// agent measures it against the same session start.
     deadline: Option<Instant>,
+    /// The run's accumulated model spend, fed by every agent at its own model-response site and
+    /// read by every agent at its own turn boundary — the figure the
+    /// [cost ceiling](RunLimits::max_cost) is measured against.
+    ///
+    /// Run-wide rather than per agent because every agent bills the same run and a per-agent cost
+    /// ceiling would be defeated by delegating. The existing [`SlotAccounting`] cannot serve: it is
+    /// folded only when an agent *finishes*, so a subagent forty turns deep would contribute nothing
+    /// until it was done — precisely the run a cost ceiling exists to stop.
+    spend: Arc<RunSpend>,
     /// The join handles of every spawned subagent task, drained and awaited before the session
     /// ends. Guarded so concurrently-spawning agents can register their children.
     tasks: Mutex<Vec<JoinHandle<()>>>,
@@ -759,22 +902,41 @@ struct Orchestrator {
 
 impl Orchestrator {
     /// Build the orchestrator for `invocation`, loading the shared skills library and token
-    /// estimator once and resolving the run-wide bounds/deadline and subagent caps.
+    /// estimator once and resolving the run-wide ceilings, deadline, healing strategies and
+    /// subagent caps.
+    ///
+    /// `warnings` collects every operator-facing diagnostic the resolution produced — a ceiling that
+    /// cannot bound anything, a stale `maxTurns` left on a capability, a `healing` key gg does not
+    /// know. They are returned rather than emitted because this function is handed the run's
+    /// **unscoped** emitter (the one it clones for every agent), while a launch diagnostic belongs
+    /// on the root agent's stream alongside the rest of them; the caller has that stream and emits
+    /// them there, before the first turn.
     fn build(
         invocation: &GgInvocation,
         emitter: &Emitter,
         factory: Arc<dyn ClientFactory>,
         multi_model: bool,
         worktrees: WorktreesSetup,
+        warnings: &mut Vec<String>,
     ) -> Self {
         let set = &invocation.capability_set;
         // Load the skills library once (empty when the capability is off or nothing is seeded) and
         // share its Arc across agents; each agent keeps its own read-state runtime over it.
         let skills = resolve_skills(set, &invocation.workspace_dir);
-        let bounds = resolve_bounds(set);
-        let deadline = bounds
-            .max_runtime_secs
-            .map(|secs| Instant::now() + Duration::from_secs(secs));
+        let limits = resolve_run_limits(set, warnings);
+        let deadline = limits.max_runtime.map(|budget| Instant::now() + budget);
+        let healing = healing::resolve_healing(set);
+        // An unreadable `healing` key is reported rather than guessed at: `{"stripFences": false}`
+        // would otherwise run the default arm under the disabled arm's name, and every number an
+        // ablation produced would be a measurement of the wrong thing.
+        for unknown in &healing.unknown_params {
+            warnings.push(format!(
+                "the `{CAPABILITY_RESPONSES_AS_CODE}` capability declares `{unknown}`, which gg \
+                 could not read as a healing setting; it changes nothing. The strategies are {}, \
+                 each set to `true` or `false`.",
+                HealingStrategy::ALL.map(HealingStrategy::id).join(", ")
+            ));
+        }
         Self {
             caps: set.clone(),
             workspace_dir: invocation.workspace_dir.clone(),
@@ -787,8 +949,11 @@ impl Orchestrator {
             baseline_commit: worktrees.baseline_commit,
             code_reviews_enabled: set.is_enabled(CAPABILITY_CODE_REVIEWS),
             speculative_enabled: set.is_enabled(CAPABILITY_SPECULATIVE),
-            responses_as_code: set.is_enabled(CAPABILITY_RESPONSES_AS_CODE),
-            rac_limits: resolve_rac_limits(set),
+            code: CodeSetup {
+                enabled: set.is_enabled(CAPABILITY_RESPONSES_AS_CODE),
+                limits: sandbox::resolve_sandbox_limits(set),
+                healing: healing.config,
+            },
             issue_dispatch: Mutex::new(HashMap::new()),
             git_lock: Mutex::new(()),
             config: SubagentConfig::resolve(set),
@@ -801,8 +966,9 @@ impl Orchestrator {
             estimator: Arc::new(BpeTokenEstimator::new()),
             model_windows: invocation.model_windows.clone(),
             vision: Arc::new(VisionSupport::new(invocation.model_modalities.clone())),
-            bounds,
+            limits,
             deadline,
+            spend: Arc::new(RunSpend::default()),
             tasks: Mutex::new(Vec::new()),
             next_seq: AtomicU64::new(0),
             next_workflow_seq: AtomicU64::new(0),
@@ -1191,9 +1357,10 @@ async fn run_agent(
             &tasks,
             &board,
             &planning,
+            &fsm,
             orch.code_reviews_active(),
             orch.speculative_active(),
-            orch.responses_as_code,
+            orch.code.enabled,
         );
         announce_fsm(emitter, &orch.caps, &fsm);
         // Record the run's effective toolset on the session summary — the exact set of tool names
@@ -1204,7 +1371,7 @@ async fn run_agent(
         // Record the run's execution mode (code-shaped responses vs traditional tool calling) so the
         // "does responses-as-code help?" study is a durable, sliceable outcome dimension alongside
         // the capabilityEnabled facet.
-        emitter.record_execution_mode(if orch.responses_as_code {
+        emitter.record_execution_mode(if orch.code.enabled {
             "responses_as_code"
         } else {
             "tool_calling"
@@ -1277,8 +1444,11 @@ async fn run_agent(
             &registry,
             &tool_ctx,
             emitter,
-            orch.bounds.max_turns,
-            orch.deadline,
+            LimitsSetup {
+                limits: orch.limits,
+                deadline: orch.deadline,
+                spend: Arc::clone(&orch.spend),
+            },
             context_setup,
             compaction,
             amc,
@@ -1291,8 +1461,7 @@ async fn run_agent(
             read_policy(&orch.caps),
             orch.code_reviews_active(),
             orch.speculative_active(),
-            orch.responses_as_code,
-            orch.rac_limits,
+            orch.code,
             subagent_context,
             orch.replay.clone(),
         )
@@ -1348,7 +1517,11 @@ async fn run_agent(
             if let Some(wt) = worktree {
                 match wt.disposition {
                     WorktreeDisposition::Merge => {
-                        let succeeded = end.status == "completed";
+                        // A subagent's work is merged only when it finished on its own terms.
+                        // A limit-stopped child is discarded unmerged exactly as an exhausted or
+                        // timed-out one is: it holds half-finished work, and merging that can turn
+                        // a working artifact into a broken one.
+                        let succeeded = end.status == STATUS_COMPLETED;
                         let outcome = reconcile_worktree(&orch, &agent.id, &wt, succeeded);
                         if let Some(note) = outcome.note {
                             summary.push_str("\n\n");
@@ -1396,6 +1569,7 @@ fn announce_configuration(
     tasks: &TasksRuntime,
     board: &BoardRuntime,
     planning: &PlanningRuntime,
+    fsm: &FsmRuntime,
     code_reviews: bool,
     speculative: bool,
     responses_as_code: bool,
@@ -1486,10 +1660,35 @@ fn announce_configuration(
         emitter.emit(log(
             "info",
             "responses-as-code enabled; instead of calling tools one at a time, each turn the model \
-             emits a `gg-script` program over the available tools (loops, conditionals, composed \
+             emits a TypeScript program over the available tools (loops, conditionals, composed \
              tool calls) that gg runs in a wasmtime sandbox — the tool calls the program makes still \
              stream as ToolCall/ToolResult, and the execution is streamed as a CodeExecution event.",
         ));
+        // Responses-as-code does not compose with either machine that is driven by a *turn-level*
+        // transition, because in code mode every turn is a program and a program cannot make one.
+        // Both combinations are launchable and neither fails, so the only thing that stops a study
+        // spending its whole budget on a run that can never move is saying so loudly, at the start.
+        if planning.offers_planning() {
+            emitter.emit(log(
+                "warn",
+                "responses-as-code and planning are both enabled, but they do not compose: \
+                 `enter_plan_mode` and `submit_plan` are turn-level transitions a program cannot \
+                 make, and a code-mode run has no turn that is not a program. Planning is inert for \
+                 this run — a pass that can never be entered restricts nothing.",
+            ));
+        }
+        if fsm.is_active() {
+            emitter.emit(log(
+                "warn",
+                format!(
+                    "responses-as-code and the `{}` FSM are both enabled, but they do not compose: \
+                     `advance_state` is a turn-level transition a program cannot make, so this run \
+                     is pinned in the machine's first state — that state's tool restrictions apply \
+                     to every call every program makes, and the run can never advance out of it.",
+                    fsm.machine_name()
+                ),
+            ));
+        }
     }
 }
 
@@ -1580,21 +1779,24 @@ fn spawn_subagent(
             match board.issue_brief(&issue_id) {
                 Some(brief) => (brief, Some(issue_id)),
                 None => {
-                    return ToolOutcome::error(format!(
-                        "cannot dispatch issue `{issue_id}`: no such issue is on your board (or \
-                         you have no board). Create it with `create_issue`, or pass a `prompt` \
-                         instead."
-                    ));
+                    return ToolOutcome::failed(
+                        ToolFailure::NotFound,
+                        format!(
+                            "cannot dispatch issue `{issue_id}`: no such issue is on your board \
+                             (or you have no board). Create it with `create_issue`, or pass a \
+                             `prompt` instead."
+                        ),
+                    );
                 }
             }
         }
         _ => match args.get("prompt").and_then(Value::as_str) {
             Some(prompt) if !prompt.trim().is_empty() => (prompt.trim().to_string(), None),
             _ => {
-                return ToolOutcome::error(
+                return ToolOutcome::failed(
+                    ToolFailure::InvalidArgument,
                     "spawn_subagent needs a non-empty `prompt` (the subagent's brief) or an \
-                     `issueId` to dispatch."
-                        .to_string(),
+                     `issueId` to dispatch.",
                 );
             }
         },
@@ -1633,8 +1835,18 @@ fn spawn_subagent(
                 ),
                 format!("spawned subagent `{}`", child.id),
             )
+            // The structured half of the same facts. Delegation never reaches a
+            // [`Tool`](crate::tools::Tool), so this handler is the **only** producer of the
+            // sidecar a [code program](crate::sandbox)'s `spawnSubagent` reads back — without it a
+            // program would be told the call succeeded and handed nothing to name the child by.
+            .with_data(ToolData::SubagentSpawned(SubagentHandleData {
+                id: child.id,
+                slot: child.slot,
+                model_id: child.model_id,
+                worktree_branch: child.worktree_branch,
+            }))
         }
-        Err(err) => ToolOutcome::error(err),
+        Err(err) => err.into(),
     }
 }
 
@@ -1655,6 +1867,43 @@ struct DispatchedChild {
     worktree_path: Option<PathBuf>,
 }
 
+/// A delegation that could not be dispatched, carrying **both** halves of the answer: the sentence
+/// the model reads and the class a structured consumer branches on.
+///
+/// The class exists because a [code program](crate::sandbox) catches a typed `ToolError` and asks
+/// `e.code === "limit-exceeded"`. Every one of these failures is raised in the loop rather than in
+/// a [`Tool`](crate::tools::Tool), so nothing else would classify them, and an unclassified refusal
+/// reaches a program as the useless `other`. [`Display`](std::fmt::Display) renders the message
+/// alone, so the many places that only quote the reason read exactly as they did before.
+struct DispatchError {
+    /// Why the dispatch was refused, in the vocabulary a program's `catch` reads.
+    failure: ToolFailure,
+    /// What to tell the model, including how to proceed.
+    message: String,
+}
+
+impl DispatchError {
+    /// A dispatch refusal of class `failure`, explained by `message`.
+    fn new(failure: ToolFailure, message: impl Into<String>) -> Self {
+        Self {
+            failure,
+            message: message.into(),
+        }
+    }
+}
+
+impl std::fmt::Display for DispatchError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl From<DispatchError> for ToolOutcome {
+    fn from(error: DispatchError) -> Self {
+        ToolOutcome::failed(error.failure, error.message)
+    }
+}
+
 /// Dispatch one child agent — the shared spawn path behind both `spawn_subagent` and each
 /// [workflow](run_workflow) stage's fan-out.
 ///
@@ -1672,28 +1921,43 @@ fn dispatch_child(
     issue_id: Option<String>,
     requested_slot: &str,
     worktree_disposition: Option<WorktreeDisposition>,
-) -> Result<DispatchedChild, String> {
+) -> Result<DispatchedChild, DispatchError> {
     let orch = &sub.orch;
 
     // Depth cap: a structural refusal, not a queue. An agent at the max depth cannot delegate
-    // deeper — it must do the work itself.
+    // deeper — it must do the work itself. A *ceiling*, so `limit-exceeded` rather than `refused`:
+    // the request was well-formed, the run simply has no room left below this agent.
     if spawner.depth >= orch.config.max_depth {
-        return Err(format!(
-            "cannot spawn a subagent: you are at the maximum delegation depth ({}), so you must \
-             do this work yourself rather than delegating deeper.",
-            orch.config.max_depth
+        return Err(DispatchError::new(
+            ToolFailure::LimitExceeded,
+            format!(
+                "cannot spawn a subagent: you are at the maximum delegation depth ({}), so you \
+                 must do this work yourself rather than delegating deeper.",
+                orch.config.max_depth
+            ),
         ));
     }
 
-    // The requested slot, collapsed to primary when multi-model is off.
+    // The requested slot, collapsed to primary when multi-model is off. A slot this run does not
+    // bind is a bad *argument*, which is what tells a program to pass a different one.
     let slot = effective_slot(requested_slot, orch.multi_model).to_string();
     let binding = slot_binding(&orch.caps, &slot)
-        .map_err(|err| format!("cannot spawn on the `{slot}` slot: {err}"))?
+        .map_err(|err| {
+            DispatchError::new(
+                ToolFailure::InvalidArgument,
+                format!("cannot spawn on the `{slot}` slot: {err}"),
+            )
+        })?
         .clone();
+    // The slot is bound but its client would not resolve — a missing credential, a provider that
+    // could not be built. Nothing about the call was wrong, so it is an I/O-class failure.
     let client = orch.factory.client_for(&binding).map_err(|err| {
-        format!(
-            "cannot spawn on the `{slot}` slot (model `{}`): {err}",
-            binding.model_id
+        DispatchError::new(
+            ToolFailure::IoError,
+            format!(
+                "cannot spawn on the `{slot}` slot (model `{}`): {err}",
+                binding.model_id
+            ),
         )
     })?;
     let model_id = client.model_id().to_string();
@@ -1774,30 +2038,36 @@ fn make_worktree(
     orch: &Orchestrator,
     child_id: &str,
     disposition: WorktreeDisposition,
-) -> Result<Worktree, String> {
+) -> Result<Worktree, DispatchError> {
+    // The capability is off: the feature exists but this run does not offer it, which is exactly
+    // what `unavailable` says.
     if !orch.worktrees_capability {
-        return Err(
+        return Err(DispatchError::new(
+            ToolFailure::Unavailable,
             "cannot dispatch this subagent in a worktree: the `worktrees` capability is not \
-             enabled for this run. Spawn without `worktree: true` to run in the shared workspace."
-                .to_string(),
-        );
+             enabled for this run. Spawn without `worktree: true` to run in the shared workspace.",
+        ));
     }
     let (root, base) = match (&orch.worktrees_root, &orch.baseline_commit) {
         (Some(root), Some(base)) => (root, base),
         _ => {
-            return Err(
+            return Err(DispatchError::new(
+                ToolFailure::Unavailable,
                 "cannot dispatch this subagent in a worktree: worktree isolation is unavailable \
                  this run (git could not initialize a workspace baseline at startup). Spawn \
-                 without `worktree: true` to run in the shared workspace."
-                    .to_string(),
-            );
+                 without `worktree: true` to run in the shared workspace.",
+            ));
         }
     };
     let branch = format!("gg/{child_id}");
     let path = root.join(child_id);
     let _guard = orch.git_lock.lock().expect("git lock");
-    git::add_worktree(&orch.workspace_dir, &path, &branch, base)
-        .map_err(|err| format!("could not create an isolated worktree for the subagent: {err}"))?;
+    git::add_worktree(&orch.workspace_dir, &path, &branch, base).map_err(|err| {
+        DispatchError::new(
+            ToolFailure::IoError,
+            format!("could not create an isolated worktree for the subagent: {err}"),
+        )
+    })?;
     Ok(Worktree {
         branch,
         path,
@@ -1914,16 +2184,20 @@ async fn wait_for_subagents(
                 match item.as_str() {
                     Some(id) => {
                         if !sub.ctx.children.iter().any(|c| c.id == id) {
-                            return ToolOutcome::error(format!(
-                                "`{id}` is not one of your subagents; you can only wait for agents \
-                                 you spawned."
-                            ));
+                            return ToolOutcome::failed(
+                                ToolFailure::NotFound,
+                                format!(
+                                    "`{id}` is not one of your subagents; you can only wait for \
+                                     agents you spawned."
+                                ),
+                            );
                         }
                         ids.push(id.to_string());
                     }
                     None => {
-                        return ToolOutcome::error(
-                            "each entry in `ids` must be a subagent id string.".to_string(),
+                        return ToolOutcome::failed(
+                            ToolFailure::InvalidArgument,
+                            "each entry in `ids` must be a subagent id string.",
                         );
                     }
                 }
@@ -1938,18 +2212,22 @@ async fn wait_for_subagents(
             .map(|c| c.id.clone())
             .collect(),
         Some(_) => {
-            return ToolOutcome::error(
-                "`ids` must be an array of subagent id strings (or omit it to wait for all)."
-                    .to_string(),
+            return ToolOutcome::failed(
+                ToolFailure::InvalidArgument,
+                "`ids` must be an array of subagent id strings (or omit it to wait for all).",
             );
         }
     };
 
     if awaited_ids.is_empty() {
+        // A successful wait over nothing. The empty sidecar is not a formality: a program that
+        // received no data at all would be thrown into with a gg-defect diagnostic, when the honest
+        // answer is simply "no children returned anything, because there were none".
         return ToolOutcome::ok(
             "You have no outstanding subagents to wait for.",
             "no subagents to wait for",
-        );
+        )
+        .with_data(ToolData::SubagentResults(Vec::new()));
     }
 
     // Block until every awaited child returns (freeing this agent's slot while it waits), then
@@ -1966,6 +2244,26 @@ async fn wait_for_subagents(
         })
         .collect();
 
+    // The structured half of the same collection, in the same order. This handler is the only
+    // producer of it: a wait never reaches a [`Tool`](crate::tools::Tool), so without this a
+    // [code program](crate::sandbox) could not branch on whether a child actually completed.
+    let results: Vec<SubagentResultData> = collected
+        .iter()
+        .map(|(id, returned)| SubagentResultData {
+            id: id.clone(),
+            // An unrecognised ending — including the empty one a child that produced nothing at
+            // all leaves behind — is reported as "no status" rather than as a plausible-looking
+            // wrong one, since a caller that sees `None` will read the summary instead.
+            status: returned
+                .as_ref()
+                .and_then(|returned| AgentStatusData::parse(returned.status)),
+            summary: returned
+                .as_ref()
+                .map(|returned| returned.summary.clone())
+                .unwrap_or_default(),
+        })
+        .collect();
+
     ToolOutcome::ok(
         format!(
             "Collected {} subagent result(s):\n\n{}",
@@ -1974,6 +2272,7 @@ async fn wait_for_subagents(
         ),
         format!("collected {} subagent result(s)", collected.len()),
     )
+    .with_data(ToolData::SubagentResults(results))
 }
 
 /// Block until every child in `awaited_ids` has returned — freeing this agent's running slot while
@@ -2024,19 +2323,36 @@ async fn await_children(
 fn send_message(sub: &mut SubagentContext, args: &Value) -> ToolOutcome {
     let agent_id = match args.get("agentId").and_then(Value::as_str) {
         Some(id) if !id.trim().is_empty() => id.trim().to_string(),
-        _ => return ToolOutcome::error("send_message needs a non-empty `agentId`.".to_string()),
+        _ => {
+            return ToolOutcome::failed(
+                ToolFailure::InvalidArgument,
+                "send_message needs a non-empty `agentId`.",
+            );
+        }
     };
     let message = match args.get("message").and_then(Value::as_str) {
         Some(message) if !message.trim().is_empty() => message.to_string(),
-        _ => return ToolOutcome::error("send_message needs a non-empty `message`.".to_string()),
+        _ => {
+            return ToolOutcome::failed(
+                ToolFailure::InvalidArgument,
+                "send_message needs a non-empty `message`.",
+            );
+        }
     };
     match sub.ctx.children.iter().find(|c| c.id == agent_id) {
-        None => ToolOutcome::error(format!(
-            "`{agent_id}` is not one of your subagents; you can only message agents you spawned."
-        )),
-        Some(child) if child.is_finished() => ToolOutcome::error(format!(
-            "subagent `{agent_id}` has already returned; you cannot message it."
-        )),
+        None => ToolOutcome::failed(
+            ToolFailure::NotFound,
+            format!(
+                "`{agent_id}` is not one of your subagents; you can only message agents you \
+                 spawned."
+            ),
+        ),
+        // The agent exists but its lifecycle has moved past being messageable: well-formed, in
+        // conflict with the current state, which is what `conflict` means.
+        Some(child) if child.is_finished() => ToolOutcome::failed(
+            ToolFailure::Conflict,
+            format!("subagent `{agent_id}` has already returned; you cannot message it."),
+        ),
         Some(child) => match child.inbox.send(message) {
             Ok(()) => ToolOutcome::ok(
                 format!(
@@ -2045,9 +2361,10 @@ fn send_message(sub: &mut SubagentContext, args: &Value) -> ToolOutcome {
                 ),
                 format!("messaged subagent `{agent_id}`"),
             ),
-            Err(_) => ToolOutcome::error(format!(
-                "subagent `{agent_id}` is no longer receiving messages (it has returned)."
-            )),
+            Err(_) => ToolOutcome::failed(
+                ToolFailure::Conflict,
+                format!("subagent `{agent_id}` is no longer receiving messages (it has returned)."),
+            ),
         },
     }
 }
@@ -2101,17 +2418,25 @@ async fn handle_code_review(
 
     let issue_id = match call.arguments.get("id").and_then(Value::as_str) {
         Some(id) if !id.trim().is_empty() => id.trim().to_string(),
-        _ => return ToolOutcome::error("complete_issue needs a non-empty `id`.".to_string()),
+        _ => {
+            return ToolOutcome::failed(
+                ToolFailure::InvalidArgument,
+                "complete_issue needs a non-empty `id`.",
+            );
+        }
     };
     // The original task being tackled — the issue's brief — drives both the reviewer's context and
     // (augmented with the review items) each fix agent.
     let brief = match board.issue_brief(&issue_id) {
         Some(brief) => brief,
         None => {
-            return ToolOutcome::error(format!(
-                "cannot review issue `{issue_id}`: no such issue is on your board. Create it with \
-                 `create_issue` first."
-            ));
+            return ToolOutcome::failed(
+                ToolFailure::NotFound,
+                format!(
+                    "cannot review issue `{issue_id}`: no such issue is on your board. Create it \
+                     with `create_issue` first."
+                ),
+            );
         }
     };
     let baseline = orch.issue_baseline(&issue_id);
@@ -2139,18 +2464,21 @@ async fn handle_code_review(
                      budget ran out; the issue was not accepted."
                 ),
             ));
-            return ToolOutcome::error(format!(
-                "The Code Review of issue `{issue_id}` did not reach approval before the run's time \
-                 budget ran out, so the issue was NOT marked done. Its work remains for a later \
-                 pass."
-            ));
+            return ToolOutcome::failed(
+                ToolFailure::LimitExceeded,
+                format!(
+                    "The Code Review of issue `{issue_id}` did not reach approval before the run's \
+                     time budget ran out, so the issue was NOT marked done. Its work remains for a \
+                     later pass."
+                ),
+            );
         }
 
         // Dispatch a reviewer against the current diff of the work and parse its verdict. Anything
         // other than a clean verdict aborts the review with the issue unaccepted (never accept work
         // no reviewer approved).
         let diff = orch.review_diff(&issue_id);
-        let review_brief = build_review_brief(&brief, &diff);
+        let review_brief = build_review_brief(&brief, &diff, orch.code.enabled);
         let reviewer_slot = orch.reviewer_slot();
         let verdict = match dispatch_reviewer(
             sub,
@@ -2171,10 +2499,13 @@ async fn handle_code_review(
                          was not accepted."
                     ),
                 ));
-                return ToolOutcome::error(format!(
-                    "The Code Review of issue `{issue_id}` did not complete ({err}), so the issue \
-                     was NOT marked done. Its work remains for a later pass."
-                ));
+                return ToolOutcome::failed(
+                    ToolFailure::IoError,
+                    format!(
+                        "The Code Review of issue `{issue_id}` did not complete ({err}), so the \
+                         issue was NOT marked done. Its work remains for a later pass."
+                    ),
+                );
             }
         };
 
@@ -2188,13 +2519,23 @@ async fn handle_code_review(
                 None,
                 baseline.clone(),
             ));
-            return ToolOutcome::ok(
-                format!(
-                    "The Code Review of issue `{issue_id}` approved the work; the issue is accepted \
-                     and marked done."
-                ),
-                format!("code review approved issue `{issue_id}`"),
+            let detail = format!(
+                "The Code Review of issue `{issue_id}` approved the work; the issue is accepted \
+                 and marked done."
             );
+            return ToolOutcome::ok(
+                detail.clone(),
+                format!("code review approved issue `{issue_id}`"),
+            )
+            // With Code Reviews on, this handler *replaces* the `complete_issue` tool's own
+            // outcome — so it also has to replace the tool's sidecar, or a
+            // [code program](crate::sandbox) would be told the acceptance produced no structured
+            // result. `code_reviewed` is the field the whole payload exists for: it is the only
+            // way a caller can tell "accepted after a review" from a plain status change.
+            .with_data(ToolData::Completion(CompletionData {
+                code_reviewed: true,
+                detail,
+            }));
         }
 
         // Changes requested: record the items, then spawn a fix agent with the original brief plus
@@ -2204,7 +2545,7 @@ async fn handle_code_review(
             Some(verdict.items.clone()),
             baseline.clone(),
         ));
-        let fix_brief = build_fix_brief(&brief, &verdict.items);
+        let fix_brief = build_fix_brief(&brief, &verdict.items, orch.code.enabled);
         let work_slot = orch.issue_work_slot(&issue_id);
         let fixer = match dispatch_child(
             sub,
@@ -2220,10 +2561,14 @@ async fn handle_code_review(
                     "warn",
                     format!("could not dispatch a fix agent for issue `{issue_id}`: {err}"),
                 ));
-                return ToolOutcome::error(format!(
-                    "The Code Review of issue `{issue_id}` requested changes, but a fix agent could \
-                     not be dispatched: {err} The issue was NOT marked done."
-                ));
+                let failure = err.failure;
+                return ToolOutcome::failed(
+                    failure,
+                    format!(
+                        "The Code Review of issue `{issue_id}` requested changes, but a fix agent \
+                         could not be dispatched: {err} The issue was NOT marked done."
+                    ),
+                );
             }
         };
         let _ = await_children(sub, emitter, std::slice::from_ref(&fixer.id)).await;
@@ -2235,7 +2580,14 @@ async fn handle_code_review(
 /// scope, and completion criteria) plus the diff to review and the verdict protocol the
 /// [parser](parse_review_verdict) expects. A missing/empty diff is stated plainly so the reviewer
 /// does not hallucinate changes.
-fn build_review_brief(issue_brief: &str, diff: &str) -> String {
+///
+/// `code` is whether the run is in [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) mode, and it
+/// changes the ending clause because under that protocol there is no "final message" to end: every
+/// reply is a program, and only [`finish`](FINISH_FUNCTION) ends a session. A reviewer told to
+/// stop with a verdict would never reach `completed`, [`dispatch_reviewer`] would report it as
+/// having ended without one, and the issue would never be accepted — so the brief has to teach the
+/// contract the run actually runs.
+fn build_review_brief(issue_brief: &str, diff: &str, code: bool) -> String {
     let diff_block = if diff.trim().is_empty() {
         "(No textual diff was available — no changes were detected against the baseline. Review \
          against the completion criteria and, unless the work was clearly already present, request \
@@ -2244,24 +2596,44 @@ fn build_review_brief(issue_brief: &str, diff: &str) -> String {
     } else {
         format!("```diff\n{diff}\n```")
     };
-    format!(
-        "You are performing a **Code Review**. Inspect the changes below against the issue's \
-         requirements and decide whether the work is complete and stays in scope.\n\n{issue_brief}\
-         \n\n## Changes to review (diff against the baseline)\n{diff_block}\n\n## Your verdict\n\
-         Review the diff carefully against the completion criteria and the in/out-of-scope \
+    // The parser reads the marker out of the child's final text either way, and under code mode
+    // that final text *is* the `finish` summary — so only the instruction changes, never the
+    // protocol the verdict is written in.
+    let verdict = if code {
+        "Review the diff carefully against the completion criteria and the in/out-of-scope \
+         boundaries. When you are done, end your session by calling `finish()` from inside a \
+         program, passing exactly one verdict as its summary:\n\
+         - If the work fully satisfies the completion criteria and stays in scope:\n\
+         `finish(\"CODE REVIEW: APPROVED\")`\n\
+         - Otherwise:\n`finish(\"CODE REVIEW: CHANGES REQUESTED\\n1. …\")`\n\
+         where the summary continues with a numbered list of specific, actionable items that must \
+         be fixed before the work can be accepted. Be concrete: each item should say what is wrong \
+         and what to change."
+    } else {
+        "Review the diff carefully against the completion criteria and the in/out-of-scope \
          boundaries. When you are done, end your final message with exactly one verdict:\n\
          - If the work fully satisfies the completion criteria and stays in scope, write on its own \
          line:\n`CODE REVIEW: APPROVED`\n\
          - Otherwise, write on its own line:\n`CODE REVIEW: CHANGES REQUESTED`\n\
          and then a numbered list of specific, actionable items that must be fixed before the work \
          can be accepted. Be concrete: each item should say what is wrong and what to change."
+    };
+    format!(
+        "You are performing a **Code Review**. Inspect the changes below against the issue's \
+         requirements and decide whether the work is complete and stays in scope.\n\n{issue_brief}\
+         \n\n## Changes to review (diff against the baseline)\n{diff_block}\n\n## Your verdict\n\
+         {verdict}"
     )
 }
 
 /// A fix agent's brief for a [Code Review](handle_code_review) round: the original issue brief plus
 /// the reviewer's actionable items. The `## Requested changes from Code Review` heading is a stable
 /// marker (a worker can detect it is on a fix pass).
-fn build_fix_brief(issue_brief: &str, items: &[String]) -> String {
+///
+/// `code` swaps the ending clause for the same reason [`build_review_brief`] does: "then stop" is
+/// not a thing a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) agent can do, and a fix agent
+/// that never reaches `completed` leaves its worktree discarded unmerged.
+fn build_fix_brief(issue_brief: &str, items: &[String], code: bool) -> String {
     let mut list = String::new();
     for (index, item) in items.iter().enumerate() {
         list.push_str(&format!("\n{}. {}", index + 1, item));
@@ -2272,10 +2644,16 @@ fn build_fix_brief(issue_brief: &str, items: &[String]) -> String {
              completion criteria and make sure every part is done.",
         );
     }
+    let ending = if code {
+        "then call `finish()` from inside a program with a short summary of what you changed — \
+         your changes will be re-reviewed"
+    } else {
+        "then stop — your changes will be re-reviewed"
+    };
     format!(
         "{issue_brief}\n\n## Requested changes from Code Review\nA Code Review of the work for this \
          issue found that it is not yet done. Address every item below (keeping the rest of the \
-         work intact), then stop — your changes will be re-reviewed:\n{list}"
+         work intact), {ending}:\n{list}"
     )
 }
 
@@ -2379,7 +2757,9 @@ async fn dispatch_reviewer(
         .map_err(|err| format!("the reviewer could not be dispatched: {err}"))?;
     let collected = await_children(sub, emitter, std::slice::from_ref(&reviewer.id)).await;
     match collected.into_iter().next() {
-        Some((_, Some(ret))) if ret.status == "completed" => Ok(parse_review_verdict(&ret.summary)),
+        Some((_, Some(ret))) if ret.status == STATUS_COMPLETED => {
+            Ok(parse_review_verdict(&ret.summary))
+        }
         Some((_, Some(ret))) => Err(format!("the reviewer {} without a verdict", ret.status)),
         _ => Err("the reviewer produced no result".to_string()),
     }
@@ -2462,11 +2842,12 @@ async fn handle_speculate(
     let baseline = match (orch.baseline_commit(), &orch.worktrees_root) {
         (Some(base), Some(_root)) => base.to_string(),
         _ => {
-            return ToolOutcome::error(
-                "cannot speculate: best-of-K runs each attempt in an isolated worktree, but worktree \
-                 isolation is unavailable this run (enable the `worktrees` capability, and ensure \
-                 git is available in the run environment). Do the work with a single attempt instead."
-                    .to_string(),
+            return ToolOutcome::failed(
+                ToolFailure::Unavailable,
+                "cannot speculate: best-of-K runs each attempt in an isolated worktree, but \
+                 worktree isolation is unavailable this run (enable the `worktrees` capability, \
+                 and ensure git is available in the run environment). Do the work with a single \
+                 attempt instead.",
             );
         }
     };
@@ -2478,20 +2859,24 @@ async fn handle_speculate(
             match board.issue_brief(&id) {
                 Some(brief) => (brief, Some(id)),
                 None => {
-                    return ToolOutcome::error(format!(
-                        "cannot speculate on issue `{id}`: no such issue is on your board (or you \
-                         have no board). Create it with `create_issue`, or pass a `prompt` instead."
-                    ));
+                    return ToolOutcome::failed(
+                        ToolFailure::NotFound,
+                        format!(
+                            "cannot speculate on issue `{id}`: no such issue is on your board (or \
+                             you have no board). Create it with `create_issue`, or pass a `prompt` \
+                             instead."
+                        ),
+                    );
                 }
             }
         }
         _ => match call.arguments.get("prompt").and_then(Value::as_str) {
             Some(prompt) if !prompt.trim().is_empty() => (prompt.trim().to_string(), None),
             _ => {
-                return ToolOutcome::error(
+                return ToolOutcome::failed(
+                    ToolFailure::InvalidArgument,
                     "speculate needs a non-empty `prompt` (the task to attempt K times) or an \
-                     `issueId` to speculate on."
-                        .to_string(),
+                     `issueId` to speculate on.",
                 );
             }
         },
@@ -2510,11 +2895,14 @@ async fn handle_speculate(
     // Depth cap up front: every attempt is `spawner.depth + 1`, so an agent at the max depth cannot
     // speculate at all — refuse rather than failing on the first attempt's dispatch.
     if spawner.depth >= orch.config.max_depth {
-        return ToolOutcome::error(format!(
-            "cannot speculate: you are at the maximum delegation depth ({}), so the parallel \
-             attempts (which run one level deeper) cannot be spawned. Do this work yourself.",
-            orch.config.max_depth
-        ));
+        return ToolOutcome::failed(
+            ToolFailure::LimitExceeded,
+            format!(
+                "cannot speculate: you are at the maximum delegation depth ({}), so the parallel \
+                 attempts (which run one level deeper) cannot be spawned. Do this work yourself.",
+                orch.config.max_depth
+            ),
+        );
     }
 
     // The speculation lifecycle rides on this agent's stream, scoped to the issue when there is one.
@@ -2532,7 +2920,13 @@ async fn handle_speculate(
     // Fan out K attempts, each in its own isolated worktree left in place for judging.
     let mut fanned: Vec<SpeculationAttempt> = Vec::with_capacity(attempts as usize);
     for i in 0..attempts as usize {
-        let brief = build_attempt_brief(&base_brief, i, attempts as usize, approaches.get(i));
+        let brief = build_attempt_brief(
+            &base_brief,
+            i,
+            attempts as usize,
+            approaches.get(i),
+            orch.code.enabled,
+        );
         let slot = slots
             .get(i)
             .map(String::as_str)
@@ -2559,20 +2953,24 @@ async fn handle_speculate(
                 // child without one is only defensively possible. Wind down and abort.
                 _ => {
                     abort_speculation(sub, &orch, emitter, &fanned).await;
-                    return ToolOutcome::error(
+                    return ToolOutcome::failed(
+                        ToolFailure::Unavailable,
                         "cannot speculate: an attempt could not be given an isolated worktree; the \
-                         speculation was aborted and the workspace left unchanged."
-                            .to_string(),
+                         speculation was aborted and the workspace left unchanged.",
                     );
                 }
             },
             Err(err) => {
                 abort_speculation(sub, &orch, emitter, &fanned).await;
-                return ToolOutcome::error(format!(
-                    "cannot speculate: attempt {} of {attempts} could not be dispatched: {err} The \
-                     speculation was aborted and the workspace left unchanged.",
-                    i + 1
-                ));
+                let failure = err.failure;
+                return ToolOutcome::failed(
+                    failure,
+                    format!(
+                        "cannot speculate: attempt {} of {attempts} could not be dispatched: {err} \
+                         The speculation was aborted and the workspace left unchanged.",
+                        i + 1
+                    ),
+                );
             }
         }
     }
@@ -2603,7 +3001,7 @@ async fn handle_speculate(
     let candidates: Vec<usize> = fanned
         .iter()
         .enumerate()
-        .filter(|(_, a)| a.status == "completed" && !a.diff.trim().is_empty())
+        .filter(|(_, a)| a.status == STATUS_COMPLETED && !a.diff.trim().is_empty())
         .map(|(i, _)| i)
         .collect();
 
@@ -2615,10 +3013,13 @@ async fn handle_speculate(
             None,
             Some("no attempt produced usable work to merge".to_string()),
         ));
-        return ToolOutcome::error(format!(
-            "The speculation ran {attempts} attempt(s) but none produced usable work to merge (each \
-             failed, timed out, or made no changes). The workspace is unchanged."
-        ));
+        return ToolOutcome::failed(
+            ToolFailure::Conflict,
+            format!(
+                "The speculation ran {attempts} attempt(s) but none produced usable work to merge \
+                 (each failed, timed out, or made no changes). The workspace is unchanged."
+            ),
+        );
     }
 
     // Judge the candidates and pick the winner. A lone candidate needs no judge.
@@ -2628,7 +3029,7 @@ async fn handle_speculate(
             "only one attempt produced usable work".to_string(),
         )
     } else {
-        let judge_brief = build_judge_brief(&base_brief, &fanned, &candidates);
+        let judge_brief = build_judge_brief(&base_brief, &fanned, &candidates, orch.code.enabled);
         let judge_slot = orch.judge_slot();
         match dispatch_judge(
             sub,
@@ -2662,10 +3063,13 @@ async fn handle_speculate(
                     None,
                     Some(format!("the judge did not complete: {err}")),
                 ));
-                return ToolOutcome::error(format!(
-                    "The speculation's judge did not render a verdict ({err}), so no attempt was \
-                     merged. The workspace is unchanged."
-                ));
+                return ToolOutcome::failed(
+                    ToolFailure::IoError,
+                    format!(
+                        "The speculation's judge did not render a verdict ({err}), so no attempt \
+                         was merged. The workspace is unchanged."
+                    ),
+                );
             }
         }
     };
@@ -2692,24 +3096,37 @@ async fn handle_speculate(
                 Some(winner_id.clone()),
                 None,
             ));
+            let summary = format!(
+                "Ran best-of-{attempts}: attempt `{winner_id}` won ({rationale}) and its work was \
+                 merged into your workspace; the other attempts were discarded. Continue from the \
+                 merged result."
+            );
             ToolOutcome::ok(
-                format!(
-                    "Ran best-of-{attempts}: attempt `{winner_id}` won ({rationale}) and its work \
-                     was merged into your workspace; the other attempts were discarded. Continue \
-                     from the merged result."
-                ),
+                summary.clone(),
                 format!("speculation merged winner `{winner_id}` of {attempts}"),
             )
+            // The structured half: `speculate` never reaches a [`Tool`](crate::tools::Tool), so
+            // this is its only producer. `attempts` is the clamped count that actually ran, not
+            // the one that was asked for.
+            .with_data(ToolData::Speculation(SpeculationData {
+                winner_id,
+                attempts: u8::try_from(attempts).unwrap_or(u8::MAX),
+                rationale: Some(rationale),
+                summary,
+            }))
         }
         Err(err) => {
             emitter.emit(log(
                 "warn",
                 format!("the speculation winner `{winner_id}` could not be merged back: {err}."),
             ));
-            ToolOutcome::error(format!(
-                "The speculation chose attempt `{winner_id}`, but its work could not be merged back \
-                 into your workspace: {err}. The workspace is unchanged."
-            ))
+            ToolOutcome::failed(
+                ToolFailure::Conflict,
+                format!(
+                    "The speculation chose attempt `{winner_id}`, but its work could not be merged \
+                     back into your workspace: {err}. The workspace is unchanged."
+                ),
+            )
         }
     }
 }
@@ -2731,13 +3148,30 @@ async fn abort_speculation(
 /// Build one [attempt](SpeculationAttempt)'s brief for a [speculative execution](handle_speculate):
 /// the shared task, a note that it is one of K independent attempts (judged best-of-K), and the
 /// attempt's assigned approach hint when one was given.
-fn build_attempt_brief(base: &str, index: usize, k: usize, approach: Option<&String>) -> String {
+///
+/// `code` swaps the ending clause, because an attempt that does not reach `completed` is filtered
+/// out of the candidate set entirely — a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE)
+/// speculation told to "stop" would produce K attempts and no candidates.
+fn build_attempt_brief(
+    base: &str,
+    index: usize,
+    k: usize,
+    approach: Option<&String>,
+    code: bool,
+) -> String {
+    let ending = if code {
+        "When you are done, call `finish()` from inside a program with a short summary of what you \
+         built and why it is a strong solution"
+    } else {
+        "When you are done, stop with a short summary of what you built and why it is a strong \
+         solution"
+    };
     let mut brief = format!(
         "{base}\n\n## Speculative attempt {} of {k}\nYou are ONE of {k} independent attempts at this \
          exact task, each running in its own isolated copy of the workspace (you cannot see the \
          others, and they cannot see you). Produce your best, complete implementation of the task \
-         above. When you are done, stop with a short summary of what you built and why it is a strong \
-         solution — a judge will compare all attempts and keep only the best one, discarding the rest.",
+         above. {ending} — a judge will compare all attempts and keep only the best one, discarding \
+         the rest.",
         index + 1
     );
     if let Some(approach) = approach.map(String::as_str).filter(|a| !a.is_empty()) {
@@ -2753,7 +3187,15 @@ fn build_attempt_brief(base: &str, index: usize, k: usize, approach: Option<&Str
 /// candidate attempt's summary and diff, and the verdict protocol [`parse_judge_verdict`] expects.
 /// The candidates are renumbered 1..N (the judge does not see the discarded attempts), and the caller
 /// maps the judge's pick back to the original attempt index.
-fn build_judge_brief(task: &str, attempts: &[SpeculationAttempt], candidates: &[usize]) -> String {
+///
+/// `code` swaps the ending clause: a judge that never reaches `completed` renders no verdict, and a
+/// speculation with no verdict merges nothing at all.
+fn build_judge_brief(
+    task: &str,
+    attempts: &[SpeculationAttempt],
+    candidates: &[usize],
+    code: bool,
+) -> String {
     let n = candidates.len();
     let mut brief = format!(
         "You are the **judge** of a best-of-{n} speculative execution. {n} independent attempts each \
@@ -2778,12 +3220,22 @@ fn build_judge_brief(task: &str, attempts: &[SpeculationAttempt], candidates: &[
             label + 1
         ));
     }
-    brief.push_str(&format!(
-        "\n\n## Your verdict\nCompare the {n} attempts against the task's completion criteria — \
-         correctness, completeness, and quality — and pick the single best one. End your final \
-         message with exactly one line:\n`SPECULATION JUDGE: WINNER <n>`\nwhere <n> is the attempt \
-         number (1–{n}) you chose, followed by a one-sentence rationale for your choice."
-    ));
+    if code {
+        brief.push_str(&format!(
+            "\n\n## Your verdict\nCompare the {n} attempts against the task's completion criteria — \
+             correctness, completeness, and quality — and pick the single best one. End your \
+             session by calling `finish()` from inside a program whose summary begins with exactly \
+             one line:\n`SPECULATION JUDGE: WINNER <n>`\nwhere <n> is the attempt number (1–{n}) \
+             you chose — followed by a one-sentence rationale for your choice."
+        ));
+    } else {
+        brief.push_str(&format!(
+            "\n\n## Your verdict\nCompare the {n} attempts against the task's completion criteria — \
+             correctness, completeness, and quality — and pick the single best one. End your final \
+             message with exactly one line:\n`SPECULATION JUDGE: WINNER <n>`\nwhere <n> is the \
+             attempt number (1–{n}) you chose, followed by a one-sentence rationale for your choice."
+        ));
+    }
     brief
 }
 
@@ -2807,7 +3259,7 @@ async fn dispatch_judge(
         .map_err(|err| format!("the judge could not be dispatched: {err}"))?;
     let collected = await_children(sub, emitter, std::slice::from_ref(&judge.id)).await;
     match collected.into_iter().next() {
-        Some((_, Some(ret))) if ret.status == "completed" => parse_judge_verdict(&ret.summary),
+        Some((_, Some(ret))) if ret.status == STATUS_COMPLETED => parse_judge_verdict(&ret.summary),
         Some((_, Some(ret))) => Err(format!("the judge {} without a verdict", ret.status)),
         _ => Err("the judge produced no result".to_string()),
     }
@@ -3106,7 +3558,7 @@ async fn process_review_gate(
         baseline.clone(),
     ));
     let diff = orch.run_diff();
-    let review_brief = build_review_brief(&orch.prompt, &diff);
+    let review_brief = build_review_brief(&orch.prompt, &diff, orch.code.enabled);
     let reviewer_slot = orch.reviewer_slot();
     let verdict = match dispatch_reviewer(sub, spawner, emitter, None, review_brief, &reviewer_slot)
         .await
@@ -3313,18 +3765,22 @@ async fn run_workflow(
 ) -> ToolOutcome {
     let stages = match parse_workflow_stages(args) {
         Ok(stages) => stages,
-        Err(err) => return ToolOutcome::error(err),
+        Err(err) => return ToolOutcome::failed(ToolFailure::InvalidArgument, err),
     };
 
     // Depth cap up front: every fanned-out agent is `spawner.depth + 1`, so an agent already at the
     // max depth cannot run a workflow at all — refuse the whole thing rather than failing on the
     // first stage's first dispatch.
     if spawner.depth >= sub.orch.config.max_depth {
-        return ToolOutcome::error(format!(
-            "cannot run a workflow: you are at the maximum delegation depth ({}), so a workflow's \
-             subagents (which run one level deeper) cannot be spawned. Do this work yourself.",
-            sub.orch.config.max_depth
-        ));
+        return ToolOutcome::failed(
+            ToolFailure::LimitExceeded,
+            format!(
+                "cannot run a workflow: you are at the maximum delegation depth ({}), so a \
+                 workflow's subagents (which run one level deeper) cannot be spawned. Do this work \
+                 yourself.",
+                sub.orch.config.max_depth
+            ),
+        );
     }
 
     let workflow_id = sub.orch.next_workflow_id();
@@ -3338,21 +3794,27 @@ async fn run_workflow(
             Some(items) => items.clone(),
             None => {
                 if index == 0 {
-                    return ToolOutcome::error(format!(
-                        "workflow stage `{}` (the first stage) has no `items` to fan out over; the \
-                         first stage must list its items.",
-                        stage.name
-                    ));
+                    return ToolOutcome::failed(
+                        ToolFailure::InvalidArgument,
+                        format!(
+                            "workflow stage `{}` (the first stage) has no `items` to fan out over; \
+                             the first stage must list its items.",
+                            stage.name
+                        ),
+                    );
                 }
                 prior_results.clone()
             }
         };
         if items.is_empty() {
-            return ToolOutcome::error(format!(
-                "workflow stage `{}` has no items to fan out over (the previous stage produced no \
-                 results to feed it).",
-                stage.name
-            ));
+            return ToolOutcome::failed(
+                ToolFailure::InvalidArgument,
+                format!(
+                    "workflow stage `{}` has no items to fan out over (the previous stage produced \
+                     no results to feed it).",
+                    stage.name
+                ),
+            );
         }
 
         // The prior stage's results, rendered once for this stage's `{{prior}}` substitutions.
@@ -3385,10 +3847,14 @@ async fn run_workflow(
                         items.len(),
                         GgWorkflowPhase::Finished,
                     ));
-                    return ToolOutcome::error(format!(
-                        "workflow stage `{}` could not dispatch a subagent: {err}",
-                        stage.name
-                    ));
+                    let failure = err.failure;
+                    return ToolOutcome::failed(
+                        failure,
+                        format!(
+                            "workflow stage `{}` could not dispatch a subagent: {err}",
+                            stage.name
+                        ),
+                    );
                 }
             }
         }
@@ -3427,6 +3893,15 @@ async fn run_workflow(
         ),
         format!("ran workflow `{workflow_id}` ({} stage(s))", stages.len()),
     )
+    // The structured half: the workflow driver is the only producer of it, since `run_workflow`
+    // never reaches a [`Tool`](crate::tools::Tool). The final stage's results are handed over as a
+    // list so a [code program](crate::sandbox) can feed them straight into whatever it does next,
+    // instead of re-parsing the `[result N]` blocks out of the prose.
+    .with_data(ToolData::Workflow(WorkflowData {
+        workflow_id,
+        stages: saturating_u32(stages.len()),
+        results: prior_results,
+    }))
 }
 
 /// Parse `run_workflow`'s `stages` argument into [`WorkflowStageSpec`]s, or a model-facing error
@@ -3593,10 +4068,28 @@ struct LoopEnd {
     /// The [slot](GgSlotBinding) the agent ran on, so the orchestrator can attribute this
     /// usage/cost to the right slot in the [per-slot accounting](SlotAccounting).
     slot: String,
-    /// The agent's **final assistant message** — the last natural-language text it produced. For a
-    /// subagent this is its [return value](AgentReturn) to its spawner; `None` when the loop
-    /// produced no assistant text (for example an immediate timeout).
+    /// The agent's **final word** — its [return value](AgentReturn) to its spawner, the run's last
+    /// text, and what a Code Review verdict or a speculation judge's pick is parsed out of.
+    ///
+    /// It is filled by two different rules, because the two execution modes mean two different
+    /// things by "final":
+    ///
+    /// * **tool calling** — the last natural-language assistant message the agent produced, exactly
+    ///   as it always has been. `None` when the loop produced no assistant text at all (an immediate
+    ///   timeout, say).
+    /// * **[responses-as-code](CAPABILITY_RESPONSES_AS_CODE)** — the summary the program passed to
+    ///   [`finish`](FINISH_FUNCTION) when the agent finished, and otherwise a
+    ///   [status line](stopped_text) gg wrote itself. It is never the last assistant message,
+    ///   because under that protocol every assistant message is a page of TypeScript: a spawner, a
+    ///   run record and a judge's brief would each be handed program source where an answer belongs.
     final_text: Option<String>,
+    /// The [execution ceiling](RunLimits) that stopped this agent, when one did.
+    ///
+    /// Present for all five ceilings, including the two whose terminal statuses predate this
+    /// vocabulary (`exhausted`, `timed_out`) — so "which ceiling stopped it, at what value?" is one
+    /// question with one answer rather than three parallel ways of inferring it from a status. The
+    /// **root's** breach is what a run records as its own; a subagent's is its alone.
+    limit: Option<GgLimitBreach>,
 }
 
 impl LoopEnd {
@@ -3629,8 +4122,17 @@ impl Agent {
     /// Each turn the offered [`registry`](ToolRegistry) definitions are handed to the
     /// model; any tool calls the turn returns are dispatched against `context` and their
     /// results fed back on the next turn, until the model stops calling tools, a bound is
-    /// hit, or a turn errors. A `deadline` (when set) ends the loop with `"timed_out"` at
-    /// the next turn boundary once passed.
+    /// hit, or a turn errors. Under [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) the model is
+    /// offered no tool definitions at all and each turn is a [program](run_code_turn) instead; the
+    /// two modes share this one loop, and every ceiling, every gate and every piece of telemetry
+    /// below is deliberately written once for both.
+    ///
+    /// `limits` carries every [ceiling](RunLimits) the agent is bounded by — the turn count, the
+    /// run's wall-clock deadline, the two error ceilings, and the run-wide spend the cost ceiling is
+    /// measured against. Each is checked at a turn boundary, never mid-turn: a turn is the loop's
+    /// atomic unit, and interrupting one would leave a half-applied tool batch behind and, on an
+    /// OpenAI-shaped provider, an assistant `tool_calls` message with no `tool` message answering
+    /// it.
     ///
     /// The agent's resources are passed in rather than owned by the struct: the `registry`,
     /// the capability runtimes (`skills`/`memories`/`tasks`/`board`/`planning`), the
@@ -3652,8 +4154,7 @@ impl Agent {
         registry: &ToolRegistry,
         tool_ctx: &ToolContext,
         emitter: &Emitter,
-        max_turns: usize,
-        deadline: Option<Instant>,
+        limits: LimitsSetup,
         context_setup: ContextSetup,
         compaction: CompactionSetup,
         amc: AmcSetup,
@@ -3666,11 +4167,11 @@ impl Agent {
         read_policy: ReadPolicy,
         code_reviews: bool,
         speculative: bool,
-        responses_as_code: bool,
-        rac_limits: RacLimits,
+        code: CodeSetup,
         mut subagents: Option<SubagentContext>,
         replay: Option<Arc<GgRecorder>>,
     ) -> LoopEnd {
+        let max_turns = limits.limits.max_turns;
         // Code Reviews gate `complete_issue` only when the capability is on *and* this agent has the
         // delegation machinery to run a reviewer (i.e. `subagents` is `Some`); otherwise
         // `complete_issue` accepts issues directly. Computed once here since `subagents` never
@@ -3705,7 +4206,14 @@ impl Agent {
             vision: &tool_ctx.vision,
             code_reviews: code_reviews_active,
             speculative: speculative_active,
-            responses_as_code,
+            responses_as_code: code.enabled,
+            // A subagent renders this same prompt, and the ending section has to say what `finish`
+            // actually ends *for the reader*: a root agent's summary is the run's last word, a
+            // delegated worker's is the answer it hands back. A worker told "this ends the run" has
+            // a strong reason not to call it — and a worker that never calls it never returns a
+            // verdict.
+            delegated: self.depth > 0,
+            fences_are_stripped: code.healing.enabled(HealingStrategy::StripFences),
         }));
         context.push_user_prompt(prompt);
 
@@ -3722,30 +4230,57 @@ impl Agent {
 
         let mut total_tokens = TokenCounts::default();
         let mut total_cost: Option<Cost> = None;
-        // The last natural-language assistant message, carried out as this agent's final text (a
-        // subagent's return value to its spawner).
+        // The last natural-language assistant message. It is this agent's final text on the
+        // tool-calling path; in code mode every assistant message is program source, so that path
+        // never reads it — see [`LoopEnd::final_text`].
         let mut last_text: Option<String> = None;
+        // What this agent's last code turn produced, in gg's own words — the one line a stopped
+        // code-mode agent returns to its spawner in place of a page of TypeScript. `None` until it
+        // has taken a code turn, which is also the honest answer for an agent stopped before it
+        // could take one.
+        let mut last_report: Option<String> = None;
         // Plan mode is loop state: while `true`, the offered toolset is restricted to read-only
         // tools (plus `submit_plan`). It flips on a successful `enter_plan_mode` and back off once a
         // submitted plan has seeded the fresh implementation context. Only meaningful when planning
         // is enabled.
         let mut in_plan_mode = false;
+        // This agent's error accounting against the run's ceilings. One per agent, owned outright,
+        // because "consecutive" and "the last N turns" are only definable within one agent's turn
+        // sequence — see [`crate::limits`].
+        let mut agent_limits = AgentLimits::new(limits.limits);
 
         for turn in 0..max_turns {
-            // Stop cleanly at a turn boundary once the self-imposed budget is spent.
-            if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
-                emitter.emit(log(
-                    "warn",
-                    format!("wall-clock budget exceeded after {turn} turn(s); stopping."),
-                ));
-                return LoopEnd {
-                    status: "timed_out",
-                    turns: turn,
-                    tokens: total_tokens,
-                    cost: total_cost,
-                    slot: self.slot.clone(),
-                    final_text: last_text,
-                };
+            // Stop cleanly at a turn boundary once the run's wall-clock budget is spent. Nothing is
+            // in flight here, so nothing is abandoned mid-turn.
+            if let Some(breach) = limits.check_deadline(&self.id, agent_limits.turns_recorded()) {
+                return self.stop_on_limit(
+                    emitter,
+                    breach,
+                    turn,
+                    total_tokens,
+                    total_cost,
+                    code.enabled,
+                    last_report.as_deref(),
+                    last_text,
+                );
+            }
+
+            // The run's cost ceiling, checked on exactly the same terms and at exactly the same
+            // point as the deadline above — one rule, two run-wide ceilings. It bounds **starting
+            // new work**: the turn that crossed the line has already completed and already been paid
+            // for, which is why the breach records the spend already accumulated rather than the
+            // threshold.
+            if let Some(breach) = limits.check_cost(&self.id, agent_limits.turns_recorded()) {
+                return self.stop_on_limit(
+                    emitter,
+                    breach,
+                    turn,
+                    total_tokens,
+                    total_cost,
+                    code.enabled,
+                    last_report.as_deref(),
+                    last_text,
+                );
             }
 
             emitter.emit(GgTelemetryKind::TurnStarted {});
@@ -3843,7 +4378,7 @@ impl Agent {
             // the system prompt, and each program tool call is bridged to the real registry). In the
             // ordinary tool-calling mode the offered set is the intersection of every active
             // restriction, so what the model is shown and what it may run agree.
-            let tools: Vec<ToolDefinition> = if responses_as_code {
+            let tools: Vec<ToolDefinition> = if code.enabled {
                 Vec::new()
             } else {
                 all_tools
@@ -3891,20 +4426,36 @@ impl Agent {
                         "error",
                         format!("model turn {turn} failed — {kind}: {err}"),
                     ));
-                    // An auth failure is the run's credential being refused, not the
-                    // model failing at its work, so it ends the session under its own
-                    // status — which the session runner turns into a launch failure.
+                    // The turn is recorded before the loop leaves, so the accounting never drifts
+                    // from the number of model calls the run made — and it can never breach a
+                    // ceiling, because the session is already ending on the next line. A model API
+                    // failure stays fatal on its first occurrence: the client has already retried
+                    // with backoff over every retryable class, so counting this one and looping
+                    // again would be a second, undocumented retry layer with a worse backoff and no
+                    // jitter.
+                    let _ =
+                        agent_limits.record(TurnOutcome::Error(TurnErrorKind::ModelApi), &self.id);
+                    let status = if err.is_auth_failure() {
+                        // An auth failure is the run's credential being refused, not the model
+                        // failing at its work, so it ends the session under its own status — which
+                        // the session runner turns into a launch failure.
+                        STATUS_AUTH_ERROR
+                    } else {
+                        STATUS_MODEL_ERROR
+                    };
                     return LoopEnd {
-                        status: if err.is_auth_failure() {
-                            STATUS_AUTH_ERROR
-                        } else {
-                            STATUS_MODEL_ERROR
-                        },
-                        turns: turn,
+                        status,
+                        turns: turn + 1,
                         tokens: total_tokens,
                         cost: total_cost,
                         slot: self.slot.clone(),
-                        final_text: last_text,
+                        final_text: ended_text(
+                            code.enabled,
+                            status,
+                            last_report.as_deref(),
+                            last_text,
+                        ),
+                        limit: None,
                     };
                 }
             };
@@ -3912,6 +4463,10 @@ impl Agent {
             record_usage(&response, emitter);
             total_tokens = add_counts(total_tokens, response.usage);
             total_cost = add_cost(total_cost, response.cost);
+            // The same figure, folded into the run-wide total every agent's cost ceiling reads. Fed
+            // here rather than at the agent's end, because a subagent forty turns deep must
+            // contribute to the run's spend while it is still running.
+            limits.spend.add(response.cost);
 
             if let Some(text) = &response.text {
                 emitter.emit(GgTelemetryKind::AssistantMessage { text: text.clone() });
@@ -3919,97 +4474,155 @@ impl Agent {
             }
 
             // Record the assistant turn (text + any tool calls) into the context.
-            context.push_assistant(response.text.clone(), response.tool_calls.clone());
+            //
+            // In responses-as-code mode a turn *is* a program, and the model was offered no native
+            // tool definitions at all — so a `tool_calls` it emitted anyway (a reflex some models
+            // bring from their tool-use training) is never dispatched and never answered. Keeping
+            // it would leave an assistant `tool_calls` entry with no `tool` message following it,
+            // which an OpenAI-shaped provider rejects for the whole request on every later turn. It
+            // is therefore dropped from the window and named in a `warn`, so the anomaly is
+            // measurable rather than invisible.
+            if code.enabled && !response.tool_calls.is_empty() {
+                emitter.emit(log(
+                    "warn",
+                    format!(
+                        "the model requested {} native tool call(s) ({}) on a responses-as-code \
+                         turn, which offers none; they are ignored — the turn's program is what \
+                         runs.",
+                        response.tool_calls.len(),
+                        response
+                            .tool_calls
+                            .iter()
+                            .map(|call| call.name.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", "),
+                    ),
+                ));
+            }
+            context.push_assistant(
+                response.text.clone(),
+                if code.enabled {
+                    Vec::new()
+                } else {
+                    response.tool_calls.clone()
+                },
+            );
 
-            // Responses-as-code turn: the model was offered no native tools, so it emits a program
-            // (a `gg-script` fenced code block) instead of tool calls. Extract the program and run
-            // it in the wasmtime sandbox — bridging every tool call it makes to the real toolset
-            // (and, for a delegation tool, the scheduler) — then feed the program's result back as
-            // the turn's outcome and continue the loop. A turn with **no** program is the model's
-            // way of finishing, exactly as an empty tool-call turn ends a tool-calling session.
-            if responses_as_code {
-                match response.text.as_deref().and_then(extract_program) {
-                    None => {
+            // Responses-as-code turn: the model was offered no native tools, so its **whole reply**
+            // is a TypeScript program. Heal it, run it in the wasmtime sandbox — bridging every
+            // typed call to the real toolset (and, for a delegation tool, the scheduler) — and act
+            // on what the turn asks for. There is no implicit ending here: a session under this
+            // capability ends only when a program calls `finish`, or when a ceiling stops the run.
+            if code.enabled {
+                let turn_ctx = CodeTurn {
+                    spawner: self,
+                    registry,
+                    tool_ctx,
+                    board: &board,
+                    memories: &memories,
+                    tasks: &tasks,
+                    planning: &planning,
+                    fsm: &fsm,
+                    amc: &amc,
+                    emitter,
+                    replay: replay.as_ref(),
+                    fsm_active,
+                    in_plan_mode,
+                    code_reviews_active,
+                    speculative_active,
+                };
+                let decision = run_code_turn(
+                    response.text.as_deref().unwrap_or_default(),
+                    !response.tool_calls.is_empty(),
+                    &code,
+                    limits.deadline,
+                    &turn_ctx,
+                    &mut context,
+                    &mut skills,
+                    &mut subagents,
+                )
+                .await;
+                // Every code turn is recorded, including the one that finishes and the one that
+                // ends fatally, so the rate window is fed uniformly and the accounting cannot drift
+                // from the number of model calls made. Neither of those two ever breaches.
+                let breach = agent_limits.record(decision.turn_outcome(), &self.id);
+                match decision {
+                    CodeTurnOutcome::Finished { summary } => {
                         return LoopEnd {
-                            status: "completed",
+                            status: STATUS_COMPLETED,
                             turns: turn + 1,
                             tokens: total_tokens,
                             cost: total_cost,
                             slot: self.slot.clone(),
-                            final_text: last_text,
+                            final_text: Some(summary),
+                            limit: None,
                         };
                     }
-                    Some(source) => {
-                        let (result, tool_calls) = run_code_program(
-                            &source,
-                            rac_limits,
-                            self,
-                            registry,
-                            tool_ctx,
-                            &board,
-                            &memories,
-                            &tasks,
-                            &planning,
-                            &fsm,
-                            fsm_active,
-                            in_plan_mode,
-                            code_reviews_active,
-                            speculative_active,
-                            &mut subagents,
-                            emitter,
-                            replay.as_ref(),
-                        )
-                        .await;
-                        match result {
-                            Ok(run) => {
-                                emitter.emit(GgTelemetryKind::CodeExecution {
-                                    ok: run.outcome.ok,
-                                    tool_calls,
-                                    fuel_used: Some(run.fuel_consumed),
-                                    error: run.outcome.error.clone(),
-                                });
-                                context.push(
-                                    GgContextSource::ToolOutput,
-                                    Retention::Ephemeral,
-                                    Message::user(format_code_result_feedback(&run)),
-                                );
-                            }
-                            Err(err) => {
-                                // A sandbox failure (fuel/memory ceiling, a trap) is surfaced as the
-                                // turn's outcome and fed back so the model can adapt — never a crash
-                                // of the run.
-                                emitter.emit(GgTelemetryKind::CodeExecution {
-                                    ok: false,
-                                    tool_calls,
-                                    fuel_used: None,
-                                    error: Some(err.to_string()),
-                                });
-                                emitter.emit(log(
-                                    "warn",
-                                    format!(
-                                        "the code program could not complete in the sandbox: {err}"
-                                    ),
-                                ));
-                                context.push(
-                                    GgContextSource::ToolOutput,
-                                    Retention::Ephemeral,
-                                    Message::user(format_code_error_feedback(&err)),
-                                );
-                            }
+                    CodeTurnOutcome::Fatal { message, .. } => {
+                        emitter.emit(log("error", message));
+                        return LoopEnd {
+                            status: STATUS_MODEL_ERROR,
+                            turns: turn + 1,
+                            tokens: total_tokens,
+                            cost: total_cost,
+                            slot: self.slot.clone(),
+                            final_text: ended_text(
+                                true,
+                                STATUS_MODEL_ERROR,
+                                last_report.as_deref(),
+                                last_text,
+                            ),
+                            limit: None,
+                        };
+                    }
+                    CodeTurnOutcome::Continue {
+                        feedback,
+                        images,
+                        report,
+                        ..
+                    } => {
+                        last_report = Some(report);
+                        // The turn's feedback is pushed **before** the breach return, so a stopped
+                        // run's context still contains everything the turn produced. The program's
+                        // pictures ride on it, which is what restores vision inside a program: a
+                        // `readFile` of a reference mockup shows the model the picture, exactly as
+                        // the native path does.
+                        context.push(
+                            GgContextSource::ToolOutput,
+                            Retention::Ephemeral,
+                            Message::user(feedback).with_images(images),
+                        );
+                        if let Some(breach) = breach {
+                            return self.stop_on_limit(
+                                emitter,
+                                breach,
+                                turn + 1,
+                                total_tokens,
+                                total_cost,
+                                true,
+                                last_report.as_deref(),
+                                last_text,
+                            );
                         }
                         continue;
                     }
                 }
             }
 
+            // The **tool-calling** mode's termination rule, untouched: a turn that requested no
+            // tools is the model saying it is done. It is reached only when the code branch above
+            // did not run, and the responses-as-code protocol has no equivalent — every reply there
+            // is a program, so there is no shape of reply that could mean "finished".
             if response.tool_calls.is_empty() {
+                let _ = agent_limits.record(TurnOutcome::Finished, &self.id);
                 return LoopEnd {
-                    status: "completed",
+                    status: STATUS_COMPLETED,
                     turns: turn + 1,
                     tokens: total_tokens,
                     cost: total_cost,
                     slot: self.slot.clone(),
                     final_text: last_text,
+                    limit: None,
                 };
             }
 
@@ -4033,11 +4646,14 @@ impl Agent {
                 // / the scheduler / the agent tree, which the tools cannot reach.
                 let mut outcome =
                     if planning.offers_planning() && !plan_mode_offers(&call.name, in_plan_mode) {
-                        ToolOutcome::error(plan_mode_refusal(&call.name, in_plan_mode))
+                        ToolOutcome::failed(
+                            ToolFailure::Refused,
+                            plan_mode_refusal(&call.name, in_plan_mode),
+                        )
                     } else if fsm_active && !fsm.offers(&call.name) {
                         // The FSM's current state withholds this tool this turn (a read-only plan state,
                         // or a tool that is not the state's exit) — refuse it with guidance.
-                        ToolOutcome::error(fsm_refusal(&call.name, &fsm))
+                        ToolOutcome::failed(ToolFailure::Refused, fsm_refusal(&call.name, &fsm))
                     } else if fsm_active && is_fsm_tool(&call.name) {
                         // Drive the state machine: check the current state's transition guard, move on
                         // when it holds (and — for `review-gated` — run the Code Review that gates the
@@ -4194,51 +4810,197 @@ impl Agent {
                     plan: Some(plan),
                 });
             }
+
+            // The tool-calling turn is done: every requested call was dispatched and answered, and
+            // every state transition the turn asked for has been applied. Recorded **last** for
+            // exactly that reason — a stop must not land between a plan submission and the context
+            // reset that completes it — and recorded at all because a `Progressed` turn can be the
+            // one that first *fills* the error-rate window, and a window that becomes judgeable at
+            // three errors in four must breach then rather than waiting for a fourth failure.
+            if let Some(breach) = agent_limits.record(TurnOutcome::Progressed, &self.id) {
+                return self.stop_on_limit(
+                    emitter,
+                    breach,
+                    turn + 1,
+                    total_tokens,
+                    total_cost,
+                    code.enabled,
+                    last_report.as_deref(),
+                    last_text,
+                );
+            }
         }
 
-        emitter.emit(log(
-            "warn",
-            format!("reached the {max_turns}-turn ceiling without the model finishing."),
-        ));
+        // The turn ceiling. It keeps its own long-standing terminal status, and now also records
+        // the breach every other ceiling records, so "which ceiling stopped this run?" has one
+        // answer rather than one per status.
+        let breach = GgLimitBreach {
+            limit: GgLimitKind::Turns,
+            threshold: max_turns as f64,
+            observed: max_turns as f64,
+            turns: agent_limits.turns_recorded(),
+            agent_id: self.id.clone(),
+            window: None,
+        };
+        self.stop_on_limit(
+            emitter,
+            breach,
+            max_turns,
+            total_tokens,
+            total_cost,
+            code.enabled,
+            last_report.as_deref(),
+            last_text,
+        )
+    }
+
+    /// End this agent's loop on a breached [ceiling](RunLimits) — the **one** place any of the five
+    /// does so.
+    ///
+    /// It emits the `warn` line naming what was breached and at what value, then the structured
+    /// [`LimitExceeded`](GgTelemetryKind::LimitExceeded) event a study groups by, then returns the
+    /// [`LoopEnd`] carrying the breach. Nothing is aborted: a cost or deadline breach is detected
+    /// *before* a turn, so nothing is in flight, and an error breach is detected *after* the turn's
+    /// outcome is fully recorded, so its feedback is already in the context and its telemetry has
+    /// already streamed. **The workspace is left exactly as the last completed turn left it** — gg
+    /// rolls nothing back.
+    ///
+    /// The terminal status comes from the breach rather than the caller, because the mapping is a
+    /// property of the ceiling: the turn and runtime ceilings keep the statuses they have always
+    /// had, and the three new ones share [`STATUS_LIMIT_EXCEEDED`]. A caller that chose its own
+    /// could disagree with the breach it is carrying.
+    #[allow(clippy::too_many_arguments)]
+    fn stop_on_limit(
+        &self,
+        emitter: &Emitter,
+        breach: GgLimitBreach,
+        turns: usize,
+        tokens: TokenCounts,
+        cost: Option<Cost>,
+        code_mode: bool,
+        last_report: Option<&str>,
+        last_text: Option<String>,
+    ) -> LoopEnd {
+        let status = status_for_breach(breach.limit);
+        emitter.emit(log("warn", breach_message(&breach)));
+        emitter.emit(GgTelemetryKind::LimitExceeded {
+            breach: breach.clone(),
+        });
         LoopEnd {
-            status: "exhausted",
-            turns: max_turns,
-            tokens: total_tokens,
-            cost: total_cost,
+            status,
+            turns,
+            tokens,
+            cost,
             slot: self.slot.clone(),
-            final_text: last_text,
+            final_text: ended_text(code_mode, status, last_report, last_text),
+            limit: Some(breach),
         }
     }
 }
 
-/// The resolved per-run loop bounds, read from the capability set's params.
-struct LoopBounds {
-    /// The turn ceiling.
-    max_turns: usize,
-    /// A self-imposed wall-clock budget in seconds, when configured.
-    max_runtime_secs: Option<u64>,
-}
-
-/// Resolve the loop bounds from `set`'s capability params, falling back to the
-/// defaults. `maxTurns`/`maxRuntimeSecs` may live on any capability; the first that
-/// carries a positive integer wins. Pure, so the resolution is unit tested directly.
-fn resolve_bounds(set: &GgCapabilitySet) -> LoopBounds {
-    let max_turns = param_u64(set, PARAM_MAX_TURNS)
-        .filter(|&n| n > 0)
-        .map(|n| n as usize)
-        .unwrap_or(DEFAULT_MAX_TURNS);
-    let max_runtime_secs = param_u64(set, PARAM_MAX_RUNTIME_SECS).filter(|&n| n > 0);
-    LoopBounds {
-        max_turns,
-        max_runtime_secs,
+/// The terminal status one breached [ceiling](GgLimitKind) ends an agent under.
+///
+/// Two of the five keep statuses that predate this vocabulary. That is not inconsistency but
+/// compatibility: `exhausted` and `timed_out` are recorded on every historical run and are what the
+/// console, the aggregation facet and `core`'s run-state mapping already read, so re-labelling them
+/// would rewrite the meaning of runs nobody re-ran. Which ceiling stopped a run is answered by the
+/// [breach](GgLimitBreach), which every one of the five now carries.
+fn status_for_breach(limit: GgLimitKind) -> &'static str {
+    match limit {
+        GgLimitKind::Turns => STATUS_EXHAUSTED,
+        GgLimitKind::Runtime => STATUS_TIMED_OUT,
+        GgLimitKind::ConsecutiveErrors | GgLimitKind::ErrorRate | GgLimitKind::Cost => {
+            STATUS_LIMIT_EXCEEDED
+        }
     }
 }
 
-/// The first positive-integer value of `key` found across any capability's params.
-fn param_u64(set: &GgCapabilitySet, key: &str) -> Option<u64> {
-    set.capabilities
-        .iter()
-        .find_map(|capability| capability.params.get(key).and_then(Value::as_u64))
+/// The operator-facing `warn` line for one [breach](GgLimitBreach): what was breached, and at what
+/// value.
+///
+/// One sentence per ceiling rather than one generic template, because the five are measured in five
+/// different units and a sentence that said "observed 5400 against a ceiling of 5400" would leave
+/// the reader to guess whether that was turns, seconds or dollars.
+fn breach_message(breach: &GgLimitBreach) -> String {
+    match breach.limit {
+        GgLimitKind::Turns => format!(
+            "reached the {}-turn ceiling without the model finishing.",
+            breach.threshold
+        ),
+        GgLimitKind::Runtime => format!(
+            "wall-clock budget exceeded after {} turn(s); stopping.",
+            breach.turns
+        ),
+        GgLimitKind::ConsecutiveErrors => format!(
+            "{} consecutive turns failed to carry out the work they declared, reaching the \
+             configured ceiling of {}; stopping rather than spending the rest of the run on the \
+             same failure.",
+            breach.observed, breach.threshold
+        ),
+        GgLimitKind::ErrorRate => format!(
+            "{:.0}% of the last {} turns were errors, above the configured ceiling of {:.0}%; \
+             stopping.",
+            breach.observed * 100.0,
+            breach.window.unwrap_or_default(),
+            breach.threshold * 100.0
+        ),
+        GgLimitKind::Cost => format!(
+            "the run has spent ${:.4}, at or above the configured ceiling of ${:.4}; stopping \
+             before starting another turn.",
+            breach.observed, breach.threshold
+        ),
+    }
+}
+
+/// This agent's [return value](LoopEnd::final_text) for a loop ending the model did **not** choose.
+///
+/// The two execution modes answer it differently, and the difference is the whole of
+/// [`stopped_text`]'s reason for existing. In tool calling the last assistant message is a sentence,
+/// and it has always been what a stopped agent hands back. Under
+/// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) it is a page of TypeScript.
+fn ended_text(
+    code_mode: bool,
+    status: &str,
+    last_report: Option<&str>,
+    last_text: Option<String>,
+) -> Option<String> {
+    if code_mode {
+        stopped_text(status, last_report)
+    } else {
+        last_text
+    }
+}
+
+/// This agent's return value when it was **stopped** rather than finished, under
+/// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE).
+///
+/// Every assistant message on that path is a TypeScript program, so the loop's `last_text` would
+/// hand a subagent's spawner — and the run record, and a speculation judge's brief — a page of
+/// source instead of an answer. This is the answer gg can honestly give instead: how the agent
+/// ended, and what its last turn actually produced.
+fn stopped_text(status: &str, report: Option<&str>) -> Option<String> {
+    Some(match report {
+        Some(report) => format!("(agent ended: {status}; {report})"),
+        None => format!("(agent ended: {status}; it produced no program)"),
+    })
+}
+
+/// The resolved [ceilings](RunLimits) as the run **records** them on its session summary.
+///
+/// The turn ceiling is written out even when it came from
+/// [`DEFAULT_MAX_TURNS`](crate::limits::DEFAULT_MAX_TURNS), because that is
+/// exactly what makes a default honest: "what ceiling was this run under?" has to be answerable from
+/// the record, and a default that is recorded is not a hidden one. Everything else is `None` when
+/// the ceiling is off, which is the same thing the declaration said.
+fn recorded_limits(limits: &RunLimits) -> GgRunLimits {
+    GgRunLimits {
+        max_turns: Some(limits.max_turns as u64),
+        max_runtime_secs: limits.max_runtime.map(|budget| budget.as_secs()),
+        max_consecutive_errors: limits.max_consecutive_errors.map(u64::from),
+        max_error_rate: limits.error_rate.map(|rate| rate.max_rate),
+        error_rate_window: limits.error_rate.map(|rate| rate.window as u64),
+        max_cost: limits.max_cost,
+    }
 }
 
 /// The context-accounting configuration threaded into the [turn loop](Agent::drive): the
@@ -4269,10 +5031,86 @@ struct AmcSetup {
     archive: Arc<Mutex<ArchiveStore>>,
 }
 
+/// How a run conducts its turns when [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) is on: the
+/// run-wide mode flag, the per-program [sandbox ceilings](SandboxLimits), and which
+/// [healing](crate::healing) strategies are armed.
+///
+/// Resolved once on the [orchestrator](Orchestrator) and handed to every agent, because all three
+/// are properties of *how a turn is conducted*, not of one agent — and grouped into one struct
+/// because a loop that took them separately would let two of them disagree at a call site.
+#[derive(Debug, Clone, Copy)]
+struct CodeSetup {
+    /// Whether the capability is on. When off, nothing in [`crate::sandbox`] or
+    /// [`crate::healing`] is reachable at all and the loop drives ordinary tool calling.
+    enabled: bool,
+    /// The wasmtime fuel ceiling and linear-memory cap one program runs under, resolved from the
+    /// capability's `fuel` / `maxMemoryBytes` params with measured defaults.
+    limits: SandboxLimits,
+    /// The [healing](crate::healing) strategies armed for this run — the ablation lever that decides
+    /// which malformations of a reply gg repairs before compiling it, and which it lets fail.
+    healing: HealingConfig,
+}
+
+/// The [execution ceilings](RunLimits) threaded into the [turn loop](Agent::drive), together with
+/// the run-wide [spend](RunSpend) the cost ceiling is measured against and the absolute instant the
+/// wall-clock budget expires at.
+///
+/// The ceilings and the deadline are values every agent enforces identically; the spend is
+/// **shared**, because a cost ceiling bounds the run rather than the agent. That split is the whole
+/// of the per-agent/run-wide distinction in one struct — and putting the turn ceiling and the
+/// deadline here rather than beside it is what makes this the single home for every ceiling gg has.
+#[derive(Debug, Clone)]
+struct LimitsSetup {
+    /// The resolved ceilings, identical for every agent in the run.
+    limits: RunLimits,
+    /// When the run's wall-clock budget expires, or `None` when it declared none — derived from
+    /// [`limits.max_runtime`](RunLimits::max_runtime), and `Some` exactly when that is. An absolute
+    /// instant rather than a duration, so every agent measures the same session start rather than
+    /// its own.
+    deadline: Option<Instant>,
+    /// The run's shared accumulated spend, added to at each agent's model-response site and read at
+    /// each agent's turn boundary.
+    spend: Arc<RunSpend>,
+}
+
+impl LimitsSetup {
+    /// The [breach](GgLimitBreach) to stop `agent_id` on if the run has already spent its
+    /// [cost ceiling](RunLimits::max_cost) — the turn-boundary check, on exactly the same terms as
+    /// the deadline check beside it.
+    fn check_cost(&self, agent_id: &str, turns: u64) -> Option<GgLimitBreach> {
+        self.limits.check_cost(&self.spend, agent_id, turns)
+    }
+
+    /// The [breach](GgLimitBreach) to stop `agent_id` on if the run's wall-clock budget is spent.
+    ///
+    /// `observed` is the elapsed wall clock rather than the budget, reconstructed as the budget plus
+    /// however far past the deadline this boundary landed: a turn that began just under the line and
+    /// ran for ten minutes overran by ten minutes, and recording the threshold as the observation
+    /// would report every timed-out run as having stopped exactly on time.
+    fn check_deadline(&self, agent_id: &str, turns: u64) -> Option<GgLimitBreach> {
+        let budget = self.limits.max_runtime?;
+        let deadline = self.deadline?;
+        let now = Instant::now();
+        (now >= deadline).then(|| GgLimitBreach {
+            limit: GgLimitKind::Runtime,
+            threshold: budget.as_secs_f64(),
+            observed: (budget + now.saturating_duration_since(deadline)).as_secs_f64(),
+            turns,
+            agent_id: agent_id.to_string(),
+            window: None,
+        })
+    }
+}
+
 /// Apply an agent-managed-context reclaim tool (`evict_file_view` or `archive_thread`) to the
 /// live `context`: perform the reclaim, rewrite `outcome` with what was reclaimed (the tool's
 /// own `invoke` only validated the arguments), and return the
 /// [`ContextManaged`](GgTelemetryKind::ContextManaged) effect event to emit.
+///
+/// The rewrite carries a [`ToolData::Reclaim`] sidecar as well as the prose, because this is the
+/// **only** producer of one: the two reclaim tools return an outcome with no data at all, so a
+/// [code program](crate::sandbox)'s `evictFileView` would otherwise be handed nothing to compute
+/// with. The numbers and the sentence come from the same locals, so they cannot disagree.
 ///
 /// The reclaim runs **here**, in the loop, because it mutates the context window the tools
 /// cannot hold. `search_archive` is not routed through this — it read the shared archive in its
@@ -4308,7 +5146,16 @@ fn apply_context_reclaim(
             *outcome = ToolOutcome::ok(
                 detail.clone(),
                 format!("evicted {} file view(s)", result.items),
-            );
+            )
+            .with_data(ToolData::Reclaim(ReclaimData {
+                items: saturating_u32(result.items),
+                // The reclaim's own counters are `u64`; the sidecar is declared in the `u32` its
+                // structured consumers use, and saturates rather than wrapping a preposterous
+                // figure into a small plausible one.
+                reclaimed_tokens: u32::try_from(result.tokens).unwrap_or(u32::MAX),
+                paths: result.paths.clone(),
+                detail: detail.clone(),
+            }));
             Some(GgTelemetryKind::ContextManaged {
                 action: GgContextAction::EvictFileViews,
                 reclaimed_tokens: result.tokens,
@@ -4336,7 +5183,15 @@ fn apply_context_reclaim(
                     result.tokens
                 )
             };
-            *outcome = ToolOutcome::ok(detail.clone(), format!("archived {count} thread item(s)"));
+            *outcome = ToolOutcome::ok(detail.clone(), format!("archived {count} thread item(s)"))
+                .with_data(ToolData::Reclaim(ReclaimData {
+                    items: saturating_u32(count),
+                    reclaimed_tokens: u32::try_from(result.tokens).unwrap_or(u32::MAX),
+                    // A thread archival frees whole conversation items, not file views, so it has
+                    // no paths to name. An empty list here is a fact, not a gap.
+                    paths: Vec::new(),
+                    detail: detail.clone(),
+                }));
             Some(GgTelemetryKind::ContextManaged {
                 action: GgContextAction::ArchiveThread,
                 reclaimed_tokens: result.tokens,
@@ -4374,10 +5229,21 @@ fn resolve_window_limit(
     model_id: &str,
 ) -> Option<u64> {
     let model_window = windows.get(model_id).copied()?;
-    // The override lives on context-visibility by convention, but it governs compaction and
-    // the fullness signal too — so, like the loop bounds, it is honored on any capability
-    // that carries it rather than being silently ignored when visibility is ablated off.
-    let configured = param_u64(set, PARAM_WINDOW_LIMIT)
+    // The override lives on context-visibility by convention, but it governs compaction and the
+    // fullness signal too — so it is honored on any capability that carries it rather than being
+    // silently ignored when visibility is ablated off. It is the last param read this way: the run's
+    // execution ceilings moved to `capabilitySet.limits`, where they are declared once and recorded
+    // on the run, and this one stays here because it is genuinely a property of one capability's
+    // configuration rather than of the run.
+    let configured = set
+        .capabilities
+        .iter()
+        .find_map(|capability| {
+            capability
+                .params
+                .get(PARAM_WINDOW_LIMIT)
+                .and_then(Value::as_u64)
+        })
         .filter(|&n| n > 0)
         .map_or(model_window, |limit| limit.min(model_window));
     Some(compaction::working_window(set, configured))
@@ -4678,6 +5544,13 @@ struct PromptInputs<'a> {
     speculative: bool,
     /// Whether the run responds with programs rather than native tool calls.
     responses_as_code: bool,
+    /// Whether the agent this prompt is for is a **delegated** worker rather than the run's root,
+    /// which decides what the ending section says `finish` ends: the run, or this worker's task.
+    delegated: bool,
+    /// Whether [healing](crate::healing)'s fence-stripping strategy is armed, which decides how the
+    /// prompt states the no-code-fence rule — as a repair gg will make and disclose, or as a syntax
+    /// error the model will be handed.
+    fences_are_stripped: bool,
 }
 
 /// The system prompt for a run: the [`system.hbs`](crate::prompts) template rendered against the
@@ -4703,16 +5576,40 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
         code_reviews,
         speculative,
         responses_as_code,
+        delegated,
+        fences_are_stripped,
     } = inputs;
 
+    // The code-mode surface, reflected out of the sandbox SDK's own emitted declarations and
+    // filtered to exactly the tools this run binds into a program's scope — so the prompt can
+    // never describe a signature the sandbox does not have, and a withheld capability contributes
+    // no signature, no helper and no type declaration.
+    let views = sandbox::prompt_views(&scope_tools(registry));
+    let signatures: BTreeMap<&str, &ToolView> = views
+        .tools
+        .iter()
+        .map(|view| (view.name.as_str(), view))
+        .collect();
+    // One view per **offered** tool, in registry order: the tool-calling arm lists every name
+    // (which is what keeps `enter_plan_mode` visible to a run with planning on), while the code arm
+    // renders signatures and skips the entries that have none — precisely the turn-level
+    // transitions, which it names separately as things a program cannot call.
     let tools: Vec<ToolView> = registry
         .definitions()
         .into_iter()
-        .map(|def| ToolView {
-            args: param_names(&def.parameters).join(", "),
-            description: first_line(&def.description).to_string(),
-            name: def.name,
+        .map(|def| {
+            let bound = signatures.get(def.name.as_str());
+            ToolView {
+                signature: bound.map(|view| view.signature.clone()).unwrap_or_default(),
+                doc: bound.map(|view| view.doc.clone()).unwrap_or_default(),
+                name: def.name,
+            }
         })
+        .collect();
+    let turn_level_tools: Vec<String> = TURN_LEVEL_TOOLS
+        .iter()
+        .filter(|name| registry.offers(name))
+        .map(|name| (*name).to_string())
         .collect();
     // The read cap is only worth stating when `read_file` is actually offered and actually
     // capped; an unlimited (or withheld) read contributes no prompt text. Whether the model
@@ -4730,6 +5627,17 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
     prompts::render_system(&SystemContext {
         tools,
         responses_as_code,
+        // How a program ends the run, shown to every code-mode run whatever it enables — the one
+        // entry here that is not a projection of the enabled set, because no capability offers it
+        // and no ablation withholds it. A tool-calling run is told `None`, and its ending rule is
+        // the untouched "stop calling tools" one.
+        session: responses_as_code.then_some(views.session),
+        delegated,
+        fences_are_stripped,
+        code: views.teaching,
+        types: views.types,
+        helpers: views.helpers,
+        turn_level_tools,
         read_file,
         skills: skills.prompt_entries(),
         memories: memories.offers_memories().then(|| {
@@ -4757,354 +5665,6 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
         code_reviews,
         speculative,
     })
-}
-
-// ---------------------------------------------------------------------------
-// Responses as code: run a code-shaped turn in the wasmtime sandbox
-// ---------------------------------------------------------------------------
-
-/// Resolve the [sandbox limits](RacLimits) a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE)
-/// program runs under from the capability's params: `fuel` (the wasmtime fuel ceiling) and
-/// `maxMemoryBytes` (the linear-memory cap), each falling back to [`RacLimits::default`] when absent
-/// or non-positive. Pure, so the resolution is unit tested directly.
-fn resolve_rac_limits(set: &GgCapabilitySet) -> RacLimits {
-    let mut limits = RacLimits::default();
-    if let Some(cap) = set.capability(CAPABILITY_RESPONSES_AS_CODE) {
-        if let Some(fuel) = cap
-            .params
-            .get("fuel")
-            .and_then(Value::as_u64)
-            .filter(|&n| n > 0)
-        {
-            limits.fuel = fuel;
-        }
-        if let Some(mem) = cap
-            .params
-            .get("maxMemoryBytes")
-            .and_then(Value::as_u64)
-            .filter(|&n| n > 0)
-        {
-            limits.max_memory_bytes = mem as usize;
-        }
-    }
-    limits
-}
-
-/// The top-level property names of a tool's JSON-Schema `parameters` object, in schema order — the
-/// argument names each tool is shown with in the [system prompt](system_prompt)'s
-/// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) section, where a tool is a function a program
-/// calls rather than a native tool call. Empty when the schema declares no `properties`.
-fn param_names(schema: &Value) -> Vec<String> {
-    schema
-        .get("properties")
-        .and_then(Value::as_object)
-        .map(|props| props.keys().cloned().collect())
-        .unwrap_or_default()
-}
-
-/// Extract the program source from a code-mode model turn: the contents of the **first** fenced
-/// ```` ``` ```` code block (ignoring an optional language tag on the opening fence), trimmed. A turn
-/// with no fenced block — or an empty one — yields `None`, which the loop reads as "the model is
-/// finished" (the code-mode analogue of an empty tool-call turn).
-fn extract_program(text: &str) -> Option<String> {
-    let open = text.find("```")?;
-    let after_fence = &text[open + 3..];
-    // Skip the rest of the opening fence line (an optional language tag such as `gg`).
-    let body_start = after_fence
-        .find('\n')
-        .map(|i| i + 1)
-        .unwrap_or(after_fence.len());
-    let body = &after_fence[body_start..];
-    let close = body.find("```")?;
-    let code = body[..close].trim();
-    (!code.is_empty()).then(|| code.to_string())
-}
-
-/// The model-facing feedback for a program that ran to a [result](RacRun): whether it returned
-/// normally (with its return value) or faulted (with the fault), the tool calls it composed, and any
-/// `print` output — plus how to proceed. Fed back as the code-mode turn's outcome.
-fn format_code_result_feedback(run: &RacRun) -> String {
-    let mut out = String::new();
-    if run.outcome.ok {
-        out.push_str("Your program ran successfully.\n");
-        let value = serde_json::to_string(&run.outcome.result)
-            .unwrap_or_else(|_| "(unserializable)".to_string());
-        out.push_str(&format!("Return value: {value}\n"));
-    } else {
-        out.push_str("Your program did not complete successfully.\n");
-        if let Some(err) = &run.outcome.error {
-            out.push_str(&format!("Error: {err}\n"));
-        }
-    }
-    if run.tool_calls.is_empty() {
-        out.push_str("It made no tool calls.\n");
-    } else {
-        out.push_str(&format!("It made {} tool call(s):\n", run.tool_calls.len()));
-        for call in &run.tool_calls {
-            out.push_str(&format!(
-                "- {} → {}\n",
-                call.name,
-                if call.ok { "ok" } else { "failed" }
-            ));
-        }
-    }
-    if !run.outcome.logs.is_empty() {
-        out.push_str("Program output (print):\n");
-        for line in &run.outcome.logs {
-            out.push_str(line);
-            out.push('\n');
-        }
-    }
-    out.push_str(
-        "\nContinue by emitting your next program, or reply with a plain-text message and no code \
-         block if the task is complete.",
-    );
-    out
-}
-
-/// The model-facing feedback for a program the **sandbox** could not run to a result — a fuel or
-/// memory ceiling, or a trap — as opposed to an ordinary program fault (which is carried in the
-/// [outcome](RacRun::outcome)). It tells the model this is a sandbox limit, not a tool failure, and
-/// how to adapt.
-fn format_code_error_feedback(err: &RacError) -> String {
-    format!(
-        "Your program could not be run to completion in the sandbox: {err}. This is a sandbox limit \
-         (for example the fuel or memory ceiling), not a tool failure. Do less work per program — \
-         split the task across several smaller programs (one per turn) — then emit a smaller \
-         program, or reply with a plain-text message and no code block if the task is complete."
-    )
-}
-
-/// One tool call a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program made, sent from the
-/// (blocking) sandbox thread to the async loop to be serviced. Carrying a [oneshot](oneshot::Sender)
-/// reply lets the synchronous [`ScriptToolInvoker`] seam block for the loop's async dispatch without
-/// stalling an async worker.
-struct CodeToolRequest {
-    /// The tool the program called.
-    name: String,
-    /// The arguments it passed (the evaluated map).
-    args: Value,
-    /// Where the serviced outcome is delivered back to the blocked sandbox thread.
-    reply: oneshot::Sender<ToolOutcome>,
-}
-
-/// The [`ScriptToolInvoker`] the loop bridges a code program's tool calls through: it forwards each
-/// `(name, args)` to the async loop over a channel and blocks (on its own blocking thread) for the
-/// serviced [`ToolOutcome`].
-///
-/// Routing through the loop — rather than dispatching straight to the registry like
-/// [`RegistryToolInvoker`](crate::rac::RegistryToolInvoker) — is what lets a program's **delegation**
-/// tool still go through the [scheduler](Scheduler) and its calls still respect plan-mode read-only
-/// and FSM state gating: the loop services each request exactly as it would an ordinary tool call.
-struct ChannelInvoker {
-    /// The channel each tool call is forwarded to the loop on.
-    tx: mpsc::UnboundedSender<CodeToolRequest>,
-}
-
-impl ScriptToolInvoker for ChannelInvoker {
-    fn invoke(&self, name: &str, args: &Value) -> ToolOutcome {
-        let (reply_tx, reply_rx) = oneshot::channel();
-        if self
-            .tx
-            .send(CodeToolRequest {
-                name: name.to_string(),
-                args: args.clone(),
-                reply: reply_tx,
-            })
-            .is_err()
-        {
-            return ToolOutcome::error(
-                "the code sandbox lost its bridge to gg's tools before the call could run.",
-            );
-        }
-        // The invoker runs on a `spawn_blocking` thread, so a blocking wait here never stalls an
-        // async worker; the loop services the request and replies.
-        reply_rx.blocking_recv().unwrap_or_else(|_| {
-            ToolOutcome::error(
-                "the code sandbox's tool bridge was dropped before the call returned.",
-            )
-        })
-    }
-}
-
-/// Run a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program in the wasmtime sandbox, servicing
-/// every tool call it makes on the async loop, and return the [run](RacRun) (or a
-/// [sandbox error](RacError)) plus the number of tool calls serviced.
-///
-/// The sandbox is synchronous and CPU-bound, so it runs on a [`spawn_blocking`](tokio::task::spawn_blocking)
-/// thread (the same offload the Foray/Lattice validators use); its tool calls are forwarded over a
-/// channel and serviced **here**, on the loop, so a program's delegation tool still goes through the
-/// [scheduler](Scheduler) and its calls still respect plan-mode/FSM gating — exactly as an ordinary
-/// tool-calling turn does. Each serviced call streams its own
-/// [`ToolCall`](GgTelemetryKind::ToolCall)/[`ToolResult`](GgTelemetryKind::ToolResult) telemetry (and
-/// re-emits the knowledge-state event of a successful memory/task/board mutation), so the composed
-/// calls stay visible and accounted just like discrete ones.
-#[allow(clippy::too_many_arguments)]
-async fn run_code_program(
-    source: &str,
-    limits: RacLimits,
-    spawner: &Agent,
-    registry: &ToolRegistry,
-    tool_ctx: &ToolContext,
-    board: &BoardRuntime,
-    memories: &MemoriesRuntime,
-    tasks: &TasksRuntime,
-    planning: &PlanningRuntime,
-    fsm: &FsmRuntime,
-    fsm_active: bool,
-    in_plan_mode: bool,
-    code_reviews_active: bool,
-    speculative_active: bool,
-    subagents: &mut Option<SubagentContext>,
-    emitter: &Emitter,
-    replay: Option<&Arc<GgRecorder>>,
-) -> (Result<RacRun, RacError>, u64) {
-    let (tx, mut rx) = mpsc::unbounded_channel::<CodeToolRequest>();
-    let source_owned = source.to_string();
-    let mut script = tokio::task::spawn_blocking(move || {
-        run_script(&source_owned, limits, &ChannelInvoker { tx })
-    });
-
-    let mut serviced: u64 = 0;
-    // Drive the sandbox to completion, servicing each tool call it makes on this (async) thread.
-    // When the sandbox finishes it drops its sender, so `rx.recv()` yields `None` — at which point
-    // the blocking task is joined for its result.
-    let joined: Result<Result<RacRun, RacError>, tokio::task::JoinError> = loop {
-        let request = tokio::select! {
-            request = rx.recv() => request,
-            joined = &mut script => break joined,
-        };
-        match request {
-            Some(request) => {
-                serviced += 1;
-                let call = ToolCall {
-                    id: format!("rac:{}", request.name),
-                    name: request.name.clone(),
-                    arguments: request.args.clone(),
-                };
-                emitter.emit(GgTelemetryKind::ToolCall {
-                    name: call.name.clone(),
-                    args: call.arguments.clone(),
-                });
-                let outcome = dispatch_code_tool_call(
-                    &call,
-                    spawner,
-                    registry,
-                    tool_ctx,
-                    board,
-                    planning,
-                    in_plan_mode,
-                    fsm,
-                    fsm_active,
-                    code_reviews_active,
-                    speculative_active,
-                    subagents,
-                    emitter,
-                )
-                .await;
-                emitter.emit(GgTelemetryKind::ToolResult {
-                    name: call.name.clone(),
-                    ok: outcome.ok,
-                    summary: outcome.summary.clone(),
-                });
-                // Replay capture: the code-program counterpart of the loop's tool-result seam — a
-                // program-composed (host-bridged) call is pinned here, tagged with the program's
-                // spawner, before its outcome is sent back into the sandbox.
-                if let Some(recorder) = replay {
-                    recorder.record_tool_result(&spawner.id, &call, &outcome);
-                }
-                // A successful memory/task/board mutation changed the shared store; re-emit its state
-                // event so the console (and the summary tracker) track the live state, mirroring the
-                // tool-calling path — the pinned block itself is refreshed at the next turn boundary.
-                if outcome.ok {
-                    let state = if is_memory_tool(&call.name) {
-                        memories.state_event()
-                    } else if is_task_tool(&call.name) {
-                        tasks.state_event()
-                    } else if is_board_tool(&call.name) {
-                        board.state_event()
-                    } else {
-                        None
-                    };
-                    if let Some(state) = state {
-                        emitter.emit(state);
-                    }
-                }
-                let _ = request.reply.send(outcome);
-            }
-            None => break (&mut script).await,
-        }
-    };
-
-    let result = match joined {
-        Ok(result) => result,
-        Err(join) => Err(RacError::Trap(format!(
-            "the code sandbox task did not complete: {join}"
-        ))),
-    };
-    (result, serviced)
-}
-
-/// Service one tool call a code program made — the code-mode counterpart of the tool-calling loop's
-/// per-call dispatch, so the two paths gate and route identically.
-///
-/// The call is gated by the same predicates as a native call — refused (surfacing into the script as
-/// a failed outcome) when plan mode withholds it or the current FSM state does not offer it — and
-/// routed the same way: a [delegation tool](is_subagent_tool) through the
-/// [scheduler](handle_subagent_call), a [`speculate`](handle_speculate) or gated
-/// [`complete_issue`](handle_code_review) through their routines, everything else through ordinary
-/// [registry dispatch](ToolRegistry::dispatch). The turn-level transition tools (`advance_state`,
-/// `enter_plan_mode`/`submit_plan`) are **not** composable inside a program — they change the loop's
-/// mode, not a value — so they are refused with guidance to make the transition in a separate turn.
-#[allow(clippy::too_many_arguments)]
-async fn dispatch_code_tool_call(
-    call: &ToolCall,
-    spawner: &Agent,
-    registry: &ToolRegistry,
-    tool_ctx: &ToolContext,
-    board: &BoardRuntime,
-    planning: &PlanningRuntime,
-    in_plan_mode: bool,
-    fsm: &FsmRuntime,
-    fsm_active: bool,
-    code_reviews_active: bool,
-    speculative_active: bool,
-    subagents: &mut Option<SubagentContext>,
-    emitter: &Emitter,
-) -> ToolOutcome {
-    if planning.offers_planning() && !plan_mode_offers(&call.name, in_plan_mode) {
-        return ToolOutcome::error(plan_mode_refusal(&call.name, in_plan_mode));
-    }
-    if fsm_active && !fsm.offers(&call.name) {
-        return ToolOutcome::error(fsm_refusal(&call.name, fsm));
-    }
-    if is_fsm_tool(&call.name) {
-        return ToolOutcome::error(format!(
-            "`{}` cannot be called from within a code program: advancing the run's process state is \
-             a turn-level transition, not a composable value. Finish your program (return a value), \
-             then advance in your next turn.",
-            call.name
-        ));
-    }
-    if is_planning_tool(&call.name) {
-        return ToolOutcome::error(format!(
-            "`{}` cannot be called from within a code program: entering plan mode or submitting a \
-             plan is a turn-level transition, not a composable value.",
-            call.name
-        ));
-    }
-    if let Some(sub) = subagents.as_mut() {
-        if is_subagent_tool(&call.name) {
-            return handle_subagent_call(sub, spawner, board, emitter, call).await;
-        }
-        if speculative_active && call.name == SPECULATE_TOOL {
-            return handle_speculate(sub, spawner, board, emitter, call).await;
-        }
-        if code_reviews_active && call.name == COMPLETE_ISSUE_TOOL && board.offers_board() {
-            return handle_code_review(sub, spawner, board, emitter, call).await;
-        }
-    }
-    registry.dispatch(call, tool_ctx).await
 }
 
 /// The model-facing message for a tool call refused by the loop's plan-mode guard.
@@ -5399,6 +5959,18 @@ fn session_ended(status: impl Into<String>) -> GgTelemetryKind {
         status: status.into(),
     }
 }
+
+/// The [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) execution path: healing the reply into a
+/// program, the sandbox run, the servicing seam, and the turn feedback.
+///
+/// Split out under the repo's `foo.<concern>.rs` convention rather than left inline: it is one
+/// self-contained concern of some size, and this file is already the largest in the crate. Its items
+/// are `use`d back into this module so the loop calls them unqualified, exactly as it did when they
+/// lived here.
+#[path = "agent.code.rs"]
+mod code;
+
+use code::{CodeTurn, CodeTurnOutcome, run_code_turn};
 
 #[cfg(test)]
 #[path = "agent.test.rs"]

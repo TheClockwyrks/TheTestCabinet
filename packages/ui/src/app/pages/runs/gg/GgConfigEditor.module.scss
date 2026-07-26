@@ -156,6 +156,55 @@
   color: t.$color-text-muted;
 }
 
+// A `toggles` param (gg's response-healing strategies) is a group of checkboxes
+// rather than one control, so it takes a whole row of the param grid — its member
+// labels carry a clause of explanation each and would wrap to shreds in a column
+// beside a number field.
+.toggleField {
+  flex: 1 1 100%;
+}
+
+// The members of a toggles param, stacked: each label is a sentence, so laying them
+// out in columns like the tool checkboxes would make them hard to scan.
+.toggleList {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.toggleItem {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-xs;
+  font-size: t.$font-sm;
+  cursor: pointer;
+}
+
+// --- Run limits -------------------------------------------------------------------
+
+// The execution ceilings, laid out as a wrapping grid of compact numeric fields —
+// each carries a hint explaining what breaching it does, so they need more width
+// than a capability's params and read as a fieldset of their own.
+.limitGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-md;
+  margin-bottom: t.$space-md;
+
+  .capParamField {
+    flex: 1 1 16rem;
+  }
+}
+
+// A ceiling set that is well-formed but can never fire — armed, and worth saying so
+// without refusing the save, which is why it is the amber warning cue rather than
+// the negative one `.fieldError` uses.
+.limitWarning {
+  margin: 0 0 t.$space-md;
+  font-size: t.$font-sm;
+  color: t.$color-warning;
+}
+
 // The collapsed "advanced params (JSON)" disclosure — the escape hatch for any
 // param without a dedicated control.
 .advancedParams {

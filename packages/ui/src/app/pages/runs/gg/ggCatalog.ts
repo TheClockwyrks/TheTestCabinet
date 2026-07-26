@@ -5,7 +5,11 @@
 // configured with. The ids, params, and tool names are the real core contract
 // (`crates/core/src/gg.rs` + `crates/gg/src/tools/mod.rs`), not guesses.
 
-import type { GgCapabilitySet } from "@test-cabinet/run-record/gg";
+import type {
+  GgCapabilitySet,
+  GgHealingStrategy,
+  GgRunLimits,
+} from "@test-cabinet/run-record/gg";
 
 /** Whether a run's capability set has the named capability on. */
 export function capabilityOn(set: GgCapabilitySet | null, id: string): boolean {
@@ -55,15 +59,27 @@ export const CAP_GROUPS: ReadonlyArray<{
 
 // A dedicated param control on a capability. `kind` picks the input + how the value
 // coerces into the JSON params object: fraction/number/bytes → a JSON number,
-// select → a JSON string (an empty selection omits the param entirely).
+// select → a JSON string (an empty selection omits the param entirely), toggles →
+// a JSON object of `{ option: false }` for every option switched *off* (see
+// [TOGGLES_HINT]).
 export interface ParamSpec {
   key: string;
   label: string;
-  kind: "fraction" | "number" | "bytes" | "select";
+  kind: "fraction" | "number" | "bytes" | "select" | "toggles";
   hint?: string;
   placeholder?: string;
+  // The closed set of values a `select` offers, or the independently switchable
+  // members a `toggles` param is made of.
   options?: ReadonlyArray<{ value: string; label: string }>;
 }
+
+// Why a `toggles` param writes only the switched-*off* members: the underlying gg
+// params are "on unless a configuration says otherwise", so an absent key is the
+// default arm of the ablation and writing `{ "strip-fences": true }` for a member
+// nobody touched would turn every saved configuration into an explicit opt-in that
+// a later default change could no longer reach.
+const TOGGLES_HINT =
+  "Every repair is on unless you switch it off; only the ones you switch off are recorded.";
 
 export interface CapSpec {
   id: string;
@@ -123,6 +139,50 @@ export const READ_MODE_OPTIONS = [
 
 // The line cap gg falls back to when a capped read mode names none.
 export const DEFAULT_READ_LINE_CAP = 250;
+
+// The response-healing strategies, in the order gg's pipeline applies them — the
+// conservative, deletion-only repairs gg makes to a model's reply before running it
+// as a program. Each is independently switchable, and switching one off is an
+// ablation arm in its own right ("how much worse does this model do when we stop
+// unwrapping its fences?"), which is why they are toggles in the form rather than a
+// single on/off for the lot.
+//
+// `value` is typed as the contract's `GgHealingStrategy`, so a strategy added to or
+// renamed in `crates/core/src/gg.rs` is a compile error here rather than a control
+// that writes a key gg reports as unknown.
+export const HEALING_STRATEGY_OPTIONS: ReadonlyArray<{
+  value: GgHealingStrategy;
+  label: string;
+}> = [
+  {
+    value: "strip-fences",
+    label: "strip-fences — unwrap a Markdown code fence around the whole reply",
+  },
+  {
+    value: "strip-prose",
+    label: "strip-prose — drop explanatory text before or after the program",
+  },
+  {
+    value: "drop-duplicate-program",
+    label:
+      "drop-duplicate-program — delete a second, identical copy of the program in one reply",
+  },
+  {
+    value: "drop-imports",
+    label:
+      "drop-imports — drop import/require lines; every tool is already in scope",
+  },
+  {
+    value: "unwrap-async",
+    label:
+      "unwrap-async — unwrap an async wrapper and its awaits; every tool is synchronous",
+  },
+  {
+    value: "strip-comment-only",
+    label:
+      "strip-comment-only — treat a reply that is only comments as no program at all",
+  },
+];
 
 export const FSM_MACHINE_OPTIONS = [
   { value: "", label: "(none — no state machine)" },
@@ -197,7 +257,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     name: "Responses as code",
     group: "Models & tools",
     purpose:
-      "The agent emits a program over the tools, run in a wasm sandbox, instead of one discrete tool call at a time.",
+      "The agent's whole reply is a TypeScript program over the tools, run in a wasm sandbox instead of one discrete tool call at a time, ending the run by calling `finish` from inside a program.",
     params: [
       {
         key: "fuel",
@@ -211,6 +271,13 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         label: "Max memory (bytes)",
         kind: "bytes",
         placeholder: "e.g. 67108864",
+      },
+      {
+        key: "healing",
+        label: "Response healing",
+        kind: "toggles",
+        options: HEALING_STRATEGY_OPTIONS,
+        hint: `Repairs gg makes to a reply before running it — deletion only, so a healed program is always a subsequence of what the model sent, and every repair is disclosed to the model in its turn feedback. ${TOGGLES_HINT}`,
       },
     ],
   },
@@ -425,3 +492,82 @@ export const ALL_CAP_IDS = CAPABILITIES.map((c) => c.id);
 export const ALL_TOOL_NAMES: ReadonlyArray<string> = Array.from(
   new Set(CAPABILITIES.flatMap((c) => c.tools ?? [])),
 );
+
+// --- Run limits -----------------------------------------------------------------
+//
+// The execution ceilings a run is bounded by. Deliberately **not** [CapSpec]s: a
+// capability is a feature under ablation, with tools and an on/off arm a study
+// varies, while a ceiling is an operator's guardrail that applies to every
+// capability and to both execution modes at once. Keeping them out of
+// [CAPABILITIES] is what keeps them out of [CAP_GROUPS] and out of the
+// `capabilityEnabled` facet space, where "is the cost ceiling enabled?" would be a
+// dimension no study wants to slice its results by.
+
+// The turn ceiling gg falls back to when a configuration declares none — the one
+// ceiling that has a default, because a gg run has always had a turn ceiling. Every
+// other ceiling is simply off when unset.
+export const DEFAULT_MAX_TURNS = 50;
+
+// One execution ceiling's control. `key` is the wire field on
+// `GgCapabilitySet.limits`; `kind` is what makes the value legible *and* checkable
+// — a `count` is a whole number of turns, seconds or errors, a `fraction` is a rate
+// in 0–1, and an `amount` is money, which is the only one of the three that is
+// meaningfully fractional above 1.
+export interface RunLimitSpec {
+  key: keyof GgRunLimits;
+  label: string;
+  kind: "count" | "fraction" | "amount";
+  placeholder?: string;
+  hint: string;
+}
+
+// The six ceilings, in the order they read as a sentence: how long a run may go on
+// for, then how badly it may go, then how much it may cost.
+//
+// `key` is typed as `keyof GgRunLimits`, and [ggConfigDraft]'s draft is a total
+// record over the same keys, so a ceiling added to the contract cannot ship without
+// a control here.
+export const RUN_LIMIT_SPECS: ReadonlyArray<RunLimitSpec> = [
+  {
+    key: "maxTurns",
+    label: "Turns per agent",
+    kind: "count",
+    placeholder: String(DEFAULT_MAX_TURNS),
+    hint: `How many turns one agent may take. Empty leaves gg's long-standing default of ${DEFAULT_MAX_TURNS} — the one ceiling that has a default. An agent that reaches it ends \`exhausted\`.`,
+  },
+  {
+    key: "maxRuntimeSecs",
+    label: "Runtime (seconds)",
+    kind: "count",
+    placeholder: "e.g. 5400",
+    hint: "Wall-clock budget for the whole run, observed by every agent at its own turn boundary. A run that spends it ends `timed_out`.",
+  },
+  {
+    key: "maxConsecutiveErrors",
+    label: "Consecutive errors",
+    kind: "count",
+    placeholder: "e.g. 5",
+    hint: "How many error turns in a row end an agent. A turn is an error when the work it declared could not be carried out — a failed model call, a reply that was not a program, a program that did not compile, threw, or was stopped at a sandbox ceiling. A tool call that failed inside a program that carried on is not one.",
+  },
+  {
+    key: "maxErrorRate",
+    label: "Error rate",
+    kind: "fraction",
+    placeholder: "0.0 – 1.0",
+    hint: "The fraction of an agent's recent turns that may be errors, breached only strictly above this — at 0.5 over a window of ten, five errors is not a breach and six is. Needs a window; either alone is no ceiling at all.",
+  },
+  {
+    key: "errorRateWindow",
+    label: "Error-rate window (turns)",
+    kind: "count",
+    placeholder: "e.g. 10",
+    hint: "How many of an agent's most recent turns the rate is measured over, and also the minimum sample: the ceiling cannot fire until the agent has taken this many turns, so a run can never be killed by its first bad turn.",
+  },
+  {
+    key: "maxCost",
+    label: "Cost (USD)",
+    kind: "amount",
+    placeholder: "e.g. 25",
+    hint: "Ceiling on the whole run's accumulated cost, checked at each agent's turn boundary. A run whose model reports no cost can never be stopped by it — gg does not invent a figure to stop a run with.",
+  },
+];

@@ -1,0 +1,11 @@
+const initial = shell("find src -type f -print | sort; printf '\\n--- root ---\\n'; ls -la", { timeoutSecs: 120 });
+console.log(initial.output);
+return { exitCode: initial.exitCode, output: initial.output };
+
+const build = shell("find src -type f -printf '%P\\n' | LC_ALL=C sort | while IFS= read -r f; do n=$(wc -l < \"src/$f\"); printf '%s\\n' \"- $f ($n lines)\"; done > MANIFEST.md\nls -la\nprintf '\\n--- MANIFEST ---\\n'\ncat MANIFEST.md", { timeoutSecs: 120 });
+console.log(build.output);
+if (build.exitCode !== 0) return { error: "manifest generation or verification command failed", exitCode: build.exitCode, output: build.output };
+const manifest = readTextFile("MANIFEST.md");
+const verification = shell("test -f MANIFEST.md && ls -la MANIFEST.md", { timeoutSecs: 120 });
+if (verification.exitCode !== 0) return { error: "MANIFEST.md was not found after creation", verification: verification.output };
+finish("Created MANIFEST.md with all files under src sorted by relative name and line count, then ran ls -la and confirmed the manifest exists.");

@@ -7,7 +7,9 @@ import {
   draftSaveError,
   emptyDraft,
   launchModelSlots,
+  runLimitsWarning,
 } from "./ggConfigDraft";
+import { RUN_LIMIT_SPECS } from "./ggCatalog";
 
 // A capability set as the wire carries it, with only the fields these assertions
 // care about (the capability list is irrelevant to slot resolution).
@@ -181,5 +183,152 @@ describe("gg filesystem capabilities", () => {
     const readFile = back.capabilities.find((cap) => cap.id === "read-file");
     expect(readFile?.implementation).toBe("hard-cap");
     expect(readFile?.params).toEqual({ lineCap: 250 });
+  });
+});
+
+// The `responses-as-code` capability's `healing` param: a `toggles` control whose
+// members are on unless switched off, so only the off ones are ever written.
+const CODE = "responses-as-code";
+
+function healingOf(set: GgCapabilitySet): unknown {
+  return set.capabilities.find((cap) => cap.id === CODE)?.params?.healing;
+}
+
+describe("gg response-healing toggles", () => {
+  it("writes nothing when every strategy is left on", () => {
+    const draft = emptyDraft();
+    draft.capabilities[CODE] = {
+      ...draft.capabilities[CODE]!,
+      enabled: true,
+    };
+    // The default arm of the ablation is an absent key, not five explicit `true`s.
+    expect(healingOf(capabilitySetFromDraft(draft, null))).toBeUndefined();
+  });
+
+  it("round-trips the strategies a configuration switches off", () => {
+    const configured = set({
+      capabilities: [
+        {
+          id: CODE,
+          enabled: true,
+          params: { healing: { "strip-prose": false } },
+        },
+      ],
+    });
+    const draft = draftFromCapabilitySet(configured);
+    expect(draft.capabilities[CODE]?.params?.healing).toBe("strip-prose");
+    // Nothing spills into the advanced-JSON escape hatch, which is what would make
+    // the toggles and the raw params fight over the same key on the way back.
+    expect(draft.capabilities[CODE]?.paramsText).toBe("");
+    expect(healingOf(capabilitySetFromDraft(draft, null))).toEqual({
+      "strip-prose": false,
+    });
+  });
+
+  it("reads the `false` master switch as every strategy off", () => {
+    const configured = set({
+      capabilities: [{ id: CODE, enabled: true, params: { healing: false } }],
+    });
+    const draft = draftFromCapabilitySet(configured);
+    expect(healingOf(capabilitySetFromDraft(draft, null))).toEqual({
+      "strip-fences": false,
+      "strip-prose": false,
+      "drop-imports": false,
+      "unwrap-async": false,
+      "strip-comment-only": false,
+    });
+  });
+
+  it("leaves a value the control cannot represent in the JSON field", () => {
+    // gg reports `stripProse` as an unknown healing key and runs every strategy;
+    // silently rewriting it as "strip-prose off" would run the other arm of the
+    // ablation under this configuration's name.
+    const configured = set({
+      capabilities: [
+        {
+          id: CODE,
+          enabled: true,
+          params: { healing: { stripProse: false } },
+        },
+      ],
+    });
+    const draft = draftFromCapabilitySet(configured);
+    expect(draft.capabilities[CODE]?.params?.healing).toBeUndefined();
+    expect(JSON.parse(draft.capabilities[CODE]!.paramsText)).toEqual({
+      healing: { stripProse: false },
+    });
+    expect(healingOf(capabilitySetFromDraft(draft, null))).toEqual({
+      stripProse: false,
+    });
+  });
+});
+
+describe("gg run limits", () => {
+  it("emits no `limits` key from a form nobody touched", () => {
+    expect(capabilitySetFromDraft(emptyDraft(), null).limits).toBeUndefined();
+    // And every declared ceiling has a control, so none of them can only be set by
+    // hand-editing the stored JSON.
+    expect(RUN_LIMIT_SPECS.map((spec) => spec.key).sort()).toEqual(
+      Object.keys(emptyDraft().limits).sort(),
+    );
+  });
+
+  it("round-trips every ceiling a configuration declares", () => {
+    const configured = set({
+      limits: {
+        maxTurns: 12,
+        maxRuntimeSecs: 5400,
+        maxConsecutiveErrors: 4,
+        maxErrorRate: 0.75,
+        errorRateWindow: 4,
+        maxCost: 2.5,
+      },
+    });
+    const draft = draftFromCapabilitySet(configured);
+    expect(draft.limits.maxCost).toBe("2.5");
+    expect(capabilitySetFromDraft(draft, null).limits).toEqual(
+      configured.limits,
+    );
+    expect(draftSaveError(draft)).toBeNull();
+    expect(runLimitsWarning(draft.limits)).toBeNull();
+  });
+
+  it("refuses to save half an error-rate ceiling", () => {
+    const draft = emptyDraft();
+    draft.limits.maxErrorRate = "0.5";
+    expect(draftSaveError(draft)).toContain("both a rate and a window");
+    draft.limits.errorRateWindow = "10";
+    expect(draftSaveError(draft)).toBeNull();
+  });
+
+  it("refuses a ceiling that is not a number in its own units", () => {
+    const draft = emptyDraft();
+    draft.limits.maxTurns = "twelve";
+    expect(draftSaveError(draft)).toContain("must be a number");
+    draft.limits.maxTurns = "12.5";
+    expect(draftSaveError(draft)).toContain("whole number");
+    draft.limits.maxTurns = "12";
+    draft.limits.maxCost = "0";
+    expect(draftSaveError(draft)).toContain("greater than zero");
+  });
+
+  it("warns when the error-rate window can only fill on the last turn", () => {
+    const draft = emptyDraft();
+    draft.limits.maxTurns = "8";
+    draft.limits.maxErrorRate = "0.5";
+    draft.limits.errorRateWindow = "8";
+    // Legal, and saved as written — it just cannot stop a run any earlier than the
+    // turn ceiling already would.
+    expect(draftSaveError(draft)).toBeNull();
+    expect(runLimitsWarning(draft.limits)).toContain("(8)");
+    draft.limits.errorRateWindow = "4";
+    expect(runLimitsWarning(draft.limits)).toBeNull();
+  });
+
+  it("measures the window against gg's default when no turn ceiling is set", () => {
+    const draft = emptyDraft();
+    draft.limits.maxErrorRate = "0.5";
+    draft.limits.errorRateWindow = "50";
+    expect(runLimitsWarning(draft.limits)).toContain("(50)");
   });
 });

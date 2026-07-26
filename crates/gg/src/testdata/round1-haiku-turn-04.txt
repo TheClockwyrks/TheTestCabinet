@@ -1,0 +1,6 @@
+Task complete! I have successfully created a `MANIFEST.md` file at the workspace root that lists all TypeScript files from the `src/` directory. The manifest contains:
+
+- a.ts (6 lines)
+- b.ts (11 lines)
+
+The files are sorted alphabetically by name, and the file has been verified to exist via `ls -la`.

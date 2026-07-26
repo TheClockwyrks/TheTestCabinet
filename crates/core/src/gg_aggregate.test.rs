@@ -1,6 +1,9 @@
 use super::*;
 
-use crate::gg::{GgCapabilityConfig, GgSlotBinding, PRIMARY_SLOT};
+use crate::gg::{
+    GgCapabilityConfig, GgHealingStrategy, GgHealingSummary, GgLimitBreach, GgLimitKind,
+    GgRunLimits, GgSlotBinding, PRIMARY_SLOT,
+};
 use serde_json::json;
 
 /// A summary with every count at a baseline, so a test tweaks only the fields it
@@ -21,10 +24,13 @@ fn summary() -> GgSessionSummary {
         speculations: 0,
         execution_mode: "tool_calling".to_string(),
         code_executions: 0,
+        healing: GgHealingSummary::default(),
         issues_created: 0,
         issues_completed: 0,
         slot_costs: Vec::new(),
         effective_tools: Vec::new(),
+        limits: GgRunLimits::default(),
+        limit_hit: None,
     }
 }
 
@@ -69,6 +75,7 @@ fn facets_extracts_enabled_impl_params_slots_and_preset() {
         }],
         slots: vec![GgSlotBinding::new(PRIMARY_SLOT, "mock/echo")],
         disabled_tools: Vec::new(),
+        limits: GgRunLimits::default(),
     };
     // A capability with no implementation selected reports the "default" bucket.
     set.capabilities
@@ -404,4 +411,135 @@ fn missing_metric_leaves_a_bucket_column_absent() {
     assert_eq!(resp.buckets[0].n, 1);
     assert_eq!(resp.buckets[0].metrics[0].value, None);
     assert_eq!(resp.buckets[0].metrics[0].contributing, 0);
+}
+
+/// Every healing field projects off the run's rollup, so a study can average any of them across a
+/// bucket without re-reading the telemetry stream.
+#[test]
+fn the_healing_fields_project_off_the_summary_rollup() {
+    let mut summary = summary();
+    summary.code_executions = 8;
+    summary.healing = GgHealingSummary {
+        healed: 6,
+        applications: 9,
+        strip_fences: 5,
+        strip_prose: 2,
+        drop_duplicate_program: 4,
+        drop_imports: 1,
+        unwrap_async: 1,
+        strip_comment_only: 0,
+        not_a_program: 3,
+        several_blocks: 2,
+        several_blocks_fenced: 1,
+        several_blocks_bare: 1,
+        enabled: vec![
+            GgHealingStrategy::StripFences,
+            GgHealingStrategy::StripProse,
+        ],
+    };
+
+    for (field, expected) in [
+        (GgSummaryField::CodeExecutions, 8.0),
+        (GgSummaryField::ResponsesHealed, 6.0),
+        (GgSummaryField::HealingApplications, 9.0),
+        (GgSummaryField::HealingStripFences, 5.0),
+        (GgSummaryField::HealingStripProse, 2.0),
+        (GgSummaryField::HealingDropDuplicateProgram, 4.0),
+        (GgSummaryField::HealingDropImports, 1.0),
+        (GgSummaryField::HealingUnwrapAsync, 1.0),
+        (GgSummaryField::HealingStripCommentOnly, 0.0),
+        (GgSummaryField::ResponsesNotAProgram, 3.0),
+        (GgSummaryField::ResponsesSeveralBlocks, 2.0),
+        (GgSummaryField::ResponsesSeveralBlocksFenced, 1.0),
+        (GgSummaryField::ResponsesSeveralBlocksBare, 1.0),
+    ] {
+        assert_eq!(
+            field.value(&summary),
+            Some(expected),
+            "{field:?} projected the wrong figure"
+        );
+    }
+
+    // The one computed field: healed over code-shaped turns, so averaging it across a bucket is
+    // the bucket's healing rate.
+    assert_eq!(GgSummaryField::HealingRate.value(&summary), Some(6.0 / 8.0));
+}
+
+/// A run that took no code-shaped turn has no healing rate to report. It must be absent (so the
+/// bucket's average is taken over the runs that *could* heal) rather than `0.0`, which would claim
+/// a tool-calling run healed nothing when it never had the chance.
+#[test]
+fn healing_rate_is_absent_for_a_run_that_ran_no_code() {
+    let tool_calling = summary();
+    assert_eq!(tool_calling.code_executions, 0);
+    assert_eq!(GgSummaryField::HealingRate.value(&tool_calling), None);
+    // Every other healing field is a count, and a count of nothing is genuinely zero.
+    assert_eq!(
+        GgSummaryField::ResponsesHealed.value(&tool_calling),
+        Some(0.0)
+    );
+}
+
+/// The facet that answers "which ceiling stopped this run?" directly — a question
+/// `terminalStatus` cannot answer, because two ceilings share `limit_exceeded` and two have
+/// statuses of their own.
+#[test]
+fn limit_hit_facet_buckets_by_ceiling_with_none_as_a_bucket_of_its_own() {
+    let facet = GgFacet::LimitHit {};
+
+    let mut stopped = summary();
+    stopped.terminal_status = "limit_exceeded".to_string();
+    stopped.limit_hit = Some(GgLimitBreach {
+        limit: GgLimitKind::Cost,
+        threshold: 25.0,
+        observed: 25.4,
+        turns: 31,
+        agent_id: "root".to_string(),
+        window: None,
+    });
+    assert_eq!(
+        facet.resolve("pong", None, Some(&stopped)),
+        Some("cost".to_string())
+    );
+
+    // A run that breached nothing is the comparison arm, so it buckets under a value rather than
+    // vanishing into "absent".
+    assert_eq!(
+        facet.resolve("pong", None, Some(&summary())),
+        Some("none".to_string())
+    );
+
+    // Only a run that never ran a session is absent — its ceilings are unknown, not "none".
+    assert_eq!(facet.resolve("pong", None, None), None);
+}
+
+/// The healing ablation needs no facet of its own: a strategy toggle is an ordinary capability
+/// param, addressed by a dotted path (the hyphen in a strategy id is inert in a JSON pointer), and
+/// "left at the default" is exactly what [`GgFacetOp::Absent`] is for.
+#[test]
+fn a_healing_toggle_slices_through_the_capability_param_facet() {
+    let facet = GgFacet::CapabilityParam {
+        capability: crate::gg::CAPABILITY_RESPONSES_AS_CODE.to_string(),
+        param: "healing.strip-fences".to_string(),
+    };
+
+    let mut off = GgCapabilitySet::minimal("mock/echo");
+    off.capabilities.push(GgCapabilityConfig {
+        params: json!({ "healing": { "strip-fences": false } }),
+        ..GgCapabilityConfig::enabled(crate::gg::CAPABILITY_RESPONSES_AS_CODE)
+    });
+    assert_eq!(
+        facet.resolve("pong", Some(&off), None),
+        Some("false".to_string())
+    );
+
+    // The other arm of the ablation — the capability on, healing left alone — resolves to absent,
+    // which a query selects with `Absent` rather than needing a synthesized "true".
+    let mut default_healing = GgCapabilitySet::minimal("mock/echo");
+    default_healing
+        .capabilities
+        .push(GgCapabilityConfig::enabled(
+            crate::gg::CAPABILITY_RESPONSES_AS_CODE,
+        ));
+    assert_eq!(facet.resolve("pong", Some(&default_healing), None), None);
 }

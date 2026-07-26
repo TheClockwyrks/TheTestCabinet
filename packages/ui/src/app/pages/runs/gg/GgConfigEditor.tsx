@@ -6,13 +6,19 @@ import {
   CAP_GROUPS,
   COMMON_ROLE_SLOTS,
   PRIMARY_SLOT,
+  RUN_LIMIT_SPECS,
   type CapGroup,
+  type RunLimitSpec,
 } from "./ggCatalog";
 import {
   blankCapabilityDraft,
   blankSlot,
   draftParamErrors,
   referencedModelSlots,
+  runLimitsError,
+  runLimitsWarning,
+  togglesDraftValue,
+  togglesOff,
   type GgCapabilityDraft,
   type GgConfigDraft,
   type GgModelSlotDraft,
@@ -26,6 +32,15 @@ import gg from "./GgConfigEditor.module.scss";
 // (`gpt-5.6-sol`, which only the Codex CLI answers to). Scoping the picker to this
 // family makes it commit the right alias for a model catalogued under several.
 const GG_MODEL_FAMILY = familyOf("gg");
+
+// The `step` a ceiling's number input moves in: whole turns/seconds/errors for a
+// count, a twentieth for a rate, and anything at all for money — a cost ceiling of
+// 12.50 must be typeable, and a stepped money input rejects it in browsers that
+// validate against the step.
+function limitStep(kind: RunLimitSpec["kind"]): number | "any" {
+  if (kind === "count") return 1;
+  return kind === "fraction" ? 0.05 : "any";
+}
 
 interface GgConfigEditorProps {
   /** The configuration being edited. */
@@ -44,9 +59,9 @@ interface GgConfigEditorProps {
   readOnly?: boolean;
 }
 
-// The gg capability-set editor: the full capability catalog grouped by concern, the
-// declared model slots and the role bindings that consume them, and the per-tool
-// ablation overrides.
+// The gg capability-set editor: the run's execution ceilings, the full capability
+// catalog grouped by concern, the declared model slots and the role bindings that
+// consume them, and the per-tool ablation overrides.
 //
 // This is the one authoring surface for a gg configuration — the account section's
 // gg tab mounts it to register a named configuration, and it renders read-only when
@@ -80,6 +95,11 @@ export function GgConfigEditor({
   function setParam(id: string, key: string, param: string) {
     const base = value.capabilities[id] ?? blankCapabilityDraft();
     updateDraft(id, { params: { ...(base.params ?? {}), [key]: param } });
+  }
+
+  // --- Run-limit mutator ----------------------------------------------------
+  function setLimit(key: RunLimitSpec["key"], limit: string) {
+    onChange({ ...value, limits: { ...value.limits, [key]: limit } });
   }
 
   // --- Model-slot (launch parameter) mutators -------------------------------
@@ -166,8 +186,51 @@ export function GgConfigEditor({
   const declaredNames = value.modelSlots.map((s) => s.name.trim());
   const referenced = referencedModelSlots(value);
 
+  // The ceilings are checked as a set rather than per field: the rate ceiling's two
+  // halves are only meaningful together, so "which field is wrong" is not always a
+  // question with an answer.
+  const limitsError = runLimitsError(value.limits);
+  const limitsWarning = runLimitsWarning(value.limits);
+
   return (
     <>
+      {/* Run limits — the operator's guardrails, deliberately not capabilities:
+          they apply to every capability and to both execution modes at once, so
+          they sit above the catalog rather than inside a group of it. */}
+      <p className={`${runExec.sectionLabel} ${runExec.sectionLabelBackdrop}`}>
+        Run limits
+      </p>
+      <p className={runExec.muted}>
+        The ceilings that stop a run and record which one stopped it. Leave a
+        field empty to leave that ceiling off. A cost ceiling stops the run
+        before its next turn, so the run&rsquo;s final cost can exceed it by up
+        to one turn.
+      </p>
+      <div className={gg.limitGrid}>
+        {RUN_LIMIT_SPECS.map((spec) => (
+          <label key={spec.key} className={gg.capParamField}>
+            <span className={runExec.fieldLabel}>{spec.label}</span>
+            <input
+              className={runExec.input}
+              type="number"
+              min={0}
+              max={spec.kind === "fraction" ? 1 : undefined}
+              step={limitStep(spec.kind)}
+              value={value.limits[spec.key]}
+              disabled={readOnly}
+              onChange={(e) => setLimit(spec.key, e.target.value)}
+              placeholder={spec.placeholder}
+            />
+            <span className={gg.paramHint}>{spec.hint}</span>
+          </label>
+        ))}
+      </div>
+      {limitsError ? (
+        <p className={gg.fieldError}>{limitsError}</p>
+      ) : (
+        limitsWarning && <p className={gg.limitWarning}>{limitsWarning}</p>
+      )}
+
       {/* The full capability catalog, grouped by concern, collapsible. */}
       <p className={`${runExec.sectionLabel} ${runExec.sectionLabelBackdrop}`}>
         Capabilities
@@ -267,50 +330,120 @@ export function GgConfigEditor({
                                   )}
                                 </label>
                               )}
-                              {(cap.params ?? []).map((p) => (
-                                <label key={p.key} className={gg.capParamField}>
-                                  <span className={runExec.fieldLabel}>
-                                    {p.label}
-                                  </span>
-                                  {p.kind === "select" ? (
-                                    <select
-                                      className={runExec.select}
-                                      value={draft.params?.[p.key] ?? ""}
-                                      disabled={readOnly}
-                                      onChange={(e) =>
-                                        setParam(cap.id, p.key, e.target.value)
-                                      }
+                              {(cap.params ?? []).map((p) => {
+                                // A toggles param is several controls, so it is a
+                                // group rather than a `<label>` — wrapping a set of
+                                // checkboxes in one label would make clicking the
+                                // group's caption flip whichever one came first.
+                                if (p.kind === "toggles") {
+                                  const off = togglesOff(
+                                    p,
+                                    draft.params?.[p.key],
+                                  );
+                                  return (
+                                    <div
+                                      key={p.key}
+                                      className={`${gg.capParamField} ${gg.toggleField}`}
+                                      role="group"
+                                      aria-label={p.label}
                                     >
-                                      {(p.options ?? []).map((o) => (
-                                        <option key={o.value} value={o.value}>
-                                          {o.label}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  ) : (
-                                    <input
-                                      className={runExec.input}
-                                      type="number"
-                                      min={0}
-                                      max={
-                                        p.kind === "fraction" ? 1 : undefined
-                                      }
-                                      step={p.kind === "fraction" ? 0.05 : 1}
-                                      value={draft.params?.[p.key] ?? ""}
-                                      disabled={readOnly}
-                                      onChange={(e) =>
-                                        setParam(cap.id, p.key, e.target.value)
-                                      }
-                                      placeholder={p.placeholder}
-                                    />
-                                  )}
-                                  {p.hint && (
-                                    <span className={gg.paramHint}>
-                                      {p.hint}
+                                      <span className={runExec.fieldLabel}>
+                                        {p.label}
+                                      </span>
+                                      <div className={gg.toggleList}>
+                                        {(p.options ?? []).map((o) => (
+                                          <label
+                                            key={o.value}
+                                            className={gg.toggleItem}
+                                          >
+                                            <input
+                                              type="checkbox"
+                                              checked={!off.includes(o.value)}
+                                              disabled={readOnly}
+                                              onChange={(e) =>
+                                                setParam(
+                                                  cap.id,
+                                                  p.key,
+                                                  togglesDraftValue(
+                                                    p,
+                                                    e.target.checked
+                                                      ? off.filter(
+                                                          (id) =>
+                                                            id !== o.value,
+                                                        )
+                                                      : [...off, o.value],
+                                                  ),
+                                                )
+                                              }
+                                            />
+                                            <span>{o.label}</span>
+                                          </label>
+                                        ))}
+                                      </div>
+                                      {p.hint && (
+                                        <span className={gg.paramHint}>
+                                          {p.hint}
+                                        </span>
+                                      )}
+                                    </div>
+                                  );
+                                }
+                                return (
+                                  <label
+                                    key={p.key}
+                                    className={gg.capParamField}
+                                  >
+                                    <span className={runExec.fieldLabel}>
+                                      {p.label}
                                     </span>
-                                  )}
-                                </label>
-                              ))}
+                                    {p.kind === "select" ? (
+                                      <select
+                                        className={runExec.select}
+                                        value={draft.params?.[p.key] ?? ""}
+                                        disabled={readOnly}
+                                        onChange={(e) =>
+                                          setParam(
+                                            cap.id,
+                                            p.key,
+                                            e.target.value,
+                                          )
+                                        }
+                                      >
+                                        {(p.options ?? []).map((o) => (
+                                          <option key={o.value} value={o.value}>
+                                            {o.label}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    ) : (
+                                      <input
+                                        className={runExec.input}
+                                        type="number"
+                                        min={0}
+                                        max={
+                                          p.kind === "fraction" ? 1 : undefined
+                                        }
+                                        step={p.kind === "fraction" ? 0.05 : 1}
+                                        value={draft.params?.[p.key] ?? ""}
+                                        disabled={readOnly}
+                                        onChange={(e) =>
+                                          setParam(
+                                            cap.id,
+                                            p.key,
+                                            e.target.value,
+                                          )
+                                        }
+                                        placeholder={p.placeholder}
+                                      />
+                                    )}
+                                    {p.hint && (
+                                      <span className={gg.paramHint}>
+                                        {p.hint}
+                                      </span>
+                                    )}
+                                  </label>
+                                );
+                              })}
                             </div>
                           )}
                           <details className={gg.advancedParams}>
