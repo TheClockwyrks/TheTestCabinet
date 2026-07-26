@@ -1475,8 +1475,8 @@ export type GgTelemetryKind =
        */
       strategy: string;
       /**
-       * The fullness threshold (a `0.0..=1.0` fraction, the capability's
-       * `triggerFullness` param) that tripped this compaction.
+       * The fullness threshold (a `0.0..=1.0` fraction) that tripped this compaction,
+       * derived from the capability's `summaryHeadroom` param as `1 - summaryHeadroom`.
        */
       triggerFullness: number;
       /**
@@ -2099,8 +2099,8 @@ export type GgTelemetryEvent = {
        */
       strategy: string;
       /**
-       * The fullness threshold (a `0.0..=1.0` fraction, the capability's
-       * `triggerFullness` param) that tripped this compaction.
+       * The fullness threshold (a `0.0..=1.0` fraction) that tripped this compaction,
+       * derived from the capability's `summaryHeadroom` param as `1 - summaryHeadroom`.
        */
       triggerFullness: number;
       /**

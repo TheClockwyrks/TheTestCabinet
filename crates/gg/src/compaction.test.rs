@@ -38,25 +38,21 @@ fn mock() -> MockClient {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn policy_defaults_then_honors_a_valid_trigger_fullness() {
+fn trigger_fullness_is_derived_from_the_headroom() {
+    // The trigger is not a separate knob: it is defined as `1 - summaryHeadroom`.
     assert_eq!(
-        CompactionPolicy::resolve(&json!({})).trigger_fullness,
-        DEFAULT_TRIGGER_FULLNESS
+        CompactionPolicy::default().trigger_fullness(),
+        1.0 - DEFAULT_SUMMARY_HEADROOM
     );
     assert_eq!(
-        CompactionPolicy::resolve(&json!({ "triggerFullness": 0.6 })).trigger_fullness,
-        0.6
+        CompactionPolicy::resolve(&json!({ "summaryHeadroom": 0.35 })).trigger_fullness(),
+        1.0 - 0.35
     );
-    // Out-of-range values are ignored in favor of the default (would compact every turn or
-    // never).
-    assert_eq!(
-        CompactionPolicy::resolve(&json!({ "triggerFullness": 0.0 })).trigger_fullness,
-        DEFAULT_TRIGGER_FULLNESS
-    );
-    assert_eq!(
-        CompactionPolicy::resolve(&json!({ "triggerFullness": 1.5 })).trigger_fullness,
-        DEFAULT_TRIGGER_FULLNESS
-    );
+    // A `triggerFullness` param is no longer honored — it is not a configurable parameter, so
+    // it leaves both the headroom and the derived trigger at their defaults.
+    let ignored = CompactionPolicy::resolve(&json!({ "triggerFullness": 0.6 }));
+    assert_eq!(ignored.summary_headroom, DEFAULT_SUMMARY_HEADROOM);
+    assert_eq!(ignored.trigger_fullness(), 1.0 - DEFAULT_SUMMARY_HEADROOM);
 }
 
 #[test]
@@ -67,17 +63,18 @@ fn setup_resolves_from_the_capability_set() {
     let off = CompactionSetup::resolve(&GgCapabilitySet::minimal("mock/x"));
     assert!(!off.enabled);
 
-    // Present + enabled with a param: enabled, threshold read.
+    // Present + enabled with a param: enabled, headroom read (and the trigger derived from it).
     let mut set = GgCapabilitySet::minimal("mock/x");
     set.capabilities.push(GgCapabilityConfig {
         id: CAPABILITY_COMPACTION.to_string(),
         enabled: true,
         implementation: None,
-        params: json!({ "triggerFullness": 0.7 }),
+        params: json!({ "summaryHeadroom": 0.3 }),
     });
     let on = CompactionSetup::resolve(&set);
     assert!(on.enabled);
-    assert_eq!(on.policy.trigger_fullness, 0.7);
+    assert_eq!(on.policy.summary_headroom, 0.3);
+    assert_eq!(on.policy.trigger_fullness(), 1.0 - 0.3);
 }
 
 /// The summary headroom defaults, honors a valid fraction, and ignores one that would leave
@@ -120,7 +117,6 @@ fn policy_working_window_reserves_the_headroom() {
     assert_eq!(
         CompactionPolicy {
             summary_headroom: 0.0,
-            ..CompactionPolicy::default()
         }
         .working_window(200_000),
         200_000
@@ -275,9 +271,10 @@ async fn does_not_compact_when_disabled() {
     let client = mock();
     let setup = CompactionSetup {
         enabled: false,
+        // A headroom whose derived trigger (0.1) the over-full window easily clears — proving
+        // it is `enabled: false`, not the threshold, that blocks the compaction here.
         policy: CompactionPolicy {
-            trigger_fullness: 0.0,
-            ..CompactionPolicy::default()
+            summary_headroom: 0.9,
         },
         strategy: "model",
         summarizer: Box::new(ModelSummarizer),
@@ -296,9 +293,9 @@ async fn does_not_compact_below_the_threshold() {
     let client = mock();
     let setup = CompactionSetup {
         enabled: true,
+        // Headroom 0.1 → trigger 0.9.
         policy: CompactionPolicy {
-            trigger_fullness: 0.9,
-            ..CompactionPolicy::default()
+            summary_headroom: 0.1,
         },
         strategy: "model",
         summarizer: Box::new(ModelSummarizer),
@@ -317,9 +314,9 @@ async fn does_not_compact_with_no_ephemeral_history() {
     let client = mock();
     let setup = CompactionSetup {
         enabled: true,
+        // Headroom 0.9 → trigger 0.1.
         policy: CompactionPolicy {
-            trigger_fullness: 0.1,
-            ..CompactionPolicy::default()
+            summary_headroom: 0.9,
         },
         strategy: "model",
         summarizer: Box::new(ModelSummarizer),
@@ -347,9 +344,9 @@ async fn compacts_and_retains_pinned_state_verbatim() {
     let client = mock();
     let setup = CompactionSetup {
         enabled: true,
+        // Headroom 0.5 → trigger 0.5.
         policy: CompactionPolicy {
-            trigger_fullness: 0.5,
-            ..CompactionPolicy::default()
+            summary_headroom: 0.5,
         },
         strategy: "model",
         summarizer: Box::new(ModelSummarizer),

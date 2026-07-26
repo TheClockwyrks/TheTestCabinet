@@ -390,14 +390,14 @@ fn no_compaction() -> CompactionSetup {
     }
 }
 
-/// An enabled compaction setup with the given trigger fullness and the default (mock-backed)
-/// summarizer.
+/// An enabled compaction setup whose trigger is `trigger_fullness` and the default
+/// (mock-backed) summarizer. The trigger is not a standalone knob — it is `1 - summaryHeadroom`
+/// — so this sets the headroom that yields the requested trigger.
 fn compaction_at(trigger_fullness: f64) -> CompactionSetup {
     CompactionSetup {
         enabled: true,
         policy: crate::compaction::CompactionPolicy {
-            trigger_fullness,
-            ..Default::default()
+            summary_headroom: 1.0 - trigger_fullness,
         },
         strategy: "model",
         summarizer: crate::compaction::resolve_summarizer(None),

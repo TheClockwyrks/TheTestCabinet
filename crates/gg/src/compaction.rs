@@ -13,10 +13,10 @@
 //!
 //! - **The trigger.** At a **turn boundary** (never mid tool-call/results), when window
 //!   [fullness](crate::context::ContextModel::fullness) reaches the
-//!   [`trigger_fullness`](CompactionPolicy::trigger_fullness) threshold — a capability
-//!   param, not a constant, since [multi-model](https://docs.testcabinet.ai/gg/multi-model/)
-//!   agents will have different windows — and there is ephemeral history to reclaim,
-//!   [`compact_if_needed`] fires.
+//!   [`trigger_fullness`](CompactionPolicy::trigger_fullness) threshold — **defined as
+//!   `1 - summary_headroom`**, the point at which the working window is full and only the
+//!   reserved headroom remains, not a separately configured value — and there is ephemeral
+//!   history to reclaim, [`compact_if_needed`] fires.
 //! - **The rewrite.** The pinned prefix is kept verbatim and the ephemeral history is
 //!   replaced by a single summary item via
 //!   [`ContextModel::compact_history`](crate::context::ContextModel::compact_history). The
@@ -50,14 +50,6 @@ use test_cabinet_core::gg::{
 
 use crate::context::ContextModel;
 use crate::model::{Message, ModelClient, Role};
-
-/// The compaction capability param naming the fullness threshold that triggers a
-/// compaction — a `0.0..=1.0` fraction of the active model's window.
-const PARAM_TRIGGER_FULLNESS: &str = "triggerFullness";
-
-/// The default [`trigger_fullness`](CompactionPolicy::trigger_fullness): compact once the
-/// window is ~85% full, leaving headroom for the turn that trips it plus the summary call.
-const DEFAULT_TRIGGER_FULLNESS: f64 = 0.85;
 
 /// The compaction capability param naming the
 /// [summary headroom](CompactionPolicy::summary_headroom) — a `0.0..=0.9` fraction of the
@@ -246,43 +238,44 @@ pub fn resolve_summarizer(implementation: Option<&str>) -> Box<dyn Summarizer> {
 /// The tuning of the compaction trigger, resolved from the capability's params.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CompactionPolicy {
-    /// The window-fullness fraction at (or above) which a compaction fires.
-    pub trigger_fullness: f64,
     /// The fraction of the model's window **withheld from the agent** so that a compaction
-    /// can actually be performed — see [`working_window`](Self::working_window).
+    /// can actually be performed — see [`working_window`](Self::working_window). This is the
+    /// single knob: the fullness [trigger](Self::trigger_fullness) is derived from it, not
+    /// configured separately.
     pub summary_headroom: f64,
 }
 
 impl Default for CompactionPolicy {
     fn default() -> Self {
         Self {
-            trigger_fullness: DEFAULT_TRIGGER_FULLNESS,
             summary_headroom: DEFAULT_SUMMARY_HEADROOM,
         }
     }
 }
 
 impl CompactionPolicy {
-    /// Resolve the policy from a compaction-capability `params` object: `triggerFullness`
-    /// overrides its default when present as a number in `(0.0, 1.0]` and `summaryHeadroom`
-    /// when present as a number in `[0.0, 0.9]`; anything else keeps the default (a
-    /// negative or absurd value would compact every turn, never, or leave the agent no
-    /// window at all, so it is ignored).
+    /// Resolve the policy from a compaction-capability `params` object: `summaryHeadroom`
+    /// overrides its default when present as a number in `[0.0, 0.9]`; anything else keeps
+    /// the default (a negative or absurd value would leave the agent no window at all, so it
+    /// is ignored). The fullness [trigger](Self::trigger_fullness) is not a separate param —
+    /// it is defined by the headroom.
     pub fn resolve(params: &Value) -> Self {
-        let trigger_fullness = params
-            .get(PARAM_TRIGGER_FULLNESS)
-            .and_then(Value::as_f64)
-            .filter(|&f| f > 0.0 && f <= 1.0)
-            .unwrap_or(DEFAULT_TRIGGER_FULLNESS);
         let summary_headroom = params
             .get(PARAM_SUMMARY_HEADROOM)
             .and_then(Value::as_f64)
             .filter(|&f| (0.0..=MAX_SUMMARY_HEADROOM).contains(&f))
             .unwrap_or(DEFAULT_SUMMARY_HEADROOM);
-        Self {
-            trigger_fullness,
-            summary_headroom,
-        }
+        Self { summary_headroom }
+    }
+
+    /// The window-fullness fraction at (or above) which a compaction fires, defined as
+    /// `1.0 - summary_headroom`. The agent works against the [working
+    /// window](Self::working_window) — the model's window less the headroom — so the trigger
+    /// is exactly the point at which that working window is full and the reserved headroom is
+    /// all that remains for the summarization round-trip. It is therefore a function of the
+    /// headroom, never a separately configured value.
+    pub fn trigger_fullness(&self) -> f64 {
+        1.0 - self.summary_headroom
     }
 
     /// The portion of a `window`-token context window the agent may actually fill, given
@@ -393,7 +386,7 @@ pub async fn compact_if_needed(
     // No window limit means no fullness denominator; without it the trigger cannot be
     // evaluated, so there is nothing to do (window_limit is normally always resolved).
     let fullness = context.fullness()?;
-    if fullness < setup.policy.trigger_fullness {
+    if fullness < setup.policy.trigger_fullness() {
         return None;
     }
     // Compacting with no ephemeral items would reclaim nothing and could loop; only fire
@@ -425,7 +418,7 @@ pub async fn compact_if_needed(
 
     Some(GgTelemetryKind::Compaction {
         strategy: setup.strategy.to_string(),
-        trigger_fullness: setup.policy.trigger_fullness,
+        trigger_fullness: setup.policy.trigger_fullness(),
         before_tokens,
         after_tokens,
         summary_tokens,

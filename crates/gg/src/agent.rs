@@ -1400,7 +1400,7 @@ async fn run_agent(
             "info",
             format!(
                 "compaction enabled; the thread compacts once the window reaches {:.0}% full.",
-                compaction.policy.trigger_fullness * 100.0
+                compaction.policy.trigger_fullness() * 100.0
             ),
         ));
     }

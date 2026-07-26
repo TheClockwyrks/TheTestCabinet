@@ -116,8 +116,10 @@ pub const CAPABILITY_TASKS: &str = "tasks";
 /// carries the pinned state (read skills, in-play memories, the task list) across the
 /// boundary verbatim. Unlike the Phase 1 defaults this is **opt-in** — a run must name
 /// it in its [`GgCapabilitySet`] to enable the backstop — so an ablation's off arm
-/// simply never compacts. Its `triggerFullness` param sets the fullness threshold and
-/// its [`implementation`](GgCapabilityConfig::implementation) selects the summarization
+/// simply never compacts. Its `summaryHeadroom` param sets the fraction of the window
+/// reserved for the summarization call — which also defines the fullness threshold that
+/// triggers a compaction (`1 - summaryHeadroom`) — and its
+/// [`implementation`](GgCapabilityConfig::implementation) selects the summarization
 /// strategy — `model` (the default: a prose recap) or `structured` (fixed sections).
 ///
 /// [compaction]: https://docs.testcabinet.ai/gg/compaction/
@@ -2615,8 +2617,8 @@ pub enum GgTelemetryKind {
         /// (the default prose recap) or `structured` (fixed sections). Recorded per boundary so
         /// the console's Compaction view can compare what each strategy retained.
         strategy: String,
-        /// The fullness threshold (a `0.0..=1.0` fraction, the capability's
-        /// `triggerFullness` param) that tripped this compaction.
+        /// The fullness threshold (a `0.0..=1.0` fraction) that tripped this compaction,
+        /// derived from the capability's `summaryHeadroom` param as `1 - summaryHeadroom`.
         trigger_fullness: f64,
         /// The estimated total tokens in the window immediately before compaction.
         before_tokens: u64,

@@ -111,7 +111,7 @@
           "type": "object"
         },
         {
-          "description": "A [parameter](crate::gg::GgCapabilityConfig::params) of the named capability,\naddressed by a dotted path into its params object (for example\n`\"triggerFullness\"` or `\"scheduler.maxDepth\"`). Resolves to the scalar rendered\nas a string, or absent when the capability, the param, or a scalar value is\nmissing.",
+          "description": "A [parameter](crate::gg::GgCapabilityConfig::params) of the named capability,\naddressed by a dotted path into its params object (for example\n`\"summaryHeadroom\"` or `\"scheduler.maxDepth\"`). Resolves to the scalar rendered\nas a string, or absent when the capability, the param, or a scalar value is\nmissing.",
           "properties": {
             "capability": {
               "description": "The capability's stable id.",

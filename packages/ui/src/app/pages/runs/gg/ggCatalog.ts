@@ -377,18 +377,11 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     implementationHint: SUMMARIZER_HINT,
     params: [
       {
-        key: "triggerFullness",
-        label: "Trigger fullness",
-        kind: "fraction",
-        placeholder: "0.0 – 1.0",
-        hint: "Window-fullness threshold that triggers a compaction.",
-      },
-      {
         key: "summaryHeadroom",
         label: "Summary headroom",
         kind: "fraction",
         defaultValue: "0.2",
-        hint: "Fraction of the window held back from the agent so the summarization call — which reads the whole thread and writes a summary — fits.",
+        hint: "Fraction of the window held back from the agent so the summarization call — which reads the whole thread and writes a summary — fits. This also defines the trigger: a compaction fires once the window is 1 − headroom full (the working window is full and only the headroom remains).",
       },
     ],
   },

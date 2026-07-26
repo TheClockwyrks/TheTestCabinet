@@ -219,7 +219,7 @@ pub enum GgFacet {
     },
     /// A [parameter](crate::gg::GgCapabilityConfig::params) of the named capability,
     /// addressed by a dotted path into its params object (for example
-    /// `"triggerFullness"` or `"scheduler.maxDepth"`). Resolves to the scalar rendered
+    /// `"summaryHeadroom"` or `"scheduler.maxDepth"`). Resolves to the scalar rendered
     /// as a string, or absent when the capability, the param, or a scalar value is
     /// missing.
     CapabilityParam {

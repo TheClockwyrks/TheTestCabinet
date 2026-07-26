@@ -71,7 +71,7 @@ fn facets_extracts_enabled_impl_params_slots_and_preset() {
             id: crate::gg::CAPABILITY_COMPACTION.to_string(),
             enabled: true,
             implementation: Some("summarize-v2".to_string()),
-            params: json!({ "triggerFullness": 0.8 }),
+            params: json!({ "summaryHeadroom": 0.2 }),
         }],
         slots: vec![GgSlotBinding::new(PRIMARY_SLOT, "mock/echo")],
         disabled_tools: Vec::new(),
@@ -113,9 +113,9 @@ fn facets_extracts_enabled_impl_params_slots_and_preset() {
     assert_eq!(
         find(&GgFacet::CapabilityParam {
             capability: crate::gg::CAPABILITY_COMPACTION.to_string(),
-            param: "triggerFullness".to_string()
+            param: "summaryHeadroom".to_string()
         }),
-        Some("0.8".to_string())
+        Some("0.2".to_string())
     );
     assert_eq!(
         find(&GgFacet::SlotModel {

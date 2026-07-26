@@ -206,7 +206,6 @@ function draftsFor(
 // new-run form binds the primary slot per run.
 
 const FULL_PARAM_DEFAULTS: Record<string, Record<string, string>> = {
-  compaction: { triggerFullness: "0.85" },
   subagents: { maxParallel: "4", maxDepth: "3" },
 };
 
@@ -250,7 +249,7 @@ export const BUILT_IN_GG_CONFIGS: ReadonlyArray<BuiltInGgConfig> = [
   ),
   builtIn(
     "full",
-    "Every capability on, with the standard compaction and subagent params.",
+    "Every capability on, with the standard subagent params.",
     ALL_CAP_IDS,
     FULL_PARAM_DEFAULTS,
   ),

@@ -1009,7 +1009,7 @@
           "type": "integer"
         },
         "triggerFullness": {
-          "description": "The fullness threshold (a `0.0..=1.0` fraction, the capability's\n`triggerFullness` param) that tripped this compaction.",
+          "description": "The fullness threshold (a `0.0..=1.0` fraction) that tripped this compaction,\nderived from the capability's `summaryHeadroom` param as `1 - summaryHeadroom`.",
           "format": "double",
           "type": "number"
         },
