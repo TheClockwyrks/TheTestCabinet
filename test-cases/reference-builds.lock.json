@@ -1,26 +1,52 @@
 {
   "prod": {
+    "arc-foundry": {
+      "v1.0.0": {
+        "base": "https://e76b47d2.test-cabinet-references.pages.dev"
+      }
+    },
     "cascade": {
       "v1.0.1": {
         "draw-one": "https://f52f2267.test-cabinet-references.pages.dev",
         "draw-three": "https://2b059914.test-cabinet-references.pages.dev"
+      },
+      "v2.0.0": {
+        "draw-one": "https://58761068.test-cabinet-references.pages.dev",
+        "draw-three": "https://4c91fe1b.test-cabinet-references.pages.dev"
       }
     },
     "coil": {
       "v1.0.0": {
-        "base": "https://343f8e4c.test-cabinet-references.pages.dev",
-        "maze": "https://7691c38e.test-cabinet-references.pages.dev"
+        "base": "https://caa3efce.test-cabinet-references.pages.dev",
+        "maze": "https://d3f84083.test-cabinet-references.pages.dev"
+      }
+    },
+    "deepcore": {
+      "v1.0.0": {
+        "base": "https://af1c0ed4.test-cabinet-references.pages.dev"
       }
     },
     "fathom": {
       "v1.1.0": {
         "base": "https://02c403a5.test-cabinet-references.pages.dev",
         "kindle": "https://a977724d.test-cabinet-references.pages.dev"
+      },
+      "v2.0.0": {
+        "base": "https://02e860a5.test-cabinet-references.pages.dev",
+        "kindle": "https://683216d2.test-cabinet-references.pages.dev"
       }
     },
     "floe": {
       "v1.0.0": {
         "base": "https://d948b48e.test-cabinet-references.pages.dev"
+      },
+      "v2.0.0": {
+        "base": "https://43e51176.test-cabinet-references.pages.dev"
+      }
+    },
+    "meltdown": {
+      "v1.0.0": {
+        "base": "https://2ffbb3ce.test-cabinet-references.pages.dev"
       }
     },
     "pong": {
@@ -28,24 +54,47 @@
         "base": "https://17ce241b.test-cabinet-references.pages.dev",
         "gyre": "https://f9418138.test-cabinet-references.pages.dev",
         "multi": "https://5c14bd1b.test-cabinet-references.pages.dev"
+      },
+      "v2.0.0": {
+        "base": "https://b563724c.test-cabinet-references.pages.dev",
+        "gyre": "https://4559ed81.test-cabinet-references.pages.dev",
+        "multi": "https://10914658.test-cabinet-references.pages.dev"
       }
     },
     "shatter": {
       "v1.0.1": {
         "base": "https://03f65c7d.test-cabinet-references.pages.dev",
         "warhead": "https://3b3cb5a2.test-cabinet-references.pages.dev"
+      },
+      "v2.0.0": {
+        "base": "https://9b7b17a4.test-cabinet-references.pages.dev",
+        "warhead": "https://3a060df0.test-cabinet-references.pages.dev"
+      }
+    },
+    "spectra": {
+      "v1.0.0": {
+        "base": "https://e8b44ecb.test-cabinet-references.pages.dev",
+        "overload": "https://7bb52136.test-cabinet-references.pages.dev"
       }
     },
     "valence": {
       "v1.0.0": {
         "base": "https://63d0051e.test-cabinet-references.pages.dev"
+      },
+      "v2.0.0": {
+        "base": "https://5e9ebd21.test-cabinet-references.pages.dev"
+      }
+    },
+    "wireworm": {
+      "v1.0.0": {
+        "base": "https://a0dcb7d4.test-cabinet-references.pages.dev"
       }
     }
   },
   "staging": {
     "arc-foundry": {
       "v1.0.0": {
-        "base": "https://cfda0a4a.test-cabinet-references-staging.pages.dev"
+        "base": "https://f8beff8d.test-cabinet-references-staging.pages.dev"
       }
     },
     "cascade": {
@@ -54,19 +103,19 @@
         "draw-three": "https://9d9a4bdd.test-cabinet-references-staging.pages.dev"
       },
       "v2.0.0": {
-        "draw-one": "https://e27b6c48.test-cabinet-references-staging.pages.dev",
-        "draw-three": "https://bb4c83d2.test-cabinet-references-staging.pages.dev"
+        "draw-one": "https://99dbcd3a.test-cabinet-references-staging.pages.dev",
+        "draw-three": "https://a93ee44f.test-cabinet-references-staging.pages.dev"
       }
     },
     "coil": {
       "v1.0.0": {
-        "base": "https://4c83e286.test-cabinet-references-staging.pages.dev",
-        "maze": "https://d560c0df.test-cabinet-references-staging.pages.dev"
+        "base": "https://53bc240a.test-cabinet-references-staging.pages.dev",
+        "maze": "https://0b12759d.test-cabinet-references-staging.pages.dev"
       }
     },
     "deepcore": {
       "v1.0.0": {
-        "base": "https://4ae52c82.test-cabinet-references-staging.pages.dev"
+        "base": "https://1ed9f301.test-cabinet-references-staging.pages.dev"
       }
     },
     "fathom": {
@@ -75,8 +124,8 @@
         "kindle": "https://2b115912.test-cabinet-references-staging.pages.dev"
       },
       "v2.0.0": {
-        "base": "https://6b5c0f33.test-cabinet-references-staging.pages.dev",
-        "kindle": "https://98ce3b7a.test-cabinet-references-staging.pages.dev"
+        "base": "https://c66734cc.test-cabinet-references-staging.pages.dev",
+        "kindle": "https://6e51fa53.test-cabinet-references-staging.pages.dev"
       }
     },
     "floe": {
@@ -84,7 +133,7 @@
         "base": "https://8dc7879e.test-cabinet-references-staging.pages.dev"
       },
       "v2.0.0": {
-        "base": "https://8e9cd259.test-cabinet-references-staging.pages.dev"
+        "base": "https://d8f3eec0.test-cabinet-references-staging.pages.dev"
       }
     },
     "locomotivation": {
@@ -94,7 +143,7 @@
     },
     "meltdown": {
       "v1.0.0": {
-        "base": "https://fddc1621.test-cabinet-references-staging.pages.dev"
+        "base": "https://65c1308e.test-cabinet-references-staging.pages.dev"
       }
     },
     "pong": {
@@ -104,9 +153,9 @@
         "multi": "https://a7af56a7.test-cabinet-references-staging.pages.dev"
       },
       "v2.0.0": {
-        "base": "https://378afa8e.test-cabinet-references-staging.pages.dev",
-        "gyre": "https://bb6530fd.test-cabinet-references-staging.pages.dev",
-        "multi": "https://ed3363a5.test-cabinet-references-staging.pages.dev"
+        "base": "https://e405027c.test-cabinet-references-staging.pages.dev",
+        "gyre": "https://47df6d25.test-cabinet-references-staging.pages.dev",
+        "multi": "https://ba66b696.test-cabinet-references-staging.pages.dev"
       }
     },
     "shatter": {
@@ -115,14 +164,14 @@
         "warhead": "https://4417ff85.test-cabinet-references-staging.pages.dev"
       },
       "v2.0.0": {
-        "base": "https://ae347818.test-cabinet-references-staging.pages.dev",
-        "warhead": "https://7682ad65.test-cabinet-references-staging.pages.dev"
+        "base": "https://97050681.test-cabinet-references-staging.pages.dev",
+        "warhead": "https://81a5dd5b.test-cabinet-references-staging.pages.dev"
       }
     },
     "spectra": {
       "v1.0.0": {
-        "base": "https://58fe8b9d.test-cabinet-references-staging.pages.dev",
-        "overload": "https://8a907984.test-cabinet-references-staging.pages.dev"
+        "base": "https://a94127cb.test-cabinet-references-staging.pages.dev",
+        "overload": "https://4d147a86.test-cabinet-references-staging.pages.dev"
       }
     },
     "valence": {
@@ -130,12 +179,12 @@
         "base": "https://e8d9dcfd.test-cabinet-references-staging.pages.dev"
       },
       "v2.0.0": {
-        "base": "https://d761cbf2.test-cabinet-references-staging.pages.dev"
+        "base": "https://6c149069.test-cabinet-references-staging.pages.dev"
       }
     },
     "wireworm": {
       "v1.0.0": {
-        "base": "https://f68dd6f4.test-cabinet-references-staging.pages.dev"
+        "base": "https://d6bc39fd.test-cabinet-references-staging.pages.dev"
       }
     }
   }
