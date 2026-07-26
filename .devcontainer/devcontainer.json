@@ -23,7 +23,7 @@
 	// The cargo-target named volume persists across rebuilds; if it was ever
 	// created root-owned (e.g. before the Dockerfile pre-created its mountpoint),
 	// reclaim it for the container user so CARGO_TARGET_DIR stays writable.
-	"postCreateCommand": "sudo chown \"$(id -u):$(id -g)\" /cargo-target",
+	"postCreateCommand": "sudo chown \"$(id -u):$(id -g)\" /cargo-target && (bash scripts/setup-hooks.sh || echo 'setup-hooks failed; run scripts/setup-hooks.sh manually')",
 	"postStartCommand": "bash .devcontainer/tools/docker-socket-access.sh || true; if [ -S /tmp/ssh-agent.sock ]; then rm -f /tmp/devcontainer-ssh-agent.sock && (sudo socat UNIX-LISTEN:/tmp/devcontainer-ssh-agent.sock,fork,mode=0666 UNIX-CONNECT:/tmp/ssh-agent.sock >/tmp/ssh-agent-socat.log 2>&1 &); fi",
 	"updateRemoteUserUID": false
 }

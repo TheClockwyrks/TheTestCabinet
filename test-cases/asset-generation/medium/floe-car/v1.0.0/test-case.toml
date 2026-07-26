@@ -1,4 +1,5 @@
 slug = "floe-car"
+experimental = true
 name = "Floe Car"
 difficulty = "medium"
 tags = ["sprite", "hazard"]
@@ -39,44 +40,14 @@ actions = "actions.json"
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How faithfully the regenerated sprite matches the brief — a normal sedan seen from \
-overhead, facing right and filling the 64x32 canvas: a rounded red car body with a \
-glass cabin (windshield and rear window), four wheels at the corners, headlights at \
-the front and taillights at the rear, in the car palette on transparency."""
-
-[[review_item]]
-id = "reads-as-a-car"
-title = "Reads as a normal car"
-text = """
-The sprite reads at a glance as an ordinary car — a sedan seen from directly above, \
-a rounded body clearly two tiles long (it fills the 64x32 canvas) — a vehicle to \
-dodge, not a creature and not a safe platform. It is plainly a car, distinct from \
-the big blocky snow plow and the sled-dog team."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "car-details"
-title = "Top-down car details"
-text = """
-It reads specifically as a top-down sedan: a rounded car body with a glass cabin (a \
-windshield toward the front and a rear window), four wheels showing at the corners \
-along both sides, and headlights at the leading (front/right) edge with taillights \
-at the rear (left) — the parts that make it a car, not a plain block."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette-and-framing"
-title = "Car palette, transparency, and framing"
-text = """
-Uses only the palette from the brief (the car body and its dark shade, the glass, \
-the tyres, the outline, the headlights, and the taillights) on full transparency — \
-no out-of-palette pixels, no fringes, no background fill — and fills most of the \
-64x32 canvas, facing right, without clipping flat against an edge."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

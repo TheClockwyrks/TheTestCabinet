@@ -33,7 +33,7 @@
 ARG BASE_IMAGE=test-cabinet-base:latest
 
 # --- Stage 1: compile the `voxel-anim` binary from this repository ----------
-FROM docker.io/library/rust:1-bookworm AS voxel-build
+FROM docker.io/library/rust:1.97.1-bookworm AS voxel-build
 WORKDIR /build
 # The whole workspace is copied (minus `.dockerignore`'d paths) so cargo can
 # resolve the workspace graph; `-p test-cabinet-voxel-anim --bin voxel-anim`

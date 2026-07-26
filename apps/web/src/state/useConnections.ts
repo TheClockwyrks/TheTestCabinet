@@ -119,18 +119,23 @@ export function useExecConnection(
 
   // Resolve the artifact service's base URL from the backend's `/config` whenever
   // the backend changes. Best-effort — an unreachable backend leaves it null, so
-  // pre-publish links stay unresolved (today's behavior).
+  // pre-publish links stay unresolved (today's behavior). The in-flight promise is
+  // kept, not just the value it lands on: a consumer that snapshots the URL into
+  // fetched data has to await it, since re-rendering with the value later cannot
+  // correct what it already stored (see `resolveBuild`).
+  const artifactsSettled = useMemo(
+    () => (backendUrl ? fetchArtifactsUrl(backendUrl) : Promise.resolve(null)),
+    [backendUrl],
+  );
+
   useEffect(() => {
     setArtifactsUrl(null);
-    if (!backendUrl) return;
     let active = true;
-    fetchArtifactsUrl(backendUrl)
-      .then((u) => active && setArtifactsUrl(u))
-      .catch(() => {});
+    artifactsSettled.then((u) => active && setArtifactsUrl(u)).catch(() => {});
     return () => {
       active = false;
     };
-  }, [backendUrl]);
+  }, [artifactsSettled]);
 
   const worker = useMemo<WorkerHandle | null>(() => {
     if (!backendUrl || !authUrl) return null;
@@ -142,13 +147,16 @@ export function useExecConnection(
       // the editor offers the split push/review/publish web flow (push is a no-op
       // here; the driver already pushed the record).
       local: false,
-      client: createBackendExec(backendUrl, authUrl, artifactsUrl),
+      client: createBackendExec(backendUrl, authUrl, {
+        current: artifactsUrl,
+        settled: artifactsSettled,
+      }),
       identity: { url: backendUrl, version: null, backendId: backendUrl },
       // The execution path *is* the backend, so it trivially matches it.
       backendMatch: "match",
     };
     // Rebuild when the backend, auth URL, or resolved artifacts URL changes.
-  }, [backendUrl, authUrl, artifactsUrl]);
+  }, [backendUrl, authUrl, artifactsUrl, artifactsSettled]);
 
   const workers = useMemo(() => (worker ? [worker] : []), [worker]);
 

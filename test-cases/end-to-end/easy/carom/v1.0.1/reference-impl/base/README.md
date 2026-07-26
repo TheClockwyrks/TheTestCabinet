@@ -73,18 +73,6 @@ server:
 npm run preview        # serves dist/ locally for a final check
 ```
 
-## Proof of implementation
-
-`npm run capture-proof` drives the built game with the project-local Playwright
-Chromium and writes the screenshots and rally clip under `proof/` (see
-`specs/proof.md` in the test case). It requires a build first:
-
-```sh
-npm run build
-npx playwright install chromium   # first time only
-npm run capture-proof
-```
-
 ## Project layout
 
 ```
@@ -102,6 +90,4 @@ src/
   ai.ts               The beatable AI opponent
   game.ts             State machine, match flow, per-step update
   render.ts           All canvas drawing (neon-on-charcoal)
-scripts/
-  capture-proof.mjs   Playwright capture of the proof screenshots + clip
 ```

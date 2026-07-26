@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "grid": {
+    "width": 7,
+    "height": 6
+  },
+  "ticks": 100,
+  "snapshots": [
+    33,
+    67,
+    100
+  ],
+  "entities": [
+    {
+      "type": "source",
+      "x": 0,
+      "y": 1,
+      "dir": "E",
+      "item": "iron-ore",
+      "lane": "both",
+      "period": 3
+    },
+    {
+      "type": "belt",
+      "x": 1,
+      "y": 1,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 2,
+      "y": 1,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "inserter",
+      "x": 2,
+      "y": 2,
+      "dir": "S"
+    },
+    {
+      "type": "belt",
+      "x": 2,
+      "y": 3,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 3,
+      "y": 3,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "sink",
+      "x": 4,
+      "y": 3,
+      "dir": "W"
+    }
+  ]
+}

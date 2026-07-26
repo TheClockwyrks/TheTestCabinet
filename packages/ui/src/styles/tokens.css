@@ -22,11 +22,16 @@
   /* Per-tier rating colors, best to worst. */
   --tcab-rating-flawless: #22d3ee;
   --tcab-rating-great: #4ade80;
+  --tcab-rating-passable: #a3e635;
   --tcab-rating-scuffed: #fbbf24;
   --tcab-rating-broken: #f87171;
 
-  --tcab-font: ui-monospace, "DejaVu Sans Mono", "SFMono-Regular", Menlo,
-    Consolas, monospace;
+  --tcab-font:
+    ui-monospace, "DejaVu Sans Mono", "SFMono-Regular", Menlo, Consolas,
+    monospace;
   --tcab-display: var(--tcab-font);
   --tcab-glow: 0 0 0.9rem rgba(255, 157, 47, 0.5);
+  /* The dark band of a CRT scanline, ruled over anything drawn as a screen
+     (the squadron loading mark's cabinet screen). */
+  --tcab-scanline: rgba(0, 0, 0, 0.4);
 }

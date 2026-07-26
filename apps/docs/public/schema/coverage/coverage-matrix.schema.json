@@ -1,0 +1,112 @@
+{
+  "$defs": {
+    "CoverageCell": {
+      "description": "One cell of the coverage matrix: a plan case (at its pinned version) crossed\nwith a resolved combination, with the run/job counts that say how close it is to\nthe target.",
+      "properties": {
+        "completed": {
+          "description": "Completed runs for this cell.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "desired": {
+          "description": "The target run count (the plan's `runs_per_cell`).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "harness": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/HarnessSlug",
+          "description": "The harness."
+        },
+        "inFlight": {
+          "description": "In-flight jobs (queued / dispatched / running) for this cell.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "latestVersion": {
+          "description": "The newest ingested version of this case (may differ from `version` when\nthe pin is stale). Empty when the case is not ingested.",
+          "type": "string"
+        },
+        "model": {
+          "description": "The model id.",
+          "type": "string"
+        },
+        "provider": {
+          "description": "The provider for a provider-routed harness, or null.",
+          "type": ["string", "null"]
+        },
+        "remaining": {
+          "description": "How many more runs to trigger: `max(0, desired - (completed + in_flight))`.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "slug": {
+          "description": "The test-case slug.",
+          "type": "string"
+        },
+        "stale": {
+          "description": "Whether the pinned `version` is not the newest ingested one — a hint to the\nreviewer that they may want to bump the pin.",
+          "type": "boolean"
+        },
+        "variant": {
+          "description": "The variant.",
+          "type": "string"
+        },
+        "version": {
+          "description": "The pinned version this cell counts against.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "slug",
+        "version",
+        "variant",
+        "harness",
+        "model",
+        "desired",
+        "completed",
+        "inFlight",
+        "remaining",
+        "latestVersion",
+        "stale"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://docs.testcabinet.ai/schema/coverage/coverage-matrix.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The coverage matrix `GET /coverage-plans/{id}/coverage` returns: every cell plus\nthe rollups the plan dashboard header shows.",
+  "properties": {
+    "cells": {
+      "description": "Every `case × combination` cell, in plan order (cases outer, combinations\ninner).",
+      "items": {
+        "$ref": "#/$defs/CoverageCell"
+      },
+      "type": "array"
+    },
+    "cellsSatisfied": {
+      "description": "How many cells have met their target (`remaining == 0`).",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "cellsTotal": {
+      "description": "The total number of cells.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "runsMissing": {
+      "description": "The sum of every cell's `remaining` — the total runs still to trigger.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": ["cells", "cellsSatisfied", "cellsTotal", "runsMissing"],
+  "title": "CoverageMatrix",
+  "type": "object"
+}

@@ -2,17 +2,20 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { Panel } from "@test-cabinet/ui";
 import type { TournamentRecord } from "@test-cabinet/run-record";
-import { PageLayout } from "../../components/PageLayout";
-import { PromptHeader } from "../../components/PromptHeader";
+import { LoadingState } from "../../components/LoadingState";
 import { useGalleryData } from "../../data/galleryContext";
+import { useControllerName } from "../../data/useControllerName";
 import { useTestCaseName } from "../../data/useTestCaseName";
 import { routes } from "../../routes";
 import styles from "./TournamentsPage.module.scss";
 
-// The Tournaments list (`/tournaments`, consoles only): every tournament this
-// host can show, newest first, each linking to its standings. Hidden entirely on
-// a host without the arena capability (the static site never routes here).
-export function TournamentsPage() {
+// The Tournaments list body (consoles only): every tournament this host can show,
+// newest first, each linking to its standings. Rendered inside the Other section's
+// tabbed page (Other → Tournaments), which owns the surrounding chrome; on a host
+// without the arena capability it degrades to a "not available here" note. The
+// content is factored out here (no page chrome) so the tabbed shell provides the
+// header and tab bar around it.
+export function TournamentsList() {
   const { arena } = useGalleryData();
   const [tournaments, setTournaments] = useState<TournamentRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -42,54 +45,60 @@ export function TournamentsPage() {
     };
   }, [arena]);
 
+  if (!arena) {
+    return (
+      <Panel>
+        <p className={styles.empty}>Tournaments are not available here.</p>
+      </Panel>
+    );
+  }
+  if (error) {
+    return (
+      <Panel>
+        <p className={styles.empty}>Could not load tournaments: {error}</p>
+      </Panel>
+    );
+  }
+  if (loading) {
+    return (
+      <Panel>
+        <LoadingState size="section" label="Loading tournaments…" />
+      </Panel>
+    );
+  }
+  if (tournaments.length === 0) {
+    return (
+      <Panel>
+        <p className={styles.empty}>
+          No tournaments yet — run one from a case&rsquo;s Arena tab.
+        </p>
+      </Panel>
+    );
+  }
   return (
-    <PageLayout>
-      <PromptHeader command="--tournaments" comment={<>// adversarial standings</>} />
-
-      {!arena ? (
-        <Panel>
-          <p className={styles.empty}>Tournaments are not available here.</p>
-        </Panel>
-      ) : error ? (
-        <Panel>
-          <p className={styles.empty}>Could not load tournaments: {error}</p>
-        </Panel>
-      ) : loading ? (
-        <Panel>
-          <p className={styles.empty}>Loading tournaments…</p>
-        </Panel>
-      ) : tournaments.length === 0 ? (
-        <Panel>
-          <p className={styles.empty}>
-            No tournaments yet — run one from a case&rsquo;s Arena tab.
-          </p>
-        </Panel>
-      ) : (
-        <ul className={styles.list}>
-          {tournaments.map((tournament) => (
-            <li key={tournament.id} className={styles.item}>
-              <TournamentCard tournament={tournament} />
-            </li>
-          ))}
-        </ul>
-      )}
-    </PageLayout>
+    <ul className={styles.list}>
+      {tournaments.map((tournament) => (
+        <li key={tournament.id} className={styles.item}>
+          <TournamentCard tournament={tournament} />
+        </li>
+      ))}
+    </ul>
   );
 }
 
 function TournamentCard({ tournament }: { tournament: TournamentRecord }) {
   const testCaseName = useTestCaseName();
-  // The leader: the top-ranked controller (rank 1), labelled where possible.
+  const controllerName = useControllerName();
+  // The leader: the top-ranked controller (rank 1), by model display name.
   const leader = tournament.standings.find((s) => s.rank === 1);
   const leaderRef = leader
     ? tournament.participants.find((p) => p.id === leader.participantId)
     : undefined;
-  const leaderLabel = leaderRef?.label ?? leader?.participantId ?? "—";
+  const leaderLabel = leaderRef
+    ? controllerName(leaderRef)
+    : (leader?.participantId ?? "—");
   return (
-    <Link
-      className={styles.card}
-      to={routes.tournamentDetail(tournament.id)}
-    >
+    <Link className={styles.card} to={routes.tournamentDetail(tournament.id)}>
       <div className={styles.cardMain}>
         <span className={styles.cardCase}>
           {testCaseName(tournament.testCaseSlug)} {tournament.testCaseVersion}
@@ -100,7 +109,7 @@ function TournamentCard({ tournament }: { tournament: TournamentRecord }) {
         </span>
       </div>
       <div className={styles.cardSide}>
-        <span className={styles.cardLeader}>{leaderLabel}</span>
+        <span className={styles.cardLeader}>Winner: {leaderLabel}</span>
         <span className={styles.cardDate}>
           {formatDate(tournament.createdAt)}
         </span>

@@ -45,6 +45,11 @@ reqwest = { workspace = true }
 # streams up as a tarball — the same crate the worker/driver already depend on to
 # frame trees over the pod `exec` channel.
 tar = "0.4"
+# Gzip framing for the reviewer-facing run-archive download. A run tree is source
+# and JSON/NDJSON, so compressing it is most of the point of offering the download
+# at all. Default features keep the pure-Rust `miniz_oxide` backend — no zlib, so
+# no system dependency, matching `tar`'s reason for being here.
+flate2 = "1"
 
 [dev-dependencies]
 tempfile = { workspace = true }

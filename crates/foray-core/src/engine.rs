@@ -2,7 +2,8 @@
 //! steps the [tick advance](crate::tick).
 //!
 //! The native CLI host uses [`Match::step`] each tick, feeding it the actions it
-//! got from the two wasm controllers and recording them into a [`Replay`]. The
+//! got from the two wasm controllers and recording them into a
+//! [`Replay`](crate::replay::Replay). The
 //! browser reconstruction uses the *same* `Match` driven by the recorded actions
 //! ([`crate::replay::Replay::reconstruct`]) — one driver, so a replay can never
 //! diverge from the rules that produced it.
@@ -31,7 +32,7 @@ pub struct Match {
 impl Match {
     /// Start a match on `board` with the given rules and loop config.
     pub fn new(board: Board, rules: Rules, sim: Simulation) -> Match {
-        let state = MatchState::new(&board);
+        let state = MatchState::new(&board, &rules);
         Match {
             board,
             state,
@@ -102,6 +103,17 @@ impl Match {
                 .chain(self.state.blue_caches.iter())
                 .map(|p| [p.x, p.y])
                 .collect(),
+            // Kept apart from `seeds` here, unlike in the controller's `world` (where
+            // large seeds are folded into the seed list so a naive controller still
+            // picks them up). A renderer has the opposite need: it must draw them
+            // *differently*, so it wants them separated.
+            large_seeds: self
+                .state
+                .large_seeds
+                .iter()
+                .filter(|seed| seed.on_board())
+                .map(|seed| [seed.pos.x, seed.pos.y])
+                .collect(),
             jelly: self
                 .state
                 .red_jelly
@@ -133,8 +145,12 @@ pub struct AgentSnapshot {
 pub struct StateSnapshot {
     pub tick: u32,
     pub agents: Vec<AgentSnapshot>,
-    /// Live caches as `[x, y]`.
+    /// Live ordinary caches as `[x, y]`.
     pub seeds: Vec<[i32; 2]>,
+    /// Large seeds currently on the board (not carried, not banked) as `[x, y]`.
+    /// They move, so a renderer draws them per frame like an agent, not like a
+    /// fixture.
+    pub large_seeds: Vec<[i32; 2]>,
     /// Active jelly nodes as `[x, y]`.
     pub jelly: Vec<[i32; 2]>,
     pub score: Score,

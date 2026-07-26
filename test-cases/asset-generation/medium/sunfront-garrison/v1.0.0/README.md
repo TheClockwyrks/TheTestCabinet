@@ -54,7 +54,7 @@ binary's `--help` is the contract.
 The Garrison ships three size variants: **`base`** (the case's 60×64×60 volume, the
 default), **`half`** (each extent ~halved, 30×32×30), and **`double`** (each doubled,
 120×128×120). Each declares its own `[voxel]` override and renders the brief at those
-dimensions; all share the single `fidelity` scoring domain and its review items.
+dimensions; all share the single `overall` scoring domain.
 
 ## Versioning
 

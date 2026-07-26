@@ -38,6 +38,17 @@ export interface AuthContextValue {
   login: (username: string, password: string) => Promise<void>;
   /** Sign out — clears the stored token and account. */
   logout: () => void;
+  /**
+   * Set or replace the signed-in account's profile picture from an image blob
+   * (already downscaled by the caller), updating the session in place. Throws when
+   * signed out or the active transport can't set a picture.
+   */
+  setProfilePicture: (picture: Blob) => Promise<void>;
+  /**
+   * Clear the signed-in account's profile picture, updating the session in place.
+   * Throws when signed out or the active transport can't change a picture.
+   */
+  removeProfilePicture: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -77,7 +88,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const register = useCallback(
     async (username: string, password: string, displayName: string) => {
-      if (!client) throw new Error("No worker connected to authenticate against.");
+      if (!client)
+        throw new Error("No worker connected to authenticate against.");
       persist(await client.register(username, password, displayName));
     },
     [client, persist],
@@ -85,7 +97,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(
     async (username: string, password: string) => {
-      if (!client) throw new Error("No worker connected to authenticate against.");
+      if (!client)
+        throw new Error("No worker connected to authenticate against.");
       persist(await client.login(username, password));
     },
     [client, persist],
@@ -100,6 +113,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Replace the stored account (keeping the token) after a profile change, and
+  // persist it so a reload keeps the update.
+  const updateAccount = useCallback((account: Account) => {
+    setStored((prev) => {
+      if (!prev) return prev;
+      const next: StoredAuth = { token: prev.token, account };
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        /* private mode / storage full — keep the in-memory session */
+      }
+      return next;
+    });
+  }, []);
+
+  const setProfilePicture = useCallback(
+    async (picture: Blob) => {
+      if (!client?.setProfilePicture || !stored) {
+        throw new Error("Cannot set a profile picture here.");
+      }
+      updateAccount(await client.setProfilePicture(picture, stored.token));
+    },
+    [client, stored, updateAccount],
+  );
+
+  const removeProfilePicture = useCallback(async () => {
+    if (!client?.removeProfilePicture || !stored) {
+      throw new Error("Cannot change the profile picture here.");
+    }
+    updateAccount(await client.removeProfilePicture(stored.token));
+  }, [client, stored, updateAccount]);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       account: stored?.account ?? null,
@@ -107,8 +152,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       register,
       login,
       logout,
+      setProfilePicture,
+      removeProfilePicture,
     }),
-    [stored, register, login, logout],
+    [stored, register, login, logout, setProfilePicture, removeProfilePicture],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -127,5 +174,9 @@ export function useAuth(): AuthContextValue {
       Promise.reject(new Error("Accounts are not available here.")),
     login: () => Promise.reject(new Error("Accounts are not available here.")),
     logout: () => {},
+    setProfilePicture: () =>
+      Promise.reject(new Error("Accounts are not available here.")),
+    removeProfilePicture: () =>
+      Promise.reject(new Error("Accounts are not available here.")),
   };
 }

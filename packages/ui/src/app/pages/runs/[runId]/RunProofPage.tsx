@@ -3,17 +3,19 @@ import type { RunRecord } from "@test-cabinet/run-record";
 import { MediaView } from "../../../components/MediaView";
 import { useGalleryData } from "../../../data/galleryContext";
 import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
-import { AdversarialReplaySection } from "./AdversarialReplaySection";
 import styles from "./RunDetailPages.module.scss";
 
-// The Proof tab (`/runs/:runId/proof`): the run's evidence of play. For an
-// adversarial run that is the set of proof matches — every reference opponent the
-// submission was auto-replayed against, each watchable in-browser — which replace
-// proof-of-implementation media for that type. For every other run type it is the
-// proof-of-implementation media the agent submitted: each declared proof shows its
-// submitted image or video, or a clear note when it was not produced or the host
-// cannot serve it. Proof is a first-class run artifact, so it is browsable here
-// independent of the reviewer flow that pairs each with its reference.
+// The Proof tab (`/runs/:runId/proof`): the proof-of-implementation media the
+// agent submitted. Each declared proof shows its submitted image or video, or a
+// clear note when it was not produced or the host cannot serve it. Proof is a
+// first-class run artifact, so it is browsable here independent of the reviewer
+// flow that pairs each with its reference.
+//
+// Neither results-scored type has a Proof tab at all — what each would show here
+// is its *result*, and results live on the Results tab: a performance run's
+// factory playback, launched per scored scenario from that scenario's row
+// alongside the correctness + fuel numbers, and an adversarial run's proof
+// matches, one per reference opponent its submission was replayed against.
 export function RunProofPage() {
   return (
     <RunDetailLayout tab="proof">
@@ -24,14 +26,6 @@ export function RunProofPage() {
 
 function RunProofBody({ run }: { run: RunRecord }) {
   const gallery = useGalleryData();
-
-  // An adversarial run's proof is its match replays, not submitted media; render
-  // them in place of the proof-of-implementation accordion (which it never has).
-  const replay = gallery.replayResultFor(run);
-  if (replay && replay.replays.length > 0) {
-    return <AdversarialReplaySection run={run} />;
-  }
-
   const proofs = gallery.proofMediaFor(run);
 
   if (proofs.length === 0) {

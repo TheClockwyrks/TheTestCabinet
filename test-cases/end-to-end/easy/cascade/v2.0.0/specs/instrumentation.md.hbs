@@ -1,0 +1,238 @@
+# Cascade — Debug and automation API
+
+Cascade ships a small debugging and automation surface so the game can be driven
+and inspected from code, without touching a pointer or waiting on real time. It is
+what you use to iterate on the rules, reproduce a specific board, drive the
+victory cascade to a known point, script a scenario, and
+capture clean screenshots of an exact game state. This file defines that surface.
+Implement all of it, on the same footing as the game itself.
+
+Nothing here changes how a person plays. The debug API is inert during normal
+play, doing nothing until something calls it, and the debug overlay is off until
+toggled.
+
+## A deterministic core
+
+The whole surface rests on the game being deterministic and, where it moves over
+time, steppable. Two properties make it driveable from code:
+
+- Render-free core. Game state (the piles, a move, the win check, and the victory
+  cascade) advances without depending on a canvas, on `requestAnimationFrame`, or
+  on wall-clock time to make progress. Rendering reads the state, never the other
+  way around.
+- Seeded randomness. The randomness the game uses, the deal shuffle and the
+  cascade's launch velocities, runs off a seedable generator. Seeding it and
+  replaying the same calls reproduces the same result exactly. Normal play seeds
+  from a non-deterministic source at each new game, so no two deals are alike; a
+  caller that wants a repeatable board seeds it explicitly through `reset`.
+
+Given the same seed and the same sequence of API calls and steps, the game reaches
+the same state every time.
+
+## The deterministic manual clock
+
+Only one part of Cascade moves over time: the victory cascade, whose cards fall
+and bounce on a fixed timestep of 120 Hz — one step is exactly `1/120` of a second
+of game time (`specs/victory.md`). The dealing and every move happen instantly in
+response to input, so they need no clock. The manual clock controls that one
+time-driven system.
+
+The game holds an `autoStep` flag, default `true` (normal human play). While
+`autoStep` is true, the animation-frame loop advances the victory cascade from the
+wall clock, so a person watching a won game sees the cards fall in real time.
+While it is false, the loop still renders every frame but does not advance the
+cascade on its own; `step(ticks)` becomes the only way it advances, so a scripted
+cascade is exact and reproducible regardless of machine load.
+
+`reset` and `step` set `autoStep = false`, beginning a driver-clocked session.
+`setAutoStep(true)` hands the clock back to the game so the cascade runs itself in
+real time again (useful for watching or recording a clip); `setAutoStep(false)`
+returns to manual. This is an ordinary "advance it by hand" versus "let it run"
+debugging affordance and is the only thing the flag governs; the control and input
+operations below never change it.
+
+## The `window.__cascade` object
+
+Expose the API as a single object on the global `window.__cascade`, installed once
+the game is running. It carries a `version` number (use `1`) and the operations
+below. Values are plain numbers, strings, booleans, and arrays so a caller can read
+them directly; positions are in the logical-pixel space of `specs/overview.md`.
+
+Throughout, a card is written as a plain object `{ suit, rank, faceUp }`, where
+`suit` is one of `"spades"`, `"hearts"`, `"diamonds"`, `"clubs"`, `rank` is `1`
+(Ace) through `13` (King), and `faceUp` is a boolean. A pile is an array of cards
+ordered bottom to top, so the last element is the card on top.
+
+### Core operations
+
+- `reset(options)` returns the game to its title state. `options` is optional, and
+  `options.seed` (a number) seeds all of the game's randomness (the next deal's
+  shuffle and the cascade's launches) so a scenario replays identically. Re-arms
+  the manual clock (`autoStep = false`).
+- `newGame()` deals a fresh game and enters play, exactly as choosing `NEW GAME`
+  would. The deal uses the current seed, so `reset({ seed })` then `newGame()`
+  produces a repeatable board.
+- `step(ticks)` advances the victory cascade by exactly `ticks` fixed steps
+  immediately, running the fixed-timestep update internally rather than waiting for
+  real frames. The unit is whole simulation ticks, not seconds: the timestep is
+  120 Hz, so one tick is `1/120` of a second, `step(1)` runs a single cascade step
+  and `step(120)` advances one second of game time. Nothing is rounded or
+  approximated — the number of steps asked for is the number of steps run.
+  `ticks` must be a non-negative integer; `step(0)` is legal and does nothing,
+  while a fractional or negative value is invalid and the call fails loudly rather
+  than guessing what was meant. On any screen other than a running cascade it has
+  no effect. Sets `autoStep = false`.
+- `snapshot()` returns a plain, JSON-serializable object describing the current
+  game state (see [Snapshot shape](#snapshot-shape)). It is a pure read and never
+  changes anything.
+- `setAutoStep(enabled)` sets the manual clock (see above): `true` lets the game
+  advance the cascade in real time, `false` returns to manual stepping.
+
+### Control operations
+
+These set up a specific situation, then let the real systems resolve it. Each one
+routes through the same code normal play uses; they arrange the board and invoke
+real moves rather than fabricating an outcome.
+
+- `setBoard(state)` places an exact board as a precondition and enters play.
+  `state` may carry any of `stock`, `waste`, `foundations` (an array of four
+  piles), and `tableau` (an array of seven piles), each given as arrays of cards.
+  Any pile not named is left empty. A card's `faceUp` may be given per card; when
+  omitted it defaults to face-up for the waste and foundations, face-down for the
+  stock, and as-written for the tableau. This only arranges the cards; it decides
+  nothing about whether a later move is legal.
+- `turnStock()` clicks the stock: it turns the deal mode's turn count of cards
+  face-up onto the waste, or, when the stock is empty, recycles the whole waste
+  back into the stock (`specs/rules.md`). It runs the real
+  stock code.
+- `selectMenu(index)` selects and activates the title-menu item at `index`,
+  exactly as clicking it would. The title menu lists its items in the order
+  `specs/states.md` gives — `0` is `NEW GAME` and `1` is `HOW TO PLAY`, the same
+  items the snapshot's `menuIndex` reports — so a caller opens a menu screen by
+  index rather than by guessing where the build happens to draw the item (the menu
+  layout is the build's own). It routes through the same activation a tap or click
+  drives, so activating `NEW GAME` deals a fresh game and `HOW TO PLAY` opens the
+  how-to screen. It has no effect on any screen other than the title, and an
+  `index` that is not a whole number in range fails loudly rather than guessing.
+- `move(source, target)` attempts a real move from one pile to another and returns
+  `true` if the move was accepted, `false` if it was rejected. It asks the game's
+  own legal-move check and, when the move is legal, applies it through the same
+  path a drag-and-drop release uses (including turning a newly exposed column card
+  face-up and detecting a win). A rejected move leaves the board unchanged.
+  - `source` is `{ pile: "waste" }`, `{ pile: "foundation", index }`, or
+    `{ pile: "tableau", column, row }`. For a tableau source, `row` is the index of
+    the grabbed card (0 is the bottom-most, buried card; the top card has the
+    highest index): the grabbed card and every card above it in the column move
+    together as a run. When `row` is omitted, the column's top card is grabbed
+    alone.
+  - `target` is `{ pile: "foundation", index }` or `{ pile: "tableau", column }`.
+- `autoMove(source)` performs the double-click auto-move (`specs/rules.md`): it
+  sends a playable card straight to the foundation it belongs on when that move is
+  legal, and does nothing otherwise. Returns `true` if the card went home. `source`
+  is `{ pile: "waste" }` or `{ pile: "tableau", column }` (the column's top
+  face-up card).
+
+A typical check calls `reset({ seed })`, `setBoard(...)` to arrange the exact
+piles wanted, then `move(...)` / `autoMove(...)` / `turnStock()` and reads the
+result from `snapshot()`.
+
+### Input operations
+
+The control operations above drive the game through its rules layer. The API can
+also inject pointer input, so a caller can drive the game the way a player does:
+tap a menu item, tap the stock, and drag a card across the table. Injected
+input flows through the same pointer handling a real mouse or touchscreen feeds,
+exercising the actual hit-testing and drag-and-drop from `specs/states.md` rather
+than a parallel path. Coordinates are in the logical 1280 x 720 space of
+`specs/overview.md`.
+
+- `pointerDown(x, y)` presses the pointer down at a logical point, beginning a
+  press (which may become a drag).
+- `pointerMove(x, y)` moves the pointer to a logical point; while a press is
+  active this drags the held card or run, which follows the cursor and floats above
+  the table, and highlights a legal drop target under it.
+- `pointerUp(x, y)` releases the pointer at a logical point, completing a drag onto
+  a legal target or returning the cards to their origin.
+- `click(x, y)` is a convenience tap, a `pointerDown` immediately followed by a
+  `pointerUp` at the same point. This activates a menu item, turns the stock, or
+  triggers a HUD control.
+- `doubleClick(x, y)` performs the double-click auto-move at a logical point,
+  through the same handler a mouse's double-click or a double-tap uses.
+
+The usual shape for an input-driven scenario is to `pointerDown` on a card,
+`pointerMove` over a target so the held card follows and the target highlights,
+then `pointerUp` to drop it, reading `snapshot()` to see where the cards ended up.
+
+## Snapshot shape
+
+`snapshot()` returns an object with at least these fields:
+
+```js
+{
+  version: 1,
+  screen: "title" | "howto" | "playing" | "won",
+  dealMode: <string>,        // this build's deal-mode id (see specs/rules.md)
+  turnCount: <number>,       // cards the stock turns per click (see specs/rules.md)
+  menuIndex: <number>,       // highlighted title-menu item, when on the title
+
+  // The thirteen piles, each an array of cards ordered bottom to top (last = top).
+  // A card is { suit, rank, color: "red" | "black", faceUp }.
+  stock: [ <card>, ... ],
+  waste: [ <card>, ... ],
+{{#if (eq variant.slug "draw-three")}}
+  wasteVisibleCount: <number>,   // how many waste cards are currently fanned face-up
+{{/if}}
+  foundations: [ <pile>, <pile>, <pile>, <pile> ],
+  tableau: [ <pile>, <pile>, <pile>, <pile>, <pile>, <pile>, <pile> ],
+
+  // The run currently held in a drag, or null when nothing is held.
+  drag: null | {
+    cards: [ <card>, ... ],      // the run in hand, top card first
+    source: { pile, index?, column? },
+    x: <number>, y: <number>,    // the held top card's current top-left position
+  },
+  // The legal drop target highlighted under the held run, or null.
+  dropHighlight:
+    null | { pile: "foundation" | "tableau", index?: <number>, column?: <number> },
+
+  won: <boolean>,            // true once all 52 cards are home
+
+  // The victory cascade, present only while the game is won; null otherwise.
+  cascade: null | {
+    launched: <number>,      // cards launched so far
+    total: <number>,         // cards to launch in all (52)
+    flyers: [                // the cards currently in flight
+      { suit, rank, x: <number>, y: <number>, vx: <number>, vy: <number> },
+    ],
+    remaining: [ <pile>, <pile>, <pile>, <pile> ],  // foundation cards not yet launched
+    youWin: <boolean>,       // the YOU WIN prompt is showing
+    done: <boolean>,         // every card has launched and retired
+  },
+
+  simTime: <number>,         // accumulated victory-cascade time, in seconds
+}
+```
+
+A flyer's `x` and `y` are the card's top-left in the logical space, the same
+values that drive its motion and its painted trail, so a caller can read where a
+card is and how fast it is moving. {{#if (eq variant.slug "draw-three")}}`wasteVisibleCount` is how many of the waste's
+cards are currently fanned face-up — up to the three the last stock turn brought
+over (it counts down as they are played, then squares to one over the buried
+cards). This field is a Draw Three affordance and is present only in this build;
+the Draw One deal never fans more than a single card, so it does not report it.
+{{/if}}`won` and `cascade` report the win once it is detected and the cascade as it
+advances.
+
+## The debug overlay
+
+Provide a read-only on-screen overlay showing the game's live internal state, so
+you can watch what the game is doing while you play. It is toggled with the
+backtick key (`` ` ``), off by default, and never changes gameplay; it only draws.
+
+When on, it draws over the running game, legibly, in a monospace type, at least:
+the current `screen` and deal mode, the count of cards in the stock and waste and
+on each foundation, the sizes of the seven tableau columns, whether a drag is in
+progress and what it holds, and, during the cascade, the launched count and the
+number of cards in flight, the same facts `snapshot()` reports. It is a diagnostic
+layer rather than part of the game's presentation, so keep it visually plain and
+clearly separate from the HUD.

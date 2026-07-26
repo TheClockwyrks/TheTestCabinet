@@ -22,8 +22,8 @@ publish.workspace = true
 [lib]
 name = "lattice_core"
 # `rlib` for the native CLI, host, SDK, and reference engines that link the rules
-# in-process; `cdylib` for parity with `foray-core` and a future browser replay
-# renderer (out of scope for v1 — there is no playback ABI module here).
+# in-process; `cdylib` for the browser playback build (see the `playback` feature),
+# which is what the console's renderer instantiates.
 crate-type = ["cdylib", "rlib"]
 
 # The artifact generator emits the seeded JSON Schemas. It needs the schema
@@ -45,6 +45,21 @@ required-features = ["schema"]
 # accessors compile.
 default = ["schema"]
 schema = ["dep:schemars"]
+# Browser playback, split in two so a guest can reuse the *driver* without pulling
+# in exports that would collide with its own:
+#   - `playback` — the tick-at-a-time driver and the static `board` serializer,
+#     ordinary Rust with **no** `#[no_mangle]` exports. This is what the SDK (and so
+#     a model's engine) links to compute a scenario's board and step it for playback,
+#     while providing its *own* wasm ABI; unit-tested on the host.
+#   - `playback-abi` — the hand-rolled `extern "C"` shims (`abi`, wasm32 only) the
+#     console's renderer calls. Enabled ONLY by the reference `lattice-core.wasm`
+#     build, which owns the exports; a guest never turns this on, so its exports and
+#     the SDK's never clash.
+# Both are off by default so the native CLI/host and the reference engines carry
+# neither. The reference browser build is
+# `--target wasm32-unknown-unknown --no-default-features --features playback-abi`.
+playback = []
+playback-abi = ["playback"]
 
 [dependencies]
 serde = { workspace = true }

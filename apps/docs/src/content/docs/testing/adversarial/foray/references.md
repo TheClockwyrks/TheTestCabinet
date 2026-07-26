@@ -107,5 +107,6 @@ The three baselines span the obvious failure space on purpose — pure noise
 (`border-soldier`) — so the model can see *what losing looks like* from three
 directions without being handed a winning shape. The interesting strategy space —
 balancing offence against defence tick by tick, timing a bank against carry
-weight, and spending jelly to run a heavy load home — is left **entirely** for the
+weight, spending jelly both to survive and to kill, and contesting the drifting large
+seeds — is left **entirely** for the
 model to discover.

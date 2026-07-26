@@ -29,7 +29,7 @@ and the model browses it at run time with `sfx-sample list-samples` /
 
 | File | Seeded? | Purpose |
 | --- | --- | --- |
-| `test-case.toml` | — | Manifest: type, `asset_kind`, `[audio]`, `[tool]`, `[output]`, domains, review items. |
+| `test-case.toml` | — | Manifest: type, `asset_kind`, `[audio]`, `[tool]`, `[output]`, domain. |
 | `prompt.hbs` | rendered | The instruction handed to the harness (points at the brief and the tool). |
 | `specs/brief.md` | **yes** | The brief — the only content the model receives. |
 | `variants/base.toml` | — | The single default variant. |

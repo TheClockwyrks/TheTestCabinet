@@ -175,12 +175,17 @@
       "oneOf": [
         {
           "const": "idle",
-          "description": "Empty-handed, waiting to pick up.",
+          "description": "Empty-handed and back at the pickup, ready to grab.",
           "type": "string"
         },
         {
           "const": "swing",
-          "description": "Holding an item, counting the swing down.",
+          "description": "Holding an item, counting the forward swing down.",
+          "type": "string"
+        },
+        {
+          "const": "return",
+          "description": "Empty-handed, swinging back to the pickup after a drop (counting the return\ndown). The arm cannot grab again until the return completes, so the empty\nreturn takes the same time as the loaded swing rather than being instant.",
           "type": "string"
         }
       ]
@@ -189,7 +194,7 @@
       "description": "An inserter's retained state.",
       "properties": {
         "held": {
-          "description": "The held item, present only while swinging.",
+          "description": "The held item, present only while swinging out.",
           "type": [
             "string",
             "null"
@@ -197,10 +202,10 @@
         },
         "phase": {
           "$ref": "#/$defs/InserterPhase",
-          "description": "`idle` or `swing`."
+          "description": "`idle`, `swing` (loaded, going out), or `return` (empty, coming back)."
         },
         "swing_left": {
-          "description": "Ticks remaining in the current swing (`0` while idle).",
+          "description": "Ticks remaining in the current motion — the forward swing while `swing`, the\nempty return while `return`, and `0` while `idle`.",
           "format": "uint16",
           "maximum": 65535,
           "minimum": 0,
@@ -260,26 +265,26 @@
       "type": "object"
     },
     "SplitterState": {
-      "description": "A splitter's retained state. A base splitter holds **no items between ticks**\n(it transfers within the tick it pulls), so only the two round-robin cursors\nare retained.",
+      "description": "A splitter's retained state. A base splitter holds **no items between ticks**\n(it transfers within the tick it pulls), so only its two cursors are retained:\nthe per-(item-type, lane) output-preference bitfield ([`SplitterState::out_pref`])\nand the input-order cursor ([`SplitterState::in_first`]).",
       "properties": {
-        "rr_in": {
-          "description": "Which input the splitter pulls from next (`0` or `1`).",
+        "in_first": {
+          "description": "Which input belt (`0`/`1`) the splitter tries first this tick (flips each tick\nfor input fairness).",
           "format": "uint8",
           "maximum": 255,
           "minimum": 0,
           "type": "integer"
         },
-        "rr_out": {
-          "description": "Which output the splitter pushes to next (`0` or `1`).",
-          "format": "uint8",
-          "maximum": 255,
+        "out_pref": {
+          "description": "The per-(item-type, lane) output alternation cursor: bit `t*2 + L` is the\noutput belt (`0`/`1`) the next item of item type `t` on lane `L` (`0` = left,\n`1` = right) will be sent to (it flips after each such item). Keeping it per\nlane balances each lane across both outputs; the input lane itself is preserved.",
+          "format": "uint16",
+          "maximum": 65535,
           "minimum": 0,
           "type": "integer"
         }
       },
       "required": [
-        "rr_in",
-        "rr_out"
+        "out_pref",
+        "in_first"
       ],
       "type": "object"
     }

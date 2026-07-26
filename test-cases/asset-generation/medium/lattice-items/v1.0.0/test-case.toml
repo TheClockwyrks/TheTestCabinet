@@ -4,10 +4,10 @@ name = "Lattice Items"
 difficulty = "medium"
 tags = ["sprite-sheet", "item"]
 summary = """
-Draw the Lattice item icon set — eight distinct factory items that ride the \
-belts (iron/copper/steel plates, iron/copper ore, stone, an iron gear wheel, and \
-an electronic circuit) — as a 16x16 sprite sheet, one item per frame, produced \
-one drawing operation at a time."""
+Draw the Lattice item icon set — the seven factory items that ride the belts \
+(iron/copper ore, iron/copper plate, an iron gear wheel, a coil of copper cable, \
+and an electronic circuit) — as a 32x32 sprite sheet, one item per frame, \
+produced one drawing operation at a time."""
 description = "description.md"
 # Optional per-version changelog entry (Markdown, relative to this version
 # folder), recording what changed in THIS version — the first version simply reads
@@ -24,12 +24,13 @@ asset_kind = "sprite-sheet"
 # `variants/`. This list is a root key, so it must precede the first table header.
 variants = ["variants/base.toml"]
 
-# Each frame is its own 16x16 transparent canvas (a separate file). Belt items are
-# sub-tile (roughly half a tile at 32 px/tile), so each icon gets a tiny 16x16
-# frame; fixing the frame size keeps every run comparable.
+# Each frame is its own 32x32 transparent canvas (a separate file). Belt items are
+# sub-tile in the world (roughly half a tile at 32 px/tile), but each icon is
+# authored at a full 32x32 so there is enough resolution to read small items like
+# the gear; fixing the frame size keeps every run comparable.
 [canvas]
-width = 16
-height = 16
+width = 32
+height = 32
 background = "transparent"
 
 # The drawing tool. `draw-sheet` is the only way to make a mark; each operation
@@ -44,8 +45,16 @@ preview = "frames/{frame}.png"
 [output]
 actions = "frames/{frame}.actions.json"
 
-# The frames the model draws — each a separate 16x16 file holding one item icon —
+# The frames the model draws — each a separate 32x32 file holding one item icon —
 # and the single showcase sequence a reviewer flips through.
+#
+# The frame order is NOT arbitrary: it mirrors the simulation's canonical item
+# table (`lattice_core::prototypes::ITEMS`) one for one, so frame N is the icon for
+# item index N — 0 iron-ore, 1 iron-plate, 2 iron-gear, 3 copper-ore,
+# 4 copper-plate, 5 copper-cable, 6 circuit. That correspondence is what lets the
+# browser playback renderer pick an icon straight from the item index in a belt's
+# canonical state, with no lookup table to drift. Reordering these frames, or
+# adding an icon for something the engine does not carry, breaks that.
 [sheet]
 
 [[sheet.frame]]
@@ -69,93 +78,27 @@ index = 5
 [[sheet.frame]]
 index = 6
 
-[[sheet.frame]]
-index = 7
-
-# A slow cycle through all eight icons so a reviewer can flip through the whole
-# set in order. The frames are eight distinct static items, not an animation.
+# A slow cycle through all seven icons so a reviewer can flip through the whole
+# set in order. The frames are seven distinct static items, not an animation — the
+# sequence exists only so the set can be judged as a whole in the review UI.
 [[sheet.sequence]]
 slug = "showcase"
 name = "Item showcase"
-frames = [0, 1, 2, 3, 4, 5, 6, 7]
+frames = [0, 1, 2, 3, 4, 5, 6]
 fps = 3
 
 # The self-contained brief, seeded for the run.
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the regenerated sheet realizes the eight Lattice item icons — \
-each frame unmistakable as its named item at 16x16, the eight mutually \
-distinguishable, and a consistent outline, lighting, and palette discipline \
-binding the set into one cohesive icon family."""
-
-[[review_item]]
-id = "named-item-reads"
-title = "Each frame reads as its named item"
-text = """
-At 16x16 each frame is instantly recognizable as the item the brief assigns it — \
-frame 0 a flat iron plate, 1 a copper plate, 2 a steel plate, 3 a cluster of iron \
-ore, 4 copper ore, 5 a stone, 6 a toothed iron gear wheel with a central hole, 7 \
-a green electronic circuit board with traces and contacts — by silhouette and \
-color alone, with no surrounding context."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "mutually-distinguishable"
-title = "The eight are mutually distinguishable"
-text = """
-No two icons read alike: the smooth flat plates (frames 0–2) are clearly distinct \
-from the rough lumpy ores and stone (frames 3–5), and both are clearly distinct \
-from the toothed gear ring (frame 6) and the green circuit board (frame 7). The \
-three plates are told apart by tone, and the ores/stone by color, so a reviewer \
-flipping the showcase never mistakes one item for another."""
-sequences = ["showcase"]
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "plates-distinct"
-title = "Plates told apart by tone"
-text = """
-The three metal plates share one flat plate silhouette but are unmistakable by \
-tone alone: frame 0 a neutral blue-grey iron, frame 1 a warm orange copper, frame \
-2 a brighter, cooler steel with a faint sheen band. None is mistaken for another \
-or for an ore."""
-frames = [0, 1, 2]
-weight = 1
-domain = "fidelity"
-
-[[review_item]]
-id = "consistent-family"
-title = "Consistent outline and lighting"
-text = """
-Every icon carries the same dark outline color and the same simple top-left \
-light direction (highlight up-left, shadow down-right), so the eight read as one \
-cohesive icon family rather than eight unrelated drawings."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette-discipline"
-title = "Per-icon palette adherence"
-text = """
-Each icon uses only the colors the brief assigns it (plus the shared outline), \
-with no off-palette colors and no anti-aliased or stray-pixel fringe around the \
-silhouette — the drawing is regenerated pixel-for-pixel, so a halo of in-between \
-colors counts against it."""
-weight = 1
-domain = "fidelity"
-
-[[review_item]]
-id = "centred-margin"
-title = "Centred with a small margin"
-text = """
-Each icon is centred in its own 16x16 frame with roughly a one-pixel margin — \
-filling most of the frame, neither tiny in a corner nor clipped at the edge."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

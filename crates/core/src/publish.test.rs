@@ -56,6 +56,7 @@ fn sample_record() -> RunRecord {
             },
         },
         validation: ValidationSummary {
+            debug_scripts: Vec::new(),
             loaded: true,
             detail: None,
             install: None,
@@ -76,6 +77,7 @@ fn sample_record() -> RunRecord {
             state: RunState::Completed,
             detail: None,
         },
+        game_jam_readme: None,
     }
 }
 
@@ -522,6 +524,74 @@ async fn release_code_of_an_asset_generation_run_creates_no_repo() {
             .any(|c| c.starts_with("gh ") || c.starts_with("git ")),
         "asset-generation release must not touch git/gh: {calls:?}"
     );
+}
+
+#[tokio::test]
+async fn release_code_of_an_artifactless_failure_creates_no_repo() {
+    // A harness-error or hung run is recorded only as a per-model statistic — it
+    // produced no evaluable output worth releasing — so releasing one must NOT
+    // create a GitHub repo (or touch git at all), even though its (code-writing)
+    // test type otherwise would. The run carries no source link.
+    for state in [RunState::HarnessError, RunState::Hung] {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (publisher, impl_dir, _build_dir) = publisher_for(dir.path(), MockRunner::new(false));
+        let artifacts = ArtifactCollection {
+            repo_path: impl_dir,
+        };
+        let mut record = sample_record();
+        record.status.state = state;
+        let request = ReleaseRequest {
+            record: &record,
+            artifacts: &artifacts,
+            build_dir: None,
+        };
+
+        let source_repo = publisher
+            .release_code(&request)
+            .await
+            .expect("release code");
+
+        assert_eq!(source_repo, None, "{state:?} released a source repo");
+        let calls = publisher.runner().calls();
+        assert!(
+            !calls
+                .iter()
+                .any(|c| c.starts_with("gh ") || c.starts_with("git ")),
+            "{state:?} release must not touch git/gh: {calls:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn release_playable_build_of_an_artifactless_failure_deploys_nothing() {
+    // Even if a partial tree happened to build, a harness-error or hung run deploys
+    // no playable build — it is a per-model statistic only.
+    for state in [RunState::HarnessError, RunState::Hung] {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (publisher, impl_dir, build_dir) = publisher_for(dir.path(), MockRunner::new(false));
+        let artifacts = ArtifactCollection {
+            repo_path: impl_dir,
+        };
+        let mut record = sample_record();
+        record.status.state = state;
+        let request = ReleaseRequest {
+            record: &record,
+            artifacts: &artifacts,
+            build_dir: Some(&build_dir),
+        };
+
+        let playable_build = publisher
+            .release_playable_build(&request)
+            .await
+            .expect("release build");
+
+        assert_eq!(playable_build, None, "{state:?} deployed a build");
+        let calls = publisher.runner().calls();
+        assert!(
+            !calls.iter().any(|c| c.contains("wrangler")),
+            "{state:?} release must not deploy a build: {calls:?}"
+        );
+    }
 }
 
 #[tokio::test]

@@ -3,11 +3,14 @@ import { Fragment, useMemo, useRef, type MouseEvent } from "react";
 import { Link } from "react-router";
 import type { RunSort, SortDir } from "../../client/clients";
 import type { InProgressRun } from "../../client/types";
+import { canonicalModelId } from "@test-cabinet/ui";
 import { describeRunState } from "../data/runState";
+import { useFindModel } from "../data/useModels";
 import { useTestCaseName } from "../data/useTestCaseName";
 import { useTestCaseType } from "../data/useTestCaseType";
 import { ColumnMenu, type ColumnMenuHandle } from "./ColumnMenu";
 import { RunContextMenu, type RunContextMenuHandle } from "./RunContextMenu";
+import { RunSelectAll, useRunSelection, type SelectableRun } from "./RunSelect";
 import { SortableHeaderCell } from "./SortableHeaderCell";
 import {
   columnsForScope,
@@ -155,6 +158,16 @@ interface RunLogProps {
   active?: InProgressRun[];
   /** Column/sort/visibility state from {@link useRunTable}. */
   controls: RunTableControls;
+  /**
+   * Turn on multi-select: the caret gutter becomes a per-row checkbox (with a
+   * select-all in its header), and once any run is checked a right-click anywhere
+   * in the log opens a batch menu acting on the whole selected set (open each in a
+   * new tab, open the de-duped test cases or models, kill the still-running ones,
+   * delete the deletable ones) instead of the single-run menu. Off by default, so
+   * every other run log is unchanged. Selection is scoped to the rows currently
+   * listed and clears as they change (a page turn, a new search).
+   */
+  selectable?: boolean;
 }
 
 // The dense, column-aligned run log shared by the home gallery and the per-case
@@ -163,15 +176,86 @@ interface RunLogProps {
 // be shown or hidden via the picker (the ▦ button or a header right-click) —
 // category/timestamp/duration merely start hidden. Right-clicking a finished row
 // opens a per-run menu (open in a new tab, jump to the test case or model, copy
-// the run's link, and — on the consoles — delete an unpublished run). Rendering
-// lives here so every page stays pixel-identical; the caller owns enrichment,
-// sorting, slicing, and paging via useRunTable.
-export function RunLog({ rows, active = [], controls }: RunLogProps) {
+// the run's link, and — on the consoles — delete an unpublished run); with
+// `selectable`, checking one or more rows turns that into a batch menu over the
+// whole selection. Rendering lives here so every page stays pixel-identical; the
+// caller owns enrichment, sorting, slicing, and paging via useRunTable.
+export function RunLog({
+  rows,
+  active = [],
+  controls,
+  selectable = false,
+}: RunLogProps) {
   const { scope, columns, sort, cycleSort, isVisible, toggle } = controls;
   const testCaseName = useTestCaseName();
   const testCaseType = useTestCaseType();
+  const findModel = useFindModel();
   const menuRef = useRef<ColumnMenuHandle>(null);
   const rowMenuRef = useRef<RunContextMenuHandle>(null);
+
+  // Every listed run in render order — the pinned active runs, then the finished
+  // rows — as the id list the selection is scoped to (and shift-range ordered by).
+  const orderedIds = useMemo(
+    () => [...active.map((run) => run.runId), ...rows.map((r) => r.summary.id)],
+    [active, rows],
+  );
+  const selection = useRunSelection(orderedIds);
+
+  // Each listed run resolved to what the batch menu needs to act on it, so a set
+  // of selected ids resolves to self-contained descriptors (an active run opens
+  // its live monitor and may be killed; a finished run opens its detail).
+  const selectableRuns = useMemo(() => {
+    const map = new Map<string, SelectableRun>();
+    for (const run of active) {
+      map.set(run.runId, {
+        id: run.runId,
+        active: true,
+        killable: run.state !== "failed",
+        testCaseSlug: run.testCaseSlug,
+        modelId: run.modelId,
+        harnessSlug: run.harnessSlug,
+      });
+    }
+    for (const row of rows) {
+      const { subject } = row.summary;
+      map.set(row.summary.id, {
+        id: row.summary.id,
+        active: false,
+        killable: false,
+        testCaseSlug: subject.testCaseSlug,
+        modelId: subject.modelId,
+        harnessSlug: subject.harnessSlug,
+      });
+    }
+    return map;
+  }, [active, rows]);
+
+  const hasSelection = selectable && selection.selected.size > 0;
+
+  // Route a row right-click: with a live selection, open the batch menu over the
+  // whole selected set (resolved in render order); otherwise the single-run menu
+  // for the row itself. An active row carries no summary, so with no selection it
+  // opens nothing (as before) — check it first to act on it via the batch menu.
+  const openRowMenu = (event: MouseEvent, summary?: RunSummary) => {
+    event.preventDefault();
+    if (hasSelection) {
+      const runs = orderedIds
+        .filter((id) => selection.selected.has(id))
+        .map((id) => selectableRuns.get(id))
+        .filter((run): run is SelectableRun => run != null);
+      rowMenuRef.current?.openAt(event.clientX, event.clientY, {
+        kind: "batch",
+        runs,
+      });
+      return;
+    }
+    if (summary) {
+      rowMenuRef.current?.openAt(event.clientX, event.clientY, {
+        kind: "single",
+        run: summary,
+      });
+    }
+  };
 
   // The columns actually rendered this pass: the scope's set minus any the user
   // has hidden. Both the header and every row map over this, so they stay in
@@ -194,6 +278,9 @@ export function RunLog({ rows, active = [], controls }: RunLogProps) {
     visible: visibleIds,
     testCaseName,
     testCaseType,
+    modelName: (modelId, harnessSlug) =>
+      findModel(modelId, harnessSlug)?.name ?? canonicalModelId(modelId),
+    selection: selectable ? selection : undefined,
   };
 
   return (
@@ -215,18 +302,32 @@ export function RunLog({ rows, active = [], controls }: RunLogProps) {
             menuRef.current?.openAt(event.clientX, event.clientY);
           }}
         >
-          {visible.map((column, index) => (
-            <SortableHeaderCell
-              key={column.id}
-              columnId={column.id}
-              label={column.label}
-              numeric={column.numeric}
-              sortable={isSortable(column)}
-              sort={sort}
-              onSort={cycleSort}
-              handle={table.handle(index)}
-            />
-          ))}
+          {visible.map((column, index) =>
+            selectable && column.id === "caret" ? (
+              <RunSelectAll
+                key={column.id}
+                total={orderedIds.length}
+                selectedCount={selection.selected.size}
+                onToggleAll={() =>
+                  selection.selected.size === orderedIds.length &&
+                  orderedIds.length > 0
+                    ? selection.clear()
+                    : selection.selectAll()
+                }
+              />
+            ) : (
+              <SortableHeaderCell
+                key={column.id}
+                columnId={column.id}
+                label={column.label}
+                numeric={column.numeric}
+                sortable={isSortable(column)}
+                sort={sort}
+                onSort={cycleSort}
+                handle={table.handle(index)}
+              />
+            ),
+          )}
         </div>
         {active.map((run) => (
           <Link
@@ -235,6 +336,9 @@ export function RunLog({ rows, active = [], controls }: RunLogProps) {
             className={styles.row}
             data-active=""
             data-failed={run.state === "failed" ? "" : undefined}
+            // Active rows carry no summary for a single-run menu, but they can join
+            // a batch selection, so a right-click still routes through the log.
+            onContextMenu={(event) => openRowMenu(event)}
           >
             {visible.map((column) => (
               <Fragment key={column.id}>
@@ -249,18 +353,11 @@ export function RunLog({ rows, active = [], controls }: RunLogProps) {
             row={row}
             columns={visible}
             ctx={ctx}
-            onContextMenu={(event) => {
-              event.preventDefault();
-              rowMenuRef.current?.openAt(
-                event.clientX,
-                event.clientY,
-                row.summary,
-              );
-            }}
+            onContextMenu={(event) => openRowMenu(event, row.summary)}
           />
         ))}
       </div>
-      <RunContextMenu ref={rowMenuRef} />
+      <RunContextMenu ref={rowMenuRef} onBatchActed={selection.clear} />
     </div>
   );
 }

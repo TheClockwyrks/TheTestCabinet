@@ -60,6 +60,34 @@ The artifact service has **no** Kubernetes API access — it only talks HTTP.
 Published runs' media are public anyway; the pre-publish window is private by the
 network boundary rather than a per-read token.
 
+## Downloading a whole run
+
+`GET /runs/{id}/archive.tar.gz` returns a run's **entire** stored tree — the
+generated source, the built playable output, the proof/asset/validation media, and
+the `events.jsonl`/`raw.jsonl` logs — as one gzip tar, with every entry under a
+`<run-id>/` prefix so it unpacks into its own directory.
+
+The consoles (web and Tauri) surface this as a **Download** link on the run detail
+page's control strip, beside the Grafana traces link. It is gated on the same
+`canExecute` flag as the rest of the internal-only affordances, so the public
+gallery never shows it.
+
+This is the fast path for pulling a run's produced assets onto a machine — for
+example to feed an asset-generation run's output into another test case.
+`scripts/extract-cluster-assets.sh` does the same job for a **deployed** cluster,
+but it can only reach one through `az aks command invoke`, which is a command
+channel with no file channel: it moves the tree as base64 over stdout in ~320 KiB
+chunks (the invoke response is truncated at 512 KiB), one helper-pod round trip of
+~15s each. A full-stack run's tree is ~150 chunks, so the script takes tens of
+minutes where this endpoint takes one request. Reach for the script only when the
+console cannot reach the artifact service.
+
+The read is **ungated**, for the same reason the build and media reads are: the
+console offers it as an ordinary download link, which carries no `Authorization`
+header. (The separate `GET /runs/{id}/tree.tar` stays token-gated — it is the
+publisher's server-to-server pull, whose caller *can* hold a token, and it carries
+only the subset the publisher republishes.)
+
 ## Status
 
 The artifact service is implemented as the `test-cabinet-artifacts` crate

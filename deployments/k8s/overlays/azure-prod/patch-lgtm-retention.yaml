@@ -1,0 +1,31 @@
+# Keep prod telemetry for 3 days instead of the component's 24h default.
+#
+# Prod's value is different from staging's: staging telemetry is consumed within
+# hours (a validation campaign is watched as it runs), whereas a prod issue is often
+# noticed a day or two after the run that caused it, and the trace is the only
+# record of what the harness actually did. 3 days spans a weekend.
+#
+# Prod also carries far less telemetry than staging — at the time of writing its
+# collector held 829 head series against staging's 4,249 — so the longer window
+# costs proportionally little.
+#
+# Only the three duration values are patched. The *_EXTRA_ARGS in the component
+# interpolate them via $(VAR) expansion, so they need no restating here; env entries
+# merge by name, leaving the rest of the container's environment untouched.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: tcab-lgtm
+  namespace: tcab-prod
+spec:
+  template:
+    spec:
+      containers:
+        - name: lgtm
+          env:
+            - name: LOKI_RETENTION_PERIOD
+              value: "72h"
+            - name: TEMPO_BLOCK_RETENTION
+              value: "72h"
+            - name: PROMETHEUS_RETENTION
+              value: "72h"

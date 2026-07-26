@@ -1,0 +1,58 @@
+slug = "foray-large-seed"
+experimental = true
+name = "Foray Large Seed"
+difficulty = "easy"
+tags = ["sprite", "item"]
+summary = """
+Draw the Foray large seed: the moving prize of a top-down ant-colony raiding \
+game, worth three ordinary caches, as a 16x16 sprite — a single big rounded \
+golden kernel outlined so it stays legible on the board, with a bright glint, in \
+the fixed shared gold palette, produced one drawing operation at a time."""
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 0.5
+type = "asset-generation"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant, declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# A 16x16 transparent canvas keeps every run comparable.
+[canvas]
+width = 16
+height = 16
+background = "transparent"
+
+# The drawing tool. `draw` is the only way to make a mark; it records every
+# operation to the action log and re-renders the preview after each call. Run
+# `draw --help` to see the operations; no operations schema is seeded.
+[tool]
+binary = "draw"
+preview = "canvas.png"
+
+# The recorded action log — the authoritative output the score is regenerated
+# from.
+[output]
+actions = "actions.json"
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
+[[domain]]
+id = "overall"
+name = "Overall"
+description = """
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

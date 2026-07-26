@@ -23,6 +23,9 @@ are in
   (end-to-end or full-stack). See the guide's
   [release gate](/guides/devops/publishing-a-reference-implementation/#which-cases-get-a-reference).
 
+An **asset-generation** case takes a different path with different prerequisites —
+see [Asset-generation references](#asset-generation-references) below.
+
 ## Publish
 
 ```sh
@@ -47,7 +50,8 @@ rest.
 
 ## What it does
 
-`tcab publish-reference` builds each variant's reference-impl, scrubs secrets,
+`tcab publish-reference` builds each variant's reference-impl, re-captures its
+committed [baseline validation media](#baseline-validation-media), scrubs secrets,
 deploys to the `--env` Pages project under a `<slug>-<version>-<variant>` branch
 alias, reads the served URL back from `wrangler`, and writes it into
 `test-cases/reference-builds.lock.json` under the `--env` key. It does **not** touch
@@ -55,6 +59,65 @@ the backend — the private backends [ingest that lockfile from their own git
 checkout](/guides/devops/publishing-a-reference-implementation/#refresh-the-backend)
 on the next `reingest-cluster.sh`, which is what lands each URL on the variant's
 `referenceBuild` and the **Reference** tab.
+
+## Asset-generation references
+
+An [asset-generation](/testing/asset-generation/manifests/) case has no `[build]`
+table and produces no site, so `publish-reference` takes a different path for it —
+same command, same `--env` and variant selectors, different everything else:
+
+```sh
+# Needs the target environment's R2 credentials, NOT wrangler/Cloudflare Pages:
+#   TCAB_R2_ACCOUNT_ID  TCAB_R2_BUCKET  TCAB_R2_ACCESS_KEY_ID  TCAB_R2_SECRET_ACCESS_KEY
+tcab publish-reference --env prod <slug> --dry-run   # show the plan and the keys
+tcab publish-reference --env prod <slug>
+scripts/reingest-cluster.sh --env prod
+```
+
+It seeds a scratch workspace from the case manifest, runs the variant's
+`reference-impl/<variant>/draw.sh` with the case's drawing binary on `PATH`, and
+uploads each produced frame image and action log to the public snapshot bucket
+under `media/references/<slug>/<version>/<variant>/frames/`. The command echoes the
+bucket it is writing so a publish into the wrong one is obvious immediately.
+
+Two differences worth internalising:
+
+- **Nothing is committed.** The keys are deterministic, so there is no lockfile —
+  the backend learns what exists by listing that prefix at ingest. Re-running the
+  command after editing a script overwrites the objects in place, and that is the
+  entire update path. You still run `reingest-cluster.sh`.
+- **The drawing binary comes from your machine.** It is resolved from
+  `TCAB_ASSET_BIN_DIR`, else the cargo target directory's `release/`, else `PATH`.
+  Build it first (`cargo build --release -p test-cabinet-draw`) or the command
+  fails naming every location it tried.
+
+To see what a reference looks like **before** publishing it — the images are not
+committed, so there is nothing in the repo to open — render it locally:
+
+```sh
+node scripts/preview-asset-reference.mjs <slug>
+```
+
+That writes the frames, the action logs, and a GIF per sequence to
+`tmp/asset-previews/<slug>/<variant>/`, with an `index.html` showing them
+together. It needs no credentials and uploads nothing.
+
+## Baseline validation media
+
+Regenerating a case's committed **baseline**
+[validation](/testing/end-to-end/instrumentation/) media —
+`validation-baseline/<variant>/`, the expected-behavior half of a reviewer's
+side-by-side — is its own command, and needs **none** of the prerequisites above (no
+`--env`, no Cloudflare credentials):
+
+```sh
+tcab capture-baselines <slug> [<version>] [--variant base] [--dry-run]
+```
+
+Run it whenever you add or change a debug script, or change the reference
+implementation it drives, then commit the result. `publish-reference` re-captures the
+same media as part of its build so a deploy stays in lockstep; pass
+`--skip-baselines` to deploy without re-capturing when it is already current.
 
 ## From CI
 

@@ -1,0 +1,458 @@
+{
+  "dimensions": 2,
+  "field": {
+    "width": 128,
+    "height": 128
+  },
+  "durationMs": 1400,
+  "fps": 30,
+  "loop": false,
+  "emitters": [
+    {
+      "name": "flash",
+      "shape": "point",
+      "position": [
+        64.0,
+        64.0,
+        0.0
+      ],
+      "extent": {
+        "radius": 1.0,
+        "size": [
+          1.0,
+          1.0,
+          0.0
+        ]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 16,
+        "atMs": 0.0
+      },
+      "lifetimeMs": 300.0,
+      "lifetimeSpread": 70.0,
+      "speed": 40.0,
+      "speedSpread": 20.0,
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "coneAngle": 360.0,
+      "seed": 1,
+      "forces": {
+        "drag": 4.0
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-out",
+          "from": 3.2,
+          "to": 0.0
+        },
+        "opacityCurve": {
+          "interp": "ease-out",
+          "from": 1.0,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#ffffff",
+            "at": 0.0
+          },
+          {
+            "color": "#ffcf4a",
+            "at": 0.5
+          },
+          {
+            "color": "#ff4a2a",
+            "at": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "fireball",
+      "shape": "disc",
+      "position": [
+        64.0,
+        64.0,
+        0.0
+      ],
+      "extent": {
+        "radius": 8.0,
+        "size": [
+          1.0,
+          1.0,
+          0.0
+        ]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 46,
+        "atMs": 0.0
+      },
+      "lifetimeMs": 620.0,
+      "lifetimeSpread": 160.0,
+      "speed": 150.0,
+      "speedSpread": 55.0,
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "coneAngle": 360.0,
+      "seed": 11,
+      "forces": {
+        "gravity": 40.0,
+        "drag": 1.5,
+        "radial": 90.0
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-out",
+          "from": 1.2,
+          "to": 0.0
+        },
+        "opacityCurve": {
+          "interp": "ease-out",
+          "from": 1.0,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#ffffff",
+            "at": 0.0
+          },
+          {
+            "color": "#ffcf4a",
+            "at": 0.35
+          },
+          {
+            "color": "#ff5220",
+            "at": 0.7
+          },
+          {
+            "color": "#7a1a0a",
+            "at": 1.0
+          }
+        ],
+        "stretch": 0.06
+      }
+    },
+    {
+      "name": "shockwave",
+      "shape": "point",
+      "position": [
+        64.0,
+        64.0,
+        0.0
+      ],
+      "extent": {
+        "radius": 1.0,
+        "size": [
+          1.0,
+          1.0,
+          0.0
+        ]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 40,
+        "atMs": 0.0
+      },
+      "lifetimeMs": 640.0,
+      "lifetimeSpread": 40.0,
+      "speed": 235.0,
+      "speedSpread": 18.0,
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "coneAngle": 360.0,
+      "seed": 21,
+      "forces": {
+        "drag": 0.7,
+        "radial": 70.0
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-out",
+          "from": 0.7,
+          "to": 0.25
+        },
+        "opacityCurve": {
+          "interp": "ease-out",
+          "from": 1.0,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#ffffff",
+            "at": 0.0
+          },
+          {
+            "color": "#ffcf4a",
+            "at": 0.4
+          },
+          {
+            "color": "#ff4a2a",
+            "at": 1.0
+          }
+        ],
+        "stretch": 0.05
+      }
+    },
+    {
+      "name": "debris",
+      "shape": "point",
+      "position": [
+        64.0,
+        64.0,
+        0.0
+      ],
+      "extent": {
+        "radius": 1.0,
+        "size": [
+          1.0,
+          1.0,
+          0.0
+        ]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 30,
+        "atMs": 0.0
+      },
+      "lifetimeMs": 900.0,
+      "lifetimeSpread": 260.0,
+      "speed": 220.0,
+      "speedSpread": 90.0,
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "coneAngle": 360.0,
+      "seed": 26,
+      "forces": {
+        "gravity": 320.0,
+        "drag": 1.2
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-out",
+          "from": 0.8,
+          "to": 0.0
+        },
+        "opacityCurve": {
+          "interp": "ease-out",
+          "from": 1.0,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#8a8f98",
+            "at": 0.0
+          },
+          {
+            "color": "#3a1512",
+            "at": 1.0
+          }
+        ],
+        "stretch": 0.1
+      }
+    },
+    {
+      "name": "debris-smoke",
+      "shape": "point",
+      "position": [
+        64.0,
+        64.0,
+        0.0
+      ],
+      "extent": {
+        "radius": 1.0,
+        "size": [
+          1.0,
+          1.0,
+          0.0
+        ]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 2,
+        "atMs": 0.0
+      },
+      "lifetimeMs": 620.0,
+      "lifetimeSpread": 180.0,
+      "speed": 18.0,
+      "speedSpread": 10.0,
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "coneAngle": 360.0,
+      "seed": 41,
+      "forces": {
+        "gravity": -10.0,
+        "drag": 2.6
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-out",
+          "from": 0.8,
+          "to": 2.2
+        },
+        "opacityCurve": {
+          "interp": "ease-out",
+          "from": 0.5,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#3a1512",
+            "at": 0.0
+          },
+          {
+            "color": "#20242c",
+            "at": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "embers",
+      "shape": "point",
+      "position": [
+        64.0,
+        64.0,
+        0.0
+      ],
+      "extent": {
+        "radius": 1.0,
+        "size": [
+          1.0,
+          1.0,
+          0.0
+        ]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 24,
+        "atMs": 0.0
+      },
+      "lifetimeMs": 1100.0,
+      "lifetimeSpread": 320.0,
+      "speed": 120.0,
+      "speedSpread": 60.0,
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "coneAngle": 360.0,
+      "seed": 36,
+      "forces": {
+        "gravity": 260.0,
+        "drag": 1.3
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-out",
+          "from": 0.5,
+          "to": 0.0
+        },
+        "opacityCurve": {
+          "interp": "ease-out",
+          "from": 1.0,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#ffcf4a",
+            "at": 0.0
+          },
+          {
+            "color": "#ff5220",
+            "at": 0.5
+          },
+          {
+            "color": "#ff4a2a",
+            "at": 1.0
+          }
+        ],
+        "stretch": 0.06
+      }
+    },
+    {
+      "name": "billow",
+      "shape": "point",
+      "position": [
+        64.0,
+        64.0,
+        0.0
+      ],
+      "extent": {
+        "radius": 1.0,
+        "size": [
+          1.0,
+          1.0,
+          0.0
+        ]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 14,
+        "atMs": 60.0
+      },
+      "lifetimeMs": 1000.0,
+      "lifetimeSpread": 260.0,
+      "speed": 55.0,
+      "speedSpread": 26.0,
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "coneAngle": 70.0,
+      "seed": 45,
+      "forces": {
+        "gravity": -24.0,
+        "drag": 2.4
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-out",
+          "from": 1.4,
+          "to": 3.4
+        },
+        "opacityCurve": {
+          "interp": "ease-out",
+          "from": 0.55,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#3a1512",
+            "at": 0.0
+          },
+          {
+            "color": "#0c0f14",
+            "at": 1.0
+          }
+        ],
+        "rotation": 30.0
+      }
+    }
+  ],
+  "forces": {},
+  "subEmitters": [
+    {
+      "parent": "debris",
+      "on": "death",
+      "emitter": "debris-smoke"
+    }
+  ]
+}

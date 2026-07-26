@@ -1,0 +1,27 @@
+@use "../styles/tokens" as t;
+
+// A check outcome rendered as a single glyph. Sized a touch above the row text so
+// the mark reads clearly at the `.checks` tables' small font, and line-height
+// pinned so a glyph cell never grows taller than a text cell beside it.
+.glyph {
+  font-size: t.$font-md;
+  line-height: 1;
+  font-style: normal;
+
+  &[data-status="pass"] {
+    color: t.$color-positive;
+  }
+
+  // A check that ran and failed. Distinct from `none` below: this is an outcome,
+  // not the absence of one.
+  &[data-status="fail"] {
+    color: t.$color-negative;
+  }
+
+  // No outcome to show — the step was never reached, or the script never ran.
+  // Muted rather than negative so it doesn't read as a failure, and matching the
+  // em dash the sibling Detail/Similarity columns already use for "no data".
+  &[data-status="none"] {
+    color: t.$color-text-muted;
+  }
+}

@@ -91,97 +91,14 @@ auto_play = false
 [[spec]]
 source = "specs/brief.md.hbs"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the regenerated, rigged model reads as the Sunfront Bulwark and \
-poses correctly — a heavy bipedal mech with two arms, a tower shield braced on the \
-left and a siege maul in the right, whose right maul arm winds up and smashes without \
-detaching while its legs stride in the model-authored `walk` — each foot lifting \
-clear on its swing and planting flat, the knees folding the right way — and the body \
-stays put, with a clear solar-amber chest-core accent and the disciplined Duneforged \
-palette."""
-
-[[review_item]]
-id = "reads-as-mech"
-title = "Reads as a heavy shield-and-maul bipedal mech"
-text = """
-From more than one angle the model reads unmistakably as a heavy walking war-mech \
-with two arms: a broad, armored upper body with a head on top, a pair of thick, \
-visibly bent-knee legs planted beneath it, a wide tower shield braced on a visible \
-left arm, and a heavy siege maul gripped in a visible right arm. It is a bulky \
-bipedal fighting machine, not an abstract stack of boxes, and it is plainly armed — \
-not armless."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "legs-walk"
-title = "Legs stride with a planted stance, not a flail"
-text = """
-Playing `walk` strides the mech forward on its two legs in opposite phase, so one \
-foot is always down. The clip is authored IN PLACE — the body holds its ground and \
-does not drift across the scene; the forward stride is carried entirely by the legs, \
-so played on its own the feet cycle and the planted foot slides straight back under \
-the body (a treadmill) while a game supplies the real movement. \
-Each leg has a clear PLANTED STANCE — the foot flat and still on \
-the ground while the body travels forward over it — then lifts the foot clear, swings \
-it forward, and plants again with weight; a leg that swings in a continuous arc and \
-never sits still on the ground reads as flailing, not walking. The feet stay flat as \
-they carry the body (they don't tip onto toe or heel, and the knees fold the \
-reverse/digitigrade way rather than inside-out), no foot is dragged or driven down \
-through the ground, and the legs stay attached across the whole cycle. The model had \
-to invent an articulated leg (more than one segment and joint) for this to read as \
-walking rather than swinging rigid stumps, and to ease the motion (F-curves) so it \
-carries weight rather than sliding linearly."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "maul-smashes"
-title = "Maul winds up and smashes on its shoulder hinge"
-text = """
-Playing `smash` winds the heavy siege maul up over the head and slams the whole right \
-arm-and-maul down and forward in a smash about its shoulder mount, then recovers to a \
-ready pose — with no voxel of the arm or maul tearing away from its mount or clipping \
-into the body across the full swing. The arm swings as one solid piece. The maul reads \
-as a weapon HELD OUT in the fist, not an apparatus on the body: the arm, haft, and maul \
-head stand clear of the torso with a plain gap of air between them at the ready pose, \
-and the arm carries the maul out away from the body through the wind-up and recovery \
-rather than sweeping it tucked against or sunk into the torso."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "body-fixed"
-title = "The body stays put; only the moving parts move"
-text = """
-The armored body and head are the fixed base of the machine: they stay put, never \
-carried along by the arms or the legs. When `smash` plays, the maul arm works while \
-the legs hold still; when `walk` plays, the legs stride while the arms hold. Nothing \
-but the moving parts moves."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "parts-attached"
-title = "Limbs stay attached as they move"
-text = """
-Every moving limb stays attached across its full range: the legs meet the body where \
-they mount and each leg segment meets the one above it with no gap as the mech \
-strides, and the right maul arm meets its shoulder throughout the smash — never \
-floating free, detaching, or opening a gap. The braced left shield arm stays fixed to \
-the body."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Duneforged palette discipline"
-text = """
-Uses only the Duneforged colors from the brief (heavy brass and bronze armor, iron \
-joints and maul head, and the solar-amber core accent) with a clear amber \
-chest-core, no out-of-palette colors, and no stray voxels drifting off the parts."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

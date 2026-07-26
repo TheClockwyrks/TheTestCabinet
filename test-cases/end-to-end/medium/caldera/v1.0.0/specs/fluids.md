@@ -6,9 +6,8 @@ This file defines the **flow-network simulation** at the heart of Caldera: how
 rules, and what happens when supply falls short or a line is cut. The structures
 themselves and their costs are in `specs/build.md`; the terrain (elevation, rivers,
 deep water, vents) is in `specs/world.md`; towers' combat is in `specs/towers.md`.
-Flow is measured in abstract **flow units per second (`f/s`)**; values are
-best-effort defaults and **tunable**, but the **relationships** between them are the
-requirement.
+Flow is measured in abstract **flow units per second (`f/s`)**; the
+**relationships** between them are the requirement.
 
 ## The supply chain, end to end
 
@@ -82,7 +81,7 @@ subtle animated flow in the pipe color, `specs/overview.md`); an unpowered or
 starved pipe is drawn dim.
 
 **Steam distance loss.** Steam loses about **`0.5 f/s` for every `5` cells** of pipe
-between a boiler and the tower it feeds (tunable), so a tower fed from a distant
+between a boiler and the tower it feeds, so a tower fed from a distant
 boiler gets less than one fed from a near boiler — another reason to distribute
 boilers, not centralize them.
 
@@ -138,7 +137,7 @@ incidental damage from other Slag) destroy pipes and structures (`specs/enemies.
 - A destroyed **source** or **boiler** removes its contribution entirely until
   rebuilt.
 
-## Summary of default rates (all tunable)
+## Summary of default rates
 
 | Quantity | Value |
 | --- | --- |
@@ -150,7 +149,7 @@ incidental damage from other Slag) destroy pipes and structures (`specs/enemies.
 | Steam distance loss | `−0.5 f/s` per `5` cells |
 | Tower steam demand | `2`–`5 f/s` base, rising with upgrades (`specs/towers.md`) |
 
-Tune the numbers freely; keep the **relationships**: rivers are weak and gravity-
+Keep the **relationships**: rivers are weak and gravity-
 bound, pumps are strong but pay for lift, steam is elevation-free but distance-lossy,
 boilers gate steam on water, towers gate firing on steam, and a cut line propagates
 downstream.

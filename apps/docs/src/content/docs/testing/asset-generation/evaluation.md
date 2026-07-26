@@ -25,11 +25,7 @@ whole-sheet aggregate**. The `[sheet]` table's named
 [sequences](/testing/asset-generation/manifests/) are surfaced to the reviewer and
 **played back as live animations** in the review UI (the regenerated frames in
 each named sequence's order) so a person can judge the motion the sheet encodes
-against the brief. A checklist item may also
-[name the sequences and frames it is about](/testing/asset-generation/manifests/#review-items-can-reference-sequences-and-frames),
-in which case the reviewer is shown exactly those animations and frames beside the
-item — with a toggle between the live animation and the still frames — instead of
-scanning the whole sheet to find them.
+against the brief.
 
 ## UI validation
 
@@ -235,3 +231,20 @@ convincingly the regenerated asset realizes the brief and how the model approach
 the drawing, alongside the regenerated image and the recorded actions. The
 cheat-detection signal informs that assessment — flagging a run that drew outside
 the tool — but the judgment of the asset itself is the reviewer's.
+
+That review is **one overall rating**, and nothing else. An asset-generation case
+declares no [reviewer checklist](/testing/asset-generation/manifests/#judged-on-one-overall-rating)
+— only the single `overall` scoring
+[domain](/components/core/results/#reviews) — because how well an asset
+reads is a judgment about the whole thing: whether a sprite is the creature the
+brief describes, whether a walk cycle carries weight, whether a material sits right
+under light. Breaking that into pass/fail points would invent a precision the
+judgment does not have. So the reviewer takes in the regenerated asset as a whole
+(playing back every declared sequence, turning the model, hearing the clip), reads
+the brief, and gives it one rating — which, being the only domain, is the run's
+rating. Runs of these cases therefore carry a rating and a writeup but **no point
+score**.
+
+This puts the weight on the **brief**: it is both what the model is asked to
+satisfy and the only thing the rating is given against, so anything that would
+have been a checklist item has to be stated there.

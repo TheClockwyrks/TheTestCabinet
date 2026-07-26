@@ -71,8 +71,79 @@ export function render(ctx: CanvasRenderingContext2D, game: Game): void {
     }
   }
 
+  if (game.debugOverlay) drawDebugOverlay(ctx, game);
+
   ctx.restore();
 }
+
+// ---- Debug overlay --------------------------------------------------------
+
+// A read-only diagnostic layer over the running game: the same live internal
+// state snapshot() reports. Toggled with the backtick key (see
+// game.handleInput); off by default; draws only — it never changes gameplay.
+// See specs/instrumentation.md.
+function drawDebugOverlay(ctx: CanvasRenderingContext2D, game: Game): void {
+  const s = game.debugSnapshot();
+  const lines: string[] = [];
+  lines.push(
+    `screen  ${s.screen}   stage ${s.stage}${s.isChallenge ? " (challenge)" : ""}  mode ${s.mode}`,
+  );
+  lines.push(`score   ${s.score}   lives ${s.lives}`);
+  lines.push(
+    `reson   ${s.resonance.toFixed(0)}/100${s.dischargeReady ? "  READY" : ""}${
+      s.discharge.active ? `  wave r${s.discharge.radius.toFixed(0)}` : ""
+    }`,
+  );
+  lines.push(`invert  ${s.inversionActive ? "ACTIVE" : "off"}   simT ${s.simTime.toFixed(2)}s`);
+  lines.push(
+    `ship    x ${s.ship.x.toFixed(0)}  band ${s.ship.band}  lock ${s.ship.lockout.toFixed(2)}${
+      s.ship.canFire ? "  canFire" : ""
+    }`,
+  );
+  lines.push(`drones  ${s.drones.length}   bullets ${s.bullets.length}`);
+  const maxDrones = 12;
+  s.drones.slice(0, maxDrones).forEach((d) => {
+    let extra = "";
+    if (d.kind === "flux") extra = d.shimmer ? " shimmer" : "";
+    if (d.kind === "prism") extra = d.shellAlive ? ` shell ${d.shellBand}` : ` core ${d.coreBand}`;
+    if (d.charge > 0) extra += ` chg${d.charge}`;
+    const bandTxt = d.band === d.effectiveBand ? d.band : `${d.band}->${d.effectiveBand}`;
+    lines.push(
+      `  #${d.id} ${d.kind} ${bandTxt} ${d.phase} ${d.x.toFixed(0)},${d.y.toFixed(0)}${extra}`,
+    );
+  });
+  if (s.drones.length > maxDrones) lines.push(`  … +${s.drones.length - maxDrones} more`);
+
+  const pad = 12;
+  const lineH = 18;
+  const headerH = 22;
+  const w = 420;
+  const x = 20;
+  const y = HUD_TOP_OVERLAY_Y;
+  const h = pad * 2 + headerH + lines.length * lineH;
+
+  ctx.save();
+  ctx.fillStyle = "rgba(5, 6, 15, 0.82)";
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = COLOR.panelBorder;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x, y, w, h);
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  ctx.font = `700 12px ${MONO}`;
+  ctx.fillStyle = COLOR.resonance;
+  ctx.fillText("DEBUG", x + pad, y + pad);
+  ctx.font = `13px ${MONO}`;
+  ctx.fillStyle = COLOR.textDim;
+  let ly = y + pad + headerH;
+  for (const line of lines) {
+    ctx.fillText(line, x + pad, ly);
+    ly += lineH;
+  }
+  ctx.restore();
+}
+
+const HUD_TOP_OVERLAY_Y = 76; // just below the top HUD strip
 
 // ---- Field ----------------------------------------------------------------
 function drawStarfield(ctx: CanvasRenderingContext2D): void {
@@ -224,7 +295,7 @@ function drawDrone(ctx: CanvasRenderingContext2D, game: Game, d: Drone): void {
   }
 
   // Overload charge telegraph: a row of pips above a drone that has taken
-  // mismatched shots, filling toward its overload (specs/mode.md).
+  // mismatched shots, filling toward its overload (specs/gameplay.md).
   if (game.mode === "overload" && d.charge > 0) drawChargePips(ctx, d);
 }
 

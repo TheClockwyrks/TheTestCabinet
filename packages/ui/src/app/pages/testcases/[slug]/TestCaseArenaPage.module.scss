@@ -154,6 +154,53 @@
   letter-spacing: 0.06em;
 }
 
+// A run/pushed controller's run id (UUID), shown in place of the kind badge. It
+// can shrink and ellipsize so a long id never squeezes the model name out.
+.pickId {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// The live tournament progress: a "played / total" count over a filling bar, and
+// the current pairing (model display names) as a subtitle.
+.progress {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  margin-top: t.$space-md;
+}
+
+.progressText {
+  font-variant-numeric: tabular-nums;
+  color: t.$color-text;
+}
+
+.progressTrack {
+  position: relative;
+  height: 0.5rem;
+  border-radius: t.$radius-sm;
+  background: t.$color-surface-2;
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  background: t.$color-accent;
+  box-shadow: var(--ttc-glow);
+  transition: width 0.2s ease;
+}
+
+.progressSub {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
 // The finished quick match's summary + replay launch.
 .matchResult {
   margin-top: t.$space-md;

@@ -5,9 +5,9 @@ difficulty = "easy"
 tags = ["sprite-sheet", "fixture"]
 summary = """
 Draw the Lattice source: a top-down test-fixture item emitter for a deterministic \
-factory simulation, as six 32x32 frames whose green-lit East aperture pulses out a \
-single steel plate that loops seamlessly, produced one drawing operation at a \
-time."""
+factory simulation, as six 32x32 frames whose green-lit East aperture pulses as it \
+fires — the fixture's own reaction, with no item drawn — in a loop that closes \
+seamlessly, produced one drawing operation at a time."""
 description = "description.md"
 # Optional per-version changelog entry (Markdown, relative to this version
 # folder), recording what changed in THIS version — the first version simply reads
@@ -25,8 +25,8 @@ asset_kind = "sprite-sheet"
 variants = ["variants/base.toml"]
 
 # Each frame is its own 32x32 transparent canvas (a separate file) — one tile of
-# the source fixture at Factorio normal resolution. Fixing the frame size keeps
-# every run comparable.
+# the source fixture at the game's normal tile resolution. Fixing the frame size
+# keeps every run comparable.
 [canvas]
 width = 32
 height = 32
@@ -76,79 +76,14 @@ fps = 8
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How faithfully the regenerated sheet matches the Lattice source — its top-down \
-test-fixture emitter housing with an East-facing output aperture, the green \
-source-accent status indicator, and the emit-pulse animation that brightens the \
-aperture and slides one steel plate out to the East and loops seamlessly."""
-
-[[review_item]]
-id = "reads-as-emitter"
-title = "Reads as a test-fixture emitter"
-text = """
-Every frame reads as a piece of top-down measurement equipment — a panel/housing \
-with an output aperture/port on its East (right) edge — not as a length of belt or \
-a generic factory machine. It must look like a rig that injects items into the \
-factory, with the aperture clearly on the East side."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "emit-pulse"
-title = "Emit pulse with a moving item"
-text = """
-Played in order, the six frames read as the fixture emitting one item: frame 0 is \
-idle (aperture dim/closed), then the green indicator and aperture brighten while a \
-single small steel-grey plate appears at the aperture and slides toward the East \
-edge, then the aperture dims back toward idle. The plate must visibly move East \
-across the frames, not merely flicker in place."""
-sequences = ["emit"]
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "seamless-loop"
-title = "Seamless emit loop"
-text = """
-The six frames form a clean repeating cycle: frame 5 returns to frame 0 with no \
-jump or stutter, so playing 0→1→…→5→0 reads as the fixture emitting one item every \
-cycle, over and over. The idle state at frame 0 and the dim-down at the end must \
-line up so the loop has no visible seam."""
-sequences = ["emit"]
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "green-source-accent"
-title = "Green source accent, distinct from a sink"
-text = """
-The fixture's signature accent is green — a green status indicator and a green-lit \
-aperture mark it as a source (input). It must read as visibly distinct from a red \
-drain/sink fixture: a reviewer should never mistake this emitter for a consumer, \
-and no red accent appears anywhere."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Strict palette adherence"
-text = """
-Uses only the palette from the brief — the dark outline/shadow, the grey-blue \
-housing light/mid/dark tones, the green source-accent mid/dark/pale tones, and the \
-steel-plate base and highlight — with no out-of-palette colors and no halo of \
-stray or anti-aliased pixels."""
-weight = 1
-domain = "fidelity"
-
-[[review_item]]
-id = "framing"
-title = "Frame framing"
-text = """
-The housing fills most of the 32x32 frame with a small even margin, centered so it \
-neither sits tiny in a corner nor clips at the edges — with the output aperture \
-reaching toward the East (right) edge so the emitted plate has room to slide out."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

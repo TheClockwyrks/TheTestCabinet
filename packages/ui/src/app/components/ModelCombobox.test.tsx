@@ -43,13 +43,11 @@ function shownOptionIds(): string[] {
 }
 
 describe("ModelCombobox", () => {
-  it("shows the whole catalog when opening a field that holds a seeded id", () => {
-    // Regression: the batch run form seeds each row's model with a concrete id,
-    // so the field's value is a committed selection, not a query. Opening it must
-    // list every model, not just the one whose id matches the value.
+  it("shows the whole catalog when the field is empty", () => {
+    // No model is auto-selected, so a fresh field is empty and lists every model.
     render(
       <ModelCombobox
-        value="claude-opus-4-8"
+        value=""
         onChange={() => {}}
         models={MODELS}
         harnessFamily="claude"
@@ -61,6 +59,37 @@ describe("ModelCombobox", () => {
       "claude-sonnet-5",
       "claude-haiku-4-5",
     ]);
+  });
+
+  it("filters the list by the field's text, including a committed id", () => {
+    // The field's text always filters the list — a committed id narrows it to the
+    // matching option rather than showing the whole catalog.
+    render(
+      <ModelCombobox
+        value="claude-opus-4-8"
+        onChange={() => {}}
+        models={MODELS}
+        harnessFamily="claude"
+      />,
+    );
+    fireEvent.focus(screen.getByRole("combobox"));
+    expect(shownOptionIds()).toEqual(["claude-opus-4-8"]);
+  });
+
+  it("leaves out the excluded ids", () => {
+    // A picker that de-dupes its entries passes the ones already chosen; picking
+    // them again would do nothing, so they aren't offered.
+    render(
+      <ModelCombobox
+        value=""
+        onChange={() => {}}
+        models={MODELS}
+        harnessFamily="claude"
+        excludeIds={["claude-opus-4-8", "claude-haiku-4-5"]}
+      />,
+    );
+    fireEvent.focus(screen.getByRole("combobox"));
+    expect(shownOptionIds()).toEqual(["claude-sonnet-5"]);
   });
 
   it("narrows the list to matches once the user types a query", () => {
@@ -89,7 +118,7 @@ describe("ModelCombobox", () => {
     expect(shownOptionIds()).toEqual(["claude-sonnet-5"]);
   });
 
-  it("shows the whole catalog again after committing a selection", () => {
+  it("commits the picked model's id when an option is clicked", () => {
     const onChange = vi.fn();
     const { rerender } = render(
       <ModelCombobox
@@ -113,21 +142,5 @@ describe("ModelCombobox", () => {
     );
     fireEvent.click(screen.getByRole("option"));
     expect(onChange).toHaveBeenLastCalledWith("claude-haiku-4-5");
-    // The parent now holds the committed id; reopening must show the full list,
-    // not just the just-picked model.
-    rerender(
-      <ModelCombobox
-        value="claude-haiku-4-5"
-        onChange={onChange}
-        models={MODELS}
-        harnessFamily="claude"
-      />,
-    );
-    fireEvent.focus(input);
-    expect(shownOptionIds()).toEqual([
-      "claude-opus-4-8",
-      "claude-sonnet-5",
-      "claude-haiku-4-5",
-    ]);
   });
 });

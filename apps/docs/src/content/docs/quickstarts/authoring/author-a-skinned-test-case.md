@@ -26,7 +26,7 @@ reference it — revise by adding a new version, not by editing a published one.
 
 ```text
 test-cases/<type>/<difficulty>/<slug>/<version>/
-  test-case.toml         # manifest: type, asset_kind, voxel, tool, output, model, domains
+  test-case.toml         # manifest: type, asset_kind, voxel, tool, output, model, the overall domain
   variants/              # one standalone TOML file per variant (listed in `variants`)
   prompt.hbs             # rendered into the harness instruction (NOT seeded)
   specs/brief.md         # the character + how the tool behaves — SEEDED

@@ -45,7 +45,8 @@ observability never requires a code change or a rebuild.
 | [Dispatcher](/components/dispatcher/overview/) | `tcab-dispatcher` | Control-loop spans for claiming queued runs and creating per-run driver `Job`s. |
 | [Driver](/components/driver/overview/) | `tcab-driver` | Run-execution spans, inbound trace-context extraction from the enqueued request, outbound context propagation to the backend, and publisher spans. |
 | [Backend](/components/backend/overview/) | `tcab-backend` | Axum server spans, inbound trace-context extraction, and request metrics. |
-| [CLI](/components/cli/overview/) (`tcab`) | `tcab` | Init plus a span per command, driving the core's run spans. |
+| [CLI](/components/cli/overview/) (`tcab`) | `tcab-cli` | Init plus a span per command, driving the core's run spans. |
+| [Agent harness](/harnesses/overview/) (in the run container) | `tcab-harness-<slug>` | Only for the harnesses that can export at all, and only when configured — see [harness telemetry](#harness-telemetry) below. |
 | [Tauri app](/components/tauri/overview/) | `tcab-desktop` | Init plus command spans, driving the core's run spans. |
 | [Web console](/components/web/overview/) | `tcab-web` | Browser **traces** only (no metrics/logs): a span per `fetch`, with a `traceparent` header injected on every outbound request. |
 
@@ -88,12 +89,63 @@ and `wrangler` during a publish, and the Playwright
 [browser driver](/components/core/validation/) during validation. For these the
 core sets the W3C `TRACEPARENT` environment variable on the child process, so the
 trace context *is* carried across the process boundary. Whether the child
-actually emits a child span depends on that tool: the agent
-[harness](/components/core/harnesses/) and the third-party CLIs are not
-OpenTelemetry-instrumented, so today they appear as a **gap** — the parent span
+actually emits a child span depends on that tool: none of these are
+OpenTelemetry-instrumented today, so they appear as a **gap** — the parent span
 records the time spent in the subprocess, but there are no spans from inside it.
-The `TRACEPARENT` is set regardless so that any future instrumented child, or an
-instrumented harness, would slot into the trace without further work.
+The `TRACEPARENT` is set regardless so that any future instrumented child would
+slot into the trace without further work.
+
+The agent [harness](/components/core/harnesses/) is a special case, because it
+does not run as a child process on the host at all — it runs *inside the run
+container*. Setting `TRACEPARENT` on the `docker exec` client would not reach it:
+the runtime does not forward the client's environment across the daemon, and the
+Kubernetes exec API carries no environment at all. The harness's trace context is
+therefore set **on the container**, at start, alongside the rest of its telemetry
+configuration. See the next section.
+
+## Harness telemetry
+
+The harness is a third-party CLI, so it can only be instrumented the way its
+vendor documents — which differs per harness and is impossible for some. When
+this deployment exports telemetry, a run also configures its harness to export,
+using the same `OTEL_EXPORTER_OTLP_ENDPOINT` switch: there is nothing extra to
+turn on.
+
+The support matrix, the exact variables and config files written, and the reasons
+for the gaps live with each harness, under **Telemetry** on its page — start at
+[Harnesses](/harnesses/overview/). In summary:
+
+| Harness | Exports | Joins the run's trace |
+| --- | --- | --- |
+| [Claude Code](/harnesses/claude/telemetry/) | traces, metrics, logs | Yes — reads the standard `TRACEPARENT` |
+| [OpenCode](/harnesses/opencode/telemetry/) | traces, metrics, logs | Yes — via the plugin's `OPENCODE_TRACEPARENT` |
+| [Codex](/harnesses/codex/telemetry/) | traces, logs | No — correlate by resource attribute |
+| [Goose](/harnesses/goose/telemetry/) | traces, metrics, logs | No — correlate by resource attribute |
+| [Kilo Code](/harnesses/kilo/telemetry/) | traces, logs | No — correlate by resource attribute |
+| [Cline](/harnesses/cline/telemetry/) | — | — |
+| [Pi](/harnesses/pi/telemetry/) | — | — |
+| [Antigravity](/harnesses/antigravity/telemetry/) | — | — |
+
+Every exporting harness reports under the service name `tcab-harness-<slug>` and
+carries `tcab.harness`, `tcab.test_case`, `tcab.variant`, `tcab.model`, and
+`tcab.run_id` resource attributes. Those attributes are what makes a harness that
+*cannot* join the run's trace still correlatable to the run that produced it.
+
+`tcab.run_id` is the one that identifies a *specific* run rather than a class of
+them, and it is why the run's ID is minted at the top of `run_resolved` rather
+than when its record is assembled at the end: the harness has to be told the ID
+before it starts, or its spans — the tool calls, the model turns, the failures —
+arrive describing work that cannot be attributed to anything. The other four
+attributes narrow a search; only this one answers "what happened in *this* run".
+
+The endpoint is resolved from the container's point of view. In a cluster that is
+the collector's Service DNS name and needs no translation; on a developer machine
+the local endpoint is a loopback address, which inside the container would mean
+the container itself, so it is rewritten to `host.docker.internal` and the
+container is given the matching host-gateway mapping.
+
+Because the trace context carries the sampling decision, a harness that joins the
+run's trace correctly suppresses its own export when the run is not sampled.
 
 ## Configuration
 
@@ -176,8 +228,33 @@ To bring it up and view telemetry:
 
 The collector accepts both the HTTP (`:4318`) and gRPC (`:4317`) OTLP ports; the
 binaries and browser use HTTP/protobuf. Grafana's state lives on a
-`PersistentVolumeClaim` so dashboards and saved queries survive a pod restart;
-the telemetry stores themselves are intentionally ephemeral.
+`PersistentVolumeClaim` so dashboards and saved queries survive a pod restart,
+and **so does each telemetry store** — Tempo, Loki, Prometheus and Pyroscope each
+get their own claim.
+
+That was not always so. The stores originally lived on the pod's writable layer,
+which meant a restart destroyed every trace, log and metric the stack held. The
+failure mode that exposed it is the one that matters: the pod was OOM-killed, and
+the traces describing the period leading up to the kill went with it. Telemetry
+whose purpose is explaining a crash has to outlive the crash.
+
+Because the stores persist, they need bounds. Each has a retention window set by
+an environment variable on the `tcab-lgtm` container — `LOKI_RETENTION_PERIOD`,
+`TEMPO_BLOCK_RETENTION`, `PROMETHEUS_RETENTION` — which the `*_EXTRA_ARGS`
+variables beside them interpolate. The component defaults to **24h**;
+`overlays/azure-prod` raises it to **72h**, because a production issue is often
+investigated a day or more after the run that caused it. These are a live
+debugging surface, not an archive: to keep telemetry long-term, forward it to a
+system built for retention rather than growing these windows.
+
+Two of the stores need a note. Loki's retention is not settable from the command
+line, so the component ships a full `loki-config.yaml` and mounts it over the
+image's copy — it is version-coupled to the image pin and must be re-synced when
+that pin moves. Pyroscope receives no profiles from our code at all (the services
+are Rust, the harnesses Node; the profiles it holds are the LGTM stack's own Go
+runtime). It keeps a small claim rather than being switched off because the image
+offers no flag to disable it and its startup readiness gate has no timeout, so
+stubbing it out hangs the whole stack.
 
 ## Production and staging
 
@@ -202,3 +279,28 @@ way local development does — by setting the standard variables on each process
 Leaving `OTEL_EXPORTER_OTLP_ENDPOINT` unset in any environment keeps that process
 on stdout-only logging with zero exporter overhead, which remains a valid
 configuration in production.
+
+## From a run to its traces
+
+The run detail page in the console links straight to the traces a run emitted —
+the **Traces ↗** control beside the tabs. It opens Grafana *Explore* on a TraceQL
+search rather than on a single trace, because a run is not one trace: the driver,
+the artifact service, and the harness each emit their own, tied together by the
+shared `run.id` attribute rather than by a common trace ID. The query is:
+
+```traceql
+{ .run.id = "<run-uuid>" }
+```
+
+The link's time window is taken from the run's own `startedAt`/`finishedAt` with
+a few minutes of padding on either side, rather than Explore's relative default —
+the run being investigated is frequently not a recent one. Retention still
+applies, so the link can legitimately open on an empty result for a run older
+than the environment's window; that is the retention boundary, not a broken link.
+
+The console learns Grafana's address from the backend's `GET /config`, which
+reports `grafanaUrl` from `TCAB_GRAFANA_PUBLIC_URL`. Unlike the artifact and
+arena URLs reported alongside it, this is not a data-plane URL — nothing fetches
+from it, it is only opened in the reader's browser. Where it is unset the control
+simply does not render, which is the correct behavior for the public gallery
+site: its readers have no route to a VPN-only Grafana.

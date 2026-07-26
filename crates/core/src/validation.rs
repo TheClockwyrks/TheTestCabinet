@@ -77,7 +77,7 @@ pub struct CheckResult {
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct ProofResult {
     /// The proof id this result records under (matches a declared
-    /// [`ProofFile`](crate::test_case::ProofFile)).
+    /// [`ProofFile`]).
     pub id: String,
     /// Human-readable display name, carried through from the declared proof.
     pub name: String,
@@ -523,18 +523,62 @@ pub struct AdversarialResult {
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct PerformanceResult {
-    /// Whether **every** scored input case produced the oracle's exact answer.
+    /// Whether **every** scored input case passed — the oracle's exact answer
+    /// produced *within* the fuel ceiling.
     pub correct: bool,
     /// The total fuel consumed across all cases — the comparable performance
     /// result. `Some` only when [`Self::correct`]; `None` for an incorrect run,
     /// where the fuel is meaningless.
     pub total_fuel: Option<u64>,
+    /// The per-scenario fuel **pass line** (`[sandbox].fuel_limit`), so a viewer
+    /// can render a case's overshoot ("26% over the ceiling") without the manifest.
+    /// A case may run past it on its [runway](crate::test_case::PerformanceCase)
+    /// and still record its fuel; the pass line is what that fuel is judged against.
+    /// `None` on a run that could not be scored at all.
+    pub fuel_limit: Option<u64>,
     /// The per-case results, in the case's declared order.
     pub cases: Vec<PerformanceCaseResult>,
+    /// Run-root-relative path to the published **engine module** — the submission's
+    /// own `engine.wasm`, the one artifact a performance run authoritatively
+    /// produces — or `None` when the build emitted no module.
+    ///
+    /// Published so browser playback can load and step the **run's own engine** over
+    /// each case's [scenario](PerformanceCaseResult::scenario_json), reconstructing
+    /// the factory the submission actually computed (divergences and all) rather than
+    /// re-simulating with the reference engine. There is one module per run — every
+    /// case's playback drives the same wasm — so it is recorded here at the run
+    /// level, not per case. The module built by the buildkit exports the tick-at-a-
+    /// time playback ABI the renderer drives, alongside the scored `simulate` entry.
+    pub module_wasm: Option<String>,
     /// Detail about a run that could not be scored at all (for example a missing or
     /// unloadable module), or `None` when every case ran.
     #[serde(default)]
     pub detail: Option<String>,
+}
+
+/// Which phase of the held-out scored set a case belongs to.
+///
+/// A performance run's scored set is run in two phases. **Smoke** cases are a cheap
+/// correctness pre-flight — tiny scenarios that each exercise one behaviour in
+/// isolation (a belt, a side-load, a splitter, an inserter, an assembler). Every
+/// smoke case must reproduce the oracle before any **stress** case runs; if one
+/// fails, the stress cases are skipped and counted as failed, so a broken engine is
+/// caught in milliseconds rather than after burning through the large scenarios.
+/// Smoke cases are graded on **correctness alone** — their fuel is not metered into
+/// the score. **Stress** cases are the large held-out scenarios whose consumed fuel,
+/// summed, is the comparable performance result.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum PerformanceCaseKind {
+    /// A correctness pre-flight case: it gates the stress cases and its fuel is not
+    /// scored.
+    Smoke,
+    /// A scored stress case: its consumed fuel counts toward the run's total. The
+    /// default, so records and manifests written before smoke tests existed read as
+    /// stress cases.
+    #[default]
+    Stress,
 }
 
 /// The result of scoring one held-out input case of a performance run.
@@ -545,11 +589,35 @@ pub struct PerformanceCaseResult {
     /// The case-relative path of the input instance this result records under, so a
     /// reviewer can tie the result back to its case.
     pub input: String,
-    /// Whether the engine produced the oracle's exact answer for this case.
+    /// Which phase this case belongs to: a correctness pre-flight [smoke
+    /// test](PerformanceCaseKind::Smoke) or a scored [stress
+    /// case](PerformanceCaseKind::Stress). Defaults to `Stress` for records written
+    /// before smoke tests existed.
+    #[serde(default)]
+    pub kind: PerformanceCaseKind,
+    /// Whether this case **passed**: the oracle's exact answer produced *within*
+    /// the fuel ceiling. An answer that is correct but over the ceiling is not a
+    /// pass — see [`Self::over_ceiling`].
     pub correct: bool,
-    /// The fuel the engine consumed on this case. `Some` whenever the engine ran
-    /// (recorded for diagnostics even when incorrect); `None` when the engine could
-    /// not be run on this case at all (a host failure).
+    /// The engine produced the oracle's exact answer but consumed **more fuel than
+    /// the ceiling** (it finished only because the case granted a
+    /// [runway](crate::test_case::PerformanceCase)). The answer is right, so it is
+    /// not "incorrect", but it does not pass — the point of recording it is to show
+    /// *how far* over the ceiling the engine ran, with playback still available.
+    /// Mutually exclusive with [`Self::correct`]. `false` for a passing, wrong, or
+    /// unrunnable case.
+    pub over_ceiling: bool,
+    /// The case was **not run** because a smoke test failed first, so the stress
+    /// cases were skipped to save the fuel and wall-clock of running them. It counts
+    /// as a failure (the run is incorrect), but is distinct from an engine that ran
+    /// and produced the wrong answer — the engine never saw this case. Only ever
+    /// `true` for a [stress](PerformanceCaseKind::Stress) case; defaults to `false`.
+    #[serde(default)]
+    pub skipped: bool,
+    /// The fuel the engine consumed on this case. `Some` whenever the engine ran to
+    /// completion — including an over-ceiling run, whose consumed fuel is exactly
+    /// the overshoot to display; `None` when the engine could not be run or
+    /// exhausted even its runway (there is no finished total to report).
     pub fuel: Option<u64>,
     /// The tick of the first snapshot whose answer diverged from the oracle, when
     /// the engine is incorrect for that reason. `None` when correct, or when the
@@ -558,6 +626,222 @@ pub struct PerformanceCaseResult {
     /// Detail about an incorrect or unrunnable case, or `None` when correct.
     #[serde(default)]
     pub detail: Option<String>,
+    /// The per-snapshot checksums the submission actually produced, in schedule
+    /// order. Empty when the engine could not be run at all.
+    ///
+    /// Recorded so [browser playback](crate::validation) can *prove* what it is
+    /// drawing: playback loads the run's **own** engine module and steps it, and at
+    /// each scheduled snapshot tick can compare the module's checksum against the one
+    /// recorded here — a cheap assertion that the wasm it is animating is the engine
+    /// the run graded, not a stand-in.
+    ///
+    /// `#[serde(default)]` because run records written before this field existed
+    /// must still load.
+    #[serde(default)]
+    pub snapshots: Vec<PerformanceSnapshotCheck>,
+    /// Run-root-relative path to the published, browser-playable scenario, or
+    /// `None` when the case's input could not be read.
+    ///
+    /// Browser playback loads the run's own engine module (see
+    /// [`PerformanceResult::module_wasm`]) and steps it over this scenario to
+    /// reconstruct the factory the submission actually computed — a run records only
+    /// a handful of scheduled snapshots, thousands of ticks apart, so there is
+    /// nothing to interpolate between. Publishing the scenario alongside the result
+    /// is what feeds that playback, exactly as an adversarial run publishes its
+    /// [`replay_json`](AdversarialReplay::replay_json).
+    #[serde(default)]
+    pub scenario_json: Option<String>,
+}
+
+/// One scored snapshot: the tick it was taken at and the checksum the submission
+/// produced there. The checksum is the canonical
+/// [`Snapshot::checksum`](lattice_core::state::Snapshot) — the validator's whole
+/// comparison key — so a recorded run carries the same evidence the grader used.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct PerformanceSnapshotCheck {
+    /// The tick this snapshot was taken at.
+    pub tick: u64,
+    /// The checksum the submission produced, formatted `fnv1a64:%016x`.
+    pub checksum: String,
+}
+
+/// Serde default for [`DebugScriptResult::gates`]: an ungated field on a result
+/// recorded before the field existed defaults to gating, preserving prior behavior.
+fn default_true() -> bool {
+    true
+}
+
+/// The outcome of driving one review item's **debug script** against the build's
+/// [instrumentation](https://…/testing/end-to-end/instrumentation/) — the reporter-side
+/// automation a case authors to decide an objective review item without a human.
+///
+/// The script drives the build's declared debug-API handle (see
+/// [`crate::test_case::Instrumentation`]) to set up a scenario, step the real
+/// simulation forward, and read the outcome back, producing (a) an auto **verdict**
+/// per verdict id the item covers and (b) the declared media **outputs** — captured
+/// twice, once from the model's build (the *actual*) and once from the case's
+/// reference implementation (the *baseline*), for the reviewer's side-by-side.
+///
+/// A script that could be run but did not complete against a conformant build (a
+/// missing handle, a thrown call, a malformed return, or a declared output the build
+/// never produced) is recorded with [`ran`](Self::ran) `false`. That **fails the
+/// checklist point the script backs** — a failed [`verdicts`](Self::verdicts) entry
+/// is synthesized for it, pre-filled into the review like any auto verdict and
+/// overridable by the reviewer — rather than failing the whole run: a build with a
+/// broken debug API is still reviewed, and is scored down by exactly the points its
+/// checks could not answer. A script the host could not run *at all* (no browser) is
+/// not recorded here — that degrades like a [check](CheckResult).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct DebugScriptResult {
+    /// The id of the [review item](crate::test_case::ReviewItem) this script backs.
+    pub item_id: String,
+    /// The id of the sub-item this script backs when it is a per-sub-item driver, or
+    /// `None` when the whole item is validated. Together with [`Self::item_id`] it forms
+    /// the verdict id (`<item>.<sub>` or `<item>`) that keys this result's auto verdict
+    /// (see [`AutoVerdict::id`]) and its media (see [`crate::validation_media_name`]).
+    #[serde(default)]
+    pub sub_item_id: Option<String>,
+    /// The verdict unit's own title, carried through for display in the script list —
+    /// the sub-item's title for a per-sub-item driver, or the review item's title when
+    /// the whole item is validated. Carries no category prefix.
+    pub title: String,
+    /// The backing category/item's title, so the script list can group each result
+    /// under its category. Equal to [`Self::title`] for a whole-item driver.
+    #[serde(default)]
+    pub category_title: String,
+    /// The reporter-side script path that was run (relative to the case version
+    /// folder), for display — e.g. `validation/ball-spin.mjs`.
+    pub script: String,
+    /// Whether a failed drive of this script **gates** the run. `true` for every
+    /// ordinary scripted point; `false` only when the backing review point is excluded
+    /// from scoring for the version (an [`Erratum`](crate::test_case::Erratum) with
+    /// [`exclude_from_score`](crate::test_case::Erratum::exclude_from_score) links its
+    /// verdict id). An excluded point is still driven and its media captured, but it
+    /// is not scored, so a `ran == false` on it costs nothing. Defaults to `true` so a
+    /// result recorded before the field existed still counts.
+    #[serde(default = "default_true")]
+    pub gates: bool,
+    /// Whether the script executed to completion against a **conformant** build:
+    /// the handle was installed, every call returned, the return value was
+    /// well-formed, and every declared output was produced. `false` records a
+    /// debug-API contract failure, which fails the checklist point this script backs
+    /// (unless it was only a [precondition](Self::precondition_unmet) that went
+    /// unmet).
+    pub ran: bool,
+    /// Whether a `false` [`ran`](Self::ran) records an UNMET PRECONDITION rather than
+    /// a debug-API contract failure.
+    ///
+    /// A script's `arrange` often searches the model's own world for a spot to pose
+    /// its scenario — a blind corner in an invented maze, a legal build tile. That
+    /// search can come up empty against a fully conformant build: every call was
+    /// answered correctly, there was simply no such spot. That is INCONCLUSIVE about
+    /// the model, so it is held apart from a genuine contract failure: no failed
+    /// verdict is synthesized for it and the point is left for the reviewer to decide
+    /// by hand. Only ever `true` alongside `ran == false`.
+    #[serde(default)]
+    pub precondition_unmet: bool,
+    /// Detail about a failed or degraded script (the handle was missing, a call
+    /// threw, an output was not produced), or `None` when it ran clean.
+    #[serde(default)]
+    pub detail: Option<String>,
+    /// The auto verdicts the script decided. A per-unit driver decides its one verdict
+    /// (this result's verdict id), so this normally carries a single entry; it is kept a
+    /// list because a script returns a `verdicts` map and the driver preserves whatever
+    /// ids it emits. Empty when the script did not run.
+    #[serde(default)]
+    pub verdicts: Vec<AutoVerdict>,
+    /// The media outputs the script declares, each captured from the model's build
+    /// (the *actual*). The matching *baseline* media is a case property served
+    /// case-scoped, not recorded per run. Empty when the script declares none.
+    #[serde(default)]
+    pub outputs: Vec<DebugScriptOutput>,
+}
+
+/// One auto-decided checklist verdict produced by a [`DebugScriptResult`].
+///
+/// Auto verdicts are strictly binary — an objective mechanic either fired or it did
+/// not — so this carries a plain [`pass`](Self::pass) rather than the graded
+/// `VerdictStatus` a human review uses. The reviewer UI pre-fills the checklist from
+/// these (shown desaturated to mark them auto-set) and the reviewer may override any.
+///
+/// The verdict is decided by a list of [`Assertion`]s — the individual mechanical
+/// facts the script checked, each recorded pass or fail exactly as a code test
+/// framework reports every `assert`. The verdict [`pass`](Self::pass)es iff every
+/// assertion passed. The assertions are the machine-readable *proof* of the verdict:
+/// they show a reviewer precisely what was checked and which parts held, rather than
+/// a single opaque pass/fail.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct AutoVerdict {
+    /// The verdict id this decides — the [review item](crate::test_case::ReviewItem)'s
+    /// own id, or the composite `<item>.<sub-item>` id for a sub-item.
+    pub id: String,
+    /// Whether the mechanic passed. `true` earns the item (or sub-item) its weight.
+    /// Set by the script from its assertions — true iff every [`Assertion`] passed.
+    pub pass: bool,
+    /// The individual assertions the script checked to reach this verdict — the
+    /// proof, both the parts that held and the parts that failed. Empty only for a
+    /// legacy script that reported a bare pass with no assertions.
+    #[serde(default)]
+    pub assertions: Vec<Assertion>,
+}
+
+/// One assertion a validation script checked on its way to an [`AutoVerdict`] — a
+/// single mechanical fact, recorded pass or fail, exactly like one `assert` in a
+/// code test framework. Both the passing and the failing assertions are kept, so the
+/// reviewer sees the full proof of what the script observed, not just the outcome.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct Assertion {
+    /// A short human-readable statement of what was checked, phrased so it reads
+    /// true when it passes — e.g. "the ball reflects and stays on the near side".
+    pub label: String,
+    /// Whether this individual check held.
+    pub pass: bool,
+    /// For a comparison assertion (`expectEq`, `expectClose`, …), the value the
+    /// check required — what it *should* have been. A reviewer sees this beside the
+    /// [`actual`](Self::actual) on a failing assertion, so the mismatch is legible
+    /// without the label having to bake the number in. `None` for a bare boolean
+    /// fact (`expectOk`), which has no value pair to show.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub expected: Option<String>,
+    /// For a comparison assertion, the value actually observed. Paired with
+    /// [`expected`](Self::expected); `None` for a bare boolean fact.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub actual: Option<String>,
+}
+
+/// A single media artifact a [`DebugScriptResult`] declares and produces.
+///
+/// The *actual* media (from the model's build) is synthesized per run and recorded
+/// here by presence. Its *baseline* counterpart — the same output driven from the
+/// case's reference implementation — is a fixed property of the case *version*,
+/// synthesized once at publish-reference time and served case-scoped (keyed by
+/// slug/version/variant/item/output), so it is **not** recorded per run: the reviewer
+/// UI resolves the baseline from the catalog, not the run tree. The actual bytes live
+/// in the collected implementation tree and are addressed through the run's
+/// validation-media route; this records only presence and the metadata a UI needs to
+/// lay the pair out.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct DebugScriptOutput {
+    /// The output id, unique within its script — the media file's stem.
+    pub id: String,
+    /// Human-readable display name, carried through from the declared output.
+    pub name: String,
+    /// Whether this output is an image or a video clip.
+    pub kind: MediaKind,
+    /// Whether the model's build produced this output (the *actual* media).
+    pub actual_present: bool,
 }
 
 /// The validation summary embedded in a [`crate::run_record::RunRecord`].
@@ -591,6 +875,15 @@ pub struct ValidationSummary {
     /// missing proof does not change [`Self::loaded`].
     #[serde(default)]
     pub proofs: Vec<ProofResult>,
+    /// Per-verdict-unit debug-script results (one per validated whole item or
+    /// sub-item), for an end-to-end run whose case mandates
+    /// [instrumentation](DebugScriptResult) and whose items opt into automated
+    /// validation. Empty when the case declares no auto-validated units
+    /// (so an unchanged case serializes with no new field at all). Unlike the
+    /// informational proofs, a script that did not run costs the run the checklist
+    /// point it backs: see [`DebugScriptResult`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub debug_scripts: Vec<DebugScriptResult>,
     /// The regenerate-and-score result of an asset-generation run. `None` for an
     /// end-to-end run, so an end-to-end summary serializes with no new field at
     /// all and its shape is unchanged.

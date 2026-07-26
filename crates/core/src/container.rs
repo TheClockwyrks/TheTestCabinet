@@ -9,6 +9,7 @@
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::time::Duration;
 
 use tempfile::NamedTempFile;
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -17,9 +18,10 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::error::{Error, Result};
+use crate::exec_stream::drain_with_idle_timeout;
 use crate::execution::{
     ArtifactCollection, ArtifactCollector, ContainerFile, ContainerHandle, ContainerRuntime,
-    ContainerSpec, ContainerStart, ExecOutput, OutputSink, OutputStream,
+    ContainerSpec, ContainerStart, ExecOutput, OutputSink,
 };
 
 /// The container working directory the seeded repository is copied into. Matches
@@ -271,6 +273,47 @@ fn parent_dir(path: &str) -> Option<&str> {
         .filter(|parent| !parent.is_empty())
 }
 
+/// Build the `run` argument vector that starts a container from a spec.
+///
+/// Pure given the spec, so the flags a run is launched with — in particular
+/// which of them carry environment — are unit-tested without a container
+/// runtime, the way the Kubernetes runtime's manifest construction is.
+fn run_args(spec: &ContainerSpec) -> Vec<String> {
+    let mut args = vec![
+        "run".to_string(),
+        "--detach".to_string(),
+        "--pull".to_string(),
+        "missing".to_string(),
+        "--volume".to_string(),
+        WORK_DIR.to_string(),
+        "--workdir".to_string(),
+        WORK_DIR.to_string(),
+    ];
+    if !spec.network_enabled {
+        args.push("--network".to_string());
+        args.push("none".to_string());
+    }
+    // Host mappings that give the container a route back to the run host (for
+    // the live asset preview, `host.docker.internal:host-gateway`, and for a
+    // harness exporting telemetry to a collector on the run host). Both Docker
+    // and Podman accept `--add-host`, and `host-gateway` resolves to a
+    // host-reachable address on each. Empty when a run needs neither.
+    for mapping in &spec.add_hosts {
+        args.push("--add-host".to_string());
+        args.push(mapping.clone());
+    }
+    // Non-secret environment (harness telemetry configuration) and secrets both
+    // become `--env` flags; they are separate fields only so that the non-secret
+    // half stays safe to log. Secrets are applied last so a malformed telemetry
+    // variable can never shadow the API key the harness authenticates with.
+    for (key, value) in spec.env.iter().chain(spec.secrets.iter()) {
+        args.push("--env".to_string());
+        args.push(format!("{key}={value}"));
+    }
+    args.push(spec.image.clone());
+    args
+}
+
 #[cfg(test)]
 #[path = "container.test.rs"]
 mod tests;
@@ -292,33 +335,7 @@ impl ContainerRuntime for CliContainerRuntime {
         // comes from a registry (resolved by digest), not a prior local build, so
         // a missing image must be fetched rather than failing the run. An image
         // already pulled by an earlier run is reused (digest refs are immutable).
-        let mut args = vec![
-            "run".to_string(),
-            "--detach".to_string(),
-            "--pull".to_string(),
-            "missing".to_string(),
-            "--volume".to_string(),
-            WORK_DIR.to_string(),
-            "--workdir".to_string(),
-            WORK_DIR.to_string(),
-        ];
-        if !spec.network_enabled {
-            args.push("--network".to_string());
-            args.push("none".to_string());
-        }
-        // Host mappings that give the container a route back to the run host (for
-        // the live asset preview, `host.docker.internal:host-gateway`). Both Docker
-        // and Podman accept `--add-host`, and `host-gateway` resolves to a
-        // host-reachable address on each. Empty for a run with no live viewer.
-        for mapping in &spec.add_hosts {
-            args.push("--add-host".to_string());
-            args.push(mapping.clone());
-        }
-        for (key, value) in &spec.secrets {
-            args.push("--env".to_string());
-            args.push(format!("{key}={value}"));
-        }
-        args.push(spec.image.clone());
+        let args = run_args(spec);
 
         let output = self.run(&args).await?;
         if !output.status.success() {
@@ -365,6 +382,7 @@ impl ContainerRuntime for CliContainerRuntime {
             exit_code: output.status.code().unwrap_or(-1),
             stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
             stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+            idle_timed_out: false,
         })
     }
 
@@ -373,6 +391,7 @@ impl ContainerRuntime for CliContainerRuntime {
         &self,
         container: &ContainerHandle,
         command: &[String],
+        idle_timeout: Option<Duration>,
         sink: &mut dyn OutputSink,
     ) -> Result<ExecOutput> {
         let mut args = vec![
@@ -392,8 +411,15 @@ impl ContainerRuntime for CliContainerRuntime {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        // Propagate the current trace context to the harness process so it can
-        // continue this trace; a no-op when nothing is in scope to propagate.
+        // Propagate the current trace context to the runtime CLI itself, matching
+        // [`run`]; a no-op when nothing is in scope to propagate.
+        //
+        // This reaches the `docker`/`podman` client process, **not** the process
+        // inside the container: `docker exec` does not forward the client's
+        // environment across the daemon. The harness's own `TRACEPARENT` is set
+        // on the container at start time instead, from
+        // [`ContainerSpec::env`](crate::execution::ContainerSpec::env) — see
+        // [`crate::harness_telemetry`].
         if let Some(traceparent) = test_cabinet_telemetry::propagation::current_traceparent() {
             spawn.env("TRACEPARENT", traceparent);
         }
@@ -410,33 +436,22 @@ impl ContainerRuntime for CliContainerRuntime {
         let mut stdout = BufReader::new(stdout).lines();
         let mut stderr = BufReader::new(stderr).lines();
 
-        let mut captured_stdout = String::new();
-        let mut captured_stderr = String::new();
-        let mut stdout_open = true;
-        let mut stderr_open = true;
+        let drained = drain_with_idle_timeout(&mut stdout, &mut stderr, idle_timeout, sink).await?;
 
-        // Drain both streams concurrently so neither blocks the other by filling
-        // its pipe buffer, forwarding each line to the sink as it arrives. Only
-        // one select branch runs at a time, so the sink is never borrowed twice.
-        while stdout_open || stderr_open {
-            tokio::select! {
-                line = stdout.next_line(), if stdout_open => match read_line(line)? {
-                    Some(line) => {
-                        sink.on_line(OutputStream::Stdout, &line);
-                        captured_stdout.push_str(&line);
-                        captured_stdout.push('\n');
-                    }
-                    None => stdout_open = false,
-                },
-                line = stderr.next_line(), if stderr_open => match read_line(line)? {
-                    Some(line) => {
-                        sink.on_line(OutputStream::Stderr, &line);
-                        captured_stderr.push_str(&line);
-                        captured_stderr.push('\n');
-                    }
-                    None => stderr_open = false,
-                },
-            }
+        if drained.idle_timed_out {
+            // The command will never finish on its own, so detach from it rather
+            // than blocking forever in `wait`. This kills the `docker`/`podman`
+            // client, not the process inside the container — that one dies with
+            // the container, which the caller tears down immediately after a
+            // failed run. The exit code of a process we killed says nothing about
+            // the run; `idle_timed_out` is what the caller acts on.
+            let _ = child.kill().await;
+            return Ok(ExecOutput {
+                exit_code: -1,
+                stdout: drained.stdout,
+                stderr: drained.stderr,
+                idle_timed_out: true,
+            });
         }
 
         let status = child.wait().await.map_err(|err| {
@@ -444,8 +459,9 @@ impl ContainerRuntime for CliContainerRuntime {
         })?;
         Ok(ExecOutput {
             exit_code: status.code().unwrap_or(-1),
-            stdout: captured_stdout,
-            stderr: captured_stderr,
+            stdout: drained.stdout,
+            stderr: drained.stderr,
+            idle_timed_out: false,
         })
     }
 
@@ -556,10 +572,4 @@ impl ArtifactCollector for CliArtifactCollector {
         }
         Ok(ArtifactCollection { repo_path: dest })
     }
-}
-
-/// Map a line read from a piped stream into our [`Result`], turning an I/O error
-/// into a container runtime error.
-fn read_line(line: std::io::Result<Option<String>>) -> Result<Option<String>> {
-    line.map_err(|err| Error::ContainerRuntime(format!("reading container output failed: {err}")))
 }

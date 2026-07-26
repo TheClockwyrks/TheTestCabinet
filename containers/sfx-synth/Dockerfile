@@ -21,7 +21,7 @@
 ARG BASE_IMAGE=test-cabinet-base:latest
 
 # --- Stage 1: compile the `sfx-synth` binary from this repository -----------
-FROM docker.io/library/rust:1-bookworm AS audio-build
+FROM docker.io/library/rust:1.97.1-bookworm AS audio-build
 WORKDIR /build
 # The whole workspace is copied (minus `.dockerignore`'d paths) so cargo can resolve
 # the workspace graph; `-p test-cabinet-sfx-synth --bin sfx-synth` compiles only this

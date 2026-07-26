@@ -185,6 +185,7 @@ export default defineConfig({
                 "quickstarts/devops/add-or-update-a-model",
                 "quickstarts/devops/publish-a-run",
                 "quickstarts/devops/publish-a-reference",
+                "quickstarts/devops/publish-errata",
                 "quickstarts/devops/roll-prod-service-images",
               ],
             },
@@ -212,6 +213,7 @@ export default defineConfig({
               label: "Authoring",
               collapsed: true,
               items: [
+                "guides/authoring/writing-case-specifications",
                 "guides/authoring/authoring-an-end-to-end-test-case",
                 "guides/authoring/authoring-a-full-stack-test-case",
                 "guides/authoring/authoring-an-asset-generation-test-case",
@@ -240,6 +242,7 @@ export default defineConfig({
               collapsed: true,
               items: [
                 "guides/devops/adding-or-updating-a-model",
+                "guides/devops/authoring-errata",
                 "guides/devops/publishing-a-test-run-result",
                 "guides/devops/publishing-a-reference-implementation",
                 "guides/devops/rolling-prod-service-images",
@@ -251,6 +254,7 @@ export default defineConfig({
           label: "Changelogs",
           collapsed: true,
           items: [
+            "changelogs/v0.6.0",
             "changelogs/v0.5.1",
             "changelogs/v0.5.0",
             "changelogs/v0.4.1",
@@ -368,6 +372,7 @@ export default defineConfig({
             "development/running",
             "development/releasing",
             "development/observability",
+            "development/frozen-versions",
           ],
         },
         // Standing up the backend, auth, dispatcher, and artifact services as
@@ -389,8 +394,10 @@ export default defineConfig({
         // The supported coding-agent harnesses. The catalogue overview lists
         // every harness; each harness then has its own Overview (website, model
         // IDs, invocation), Authentication (API-key and, where supported,
-        // subscription), Events (raw → normalized event mapping), and Metrics
-        // (usage/cost extraction) pages.
+        // subscription), Events (raw → normalized event mapping), Metrics
+        // (usage/cost extraction), and Telemetry (OpenTelemetry export support
+        // and trace linking, including why the unsupported harnesses cannot)
+        // pages.
         {
           label: "Harnesses",
           collapsed: true,
@@ -404,6 +411,7 @@ export default defineConfig({
                 "harnesses/claude/authentication",
                 "harnesses/claude/events",
                 "harnesses/claude/metrics",
+                "harnesses/claude/telemetry",
               ],
             },
             {
@@ -414,6 +422,7 @@ export default defineConfig({
                 "harnesses/codex/authentication",
                 "harnesses/codex/events",
                 "harnesses/codex/metrics",
+                "harnesses/codex/telemetry",
               ],
             },
             {
@@ -424,6 +433,7 @@ export default defineConfig({
                 "harnesses/cline/authentication",
                 "harnesses/cline/events",
                 "harnesses/cline/metrics",
+                "harnesses/cline/telemetry",
               ],
             },
             {
@@ -434,6 +444,7 @@ export default defineConfig({
                 "harnesses/goose/authentication",
                 "harnesses/goose/events",
                 "harnesses/goose/metrics",
+                "harnesses/goose/telemetry",
               ],
             },
             {
@@ -444,6 +455,7 @@ export default defineConfig({
                 "harnesses/pi/authentication",
                 "harnesses/pi/events",
                 "harnesses/pi/metrics",
+                "harnesses/pi/telemetry",
               ],
             },
             {
@@ -454,6 +466,7 @@ export default defineConfig({
                 "harnesses/opencode/authentication",
                 "harnesses/opencode/events",
                 "harnesses/opencode/metrics",
+                "harnesses/opencode/telemetry",
               ],
             },
             {
@@ -464,6 +477,7 @@ export default defineConfig({
                 "harnesses/kilo/authentication",
                 "harnesses/kilo/events",
                 "harnesses/kilo/metrics",
+                "harnesses/kilo/telemetry",
               ],
             },
             {
@@ -474,6 +488,7 @@ export default defineConfig({
                 "harnesses/antigravity/authentication",
                 "harnesses/antigravity/events",
                 "harnesses/antigravity/metrics",
+                "harnesses/antigravity/telemetry",
               ],
             },
           ],
@@ -507,6 +522,7 @@ export default defineConfig({
               items: [
                 "testing/end-to-end/overview",
                 "testing/end-to-end/manifests",
+                "testing/end-to-end/instrumentation",
                 "testing/end-to-end/evaluation",
               ],
             },
@@ -517,6 +533,15 @@ export default defineConfig({
                 "testing/full-stack/overview",
                 "testing/full-stack/manifests",
                 "testing/full-stack/evaluation",
+              ],
+            },
+            {
+              label: "Game Jam",
+              collapsed: true,
+              items: [
+                "testing/game-jam/overview",
+                "testing/game-jam/manifests",
+                "testing/game-jam/evaluation",
               ],
             },
             {

@@ -28,7 +28,7 @@ the brief, and a human reviews the result against it.
 
 | File | Seeded? | Purpose |
 | --- | --- | --- |
-| `test-case.toml` | — | Manifest: metadata, `asset_kind`, `[audio]`/`[tool]`/`[output]`, domain + review checklist. |
+| `test-case.toml` | — | Manifest: metadata, `asset_kind`, `[audio]`/`[tool]`/`[output]`, domain. |
 | `prompt.hbs` | — | The instruction rendered per run (points at the brief, the tool, and `render`). |
 | `specs/brief.md` | **yes** | The self-contained synthesis brief — character, envelope, synth graph, format. |
 | `variants/base.toml` | — | The single default variant (`base`). |

@@ -1,0 +1,191 @@
+# Coil — Debug and automation API
+
+Coil ships a small debugging and automation surface so the game can be driven and
+inspected from code, without touching the keyboard or waiting on real time. It is
+what you use to iterate on the simulation, reproduce a specific run, script a
+scenario, and capture clean screenshots of an exact game state. This file defines
+that surface. Implement all of it, on the same footing as the game itself.
+
+Nothing here changes how a person plays. The debug API is inert during normal
+play, doing nothing until something calls it, and the debug overlay is off until
+toggled.
+
+## A deterministic core
+
+The whole surface rests on the simulation being deterministic and steppable, which
+the game loop in `specs/movement.md` already requires: a fixed 125 ms tick — 8
+ticks per second, exactly, for the whole round — advanced in whole ticks and
+decoupled from rendering. That fixed rate is what makes a tick a unit: it is the
+unit this API measures time in. Two more properties make it driveable from code:
+
+- Render-free core. Game state advances by ticking the simulation and must not
+  depend on a canvas, on `requestAnimationFrame`, or on wall-clock time to make
+  progress. Rendering reads the state, never the other way around.
+- Seeded randomness. The pellet placement (`specs/board.md`) runs off a seedable
+  generator, so reseeding and replaying the same calls reproduces the same pellet
+  sequence exactly.
+
+Given the same seed and the same sequence of API calls and steps, the game reaches
+the same state every time.
+
+## The `window.__coil` object
+
+Expose the API as a single object on the global `window.__coil`, installed once the
+game is running. It carries a `version` number (use `1`) and the operations below.
+Values are plain numbers, strings, booleans, and `{col, row}` cells so a caller can
+read them directly; cell coordinates are the integer grid indices of
+`specs/board.md`.
+
+### Core operations
+
+- `reset(options)` returns the game to its initial title state. `options` is
+  optional, and `options.seed` (a number) seeds the pellet-placement randomness so
+  a run replays identically. After `reset`, the keyboard resumes control of the
+  game until a control operation below takes over.
+- `step(ticks)` advances the simulation by exactly `ticks` fixed ticks
+  immediately, running the real 125 ms tick internally rather than waiting for real
+  frames. The unit is ticks, not seconds: `step(8)` advances one second of game
+  time, `step(1)` advances one tick. It runs exactly the number of ticks asked for,
+  with no rounding, no accumulator, and no partial tick — `step(3)` runs three
+  ticks and stops. A `ticks` that is not a non-negative whole number (a fraction, a
+  negative, a non-number) is invalid: reject it with a clear error rather than
+  rounding or clamping it, so a caller can never silently measure a different
+  number of ticks than it asked for. `step(0)` is valid and does nothing. This runs
+  the real simulation forward from a set-up state to see where it lands. Stepping
+  only advances a live round (the `playing` state); on a menu or paused screen, and
+  once a round has ended, it does nothing.
+- `snapshot()` returns a plain, JSON-serializable object describing the current
+  game state (see [Snapshot shape](#snapshot-shape)). It is a pure read and never
+  changes anything.
+
+### The manual clock
+
+Normal play advances the simulation from the wall clock: the animation-frame loop
+feeds each frame's elapsed time to the fixed-step update, so the snake steps 8
+times a second on its own. That is the `autoStep` mode, and it is on by default.
+
+`reset()` and `step()` switch the game to manual stepping: they set `autoStep` to
+false, and while it is false the animation-frame loop still renders every frame but
+does not advance the simulation. `step(ticks)` is then the only thing that
+advances it, so a scripted scenario runs exactly the ticks it asks for and is
+reproducible regardless of machine load; no stray wall-clock frame can slip an
+extra tick into a measurement.
+
+- `setAutoStep(enabled)` chooses the clock. `setAutoStep(true)` lets the game
+  advance itself in real time again, which is how you watch or record a live motion
+  clip; `setAutoStep(false)` returns to manual stepping. `reset()` re-arms manual
+  stepping. The control and input operations below do not change `autoStep` on
+  their own.
+
+Measure in the default manual mode and read exact values back; switch to
+`setAutoStep(true)` only when you want the game to play on in real time.
+
+### Control operations
+
+These set up a specific situation. Each one routes through the same systems normal
+play uses, arranging the board rather than faking outcomes. They do not advance the
+simulation; a following `step()` runs the real tick forward from what they set up.
+
+- `startRound()` begins a round in the game's mode, exactly as choosing the play
+  entry from the title menu would. The game enters the live `playing` state with
+  the snake at its start position (`specs/board.md`) and the first pellet placed.
+- `setSnake(cells, dir)` poses the snake as the chain `cells`, an array of
+  `{col, row}` from the head first to the tail last, with `dir` its current facing
+  (`"up"`, `"down"`, `"left"`, or `"right"`). It routes through the real snake
+  model, so the next tick advances and resolves collision from exactly this
+  configuration, and it clears any buffered turn. Use it to arrange a precise
+  movement, turning, or collision scenario.
+- `setPellet(cell)` places the current pellet at `cell` (`{col, row}`). The next
+  tick eats it normally if the head advances into that cell. Use it to force a
+  specific eat, or to set the last free cell of a board-filling scenario.
+- `setCombo(multiplier, windowSeconds)` sets the combo multiplier and the seconds
+  remaining on its window as a precondition; the next eat or the window's lapse
+  then resolves through the real tick (`specs/combo.md`). A `windowSeconds` of `0`
+  leaves the window closed.
+- `setScore(points)` sets the current score directly, as a precondition. The high
+  score still resolves through real play, so drive a real eat to push `BEST` past
+  it.
+
+A typical check calls `startRound()`, then `setSnake` and `setPellet` to arrange
+the exact situation wanted, `step()` a tick or two to run the real ticks, and reads
+the result from `snapshot()`.
+
+### Input operations
+
+The control operations above pose the board directly. The API can also inject
+keyboard input, so a caller can drive the game the way a player does: navigate the
+menus, start a round from the title, steer the snake, pause, and toggle mute.
+Injected input flows through the same handling the real keyboard feeds, exercising
+the actual key bindings from `specs/ui.md` rather than a parallel path. This
+is how a caller confirms the controls themselves work.
+
+- `keyDown(code)` presses a key down. `code` is a standard `KeyboardEvent.code`
+  (for example `"ArrowUp"`, `"ArrowDown"`, `"ArrowLeft"`, `"ArrowRight"`,
+  `"KeyW"`, `"KeyA"`, `"KeyS"`, `"KeyD"`, `"Enter"`, `"Space"`, `"Escape"`,
+  `"KeyP"`, `"KeyM"`). Any one-shot action the key triggers on the current screen
+  (a menu move, a confirm, a steering request buffered for the next tick, a pause,
+  a mute toggle) is applied immediately.
+- `keyUp(code)` releases a previously pressed key.
+- `press(code)` is a convenience tap, a `keyDown` immediately followed by `keyUp`.
+  This is the usual way to trigger a one-shot action (moving a menu selection,
+  confirming it, requesting a turn, pausing, muting).
+
+The usual shape for an input-driven scenario is to `press` through the menu to
+start a round, then `press` a steering key and `step` one or more ticks so the turn
+takes effect, reading `snapshot()` to see where the snake went.
+
+## Snapshot shape
+
+`snapshot()` returns an object with at least these fields:
+
+```js
+{
+  version: 1,
+  screen: "title" | "howto" | "playing" | "paused" | "gameover" | "cleared",
+  mode: {{#if (eq variant.slug "maze")}}"maze"{{else}}"classic"{{/if}},
+  score: <number>,
+  best: <number>,                 // the persisted high score (BEST)
+  combo: <number>,                // the multiplier M, in [1, 5]
+  comboWindow: <number>,          // seconds of sim-time left on the combo window; 0 = closed
+  comboFraction: <number>,        // the window as a 0..1 fraction of full (the draining HUD bar)
+  muted: <boolean>,               // whether the mute toggle is currently on
+  ticks: <number>,                // ticks elapsed in the current round
+  simTime: <number>,              // accumulated simulation time this round, in seconds
+  dir: "up" | "down" | "left" | "right",   // the snake's current facing
+  snake: [ { col: <number>, row: <number> }, ... ],   // segments, head first to tail last
+  length: <number>,               // the snake's length in cells
+  pellet: { col: <number>, row: <number> } | null,    // null once the board is cleared
+{{#if (eq variant.slug "maze")}}
+  // The fixed course of fatal interior obstacle cells (specs/gameplay.md).
+  obstacles: [ { col: <number>, row: <number> }, ... ],
+{{else}}
+  // No interior obstacles in this mode, so this is always empty.
+  obstacles: [],
+{{/if}}
+  menuIndex: <number>,            // the highlighted entry on a menu-bearing screen
+  ended: <boolean>,               // whether the round has ended
+  endReason: "dead" | "cleared" | null,
+}
+```
+
+`snake` lists the segments in order from the head (index `0`) to the tail, each an
+integer `{col, row}` cell. `comboWindow` counts down in simulation seconds and is
+`0` when the window is closed, so a caller that eats a pellet can watch it reopen
+and drain. `pellet` is the single live pellet, or `null` once the board is cleared.
+{{#if (eq variant.slug "maze")}}
+`obstacles` is the mode's fixed obstacle course, the same cells that are fatal on
+contact and excluded from pellet placement (specs/gameplay.md).
+{{/if}}
+
+## The debug overlay
+
+Provide a read-only on-screen overlay showing the game's live internal state, so
+you can watch what the simulation is doing while you play. It is toggled with the
+backtick key (`` ` ``), off by default, and never changes gameplay; it only draws.
+
+When on, it draws over the running game, legibly, in the game's monospace type, at
+least: the current `screen` and `mode`, the score and `BEST`, the combo multiplier
+and the seconds left on its window, the snake's facing, length, and head cell, and
+the pellet cell, the same facts `snapshot()` reports. It is a diagnostic layer
+rather than part of the game's presentation, so keep it visually plain and clearly
+separate from the HUD.

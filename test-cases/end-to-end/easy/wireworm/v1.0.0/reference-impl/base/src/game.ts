@@ -7,6 +7,7 @@
 import type { Arc, Flash, Foe, GameState, PlayPhase, Tile, Worm } from "./types";
 import { Input } from "./input";
 import { Audio } from "./audio";
+import { Rng, randomSeed } from "./rng";
 import { stepWorm } from "./worm";
 import {
   spawnCorruptor,
@@ -78,14 +79,25 @@ interface Cursor {
   invuln: number;
 }
 
-const rand = (lo: number, hi: number): number => lo + Math.random() * (hi - lo);
-
 export class Game {
   state: GameState = "title";
   phase: PlayPhase = "banner";
   phaseTimer = 0;
   bannerText = "";
   time = 0; // global animation clock
+
+  // Every source of gameplay randomness draws from this one seedable generator, so
+  // reseeding it (debug reset({ seed })) and replaying the same calls reproduces the
+  // same game. Seeded unpredictably for ordinary play; reseeded by debugReset.
+  readonly rng = new Rng(randomSeed());
+
+  // The manual clock (specs/instrumentation.md). While `true` (ordinary play) the
+  // animation-frame loop advances the simulation from the wall clock; while `false`
+  // the loop only renders and the debug API's step() is the sole thing that
+  // advances the sim. reset()/step() set it false; setAutoStep toggles it.
+  autoStep = true;
+  // When on, render.ts draws the read-only debug overlay. Toggled with backtick.
+  debugOverlay = false;
 
   // World
   field: Int8Array = emptyField();
@@ -172,7 +184,7 @@ export class Game {
   // ---- Lifecycle -----------------------------------------------------------
   private startGame(): void {
     this.field = emptyField();
-    scatterField(this.field);
+    scatterField(this.field, this.rng);
     this.worms = [];
     this.foes = [];
     this.bolts = [];
@@ -191,8 +203,11 @@ export class Game {
   }
 
   private resetFoeTimers(): void {
-    this.glitchTimer = rand(GLITCH_MIN_INTERVAL, GLITCH_MAX_INTERVAL);
-    this.corruptorTimer = rand(CORRUPTOR_MIN_INTERVAL, CORRUPTOR_MAX_INTERVAL);
+    this.glitchTimer = this.rng.range(GLITCH_MIN_INTERVAL, GLITCH_MAX_INTERVAL);
+    this.corruptorTimer = this.rng.range(
+      CORRUPTOR_MIN_INTERVAL,
+      CORRUPTOR_MAX_INTERVAL,
+    );
     this.dropperCheckTimer = DROPPER_RECHECK;
   }
 
@@ -204,7 +219,7 @@ export class Game {
 
   private spawnWorm(): void {
     const len = wormLength(this.level);
-    const fromLeft = Math.random() < 0.5;
+    const fromLeft = this.rng.chance(0.5);
     const segs: Tile[] = [];
     for (let i = 0; i < len; i++) {
       segs.push({ c: fromLeft ? -i : COLS - 1 + i, r: 0 });
@@ -263,6 +278,9 @@ export class Game {
 
     for (const k of keys) {
       if (k === "m") this.audio.toggleMute();
+      // Backtick toggles the read-only debug overlay (specs/instrumentation.md);
+      // it only draws and never affects gameplay.
+      else if (k === "`") this.debugOverlay = !this.debugOverlay;
     }
 
     switch (this.state) {
@@ -396,7 +414,13 @@ export class Game {
       c.x += (vx / len) * CURSOR_SPEED * dt;
       c.y += (vy / len) * CURSOR_SPEED * dt;
     }
-    // Clamp to the player band (never leaves it).
+    this.clampCursor();
+  }
+
+  // Clamp the cursor to the player band; it never leaves it. Shared by normal
+  // movement and the debug setCursor precondition so both obey the same band.
+  private clampCursor(): void {
+    const c = this.cursor;
     c.x = Math.max(TILE / 2, Math.min(STAGE_W - TILE / 2, c.x));
     c.y = Math.max(BAND_TOP_Y + TILE / 2, Math.min(STAGE_H - TILE / 2, c.y));
   }
@@ -603,9 +627,9 @@ export class Game {
     if (this.level >= GLITCH_FROM_LEVEL) {
       this.glitchTimer -= dt;
       if (this.glitchTimer <= 0) {
-        this.glitchTimer = rand(GLITCH_MIN_INTERVAL, GLITCH_MAX_INTERVAL);
+        this.glitchTimer = this.rng.range(GLITCH_MIN_INTERVAL, GLITCH_MAX_INTERVAL);
         if (this.foes.filter((f) => f.kind === "glitch").length < GLITCH_MAX_ON_BOARD) {
-          this.foes.push(spawnGlitch());
+          this.foes.push(spawnGlitch(this.rng));
         }
       }
     }
@@ -615,16 +639,19 @@ export class Game {
         this.dropperCheckTimer = DROPPER_RECHECK;
         const active = this.foes.some((f) => f.kind === "dropper");
         if (!active && lowerHalfNodeCount(this.field) < DROPPER_SPARSE_THRESHOLD) {
-          this.foes.push(spawnDropper());
+          this.foes.push(spawnDropper(this.rng));
         }
       }
     }
     if (this.level >= CORRUPTOR_FROM_LEVEL) {
       this.corruptorTimer -= dt;
       if (this.corruptorTimer <= 0) {
-        this.corruptorTimer = rand(CORRUPTOR_MIN_INTERVAL, CORRUPTOR_MAX_INTERVAL);
+        this.corruptorTimer = this.rng.range(
+          CORRUPTOR_MIN_INTERVAL,
+          CORRUPTOR_MAX_INTERVAL,
+        );
         if (!this.foes.some((f) => f.kind === "corruptor")) {
-          this.foes.push(spawnCorruptor());
+          this.foes.push(spawnCorruptor(this.rng));
         }
       }
     }
@@ -664,6 +691,257 @@ export class Game {
   hasFoe(kind: Foe["kind"]): boolean {
     return this.foes.some((f) => f.kind === kind);
   }
+
+  // ---- Debug / automation surface (used by debug.ts; see specs/instrumentation.md)
+  //
+  // Each control method arranges a precondition and routes through the same systems
+  // normal play uses — it sets up a situation, it never fabricates the outcome a
+  // check then observes. To see a mechanic fire, arrange it here, step(), and read
+  // the result from debugSnapshot(). Inert during normal play (nothing calls them).
+
+  // Return the game to its initial title state and reseed all randomness. Called by
+  // the debug API's reset(); the API switches to manual mode around it.
+  debugReset(seed?: number): void {
+    this.rng.seed(seed ?? randomSeed());
+    this.field = emptyField();
+    this.worms = [];
+    this.foes = [];
+    this.bolts = [];
+    this.arcs = [];
+    this.flashes = [];
+    this.score = 0;
+    this.lives = START_LIVES;
+    this.level = 1;
+    this.reachedLevel = 1;
+    this.nextBonus = BONUS_LIFE_EVERY;
+    this.cursor = { x: STAGE_W / 2, y: (BAND_TOP_Y + STAGE_H) / 2, invuln: 0 };
+    this.wormInterval = wormStepInterval(1);
+    this.wormStepTimer = 0;
+    this.fireCooldown = 0;
+    this.levelWormActive = false;
+    this.time = 0;
+    this.state = "title";
+    this.phase = "banner";
+    this.phaseTimer = 0;
+    this.sel = 0;
+  }
+
+  // Establish a live playing context for a posed scenario without disturbing the
+  // score/lives/level already set — so control ops can be called in any order. If a
+  // run is already live, this is a no-op; otherwise it lays a fresh scattered field
+  // and enters active play (no spawn-in invulnerability, so a posed hit lands).
+  private ensureRun(): void {
+    if (this.state === "playing") return;
+    this.field = emptyField();
+    scatterField(this.field, this.rng);
+    this.worms = [];
+    this.foes = [];
+    this.bolts = [];
+    this.arcs = [];
+    this.flashes = [];
+    this.cursor = { x: STAGE_W / 2, y: (BAND_TOP_Y + STAGE_H) / 2, invuln: 0 };
+    this.resetFoeTimers();
+    this.wormStepTimer = 0;
+    this.fireCooldown = 0;
+    this.state = "playing";
+    this.phase = "active";
+  }
+
+  // Enter live play directly, for a posed scenario: no level banner and no spawn-in
+  // invulnerability, so the caller can read the result of a posed hit on the very
+  // next tick without spending ticks getting there. A no-op if play is already live.
+  // This is `ensureRun` under its contract name (specs/instrumentation.md).
+  debugEnterPlay(): void {
+    this.ensureRun();
+  }
+
+  // Begin a real run at level 1, exactly as choosing DESCEND from the menu. Opens
+  // on the level banner; step past it to reach live play.
+  debugStartRun(): void {
+    this.startGame();
+  }
+
+  // Set the current level (1..12) and spawn that level's worm (its length and
+  // cadence), so a scenario can start on a chosen level. Preserves score/lives.
+  debugSetLevel(n: number): void {
+    this.ensureRun();
+    this.level = Math.max(1, Math.min(TOTAL_LEVELS, Math.round(n)));
+    this.reachedLevel = Math.max(this.reachedLevel, this.level);
+    this.phase = "active";
+    this.phaseTimer = 0;
+    this.spawnWorm();
+  }
+
+  // Set the score directly, as a precondition, and advance the bonus-life milestone
+  // past it so the next real +score event grants a life cleanly at the next 12,000.
+  debugSetScore(n: number): void {
+    this.ensureRun();
+    this.score = n;
+    this.nextBonus = (Math.floor(n / BONUS_LIFE_EVERY) + 1) * BONUS_LIFE_EVERY;
+  }
+
+  // Set the lives remaining directly (e.g. to 1, so the next hit ends the run
+  // through the real loss path).
+  debugSetLives(n: number): void {
+    this.ensureRun();
+    this.lives = n;
+  }
+
+  // Place the cursor at a logical-pixel position; the real band clamp still applies.
+  debugSetCursor(x: number, y: number): void {
+    this.ensureRun();
+    this.cursor.x = x;
+    this.cursor.y = y;
+    this.clampCursor();
+  }
+
+  // Set/create a node's charge (0..3), or clear the tile with a negative charge.
+  // What a shot or the worm then does to it is produced by the real systems.
+  debugSetNode(c: number, r: number, charge: number): void {
+    this.ensureRun();
+    if (!inBounds(c, r)) return;
+    if (charge < 0) clearNode(this.field, c, r);
+    else setCharge(this.field, c, r, Math.min(CHARGE_MAX, Math.floor(charge)));
+  }
+
+  // Remove every node from the board, for a clean starting field.
+  debugClearField(): void {
+    this.ensureRun();
+    this.field = emptyField();
+  }
+
+  // Replace the worms with a single worm laid out by `spec` (segments[0] the head,
+  // the rest trailing). It then winds, charges, dives, splits and is shot exactly
+  // like any other. Keeps the level's worm-active flag so clearing it advances.
+  debugSetWorm(spec: {
+    segments: { c: number; r: number }[];
+    dh?: number;
+    dv?: number;
+  }): void {
+    this.ensureRun();
+    const segs: Tile[] = (spec.segments ?? []).map((s) => ({ c: s.c, r: s.r }));
+    if (segs.length === 0) {
+      this.worms = [];
+      return;
+    }
+    const dh = spec.dh === -1 ? -1 : 1;
+    const dv = spec.dv === -1 ? -1 : 1;
+    this.worms = [{ segs, dh, dv, diving: false, facing: dh }];
+    this.wormInterval = wormStepInterval(this.level);
+    this.wormStepTimer = 0;
+    this.levelWormActive = true;
+  }
+
+  // Add one foe of `kind`, built through its real spawn constructor then posed by
+  // `options` (x/y/vx, and row for a corruptor). It moves and interacts through its
+  // real behavior when stepped.
+  debugSpawnFoe(
+    kind: Foe["kind"],
+    options: { x?: number; y?: number; vx?: number; row?: number } = {},
+  ): void {
+    this.ensureRun();
+    let f: Foe;
+    if (kind === "glitch") f = spawnGlitch(this.rng);
+    else if (kind === "dropper") f = spawnDropper(this.rng);
+    else f = spawnCorruptor(this.rng);
+    if (kind === "corruptor" && options.row !== undefined) {
+      f.row = options.row;
+      f.y = tileCY(options.row);
+    }
+    if (options.x !== undefined) f.x = options.x;
+    if (options.y !== undefined && kind !== "corruptor") f.y = options.y;
+    if (options.vx !== undefined) f.vx = options.vx;
+    this.foes.push(f);
+  }
+
+  // Fire a bolt straight up from the cursor now, bypassing the fire cadence. The
+  // bolt travels and resolves its hit through the real shot code as the sim steps.
+  debugFire(): void {
+    this.ensureRun();
+    this.bolts.push({ x: this.cursor.x, y: this.cursor.y - TILE / 2 });
+    this.audio.play("fire");
+  }
+
+  // A pure read of the full observable state, shared by the debug API's snapshot()
+  // and the debug overlay. Never changes anything.
+  debugSnapshot(): WirewormSnapshot {
+    const nodes: { c: number; r: number; charge: number }[] = [];
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const ch = this.field[idx(c, r)];
+        if (ch >= 0) nodes.push({ c, r, charge: ch });
+      }
+    }
+    return {
+      version: 1,
+      screen: this.state,
+      phase: this.phase,
+      menuIndex: this.sel,
+      score: this.score,
+      lives: this.lives,
+      level: this.level,
+      reachedLevel: this.reachedLevel,
+      muted: this.audio.muted,
+      wormStepInterval: wormStepInterval(this.level),
+      cursor: {
+        x: this.cursor.x,
+        y: this.cursor.y,
+        invulnerable: this.cursor.invuln > 0,
+      },
+      nodes,
+      worms: this.worms.map((w) => ({
+        segments: w.segs.map((s) => ({ c: s.c, r: s.r })),
+        dh: w.dh,
+        dv: w.dv,
+        diving: w.diving,
+      })),
+      foes: this.foes.map((f) => ({
+        kind: f.kind,
+        x: f.x,
+        y: f.y,
+        vx: f.vx,
+        vy: f.vy,
+        firstHit: f.hitOnce,
+      })),
+      bolts: this.bolts.map((b) => ({ x: b.x, y: b.y })),
+      arcs: this.arcs.map((a) => ({ x1: a.x1, y1: a.y1, x2: a.x2, y2: a.y2 })),
+      simTime: this.time,
+    };
+  }
+}
+
+// The JSON-serializable state the debug API and overlay report
+// (specs/instrumentation.md — Snapshot shape).
+export interface WirewormSnapshot {
+  version: number;
+  screen: GameState;
+  phase: PlayPhase;
+  menuIndex: number;
+  score: number;
+  lives: number;
+  level: number;
+  reachedLevel: number;
+  muted: boolean;
+  wormStepInterval: number;
+  cursor: { x: number; y: number; invulnerable: boolean };
+  nodes: { c: number; r: number; charge: number }[];
+  worms: {
+    segments: { c: number; r: number }[];
+    dh: number;
+    dv: number;
+    diving: boolean;
+  }[];
+  foes: {
+    kind: Foe["kind"];
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    firstHit: boolean;
+  }[];
+  bolts: { x: number; y: number }[];
+  arcs: { x1: number; y1: number; x2: number; y2: number }[];
+  simTime: number;
 }
 
 function rectsOverlap(

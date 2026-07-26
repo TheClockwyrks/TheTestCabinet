@@ -5,10 +5,11 @@ title: Overview
 > This section is about how The Test Cabinet handles tests for harnesses/models.
 > It does not cover how The Test Cabinet itself is tested.
 
-The Test Cabinet supports five classes of test cases:
+The Test Cabinet supports six classes of test cases:
 
 - [End to End](/testing/end-to-end/overview/)
 - [Full Stack](/testing/full-stack/overview/)
+- [Game Jam](/testing/game-jam/overview/)
 - [Adversarial](/testing/adversarial/overview/)
 - [Asset Generation](/testing/asset-generation/overview/)
 - [Performance](/testing/performance/overview/)
@@ -26,6 +27,15 @@ handed them. One model both makes the art and builds the program, so a full-stac
 case measures whether a single model can carry a whole small product to a coherent
 whole. They are scored exactly like end-to-end tests, with the produced assets'
 quality judged as part of the playable result.
+
+Game jam tests are full-stack tests taken to their logical end: the model is given
+**no specification at all**, only a **theme**, and must conceive and build a
+complete game of any genre that is *playable* and *enjoyable*, producing its own
+assets during the run. Because there is nothing to build to point-for-point, a jam
+is not scored pass/fail against a spec — a person plays the entry and **grades** it
+on general categories (Playability, Fun, Theme, Presentation, Audio, Polish,
+Creativity) on a five-level scale (💩 → 💎), and gives it one overall grade. Jams
+measure open-ended design and taste, not conformance.
 
 Adversarial tests are smaller-scoped tests that require a model to create an
 implementation that is then tested head-to-head against other models'

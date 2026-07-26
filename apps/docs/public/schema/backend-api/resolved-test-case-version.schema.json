@@ -197,6 +197,30 @@
       "required": ["width", "height", "background"],
       "type": "object"
     },
+    "CaseOut": {
+      "description": "One held-out scored case of a performance case: the store-relative keys of the\n`input` scenario fed to the engine and the `expected` oracle state its output\nis checked against. Mirrors core's wire `CaseBody`, so a resolved version\nround-trips its scored set through to the runner's [`materialize_version`].",
+      "properties": {
+        "expected": {
+          "type": "string"
+        },
+        "fuelCeiling": {
+          "description": "The case's resolved run ceiling (`fuel_limit * fuel_runway`), carried so the\ndriver grades against the same ceiling the manifest declared.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "input": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/PerformanceCaseKind",
+          "default": "stress",
+          "description": "Which phase the case belongs to — a correctness pre-flight `smoke` test or a\nscored `stress` case — carried so the driver runs the smoke gate before the\nstress cases. Defaults to `stress` for versions ingested before smoke tests."
+        }
+      },
+      "required": ["input", "expected", "fuelCeiling"],
+      "type": "object"
+    },
     "CheckAction": {
       "description": "A single action that drives a served implementation toward a view.\n\nSerializes to the JSON shape the browser driver consumes (an internally\ntagged `{ \"type\": … }` object); see `packages/browser-driver/driver.mjs`.",
       "oneOf": [
@@ -310,6 +334,90 @@
         }
       },
       "required": ["id", "name", "description"],
+      "type": "object"
+    },
+    "ErratumOut": {
+      "description": "A known-issue erratum in the §1.2 wire shape (see\n[`test_cabinet_core::test_case::Erratum`]).",
+      "properties": {
+        "affectsScoring": {
+          "type": "boolean"
+        },
+        "body": {
+          "type": "string"
+        },
+        "date": {
+          "type": ["string", "null"]
+        },
+        "excludeFromScore": {
+          "description": "Whether the linked review point is excluded from scoring for the version.",
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string"
+        },
+        "resolvedIn": {
+          "type": ["string", "null"]
+        },
+        "review": {
+          "description": "The review verdict id the erratum concerns, or absent when untied to a point.",
+          "type": ["string", "null"]
+        },
+        "severity": {
+          "$ref": "#/$defs/ErratumSeverity"
+        },
+        "title": {
+          "type": "string"
+        },
+        "variant": {
+          "description": "The variant slug the erratum is scoped to, or absent for all variants.",
+          "type": ["string", "null"]
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "severity",
+        "affectsScoring",
+        "excludeFromScore",
+        "body"
+      ],
+      "type": "object"
+    },
+    "ErratumSeverity": {
+      "description": "How serious a known-issue [`Erratum`] is, surfaced as a badge on the site.",
+      "oneOf": [
+        {
+          "const": "info",
+          "description": "A note or minor caveat that does not meaningfully affect a run.",
+          "type": "string"
+        },
+        {
+          "const": "minor",
+          "description": "A real but limited issue — the default.",
+          "type": "string"
+        },
+        {
+          "const": "major",
+          "description": "A significant issue that materially affects the case or its scoring.",
+          "type": "string"
+        }
+      ]
+    },
+    "InstrumentationOut": {
+      "description": "The `[instrumentation]` handle in the §1.2 wire shape.",
+      "properties": {
+        "handle": {
+          "description": "The `window` property name the debug API is installed on (no `window.` prefix).",
+          "type": "string"
+        },
+        "tickHz": {
+          "description": "The case's fixed simulation rate in whole ticks per second, when it declares\none — what lets the validation runtime relate exact stepping to real time.\nOmitted for a real-time-clocked case.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        }
+      },
+      "required": ["handle"],
       "type": "object"
     },
     "MaterialSpec": {
@@ -468,6 +576,22 @@
       "required": ["view", "kind", "mediaUrl"],
       "type": "object"
     },
+    "ReferenceSheetOut": {
+      "description": "One variant's published reference frames.\n\nA struct rather than a bare `Vec<u32>` because the frame indices are not the whole\nstory a reference sheet will want to tell — a sheet may later carry, say, the\ncanvas size or a published-at stamp — and a named object can grow those fields\nwithout a breaking change to the wire shape.",
+      "properties": {
+        "frames": {
+          "description": "The published frame indices, ascending. A single sprite (a case with no\n`[sheet]`) publishes exactly one frame, index `0`.",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["frames"],
+      "type": "object"
+    },
     "ReviewItemOut": {
       "properties": {
         "domain": {
@@ -495,6 +619,17 @@
         "title": {
           "type": "string"
         },
+        "validation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReviewValidationOut"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The item's automated-validation driver, when it opts into auto-validation:\nthe reporter-side debug script (by its version-folder-relative key) and its\ndeclared media outputs. Served so the driver's validator can fetch, materialize,\nand run it against the build's debug API. Absent for a human-judged item."
+        },
         "weight": {
           "format": "uint32",
           "minimum": 0,
@@ -502,6 +637,38 @@
         }
       },
       "required": ["id", "title", "text", "weight", "subItems"],
+      "type": "object"
+    },
+    "ReviewOutputOut": {
+      "description": "One media output of a [`ReviewValidationOut`] script in the §1.2 wire shape.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/MediaKind"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": ["id", "name", "kind"],
+      "type": "object"
+    },
+    "ReviewValidationOut": {
+      "description": "A review item's automated-validation driver in the §1.2 wire shape: the\nversion-folder-relative debug `script` key the driver fetches (like an asset) and\nits declared media `outputs`.",
+      "properties": {
+        "outputs": {
+          "items": {
+            "$ref": "#/$defs/ReviewOutputOut"
+          },
+          "type": "array"
+        },
+        "script": {
+          "type": "string"
+        }
+      },
+      "required": ["script", "outputs"],
       "type": "object"
     },
     "SpecKind": {
@@ -645,14 +812,43 @@
     },
     "SubReviewItemOut": {
       "properties": {
+        "description": {
+          "description": "Optional prose for this point (categories grammar); absent for a legacy\nname-only sub-item.",
+          "type": ["string", "null"]
+        },
         "id": {
           "type": "string"
         },
+        "proof": {
+          "description": "Optional submitted proof paired with this point.",
+          "type": ["string", "null"]
+        },
+        "reference": {
+          "description": "Optional expected reference paired with this point.",
+          "type": ["string", "null"]
+        },
         "title": {
           "type": "string"
+        },
+        "validation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReviewValidationOut"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The sub-item's automated-validation driver, when it opts into auto-validation.\nSame shape as [`ReviewItemOut::validation`] but keyed to this sub-item's verdict.\nAbsent for a human-judged sub-item."
+        },
+        "weight": {
+          "description": "How many points this point is worth. A category's weight is the sum of its\nitems' weights.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
         }
       },
-      "required": ["id", "title"],
+      "required": ["id", "title", "weight"],
       "type": "object"
     },
     "ToolOut": {
@@ -743,6 +939,17 @@
         "referenceBuild": {
           "description": "The absolute URL of this variant's authored **reference implementation** — the\ncorrect, deployed static build (the case-variant analogue of a run's\n`playableBuild`), served on the console's \"Reference\" tab. `None` when the\nvariant declares no `reference_implementation`, or has one but it has not been\ndeployed yet. Written out-of-band by `tcab publish-reference` and read from the\n`case_reference_build` table — never resolved from the manifest and never\nseeded into a run.",
           "type": ["string", "null"]
+        },
+        "referenceSheet": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReferenceSheetOut"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "This variant's published **reference sheet** — the asset-generation analogue of\n[`Self::reference_build`]. An asset case's reference is a `draw.sh` script, not\na site, so what is recorded is which of its rendered frames were published to\nthe public snapshot bucket. `None` when the variant declares no\n`reference_implementation`, or has one that has not been published yet.\n\nWritten out-of-band by `tcab publish-reference` (which uploads the frames) and\nread from the `case_reference_sheet` table, which the backend reconciles by\nlisting the bucket at ingest — never resolved from the manifest and never\nseeded into a run. Only the indices travel: each frame's URL is derivable from\nthe case triple and its index (see `test_cabinet_core::asset_reference`), so\nthe client builds them against the `snapshotUrl` from `GET /config`."
         },
         "references": {
           "items": {
@@ -880,6 +1087,13 @@
         }
       ]
     },
+    "cases": {
+      "description": "A performance case's held-out scored set — each case's `input` scenario and\n`expected` oracle state, by store-relative key. Empty (and omitted) for\nevery other type. The runner fetches these like assets and the performance\nvalidator scores the engine against them; they are never seeded into a run.",
+      "items": {
+        "$ref": "#/$defs/CaseOut"
+      },
+      "type": "array"
+    },
     "changelog": {
       "description": "The version's own changelog entry (its `changelog.md` body), inlined.\nAlways present — a changelog is required on every version. The console\naggregates every version's entry into the case's changelog tab.",
       "type": "string"
@@ -936,8 +1150,26 @@
       },
       "type": "array"
     },
+    "errata": {
+      "description": "Known-issue errata recorded for this version after it shipped. Site-facing:\nshown on the case's Errata tab and, where relevant, to reviewers scoring a\nrun of the version. Empty when the version has none.",
+      "items": {
+        "$ref": "#/$defs/ErratumOut"
+      },
+      "type": "array"
+    },
     "init": {
       "type": ["string", "null"]
+    },
+    "instrumentation": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/InstrumentationOut"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The case's `[instrumentation]` debug-API handle, when it mandates one for\nautomated validation. Reporter-side (never seeded into a run): served so the\ndriver's validator knows which `window` handle to drive. Absent for a case with\nno auto-validated items."
     },
     "match": {
       "anyOf": [
@@ -1128,7 +1360,8 @@
     "commonProofs",
     "checks",
     "commonReviewItems",
-    "domains"
+    "domains",
+    "errata"
   ],
   "title": "VersionResponse",
   "type": "object"

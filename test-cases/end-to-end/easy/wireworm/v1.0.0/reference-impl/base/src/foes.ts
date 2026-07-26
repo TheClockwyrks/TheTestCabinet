@@ -5,6 +5,7 @@
 
 import type { Game } from "./game";
 import type { Foe } from "./types";
+import type { Rng } from "./rng";
 import {
   BOARD_Y,
   COLS,
@@ -21,9 +22,6 @@ import {
   tileCY,
 } from "./constants";
 
-const randInt = (lo: number, hi: number): number =>
-  lo + Math.floor(Math.random() * (hi - lo + 1));
-
 function newFoe(kind: Foe["kind"], x: number, y: number): Foe {
   return {
     kind,
@@ -39,9 +37,9 @@ function newFoe(kind: Foe["kind"], x: number, y: number): Foe {
   };
 }
 
-export function spawnGlitch(): Foe {
-  const fromLeft = Math.random() < 0.5;
-  const r = randInt(8, 17);
+export function spawnGlitch(rng: Rng): Foe {
+  const fromLeft = rng.chance(0.5);
+  const r = rng.int(8, 17);
   const f = newFoe("glitch", fromLeft ? -16 : STAGE_W + 16, tileCY(r));
   f.vx = fromLeft ? GLITCH_H_SPEED : -GLITCH_H_SPEED;
   f.vy = GLITCH_V_SPEED;
@@ -49,16 +47,16 @@ export function spawnGlitch(): Foe {
   return f;
 }
 
-export function spawnDropper(): Foe {
-  const c = randInt(0, COLS - 1);
+export function spawnDropper(rng: Rng): Foe {
+  const c = rng.int(0, COLS - 1);
   const f = newFoe("dropper", tileCX(c), BOARD_Y - 16);
   f.vy = DROPPER_SPEED;
   return f;
 }
 
-export function spawnCorruptor(): Foe {
-  const fromLeft = Math.random() < 0.5;
-  const r = randInt(1, 4);
+export function spawnCorruptor(rng: Rng): Foe {
+  const fromLeft = rng.chance(0.5);
+  const r = rng.int(1, 4);
   const f = newFoe("corruptor", fromLeft ? -16 : STAGE_W + 16, tileCY(r));
   f.vx = fromLeft ? CORRUPTOR_SPEED : -CORRUPTOR_SPEED;
   f.row = r;
@@ -74,8 +72,8 @@ export function updateFoe(game: Game, f: Foe, dt: number): boolean {
       f.turnTimer -= dt;
       if (f.turnTimer <= 0) {
         // Dart: re-pick a horizontal direction at random for the restless zig-zag.
-        f.vx = (Math.random() < 0.5 ? -1 : 1) * GLITCH_H_SPEED;
-        f.turnTimer = GLITCH_TURN_INTERVAL * (0.6 + Math.random() * 0.8);
+        f.vx = (game.rng.chance(0.5) ? -1 : 1) * GLITCH_H_SPEED;
+        f.turnTimer = GLITCH_TURN_INTERVAL * (0.6 + game.rng.next() * 0.8);
       }
       f.x += f.vx * dt;
       f.y += f.vy * dt;

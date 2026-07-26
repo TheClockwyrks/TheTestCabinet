@@ -1,0 +1,299 @@
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import type {
+  PerformanceCaseResult,
+  PerformanceResult,
+} from "@test-cabinet/run-record";
+import type { PerformanceScenarioView } from "../../../data/galleryContext";
+import { PerformanceResultBody } from "./PerformanceResultSection";
+import { PlaybackOverlay } from "./LatticePlaybackSection";
+
+function scenarioCase(
+  overrides: Partial<PerformanceCaseResult> = {},
+): PerformanceCaseResult {
+  return {
+    input: "cases/small.json",
+    kind: "stress",
+    correct: true,
+    overCeiling: false,
+    skipped: false,
+    fuel: 1_234_567,
+    firstMismatchTick: null,
+    detail: null,
+    // The per-snapshot checksums browser playback verifies itself against, and the
+    // scenario it re-simulates. This section renders neither; a case that recorded
+    // no playback material is still a valid result.
+    snapshots: [],
+    scenarioJson: null,
+    ...overrides,
+  };
+}
+
+function result(overrides: Partial<PerformanceResult> = {}): PerformanceResult {
+  return {
+    correct: true,
+    totalFuel: 3_210_000,
+    fuelLimit: 5_000_000_000,
+    cases: [scenarioCase()],
+    // The run's own engine module, which browser playback loads and steps. The pure
+    // result body renders no playback, so a plain result carries none.
+    moduleWasm: null,
+    detail: null,
+    ...overrides,
+  };
+}
+
+describe("PerformanceResultBody", () => {
+  it("shows the fuel score and per-scenario fuel for a correct run", () => {
+    render(
+      <PerformanceResultBody
+        result={result({
+          totalFuel: 3_210_000,
+          cases: [
+            scenarioCase({ input: "cases/small.json", fuel: 1_000_000 }),
+            scenarioCase({ input: "cases/large.json", fuel: 2_210_000 }),
+          ],
+        })}
+      />,
+    );
+    // The correctness gate reads as a pass, and the total-fuel score is shown in
+    // full precision (it is the comparable result, so it is not abbreviated).
+    expect(screen.getByText("Pass")).toBeInTheDocument();
+    expect(screen.getByText("3,210,000")).toBeInTheDocument();
+    // Each held-out scenario appears with its own fuel figure.
+    expect(screen.getByText("2,210,000")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /all 2 held-out scenarios reproduced the reference oracle/,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("withholds the fuel score for an incorrect run and shows the divergence", () => {
+    render(
+      <PerformanceResultBody
+        result={result({
+          correct: false,
+          // A wrong engine has no comparable fuel: the total is unknown even
+          // though a per-case fuel figure was still recorded for diagnostics.
+          totalFuel: null,
+          cases: [
+            scenarioCase({ input: "cases/small.json", correct: true }),
+            scenarioCase({
+              input: "cases/large.json",
+              correct: false,
+              fuel: 4_000_000,
+              firstMismatchTick: 150_000,
+            }),
+          ],
+        })}
+      />,
+    );
+    expect(screen.getByText("Fail")).toBeInTheDocument();
+    // The aggregate is all-or-nothing, so the headline names the tally (not a bare
+    // "Fail") — here 1 of the 2 stress scenarios passed within the fuel ceiling.
+    expect(
+      screen.getByText(
+        /1 of 2 stress scenarios passed within the fuel ceiling/,
+      ),
+    ).toBeInTheDocument();
+    // The diverging scenario points at the first snapshot tick that mismatched.
+    expect(
+      screen.getByText(/first mismatch at tick 150,000/),
+    ).toBeInTheDocument();
+  });
+
+  it("shows an over-ceiling scenario as caution with its overshoot", () => {
+    render(
+      <PerformanceResultBody
+        result={result({
+          correct: false,
+          totalFuel: null,
+          fuelLimit: 5_000_000_000,
+          cases: [
+            scenarioCase({
+              input: "cases/small.json",
+              correct: true,
+              fuel: 1_000_000,
+            }),
+            // Right answer, but it burned 6.3B against a 5B ceiling — a 26% overshoot.
+            scenarioCase({
+              input: "cases/large.json",
+              correct: false,
+              overCeiling: true,
+              fuel: 6_300_000_000,
+            }),
+          ],
+        })}
+      />,
+    );
+    const row = screen.getByText("cases/large.json").closest("tr")!;
+    // Not a red failure: the row reads "over ceiling" and reports its fuel...
+    expect(within(row).getByText("over ceiling")).toBeInTheDocument();
+    expect(within(row).getByText("6,300,000,000")).toBeInTheDocument();
+    // ...and the detail states how far over the pass line it ran.
+    expect(
+      within(row).getByText(/26% over the 5,000,000,000 fuel ceiling/),
+    ).toBeInTheDocument();
+    // The headline calls out that a correct-but-over-ceiling scenario exists.
+    expect(
+      screen.getByText(
+        /1 produced the correct answer but ran over the ceiling/,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("surfaces a run-level detail when the run could not be scored", () => {
+    render(
+      <PerformanceResultBody
+        result={result({
+          correct: false,
+          totalFuel: null,
+          cases: [],
+          detail: "the submission did not export the `simulate` entry",
+        })}
+      />,
+    );
+    expect(
+      screen.getByText(/did not export the .simulate. entry/),
+    ).toBeInTheDocument();
+  });
+
+  it("renders an unrunnable scenario's fuel as an em dash", () => {
+    render(
+      <PerformanceResultBody
+        result={result({
+          correct: false,
+          totalFuel: null,
+          cases: [
+            scenarioCase({
+              input: "cases/large.json",
+              correct: false,
+              fuel: null,
+              detail: "host failure: fuel limit exceeded",
+            }),
+          ],
+        })}
+      />,
+    );
+    const row = screen.getByText("cases/large.json").closest("tr")!;
+    expect(within(row).getByText("—")).toBeInTheDocument();
+    expect(
+      within(row).getByText(/host failure: fuel limit exceeded/),
+    ).toBeInTheDocument();
+  });
+
+  it("shows smoke tests and stress scenarios as separate sections", () => {
+    render(
+      <PerformanceResultBody
+        result={result({
+          cases: [
+            scenarioCase({ input: "smoke/belt-transport.json", kind: "smoke" }),
+            scenarioCase({ input: "cases/small.json", kind: "stress" }),
+          ],
+        })}
+      />,
+    );
+    // Both phases get their own heading, and the correct headline counts them apart.
+    expect(
+      screen.getByRole("heading", { name: "Smoke tests" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Stress scenarios" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/all 1 smoke test and all 1 stress scenario/),
+    ).toBeInTheDocument();
+  });
+
+  it("marks a stress scenario skipped when a smoke test failed", () => {
+    render(
+      <PerformanceResultBody
+        result={result({
+          correct: false,
+          totalFuel: null,
+          cases: [
+            scenarioCase({
+              input: "smoke/splitter.json",
+              kind: "smoke",
+              correct: false,
+              firstMismatchTick: 40,
+            }),
+            scenarioCase({
+              input: "cases/large.json",
+              kind: "stress",
+              correct: false,
+              skipped: true,
+              fuel: null,
+              detail:
+                "Skipped — a smoke test failed, so the stress scenarios were not run.",
+            }),
+          ],
+        })}
+      />,
+    );
+    // The gate line explains the stress scenarios did not run.
+    expect(
+      screen.getByText(
+        /0 of 1 smoke test passed.*stress scenarios run only after every smoke test passes/,
+      ),
+    ).toBeInTheDocument();
+    // The skipped stress row reads "skipped", not "incorrect".
+    const row = screen.getByText("cases/large.json").closest("tr")!;
+    expect(within(row).getByText("skipped")).toBeInTheDocument();
+  });
+
+  it("offers a Play button on a scenario that has playback", () => {
+    const onLaunch = vi.fn();
+    const view: PerformanceScenarioView = {
+      caseIndex: 0,
+      input: "smoke/belt-transport.json",
+      scenarioUrl: "/runs/r/asset/scenario.json",
+      fuel: 100,
+    };
+    render(
+      <PerformanceResultBody
+        result={result({
+          cases: [
+            scenarioCase({
+              input: "smoke/belt-transport.json",
+              kind: "smoke",
+              scenarioJson: "scenario.json",
+            }),
+          ],
+        })}
+        playbackByIndex={new Map([[0, view]])}
+        onLaunch={onLaunch}
+      />,
+    );
+    const play = screen.getByRole("button", { name: /play/i });
+    fireEvent.click(play);
+    // The button launches playback for that scenario's case index.
+    expect(onLaunch).toHaveBeenCalledWith(0);
+  });
+});
+
+describe("PlaybackOverlay", () => {
+  it("shows an unavailable message when the run published no engine module", () => {
+    const scenario: PerformanceScenarioView = {
+      caseIndex: 0,
+      input: "cases/small.json",
+      scenarioUrl: "/runs/r/asset/scenario.json",
+      fuel: 100,
+    };
+    // Playback steps the run's own module; there is no reference fallback, so a run
+    // that published none is simply not playable — no worker is spawned.
+    render(
+      <PlaybackOverlay
+        scenario={scenario}
+        moduleUrl={null}
+        onExit={() => {}}
+      />,
+    );
+    expect(
+      screen.getByText(/Playback is unavailable for this run/),
+    ).toBeInTheDocument();
+    // The transport controls are disabled: nothing loaded to play.
+    expect(screen.getByRole("button", { name: "Pause" })).toBeDisabled();
+  });
+});

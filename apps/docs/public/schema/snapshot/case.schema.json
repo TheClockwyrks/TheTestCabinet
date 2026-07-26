@@ -152,6 +152,53 @@
       "required": ["id", "name", "description"],
       "type": "object"
     },
+    "CaseErratumOut": {
+      "description": "A known-issue erratum exposed in case metadata (see\n[`test_cabinet_core::test_case::Erratum`]).",
+      "properties": {
+        "affectsScoring": {
+          "type": "boolean"
+        },
+        "body": {
+          "type": "string"
+        },
+        "date": {
+          "type": ["string", "null"]
+        },
+        "excludeFromScore": {
+          "description": "Whether the linked review point is excluded from scoring for the version.",
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string"
+        },
+        "resolvedIn": {
+          "type": ["string", "null"]
+        },
+        "review": {
+          "description": "The review verdict id the erratum concerns, or `null` when untied to a point.",
+          "type": ["string", "null"]
+        },
+        "severity": {
+          "$ref": "#/$defs/ErratumSeverity"
+        },
+        "title": {
+          "type": "string"
+        },
+        "variant": {
+          "description": "The variant slug the erratum is scoped to, or `null` for all variants.",
+          "type": ["string", "null"]
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "severity",
+        "affectsScoring",
+        "excludeFromScore",
+        "body"
+      ],
+      "type": "object"
+    },
     "CasePackageOut": {
       "description": "A runtime package a case ships into its runs, exposed in case metadata for the\nstatic gallery's Inputs tab: its npm name and the UI-only description of what it\nprovides. The description is never seeded into a run — it exists only to\nexplain, on the site, what a declared package is for.",
       "properties": {
@@ -186,6 +233,22 @@
       "required": ["view", "kind", "key"],
       "type": "object"
     },
+    "CaseReferenceSheetOut": {
+      "description": "One variant's published reference frames, as exported in case metadata.\n\nA named object rather than a bare array so the sheet can gain fields (a canvas\nsize, a published-at stamp) without changing the shape the site already reads,\nmatching the wire type `GET /test-cases/{slug}/versions/{version}` returns.",
+      "properties": {
+        "frames": {
+          "description": "The published frame indices, ascending. A single sprite (a case with no\n`[sheet]`) publishes exactly one frame, index `0`.",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["frames"],
+      "type": "object"
+    },
     "CaseReviewItemOut": {
       "description": "A reviewer checklist item exposed in case metadata, carrying its point weight\nand optional scoring domain so the site can compute and break down run scores.",
       "properties": {
@@ -199,6 +262,10 @@
             "type": "integer"
           },
           "type": "array"
+        },
+        "graded": {
+          "description": "Whether the item is graded on the five-level scale (a game-jam category)\nrather than pass/fail. The reviewer and verdict UIs render the graded\ncontrol and score `weight × 10` points for it when true.",
+          "type": "boolean"
         },
         "id": {
           "type": "string"
@@ -241,6 +308,7 @@
         "sequences",
         "frames",
         "weight",
+        "graded",
         "subItems"
       ],
       "type": "object"
@@ -265,16 +333,50 @@
       "type": "object"
     },
     "CaseSubReviewItemOut": {
-      "description": "A name-only sub-item of a [`CaseReviewItemOut`] exposed in case metadata: one\nindependently graded point within the item, carrying only its id and title.",
+      "description": "A sub-item of a [`CaseReviewItemOut`] exposed in case metadata: one\nindependently graded point within the item. Legacy sub-items carry only id and\ntitle; a categories-grammar review item also carries its own prose, weight, and\npaired reference/proof.",
       "properties": {
+        "description": {
+          "description": "Optional prose for this point (categories grammar); `null` for a legacy\nname-only sub-item.",
+          "type": ["string", "null"]
+        },
         "id": {
           "type": "string"
         },
+        "proof": {
+          "description": "Optional proof id paired with this point as the submitted media.",
+          "type": ["string", "null"]
+        },
+        "reference": {
+          "description": "Optional reference view paired with this point as the expected target.",
+          "type": ["string", "null"]
+        },
         "title": {
+          "type": "string"
+        },
+        "weight": {
+          "description": "How many points this point is worth. A category's weight is the sum of its\nitems' weights.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["id", "title", "weight"],
+      "type": "object"
+    },
+    "CaseValidationBaselineOut": {
+      "description": "A committed **baseline** validation media file exposed in case metadata — one\ndebug-script output driven once against the case's reference implementation.\n`variant` is the variant slug the baseline was captured for (baselines are always\nper-variant); `file` is the flat `<item>__<output>.<ext>` name the gallery requests\n(`.png`/`.webm`); `key` is its snapshot-relative object key, whose bytes are the\nmedia as published (a video transcoded to `.mp4`). The static gallery keys its\nbaseline lookup off `variant` + `file`.",
+      "properties": {
+        "file": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "variant": {
           "type": "string"
         }
       },
-      "required": ["id", "title"],
+      "required": ["variant", "file", "key"],
       "type": "object"
     },
     "CaseVariantOut": {
@@ -301,6 +403,17 @@
           "description": "The absolute URL of this variant's authored **reference implementation** — the\ncorrect, deployed static build (the case-variant analogue of a run's\n`playableBuild`), shown on the static gallery's \"Reference\" tab. `null` when\nthe variant declares no `reference_implementation`, or has one that has not\nbeen deployed yet. Written out-of-band by `tcab publish-reference` into the\n`case_reference_build` table and folded in here at export — never resolved\nfrom the manifest and never seeded into a run.",
           "type": ["string", "null"]
         },
+        "referenceSheet": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CaseReferenceSheetOut"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "This variant's published **reference sheet** — the asset-generation analogue of\n[`Self::reference_build`], shown on the static gallery's \"Reference\" tab.\n`null` when the variant declares no `reference_implementation`, or has one that\nhas not been published yet.\n\nAn asset case's reference is a `draw.sh` script whose output is a set of\nrendered frames, so what is exported is which frames the snapshot bucket holds.\nOnly the indices travel: every frame's object key is derivable from the case\ntriple plus its index (`media/references/<slug>/<version>/<variant>/frames/<index>.png`,\nsee `test_cabinet_core::asset_reference`), so the site joins them onto its own\nsnapshot base URL rather than being handed absolute URLs it would have to trust.\nWritten out-of-band by `tcab publish-reference` into the bucket, reconciled into\nthe `case_reference_sheet` table at ingest, and folded in here at export — never\nresolved from the manifest and never seeded into a run."
+        },
         "reviewItems": {
           "description": "Reviewer checklist items additive to the common ones, with their point\nweights, surfaced only when this variant is selected.",
           "items": {
@@ -309,7 +422,7 @@
           "type": "array"
         },
         "seededInputs": {
-          "description": "The variant's own seeded spec files (additive to the common ones), with\ntheir bodies inlined so the static gallery shows the exact specs a run of\nthis variant is seeded with.",
+          "description": "This variant's complete seeded spec set, in seed order (the common specs\nfirst, then the variant's own), each body rendered for this variant and\ninlined so the static gallery shows the exact specs a run of this variant is\nseeded with, without a live backend. Because a template spec renders to\ndifferent text per variant, every variant carries its own fully-rendered set\nhere — the spec analogue of [`Self::prompt`] — rather than the case sharing\none common list.",
           "items": {
             "$ref": "#/$defs/CaseSeededInputOut"
           },
@@ -328,6 +441,26 @@
         "domains"
       ],
       "type": "object"
+    },
+    "ErratumSeverity": {
+      "description": "How serious a known-issue [`Erratum`] is, surfaced as a badge on the site.",
+      "oneOf": [
+        {
+          "const": "info",
+          "description": "A note or minor caveat that does not meaningfully affect a run.",
+          "type": "string"
+        },
+        {
+          "const": "minor",
+          "description": "A real but limited issue — the default.",
+          "type": "string"
+        },
+        {
+          "const": "major",
+          "description": "A significant issue that materially affects the case or its scoring.",
+          "type": "string"
+        }
+      ]
     },
     "ReferenceKind": {
       "description": "How a reference view's source is turned into the seeded/served artifact.",
@@ -390,13 +523,6 @@
       },
       "type": "array"
     },
-    "commonSeededInputs": {
-      "description": "The seeded spec files shared by every variant, with their bodies inlined so\nthe static gallery's Inputs tab can show them without a live backend. A\nvariant's own additive specs ride on [`CaseVariantOut::seeded_inputs`]; the\nsite concatenates the two (common first) exactly as a run is seeded.",
-      "items": {
-        "$ref": "#/$defs/CaseSeededInputOut"
-      },
-      "type": "array"
-    },
     "description": {
       "type": ["string", "null"]
     },
@@ -407,6 +533,14 @@
       "description": "The case's scoring domains, rated independently; the overall rating is the\nworst across them.",
       "items": {
         "$ref": "#/$defs/CaseDomainOut"
+      },
+      "type": "array"
+    },
+    "errata": {
+      "default": [],
+      "description": "Known-issue errata recorded for this version after it shipped, so the static\ngallery can show the case's Errata tab and flag known issues to reviewers.\nAlways emitted (possibly empty); the static gallery treats it as optional so a\nsnapshot written before this field existed still loads.",
+      "items": {
+        "$ref": "#/$defs/CaseErratumOut"
       },
       "type": "array"
     },
@@ -432,6 +566,17 @@
       "minimum": 0,
       "type": "integer"
     },
+    "sheet": {
+      "anyOf": [
+        {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/AssetSheet"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "A sprite-sheet case's declared frames and named animation sequences, or\n`None` for every other kind (only `sprite-sheet` declares a `[sheet]`).\n\nExported because the site renders a published **reference sheet** by playing\nthese sequences — and the motion is most of what such a case is judged on, so\na site with the frames but not the sequences would be showing the least\ninteresting half. The live console reads the same spec from the resolved\nversion response; this is the static mirror of it."
+    },
     "slug": {
       "type": "string"
     },
@@ -447,6 +592,13 @@
     "testType": {
       "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/TestType",
       "description": "The case's test type, so the static gallery can scope its catalog tabs to\na single type (E2E / asset-generation / Adversarial / Performance) exactly\nas the backend-connected consoles do. Without it the site cannot tell a\ncase's type and treats every case as end-to-end."
+    },
+    "validationBaselines": {
+      "description": "The case's committed **baseline** automated-validation media (a debug script's\noutputs driven once against the reference implementation), per variant, named by\nsnapshot-relative key. Case-scoped (a fixed property of the version), so the\nstatic gallery resolves the reviewer's baseline side-by-side from these keyed by\nslug/version/variant. Always emitted (possibly empty); the static gallery treats\nit as optional so a snapshot written before this field existed still loads.",
+      "items": {
+        "$ref": "#/$defs/CaseValidationBaselineOut"
+      },
+      "type": "array"
     },
     "variants": {
       "items": {
@@ -469,10 +621,10 @@
     "tags",
     "changelog",
     "variants",
-    "commonSeededInputs",
     "packages",
     "checks",
     "references",
+    "validationBaselines",
     "commonReviewItems",
     "domains"
   ],

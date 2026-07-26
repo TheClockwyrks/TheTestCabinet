@@ -22,7 +22,7 @@
 ARG BASE_IMAGE=test-cabinet-base:latest
 
 # --- Stage 1: compile the `music` binary from this repository ---------------
-FROM docker.io/library/rust:1-bookworm AS audio-build
+FROM docker.io/library/rust:1.97.1-bookworm AS audio-build
 WORKDIR /build
 # The whole workspace is copied (minus `.dockerignore`'d paths) so cargo can resolve
 # the workspace graph; `-p test-cabinet-music --bin music` compiles only this binary and
@@ -51,33 +51,48 @@ COPY --from=audio-build /build/target/release/music /usr/local/bin/music
 # the baked palette is immutable and versioned with the image — a run container is
 # offline, so nothing is fetched at RUN time; this fetch happens at BUILD time, pinned.
 #
-# Supply all three build args from the `build-sample-pack.mjs` run that produced the
-# bank (see `containers/sample-packs/README.md`); the defaults are placeholders that
-# fail the build until a real bank is pinned:
-#   --build-arg INSTRUMENT_BANK=gm-lite@0.1.0
-#   --build-arg INSTRUMENT_BANK_SHA256=sha256:<digest printed by build-sample-pack.mjs>
-#   --build-arg INSTRUMENT_BANK_URL=<object-storage URL of gm-lite-0.1.0.tar>
+# The image bakes EVERY instrument bank as a per-name subdirectory under
+# `/opt/instrument-banks/`, so a `music` case's `instrument_bank = "<name>@<version>"`
+# selects which palette it plays (see `select_pack_dir` in
+# `crates/audio-core/src/config.rs`). The FIRST bank (gm-lite) is the default recorded
+# in `TCAB_INSTRUMENT_BANK`. Each bank is a separately-pinned, content-addressed pack;
+# `containers/build.sh` (`build_music_image`) presigns each from R2 and passes its three
+# build args. The defaults are placeholders that fail the build until a real bank is
+# pinned:
+#   --build-arg INSTRUMENT_BANK=gm-lite@0.1.0 (+_URL, +_SHA256)
+#   --build-arg INSTRUMENT_BANK_CINEMATIC=cinematic@0.1.0 (+_URL, +_SHA256)
+#   --build-arg INSTRUMENT_BANK_SYNTHWAVE=synthwave@0.1.0 (+_URL, +_SHA256)
 ARG INSTRUMENT_BANK=gm-lite@0.1.0
 ARG INSTRUMENT_BANK_SHA256=sha256:0000000000000000000000000000000000000000000000000000000000000000
 ARG INSTRUMENT_BANK_URL
 
-# Fetch the pinned tarball (BuildKit verifies it against INSTRUMENT_BANK_SHA256 — a
-# mismatch or a missing URL fails the build) and unpack it to the path the `audio-core`
-# loader reads (`load_pack` in `crates/audio-core/src/sample.rs`: a `*.toml` manifest
-# plus the `<name>.wav` audio beside it). The bank tar's root holds `pack.toml` + the
-# `.wav` files, so unpack it into the target dir. Make it world-readable for the
-# unprivileged run user.
+ARG INSTRUMENT_BANK_CINEMATIC=cinematic@0.1.0
+ARG INSTRUMENT_BANK_CINEMATIC_SHA256=sha256:0000000000000000000000000000000000000000000000000000000000000000
+ARG INSTRUMENT_BANK_CINEMATIC_URL
+
+ARG INSTRUMENT_BANK_SYNTHWAVE=synthwave@0.1.0
+ARG INSTRUMENT_BANK_SYNTHWAVE_SHA256=sha256:0000000000000000000000000000000000000000000000000000000000000000
+ARG INSTRUMENT_BANK_SYNTHWAVE_URL
+
+# Fetch each pinned tarball (BuildKit verifies it against its …_SHA256 — a mismatch or a
+# missing URL fails the build) and unpack it into its per-name subdir. Each bank tar's
+# root holds `pack.toml` + the `.wav` files (exactly what `load_pack` in
+# `crates/audio-core/src/sample.rs` reads), so the subdir name must equal the bank name
+# (`gm-lite`, `cinematic`, `synthwave`). Make them world-readable for the run user.
 USER root
-ADD --checksum=${INSTRUMENT_BANK_SHA256} ${INSTRUMENT_BANK_URL} /tmp/instrument-bank.tar
-RUN mkdir -p /opt/instrument-banks/gm-lite \
-	&& tar -xf /tmp/instrument-bank.tar -C /opt/instrument-banks/gm-lite \
-	&& rm /tmp/instrument-bank.tar \
+ADD --checksum=${INSTRUMENT_BANK_SHA256} ${INSTRUMENT_BANK_URL} /tmp/bank-gm-lite.tar
+ADD --checksum=${INSTRUMENT_BANK_CINEMATIC_SHA256} ${INSTRUMENT_BANK_CINEMATIC_URL} /tmp/bank-cinematic.tar
+ADD --checksum=${INSTRUMENT_BANK_SYNTHWAVE_SHA256} ${INSTRUMENT_BANK_SYNTHWAVE_URL} /tmp/bank-synthwave.tar
+RUN mkdir -p /opt/instrument-banks/gm-lite /opt/instrument-banks/cinematic /opt/instrument-banks/synthwave \
+	&& tar -xf /tmp/bank-gm-lite.tar -C /opt/instrument-banks/gm-lite \
+	&& tar -xf /tmp/bank-cinematic.tar -C /opt/instrument-banks/cinematic \
+	&& tar -xf /tmp/bank-synthwave.tar -C /opt/instrument-banks/synthwave \
+	&& rm /tmp/bank-*.tar \
 	&& chmod -R a+rX /opt/instrument-banks
 USER node
 
-# Point the `music` binary at the baked bank. `audio-core`'s config carries a `pack_dir`
-# the loader reads; this env var is the baked-image source of that path (the run config
-# only names the bank as `instrument_bank = "<name>@<version>"`). Kept here so the
-# image, not a run's seeded config, owns where the palette physically lives.
+# Point the `music` binary at the banks ROOT; the run's `instrument_bank` name selects
+# the subdir (see `select_pack_dir`). `TCAB_INSTRUMENT_BANK` records the default bank.
+# Kept here so the image, not a run's seeded config, owns where the palettes live.
 ENV TCAB_INSTRUMENT_BANK=${INSTRUMENT_BANK}
-ENV TCAB_INSTRUMENT_BANK_DIR=/opt/instrument-banks/gm-lite
+ENV TCAB_INSTRUMENT_BANK_DIR=/opt/instrument-banks

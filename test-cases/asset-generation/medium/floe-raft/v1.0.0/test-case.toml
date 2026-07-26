@@ -1,4 +1,5 @@
 slug = "floe-raft"
+experimental = true
 name = "Floe Raft"
 difficulty = "medium"
 tags = ["sprite-sheet", "prop"]
@@ -65,47 +66,14 @@ fps = 1
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How faithfully the regenerated floes match the brief — two solid, continuous, flat \
-ice rafts (a three-tile and a four-tile length) with the jagged, irregular edges of \
-fractured sea ice, a snow-dusted top, a ringed ice edge, and a waterline, each one \
-single long slab rather than separate pans, in the pale ice palette on \
-transparency."""
-
-[[review_item]]
-id = "solid-long-floe"
-title = "Each is one solid long floe"
-text = """
-Each frame reads as ONE continuous, solid, flat floe of its length — a single slab \
-with jagged, irregular edges but a continuous snow top, ice edge, and waterline \
-running the whole length — NOT several small pans butted together (no internal \
-seams, gaps, or repeated end-caps in the middle). It is one calm, flat raft you \
-ride, with the rough outline of real fractured ice."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "two-lengths"
-title = "Three-tile and four-tile lengths"
-text = """
-Frame 0 is a three-tile floe filling the left 96x32 of the canvas (with the right \
-tile left transparent), and frame 1 is a four-tile floe filling the full 128x32. \
-They are clearly the same floe design at two clean lengths — same height, snow top, \
-edge, and waterline — with jagged, irregular left and right ends."""
-sequences = ["lengths"]
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette-and-transparency"
-title = "Pale ice palette on transparency"
-text = """
-Uses only the pale ice palette from the brief (snow top, ice body, ice edge, \
-waterline shadow) on full transparency — no out-of-palette pixels, no anti-aliased \
-fringes, and no opaque background fill; only the floe's pixels are opaque so it \
-composites onto the dark water."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

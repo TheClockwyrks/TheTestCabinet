@@ -1,5 +1,6 @@
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { Link, NavLink, useLocation } from "react-router";
+import { Avatar } from "@test-cabinet/ui";
 import { routes } from "../routes";
 import { useGalleryData } from "../data/galleryContext";
 import { useAuth } from "../../client/auth";
@@ -79,16 +80,15 @@ const NAV_LINKS: ReadonlyArray<{ label: string; to: string }> = [
 // aligned to the page's content column. All colors flow from the active design
 // variant's palette.
 export function PageLayout({ children, fill = false }: PageLayoutProps) {
-  const { canExecute, arena } = useGalleryData();
+  const { canExecute } = useGalleryData();
   // The consoles reach run configuration through the Settings gear; the static
   // site keeps the About link in the nav. Both surface the Settings gear — on
   // the site it opens the Appearance-only settings (the sun and feed-style
-  // choices that used to live in the topbar toggle). The Tournaments link is
-  // shown only on a console with the arena capability (a connected worker).
+  // choices that used to live in the topbar toggle). The Other link (Game Jams +
+  // Tournaments) is shown on every console — game jams are always available — and
+  // is omitted on the static site, which shows About in its place.
   const navLinks = canExecute
-    ? arena
-      ? [...NAV_LINKS, { label: "Tournaments", to: routes.tournaments() }]
-      : NAV_LINKS
+    ? [...NAV_LINKS, { label: "Other", to: routes.other() }]
     : [...NAV_LINKS, { label: "About", to: routes.about() }];
 
   // The mobile section nav collapses behind a hamburger toggle. CSS owns which
@@ -119,7 +119,9 @@ export function PageLayout({ children, fill = false }: PageLayoutProps) {
     ));
 
   return (
-    <div className={fill ? `${styles.shell} ${styles.shellFill}` : styles.shell}>
+    <div
+      className={fill ? `${styles.shell} ${styles.shellFill}` : styles.shell}
+    >
       <header className={styles.topbar}>
         <div className={styles.bar}>
           <Link to={routes.home()} className={styles.brand}>
@@ -175,7 +177,9 @@ export function PageLayout({ children, fill = false }: PageLayoutProps) {
           </nav>
         )}
       </header>
-      <main className={fill ? `${styles.main} ${styles.mainFill}` : styles.main}>
+      <main
+        className={fill ? `${styles.main} ${styles.mainFill}` : styles.main}
+      >
         {children}
       </main>
     </div>
@@ -190,9 +194,7 @@ function NotificationsBell() {
   const unread = useNotifications(selectUnreadCount);
   const toggleSidebar = useNotifications((s) => s.toggleSidebar);
   const label =
-    unread > 0
-      ? `Notifications (${unread} unread)`
-      : "Notifications";
+    unread > 0 ? `Notifications (${unread} unread)` : "Notifications";
   return (
     <button
       type="button"
@@ -221,7 +223,17 @@ function AccountMenu() {
         className={styles.account}
         title={`Signed in as ${account.displayName} (@${account.username})`}
       >
-        <PersonIcon />
+        {/* Show the account's profile picture when one is set; otherwise the
+            generic person glyph, as before. */}
+        {account.pictureUrl ? (
+          <Avatar
+            name={account.displayName}
+            pictureUrl={account.pictureUrl}
+            size={24}
+          />
+        ) : (
+          <PersonIcon />
+        )}
         <span className={styles.accountName}>{account.displayName}</span>
       </NavLink>
     );

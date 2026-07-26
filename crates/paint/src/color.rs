@@ -4,7 +4,7 @@
 //! `f32` channels in `0..=1`, so blend-mode math and alpha compositing run at full
 //! precision and only quantize to 8-bit when a preview or the flattened asset is
 //! encoded. Colors on the command line are `#rrggbb` or `#rrggbbaa`, exactly as the
-//! [`draw`](test_cabinet_draw) tool and the binary docs specify.
+//! `draw` tool and the binary docs specify.
 
 use std::fmt;
 

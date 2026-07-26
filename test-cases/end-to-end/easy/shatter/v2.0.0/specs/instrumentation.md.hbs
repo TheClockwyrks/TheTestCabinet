@@ -1,0 +1,221 @@
+# Shatter — Debug and automation API
+
+Shatter ships a small debugging and automation surface so the game can be driven and
+inspected from code, without touching the keyboard or waiting on real time. It is
+what you use to iterate on the flight and gravity, reproduce a specific encounter,
+script a scenario, and capture clean screenshots of an exact
+game state. This file defines that surface. Implement all of it, on the same footing
+as the game itself.
+
+Nothing here changes how a person plays. The debug API is inert during normal play,
+doing nothing until something calls it, and the debug overlay is off until toggled.
+
+## A deterministic core
+
+The whole surface rests on the simulation being deterministic and steppable, which
+the loop in `specs/simulation.md` already requires: a fixed timestep of 120 Hz,
+integrated in whole steps, decoupled from rendering. Two properties make it
+driveable from code:
+
+- Render-free core. Game state advances by stepping the simulation and must not
+  depend on a canvas, on `requestAnimationFrame`, or on wall-clock time to make
+  progress. Rendering reads the state, never the other way around.
+- Seeded randomness. Any randomness the game uses (a rock's spawn position and drift,
+  the saucer's entry and aim) runs off a seedable generator, so reseeding and
+  replaying the same calls reproduces the same result exactly.
+
+Given the same seed and the same sequence of API calls and steps, the game reaches
+the same state every time.
+
+## The manual clock
+
+During normal play the game advances itself: an animation-frame loop reads the
+elapsed wall-clock time each frame and steps the simulation by it. The debug API can
+take that clock over, so a scripted scenario advances by exact amounts rather than by
+however much real time happened to pass.
+
+The unit that clock is driven in is the simulation tick — one fixed step of the
+120 Hz timestep, so exactly 1/120 of a second of game time. Ticks rather than seconds
+are the honest unit for a fixed-timestep sim: a seconds argument has to be turned into
+a whole number of steps somewhere, and rounding it silently moves the simulation a
+different distance than the caller asked for. Asking in ticks means what is asked for
+is what runs.
+
+The game holds an `autoStep` flag, `true` by default (normal human play). Each
+animation frame the game still renders, but it only advances the simulation when
+`autoStep` is `true`.
+
+- `reset()` and `step()` both set `autoStep` to `false`, beginning a
+  driver-clocked session. While it is `false`, `step(ticks)` is the only thing that
+  advances the simulation, so no stray wall-clock frame can slip in and a stepped
+  scenario is exact and reproducible.
+- `setAutoStep(true)` hands the clock back to the game so it advances itself in real
+  time again (useful for watching a scenario play out or recording a motion clip);
+  `setAutoStep(false)` returns to manual stepping. A `reset` re-arms manual stepping.
+- Injecting input (`keyDown`/`keyUp`/`press`) and the other control operations do not
+  change `autoStep`.
+
+Rendering runs every frame regardless of the flag, so the game always draws its
+current state whether the clock is manual or live.
+
+## The `window.__shatter` object
+
+Expose the API as a single object on the global `window.__shatter`, installed once
+the game is running. It carries a `version` number (use `1`) and the operations
+below. Values are plain numbers, strings, and booleans so a caller can read them
+directly; coordinates and velocities are in the logical-pixel space of
+`specs/overview.md`, and angles are in radians.
+
+### Core operations
+
+- `reset(options)` returns the game to its initial title state and re-arms manual
+  stepping. `options` is optional, and `options.seed` (a number) seeds all of the
+  game's randomness so a scenario replays identically.
+- `step(ticks)` advances the simulation by exactly `ticks` fixed steps immediately,
+  running the fixed-timestep update internally rather than waiting for real frames,
+  and sets `autoStep` to `false`. The unit is whole simulation ticks, not seconds:
+  the timestep is 120 Hz, so one tick is 1/120 of a second, `step(1)` runs a single
+  physics step and `step(120)` advances one second of game time. Nothing is rounded
+  or approximated — the number of steps asked for is the number of steps run.
+  `ticks` must be a non-negative integer; `step(0)` is legal and does nothing, while
+  a fractional or negative value is invalid and the call fails loudly rather than
+  guessing what was meant. Stepping advances the live game (the ship, bullets,
+  rocks, saucer, and waves) and has no effect on a menu screen.
+- `setAutoStep(enabled)` sets the manual clock described above: `false` (the default
+  after `reset` or `step`) means `step` is the sole way the simulation advances;
+  `true` lets the game advance itself in real time again.
+- `snapshot()` returns a plain, JSON-serializable object describing the current game
+  state (see [Snapshot shape](#snapshot-shape)). It is a pure read and never changes
+  anything.
+
+### Control operations
+
+These set up a specific situation. Each one routes through the same systems normal
+play uses, arranging the world rather than faking outcomes: a control operation
+places bodies or sets a value, then `step()` runs the real simulation forward and
+`snapshot()` reads what happened.
+
+- `startGame()` starts a new game, exactly as choosing `PLAY` from the title would.
+  It enters the in-game state and spawns the first wave.
+- `setScore(n)` sets the score directly, as a precondition. The extra-life and
+  game-over rules still resolve through real play, so drive a real event to trigger
+  them.
+- `setLives(n)` sets the number of ships in reserve, as a precondition.
+- `setInvuln(seconds)` sets the ship's post-respawn invulnerability window to
+  `seconds` remaining; `0` clears it, so lethal collisions resume. This only sets the
+  timer; whether a collision then kills the ship is decided by the real collision
+  code.
+- `setShip(state)` poses the ship. `state` may set any of `x`, `y`, `vx`, `vy`, and
+  `angle` (facing, in radians). The ship keeps whatever fields `state` omits.
+- `clearRocks()` removes every rock from the field, so a scenario can start from a
+  known-empty field or isolate a single rock it adds.
+- `addRock(size, state)` adds one rock and returns its index. `size` is `"large"`,
+  `"medium"`, or `"small"`. `state` may set `x`, `y`, `vx`, and `vy`{{#if (eq variant.slug "warhead")}}, and
+  `health` (the rock's remaining hits; defaults to full health for its size){{/if}}. The rock enters live
+  play like any other, drifting and pulled by gravity when stepped.
+- `addBullet(state)` places one of the ship's bullets in flight, as a precondition
+  for a shot. `state` may set `x`, `y`, `vx`, and `vy`. The bullet then obeys gravity,
+  wraps, and collides exactly like a fired one.
+- `spawnSaucer()` brings a saucer onto the field now, as its normal cadence would,
+  rather than waiting out the spawn timer. At most one saucer exists at a time.
+- `setSaucer(state)` poses the current saucer. `state` may set `x`, `y`, `vx`, and
+  `vy`. It has no effect if no saucer is present.
+- `removeSaucer()` clears the current saucer from the field.
+{{#if (eq variant.slug "warhead")}}
+- `setTorpedoReady(ready)` sets the torpedo charge: `true` makes one torpedo charged
+  and ready to fire now, `false` empties the charge and begins its recharge. This
+  only arranges the charge; firing the torpedo (with the `F` key) still runs the real
+  launch, homing, and impact code.
+{{/if}}
+
+A typical check calls `startGame()`, then `setShip`, `addRock`, and `addBullet` (or
+`spawnSaucer` and `setSaucer`) to arrange the exact situation wanted, `step()` a
+handful of ticks to run the real simulation, and reads the result from `snapshot()`.
+
+### Input operations
+
+The control operations above pose the world directly. The API can also inject
+keyboard input, so a caller can drive the game the way a player does: navigate the
+menus, start a game from the title, fly and shoot, pause, and toggle mute. Injected
+input flows through the same handling the real keyboard feeds, exercising the actual
+key bindings from `specs/gameplay.md` rather than a parallel path. Injecting input does
+not take over the clock or the ship: a held movement key flies the ship through the
+game's normal play code, so this is how a caller confirms the controls themselves
+work.
+
+- `keyDown(code)` presses a key down. `code` is a standard `KeyboardEvent.code`, for
+  example `"ArrowUp"`, `"ArrowLeft"`, `"ArrowRight"`, `"KeyW"`, `"KeyA"`, `"KeyD"`,
+  `"Space"`, `"Enter"`, `"Escape"`, `"KeyP"`, `"KeyM"`{{#if (eq variant.slug "warhead")}}, `"KeyF"`{{/if}}. The key becomes
+  held, so a movement or thrust key drives the ship while it is held and the
+  simulation is stepped in ticks, and any one-shot action the key triggers on the current
+  screen (a menu move, a confirm, a pause, a mute toggle) is applied immediately.
+- `keyUp(code)` releases a previously pressed key, ending its held state.
+- `press(code)` is a convenience tap, a `keyDown` immediately followed by `keyUp`.
+  This is the usual way to trigger a one-shot action (moving a menu selection,
+  confirming it, firing a single shot, pausing, muting) without leaving the key held.
+
+## Snapshot shape
+
+`snapshot()` returns an object with at least these fields:
+
+```js
+{
+  version: 1,
+  screen: "title" | "howto" | "playing" | "paused" | "gameover",
+  menuIndex: <number>,   // the highlighted entry (0-based) on a menu screen
+  score: <number>,
+  lives: <number>,       // ships in reserve
+  wave: <number>,        // the current wave number (0 before the first spawns)
+  waveBanner: <boolean>, // whether the WAVE N banner is currently showing
+  muted: <boolean>,      // whether the mute toggle is currently on
+  invuln: <number>,      // seconds of respawn invulnerability remaining (0 = none)
+  ship: {
+    x: <number>, y: <number>, vx: <number>, vy: <number>,
+    angle: <number>,     // facing, in radians
+    speed: <number>,     // the magnitude of the ship's velocity
+    thrusting: <boolean>,// whether thrust is being applied this step
+  },
+  bullets: [
+    { x: <number>, y: <number>, vx: <number>, vy: <number>, life: <number> },
+  ],
+  rocks: [
+    { x: <number>, y: <number>, vx: <number>, vy: <number>,
+      size: "large" | "medium" | "small", radius: <number>{{#if (eq variant.slug "warhead")}},
+      health: <number> {{/if}}},
+  ],
+  saucer: { x: <number>, y: <number>, vx: <number>, vy: <number> } | null,
+  enemyBullets: [
+    { x: <number>, y: <number>, vx: <number>, vy: <number>, life: <number> },
+  ],
+{{#if (eq variant.slug "warhead")}}
+  torpedoes: [
+    { x: <number>, y: <number>, vx: <number>, vy: <number>,
+      heading: <number>, life: <number> },  // heading in radians
+  ],
+  torpedoReady: <boolean>,   // whether a torpedo is charged and ready to fire
+  torpedoRecharge: <number>, // fraction charged, 0 to 1 (1 = ready)
+{{/if}}
+  simTime: <number>,   // accumulated simulation time, in seconds
+}
+```
+
+`speed` is the ship's current speed, the magnitude of its velocity. `invuln` is
+positive while the ship is in its post-respawn grace window and `0` otherwise.
+`life` on a bullet is the seconds it has left before it expires. `muted` reflects the
+mute toggle, so pressing the mute key updates it.
+{{#if (eq variant.slug "warhead")}}Each torpedo's `heading` is the direction it is currently traveling, in radians;
+`torpedoRecharge` climbs from `0` to `1` as the single charge refills, and
+`torpedoReady` is `true` once it is full.{{/if}}
+
+## The debug overlay
+
+Provide a read-only on-screen overlay showing the game's live internal state, so you
+can watch what the simulation is doing while you play. It is toggled with the
+backtick key (`` ` ``), off by default, and never changes gameplay; it only draws.
+
+When on, it draws over the running game, legibly, in the game's monospace type, at
+least: the current `screen`, the `score`, `lives`, and `wave`, the ship's position,
+velocity, speed, and facing, the number of bullets and rocks in play, the saucer's
+presence and position, and the remaining invulnerability, {{#if (eq variant.slug "warhead")}}the torpedo charge, {{/if}}the same facts
+`snapshot()` reports. It is a diagnostic layer rather than part of the game's
+presentation, so keep it visually plain and clearly separate from the HUD.

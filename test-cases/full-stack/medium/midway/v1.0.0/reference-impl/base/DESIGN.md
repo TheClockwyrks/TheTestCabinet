@@ -93,8 +93,6 @@ Two dev-only trees mirror valence and are **excluded from the build**:
   `sim/run.ts`.
 - `scripts/gen-assets.sh` — reproduces the produced assets with the on-`PATH` tools
   (the record of how `assets/` was made; see `ASSETS.md`).
-- `scripts/proof.mjs` — captures the `proof/` artifacts with the project-local
-  Playwright (§7).
 
 ---
 
@@ -417,52 +415,7 @@ invalidated on those edits.
 
 ---
 
-## 7. Proof plan (`scripts/proof.mjs` → `proof/`)
-
-Serve the **built** `dist/` under a non-root sub-path (`/runs/demo/build`, proving
-base-path safety), drive the game via `window.__midway` dev hooks with the
-project-local Playwright + Chromium, assert **zero** console/request errors, and write
-each artifact to the exact `specs/proof.md` path. The dev API (inert during normal
-play, mirroring valence's `__valence`):
-
-```
-window.__midway = {
-  game,
-  audio,
-  newPark(),                       // start the base park (state -> playing)
-  devGrant(cash),                  // set cash
-  devDay(n),                       // jump the day counter
-  devArrivals(on),                 // force/suppress the arrival stream
-  layPath([[c,r]...]),             // lay a run of path tiles
-  place(kind, col, row),           // place a ride/stall (snaps entrance to path)
-  scenery(kind, col, row),
-  hire(kind, col, row),            // hire+place a staff member
-  setPrice(id|kind, price),
-  spawnGuests(n),                  // inject n guests at the gate
-  breakRide(id?),                  // force a breakdown
-  litter(col,row,amt),             // add litter for the janitor demo
-  fireworks(),                     // trigger the milestone one-shot
-  setState(s),
-}
-```
-
-| Artifact | What to drive & capture |
-| --- | --- |
-| `proof/title.png` | `goto` the base-path URL, settle, move the pointer off the menu; screenshot the title with **every** menu item (`NEW PARK`, `HOW TO PLAY`) visible. Click once to satisfy the audio-gesture, assert it decodes without error. |
-| `proof/gameplay.png` | `newPark`; `devGrant(9000)`; script a lively park — `layPath` a plaza spine + branches, `place` at least a carousel + coaster + a food + a drink + a restroom (entrances on path), sprinkle `scenery`, `hire` a janitor + a mechanic; `spawnGuests(60)`; let the sim run until guests fan across the paths (queue formed at a ride, a stall serving with steam, a ride running with sparkle) and the HUD reads live vitals; screenshot the full 1280×720 stage — busy paths (produced guest anim), animating ride + steam/sparkle, scenery, and the full top+bottom HUD. |
-| `proof/game-over.png` | `newPark`; build a thin, overpriced park; `devGrant(-1900)`; suppress arrivals / raise costs so cash sits below the floor; run past `GRACE_SECONDS` until `state==="gameover"`; screenshot the park-closed screen with **days operated** shown. |
-| `proof/systems.webm` | Record `recordVideo` 1280×720. `newPark`; `devGrant(9000)`; build a park with a coaster (higher breakdown), a food stall, a queue-drawing layout, a janitor + a mechanic; `spawnGuests`; then over a few seconds: guests enter and path to the ride, a **queue forms and the ride loads/runs/unloads**, a **stall sale** (coin cue), `breakRide()` then the **mechanic pathfinds over and repairs** it, and `litter()` then the **janitor clears it** (cleanup puff). ~7–8 s. |
-| `proof/downturn.webm` | Record. `newPark`; build a modest park, then drive the **downturn**: `setPrice` everything far above value (and/or `breakRide` + pile `litter`), so happiness and the rating visibly fall, `arrivalRateFor` drops the stream, cash bleeds red, and — ideally — it reaches bankruptcy. Let the produced audio (alarm on low cash / broken ride, music bed) play so it is captured. ~7–8 s. |
-
-`proof.mjs` also runs **functional assertions** (like valence's): a guest actually
-queues+rides+pays, a stall sale credits cash, a breakdown+repair completes, a janitor
-lowers a tile's litter, raising prices lowers rating and arrivals, and the bankruptcy
-end state is reachable — exits non-zero (`PROBLEMS DETECTED`) if any fails or any
-console error occurred, so the reference is self-verifying.
-
----
-
-## 8. Build, config, and packaging (mirror valence exactly)
+## 7. Build, config, and packaging (mirror valence exactly)
 
 - `package.json`: `type: module`; scripts `dev` (`vite --host`), `build`
   (`tsc --noEmit && vite build`), `preview`; deps `@test-cabinet/particle-runtime`

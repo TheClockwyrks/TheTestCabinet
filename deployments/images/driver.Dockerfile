@@ -100,9 +100,13 @@ FROM docker.io/library/node:24-bookworm-slim
 # cases render with (the slim base ships none — see containers/README.md).
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
 
-# Just the driver and its manifest (never the host's node_modules): its Playwright
-# dependency and Chromium are installed fresh below so the image is self-contained.
-COPY packages/browser-driver/package.json packages/browser-driver/driver.mjs /opt/browser-driver/
+# Just the driver, the sibling ES modules it imports (the `ttc` reporter kit and
+# the `validation` runtime), and its manifest (never the host's node_modules): its
+# Playwright dependency and Chromium are installed fresh below so the image is
+# self-contained. driver.mjs imports these by relative path, so a missing sibling
+# is a runtime ERR_MODULE_NOT_FOUND at render time — keep this list in sync with
+# driver.mjs's `import` statements.
+COPY packages/browser-driver/package.json packages/browser-driver/driver.mjs packages/browser-driver/ttc.mjs packages/browser-driver/validation.mjs /opt/browser-driver/
 
 # Install git and the font set, then the driver's Playwright dependency and a
 # Playwright-managed Chromium with the OS libraries it links against

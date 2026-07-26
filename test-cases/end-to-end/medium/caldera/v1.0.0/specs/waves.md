@@ -5,8 +5,8 @@ assault **escalates** by composition and tier as the run wears on, the wave cade
 and population caps, the score, and how the run is **won or lost**. It builds on the
 world in `specs/world.md`, the Slag in `specs/enemies.md`, and the towers and economy
 in `specs/towers.md` and `specs/build.md`. All times are seconds of real,
-frame-rate-independent simulation time (`specs/overview.md`); values are best-effort
-defaults and **tunable**, but the **shape** of the escalation is the requirement.
+frame-rate-independent simulation time (`specs/overview.md`); the **shape** of the
+escalation is the requirement.
 
 ## The loop, in one paragraph
 
@@ -21,19 +21,19 @@ any point, you are **overrun**: you lose.
 
 ## Waves and cadence
 
-- The run is **`15` waves** (tunable, `N`). The HUD shows the current wave and the
+- The run is **`15` waves** (`N`). The HUD shows the current wave and the
   count (`WAVE 6 / 15`) and, during a build interval, a **countdown** and a **preview
   of the next wave's composition** (`specs/flow.md`).
 - **Build intervals.** A long **`60 s`** setup interval precedes wave 1; between waves
-  the interval is about **`25 s`**, tightening toward **`18 s`** in the late run
-  (tunable). The interval is a safe prep window, not a build lock — building continues
+  the interval is about **`25 s`**, tightening toward **`18 s`** in the late run.
+  The interval is a safe prep window, not a build lock — building continues
   during waves.
 - **A wave** is a bounded group of Slag, released from **both breaches** over a few
   seconds (spread across the two approaches, not a single-file line). Wave **size**
   grows over the run — from about **`6` units** at wave 1 to about **`30`** at wave 15
-  (tunable) — but escalation leans on **quality (tier)** first, not just quantity.
-- **Live-population cap.** At most about **`50`** Slag may be alive at once (tune this
-  **down** if the frame rate suffers — `specs/overview.md`). If a wave would exceed the
+  — but escalation leans on **quality (tier)** first, not just quantity.
+- **Live-population cap.** At most about **`50`** Slag may be alive at once
+  (`specs/overview.md`). If a wave would exceed the
   cap, hold the remainder until units die; the field stays dense but bounded.
 - The **next** wave's build interval begins when a wave is **cleared** (all its Slag
   destroyed); the run does not start the next wave while the previous one is still on
@@ -48,7 +48,7 @@ the run harder over time; nothing is tied to the Core's health.
 ### 1. Composition curve — which archetypes spawn
 
 Each archetype's share of a wave shifts over the run, so tougher archetypes **phase
-in** by probability rather than at a hard gate. Illustrative (for `N = 15`; tunable):
+in** by probability rather than at a hard gate. Illustrative (for `N = 15`):
 
 | Wave band | Runner | Breaker | Sapper | Colossus |
 | --- | --- | --- | --- | --- |
@@ -65,7 +65,7 @@ the last band as the headliner. Both breaches draw from the same schedule.
 ### 2. Tier curve — how tough each unit is
 
 Whatever archetype is rolled, its **tier** (`specs/enemies.md`) rolls from a schedule
-that ramps toward Tier III. Illustrative (tunable):
+that ramps toward Tier III. Illustrative:
 
 | Wave band | Tier I | Tier II | Tier III |
 | --- | --- | --- | --- |
@@ -75,7 +75,7 @@ that ramps toward Tier III. Illustrative (tunable):
 | 11–13 | — | `45%` | `55%` |
 | 14–15 | — | `15%` | `85%` |
 
-The numbers are tunable, but the **shape is required**: the run opens **100% Runner /
+The **shape is required**: the run opens **100% Runner /
 Tier I** (easy), tougher archetypes and tiers ramp in, there is a **mixed middle band**
 where several archetypes and all three tiers can appear, and the run ends on a
 **Tier-III-dominant final surge** (wave 15) — a heavier, escorted push with Colossi and
@@ -83,7 +83,7 @@ Breakers at Tier III that a well-built defense can still break.
 
 ### Balance — winnable, not a spiral
 
-Unlike a pure-survival siege, Caldera is **won or lost**. Tune the escalation, Core
+Unlike a pure-survival siege, Caldera is **won or lost**. Balance the escalation, Core
 and structure health, Slag stats, and the economy so that:
 
 - a **well-played, well-supplied** defense — reaching water and vents early, covering

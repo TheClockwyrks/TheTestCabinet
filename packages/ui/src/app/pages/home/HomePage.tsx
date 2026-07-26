@@ -6,6 +6,7 @@ import { PromptHeader } from "../../components/PromptHeader";
 import { ReviewerWidgets } from "./ReviewerWidgets";
 import { useAuth } from "../../../client/auth";
 import { RatingBadge, canonicalModelId } from "@test-cabinet/ui";
+import { LoadingState } from "../../components/LoadingState";
 import { RunLog, useRunTable } from "../../components/RunLog";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
 import { useFindModel } from "../../data/useModels";
@@ -116,9 +117,11 @@ export function HomePage() {
         {canExecute && token && <ReviewerWidgets />}
 
         {recent.length === 0 ? (
-          <p className={styles.empty}>
-            {loading ? "Loading runs…" : "No runs have been published yet."}
-          </p>
+          loading ? (
+            <LoadingState label="Loading runs…" />
+          ) : (
+            <p className={styles.empty}>No runs have been published yet.</p>
+          )
         ) : (
           <>
             {featured && (

@@ -1,24 +1,24 @@
-// Coil — bootstrap, the fixed-timestep loop, and input routing (specs/mechanics.md,
-// specs/flow.md).
+// Coil — bootstrap, the fixed-timestep loop, and input routing (specs/movement.md,
+// specs/ui.md).
 //
 // Loads the produced assets, fits the fixed 1280×720 stage into the window (letterboxed,
 // centred, crisp at any device-pixel ratio and correct on load before any input), builds the
 // audio / game / input systems, and runs the loop: rendering on every animation frame
 // (decoupled from the sim) while the simulation advances in fixed 125 ms ticks only while
-// playing. The head-bite animation and the audio cues are driven from the per-tick events the
-// game returns. `window.__coil` exposes the live sim and a synchronous `step()` for the
-// headless screenshot / verification harness; it is inert during normal play.
+// playing AND the manual clock is off (autoStep, specs/instrumentation.md). The head-bite
+// animation and the audio cues are driven from the per-tick events the game returns.
+// `installDebugApi` exposes window.__coil for driving and inspecting the game from code; it
+// is inert during normal play.
 
 import { STAGE_H, STAGE_W, TICK_DT } from "./constants";
 import { loadAssets } from "./assets";
 import { Audio } from "./audio";
+import { installDebugApi } from "./debug";
 import { Game } from "./game";
 import type { TickEvents } from "./game";
 import { Input } from "./input";
-import { menuItems } from "./menus";
 import { MODE } from "./mode";
 import { render, setAssets } from "./render";
-import type { Dir } from "./sim";
 
 const canvas = document.getElementById("stage") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d");
@@ -39,109 +39,22 @@ function resize(): void {
 window.addEventListener("resize", resize);
 resize();
 
-// Steering keys → direction (arrows and WASD are interchangeable, specs/flow.md).
-const STEER: Record<string, Dir> = {
-  ArrowUp: "up",
-  ArrowDown: "down",
-  ArrowLeft: "left",
-  ArrowRight: "right",
-  w: "up",
-  s: "down",
-  a: "left",
-  d: "right",
-  W: "up",
-  S: "down",
-  A: "left",
-  D: "right",
-};
-
 const BITE_FRAME_S = 0.055; // seconds per bite frame (frames 1,2,3 then back to rest)
 
 async function main(): Promise<void> {
   const assets = await loadAssets();
   setAssets(assets);
   const audio = new Audio(assets.audioUrl);
-  const game = new Game(MODE);
   const input = new Input();
   input.attach();
+  const game = new Game(MODE, audio, input);
 
-  let gestured = false;
+  // Install the debugging and automation API on window.__coil (see debug.ts and
+  // specs/instrumentation.md). Inert during normal play.
+  installDebugApi(game);
+
   let elapsed = 0;
   let lastEat = -10; // start well before now so no bite plays on load
-
-  // The dev/control surface for the headless capture + verification harness (reference/
-  // README.md, specs/proof.md). Inert during normal play; `sim` is a live getter because a
-  // new round replaces the Sim instance.
-  (window as unknown as { __coil?: unknown }).__coil = {
-    get sim() {
-      return game.sim;
-    },
-    state: () => game.state,
-    mode: () => game.mode,
-    start: () => game.start(),
-    step: (n = 1) => game.step(n),
-    game,
-    audio,
-  };
-
-  const gesture = (): void => {
-    if (!gestured) gestured = true;
-    void audio.resume();
-  };
-
-  function activate(action: string): void {
-    switch (action) {
-      case "start":
-        game.start();
-        break;
-      case "howto":
-        game.toHowto();
-        break;
-      case "menu":
-        game.toMenu();
-        break;
-      case "resume":
-        game.resume();
-        break;
-      case "restart":
-        game.restart();
-        break;
-    }
-  }
-
-  function routeMenuKey(key: string): void {
-    const lower = key.toLowerCase();
-    const items = menuItems(game.state, game);
-    if (key === "ArrowUp" || lower === "w") {
-      game.menuIndex = (game.menuIndex - 1 + items.length) % items.length;
-    } else if (key === "ArrowDown" || lower === "s") {
-      game.menuIndex = (game.menuIndex + 1) % items.length;
-    } else if (key === "Enter" || key === " ") {
-      const item = items[game.menuIndex];
-      if (item) activate(item.action);
-    } else if (key === "Escape") {
-      if (game.state === "howto") game.toMenu();
-      else if (game.state === "paused") game.resume();
-      else if (game.state === "gameover" || game.state === "cleared") game.toMenu();
-    }
-  }
-
-  function routeKey(key: string): void {
-    if (key === "m" || key === "M") {
-      audio.toggleMute();
-      return;
-    }
-    if (game.state === "playing") {
-      const dir = STEER[key];
-      if (dir) {
-        game.requestTurn(dir);
-        return;
-      }
-      if (key === "Escape" || key === "p" || key === "P") game.pause();
-      return;
-    }
-    routeMenuKey(key);
-  }
 
   function applyEvents(ev: TickEvents): void {
     if (ev.ate) {
@@ -169,13 +82,12 @@ async function main(): Promise<void> {
     if (dt > 0.25) dt = 0.25;
     elapsed += dt;
 
-    const keys = input.drain();
-    if (keys.length > 0) gesture();
-    for (const k of keys) routeKey(k);
+    game.handleInput();
 
-    // Fixed-step simulation: advance the sim in whole 125 ms ticks while playing (unless the
-    // test harness has taken the clock via step(), which sets auto=false).
-    if (game.state === "playing" && game.auto) {
+    // Fixed-step simulation: advance the sim in whole 125 ms ticks while playing, but only
+    // when the manual clock is off (autoStep). A driver that took the clock via step() or
+    // setAutoStep(false) is not double-advanced by this loop.
+    if (game.state === "playing" && game.autoStep) {
       acc += dt;
       let steps = 0;
       while (acc >= TICK_DT && steps < 10) {

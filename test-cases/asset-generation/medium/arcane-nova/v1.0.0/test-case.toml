@@ -1,0 +1,74 @@
+slug = "arcane-nova"
+experimental = false
+name = "Arcane Nova"
+difficulty = "medium"
+tags = ["vfx", "particle", "3d", "magic"]
+summary = """
+Author an arcane spell nova: a burst of magic cast once — a white flash at the \
+center, a thin ring of energy sweeping outward along the ground, a fountain of \
+glowing rune-spark motes launched upward and arcing back under gravity, and a soft \
+glow that blooms and fades — as a one-shot particle-3d emitter system, built one \
+recorded operation at a time."""
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 0.75
+type = "asset-generation"
+
+# A 3D particle effect: an arcane spell nova the model authors as an emitter SYSTEM,
+# simulated live by the review UI and the consuming game. It is a ONE-SHOT cast (one
+# nova's worth) — it bursts at the start and decays cleanly to empty, and is replayed
+# whole each time the spell is cast.
+asset_kind = "particle-3d"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The volume the effect plays in. particle-3d gives width/height/depth (a volume,
+# like [voxel]). The nova is cast at the center of the ground plane; `y` is up, so
+# the ground is the low-`y` face. The ring sweeps outward radially across the ground
+# while the rune sparks fountain up along +y. duration_ms is one cast's length; loop
+# = false, so the nova bursts at the start and decays cleanly to empty.
+[particle]
+width       = 48             # extent along x
+height      = 48             # extent along y — up
+depth       = 48             # extent along z
+duration_ms = 800            # one cast: bursts at the start and decays to empty
+fps         = 60             # preview/playback frame rate
+loop        = false          # ONE-SHOT — a single cast; replayed whole per cast
+background  = "transparent"  # preview clear color only
+
+# The particle tool. `particle-3d` is the only way to shape the effect; it records
+# every operation to the action log and, on `render`, simulates the system and
+# emits system.json. Run `particle-3d --help` for the operations; none are seeded.
+[tool]
+binary  = "particle-3d"
+preview = "effect.gif"
+
+# The recorded operation log — the authoritative output. Core emits the authored
+# system.json (the emitter/force/curve definition) automatically; it is not
+# declared here.
+[output]
+actions = "actions.json"
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
+[[domain]]
+id = "overall"
+name = "Overall"
+description = """
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

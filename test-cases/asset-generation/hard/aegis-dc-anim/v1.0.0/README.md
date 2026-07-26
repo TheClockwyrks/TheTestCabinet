@@ -24,13 +24,13 @@ with **Dual Contouring**: a high-fidelity extractor (fine grid + QEF) that
 **preserves sharp edges and corners**. Hard unions (`--blend 0`) leave genuine
 creases DC keeps for free, and — uniquely among the meshers — DC exposes a
 per-primitive **`--sharp` / `--smooth`** tag that controls whether an edge stays
-crisp or is rounded, independent of the blend radius. A `[[review_item]]` scores
+crisp or is rounded, independent of the blend radius. The reviewer weighs
 whether the extracted surface shows those crisp edges rather than a uniformly
-rounded one; how the model uses that character is its own design choice.
-Each part's authored field is emitted as a per-part `.glb` (binary glTF)
+rounded one; how the model uses that character is its own design choice. Each
+part's authored field is emitted as a per-part `.glb` (binary glTF)
 automatically by core, and that is the authoritative geometry a reviewer and the
-frontend read. The binary's `--help` is the contract; no
-operations schema is seeded.
+frontend read. The binary's `--help` is the contract; no operations schema is
+seeded.
 
 ## The rig
 
@@ -78,8 +78,7 @@ emitted per-part `.glb` plus `rig.json` are the authoritative output.
 
 The Aegis ships a single default variant — `base`, declared in
 `variants/base.toml`. It seeds the common brief and is rated on the case's
-single `fidelity` scoring domain; it adds no specs, review items, or domains of
-its own.
+single `overall` scoring domain; it adds no specs or domains of its own.
 
 ## Versioning
 

@@ -17,7 +17,7 @@ little steering on the *shape*; there is exact steering on the *rules*.
 
 The map is a rectangular grid of hexagonal cells (`specs/overview.md`):
 
-- **Grid size:** about **`40` columns × `32` rows** of cells (tunable; keep the
+- **Grid size:** about **`40` columns × `32` rows** of cells (keep the
   proportions and the caldera layout below). The outer edge cells form the world
   boundary — nothing may leave the grid.
 - Each cell has an integer **elevation level** in `0…8`, an inland **terrain
@@ -36,7 +36,7 @@ adjacent cells are joined across their shared edge by their elevation difference
 - **`d = 1` — a terraced slope.** The one-level (`3`-unit) rise is **not** a smooth
   ramp: it is broken into a small fixed number of **terrace steps** — flat treads
   separated by short vertical risers — so a single-level slope reads as **stepped
-  terraces**. Use **2 terrace treads** across the slope (tunable, but it must read
+  terraces**. Use **2 terrace treads** across the slope (it must read
   as discrete steps, not a ramp). Terraces appear the same way on the triangular
   **corner** where three cells of differing but terrace-connected levels meet — the
   corner is a terraced junction, not a torn hole.
@@ -128,7 +128,7 @@ Because vents sit high and water sits low, moving water to a boiler generally me
 
 ## Geothermal vents
 
-Scatter **`4`–`6` geothermal vents** across the terrain (tunable), each occupying a
+Scatter **`4`–`6` geothermal vents** across the terrain, each occupying a
 single cell:
 
 - Vents sit on the **high rock** — cells at elevation `5…7` on the rim or ridges —
@@ -148,7 +148,7 @@ One **Core** — your objective — stands near the **center** of the caldera:
   correctly on the generated terrain: level or step the cells under it as needed so
   it reads as **built on the ground**, not floating and not buried. It is a compact
   brass Holdfast structure a handful of cells across, flying Holdfast colors.
-- The Core has a **health pool of `1000` HP** (tunable). It is the only loss
+- The Core has a **health pool of `1000` HP**. It is the only loss
   condition: Slag that reach it deal damage to this pool (`specs/enemies.md`), and
   when it reaches `0` the run ends in **defeat** (`specs/waves.md`, `specs/flow.md`).
   The Core's health does **not** regenerate. The Core also produces your **funds**

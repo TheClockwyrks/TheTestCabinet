@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Pagination, Panel } from "@test-cabinet/ui";
+import { LoadingState } from "../../../components/LoadingState";
 import { RunLog, sortStateToQuery, useRunTable } from "../../../components/RunLog";
 import {
   usePagedSearchParams,
@@ -113,11 +114,14 @@ function RunsContent({ model }: { model: ModelSummary }) {
     return (
       <section className={styles.section}>
         <Panel>
-          <p className={styles.empty}>
-            {loading
-              ? `Loading ${model.name} runs…`
-              : `No runs have used ${model.name} yet.`}
-          </p>
+          {loading ? (
+            <LoadingState
+              size="section"
+              label={`Loading ${model.name} runs…`}
+            />
+          ) : (
+            <p className={styles.empty}>No runs have used {model.name} yet.</p>
+          )}
         </Panel>
       </section>
     );

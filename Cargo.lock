@@ -5941,6 +5941,7 @@ dependencies = [
  "axum",
  "bytes",
  "dotenvy",
+ "flate2",
  "http",
  "opentelemetry",
  "reqwest 0.12.28",
@@ -5966,6 +5967,7 @@ dependencies = [
  "png 0.17.16",
  "serde",
  "serde_json",
+ "tempfile",
  "toml 0.8.2",
 ]
 
@@ -5975,6 +5977,7 @@ version = "0.0.0"
 dependencies = [
  "argon2",
  "axum",
+ "base64 0.22.1",
  "dotenvy",
  "hex",
  "http",
@@ -6046,6 +6049,7 @@ dependencies = [
  "dotenvy",
  "serde",
  "serde_json",
+ "tempfile",
  "test-cabinet-core",
  "test-cabinet-telemetry",
  "tokio",
@@ -6061,6 +6065,8 @@ dependencies = [
  "foray-core",
  "foray-host",
  "handlebars",
+ "hex",
+ "hmac",
  "http",
  "lattice-core",
  "lattice-host",
@@ -6069,6 +6075,7 @@ dependencies = [
  "schemars 1.2.1",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
  "test-cabinet-draw",
  "test-cabinet-model-core",

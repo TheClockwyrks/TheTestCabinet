@@ -1,5 +1,5 @@
 import type { Plugin } from "vite";
-import type { AssetKind, TestType } from "@test-cabinet/run-record";
+import type { AssetKind, AssetSheet, TestType } from "@test-cabinet/run-record";
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 
 // Build-time data source: the public R2 snapshot.
@@ -80,6 +80,11 @@ interface SnapshotReview {
   writeup: string;
   checklist?: SnapshotReviewVerdict[];
   reviewedAt?: string | null;
+  // The snapshot-relative object key of the reviewer's profile picture
+  // (`pfp/<reviewer-id>`), when they have one. Resolved to an absolute avatar URL
+  // against the snapshot base. Absent for a reviewer with no picture, or a snapshot
+  // written before reviewer pictures existed.
+  pictureKey?: string | null;
 }
 
 // `runs/<run-id>.json`: the full run record plus its review and links, and the
@@ -103,6 +108,13 @@ interface SnapshotRunFile {
   // `target.png`, `actions.json`). Absent for a non-asset-generation run and for
   // snapshots written before asset generation existed.
   assetMedia?: Array<{ file: string; key: string }>;
+  // The run's synthesized *actual* automated-validation media (the model build's
+  // per-review-item debug-script outputs). `file` is the flat `<item>__<output>.<ext>`
+  // name the reviewer UI requests (`.png`/`.webm`); `key` is the published object
+  // (a video transcoded to `.mp4`, so `key` and `file` differ in extension for a
+  // clip). Absent for a run with no debug scripts and for snapshots written before
+  // automated validation existed.
+  validationMedia?: Array<{ file: string; key: string }>;
 }
 
 // `cases/<slug>/<version>.json`: the site-facing slice of a test-case version.
@@ -118,6 +130,12 @@ interface SnapshotCaseFile {
   // 2D / 3D / Particle / Audio tabs. Optional for snapshots written before it was
   // published; treated as `sprite` when absent.
   assetKind?: AssetKind;
+  // The sprite-sheet frame grid and named sequences a sprite-sheet case declares.
+  // Carried so the site's asset Reference tab can play the reference frames as the
+  // animations they belong to (the frames alone say nothing about motion). Absent
+  // for a non-sheet case, and for snapshots written before the field existed — in
+  // which case the tab shows the still frames only.
+  sheet?: AssetSheet | null;
   difficulty: string;
   tags: string[];
   summary: string | null;
@@ -143,11 +161,13 @@ interface SnapshotCaseFile {
     // by the Rust snapshot export as camelCase `referenceBuild`). Null/absent when
     // the variant declares no `reference_implementation`.
     referenceBuild?: string | null;
+    // An ASSET-GENERATION variant's published reference frames: the indices whose
+    // rendered image and action log `tcab publish-reference` uploaded to this very
+    // bucket. Null/absent when the variant has no published asset reference (every
+    // end-to-end variant, and any snapshot written before the field existed).
+    referenceSheet?: { frames: number[] } | null;
   }>;
   checks?: Array<{ view: string; name: string; referenceView: string | null }>;
-  // Seeded spec files shared by every variant, bodies inlined. Optional for
-  // snapshots written before specs were inlined.
-  commonSeededInputs?: SnapshotSeededInput[];
   // The runtime packages this case ships into every run (case-level), each with a
   // UI-only description. Optional for snapshots written before the field existed.
   packages?: SnapshotPackage[];
@@ -167,6 +187,38 @@ interface SnapshotCaseFile {
     kind?: "rendered" | "image" | "video";
     key: string; // snapshot-relative object key
   }>;
+  // The case's committed **baseline** automated-validation media (a debug script's
+  // outputs driven once against the reference implementation), per variant. `file` is
+  // the flat `<item>__<output>.<ext>` name the reviewer UI requests (`.png`/`.webm`);
+  // `key` is the published object (a video transcoded to `.mp4`). Case-scoped, so the
+  // gallery resolves the reviewer's baseline side-by-side from these keyed by
+  // slug/version/variant. Optional for snapshots written before automated validation
+  // existed.
+  validationBaselines?: Array<{
+    variant: string;
+    file: string;
+    key: string;
+  }>;
+  // Known-issue errata recorded for this version after it shipped (`CaseErratumOut`).
+  // Optional for snapshots written before errata existed.
+  errata?: SnapshotErratum[];
+}
+
+// One known-issue erratum inlined in case metadata (mirrors `CaseErratumOut` /
+// the UI's `Erratum`).
+interface SnapshotErratum {
+  id: string;
+  title: string;
+  date: string | null;
+  severity: "info" | "minor" | "major";
+  affectsScoring: boolean;
+  // Whether the linked review point is excluded from scoring for the version.
+  // Absent on snapshots written before the field existed; treated as false.
+  excludeFromScore?: boolean;
+  body: string;
+  resolvedIn: string | null;
+  variant: string | null;
+  review: string | null;
 }
 
 // One seeded spec file inlined in case metadata: the run-workspace path it lands
@@ -224,6 +276,9 @@ interface AssembledReview {
   writeup: string;
   checklist: SnapshotReviewVerdict[];
   reviewedAt: string | null;
+  // The reviewer's absolute avatar URL (resolved from `pictureKey` against the
+  // snapshot base), or null when they have no picture. Shown beside their name.
+  reviewerPictureUrl: string | null;
 }
 
 interface AssembledSnapshot {
@@ -250,6 +305,22 @@ interface AssembledSnapshot {
   // (`regenerated.png`, `preview.png`, `target.png`, `actions.json`). The app's
   // `assetMediaUrl(runId, file)` reads this.
   assetMediaUrls: Record<string, Record<string, string>>;
+  // Resolved *actual* automated-validation media URLs, keyed by run id then by the
+  // flat `<item>__<output>.<ext>` name the reviewer UI requests. The app's
+  // `validationMediaUrl(runId, file)` reads this.
+  validationMediaUrls: Record<string, Record<string, string>>;
+  // Resolved *baseline* automated-validation media URLs, keyed by a
+  // `<slug>/<version>/<variant>` subject key then by the flat `<item>__<output>.<ext>`
+  // name. Case-scoped, so keyed by subject rather than run id. The app's
+  // `validationBaselineUrl(subject, file)` reads this.
+  validationBaselineUrls: Record<string, Record<string, string>>;
+  // Resolved **asset-reference** media URLs — a published reference frame's image,
+  // and the action log it was drawn from — keyed by a `<slug>/<version>/<variant>`
+  // subject key then by the file below that variant's prefix (`frames/<index>.png`,
+  // `frames/<index>.actions.json`). Case-scoped like the baselines above, since a
+  // reference belongs to a case version rather than to any run. The app's
+  // `referenceMediaUrl(slug, version, variant, file)` reads this.
+  referenceMediaUrls: Record<string, Record<string, string>>;
 }
 
 interface AssembledReference {
@@ -268,12 +339,45 @@ interface AssembledReviewItem {
   frames: number[];
   weight: number;
   domain: string | null;
+  // Whether this item contributes to the run's score. Omitted (treated as true)
+  // unless a version erratum's `excludeFromScore` links its verdict id, in which case
+  // it is `false` — still shown, just not scored. Mirrors `ReviewItem.scored`.
+  scored?: boolean;
   subItems: AssembledSubReviewItem[];
 }
 
 interface AssembledSubReviewItem {
   id: string;
   title: string;
+  // Whether this sub-item contributes to the score (see `AssembledReviewItem.scored`).
+  scored?: boolean;
+}
+
+// Combine a case's common review items with a variant's own, merging by id so a
+// variant that reuses a common category's id extends that category (folding in its
+// items and weight) rather than forming a duplicate group. A fresh-id variant item
+// is appended, preserving "common first, then the variant's own". A local mirror of
+// `mergeReviewItems` in packages/ui/src/ratings.ts (and `merge_review_items` in the
+// Rust core) — duplicated rather than imported so this build-time plugin need not
+// pull the React UI package.
+function mergeSnapshotReviewItems(
+  common: readonly SnapshotReviewItem[],
+  variant: readonly SnapshotReviewItem[],
+): SnapshotReviewItem[] {
+  const result: SnapshotReviewItem[] = common.map((item) => ({ ...item }));
+  for (const item of variant) {
+    const existing = result.find((candidate) => candidate.id === item.id);
+    if (existing) {
+      existing.weight += item.weight;
+      existing.subItems = [
+        ...(existing.subItems ?? []),
+        ...(item.subItems ?? []),
+      ];
+    } else {
+      result.push({ ...item });
+    }
+  }
+  return result;
 }
 
 interface AssembledDomain {
@@ -287,6 +391,14 @@ interface AssembledDomain {
 interface AssembledChangelogEntry {
   version: string;
   body: string;
+}
+
+// One errata entry the app consumes (mirrors `ErrataEntry` in the UI's testCases):
+// the version and its known-issue errata. `collapseCases` concatenates these across
+// a slug's versions (newest first) into the case's full errata list.
+interface AssembledErrataEntry {
+  version: string;
+  errata: SnapshotErratum[];
 }
 
 // A seeded input the app consumes (mirrors `SeededInput` in the UI's testCases).
@@ -326,6 +438,11 @@ interface AssembledVariant {
   // fully-qualified Cloudflare Pages URL), it is the case-variant analogue of a
   // run's playable build and drives whether the case-detail Reference tab appears.
   referenceBuild: string | null;
+  // An asset-generation variant's published reference frames (indices only). The
+  // other shape a reference implementation takes, and the other signal that drives
+  // the Reference tab; the frame images and action logs themselves are resolved
+  // through `referenceMediaUrls` below. Null when the variant has none.
+  referenceSheet: { frames: number[] } | null;
 }
 
 interface AssembledTestCase {
@@ -343,10 +460,19 @@ interface AssembledTestCase {
   // mapped version. `collapseCases` concatenates these across a slug's versions
   // (newest first) into the case's full changelog.
   changelog: AssembledChangelogEntry[];
+  // This version's errata entry, if it recorded any — 0 or 1 element per mapped
+  // version. `collapseCases` concatenates these across a slug's versions (newest
+  // first) into the case's full errata list.
+  errata: AssembledErrataEntry[];
   versions: string[];
   latestVersion: string;
   variants: AssembledVariant[];
   domains: AssembledDomain[];
+  // The case's sprite-sheet declaration (frame size + named sequences), carried
+  // through when the snapshot publishes it. Null for a non-sheet case (and for a
+  // snapshot that predates the field), in which case the asset Reference tab shows
+  // the still reference frames without animating them.
+  sheet: AssetSheet | null;
 }
 
 const EMPTY: AssembledSnapshot = {
@@ -357,11 +483,14 @@ const EMPTY: AssembledSnapshot = {
   models: [],
   proofMediaUrls: {},
   assetMediaUrls: {},
+  validationMediaUrls: {},
+  validationBaselineUrls: {},
+  referenceMediaUrls: {},
 };
 
 // Rating tiers, ordered best to worst — the worst across reviewers/domains is the
 // run's aggregate. Mirrors the `Rating` enum in `packages/ui/src/ratings.ts`.
-const RATING_ORDER = ["flawless", "great", "scuffed", "broken"];
+const RATING_ORDER = ["flawless", "great", "passable", "scuffed", "broken"];
 
 // The worst (lowest) rating among `tiers`, or null when empty.
 function worstRating(tiers: string[]): string | null {
@@ -442,8 +571,12 @@ function frameWriteup(reviews: SnapshotReview[]): string | null {
 }
 
 // Map a snapshot review to the app's StoredReview shape, filling sensible
-// defaults for fields an older snapshot may omit.
-function toAssembledReview(review: SnapshotReview): AssembledReview {
+// defaults for fields an older snapshot may omit. The reviewer's `pictureKey` is
+// resolved to an absolute avatar URL against the snapshot `base`.
+function toAssembledReview(
+  base: string,
+  review: SnapshotReview,
+): AssembledReview {
   return {
     reviewerId: review.reviewerId ?? "",
     reviewer: review.reviewer ?? "Reviewer",
@@ -451,6 +584,9 @@ function toAssembledReview(review: SnapshotReview): AssembledReview {
     writeup: review.writeup ?? "",
     checklist: review.checklist ?? [],
     reviewedAt: review.reviewedAt ?? null,
+    reviewerPictureUrl: review.pictureKey
+      ? joinUrl(base, review.pictureKey)
+      : null,
   };
 }
 
@@ -466,7 +602,6 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
     (r) => r.variant == null || r.variant === "_common",
   );
   const commonItems = file.commonReviewItems ?? [];
-  const commonSeeded = file.commonSeededInputs ?? [];
   const commonDomains = file.domains ?? [];
   // Case-level packages apply to every variant; carry them onto each so the
   // per-variant Inputs tab can show them alongside the seeded files.
@@ -481,37 +616,58 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
       kind: (r.kind === "video" ? "video" : "image") as "image" | "video",
       url: joinUrl(base, r.key),
     }));
-    // The common specs seed first, then the variant's own — the same order a run
-    // is seeded and the consoles present. Only text specs are inlined.
-    const seededInputs: AssembledSeededInput[] = [
-      ...commonSeeded,
-      ...(variant.seededInputs ?? []),
-    ].map((s) => ({
+    // Each variant carries its complete, seed-ordered seeded spec set (the common
+    // specs first, then its own), every body already rendered for the variant (a
+    // template spec's conditionals resolved) — the same order a run is seeded and
+    // the consoles present. Only text specs are inlined.
+    const seededInputs: AssembledSeededInput[] = (
+      variant.seededInputs ?? []
+    ).map((s) => ({
       path: s.path,
       kind: "text",
       role: s.kind ?? "spec",
       text: s.text,
     }));
+    // The verdict ids this version's errata exclude from scoring for this variant
+    // (an erratum with `excludeFromScore` scoped case-wide or to this variant). These
+    // points stay on the checklist but are marked non-scoring below, mirroring the
+    // Rust `review_items_for` / `apply_score_exclusions`.
+    const excludedVerdictIds = new Set<string>();
+    for (const erratum of file.errata ?? []) {
+      if (!erratum.excludeFromScore) continue;
+      if (erratum.variant != null && erratum.variant !== variant.slug) continue;
+      if (erratum.review) excludedVerdictIds.add(erratum.review);
+    }
     // The common checklist items apply to every variant; the variant's own
-    // follow. Each carries the point weight used to score runs.
-    const reviewItems: AssembledReviewItem[] = [
-      ...commonItems,
-      ...(variant.reviewItems ?? []),
-    ].map((item) => ({
-      id: item.id,
-      title: item.title,
-      text: item.text,
-      reference: item.reference ?? null,
-      proof: item.proof ?? null,
-      sequences: item.sequences ?? [],
-      frames: item.frames ?? [],
-      weight: item.weight,
-      domain: item.domain ?? null,
-      subItems: (item.subItems ?? []).map((sub) => ({
-        id: sub.id,
-        title: sub.title,
-      })),
-    }));
+    // follow, merged by id so a variant that reuses a common category's id extends
+    // that category rather than forming a duplicate group. Each carries the point
+    // weight used to score runs.
+    const reviewItems: AssembledReviewItem[] = mergeSnapshotReviewItems(
+      commonItems,
+      variant.reviewItems ?? [],
+    ).map((item) => {
+      const itemExcluded = excludedVerdictIds.has(item.id);
+      return {
+        id: item.id,
+        title: item.title,
+        text: item.text,
+        reference: item.reference ?? null,
+        proof: item.proof ?? null,
+        sequences: item.sequences ?? [],
+        frames: item.frames ?? [],
+        weight: item.weight,
+        domain: item.domain ?? null,
+        scored: itemExcluded ? false : undefined,
+        subItems: (item.subItems ?? []).map((sub) => ({
+          id: sub.id,
+          title: sub.title,
+          scored:
+            itemExcluded || excludedVerdictIds.has(`${item.id}.${sub.id}`)
+              ? false
+              : undefined,
+        })),
+      };
+    });
     // The common domains apply to every variant; the variant's own additive
     // domains follow. This effective set is what a run of this variant is rated
     // against.
@@ -532,6 +688,10 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
       // The reference-implementation build URL, carried through verbatim (null
       // when the variant declares none).
       referenceBuild: variant.referenceBuild ?? null,
+      // The published asset-reference frame indices, carried through verbatim. The
+      // objects they address are resolved into absolute URLs in `loadSnapshot`,
+      // where the snapshot base is in hand.
+      referenceSheet: variant.referenceSheet ?? null,
     };
   });
   return {
@@ -551,9 +711,19 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
     changelog: file.changelog
       ? [{ version: file.version, body: file.changelog }]
       : [],
+    // This version's errata, if any — collapseCases merges these across the slug's
+    // versions into one newest-first errata list.
+    errata:
+      file.errata && file.errata.length > 0
+        ? [{ version: file.version, errata: file.errata }]
+        : [],
     versions: [file.version],
     latestVersion: file.version,
     variants,
+    // The sprite-sheet declaration, so the asset Reference tab can play each named
+    // sequence from the published reference frames. Null when the snapshot carries
+    // none.
+    sheet: file.sheet ?? null,
     domains: (file.domains ?? []).map((d) => ({
       id: d.id,
       name: d.name,
@@ -591,6 +761,9 @@ function collapseCases(
       // Each version contributes 0 or 1 entry; `versions` is newest-first, so the
       // concatenation is already ordered newest changelog entry first.
       changelog: versions.flatMap((v) => v.changelog),
+      // Same aggregation for errata: newest-version-first, versions with none
+      // already contribute no entry.
+      errata: versions.flatMap((v) => v.errata),
     });
   }
   return result;
@@ -632,6 +805,9 @@ async function loadSnapshot(
   const reviews: Record<string, AssembledReview[]> = {};
   const proofMediaUrls: Record<string, Record<string, string>> = {};
   const assetMediaUrls: Record<string, Record<string, string>> = {};
+  const validationMediaUrls: Record<string, Record<string, string>> = {};
+  const validationBaselineUrls: Record<string, Record<string, string>> = {};
+  const referenceMediaUrls: Record<string, Record<string, string>> = {};
   // The case-version keys referenced by published runs; deduplicated.
   const caseKeys = new Set<string>();
 
@@ -647,7 +823,9 @@ async function loadSnapshot(
     emitRecord(summary.id, JSON.stringify(runFile.record));
     const runReviews = runFile.reviews ?? [];
     if (runReviews.length > 0) {
-      reviews[summary.id] = runReviews.map(toAssembledReview);
+      reviews[summary.id] = runReviews.map((review) =>
+        toAssembledReview(base, review),
+      );
       const framed = frameWriteup(runReviews);
       if (framed !== null) writeups[summary.id] = framed;
     }
@@ -670,6 +848,16 @@ async function loadSnapshot(
       }
       assetMediaUrls[summary.id] = byFile;
     }
+    // The run's synthesized *actual* validation media, keyed by the flat
+    // `<item>__<output>.<ext>` name the reviewer UI requests (a video's `.webm`
+    // request resolving to its published `.mp4` key), resolved to absolute URLs.
+    if (runFile.validationMedia?.length) {
+      const byFile: Record<string, string> = {};
+      for (const media of runFile.validationMedia) {
+        byFile[media.file] = joinUrl(base, media.key);
+      }
+      validationMediaUrls[summary.id] = byFile;
+    }
     // Emit the run's recorded events as a standalone asset (only when present),
     // so the Events tab can fetch `run-events/<id>.json` without the bundle
     // carrying every run's log.
@@ -689,6 +877,50 @@ async function loadSnapshot(
       // A run can reference a historical case-version the snapshot did not
       // emit; skip it rather than failing the whole build (the run still shows,
       // it just lacks framing metadata).
+    }
+  }
+
+  // The case-scoped *baseline* validation media, keyed by a `<slug>/<version>/<variant>`
+  // subject key then the flat `<item>__<output>.<ext>` name the reviewer UI requests.
+  // Built from the per-version case files (not the collapsed catalog), so a run against
+  // any published version resolves its variant's baseline (a video's `.webm` request
+  // resolving to its published `.mp4` key).
+  for (const file of caseFiles) {
+    for (const baseline of file.validationBaselines ?? []) {
+      const subjectKey = `${file.slug}/${file.version}/${baseline.variant}`;
+      const byFile = validationBaselineUrls[subjectKey] ?? {};
+      byFile[baseline.file] = joinUrl(base, baseline.key);
+      validationBaselineUrls[subjectKey] = byFile;
+    }
+  }
+
+  // The case-scoped **asset-reference** media, keyed the same way: subject key then
+  // the file below the variant's prefix. Unlike every map above, these keys are not
+  // listed in the snapshot — only the published frame INDICES are — so they are
+  // reconstructed from the deterministic layout the publisher writes:
+  //
+  //   media/references/<slug>/<version>/<variant>/frames/<index>.png
+  //   media/references/<slug>/<version>/<variant>/frames/<index>.actions.json
+  //
+  // This MIRRORS the Rust helpers that write them (`reference_prefix` /
+  // `reference_image_key` / `reference_actions_key` in
+  // `crates/core/src/asset_reference.rs`) and the console's `referenceMediaKey` in
+  // `packages/ui/src/transport/httpBackend.ts`; all three must change together. The
+  // console's helper is not imported here because this build-time plugin must not
+  // pull in the React UI package.
+  for (const file of caseFiles) {
+    for (const variant of file.variants) {
+      const frames = variant.referenceSheet?.frames;
+      if (!frames?.length) continue;
+      const subjectKey = `${file.slug}/${file.version}/${variant.slug}`;
+      const byFile = referenceMediaUrls[subjectKey] ?? {};
+      const prefix = `media/references/${file.slug}/${file.version}/${variant.slug}`;
+      for (const index of frames) {
+        for (const name of [`${index}.png`, `${index}.actions.json`]) {
+          byFile[`frames/${name}`] = joinUrl(base, `${prefix}/frames/${name}`);
+        }
+      }
+      referenceMediaUrls[subjectKey] = byFile;
     }
   }
 
@@ -717,6 +949,9 @@ async function loadSnapshot(
     models,
     proofMediaUrls,
     assetMediaUrls,
+    validationMediaUrls,
+    validationBaselineUrls,
+    referenceMediaUrls,
   };
 }
 
@@ -730,6 +965,9 @@ function serialize(data: AssembledSnapshot): string {
     `export const models = ${JSON.stringify(data.models)};`,
     `export const proofMediaUrls = ${JSON.stringify(data.proofMediaUrls)};`,
     `export const assetMediaUrls = ${JSON.stringify(data.assetMediaUrls)};`,
+    `export const validationMediaUrls = ${JSON.stringify(data.validationMediaUrls)};`,
+    `export const validationBaselineUrls = ${JSON.stringify(data.validationBaselineUrls)};`,
+    `export const referenceMediaUrls = ${JSON.stringify(data.referenceMediaUrls)};`,
   ].join("\n");
 }
 

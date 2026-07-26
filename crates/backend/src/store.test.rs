@@ -74,8 +74,10 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
                 sequences: vec![],
                 frames: vec![],
                 weight: 1,
+                graded: false,
                 domain: None,
                 sub_items: vec![],
+                validation: None,
             }],
             domains: vec![],
             voxel: None,
@@ -96,13 +98,40 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
             sequences: vec![],
             frames: vec![],
             weight: 2,
+            graded: false,
             domain: Some("single-player".to_string()),
             sub_items: vec![],
+            // An auto-validated item so the manifest round-trip (write → read) covers
+            // the reporter-side validation driver.
+            validation: Some(StoredReviewValidation {
+                script: "validation/ball-spin.mjs".to_string(),
+                outputs: vec![StoredReviewOutput {
+                    id: "spin".to_string(),
+                    name: "Spin".to_string(),
+                    kind: test_cabinet_core::MediaKind::Image,
+                }],
+            }),
         }],
         domains: vec![StoredDomain {
             id: "single-player".to_string(),
             name: "Single Player".to_string(),
             description: "Solo play.".to_string(),
+        }],
+        instrumentation: Some(StoredInstrumentation {
+            handle: "__carom".to_string(),
+            tick_hz: Some(120),
+        }),
+        errata: vec![StoredErratum {
+            id: "cue-clips-rail".to_string(),
+            title: "Cue ball clips the rail".to_string(),
+            date: Some("2026-07-17".to_string()),
+            severity: test_cabinet_core::test_case::ErratumSeverity::Major,
+            affects_scoring: true,
+            exclude_from_score: false,
+            body: "Known tunnelling at high speed.".to_string(),
+            resolved_in: Some("v1.1.0".to_string()),
+            variant: None,
+            review: None,
         }],
     }
 }
@@ -168,6 +197,58 @@ fn artifact_reads_a_real_file() {
 }
 
 #[test]
+fn read_rendered_spec_renders_a_template_and_passes_plain_through() {
+    let (_dir, store) = temp_store();
+    store
+        .write_manifest(&sample_manifest("pong", "v1.0.0"))
+        .unwrap();
+    let dir = store.version_dir("pong", "v1.0.0");
+    std::fs::create_dir_all(dir.join("specs")).unwrap();
+    // A template spec that branches on the variant slug, and a plain one.
+    std::fs::write(
+        dir.join("specs/field.md.hbs"),
+        "# Field\n{{#if (eq variant.slug \"gyre\")}}rotating{{else}}static{{/if}}\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("specs/overview.md"),
+        "# Overview {{not touched}}\n",
+    )
+    .unwrap();
+
+    let template = StoredSpec {
+        source: "specs/field.md.hbs".to_string(),
+        dest: "specs/field.md".to_string(),
+        template: true,
+        kind: Default::default(),
+    };
+    let plain = StoredSpec {
+        source: "specs/overview.md".to_string(),
+        dest: "specs/overview.md".to_string(),
+        template: false,
+        kind: Default::default(),
+    };
+
+    // The template renders for the selected variant — its branch resolved, no
+    // handlebars left — and differs between variants.
+    let base = store
+        .read_rendered_spec("pong", "v1.0.0", &template, "base", "Base", None, None)
+        .unwrap();
+    let gyre = store
+        .read_rendered_spec("pong", "v1.0.0", &template, "gyre", "Gyre", None, None)
+        .unwrap();
+    assert_eq!(base, "# Field\nstatic\n");
+    assert_eq!(gyre, "# Field\nrotating\n");
+
+    // A plain spec is returned verbatim — never run through the engine, so a
+    // brace-y body that is not a real template is untouched.
+    let overview = store
+        .read_rendered_spec("pong", "v1.0.0", &plain, "base", "Base", None, None)
+        .unwrap();
+    assert_eq!(overview, "# Overview {{not touched}}\n");
+}
+
+#[test]
 fn reference_scope_and_view_are_validated() {
     let (_dir, store) = temp_store();
     assert!(matches!(
@@ -182,6 +263,84 @@ fn reference_scope_and_view_are_validated() {
             .unwrap_err(),
         BackendError::BadRequest(_)
     ));
+}
+
+#[test]
+fn validation_baseline_reads_committed_case_scoped_media() {
+    let (_dir, store) = temp_store();
+    // The committed baseline media lives under the version folder at
+    // `validation-baseline/<variant>/<item>__<output>.<ext>` (copied into the store
+    // at ingest like any other definition file). Serving reads it straight back.
+    let baseline_dir = store
+        .version_dir("pong", "v1.0.0")
+        .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
+        .join("base");
+    std::fs::create_dir_all(&baseline_dir).unwrap();
+    std::fs::write(baseline_dir.join("ball-spin__spin.webm"), b"clip").unwrap();
+
+    assert_eq!(
+        store
+            .read_validation_baseline("pong", "v1.0.0", "base", "ball-spin__spin.webm")
+            .unwrap(),
+        b"clip",
+    );
+    // A missing file 404s (NotFound), and a traversal-y variant or file is rejected.
+    assert!(matches!(
+        store
+            .read_validation_baseline("pong", "v1.0.0", "base", "nope.png")
+            .unwrap_err(),
+        BackendError::NotFound(_)
+    ));
+    assert!(matches!(
+        store
+            .read_validation_baseline("pong", "v1.0.0", "..", "ball-spin__spin.webm")
+            .unwrap_err(),
+        BackendError::BadRequest(_)
+    ));
+    assert!(matches!(
+        store
+            .read_validation_baseline("pong", "v1.0.0", "base", "a/b")
+            .unwrap_err(),
+        BackendError::BadRequest(_)
+    ));
+}
+
+#[test]
+fn validation_files_lists_the_whole_script_directory_recursively() {
+    let (_dir, store) = temp_store();
+    // The reporter-side scripts live under the version folder at `validation/` (copied
+    // into the store at ingest like any other definition file): the named drivers plus
+    // any shared modules they import, which may be flat siblings or nested.
+    let validation_dir = store
+        .version_dir("pong", "v1.0.0")
+        .join(test_cabinet_core::VALIDATION_SCRIPT_DIR);
+    std::fs::create_dir_all(validation_dir.join("lib")).unwrap();
+    std::fs::write(validation_dir.join("ball-spin.mjs"), b"driver").unwrap();
+    std::fs::write(validation_dir.join("_helpers.mjs"), b"shared").unwrap();
+    std::fs::write(validation_dir.join("lib/geometry.mjs"), b"nested").unwrap();
+    // A hidden dotfile is skipped, mirroring the ingest `copy_tree`.
+    std::fs::write(validation_dir.join(".DS_Store"), b"junk").unwrap();
+
+    assert_eq!(
+        store.list_validation_files("pong", "v1.0.0").unwrap(),
+        vec![
+            "validation/_helpers.mjs".to_string(),
+            "validation/ball-spin.mjs".to_string(),
+            "validation/lib/geometry.mjs".to_string(),
+        ],
+    );
+
+    // A version with no `validation/` directory (a case declaring no scripted items)
+    // yields an empty list rather than an error.
+    store
+        .write_manifest(&sample_manifest("snake", "v1.0.0"))
+        .unwrap();
+    assert!(
+        store
+            .list_validation_files("snake", "v1.0.0")
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[test]

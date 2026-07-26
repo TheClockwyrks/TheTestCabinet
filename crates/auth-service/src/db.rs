@@ -109,6 +109,14 @@ impl Db {
             .await
     }
 
+    /// Find an account by its stable id. Used to serve a profile picture, which is
+    /// addressed by account id rather than login handle.
+    pub async fn find_user_by_id(&self, id: &str) -> Result<Option<user::Model>, sea_orm::DbErr> {
+        user::Entity::find_by_id(id.to_string())
+            .one(&self.conn())
+            .await
+    }
+
     /// Insert a new account row.
     pub async fn insert_user(&self, model: user::Model) -> Result<(), sea_orm::DbErr> {
         user::ActiveModel {
@@ -117,9 +125,53 @@ impl Db {
             display_name: Set(model.display_name),
             password_hash: Set(model.password_hash),
             created_at: Set(model.created_at),
+            picture: Set(model.picture),
+            picture_content_type: Set(model.picture_content_type),
+            picture_updated_at: Set(model.picture_updated_at),
         }
         .insert(&self.conn())
         .await?;
+        Ok(())
+    }
+
+    /// Set (or replace) an account's profile picture: the base64-encoded bytes,
+    /// their content type, and the RFC 3339 instant the change happened (which
+    /// becomes the account's cache-bust version). Errors when no such account
+    /// exists.
+    pub async fn set_user_picture(
+        &self,
+        user_id: &str,
+        picture_base64: String,
+        content_type: String,
+        updated_at: String,
+    ) -> Result<(), sea_orm::DbErr> {
+        let conn = self.conn();
+        let model = user::Entity::find_by_id(user_id.to_string())
+            .one(&conn)
+            .await?
+            .ok_or_else(|| sea_orm::DbErr::RecordNotFound(format!("user `{user_id}` not found")))?;
+        let mut active: user::ActiveModel = model.into();
+        active.picture = Set(Some(picture_base64));
+        active.picture_content_type = Set(Some(content_type));
+        active.picture_updated_at = Set(Some(updated_at));
+        active.update(&conn).await?;
+        Ok(())
+    }
+
+    /// Clear an account's profile picture, resetting all three picture columns to
+    /// `NULL`. Idempotent for an account that already has none. Errors when no such
+    /// account exists.
+    pub async fn clear_user_picture(&self, user_id: &str) -> Result<(), sea_orm::DbErr> {
+        let conn = self.conn();
+        let model = user::Entity::find_by_id(user_id.to_string())
+            .one(&conn)
+            .await?
+            .ok_or_else(|| sea_orm::DbErr::RecordNotFound(format!("user `{user_id}` not found")))?;
+        let mut active: user::ActiveModel = model.into();
+        active.picture = Set(None);
+        active.picture_content_type = Set(None);
+        active.picture_updated_at = Set(None);
+        active.update(&conn).await?;
         Ok(())
     }
 

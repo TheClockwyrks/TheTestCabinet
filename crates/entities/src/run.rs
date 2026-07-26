@@ -46,7 +46,7 @@ pub struct Model {
     #[sea_orm(nullable)]
     pub cost_comparable: Option<f64>,
     /// The run's aggregate rating — the worst rating any reviewer gave any domain
-    /// — as its lowercase wire token (`flawless`/`great`/`scuffed`/`broken`), or
+    /// — as its lowercase wire token (`flawless`/`great`/`passable`/`scuffed`/`broken`), or
     /// `NULL` when the run carries no reviews yet. Maintained on review-add.
     #[sea_orm(nullable)]
     pub rating: Option<String>,

@@ -78,7 +78,7 @@ adding a new version, never by editing a published one.
 
 ```text
 test-cases/<type>/<difficulty>/<slug>/<version>/
-  test-case.toml         # manifest: type, asset_kind, [voxel], [tool], [output], domains, review items
+  test-case.toml         # manifest: type, asset_kind, [voxel], [tool], [output], the overall domain
   variants/              # one standalone TOML file per variant (listed in `variants`)
   prompt.hbs             # rendered per run into the model's instruction (NOT seeded)
   description.md         # site-facing prose (NOT seeded)
@@ -227,12 +227,14 @@ cases](/testing/asset-generation/manifests/#voxel-cases) schema:
   defaults to its `source`.
 - **No targets** — declare **no `[[reference]]`** (common *or* per-variant); resolution
   rejects any reference. The model is reviewed against its brief.
-- **`[[domain]]`** and **`[[review_item]]`** — at least one scoring domain (e.g.
-  `fidelity`) and the reviewer checklist judging how convincingly the extracted mesh
-  realizes the brief (silhouette from multiple angles, palette, proportion, symmetry,
-  and — for `dc` — the crispness of the sharp edges the extractor is chosen for). Each
-  item carries only a `domain` (plus `id`/`title`/`text`/optional `weight`) — no
-  `reference` (there is no target to pair with). Reporter-side; **not seeded**.
+- **`[[domain]]`** — the single `overall` scoring domain, and **no `[[review_item]]`
+  checklist**. How convincingly the extracted mesh realizes the brief — silhouette from
+  multiple angles, palette, proportion, symmetry, and, for `dc`, the crispness of the
+  sharp edges the extractor is chosen for — is judged as a whole, so the reviewer gives
+  one rating and that rating is the run's (see
+  [Judged on one overall rating](/testing/asset-generation/manifests/#judged-on-one-overall-rating)).
+  Reporter-side; **not seeded**. Ask for each of those qualities in the brief, which is
+  what the rating is given against.
 
 There is **no `[build]` table**, **no `[[check]]`**, and **no `[model]`** table (a
 static model has no rig) — resolution rejects all three for this kind.

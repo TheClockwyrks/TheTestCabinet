@@ -5,8 +5,11 @@ difficulty = "medium"
 tags = ["sprite-sheet", "belt"]
 summary = """
 Draw the Lattice splitter — the two-tile belt balancer — as a 32x64 sprite sheet: \
-a top-down housing spanning two tile cells with an animated belt surface of amber \
-chevrons scrolling East, produced one drawing operation at a time."""
+a top-down machine with two belt inputs on one side and two outputs on the other, \
+a solid housing hiding the balancing mechanism between them, a visible moving part \
+that suggests the sort/split at work and an arrow-shaped output end, and short belt \
+mouths whose amber chevrons scroll East, produced one drawing operation at a \
+time."""
 description = "description.md"
 # Optional per-version changelog entry (Markdown, relative to this version
 # folder), recording what changed in THIS version — the first version simply reads
@@ -81,76 +84,14 @@ fps = 12
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How faithfully the regenerated sheet matches the Lattice splitter — a single \
-two-tile balancer spanning both cells, the amber belt surface scrolling East in a \
-seamless loop and matching the belt look, the central divider and grey-blue housing \
-that mark it as a balancer rather than plain belt, and the pinned belt-family \
-palette."""
-
-[[review_item]]
-id = "one-two-tile-device"
-title = "One two-tile splitter"
-text = """
-The whole 32x64 frame reads as a SINGLE splitter spanning both stacked 32x32 tile \
-cells — one 2-wide device, not two separate belts or two unrelated tiles. The \
-housing brackets both cells so they clearly belong to the same machine."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "belt-scrolls-east"
-title = "Belt surface scrolls East"
-text = """
-Playing frames 0 through 7 shows the amber chevron surface scrolling steadily to \
-the right (East) by a fixed step each frame and looping seamlessly — frame 7 hands \
-off to frame 0 with no jump — exactly like a running transport belt."""
-sequences = ["splitter-flow"]
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "matches-belt-look"
-title = "Matches the belt family"
-text = """
-The moving surface reads as the same belt as a plain Lattice transport belt — rows \
-of amber chevrons pointing East over the dark belt metal — so the splitter and a \
-belt visibly carry the same items in the same style."""
-sequences = ["splitter-flow"]
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "divider-and-housing"
-title = "Divider and housing read as a balancer"
-text = """
-A static grey-blue machine housing frames the two cells and a central seam runs \
-along the flow between them, distinguishing the device from a plain belt at a \
-glance. The moving belt stays visible through and between the housing — the housing \
-sits on top of the surface, not covering it."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Belt-family palette"
-text = """
-Uses only the brief's pinned palette — dark outline, belt metal base/mid/edge, \
-amber chevron with its highlight and shadow, and the grey-blue housing with the \
-amber hazard-stripe accent — with no out-of-palette colors and no anti-aliased \
-fringe of stray pixels."""
-weight = 1
-domain = "fidelity"
-
-[[review_item]]
-id = "framing"
-title = "Frame framing"
-text = """
-The device fills the 32x64 frame with only small margins, centered across both \
-cells, and the belt surface lines up at the left and right edges so it tiles \
-seamlessly with an adjoining belt rather than sitting tiny or clipped."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

@@ -16,9 +16,10 @@
   --ttc-negative: #f87171;
 
   // Per-tier rating colors, best to worst. Flawless takes a cool cyan to stand
-  // apart from the warm palette; the rest run green → amber → red.
+  // apart from the warm palette; the rest run green → lime → amber → red.
   --ttc-rating-flawless: #22d3ee;
   --ttc-rating-great: #4ade80;
+  --ttc-rating-passable: #a3e635;
   --ttc-rating-scuffed: #fbbf24;
   --ttc-rating-broken: #f87171;
 
@@ -42,8 +43,9 @@
   --ttc-event-error: #f87171; // red
   --ttc-event-unknown: #b69ad0; // muted (bright black)
 
-  --ttc-font: ui-monospace, "DejaVu Sans Mono", "SFMono-Regular", Menlo,
-    Consolas, monospace;
+  --ttc-font:
+    ui-monospace, "DejaVu Sans Mono", "SFMono-Regular", Menlo, Consolas,
+    monospace;
   --ttc-display: var(--ttc-font);
   --ttc-radius: 0.25rem;
   --ttc-glow: 0 0 0.9rem rgba(255, 157, 47, 0.5);
@@ -68,9 +70,11 @@
   --tcab-negative: var(--ttc-negative);
   --tcab-rating-flawless: var(--ttc-rating-flawless);
   --tcab-rating-great: var(--ttc-rating-great);
+  --tcab-rating-passable: var(--ttc-rating-passable);
   --tcab-rating-scuffed: var(--ttc-rating-scuffed);
   --tcab-rating-broken: var(--ttc-rating-broken);
   --tcab-font: var(--ttc-font);
   --tcab-display: var(--ttc-display);
   --tcab-glow: var(--ttc-glow);
+  --tcab-scanline: var(--ttc-scanline);
 }

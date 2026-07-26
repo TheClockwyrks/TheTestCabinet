@@ -3,3 +3,12 @@
 # default. Every path here resolves against the version folder, like the manifest.
 slug = "base"
 name = "Base"
+
+# The authored, correct sheet for this variant, shown on the case's Reference tab.
+# For an asset-generation case this is a `draw.sh` of nothing but drawing-binary
+# calls rather than a buildable web project: `tcab publish-reference` seeds a
+# workspace from this manifest, runs the script, and uploads the frames and action
+# logs it produces. Neither the images nor the logs are committed — the script
+# reproduces them exactly, so it is the only source of truth. Never seeded into a
+# run: the model must not see the answer.
+reference_implementation = "reference-impl/base"

@@ -35,7 +35,7 @@
 # toolchain that compiles it) does not belong in the image every run shares.
 
 # ── The base run image ────────────────────────────────────────────────────────
-FROM docker.io/library/node:24-bookworm-slim
+FROM docker.io/library/node:24.18.0-bookworm-slim
 
 # Common system packages:
 #   - git: each run is its own fresh repository.

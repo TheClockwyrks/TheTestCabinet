@@ -54,12 +54,12 @@ model and no operations schema — the binary's `--help` is the contract.
 
 ## Variants
 
-The Foundry ships three variants that sculpt the **same** casting hall at three
-sizes, each overriding the case's `[voxel]` volume: `base` (72×56×72, the default,
-declared in `variants/base.toml`), `half` (each extent ~halved), and `double` (each
-extent doubled). All three seed the common brief — rendered at the selected variant's
-dimensions — and are rated on the case's single `fidelity` scoring domain; they add no
-specs, review items, or domains of their own.
+The Foundry ships three variants that sculpt the **same** casting hall at three sizes,
+each overriding the case's `[voxel]` volume: `base` (72×56×72, the default, declared
+in `variants/base.toml`), `half` (each extent ~halved), and `double` (each extent
+doubled). All three seed the common brief — rendered at the selected variant's
+dimensions — and are rated on the case's single `overall` scoring domain; they add no
+specs or domains of their own.
 
 ## Versioning
 

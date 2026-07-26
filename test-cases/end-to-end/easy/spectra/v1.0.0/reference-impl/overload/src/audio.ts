@@ -1,4 +1,4 @@
-// Spectra — synthesized audio (specs/flow.md, Audio).
+// Spectra — synthesized audio (specs/gameplay.md, Audio).
 //
 // Optional and never required for the game to run. All cues are synthesized with
 // the Web Audio API (no audio files). Audio does not start until the first user

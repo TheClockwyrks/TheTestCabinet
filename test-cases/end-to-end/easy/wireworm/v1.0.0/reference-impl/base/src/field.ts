@@ -12,6 +12,7 @@ import {
   SCATTER_MAX_FRACTION,
   inBounds,
 } from "./constants";
+import type { Rng } from "./rng";
 
 export const EMPTY = -1;
 
@@ -48,18 +49,18 @@ export function emptyField(): Int8Array {
 
 // Scatter inert (C=0) nodes across rows 1..17 at 10%-15% of those tiles. Never
 // row 0 (worm entry) and never the player band (specs/playfield.md).
-export function scatterField(field: Int8Array): void {
+export function scatterField(field: Int8Array, rng: Rng): void {
   const rows: number[] = [];
   for (let r = SCATTER_TOP_ROW; r <= SCATTER_BOTTOM_ROW; r++) rows.push(r);
   const tileCount = rows.length * COLS;
   const frac =
     SCATTER_MIN_FRACTION +
-    Math.random() * (SCATTER_MAX_FRACTION - SCATTER_MIN_FRACTION);
+    rng.next() * (SCATTER_MAX_FRACTION - SCATTER_MIN_FRACTION);
   let target = Math.round(tileCount * frac);
   let guard = tileCount * 4;
   while (target > 0 && guard-- > 0) {
-    const c = Math.floor(Math.random() * COLS);
-    const r = rows[Math.floor(Math.random() * rows.length)];
+    const c = Math.floor(rng.next() * COLS);
+    const r = rows[Math.floor(rng.next() * rows.length)];
     if (!hasNode(field, c, r)) {
       setCharge(field, c, r, 0);
       target--;

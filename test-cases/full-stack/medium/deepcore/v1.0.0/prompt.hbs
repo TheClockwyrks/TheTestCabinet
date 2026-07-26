@@ -1,0 +1,113 @@
+Build Deepcore, a subterranean dig-and-build game that runs entirely in the browser,
+and produce its art, animation, effects, and audio yourself, during this build, with
+the asset-generation tools on your `PATH`.
+
+Your project root is `{{workspace}}`. Create the game there.
+
+## Your starting point
+
+A starter project is already in place at `{{workspace}}`: a `package.json` that pins
+Playwright as a dev dependency and depends on the `@test-cabinet/particle-runtime`
+library (below). Its dependencies have already been installed for you: `node_modules/`
+is populated and Playwright's headless Chromium is downloaded, so you can build right
+away (see "Playwright and Chromium" below for what they are there for). Build on this
+project rather than replacing it: keep the `package.json`, add your framework, bundler,
+and a `build` script on top of it, and keep the lockfile in sync (see below).
+
+## What to read first
+
+The full specification is in the `specs/` directory at `{{workspace}}`, already present
+in your project. Read all of it before you start, and produce an implementation that
+matches the specification exactly. It is decomposed by concern: `specs/overview.md`
+(the pitch and fiction, goals, hard requirements, the stage, the palette and type, and
+the visual design), `specs/world.md` (the tile grid and vertical camera, the four
+depth bands and the Core chamber, every tile kind, how ore/materials/hazards are
+placed, and the surface with its six buildings), `specs/character.md` (the prospector:
+fall/jetpack/lateral movement, the drill-down/left/right-never-up rule, dig speed vs
+hardness, the fuel and hull models, the weight-and-lift model where heavy hauls climb
+slower and, overloaded, cannot lift, with dropping ore from the inventory as the escape
+valve, the radiator, and the full set of animation states), `specs/mining.md` (the ore
+values and weights, the slot-limited cargo with weight the jetpack must lift, the
+inventory for dropping ore, the two buried exotic materials and the scanner, and
+selling), `specs/hazards.md` (gas, lava, impact, the radiator, and the unstable Core
+Sample and its detonation timer), `specs/upgrades.md` (the seven upgrade tracks and
+prices), `specs/rocket.md` (the five-component escape rocket that is the win condition),
+`specs/gameplay.md` (the single expedition and its start, the Credits economy, the
+surface loop, saving, and scoring), `specs/ui.md` (the game states, the menus, and the
+HUD), `specs/modes.md` (the in-game Standard/Hardcore death modes), `specs/controls.md`,
+`specs/assets.md` (the asset-production contract), `specs/instrumentation.md` (the
+`window.__deepcore` debug and automation API, the debug overlay, and the deterministic
+steppable core they rest on), and `specs/proof.md`.
+
+## Build requirements
+
+Deliver a complete, polished, playable game, not a tech demo. The hard requirements
+(real graphics, no backend or credentials, the palette and type, a `README.md`, the
+game states, and the `window.__deepcore` debug API and overlay) are stated in full in
+`specs/overview.md` (and the files it points to). That specification is authoritative;
+build to it rather than to a summary here. Four things bear restating, because the
+harness depends on them:
+
+- The fixed build/serve interface. The project stays a Node project built with only
+  Node.js and npm-installed dependencies. Extend the provided `package.json` at
+  `{{workspace}}` and commit a `package-lock.json` (run `npm install` after you change
+  dependencies so the lockfile matches). `npm ci` then `npm run build` must produce the
+  static site, with no other manual step, into one of `dist/`, `build/`, or `out/` at
+  the project root, with an `index.html` at the root of that directory. Serving that
+  directory as-is must run the game, and it must work at any base path (it is played
+  back from a per-run sub-path, so any URL the build constructs at runtime must be
+  page-relative, never a leading `/`; for a bundler, set a relative base such as `base:
+  './'`). `specs/overview.md` and `specs/assets.md` state this in full; follow it
+  exactly.
+- You produce the art, animation, effects, and audio. There is no pre-made game art in
+  this project. Instead, the run image puts six asset-generation tools on your `PATH`:
+  `draw` and `draw-sheet` (sprites and animated sprite sheets), `particle-2d` (particle
+  systems), and `sfx-synth`, `sfx-sample`, and `music` (sound and music), and you must
+  produce every asset the game plays with these tools during this build, then wire the
+  produced files into the game. Run each tool's `--help` to learn its operations.
+  `specs/assets.md` is the authoritative contract: it enumerates every sprite,
+  animation, particle system, and sound the game needs, names which tool produces each
+  and where it lands under `assets/`, and states how each is wired into the build,
+  including that the animated miner (the headline of this build: its idle, walk, drill,
+  jetpack, fall, hurt, and out-of-fuel cycles) is a set of `draw-sheet` cycles, and that
+  the VFX are `particle-2d` systems played live through the `@test-cabinet/particle-runtime`
+  library already installed as a dependency of your project (import it like any other
+  dependency; do not fetch or reimplement it). Load every produced file with
+  page-relative URLs so it resolves from the served sub-path.
+- The debug and automation surface. Expose the `window.__deepcore` API and the read-only
+  debug overlay of `specs/instrumentation.md`, backed by the deterministic,
+  fixed-timestep, steppable core that spec and `specs/controls.md` require. This is a
+  required part of the build.
+- The reference screenshots. The `reference/` folder under `{{workspace}}` holds
+  screenshots that are illustrative examples, not targets to reproduce, of the title,
+  mine, surface, and end screens. Design your own miner, tiles, buildings, and layout
+  from the specification; the images only illustrate one way the intended look can come
+  together, so build the screens from the specification rather than copying them.
+
+## Playwright and Chromium
+
+The project's Playwright and its headless Chromium are installed, and the container has
+network access, so you can drive the built game in a real browser. Using them to
+validate your build as you go (serving it, driving a dig, watching for console errors,
+exercising the `window.__deepcore` API) is a good way to catch problems, but whether and
+how far to do so is your call. (You will separately need them for the
+proof-of-implementation captures that `specs/proof.md` asks for.)
+
+Whenever you do launch the browser, use the project's own Playwright: import it from
+your project (for example `import { chromium } from "playwright"`) or run the
+project-local CLI with `npx playwright`. There is no global Playwright on `PATH`; it
+lives in your project's `node_modules`, like any other dependency. Launch Chromium with
+the `--no-sandbox` argument; this container has no Chromium sandbox, so a default launch
+will fail.
+
+## Commit your work
+
+Your project root is a git repository; it was initialized before you started, with the
+starter files in its first commit. Your finished implementation is published directly
+from this repository's commits, so work you leave uncommitted is not published. When the
+build is complete, commit everything: run `git add -A` then `git commit`, and confirm
+`git status` reports a clean working tree with nothing uncommitted or untracked. A
+`.gitignore` already excludes `node_modules/` and the build output
+(`dist/`/`build/`/`out/`), so a clean tree does not mean committing those, but it does
+mean committing your source, your `package-lock.json`, your `README.md`, the produced
+assets under `assets/`, and the `proof/` artifacts.

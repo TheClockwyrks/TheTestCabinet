@@ -55,7 +55,7 @@ is the contract.
 
 The Lumen ships a single default variant — `base`, declared in
 `variants/base.toml`. It seeds the common brief and is rated on the case's single
-`fidelity` scoring domain; it adds no specs, review items, or domains of its own.
+`overall` scoring domain; it adds no specs or domains of its own.
 
 ## Versioning
 

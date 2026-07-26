@@ -1,0 +1,117 @@
+@use "../styles/tokens" as t;
+
+// The unframed wrapper (no `Panel`): the chart's own column when several share one
+// enclosing card. A column so the header sits above the ring-and-legend body.
+.chart {
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  margin-bottom: t.$space-md;
+}
+
+.title {
+  margin: 0;
+  font-size: t.$font-md;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: t.$color-accent;
+  text-shadow: var(--tcab-glow);
+}
+
+// The ring sits centered in its panel with the legend beneath it.
+.body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: t.$space-md;
+}
+
+.ring {
+  display: block;
+  // Cap the gauge so it stays a readable size in a wide panel.
+  width: 100%;
+  max-width: 12rem;
+  height: auto;
+}
+
+// The full ring track — the denominator; any shortfall between the summed slices and
+// the total (e.g. reviews a breakdown omits) shows through as this uncolored remainder.
+.track {
+  fill: none;
+  stroke: t.$color-border;
+}
+
+// A slice arc. Its color is set inline by the caller; a butt cap keeps adjacent
+// segments cleanly abutting rather than overlapping their rounded ends.
+.value {
+  fill: none;
+  stroke-linecap: butt;
+}
+
+// The total in the middle of the ring, with its unit label beneath.
+.total {
+  fill: t.$color-text;
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+.totalLabel {
+  fill: t.$color-text-muted;
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+// The breakdown beneath the ring: one row per slice.
+.legend {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  font-size: t.$font-sm;
+}
+
+// A small color chip matching the slice's arc; its background is set inline to the
+// same color the caller gave the arc.
+.swatch {
+  flex: 0 0 auto;
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 2px;
+}
+
+// The label truncates rather than wrapping, so a long model id keeps the row to one
+// line; the full text is available via its `title`.
+.legendLabel {
+  color: t.$color-text;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// The tally is pushed to the row's end.
+.legendValue {
+  margin-left: auto;
+  padding-left: t.$space-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+// Shown in place of the ring when there is nothing to chart yet.
+.empty {
+  margin: 0;
+  color: t.$color-text-muted;
+}

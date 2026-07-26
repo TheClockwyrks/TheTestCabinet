@@ -162,6 +162,46 @@ pub async fn upload_adversarial_to_backend(
     Ok(())
 }
 
+/// Upload a performance run's scored scenarios to the **backend store**, keyed by
+/// run id — the performance counterpart to [`upload_adversarial_to_backend`].
+///
+/// Browser playback fetches a run's scenario from the backend's
+/// `/runs/{id}/asset/{file}` and re-simulates it to reconstruct the factory the run
+/// was graded on. As with adversarial replays, the artifact service only serves
+/// runs produced in the *open* console session, so without this mirror a
+/// backend-driven run's scenario 404s and playback has nothing to load.
+///
+/// Best-effort and driven purely off the produced record: a no-op for a
+/// non-performance run, and for any case the engine got wrong (which records no
+/// scenario, because playback is offered only for a passing run). An individual
+/// missing file is skipped; a rejected upload is surfaced so the caller can log it.
+pub async fn upload_performance_to_backend(
+    backend_url: &str,
+    record: &RunRecord,
+    out_dir: &Path,
+) -> test_cabinet_core::Result<()> {
+    let Some(performance) = record.validation.performance.as_ref() else {
+        return Ok(());
+    };
+    let impl_dir = out_dir.join(&record.id).join("implementation");
+    let client = HttpBackendClient::new(backend_url);
+
+    // Each passing case's scenario, under its own run-root-relative filename,
+    // matching `playable::serve_asset_file`'s `scenario`/`scenario-<i>` addressing.
+    for case in &performance.cases {
+        let Some(scenario_json) = case.scenario_json.as_deref() else {
+            continue;
+        };
+        let Ok(bytes) = std::fs::read(impl_dir.join(scenario_json)) else {
+            continue;
+        };
+        client
+            .publish_run_asset(&record.id, scenario_json, bytes)
+            .await?;
+    }
+    Ok(())
+}
+
 /// Mirror a run's proof-of-implementation media into the **backend store**, keyed by
 /// run id — the backend-driven counterpart to the artifact-service tarball upload.
 ///
@@ -207,6 +247,65 @@ pub async fn upload_proofs_to_backend(
             test_cabinet_core::proof_served_extension(&proof.dest),
         );
         client.publish_run_proof(&record.id, &file, bytes).await?;
+    }
+    Ok(())
+}
+
+/// Mirror a run's synthesized *actual* validation media into the **backend store**,
+/// keyed by run id — the automated-validation counterpart to
+/// [`upload_proofs_to_backend`], for the same reason.
+///
+/// The public snapshot reads a run's *actual* validation media (the model build's
+/// per-review-item debug-script outputs) from the backend store
+/// (`snapshot::run_validation_media` → `store::read_run_validation`), and nothing else
+/// writes that store's `runs/{id}/validation/` dir for a backend-driven run. Without
+/// this mirror a backend-driven run's synthesized media never reaches the snapshot and
+/// the published site degrades the reviewer's side-by-side to presence-only.
+///
+/// Each present output is read from the produced tree at
+/// `{out_dir}/{id}/implementation/.tcab/validation/<item>__<output>.<ext>` — the flat
+/// [`validation_media_name`](test_cabinet_core::validation_media_name) spelling
+/// `playable::serve_validation_file` serves and the gallery requests — and uploaded
+/// under that same name, so the snapshot key matches the UI lookup. The captured
+/// video is the `.webm` Playwright records; the snapshot transcodes it to `.mp4` at
+/// publish (as it does a video proof), so what is mirrored here stays the raw webm.
+///
+/// Best-effort and driven purely off the produced record: a no-op for a run that
+/// declares no debug scripts, and skips any output the build did not produce or whose
+/// file is unreadable. The backend upload route is ungated on the private network, so
+/// the client carries no token. A rejected upload is surfaced so the caller can log it.
+pub async fn upload_validation_to_backend(
+    backend_url: &str,
+    record: &RunRecord,
+    out_dir: &Path,
+) -> test_cabinet_core::Result<()> {
+    let validation_dir = out_dir
+        .join(&record.id)
+        .join("implementation")
+        .join(".tcab")
+        .join("validation");
+    let client = HttpBackendClient::new(backend_url);
+
+    for script in &record.validation.debug_scripts {
+        // The verdict id keys this script's media — the item's own id, or the composite
+        // `<item>.<sub>` for a per-sub-item driver.
+        let verdict_id = match &script.sub_item_id {
+            Some(sub) => test_cabinet_core::ReviewItem::sub_item_verdict_id(&script.item_id, sub),
+            None => script.item_id.clone(),
+        };
+        for output in &script.outputs {
+            if !output.actual_present {
+                continue;
+            }
+            let file =
+                test_cabinet_core::validation_media_name(&verdict_id, &output.id, output.kind);
+            let Ok(bytes) = std::fs::read(validation_dir.join(&file)) else {
+                continue;
+            };
+            client
+                .publish_run_validation(&record.id, &file, bytes)
+                .await?;
+        }
     }
     Ok(())
 }

@@ -22,7 +22,7 @@ Transit is a **per-tile network** laid across the map:
   corridor without loading the roads. A city needs **at least one** rail/metro line
   with stations.
 - **Access.** A zoned tile has **road access** when it is adjacent to (or within a
-  short, tunable walking distance of) the road network. Access is a precondition for
+  short walking distance of) the road network. Access is a precondition for
   development (`specs/map.md`): unreached land never develops, so extending roads into
   new land is how the city expands.
 

@@ -1,0 +1,73 @@
+slug = "rising-smoke"
+experimental = false
+name = "Rising Smoke Column"
+difficulty = "easy"
+tags = ["vfx", "particle", "3d", "smoke"]
+summary = """
+Author a steady column of grey smoke rising from a point source — soft puffs that \
+billow up, expand and slow as they climb, curl turbulently with a slight sideways \
+sway, and thin to nothing near the top — as a seamless, continuously looping \
+particle-3d emitter system, built one recorded operation at a time."""
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 0.5
+type = "asset-generation"
+
+# A 3D particle effect: a calm, ambient column of rising smoke the model authors as
+# an emitter SYSTEM, simulated live by the review UI. It is a CONTINUOUS, seamless
+# LOOP (loop = true) — a steady stream that has already reached a steady state, so
+# the last frame flows into the first with no visible seam or pop.
+asset_kind = "particle-3d"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The volume the effect plays in. particle-3d gives width/height/depth (a volume,
+# like [voxel]); the smoke rises upward along +y from a point source near the floor
+# (low y). The volume is tall (height = 64) to give the column room to climb.
+# duration_ms is the loop length; loop = true, so the stream runs in steady state and
+# the end flows seamlessly back into the start.
+[particle]
+width       = 32             # extent along x
+height      = 64             # extent along y — up; the column rises toward +y
+depth       = 32             # extent along z
+duration_ms = 3000           # loop length — a steady stream that tiles seamlessly
+fps         = 60             # preview/playback frame rate
+loop        = true           # CONTINUOUS — a seamless rising column, not a one-shot
+background  = "transparent"  # preview clear color only
+
+# The particle tool. `particle-3d` is the only way to shape the effect; it records
+# every operation to the action log and, on `render`, simulates the system and
+# emits system.json. Run `particle-3d --help` for the operations; none are seeded.
+[tool]
+binary  = "particle-3d"
+preview = "effect.gif"
+
+# The recorded operation log — the authoritative output. Core emits the authored
+# system.json (the emitter/force/curve definition) automatically; it is not
+# declared here.
+[output]
+actions = "actions.json"
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
+[[domain]]
+id = "overall"
+name = "Overall"
+description = """
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

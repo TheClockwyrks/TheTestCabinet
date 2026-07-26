@@ -1,5 +1,42 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
+import { Spinner } from "@test-cabinet/ui";
 import styles from "./PlayableEmbed.module.scss";
+
+interface EmbeddedFrameProps {
+  src: string;
+  title: string;
+  iframeRef?: RefObject<HTMLIFrameElement | null>;
+}
+
+/**
+ * The cross-origin build iframe plus the branded loading state shown until it
+ * has loaded in. A static build can take a moment to boot over the network, so
+ * until the iframe fires `load` we cover it with the large squadron animation
+ * and a "Loading…" caption; the iframe underneath is transparent to it. The
+ * loaded flag resets whenever `src` changes so a re-pointed embed shows the
+ * animation again.
+ */
+function EmbeddedFrame({ src, title, iframeRef }: EmbeddedFrameProps) {
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => setLoaded(false), [src]);
+  return (
+    <div className={styles.frame}>
+      <iframe
+        ref={iframeRef}
+        className={styles.embed}
+        src={src}
+        title={title}
+        tabIndex={0}
+        onLoad={() => setLoaded(true)}
+      />
+      {loaded ? null : (
+        <div className={styles.loading}>
+          <Spinner variant="squadron" label="Loading…" />
+        </div>
+      )}
+    </div>
+  );
+}
 
 /**
  * How a build presents itself, which is the one axis on which a run's playable
@@ -107,13 +144,7 @@ export function PlayableEmbed({ src, title, mode }: PlayableEmbedProps) {
           </button>
         </div>
         <div className={styles.overlayStage}>
-          <iframe
-            ref={iframeRef}
-            className={styles.embed}
-            src={src}
-            title={title}
-            tabIndex={0}
-          />
+          <EmbeddedFrame src={src} title={title} iframeRef={iframeRef} />
         </div>
       </div>
     );
@@ -140,11 +171,12 @@ export function PlayableEmbed({ src, title, mode }: PlayableEmbedProps) {
   }
 
   // Inline: the reference implementation is the correct, authored build, so it
-  // loads in place with no caveat. A Fullscreen toggle lifts it into the same
-  // overlay for a full-viewport play; the inline iframe reloads on the way in and
-  // out, which is harmless for a static build.
+  // loads in place with no caveat. A Fullscreen toggle beneath it lifts it into
+  // the same overlay for a full-viewport play; the inline iframe reloads on the
+  // way in and out, which is harmless for a static build.
   return (
     <div className={styles.inline}>
+      <EmbeddedFrame src={src} title={title} />
       <div className={styles.inlineBar}>
         <button
           type="button"
@@ -154,7 +186,6 @@ export function PlayableEmbed({ src, title, mode }: PlayableEmbedProps) {
           Fullscreen
         </button>
       </div>
-      <iframe className={styles.embed} src={src} title={title} tabIndex={0} />
     </div>
   );
 }

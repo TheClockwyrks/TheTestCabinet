@@ -63,7 +63,7 @@ adding a new version, never by editing a published one.
 
 ```text
 test-cases/<type>/<difficulty>/<slug>/<version>/
-  test-case.toml         # manifest: type, canvas, ui, tool, output, domains
+  test-case.toml         # manifest: type, canvas, ui, tool, output, the overall domain
   variants/              # one standalone TOML file per variant (listed in `variants`)
   prompt.hbs             # rendered per run into the model's instruction (NOT seeded)
   description.md         # site-facing prose (NOT seeded)
@@ -211,42 +211,13 @@ height = 256
 [[spec]]
 source = "specs/brief.md"
 
-# At least one scoring domain, rated for EVERY variant.
+# The single scoring domain, rated for EVERY variant — and the whole review. The
+# asset is judged as a WHOLE against its brief, so the case declares NO
+# [[review_item]]s. Reporter-side; NOT seeded. Copy it verbatim.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
-description = "How faithfully the painted kit matches the brief — role, palette, and each element's form."
-
-# Reporter-side reviewer checklist (NOT seeded). A review item carries only a
-# `domain` and optional weight/title/text/id; it must NOT carry a `reference`.
-[[review_item]]
-id = "palette"
-title = "Cold command palette"
-text = """
-Every element uses the fleet-command palette from the brief (hull navy, hologram \
-cyan, warning amber, steel edge) with no out-of-palette colors."""
-weight = 1
-domain = "fidelity"
-
-[[review_item]]
-id = "nine-slice-holds"
-title = "Frame and bezel stretch cleanly"
-text = """
-The health-bar frame and minimap bezel keep their corners and caps crisp when \
-stretched to a game size — the nine-slice stretch preview shows no distorted \
-corners or smeared rivets."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "crest-reads"
-title = "Faction crest reads as insignia"
-text = """
-The faction crest reads clearly as a military emblem at its 256x256 size — a bold, \
-centered silhouette, not a soft blob — using both crisp `ui` shapes and `paint` \
-shading."""
-weight = 2
-domain = "fidelity"
+id = "overall"
+name = "Overall"
+description = "How good the produced asset is overall, judged against the brief."
 ```
 
 Key rules the resolver enforces (see [the schema](/testing/asset-generation/manifests/#ui-cases)):
@@ -278,18 +249,19 @@ Key rules the resolver enforces (see [the schema](/testing/asset-generation/mani
   **no cheat-divergence check**, because the emitted PNGs are the authoritative
   output however they were produced.
 - A **`variants`** list (an ordered array of standalone TOML files under `variants/`;
-  the first is the default, at least one required, usually `base`) and at least one
-  **`[[domain]]`**. A variant here varies only the seeded **brief** (an additive
-  `[[spec]]`) — a tighter palette, an operation budget, a required technique — never a
-  reference. Its file looks like:
+  the first is the default, at least one required, usually `base`) and the single
+  `overall` **`[[domain]]`** — there is **no `[[review_item]]` checklist**, on the case
+  or on a variant: the painted kit is judged as a whole against its brief (see
+  [Judged on one overall rating](/testing/asset-generation/manifests/#judged-on-one-overall-rating)).
+  A variant here varies only the seeded **brief** (an additive `[[spec]]`) — a tighter
+  palette, an operation budget, a required technique — never a reference. Its file looks
+  like:
 
   ```toml
   # test-cases/asset-generation/medium/thunderhead-hud/v1.0.0/variants/base.toml
   slug = "base"
   name = "Base"
   spec = []                # ADDITIVE specs on top of the common specs
-  # review_item = [...]    # ADDITIVE reviewer items (optional)
-  # [[domain]]             # ADDITIONAL domains rated only for this variant (optional)
   ```
 
 ### 5. Write the non-seeded docs

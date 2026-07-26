@@ -1,0 +1,458 @@
+[
+  {
+    "tick": 4000,
+    "checksum": "fnv1a64:61fd48abdfa80a39",
+    "entities": [
+      {
+        "source": {
+          "emit_phase": 1
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ]
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "assembler": {
+          "inputs": {
+            "iron-ore": 8
+          },
+          "output": {},
+          "craft_left": 15
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "iron-plate",
+          "swing_left": 4
+        }
+      },
+      {
+        "assembler": {
+          "inputs": {
+            "iron-plate": 1
+          },
+          "output": {},
+          "craft_left": 4
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "iron-gear": 60
+          }
+        }
+      }
+    ]
+  },
+  {
+    "tick": 10000,
+    "checksum": "fnv1a64:ed950ad523695637",
+    "entities": [
+      {
+        "source": {
+          "emit_phase": 1
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ]
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "iron-ore",
+          "swing_left": 8
+        }
+      },
+      {
+        "assembler": {
+          "inputs": {
+            "iron-ore": 7
+          },
+          "output": {},
+          "craft_left": 31
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "iron-plate",
+          "swing_left": 8
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "assembler": {
+          "inputs": {
+            "iron-plate": 1
+          },
+          "output": {},
+          "craft_left": 20
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "iron-gear": 154
+          }
+        }
+      }
+    ]
+  },
+  {
+    "tick": 20000,
+    "checksum": "fnv1a64:217864d1d319e9c6",
+    "entities": [
+      {
+        "source": {
+          "emit_phase": 2
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ]
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "assembler": {
+          "inputs": {
+            "iron-ore": 8
+          },
+          "output": {},
+          "craft_left": 15
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "iron-plate",
+          "swing_left": 4
+        }
+      },
+      {
+        "assembler": {
+          "inputs": {
+            "iron-plate": 1
+          },
+          "output": {},
+          "craft_left": 4
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "iron-gear": 310
+          }
+        }
+      }
+    ]
+  }
+]

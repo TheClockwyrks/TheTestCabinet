@@ -115,6 +115,8 @@ the image by test type and asset kind via
 containers/
 ├── base/Dockerfile             # the shared Node foundation (toolchain, run user); not a run image itself
 ├── base-wasm/Dockerfile        # the end-to-end run image: base plus the shared Rust → wasm toolchain
+├── full-stack-2d/Dockerfile    # the full-stack run image: base-wasm plus the six 2D asset binaries + audio packs
+├── game-jam/Dockerfile         # the game-jam run image: full-stack-2d plus its own identity (separately pinnable)
 ├── sprite/Dockerfile           # the base image plus the baked-in `draw` binary
 ├── sprite-sheet/Dockerfile     # the base image plus the baked-in `draw-sheet` binary
 ├── ui/Dockerfile               # the base image plus the baked-in `paint` + `ui` binaries
@@ -419,6 +421,17 @@ pack version plus an image rebuild — versioned immutably with the image, and a
 names the pack it expects (`sample_pack` / `instrument_bank`) rather than any path
 in this repo.
 
+The **`music` image bakes every instrument bank** (`gm-lite`, plus the
+domain-tailored **`cinematic`** and **`synthwave`** banks) as a per-name
+subdirectory under `/opt/instrument-banks/`, so a case's
+`instrument_bank = "<name>@<version>"` **selects** which palette the run plays
+(resolved by `select_pack_dir` in `crates/audio-core/src/config.rs`);
+`build.sh`'s `build_music_image` presigns and passes each bank. An `sfx-sample`
+image still bakes its single sample pack. Adding a bank is: extend the `BANKS`
+registry in [`scripts/curate-instrument-bank.mjs`](../scripts/curate-instrument-bank.mjs),
+curate + publish it, then add its build args + subdir to `music/Dockerfile` and
+`build_music_image`.
+
 ## Adversarial image
 
 `adversarial/` is the **base-wasm** image plus **The Test Cabinet's own Foray
@@ -485,19 +498,19 @@ tooling**, compiled from `crates/` in a multi-stage build and copied under
   [`performance/buildkit/Cargo.toml`](performance/buildkit/Cargo.toml), that
   re-supplies their `workspace = true` inheritance) that the seeded `engine` crate
   path-depends on to build — so the run workspace vendors nothing;
-- the **reference engines** (`/opt/lattice/references`, pre-built wasm + readable
-  source) — the naive and transport worked examples; and
 - the **training scenarios** (`/opt/lattice/training`, each
   `<name>/{scenario.json,expected.json}`) — the labelled practice set, copied from
   the case's version folder. `$LATTICE_HOME` is set to `/opt/lattice` so specs and
   a model can name these by `$LATTICE_HOME/training/…` rather than a hard-coded
   path. The **held-out scored set is never baked here** — it lives only with the
-  case, so a model cannot reach it.
+  case, so a model cannot reach it. Neither are the reference engines: the model's
+  only route to the reference is the `lattice` CLI's oracle, which reports
+  correctness and the model's own fuel, never the reference's.
 
 The same coupling argument as the adversarial tooling applies: the CLI, the
-buildkit crates, the reference modules, and the training set must match the types
-and checksum the validator scores against, so **build this image from the same
-commit as the orchestrator** (a run records both the orchestrator commit and the
+buildkit crates, and the training set must match the types and checksum the
+validator scores against, so **build this image from the same commit as the
+orchestrator** (a run records both the orchestrator commit and the
 image digest, so a mismatch is auditable). Compiling them is why the build context
 is the repository root rather than the image's directory (see `build.sh`); the
 build also smoke-compiles the buildkit standalone, so a buildkit root that has

@@ -1,14 +1,14 @@
-Draw the **Lattice Assembler**, an 8-frame **sprite sheet** of a chunky,
-pseudo-3D industrial crafting machine, using only the drawing tool.
+Draw the **Lattice Assembler**, an 8-frame **sprite sheet** of an industrial
+crafting machine, using only the drawing tool.
 
 The Lattice Assembler is the **3×3 crafting machine** in Lattice, a deterministic
-factory simulation rendered in **Factorio's high-angle, pseudo-3D style**: it
-occupies a 3×3 block of tiles, consumes inputs, and counts up crafting ticks to
-produce an output. You are drawing the *machine* and its working/craft animation —
-not the items it crafts and not the belts around it. It must read as a **raised
-block with real height** (a lit top face, beveled sides, a grounding contact
-shadow), not a flat top-down plate — the brief's **The look** section is the thing
-to get right.
+top-down factory simulation: it occupies a 3×3 block of tiles, consumes inputs,
+and counts up crafting ticks to produce an output. You are drawing the *machine*
+and its working animation — not the items it crafts and not the belts around it.
+Lattice is drawn **flat**: every sprite is a clean 2D shape seen straight from
+above, with **no faux-3D height** — the brief's **The style** section is the thing
+to get right. Across the eight frames the machine must read as **actively making
+something**; how you show that is your choice.
 
 ## How drawing works
 
@@ -42,9 +42,9 @@ implementation that matches the specification exactly.
 ## What to deliver
 
 Build the Lattice Assembler sprite sheet up operation by operation until each
-`frames/<index>.png` matches the brief: a chunky pseudo-3D 3×3 industrial machine
-that reads as a raised block (lit top face, beveled sides, contact shadow) drawn
-in each of its 96×96 frames, with a static grey-blue chassis and a central working
-core that rotates and pulses across the eight frames to read as a seamless crafting
-loop. When you are satisfied, stop: the recorded per-frame action logs are your
-finished submission.
+`frames/<index>.png` matches the brief: a flat, top-down 2D 3×3 industrial machine
+drawn in each of its 96×96 frames, its grey-blue chassis holding still while a
+working area animates across the eight frames so the loop reads as the machine
+actively making something, wrapping seamlessly from frame 7 back to frame 0. When
+you are satisfied, stop: the recorded per-frame action logs are your finished
+submission.

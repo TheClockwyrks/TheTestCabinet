@@ -4,7 +4,7 @@ import { useAuth } from "../../../client/auth";
 import { useBackend, useWorkers } from "../../../client/context";
 import type { Model } from "../../../client/types";
 import { harnesses } from "../../data/harnesses";
-import { familyOf, modelForHarness } from "../../data/families";
+import { familyOf } from "../../data/families";
 import {
   BUILT_IN_ORCHESTRATORS,
   DEFAULT_ORCHESTRATOR_SLUG,
@@ -22,6 +22,12 @@ import { PromptHeader } from "../../components/PromptHeader";
 import { routes } from "../../routes";
 import { useCatalog } from "../../runtime/useCatalog";
 import { useTestCaseName } from "../../data/useTestCaseName";
+import { useTestCases } from "../../data/useTestCases";
+import {
+  CATALOG_CATEGORIES,
+  categoryOf,
+  type CatalogCategory,
+} from "../../data/testCaseTabs";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
 import styles from "./RunExec.module.scss";
 
@@ -86,12 +92,33 @@ export function NewRunPage() {
   // form opens with that case pre-selected; absent the params the catalog leads
   // with its first case as before.
   const [params] = useSearchParams();
+  // The case (if any) the form was navigated to with — a case's or jam's Run
+  // button links here with `?slug=…`. Its presence is what distinguishes
+  // "opened for this specific case" from "opened cold from the Runs page": only
+  // in the former do we adopt the case's type; otherwise we default to E2E.
+  const navSlug = params.get("slug");
   const sel = useCatalog({
-    slug: params.get("slug"),
+    slug: navSlug,
     version: params.get("version"),
     variant: params.get("variant"),
   });
   const testCaseName = useTestCaseName();
+  // The richer catalog (with each case's test type / asset kind) so the type
+  // selector can bucket cases; `useCatalog` above only carries slugs + versions.
+  const { testCases: summaries } = useTestCases();
+  const summaryBySlug = useMemo(
+    () => new Map(summaries.map((s) => [s.slug, s])),
+    [summaries],
+  );
+  const slugCategory = (slug: string): CatalogCategory | null => {
+    const summary = summaryBySlug.get(slug);
+    return summary ? categoryOf(summary) : null;
+  };
+
+  // The selected test-case type, once the user has picked one. Until then it is
+  // derived from the selected case (so arriving with a case pre-selected — e.g.
+  // via a case's or jam's Run button — opens on that case's type).
+  const [category, setCategory] = useState<CatalogCategory | null>(null);
 
   const [models, setModels] = useState<Model[]>([]);
   // The orchestrator that conducts the harness sessions. Selectable only for the
@@ -123,22 +150,10 @@ export function NewRunPage() {
     backend
       .listModels()
       .then((ms) => {
+        // Populate the catalog only — a model is never auto-selected. Every
+        // combination's model must be explicitly picked (or typed), so the field
+        // starts empty and stays empty until the operator chooses.
         setModels(ms);
-        // Seed the first (default) combination's model so the single-run path is
-        // ready to launch immediately, without clobbering a model the user has
-        // already typed or any subsequently-added rows. The seed is the first
-        // catalog model with a slug in the row's harness family, so the default id
-        // is one that harness can actually launch.
-        setCombinations((prev) =>
-          prev.map((c, i) => {
-            if (i !== 0 || c.modelId) return c;
-            const family = familyOf(c.harness);
-            const seed = ms
-              .map((m) => m.aliases.find((a) => a.harnessFamily === family)?.slug)
-              .find((s): s is string => !!s);
-            return seed ? { ...c, modelId: seed } : c;
-          }),
-        );
       })
       .catch(() => {
         // The model catalog is optional; leave the field free-text.
@@ -151,10 +166,15 @@ export function NewRunPage() {
     );
   }
   function addCombination() {
-    setCombinations((prev) => [
-      ...prev,
-      makeCombination(`c${nextComboId.current++}`),
-    ]);
+    setCombinations((prev) => {
+      const next = makeCombination(`c${nextComboId.current++}`);
+      // Seed the new row with the last row's harness — fanning out across models
+      // for one harness is the common case, so carry it forward rather than
+      // resetting to the first harness (the model still starts empty to force an
+      // explicit pick).
+      const last = prev[prev.length - 1];
+      return [...prev, last ? { ...next, harness: last.harness } : next];
+    });
   }
   function removeCombination(id: string) {
     // Keep at least one row so the form is always usable.
@@ -166,15 +186,77 @@ export function NewRunPage() {
   const harnessName = (slug: string) =>
     harnesses.find((h) => h.slug === slug)?.displayName ?? slug;
 
+  // The category actually in effect: the user's pick once made, otherwise the
+  // navigated-to case's category, falling back to the first tab (E2E). Note this
+  // derives from `navSlug`, not the auto-selected `sel.slug` — cold from the Runs
+  // page there is no nav case, so it defaults to E2E rather than adopting whatever
+  // category the catalog's first case happens to sit in.
+  const activeCategory: CatalogCategory =
+    category ??
+    (navSlug ? slugCategory(navSlug) : null) ??
+    CATALOG_CATEGORIES[0]!.value;
+
+  // Choose the initial type + case once the catalog metadata resolves, before the
+  // user picks. Reached from a case's (or jam's) Run button, open on that case's
+  // type. Reached cold from the Runs page, default to E2E and lead with its first
+  // case — rather than adopting the category of whatever case the catalog happens
+  // to list first.
+  const initialized = useRef(false);
+  useEffect(() => {
+    if (initialized.current || category !== null || !sel.slug) return;
+    const currentCategory = slugCategory(sel.slug);
+    // Wait until the selected case's catalog metadata has loaded to resolve it.
+    if (currentCategory === null) return;
+    initialized.current = true;
+    if (navSlug) {
+      setCategory(currentCategory);
+      return;
+    }
+    const target = CATALOG_CATEGORIES[0]!.value;
+    setCategory(target);
+    // The auto-selected first case may not be in the default category; move the
+    // selection to that category's first case so the case dropdown and the type
+    // agree.
+    if (currentCategory !== target) {
+      const first = [...sel.cases]
+        .filter((c) => slugCategory(c.slug) === target)
+        .sort((a, b) =>
+          testCaseName(a.slug).localeCompare(testCaseName(b.slug)),
+        )[0];
+      if (first) sel.setSlug(first.slug);
+    }
+    // slugCategory/testCaseName close over the catalog; re-run as it resolves.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [category, sel.slug, sel.cases, summaryBySlug, navSlug]);
+
+  // Switching the type moves the case selection into the chosen category (unless
+  // the current case already belongs to it) so the version and variant re-resolve
+  // for a case the dropdown actually shows.
+  function onCategoryChange(next: CatalogCategory) {
+    setCategory(next);
+    if (slugCategory(sel.slug) === next) return;
+    const first = [...sel.cases]
+      .filter((c) => slugCategory(c.slug) === next)
+      .sort((a, b) =>
+        testCaseName(a.slug).localeCompare(testCaseName(b.slug)),
+      )[0];
+    if (first) sel.setSlug(first.slug);
+  }
+
   // The catalog arrives in slug order, but the dropdown labels each option with
   // the display name — so sort by resolved display name to keep the list
   // alphabetical as shown (otherwise e.g. "Carom" slots in where "pong" sits).
+  // Scoped to the selected type so the list only offers cases of that category.
   const sortedCases = useMemo(
     () =>
-      [...sel.cases].sort((a, b) =>
-        testCaseName(a.slug).localeCompare(testCaseName(b.slug)),
-      ),
-    [sel.cases, testCaseName],
+      [...sel.cases]
+        .filter((c) => slugCategory(c.slug) === activeCategory)
+        .sort((a, b) =>
+          testCaseName(a.slug).localeCompare(testCaseName(b.slug)),
+        ),
+    // slugCategory closes over summaryBySlug; list depends on it and the category.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sel.cases, testCaseName, summaryBySlug, activeCategory],
   );
 
   // Catalog versions are oldest-first; show the dropdown newest-first.
@@ -318,6 +400,22 @@ export function NewRunPage() {
 
       <div className={styles.fields}>
         <label className={styles.field}>
+          <span className={styles.fieldLabel}>Test case type</span>
+          <select
+            className={styles.select}
+            value={activeCategory}
+            onChange={(e) =>
+              onCategoryChange(e.target.value as CatalogCategory)
+            }
+          >
+            {CATALOG_CATEGORIES.map((c) => (
+              <option key={c.value} value={c.value}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className={styles.field}>
           <span className={styles.fieldLabel}>Test case</span>
           <select
             className={styles.select}
@@ -395,9 +493,54 @@ export function NewRunPage() {
             }
           />
         </label>
+        <label className={styles.field}>
+          <span className={styles.fieldLabel}>Run count</span>
+          <input
+            className={styles.input}
+            type="number"
+            min={1}
+            max={RUN_COUNT_MAX}
+            step={1}
+            value={runCount}
+            onChange={(e) => {
+              // Clamp to a sane integer range so an accidental keystroke can't
+              // enqueue an absurd batch; a blank/invalid entry falls back to 1.
+              const n = Math.floor(Number(e.target.value));
+              setRunCount(
+                Number.isFinite(n) && n >= 1 ? Math.min(n, RUN_COUNT_MAX) : 1,
+              );
+            }}
+          />
+        </label>
+        <label
+          className={styles.field}
+          title="Auto-retries on infra error or catastrophic failure (not on a timeout or a completed run)."
+        >
+          <span className={styles.fieldLabel}>Retry count</span>
+          <input
+            className={styles.input}
+            type="number"
+            min={0}
+            max={RETRY_COUNT_MAX}
+            step={1}
+            value={retryCount}
+            onChange={(e) => {
+              // Clamp to [0, RETRY_COUNT_MAX] (matching the backend); a blank/invalid
+              // entry falls back to the default of one retry.
+              const n = Math.floor(Number(e.target.value));
+              setRetryCount(
+                Number.isFinite(n) && n >= 0
+                  ? Math.min(n, RETRY_COUNT_MAX)
+                  : DEFAULT_RETRY_COUNT,
+              );
+            }}
+          />
+        </label>
       </div>
 
-      <p className={styles.sectionLabel}>Harness / model combinations</p>
+      <p className={`${styles.sectionLabel} ${styles.sectionLabelBackdrop}`}>
+        Harness / model combinations
+      </p>
       <div className={styles.comboList}>
         {combinations.map((combo) => (
           <div key={combo.id} className={styles.comboRow}>
@@ -407,13 +550,12 @@ export function NewRunPage() {
                 className={styles.select}
                 value={combo.harness}
                 onChange={(e) =>
+                  // A model slug is family-specific, so switching harness clears
+                  // the selection — the operator must explicitly pick a model the
+                  // new harness can launch rather than inherit a silent default.
                   updateCombination(combo.id, {
                     harness: e.target.value,
-                    modelId: modelForHarness(
-                      models,
-                      combo.modelId,
-                      e.target.value,
-                    ),
+                    modelId: "",
                   })
                 }
               >
@@ -475,71 +617,29 @@ export function NewRunPage() {
         >
           + Add combination
         </button>
-      </div>
-
-      <div className={styles.actions}>
-        <label className={styles.runCountField}>
-          <span className={styles.fieldLabel}>Runs each</span>
-          <input
-            className={styles.input}
-            type="number"
-            min={1}
-            max={RUN_COUNT_MAX}
-            step={1}
-            value={runCount}
-            onChange={(e) => {
-              // Clamp to a sane integer range so an accidental keystroke can't
-              // enqueue an absurd batch; a blank/invalid entry falls back to 1.
-              const n = Math.floor(Number(e.target.value));
-              setRunCount(
-                Number.isFinite(n) && n >= 1 ? Math.min(n, RUN_COUNT_MAX) : 1,
-              );
-            }}
-          />
-        </label>
-        <label
-          className={styles.runCountField}
-          title="Auto-retries on infra error or catastrophic failure (not on timeout or a completed run)."
-        >
-          <span className={styles.fieldLabel}>Retry count</span>
-          <input
-            className={styles.input}
-            type="number"
-            min={0}
-            max={RETRY_COUNT_MAX}
-            step={1}
-            value={retryCount}
-            onChange={(e) => {
-              // Clamp to [0, RETRY_COUNT_MAX] (matching the backend); a blank/invalid
-              // entry falls back to the default of one retry.
-              const n = Math.floor(Number(e.target.value));
-              setRetryCount(
-                Number.isFinite(n) && n >= 0
-                  ? Math.min(n, RETRY_COUNT_MAX)
-                  : DEFAULT_RETRY_COUNT,
-              );
-            }}
-          />
-        </label>
-        <button
-          className={styles.primary}
-          onClick={onLaunch}
-          disabled={!canLaunch}
-        >
-          {launching
-            ? "Launching…"
-            : totalLaunches > 1
-              ? `Launch ${totalLaunches} runs`
-              : "Launch run"}
-        </button>
-        {sel.loading && (
-          <span className={styles.muted}>resolving version…</span>
-        )}
+        <div className={styles.actionsEnd}>
+          {sel.loading && (
+            <span className={styles.muted}>resolving version…</span>
+          )}
+          <button
+            className={styles.primary}
+            onClick={onLaunch}
+            disabled={!canLaunch}
+          >
+            {launching
+              ? "Launching…"
+              : totalLaunches > 1
+                ? `Launch ${totalLaunches} runs`
+                : "Launch run"}
+          </button>
+        </div>
       </div>
 
       {results && (
         <div className={styles.launchResults}>
-          <p className={styles.sectionLabel}>
+          <p
+            className={`${styles.sectionLabel} ${styles.sectionLabelBackdrop}`}
+          >
             Launched {results.filter((o) => o.runId).length} of {results.length}
           </p>
           <ul className={styles.resultList}>

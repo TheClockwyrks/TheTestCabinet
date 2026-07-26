@@ -27,3 +27,24 @@ spec:
               value: "https://artifacts.staging.tcab.testcabinet.ai"
             - name: TCAB_ARENA_PUBLIC_URL
               value: "https://arena.staging.tcab.testcabinet.ai"
+            # Grafana's base URL, reported through the same GET /config so a run
+            # can link to the traces it emitted. Unlike the two above this is not a
+            # data-plane URL — nothing fetches from it — it is only ever opened in
+            # the reader's browser. Same VPN-only ingress as the console itself, so
+            # anyone who can see the link can follow it.
+            - name: TCAB_GRAFANA_PUBLIC_URL
+              value: "https://grafana.staging.tcab.testcabinet.ai"
+            # The PUBLIC READ base of the snapshot bucket, reported through the
+            # same GET /config so the console can load an asset-generation case's
+            # published reference frames (media/references/…). Distinct from
+            # TCAB_R2_ENDPOINT, which is the S3 WRITE endpoint the backend uploads
+            # through — this is the CDN hostname those objects are served from, and
+            # it is the same value the static site is built with as
+            # TCAB_SNAPSHOT_URL (see scripts/lib/env.sh).
+            #
+            # Unlike the two data-plane URLs above this one is NOT VPN-only: the
+            # bucket is public-read, which is what lets the public gallery work at
+            # all. Left unset, the console simply shows no Reference tab for
+            # asset-generation cases.
+            - name: TCAB_SNAPSHOT_PUBLIC_URL
+              value: "https://snapshot.staging.testcabinet.ai"

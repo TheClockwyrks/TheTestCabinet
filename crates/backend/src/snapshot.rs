@@ -12,7 +12,7 @@
 //! [`upload_snapshot`] PUTs them to R2 in dependency order and fires the deploy
 //! hook. The split lets the generation be unit-tested without R2.
 //!
-//! A run's proof/asset media lives under the content-stable [`MEDIA_PREFIX`]
+//! A run's proof/asset media lives under the content-stable `MEDIA_PREFIX`
 //! (`media/runs/<id>/…`), outside any single snapshot's prefix, and is written once:
 //! a refresh that finds an object already there references it without touching the
 //! source bytes (see [`SnapshotBuilder::with_existing_media`]). Only media not yet in
@@ -33,8 +33,8 @@ use test_cabinet_core::run_record::RunRecord;
 use crate::api::ModelOut;
 use crate::db::StoredRun;
 use crate::error::{BackendError, Result};
-use crate::r2::R2Client;
 use crate::store::{DefinitionStore, StoredManifest};
+use test_cabinet_core::r2::R2Client;
 
 /// The schema version stamped into every snapshot document.
 const SCHEMA_VERSION: u32 = 1;
@@ -50,6 +50,14 @@ const SCHEMA_VERSION: u32 = 1;
 /// (as after a cluster recreate): if the object already exists here, the builder
 /// references it without needing the source bytes at all.
 const MEDIA_PREFIX: &str = "media/runs";
+
+/// The bucket prefix a reviewer's profile picture is stored under, keyed by the
+/// reviewer's account id (`pfp/<reviewer-id>`) and — like [`MEDIA_PREFIX`] — kept
+/// **outside** any single snapshot's prefix so it is shared across snapshots and
+/// referenced by a stable key from every per-run document. Unlike run media a
+/// picture is mutable (a reviewer can replace theirs), so each refresh re-fetches
+/// and re-uploads the current bytes rather than skipping an existing object.
+const PFP_PREFIX: &str = "pfp";
 
 /// One object to upload: its R2 key, bytes, and content type.
 #[derive(Debug, Clone, PartialEq)]
@@ -98,6 +106,14 @@ pub struct SnapshotBuilder {
     /// variant absent from its inner map, simply exports `referenceBuild: null`).
     reference_builds:
         std::collections::HashMap<(String, String), std::collections::HashMap<String, String>>,
+    /// The published asset-reference frame sets to fold onto each case's variants,
+    /// keyed by `(slug, version)` → (variant slug → frame indices). The
+    /// asset-generation counterpart of [`Self::reference_builds`], read from the
+    /// `case_reference_sheet` table (which ingest reconciles against the bucket), not
+    /// from a manifest. Empty by default (a `(slug, version)` absent from the map, or
+    /// a variant absent from its inner map, simply exports `referenceSheet: null`).
+    reference_sheets:
+        std::collections::HashMap<(String, String), std::collections::HashMap<String, Vec<u32>>>,
     /// The set of media object keys (`media/runs/<id>/<kind>/<file>`) already present
     /// in the bucket, so the builder references an existing media object rather than
     /// re-reading and re-uploading its bytes. Populated from the bucket before a real
@@ -105,6 +121,13 @@ pub struct SnapshotBuilder {
     /// builder upload every run's media as it did before this optimization — the
     /// correct behavior for the dev/single-box path (no R2) and the unit tests.
     existing_media: std::collections::HashSet<String>,
+    /// The reviewers' profile pictures to export, keyed by reviewer account id.
+    /// Fetched from the auth service before a refresh (see [`Self::with_reviewer_pictures`]),
+    /// each becomes a `pfp/<id>` object and lets the matching reviews carry a
+    /// `pictureKey`. Empty by default (the dev/single-box path and the unit tests),
+    /// which simply omits every review's `pictureKey`.
+    reviewer_pictures:
+        std::collections::HashMap<String, test_cabinet_core::accounts::ReviewerPicture>,
 }
 
 impl SnapshotBuilder {
@@ -124,12 +147,30 @@ impl SnapshotBuilder {
             http: reqwest::Client::new(),
             models: Vec::new(),
             reference_builds: std::collections::HashMap::new(),
+            reference_sheets: std::collections::HashMap::new(),
             existing_media: std::collections::HashSet::new(),
+            reviewer_pictures: std::collections::HashMap::new(),
         }
     }
 
+    /// Supply the reviewers' profile pictures to export in this snapshot, keyed by
+    /// reviewer account id. Each entry is exported as a `pfp/<id>` object and gives
+    /// the matching reviews a `pictureKey`; an id absent from the map exports no
+    /// avatar (the reviewer has no picture). Fetched from the auth service by the
+    /// caller (see the publisher's `run_refresh`).
+    pub fn with_reviewer_pictures(
+        mut self,
+        reviewer_pictures: std::collections::HashMap<
+            String,
+            test_cabinet_core::accounts::ReviewerPicture,
+        >,
+    ) -> Self {
+        self.reviewer_pictures = reviewer_pictures;
+        self
+    }
+
     /// Supply the set of media object keys already present in the bucket (from
-    /// [`R2Client::list_keys`](crate::r2::R2Client::list_keys) over [`MEDIA_PREFIX`]).
+    /// [`R2Client::list_keys`](test_cabinet_core::r2::R2Client::list_keys) over `MEDIA_PREFIX`).
     /// For any run-media object whose stable key is in this set, the builder emits the
     /// snapshot metadata pointing at it but does **not** read the source bytes or
     /// re-upload it — so unchanged media is exported exactly once across all snapshots,
@@ -162,6 +203,27 @@ impl SnapshotBuilder {
         >,
     ) -> Self {
         self.reference_builds = reference_builds;
+        self
+    }
+
+    /// Supply the published asset-reference frame sets to fold onto each case's
+    /// variants, keyed by `(slug, version)` → (variant slug → frame indices). The
+    /// asset-generation counterpart of [`Self::with_reference_builds`]: an asset
+    /// case's reference is a set of published frames rather than a deployed site, and
+    /// each frame's object key is derivable from the triple plus its index (see
+    /// `test_cabinet_core::asset_reference`), so only the indices are exported and the
+    /// site builds the URLs by joining them onto its snapshot base. These come from the
+    /// `case_reference_sheet` table (read by the caller from the database), which ingest
+    /// reconciles against the bucket. A `(slug, version)` or variant absent from the map
+    /// exports `referenceSheet: null`.
+    pub fn with_reference_sheets(
+        mut self,
+        reference_sheets: std::collections::HashMap<
+            (String, String),
+            std::collections::HashMap<String, Vec<u32>>,
+        >,
+    ) -> Self {
+        self.reference_sheets = reference_sheets;
         self
     }
 
@@ -229,6 +291,8 @@ impl SnapshotBuilder {
                     ))
                 })?;
             let (proof_media, proof_objects) = self.run_proofs(&run.record).await;
+            let (validation_media, validation_objects) =
+                self.run_validation_media(&run.record).await;
             let (asset_media, asset_objects) = self.run_assets(run).await;
             // Serialize the public document, then redact any leaked secret from
             // it (across the record, its events, and any other captured text)
@@ -236,10 +300,15 @@ impl SnapshotBuilder {
             let mut document = serde_json::to_value(PerRun {
                 schema_version: SCHEMA_VERSION,
                 record: run.record.clone(),
-                reviews: run.reviews.iter().map(review_out).collect(),
+                reviews: run
+                    .reviews
+                    .iter()
+                    .map(|review| review_out(review, &self.reviewer_pictures))
+                    .collect(),
                 links: links_out(&run.links),
                 events,
                 proof_media,
+                validation_media,
                 asset_media,
             })
             .map_err(|e| {
@@ -259,7 +328,21 @@ impl SnapshotBuilder {
                 &document,
             )?);
             objects.extend(proof_objects);
+            objects.extend(validation_objects);
             objects.extend(asset_objects);
+        }
+
+        // pfp/<reviewer-id> — each reviewer's profile picture, exported once under
+        // the content-stable top-level prefix (NOT this snapshot's prefix) so the
+        // per-run documents' `pictureKey`s resolve against the snapshot base. Only
+        // reviewers whose picture was fetched for this refresh appear; the bytes are
+        // served with their own content type (no extension needed).
+        for (reviewer_id, picture) in &self.reviewer_pictures {
+            objects.push(SnapshotObject {
+                key: format!("{PFP_PREFIX}/{reviewer_id}"),
+                bytes: picture.bytes.clone(),
+                content_type: picture.content_type.clone(),
+            });
         }
 
         // cases/<slug>/<version>.json — case metadata, plus the version's rendered
@@ -288,14 +371,27 @@ impl SnapshotBuilder {
                 continue;
             }
             let (references, reference_objects) = self.case_references(manifest, &prefix);
+            let (validation_baselines, baseline_objects) =
+                self.case_validation_baselines(manifest, &prefix).await;
             let variant_reference_builds = self
                 .reference_builds
                 .get(&(manifest.slug.clone(), manifest.version.clone()));
+            let variant_reference_sheets = self
+                .reference_sheets
+                .get(&(manifest.slug.clone(), manifest.version.clone()));
             objects.push(json_object(
                 format!("{prefix}/cases/{}/{}.json", manifest.slug, manifest.version),
-                &case_metadata(&self.store, manifest, references, variant_reference_builds)?,
+                &case_metadata(
+                    &self.store,
+                    manifest,
+                    references,
+                    validation_baselines,
+                    variant_reference_builds,
+                    variant_reference_sheets,
+                )?,
             )?);
             objects.extend(reference_objects);
+            objects.extend(baseline_objects);
         }
 
         // models.json — the composed model catalog (curated ⋃ derived-from-runs,
@@ -356,7 +452,10 @@ impl SnapshotBuilder {
 
         RunSummary {
             case_name,
-            rating: Some(aggregate_rating(&run.reviews)),
+            // The per-domain rating, or `None` for a game jam (it carries no
+            // domains — its badge is `score.overallGrade` instead). A domain-scored
+            // published run always has one.
+            rating: aggregate_rating_inner(&run.reviews),
             score,
             ..RunSummary::from_stored(run)
         }
@@ -497,6 +596,188 @@ impl SnapshotBuilder {
                 kind: proof.kind,
                 key,
             });
+        }
+        (metas, objects)
+    }
+
+    /// Collect a run's synthesized *actual* validation media: the `validationMedia[]`
+    /// metadata entries (served file name + snapshot-relative key) and the media
+    /// objects to upload.
+    ///
+    /// The set is taken from the run record's `validation.debugScripts[].outputs[]` (the
+    /// authoritative declaration), not from whatever is in the store — so each present
+    /// output is resolved through the store-then-artifact-service fallback
+    /// ([`Self::read_media`], `kind = "validation"`), and one whose bytes are in neither
+    /// place contributes nothing.
+    ///
+    /// Each output is addressed by the flat `<item>__<output>.<ext>` name the gallery
+    /// requests — a still under `.png`, a clip under the `.webm` it is captured as. The
+    /// entry's `file` is that requested name, so the static gallery keys its lookup off
+    /// it; a **video** output is transcoded to `<item>__<output>.mp4` for the public
+    /// gallery (as a video proof is — see [`transcode_webm_to_mp4`]) and published under
+    /// the mp4 name, while `file` stays the requested `.webm` so the flat name the UI
+    /// requests still resolves. A transcode that fails falls back to publishing the raw
+    /// webm so the media still appears. An already-present media key is referenced
+    /// without re-reading or re-transcoding.
+    async fn run_validation_media(
+        &self,
+        record: &RunRecord,
+    ) -> (Vec<RunValidationMediaOut>, Vec<SnapshotObject>) {
+        let mut metas = Vec::new();
+        let mut objects = Vec::new();
+        let run_id = &record.id;
+        for script in &record.validation.debug_scripts {
+            // The verdict id keys this script's media — the item's own id, or the
+            // composite `<item>.<sub>` for a per-sub-item driver.
+            let verdict_id = match &script.sub_item_id {
+                Some(sub) => {
+                    test_cabinet_core::ReviewItem::sub_item_verdict_id(&script.item_id, sub)
+                }
+                None => script.item_id.clone(),
+            };
+            for output in &script.outputs {
+                if !output.actual_present {
+                    continue;
+                }
+                // The flat name the gallery requests (`.png`/`.webm`) — the on-disk name
+                // the driver mirrored and the artifact service serves.
+                let requested_file =
+                    test_cabinet_core::validation_media_name(&verdict_id, &output.id, output.kind);
+                let published_ext = test_cabinet_core::validation_published_extension(output.kind);
+                let published_file = format!("{verdict_id}__{}.{published_ext}", output.id);
+                // The stable, snapshot-independent key. When it is already in the
+                // bucket, reference it without touching the source bytes (no store read,
+                // and — for a video — no re-transcode).
+                let published_key = format!("{MEDIA_PREFIX}/{run_id}/validation/{published_file}");
+                if self.existing_media.contains(&published_key) {
+                    metas.push(RunValidationMediaOut {
+                        file: requested_file,
+                        key: published_key,
+                    });
+                    continue;
+                }
+
+                // Prefer a copy already at the published extension (an image, or a clip
+                // already mp4); otherwise pull the raw webm and transcode it.
+                let (file, extension, bytes) = if let Some(bytes) =
+                    self.read_media(run_id, "validation", &published_file).await
+                {
+                    (published_file, published_ext.to_string(), bytes)
+                } else if output.kind == test_cabinet_core::MediaKind::Video {
+                    let Some(raw) = self.read_media(run_id, "validation", &requested_file).await
+                    else {
+                        continue;
+                    };
+                    match transcode_webm_to_mp4(&raw).await {
+                        Some(mp4) => (published_file, published_ext.to_string(), mp4),
+                        None => {
+                            tracing::warn!(
+                                run_id = %run_id,
+                                item = %script.item_id,
+                                output = %output.id,
+                                "webm→mp4 transcode unavailable; publishing raw webm (not iOS-playable)"
+                            );
+                            (requested_file.clone(), "webm".to_string(), raw)
+                        }
+                    }
+                } else {
+                    continue;
+                };
+
+                let key = format!("{MEDIA_PREFIX}/{run_id}/validation/{file}");
+                objects.push(SnapshotObject {
+                    key: key.clone(),
+                    bytes,
+                    content_type: media_content_type(&extension).to_string(),
+                });
+                metas.push(RunValidationMediaOut {
+                    file: requested_file,
+                    key,
+                });
+            }
+        }
+        (metas, objects)
+    }
+
+    /// Collect a version's committed **baseline** validation media: the
+    /// `validationBaselines[]` metadata entries (requested file name + snapshot-relative
+    /// key) and the media objects to upload.
+    ///
+    /// The baseline is a fixed property of the case *version* — synthesized once at
+    /// `tcab publish-reference` time from the reference implementation and committed
+    /// under `validation-baseline/<variant>/`, copied verbatim into the store at
+    /// ingest — so it is published case-scoped (keyed under the case prefix), the
+    /// invariant counterpart to the run-scoped *actual* media. Every committed file is
+    /// enumerated per variant ([`crate::store::DefinitionStore::list_validation_baseline`]);
+    /// a **video** baseline (`.webm`) is transcoded to `.mp4` for the public gallery,
+    /// with `file` kept as the requested `.webm` so the gallery's flat lookup resolves
+    /// (mirrors [`Self::run_validation_media`]). A transcode failure publishes the raw
+    /// webm.
+    async fn case_validation_baselines(
+        &self,
+        manifest: &StoredManifest,
+        prefix: &str,
+    ) -> (Vec<CaseValidationBaselineOut>, Vec<SnapshotObject>) {
+        let (slug, version) = (&manifest.slug, &manifest.version);
+        let mut metas = Vec::new();
+        let mut objects = Vec::new();
+        for variant in &manifest.variants {
+            let Ok(files) = self
+                .store
+                .list_validation_baseline(slug, version, &variant.slug)
+            else {
+                continue;
+            };
+            for requested_file in files {
+                let Ok(raw) = self.store.read_validation_baseline(
+                    slug,
+                    version,
+                    &variant.slug,
+                    &requested_file,
+                ) else {
+                    continue;
+                };
+                let is_video = requested_file.to_ascii_lowercase().ends_with(".webm");
+                let (published_file, extension, bytes) = if is_video {
+                    // `<verdict>__<output>.webm` → `<verdict>__<output>.mp4`.
+                    let stem = &requested_file[..requested_file.len() - ".webm".len()];
+                    let published = format!("{stem}.mp4");
+                    match transcode_webm_to_mp4(&raw).await {
+                        Some(mp4) => (published, "mp4".to_string(), mp4),
+                        None => {
+                            tracing::warn!(
+                                slug = %slug,
+                                version = %version,
+                                variant = %variant.slug,
+                                file = %requested_file,
+                                "webm→mp4 transcode unavailable; publishing raw baseline webm (not iOS-playable)"
+                            );
+                            (requested_file.clone(), "webm".to_string(), raw)
+                        }
+                    }
+                } else {
+                    let ext = std::path::Path::new(&requested_file)
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .unwrap_or("")
+                        .to_string();
+                    (requested_file.clone(), ext, raw)
+                };
+                let key = format!(
+                    "{prefix}/cases/{slug}/{version}/validation-baseline/{}/{published_file}",
+                    variant.slug
+                );
+                objects.push(SnapshotObject {
+                    key: key.clone(),
+                    bytes,
+                    content_type: media_content_type(&extension).to_string(),
+                });
+                metas.push(CaseValidationBaselineOut {
+                    variant: variant.slug.clone(),
+                    file: requested_file,
+                    key,
+                });
+            }
         }
         (metas, objects)
     }
@@ -663,6 +944,7 @@ impl SnapshotBuilder {
     async fn read_media(&self, run_id: &str, kind: &str, file: &str) -> Option<Vec<u8>> {
         let from_store = match kind {
             "proof" => self.store.read_run_proof(run_id, file),
+            "validation" => self.store.read_run_validation(run_id, file),
             _ => self.store.read_run_asset(run_id, file),
         };
         if let Ok(bytes) = from_store {
@@ -900,14 +1182,40 @@ pub struct RunSummary {
     /// builder); [`RunSummary::from_stored`] leaves it `None` as it is
     /// catalog-free.
     pub score: Option<RunScoreOut>,
+    /// The correctness-and-fuel result of a performance run, lifted onto the
+    /// summary card so a fuel leaderboard and a run's percentile can be computed
+    /// from the bounded case-scoped summary set without loading each full record.
+    /// `None` for every non-performance run (which carries no
+    /// `validation.performance`). Unlike [`Self::score`] this is catalog-free —
+    /// fuel needs no checklist weights — so [`RunSummary::from_stored`] fills it.
+    #[cfg_attr(feature = "contract", ts(optional = nullable))]
+    pub performance: Option<PerformanceSummaryOut>,
     pub links: LinksOut,
+}
+
+/// The performance result as a summary card carries it: the correctness gate and
+/// the comparable total fuel. Enough to rank a fuel leaderboard and place one run
+/// against the field without the full `PerformanceResult` breakdown. Mirrors the
+/// two ranking-relevant fields of
+/// [`test_cabinet_core::validation::PerformanceResult`].
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct PerformanceSummaryOut {
+    /// Whether every scored input case produced the oracle's exact answer — the
+    /// gate a run must pass before its fuel means anything.
+    pub correct: bool,
+    /// The total fuel a correct engine consumed across every scored case (lower is
+    /// better). `None` for an incorrect run, where the fuel is meaningless and the
+    /// run earns no leaderboard placement.
+    pub total_fuel: Option<u64>,
 }
 
 /// A run's aggregate reviewer score: mean earned checklist weight across its
 /// reviews, over the shared total available. `None` when the run has no reviews
 /// (or its case's checklist weights can't be resolved). The item weights live
 /// only in the case catalog, so this is computed by callers that hold both the
-/// reviews and the catalog (see [`run_summary_score`]).
+/// reviews and the catalog (see `run_summary_score`).
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -918,19 +1226,26 @@ pub struct RunScoreOut {
     pub total: u32,
     /// How many reviews the average is taken over.
     pub reviews: u32,
+    /// A [game jam](test_cabinet_core::test_case::TestType::GameJam) run's overall
+    /// game grade — the worst overall grade any reviewer gave (see
+    /// [`test_cabinet_core::review::aggregate_overall_grade`]). This is the jam's
+    /// rating badge, standing in for the per-domain `rating` a jam does not carry.
+    /// `None` for every non-jam run.
+    #[cfg_attr(feature = "contract", ts(optional = nullable))]
+    pub overall_grade: Option<test_cabinet_core::review::VerdictStatus>,
 }
 
 impl RunSummary {
     /// Build a bounded summary card from a stored run, WITHOUT needing the case
     /// catalog. This is the single source of truth for the card fields shared by
-    /// the public snapshot ([`SnapshotBuilder::summary`]) and the console's
+    /// the public snapshot (`SnapshotBuilder::summary`) and the console's
     /// `GET /runs?fields=summary` listing.
     ///
     /// `rating` is the aggregate across the run's reviews, or `None` when the run
     /// carries no reviews yet (an unrated console run). `case_name` falls back to
     /// the test-case slug — a backend-connected console resolves display names
     /// itself; only the static snapshot substitutes the real catalog name (see
-    /// [`SnapshotBuilder::summary`]).
+    /// `SnapshotBuilder::summary`).
     pub fn from_stored(run: &StoredRun) -> Self {
         let record = &run.record;
         Self {
@@ -951,6 +1266,16 @@ impl RunSummary {
             // Catalog-free: the checklist weights live only in the case catalog,
             // so a caller that holds it enriches this (see [`run_summary_score`]).
             score: None,
+            // Catalog-free: the fuel/correctness are already on the record, so the
+            // card carries them directly (a performance run only).
+            performance: record
+                .validation
+                .performance
+                .as_ref()
+                .map(|p| PerformanceSummaryOut {
+                    correct: p.correct,
+                    total_fuel: p.total_fuel,
+                }),
             links: links_out(&run.links),
         }
     }
@@ -1007,6 +1332,13 @@ pub struct PerRun {
     /// The run's uploaded proof-of-implementation media, named by snapshot-relative
     /// key. Empty when the run produced none.
     pub proof_media: Vec<RunProofOut>,
+    /// The run's synthesized *actual* automated-validation media (the model build's
+    /// per-review-item debug-script outputs), named by snapshot-relative key. Empty
+    /// when the run declares no debug scripts (or none produced media). The case-scoped
+    /// *baseline* counterpart rides on [`CaseMetadata::validation_baselines`]. Always
+    /// emitted (possibly empty); the static gallery treats it as optional so a snapshot
+    /// written before this field existed still loads.
+    pub validation_media: Vec<RunValidationMediaOut>,
     /// An asset-generation run's media (regenerated/preview image + action log),
     /// named by snapshot-relative key. Empty for a non-asset-generation run.
     pub asset_media: Vec<RunAssetOut>,
@@ -1036,6 +1368,21 @@ pub struct RunAssetOut {
     pub key: String,
 }
 
+/// A synthesized *actual* validation media file exposed in a per-run document — one
+/// debug-script output captured from the model's build. `file` is the flat
+/// `<item>__<output>.<ext>` name the gallery requests (`.png`/`.webm`, keyed off the
+/// output's kind exactly as the reviewer UI's `validationMediaFor` computes it); `key`
+/// is its snapshot-relative object key, whose bytes are the media as published — a
+/// video transcoded to `.mp4`, so `key` and `file` differ in extension for a clip while
+/// the flat name the UI requests still resolves through the static gallery's map.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct RunValidationMediaOut {
+    pub file: String,
+    pub key: String,
+}
+
 /// One published review on a run: the reviewer's public identity, their per-domain
 /// ratings, the writeup, and their checklist verdicts. This is the canonical
 /// review wire shape (`backend-api/review.schema.json`), referenced by the per-run
@@ -1058,20 +1405,53 @@ pub struct Review {
     pub ratings: Vec<test_cabinet_core::review::DomainRating>,
     pub writeup: String,
     pub checklist: Vec<test_cabinet_core::review::ReviewVerdict>,
-    /// RFC 3339 of when the review was submitted.
+    /// RFC 3339 of when the review was **first** submitted (unchanged by later
+    /// edits — see [`Self::edited_at`]).
     pub reviewed_at: String,
+    /// RFC 3339 of when the review was last edited, or `None` if it has never been
+    /// edited since it was first submitted. The newest [`Self::revisions`] entry
+    /// carries the same timestamp.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional = nullable))]
+    pub edited_at: Option<String>,
+    /// The review's edit history, oldest first: one entry per edit, each with the
+    /// reviewer's note and the autogenerated diff of what changed. Empty for a
+    /// review that has never been edited. Public, so a reader can see how a review
+    /// evolved.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub revisions: Vec<test_cabinet_core::review::ReviewRevision>,
+    /// The snapshot-relative object key of the reviewer's profile picture
+    /// (`pfp/<reviewer-id>`), or `None` when the reviewer has no picture. The
+    /// bytes are exported once per reviewer under the content-stable top-level
+    /// `pfp/` prefix (like run media under `MEDIA_PREFIX`); the site resolves the
+    /// key against the snapshot base into an absolute avatar URL.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional = nullable))]
+    pub picture_key: Option<String>,
 }
 
 /// Map a stored review to its snapshot wire shape, exposing the reviewer's
-/// public identity (id + display name) but never any account internals.
-fn review_out(review: &crate::db::StoredReview) -> Review {
+/// public identity (id + display name) but never any account internals. A
+/// reviewer whose id is in `pictures` (i.e. their profile picture was fetched for
+/// this snapshot) gets a `picture_key` pointing at their exported avatar object.
+fn review_out(
+    review: &crate::db::StoredReview,
+    pictures: &std::collections::HashMap<String, test_cabinet_core::accounts::ReviewerPicture>,
+) -> Review {
+    let reviewer_id = review.reviewer.user_id.clone();
+    let picture_key = pictures
+        .contains_key(&reviewer_id)
+        .then(|| format!("{PFP_PREFIX}/{reviewer_id}"));
     Review {
-        reviewer_id: review.reviewer.user_id.clone(),
+        reviewer_id,
         reviewer: review.reviewer.display_name.clone(),
         ratings: review.ratings.clone(),
         writeup: review.writeup.clone(),
         checklist: review.checklist.clone(),
         reviewed_at: review.reviewed_at.clone(),
+        edited_at: review.edited_at.clone(),
+        revisions: review.revisions.clone(),
+        picture_key,
     }
 }
 
@@ -1105,6 +1485,15 @@ pub struct CaseMetadata {
     /// Particle, and Audio tabs. Defaults to `sprite` for every non-asset case
     /// (harmless — the split is only consulted for asset cases).
     pub asset_kind: test_cabinet_core::AssetKind,
+    /// A sprite-sheet case's declared frames and named animation sequences, or
+    /// `None` for every other kind (only `sprite-sheet` declares a `[sheet]`).
+    ///
+    /// Exported because the site renders a published **reference sheet** by playing
+    /// these sequences — and the motion is most of what such a case is judged on, so
+    /// a site with the frames but not the sequences would be showing the least
+    /// interesting half. The live console reads the same spec from the resolved
+    /// version response; this is the static mirror of it.
+    pub sheet: Option<test_cabinet_core::test_case::SheetSpec>,
     pub difficulty: String,
     pub tags: Vec<String>,
     pub summary: Option<String>,
@@ -1115,11 +1504,6 @@ pub struct CaseMetadata {
     /// case's detail page.
     pub changelog: String,
     pub variants: Vec<CaseVariantOut>,
-    /// The seeded spec files shared by every variant, with their bodies inlined so
-    /// the static gallery's Inputs tab can show them without a live backend. A
-    /// variant's own additive specs ride on [`CaseVariantOut::seeded_inputs`]; the
-    /// site concatenates the two (common first) exactly as a run is seeded.
-    pub common_seeded_inputs: Vec<CaseSeededInputOut>,
     /// The Test Cabinet runtime packages this case ships into every run, each with
     /// its UI-only description, so the static gallery's Inputs tab can show them.
     /// Empty for a case that declares none.
@@ -1128,6 +1512,13 @@ pub struct CaseMetadata {
     /// Rendered reference baselines, named by snapshot-relative key. The site
     /// resolves these to absolute URLs to show baselines on the References tab.
     pub references: Vec<CaseReferenceOut>,
+    /// The case's committed **baseline** automated-validation media (a debug script's
+    /// outputs driven once against the reference implementation), per variant, named by
+    /// snapshot-relative key. Case-scoped (a fixed property of the version), so the
+    /// static gallery resolves the reviewer's baseline side-by-side from these keyed by
+    /// slug/version/variant. Always emitted (possibly empty); the static gallery treats
+    /// it as optional so a snapshot written before this field existed still loads.
+    pub validation_baselines: Vec<CaseValidationBaselineOut>,
     /// Reviewer checklist items shared by every variant, carrying their point
     /// weights so the site can compute run scores. A variant's own items ride on
     /// [`CaseVariantOut::review_items`].
@@ -1135,6 +1526,12 @@ pub struct CaseMetadata {
     /// The case's scoring domains, rated independently; the overall rating is the
     /// worst across them.
     pub domains: Vec<CaseDomainOut>,
+    /// Known-issue errata recorded for this version after it shipped, so the static
+    /// gallery can show the case's Errata tab and flag known issues to reviewers.
+    /// Always emitted (possibly empty); the static gallery treats it as optional so a
+    /// snapshot written before this field existed still loads.
+    #[serde(default)]
+    pub errata: Vec<CaseErratumOut>,
 }
 
 /// A reference baseline exposed in case metadata. `variant` is `null` for a
@@ -1151,6 +1548,22 @@ pub struct CaseReferenceOut {
     pub key: String,
 }
 
+/// A committed **baseline** validation media file exposed in case metadata — one
+/// debug-script output driven once against the case's reference implementation.
+/// `variant` is the variant slug the baseline was captured for (baselines are always
+/// per-variant); `file` is the flat `<item>__<output>.<ext>` name the gallery requests
+/// (`.png`/`.webm`); `key` is its snapshot-relative object key, whose bytes are the
+/// media as published (a video transcoded to `.mp4`). The static gallery keys its
+/// baseline lookup off `variant` + `file`.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct CaseValidationBaselineOut {
+    pub variant: String,
+    pub file: String,
+    pub key: String,
+}
+
 /// One variant of a case as the gallery shows it.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1162,9 +1575,13 @@ pub struct CaseVariantOut {
     /// The variant's prompt, rendered as a real run receives it, so the public
     /// gallery's Specifications tab shows the instruction the model was handed.
     pub prompt: String,
-    /// The variant's own seeded spec files (additive to the common ones), with
-    /// their bodies inlined so the static gallery shows the exact specs a run of
-    /// this variant is seeded with.
+    /// This variant's complete seeded spec set, in seed order (the common specs
+    /// first, then the variant's own), each body rendered for this variant and
+    /// inlined so the static gallery shows the exact specs a run of this variant is
+    /// seeded with, without a live backend. Because a template spec renders to
+    /// different text per variant, every variant carries its own fully-rendered set
+    /// here — the spec analogue of [`Self::prompt`] — rather than the case sharing
+    /// one common list.
     pub seeded_inputs: Vec<CaseSeededInputOut>,
     /// Reviewer checklist items additive to the common ones, with their point
     /// weights, surfaced only when this variant is selected.
@@ -1181,6 +1598,35 @@ pub struct CaseVariantOut {
     /// `case_reference_build` table and folded in here at export — never resolved
     /// from the manifest and never seeded into a run.
     pub reference_build: Option<String>,
+    /// This variant's published **reference sheet** — the asset-generation analogue of
+    /// [`Self::reference_build`], shown on the static gallery's "Reference" tab.
+    /// `null` when the variant declares no `reference_implementation`, or has one that
+    /// has not been published yet.
+    ///
+    /// An asset case's reference is a `draw.sh` script whose output is a set of
+    /// rendered frames, so what is exported is which frames the snapshot bucket holds.
+    /// Only the indices travel: every frame's object key is derivable from the case
+    /// triple plus its index (`media/references/<slug>/<version>/<variant>/frames/<index>.png`,
+    /// see `test_cabinet_core::asset_reference`), so the site joins them onto its own
+    /// snapshot base URL rather than being handed absolute URLs it would have to trust.
+    /// Written out-of-band by `tcab publish-reference` into the bucket, reconciled into
+    /// the `case_reference_sheet` table at ingest, and folded in here at export — never
+    /// resolved from the manifest and never seeded into a run.
+    pub reference_sheet: Option<CaseReferenceSheetOut>,
+}
+
+/// One variant's published reference frames, as exported in case metadata.
+///
+/// A named object rather than a bare array so the sheet can gain fields (a canvas
+/// size, a published-at stamp) without changing the shape the site already reads,
+/// matching the wire type `GET /test-cases/{slug}/versions/{version}` returns.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct CaseReferenceSheetOut {
+    /// The published frame indices, ascending. A single sprite (a case with no
+    /// `[sheet]`) publishes exactly one frame, index `0`.
+    pub frames: Vec<u32>,
 }
 
 /// A seeded spec file exposed in case metadata: the run-workspace path it lands at
@@ -1229,20 +1675,36 @@ pub struct CaseReviewItemOut {
     pub sequences: Vec<String>,
     pub frames: Vec<u32>,
     pub weight: u32,
+    /// Whether the item is graded on the five-level scale (a game-jam category)
+    /// rather than pass/fail. The reviewer and verdict UIs render the graded
+    /// control and score `weight × 10` points for it when true.
+    pub graded: bool,
     pub domain: Option<String>,
     /// Name-only sub-items this item is graded by, each an independently scored
     /// pass/fail point. Empty for an item graded as a whole.
     pub sub_items: Vec<CaseSubReviewItemOut>,
 }
 
-/// A name-only sub-item of a [`CaseReviewItemOut`] exposed in case metadata: one
-/// independently graded point within the item, carrying only its id and title.
+/// A sub-item of a [`CaseReviewItemOut`] exposed in case metadata: one
+/// independently graded point within the item. Legacy sub-items carry only id and
+/// title; a categories-grammar review item also carries its own prose, weight, and
+/// paired reference/proof.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct CaseSubReviewItemOut {
     pub id: String,
     pub title: String,
+    /// Optional prose for this point (categories grammar); `null` for a legacy
+    /// name-only sub-item.
+    pub description: Option<String>,
+    /// How many points this point is worth. A category's weight is the sum of its
+    /// items' weights.
+    pub weight: u32,
+    /// Optional reference view paired with this point as the expected target.
+    pub reference: Option<String>,
+    /// Optional proof id paired with this point as the submitted media.
+    pub proof: Option<String>,
 }
 
 /// A scoring domain exposed in case metadata.
@@ -1253,6 +1715,27 @@ pub struct CaseDomainOut {
     pub id: String,
     pub name: String,
     pub description: String,
+}
+
+/// A known-issue erratum exposed in case metadata (see
+/// [`test_cabinet_core::test_case::Erratum`]).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct CaseErratumOut {
+    pub id: String,
+    pub title: String,
+    pub date: Option<String>,
+    pub severity: test_cabinet_core::test_case::ErratumSeverity,
+    pub affects_scoring: bool,
+    /// Whether the linked review point is excluded from scoring for the version.
+    pub exclude_from_score: bool,
+    pub body: String,
+    pub resolved_in: Option<String>,
+    /// The variant slug the erratum is scoped to, or `null` for all variants.
+    pub variant: Option<String>,
+    /// The review verdict id the erratum concerns, or `null` when untied to a point.
+    pub review: Option<String>,
 }
 
 /// A declared validation check exposed in case metadata.
@@ -1272,15 +1755,47 @@ pub struct CaseCheckOut {
 /// a missing reference baseline is skipped.
 fn seeded_inputs(
     store: &DefinitionStore,
-    slug: &str,
-    version: &str,
-    specs: &[crate::store::StoredSpec],
+    manifest: &StoredManifest,
+    variant: &crate::store::StoredVariant,
 ) -> Vec<CaseSeededInputOut> {
-    specs
+    // The variant's own volume overrides the case's, so a template spec renders at
+    // this variant's actual dimensions — matching how the prompt and a run's seed
+    // resolve `{{voxel}}`.
+    let voxel = variant.voxel.as_ref().or(manifest.voxel.as_ref());
+    // The full seeded set for this variant, in seed order: the common specs first,
+    // then the variant's own. Each body is rendered for this variant, so a template
+    // spec (`.hbs`) has its `{{#if (eq variant.slug …)}}` branches resolved and the
+    // static gallery shows handlebars-free text — the spec analogue of how each
+    // variant already carries its own rendered prompt. A spec whose bytes are
+    // missing/not UTF-8, or whose template fails to render (exceptional — the same
+    // template renders at seed time), is warned and skipped rather than failing the
+    // whole snapshot, mirroring how a missing reference baseline is skipped.
+    manifest
+        .common_specs
         .iter()
+        .chain(variant.specs.iter())
         .filter_map(|spec| {
-            let bytes = store.read_artifact(slug, version, &spec.source).ok()?;
-            let text = String::from_utf8(bytes).ok()?;
+            let text = store
+                .read_rendered_spec(
+                    &manifest.slug,
+                    &manifest.version,
+                    spec,
+                    &variant.slug,
+                    &variant.name,
+                    variant.description.as_deref(),
+                    voxel,
+                )
+                .inspect_err(|err| {
+                    tracing::warn!(
+                        slug = %manifest.slug,
+                        version = %manifest.version,
+                        variant = %variant.slug,
+                        spec = %spec.source,
+                        %err,
+                        "rendering seeded spec for snapshot failed; omitting from case metadata"
+                    );
+                })
+                .ok()?;
             Some(CaseSeededInputOut {
                 path: spec.dest.clone(),
                 text,
@@ -1299,14 +1814,10 @@ fn case_metadata(
     store: &DefinitionStore,
     manifest: &StoredManifest,
     references: Vec<CaseReferenceOut>,
+    validation_baselines: Vec<CaseValidationBaselineOut>,
     reference_builds: Option<&std::collections::HashMap<String, String>>,
+    reference_sheets: Option<&std::collections::HashMap<String, Vec<u32>>>,
 ) -> Result<CaseMetadata, BackendError> {
-    let common_seeded_inputs = seeded_inputs(
-        store,
-        &manifest.slug,
-        &manifest.version,
-        &manifest.common_specs,
-    );
     let variants = manifest
         .variants
         .iter()
@@ -1326,8 +1837,12 @@ fn case_metadata(
                 v.description.as_deref(),
                 &spec_dests,
                 manifest.test_type,
+                manifest.max_runtime_seconds,
                 // The variant's own volume overrides the case's for its prompt.
                 v.voxel.as_ref().or(manifest.voxel.as_ref()),
+                // The gallery snapshot shows the standing prompt only — no prior
+                // game-jam entries, so no distinctness section.
+                0,
             )
             .map_err(|e| {
                 BackendError::Snapshot(format!(
@@ -1340,12 +1855,17 @@ fn case_metadata(
                 name: v.name.clone(),
                 description: v.description.clone(),
                 prompt,
-                seeded_inputs: seeded_inputs(store, &manifest.slug, &manifest.version, &v.specs),
+                seeded_inputs: seeded_inputs(store, manifest, v),
                 review_items: v.review_items.iter().map(case_review_item_out).collect(),
                 domains: v.domains.iter().map(case_domain_out).collect(),
                 reference_build: reference_builds
                     .and_then(|builds| builds.get(&v.slug))
                     .cloned(),
+                reference_sheet: reference_sheets.and_then(|sheets| sheets.get(&v.slug)).map(
+                    |frames| CaseReferenceSheetOut {
+                        frames: frames.clone(),
+                    },
+                ),
             })
         })
         .collect::<Result<Vec<_>, BackendError>>()?;
@@ -1357,13 +1877,13 @@ fn case_metadata(
         name: manifest.name.clone(),
         test_type: manifest.test_type,
         asset_kind: manifest.asset_kind,
+        sheet: manifest.sheet.clone(),
         difficulty: manifest.difficulty.clone(),
         tags: manifest.tags.clone(),
         summary: manifest.summary.clone(),
         description: manifest.description.clone(),
         changelog: manifest.changelog.clone(),
         variants,
-        common_seeded_inputs,
         packages: manifest
             .packages
             .iter()
@@ -1384,13 +1904,31 @@ fn case_metadata(
             })
             .collect(),
         references,
+        validation_baselines,
         common_review_items: manifest
             .common_review_items
             .iter()
             .map(case_review_item_out)
             .collect(),
         domains: manifest.domains.iter().map(case_domain_out).collect(),
+        errata: manifest.errata.iter().map(case_erratum_out).collect(),
     })
+}
+
+/// Map a stored known-issue erratum to its case-metadata wire shape.
+fn case_erratum_out(erratum: &crate::store::StoredErratum) -> CaseErratumOut {
+    CaseErratumOut {
+        id: erratum.id.clone(),
+        title: erratum.title.clone(),
+        date: erratum.date.clone(),
+        severity: erratum.severity,
+        affects_scoring: erratum.affects_scoring,
+        exclude_from_score: erratum.exclude_from_score,
+        body: erratum.body.clone(),
+        resolved_in: erratum.resolved_in.clone(),
+        variant: erratum.variant.clone(),
+        review: erratum.review.clone(),
+    }
 }
 
 /// Map a stored scoring domain to its case-metadata wire shape. Shared by the
@@ -1415,6 +1953,7 @@ fn case_review_item_out(item: &crate::store::StoredReviewItem) -> CaseReviewItem
         sequences: item.sequences.clone(),
         frames: item.frames.clone(),
         weight: item.weight,
+        graded: item.graded,
         domain: item.domain.clone(),
         sub_items: item
             .sub_items
@@ -1422,6 +1961,10 @@ fn case_review_item_out(item: &crate::store::StoredReviewItem) -> CaseReviewItem
             .map(|sub| CaseSubReviewItemOut {
                 id: sub.id.clone(),
                 title: sub.title.clone(),
+                description: sub.description.clone(),
+                weight: sub.weight,
+                reference: sub.reference.clone(),
+                proof: sub.proof.clone(),
             })
             .collect(),
     }
@@ -1433,13 +1976,6 @@ fn links_out(links: &test_cabinet_core::RunLinks) -> LinksOut {
         source_repo: links.source_repo.clone(),
         playable_build: links.playable_build.clone(),
     }
-}
-
-/// The run's overall rating — the worst rating any reviewer gave any domain.
-/// Falls back to [`Rating::Broken`] for the (publish-gated, so unreachable) case
-/// of no reviews, so the runs index always carries a tier.
-fn aggregate_rating(reviews: &[crate::db::StoredReview]) -> test_cabinet_core::review::Rating {
-    aggregate_rating_inner(reviews).unwrap_or(test_cabinet_core::review::Rating::Broken)
 }
 
 /// The aggregate rating, or `None` when the run carries no reviews. Delegates to
@@ -1472,35 +2008,59 @@ pub(crate) fn run_summary_score(
         .iter()
         .map(|review| test_cabinet_core::review::score_checklist(&items, &review.checklist))
         .collect();
+    let overall_grade = test_cabinet_core::review::aggregate_overall_grade(
+        reviews.iter().map(|review| review.checklist.as_slice()),
+    );
     test_cabinet_core::review::aggregate_score(&scores).map(|score| RunScoreOut {
         earned: score.earned,
         total: score.total,
         reviews: score.reviews,
+        overall_grade,
     })
 }
 
 /// The effective weighted checklist items for a run of `variant`: the case's
-/// common items followed by the selected variant's own (mirrors
+/// common items merged with the selected variant's own by id (mirrors
 /// [`test_cabinet_core::test_case::TestCaseVersion::review_items_for`], resolving
-/// from the stored manifest). An unrecognized variant contributes only the common
-/// items.
+/// from the stored manifest — a variant that reuses a common category's id folds
+/// its items into that category). An unrecognized variant contributes only the
+/// common items.
 fn review_items_for(
     manifest: &StoredManifest,
     variant: &str,
 ) -> Vec<test_cabinet_core::ReviewItem> {
-    manifest
+    let common: Vec<_> = manifest
         .common_review_items
         .iter()
-        .chain(
-            manifest
-                .variants
-                .iter()
-                .find(|candidate| candidate.slug == variant)
-                .into_iter()
-                .flat_map(|candidate| candidate.review_items.iter()),
-        )
         .map(core_review_item)
-        .collect()
+        .collect();
+    let own: Vec<_> = manifest
+        .variants
+        .iter()
+        .find(|candidate| candidate.slug == variant)
+        .into_iter()
+        .flat_map(|candidate| candidate.review_items.iter())
+        .map(core_review_item)
+        .collect();
+    let mut items = test_cabinet_core::test_case::merge_review_items(&common, &own);
+    // Mirror `TestCaseVersion::review_items_for`: drop the version's scoring-excluded
+    // points (an erratum with `exclude_from_score`, in scope for this variant) from the
+    // score by clearing their `scored` flag. Keeps this backend score in step with the
+    // reviewer UI and the core scorer.
+    let excluded: std::collections::HashSet<String> = manifest
+        .errata
+        .iter()
+        .filter(|erratum| erratum.exclude_from_score)
+        .filter(|erratum| {
+            erratum
+                .variant
+                .as_deref()
+                .is_none_or(|scope| scope == variant)
+        })
+        .filter_map(|erratum| erratum.review.clone())
+        .collect();
+    test_cabinet_core::test_case::apply_score_exclusions(&mut items, &excluded);
+    items
 }
 
 /// Reconstruct the core [`test_cabinet_core::ReviewItem`] a stored item was
@@ -1517,6 +2077,7 @@ fn core_review_item(item: &crate::store::StoredReviewItem) -> test_cabinet_core:
         sequences: item.sequences.clone(),
         frames: item.frames.clone(),
         weight: item.weight,
+        graded: item.graded,
         domain: item.domain.clone(),
         sub_items: item
             .sub_items
@@ -1524,6 +2085,42 @@ fn core_review_item(item: &crate::store::StoredReviewItem) -> test_cabinet_core:
             .map(|sub| test_cabinet_core::SubReviewItem {
                 id: sub.id.clone(),
                 title: sub.title.clone(),
+                description: sub.description.clone(),
+                weight: sub.weight,
+                reference: sub.reference.clone(),
+                proof: sub.proof.clone(),
+                // Pristine reconstruction: scoring exclusions are re-derived from the
+                // manifest's errata by `review_items_for`, never stored on the item.
+                scored: true,
+                validation: sub.validation.as_ref().map(core_review_validation),
+            })
+            .collect(),
+        scored: true,
+        // Reporter-side auto-validation driver, reconstructed from the stored item so
+        // the round trip stays whole (present on the item when validated as a whole, or
+        // on each sub-item above once sub-divided).
+        validation: item.validation.as_ref().map(core_review_validation),
+    }
+}
+
+/// Reconstruct a core [`test_cabinet_core::ReviewValidation`] from its stored shape.
+/// A snapshot-sourced driver is used only for scoring (which reads `weight`/`sub_items`),
+/// never to run the script, so its `script` is the stored version-folder-relative key
+/// rather than a host path — it is never materialized or executed on this path. Shared
+/// by the item-level and per-sub-item drivers.
+fn core_review_validation(
+    validation: &crate::store::StoredReviewValidation,
+) -> test_cabinet_core::ReviewValidation {
+    test_cabinet_core::ReviewValidation {
+        script: std::path::PathBuf::from(&validation.script),
+        script_rel: validation.script.clone(),
+        outputs: validation
+            .outputs
+            .iter()
+            .map(|output| test_cabinet_core::ReviewOutput {
+                id: output.id.clone(),
+                name: output.name.clone(),
+                kind: output.kind,
             })
             .collect(),
     }

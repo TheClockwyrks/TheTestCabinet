@@ -31,7 +31,7 @@ color (blue `#3d9bd6` for a water junction, teal `#7fcabc` for a steam junction)
 one hub serves both networks. The iron flanges, socket collars, bolts, and cap plate
 are sculpted in `#3a3836` and are **never** repainted — they are what keeps the piece
 reading as a physical, bolted junction rather than a plain colored lump. The contract
-is documented in the end-to-end case's `specs/assets.md`, and a review item scores
+is documented in the end-to-end case's `specs/assets.md`, and the reviewer checks
 whether the body is entirely the base color and the ironwork entirely iron.
 
 The brief also forbids the water color `#3d9bd6` and the steam color `#7fcabc`
@@ -57,8 +57,8 @@ paths). There is **no target model, no rig, and no operations schema** — the b
 ## Variants
 
 This case ships a single variant, `base` (the case's 16×16×16 volume). It adds no
-specs, review items, or domains of its own, and declares no `[voxel]` override, so the
-volume never varies.
+specs or domains of its own, and declares no `[voxel]` override, so the volume never
+varies.
 
 ## Versioning
 

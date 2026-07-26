@@ -1,8 +1,11 @@
 import type { ReactNode } from "react";
 import { Link, NavLink, useLocation, useParams } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
+import { LoadingState } from "../../components/LoadingState";
+import { BackChevron } from "../../components/BackChevron";
 import { useGalleryData } from "../../data/galleryContext";
 import { useTestCases } from "../../data/useTestCases";
+import { tabOf } from "../../data/testCaseTabs";
 import type { TestCaseSummary, VariantSummary } from "../../data/testCases";
 import { routes } from "../../routes";
 import { useSelectedVariant } from "../../pages/testcases/[slug]/useSelectedVariant";
@@ -13,10 +16,12 @@ import styles from "./TestCaseDetailLayout.module.scss";
 export type DetailTab =
   | "overview"
   | "inputs"
+  | "reviewing"
   | "runs"
   | "leaderboard"
   | "metrics"
   | "changelog"
+  | "errata"
   | "arena"
   | "reference";
 
@@ -43,19 +48,27 @@ export function TestCaseDetailLayout({
   const { slug } = useParams<{ slug: string }>();
   const { search } = useLocation();
   const { canExecute, arena } = useGalleryData();
-  const { testCases } = useTestCases();
+  const { testCases, status: testCasesStatus } = useTestCases();
   const testCase = testCases.find((entry) => entry.slug === slug);
   // Called unconditionally (hook rules); it tolerates an undefined case and
-  // simply resolves no variant, which the guard below turns into the not-found
-  // state.
+  // simply resolves no variant, which the guard below turns into the loading or
+  // not-found state.
   const [variant, setVariant] = useSelectedVariant(testCase);
 
   if (!testCase || !variant) {
+    // While the catalog is still loading the case simply isn't resolvable yet,
+    // so show the branded full-body loading state (the topbar stays) rather than
+    // the not-found text. "No test case found" is reserved for a case that is
+    // genuinely absent from a catalog that has finished loading.
     return (
       <PageLayout>
-        <p className={styles.notFound}>
-          No test case found for &ldquo;{slug}&rdquo;.
-        </p>
+        {testCasesStatus === "loading" ? (
+          <LoadingState label="Loading test case…" />
+        ) : (
+          <p className={styles.notFound}>
+            No test case found for &ldquo;{slug}&rdquo;.
+          </p>
+        )}
       </PageLayout>
     );
   }
@@ -72,6 +85,11 @@ export function TestCaseDetailLayout({
       key: "inputs",
       label: "Inputs",
       to: routes.testCaseInputs(testCase.slug),
+    },
+    {
+      key: "reviewing",
+      label: "Reviewing",
+      to: routes.testCaseReviewing(testCase.slug),
     },
     { key: "runs", label: "Runs", to: routes.testCaseRuns(testCase.slug) },
     {
@@ -90,6 +108,17 @@ export function TestCaseDetailLayout({
       to: routes.testCaseChangelog(testCase.slug),
     },
   ];
+  // The Errata tab is shown only when a version of the case actually records known
+  // issues. Errata are appended to a shipped version after the fact, so most cases
+  // carry none — hiding the empty tab keeps the nav uncluttered (the page itself
+  // still degrades to an empty state if reached directly).
+  if (testCase.errata.length > 0) {
+    tabs.push({
+      key: "errata",
+      label: "Errata",
+      to: routes.testCaseErrata(testCase.slug),
+    });
+  }
   // The Arena tab is shown only for an adversarial case on a console that can run
   // matches (a connected worker exposes the arena capability); it is hidden on the
   // static site and for every other test type.
@@ -100,12 +129,24 @@ export function TestCaseDetailLayout({
       to: routes.testCaseArena(testCase.slug),
     });
   }
-  // The Reference tab is shown only for an end-to-end case whose selected variant
-  // declares a reference implementation. It keys off the selected variant (not the
-  // case) because a build is per-variant, so switching variants adds or removes the
-  // tab; every host that carries `referenceBuild` (live catalog and static
-  // snapshot alike) can show it — no console-only capability is required.
-  if (testCase.testType === "end-to-end" && variant.referenceBuild) {
+  // The Reference tab is shown for any case whose selected variant has a published
+  // reference implementation, in either of the two shapes one takes — so no
+  // test-type check is needed here, and neither signal is a superset of the other:
+  //
+  //   • `referenceBuild` — a deployed static site (end-to-end and full-stack cases),
+  //     which the tab iframes.
+  //   • `referenceSheet`  — the published reference FRAMES (asset-generation cases),
+  //     which have no page to embed and so are rendered natively from the snapshot
+  //     bucket.
+  //
+  // In practice a variant carries at most one: a case is a single test type, and
+  // each type produces only one shape of reference. A variant with neither (the
+  // common case, and any host or backend that predates a field) shows no tab at all.
+  // It keys off the selected variant (not the case) because a reference is
+  // per-variant, so switching variants adds or removes the tab; every host that
+  // carries these fields (live catalog and static snapshot alike) can show it — no
+  // console-only capability is required.
+  if (variant.referenceBuild || variant.referenceSheet) {
     tabs.push({
       key: "reference",
       label: "Reference",
@@ -121,6 +162,18 @@ export function TestCaseDetailLayout({
       <header className={styles.header}>
         <div className={styles.titleRow}>
           <div className={styles.titleGroup}>
+            {/* Back returns to the tab the user came from; on a fresh deep link
+                (nothing recorded) it falls back to this case's own type tab
+                rather than the catalog default. */}
+            <BackChevron
+              to={
+                tabOf(testCase)
+                  ? routes.testCasesCatalog(tabOf(testCase)!)
+                  : routes.testCases()
+              }
+              section="testCases"
+              label="All test cases"
+            />
             <h1 className={styles.title}>{testCase.name}</h1>
             <span className={styles.version}>{testCase.latestVersion}</span>
           </div>

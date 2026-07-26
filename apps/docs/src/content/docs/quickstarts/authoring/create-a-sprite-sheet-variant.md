@@ -30,10 +30,7 @@ mode to an [end-to-end](/testing/end-to-end/overview/) case? See
    testable** constraints, saying whether each applies to every frame, a named
    sequence, or across frames. It may reference the common specs but **not** another
    variant's spec, and it draws toward the **same** `[sheet]` layout.
-3. Add `[[review_item]]`s for what the variation makes observable — including
-   anything the **animation** reveals — each carrying only a scoring `domain` (the
-   case has no target image, so review items have no `reference`).
-4. Create `variants/<slug>.toml` (a standalone TOML file whose top-level keys are
+3. Create `variants/<slug>.toml` (a standalone TOML file whose top-level keys are
    the variant's fields; `dest` defaults to `source`) and add its path to the
    `variants` list in `test-case.toml`. Do **not** add a `[sheet]` table — it is
    declared once at the version level:
@@ -47,7 +44,8 @@ spec = [{ source = "specs/flat.md" }]
 ```
 
 `spec` entries are additive on the common specs; within one variant no two seeded
-specs may share a `dest`. Do **not** add a `reference` (resolution rejects a
+specs may share a `dest`. A variant declares **no** `review_item`s — an
+asset-generation case has no reviewer checklist. Do **not** add a `reference` (resolution rejects a
 variant-specific reference for this test type) or a per-variant `[sheet]` /
 `asset_kind`.
 

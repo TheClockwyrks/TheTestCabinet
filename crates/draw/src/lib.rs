@@ -15,9 +15,15 @@ use std::path::Path;
 #[cfg(feature = "cli")]
 pub mod cli;
 pub mod color;
+pub mod composite;
+pub mod curve;
+pub mod fixed;
+pub mod layer;
 pub mod ops;
 
 pub use color::{Background, ColorError, Rgba};
+pub use curve::{Interp, Keyframe};
+pub use layer::{Document, Layer, Property, Transform};
 pub use ops::Operation;
 
 /// The fixed image the model draws on: its dimensions and initial background.
@@ -114,9 +120,50 @@ impl ImageBuffer {
 /// Render an operation log into an image: start from the canvas background and
 /// apply each operation in order. This is the authoritative drawing logic shared
 /// by the `draw` binary's preview and core's post-run regeneration.
+///
+/// This renders the canvas log alone. A run that registers [layers](crate::layer)
+/// must go through [`render_frame`], which composites them over this result.
 pub fn render(canvas: &Canvas, operations: &[Operation]) -> ImageBuffer {
     let mut image = ImageBuffer::filled(canvas.width, canvas.height, canvas.background.fill());
     for operation in operations {
+        operation.apply(&mut image);
+    }
+    image
+}
+
+/// Render one frame: the canvas log, then every layer composited over it at the
+/// transform its curves resolve to on this frame.
+///
+/// This is the complete rendering contract, and the one both the binaries' preview
+/// and core's regeneration use. Layers composite in
+/// [`Document::composite_order`](crate::layer::Document::composite_order) — ascending
+/// `z`, ties in registration order — always **above** the operations drawn directly
+/// onto the canvas, so direct drawing reads as the backdrop it usually is.
+///
+/// An empty document reduces exactly to [`render`], which is what keeps every
+/// pre-existing run and test case rendering unchanged.
+pub fn render_frame(
+    canvas: &Canvas,
+    operations: &[Operation],
+    document: &Document,
+    frame: u32,
+) -> ImageBuffer {
+    let mut image = render(canvas, operations);
+    for layer in document.composite_order() {
+        let painted = render_layer(layer);
+        composite::composite(&mut image, &painted, &layer.transform_at(frame));
+    }
+    image
+}
+
+/// Rasterize a layer's own operations into a buffer of the layer's size.
+///
+/// A layer starts fully transparent regardless of the canvas background: it is a
+/// surface laid *over* the image, so anything it does not paint must let the canvas
+/// through rather than punching a hole in it.
+pub fn render_layer(layer: &Layer) -> ImageBuffer {
+    let mut image = ImageBuffer::filled(layer.width, layer.height, Rgba::TRANSPARENT);
+    for operation in &layer.ops {
         operation.apply(&mut image);
     }
     image

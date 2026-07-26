@@ -6,6 +6,7 @@
 //! case's identity, type, and difficulty are declared in its manifest, not
 //! inferred from its location. Each version is self-contained and immutable.
 
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -19,7 +20,12 @@ use crate::error::{Error, Result};
 /// specification and assets that are seeded, the reference views (rendered to
 /// screenshots and seeded as visual targets), and the opt-in validation checks.
 /// See `docs/testing/end-to-end/manifests.md`.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+///
+/// `Default` is derived so a [`GameJamManifest`] — a jam's own, deliberately
+/// smaller on-disk format — can be lowered onto this shared shape by setting only
+/// the handful of fields a jam declares and leaving every spec-driven table at its
+/// empty default (see [`GameJamManifest::into_case`]).
+#[derive(Debug, Clone, PartialEq, Default, Deserialize)]
 struct Manifest {
     /// The case's **stable identity**, recorded in every run and used as the
     /// definition-store key. **Required.** It is declared explicitly rather than
@@ -231,12 +237,27 @@ struct Manifest {
     /// Opt-in validation checks. Only declared checks run.
     #[serde(default)]
     check: Vec<ManifestCheck>,
-    /// Reviewer checklist items declared for **every** variant. Reviewer-facing
-    /// and **not seeded**: they enumerate what a person must explicitly check
-    /// after playing a build, so a case's major requirements are guaranteed to be
-    /// verified by hand. Declared as repeated `[[review_item]]` tables.
+    /// Optional `[instrumentation]` table declaring the case's debug-API handle —
+    /// the `window` global the build installs its automation surface on (for
+    /// example `__carom`). **Required** whenever any `[[review_item]]` declares a
+    /// `validation` script; a case with no auto-validated items omits it. See
+    /// [`ManifestInstrumentation`].
+    #[serde(default)]
+    instrumentation: Option<ManifestInstrumentation>,
+    /// Reviewer checklist items declared for **every** variant, in the **legacy**
+    /// grammar. Reviewer-facing and **not seeded**: they enumerate what a person
+    /// must explicitly check after playing a build, so a case's major requirements
+    /// are guaranteed to be verified by hand. Declared as repeated `[[review_item]]`
+    /// tables. Mutually exclusive with [`Self::review`] (the categories grammar).
     #[serde(default, rename = "review_item")]
     review_items: Vec<ManifestReviewItem>,
+    /// The opt-in **categories** review grammar (`[review] format = 2`), the
+    /// alternative to [`Self::review_items`]. When present, the case's checklist is
+    /// authored as [categories](ManifestReviewCategory) of review items, and any
+    /// `[[review_item]]` (here or in a variant) is rejected. `None` for a legacy
+    /// case. See [`ManifestReview`].
+    #[serde(default)]
+    review: Option<ManifestReview>,
     /// Scoring domains the reviewer rates independently — for example a game's
     /// single-player and versus modes. The run's overall rating is the **worst**
     /// rating across all of them. At least one must be declared. Declared as
@@ -260,6 +281,134 @@ struct Manifest {
 struct ManifestIdentity {
     /// The case's stable slug. See [`Manifest::slug`].
     slug: String,
+}
+
+/// The on-disk `game-jam.toml` manifest for a single game-jam version.
+///
+/// A game jam is **not** a test case, so it is authored through its own manifest
+/// format rather than the shared [`Manifest`] — it declares only the handful of
+/// fields a theme-only build actually has. Two fields a test case carries are
+/// deliberately absent:
+///
+///   - **no `difficulty`** — a jam is inherently unclassified. The model decides
+///     what to build from the theme, so there is no tier to bracket it into.
+///   - **no `variants`** — a jam is one theme. A differently themed jam is a
+///     different jam, never a variant of this one.
+///
+/// It likewise declares none of the `[[spec]]`, `[[reference]]`, `[[domain]]`, or
+/// asset tables a spec-driven case uses. Deserialization is `deny_unknown_fields`,
+/// so a jam manifest that reaches for `difficulty`, `variants`, or any other
+/// test-case-only key is **rejected** with a clear error rather than silently
+/// carrying a meaningless value. See `docs/testing/game-jam/manifests.md`.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GameJamManifest {
+    /// The jam's **stable identity** (the definition-store key). See
+    /// [`Manifest::slug`].
+    slug: String,
+    /// Human-readable display name, surfaced on the site.
+    name: String,
+    /// Free-form classification tags surfaced on the site. Optional (defaults to
+    /// empty): a jam is not tiered, so it carries only whatever tags describe its
+    /// theme.
+    #[serde(default)]
+    tags: Vec<String>,
+    /// Optional one- or two-sentence abstract shown on the jam card. Not seeded.
+    #[serde(default)]
+    summary: Option<String>,
+    /// Optional site-facing prose (a Markdown file relative to the version folder).
+    /// Not seeded — it introduces the jam on the site.
+    #[serde(default)]
+    description: Option<PathBuf>,
+    /// The per-version changelog entry (a Markdown file relative to the version
+    /// folder). **Required**, like a test case's. Not seeded.
+    changelog: PathBuf,
+    /// The theme brief handed to the harness (a Handlebars template relative to the
+    /// version folder). **Required**. The standing game-jam preamble is prepended
+    /// by the harness (see [`crate::prompt`]).
+    prompt: PathBuf,
+    /// The maximum wall-clock runtime, in **hours**, for the harness session.
+    /// Defaults to [`default_max_runtime_hours`] when omitted so a run is never
+    /// unbounded. Also surfaced to the model in the prompt as its time budget.
+    #[serde(default = "default_max_runtime_hours")]
+    max_runtime_hours: f64,
+    /// Whether this version is experimental (hidden unless a deployment opts in via
+    /// `TCAB_BACKEND_ALLOW_EXPERIMENTAL`). See [`Manifest::experimental`].
+    #[serde(default)]
+    experimental: bool,
+    /// Optional starter workspace directory seeded into the run root before the
+    /// harness starts (for example a `package.json` pinning Playwright). See
+    /// [`Manifest::workspace`].
+    #[serde(default)]
+    workspace: Option<PathBuf>,
+    /// Optional init command run once after the workspace is seeded and before the
+    /// harness starts. See [`Manifest::init`].
+    #[serde(default)]
+    init: Option<String>,
+    /// The Test Cabinet runtime libraries the produced build imports (see
+    /// [`Manifest::packages`]).
+    #[serde(default)]
+    packages: Vec<String>,
+    /// How the validator (and the per-run deploy) builds the produced game into a
+    /// served static site — the same fixed build interface a full-stack case uses
+    /// (the `[build]` table). **Required**: every jam ships a playable build.
+    build: ManifestBuild,
+    /// Optional reviewer categories, each graded on the five-level scale. A jam that
+    /// declares none gets the generic graded checklist
+    /// ([`default_game_jam_review_items`]). Declared as repeated `[[review_item]]`
+    /// tables.
+    #[serde(default, rename = "review_item")]
+    review_items: Vec<ManifestReviewItem>,
+}
+
+/// The internal difficulty carried by a resolved game jam. A jam declares no
+/// difficulty on disk (it is unclassified — see [`GameJamManifest`]); this
+/// placeholder only keeps the shared [`TestCaseVersion`] shape uniform. It is
+/// never surfaced — the jam UI shows no difficulty badge, and jams are excluded
+/// from the tiered test-case catalog.
+const GAME_JAM_DIFFICULTY: &str = "unrated";
+
+/// The slug of the single implicit variant every game jam runs.
+///
+/// A jam declares no variants, but the run pipeline always selects exactly one
+/// variant per run, so resolution synthesizes this one bare theme-selector variant
+/// (it seeds nothing of its own — the jam's whole brief is the prompt). It is never
+/// authored, so its slug is fixed here.
+const GAME_JAM_VARIANT_SLUG: &str = "default";
+
+impl GameJamManifest {
+    /// Lower a jam manifest onto the shared internal representation resolution
+    /// already understands: a [`Manifest`] whose type is [`TestType::GameJam`] with
+    /// every spec-driven table left empty, and the single implicit
+    /// [`ManifestVariant`] a jam runs. This lets a jam keep its own small on-disk
+    /// format while reusing the one resolution path (and all its validation) rather
+    /// than duplicating it.
+    fn into_case(self) -> (Manifest, ManifestVariant) {
+        let manifest = Manifest {
+            slug: self.slug,
+            name: self.name,
+            difficulty: GAME_JAM_DIFFICULTY.to_string(),
+            tags: self.tags,
+            summary: self.summary,
+            description: self.description,
+            changelog: self.changelog,
+            prompt: self.prompt,
+            max_runtime_hours: self.max_runtime_hours,
+            test_type: TestType::GameJam,
+            experimental: self.experimental,
+            workspace: self.workspace,
+            init: self.init,
+            packages: self.packages,
+            build: Some(self.build),
+            review_items: self.review_items,
+            ..Manifest::default()
+        };
+        let variant = ManifestVariant {
+            slug: GAME_JAM_VARIANT_SLUG.to_string(),
+            ..ManifestVariant::default()
+        };
+        (manifest, variant)
+    }
 }
 
 /// The `[build]` table in the manifest: the commands the validator runs to turn
@@ -340,7 +489,8 @@ struct ManifestSandbox {
 
 /// A `[[case]]` table of a performance case: one held-out input the engine is run
 /// against and the answer a correct engine must produce.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+// Not `Eq`: `fuel_runway` is an `f64`.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 struct ManifestCase {
     /// The input instance fed to the engine, relative to the version folder. The
     /// host hands its contents in through the contract `entry`.
@@ -350,6 +500,23 @@ struct ManifestCase {
     /// by `lattice solve`); the validator compares the engine's per-snapshot
     /// checksums to it.
     expected: PathBuf,
+    /// Optional **runway** multiplier on `[sandbox].fuel_limit` for this case: the
+    /// engine is allowed to burn `fuel_limit * fuel_runway` fuel before it traps,
+    /// while the pass/fail line stays `fuel_limit`. A value above `1.0` lets a
+    /// too-slow engine finish anyway, so the grader can record *how far* over the
+    /// ceiling it went and still offer playback, instead of trapping with no
+    /// reading. Must be `>= 1.0`; absent means `1.0` (no runway — trap at the
+    /// ceiling, the historical behavior). Scale it **down** for larger scenarios,
+    /// whose verification is costlier per unit of fuel.
+    #[serde(default)]
+    fuel_runway: Option<f64>,
+    /// Which phase of the scored set this case is: `"smoke"` (a cheap correctness
+    /// pre-flight that gates the stress cases and whose fuel is not scored) or
+    /// `"stress"` (a scored case whose fuel counts toward the total). Absent means
+    /// `"stress"` — the historical behavior, so every existing case stays a stress
+    /// case. See [`PerformanceCaseKind`](crate::validation::PerformanceCaseKind).
+    #[serde(default)]
+    kind: crate::validation::PerformanceCaseKind,
 }
 
 /// The `[simulation]` table of an adversarial case: the faked timestep and the
@@ -697,7 +864,11 @@ struct ManifestSpec {
 /// top-level tables are this struct's fields; every path it names is resolved
 /// relative to the **version folder**, not the variant file's location, so a
 /// variant references `specs/modes/gyre.md` exactly as the main manifest would.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+///
+/// `Default` is derived so resolution can synthesize the single bare theme-selector
+/// variant a game jam runs (a jam declares no variant files); see
+/// [`GameJamManifest::into_case`] and [`GAME_JAM_VARIANT_SLUG`].
+#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
 struct ManifestVariant {
     /// The stable slug naming this variant (recorded in run records).
     slug: String,
@@ -730,12 +901,21 @@ struct ManifestVariant {
     #[serde(default, rename = "proof")]
     proofs: Vec<ManifestProof>,
     /// Reviewer checklist items this variant declares in addition to the common
-    /// items. Declared as repeated `[[review_item]]` tables in the variant file.
-    /// A variant-specific item lets a mode-only requirement be checked only when
-    /// that variant runs; its id must not collide with a common item or another
-    /// of this variant's items.
+    /// items, in the **legacy** grammar. Declared as repeated `[[review_item]]`
+    /// tables in the variant file. A variant-specific item lets a mode-only
+    /// requirement be checked only when that variant runs; its id must not collide
+    /// with a common item or another of this variant's items. Only for a
+    /// legacy-grammar case (mutually exclusive with the case's [categories
+    /// grammar](Manifest::review)).
     #[serde(default, rename = "review_item")]
     review_items: Vec<ManifestReviewItem>,
+    /// Extra review **categories** this variant declares, in the categories
+    /// grammar — the per-variant analogue of [`Self::review_items`] for a
+    /// `[review] format = 2` case. Declared as `[[review.categories]]` tables in
+    /// the variant file (the `format` is inherited from the case manifest, not
+    /// repeated). `None` for a legacy-grammar case. See [`ManifestReview`].
+    #[serde(default)]
+    review: Option<ManifestReview>,
     /// Scoring domains this variant declares in addition to the case's common
     /// [`Manifest::domains`]. Declared as repeated `[[domain]]` tables in the
     /// variant file. A variant-specific domain lets a mode that introduces a whole
@@ -822,6 +1002,29 @@ struct ManifestCheck {
     actions: Vec<CheckAction>,
 }
 
+/// The `[instrumentation]` table: how a case's builds expose their debug API.
+///
+/// A case that mandates [instrumentation](https://…/testing/end-to-end/instrumentation/)
+/// requires every build to install a debug-and-automation object on a
+/// case-specific `window` global. This table names that global once for the whole
+/// case, so a review item's `validation` script (and the validator that runs it)
+/// knows which handle to drive. The seeded specification documents the same handle
+/// independently as an ordinary game debug feature; this manifest entry is
+/// reporter-side and never seeded. See [`Instrumentation`] for the resolved form.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct ManifestInstrumentation {
+    /// The `window` property name the debug API is installed on, **without** the
+    /// `window.` prefix — for example `__carom` for `window.__carom`. Must be a
+    /// non-empty, plain identifier.
+    handle: String,
+    /// The case's fixed simulation rate in whole ticks per second (for example
+    /// `120`), when the case mandates one. Optional: omitted by a case whose build
+    /// is clocked in real time rather than on a fixed step. See
+    /// [`Instrumentation::tick_hz`] for why the validator needs it.
+    #[serde(default)]
+    tick_hz: Option<u32>,
+}
+
 /// A single `[[review_item]]` entry in the manifest (or a variant's
 /// `review_item` array): one item a reviewer must explicitly check.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -868,6 +1071,47 @@ struct ManifestReviewItem {
     /// tables).
     #[serde(default, rename = "sub_item", alias = "sub_items")]
     sub_items: Vec<ManifestSubReviewItem>,
+    /// Optional automated-validation driver for this item: a debug script that
+    /// decides the item's verdict(s) and synthesizes its proof media. Declared
+    /// inline as `validation = { script = "…", outputs = [ … ] }`. When present,
+    /// the case must declare an [`instrumentation`](Manifest::instrumentation)
+    /// handle. Reporter-side and never seeded. `None` for a human-judged item.
+    #[serde(default)]
+    validation: Option<ManifestReviewValidation>,
+}
+
+/// The `validation` sub-table of a `[[review_item]]`: the reporter-side automation
+/// that decides this item without a human, by driving the build's debug API.
+///
+/// Declared inline as `validation = { script = "…", outputs = [ … ] }`. The script
+/// is a reporter-side driver (never seeded) that drives the case's
+/// [instrumentation](Manifest::instrumentation) handle to set up a scenario, step
+/// the real simulation, and read the outcome back — deciding a pass/fail for each of
+/// the item's verdict ids and producing the declared media outputs. See
+/// [`ReviewValidation`] for the resolved form.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct ManifestReviewValidation {
+    /// The debug-driver script path, relative to the version folder (by convention
+    /// `validation/<item>.mjs`). Reporter-side — never seeded into a run.
+    script: PathBuf,
+    /// The media outputs the script produces, each captured from both the model's
+    /// build and the reference implementation for the reviewer's side-by-side.
+    /// Declared as an inline array of `{ id, name, kind }` tables.
+    #[serde(default, rename = "output", alias = "outputs")]
+    outputs: Vec<ManifestReviewOutput>,
+}
+
+/// A single media output of a `[[review_item]]`'s `validation` script.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct ManifestReviewOutput {
+    /// Stable slug identifying this output within its script — the media file's stem.
+    id: String,
+    /// Human-readable display name. Defaults to a humanized form of `id`.
+    name: Option<String>,
+    /// Whether this output is an `image` (a still the script screenshots) or a
+    /// `video` (a clip recorded across the script's drive). A script may declare at
+    /// most one `video` output.
+    kind: MediaKind,
 }
 
 /// A single name-only sub-item of a `[[review_item]]`: an independently graded
@@ -884,6 +1128,100 @@ struct ManifestSubReviewItem {
     /// The short heading shown for this sub-item in the reviewer UI (a
     /// synthesized letter is prefixed at display time).
     title: String,
+    /// Optional automated-validation driver for this sub-item: a debug script that
+    /// decides the sub-item's verdict and synthesizes its proof media. Declared
+    /// inline as part of the sub-item table (`{ id, title, validation = { … } }`).
+    /// When present, the case must declare an [`instrumentation`](Manifest::instrumentation)
+    /// handle. Reporter-side and never seeded. `None` for a human-judged sub-item.
+    /// A sub-item carries its own validation because a run is verdicted per
+    /// sub-item, so each point gets its own script and its own proof media.
+    #[serde(default)]
+    validation: Option<ManifestReviewValidation>,
+}
+
+/// The `[review]` table: the opt-in **categories** review grammar
+/// (`format = 2`), an alternative to the legacy top-level `[[review_item]]`
+/// arrays. A manifest uses exactly one grammar — declaring both a `[review]`
+/// table and any `[[review_item]]` is rejected at resolution.
+///
+/// Under this grammar the top-level entries are bare [categories](ManifestReviewCategory)
+/// (a name grouping points, with no prose, weight, or automation of their own),
+/// and each graded point is a [review item](ManifestReviewCategoryItem) under a
+/// category. Categories and their items resolve onto the same
+/// [`ReviewItem`]/[`SubReviewItem`] pair the legacy grammar produces (a category
+/// is a [`ReviewItem`] whose [`SubReviewItem`]s are its review items), so nothing
+/// downstream of resolution needs to know which grammar authored a case.
+///
+/// The `format` is declared once, in the **case** manifest; a variant file
+/// contributes only `[[review.categories]]` and inherits the case's format.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ManifestReview {
+    /// The grammar version. Required and must be `2` in the case manifest (the
+    /// only categories version); omitted in a variant file, which inherits the
+    /// case's declared format.
+    #[serde(default)]
+    format: Option<u32>,
+    /// The review categories, in display order. Declared as repeated
+    /// `[[review.categories]]` tables.
+    #[serde(default, rename = "categories")]
+    categories: Vec<ManifestReviewCategory>,
+}
+
+/// A single `[[review.categories]]` entry: a bare category grouping the points a
+/// reviewer grades. A category carries **only** an id and a title — no prose,
+/// weight, validation, reference, or proof of its own (those live on its
+/// [items](ManifestReviewCategoryItem)); `deny_unknown_fields` rejects any of
+/// them. Its resolved weight is the sum of its items' weights.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ManifestReviewCategory {
+    /// Stable slug identifying this category. Groups its items in the reviewer UI;
+    /// not itself a verdict id.
+    id: String,
+    /// A short heading shown for the category (the accordion group heading).
+    title: String,
+    /// The review items under this category — the graded points. At least one is
+    /// required. Declared as repeated `[[review.categories.items]]` tables.
+    #[serde(default, rename = "item", alias = "items")]
+    items: Vec<ManifestReviewCategoryItem>,
+}
+
+/// A single `[[review.categories.items]]` entry: one graded review item under a
+/// category (the categories-grammar analogue of a legacy `[[review_item]]`, but
+/// nested and worth its own weight). Resolves to a [`SubReviewItem`], keyed for
+/// verdicts by the composite `<category id>.<item id>`.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ManifestReviewCategoryItem {
+    /// Stable slug identifying this item within its category; the sub-item half of
+    /// the composite verdict id (see [`ReviewItem::sub_item_verdict_id`]).
+    id: String,
+    /// A short heading shown for this item in the reviewer UI.
+    title: String,
+    /// Optional prose the reviewer reads — what to check. Unlike a legacy
+    /// name-only sub-item, a categories review item states its own requirement
+    /// (the category carries none).
+    #[serde(default)]
+    description: Option<String>,
+    /// How many points this item is worth. Optional; defaults to `1`. Must be
+    /// greater than zero. The category's weight is the sum of its items'.
+    #[serde(default)]
+    weight: Option<u32>,
+    /// Optional reference view shown to the reviewer as the **expected** target for
+    /// this item. Must name a reference that resolves for the item's variant.
+    #[serde(default)]
+    reference: Option<String>,
+    /// Optional proof id whose **submitted** media is shown for this item. Must
+    /// name a proof that resolves for the item's variant.
+    #[serde(default)]
+    proof: Option<String>,
+    /// Optional automated-validation driver for this item (see
+    /// [`ManifestReviewValidation`]). Declared inline as
+    /// `validation = { script = "…", outputs = [ … ] }`. A given script path may
+    /// drive at most one item across the whole checklist.
+    #[serde(default)]
+    validation: Option<ManifestReviewValidation>,
 }
 
 /// A single `[[domain]]` entry in the manifest: one scoring domain a reviewer
@@ -900,8 +1238,125 @@ struct ManifestDomain {
     description: String,
 }
 
-/// The manifest file name expected in every version folder.
+/// The optional `errata.toml` file a version folder may carry alongside its
+/// `test-case.toml`: a post-hoc log of known issues **with a shipped version**
+/// that have not yet been addressed.
+///
+/// Errata exist so a known problem can be **acknowledged without cutting a new
+/// version**. A scoring-affecting fix would otherwise force a minor bump, and a
+/// bump changes the `(slug, version)` key every published run is grouped by (see
+/// [`crate::run_record::RunSubject`]) — evicting all the existing runs from that
+/// version's metrics. Recording the issue as an erratum instead keeps the version
+/// (and its runs) intact while stating plainly "this is known and will be fixed".
+///
+/// The file is a plain array of [`ManifestErratum`] entries authored as repeated
+/// `[[erratum]]` tables. It is separate from `test-case.toml` on purpose: errata
+/// are appended to an *already reviewed* version, so keeping them out of the
+/// manifest leaves the reviewed definition untouched and makes the errata an
+/// obviously additive, append-only artifact. Like the changelog it is site-facing
+/// only and **never seeded** into a run.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ErrataFile {
+    /// The known-issue entries, in declared order. Declared as repeated
+    /// `[[erratum]]` tables.
+    #[serde(default, rename = "erratum", alias = "errata")]
+    errata: Vec<ManifestErratum>,
+}
+
+/// A single `[[erratum]]` entry in a version's [`errata.toml`](ErrataFile): one
+/// known issue with the shipped version.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ManifestErratum {
+    /// Stable slug identifying this erratum within the version. Must be non-empty
+    /// and unique across the file.
+    id: String,
+    /// A short one-line heading for the issue.
+    title: String,
+    /// Optional ISO date (`YYYY-MM-DD`) the issue was recorded, surfaced on the
+    /// site. Free-form text; `None` when omitted.
+    #[serde(default)]
+    date: Option<String>,
+    /// How serious the issue is. Defaults to [`ErratumSeverity::Minor`].
+    #[serde(default)]
+    severity: ErratumSeverity,
+    /// Whether this issue can affect a run's score — the flag that signals the
+    /// eventual fix would otherwise warrant a version bump, and that reviewers
+    /// should weigh it when scoring existing runs. Defaults to `false`.
+    #[serde(default)]
+    affects_scoring: bool,
+    /// Whether this erratum **removes its linked review point from scoring** for the
+    /// version. The point keeps being checked and shown, but stops contributing to any
+    /// run's score — and, when the point is auto-validated, a failed drive of it no
+    /// longer gates the run. Requires [`Self::review`] to name the point to exclude
+    /// (an erratum with no linked point has nothing to remove). Use this to neutralize
+    /// a review point found to be mis-scoring runs — a buggy automated check, or a
+    /// requirement that proved ambiguous — without cutting a new version, which would
+    /// change the `(slug, version)` key and evict the version's existing runs from its
+    /// metrics. Defaults to `false`.
+    #[serde(default)]
+    exclude_from_score: bool,
+    /// The issue description, authored as Markdown (a TOML multiline `"""…"""`
+    /// string). Must be non-empty.
+    body: String,
+    /// Optional version this erratum is (or will be) addressed in — for example
+    /// `v1.1.0`. Set once a later version fixes it so the entry can be shown as
+    /// resolved without being deleted. Not required to already exist (the fix may
+    /// be planned). `None` while the issue is outstanding with no fix version yet.
+    #[serde(default)]
+    resolved_in: Option<String>,
+    /// Optional variant slug this erratum is scoped to. Must name a declared
+    /// variant. `None` (the default) means it applies to every variant.
+    #[serde(default)]
+    variant: Option<String>,
+    /// Optional review verdict id this erratum concerns — a review item id or a
+    /// composite `<item id>.<sub-item id>` — so it can be surfaced next to the
+    /// affected checklist point when a run is scored. Must name a review verdict id
+    /// that exists in the case's (common or variant) checklist. `None` when the
+    /// issue is not tied to a specific scored point.
+    #[serde(default)]
+    review: Option<String>,
+}
+
+/// The manifest file name expected in every test-case version folder.
 const MANIFEST_FILE: &str = "test-case.toml";
+
+/// The optional errata file name a version folder may carry alongside its
+/// [`MANIFEST_FILE`]. See [`ErrataFile`].
+const ERRATA_FILE: &str = "errata.toml";
+
+/// The manifest file name expected in every game-jam version folder. A jam is not
+/// a test case and is authored through its own [`GameJamManifest`] format, so it
+/// ships a `game-jam.toml` rather than a `test-case.toml` — the filename itself
+/// signals it is not the shared test-case manifest.
+const GAME_JAM_MANIFEST_FILE: &str = "game-jam.toml";
+
+/// The top-level directory holding [game-jam](TestType::GameJam) cases — a sibling
+/// of `test-cases/`, laid out `game-jams/<slug>/<version>/`. Discovery folds it
+/// into the same catalog (see [`TestCaseCatalog::case_folders`]).
+const GAME_JAMS_DIR: &str = "game-jams";
+
+/// Whether a catalog `folder` (relative to the `test-cases/` root) is a game jam.
+///
+/// Discovery expresses a jam's folder relative to the catalog root as
+/// `../game-jams/<slug>` (see [`TestCaseCatalog::case_folders`]); no spec-driven
+/// case folder starts with `../`, so the prefix is an unambiguous marker. This is
+/// what routes a jam to its own [`GameJamManifest`] parser and `game-jam.toml`
+/// filename, both during the catalog slug scan and full resolution.
+fn is_game_jam_folder(folder: &str) -> bool {
+    folder.starts_with(&format!("../{GAME_JAMS_DIR}/"))
+}
+
+/// The manifest filename to read for a catalog `folder`: `game-jam.toml` for a jam,
+/// `test-case.toml` otherwise.
+fn manifest_file_for(folder: &str) -> &'static str {
+    if is_game_jam_folder(folder) {
+        GAME_JAM_MANIFEST_FILE
+    } else {
+        MANIFEST_FILE
+    }
+}
 
 /// The host **package store** the shippable Test Cabinet packages are baked into
 /// on the driver image (which seeds runs — see `containers/README.md`). At seed
@@ -914,7 +1369,7 @@ pub const TCAB_PACKAGES_DIR: &str = "/opt/tcab-packages";
 /// The in-repository directory a `packages`-declaring case's runtime libraries are
 /// vendored into at seed time (relative to the run root). The case's workspace
 /// `package.json` depends on each via an in-repo relative `file:` path pointing
-/// here (see [`tcab_package_file_dep`]), so the dependency resolves identically
+/// here (see `tcab_package_file_dep`), so the dependency resolves identically
 /// wherever the tree lives — the run container, the validation host, and any clone
 /// of the published repository — with no absolute path to break when it moves.
 pub const TCAB_VENDOR_DIR: &str = ".tcab/packages";
@@ -1036,6 +1491,16 @@ fn read_package_dependencies(
 /// run's canvas configuration to. The drawing binary reads it from here by
 /// default, so a model's drawing operations need no canvas flags.
 pub const ASSET_CONFIG_DEST: &str = "draw.config.json";
+
+/// The run-workspace-relative path the orchestrator seeds an asset-generation
+/// run's layer document to.
+///
+/// Unlike the action log(s) this is **not** per-frame: a layer is sheet-wide,
+/// painted once and placed on every frame by its own keyframes, which is what lets
+/// one shape move across a sprite sheet without being redrawn. It is seeded empty,
+/// so a run that never registers a layer behaves exactly as it did before layers
+/// existed.
+pub const ASSET_LAYERS_DEST: &str = "layers.json";
 
 /// The run-workspace-relative path the orchestrator seeds a static voxel
 /// (`asset_kind = "voxel-model"`) run's volume configuration to. The `voxel`
@@ -1225,6 +1690,15 @@ pub enum TestType {
     /// running the built program — but selects the full-stack image instead of the
     /// bare base image. See `docs/testing/full-stack/`.
     FullStack,
+    /// Build an **entire game of any genre from a theme alone** — no spec, no
+    /// reference mockups — that must be *playable* and *enjoyable*. Like
+    /// [`Self::FullStack`] the model also **produces its own assets** during the
+    /// run (it selects the same full-stack run image), releases a source repo, has
+    /// a `[build]` table, and may declare `packages`; unlike it, a game jam seeds
+    /// no `[[spec]]`/`[[reference]]` and is reviewed on a **graded** scale over
+    /// general categories (see [`crate::review::VerdictStatus::GRADES`]) rather
+    /// than pass/fail against a spec. See `docs/testing/game-jam/`.
+    GameJam,
     /// Produce a graphical asset by driving a drawing tool one operation at a
     /// time; the recorded operations are the authoritative output.
     AssetGeneration,
@@ -1248,6 +1722,7 @@ impl TestType {
         match self {
             Self::EndToEnd => "end-to-end",
             Self::FullStack => "full-stack",
+            Self::GameJam => "game-jam",
             Self::AssetGeneration => "asset-generation",
             Self::Adversarial => "adversarial",
             Self::Performance => "performance",
@@ -1893,6 +2368,17 @@ pub struct PerformanceCase {
     pub input: PathBuf,
     /// Host path to the correct answer the engine's output is checked against.
     pub expected: PathBuf,
+    /// The **run ceiling** for this case: the fuel the engine may burn before it
+    /// traps, resolved as `round([sandbox].fuel_limit * fuel_runway)`. Equal to
+    /// `fuel_limit` when the case declares no runway. The pass/fail line remains
+    /// `[sandbox].fuel_limit`; the gap between the two is the runway that lets a
+    /// too-slow-but-correct engine finish so the grader can record its overshoot.
+    pub fuel_ceiling: u64,
+    /// Which phase this case belongs to — a correctness pre-flight
+    /// [smoke](crate::validation::PerformanceCaseKind::Smoke) test or a scored
+    /// [stress](crate::validation::PerformanceCaseKind::Stress) case. Smoke cases run
+    /// first and gate the stress cases; see the performance validator.
+    pub kind: crate::validation::PerformanceCaseKind,
 }
 
 /// The resolved `[simulation]` of an adversarial case: the faked timestep and
@@ -2499,6 +2985,72 @@ pub struct Check {
     pub actions: Vec<CheckAction>,
 }
 
+/// A case's resolved debug-API contract: the `window` handle every build installs
+/// its automation surface on (see `ManifestInstrumentation`).
+///
+/// Reporter-side and host-only: it is populated at resolution and drives the
+/// validator's [debug-script stage](crate::validation::DebugScriptResult); it is
+/// never serialized (so it never reaches a UI or a stored catalog) and never
+/// seeded into a run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Instrumentation {
+    /// The `window` property name the debug API is installed on, without the
+    /// `window.` prefix (for example `__carom`).
+    pub handle: String,
+    /// The case's **fixed simulation rate** in ticks per second (for example `120`
+    /// for carom), passed to the script driver as `--tick-hz`.
+    ///
+    /// A case on a manual clock is stepped an exact number of ticks by a validation
+    /// script, but the things the script must then observe — a recorded clip, a CSS
+    /// transition, a timed banner — happen in *real* time. The rate is the
+    /// conversion factor between the two, so knowing it is what lets the validation
+    /// runtime turn "step 240 ticks" into "two seconds of simulated time" and wait
+    /// or seek accordingly. Without it the runtime can only step blindly and guess
+    /// at durations, which is exactly the flakiness the manual clock exists to
+    /// remove.
+    ///
+    /// Integer Hz, not a float: a fixed-timestep simulation ticks a whole number of
+    /// times per second (60, 120), so a fractional rate models the domain wrong —
+    /// and it would cost every type transitively holding this one its `Eq` for
+    /// nothing. Converting a tick count to a wall-clock duration is the only thing
+    /// the validation runtime needs the rate for, and integer Hz does that exactly.
+    ///
+    /// `None` for a case whose build is clocked in real time (no fixed step), where
+    /// there is no such conversion to make and the driver falls back to its own
+    /// timing.
+    pub tick_hz: Option<u32>,
+}
+
+/// A resolved automated-validation driver for a [`ReviewItem`] (see
+/// `ManifestReviewValidation`).
+///
+/// Host-only and reporter-side: [`script`](Self::script) is an absolute host path
+/// the validator runs, never serialized and never seeded. The declared
+/// [`outputs`](Self::outputs) become the run's synthesized proof media, captured
+/// once from the model's build and once from the reference implementation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReviewValidation {
+    /// Absolute host path to the debug-driver script (resolved inside the version
+    /// folder from the manifest's relative `script`).
+    pub script: PathBuf,
+    /// The version-folder-relative script path, kept for display in the run's
+    /// script list (for example `validation/ball-spin.mjs`).
+    pub script_rel: String,
+    /// The media outputs the script produces, in declared order.
+    pub outputs: Vec<ReviewOutput>,
+}
+
+/// A resolved media output of a [`ReviewValidation`] script.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReviewOutput {
+    /// Stable slug identifying this output within its script — the media file stem.
+    pub id: String,
+    /// Human-readable display name (defaulted to a humanized `id` when unspecified).
+    pub name: String,
+    /// Whether this output is an image or a video clip.
+    pub kind: MediaKind,
+}
+
 /// A reviewer checklist item a test case declares.
 ///
 /// Reviewer checklist items are **not seeded** into a run; they are reporter-side
@@ -2541,12 +3093,22 @@ pub struct ReviewItem {
     #[serde(default)]
     pub frames: Vec<u32>,
     /// How many points this item is worth toward the run's score. Always greater
-    /// than zero. When the item has no [`Self::sub_items`], a run earns this whole
-    /// weight when the reviewer marks it `pass` and none when they mark it `fail`.
-    /// When it has sub-items, the weight is split evenly across them and the item
-    /// earns the fraction of it that passed. Either way, the run's score is the
-    /// earned weight over the total declared weight (see [`crate::review::score`]).
+    /// than zero. When [`Self::graded`] is false (the common case) and the item has
+    /// no [`Self::sub_items`], a run earns this whole weight when the reviewer marks
+    /// it `pass` and none when they mark it `fail`; with sub-items the weight is
+    /// split evenly across them and the item earns the fraction that passed. When
+    /// `graded` is true the item is a [game jam](TestType::GameJam) category worth
+    /// `weight × 10` points, earning the graded tier's points times its weight (see
+    /// [`crate::review::score`]).
     pub weight: u32,
+    /// Whether this item is graded on the five-level scale
+    /// ([`crate::review::VerdictStatus::GRADES`], 0/1/3/5/10 points) rather than
+    /// pass/fail. True only for a [game jam](TestType::GameJam)'s review categories;
+    /// false for every other test type. Set at resolution from the case's test
+    /// type, not declared per item. Mirrored by the reviewer UI, which renders the
+    /// graded control for a graded item and pass/fail otherwise.
+    #[serde(default)]
+    pub graded: bool,
     /// The scoring [`Domain`] this item belongs to (by id), or `None` for a
     /// general item that belongs to no single domain. Used to group the score
     /// breakdown by domain in the reviewer and verdict UIs.
@@ -2558,6 +3120,28 @@ pub struct ReviewItem {
     /// verdict is keyed by the composite [`Self::sub_item_verdict_id`].
     #[serde(default)]
     pub sub_items: Vec<SubReviewItem>,
+    /// Whether this item contributes to the run's score. `true` for every declared
+    /// item; set `false` only on the **effective per-variant** checklist (see
+    /// [`TestCaseVersion::review_items_for`]) when an [`Erratum`] with
+    /// [`Erratum::exclude_from_score`] links this item's verdict id — the item is still
+    /// checked, driven, and shown, but [scoring](crate::review::score_checklist) skips
+    /// it and its auto-validation no longer gates. Defaults to `true` so a declared or
+    /// round-tripped item is scored unless explicitly excluded. When an item declares
+    /// [`Self::sub_items`], exclusion of an individual point is recorded on that
+    /// sub-item (see [`SubReviewItem::scored`]); this whole-item flag is cleared only
+    /// when the item is scored as a whole, or when a whole category is excluded (which
+    /// also clears every sub-item). Mirrored by the TypeScript `ReviewItem` in
+    /// `packages/ui/src/ratings.ts`.
+    #[serde(default = "default_true")]
+    pub scored: bool,
+    /// The resolved automated-validation driver for this item, or `None` for a
+    /// human-judged item. Host-only and **not serialized** (`#[serde(skip)]`): it
+    /// carries an absolute host script path and is consumed by the validator, so it
+    /// must never reach a UI, a stored catalog, or a seeded run. Populated at
+    /// resolution; a round-tripped [`ReviewItem`] deserializes it as `None`, which
+    /// is correct — auto-validation only runs from a freshly resolved manifest.
+    #[serde(skip)]
+    pub validation: Option<ReviewValidation>,
 }
 
 impl ReviewItem {
@@ -2589,9 +3173,147 @@ impl ReviewItem {
     }
 }
 
-/// A name-only sub-item of a [`ReviewItem`]: one independently graded point
-/// within the item, carrying only an id and a title. See
-/// [`ManifestSubReviewItem`] for the manifest shape and the semantics.
+/// Combine a case's common review items with a variant's own into the effective
+/// list a run of that variant is reviewed and scored against, merging by id: a
+/// variant item whose id matches a common item folds its `sub_items` into that
+/// common item (and adds its weight) rather than appending a second same-id group,
+/// so a variant can extend a common **category** (in the `[review] format = 2`
+/// grammar a category resolves to a [`ReviewItem`] and its items to `sub_items`).
+/// A variant item with an id no common item uses is appended whole, preserving the
+/// "common first, then the variant's own" order. Because resolution forbids two
+/// items resolving to the same *verdict* id across common and variant, a merge only
+/// ever unions disjoint sub-items under a shared category id — it never collides two
+/// points. Mirrored by `mergeReviewItems` in `packages/ui/src/app/data/ratings.ts`
+/// and the snapshot assembler in `apps/site/vite-plugin-snapshot.ts`.
+pub fn merge_review_items(common: &[ReviewItem], variant: &[ReviewItem]) -> Vec<ReviewItem> {
+    let mut merged: Vec<ReviewItem> = common.to_vec();
+    for item in variant {
+        if let Some(existing) = merged.iter_mut().find(|c| c.id == item.id) {
+            existing.sub_items.extend(item.sub_items.iter().cloned());
+            existing.weight += item.weight;
+        } else {
+            merged.push(item.clone());
+        }
+    }
+    merged
+}
+
+/// Clear the [`ReviewItem::scored`] / [`SubReviewItem::scored`] flag of every point
+/// named in `excluded` on an effective checklist (the output of
+/// [`merge_review_items`]), marking it non-scoring for the run.
+///
+/// An id that names a whole item clears that item — and, if the item is a category,
+/// every one of its sub-items, since excluding the category as a whole excludes all
+/// its points. An id of the composite `<item>.<sub>` form clears only that sub-item,
+/// leaving the rest of the category scored. Ids in `excluded` that match no point are
+/// ignored (an erratum may name a point a later checklist edit removed). A non-scoring
+/// point is still checked, driven, and shown; it is [scoring](crate::review::score_checklist)
+/// and the auto-validation verdicts (see [`crate::validation::DebugScriptResult`])
+/// that skip it. Mirrored by `applyScoreExclusions` in `packages/ui/src/ratings.ts`.
+pub fn apply_score_exclusions(items: &mut [ReviewItem], excluded: &HashSet<String>) {
+    if excluded.is_empty() {
+        return;
+    }
+    for item in items.iter_mut() {
+        if excluded.contains(&item.id) {
+            item.scored = false;
+            for sub in &mut item.sub_items {
+                sub.scored = false;
+            }
+        }
+        for sub in &mut item.sub_items {
+            if excluded.contains(&ReviewItem::sub_item_verdict_id(&item.id, &sub.id)) {
+                sub.scored = false;
+            }
+        }
+    }
+}
+
+/// The generic graded review checklist a [game jam](TestType::GameJam) uses when
+/// it declares no `[[review_item]]` categories of its own — the "provide a generic
+/// review checklist" default. Each is a category graded on the five-level scale
+/// (see [`crate::review::VerdictStatus::GRADES`]), worth `weight × 10` points; a
+/// jam may instead author its own categories to weight or specialize them. The
+/// reviewer additionally supplies a whole-game overall grade (the reserved
+/// [`crate::review::OVERALL_VERDICT_ID`] mark), which is not a category here.
+pub fn default_game_jam_review_items() -> Vec<ReviewItem> {
+    const DEFAULTS: &[(&str, &str, &str)] = &[
+        (
+            "playable",
+            "Playability",
+            "The game loads and is playable from start to finish without breaking — controls \
+             respond and the core loop works.",
+        ),
+        (
+            "fun",
+            "Fun",
+            "The game is genuinely enjoyable to play: the core mechanic is satisfying and there \
+             is a reason to keep playing rather than a tech demo that merely runs.",
+        ),
+        (
+            "theme",
+            "Theme",
+            "The game interprets the jam's theme in a clear, deliberate way that shapes the \
+             design, rather than wearing it as a thin coat of paint.",
+        ),
+        (
+            "presentation",
+            "Presentation",
+            "The visuals, layout, and interface (UI/UX) are cohesive and readable, built from \
+             assets the model produced rather than placeholder rectangles.",
+        ),
+        (
+            "audio",
+            "Audio",
+            "Sound effects and music are present, produced during the run, and add to the \
+             experience rather than silence or a downloaded stand-in.",
+        ),
+        (
+            "polish",
+            "Polish",
+            "The game feels complete and considered: menus and game states are reachable, \
+             feedback is clear, and there are few rough edges or obvious bugs.",
+        ),
+        (
+            "creativity",
+            "Creativity",
+            "The game shows originality in its concept, mechanics, or presentation rather than a \
+             rote clone of a well-worn template.",
+        ),
+    ];
+    DEFAULTS
+        .iter()
+        .map(|(id, title, text)| ReviewItem {
+            id: (*id).to_string(),
+            title: (*title).to_string(),
+            text: (*text).to_string(),
+            reference: None,
+            proof: None,
+            sequences: Vec::new(),
+            frames: Vec::new(),
+            weight: 1,
+            graded: true,
+            domain: None,
+            sub_items: Vec::new(),
+            scored: true,
+            validation: None,
+        })
+        .collect()
+}
+
+/// serde default for a sub-item's [`weight`](SubReviewItem::weight): one point.
+fn one() -> u32 {
+    1
+}
+
+/// A sub-item of a [`ReviewItem`]: one independently graded point within the
+/// item. In the legacy `[[review_item]]` grammar a sub-item is name-only (id +
+/// title); in the `[review] format = 2` **categories** grammar this is the
+/// scored leaf — a *review item* under a category — and it additionally carries
+/// its own [`description`](Self::description), [`weight`](Self::weight), and
+/// paired [`reference`](Self::reference)/[`proof`](Self::proof). See
+/// `ManifestSubReviewItem` and `ManifestReviewCategoryItem` for the two
+/// manifest shapes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SubReviewItem {
@@ -2600,6 +3322,44 @@ pub struct SubReviewItem {
     pub id: String,
     /// The short heading shown for this sub-item in the reviewer UI.
     pub title: String,
+    /// Optional prose the reviewer reads for this point — what to check. `None`
+    /// for a legacy name-only sub-item (whose parent item's `text` is the shared
+    /// context); set in the categories grammar, where the category carries no
+    /// prose and each review item states its own requirement.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// How many points this sub-item is worth toward the run's score. Always
+    /// greater than zero; defaults to `1`. A category's weight is the sum of its
+    /// items' weights (see [`crate::review::score_checklist`]).
+    #[serde(default = "one")]
+    pub weight: u32,
+    /// Optional reference view shown to the reviewer as the **expected** target
+    /// for this point. `None` when unpaired. In the categories grammar the paired
+    /// reference/proof live on the review item rather than the category.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference: Option<String>,
+    /// Optional proof id whose **submitted** media is shown to the reviewer for
+    /// this point. `None` when unpaired.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proof: Option<String>,
+    /// Whether this sub-item contributes to the run's score. Like [`ReviewItem::scored`]
+    /// it is `true` for every declared sub-item and set `false` only on the effective
+    /// per-variant checklist when an [`Erratum`] with [`Erratum::exclude_from_score`]
+    /// links this sub-item's composite verdict id (or excludes the whole category) —
+    /// the point is still checked, driven, and shown, but scoring skips it and its
+    /// auto-validation no longer gates. Defaults to `true`.
+    #[serde(default = "default_true")]
+    pub scored: bool,
+    /// The resolved automated-validation driver for this sub-item, or `None` for a
+    /// human-judged sub-item. Host-only and **not serialized** (`#[serde(skip)]`),
+    /// exactly like [`ReviewItem::validation`]: it carries an absolute host script
+    /// path consumed by the validator and must never reach a UI, a stored catalog,
+    /// or a seeded run. Populated at resolution; a round-tripped [`SubReviewItem`]
+    /// deserializes it as `None`, which is correct — auto-validation only runs from
+    /// a freshly resolved manifest. Only ever `Some` within an item that declares
+    /// sub-items, since item-level validation is forbidden once sub-items exist.
+    #[serde(skip)]
+    pub validation: Option<ReviewValidation>,
 }
 
 /// A scoring domain a test case declares.
@@ -2620,6 +3380,62 @@ pub struct Domain {
     /// A brief description of what the domain covers, shown to the reviewer so
     /// they know what they are rating.
     pub description: String,
+}
+
+/// How serious a known-issue [`Erratum`] is, surfaced as a badge on the site.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum ErratumSeverity {
+    /// A note or minor caveat that does not meaningfully affect a run.
+    Info,
+    /// A real but limited issue — the default.
+    #[default]
+    Minor,
+    /// A significant issue that materially affects the case or its scoring.
+    Major,
+}
+
+/// A resolved known-issue entry for a test case version (see `ErrataFile`).
+///
+/// Errata are **not seeded** into a run — they are site-facing material recording
+/// problems discovered *after* a version shipped, so a known issue can be
+/// acknowledged without cutting a new version (which would evict the version's
+/// existing runs from its metrics). Each is shown on the case's Errata tab and, for
+/// entries tied to a scored point ([`Self::review`]) or flagged
+/// [`Self::affects_scoring`], surfaced to reviewers scoring a run of the version.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Erratum {
+    /// Stable slug identifying this erratum within the version.
+    pub id: String,
+    /// A short one-line heading for the issue.
+    pub title: String,
+    /// Optional date (`YYYY-MM-DD`) the issue was recorded. `None` when omitted.
+    pub date: Option<String>,
+    /// How serious the issue is.
+    pub severity: ErratumSeverity,
+    /// Whether the issue can affect a run's score.
+    pub affects_scoring: bool,
+    /// Whether the linked review point is excluded from scoring for the version: the
+    /// point is still checked, driven, and shown, but no longer contributes to any
+    /// run's score and (when auto-validated) no longer gates it. Always paired with a
+    /// [`Self::review`] link naming the excluded point. See
+    /// [`TestCaseVersion::review_items_for`] and [`crate::review::score_checklist`].
+    /// Defaulted so a wire producer that predates the field deserializes as `false`.
+    #[serde(default)]
+    pub exclude_from_score: bool,
+    /// The issue description, as Markdown.
+    pub body: String,
+    /// The version the issue is (or will be) addressed in, if declared. `None`
+    /// while the issue is outstanding with no fix version recorded yet.
+    pub resolved_in: Option<String>,
+    /// The variant slug the issue is scoped to, or `None` when it applies to
+    /// every variant.
+    pub variant: Option<String>,
+    /// The review verdict id the issue concerns (a review item id or a composite
+    /// `<item id>.<sub-item id>`), or `None` when it is not tied to a scored point.
+    pub review: Option<String>,
 }
 
 // `Check` derives `Eq`, so its actions must too; the `Click` coordinates are the
@@ -2680,7 +3496,7 @@ pub struct TestCaseVersion {
     /// yet ready to have runs published for it. Carried verbatim from the
     /// manifest's `experimental` flag; defaults to `false`. Outward-facing backend
     /// surfaces hide experimental versions unless the deployment opts in (see
-    /// [`Manifest`]'s `experimental` documentation), so the flag acts purely as a
+    /// `Manifest`'s `experimental` documentation), so the flag acts purely as a
     /// visibility filter and has no effect on how a run executes.
     #[serde(default)]
     pub experimental: bool,
@@ -2691,6 +3507,14 @@ pub struct TestCaseVersion {
     /// serialized shape is unchanged apart from the new discriminator.
     #[serde(default)]
     pub build: Option<BuildCommands>,
+    /// The case's debug-API contract — the `window` handle every build installs its
+    /// automation surface on — when the case mandates
+    /// [instrumentation](Instrumentation). Host-only and **not serialized**
+    /// (`#[serde(skip)]`): populated at resolution and consumed by the validator's
+    /// debug-script stage, never surfaced to a UI or seeded into a run. `None` for a
+    /// case with no auto-validated review items.
+    #[serde(skip)]
+    pub instrumentation: Option<Instrumentation>,
     /// The canvas an asset-generation case's model draws on. `Some` only for
     /// asset-generation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -2811,6 +3635,14 @@ pub struct TestCaseVersion {
     /// type. Not seeded — the secret scored set the validator reads from the case.
     #[serde(default)]
     pub cases: Vec<PerformanceCase>,
+    /// Known-issue entries recorded for this version after it shipped (from the
+    /// optional `errata.toml`), in declared order. Empty when the
+    /// version has no errata. Not seeded — site-facing material shown on the case's
+    /// Errata tab and, where relevant, to reviewers scoring a run of the version.
+    /// The full set for a variant (case-wide entries plus that variant's own) is
+    /// [`Self::errata_for`].
+    #[serde(default)]
+    pub errata: Vec<Erratum>,
 }
 
 impl TestCaseVersion {
@@ -2885,14 +3717,33 @@ impl TestCaseVersion {
     }
 
     /// The full set of reviewer checklist items for a variant: the common items
-    /// followed by the variant's own additional items. These are what a reviewer
-    /// must work through for a run on this variant. Resolution forbids two items
-    /// sharing an `id`, so the order is stable and each id is unambiguous.
+    /// followed by the variant's own additional items, merged by id so a variant
+    /// that reuses a common **category**'s id contributes its review items to that
+    /// category rather than a duplicate group (see [`merge_review_items`]). A
+    /// variant category with a fresh id is appended whole. These are what a
+    /// reviewer works through for a run on this variant, and the id/verdict-id
+    /// space is unambiguous because resolution forbids two items resolving to the
+    /// same verdict id across common and variant.
     pub fn review_items_for(&self, variant: &Variant) -> Vec<ReviewItem> {
-        self.common_review_items
-            .iter()
-            .chain(variant.review_items.iter())
-            .cloned()
+        let mut items = merge_review_items(&self.common_review_items, &variant.review_items);
+        apply_score_exclusions(&mut items, &self.excluded_verdict_ids(variant));
+        items
+    }
+
+    /// The review verdict ids excluded from scoring for a run of `variant`: the
+    /// `review` link of every [`Erratum`] in scope (case-wide or scoped to this
+    /// variant, per [`Self::errata_for`]) that sets [`Erratum::exclude_from_score`].
+    /// Each id names a point (a review item id or a composite `<item>.<sub>`) that is
+    /// still checked, driven, and shown for the version but no longer contributes to
+    /// the score or gates the run (see [`Self::review_items_for`],
+    /// [`crate::review::score_checklist`], and
+    /// [`crate::validation::DebugScriptResult`]). Empty for a
+    /// variant with no scoring-excluding errata — the common case.
+    pub fn excluded_verdict_ids(&self, variant: &Variant) -> HashSet<String> {
+        self.errata_for(variant)
+            .into_iter()
+            .filter(|erratum| erratum.exclude_from_score)
+            .filter_map(|erratum| erratum.review)
             .collect()
     }
 
@@ -2905,6 +3756,21 @@ impl TestCaseVersion {
         self.domains
             .iter()
             .chain(variant.domains.iter())
+            .cloned()
+            .collect()
+    }
+
+    /// The known-issue errata that apply to a run of `variant`: every case-wide
+    /// erratum (those with no `variant` scope) plus the ones scoped to this
+    /// variant's slug, in declared order. Used to surface a version's outstanding
+    /// issues to a reviewer scoring a run on this variant.
+    pub fn errata_for(&self, variant: &Variant) -> Vec<Erratum> {
+        self.errata
+            .iter()
+            .filter(|erratum| match erratum.variant.as_deref() {
+                Some(scope) => scope == variant.slug,
+                None => true,
+            })
             .cloned()
             .collect()
     }
@@ -3009,17 +3875,20 @@ impl TestCaseCatalog {
     /// ignores every other field), validating its format. This is the case's
     /// identity; it may differ from `folder`.
     fn read_slug(&self, folder: &str, version: &str) -> Result<String> {
-        let path = self.root.join(folder).join(version).join(MANIFEST_FILE);
+        // A jam ships `game-jam.toml`, a test case `test-case.toml`; both declare a
+        // top-level `slug`, so the lightweight identity parse is the same either way.
+        let manifest_file = manifest_file_for(folder);
+        let path = self.root.join(folder).join(version).join(manifest_file);
         let raw = fs::read_to_string(&path).map_err(|err| Error::InvalidTestCase {
             slug: folder.to_string(),
             version: version.to_string(),
-            detail: format!("could not read {MANIFEST_FILE}: {err}"),
+            detail: format!("could not read {manifest_file}: {err}"),
         })?;
         let identity: ManifestIdentity =
             toml::from_str(&raw).map_err(|err| Error::InvalidTestCase {
                 slug: folder.to_string(),
                 version: version.to_string(),
-                detail: format!("invalid {MANIFEST_FILE}: {err}"),
+                detail: format!("invalid {manifest_file}: {err}"),
             })?;
         if !is_valid_slug(&identity.slug) {
             return Err(Error::InvalidTestCase {
@@ -3053,7 +3922,27 @@ impl TestCaseCatalog {
                 }
             }
         }
+        // Game jams live in their own top-level `game-jams/` folder — a sibling of
+        // the `test-cases/` root — laid out `game-jams/<slug>/<version>/` (no
+        // type/difficulty grouping, since a jam is themed, not tiered). Discovery
+        // folds them into the same catalog: their folder id is expressed relative to
+        // the catalog root (`../game-jams/<slug>`) so every other catalog method —
+        // which joins a folder onto `self.root` — reaches them unchanged. The folder
+        // is skipped when absent (e.g. a test fixture with only `test-cases/`).
+        if let Some(jam_root) = self.jam_root()
+            && jam_root.is_dir()
+        {
+            for slug_dir in read_dir_names(&jam_root)? {
+                folders.push(format!("../{GAME_JAMS_DIR}/{slug_dir}"));
+            }
+        }
         Ok(folders)
+    }
+
+    /// The sibling `game-jams/` directory (`../game-jams/` relative to the
+    /// `test-cases/` catalog root), or `None` when the root has no parent.
+    fn jam_root(&self) -> Option<PathBuf> {
+        self.root.parent().map(|parent| parent.join(GAME_JAMS_DIR))
     }
 
     /// Resolve a requested id — the case's slug, or (for operator convenience, e.g.
@@ -3088,7 +3977,8 @@ impl TestCaseCatalog {
 
     /// The stable slug identifying the case a requested id (slug or folder name)
     /// resolves to, at a specific version — the store key ingest uses. A lightweight
-    /// read that skips the full structural validation [`resolve`] performs.
+    /// read that skips the full structural validation [`resolve`](Self::resolve)
+    /// performs.
     pub fn slug_of(&self, id: &str, version: &str) -> Result<String> {
         let folder = self.folder_for(id)?;
         self.read_slug(&folder, version)
@@ -3108,7 +3998,20 @@ impl TestCaseCatalog {
             });
         }
 
-        let manifest = self.read_manifest(id, version, &root)?;
+        // A game jam is authored through its own smaller `GameJamManifest` format
+        // (no `difficulty`, no `variants`, none of the spec-driven tables), so a jam
+        // folder is parsed with that struct and *lowered* onto the shared internal
+        // [`Manifest`] the rest of resolution understands — plus the single implicit
+        // theme variant a jam runs, since it declares no variant files. A spec-driven
+        // case reads its `test-case.toml` as before.
+        let (manifest, jam_variant): (Manifest, Option<ManifestVariant>) =
+            if is_game_jam_folder(&folder) {
+                let (manifest, variant) =
+                    self.read_game_jam_manifest(id, version, &root)?.into_case();
+                (manifest, Some(variant))
+            } else {
+                (self.read_manifest(id, version, &root)?, None)
+            };
         // The manifest's `slug` is the case's identity; every downstream key (the
         // run record, the definition-store directory) uses it, not the folder name.
         let slug = manifest.slug.clone();
@@ -3167,7 +4070,7 @@ impl TestCaseCatalog {
         // `[build]` table on one is a mistake worth rejecting rather than ignoring.
         let test_type = manifest.test_type;
         let build = match test_type {
-            TestType::EndToEnd | TestType::FullStack => {
+            TestType::EndToEnd | TestType::FullStack | TestType::GameJam => {
                 let build = manifest
                     .build
                     .ok_or_else(|| invalid("the [build] table is required".to_string()))?;
@@ -3241,28 +4144,36 @@ impl TestCaseCatalog {
         // like the main manifest's. They are loaded up front so the resolved set is
         // available both to the per-type guards below (an asset-generation case,
         // for instance, forbids any variant reference) and to the variant loop.
-        if manifest.variants.is_empty() {
-            return Err(invalid(
-                "at least one variant must be listed in `variants`".to_string(),
-            ));
-        }
-        let mut variant_manifests: Vec<ManifestVariant> =
-            Vec::with_capacity(manifest.variants.len());
-        for rel in &manifest.variants {
-            let path = resolve_inside(rel, "variant")?;
-            if !path.is_file() {
-                return Err(invalid(format!(
-                    "variant `{}` does not exist",
-                    rel.display()
-                )));
+        let variant_manifests: Vec<ManifestVariant> = if let Some(variant) = jam_variant {
+            // A game jam declares no variant files; it runs the single implicit
+            // theme-selector variant synthesized when its manifest was lowered.
+            vec![variant]
+        } else {
+            if manifest.variants.is_empty() {
+                return Err(invalid(
+                    "at least one variant must be listed in `variants`".to_string(),
+                ));
             }
-            let raw = fs::read_to_string(&path).map_err(|err| {
-                invalid(format!("could not read variant `{}`: {err}", rel.display()))
-            })?;
-            let variant: ManifestVariant = toml::from_str(&raw)
-                .map_err(|err| invalid(format!("invalid variant `{}`: {err}", rel.display())))?;
-            variant_manifests.push(variant);
-        }
+            let mut variant_manifests: Vec<ManifestVariant> =
+                Vec::with_capacity(manifest.variants.len());
+            for rel in &manifest.variants {
+                let path = resolve_inside(rel, "variant")?;
+                if !path.is_file() {
+                    return Err(invalid(format!(
+                        "variant `{}` does not exist",
+                        rel.display()
+                    )));
+                }
+                let raw = fs::read_to_string(&path).map_err(|err| {
+                    invalid(format!("could not read variant `{}`: {err}", rel.display()))
+                })?;
+                let variant: ManifestVariant = toml::from_str(&raw).map_err(|err| {
+                    invalid(format!("invalid variant `{}`: {err}", rel.display()))
+                })?;
+                variant_manifests.push(variant);
+            }
+            variant_manifests
+        };
 
         // Resolve one scoring domain: a reviewer rates each independently and the
         // run's overall rating is the worst across them. The id keys a recorded
@@ -3291,10 +4202,49 @@ impl TestCaseCatalog {
             })
         };
 
-        // The common domains every variant is rated on. A case must declare at
-        // least one, so every variant's effective set (common ∪ its own) is
-        // non-empty; a variant may add more of its own in the loop below.
-        if manifest.domains.is_empty() {
+        // A game jam has no spec, no reference mockups, and no scoring domains: it
+        // hands the model only a theme and reviews the result on graded categories
+        // plus a whole-game overall grade (see [`crate::review`]). Declaring any of
+        // those tables is a mistake worth catching, so it is rejected here rather
+        // than silently ignored. The per-variant equivalents are rejected in the
+        // variant loop below.
+        if test_type == TestType::GameJam {
+            if !manifest.specs.is_empty() {
+                return Err(invalid(
+                    "a game-jam case seeds no [[spec]] — it provides only a theme, not a \
+                     specification"
+                        .to_string(),
+                ));
+            }
+            if !manifest.reference.is_empty() {
+                return Err(invalid(
+                    "a game-jam case declares no [[reference]] — models design the game freely \
+                     from the theme"
+                        .to_string(),
+                ));
+            }
+            if !manifest.domains.is_empty() {
+                return Err(invalid(
+                    "a game-jam case declares no [[domain]] — its review categories are graded \
+                     directly and it carries a single overall grade"
+                        .to_string(),
+                ));
+            }
+        }
+
+        // The common domains every variant is rated on. A domain-scored case must
+        // declare at least one, so every variant's effective set (common ∪ its own)
+        // is non-empty; a variant may add more of its own in the loop below. Two
+        // types are exempt. A game jam has no domains at all (forbidden above). A
+        // performance case is graded ENTIRELY by the harness — correctness against
+        // the reference oracle, then the fuel a correct engine burned — and carries
+        // no human review, so it has no reviewer rating to break into domains; it
+        // may still declare them (a case that wants a qualitative read of the
+        // approach recorded alongside the number), but it need not.
+        if manifest.domains.is_empty()
+            && test_type != TestType::GameJam
+            && test_type != TestType::Performance
+        {
             return Err(invalid(
                 "at least one common [[domain]] must be declared".to_string(),
             ));
@@ -3405,6 +4355,7 @@ impl TestCaseCatalog {
         ) = match test_type {
             TestType::EndToEnd
             | TestType::FullStack
+            | TestType::GameJam
             | TestType::Adversarial
             | TestType::Performance => {
                 if manifest.canvas.is_some() || manifest.tool.is_some() || manifest.output.is_some()
@@ -4078,7 +5029,10 @@ impl TestCaseCatalog {
         // it. `build.module` (validated above) is the wasm artifact the validator
         // loads for either type.
         let (contract, sandbox, simulation, r#match, replay, cases) = match test_type {
-            TestType::EndToEnd | TestType::FullStack | TestType::AssetGeneration => {
+            TestType::EndToEnd
+            | TestType::FullStack
+            | TestType::GameJam
+            | TestType::AssetGeneration => {
                 if manifest.contract.is_some()
                     || manifest.sandbox.is_some()
                     || manifest.simulation.is_some()
@@ -4362,9 +5316,22 @@ impl TestCaseCatalog {
                             case.expected.display()
                         )));
                     }
+                    // The runway multiplier widens only the run ceiling, never the
+                    // pass line. `>= 1.0` (below 1 would trap a passing engine
+                    // early); a non-finite value is a manifest error. With
+                    // `runway >= 1.0` the ceiling is always at or above the pass line.
+                    let runway = case.fuel_runway.unwrap_or(1.0);
+                    if !runway.is_finite() || runway < 1.0 {
+                        return Err(invalid(format!(
+                            "case fuel_runway must be a finite number >= 1.0, got {runway}"
+                        )));
+                    }
+                    let fuel_ceiling = ((fuel_limit as f64) * runway).round() as u64;
                     cases.push(PerformanceCase {
                         input: input_path,
                         expected: expected_path,
+                        fuel_ceiling,
+                        kind: case.kind,
                     });
                 }
 
@@ -4487,9 +5454,13 @@ impl TestCaseCatalog {
         // here so a misconfigured manifest fails at resolution rather than leaving the
         // model to discover the missing dependency at run time.
         if !manifest.packages.is_empty() {
-            if !matches!(test_type, TestType::EndToEnd | TestType::FullStack) {
+            if !matches!(
+                test_type,
+                TestType::EndToEnd | TestType::FullStack | TestType::GameJam
+            ) {
                 return Err(invalid(
-                    "`packages` is only valid for an end-to-end or full-stack case".to_string(),
+                    "`packages` is only valid for an end-to-end, full-stack, or game-jam case"
+                        .to_string(),
                 ));
             }
             let package_json = common_workspace
@@ -4670,10 +5641,143 @@ impl TestCaseCatalog {
         // non-empty, since the id keys a recorded verdict, the title heads the item
         // in the reviewer UI, and the text is what the reviewer reads. Shared by the
         // common items and each variant's own.
+        // The debug-API handle a case's builds install their automation surface on,
+        // when the case mandates instrumentation. It is required the moment any
+        // review item declares a `validation` script (checked in the closure below),
+        // and must be a plain identifier so a script and the seeded spec can name
+        // `window[handle]` unambiguously.
+        let instrumentation = match &manifest.instrumentation {
+            Some(instr) => {
+                let handle = instr.handle.trim();
+                if handle.is_empty() {
+                    return Err(invalid(
+                        "[instrumentation] `handle` must not be empty".to_string(),
+                    ));
+                }
+                let valid = handle
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
+                    && !handle.starts_with(|c: char| c.is_ascii_digit());
+                if !valid {
+                    return Err(invalid(format!(
+                        "[instrumentation] handle `{handle}` must be a plain identifier \
+                         (letters, digits, `_`, `$`; not starting with a digit)"
+                    )));
+                }
+                // A tick rate is a conversion factor between simulated steps and real
+                // time, so a zero one is meaningless — reject it here rather than hand
+                // the driver a rate it cannot divide by. (`u32` rules out the negative
+                // and non-finite cases by construction.)
+                if instr.tick_hz == Some(0) {
+                    return Err(invalid(
+                        "[instrumentation] `tick_hz` must be a positive number of ticks per \
+                         second (got 0)"
+                            .to_string(),
+                    ));
+                }
+                Some(Instrumentation {
+                    handle: handle.to_string(),
+                    tick_hz: instr.tick_hz,
+                })
+            }
+            None => None,
+        };
+        let has_instrumentation = instrumentation.is_some();
+
+        // A game jam grades its review categories on the five-level scale (see
+        // [`crate::review::VerdictStatus::GRADES`]) rather than pass/fail; every
+        // other type keeps the binary verdict. This is a property of the case's
+        // type, set on each resolved item here rather than declared per item.
+        let graded_reviews = test_type == TestType::GameJam;
+        // Resolve one automated-validation driver (an item's, when it has no
+        // sub-items, or a sub-item's). `label` names the owner for error messages
+        // ("review_item `x`" or "review_item `x` sub-item `y`"). A driver requires
+        // the case to declare an [instrumentation] handle (nothing to drive
+        // otherwise), cannot sit on a graded game-jam item (no pass/fail verdict to
+        // decide), and its script must exist. Each output needs a unique id and a
+        // script records at most one video clip (see [`ReviewValidation`]).
+        let resolve_validation =
+            |v: &ManifestReviewValidation, label: &str| -> Result<ReviewValidation> {
+                if !has_instrumentation {
+                    return Err(invalid(format!(
+                        "{label} declares a `validation` script but the case declares no \
+                         [instrumentation] handle to drive"
+                    )));
+                }
+                if graded_reviews {
+                    return Err(invalid(format!(
+                        "{label} cannot be auto-validated: a graded game-jam item has no \
+                         pass/fail verdict to decide"
+                    )));
+                }
+                let script = resolve_inside(&v.script, "review_item validation script")?;
+                if !script.is_file() {
+                    return Err(invalid(format!(
+                        "{label} validation script `{}` is not a file",
+                        v.script.display()
+                    )));
+                }
+                // Every automated validation must produce proof: at least one media
+                // output (a screenshot or clip) a reviewer can see, synthesized
+                // side-by-side against the reference baseline. A `validation` with no
+                // `outputs` decides a verdict a reviewer cannot visually corroborate,
+                // so it is rejected here rather than silently allowed.
+                if v.outputs.is_empty() {
+                    return Err(invalid(format!(
+                        "{label} declares a `validation` script but no `outputs`; every \
+                         automated validation must produce at least one proof output \
+                         (a screenshot or clip)"
+                    )));
+                }
+                let mut outputs = Vec::with_capacity(v.outputs.len());
+                let mut seen_output_ids = std::collections::BTreeSet::new();
+                let mut video_count = 0u32;
+                for out in &v.outputs {
+                    if out.id.trim().is_empty() {
+                        return Err(invalid(format!(
+                            "{label} has a validation output with an empty `id`"
+                        )));
+                    }
+                    if !seen_output_ids.insert(out.id.clone()) {
+                        return Err(invalid(format!(
+                            "{label} declares two validation outputs with id `{}`",
+                            out.id
+                        )));
+                    }
+                    if out.kind == MediaKind::Video {
+                        video_count += 1;
+                        if video_count > 1 {
+                            return Err(invalid(format!(
+                                "{label} declares more than one video validation output; a \
+                                 script records at most one clip"
+                            )));
+                        }
+                    }
+                    outputs.push(ReviewOutput {
+                        id: out.id.clone(),
+                        name: out.name.clone().unwrap_or_else(|| humanize(&out.id)),
+                        kind: out.kind,
+                    });
+                }
+                Ok(ReviewValidation {
+                    script,
+                    script_rel: v.script.to_string_lossy().replace('\\', "/"),
+                    outputs,
+                })
+            };
         let resolve_review_item =
             |item: &ManifestReviewItem, allowed_domains: &[Domain]| -> Result<ReviewItem> {
                 if item.id.trim().is_empty() {
                     return Err(invalid("review_item `id` must not be empty".to_string()));
+                }
+                // The `overall` id is reserved for the jam reviewer's whole-game
+                // grade (see [`crate::review::OVERALL_VERDICT_ID`]); a declared
+                // category may not claim it or its verdict would collide.
+                if graded_reviews && item.id == crate::review::OVERALL_VERDICT_ID {
+                    return Err(invalid(format!(
+                        "review_item id `{}` is reserved for the game-jam overall grade",
+                        crate::review::OVERALL_VERDICT_ID
+                    )));
                 }
                 if item.title.trim().is_empty() {
                     return Err(invalid(format!(
@@ -4769,6 +5873,62 @@ impl TestCaseCatalog {
                         )));
                     }
                 }
+                // An item's automated-validation driver. Validation attaches to the
+                // graded unit: an item graded as a whole may carry it directly, but an
+                // item broken into sub-items is verdicted per sub-item, so its
+                // validation lives on each sub-item (resolved below) and an item-level
+                // `validation` alongside sub-items is rejected — one script and one set
+                // of proof media per sub-item, so the reviewer can verify each point on
+                // its own.
+                let validation = match &item.validation {
+                    Some(v) => {
+                        if !item.sub_items.is_empty() {
+                            return Err(invalid(format!(
+                                "review_item `{}` declares both `sub_items` and an item-level \
+                                 `validation`; a sub-divided item is validated per sub-item, so \
+                                 move the `validation` onto each sub-item",
+                                item.id
+                            )));
+                        }
+                        Some(resolve_validation(
+                            v,
+                            &format!("review_item `{}`", item.id),
+                        )?)
+                    }
+                    None => None,
+                };
+                // Each sub-item resolves its own optional validation driver (only ever
+                // present here, since item-level validation is forbidden above once
+                // sub-items exist). The name/uniqueness of the sub-items themselves were
+                // checked in the loop above.
+                let sub_items = item
+                    .sub_items
+                    .iter()
+                    .map(|sub| {
+                        let validation = match &sub.validation {
+                            Some(v) => Some(resolve_validation(
+                                v,
+                                &format!("review_item `{}` sub-item `{}`", item.id, sub.id),
+                            )?),
+                            None => None,
+                        };
+                        Ok(SubReviewItem {
+                            id: sub.id.clone(),
+                            title: sub.title.clone(),
+                            // Legacy name-only sub-items carry no prose or paired
+                            // media of their own — the parent item's `text` is the
+                            // shared context. They are each worth one point (the
+                            // default weight), which every existing legacy case
+                            // relied on via `weight = <number of sub-items>`.
+                            description: None,
+                            weight: one(),
+                            reference: None,
+                            proof: None,
+                            scored: true,
+                            validation,
+                        })
+                    })
+                    .collect::<Result<Vec<_>>>()?;
                 Ok(ReviewItem {
                     id: item.id.clone(),
                     title: item.title.clone(),
@@ -4778,23 +5938,207 @@ impl TestCaseCatalog {
                     sequences: item.sequences.clone(),
                     frames: item.frames.clone(),
                     weight: item.weight,
+                    graded: graded_reviews,
                     domain: item.domain.clone(),
-                    sub_items: item
-                        .sub_items
-                        .iter()
-                        .map(|sub| SubReviewItem {
-                            id: sub.id.clone(),
-                            title: sub.title.clone(),
-                        })
-                        .collect(),
+                    sub_items,
+                    scored: true,
+                    validation,
                 })
             };
 
+        // The case's checklist grammar. A `[review]` table opts into the
+        // categories grammar (`format = 2`); its absence means the legacy
+        // top-level `[[review_item]]` arrays. The two are mutually exclusive.
+        let new_review_format = match &manifest.review {
+            Some(review) => {
+                if !manifest.review_items.is_empty() {
+                    return Err(invalid(
+                        "a case declares both a [review] categories table and legacy \
+                         [[review_item]] entries; use exactly one review grammar"
+                            .to_string(),
+                    ));
+                }
+                match review.format {
+                    Some(2) => {}
+                    Some(other) => {
+                        return Err(invalid(format!(
+                            "[review] format = {other} is not supported (the only categories \
+                             format is 2)"
+                        )));
+                    }
+                    None => {
+                        return Err(invalid(
+                            "[review] must declare `format = 2` in the case manifest".to_string(),
+                        ));
+                    }
+                }
+                // Game jams grade legacy `[[review_item]]` categories on the
+                // five-level scale; the categories grammar is binary pass/fail
+                // only, so a jam cannot use it.
+                if graded_reviews {
+                    return Err(invalid(
+                        "a game jam uses the legacy graded [[review_item]] categories, not the \
+                         [review] format = 2 grammar"
+                            .to_string(),
+                    ));
+                }
+                true
+            }
+            None => false,
+        };
+        // A variant file inherits its case's grammar: it may not use the other
+        // one, nor redeclare the `format` (set once in the case manifest).
+        for variant in &variant_manifests {
+            if new_review_format && !variant.review_items.is_empty() {
+                return Err(invalid(format!(
+                    "variant `{}` declares legacy [[review_item]] entries, but the case uses \
+                     the [review] format = 2 categories grammar",
+                    variant.slug
+                )));
+            }
+            if !new_review_format && variant.review.is_some() {
+                return Err(invalid(format!(
+                    "variant `{}` declares a [review] categories table, but the case uses the \
+                     legacy [[review_item]] grammar",
+                    variant.slug
+                )));
+            }
+            if let Some(review) = &variant.review
+                && review.format.is_some()
+            {
+                return Err(invalid(format!(
+                    "variant `{}` must not declare a [review] `format`; it is set once in the \
+                     case manifest",
+                    variant.slug
+                )));
+            }
+        }
+
+        // Resolve one review category (categories grammar) into the shared
+        // [`ReviewItem`] shape: the category is an item whose sub-items are its
+        // review items; it carries no prose (`text` is empty), no domain, and no
+        // paired media of its own, and its weight is the sum of its items'
+        // weights. A category needs at least one item, item ids are unique within
+        // it, and each item's optional `validation` resolves like any other.
+        let resolve_review_category = |cat: &ManifestReviewCategory| -> Result<ReviewItem> {
+            if cat.id.trim().is_empty() {
+                return Err(invalid(
+                    "review category `id` must not be empty".to_string(),
+                ));
+            }
+            if cat.title.trim().is_empty() {
+                return Err(invalid(format!(
+                    "review category `{}` has an empty `title`",
+                    cat.id
+                )));
+            }
+            if cat.items.is_empty() {
+                return Err(invalid(format!(
+                    "review category `{}` declares no items; a category needs at least one \
+                     `[[review.categories.items]]`",
+                    cat.id
+                )));
+            }
+            let mut seen_item_ids = std::collections::BTreeSet::new();
+            let mut sub_items = Vec::with_capacity(cat.items.len());
+            let mut total_weight = 0u32;
+            for it in &cat.items {
+                if it.id.trim().is_empty() {
+                    return Err(invalid(format!(
+                        "review category `{}` has an item with an empty `id`",
+                        cat.id
+                    )));
+                }
+                if it.title.trim().is_empty() {
+                    return Err(invalid(format!(
+                        "review category `{}` item `{}` has an empty `title`",
+                        cat.id, it.id
+                    )));
+                }
+                if !seen_item_ids.insert(&it.id) {
+                    return Err(invalid(format!(
+                        "review category `{}` declares two items with the same id `{}`",
+                        cat.id, it.id
+                    )));
+                }
+                let weight = it.weight.unwrap_or(1);
+                if weight == 0 {
+                    return Err(invalid(format!(
+                        "review category `{}` item `{}` must have a `weight` greater than zero",
+                        cat.id, it.id
+                    )));
+                }
+                total_weight = total_weight.saturating_add(weight);
+                let description = match &it.description {
+                    Some(d) if d.trim().is_empty() => {
+                        return Err(invalid(format!(
+                            "review category `{}` item `{}` has an empty `description` (omit it \
+                             rather than leaving it blank)",
+                            cat.id, it.id
+                        )));
+                    }
+                    other => other.clone(),
+                };
+                let validation = match &it.validation {
+                    Some(v) => Some(resolve_validation(
+                        v,
+                        &format!("review category `{}` item `{}`", cat.id, it.id),
+                    )?),
+                    None => None,
+                };
+                sub_items.push(SubReviewItem {
+                    id: it.id.clone(),
+                    title: it.title.clone(),
+                    description,
+                    weight,
+                    reference: it.reference.clone(),
+                    proof: it.proof.clone(),
+                    scored: true,
+                    validation,
+                });
+            }
+            Ok(ReviewItem {
+                id: cat.id.clone(),
+                title: cat.title.clone(),
+                text: String::new(),
+                reference: None,
+                proof: None,
+                sequences: Vec::new(),
+                frames: Vec::new(),
+                weight: total_weight,
+                graded: false,
+                domain: None,
+                sub_items,
+                scored: true,
+                validation: None,
+            })
+        };
+
         // Common items are rated on every variant, so they may only name a common
         // domain — the variant-specific domains are not in scope here.
-        let mut common_review_items = Vec::with_capacity(manifest.review_items.len());
-        for item in &manifest.review_items {
-            common_review_items.push(resolve_review_item(item, &domains)?);
+        let mut common_review_items = if let Some(review) = &manifest.review {
+            let mut items = Vec::with_capacity(review.categories.len());
+            for cat in &review.categories {
+                items.push(resolve_review_category(cat)?);
+            }
+            items
+        } else {
+            let mut items = Vec::with_capacity(manifest.review_items.len());
+            for item in &manifest.review_items {
+                items.push(resolve_review_item(item, &domains)?);
+            }
+            items
+        };
+        // A game jam that authors no categories of its own gets the generic graded
+        // checklist, so every jam is reviewed on a consistent baseline. A jam that
+        // does declare categories keeps only those.
+        if graded_reviews
+            && manifest.review_items.is_empty()
+            && variant_manifests
+                .iter()
+                .all(|variant| variant.review_items.is_empty())
+        {
+            common_review_items = default_game_jam_review_items();
         }
 
         let mut common_proofs = Vec::with_capacity(manifest.proof.len());
@@ -4814,6 +6158,36 @@ impl TestCaseCatalog {
                     "duplicate variant slug `{}`",
                     variant.slug
                 )));
+            }
+            // A game-jam variant is a bare theme selector: like the case, it seeds
+            // no specs, declares no references or domains, and ships no reference
+            // implementation. Reject those per-variant tables to match the case-level
+            // guard above.
+            if test_type == TestType::GameJam {
+                if !variant.specs.is_empty() {
+                    return Err(invalid(format!(
+                        "game-jam variant `{}` seeds no [[spec]]",
+                        variant.slug
+                    )));
+                }
+                if !variant.references.is_empty() {
+                    return Err(invalid(format!(
+                        "game-jam variant `{}` declares no [[reference]]",
+                        variant.slug
+                    )));
+                }
+                if !variant.domains.is_empty() {
+                    return Err(invalid(format!(
+                        "game-jam variant `{}` declares no [[domain]]",
+                        variant.slug
+                    )));
+                }
+                if variant.reference_implementation.is_some() {
+                    return Err(invalid(format!(
+                        "game-jam variant `{}` declares no reference implementation",
+                        variant.slug
+                    )));
+                }
             }
             let mut specs = Vec::with_capacity(variant.specs.len());
             for spec in &variant.specs {
@@ -5082,12 +6456,23 @@ impl TestCaseCatalog {
                 )?;
             }
 
-            // A variant item may name a common domain or one of this variant's
-            // own, so it is resolved against the effective set.
-            let mut review_items = Vec::with_capacity(variant.review_items.len());
-            for item in &variant.review_items {
-                review_items.push(resolve_review_item(item, &effective_domains)?);
-            }
+            // The variant's own review entries, in whichever grammar the case
+            // uses (enforced consistent above). A legacy variant item may name a
+            // common domain or one of this variant's own, so it is resolved
+            // against the effective set; a categories variant drops domains.
+            let review_items = if let Some(review) = &variant.review {
+                let mut items = Vec::with_capacity(review.categories.len());
+                for cat in &review.categories {
+                    items.push(resolve_review_category(cat)?);
+                }
+                items
+            } else {
+                let mut items = Vec::with_capacity(variant.review_items.len());
+                for item in &variant.review_items {
+                    items.push(resolve_review_item(item, &effective_domains)?);
+                }
+                items
+            };
             // Each verdict a reviewer records is keyed by an id (the item's own,
             // or a composite `<item>.<sub-item>` when the item has sub-items); two
             // that collide would make a recorded verdict ambiguous, so a collision
@@ -5107,31 +6492,69 @@ impl TestCaseCatalog {
                 }
             }
 
-            // A review item may pair an expected reference and a submitted proof
-            // with its checklist entry; both must resolve for this variant so the
-            // reviewer UI can always show them whichever variant runs.
+            // A review entry may pair an expected reference and a submitted proof
+            // with its checklist row; both must resolve for this variant so the
+            // reviewer UI can always show them whichever variant runs. In the
+            // legacy grammar the pairing sits on the item; in the categories
+            // grammar it sits on each review item (a category carries none), so
+            // both the items and their sub-items are checked.
+            let reference_declared = |reference: &str| {
+                common_references
+                    .iter()
+                    .chain(references.iter())
+                    .any(|r| r.view == reference)
+            };
+            let proof_declared = |proof: &str| {
+                common_proofs
+                    .iter()
+                    .chain(proofs.iter())
+                    .any(|p| p.id == proof)
+            };
             for item in common_review_items.iter().chain(review_items.iter()) {
-                if let Some(reference) = &item.reference
-                    && !common_references
+                let paired = std::iter::once((&item.id, &item.reference, &item.proof)).chain(
+                    item.sub_items
                         .iter()
-                        .chain(references.iter())
-                        .any(|r| &r.view == reference)
-                {
-                    return Err(invalid(format!(
-                        "review item `{}` references reference view `{}`, which variant `{}` does not declare",
-                        item.id, reference, variant.slug
-                    )));
+                        .map(|sub| (&sub.id, &sub.reference, &sub.proof)),
+                );
+                for (id, reference, proof) in paired {
+                    if let Some(reference) = reference
+                        && !reference_declared(reference)
+                    {
+                        return Err(invalid(format!(
+                            "review item `{}` references reference view `{}`, which variant `{}` does not declare",
+                            id, reference, variant.slug
+                        )));
+                    }
+                    if let Some(proof) = proof
+                        && !proof_declared(proof)
+                    {
+                        return Err(invalid(format!(
+                            "review item `{}` references proof `{}`, which variant `{}` does not declare",
+                            id, proof, variant.slug
+                        )));
+                    }
                 }
-                if let Some(proof) = &item.proof
-                    && !common_proofs
+            }
+
+            // A validation script drives exactly one review item: the same script
+            // path on two items (across the common checklist and this variant's
+            // own) would run twice and its verdict be recorded against whichever
+            // item it last touched, so a reuse is rejected.
+            let mut seen_scripts = std::collections::BTreeSet::new();
+            for item in common_review_items.iter().chain(review_items.iter()) {
+                let scripts = item.validation.iter().chain(
+                    item.sub_items
                         .iter()
-                        .chain(proofs.iter())
-                        .any(|p| &p.id == proof)
-                {
-                    return Err(invalid(format!(
-                        "review item `{}` references proof `{}`, which variant `{}` does not declare",
-                        item.id, proof, variant.slug
-                    )));
+                        .filter_map(|sub| sub.validation.as_ref()),
+                );
+                for validation in scripts {
+                    if !seen_scripts.insert(validation.script_rel.clone()) {
+                        return Err(invalid(format!(
+                            "validation script `{}` drives more than one review item in variant \
+                             `{}`; each script drives a single item",
+                            validation.script_rel, variant.slug
+                        )));
+                    }
                 }
             }
 
@@ -5194,6 +6617,104 @@ impl TestCaseCatalog {
             });
         }
 
+        // Load the optional `errata.toml`: a post-hoc log of known issues with this
+        // shipped version (see [`ErrataFile`]). Absent on a version with none. Each
+        // entry's id must be non-empty and unique; a `variant` scope must name a
+        // declared variant; and a `review` link must name a review verdict id that
+        // exists in the checklist so the erratum can be shown beside that point.
+        let errata = {
+            let errata_path = root.join(ERRATA_FILE);
+            if errata_path.is_file() {
+                let raw = fs::read_to_string(&errata_path)
+                    .map_err(|err| invalid(format!("could not read {ERRATA_FILE}: {err}")))?;
+                let file: ErrataFile = toml::from_str(&raw)
+                    .map_err(|err| invalid(format!("invalid {ERRATA_FILE}: {err}")))?;
+                // Every review verdict id an erratum's `review` may point at: each
+                // review item id plus every composite sub-item id, across the common
+                // checklist and every variant's own, so a link resolves whichever
+                // variant a run used.
+                let mut review_ids: HashSet<String> = HashSet::new();
+                for item in common_review_items.iter().chain(
+                    variants
+                        .iter()
+                        .flat_map(|variant| variant.review_items.iter()),
+                ) {
+                    review_ids.insert(item.id.clone());
+                    review_ids.extend(item.verdict_ids());
+                }
+                let variant_slugs: HashSet<&str> = variants
+                    .iter()
+                    .map(|variant| variant.slug.as_str())
+                    .collect();
+
+                let mut errata = Vec::with_capacity(file.errata.len());
+                let mut seen_ids: HashSet<&str> = HashSet::new();
+                for erratum in &file.errata {
+                    if erratum.id.trim().is_empty() {
+                        return Err(invalid("erratum `id` must not be empty".to_string()));
+                    }
+                    if !seen_ids.insert(erratum.id.as_str()) {
+                        return Err(invalid(format!("duplicate erratum id `{}`", erratum.id)));
+                    }
+                    if erratum.title.trim().is_empty() {
+                        return Err(invalid(format!(
+                            "erratum `{}` has empty `title`",
+                            erratum.id
+                        )));
+                    }
+                    if erratum.body.trim().is_empty() {
+                        return Err(invalid(format!(
+                            "erratum `{}` has empty `body`",
+                            erratum.id
+                        )));
+                    }
+                    if let Some(scope) = &erratum.variant
+                        && !variant_slugs.contains(scope.as_str())
+                    {
+                        return Err(invalid(format!(
+                            "erratum `{}` is scoped to variant `{}`, which the case does not \
+                             declare",
+                            erratum.id, scope
+                        )));
+                    }
+                    if let Some(review) = &erratum.review
+                        && !review_ids.contains(review.as_str())
+                    {
+                        return Err(invalid(format!(
+                            "erratum `{}` references review id `{}`, which is not a review item \
+                             or sub-item in the checklist",
+                            erratum.id, review
+                        )));
+                    }
+                    // Excluding a point from scoring is meaningless without a point to
+                    // exclude: `exclude_from_score` requires a `review` link (already
+                    // validated above to name a real verdict id).
+                    if erratum.exclude_from_score && erratum.review.is_none() {
+                        return Err(invalid(format!(
+                            "erratum `{}` sets `exclude_from_score` but names no `review` point \
+                             to exclude from scoring",
+                            erratum.id
+                        )));
+                    }
+                    errata.push(Erratum {
+                        id: erratum.id.clone(),
+                        title: erratum.title.clone(),
+                        date: erratum.date.clone(),
+                        severity: erratum.severity,
+                        affects_scoring: erratum.affects_scoring,
+                        exclude_from_score: erratum.exclude_from_score,
+                        body: erratum.body.clone(),
+                        resolved_in: erratum.resolved_in.clone(),
+                        variant: erratum.variant.clone(),
+                        review: erratum.review.clone(),
+                    });
+                }
+                errata
+            } else {
+                Vec::new()
+            }
+        };
+
         Ok(TestCaseVersion {
             slug: slug.to_string(),
             version: version.to_string(),
@@ -5209,6 +6730,7 @@ impl TestCaseCatalog {
             test_type,
             experimental: manifest.experimental,
             build,
+            instrumentation,
             canvas,
             tool,
             output,
@@ -5237,6 +6759,7 @@ impl TestCaseCatalog {
             common_review_items,
             domains,
             cases,
+            errata,
         })
     }
 
@@ -5263,6 +6786,30 @@ impl TestCaseCatalog {
             slug: slug.to_string(),
             version: version.to_string(),
             detail: format!("invalid {MANIFEST_FILE}: {err}"),
+        })
+    }
+
+    /// Read and parse a game-jam version's `game-jam.toml` manifest — the jam's own
+    /// [`GameJamManifest`] format, distinct from the shared test-case
+    /// [`Manifest`]. `deny_unknown_fields` means a jam that declares a test-case-only
+    /// key (`difficulty`, `variants`, a `[[spec]]`, …) fails to parse here with a
+    /// clear message.
+    fn read_game_jam_manifest(
+        &self,
+        slug: &str,
+        version: &str,
+        root: &Path,
+    ) -> Result<GameJamManifest> {
+        let manifest_path = root.join(GAME_JAM_MANIFEST_FILE);
+        let raw = fs::read_to_string(&manifest_path).map_err(|err| Error::InvalidTestCase {
+            slug: slug.to_string(),
+            version: version.to_string(),
+            detail: format!("could not read {GAME_JAM_MANIFEST_FILE}: {err}"),
+        })?;
+        toml::from_str(&raw).map_err(|err| Error::InvalidTestCase {
+            slug: slug.to_string(),
+            version: version.to_string(),
+            detail: format!("invalid {GAME_JAM_MANIFEST_FILE}: {err}"),
         })
     }
 }
@@ -5879,7 +7426,7 @@ fn forward_slash_path(rel: &Path) -> PathBuf {
 ///   iteration rely on.
 ///
 /// This is the single source of truth for both local seeding
-/// ([`collect_workspace_files`]) and backend ingest (`copy_tree`), so the two
+/// (`collect_workspace_files`) and backend ingest (`copy_tree`), so the two
 /// always seed the same set. Matching is by the entry's own name, so a `.cargo`
 /// directory is descended into and its (non-hidden) contents seeded.
 pub fn is_seeded_dotfile(name: &str) -> bool {

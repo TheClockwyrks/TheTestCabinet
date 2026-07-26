@@ -1,0 +1,64 @@
+Author a **rising smoke column**, a calm ambient plume of soft grey smoke, as a 3D
+particle **system** using only the particle tool.
+
+It is a steady column of grey smoke rising from a point source — the kind that drifts
+up from a chimney or a smouldering ember: puffs that billow upward, expand and slow as
+they climb, curl turbulently with a slight sideways sway, and grow more transparent
+until they dissipate near the top. It is a **continuous, seamless loop** — a steady
+stream that has already reached a steady state, so it plays forever without a visible
+seam. You are authoring the *effect* (a continuous rising column), not a single frame
+of it.
+
+## How the particle tool works
+
+The only way to shape the effect is the `particle-3d` binary already on your
+`PATH`. It is the sole channel, and — this is the key idea — you do **not** place
+individual particles. You **author a system**: emitters that spawn particles,
+forces that push them around, and per-particle curves for size, opacity, and color
+over each particle's life. The review UI **simulates that system live**, exactly the
+way a real particle editor (Unreal's Niagara, Unity's VFX Graph) plays a system.
+Because it is a live stochastic simulation, the effect **varies slightly from one
+play to the next** — so build something that reads as a rising smoke column across
+replays and from any orbit angle, not a frozen arrangement.
+
+You build the system by calling `particle-3d` **one operation at a time**, and the
+ordered list of operations you issue — recorded to `actions.json` — is the
+**authoritative output that is scored**. A system produced any other way is
+discarded and flagged; only the recorded operations count.
+
+Each operation is an ordinary subcommand with flags, for example:
+
+```
+particle-3d add-emitter --name smoke --shape point --rate 24 --lifetime 2200 --speed 8 --dir-y 1
+```
+
+This effect is a **continuous loop**: emit at a steady **rate** (not a one-off
+burst) and keep the timeline looping so the stream reaches a steady state and the
+last frame flows back into the first with no seam. Rendering is a separate,
+on-request step: run `particle-3d render` to **simulate the system over its duration,
+write the preview animation, and emit the `system.json` your result is built from**.
+An unrendered effect leaves an empty system, so you **must** run `render` before you
+finish. The field dimensions, duration, and playback fps are already seeded in a
+config next to your workspace, so no operation needs those flags.
+
+Run `particle-3d --help` to list every operation and `particle-3d <operation>
+--help` for one operation's exact flags — that help text is the authoritative
+contract. **Read the rendered `effect.gif` after your calls** to judge the
+effect's read, motion, and loop, and decide what to do next.
+
+## What to read first
+
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Read all of it before you start, and produce an
+implementation that matches the specification exactly.
+
+## What to deliver
+
+Author the smoke-column system operation by operation — the continuous rising plume,
+with the forces (upward buoyancy, drag that slows the climb, and turbulence that
+curls and sways it) and the per-particle curves that make it expand and fade as it
+rises — with the timeline kept **looping** so it reaches a steady state and tiles
+seamlessly, running `particle-3d render` to simulate and check the effect as you go.
+When the simulated `effect.gif` reads as a calm rising column of grey smoke that
+loops with no visible seam, run `render` one last time and stop: the recorded
+`actions.json` (and the `system.json` it emits) is your finished submission.

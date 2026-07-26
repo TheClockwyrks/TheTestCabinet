@@ -11,12 +11,16 @@ use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
 use futures_util::stream;
 use serde::{Deserialize, Serialize};
+use test_cabinet_core::asset_reference::{REFERENCE_MEDIA_PREFIX, parse_reference_image_key};
+use test_cabinet_core::r2::R2Client;
 use test_cabinet_core::reference_lock::{REFERENCE_LOCK_FILENAME, ReferenceLock};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
+use crate::db::ReferenceSheetEntry;
 use crate::error::ApiError;
 use crate::ingest::{IngestEvent, IngestReport, IngestRequest, Ingestor};
+use crate::publisher::Publisher;
 use crate::store::DefinitionStore;
 
 use super::AppState;
@@ -56,6 +60,7 @@ pub async fn ingest(
     // of the version scan, so it runs identically for both response framings (the
     // streamed scan below only reports on definitions).
     reconcile_reference_builds(&state).await?;
+    reconcile_reference_sheets(&state).await;
 
     // The whole-catalog prune must never drop a definition a run still references, so
     // fetch that protected set here (async, before the blocking scan) and hand it to
@@ -63,7 +68,13 @@ pub async fn ingest(
     let protected = state.db.referenced_cases().await.map_err(ApiError::from)?;
 
     if wants_ndjson(&headers) {
-        return Ok(ingest_streaming(checkout, store, request, protected));
+        return Ok(ingest_streaming(
+            checkout,
+            store,
+            request,
+            protected,
+            state.publisher.clone(),
+        ));
     }
 
     // Default: run the scan to completion and answer with the full report.
@@ -76,7 +87,33 @@ pub async fn ingest(
     .map_err(|e| ApiError::internal(format!("ingest task panicked: {e}")))?
     .map_err(ApiError::from)?;
 
+    // A scan that actually (re)ingested a version changed the definition store the
+    // public snapshot's case metadata is exported from, so queue a refresh (see
+    // `scan_changed_store`). This is what makes repopulating an emptied store — the
+    // ephemeral `/state` volume's self-heal after a reschedule, or a manual
+    // `reingest-cluster.sh` — republish a corrected snapshot instead of leaving the
+    // gallery frozen on whatever was built while the store was momentarily empty.
+    if scan_changed_store(&report) {
+        state.publisher.queue_refresh();
+    }
+
     Ok(Json(IngestResponse::from(report)).into_response())
+}
+
+/// Whether an ingest scan actually (re)ingested any version, versus a no-op scan
+/// that found every version already present and unchanged. A scan that copied or
+/// re-rendered at least one version has changed the definition store, so the public
+/// snapshot's case metadata — a case's name, specs, prompt, review items, and the
+/// very presence of its `cases/<slug>/<version>.json` file — may now differ and
+/// must be re-exported.
+///
+/// This is deliberately quiet on a no-op scan (every version unchanged), so the
+/// non-forced periodic ingest does not fire a gallery rebuild every cycle; only a
+/// scan that moved something republishes. A forced re-ingest re-writes every version
+/// (all `ingested`), so it always refreshes — which is exactly what an operator
+/// running `reingest-cluster.sh` to push catalog edits to the site wants.
+fn scan_changed_store(report: &IngestReport) -> bool {
+    report.test_case_versions.iter().any(|v| v.ingested)
 }
 
 /// Reconcile `case_reference_build` from the committed reference-builds lockfile to
@@ -123,6 +160,96 @@ async fn reconcile_reference_builds(state: &AppState) -> Result<(), ApiError> {
     Ok(())
 }
 
+/// Reconcile `case_reference_sheet` from the snapshot bucket to the frames actually
+/// published there, queuing a snapshot refresh when the set changes.
+///
+/// The asset-generation half of the reference **pull** model, and the one place it
+/// diverges from [`reconcile_reference_builds`]. A deployed reference *build* has an
+/// opaque URL only Cloudflare knows, so it must be committed into a lockfile for the
+/// backend to learn it. A published reference *sheet* has no such secret: every
+/// frame's key is derived from `(slug, version, variant, index)` by
+/// [`test_cabinet_core::asset_reference`], so the bucket itself is the register of
+/// what exists, and listing it is both simpler and more truthful than a lockfile —
+/// it cannot claim a frame that was never uploaded or has since been deleted.
+///
+/// **When R2 is not configured** (the single-box dev setup) this returns having
+/// touched nothing. That is deliberate and mirrors how the lockfile path treats a
+/// *missing* lockfile: an unconfigured backend has no knowledge of the published set,
+/// which is a different fact from knowing the set is empty, and reconciling an
+/// unknown to empty would silently wipe rows a real deployment's data shares. Only a
+/// successful listing — the analogue of a lockfile that is present but lists nothing
+/// for this env — is allowed to reconcile the table to empty.
+///
+/// Failures are logged and swallowed rather than returned. Ingest's primary job is to
+/// pick up the freshly-fetched git checkout; a transient R2 list error (or an
+/// unformattable timestamp) must not fail the whole scan and leave the catalog stale.
+/// The next ingest reconciles again.
+async fn reconcile_reference_sheets(state: &AppState) {
+    // No bucket configured: we cannot know the published set, so leave the table as
+    // it is. See the doc comment — this is not the same as reconciling to empty.
+    let Some(r2_config) = state.config.r2.clone() else {
+        return;
+    };
+    let r2 = R2Client::new(r2_config);
+
+    let keys = match r2.list_keys(REFERENCE_MEDIA_PREFIX).await {
+        Ok(keys) => keys,
+        Err(err) => {
+            tracing::warn!(
+                "listing published asset references failed ({err}); leaving the \
+                 reference-sheet table unchanged"
+            );
+            return;
+        }
+    };
+
+    // Group the frame images by the triple they belong to. Only image keys parse —
+    // the action logs published beside them (and anything else under the prefix)
+    // yield `None` — because an image is what proves a frame is viewable.
+    let mut by_variant: std::collections::HashMap<(String, String, String), Vec<u32>> =
+        std::collections::HashMap::new();
+    for key in &keys {
+        if let Some(parsed) = parse_reference_image_key(key) {
+            by_variant
+                .entry((parsed.slug, parsed.version, parsed.variant))
+                .or_default()
+                .push(parsed.index);
+        }
+    }
+    // The store canonicalizes (sorts and de-duplicates) each frame list on the way
+    // in, so the arbitrary order R2 lists keys in cannot make an unchanged set look
+    // changed.
+    let desired: Vec<ReferenceSheetEntry> = by_variant
+        .into_iter()
+        .map(|((slug, version, variant), frames)| ReferenceSheetEntry {
+            slug,
+            version,
+            variant,
+            frames,
+        })
+        .collect();
+
+    let now = match OffsetDateTime::now_utc().format(&Rfc3339) {
+        Ok(now) => now,
+        Err(err) => {
+            tracing::warn!(
+                "formatting timestamp failed ({err}); leaving the reference-sheet \
+                 table unchanged"
+            );
+            return;
+        }
+    };
+    match state.db.sync_reference_sheets(&desired, &now).await {
+        // The public snapshot folds each variant's published frame list onto its case
+        // metadata, so a changed set must be re-exported.
+        Ok(true) => {
+            state.publisher.queue_refresh();
+        }
+        Ok(false) => {}
+        Err(err) => tracing::warn!("reconciling the reference-sheet table failed ({err})"),
+    }
+}
+
 /// True when the request asks for the streamed NDJSON progress feed.
 fn wants_ndjson(headers: &HeaderMap) -> bool {
     headers
@@ -141,6 +268,7 @@ fn ingest_streaming(
     store: DefinitionStore,
     request: IngestRequest,
     protected: std::collections::HashSet<(String, String)>,
+    publisher: Publisher,
 ) -> Response {
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Bytes>();
 
@@ -152,7 +280,15 @@ fn ingest_streaming(
         // A single closing line conveys the outcome in-band: the stream has already
         // sent a 200, so a late failure cannot become an HTTP error code.
         let closing = match result {
-            Ok(report) => StreamEvent::done(&report),
+            Ok(report) => {
+                // Same as the non-streaming path: a scan that changed the definition
+                // store must re-export the snapshot's case metadata (see
+                // `scan_changed_store`).
+                if scan_changed_store(&report) {
+                    publisher.queue_refresh();
+                }
+                StreamEvent::done(&report)
+            }
             Err(err) => StreamEvent::Error {
                 message: err.to_string(),
             },
@@ -306,3 +442,7 @@ impl From<IngestEvent<'_>> for StreamEvent {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "ingest_api.test.rs"]
+mod tests;

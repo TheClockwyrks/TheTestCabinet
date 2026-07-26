@@ -1,0 +1,94 @@
+# The **Kindle** variant: the same dive and the same fog of war as the base, with
+# one addition that defines it — an outer **vision circle** you carry. It reveals
+# nothing; it is a rendering mask. You explore and remember the maze exactly as in
+# the base dive (a StarCraft-style fog of war: explored terrain and pellets stay
+# known, eaten pellets stay eaten), but you only ever *see* the part of your
+# explored map that lies inside a circular window centered on the forager — a window
+# that grows as you eat and gutters when you stop. Everything beyond it is pitch
+# black (though still remembered), except the always-visible amber lights and the
+# enemy effects. Every path resolves against the version folder.
+slug = "kindle"
+name = "Kindle"
+description = "The Kindle dive: the same StarCraft-style fog of war as the base, but you see only the part of your explored map inside a circular window that grows as you eat — everything beyond it is pitch black, though still remembered."
+
+# The authored, *correct* static build of this variant (see the note in
+# `base.toml`), shown on the case's "Reference" tab and never seeded into a run.
+# It is the same game as the base build with the Kindle vision circle added: the
+# same StarCraft-style fog of war, but terrain and pellets are drawn only within an
+# outer circular window that grows as you eat — pitch black beyond it, though still
+# remembered.
+reference_implementation = "reference-impl/kindle"
+
+# The Kindle-only in-maze view: its outer vision circle. Captured (with
+# Playwright) from the playable `kindle` reference-impl and served as-is, like the
+# common views (see `reference/README.md`). The `title`, `gameplay`, `game-over`,
+# and `sonar` references are common (declared in the case manifest); this view is
+# additive — the wide circular window of explored maze, pitch black beyond.
+reference = [{ view = "vision-circle", media = "reference/screenshots/kindle/vision-circle.png" }]
+
+# The Kindle variant's own sensing points, in the categories grammar (`format` is
+# inherited from the case manifest, `[review] format = 2`). These cover the vision
+# circle that defines the dive; the common fog, brightness, and predator points live
+# in the case manifest. All roll up to the case's sole scoring domain, so none names a
+# `domain`.
+[[review.categories]]
+id = "kindle"
+title = "Kindle sensing"
+[[review.categories.items]]
+id = "vision-circle"
+title = "The outer vision circle"
+description = "An outer vision circle centered on the forager is the only place terrain and plankton are drawn; everything beyond it is pitch black, even explored ground. The circle reveals nothing — it only masks what of the already-revealed map is shown."
+# Automated validation: on revealed ground, sample a pixel inside the circle (drawn)
+# and one beyond it (black), reading windowRadius from the snapshot. See
+# validation/kindle/vision-circle.mjs.
+validation = { script = "validation/kindle/vision-circle.mjs", outputs = [
+  { id = "circle", name = "The vision circle: drawn inside, black beyond", kind = "image" },
+] }
+[[review.categories.items]]
+id = "grows-with-eating"
+title = "The circle grows as you eat"
+description = "The vision-circle radius grows with brightness G (R = 192 + 128 G), widening as you eat and shrinking as G decays."
+# Automated validation: read windowRadius at low and high brightness — it grows with
+# G. See validation/kindle/grows-with-eating.mjs.
+validation = { script = "validation/kindle/grows-with-eating.mjs", outputs = [
+  { id = "grow", name = "The vision circle widening with brightness", kind = "video" },
+] }
+[[review.categories.items]]
+id = "memory-windowed"
+title = "Windowed, but still remembered"
+description = "Ground outside the vision circle is only hidden, not forgotten: the underlying fog memory still holds it revealed, and returning draws it again."
+# Automated validation: reveal a tile, move the forager away so it falls outside the
+# circle (rendered black) while its visibility stays 'remembered', then return and it
+# renders again. See validation/kindle/memory-windowed.mjs.
+validation = { script = "validation/kindle/memory-windowed.mjs", outputs = [
+  { id = "memory", name = "Remembered ground hidden then redrawn", kind = "video" },
+] }
+[[review.categories.items]]
+id = "predators-by-light"
+title = "Predators follow the light circle"
+description = "Predators are revealed by the smaller line-of-sight light circle and sonar/flare marks, not the vision circle: a predator inside the vision circle but beyond the light is not shown."
+# Automated validation: place a predator inside the vision circle but beyond the light
+# radius and confirm it is not lit. See validation/kindle/predators-by-light.mjs.
+validation = { script = "validation/kindle/predators-by-light.mjs", outputs = [
+  { id = "bylight", name = "A predator inside the circle but unlit beyond the light", kind = "image" },
+] }
+[[review.categories.items]]
+id = "beyond-circle"
+title = "Amber lights clipped to the circle"
+description = "Beyond the vision circle only enemy effects draw on the blackout; the amber lights (drifter and Lanternjaw bulb) are clipped to the circle and do not show beyond it."
+# Automated validation: place a drifter beyond the vision circle and sample the pixel
+# there — it is black (clipped), unlike the Maze dive. See
+# validation/kindle/beyond-circle.mjs.
+validation = { script = "validation/kindle/beyond-circle.mjs", outputs = [
+  { id = "clipped", name = "A distant amber light clipped to black", kind = "image" },
+] }
+[[review.categories.items]]
+id = "flare-second-circle"
+title = "A flare is a second vision window"
+description = "A Flarefish flare acts as a full-vision second circle in Kindle, drawing the maze inside its bloom even beyond the forager's vision circle."
+# Automated validation: let a Flarefish flare beyond the vision circle and confirm a
+# tile within the bloom but outside the vision circle renders (not black). See
+# validation/kindle/flare-second-circle.mjs.
+validation = { script = "validation/kindle/flare-second-circle.mjs", outputs = [
+  { id = "second", name = "A flare lighting the maze beyond the vision circle", kind = "video" },
+] }

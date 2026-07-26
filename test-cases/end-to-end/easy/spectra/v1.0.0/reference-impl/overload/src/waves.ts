@@ -1,5 +1,5 @@
-// Spectra — wave composition (specs/enemies.md "What a wave is made of",
-// specs/playfield.md formation, specs/flow.md challenge stages).
+// Spectra — wave composition (specs/drones.md "What a wave is made of",
+// specs/playfield.md formation, specs/gameplay.md challenge stages).
 //
 // A standard wave's formation is mirror-symmetric about x=640, mixes both bands,
 // contains Shards of both bands as the bulk, at least two Fluxes and at least one
@@ -49,12 +49,13 @@ function entrancePath(sx: number, sy: number, fromLeft: boolean) {
   return smoothPath(knots);
 }
 
-function makeDrone(spec: SlotSpec, fromLeft: boolean): Drone {
+function makeDrone(spec: SlotSpec, fromLeft: boolean, rng: () => number): Drone {
   const sx = slotX(spec.col);
   const sy = slotY(spec.row);
   const shellBand = spec.shellBand ?? spec.band;
   const coreBand = opposite(shellBand);
   return {
+    id: 0, // the Game assigns the real id when it takes ownership
     kind: spec.kind,
     band: spec.kind === "prism" ? shellBand : spec.band,
     x: clampX(sx + (fromLeft ? -300 : 300)),
@@ -72,7 +73,7 @@ function makeDrone(spec: SlotSpec, fromLeft: boolean): Drone {
     headlong: false,
     charge: 0,
     fluxBase: spec.band,
-    fluxClock: spec.kind === "flux" ? Math.random() * 2 : 0,
+    fluxClock: spec.kind === "flux" ? rng() * 2 : 0,
     shimmer: false,
     shellBand,
     coreBand,
@@ -131,7 +132,7 @@ function buildSlots(stage: number): SlotSpec[] {
   return [...filled.values()];
 }
 
-export function buildWave(stage: number): Entrant[] {
+export function buildWave(stage: number, rng: () => number): Entrant[] {
   const slots = buildSlots(stage);
   const byKey = new Map<string, SlotSpec>();
   for (const s of slots) byKey.set(`${s.col},${s.row}`, s);
@@ -168,13 +169,13 @@ export function buildWave(stage: number): Entrant[] {
   groups.forEach((group, gi) => {
     for (const s of group) {
       const fromLeft = s.col <= 4;
-      entrants.push({ drone: makeDrone(s, fromLeft), releaseAt: gi * ENTER_GROUP_GAP });
+      entrants.push({ drone: makeDrone(s, fromLeft, rng), releaseAt: gi * ENTER_GROUP_GAP });
     }
   });
   return entrants;
 }
 
-// ---- Challenge stage flyover groups (specs/flow.md) -----------------------
+// ---- Challenge stage flyover groups (specs/gameplay.md) -----------------------
 
 export interface ChallengeDrone {
   drone: Drone;
@@ -204,6 +205,7 @@ export function buildChallenge(): ChallengeDrone[] {
         { x: endX, y },
       ];
       const drone: Drone = {
+        id: 0,
         kind: "shard",
         band,
         x: startX,

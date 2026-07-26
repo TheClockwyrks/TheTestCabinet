@@ -93,7 +93,7 @@ not an instant edit — the player marks what to dig, and a delver does the work
   a tile **adjacent** to the marked tile (it must be able to stand next to it —
   it cannot mine a tile it cannot reach), and mines for a **dig time** that depends
   on the tile kind: dirt is quickest, ore slower, rock slowest (order-of a second,
-  a few seconds, and several seconds respectively; you tune the exact values). The
+  a few seconds, and several seconds respectively). The
   delver plays its **dig** animation while mining, and **dig dust** puffs from the
   tile (`specs/assets.md`).
 - **The tile opens.** When mining completes, the tile becomes **open space** — now

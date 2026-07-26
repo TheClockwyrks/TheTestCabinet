@@ -1,0 +1,60 @@
+# Shatter — UI: menus, game states, the HUD, and audio
+
+This file defines the game's screens — the menus and the state machine that moves
+between them — the heads-up display shown during play, and the game's audio. The
+values the HUD shows (the score, lives, and wave) are defined in `specs/gameplay.md`;
+the field and the star behind every screen are in `specs/playfield.md`; and the
+controls that drive each screen are in `specs/gameplay.md`.
+
+## Game states
+
+The game is a small state machine. Each state has a clear screen and controls
+(controls are defined in `specs/gameplay.md`).
+
+1. Title / main menu. Shows the title `SHATTER`, the tagline `GRAVITY WELL SHOOTER`,
+   and a vertical menu of `PLAY` then `HOW TO PLAY`. The selected item is
+   highlighted. The field furniture (the star with its halo, a few dimmed drifting
+   rocks, and the ship) may show dimmed behind the menu. Choosing `PLAY` starts the
+   game.
+2. How to play. A simple screen describing the controls and the gravity, shooting,
+   splitting, and wave mechanics.{{#if (eq variant.slug "warhead")}} It additionally explains, for this build, that
+   larger rocks are armored and take several bullet hits to break (shown by their
+   visible damage), and that the torpedo secondary weapon (`F`) fires a single guided
+   munition on a 10-second recharge that homes onto the nearest target within a narrow
+   forward cone, flies true through the gravity well, and destroys any rock outright
+   while blasting its fragments outward.{{/if}} Returns to the menu.
+3. In game. The live game: the ship, the star, the rocks, any bullets, the saucer,
+   and the HUD.
+4. Paused. Reachable from the game. Offers `RESUME`, `RESTART`, and `QUIT TO MENU`.
+   The field is visible but frozen behind the pause menu.
+5. Game over. Shown when the last life is lost. Displays `GAME OVER`, the final
+   score, and the wave reached, with `PLAY AGAIN` and `MENU`.
+
+The three canonical screens — the title screen, the in-game view, and the game-over
+screen — must be implemented as described, in the palette and type `specs/overview.md`
+defines.
+
+## Audio
+
+Audio is required: synthesize it with the Web Audio API (no audio files). Provide
+distinct short sounds for firing, a rock shattering, the ship's thrust, the saucer's
+presence, and the ship being destroyed. The game stays fully playable with sound
+muted and never fails to run or load if audio cannot start. Provide a mute toggle
+(`M`), and do not start audio until the player first interacts, since browsers block
+autoplay.
+
+## The HUD
+
+- The score sits at the top-left in large monospace digits (about 44 px tall), its
+  left edge near `x = 40` and its top near `y = 28`.
+- Remaining lives are shown just below the score as a row of small ship glyphs, one
+  per life still in reserve, starting near `(44, 92)`.
+{{#if (eq variant.slug "warhead")}}
+- A torpedo-charge indicator sits just below the lives row, near `(44, 140)`: a small
+  torpedo glyph in `#b8ff5c` with a slim charge bar beneath it. When a torpedo is
+  ready, the glyph is lit and the bar full; while it is recharging, the glyph is
+  dimmed and the bar fills smoothly from empty to full across the 10-second recharge,
+  so the player can see when the next torpedo will be available.
+{{/if}}
+- A `WAVE N` banner appears centered on the field at the start of each wave (see Waves
+  in `specs/gameplay.md`) and is not part of the persistent HUD.

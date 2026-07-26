@@ -10,7 +10,7 @@
 //! | `TCAB_BACKEND_URL` | yes | The backend the driver resolves the definition from and streams events/preview/status back to. | — |
 //! | `TCAB_JOB_ID` | yes | The id of the job this driver executes (the `POST /jobs/{id}/…` path key). | — |
 //! | `TCAB_JOB_TOKEN` | yes | The per-job bearer token authenticating this driver's streaming calls. | — |
-//! | `TCAB_RUN_REQUEST` | yes | The [`LaunchBody`](test_cabinet_core::LaunchBody) JSON the dispatcher claimed and passed in. | — |
+//! | `TCAB_RUN_REQUEST` | yes | The [`LaunchBody`] JSON the dispatcher claimed and passed in. | — |
 //! | `TCAB_DRIVER_RUNTIME` | no | How the run's sandbox container is started: `cli` (host Docker/Podman) or `kubernetes` (a sandbox pod per run via the API). | `cli` |
 //! | `TCAB_WORK_DIR` | no | Ephemeral scratch directory for the run's mountable inputs and produced tree. | `./.tcab-driver` |
 //! | `TCAB_ARTIFACTS_URL` | no | The artifact service the driver uploads the produced run tree to before reporting terminal status. Unset (e.g. the local CLI/desktop path) skips the upload entirely. | — |
@@ -26,7 +26,7 @@
 //! [`LaunchBody::auth_mode`]: test_cabinet_core::LaunchBody::auth_mode
 //!
 //! When `TCAB_DRIVER_RUNTIME=kubernetes`, the sandbox-pod settings (`TCAB_K8S_*`,
-//! documented on [`KubernetesConfig`](crate::kubernetes::KubernetesConfig)) are
+//! documented on [`KubernetesConfig`]) are
 //! also read. They are ignored under the `cli` runtime. The names are reused
 //! verbatim from the worker; the driver pod is the trusted pod that creates the
 //! untrusted sandbox, so `TCAB_K8S_POD_IP` (from the downward API) routes the

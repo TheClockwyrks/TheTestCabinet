@@ -267,3 +267,217 @@ fn rendered_image_encodes_to_a_decodable_png() {
     assert_eq!(info.color_type, png::ColorType::Rgba);
     assert_eq!(&buf[0..4], &OPAQUE_RED.0, "first pixel is the fill color");
 }
+
+/// A layer of `size` painted solid in `color`, placed at `(x, y)`.
+fn solid_layer(name: &str, x: i64, y: i64, size: u32, color: Rgba) -> Layer {
+    let mut layer = Layer::new(name.to_string(), x, y, size, size);
+    layer.ops.push(Operation::FillBackground { color });
+    layer
+}
+
+#[test]
+fn render_frame_with_no_layers_is_exactly_render() {
+    // The compatibility guarantee the whole design rests on: every case authored
+    // before layers existed, and every run that simply never registers one, must
+    // regenerate byte for byte as it always did.
+    let operations = [
+        Operation::FillBackground { color: OPAQUE_BLUE },
+        Operation::FillRect {
+            x: 1,
+            y: 1,
+            width: 2,
+            height: 2,
+            color: OPAQUE_RED,
+        },
+    ];
+    let plain = render(&canvas(), &operations);
+    let framed = render_frame(&canvas(), &operations, &Document::new(), 0);
+    assert_eq!(framed, plain);
+
+    // And that holds on every frame index, since an empty document has nothing to
+    // resolve differently.
+    for frame in 0..8 {
+        assert_eq!(
+            render_frame(&canvas(), &operations, &Document::new(), frame),
+            plain
+        );
+    }
+}
+
+#[test]
+fn a_layer_composites_above_the_canvas_log() {
+    // Direct drawing is the backdrop; layers sit over it. A model that paints a
+    // background then puts a character on a layer expects exactly this order.
+    let document = Document {
+        layers: vec![solid_layer("spot", 1, 1, 2, OPAQUE_RED)],
+    };
+    let image = render_frame(
+        &canvas(),
+        &[Operation::FillBackground { color: OPAQUE_BLUE }],
+        &document,
+        0,
+    );
+    assert_eq!(image.get(1, 1), Some(OPAQUE_RED), "the layer is on top");
+    assert_eq!(
+        image.get(0, 0),
+        Some(OPAQUE_BLUE),
+        "the log shows elsewhere"
+    );
+    assert_eq!(image.get(4, 4), Some(OPAQUE_BLUE));
+}
+
+#[test]
+fn a_layer_starts_transparent_regardless_of_the_canvas_background() {
+    // A layer is a surface laid over the image, so its unpainted area must let the
+    // canvas through rather than stamping the background over it.
+    let opaque_canvas = Canvas {
+        width: 5,
+        height: 5,
+        background: Background::Color(OPAQUE_BLUE),
+    };
+    let mut layer = Layer::new("dot".to_string(), 0, 0, 5, 5);
+    layer.ops.push(Operation::SetPixel {
+        x: 2,
+        y: 2,
+        color: OPAQUE_RED,
+    });
+    let document = Document {
+        layers: vec![layer],
+    };
+
+    let image = render_frame(&opaque_canvas, &[], &document, 0);
+    assert_eq!(image.get(2, 2), Some(OPAQUE_RED));
+    assert_eq!(image.get(0, 0), Some(OPAQUE_BLUE), "no hole punched");
+}
+
+#[test]
+fn a_keyframed_layer_moves_between_frames() {
+    // The feature in one test: one painted layer, no per-frame drawing, and the
+    // shape is somewhere different on every frame.
+    let mut layer = solid_layer("ball", 0, 0, 1, OPAQUE_RED);
+    layer.set_keyframe(
+        Property::X,
+        Keyframe {
+            frame: 0,
+            value: 0,
+            interp: Interp::Linear,
+            out_handle: None,
+            in_handle: None,
+        },
+    );
+    layer.set_keyframe(
+        Property::X,
+        Keyframe {
+            frame: 4,
+            value: 4,
+            interp: Interp::Linear,
+            out_handle: None,
+            in_handle: None,
+        },
+    );
+    let document = Document {
+        layers: vec![layer],
+    };
+
+    for frame in 0..=4u32 {
+        let image = render_frame(&canvas(), &[], &document, frame);
+        let x = frame as i64;
+        assert_eq!(
+            image.get(x, 0),
+            Some(OPAQUE_RED),
+            "frame {frame} places the layer"
+        );
+        // Nothing was left behind at the previous position.
+        if x > 0 {
+            assert_eq!(
+                image.get(x - 1, 0),
+                Some(Rgba::TRANSPARENT),
+                "frame {frame} smears"
+            );
+        }
+    }
+}
+
+#[test]
+fn layers_composite_in_z_then_registration_order() {
+    let mut over = solid_layer("over", 0, 0, 2, OPAQUE_RED);
+    over.z = 1;
+    let under = solid_layer("under", 0, 0, 2, OPAQUE_BLUE);
+    // Registered with the top layer first, so only `z` can produce the right order.
+    let document = Document {
+        layers: vec![over, under],
+    };
+    let image = render_frame(&canvas(), &[], &document, 0);
+    assert_eq!(image.get(0, 0), Some(OPAQUE_RED), "higher z wins");
+}
+
+#[test]
+fn render_frame_is_deterministic() {
+    // The property cheat detection depends on: core regenerating a frame must
+    // reproduce what the binary previewed, exactly.
+    let mut layer = solid_layer("ball", 1, 1, 3, OPAQUE_RED);
+    layer.rotation = 37;
+    layer.opacity = 200;
+    layer.scale_x = 140;
+    layer.set_keyframe(
+        Property::Y,
+        Keyframe {
+            frame: 0,
+            value: 0,
+            interp: Interp::EaseInOut,
+            out_handle: None,
+            in_handle: None,
+        },
+    );
+    layer.set_keyframe(
+        Property::Y,
+        Keyframe {
+            frame: 5,
+            value: 3,
+            interp: Interp::EaseInOut,
+            out_handle: None,
+            in_handle: None,
+        },
+    );
+    let document = Document {
+        layers: vec![layer],
+    };
+    let operations = [Operation::FillBackground { color: OPAQUE_BLUE }];
+
+    for frame in 0..=5 {
+        let first = render_frame(&canvas(), &operations, &document, frame);
+        let second = render_frame(&canvas(), &operations, &document, frame);
+        assert_eq!(first, second, "frame {frame} did not reproduce");
+    }
+}
+
+#[test]
+fn a_layer_document_survives_a_json_round_trip_into_the_same_pixels() {
+    // The document is written to disk between operations and re-read by core, so
+    // what matters is not just that it parses but that it renders the same.
+    let mut layer = solid_layer("ball", 2, 1, 2, OPAQUE_RED);
+    layer.rotation = 45;
+    layer.set_keyframe(
+        Property::X,
+        Keyframe {
+            frame: 0,
+            value: -1,
+            interp: Interp::Bezier,
+            out_handle: Some([2, 3]),
+            in_handle: None,
+        },
+    );
+    let document = Document {
+        layers: vec![layer],
+    };
+
+    let json = serde_json::to_string(&document).expect("serialize");
+    let parsed: Document = serde_json::from_str(&json).expect("deserialize");
+    for frame in 0..4 {
+        assert_eq!(
+            render_frame(&canvas(), &[], &parsed, frame),
+            render_frame(&canvas(), &[], &document, frame),
+            "frame {frame} changed across the round trip"
+        );
+    }
+}

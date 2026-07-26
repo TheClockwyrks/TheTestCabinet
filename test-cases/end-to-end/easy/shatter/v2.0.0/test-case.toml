@@ -1,0 +1,828 @@
+slug = "shatter"
+# The Test Cabinet test case manifest.
+#
+# Declares, for this exact version, which files are seeded into a run, which
+# reference views are rendered and seeded as visual targets, and which validation
+# checks run. The testing harness reads this file to resolve a `TestCaseVersion`.
+
+# Human-readable display name for this test case.
+name = "Shatter"
+
+# Relative difficulty of this case, surfaced on the site. Shatter asks for inertial
+# flight, a live gravity field acting on many bodies at once, splitting rocks,
+# escalating waves, a hunting saucer, lives/respawns, and a full state machine — a
+# meaty but well-specified 2D front-end build, so it sits at easy.
+difficulty = "easy"
+
+# Free-form classification tags, surfaced on the site for browsing and search.
+tags = ["arcade", "2d", "space", "shooter", "physics"]
+
+# Short site-facing abstract, shown on the test case card. Authored inline as plain
+# text (not a file) so it renders safely inside the card's link and stays
+# deliberately brief; the longer `description` below is shown on the detail page.
+# Like `description`, this is NOT seeded into a run.
+summary = """
+A neon top-down rock shooter built around a central gravity well: the star at the \
+middle of the field pulls your bullets and every rock — so shots bend around it and \
+rocks churn on curved paths — while your ship flies free of the pull and the rocks \
+it swallows recycle back in from the edge."""
+
+# Site-facing prose describing the case, relative to this version folder. This is
+# NOT seeded into a run; it exists only to introduce the case on the site.
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+
+# Handlebars prompt template, relative to this version folder. It is rendered per
+# run (with the seeded specs and the selected variant) and handed to the model as
+# the build instruction. It injects absolute in-container paths via template
+# variables rather than hardcoding them.
+prompt = "prompt.hbs"
+
+# Maximum wall-clock runtime, in hours, for the harness session before the run is
+# stopped. This is the per-case default; a run can override it. Shatter is a medium
+# case with a good deal to build (inertial flight, the gravity field, waves, the
+# saucer, several states), so it gets more headroom than the easy cases while still
+# bounding a session that never terminates.
+max_runtime_hours = 2.5
+
+# Starter workspace seeded into the root of every run before the specs. It gives the
+# model a baseline project to build on: a `package.json` that pins `playwright` as a
+# dev dependency, so the in-container browser tooling is a visible, project-local
+# dependency rather than a global the model has to know is preinstalled. The seeded
+# files land at the run root (`workspaces/base/package.json` seeds to
+# `package.json`).
+workspace = "workspaces/base"
+
+# Init command, run in the run container once the workspace and specs are seeded and
+# before the harness starts. It installs the workspace's dependencies and downloads
+# the Playwright Chromium build (the base image ships the OS libraries Chromium links
+# against, but not the browser binary), so the model can build and verify immediately
+# against a project-local Playwright.
+init = "npm install && npx playwright install chromium"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# Shatter ships two: `base` (the default — the standard endless arcade game) and
+# `warhead` (the standard game plus armored rocks and a homing-torpedo secondary
+# weapon). Both are the same single game mode, rated on the case's sole common
+# `arcade` domain. Neither variant seeds specs of its own: what differs between them —
+# how rocks take damage, the ship's weapons, and the matching HUD and how-to-play text
+# — is branched by variant slug inside the common `specs/gameplay.md.hbs` and
+# `specs/ui.md.hbs` templates. `warhead` additionally adds an in-game reference view,
+# proofs, and review items (which roll up to that same common domain). The first entry
+# is the default. This list is a root key, so it must precede the first table header
+# (`[build]`).
+variants = [
+  "variants/base.toml",
+  "variants/warhead.toml",
+]
+
+# How the validator (and the per-run Cloudflare Pages deploy) turns a produced
+# implementation into a served static site. These run verbatim from the build's
+# repository root: dependencies are installed, then the static build is produced into
+# `dist/`, `build/`, or `out/`. `npm ci` is deliberate — it requires the build to
+# commit a `package-lock.json`, so the validated build installs exactly what the
+# deploy will. Both commands are required — there are no defaults, so every case
+# states exactly how its implementation is built.
+[build]
+install = "npm ci"
+build = "npm run build"
+
+# Instrumentation: the debug-and-automation surface every build installs, named once
+# here so a review item's `validation` driver (and the validator that runs it) knows
+# which `window` global to drive. The seeded specification documents the same handle
+# independently as an ordinary game debug feature (see specs/instrumentation.md); this
+# entry is reporter-side and never seeded. It is required because review items declare
+# `validation` scripts.
+[instrumentation]
+handle = "__shatter"
+
+# The fixed simulation rate, in Hz. Shatter's debug API advances time in whole
+# simulation ticks (`step(ticks)`) rather than in seconds, so there is no rounding
+# and no ambiguity about what a step means. This is the rate the validation runtime
+# uses to relate that exact stepping back to real time — one tick is 1/120 of a
+# second, so a second of game time is 120 ticks. It must match the timestep
+# `specs/simulation.md` mandates.
+tick_hz = 120
+
+# Common specs: seeded for EVERY variant of this case, at the `dest` path within the
+# run workspace. The specification is decomposed by concern: the overview, the
+# playfield and the star, the ship and its bullets, the rocks and the saucer, the
+# simulation and collision rules, the gameplay (scoring, lives, waves, how rocks take
+# damage, the weapons, and the controls), the UI (menus, game states, the HUD, and
+# audio), and the debugging/automation surface. What a variant changes wholesale — how
+# rocks take damage and which weapons the ship carries, plus the matching HUD and
+# how-to-play text — is branched by variant slug inside `specs/gameplay.md.hbs` and
+# `specs/ui.md.hbs` rather than seeded from a separate per-variant file, so each
+# variant's rendered set reads as one self-contained game.
+#
+# Most common specs are plain Markdown, seeded verbatim; a spec's `dest` defaults to
+# its `source`. Three are `.hbs` templates, rendered with the selected variant before
+# landing at their `dest`: `specs/gameplay.md.hbs` and `specs/ui.md.hbs`, which branch
+# on the variant slug for the standard-vs-Warhead rules, HUD, and how-to-play text, and
+# `specs/instrumentation.md.hbs`, whose torpedo-state and rock-health snapshot wording
+# depends on the variant. An `.md.hbs` source seeds to the same `.md` path.
+[[spec]]
+source = "specs/overview.md"
+
+[[spec]]
+source = "specs/playfield.md"
+
+[[spec]]
+source = "specs/ship.md"
+
+[[spec]]
+source = "specs/hazards.md"
+
+[[spec]]
+source = "specs/simulation.md"
+
+[[spec]]
+source = "specs/gameplay.md.hbs"
+
+[[spec]]
+source = "specs/ui.md.hbs"
+
+# The debugging and automation surface every variant must expose: a deterministic,
+# steppable core; a `window.__shatter` API to drive and inspect the game from code;
+# and a read-only debug overlay. Seeded for every variant and framed as an ordinary
+# developer affordance of the game. Rendered from a `.hbs` template so its torpedo and
+# rock-health wording matches the selected variant; it seeds to `specs/instrumentation.md`.
+[[spec]]
+source = "specs/instrumentation.md.hbs"
+
+# Proof of implementation: instructs the build to capture evidence (screenshots and a
+# short clip) at the exact paths the `[[proof]]` entries below declare, so a reviewer
+# can see what the build actually produced. The paths in this spec and in the
+# `[[proof]]` entries must match.
+[[spec]]
+source = "specs/proof.md"
+
+# Common reference views, seeded for EVERY variant. Each `media` is a screenshot
+# captured (with Playwright) from this case's playable reference-impl builds — the
+# authored, correct games under `reference-impl/` — and served as-is (seeded into
+# the run as a visual target, never rendered). The three common views are captured
+# from the `base` build (the standard game); the `warhead` variant adds one
+# variant-only view (declared in its variant file). See `reference/README.md` for
+# how they are regenerated. References are not validated unless a `[[check]]` below
+# names them.
+[[reference]]
+view = "title"
+media = "reference/screenshots/title.png"
+
+[[reference]]
+view = "gameplay"
+media = "reference/screenshots/gameplay.png"
+
+[[reference]]
+view = "game-over"
+media = "reference/screenshots/game-over.png"
+
+# Proof of implementation, requested for every variant. Each declares a `dest`
+# path (relative to the run workspace root) the build must write a screenshot
+# or `.webm` clip to as evidence the feature works; `specs/proof.md` instructs
+# the build to produce them at exactly these paths. Validation records whether
+# each turned up (informational — a missing proof does not fail the run), and a
+# reviewer pairs each with its expected reference (see the review items that carry
+# `reference`/`proof` links below). The media kind is inferred from the extension: `.png` is an image,
+# `.webm` a video (the format Playwright records natively; the public gallery
+# transcodes it to mp4).
+[[proof]]
+id = "title"
+name = "Title screen"
+dest = "proof/title.png"
+
+[[proof]]
+id = "gameplay"
+name = "Gameplay"
+dest = "proof/gameplay.png"
+
+[[proof]]
+id = "game-over"
+name = "Game over"
+dest = "proof/game-over.png"
+
+[[proof]]
+id = "gravity"
+name = "Gravity clip"
+dest = "proof/gravity.webm"
+
+# Reference-similarity checks (opt-in) are intentionally not declared. The
+# reference screenshots are seeded as illustrative examples of the screens, not
+# layouts to reproduce, so menus and screens are left to the model's design and
+# are reviewed by a human rather than scored against a baseline. The automated
+# load check still runs.
+
+# The case's sole scoring domain, rated for every variant. Shatter is one game mode
+# regardless of the selected variant, so both `base` and `warhead` are rated on this
+# single domain — it is the run's overall rating. Every case must declare at least
+# one common domain. Every review item (common here, and the `warhead` variant's own)
+# rolls up to this domain implicitly, so none names a `domain` — `arcade` is the only
+# domain there is.
+[[domain]]
+id = "arcade"
+name = "Arcade"
+description = "Endless survival: pilot the ship through the gravity well, shatter the rocks wave after wave, and outlast the saucer."
+
+# Reviewer checklist, common to every variant, in the categories grammar
+# (`[review] format = 2`). Each `[[review.categories]]` is a CATEGORY — a bare name
+# grouping the points a reviewer grades — and each `[[review.categories.items]]`
+# under it is one graded review item, worth one point (the default weight), so a
+# category is worth the number of items it holds (no fractional scoring). A category
+# carries no prose of its own; each review item states its own requirement in
+# `description`. The checklist is reporter-side material — never seeded into a run,
+# so the model never sees it; each item restates a requirement the seeded
+# specification already states. An item with a `validation` script is decided
+# automatically (a reviewer can override); one without is reviewed by a person. The
+# points still left to the reviewer (no validation script) are the wrap "both sides" draw,
+# the HUD and motion-trail rendering, and the window fit; the UI game states carry a
+# validation script too, but only to reach and CAPTURE each screen (its auto-verdict
+# confirms the state is reachable), while how each screen reads is still left to the
+# reviewer from the capture. Audio is now driven automatically as well — each cue is confirmed
+# by the Web Audio sources the build starts (see the Audio category below). The Warhead
+# variant extends several of these common categories (Rocks, UI, Color, Controls) and
+# adds a Homing torpedo category all its own in its file (`variants/warhead.toml`); the
+# base game sees only these.
+[review]
+format = 2
+
+# --- Flight -------------------------------------------------------------------
+# Inertial flight is checked as four separate points — thrust, coasting, turn rate,
+# and the speed cap — so a build fails exactly the part of the flight model it breaks.
+[[review.categories]]
+id = "flight"
+title = "Flight"
+[[review.categories.items]]
+id = "thrust-accelerates"
+title = "Thrust accelerates along the facing"
+description = "Holding thrust accelerates the ship along its current facing at roughly 480 px/s^2 — it builds real speed from rest, in the direction it is pointing."
+# Automated validation: pose the ship at rest facing +x, hold thrust, step the real
+# sim, and read the velocity it gained. See validation/flight/thrust-accelerates.mjs.
+validation = { script = "validation/flight/thrust-accelerates.mjs", outputs = [
+  { id = "accel", name = "The ship accelerating under thrust", kind = "video" },
+] }
+[[review.categories.items]]
+id = "coasts"
+title = "Coasts under momentum"
+description = "Releasing thrust leaves the ship coasting under momentum with a gentle drag (speed halves roughly every 3 s) — no instant stop and no reverse or brake."
+# Automated validation: pose the ship moving with no keys held, step the real sim, and
+# confirm the velocity persists and decays to ~half after 3 s. See validation/flight/coasts.mjs.
+validation = { script = "validation/flight/coasts.mjs", outputs = [
+  { id = "coast", name = "The ship coasting after thrust is released", kind = "video" },
+] }
+[[review.categories.items]]
+id = "turn-rate"
+title = "Turning changes only the facing"
+description = "Turning rotates the facing at about 300 deg/s and changes only the facing, not the velocity's direction."
+# Automated validation: hold a rotate key with the ship moving, step the real sim, and
+# confirm the facing swings at ~300 deg/s while the velocity's heading is unchanged.
+# See validation/flight/turn-rate.mjs.
+validation = { script = "validation/flight/turn-rate.mjs", outputs = [
+  { id = "turn", name = "The ship turning in place", kind = "video" },
+] }
+[[review.categories.items]]
+id = "speed-cap"
+title = "Speed caps at the ceiling"
+description = "Thrust cannot drive the ship past its speed cap (~680 px/s): the ship plateaus there and never exceeds it, however long thrust is held."
+# Automated validation: thrust continuously and confirm the ship's speed plateaus at
+# ~680 and never exceeds it. See validation/flight/speed-cap.mjs.
+validation = { script = "validation/flight/speed-cap.mjs", outputs = [
+  { id = "cap", name = "The ship's speed plateauing at the cap", kind = "video" },
+] }
+
+# --- Screen wrap --------------------------------------------------------------
+# Each body's wrap is checked separately so a build that wraps some bodies but not
+# others fails only the ones it drops.
+[[review.categories]]
+id = "wrap"
+title = "Screen wrap"
+[[review.categories.items]]
+id = "ship"
+title = "The ship wraps"
+description = "The ship crossing any edge reappears at the opposite edge carrying the same velocity."
+validation = { script = "validation/wrap/ship.mjs", outputs = [
+  { id = "wrap", name = "The ship wrapping across an edge", kind = "video" },
+] }
+[[review.categories.items]]
+id = "bullet"
+title = "Bullets wrap"
+description = "A bullet crossing any edge reappears at the opposite edge carrying the same velocity."
+validation = { script = "validation/wrap/bullet.mjs", outputs = [
+  { id = "wrap", name = "A bullet wrapping across an edge", kind = "video" },
+] }
+[[review.categories.items]]
+id = "rock"
+title = "Rocks wrap"
+description = "A rock crossing any edge reappears at the opposite edge carrying the same velocity."
+validation = { script = "validation/wrap/rock.mjs", outputs = [
+  { id = "wrap", name = "A rock wrapping across an edge", kind = "video" },
+] }
+[[review.categories.items]]
+id = "saucer"
+title = "The saucer wraps"
+description = "The saucer crossing any edge reappears at the opposite edge carrying the same velocity."
+validation = { script = "validation/wrap/saucer.mjs", outputs = [
+  { id = "wrap", name = "The saucer wrapping across an edge", kind = "video" },
+] }
+[[review.categories.items]]
+id = "both-sides"
+title = "Straddling shapes draw on both sides"
+description = "A shape straddling an edge is drawn on both sides of the seam rather than popping from one edge to the other."
+# Reviewed by a person from the gameplay reference and proof.
+reference = "gameplay"
+proof = "gameplay"
+
+# --- Gravity well -------------------------------------------------------------
+[[review.categories]]
+id = "gravity"
+title = "Gravity well"
+[[review.categories.items]]
+id = "bullet-curves"
+title = "Bullets curve toward the star"
+description = "A bullet fired past the star is pulled toward it and visibly curves rather than flying straight."
+validation = { script = "validation/gravity/bullet-curves.mjs", outputs = [
+  { id = "curve", name = "A bullet curving around the star", kind = "video" },
+] }
+[[review.categories.items]]
+id = "rock-curves"
+title = "Rocks travel curved paths"
+description = "A rock is pulled by the star and travels a curved path rather than a straight line."
+validation = { script = "validation/gravity/rock-curves.mjs", outputs = [
+  { id = "curve", name = "A rock on a curved path", kind = "video" },
+] }
+[[review.categories.items]]
+id = "ship-free"
+title = "The ship is never pulled"
+description = "The ship is a powered craft the star never pulls — at rest away from the star it stays exactly put."
+validation = { script = "validation/gravity/ship-free.mjs", outputs = [
+  { id = "free", name = "The ship holding position, unaffected by the star", kind = "video" },
+] }
+[[review.categories.items]]
+id = "saucer-free"
+title = "The saucer is never pulled"
+description = "The saucer is a powered craft the star never pulls — crossing near the star it is not bent toward it the way a rock would be."
+validation = { script = "validation/gravity/saucer-free.mjs", outputs = [
+  { id = "free", name = "The saucer crossing unaffected by the star", kind = "video" },
+] }
+
+# --- Solid star core ----------------------------------------------------------
+[[review.categories]]
+id = "star-core"
+title = "Solid star core"
+[[review.categories.items]]
+id = "ship-slides"
+title = "The ship slides off the core"
+description = "The core is solid but not lethal: flying into it costs no life; the ship slides along its surface rather than through it."
+validation = { script = "validation/star-core/ship-slides.mjs", outputs = [
+  { id = "slide", name = "The ship sliding off the solid core", kind = "video" },
+] }
+[[review.categories.items]]
+id = "bullet-absorbed"
+title = "Bullets are absorbed at the core"
+description = "A bullet that reaches the core is absorbed and removed (not passed through), scoring nothing."
+validation = { script = "validation/star-core/bullet-absorbed.mjs", outputs = [
+  { id = "absorb", name = "A bullet absorbed at the core", kind = "video" },
+] }
+[[review.categories.items]]
+id = "rock-recycled"
+title = "Rocks are recycled at the core"
+description = "A rock pulled into the star is destroyed and immediately replaced by a same-size rock entering from off-screen, so the number of rocks is conserved and no points are scored."
+validation = { script = "validation/star-core/rock-recycled.mjs", outputs = [
+  { id = "recycle", name = "A rock recycled by the star", kind = "video" },
+] }
+
+# --- Rocks & splitting --------------------------------------------------------
+[[review.categories]]
+id = "rocks"
+title = "Rocks"
+[[review.categories.items]]
+id = "split-large"
+title = "Large splits into two Medium"
+description = "Destroying a Large rock yields two Medium rocks."
+validation = { script = "validation/rocks/split-large.mjs", outputs = [
+  { id = "split", name = "A Large rock splitting into two Medium", kind = "video" },
+] }
+[[review.categories.items]]
+id = "split-medium"
+title = "Medium splits into two Small"
+description = "Destroying a Medium rock yields two Small rocks."
+validation = { script = "validation/rocks/split-medium.mjs", outputs = [
+  { id = "split", name = "A Medium rock splitting into two Small", kind = "video" },
+] }
+[[review.categories.items]]
+id = "split-small"
+title = "Small is destroyed outright"
+description = "A Small rock is destroyed outright, leaving no fragment."
+validation = { script = "validation/rocks/split-small.mjs", outputs = [
+  { id = "split", name = "A Small rock destroyed outright", kind = "video" },
+] }
+[[review.categories.items]]
+id = "fragment-fan"
+title = "Fragments fan apart and inherit motion"
+description = "Split fragments fan apart to opposite sides based on the shot direction and inherit the parent's motion."
+validation = { script = "validation/rocks/fragment-fan.mjs", outputs = [
+  { id = "fan", name = "Fragments fanning apart from a shot", kind = "video" },
+] }
+[[review.categories.items]]
+id = "recycle-resets-speed"
+title = "A recycled rock's speed is reset"
+description = "A rock recycled by the star re-enters at a fresh base drift speed, so a rock slung through the well repeatedly never keeps accelerating."
+validation = { script = "validation/rocks/recycle-resets-speed.mjs", outputs = [
+  { id = "recycle", name = "A recycled rock re-entering at base speed", kind = "video" },
+] }
+
+# --- Bullets ------------------------------------------------------------------
+[[review.categories]]
+id = "bullets"
+title = "Bullets"
+[[review.categories.items]]
+id = "lifetime"
+title = "Bullets expire"
+description = "A bullet expires after a limited lifetime/range (~1.5 s)."
+validation = { script = "validation/bullets/lifetime.mjs", outputs = [
+  { id = "expire", name = "A bullet expiring after its lifetime", kind = "video" },
+] }
+[[review.categories.items]]
+id = "max-four"
+title = "At most four bullets"
+description = "At most four of the ship's bullets exist on screen at once."
+validation = { script = "validation/bullets/max-four.mjs", outputs = [
+  { id = "cap", name = "The four-bullet on-screen cap", kind = "video" },
+] }
+[[review.categories.items]]
+id = "fire-rate"
+title = "Fire is rate-limited"
+description = "Fire is rate-limited (~0.18 s between shots): a shot fired too soon after the last does not fire."
+validation = { script = "validation/bullets/fire-rate.mjs", outputs = [
+  { id = "rate", name = "Rate-limited fire", kind = "video" },
+] }
+[[review.categories.items]]
+id = "inherits-motion"
+title = "Bullets carry the ship's motion"
+description = "A bullet carries the ship's own motion, so a shot fired while moving is faster than one fired at rest."
+validation = { script = "validation/bullets/inherits-motion.mjs", outputs = [
+  { id = "inherit", name = "A faster shot fired while moving", kind = "video" },
+] }
+
+# --- Enemy saucer -------------------------------------------------------------
+[[review.categories]]
+id = "saucer"
+title = "Enemy saucer"
+[[review.categories.items]]
+id = "spawns-one"
+title = "Appears, at most one"
+description = "A saucer appears on demand and at most one exists on the field at a time."
+validation = { script = "validation/saucer/spawns-one.mjs", outputs = [
+  { id = "saucer", name = "A single saucer on the field", kind = "video" },
+] }
+[[review.categories.items]]
+id = "avoids-star"
+title = "Steers clear of the star"
+description = "The saucer steers clear of the star and is never pulled into it — it never overlaps the core."
+validation = { script = "validation/saucer/avoids-star.mjs", outputs = [
+  { id = "avoid", name = "The saucer steering clear of the star", kind = "video" },
+] }
+[[review.categories.items]]
+id = "fires-at-ship"
+title = "Fires at the ship"
+description = "The saucer fires bullets aimed at the ship."
+validation = { script = "validation/saucer/fires-at-ship.mjs", outputs = [
+  { id = "fire", name = "The saucer firing at the ship", kind = "video" },
+] }
+[[review.categories.items]]
+id = "destroyable"
+title = "Can be shot down"
+description = "The saucer can be shot down with a bullet, for points."
+validation = { script = "validation/saucer/destroyable.mjs", outputs = [
+  { id = "kill", name = "Shooting down the saucer", kind = "video" },
+] }
+
+# --- Waves --------------------------------------------------------------------
+[[review.categories]]
+id = "waves"
+title = "Waves"
+[[review.categories.items]]
+id = "count-increases"
+title = "Clearing advances to a denser wave"
+description = "Clearing every rock advances to a new wave with more rocks, endlessly."
+validation = { script = "validation/waves/count-increases.mjs", outputs = [
+  { id = "wave", name = "A denser next wave", kind = "video" },
+] }
+[[review.categories.items]]
+id = "banner"
+title = "A WAVE banner shows"
+description = "A brief WAVE N banner shows at the start of each wave."
+validation = { script = "validation/waves/banner.mjs", outputs = [
+  { id = "banner", name = "The WAVE banner at a wave's start", kind = "image" },
+] }
+
+# --- Lives & respawn ----------------------------------------------------------
+[[review.categories]]
+id = "lives"
+title = "Lives and respawn"
+[[review.categories.items]]
+id = "starts-three"
+title = "Starts with three ships"
+description = "A new game starts with 3 ships."
+validation = { script = "validation/lives/starts-three.mjs", outputs = [
+  { id = "lives", name = "A new game's three ships", kind = "image" },
+] }
+[[review.categories.items]]
+id = "respawn-safe-point"
+title = "Respawns at the safe point"
+description = "Losing a ship (with lives left) respawns the next at the safe point below the star, facing up, with a brief invulnerability."
+validation = { script = "validation/lives/respawn-safe-point.mjs", outputs = [
+  { id = "respawn", name = "Respawn at the safe point below the star", kind = "video" },
+] }
+[[review.categories.items]]
+id = "invuln-ignores"
+title = "Invulnerability ignores collisions"
+description = "During the post-respawn invulnerability window the ship ignores all collisions."
+validation = { script = "validation/lives/invuln-ignores.mjs", outputs = [
+  { id = "invuln", name = "An invulnerable ship ignoring a collision", kind = "video" },
+] }
+[[review.categories.items]]
+id = "invuln-ends"
+title = "Collisions resume after invulnerability"
+description = "Once the invulnerability window is over, collisions are lethal again and cost a life."
+validation = { script = "validation/lives/invuln-ends.mjs", outputs = [
+  { id = "lethal", name = "A collision turning lethal once invulnerability ends", kind = "video" },
+] }
+[[review.categories.items]]
+id = "extra-at-10000"
+title = "Extra ship at each 10,000"
+description = "An extra ship is granted at each 10,000-point threshold."
+validation = { script = "validation/lives/extra-at-10000.mjs", outputs = [
+  { id = "extra", name = "An extra ship granted at 10,000 points", kind = "video" },
+] }
+[[review.categories.items]]
+id = "game-over-at-zero"
+title = "Game over at zero lives"
+description = "Losing the last ship ends the game."
+validation = { script = "validation/lives/game-over-at-zero.mjs", outputs = [
+  { id = "gameover", name = "Game over at zero lives", kind = "image" },
+] }
+
+# --- Scoring ------------------------------------------------------------------
+[[review.categories]]
+id = "scoring"
+title = "Scoring"
+[[review.categories.items]]
+id = "large-20"
+title = "A Large scores 20"
+description = "Destroying a Large rock scores 20."
+validation = { script = "validation/scoring/large-20.mjs", outputs = [
+  { id = "score", name = "Scoring a Large rock", kind = "video" },
+] }
+[[review.categories.items]]
+id = "medium-50"
+title = "A Medium scores 50"
+description = "Destroying a Medium rock scores 50."
+validation = { script = "validation/scoring/medium-50.mjs", outputs = [
+  { id = "score", name = "Scoring a Medium rock", kind = "video" },
+] }
+[[review.categories.items]]
+id = "small-100"
+title = "A Small scores 100"
+description = "Destroying a Small rock scores 100."
+validation = { script = "validation/scoring/small-100.mjs", outputs = [
+  { id = "score", name = "Scoring a Small rock", kind = "video" },
+] }
+[[review.categories.items]]
+id = "saucer-200"
+title = "The saucer scores 200"
+description = "Destroying the saucer scores 200."
+validation = { script = "validation/scoring/saucer-200.mjs", outputs = [
+  { id = "score", name = "Scoring the saucer", kind = "video" },
+] }
+[[review.categories.items]]
+id = "monotonic"
+title = "The score only ever rises"
+description = "Over a driven kill sequence the HUD score increments correctly and only ever rises within a game."
+validation = { script = "validation/scoring/monotonic.mjs", outputs = [
+  { id = "rising", name = "The score rising across kills", kind = "video" },
+] }
+
+# --- Controls (input injection) ----------------------------------------------
+# Each control is driven with injected keyboard input through the debug API (see
+# specs/instrumentation.md) and its effect read back.
+[[review.categories]]
+id = "controls"
+title = "Controls"
+[[review.categories.items]]
+id = "rotate-left"
+title = "Left arrow rotates CCW"
+description = "Left arrow rotates the ship counter-clockwise."
+validation = { script = "validation/controls/rotate-left.mjs", outputs = [{ id = "move", name = "Rotating left", kind = "video" }] }
+[[review.categories.items]]
+id = "rotate-right"
+title = "Right arrow rotates CW"
+description = "Right arrow rotates the ship clockwise."
+validation = { script = "validation/controls/rotate-right.mjs", outputs = [{ id = "move", name = "Rotating right", kind = "video" }] }
+[[review.categories.items]]
+id = "rotate-a"
+title = "A rotates CCW"
+description = "The A key rotates the ship counter-clockwise (the alternate rotate binding)."
+validation = { script = "validation/controls/rotate-a.mjs", outputs = [{ id = "move", name = "Rotating with A", kind = "video" }] }
+[[review.categories.items]]
+id = "rotate-d"
+title = "D rotates CW"
+description = "The D key rotates the ship clockwise (the alternate rotate binding)."
+validation = { script = "validation/controls/rotate-d.mjs", outputs = [{ id = "move", name = "Rotating with D", kind = "video" }] }
+[[review.categories.items]]
+id = "thrust-up"
+title = "Up arrow thrusts"
+description = "Up arrow thrusts the ship."
+validation = { script = "validation/controls/thrust-up.mjs", outputs = [{ id = "move", name = "Thrusting with Up", kind = "video" }] }
+[[review.categories.items]]
+id = "thrust-w"
+title = "W thrusts"
+description = "The W key thrusts the ship (the alternate thrust binding)."
+validation = { script = "validation/controls/thrust-w.mjs", outputs = [{ id = "move", name = "Thrusting with W", kind = "video" }] }
+[[review.categories.items]]
+id = "fire-space"
+title = "Space fires"
+description = "Space fires a bullet."
+validation = { script = "validation/controls/fire-space.mjs", outputs = [{ id = "fire", name = "Firing with Space", kind = "video" }] }
+[[review.categories.items]]
+id = "pause-esc"
+title = "Esc pauses"
+description = "Esc pauses the game."
+validation = { script = "validation/controls/pause-esc.mjs", outputs = [{ id = "pause", name = "Pausing with Esc", kind = "video" }] }
+[[review.categories.items]]
+id = "pause-p"
+title = "P pauses"
+description = "The P key pauses the game (the alternate pause binding)."
+validation = { script = "validation/controls/pause-p.mjs", outputs = [{ id = "pause", name = "Pausing with P", kind = "video" }] }
+[[review.categories.items]]
+id = "mute-m"
+title = "M toggles mute"
+description = "The M key toggles mute."
+validation = { script = "validation/controls/mute-m.mjs", outputs = [{ id = "mute", name = "Mute toggled from the title", kind = "image" }] }
+[[review.categories.items]]
+id = "menu-move"
+title = "Up/Down move the menu selection"
+description = "Up/Down (or W/S) move the title menu selection."
+validation = { script = "validation/controls/menu-move.mjs", outputs = [{ id = "menu", name = "Moving the menu selection", kind = "video" }] }
+[[review.categories.items]]
+id = "menu-confirm"
+title = "Enter/Space confirm"
+description = "Enter (or Space) confirms the highlighted menu selection."
+validation = { script = "validation/controls/menu-confirm.mjs", outputs = [{ id = "menu", name = "Confirming a menu selection", kind = "video" }] }
+[[review.categories.items]]
+id = "menu-back"
+title = "Esc goes back"
+description = "Esc goes back from a sub-screen (How to Play) to the menu."
+validation = { script = "validation/controls/menu-back.mjs", outputs = [{ id = "menu", name = "Going back from How to Play", kind = "video" }] }
+
+# --- Color (sampled from the rendered canvas) ---------------------------------
+# Each point samples the pixels the build actually RENDERS at a known on-field
+# location and confirms the element is drawn in a distinct, visible color — reading
+# what is painted, not any value the game reports. The exact palette is the model's
+# own; only that the elements are told apart by color is scored.
+[[review.categories]]
+id = "color"
+title = "Color"
+[[review.categories.items]]
+id = "ship"
+title = "Ship color"
+description = "The ship renders in a distinct, visible color — clearly different from the field background and from the star, rocks, and saucer."
+validation = { script = "validation/color/ship.mjs", outputs = [
+  { id = "scene", name = "The posed field showing the element colors", kind = "image" },
+] }
+[[review.categories.items]]
+id = "star"
+title = "Star color"
+description = "The star renders in a distinct, visible color — clearly different from the field background and from the ship, rocks, and saucer."
+validation = { script = "validation/color/star.mjs", outputs = [
+  { id = "scene", name = "The posed field showing the element colors", kind = "image" },
+] }
+[[review.categories.items]]
+id = "rock"
+title = "Rock color"
+description = "Rocks render in a distinct, visible color — clearly different from the field background and from the ship, star, and saucer."
+validation = { script = "validation/color/rock.mjs", outputs = [
+  { id = "scene", name = "The posed field showing the element colors", kind = "image" },
+] }
+[[review.categories.items]]
+id = "saucer"
+title = "Saucer color"
+description = "The saucer renders in a distinct, visible color — clearly different from the field background and from the ship, star, and rocks."
+validation = { script = "validation/color/saucer.mjs", outputs = [
+  { id = "scene", name = "The posed field showing the element colors", kind = "image" },
+] }
+
+# --- UI -----------------------------------------------------------------------
+# The game states are each reached through the debug API and captured, so a reviewer
+# sees the actual title, how-to, pause, and game-over screens. The auto-verdict
+# confirms the state is reachable; whether each screen reads and lays out well is
+# left to the reviewer. The HUD, motion trail, and window fit are reviewed by a person from the
+# references and proofs.
+[[review.categories]]
+id = "ui"
+title = "UI"
+[[review.categories.items]]
+id = "state-title"
+title = "Title / main menu"
+description = "The title / main menu state is reachable and correct, with the menu rendered cleanly and navigable."
+validation = { script = "validation/ui/state-title.mjs", outputs = [
+  { id = "title", name = "The title / main menu", kind = "image" },
+] }
+[[review.categories.items]]
+id = "state-howto"
+title = "How to play"
+description = "The how-to-play state is reachable and correct, and returns to the menu."
+validation = { script = "validation/ui/state-howto.mjs", outputs = [
+  { id = "howto", name = "The how-to-play screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "state-pause"
+title = "Pause (resume/restart/quit)"
+description = "The pause state is reachable and correct, offering resume, restart, and quit to menu."
+validation = { script = "validation/ui/state-pause.mjs", outputs = [
+  { id = "pause", name = "The pause menu", kind = "image" },
+] }
+[[review.categories.items]]
+id = "state-gameover"
+title = "Game over (play again/menu)"
+description = "The game-over state is reachable and correct, showing the final score and wave reached and offering play again and menu."
+validation = { script = "validation/ui/state-gameover.mjs", outputs = [
+  { id = "gameover", name = "The game-over screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud"
+title = "HUD rendering"
+description = "The score and remaining-lives glyphs render clearly."
+reference = "gameplay"
+proof = "gameplay"
+[[review.categories.items]]
+id = "motion-trail"
+title = "Bullet motion trail"
+description = "Every moving bullet leaves a continuous, tapering motion trail (a smooth comet in the bullet color, not discrete dots) that curves with the star and whose length scales with speed, without smearing across the field on a wrap."
+reference = "gameplay"
+proof = "gravity"
+[[review.categories.items]]
+id = "window-fit"
+title = "Window fit"
+description = "The entire 1280x720 field stays visible, fitted, and centered at any window size and pixel density, including on load before any input."
+reference = "title"
+proof = "title"
+
+# --- Audio (driven automatically via the Web Audio sources a build starts) -----
+# All audio is synthesized with the Web Audio API (specs/ui.md — no audio files),
+# so the validator reads the sources a build starts and confirms a cue fires on each
+# event. The build must not autoplay, so each check arms audio with one neutral key
+# press first; the exact sound is the model's own, only that a cue plays is scored. The
+# synthesized-only, muted-playback, never-fail-to-load, and silent-until-interaction
+# properties are reviewed by a person from play.
+[[review.categories]]
+id = "audio"
+title = "Audio"
+[[review.categories.items]]
+id = "fire"
+title = "Fire cue"
+description = "A distinct synthesized cue plays when the ship fires."
+# Automated validation: drive a real shot and confirm a Web Audio cue fires. See
+# validation/audio/fire.mjs.
+validation = { script = "validation/audio/fire.mjs", outputs = [
+  { id = "shot", name = "The shot whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "shatter"
+title = "Shatter cue"
+description = "A distinct synthesized cue plays when a rock shatters."
+# Automated validation: destroy a real rock and confirm a Web Audio cue fires. See
+# validation/audio/shatter.mjs.
+validation = { script = "validation/audio/shatter.mjs", outputs = [
+  { id = "shatter", name = "The rock shatter whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "thrust"
+title = "Thrust cue"
+description = "A distinct synthesized cue plays while the ship thrusts."
+# Automated validation: hold thrust and confirm a Web Audio cue fires. See
+# validation/audio/thrust.mjs.
+validation = { script = "validation/audio/thrust.mjs", outputs = [
+  { id = "thrust", name = "The thrust whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "saucer"
+title = "Saucer cue"
+description = "A distinct synthesized cue marks the saucer's presence."
+# Automated validation: run the game to a natural saucer arrival and confirm a Web
+# Audio cue fires. See validation/audio/saucer.mjs.
+validation = { script = "validation/audio/saucer.mjs", outputs = [
+  { id = "saucer", name = "The saucer arrival whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "death"
+title = "Ship-destroyed cue"
+description = "A distinct synthesized cue plays when the ship is destroyed."
+# Automated validation: drive a lethal collision and confirm a Web Audio cue fires. See
+# validation/audio/death.mjs.
+validation = { script = "validation/audio/death.mjs", outputs = [
+  { id = "death", name = "The ship destruction whose cue is checked", kind = "video" },
+] }
