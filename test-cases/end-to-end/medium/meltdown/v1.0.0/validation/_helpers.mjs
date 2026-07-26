@@ -421,3 +421,33 @@ export async function combatSetup(api, type, col = 3, row = 20, rot = 0) {
   const coreId = await spawn(api, "core", "left");
   return { id, coreId };
 }
+
+// ---- Audio (reads the Web Audio cues the build actually schedules) ----------
+//
+// Meltdown's cues are synthesized with the Web Audio API (specs/ui.md), so the
+// driver reports every source the build starts (see `api.audio`). The game must
+// not autoplay: it creates (or resumes) its AudioContext only on the first real
+// user interaction, so before driving an event whose cue is checked, arm audio
+// with a GENUINE browser gesture. Meltdown is mouse-driven (`input.ts` fires the
+// same unlock from a mousedown as from a keydown), so a conformant build may
+// unlock audio only from a pointer rather than a key — arming uses both
+// `api.userKey` and a corner `api.userClick` rather than a debug `press`, which
+// would leave such a build's AudioContext uncreated, so no cue would ever be
+// scheduled though it plays fine for a real player. `KeyZ` has no game binding.
+// The click lands at (1100, 90): inside the build panel (`x >= PANEL_X` = 986,
+// constants.ts), in the gap between the readouts strip (y 18..62) and the shop
+// grid (y from 122, ui.ts) — no button rect covers that point on any screen. In
+// a menu-overlay state the click only tests `menuHits` (laid out around the
+// centre); in "playing" it falls through `onPanelClick` matching nothing. So
+// arming never places a tower, arms/disarms the shop, or fires a menu action,
+// regardless of what the precondition already armed or built. From there a cue
+// is confirmed by the audio log growing across the driven event.
+export async function armAudio(api) {
+  await api.userKey("KeyZ");
+  await api.userClick(1100, 90);
+}
+
+/** The number of Web Audio sources the build has started so far. */
+export async function audioCount(api) {
+  return (await api.audio()).length;
+}

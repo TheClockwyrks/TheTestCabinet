@@ -1219,21 +1219,73 @@ validation = { script = "validation/ui/next-wave-preview.mjs", outputs = [
 ] }
 
 # --- Audio -------------------------------------------------------------------
+# All audio is synthesized with the Web Audio API (specs/ui.md — no audio files), so
+# the validator reads the sources a build starts and confirms a distinct cue fires on
+# each event. The build must not autoplay, so each check arms audio with a real
+# gesture (a key press and a corner click — Meltdown is mouse-driven, so a build may
+# unlock audio from a pointer rather than a key) first; the exact sound is the
+# model's own, only that a cue plays is scored. Each mandated cue is its own review
+# item so a build fails exactly the cue it omits. The muteable / never-fail-to-load /
+# silent-until-interaction properties are reviewed by a person from play.
 [[review.categories]]
 id = "audio"
 title = "Audio"
 [[review.categories.items]]
 id = "fire-cue"
 title = "Firing cue"
-description = "A distinct short cue plays when an emitter fires."
+description = "A distinct short cue, synthesized with the Web Audio API (no audio files), plays when an emitter fires."
+validation = { script = "validation/audio/fire-cue.mjs", outputs = [
+  { id = "fire", name = "An emitter firing whose cue is checked", kind = "video" },
+] }
 [[review.categories.items]]
 id = "trip-cue"
 title = "Trip cue"
 description = "A distinct cue plays when a tower trips offline."
+validation = { script = "validation/audio/trip-cue.mjs", outputs = [
+  { id = "trip", name = "A trip whose cue is checked", kind = "video" },
+] }
 [[review.categories.items]]
 id = "leak-cue"
 title = "Leak cue"
 description = "A distinct cue plays when a unit leaks an exhaust."
+validation = { script = "validation/audio/leak-cue.mjs", outputs = [
+  { id = "leak", name = "A leak whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "death-cue"
+title = "Death cue"
+description = "A distinct cue plays when a surge unit dies."
+validation = { script = "validation/audio/death-cue.mjs", outputs = [
+  { id = "death", name = "A surge unit dying whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "place-cue"
+title = "Place cue"
+description = "A distinct cue plays when a tower is placed."
+validation = { script = "validation/audio/place-cue.mjs", outputs = [
+  { id = "place", name = "A tower placement whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "wave-clear-cue"
+title = "Wave-clear cue"
+description = "A distinct cue plays when a wave clears."
+validation = { script = "validation/audio/wave-clear-cue.mjs", outputs = [
+  { id = "wave-clear", name = "A wave clear whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "victory-cue"
+title = "Victory sting"
+description = "The Victory sting plays when the final wave clears and the run is won."
+validation = { script = "validation/audio/victory-cue.mjs", outputs = [
+  { id = "victory", name = "The victory whose sting is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "game-over-cue"
+title = "Game-over sting"
+description = "The Game-over sting plays when the last life is lost."
+validation = { script = "validation/audio/game-over-cue.mjs", outputs = [
+  { id = "gameover", name = "The game over whose sting is checked", kind = "video" },
+] }
 [[review.categories.items]]
 id = "synth-muteable"
 title = "Synthesized, muteable, safe audio"

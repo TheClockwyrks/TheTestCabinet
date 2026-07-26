@@ -961,13 +961,68 @@ validation = { script = "validation/states/gameover.mjs", outputs = [
 ] }
 
 # --- Audio --------------------------------------------------------------------
+# All audio is synthesized with the Web Audio API (specs/progression.md — no audio
+# files), so the validator reads the sources a build starts and confirms a distinct cue
+# fires on each mandated event. The build must not autoplay, so each check arms audio
+# with a real gesture (a key press and a corner click) first; the exact sound is the
+# model's own, only that a cue plays is scored. Each mandated cue is its own review item
+# so a build fails exactly the cue it omits — the spec's "a predator's own pulse or
+# flare" covers two distinct predators (the Gloamfin's periodic ping and the
+# Flarefish's flare), so it is split into its own two items here. The muteable /
+# never-fail-to-load / silent-until-interaction properties are reviewed by a person from
+# play (see `graceful`).
 [[review.categories]]
 id = "audio"
 title = "Audio"
 [[review.categories.items]]
-id = "cues"
-title = "Distinct synthesized cues"
-description = "Distinct short cues (Web Audio, no files) play for eating, sonar, ink, a predator's pulse/flare, being caught, and descending."
+id = "eat"
+title = "Eat cue"
+description = "A distinct short cue, synthesized with the Web Audio API (no audio files), plays when the forager eats a plankton or a bonus drifter."
+validation = { script = "validation/audio/eat.mjs", outputs = [
+  { id = "eat", name = "The eat whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "sonar"
+title = "Sonar cue"
+description = "A distinct cue plays when the forager emits a sonar pulse."
+validation = { script = "validation/audio/sonar.mjs", outputs = [
+  { id = "sonar", name = "The sonar pulse whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "ink"
+title = "Ink cue"
+description = "A distinct cue plays when the forager releases ink."
+validation = { script = "validation/audio/ink.mjs", outputs = [
+  { id = "ink", name = "The ink release whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "pred-pulse"
+title = "Predator pulse cue"
+description = "A distinct cue plays when the Gloamfin emits its own periodic sonar ping."
+validation = { script = "validation/audio/pred-pulse.mjs", outputs = [
+  { id = "pulse", name = "The Gloamfin ping whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "flare"
+title = "Predator flare cue"
+description = "A distinct cue plays when the Flarefish emits its flare."
+validation = { script = "validation/audio/flare.mjs", outputs = [
+  { id = "flare", name = "The Flarefish flare whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "caught"
+title = "Caught cue"
+description = "A distinct cue plays when a predator catches the forager and a life is lost."
+validation = { script = "validation/audio/caught.mjs", outputs = [
+  { id = "caught", name = "The catch whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "descend"
+title = "Descend cue"
+description = "A distinct cue plays when a maze is cleared and the dive descends toward the next depth."
+validation = { script = "validation/audio/descend.mjs", outputs = [
+  { id = "descend", name = "The maze clear whose cue is checked", kind = "video" },
+] }
 [[review.categories.items]]
 id = "graceful"
 title = "Plays gracefully and muted"
