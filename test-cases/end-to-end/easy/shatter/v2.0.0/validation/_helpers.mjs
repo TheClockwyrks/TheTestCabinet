@@ -442,13 +442,17 @@ export async function actSampleTorpedoScene(api, { settleMs = 140, launchTicks =
 //
 // Shatter's audio is synthesized with the Web Audio API (specs/ui.md), so the driver
 // reports every source the build starts (see `api.audio`). The game must not autoplay: it
-// creates its AudioContext only on the first user interaction, so before driving an event
-// whose cue is checked, inject one neutral key press to arm audio. A key with no game
-// binding leaves state untouched while still counting as the first interaction. From there
-// `api.audio` reports every Web Audio source the build starts, so a cue is confirmed by the
-// log growing across the event.
+// creates (or resumes) its AudioContext only on the first real user interaction, so before
+// driving an event whose cue is checked, arm audio with one neutral key press. This must be a
+// GENUINE browser gesture (`api.userKey`), not a debug `press`: a build may feed the debug API
+// through a purely logical input path and unlock audio only from a real DOM event — both are
+// conformant — so a debug press would leave its AudioContext uncreated and no cue would ever
+// be scheduled, even though the build plays fine for a real player. A key with no game binding
+// leaves state untouched while still counting as the interaction. From there `api.audio`
+// reports every Web Audio source the build starts, so a cue is confirmed by the log growing
+// across the event.
 
-/** Arm the build's audio with a single neutral first key press. */
+/** Arm the build's audio with a single neutral, browser-trusted first key press. */
 export async function armAudio(api) {
-  await api.call("press", "KeyZ");
+  await api.userKey("KeyZ");
 }
