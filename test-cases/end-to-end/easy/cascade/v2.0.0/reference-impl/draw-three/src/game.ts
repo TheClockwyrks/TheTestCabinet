@@ -443,6 +443,11 @@ export class Game {
     // Detach the cards from their source pile.
     if (p.source.kind === "waste") {
       this.waste.pop();
+      // The dragged card has physically left the pile, so the fanned group shrinks
+      // now (3 → 2 → 1) rather than at drop time — otherwise a buried card would
+      // backfill the fan to keep it at three while the card is in hand. A cancelled
+      // drag restores this in returnToSource.
+      this.consumedWasteTop();
     } else if (p.source.kind === "foundation") {
       this.foundations[p.source.index].pop();
     } else {
@@ -523,10 +528,9 @@ export class Game {
     } else {
       this.tableau[target.col].push(...cards);
     }
-    // A legal drop commits the detached card; a waste drag is always the single
-    // top card, so its group shrinks by one. (An illegal drop returns to source
-    // via returnToSource and leaves wasteTurned untouched.)
-    if (this.drag!.source.kind === "waste") this.consumedWasteTop();
+    // A waste drag already shrank its fanned group at detach (beginDrag); the
+    // legal drop just commits it, so there is nothing more to consume here. (An
+    // illegal drop restores the group in returnToSource.)
     this.afterMove();
   }
 
@@ -534,6 +538,8 @@ export class Game {
     const d = this.drag!;
     if (d.source.kind === "waste") {
       this.waste.push(...d.cards);
+      // Undo the detach-time shrink (beginDrag): the card is back on the fan.
+      this.wasteTurned = Math.min(TURN_COUNT, this.wasteTurned + 1);
     } else if (d.source.kind === "foundation") {
       this.foundations[d.source.index].push(...d.cards);
     } else {

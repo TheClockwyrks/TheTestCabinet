@@ -460,8 +460,12 @@ SECURITY LABEL FOR "pgaadauth" ON ROLE "tcab-backend-db-<env>"
   IS 'aadauth,oid=<backend-identity-object-id>,type=service';
 -- Give it everything the current password owner-role has — existing AND future
 -- objects, plus the ownership rights migrations need (ALTER/DROP on owned tables) —
--- by making it a member of the role that owns the database:
-GRANT "tcab_backend" TO "tcab-backend-db-<env>";
+-- by making it a member of the role that OWNS the database. That owner role name is
+-- environment-specific — do NOT assume it: staging uses `tcab_backend` / `tcab_auth`,
+-- but prod uses `tcab_backend_app` / `tcab_auth_app`. Confirm it first (it is also the
+-- username in the current password-form connection string):
+--   SELECT pg_catalog.pg_get_userbyid(datdba) FROM pg_database WHERE datname = 'tcab_backend';
+GRANT "<owner-role>" TO "tcab-backend-db-<env>";  -- e.g. tcab_backend (staging) / tcab_backend_app (prod)
 ```
 
 (`type=service` is the label form for a managed identity / service principal;
@@ -473,7 +477,7 @@ present.) Membership in the owner role subsumes the older per-object `GRANT … 
 ALL TABLES/SEQUENCES` + `ALTER DEFAULT PRIVILEGES` recipe, and — unlike bare
 grants — lets the app run schema-altering migrations under its Entra role.
 
-Repeat on `tcab_auth` for `tcab-auth-db-<env>` (member of `tcab_auth`). The object ids as provisioned:
+Repeat on `tcab_auth` for `tcab-auth-db-<env>` (member of the auth database's owner role — `tcab_auth` on staging, `tcab_auth_app` on prod; confirm the same way). The object ids as provisioned:
 `tcab-backend-db-staging` `2a3ced7d-9476-43e4-ad60-8e0426e34bcf`,
 `tcab-auth-db-staging` `018baf38-0dbe-4c94-9b21-23115f4f9ec1`,
 `tcab-backend-db-prod` `71b6b5cf-0731-4510-982a-8582cfa1e210`,
