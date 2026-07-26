@@ -1,0 +1,115 @@
+# `@test-cabinet/gg-sandbox` — the guest for gg's responses-as-code sandbox
+
+The TypeScript half of gg's
+[responses-as-code](../../apps/docs/src/content/docs/gg/responses-as-code.md)
+capability. Under that capability a model answers a turn with a **TypeScript
+program** instead of a batch of tool calls; gg type-strips the program in-process
+and evaluates it inside a wasm component. This package is that component's source:
+the typed tool surface a program calls, the interpreter shim that evaluates it, and
+the build that bakes both into the artifacts the Rust host embeds.
+
+It is not published and has no runtime dependents. Its output is two **committed
+binary/generated artifacts** in the Rust crate:
+
+| Artifact | What it is |
+| --- | --- |
+| [`crates/gg/src/sandbox/gg-sandbox.component.wasm`](../../crates/gg/src/sandbox/) | The baked component, `include_bytes!`d by the host. **13,482,077 bytes** (12.9 MiB) as committed. |
+| [`crates/gg/src/sandbox/signatures.json`](../../crates/gg/src/sandbox/) | The signature catalogue, `include_str!`d and rendered into the system prompt. |
+
+## Layout
+
+| Path | What it holds |
+| --- | --- |
+| `src/membrane.d.ts` | The hand-maintained TypeScript mirror of `crates/gg/wit/gg-sandbox.wit`. Emits no code; `componentize-js` injects the real bindings. |
+| `src/types.ts` | The **model-facing** record and enum types — gg's vocabulary, not the WIT's. |
+| `src/errors.ts` | `ToolError`, and the argument validators every wrapper runs first. |
+| `src/catalogue.ts` | Pure data: gg tool name ↔ SDK function ↔ module, plus `SESSION_ENTRY`. |
+| `src/tools/*.ts` | The 29 typed wrappers, one module per capability family. |
+| `src/helpers.ts` | The one helper, `readTextFile`. |
+| `src/session.ts` | `finish(summary)` — the one model-facing function that is not a gg tool. |
+| `src/shim.ts` | The component's entry point: `run(program, tools)` and `boundTools()`. |
+| `tools/signatures.mjs` | Reflects the catalogue out of the emitted `.d.ts` files. |
+| `build.sh` | Refreshes both committed artifacts. |
+
+There is deliberately **one** copy of the WIT, and it lives in the Rust crate that
+embeds the component (`crates/gg/wit/`); `build.sh` points `componentize-js` at it.
+
+There is deliberately **no `src/tools/turns.ts`**: `enter_plan_mode`, `submit_plan`
+and `advance_state` change the loop's mode rather than producing a value, so they
+are declared in the WIT, refused by the host as a backstop, and never bound into a
+program's scope. That is why the catalogue holds 29 entries against gg's 32 tool
+names.
+
+`src/session.ts` sits **beside** `src/tools/` rather than inside it for the mirror
+reason. `finish(summary)` is model-facing — it is the only thing that ends a
+responses-as-code session, and the system prompt teaches it — but it is not a gg
+tool: no capability offers it, nothing dispatches it, and the shim binds it into
+**every** program's scope, including one in a run that enables no tools at all. It
+therefore gets its own `interface session` in the WIT, its own `SESSION_ENTRY`
+constant in the catalogue, and its own top-level `session` object in
+`signatures.json`, so that the bijection gg's `bound-tools` gate checks —
+`boundTools() == ALL_TOOL_NAMES \ TURN_LEVEL_TOOLS` — is not perturbed by it.
+
+## Refreshing the artifacts
+
+```sh
+packages/gg-sandbox/build.sh
+```
+
+Run it — and commit both outputs with the source change — after editing:
+
+- `crates/gg/wit/gg-sandbox.wit` (the membrane),
+- anything under `src/` (the SDK, the shim, or the catalogue).
+
+The script type-checks the guest, bakes the component with the **pinned**
+`componentize-js@0.21.0` through `npx`, and regenerates the signature catalogue.
+It takes a few seconds. `componentize-js` is intentionally *not* a dependency of
+this package: it is ~208 MB of `node_modules`, and `npm ci` runs in three CI jobs
+that have no use for it.
+
+A rebuild is **not** byte-reproducible even when nothing changed: the component
+snapshots its own build instant (which is also why a program's `Date.now()` is
+frozen at that instant, and why a code turn is reproducible for replay). Two
+refreshes of identical source were measured a few dozen bytes apart, so a diff on
+this artifact proves nothing on its own — do not re-run the script just to see
+whether it would produce something different.
+
+Nothing in a normal build runs this script. `cargo build` embeds the committed
+artifacts, and this package deliberately has **no `build` npm script** so that a
+plain `npm run build` at the repo root never requires `componentize-js`. The one
+CI-visible script is `signatures`, which needs only TypeScript and is the drift
+gate for the catalogue.
+
+## What stops it drifting
+
+| Gate | Catches |
+| --- | --- |
+| `componentize-js` fails to link | `src/membrane.d.ts` disagreeing with the WIT, at refresh time |
+| gg's instantiation test | a WIT change with no artifact refresh — the committed component's imports no longer match the host's linker |
+| gg's `bound-tools` test | a tool added, renamed or removed in gg with a **stale committed `.wasm`** |
+| `npm run -w @test-cabinet/gg-sandbox signatures` + `git diff --exit-code` in CI | an SDK signature or JSDoc edited without regenerating `signatures.json` |
+| `tools/signatures.mjs` exiting non-zero | a catalogued export that does not exist, lives in the wrong module, or has no doc comment |
+
+The JSDoc on each wrapper is not decoration: it is the sentence a model reads in
+the system prompt beside that function's signature. Write it for that reader.
+
+## Why the component is committed raw, at ~13 MB
+
+A componentized JavaScript guest embeds a whole JavaScript engine, so its size is
+structural, not accidental. Committing it follows the precedent already set by the
+`foray-ref-*` guests: a documented `build.sh` produces it and it is checked in
+beside its source, so no build or CI step ever needs `componentize-js` — the only
+Node CI touches for this package is the `signatures` regeneration described above.
+The cost is
+real and accepted — `tcab` grows by roughly the artifact's size on all three
+release platforms, and each refresh adds a few MB to the git pack, which is why
+refreshes are deliberate rather than routine.
+
+Committing it **zstd-compressed** (~4 MB) was considered and rejected: it would
+drag a C toolchain onto a binary that is release-built for Linux, Windows and macOS
+and statically linked against musl, in order to shrink a developer/CI binary nobody
+downloads on a budget.
+
+`.gitignore` has an unanchored `dist` rule, so this package's `dist/` — the
+intermediate JavaScript and declarations — is ignored for free. That is precisely
+why both committed outputs live under `crates/gg/src/sandbox/` instead.

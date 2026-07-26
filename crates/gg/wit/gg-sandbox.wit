@@ -1,0 +1,717 @@
+// The membrane between gg (the host) and the sandbox that runs an agent's TypeScript program. It
+// is the whole trust boundary: a program can reach exactly what is declared here and nothing else,
+// because the guest component imports nothing else and is built with every WASI capability
+// disabled.
+//
+// The package is deliberately UNVERSIONED: `componentize-js` resolves the guest's bare
+// `test-cabinet:gg/<interface>` import specifiers only against an unversioned package.
+//
+// One interface per gg capability family, so the Rust host implements one `Host` trait per file and
+// the guest SDK ships one module per family. Every function on those interfaces corresponds to
+// exactly one name in `ALL_TOOL_NAMES` (crates/gg/src/tools/mod.rs); a test asserts the two sets are
+// equal, so a tool cannot be added, renamed, or removed without a typed signature following it.
+//
+// Two interfaces stand outside that correspondence, and each is separate for exactly that reason:
+// `feedback` is the shim's private channel back to gg and is never model-facing at all, and
+// `session` carries the one model-facing function that is not a gg tool — the call that ends the
+// run. Keeping both out of the tool interfaces is what lets the bijection above be checked
+// mechanically rather than by reading.
+package test-cabinet:gg;
+
+/// The types shared across the tool interfaces. It declares no functions: it exists so that one
+/// `tool-error` crosses the whole membrane rather than one per family.
+interface types {
+    /// Why a call failed, in the vocabulary a program branches on.
+    ///
+    /// This is never derived by matching on a tool's English output: every gg tool classifies its
+    /// own failures at the point it raises them (`ToolFailure`, crates/gg/src/tools/data.rs) and
+    /// the host maps that classification straight onto this enum.
+    enum error-code {
+        /// The arguments were malformed, ill-typed, or out of range.
+        invalid-argument,
+        /// The named file, skill, memory, task, epic, issue, subagent, or model slot does not exist.
+        not-found,
+        /// Well-formed, but in conflict with the current state: an ambiguous edit, a dependency
+        /// cycle, a duplicate id, a subagent that already returned.
+        conflict,
+        /// gg refused the call: plan mode, the run's FSM state, the delegation depth cap, or a
+        /// turn-level transition attempted from inside a program.
+        refused,
+        /// The tool exists but this run's capability set does not offer it. A program cannot
+        /// normally reach this — a withheld tool is not bound into its scope at all — so it is the
+        /// host's defensive backstop.
+        unavailable,
+        /// A gg-side ceiling was hit: a shell timeout, a memory/task/board cap, or the run's
+        /// wall-clock budget running out mid-program.
+        limit-exceeded,
+        /// The underlying I/O or process failed.
+        io-error,
+        /// The failure was not classified. Reserved for outcomes raised outside a tool
+        /// implementation (the loop's bridge degradation paths); no tool produces it.
+        other,
+    }
+
+    /// A failed call. Surfaces in the guest as a thrown `ToolError`.
+    record tool-error {
+        /// The failure class, so a catch site branches on a value rather than on prose.
+        code: error-code,
+        /// The gg tool that failed (`read_file`, `spawn_subagent`, …), so a catch site can report
+        /// it without parsing the message.
+        tool: string,
+        /// The model-facing guidance — the same text the native tool-calling path shows.
+        message: string,
+    }
+
+    /// A three-way edit of an optional text field: leave it, empty it, or replace it.
+    ///
+    /// It replaces gg's stringly sentinel (today an empty string clears a description), so "clear
+    /// it" and "set it to the empty string" stop being the same request. The TypeScript surface
+    /// presents this as `undefined` / `null` / a string, so a model never writes a tagged union.
+    variant text-edit {
+        /// Leave the field as it is.
+        keep,
+        /// Empty the field.
+        clear,
+        /// Replace the field with this text.
+        set(string),
+    }
+}
+
+/// Running commands in the workspace.
+interface shell {
+    use types.{tool-error};
+
+    /// What a completed process reported.
+    record shell-output {
+        /// The exit status; `none` when the process was terminated by a signal.
+        exit-code: option<s32>,
+        /// Merged stdout-then-stderr, tail-truncated at gg's 16 KiB cap.
+        output: string,
+        /// Whether the cap cut `output` (the head was dropped, the tail kept).
+        truncated: bool,
+    }
+
+    /// Run a command with `sh -c` in the workspace directory.
+    ///
+    /// A non-zero exit is a SUCCESS of this call: the output and the code come back so the program
+    /// can branch on them. Checking whether a build or a test run passed is the single most common
+    /// thing a program does, so throwing on it would make `shell` unusable inside an expression.
+    /// Only a failure to launch the process, or the timeout killing it, is an error.
+    ///
+    /// `timeout-secs` defaults to gg's 120 s and is CLAMPED to whatever is left of the run's
+    /// wall-clock budget, so one call cannot outlive the run it belongs to.
+    shell: func(command: string, timeout-secs: option<f64>) -> result<shell-output, tool-error>;
+}
+
+/// Reading and writing workspace files. Every path is workspace-relative; the host confines it
+/// lexically and refuses an absolute path or one that climbs out with `..`.
+interface files {
+    use types.{tool-error};
+
+    /// A text file, or the window of one this run's read policy returned.
+    record text-read {
+        /// The file's text. Under a capped read policy this is the requested window only, with no
+        /// explanatory footer — the window is described by the fields below instead.
+        contents: string,
+        /// The 1-based first line returned.
+        first-line: u32,
+        /// The 1-based last line returned.
+        last-line: u32,
+        /// The file's total line count, so a program knows whether to page again.
+        total-lines: u32,
+        /// The 256 KiB byte ceiling cut the returned text.
+        byte-truncated: bool,
+        /// A hard-cap read policy reduced the `limit` that was asked for.
+        limit-reduced: bool,
+    }
+
+    /// A picture. The bytes never enter the program: they are attached to the turn's feedback so
+    /// the model can look at the picture directly, which is worth far more than base64 in a
+    /// variable — and which is silently lost in today's code mode.
+    record image-read {
+        /// The IANA media type (`image/png`, `image/jpeg`, `image/gif`, `image/webp`).
+        media-type: string,
+        /// The short format label (`PNG`, `JPEG`, `GIF`, `WebP`).
+        label: string,
+        /// The file's size in bytes.
+        bytes: u64,
+        /// Whether the picture is being attached to this turn for the model to look at.
+        shown: bool,
+        /// Why it is not being shown: a text-only model, a provider refusal, gg's 8 MiB attach cap,
+        /// or this program's per-turn image budget. `none` when `shown` is true.
+        not-shown-reason: option<string>,
+    }
+
+    /// What a read returned. A picture is a different kind of thing from text, so it is a different
+    /// case — a program that treats an image as text is caught here rather than silently writing an
+    /// empty string somewhere. The format is detected by magic bytes, never by extension.
+    variant file-read {
+        /// The file is text.
+        text(text-read),
+        /// The file is a picture.
+        image(image-read),
+    }
+
+    /// Read a workspace file.
+    ///
+    /// `offset`/`limit` are honoured only under a capped read policy; under the unlimited policy the
+    /// whole file comes back and both are ignored. The system prompt states which policy this run
+    /// uses.
+    read-file: func(path: string, offset: option<u32>, limit: option<u32>)
+        -> result<file-read, tool-error>;
+
+    /// Write UTF-8 text to a workspace file, creating parent directories and overwriting any
+    /// existing file. Returns the number of bytes written.
+    ///
+    /// Writing is the EXPENSIVE direction of this membrane: lowering a string out of the guest
+    /// costs about 14,600 fuel per byte, against about 46 for lifting one in. A program that
+    /// rewrites twenty 64 KiB files spends roughly 24 G fuel — a tenth of the default ceiling — so
+    /// a very large rewrite belongs in several programs.
+    write-file: func(path: string, contents: string) -> result<u64, tool-error>;
+
+    /// Replace the single exact occurrence of `old-string` with `new-string`.
+    ///
+    /// An occurrence that is missing is `not-found`; one that appears more than once is a
+    /// `conflict` whose message carries the count. The count stays in the message rather than
+    /// becoming a field: `tool-error` is shared by all 32 functions and a per-tool payload on it
+    /// would be a wart on every other call — a program that needs to disambiguate should add
+    /// surrounding context, not count.
+    edit-file: func(path: string, old-string: string, new-string: string) -> result<_, tool-error>;
+
+    /// What a directory holds.
+    enum entry-kind { file, directory, other }
+
+    /// One directory entry.
+    record dir-entry {
+        /// The entry's name (not a path — join it with the directory you listed).
+        name: string,
+        /// Whether it is a file, a directory, or something else.
+        kind: entry-kind,
+    }
+
+    /// List a workspace directory, sorted by name. `none` lists the workspace root. An empty
+    /// directory is an empty list, not an error.
+    list-dir: func(path: option<string>) -> result<list<dir-entry>, tool-error>;
+}
+
+/// The authored skill library.
+interface skills {
+    use types.{tool-error};
+
+    /// Read an authored skill by name and return its body, front matter stripped.
+    ///
+    /// Reading a skill also pins it permanently into the session's context, exactly as a native
+    /// `read_skill` does. The name is a plain string rather than an enum because the skill
+    /// catalogue is per-run while this component is baked once; the available names are listed in
+    /// the system prompt, and an unknown one comes back as `not-found` with the full list.
+    read-skill: func(name: string) -> result<string, tool-error>;
+}
+
+/// Durable memories that survive context compaction.
+interface memories {
+    use types.{tool-error};
+
+    /// A memory to record or revise.
+    record memory-input {
+        /// The unique short name the memory is addressed by.
+        name: string,
+        /// A one-line description of what it holds.
+        description: string,
+        /// The memory body.
+        body: string,
+    }
+
+    /// How much of the memory budget is used, so a program can check a cap instead of parsing a
+    /// sentence about it.
+    record memory-usage {
+        /// Memories currently held.
+        count: u32,
+        /// The most memories this run allows.
+        max-count: u32,
+        /// Characters of body currently held, across all memories.
+        total-chars: u32,
+        /// The most characters of body this run allows.
+        max-total-chars: u32,
+    }
+
+    /// Record a new durable memory. A duplicate name, or a body that would breach a cap, is an
+    /// error — revise or evict instead of accruing more.
+    write-memory: func(memory: memory-input) -> result<memory-usage, tool-error>;
+    /// Replace an existing memory's description and body.
+    update-memory: func(memory: memory-input) -> result<memory-usage, tool-error>;
+    /// Evict a memory by name, freeing room for new ones.
+    delete-memory: func(name: string) -> result<memory-usage, tool-error>;
+}
+
+/// The task DAG.
+interface tasks {
+    use types.{tool-error, text-edit};
+
+    /// Where a task stands. WIT identifiers cannot contain `_`, so `in-progress` is mapped to the
+    /// store's `in_progress` by the host — the TypeScript surface uses gg's spelling, so a model
+    /// sees one vocabulary in both execution modes.
+    enum task-status { pending, in-progress, done }
+
+    /// A task to add.
+    record task-input {
+        /// The unique short id other tasks reference it by.
+        id: string,
+        /// The task title.
+        title: string,
+        /// An optional longer description.
+        description: option<string>,
+        /// Ids of tasks that must finish first. An edge that would create a cycle is refused.
+        blocked-by: list<string>,
+    }
+
+    /// A revision of a task. Every field is optional; supply at least one.
+    record task-patch {
+        /// A new title.
+        title: option<string>,
+        /// A three-way edit of the description.
+        description: text-edit,
+        /// A new status.
+        status: option<task-status>,
+    }
+
+    /// How much of the task budget is used.
+    record task-usage {
+        /// Tasks currently held.
+        count: u32,
+        /// The most tasks this run allows.
+        max-tasks: u32,
+    }
+
+    /// Add a task to the DAG.
+    add-task: func(task: task-input) -> result<task-usage, tool-error>;
+    /// Revise a task's title, description, and/or status.
+    update-task: func(id: string, patch: task-patch) -> result<_, tool-error>;
+    /// Replace a task's full blocker set; an empty list clears every blocker.
+    set-blocked-by: func(id: string, blocked-by: list<string>) -> result<_, tool-error>;
+    /// Mark a task done. Tasks it blocked become actionable once all their blockers are done.
+    complete-task: func(id: string) -> result<_, tool-error>;
+    /// Remove a task and every blocker edge pointing at it.
+    remove-task: func(id: string) -> result<task-usage, tool-error>;
+}
+
+/// The epic/issue board.
+interface board {
+    use types.{tool-error, text-edit};
+
+    /// Where an issue stands.
+    enum issue-status { open, in-progress, done }
+
+    /// An epic to create.
+    record epic-input {
+        /// The unique short id issues reference it by.
+        id: string,
+        /// The epic title.
+        title: string,
+        /// What the epic covers.
+        description: string,
+    }
+
+    /// An issue to create — a heavyweight, self-contained, dispatchable unit of work.
+    record issue-input {
+        /// The unique short id.
+        id: string,
+        /// The issue title.
+        title: string,
+        /// An optional overview.
+        description: option<string>,
+        /// What this issue is responsible for.
+        in-scope: string,
+        /// What it is explicitly not responsible for.
+        out-of-scope: string,
+        /// How it will be judged done.
+        completion-criteria: string,
+        /// Ids of issues that must finish first; a cycle is refused.
+        blocked-by: list<string>,
+        /// The epic to group it under.
+        epic-id: option<string>,
+    }
+
+    /// How an issue's epic grouping changes.
+    variant epic-assignment {
+        /// Leave the grouping alone.
+        keep,
+        /// Detach the issue from its epic.
+        ungroup,
+        /// Group the issue under this epic.
+        set(string),
+    }
+
+    /// A revision of an issue. Every field is optional; supply at least one.
+    record issue-patch {
+        /// A new title.
+        title: option<string>,
+        /// A three-way edit of the description.
+        description: text-edit,
+        /// New scope.
+        in-scope: option<string>,
+        /// New out-of-scope.
+        out-of-scope: option<string>,
+        /// New completion criteria.
+        completion-criteria: option<string>,
+        /// A new status.
+        status: option<issue-status>,
+        /// A change of epic grouping.
+        epic: epic-assignment,
+    }
+
+    /// How much of the board budget is used.
+    record board-usage {
+        /// Epics currently held.
+        epics: u32,
+        /// The most epics this run allows.
+        max-epics: u32,
+        /// Issues currently held.
+        issues: u32,
+        /// The most issues this run allows.
+        max-issues: u32,
+    }
+
+    /// What accepting an issue produced.
+    record completion-report {
+        /// Whether a Code Review gated the acceptance. When true this call ran a reviewer subagent
+        /// (and possibly a fix loop) and may have taken a long time.
+        code-reviewed: bool,
+        /// The acceptance detail — the reviewer's verdict when there was one.
+        detail: string,
+    }
+
+    /// Create an epic to group related issues.
+    create-epic: func(epic: epic-input) -> result<board-usage, tool-error>;
+    /// Create a self-contained, dispatchable issue.
+    create-issue: func(issue: issue-input) -> result<board-usage, tool-error>;
+    /// Revise an issue.
+    update-issue: func(id: string, patch: issue-patch) -> result<_, tool-error>;
+    /// Replace an issue's full blocker set; an empty list clears every blocker.
+    set-issue-blocked-by: func(id: string, blocked-by: list<string>) -> result<_, tool-error>;
+    /// Mark an issue done. With Code Reviews enabled this runs a gating review first and can block
+    /// for a long time — it is the one cheap-looking call that transitively spawns agents.
+    complete-issue: func(id: string) -> result<completion-report, tool-error>;
+    /// Remove an epic. Its issues are kept and ungrouped.
+    remove-epic: func(id: string) -> result<board-usage, tool-error>;
+    /// Remove an issue and every blocker edge pointing at it.
+    remove-issue: func(id: string) -> result<board-usage, tool-error>;
+}
+
+/// Managing the agent's own context window.
+interface context {
+    use types.{tool-error};
+
+    /// What a reclaim actually freed from the live context window.
+    record reclaim-report {
+        /// Context items dropped from the live window.
+        items: u32,
+        /// Approximately how many tokens that freed.
+        reclaimed-tokens: u32,
+        /// The workspace paths whose views were evicted. Empty for an archive.
+        paths: list<string>,
+        /// The same prose the native tool-calling path shows the model.
+        detail: string,
+    }
+
+    /// Who said an archived message.
+    enum message-role { system, user, assistant, tool }
+
+    /// One archived message that matched a search.
+    record archive-hit {
+        /// The archived message's sequence number.
+        seq: u32,
+        /// Who said it.
+        role: message-role,
+        /// The message text.
+        text: string,
+    }
+
+    /// Drop file contents you have read from the context window. `none` drops every file view. The
+    /// files on disk are unchanged.
+    evict-file-view: func(path: option<string>) -> result<reclaim-report, tool-error>;
+    /// Move older thread history out of the window, keeping the most recent turns (default 1). The
+    /// archived history stays searchable.
+    archive-thread: func(keep-recent-turns: option<u32>) -> result<reclaim-report, tool-error>;
+    /// What a search of the archive found.
+    record archive-search {
+        /// Nothing has been archived yet, so there was nothing to search. Distinct from a search
+        /// that ran and matched nothing — the native path already says these two differently, and
+        /// collapsing them into an empty list would make a program archive again in the belief its
+        /// first `archive-thread` failed.
+        archive-empty: bool,
+        /// The matches, most recent first, capped at gg's 8-hit ceiling.
+        hits: list<archive-hit>,
+    }
+
+    /// Search archived history (case-insensitive substring). At most 8 hits; no match is an empty
+    /// `hits` list, not an error.
+    search-archive: func(query: string) -> result<archive-search, tool-error>;
+}
+
+/// Turn-level transitions.
+///
+/// These are declared so the membrane covers gg's whole tool vocabulary and the refusal lives in
+/// exactly one place. They are NEVER bound into a program's scope: they change the loop's mode,
+/// which is not a value a program can compose, and the system prompt says so when the capability
+/// that offers them is on. Every one of them therefore always fails here — the host's defensive
+/// backstop for a path a correct guest cannot take.
+interface turns {
+    use types.{tool-error};
+
+    /// Always fails: entering a read-only planning pass is a turn-level transition.
+    enter-plan-mode: func() -> result<_, tool-error>;
+    /// Always fails: submitting a plan is a turn-level transition.
+    submit-plan: func(plan: string) -> result<_, tool-error>;
+    /// Always fails: advancing the run's process state is a turn-level transition.
+    advance-state: func(note: option<string>) -> result<_, tool-error>;
+}
+
+/// Ending the run.
+///
+/// The one model-facing function on this membrane that is NOT a gg tool. No capability offers it, it
+/// dispatches nothing, and it is bound into every program's scope — including a program in a run that
+/// enables no tools at all, which must still be able to end. It is declared in its own interface
+/// precisely so the one-to-one correspondence the tool interfaces hold with `ALL_TOOL_NAMES`
+/// (crates/gg/src/tools/mod.rs) is not perturbed by it.
+///
+/// Under responses-as-code every turn is a program, so there is no prose turn that could mean "I am
+/// done". This is what means it, and it is the ONLY thing that does.
+interface session {
+    use types.{tool-error};
+
+    /// Declare the run complete. `summary` becomes the run's final text — for the root agent the
+    /// session's last word, for a subagent its return value to the agent that asked for the work.
+    ///
+    /// It sets a **flag in the agent's host-side context** and returns normally. It does not stop the
+    /// program, it raises nothing, and nothing after it is refused: the flag is what the loop reads
+    /// once the program has ended, so a completion is a declaration the host owns rather than a
+    /// control-flow trick played on the guest. Calling it again simply replaces the summary, and the
+    /// replacements are counted.
+    ///
+    /// The flag is **revoked** if the program then fails — an uncaught throw, or a sandbox ceiling
+    /// stopping it. A program that did not run to its end did not run the checks its summary claims,
+    /// so the run continues and the model is told its ending was cancelled.
+    ///
+    /// It is never refused for the run's wall-clock budget being spent, unlike every tool call:
+    /// finishing performs no work and ends the run, which is exactly what a spent budget wants. The
+    /// one failure it has is an empty `summary`, which is `invalid-argument`.
+    finish: func(summary: string) -> result<_, tool-error>;
+}
+
+/// Delegating work to child agents.
+interface delegation {
+    use types.{tool-error};
+
+    /// What a child agent is asked to do. Exactly one of the two — today's JSON schema declares
+    /// both optional and enforces "one of" only at runtime, so "neither" is representable and costs
+    /// a wasted call.
+    variant subagent-brief {
+        /// A self-contained brief written here.
+        prompt(string),
+        /// A board issue whose scope and completion criteria become the brief.
+        issue(string),
+    }
+
+    /// A spawn request.
+    record spawn-request {
+        /// What the child should do.
+        task: subagent-brief,
+        /// The model slot to run it on; `none` uses the primary slot. Honoured only when
+        /// multi-model is enabled. The system prompt lists this run's bound slots.
+        slot: option<string>,
+        /// Run the child in an isolated git worktree, merged back on clean completion and discarded
+        /// on failure. Requires the worktrees capability.
+        worktree: option<bool>,
+    }
+
+    /// A spawned child.
+    record subagent-handle {
+        /// The child's id — pass it to `wait-for-subagents` or `send-message`.
+        id: string,
+        /// The slot it was placed on.
+        slot: string,
+        /// The model actually bound to that slot.
+        model-id: string,
+        /// The worktree branch it runs on, when it is isolated.
+        worktree-branch: option<string>,
+    }
+
+    /// How a child agent finished. `limit-exceeded` is a child an execution ceiling stopped —
+    /// consecutive errors, error rate, cost, turns or runtime — which, like `exhausted`, means it
+    /// was cut off partway rather than that it failed at the work.
+    enum agent-status { completed, exhausted, timed-out, model-error, auth-error, limit-exceeded }
+
+    /// One collected child result.
+    record subagent-result {
+        /// The child's id.
+        id: string,
+        /// How it finished; `none` when it produced no return value at all.
+        status: option<agent-status>,
+        /// Its final message.
+        summary: string,
+    }
+
+    /// One stage of a declared fan-out.
+    record workflow-stage {
+        /// A name for the stage; `none` names it `stage-N`.
+        name: option<string>,
+        /// The per-item prompt template. `{{item}}` is the item; `{{prior}}` is the previous
+        /// stage's collected results.
+        prompt: string,
+        /// The items to fan out over. `none` on a later stage means "fan out over the previous
+        /// stage's results"; an EMPTY list is an error. The first stage must supply items.
+        items: option<list<string>>,
+        /// The model slot for this stage's children.
+        slot: option<string>,
+        /// Run this stage's children in isolated worktrees.
+        worktree: option<bool>,
+    }
+
+    /// What a completed workflow produced.
+    record workflow-report {
+        /// The workflow's id.
+        workflow-id: string,
+        /// How many stages ran.
+        stages: u32,
+        /// The final stage's collected results, in dispatch order.
+        results: list<string>,
+    }
+
+    /// A best-of-K request.
+    record speculate-request {
+        /// What every attempt should do.
+        task: subagent-brief,
+        /// K — how many attempts. Clamped to 2–6 by the host, as the native path clamps it;
+        /// `none` means 2.
+        attempts: option<u8>,
+        /// Per-attempt approach hints, positional. Extra attempts get no hint.
+        approaches: list<string>,
+        /// Per-attempt model slots, positional.
+        slots: list<string>,
+    }
+
+    /// What a speculation merged.
+    record speculation-report {
+        /// The winning attempt's agent id.
+        winner-id: string,
+        /// How many attempts ran.
+        attempts: u8,
+        /// The judge's one-sentence rationale, when it gave one.
+        rationale: option<string>,
+        /// The merge report.
+        summary: string,
+    }
+
+    /// Delegate scoped work to a child agent. Returns immediately with its handle; the child runs
+    /// in parallel.
+    spawn-subagent: func(request: spawn-request) -> result<subagent-handle, tool-error>;
+    /// Wait for the named children — or, with `none`, every outstanding child — and collect their
+    /// results. This blocks while it waits, and the run's wall-clock budget keeps running.
+    wait-for-subagents: func(ids: option<list<string>>) -> result<list<subagent-result>, tool-error>;
+    /// Deliver a message to a running child's inbox; it receives it at its next turn.
+    send-message: func(agent-id: string, message: string) -> result<_, tool-error>;
+    /// Run a declared multi-stage fan-out as one unit and return the final stage's results. This
+    /// blocks until the whole workflow is done.
+    run-workflow: func(stages: list<workflow-stage>) -> result<workflow-report, tool-error>;
+    /// Attempt the same task K times in isolated worktrees, judge them, merge the winner and
+    /// discard the losers. This blocks until the winner is merged.
+    speculate: func(request: speculate-request) -> result<speculation-report, tool-error>;
+}
+
+/// The channel the interpreter SHIM reports back to gg through.
+///
+/// It is deliberately NOT part of the model-facing surface: it is absent from the signature
+/// catalogue, absent from the system prompt, and never bound into a program's scope. A model's
+/// program reaches it only indirectly — through `console.*` (rebound to `log`), by throwing (caught
+/// by the shim, reported through `report-error`), and by deferring work into a microtask (detected
+/// by the shim, reported through `report-deferred`).
+interface feedback {
+    /// What kind of failure a program hit, so gg can choose the right feedback and the right
+    /// telemetry rather than matching on prose.
+    enum error-kind {
+        /// A tool call failed and the throw was not caught.
+        tool-failure,
+        /// The program referenced a name that is not in scope.
+        unknown-name,
+        /// Anything else the program threw.
+        other,
+    }
+
+    /// A program that did not run to its end.
+    record program-error {
+        /// The failure class.
+        kind: error-kind,
+        /// The rendered message, already naming the tool for a tool failure and the available
+        /// identifiers for an unknown name.
+        message: string,
+        /// Where in the PROGRAM it happened (`line 5, column 12`), remapped out of the
+        /// interpreter's own coordinates. Absent when no usable frame was found.
+        location: option<string>,
+    }
+
+    /// One line the program produced with `console.*`. The host caps how much it keeps. This is the
+    /// ONLY channel a program has for showing gg a value.
+    log: func(line: string);
+    /// The program ended with a `return` that carried a value. Called at most once per run.
+    ///
+    /// A returned value is **discarded**: the only way to see a value is to log it. That is not a
+    /// limitation being worked around — it is the rule that removes a whole class of questions
+    /// (what if it is not serialisable, how deep may it nest, why is my object rendered as
+    /// `[object Object]`) at the cost of nothing a program cannot do with one `console.log`. A
+    /// silent discard would be the failure this protocol most needs to avoid, so the host says so
+    /// in the turn's feedback.
+    note-return: func();
+    /// A tool call happened AFTER the program ended — i.e. from work the program deferred into a
+    /// microtask with `.then()` or after an `await`. Called at most once per run.
+    ///
+    /// Deferred work still executes (its effects are real and are recorded), but it happens after
+    /// the turn's program has ended and a throw inside it is invisible — the engine defines
+    /// `addEventListener("unhandledrejection", …)` but never fires it. So the host tells the model
+    /// plainly rather than reporting a clean turn over a half-failed program.
+    report-deferred: func(note: string);
+    /// The program threw and did not run to its end. Called at most once per run, from the shim's
+    /// single `catch`.
+    ///
+    /// It is also what **revokes** a completion the same program declared with `session.finish`: a
+    /// program that ended the run and then failed did not check what its summary claims, so the host
+    /// drops the flag and the run carries on.
+    report-error: func(error: program-error);
+}
+
+/// The sandbox: one baked component that evaluates a program against exactly the tools a run
+/// enables.
+world sandbox {
+    import types;
+    import shell;
+    import files;
+    import skills;
+    import memories;
+    import tasks;
+    import board;
+    import context;
+    import turns;
+    import session;
+    import delegation;
+    import feedback;
+
+    /// Evaluate one program.
+    ///
+    /// `program` is TypeScript the host has already type-stripped to JavaScript. `tools` is the
+    /// run's enabled gg tool names (`read_file`, `shell`, …); ONLY those are bound into the
+    /// program's scope, so a withheld tool is an undefined identifier rather than a call that
+    /// travels to the host to be refused.
+    ///
+    /// It returns **nothing**, because a program's return value is not a channel: everything one
+    /// program has to say it says over `feedback` — what it logged, what it threw, and (through
+    /// `session.finish`) whether the run is over. A value handed to a top-level `return` is
+    /// discarded, and `feedback.note-return` is how the model is told so rather than left to wonder.
+    ///
+    /// A throw is caught and reported over `feedback.report-error`, never allowed to escape as an
+    /// opaque wasm trap.
+    export run: func(program: string, tools: list<string>);
+
+    /// The gg tool names this component can bind. gg's tests call it to assert the COMMITTED
+    /// component and `ALL_TOOL_NAMES` have not drifted apart — the one check that catches a stale
+    /// artifact rather than a stale source file.
+    export bound-tools: func() -> list<string>;
+}
