@@ -136,11 +136,6 @@
         "base": "https://d8f3eec0.test-cabinet-references-staging.pages.dev"
       }
     },
-    "locomotivation": {
-      "v1.0.0": {
-        "base": "https://066719e8.test-cabinet-references-staging.pages.dev"
-      }
-    },
     "meltdown": {
       "v1.0.0": {
         "base": "https://65c1308e.test-cabinet-references-staging.pages.dev"
