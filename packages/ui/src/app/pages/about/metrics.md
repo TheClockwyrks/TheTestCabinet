@@ -6,13 +6,9 @@ using a model and how quickly it can complete tasks. A model that's 2x cheaper
 and 4x faster than another model isn't cheaper or faster in practice if it
 consumes 10x as many tokens to complete the same task.
 
-Our test cases also rely on automated checks for initial validation, but we do
-not derive the rating we assign to implementations from the automated checks.
-Test cases' automated checks are intended to be quick tests to sanity check the
-implementation before a human takes a look. Most of what makes a good
-implementation can't be scored by a machine, which is exactly why we publish the
-playable builds.
-
-Every implementation is released as code you can clone and run locally. The
-point of The Test Cabinet isn't to crown a winner. It's to show what today's
-models and harnesses can and can't build.
+Since many of our models are tested through OpenRouter, we intentionally *don't*
+use runtime as a primary metric. Test runs do record their runtime for anyone
+curious, but runtime isn't a fair metric to go off of since it's heavily
+provider dependent. For open weight models served by multiple providers
+independent of the model's developer, token throughput varies by which provider
+OpenRouter routes to, and is therefore not a good metric to use for comparisons.
