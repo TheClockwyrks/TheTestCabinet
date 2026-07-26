@@ -457,16 +457,24 @@ async function runScript(args) {
         };
         return true;
       };
-      // Prefer the shared base class so every source kind is caught once; only if it
-      // is unavailable fall back to wrapping each concrete source's own `start`.
+      // Wrap the shared base class so any source kind that inherits `start`
+      // unchanged is caught for free, then ALSO wrap every concrete subclass that
+      // redefines its own `start`. This is not redundant: per the Web Audio spec,
+      // `AudioBufferSourceNode.start(when, offset, duration)` takes extra optional
+      // parameters beyond the base `AudioScheduledSourceNode.start(when)`, so
+      // Chromium gives it its OWN `start` on `AudioBufferSourceNode.prototype` that
+      // SHADOWS the base one — wrapping only the base never sees a decoded/sampled
+      // clip play (only a plain oscillator or constant source, which inherit
+      // `start` unchanged and so are already caught by the base wrap). Each `wrap`
+      // call is a no-op when its target has no own `start`, so calling all four
+      // unconditionally is safe and catches every kind regardless of which
+      // prototype a given browser happens to put `start` on.
       const Base = window.AudioScheduledSourceNode;
-      if (!(Base && wrap(Base.prototype))) {
-        if (window.OscillatorNode) wrap(window.OscillatorNode.prototype);
-        if (window.AudioBufferSourceNode)
-          wrap(window.AudioBufferSourceNode.prototype);
-        if (window.ConstantSourceNode)
-          wrap(window.ConstantSourceNode.prototype);
-      }
+      if (Base) wrap(Base.prototype);
+      if (window.OscillatorNode) wrap(window.OscillatorNode.prototype);
+      if (window.AudioBufferSourceNode)
+        wrap(window.AudioBufferSourceNode.prototype);
+      if (window.ConstantSourceNode) wrap(window.ConstantSourceNode.prototype);
     });
     const page = await context.newPage();
     page.on("console", (msg) => {
