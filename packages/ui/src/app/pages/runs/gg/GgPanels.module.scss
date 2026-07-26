@@ -1605,15 +1605,30 @@ $fsm-hue: #2dd4bf;
   gap: t.$space-lg;
 }
 
+
 // --- Requests view (the de-duplicated message log) ---------------------------
 
 // The itemized companion to the Context graph: a stack of turn cards, each holding
-// that turn's request (messages colored by the same context-source palette the graph
-// uses) and its response.
+// that turn's request (messages aligned into columns, colored by the same context-
+// source palette the graph uses) and its response.
 .requests {
   display: flex;
   flex-direction: column;
   gap: t.$space-sm;
+}
+
+// A disclosure caret that rotates when its `<details>` opens. Shared by turn cards
+// and message rows.
+.reqCaret {
+  flex: 0 0 auto;
+  width: 0.9rem;
+  color: t.$color-text-muted;
+  font-size: 0.7em;
+  transition: transform 0.12s ease;
+}
+
+details[open] > summary .reqCaret {
+  transform: rotate(90deg);
 }
 
 // One turn, a collapsible card.
@@ -1626,60 +1641,99 @@ $fsm-hue: #2dd4bf;
 
 .reqTurnSummary {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: t.$space-sm;
-  flex-wrap: wrap;
   padding: t.$space-xs t.$space-sm;
   cursor: pointer;
   list-style: none;
-  font-size: t.$font-sm;
 
   &::-webkit-details-marker {
     display: none;
   }
+
+  &:hover {
+    background: s.$panel-bg;
+  }
 }
 
 .reqTurnLabel {
+  flex: 0 0 auto;
   font-weight: 600;
   color: t.$color-text;
 }
 
-.reqTurnMeta {
-  color: t.$color-text-muted;
-  font-variant-numeric: tabular-nums;
+// The row of labeled figures (msgs / in / out / cost), taking the slack so the finish
+// pill sits at the trailing edge.
+.reqTurnStats {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-md;
+  flex-wrap: wrap;
 }
 
-// The finish reason, pushed to the trailing edge; tinted when the turn ended cleanly.
-.reqFinish {
-  margin-left: auto;
-  font-size: t.$font-sm;
-  color: t.$color-text-muted;
+.reqStat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: t.$space-2xs;
+}
+
+.reqStatValue {
+  color: t.$color-text;
   font-variant-numeric: tabular-nums;
+  font-size: t.$font-sm;
+}
+
+.reqStatLabel {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+// The finish reason as a small pill, tinted by outcome.
+.reqFinish {
+  flex: 0 0 auto;
+  font-size: t.$font-sm;
+  font-variant-numeric: tabular-nums;
+  padding: 0.1rem t.$space-xs;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline solid t.$color-border;
+  color: t.$color-text-muted;
 
   &[data-finish="stop"] {
     color: t.$color-positive;
+    border-color: color-mix(in srgb, t.$color-positive 40%, transparent);
   }
 
   &[data-finish="length"],
   &[data-finish="content_filter"] {
     color: t.$color-negative;
+    border-color: color-mix(in srgb, t.$color-negative 40%, transparent);
   }
 }
 
 .reqTurnBody {
-  padding: 0 t.$space-sm t.$space-sm;
+  padding: t.$space-2xs t.$space-sm t.$space-sm;
   display: flex;
   flex-direction: column;
   gap: t.$space-2xs;
+  border-top: t.$border-hairline solid t.$color-border;
 }
 
 // The "Request" / "Response" section captions within a turn.
 .reqSectionLabel {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-xs;
   font-size: t.$font-sm;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: t.$color-text-muted;
   margin-top: t.$space-xs;
+}
+
+.reqSectionCount {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
 }
 
 .reqMessages {
@@ -1688,33 +1742,26 @@ $fsm-hue: #2dd4bf;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: t.$space-2xs;
+  gap: 2px;
 }
 
 // One message, tinted on its leading edge with its context-source band color so a
 // request reads as the itemization of the stacked graph.
 .reqMessage {
   border-left: 3px solid t.$color-border;
-  border-radius: t.$radius-sm;
+  border-radius: 0 t.$radius-sm t.$radius-sm 0;
   background: s.$panel-bg;
-
-  &[data-missing] {
-    padding: t.$space-2xs t.$space-xs;
-  }
-}
-
-.reqMissing {
-  font-size: t.$font-sm;
-  color: t.$color-text-muted;
-  font-style: italic;
 }
 
 .reqMessageDetails {
   width: 100%;
 }
 
-.reqMessageSummary {
-  display: flex;
+// The aligned columns every message row shares: caret · band tag · preview · tokens.
+// Fixed widths (not `auto`) so the columns line up across every row into a table.
+.reqRow {
+  display: grid;
+  grid-template-columns: 0.9rem 6.5rem 1fr 3.5rem;
   align-items: baseline;
   gap: t.$space-xs;
   padding: t.$space-2xs t.$space-xs;
@@ -1725,31 +1772,23 @@ $fsm-hue: #2dd4bf;
   &::-webkit-details-marker {
     display: none;
   }
+
+  &:hover {
+    background: color-mix(in srgb, t.$color-text 6%, transparent);
+  }
 }
 
-// A small square swatch of the message's band color (echoing the graph legend).
-.reqBand {
-  flex: 0 0 auto;
-  width: 0.6rem;
-  height: 0.6rem;
-  border-radius: 2px;
-  align-self: center;
-  background: t.$color-border;
-}
-
-.reqRole {
+// The band label — the message's context-source category, in the band's own color,
+// on one line.
+.reqTag {
   font-weight: 600;
-  color: t.$color-text;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.reqBandLabel {
-  color: t.$color-text-muted;
-  text-transform: lowercase;
-}
-
-// The one-line gist, taking the slack and truncating.
+// The one-line content gist, muted and truncated.
 .reqPreview {
-  flex: 1 1 auto;
   min-width: 0;
   color: t.$color-text-muted;
   white-space: nowrap;
@@ -1758,16 +1797,40 @@ $fsm-hue: #2dd4bf;
 }
 
 .reqTokens {
-  flex: 0 0 auto;
+  text-align: right;
   color: t.$color-text-muted;
   font-variant-numeric: tabular-nums;
 }
 
+.reqMissing {
+  color: t.$color-text-muted;
+  font-style: italic;
+}
+
 .reqMessageBody {
-  padding: 0 t.$space-xs t.$space-xs;
+  padding: t.$space-2xs t.$space-xs t.$space-xs;
+  // Align the expanded body under the preview column, past the caret + tag gutters.
+  padding-left: calc(0.9rem + 6.5rem + #{t.$space-xs} * 2);
   display: flex;
   flex-direction: column;
   gap: t.$space-2xs;
+}
+
+// The expanded-body meta line: role · tokens · answered call, dot-separated.
+.reqMeta {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-xs;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+
+  span + span::before {
+    content: "·";
+    margin-right: t.$space-xs;
+    opacity: 0.6;
+  }
 }
 
 // The verbatim message text — a scrollable, wrapped code block so a large file view
@@ -1839,11 +1902,11 @@ $fsm-hue: #2dd4bf;
   border-radius: t.$radius-sm;
 }
 
-.reqAnswers {
+.reqEmptyBody {
   margin: 0;
   font-size: t.$font-sm;
   color: t.$color-text-muted;
-  font-variant-numeric: tabular-nums;
+  font-style: italic;
 }
 
 .reqEmptyResponse {

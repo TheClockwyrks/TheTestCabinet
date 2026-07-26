@@ -21,24 +21,31 @@ import {
   CONTEXT_SOURCE_LABELS,
 } from "./ContextFillGraph";
 
-// A short, human role label for a pooled message.
-const ROLE_LABELS: Record<string, string> = {
-  system: "system",
-  user: "user",
-  assistant: "assistant",
-  tool: "tool",
-};
+// The band a message occupies, resolved to its label and color. A request message
+// carries its `GgContextSource`; the response is an assistant reply not yet placed in a
+// band this turn, so it is shown in the assistant hue under a "Reply" tag.
+function band(source: GgContextSource | null): {
+  label: string;
+  color: string;
+} {
+  if (source == null) {
+    return { label: "Reply", color: CONTEXT_SOURCE_COLORS.assistant };
+  }
+  return {
+    label: CONTEXT_SOURCE_LABELS[source],
+    color: CONTEXT_SOURCE_COLORS[source],
+  };
+}
 
-// A one-line preview of a message's gist for its collapsed summary — its text, or a
+// A one-line preview of a message's gist for its collapsed row — its text, or a
 // synopsis of the tool calls / images it carries when it has no text of its own.
-const PREVIEW_MAX = 120;
+const PREVIEW_MAX = 200;
 function messagePreview(message: PooledMessage): string {
   if (message.content && message.content.trim()) {
-    const text = message.content.replace(/\s+/g, " ").trim();
-    return text.length > PREVIEW_MAX ? `${text.slice(0, PREVIEW_MAX)}…` : text;
+    return message.content.replace(/\s+/g, " ").trim().slice(0, PREVIEW_MAX);
   }
   if (message.toolCalls.length > 0) {
-    return `calls ${message.toolCalls.map((c) => c.name).join(", ")}`;
+    return `→ ${message.toolCalls.map((c) => c.name).join(", ")}`;
   }
   if (message.images.length > 0) {
     return `${message.images.length} image${message.images.length === 1 ? "" : "s"}`;
@@ -54,10 +61,10 @@ function shortBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-// One message in a turn's request or as its response. The left edge is tinted with the
-// message's context-source color — the same palette the stacked Context graph uses — so
-// a request's messages read as the itemization of that graph's bands. `source` is null
-// for the response (an assistant reply is not yet placed in a band this turn).
+// One message in a turn's request or as its response, an expandable row. The whole row
+// aligns into fixed columns — a colored band tag, the content preview, and the token
+// count — so a request reads as a table, and the leading edge is tinted with the band's
+// color (the same palette the stacked Context graph uses) so the two line up.
 function MessageRow({
   message,
   source,
@@ -65,34 +72,46 @@ function MessageRow({
   message: PooledMessage | undefined;
   source: GgContextSource | null;
 }) {
+  const { label, color } = band(source);
   if (!message) {
     return (
-      <li className={panels.reqMessage} data-missing="">
-        <span className={panels.reqMissing}>message unavailable</span>
+      <li className={panels.reqMessage} style={{ borderLeftColor: color }}>
+        <div className={panels.reqRow}>
+          <span className={panels.reqTag} style={{ color }}>
+            {label}
+          </span>
+          <span className={panels.reqMissing}>message unavailable</span>
+        </div>
       </li>
     );
   }
-  const color = source ? CONTEXT_SOURCE_COLORS[source] : undefined;
-  const bandLabel = source ? CONTEXT_SOURCE_LABELS[source] : "reply";
+  const hasBody =
+    (message.content != null && message.content !== "") ||
+    message.toolCalls.length > 0 ||
+    message.images.length > 0;
   return (
     <li className={panels.reqMessage} style={{ borderLeftColor: color }}>
       <details className={panels.reqMessageDetails}>
-        <summary className={panels.reqMessageSummary}>
-          <span
-            className={panels.reqBand}
-            style={{ backgroundColor: color }}
-            aria-hidden="true"
-          />
-          <span className={panels.reqRole}>
-            {ROLE_LABELS[message.role] ?? message.role}
+        <summary className={panels.reqRow}>
+          <span className={panels.reqCaret} aria-hidden="true">
+            ▸
           </span>
-          <span className={panels.reqBandLabel}>{bandLabel}</span>
+          <span className={panels.reqTag} style={{ color }}>
+            {label}
+          </span>
           <span className={panels.reqPreview}>{messagePreview(message)}</span>
           <span className={panels.reqTokens}>
             {shortTokens(message.tokens)}
           </span>
         </summary>
         <div className={panels.reqMessageBody}>
+          <p className={panels.reqMeta}>
+            <span>{message.role}</span>
+            <span>{shortTokens(message.tokens)} tokens</span>
+            {message.toolCallId != null && (
+              <span>answers {message.toolCallId}</span>
+            )}
+          </p>
           {message.content != null && message.content !== "" && (
             <pre className={panels.reqContent}>{message.content}</pre>
           )}
@@ -117,14 +136,21 @@ function MessageRow({
               ))}
             </ul>
           )}
-          {message.toolCallId != null && (
-            <p className={panels.reqAnswers}>
-              answers call {message.toolCallId}
-            </p>
-          )}
+          {!hasBody && <p className={panels.reqEmptyBody}>(no content)</p>}
         </div>
       </details>
     </li>
+  );
+}
+
+// One stat in a turn header (a value with a muted caption), so the header reads as a
+// row of labeled figures rather than a run-on line.
+function Stat({ value, label }: { value: string; label: string }) {
+  return (
+    <span className={panels.reqStat}>
+      <span className={panels.reqStatValue}>{value}</span>
+      <span className={panels.reqStatLabel}>{label}</span>
+    </span>
   );
 }
 
@@ -145,30 +171,31 @@ function TurnCard({
     prompt.responseId != null ? pool.get(prompt.responseId) : undefined;
   const outputTokens =
     (prompt.tokens.output ?? 0) + (prompt.tokens.reasoning ?? 0);
+  const cost = prompt.cost?.comparable ?? prompt.cost?.actual ?? null;
   return (
     <details className={panels.reqTurn} open={open}>
       <summary className={panels.reqTurnSummary}>
+        <span className={panels.reqCaret} aria-hidden="true">
+          ▸
+        </span>
         <span className={panels.reqTurnLabel}>Turn {prompt.turn + 1}</span>
-        <span className={panels.reqTurnMeta}>
-          {prompt.request.length} msg{prompt.request.length === 1 ? "" : "s"}
+        <span className={panels.reqTurnStats}>
+          <Stat value={String(prompt.request.length)} label="msgs" />
+          <Stat value={shortTokens(prompt.totalTokens)} label="in" />
+          <Stat value={shortTokens(outputTokens)} label="out" />
+          {cost != null && <Stat value={formatCost(cost)} label="cost" />}
         </span>
-        <span className={panels.reqTurnMeta}>
-          {shortTokens(prompt.totalTokens)} in
-        </span>
-        <span className={panels.reqTurnMeta}>
-          {shortTokens(outputTokens)} out
-        </span>
-        {(prompt.cost?.comparable ?? prompt.cost?.actual) != null && (
-          <span className={panels.reqTurnMeta}>
-            {formatCost(prompt.cost?.comparable ?? prompt.cost?.actual ?? null)}
-          </span>
-        )}
         <span className={panels.reqFinish} data-finish={prompt.finishReason}>
           {prompt.finishReason}
         </span>
       </summary>
       <div className={panels.reqTurnBody}>
-        <div className={panels.reqSectionLabel}>Request</div>
+        <div className={panels.reqSectionLabel}>
+          Request{" "}
+          <span className={panels.reqSectionCount}>
+            {prompt.request.length}
+          </span>
+        </div>
         <ul className={panels.reqMessages}>
           {prompt.request.map((ref, i) => (
             <MessageRow
@@ -185,7 +212,7 @@ function TurnCard({
           </ul>
         ) : (
           <p className={panels.reqEmptyResponse}>
-            No assistant message (the turn produced only a stop).
+            No assistant message — the turn produced only a stop.
           </p>
         )}
       </div>
@@ -208,8 +235,6 @@ export function RequestsView({
 }) {
   // Newest turn open by default — the one a live watcher is most likely reading.
   const lastTurn = prompts.length - 1;
-  // Stable across re-renders while the list only grows; recomputed only when the count
-  // changes (a new turn arrives).
   const openTurn = useMemo(() => lastTurn, [lastTurn]);
 
   if (prompts.length === 0) {
