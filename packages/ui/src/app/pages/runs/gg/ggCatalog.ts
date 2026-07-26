@@ -59,13 +59,20 @@ export const CAP_GROUPS: ReadonlyArray<{
 
 // A dedicated param control on a capability. `kind` picks the input + how the value
 // coerces into the JSON params object: fraction/number/bytes → a JSON number,
-// select → a JSON string (an empty selection omits the param entirely), toggles →
-// a JSON object of `{ option: false }` for every option switched *off* (see
+// select → a JSON string (an empty selection omits the param entirely), text → a
+// JSON string of whatever was typed (an empty field omits the param), toggles → a
+// JSON object of `{ option: false }` for every option switched *off* (see
 // [TOGGLES_HINT]).
+//
+// Every param gg actually reads has a control here — there is deliberately no raw
+// JSON escape hatch in the editor, since the console knows gg's whole param schema.
+// A param a *stored* configuration carries that no control here covers (a key from a
+// newer client, or a legacy one) is preserved verbatim through a round-trip rather
+// than shown, so reopening and saving never drops it.
 export interface ParamSpec {
   key: string;
   label: string;
-  kind: "fraction" | "number" | "bytes" | "select" | "toggles";
+  kind: "fraction" | "number" | "bytes" | "select" | "text" | "toggles";
   hint?: string;
   placeholder?: string;
   // The closed set of values a `select` offers, or the independently switchable
@@ -183,6 +190,20 @@ export const HEALING_STRATEGY_OPTIONS: ReadonlyArray<{
       "strip-comment-only — treat a reply that is only comments as no program at all",
   },
 ];
+
+// The workspace-relative directory gg reads authored skills from when a
+// configuration names none (`crates/gg/src/skills.rs`).
+export const DEFAULT_SKILLS_DIR = ".gg/skills";
+
+// The bounds gg falls back to when a configuration sets no cap, mirroring the
+// per-capability defaults in `crates/gg/src/{tasks,board,memories}.rs`. Surfaced as
+// placeholders so an operator sees what leaving a field empty means.
+export const DEFAULT_MAX_TASKS = 100;
+export const DEFAULT_MAX_EPICS = 50;
+export const DEFAULT_MAX_ISSUES = 200;
+export const DEFAULT_MEMORY_MAX_COUNT = 8;
+export const DEFAULT_MEMORY_MAX_LEN_PER = 2000;
+export const DEFAULT_MEMORY_MAX_TOTAL_LEN = 8000;
 
 export const FSM_MACHINE_OPTIONS = [
   { value: "", label: "(none — no state machine)" },
@@ -340,6 +361,15 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     purpose:
       "Authored markdown skills whose descriptions are shown up front and bodies survive compaction once read.",
     defaultOn: true,
+    params: [
+      {
+        key: "dir",
+        label: "Skills directory",
+        kind: "text",
+        placeholder: DEFAULT_SKILLS_DIR,
+        hint: `Where in the workspace gg reads authored skills from. Relative paths are joined onto the workspace; an absolute path is used as-is. Default ${DEFAULT_SKILLS_DIR}.`,
+      },
+    ],
     tools: ["read_skill"],
   },
   {
@@ -349,6 +379,29 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     purpose:
       "The model's own bounded, self-curated notes, retained across a compaction boundary.",
     defaultOn: true,
+    params: [
+      {
+        key: "maxCount",
+        label: "Max memories",
+        kind: "number",
+        placeholder: `e.g. ${DEFAULT_MEMORY_MAX_COUNT}`,
+        hint: `How many notes the model may keep at once (default ${DEFAULT_MEMORY_MAX_COUNT}).`,
+      },
+      {
+        key: "maxLenPerMemory",
+        label: "Max length each (chars)",
+        kind: "number",
+        placeholder: `e.g. ${DEFAULT_MEMORY_MAX_LEN_PER}`,
+        hint: `Character ceiling on any one note (default ${DEFAULT_MEMORY_MAX_LEN_PER}).`,
+      },
+      {
+        key: "maxTotalLen",
+        label: "Max length total (chars)",
+        kind: "number",
+        placeholder: `e.g. ${DEFAULT_MEMORY_MAX_TOTAL_LEN}`,
+        hint: `Character ceiling across all notes together (default ${DEFAULT_MEMORY_MAX_TOTAL_LEN}).`,
+      },
+    ],
     tools: ["write_memory", "update_memory", "delete_memory"],
   },
   // --- Work tracking ----------------------------------------------------------
@@ -359,6 +412,15 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     purpose:
       "A lightweight to-do list (a blocked-by DAG) that survives compaction verbatim.",
     defaultOn: true,
+    params: [
+      {
+        key: "maxTasks",
+        label: "Max tasks",
+        kind: "number",
+        placeholder: `e.g. ${DEFAULT_MAX_TASKS}`,
+        hint: `How many tasks the list may hold at once (default ${DEFAULT_MAX_TASKS}).`,
+      },
+    ],
     tools: [
       "add_task",
       "update_task",
@@ -373,6 +435,22 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     group: "Work tracking",
     purpose:
       "A heavyweight work-decomposition board with scoped, completion-criteria'd issues safe to hand to a subagent.",
+    params: [
+      {
+        key: "maxEpics",
+        label: "Max epics",
+        kind: "number",
+        placeholder: `e.g. ${DEFAULT_MAX_EPICS}`,
+        hint: `How many epics the board may hold (default ${DEFAULT_MAX_EPICS}).`,
+      },
+      {
+        key: "maxIssues",
+        label: "Max issues",
+        kind: "number",
+        placeholder: `e.g. ${DEFAULT_MAX_ISSUES}`,
+        hint: `How many issues the board may hold (default ${DEFAULT_MAX_ISSUES}).`,
+      },
+    ],
     tools: [
       "create_epic",
       "create_issue",

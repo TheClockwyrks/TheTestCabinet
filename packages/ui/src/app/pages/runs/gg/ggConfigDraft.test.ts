@@ -175,9 +175,9 @@ describe("gg filesystem capabilities", () => {
     });
     const draft = draftFromCapabilitySet(configured);
     expect(draft.capabilities["read-file"]?.implementation).toBe("hard-cap");
-    // A dedicated param control holds text; the JSON escape hatch stays empty.
+    // A dedicated param control holds text; nothing spills into the passthrough.
     expect(draft.capabilities["read-file"]?.params?.lineCap).toBe("250");
-    expect(draft.capabilities["read-file"]?.paramsText).toBe("");
+    expect(draft.capabilities["read-file"]?.extraParams).toEqual({});
 
     const back = capabilitySetFromDraft(draft, null);
     const readFile = back.capabilities.find((cap) => cap.id === "read-file");
@@ -217,9 +217,9 @@ describe("gg response-healing toggles", () => {
     });
     const draft = draftFromCapabilitySet(configured);
     expect(draft.capabilities[CODE]?.params?.healing).toBe("strip-prose");
-    // Nothing spills into the advanced-JSON escape hatch, which is what would make
-    // the toggles and the raw params fight over the same key on the way back.
-    expect(draft.capabilities[CODE]?.paramsText).toBe("");
+    // Nothing spills into the passthrough, which is what would make the toggles and
+    // a stray raw param fight over the same key on the way back.
+    expect(draft.capabilities[CODE]?.extraParams).toEqual({});
     expect(healingOf(capabilitySetFromDraft(draft, null))).toEqual({
       "strip-prose": false,
     });
@@ -233,13 +233,14 @@ describe("gg response-healing toggles", () => {
     expect(healingOf(capabilitySetFromDraft(draft, null))).toEqual({
       "strip-fences": false,
       "strip-prose": false,
+      "drop-duplicate-program": false,
       "drop-imports": false,
       "unwrap-async": false,
       "strip-comment-only": false,
     });
   });
 
-  it("leaves a value the control cannot represent in the JSON field", () => {
+  it("preserves a value the control cannot represent in the passthrough", () => {
     // gg reports `stripProse` as an unknown healing key and runs every strategy;
     // silently rewriting it as "strip-prose off" would run the other arm of the
     // ablation under this configuration's name.
@@ -254,11 +255,88 @@ describe("gg response-healing toggles", () => {
     });
     const draft = draftFromCapabilitySet(configured);
     expect(draft.capabilities[CODE]?.params?.healing).toBeUndefined();
-    expect(JSON.parse(draft.capabilities[CODE]!.paramsText)).toEqual({
+    expect(draft.capabilities[CODE]?.extraParams).toEqual({
       healing: { stripProse: false },
     });
     expect(healingOf(capabilitySetFromDraft(draft, null))).toEqual({
       stripProse: false,
+    });
+  });
+});
+
+// Every param gg reads now has a dedicated control (no raw-JSON field), so a stored
+// value routes to its control on the way in and is written back typed — and a param
+// no control covers is preserved verbatim rather than dropped.
+describe("gg capability params", () => {
+  function paramsOf(s: GgCapabilitySet, id: string): Record<string, unknown> {
+    return (s.capabilities.find((cap) => cap.id === id)?.params ??
+      {}) as Record<string, unknown>;
+  }
+
+  it("round-trips the numeric caps that used to need hand-edited JSON", () => {
+    const configured = set({
+      capabilities: [
+        { id: "tasks", enabled: true, params: { maxTasks: 40 } },
+        {
+          id: "memories",
+          enabled: true,
+          params: { maxCount: 5, maxLenPerMemory: 1500, maxTotalLen: 6000 },
+        },
+        {
+          id: "epics-and-issues",
+          enabled: true,
+          params: { maxEpics: 20, maxIssues: 80 },
+        },
+      ],
+    });
+    const draft = draftFromCapabilitySet(configured);
+    // Each stored value lands in its dedicated control (as text) with an empty
+    // passthrough — nothing is left reachable only through raw JSON.
+    expect(draft.capabilities.tasks?.params?.maxTasks).toBe("40");
+    expect(draft.capabilities.tasks?.extraParams).toEqual({});
+    expect(draft.capabilities.memories?.params?.maxLenPerMemory).toBe("1500");
+
+    const back = capabilitySetFromDraft(draft, null);
+    expect(paramsOf(back, "tasks")).toEqual({ maxTasks: 40 });
+    expect(paramsOf(back, "memories")).toEqual({
+      maxCount: 5,
+      maxLenPerMemory: 1500,
+      maxTotalLen: 6000,
+    });
+    expect(paramsOf(back, "epics-and-issues")).toEqual({
+      maxEpics: 20,
+      maxIssues: 80,
+    });
+  });
+
+  it("round-trips a string param through its text control", () => {
+    const configured = set({
+      capabilities: [
+        { id: "skills", enabled: true, params: { dir: "docs/skills" } },
+      ],
+    });
+    const draft = draftFromCapabilitySet(configured);
+    expect(draft.capabilities.skills?.params?.dir).toBe("docs/skills");
+    expect(paramsOf(capabilitySetFromDraft(draft, null), "skills")).toEqual({
+      dir: "docs/skills",
+    });
+  });
+
+  it("preserves a param no control covers through a round-trip", () => {
+    // A key a newer client wrote (or a legacy one) has no dedicated control here.
+    // Dropping it on resave would silently change what the configuration means, so
+    // it is carried verbatim in the passthrough and re-emitted untouched.
+    const configured = set({
+      capabilities: [
+        { id: "tasks", enabled: true, params: { maxTasks: 10, futureKnob: 3 } },
+      ],
+    });
+    const draft = draftFromCapabilitySet(configured);
+    expect(draft.capabilities.tasks?.params?.maxTasks).toBe("10");
+    expect(draft.capabilities.tasks?.extraParams).toEqual({ futureKnob: 3 });
+    expect(paramsOf(capabilitySetFromDraft(draft, null), "tasks")).toEqual({
+      maxTasks: 10,
+      futureKnob: 3,
     });
   });
 });

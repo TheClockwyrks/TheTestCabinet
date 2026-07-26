@@ -36,14 +36,22 @@ import {
 
 // One capability's draft state. `enabled` toggles the capability on/off;
 // `implementation` is the selected swappable implementation (the A/B lever —
-// empty = the capability's default); `params` holds the values of the capability's
-// *dedicated* param controls keyed by param name (string form, empty = unset); and
-// `paramsText` is the raw JSON typed for any *additional* params (empty = `{}`).
+// empty = the capability's default); and `params` holds the values of the
+// capability's dedicated param controls keyed by param name (string form, empty =
+// unset).
+//
+// `extraParams` is not editable in the form: it carries, verbatim, any param a
+// *stored* configuration had that no dedicated control covers (a key from a newer
+// client, a legacy one, or a value a control can't represent), so reopening and
+// re-saving a configuration never silently drops a param gg might still read. Every
+// param gg actually reads has a control, so a configuration authored here leaves it
+// empty — it exists only to keep a round-trip lossless, which is why the editor
+// carries no raw-JSON field.
 export interface GgCapabilityDraft {
   enabled: boolean;
   implementation?: string;
   params?: Record<string, string>;
-  paramsText: string;
+  extraParams?: Record<string, unknown>;
 }
 
 // One declared **model slot** as the editor holds it: a launch-time model parameter
@@ -111,7 +119,7 @@ export function blankRunLimits(): GgRunLimitsDraft {
 
 /** A capability row that is off, unconfigured, and carries no params. */
 export function blankCapabilityDraft(): GgCapabilityDraft {
-  return { enabled: false, implementation: "", params: {}, paramsText: "" };
+  return { enabled: false, implementation: "", params: {}, extraParams: {} };
 }
 
 /**
@@ -158,7 +166,7 @@ function draftsFor(
       enabled: enabledIds.includes(cap.id),
       implementation: "",
       params: paramDefaults[cap.id] ? { ...paramDefaults[cap.id] } : {},
-      paramsText: "",
+      extraParams: {},
     };
   }
   return out;
@@ -236,7 +244,11 @@ export function cloneDraft(draft: GgConfigDraft): GgConfigDraft {
     capabilities: Object.fromEntries(
       Object.entries(draft.capabilities).map(([id, cap]) => [
         id,
-        { ...cap, params: { ...(cap.params ?? {}) } },
+        {
+          ...cap,
+          params: { ...(cap.params ?? {}) },
+          extraParams: { ...(cap.extraParams ?? {}) },
+        },
       ]),
     ),
     modelSlots: draft.modelSlots.map((s) => ({ ...s })),
@@ -299,9 +311,9 @@ export function togglesDraftValue(
  *
  * Returning `null` rather than guessing is what keeps a round trip honest: an
  * unreadable value (a typo'd member id, a number where a boolean belongs, the
- * master `false` spelled as `"off"`) is left in the capability's advanced-JSON
- * field exactly as the operator typed it, so reopening a configuration never
- * silently rewrites a param gg itself would report as unknown.
+ * master `false` spelled as `"off"`) is preserved verbatim in the capability's
+ * `extraParams` passthrough, so reopening a configuration never silently rewrites a
+ * param gg itself would report as unknown.
  *
  * The two shapes that *are* representable and mean "everything on" — `true` and
  * `{}` — decode to the empty draft, and are therefore written back as no param at
@@ -378,23 +390,23 @@ export function draftFromCapabilitySet(set: GgCapabilitySet): GgConfigDraft {
       continue;
     }
     // A stored param is JSON; the editor's dedicated controls hold text. Route each
-    // param to its dedicated control when the catalog declares one, and leave the
-    // rest in the advanced JSON field so nothing is lost on a round-trip.
+    // param to its dedicated control when the catalog declares one, and keep the rest
+    // in the (non-editable) `extraParams` passthrough so nothing is lost on a
+    // round-trip.
     const dedicated = new Map((cap.params ?? []).map((p) => [p.key, p]));
     const params: Record<string, string> = {};
-    const extra: Record<string, unknown> = {};
+    const extraParams: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(from.params ?? {})) {
       const spec = dedicated.get(key);
       if (!spec) {
-        extra[key] = value;
+        extraParams[key] = value;
         continue;
       }
       if (spec.kind === "toggles") {
-        // A stored value this control cannot represent stays in the advanced-JSON
-        // field verbatim rather than being coerced into checkboxes that would write
-        // back something else.
+        // A stored value this control cannot represent is preserved verbatim rather
+        // than being coerced into checkboxes that would write back something else.
         const decoded = togglesFromParam(spec, value);
-        if (decoded === null) extra[key] = value;
+        if (decoded === null) extraParams[key] = value;
         else params[key] = decoded;
         continue;
       }
@@ -404,8 +416,7 @@ export function draftFromCapabilitySet(set: GgCapabilitySet): GgConfigDraft {
       enabled: from.enabled,
       implementation: from.implementation ?? "",
       params,
-      paramsText:
-        Object.keys(extra).length > 0 ? JSON.stringify(extra, null, 2) : "",
+      extraParams,
     };
   }
   const slots: GgSlotDraft[] = (set.slots ?? []).map((s) => ({
@@ -460,44 +471,33 @@ function runLimitsDraft(limits: GgRunLimits | undefined): GgRunLimitsDraft {
   return draft;
 }
 
-// The result of parsing a capability's params-JSON text: `{}` for an empty field,
-// the parsed object on success, or an error string the form surfaces inline.
+// The result of assembling a capability's params: the params object on success, or
+// an error string the form surfaces inline when a dedicated control holds something
+// its kind cannot accept.
 type ParamsParse =
   | { ok: true; value: Record<string, unknown> }
   | { ok: false; error: string };
 
-function parseParams(text: string): ParamsParse {
-  const trimmed = text.trim();
-  if (!trimmed) return { ok: true, value: {} };
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(trimmed);
-  } catch {
-    return { ok: false, error: "Not valid JSON." };
-  }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    return { ok: false, error: "Params must be a JSON object." };
-  }
-  return { ok: true, value: parsed as Record<string, unknown> };
-}
-
 /**
- * Validate + fold a capability's dedicated param controls into its JSON params. A
- * dedicated control's value overrides the same key in the raw JSON. Returns an
- * error string on the first invalid field/JSON (only meaningful when the capability
- * is on).
+ * Validate + fold a capability's dedicated param controls over the params a stored
+ * configuration carried that no control covers ([GgCapabilityDraft.extraParams]). A
+ * dedicated control's value wins over a same-named passthrough key. Returns an error
+ * string on the first invalid field (only meaningful when the capability is on).
+ *
+ * There is no JSON to parse: every param the editor writes comes from a typed
+ * control, and the passthrough is already a parsed object, so a capability can no
+ * longer be un-saveable because of malformed JSON — only because a numeric field
+ * holds a non-number or an out-of-range fraction.
  */
 export function capabilityParams(
   cap: CapSpec,
   draft: GgCapabilityDraft,
 ): ParamsParse {
-  const base = parseParams(draft.paramsText);
-  if (!base.ok) return base;
-  const out: Record<string, unknown> = { ...base.value };
+  const out: Record<string, unknown> = { ...(draft.extraParams ?? {}) };
   for (const p of cap.params ?? []) {
     const raw = (draft.params?.[p.key] ?? "").trim();
     if (!raw) continue;
-    if (p.kind === "select") {
+    if (p.kind === "select" || p.kind === "text") {
       out[p.key] = raw;
       continue;
     }

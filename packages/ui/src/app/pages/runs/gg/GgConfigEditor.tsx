@@ -281,135 +281,34 @@ export function GgConfigEditor({
                         <span className={gg.capId}>{cap.id}</span>
                       </label>
                       <p className={gg.capPurpose}>{cap.purpose}</p>
-                      {enabled && (
-                        <div className={gg.capBody}>
-                          {(cap.params?.length || cap.implementationLabel) && (
-                            <div className={gg.capParamGrid}>
-                              {cap.implementationLabel && (
-                                <label className={gg.capParamField}>
-                                  <span className={runExec.fieldLabel}>
-                                    {cap.implementationLabel}
-                                  </span>
-                                  {/* A closed set of implementations is a picker, so
+                      {enabled &&
+                        (cap.params?.length ||
+                          cap.implementationLabel ||
+                          error) && (
+                          <div className={gg.capBody}>
+                            {(cap.params?.length ||
+                              cap.implementationLabel) && (
+                              <div className={gg.capParamGrid}>
+                                {cap.implementationLabel && (
+                                  <label className={gg.capParamField}>
+                                    <span className={runExec.fieldLabel}>
+                                      {cap.implementationLabel}
+                                    </span>
+                                    {/* A closed set of implementations is a picker, so
                                       an operator never has to remember how a mode is
                                       spelled; an open-ended one stays free text. */}
-                                  {cap.implementationOptions ? (
-                                    <select
-                                      className={runExec.select}
-                                      value={draft.implementation ?? ""}
-                                      disabled={readOnly}
-                                      onChange={(e) =>
-                                        updateDraft(cap.id, {
-                                          implementation: e.target.value,
-                                        })
-                                      }
-                                    >
-                                      {cap.implementationOptions.map((o) => (
-                                        <option key={o.value} value={o.value}>
-                                          {o.label}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  ) : (
-                                    <input
-                                      className={runExec.input}
-                                      type="text"
-                                      value={draft.implementation ?? ""}
-                                      disabled={readOnly}
-                                      onChange={(e) =>
-                                        updateDraft(cap.id, {
-                                          implementation: e.target.value,
-                                        })
-                                      }
-                                      placeholder={
-                                        cap.implementationPlaceholder ??
-                                        "default"
-                                      }
-                                      spellCheck={false}
-                                    />
-                                  )}
-                                </label>
-                              )}
-                              {(cap.params ?? []).map((p) => {
-                                // A toggles param is several controls, so it is a
-                                // group rather than a `<label>` — wrapping a set of
-                                // checkboxes in one label would make clicking the
-                                // group's caption flip whichever one came first.
-                                if (p.kind === "toggles") {
-                                  const off = togglesOff(
-                                    p,
-                                    draft.params?.[p.key],
-                                  );
-                                  return (
-                                    <div
-                                      key={p.key}
-                                      className={`${gg.capParamField} ${gg.toggleField}`}
-                                      role="group"
-                                      aria-label={p.label}
-                                    >
-                                      <span className={runExec.fieldLabel}>
-                                        {p.label}
-                                      </span>
-                                      <div className={gg.toggleList}>
-                                        {(p.options ?? []).map((o) => (
-                                          <label
-                                            key={o.value}
-                                            className={gg.toggleItem}
-                                          >
-                                            <input
-                                              type="checkbox"
-                                              checked={!off.includes(o.value)}
-                                              disabled={readOnly}
-                                              onChange={(e) =>
-                                                setParam(
-                                                  cap.id,
-                                                  p.key,
-                                                  togglesDraftValue(
-                                                    p,
-                                                    e.target.checked
-                                                      ? off.filter(
-                                                          (id) =>
-                                                            id !== o.value,
-                                                        )
-                                                      : [...off, o.value],
-                                                  ),
-                                                )
-                                              }
-                                            />
-                                            <span>{o.label}</span>
-                                          </label>
-                                        ))}
-                                      </div>
-                                      {p.hint && (
-                                        <span className={gg.paramHint}>
-                                          {p.hint}
-                                        </span>
-                                      )}
-                                    </div>
-                                  );
-                                }
-                                return (
-                                  <label
-                                    key={p.key}
-                                    className={gg.capParamField}
-                                  >
-                                    <span className={runExec.fieldLabel}>
-                                      {p.label}
-                                    </span>
-                                    {p.kind === "select" ? (
+                                    {cap.implementationOptions ? (
                                       <select
                                         className={runExec.select}
-                                        value={draft.params?.[p.key] ?? ""}
+                                        value={draft.implementation ?? ""}
                                         disabled={readOnly}
                                         onChange={(e) =>
-                                          setParam(
-                                            cap.id,
-                                            p.key,
-                                            e.target.value,
-                                          )
+                                          updateDraft(cap.id, {
+                                            implementation: e.target.value,
+                                          })
                                         }
                                       >
-                                        {(p.options ?? []).map((o) => (
+                                        {cap.implementationOptions.map((o) => (
                                           <option key={o.value} value={o.value}>
                                             {o.label}
                                           </option>
@@ -418,56 +317,167 @@ export function GgConfigEditor({
                                     ) : (
                                       <input
                                         className={runExec.input}
-                                        type="number"
-                                        min={0}
-                                        max={
-                                          p.kind === "fraction" ? 1 : undefined
-                                        }
-                                        step={p.kind === "fraction" ? 0.05 : 1}
-                                        value={draft.params?.[p.key] ?? ""}
+                                        type="text"
+                                        value={draft.implementation ?? ""}
                                         disabled={readOnly}
                                         onChange={(e) =>
-                                          setParam(
-                                            cap.id,
-                                            p.key,
-                                            e.target.value,
-                                          )
+                                          updateDraft(cap.id, {
+                                            implementation: e.target.value,
+                                          })
                                         }
-                                        placeholder={p.placeholder}
+                                        placeholder={
+                                          cap.implementationPlaceholder ??
+                                          "default"
+                                        }
+                                        spellCheck={false}
                                       />
                                     )}
-                                    {p.hint && (
-                                      <span className={gg.paramHint}>
-                                        {p.hint}
-                                      </span>
-                                    )}
                                   </label>
-                                );
-                              })}
-                            </div>
-                          )}
-                          <details className={gg.advancedParams}>
-                            <summary className={gg.advancedSummary}>
-                              Advanced params (JSON)
-                            </summary>
-                            <textarea
-                              className={`${runExec.textarea} ${gg.paramsInput}`}
-                              value={draft.paramsText}
-                              disabled={readOnly}
-                              onChange={(e) =>
-                                updateDraft(cap.id, {
-                                  paramsText: e.target.value,
-                                })
-                              }
-                              placeholder={'e.g. { "customKnob": 3 }'}
-                              spellCheck={false}
-                            />
-                          </details>
-                          {error && (
-                            <span className={gg.fieldError}>{error}</span>
-                          )}
-                        </div>
-                      )}
+                                )}
+                                {(cap.params ?? []).map((p) => {
+                                  // A toggles param is several controls, so it is a
+                                  // group rather than a `<label>` — wrapping a set of
+                                  // checkboxes in one label would make clicking the
+                                  // group's caption flip whichever one came first.
+                                  if (p.kind === "toggles") {
+                                    const off = togglesOff(
+                                      p,
+                                      draft.params?.[p.key],
+                                    );
+                                    return (
+                                      <div
+                                        key={p.key}
+                                        className={`${gg.capParamField} ${gg.toggleField}`}
+                                        role="group"
+                                        aria-label={p.label}
+                                      >
+                                        <span className={runExec.fieldLabel}>
+                                          {p.label}
+                                        </span>
+                                        <div className={gg.toggleList}>
+                                          {(p.options ?? []).map((o) => (
+                                            <label
+                                              key={o.value}
+                                              className={gg.toggleItem}
+                                            >
+                                              <input
+                                                type="checkbox"
+                                                checked={!off.includes(o.value)}
+                                                disabled={readOnly}
+                                                onChange={(e) =>
+                                                  setParam(
+                                                    cap.id,
+                                                    p.key,
+                                                    togglesDraftValue(
+                                                      p,
+                                                      e.target.checked
+                                                        ? off.filter(
+                                                            (id) =>
+                                                              id !== o.value,
+                                                          )
+                                                        : [...off, o.value],
+                                                    ),
+                                                  )
+                                                }
+                                              />
+                                              <span>{o.label}</span>
+                                            </label>
+                                          ))}
+                                        </div>
+                                        {p.hint && (
+                                          <span className={gg.paramHint}>
+                                            {p.hint}
+                                          </span>
+                                        )}
+                                      </div>
+                                    );
+                                  }
+                                  return (
+                                    <label
+                                      key={p.key}
+                                      className={gg.capParamField}
+                                    >
+                                      <span className={runExec.fieldLabel}>
+                                        {p.label}
+                                      </span>
+                                      {p.kind === "select" ? (
+                                        <select
+                                          className={runExec.select}
+                                          value={draft.params?.[p.key] ?? ""}
+                                          disabled={readOnly}
+                                          onChange={(e) =>
+                                            setParam(
+                                              cap.id,
+                                              p.key,
+                                              e.target.value,
+                                            )
+                                          }
+                                        >
+                                          {(p.options ?? []).map((o) => (
+                                            <option
+                                              key={o.value}
+                                              value={o.value}
+                                            >
+                                              {o.label}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      ) : p.kind === "text" ? (
+                                        <input
+                                          className={runExec.input}
+                                          type="text"
+                                          value={draft.params?.[p.key] ?? ""}
+                                          disabled={readOnly}
+                                          onChange={(e) =>
+                                            setParam(
+                                              cap.id,
+                                              p.key,
+                                              e.target.value,
+                                            )
+                                          }
+                                          placeholder={p.placeholder}
+                                          spellCheck={false}
+                                        />
+                                      ) : (
+                                        <input
+                                          className={runExec.input}
+                                          type="number"
+                                          min={0}
+                                          max={
+                                            p.kind === "fraction"
+                                              ? 1
+                                              : undefined
+                                          }
+                                          step={
+                                            p.kind === "fraction" ? 0.05 : 1
+                                          }
+                                          value={draft.params?.[p.key] ?? ""}
+                                          disabled={readOnly}
+                                          onChange={(e) =>
+                                            setParam(
+                                              cap.id,
+                                              p.key,
+                                              e.target.value,
+                                            )
+                                          }
+                                          placeholder={p.placeholder}
+                                        />
+                                      )}
+                                      {p.hint && (
+                                        <span className={gg.paramHint}>
+                                          {p.hint}
+                                        </span>
+                                      )}
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            )}
+                            {error && (
+                              <span className={gg.fieldError}>{error}</span>
+                            )}
+                          </div>
+                        )}
                     </div>
                   );
                 })}

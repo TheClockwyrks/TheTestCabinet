@@ -126,8 +126,8 @@
   color: t.$color-text-muted;
 }
 
-// The per-capability config body (dedicated params + advanced JSON), revealed only
-// when the capability is on.
+// The per-capability config body (the dedicated param controls), revealed only when
+// the capability is on and has something to configure.
 .capBody {
   margin-top: t.$space-sm;
   display: flex;
@@ -205,30 +205,8 @@
   color: t.$color-warning;
 }
 
-// The collapsed "advanced params (JSON)" disclosure — the escape hatch for any
-// param without a dedicated control.
-.advancedParams {
-  font-size: t.$font-sm;
-}
-
-.advancedSummary {
-  cursor: pointer;
-  color: t.$color-text-muted;
-
-  &:hover {
-    color: t.$color-accent;
-  }
-}
-
-// A compact JSON params textarea — smaller than the review writeup so it reads as
-// an optional tuning field, not a wall of JSON.
-.paramsInput {
-  min-height: 3.5rem;
-  margin-top: t.$space-xs;
-  font-size: t.$font-sm;
-}
-
-// A per-field validation error (invalid params JSON), in the negative cue.
+// A per-field validation error (a numeric param that isn't a number, or a fraction
+// out of range), in the negative cue.
 .fieldError {
   font-size: t.$font-sm;
   color: t.$color-negative;
