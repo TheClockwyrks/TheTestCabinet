@@ -1,0 +1,42 @@
+// Automated validation for the Audio item `music`: a tense reactor music bed the build
+// produced with `music` plays under the board, via Web Audio — not silence, a
+// download, or a hand-oscillated stand-in (specs/assets.md: "loop the music bed").
+// Audio is read from the Web Audio sources the build starts (see `api.audio`). No
+// source exists before the player ever interacts (the build must not autoplay), so
+// the check reads the log both before and after a single real gesture arms audio —
+// which is also what starts the looped bed (`audio.ts`'s `resume` → `startMusic`) —
+// then runs a little gameplay forward while it plays.
+
+import { startRun, armAudio, audioCount, MAP } from "../_helpers.mjs";
+
+export default function item() {
+  let before;
+  let after;
+
+  return {
+    id: "audio.music",
+
+    async arrange(api) {
+      await startRun(api, MAP.single);
+    },
+
+    async act(api) {
+      before = await audioCount(api); // nothing has played yet — no gesture so far
+      await armAudio(api); // the real gesture that unlocks audio and starts the bed
+      await api.advance(60); // ~1 s of gameplay underway while the bed loops
+      after = await audioCount(api);
+    },
+
+    async assert(api, check) {
+      check.expectOk(
+        "no Web Audio source plays before the player interacts",
+        before === 0,
+      );
+      check.expectGt(
+        "a Web Audio source starts for the reactor music bed",
+        after,
+        before,
+      );
+    },
+  };
+}

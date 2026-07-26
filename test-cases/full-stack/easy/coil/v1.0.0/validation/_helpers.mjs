@@ -119,7 +119,11 @@ export function onSnake(cell, snake) {
 /** Whether a cell is inside the playable interior (clear of the wall border). */
 export function isInterior(c) {
   return (
-    c && c.col >= IN_COL0 && c.col <= IN_COL1 && c.row >= IN_ROW0 && c.row <= IN_ROW1
+    c &&
+    c.col >= IN_COL0 &&
+    c.col <= IN_COL1 &&
+    c.row >= IN_ROW0 &&
+    c.row <= IN_ROW1
   );
 }
 
@@ -141,7 +145,8 @@ export function hLane(headCol, row, len) {
  */
 export function vLaneUp(headCol, headRow, len) {
   const cells = [];
-  for (let i = 0; i < len; i += 1) cells.push({ col: headCol, row: headRow + i });
+  for (let i = 0; i < len; i += 1)
+    cells.push({ col: headCol, row: headRow + i });
   return cells;
 }
 
@@ -188,7 +193,10 @@ export async function beginRound(api, seed) {
  *
  * Pair with `actEatSequence`.
  */
-export async function arrangeEatLane(api, { startCol = 3, row = 8, len = 3 } = {}) {
+export async function arrangeEatLane(
+  api,
+  { startCol = 3, row = 8, len = 3 } = {},
+) {
   await api.call("setSnake", hLane(startCol, row, len), "right");
 }
 
@@ -352,7 +360,12 @@ export async function buildFillSnake(api) {
   const H = { col: IN_COL1 - 1, row: 8 }; // (27, 8) — the head, adjacent to E
   const isEorH = (c) => sameCell(c, E) || sameCell(c, H);
   const body = free.filter((c) => !isEorH(c));
-  return { snake: [H, ...body], dir: "right", pellet: E, freeCount: free.length };
+  return {
+    snake: [H, ...body],
+    dir: "right",
+    pellet: E,
+    freeCount: free.length,
+  };
 }
 
 // ---- Color sampling (reads the rendered canvas, not a reported value) ---------
@@ -476,4 +489,31 @@ export async function actSettleShot(api, shot, { settleMs = 150 } = {}) {
   await api.settle(settleMs);
   if (shot) await api.screenshot(shot);
   return api.snapshot();
+}
+
+// ---- Audio (reads the Web Audio cues the build actually schedules) ----------
+//
+// Coil's cues are the produced .wav files (specs/assets.md: sfx-synth/sfx-sample for
+// eat/combo/death, music for the bed) decoded and played back through the Web Audio
+// API, so the driver reports every source the build starts (see `api.audio`). The
+// game must not autoplay: audio.ts creates the AudioContext (and starts the music
+// bed) only on the FIRST real user interaction, so before driving an event whose
+// cue is checked, arm audio with a GENUINE browser gesture. A build may feed the
+// debug API through a purely logical input path and unlock audio only from a real
+// DOM event (a keydown OR a pointer), so arming uses both `api.userKey` and a
+// corner `api.userClick` rather than a debug `press` — a debug press would leave a
+// conformant build's AudioContext uncreated, so no cue would ever be scheduled
+// though it plays fine for a real player. `KeyZ` has no game binding (it steers
+// nothing and matches no menu or pause key) and the (4, 4) click lands in the inert
+// stage background, well clear of the board and every menu — Coil takes no pointer
+// input anywhere — so arming never disturbs game state. From there a cue is
+// confirmed by the audio log growing across the driven event.
+export async function armAudio(api) {
+  await api.userKey("KeyZ");
+  await api.userClick(4, 4);
+}
+
+/** The number of Web Audio sources the build has started so far. */
+export async function audioCount(api) {
+  return (await api.audio()).length;
 }

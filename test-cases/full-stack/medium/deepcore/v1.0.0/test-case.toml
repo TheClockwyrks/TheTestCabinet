@@ -804,13 +804,74 @@ title = "The mute key toggles mute"
 description = "The mute control toggles the audio mute state on and off."
 validation = { script = "validation/audio/mute-toggle.mjs", outputs = [{ id = "muted", name = "The title after toggling mute", kind = "image" }] }
 [[review.categories.items]]
-id = "sfx"
-title = "Produced sound effects"
-description = "Distinct produced cues play on their events — the drill and thrust loops, ore/material pickups, explosions, the lava sizzle, the impact thud, purchase/fabricate confirms, the launch roar, the death cue, and the low-fuel and core-timer alarms — all synthesized/sampled with the audio tools, playing fine fully muted and staying silent until the first interaction."
+id = "drill-loop"
+title = "The drill loop plays while cutting"
+description = "A drill loop (grinding while digging) plays via Web Audio while the miner cuts into a tile."
+validation = { script = "validation/audio/drill-loop.mjs", outputs = [{ id = "drill", name = "The drill loop under a cut", kind = "video" }] }
+[[review.categories.items]]
+id = "thrust-loop"
+title = "The jetpack thrust loop plays while climbing"
+description = "A jetpack thrust loop (a burner while thrusting) plays via Web Audio while the jetpack lifts the miner."
+validation = { script = "validation/audio/thrust-loop.mjs", outputs = [{ id = "thrust", name = "The thrust loop under a climb", kind = "video" }] }
+[[review.categories.items]]
+id = "ore-pickup"
+title = "The ore pickup blip plays on collection"
+description = "An ore pickup blip plays via Web Audio when a drilled vein banks a unit into cargo."
+validation = { script = "validation/audio/ore-pickup.mjs", outputs = [{ id = "pickup", name = "The ore pickup blip", kind = "video" }] }
+[[review.categories.items]]
+id = "material-chime"
+title = "The material chime plays on a find"
+description = "A richer material chime plays via Web Audio when a Resonite or Cryenite node is collected."
+validation = { script = "validation/audio/material-chime.mjs", outputs = [{ id = "chime", name = "The material chime on a find", kind = "video" }] }
+[[review.categories.items]]
+id = "gas-explosion"
+title = "The gas explosion cue plays on detonation"
+description = "A gas explosion cue plays via Web Audio the instant a drilled gas pocket detonates."
+validation = { script = "validation/audio/gas-explosion.mjs", outputs = [{ id = "blast", name = "The gas explosion cue", kind = "video" }] }
+[[review.categories.items]]
+id = "lava-sizzle"
+title = "The lava sizzle plays on contact"
+description = "A lava sizzle cue plays via Web Audio while the miner is in contact with lava."
+validation = { script = "validation/audio/lava-sizzle.mjs", outputs = [{ id = "sizzle", name = "The lava sizzle on contact", kind = "video" }] }
+[[review.categories.items]]
+id = "impact-thud"
+title = "The impact thud plays on an impact event"
+description = "An impact thud plays via Web Audio on a hard landing, a jettison, or dropping ore."
+validation = { script = "validation/audio/impact-thud.mjs", outputs = [{ id = "thud", name = "The impact thud", kind = "video" }] }
+[[review.categories.items]]
+id = "confirm"
+title = "The purchase/fabricate confirm plays"
+description = "A confirm cue plays via Web Audio when an upgrade, fuel, repair, or rocket-part purchase lands."
+validation = { script = "validation/audio/confirm.mjs", outputs = [{ id = "confirm", name = "The purchase/fabricate confirm", kind = "video" }] }
+[[review.categories.items]]
+id = "launch-roar"
+title = "The launch roar plays on launch"
+description = "A launch roar plays via Web Audio the instant the rocket launches."
+validation = { script = "validation/audio/launch-roar.mjs", outputs = [{ id = "launch", name = "The launch roar", kind = "video" }] }
+[[review.categories.items]]
+id = "death-cue"
+title = "The death cue plays on death"
+description = "A death cue plays via Web Audio the instant the miner dies."
+validation = { script = "validation/audio/death-cue.mjs", outputs = [{ id = "death", name = "The death cue", kind = "video" }] }
+[[review.categories.items]]
+id = "alarm-fuel"
+title = "The low-fuel alarm loops under 20%"
+description = "A low-fuel alarm loops via Web Audio while fuel is under 20% of the tank underground."
+validation = { script = "validation/audio/alarm-fuel.mjs", outputs = [{ id = "alarm", name = "The low-fuel alarm looping", kind = "video" }] }
+[[review.categories.items]]
+id = "alarm-core"
+title = "The core-timer alarm loops while the Sample is live"
+description = "An escalating core-timer countdown alarm loops via Web Audio while the Core Sample's destabilization timer is running."
+validation = { script = "validation/audio/alarm-core.mjs", outputs = [{ id = "alarm", name = "The core-timer alarm looping", kind = "video" }] }
 [[review.categories.items]]
 id = "music"
 title = "Produced descent music bed"
-description = "A produced, lonely industrial descent music bed loops under the dig, and audio does not autostart before the player first interacts."
+description = "A produced, lonely industrial descent music bed starts on the player's first interaction and loops under the dig; audio does not autostart before then."
+validation = { script = "validation/audio/music.mjs", outputs = [{ id = "music", name = "The music bed starting on the first interaction", kind = "video" }] }
+[[review.categories.items]]
+id = "muted-safe"
+title = "Audio behaves correctly when fully muted"
+description = "The game continues to run correctly — no errors, no stuck state — while fully muted, and every cue above is synthesized/sampled with the audio tools rather than a stock or bundled sound."
 
 # --- Produced Assets (human-judged) -------------------------------------------
 [[review.categories]]

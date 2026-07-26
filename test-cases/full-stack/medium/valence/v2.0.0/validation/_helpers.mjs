@@ -186,7 +186,11 @@ async function resolveMapId(api, selector) {
 }
 
 /** The economy/round preconditions both run-starters apply, in the order that matters. */
-async function applyRunPreconditions(api, selector, { energy, integrity, round }) {
+async function applyRunPreconditions(
+  api,
+  selector,
+  { energy, integrity, round },
+) {
   // The caller names the map by topology (MAP.*); resolve it to this build's own id
   // first, since ids are model-chosen. Order matters: `selectMap` starts the run
   // (setting the mode's own energy and integrity), so the overrides come after it.
@@ -512,4 +516,42 @@ export async function samplePixel(api, x, y) {
 /** Euclidean distance between two RGB colors (0 to ~441). Pure — any phase. */
 export function colorDistance(a, b) {
   return Math.hypot(a.r - b.r, a.g - b.g, a.b - b.b);
+}
+
+// ---- Audio (reads the Web Audio cues the build actually schedules) ----------
+//
+// Valence's sound is the PRODUCED .wav files (`sfx-synth`/`sfx-sample`/`music`,
+// specs/assets.md), decoded and played through the Web Audio API, so the driver
+// reports every source the build starts (see `api.audio`). The game must not
+// autoplay: it creates its AudioContext only on the first real user interaction
+// (main.ts's `gesture()`, fired from a buffered click OR key), so before driving an
+// event whose cue is checked, arm audio with a GENUINE browser gesture. A build may
+// feed the debug API through a purely logical input path and unlock audio only from a
+// real DOM event, so arming uses both `api.userKey` and a corner `api.userClick`
+// rather than a debug `press` — a debug press would leave a conformant build's
+// AudioContext uncreated, so no cue would ever be scheduled though it plays fine for
+// a real player. `KeyZ` has no game binding (main.ts's `routeKey`/menu handling never
+// matches it) and (4, 4) sits in the empty top-left of the 56px status bar — left of
+// its controls (the speed/pause/mute buttons start at x=1112) and above the board
+// hit-test (`y > STATUS_H`, specs/board.md), so arming never places a tower, selects a
+// unit, or activates a menu, in any screen.
+//
+// UNLOCK TIMING: unlike a synthesized cue, resuming here kicks off an ASYNC fetch +
+// `decodeAudioData` of every produced clip (`audio.ts`'s `resume`), and `gesture()`
+// does not await it. A cue driven before its clip finishes decoding is silently
+// dropped (`Audio.play` no-ops when `this.buffers` has no entry yet for that cue) —
+// permanently, since the queue that carried it is cleared every frame regardless. A
+// short REAL settle after arming gives the decode time to land before an item drives
+// its cue; `advance` would not do this, since it is an exact instant `step` on the
+// validate pass's manual clock and lets no real (wall-clock) time pass for the fetch
+// to progress.
+export async function armAudio(api) {
+  await api.userKey("KeyZ");
+  await api.userClick(4, 4);
+  await api.settle(300);
+}
+
+/** The number of Web Audio sources the build has started so far. */
+export async function audioCount(api) {
+  return (await api.audio()).length;
 }

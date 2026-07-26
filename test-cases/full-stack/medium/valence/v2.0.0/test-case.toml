@@ -746,19 +746,56 @@ description = "A produced particle burst fires when a unit is neutralized."
 validation = { script = "validation/fx/neutralize.mjs", outputs = [{ id = "neutralize", name = "The neutralize burst firing", kind = "video" }] }
 
 # --- Produced Sound & Music ---------------------------------------------------
+# Every sound effect is synthesized/sampled with the audio tools and played through
+# the Web Audio API (specs/assets.md), so the validator reads the sources a build
+# starts and confirms a distinct cue fires on each mandated event. The build must not
+# autoplay, so each check arms audio with a real gesture (a key press and a corner
+# click) first; the exact sound is the model's own, only that a cue plays is scored.
+# Each mandated cue is its own review item so a build fails exactly the cue it omits.
+# The muteable / never-fail-to-load / silent-until-interaction properties are reviewed
+# by a person from play.
 [[review.categories]]
 id = "audio"
 title = "Produced Sound & Music"
 [[review.categories.items]]
-id = "sfx"
-title = "Produced sound effects"
-description = "The board has real sound effects the build produced with the audio tools (shot/strip, bond-snap, nuclear-crack, neutralize, build, and leak-alarm), played via Web Audio — silent when muted, never failing the game if audio cannot start, and silent until the player first interacts."
-proof = "pressure"
+id = "shot-strip"
+title = "Shot / strip cue"
+description = "A distinct cue, synthesized/sampled with the audio tools, plays via Web Audio when a damage tower fires a shot."
+validation = { script = "validation/audio/shot-strip.mjs", outputs = [{ id = "shot", name = "The shot whose cue is checked", kind = "video" }] }
+[[review.categories.items]]
+id = "bond-snap"
+title = "Bond-snap cue"
+description = "A distinct cue plays via Web Audio when a bonded cluster's outer bond pool is chipped through and sheds a free atom."
+validation = { script = "validation/audio/bond-snap.mjs", outputs = [{ id = "snap", name = "The bond snap whose cue is checked", kind = "video" }] }
+[[review.categories.items]]
+id = "nuclear-crack"
+title = "Nuclear-crack cue"
+description = "A distinct cue plays via Web Audio when a heavy isotope or the boss decays and sheds a fragment."
+validation = { script = "validation/audio/nuclear-crack.mjs", outputs = [{ id = "crack", name = "The decay whose cue is checked", kind = "video" }] }
+[[review.categories.items]]
+id = "neutralize"
+title = "Neutralize cue"
+description = "A distinct cue plays via Web Audio when a unit is fully broken down (neutralized)."
+validation = { script = "validation/audio/neutralize.mjs", outputs = [{ id = "neutralize", name = "The kill whose cue is checked", kind = "video" }] }
+[[review.categories.items]]
+id = "build"
+title = "Build/place cue"
+description = "A distinct cue plays via Web Audio when a tower is placed."
+validation = { script = "validation/audio/build.mjs", outputs = [{ id = "build", name = "The placement whose cue is checked", kind = "video" }] }
+[[review.categories.items]]
+id = "leak-alarm"
+title = "Leak-alarm cue"
+description = "A distinct cue plays via Web Audio when a unit reaches the collector and leaks."
+validation = { script = "validation/audio/leak-alarm.mjs", outputs = [{ id = "leak", name = "The leak whose cue is checked", kind = "video" }] }
 [[review.categories.items]]
 id = "music"
 title = "A produced reactor music bed"
 description = "A tense reactor music bed the build produced with `music` plays under the board, via Web Audio — not silence, a download, or a hand-oscillated stand-in."
-proof = "pressure"
+validation = { script = "validation/audio/music.mjs", outputs = [{ id = "music", name = "The reactor music bed playing under the board", kind = "video" }] }
+[[review.categories.items]]
+id = "graceful"
+title = "Muteable, never-fail, and silent until interaction"
+description = "Audio stays fully playable muted (a mute toggle is provided), never fails the game if audio cannot start, and does not begin until the player first interacts."
 
 # --- Readable HUD & Build Panel -----------------------------------------------
 [[review.categories]]

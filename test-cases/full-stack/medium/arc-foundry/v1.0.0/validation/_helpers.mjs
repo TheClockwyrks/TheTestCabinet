@@ -99,9 +99,22 @@ export const BASE = {
   emitter: { dmg: 2, range: 88, fireRate: 4.5 },
   arcnode: { dmg: 5, range: 96, fireRate: 0.85 },
   discharge: { dmg: 18, range: 160, fireRate: 0.5 },
-  choke: { dmg: 3, range: 104, fireRate: 1.3, slowAmt0: 0.22, slowPerTier: 0.03, slowDur: 1.2 },
+  choke: {
+    dmg: 3,
+    range: 104,
+    fireRate: 1.3,
+    slowAmt0: 0.22,
+    slowPerTier: 0.03,
+    slowDur: 1.2,
+  },
   rectifier: { dmg: 2, range: 96, fireRate: 1.1, burnFrac: 0.5, burnDur: 2.0 },
-  regulator: { dmg: 0, range: 0, fireRate: 0, auraRadius0: 90, auraBonus0: 0.1 },
+  regulator: {
+    dmg: 0,
+    range: 0,
+    fireRate: 0,
+    auraRadius0: 90,
+    auraBonus0: 0.1,
+  },
 };
 
 // The Load roster base (Wave-1, Medium) stats (constants.ts LOAD, specs/enemies.md §7).
@@ -116,9 +129,27 @@ export const LOAD = {
 
 // The difficulty table (constants.ts DIFFICULTY, specs/modes.md §9.2): wave count + toughness.
 export const DIFFICULTY = {
-  easy: { waves: 40, baseMult: 0.2, k: 0.5, surchargeC: 0.08, surchargeR: 1.09 },
-  medium: { waves: 50, baseMult: 0.22, k: 1.17, surchargeC: 0.28, surchargeR: 1.145 },
-  hard: { waves: 60, baseMult: 0.24, k: 1.3, surchargeC: 0.22, surchargeR: 1.15 },
+  easy: {
+    waves: 40,
+    baseMult: 0.2,
+    k: 0.5,
+    surchargeC: 0.08,
+    surchargeR: 1.09,
+  },
+  medium: {
+    waves: 50,
+    baseMult: 0.22,
+    k: 1.17,
+    surchargeC: 0.28,
+    surchargeR: 1.145,
+  },
+  hard: {
+    waves: 60,
+    baseMult: 0.24,
+    k: 1.3,
+    surchargeC: 0.22,
+    surchargeR: 1.15,
+  },
 };
 
 // Per-wave HP scaling (constants.ts scaledHp, specs/enemies.md §7.1): the current linear
@@ -133,9 +164,21 @@ export function scaledHp(baseHp, wave, diffKey = "medium") {
 // A few combination-tower recipes used by the combo/ability scripts (constants.ts COMBOS).
 // Each is the exact (type, tier) ingredient multiset a recipe-combine folds.
 export const RECIPES = {
-  fusecluster: [["regulator", 1], ["rectifier", 1], ["arcnode", 1]], // all-Scrap early combo
-  forkarray: [["emitter", 3], ["capacitor", 3], ["coil", 2]], // multishot 3
-  slagdriver: [["discharge", 2], ["discharge", 1], ["emitter", 1]], // crit
+  fusecluster: [
+    ["regulator", 1],
+    ["rectifier", 1],
+    ["arcnode", 1],
+  ], // all-Scrap early combo
+  forkarray: [
+    ["emitter", 3],
+    ["capacitor", 3],
+    ["coil", 2],
+  ], // multishot 3
+  slagdriver: [
+    ["discharge", 2],
+    ["discharge", 1],
+    ["emitter", 1],
+  ], // crit
 };
 
 // ---- The standard entry-adjacent tower spot (substation) -----------------------
@@ -177,7 +220,10 @@ export async function snap(api) {
  * Returns the opening snapshot. Poses only — call it from `arrange`, never from `act`
  * (it resets, which would hand the build back to its own clock mid-recording).
  */
-export async function startBuild(api, { seed = 1, map = "substation", difficulty = "medium", charge } = {}) {
+export async function startBuild(
+  api,
+  { seed = 1, map = "substation", difficulty = "medium", charge } = {},
+) {
   await api.reset({ seed });
   await api.call("startRun", { map, difficulty });
   if (charge != null) await api.call("setCharge", charge);
@@ -193,7 +239,11 @@ export async function placeCandidate(api, type, tier, col, row) {
   await api.call("setNextRoll", type, tier);
   await api.call("placeRock", col, row);
   const s = await api.snapshot();
-  return s.towers.find((t) => t.col === col && t.row === row && t.kind === "candidate") ?? null;
+  return (
+    s.towers.find(
+      (t) => t.col === col && t.row === row && t.kind === "candidate",
+    ) ?? null
+  );
 }
 
 /**
@@ -202,7 +252,16 @@ export async function placeCandidate(api, type, tier, col, row) {
  * a component of the same id). The caller then spawns controlled units and measures inside
  * the ~36-tick (0.6 s) window before Wave 1 begins releasing its own units.
  */
-export async function armTower(api, { type = "capacitor", tier = 1, seed = 1, difficulty = "medium", charge } = {}) {
+export async function armTower(
+  api,
+  {
+    type = "capacitor",
+    tier = 1,
+    seed = 1,
+    difficulty = "medium",
+    charge,
+  } = {},
+) {
   await startBuild(api, { seed, difficulty, charge });
   const cand = await placeCandidate(api, type, tier, TOWER.col, TOWER.row);
   await api.call("keep", cand.id);
@@ -231,7 +290,11 @@ export async function spawnControlled(api, type, opts = {}) {
  * tower's id (it lands at the anchor/initiator footprint). A fresh-consuming recipe is the
  * level's harvest, so this also launches Wave 1.
  */
-export async function assembleCombo(api, comboId, { seed = 1, charge = 400, difficulty = "medium" } = {}) {
+export async function assembleCombo(
+  api,
+  comboId,
+  { seed = 1, charge = 400, difficulty = "medium" } = {},
+) {
   const recipe = RECIPES[comboId];
   await startBuild(api, { seed, charge, difficulty });
   const ids = [];
@@ -244,7 +307,10 @@ export async function assembleCombo(api, comboId, { seed = 1, charge = 400, diff
   await api.call("setCombineSet", ids);
   await api.call("combine", ids[0]);
   const s = await api.snapshot();
-  const combo = s.towers.find((t) => t.kind === "combo" && t.col === SPOTS[0].col && t.row === SPOTS[0].row);
+  const combo = s.towers.find(
+    (t) =>
+      t.kind === "combo" && t.col === SPOTS[0].col && t.row === SPOTS[0].row,
+  );
   return { comboId: combo ? combo.id : null, ingredientIds: ids };
 }
 
@@ -257,8 +323,14 @@ export async function assembleCombo(api, comboId, { seed = 1, charge = 400, diff
  *
  * Replaces the old `clearWave(api, maxSeconds)`; the seconds budget is now a tick budget.
  */
-export async function actClearWave(api, { maxTicks = 240 * SECOND, poll = 15 } = {}) {
-  const r = await api.until((s) => s.phase === "build" || s.screen !== "playing", { max: maxTicks, poll });
+export async function actClearWave(
+  api,
+  { maxTicks = 240 * SECOND, poll = 15 } = {},
+) {
+  const r = await api.until(
+    (s) => s.phase === "build" || s.screen !== "playing",
+    { max: maxTicks, poll },
+  );
   return r.snap;
 }
 
@@ -305,7 +377,12 @@ export async function actHeadTargets(api, { towerId, aId }, mode) {
   // the measurement identical now that a fractional tick count is rejected outright.)
   await api.advance(2);
   const s = await api.snapshot();
-  return { towerId, t: towerById(s, towerId), la: unitById(s, aId), lb: unitById(s, b.id) };
+  return {
+    towerId,
+    t: towerById(s, towerId),
+    la: unitById(s, aId),
+    lb: unitById(s, b.id),
+  };
 }
 
 /**
@@ -346,7 +423,12 @@ export async function actHpTargets(api, { slugId, clusterId }) {
     { max: 30, poll: TICK },
   );
   const s = await api.snapshot();
-  return { slug: unitById(s, slugId), cluster: unitById(s, clusterId), slugHp0, clHp0 };
+  return {
+    slug: unitById(s, slugId),
+    cluster: unitById(s, clusterId),
+    slugHp0,
+    clHp0,
+  };
 }
 
 // ---- Read helpers --------------------------------------------------------------
@@ -378,3 +460,45 @@ export function angDiff(a, b) {
 // phase in real time, filming the very scenario the item checks. An item that wants motion
 // in its media puts the motion in `act`; there is no separate tail to append, and no script
 // ever touches `setAutoStep`.
+
+// ---- Audio (reads the Web Audio cues the build actually schedules) -------------
+//
+// Arc Foundry's cues are the PRODUCED `.wav` files (specs/assets.md "Audio"), decoded and
+// played through the Web Audio API — the driver reports every source the build starts (see
+// `api.audio`). The game must not autoplay: `main.ts`'s `gesture()` creates (and resumes) the
+// `AudioContext` only on the first REAL DOM interaction the raw `input.ts` listeners catch (a
+// canvas `mousedown` or a window `keydown`), so arming uses `api.userKey`/`api.userClick` — a
+// genuine, browser-trusted tap — rather than the debug API's own `press`/`click`. A build may
+// feed the debug API through a purely logical input path that never reaches those DOM
+// listeners; a debug press would then leave a conformant build's `AudioContext` uncreated and
+// no cue would ever be scheduled, though it plays fine for a real player. `KeyZ` binds nothing
+// (specs/controls.md), and (4, 4) sits in the top status bar, left of its leftmost control
+// (COMBOS at x=838) and above the board hit-test's `y > STATUS_H` (56) — so the click lands on
+// no clickable region in ANY game state (`main.ts`'s `routeClick`) and arming never disturbs
+// game state, in the build phase, a live wave, or a menu.
+//
+// A cue is not played the instant the game logic decides to play it: `sim.ts` only QUEUES it
+// (`game.sndQueue`), and `main.ts`'s animation-frame loop is what flushes the queue into actual
+// `audio.play()` calls, once a frame. That loop keeps running in REAL time — driven by
+// Chromium's own rendering, not by anything the driver does — regardless of what the debug
+// API's manual clock is doing, so the flush (and the arm's own `resume()`, which the same
+// frame loop's `gesture()` kicks off) needs a slice of REAL wall-clock time to land, not
+// another instant `step()`. `api.settle` is exactly that: a real pause in both the validate and
+// the record pass. `armAudio` settles after arming; a script settles again after driving its
+// cue's event, before reading the audio log.
+export const AUDIO_SETTLE_MS = 150;
+
+/** ARRANGE. Arm audio with a genuine browser gesture (a key tap and a corner click), then
+ * settle so the build's own frame loop has real time to create/resume the `AudioContext`,
+ * decode the produced clips, and (unmuted) start the music loop. Call this LAST in `arrange`,
+ * after everything else has posed the scenario. */
+export async function armAudio(api) {
+  await api.userKey("KeyZ");
+  await api.userClick(4, 4);
+  await api.settle(AUDIO_SETTLE_MS);
+}
+
+/** The number of Web Audio sources the build has started so far. */
+export async function audioCount(api) {
+  return (await api.audio()).length;
+}
