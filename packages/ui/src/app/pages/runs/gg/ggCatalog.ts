@@ -107,10 +107,24 @@ export interface CapSpec {
   implementationOptions?: ReadonlyArray<{ value: string; label: string }>;
   // Dedicated param controls; anything else goes in the generic JSON editor.
   params?: ReadonlyArray<ParamSpec>;
-  // The tool names this capability offers — the toolset-ablation surface withholds
-  // individual ones from this list, and the analyze page offers them as
+  // The tool names this capability offers — a run's toolset withholds individual
+  // ones from this list (see `toolAblation`), and the analyze page offers them as
   // `toolOffered` facet targets.
   tools?: ReadonlyArray<string>;
+  // The capability's individually-ablatable sub-features, surfaced as per-feature
+  // sliders in its expanded config. Each entry is one slider that withholds (or
+  // restores) its whole `tools` list at once — so a slider maps to a coherent
+  // feature a study would actually vary, not a raw tool. Tools that are only
+  // meaningful together share one slider, and a capability's core tools (the ones
+  // that come with it) are deliberately absent, so no slider can leave the
+  // capability in a state nobody would run. A capability whose toolset is atomic
+  // (planning's plan/submit pair) declares none, and the capability toggle is its
+  // only granularity.
+  toolAblation?: ReadonlyArray<{
+    label: string;
+    tools: ReadonlyArray<string>;
+    hint?: string;
+  }>;
 }
 
 // The legacy umbrella capability the four filesystem tool capabilities were split out
@@ -352,6 +366,14 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     purpose:
       "The agent reclaims window space itself — evicting file views and archiving (searchable) thread sections.",
     tools: ["evict_file_view", "archive_thread", "search_archive"],
+    toolAblation: [
+      { label: "Evict file views", tools: ["evict_file_view"] },
+      {
+        label: "Archive & search the thread",
+        tools: ["archive_thread", "search_archive"],
+        hint: "Archiving and its search go together — archiving without a way to search it back just buries context.",
+      },
+    ],
   },
   // --- Knowledge --------------------------------------------------------------
   {
@@ -403,6 +425,13 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
       },
     ],
     tools: ["write_memory", "update_memory", "delete_memory"],
+    toolAblation: [
+      {
+        label: "Revise memories",
+        tools: ["update_memory", "delete_memory"],
+        hint: "Off leaves memories append-only — the model can write new notes but not edit or delete one.",
+      },
+    ],
   },
   // --- Work tracking ----------------------------------------------------------
   {
@@ -427,6 +456,14 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
       "set_blocked_by",
       "complete_task",
       "remove_task",
+    ],
+    toolAblation: [
+      {
+        label: "Task dependencies",
+        tools: ["set_blocked_by"],
+        hint: "Off makes the list flat — tasks can't be marked blocked-by one another.",
+      },
+      { label: "Revise tasks", tools: ["update_task", "remove_task"] },
     ],
   },
   {
@@ -459,6 +496,17 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
       "complete_issue",
       "remove_epic",
       "remove_issue",
+    ],
+    toolAblation: [
+      {
+        label: "Issue dependencies",
+        tools: ["set_issue_blocked_by"],
+        hint: "Off makes the board flat — issues can't be marked blocked-by one another.",
+      },
+      {
+        label: "Revise the board",
+        tools: ["update_issue", "remove_epic", "remove_issue"],
+      },
     ],
   },
   {
@@ -495,6 +543,13 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
       },
     ],
     tools: ["spawn_subagent", "wait_for_subagents", "send_message"],
+    toolAblation: [
+      {
+        label: "Inter-agent messaging",
+        tools: ["send_message"],
+        hint: "Off leaves spawn-and-wait only — agents can't message one another mid-run.",
+      },
+    ],
   },
   {
     id: "multi-model",
@@ -608,17 +663,17 @@ export interface RunLimitSpec {
 export const RUN_LIMIT_SPECS: ReadonlyArray<RunLimitSpec> = [
   {
     key: "maxTurns",
-    label: "Turns per agent",
+    label: "Max turns per agent",
     kind: "count",
     placeholder: String(DEFAULT_MAX_TURNS),
-    hint: `How many turns one agent may take. Empty leaves gg's long-standing default of ${DEFAULT_MAX_TURNS} — the one ceiling that has a default. An agent that reaches it ends \`exhausted\`.`,
+    hint: `Empty uses gg's default of ${DEFAULT_MAX_TURNS}. An agent that reaches it ends exhausted.`,
   },
   {
     key: "maxRuntimeSecs",
     label: "Runtime (seconds)",
     kind: "count",
     placeholder: "e.g. 5400",
-    hint: "Wall-clock budget for the whole run, observed by every agent at its own turn boundary. A run that spends it ends `timed_out`.",
+    hint: "Wall-clock budget for the whole run, observed by every agent at its own turn boundary. A run that spends it ends timed_out.",
   },
   {
     key: "maxConsecutiveErrors",

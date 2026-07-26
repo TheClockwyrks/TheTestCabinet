@@ -1,10 +1,140 @@
 @use "../../../styles/tokens" as t;
 @use "../../../styles/surfaces" as s;
+@use "../../../styles/halo" as h;
 
 // gg-specific bits of the capability-set editor. Everything else reuses the
 // shared run-execution styles (`../RunExec.module.scss`): the field grid,
 // selects/inputs, section labels, notices, and buttons. Only the capability
 // toggle rows and the configuration-identity controls are new here.
+
+// A muted note that sits directly on the animated backdrop (the Model-slots and
+// Role-bindings intros) takes the readability halo, the same as the section labels
+// above them, or it washes out over the backdrop's sun. Panelled prose keeps the
+// panel's own contrast and must not take it.
+.backdropNote {
+  @include h.halo;
+}
+
+// The "?" help affordance: a small circular badge whose help text appears in a
+// custom on-hover/focus tooltip, so a field's details stay out of the way until
+// asked for instead of living in a permanent subtitle.
+.help {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 1.05rem;
+  height: 1.05rem;
+  margin-left: t.$space-xs;
+  border-radius: 50%;
+  border: t.$border-hairline solid t.$color-border;
+  color: t.$color-text-muted;
+  font-size: 0.7rem;
+  line-height: 1;
+  cursor: help;
+  user-select: none;
+  vertical-align: middle;
+
+  &:hover,
+  &:focus-visible {
+    color: t.$color-accent;
+    border-color: t.$color-accent;
+    outline: none;
+  }
+
+  // The tooltip itself: normal-cased, left-aligned body text lifted above the badge
+  // on a surface card, revealed on hover or keyboard focus.
+  &:hover::after,
+  &:focus-visible::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: calc(100% + #{t.$space-xs});
+    left: 50%;
+    transform: translateX(-50%);
+    width: max-content;
+    max-width: 18rem;
+    padding: t.$space-xs t.$space-sm;
+    border-radius: t.$radius-sm;
+    border: t.$border-hairline solid t.$color-border;
+    background: t.$color-surface-2;
+    color: t.$color-text;
+    font-size: t.$font-sm;
+    font-weight: 400;
+    line-height: 1.35;
+    letter-spacing: normal;
+    text-transform: none;
+    text-align: left;
+    white-space: normal;
+    box-shadow: 0 2px 8px color-mix(in srgb, black 30%, transparent);
+    pointer-events: none;
+    z-index: 20;
+  }
+}
+
+// The slider switch worn by every capability toggle and per-feature ablation
+// toggle: a real checkbox whose native box is hidden and replaced by a track+knob,
+// so turning a capability on reads as flipping it live.
+.switch {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: 2.1rem;
+  height: 1.15rem;
+}
+
+.switchInput {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+
+  &:disabled {
+    cursor: not-allowed;
+  }
+}
+
+.switchTrack {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: t.$color-border;
+  transition: background 0.15s ease;
+
+  &::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 0.15rem;
+    width: 0.85rem;
+    height: 0.85rem;
+    transform: translateY(-50%);
+    border-radius: 50%;
+    background: t.$color-text;
+    transition: transform 0.15s ease;
+  }
+}
+
+.switchInput:checked + .switchTrack {
+  background: t.$color-accent;
+
+  &::after {
+    transform: translate(0.95rem, -50%);
+  }
+}
+
+.switchInput:disabled + .switchTrack {
+  opacity: 0.5;
+}
+
+.switchInput:focus-visible + .switchTrack {
+  outline: t.$border-hairline solid t.$color-accent;
+  outline-offset: 2px;
+}
 
 // The configuration identity row: name + description, bottom-aligned so their
 // controls sit on one line and wrap when cramped.
@@ -72,12 +202,13 @@
   color: t.$color-text-muted;
 }
 
-// The editable list of capability rows.
+// The editable list of capability rows. The group header above carries a bottom
+// hairline; the top margin keeps the first row from touching it.
 .capList {
   display: flex;
   flex-direction: column;
   gap: t.$space-md;
-  margin-bottom: t.$space-md;
+  margin: t.$space-md 0;
 }
 
 // One capability: a panelled block with a toggle + name + purpose, and (when on)
@@ -90,17 +221,13 @@
   background: s.$panel-bg;
 }
 
-// The toggle line: a checkbox, the capability name, and its id badge.
+// The toggle line: the slider switch, the capability name, and its id badge.
+// Centered so the name and badge sit on the switch's midline.
 .capHeader {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: t.$space-sm;
   cursor: pointer;
-}
-
-.capCheckbox {
-  flex: 0 0 auto;
-  align-self: center;
 }
 
 .capName {
@@ -151,11 +278,6 @@
   min-width: 0;
 }
 
-.paramHint {
-  font-size: t.$font-sm;
-  color: t.$color-text-muted;
-}
-
 // A `toggles` param (gg's response-healing strategies) is a group of checkboxes
 // rather than one control, so it takes a whole row of the param grid — its member
 // labels carry a clause of explanation each and would wrap to shreds in a column
@@ -182,9 +304,31 @@
 
 // --- Run limits -------------------------------------------------------------------
 
-// The execution ceilings, laid out as a wrapping grid of compact numeric fields —
-// each carries a hint explaining what breaching it does, so they need more width
-// than a capability's params and read as a fieldset of their own.
+// The execution ceilings live in their own surface card rather than straight on the
+// backdrop, so the numeric fields read against a panel and the section holds
+// together as the operator's guardrail block.
+.limitsWidget {
+  padding: t.$space-md t.$space-lg t.$space-lg;
+  margin-bottom: t.$space-md;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+
+  // The panel's own padding supplies the top and bottom gutters; drop the leading
+  // label's top margin and any trailing error/warning's bottom margin so the insets
+  // stay balanced.
+  > :first-child {
+    margin-top: 0;
+  }
+
+  > :last-child {
+    margin-bottom: 0;
+  }
+}
+
+// The execution ceilings, laid out as a wrapping grid of compact numeric fields.
+// The bottom margin sets the grid off from a trailing error/warning; the widget's
+// `:last-child` rule zeroes it away when the grid is the last thing in the panel.
 .limitGrid {
   display: flex;
   flex-wrap: wrap;
@@ -192,7 +336,7 @@
   margin-bottom: t.$space-md;
 
   .capParamField {
-    flex: 1 1 16rem;
+    flex: 1 1 14rem;
   }
 }
 
@@ -267,7 +411,9 @@
   }
 }
 
-// The real-model binding row: the model picker flexes to fill it.
+// The binding's model row: the "Model from" selector beside the model (or
+// model-slot) control it governs, both aligned to their inputs' bottom edge and
+// wrapping under each other only when the row is truly cramped.
 .slotFields {
   display: flex;
   align-items: flex-end;
@@ -275,53 +421,52 @@
   flex-wrap: wrap;
 }
 
+// The "Model from" selector: intrinsic width, so the model control beside it takes
+// the row's spare space.
+.slotSourceField {
+  flex: 0 1 14rem;
+  min-width: 0;
+}
+
 .slotModelField {
   flex: 2 1 16rem;
   min-width: 0;
 }
 
-// --- Toolset ablation -----------------------------------------------------------
+// --- Per-feature tool ablation --------------------------------------------------
+//
+// Withholding a sub-feature of a capability without turning the whole thing off.
+// Lives inside a capability's expanded config (there is no standalone ablation
+// section any more): each slider covers a bundle of tools that move together.
 
-// The list of per-capability tool groups.
-.toolList {
+.ablationGroup {
   display: flex;
   flex-direction: column;
-  gap: t.$space-sm;
-  margin: t.$space-sm 0 t.$space-md;
+  gap: t.$space-xs;
 }
 
-// One capability's withholdable tools.
-.toolGroup {
-  padding: t.$space-sm t.$space-md;
-  border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-md;
-  background: s.$panel-bg;
-}
-
-// A group whose capability is off is dimmed — its tools are already withheld.
-.toolGroupOff {
-  opacity: 0.6;
-}
-
-.toolGroupName {
-  display: block;
-  font-weight: 600;
-  font-size: t.$font-sm;
-  color: t.$color-text;
-  margin-bottom: t.$space-xs;
-}
-
-// The checkboxes for the group's tools, wrapping across the row.
-.toolGrid {
+.ablationList {
   display: flex;
-  flex-wrap: wrap;
-  gap: t.$space-sm t.$space-md;
+  flex-direction: column;
+  gap: t.$space-xs;
 }
 
-.toolItem {
+// One feature toggle: its slider + name (in a label so clicking either toggles it)
+// and an optional help tip beside them.
+.ablationItem {
   display: flex;
   align-items: center;
-  gap: t.$space-xs;
-  font-size: t.$font-sm;
+  gap: t.$space-sm;
+}
+
+.ablationLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-sm;
   cursor: pointer;
+}
+
+.ablationName {
+  font-size: t.$font-sm;
+  color: t.$color-text;
 }

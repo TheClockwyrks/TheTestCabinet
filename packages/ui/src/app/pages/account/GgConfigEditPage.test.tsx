@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   BackendProvider,
   type BackendContextValue,
@@ -53,6 +53,10 @@ function renderPage(path = "/account/gg/new") {
 }
 
 describe("GgConfigEditPage", () => {
+  // The save spy is module-scoped, so its call log accumulates across tests unless
+  // cleared — every "called once" assertion counts from a fresh slate.
+  beforeEach(() => createGgConfig.mockClear());
+
   it("renders gg's full capability-set editing surface", async () => {
     renderPage();
     // The first-class config sections are present — a configuration is the whole
@@ -60,20 +64,21 @@ describe("GgConfigEditPage", () => {
     expect(await screen.findByText("Capabilities")).toBeInTheDocument();
     expect(screen.getByText("Model slots")).toBeInTheDocument();
     expect(screen.getByText("Role bindings")).toBeInTheDocument();
-    expect(screen.getByText("Toolset ablation")).toBeInTheDocument();
+    // Per-tool ablation folded into the capabilities; there is no standalone
+    // "Toolset ablation" section any more.
+    expect(screen.queryByText("Toolset ablation")).not.toBeInTheDocument();
     // The concern groups fold the full catalog; the always-on base tools are on the
     // (expanded) "Models & tools" group.
     expect(screen.getByText("Models & tools")).toBeInTheDocument();
     expect(screen.getByText("Delegation")).toBeInTheDocument();
-    // Shell/Filesystem show as both a capability row and a toolset-ablation group.
-    expect(screen.getAllByText("Shell").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Filesystem").length).toBeGreaterThan(0);
+    // Shell is a capability row in the Models & tools group; Filesystem is a group.
+    expect(screen.getByText("Shell")).toBeInTheDocument();
+    expect(screen.getByText("Filesystem")).toBeInTheDocument();
   });
 
   it("reveals a collapsed group's capabilities when expanded", async () => {
     renderPage();
-    // "Multi-model" lives in the Delegation group, which starts collapsed (and it
-    // offers no tools, so it never appears in the always-shown ablation surface).
+    // "Multi-model" lives in the Delegation group, which starts collapsed.
     await screen.findByText("Capabilities");
     expect(screen.queryByText("Multi-model")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Delegation/i }));
@@ -117,5 +122,30 @@ describe("GgConfigEditPage", () => {
       { slot: "primary", modelId: "", modelSlot: "primary" },
     ]);
     expect(input.capabilitySet.modelSlots).toEqual([{ name: "primary" }]);
+  });
+
+  it("withholds a capability's sub-feature from inside its config, not a separate section", async () => {
+    renderPage();
+    fireEvent.change(await screen.findByPlaceholderText("e.g. no-compaction"), {
+      target: { value: "no-revise" },
+    });
+    // Turning the Memories capability on expands its config, where its per-feature
+    // "Revise memories" slider (covering update_memory + delete_memory) lives — there
+    // is no standalone ablation surface, the granularity is inside the capability.
+    fireEvent.click(screen.getByRole("checkbox", { name: /^Memories/i }));
+    const revise = screen.getByRole("checkbox", { name: /Revise memories/i });
+    expect(revise).toBeChecked();
+    fireEvent.click(revise);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Create configuration" }),
+    );
+    await waitFor(() => expect(createGgConfig).toHaveBeenCalledTimes(1));
+    // Turning the bundle off withholds every tool it names at once — the wire format
+    // stays per-tool, so a slider can never leave a bundle half-withheld.
+    const { disabledTools } = createGgConfig.mock.calls[0]![0].capabilitySet;
+    expect(new Set(disabledTools)).toEqual(
+      new Set(["update_memory", "delete_memory"]),
+    );
   });
 });

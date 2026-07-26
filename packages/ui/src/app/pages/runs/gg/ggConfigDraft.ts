@@ -510,6 +510,38 @@ export function capabilityParams(
   return { ok: true, value: out };
 }
 
+// --- Tool-ablation bundles ------------------------------------------------------
+//
+// A capability's per-feature sliders (`CapSpec.toolAblation`) each stand for a whole
+// bundle of tools that move together; the wire format stays per-tool
+// (`disabledTools`), so these fold a bundle on/off across every tool it names.
+
+/** Whether a tool bundle is available — none of its tools is withheld. */
+export function toolBundleOn(
+  disabledTools: ReadonlyArray<string>,
+  tools: ReadonlyArray<string>,
+): boolean {
+  return !tools.some((t) => disabledTools.includes(t));
+}
+
+/**
+ * `disabledTools` with a whole bundle restored (`on`) or withheld (`!on`) — every
+ * tool the bundle names is added or removed together, so a slider can never leave a
+ * bundle half-withheld.
+ */
+export function setToolBundle(
+  disabledTools: ReadonlyArray<string>,
+  tools: ReadonlyArray<string>,
+  on: boolean,
+): string[] {
+  const next = new Set(disabledTools);
+  for (const tool of tools) {
+    if (on) next.delete(tool);
+    else next.add(tool);
+  }
+  return [...next];
+}
+
 /**
  * Whether a role binding resolves to something: a pinned model, or a named model
  * slot the launch will fill in.
