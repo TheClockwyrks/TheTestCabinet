@@ -5,10 +5,21 @@
 // precondition); one real tick runs the head into the wall and the end state is read
 // back. The snake must not have moved (a fatal tick ends before the head advances).
 //
-// The pose stays flush against the wall because one assertion reads `s.ticks === 1` —
-// the hit must land on the very first tick. (The old clip tail posed the snake four
-// cells further back so it could be seen running in; that scenario is NOT what the
-// assertions drove, so per the migration rules the clip now shows the checked one.)
+// The pose stays flush against the wall because the end state is read after exactly
+// ONE advance: the hit has to land on that first tick, with the head still on the last
+// interior column, or the assertions below do not hold. (The old clip tail posed the
+// snake four cells further back so it could be seen running in; that scenario is NOT
+// what the assertions drove, so per the migration rules the clip now shows the checked
+// one.)
+//
+// Immediacy is scored by WHAT the tick did, never by the snapshot's `ticks` counter.
+// The seeded specification says only that `ticks` is "ticks elapsed in the current
+// round" (specs/instrumentation.md) and that a fatal collision ends the round before
+// steps 4-6 run (specs/movement.md); neither pins down whether the aborted tick is
+// counted. A build that increments the counter only on a tick that completes is
+// therefore just as correct as one that counts it up front, so asserting a value here
+// would fail a spec-compliant build over an unstated convention. The sibling
+// maze/obstacles-fatal.mjs scores the identical behavior the same way.
 
 import { actPlayOn, hLane, beginRound } from "../_helpers.mjs";
 
@@ -41,7 +52,6 @@ export default function item() {
       check.expectEq("the screen is game-over", s.screen, "gameover");
       check.expectEq("the end reason is death", s.endReason, "dead");
       check.expectEq("the head did not move into the wall", s.snake[0].col, 28);
-      check.expectEq("it ended on the very first tick", s.ticks, 1);
     },
   };
 }

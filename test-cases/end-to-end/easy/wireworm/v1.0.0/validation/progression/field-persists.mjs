@@ -6,6 +6,7 @@
 // are still present, at their charges, on the next level.
 
 import {
+  TICK,
   actFireAndResolve,
   chargeAt,
   freshBoard,
@@ -15,6 +16,7 @@ import {
 
 export default function item() {
   let snap;
+  let startLevel;
 
   return {
     id: "progression.field-persists",
@@ -32,7 +34,17 @@ export default function item() {
     // scenario, and this is the clip: the reviewer sees the three posed nodes still
     // standing after the banner.
     async act(api) {
-      snap = await actFireAndResolve(api);
+      startLevel = (await api.snapshot()).level;
+      await actFireAndResolve(api);
+      // The level rolls over a tick or two AFTER the bolt lands (the emptied worm has
+      // to be reaped first), so wait for the advance rather than reading the snapshot
+      // `actFireAndResolve` returns — that one is from before it, and the field this
+      // item is about is only interesting once the level has actually changed.
+      const r = await api.until((s) => s.level !== startLevel, {
+        max: 120,
+        poll: TICK,
+      });
+      snap = r.snap;
       // The snapshot is captured; the sim runs on only so the surviving field is
       // legible on the new level at the end of the clip.
       await api.advance(120); // 1s of visible aftermath

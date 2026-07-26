@@ -59,12 +59,17 @@ export const STAGE_H = 720;
 export const TICK_HZ = 60;
 export const TICK = 1;
 
-// The map ids the campaign offers (specs/board.md). Derived at runtime too (a
-// snapshot lists `maps`), but named here so an item reads by intent.
+// Map SELECTORS, keyed by the mandated `topology` enum (specs/instrumentation.md's
+// `maps[].topology`; specs/board.md guarantees one map at each difficulty/topology). A
+// map's `id` is the model's OWN free choice — specs/instrumentation.md: "the available
+// map ids are the `id`s in the snapshot's `maps` list" — so a check must NEVER hardcode
+// an id. It names the map it wants by topology and `applyRunPreconditions` resolves that
+// to whatever id this build gave the map. (An earlier `multiple: "lattice"` hardcode
+// matched no map and silently selected nothing; `lattice` is a matter type, not a map.)
 export const MAP = {
-  single: "conduit",
-  branching: "junction",
-  multiple: "lattice",
+  single: "single",
+  branching: "branching",
+  multiple: "multiple",
 };
 
 // Generous preconditions for scenarios that must simply afford towers or never lose.
@@ -159,10 +164,33 @@ export function firstInRange(
 // `startRun` (arrange) and `poseRun` (either phase) reach the same state; see the
 // `poseX` note in the file header for why both exist.
 
+/**
+ * Resolve a map SELECTOR (a `MAP.*` topology value) to the `id` THIS build gave the map
+ * with that topology, read back from the snapshot's `maps` list. Ids are the model's own
+ * (specs/instrumentation.md), so a check keys the map by the fixed `topology` enum and
+ * never by a literal id. Falls back to matching `difficulty` for robustness.
+ */
+async function resolveMapId(api, selector) {
+  const { maps } = await api.snapshot();
+  const m =
+    maps.find((x) => x.topology === selector) ??
+    maps.find((x) => x.difficulty === selector);
+  if (!m) {
+    throw new Error(
+      `no map exposes topology/difficulty "${selector}" (saw ${maps
+        .map((x) => `${x.id}=${x.topology}`)
+        .join(", ")})`,
+    );
+  }
+  return m.id;
+}
+
 /** The economy/round preconditions both run-starters apply, in the order that matters. */
-async function applyRunPreconditions(api, mapId, { energy, integrity, round }) {
-  // Order matters: `selectMap` starts the run (setting the mode's own energy and
-  // integrity), so the overrides have to be applied after it.
+async function applyRunPreconditions(api, selector, { energy, integrity, round }) {
+  // The caller names the map by topology (MAP.*); resolve it to this build's own id
+  // first, since ids are model-chosen. Order matters: `selectMap` starts the run
+  // (setting the mode's own energy and integrity), so the overrides come after it.
+  const mapId = await resolveMapId(api, selector);
   await api.call("selectMap", mapId);
   if (round != null) await api.call("setRound", round);
   if (energy != null) await api.call("setEnergy", energy);
