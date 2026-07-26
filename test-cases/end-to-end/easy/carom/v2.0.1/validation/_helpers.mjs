@@ -74,6 +74,33 @@ export async function clearPaddles(api) {
   await api.call("setPaddle", "right", { cy: 150, vy: 0 });
 }
 
+/**
+ * Pin the obstacles UPRIGHT at their base centers for a common (non-gyre-specific)
+ * scenario. In the gyre variant the obstacles sway and rotate, so NO mid-field lane
+ * stays clear and NO obstacle face stays axis-aligned — the y=360 "clear" lane the
+ * rally and goal drives ride is swept by both obstacles at the extremes of their sway
+ * (A reaches y≈300+70 and B reaches y≈420−70, both into y=360), and a bank shot fired
+ * at an obstacle's base-x face meets a tilted, shifted rectangle instead. A build holds
+ * the obstacle clock wherever `setObstacleClock` poses it (specs/instrumentation.md),
+ * so posing it to 0 sits obstacle A at (490, 220) and B at (790, 500), upright: the
+ * y=360 lane is clear and each face is vertical at its base x. A common item that
+ * assumes a still, axis-aligned field (the straight rally, a goal down y=360, a
+ * per-face bank shot, a short posed flight) then reads what it intends, rather than
+ * whatever pose the field happened to FREEZE at when a control op seized the paddles —
+ * which the reference happens to leave upright but the spec never pins there.
+ *
+ * The gyre-SPECIFIC items (obstacles-sway/spin, oriented-bounce) drive the clock
+ * themselves and must NOT call this. Base and multi have no obstacle clock at all, so
+ * this probes for the op and is a no-op when it is absent, leaving them unchanged.
+ * Control op only — it poses and consumes no time, so it is arrange-callable.
+ */
+export async function pinObstaclesUpright(api) {
+  const { ops } = await api.probe(["setObstacleClock"]);
+  if (ops?.setObstacleClock === "function") {
+    await api.call("setObstacleClock", 0);
+  }
+}
+
 // Off-lane resting spots for the extra balls of a multi-ball build: still corners
 // clear of every controlled trajectory the common items drive (the y=360 rally
 // lane, the y=220/500 obstacle lanes, the top-wall shot), so a parked ball never
@@ -124,6 +151,9 @@ export async function startPlaying(api, mode = "versus") {
  */
 export async function arrangeGoal(api, edge) {
   await clearPaddles(api);
+  // In gyre the moving obstacles sweep into the y=360 goal lane; pin them upright so
+  // the drive crosses cleanly (a no-op in base/multi and for an already-upright build).
+  await pinObstaclesUpright(api);
   // Re-park any extra balls of a multi build right before the drive. The initial
   // neutralize happens once in `startPlaying`, but a `serve()` between drives (the
   // deuce check re-serves out of the post-point countdown) — or any build that
@@ -214,6 +244,10 @@ export function actLeftPaddleHit(api, opts) {
  */
 export async function arrangeRally(api) {
   await startPlaying(api);
+  // In gyre the moving obstacles sweep into the y=360 rally lane and deflect the ball,
+  // corrupting the per-hit speed reading; pin them upright so the rally is a clean
+  // paddle-to-paddle exchange (a no-op in base/multi and for an already-upright build).
+  await pinObstaclesUpright(api);
   await api.call("setPaddle", "left", { cy: 360, vy: 0 });
   await api.call("setPaddle", "right", { cy: 360, vy: 0 });
   await api.call("setBall", 0, { x: 640, y: 360, vx: -500, vy: 0, spin: 0 });
@@ -538,6 +572,12 @@ export async function arrangeAiScenario(api, { paddleCy, ball }) {
   await api.reset();
   await api.call("startMatch", "solo");
   await api.call("serve"); // leave the pre-serve countdown for live play
+  // These shots cross the mid-field to reach the AI (e.g. a level shot at y=400 passes
+  // right over obstacle B); in gyre a swaying, rotating obstacle would reach into that
+  // path and deflect the shot the AI is being tested against. Pin the obstacles upright
+  // so the lane is clear — this scenario tests the AI, not obstacle bounces (a no-op in
+  // base/multi and for an already-upright build).
+  await pinObstaclesUpright(api);
   await neutralizeExtraBalls(api);
   // Park the human paddle above the lane so it never intercepts a rebound before the
   // AI's own result is read.
@@ -948,6 +988,11 @@ export async function actAiPaused(
 export async function arrangeLiveBall(api, ball, mode = "versus") {
   await startPlaying(api, mode);
   await clearPaddles(api);
+  // The posed flight is meant to be a straight line clear of the obstacles; in gyre a
+  // swaying obstacle can drift into it (the ball is posed at x=500, on obstacle A's
+  // base right face). Pin upright so the path stays clear (a no-op in base/multi and
+  // for an already-upright build).
+  await pinObstaclesUpright(api);
   await api.call("setBall", 0, { spin: 0, vy: 0, ...ball });
 }
 
@@ -974,6 +1019,11 @@ const OBSTACLE_SPEED = 600;
 export async function arrangeObstacleBounce(api, { faceX, y, from }) {
   await clearPaddles(api);
   await neutralizeExtraBalls(api);
+  // The per-face bank shots aim at an obstacle's base-x face and read which side of it
+  // the ball ends on; in gyre the obstacle is swayed and tilted unless pinned, moving
+  // the face off `faceX`. Pin upright so the vertical face sits exactly at its base x
+  // (a no-op in base/multi and for an already-upright build).
+  await pinObstaclesUpright(api);
   const x = from === "left" ? faceX - 180 : faceX + 180;
   const vx = from === "left" ? OBSTACLE_SPEED : -OBSTACLE_SPEED;
   await api.call("setBall", 0, { x, y, vx, vy: 0, spin: 0 });
