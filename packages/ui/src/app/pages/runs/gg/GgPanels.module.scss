@@ -208,6 +208,153 @@ $context-palette: (
   padding-left: t.$space-sm;
 }
 
+// --- Compaction view (per-agent) ---------------------------------------------
+//
+// The per-agent Compaction file: one card per boundary detailing what a
+// summarize-and-restart did — the strategy that produced it, the reclaim, the
+// before/after per-source composition, and the summary text itself — so the
+// strategies can be compared by reading what each retained.
+.compactionList {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+}
+
+.compactionCard {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  padding: t.$space-md;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 40%, transparent);
+  border-left: 2px solid t.$color-accent-2;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+}
+
+.compactionHead {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+  flex-wrap: wrap;
+}
+
+.compactionTurn {
+  font-weight: 700;
+  color: t.$color-text;
+  font-variant-numeric: tabular-nums;
+}
+
+// The strategy pill: which summarizer produced this boundary. Keyed to the plan
+// hue so it reads as a labelled mode, not a status.
+.strategyBadge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.1rem t.$space-xs;
+  border-radius: 9999px;
+  color: t.$color-text;
+  background: color-mix(in srgb, t.$color-accent 18%, transparent);
+}
+
+.compactionTrigger {
+  margin-left: auto;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+.compactionReclaim {
+  font-size: t.$font-sm;
+  color: t.$color-text;
+  font-variant-numeric: tabular-nums;
+}
+
+.compactionReclaimPct {
+  color: t.$color-text-muted;
+}
+
+.compactionRetained {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+// The before/after composition: two labelled horizontal stacked bars, so the
+// ephemeral bands collapsing into the summary reads at a glance.
+.compBars {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+.compBarRow {
+  display: grid;
+  grid-template-columns: 3.5rem 1fr;
+  align-items: center;
+  gap: t.$space-sm;
+}
+
+.compBarLabel {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: t.$color-text-muted;
+}
+
+.compBar {
+  display: flex;
+  height: 0.6rem;
+  border-radius: 9999px;
+  overflow: hidden;
+  background: color-mix(in srgb, t.$color-border 40%, transparent);
+}
+
+.compBarSeg {
+  height: 100%;
+
+  &:first-child {
+    border-top-left-radius: 9999px;
+    border-bottom-left-radius: 9999px;
+  }
+  &:last-child {
+    border-top-right-radius: 9999px;
+    border-bottom-right-radius: 9999px;
+  }
+}
+
+// The summary text the strategy produced — the heart of the view, wrapped and
+// scrollable so a long recap never blows out the card. `pre-wrap` keeps the
+// structured strategy's section line breaks.
+.summaryLabel {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: t.$color-text-muted;
+}
+
+.summaryText {
+  margin: 0;
+  padding: t.$space-sm;
+  border-radius: t.$radius-md;
+  background: color-mix(in srgb, t.$color-border 18%, transparent);
+  color: t.$color-text;
+  font-size: t.$font-sm;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-y: auto;
+  max-height: 24rem;
+}
+
+// The warning shown when a summarization call failed and the summary degraded to
+// gg's fixed fallback note — a real gap in the retained state, not a recap.
+.summaryFallback {
+  font-size: t.$font-sm;
+  color: t.$color-accent-2;
+  font-weight: 600;
+}
+
 // --- Tasks -------------------------------------------------------------------
 
 // The blocked-by DAG is shown as a dependency-aware grouping: tasks bucketed by

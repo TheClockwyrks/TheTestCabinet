@@ -26,6 +26,7 @@ import {
 } from "./AgentTreeView";
 import { ContextFillGraph, ContextUsageBar } from "./ContextFillGraph";
 import { RequestsView } from "./RequestsView";
+import { CompactionView } from "./CompactionView";
 import { PlanView } from "./PlanView";
 import { BoardView } from "./BoardView";
 import { TaskDagView } from "./TaskDagView";
@@ -34,6 +35,7 @@ import { MemoriesList } from "./MemoriesList";
 import {
   ActivityIcon,
   BoardIcon,
+  CompactionIcon,
   ContextIcon,
   FolderIcon,
   FolderOpenIcon,
@@ -83,18 +85,21 @@ export type AgentFileKind =
   | "activity"
   | "context"
   | "requests"
+  | "compaction"
   | "plan"
   | "board"
   | "tasks"
   | "knowledge";
 
 // The order files list in a folder. Requests sits beside Context — it is the itemized,
-// message-level companion to the stacked Context graph.
+// message-level companion to the stacked Context graph — and Compaction follows, the
+// detail behind the Context graph's compaction markers.
 const FILE_ORDER: ReadonlyArray<AgentFileKind> = [
   "overview",
   "activity",
   "context",
   "requests",
+  "compaction",
   "plan",
   "board",
   "tasks",
@@ -117,6 +122,10 @@ const FILE_CAPABILITIES: Record<AgentFileKind, ReadonlyArray<string>> = {
   // gg/context-visibility): with context visibility off, gg emits neither, so the file
   // is hidden rather than shown perpetually empty.
   requests: ["context-visibility"],
+  // The Compaction file rides on the compaction capability itself: with the backstop
+  // off, a run never compacts, so the file is hidden rather than shown perpetually
+  // empty. Its own record travels on the compaction event, so it needs nothing else.
+  compaction: ["compaction"],
   plan: ["planning"],
   board: ["epics-and-issues"],
   tasks: ["tasks"],
@@ -128,6 +137,7 @@ const FILE_LABELS: Record<AgentFileKind, string> = {
   activity: "activity",
   context: "context",
   requests: "requests",
+  compaction: "compaction",
   plan: "plan",
   board: "board",
   tasks: "tasks",
@@ -144,6 +154,7 @@ const FILE_ICONS: Record<
   activity: ActivityIcon,
   context: ContextIcon,
   requests: RequestsIcon,
+  compaction: CompactionIcon,
   plan: PlanIcon,
   board: BoardIcon,
   tasks: TasksIcon,
@@ -507,6 +518,12 @@ function FileContent({
             pool={state.messagePool}
             live={live}
           />
+        </div>
+      );
+    case "compaction":
+      return (
+        <div className={panels.panelBody}>
+          <CompactionView compactions={state.compactions} />
         </div>
       );
     case "plan":

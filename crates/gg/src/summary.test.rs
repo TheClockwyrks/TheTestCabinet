@@ -168,6 +168,7 @@ fn counts_compactions_and_context_overflow() {
     let tracker = SessionSummaryTracker::new();
     tracker.observe(&breakdown(0.4));
     tracker.observe(&GgTelemetryKind::Compaction {
+        strategy: "model".to_string(),
         trigger_fullness: 0.8,
         before_tokens: 1000,
         after_tokens: 200,
@@ -178,6 +179,10 @@ fn counts_compactions_and_context_overflow() {
             memories: 0,
             issues: 0,
         },
+        before_by_source: Vec::new(),
+        after_by_source: Vec::new(),
+        summary: "a summary".to_string(),
+        summary_fallback: false,
     });
     tracker.observe(&breakdown(1.0));
     tracker.observe(&breakdown(1.2));

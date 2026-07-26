@@ -42,6 +42,17 @@ the default rather than failing to launch, so a sweep can reference a
 not-yet-built strategy without breaking. Adding a strategy is a drop-in behind the
 `Summarizer` trait in `crates/gg/src/compaction.rs`.
 
+Every compaction is **recorded per agent** so the strategies can be compared by
+what they actually retained. Each boundary carries the strategy that ran, the
+fullness that triggered it, the window it reclaimed, the per-source composition
+*just before* and *just after* the drop, the retained-state counts, and the
+**summary text itself** (with a flag when a failed summarization fell back to
+gg's fixed note). The console surfaces this as the per-agent **Compaction** view —
+the detail behind the compaction markers on the Context graph — where you can read
+each summary side by side with the bands it collapsed. Because the composition is
+on the compaction record itself, the view works whether or not
+[context visibility](/gg/context-visibility/) is on, live and after the run.
+
 ## Enabling compaction shrinks the window the agent gets
 
 Summarizing is itself a model call over (nearly) the whole thread: at the trigger the

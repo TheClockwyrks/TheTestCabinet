@@ -960,11 +960,25 @@
     {
       "description": "A [compaction] boundary: the thread neared the active model's window, so gg\nsummarized the ephemeral history and restarted the thread from the summary,\ncarrying the pinned state across verbatim.\n\nEmitted at the turn boundary where compaction fires (when the\n[compaction](CAPABILITY_COMPACTION) capability is enabled and window fullness\nreaches its threshold). The console draws it as a marker on the run timeline and\nthe context graph; the token figures show the window reclaimed (`afterTokens` is\nthe pinned prefix plus the summary, well below `beforeTokens`), and\n[`retained`](GgRetainedState) proves the skills/tasks/memories survived. A run\nwith the capability off emits none.\n\n[compaction]: https://docs.testcabinet.ai/gg/compaction/",
       "properties": {
+        "afterBySource": {
+          "description": "The per-source window composition **immediately after** compaction: the pinned bands\nunchanged and the ephemeral bands collapsed into the single `History` summary item.",
+          "items": {
+            "$ref": "#/$defs/GgContextSourceUsage"
+          },
+          "type": "array"
+        },
         "afterTokens": {
           "description": "The estimated total tokens after compaction — the pinned prefix plus the\nsingle summary item — which is below `before_tokens`.",
           "format": "uint64",
           "minimum": 0,
           "type": "integer"
+        },
+        "beforeBySource": {
+          "description": "The per-source window composition **immediately before** compaction, one band per\n[`GgContextSource`] in [`GgContextSource::ALL`] order — the same shape as\n[`ContextBreakdown`](Self::ContextBreakdown)'s `by_source`. Paired with\n[`after_by_source`](Self::Compaction::after_by_source) it shows exactly which bands\nthe summarize-and-restart reclaimed, without depending on the context-visibility\ncapability being on.",
+          "items": {
+            "$ref": "#/$defs/GgContextSourceUsage"
+          },
+          "type": "array"
         },
         "beforeTokens": {
           "description": "The estimated total tokens in the window immediately before compaction.",
@@ -975,6 +989,18 @@
         "retained": {
           "$ref": "#/$defs/GgRetainedState",
           "description": "The pinned state carried across the boundary verbatim (the retention proof)."
+        },
+        "strategy": {
+          "description": "The name of the [summarization strategy](https://docs.testcabinet.ai/gg/compaction/)\nthat produced this summary — the capability's resolved `implementation`, `model`\n(the default prose recap) or `structured` (fixed sections). Recorded per boundary so\nthe console's Compaction view can compare what each strategy retained.",
+          "type": "string"
+        },
+        "summary": {
+          "description": "The summary text the strategy produced (the raw summarizer output, without the\nrecap heading gg prepends when it re-seeds the window). Recorded so the summary can\nbe read back and compared across strategies.",
+          "type": "string"
+        },
+        "summaryFallback": {
+          "description": "Whether the summarization call failed and the summary degraded to gg's fixed\nfallback note rather than a real recap — so a study can tell a produced summary from\na failed one instead of inferring it from the text.",
+          "type": "boolean"
         },
         "summaryTokens": {
           "description": "The estimated tokens the summary item itself occupies.",
@@ -994,11 +1020,16 @@
       },
       "required": [
         "type",
+        "strategy",
         "triggerFullness",
         "beforeTokens",
         "afterTokens",
         "summaryTokens",
-        "retained"
+        "retained",
+        "beforeBySource",
+        "afterBySource",
+        "summary",
+        "summaryFallback"
       ],
       "type": "object"
     },

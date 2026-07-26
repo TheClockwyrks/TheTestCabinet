@@ -93,6 +93,20 @@ export function RequestsIcon({ className }: IconProps) {
   );
 }
 
+// Compaction — arrows collapsing toward a middle rule: the window summarized and
+// squeezed back down at a boundary.
+export function CompactionIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <path d="M4 12h16" />
+      <path d="M8 5l-3 3 3 3" />
+      <path d="M16 5l3 3-3 3" />
+      <path d="M8 19l-3-3 3-3" />
+      <path d="M16 19l3-3-3-3" />
+    </Icon>
+  );
+}
+
 // Plan — a clipboard of ordered steps.
 export function PlanIcon({ className }: IconProps) {
   return (

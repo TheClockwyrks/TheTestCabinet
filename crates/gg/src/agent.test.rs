@@ -385,6 +385,7 @@ fn no_compaction() -> CompactionSetup {
     CompactionSetup {
         enabled: false,
         policy: crate::compaction::CompactionPolicy::default(),
+        strategy: "model",
         summarizer: crate::compaction::resolve_summarizer(None),
     }
 }
@@ -398,6 +399,7 @@ fn compaction_at(trigger_fullness: f64) -> CompactionSetup {
             trigger_fullness,
             ..Default::default()
         },
+        strategy: "model",
         summarizer: crate::compaction::resolve_summarizer(None),
     }
 }
@@ -2427,6 +2429,7 @@ async fn drive_compacts_at_the_threshold_and_retains_pinned_state() {
                 after_tokens,
                 summary_tokens,
                 retained,
+                ..
             } => Some((
                 *trigger_fullness,
                 *before_tokens,

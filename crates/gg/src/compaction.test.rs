@@ -9,7 +9,17 @@ use super::*;
 use crate::client::{MOCK_COMPACTION_SUMMARY, MockClient};
 use crate::context::{ContextModel, HeuristicTokenEstimator, Retention};
 use crate::model::Message;
-use test_cabinet_core::gg::GgContextSource;
+use test_cabinet_core::gg::{GgContextSource, GgContextSourceUsage};
+
+/// The token count of one source band in a per-source usage vec (`0` if absent, though gg
+/// always emits every band). Keeps the pre/post composition assertions readable.
+fn band_tokens(usage: &[GgContextSourceUsage], source: GgContextSource) -> u64 {
+    usage
+        .iter()
+        .find(|u| u.source == source)
+        .map(|u| u.tokens)
+        .unwrap_or(0)
+}
 
 /// A context model measured with the deterministic heuristic estimator and the given window,
 /// so fullness in these tests is exact and fast.
@@ -170,6 +180,29 @@ fn strategy_name_classifies_the_implementation() {
     assert_eq!(strategy_name(Some("not-a-strategy")), "model");
 }
 
+/// The resolved setup records the strategy name it selected, so a compaction event can be
+/// labelled with the summarizer that produced it.
+#[test]
+fn setup_records_the_selected_strategy() {
+    use test_cabinet_core::gg::{CAPABILITY_COMPACTION, GgCapabilityConfig, GgCapabilitySet};
+
+    let mut structured = GgCapabilitySet::minimal("mock/x");
+    structured.capabilities.push(GgCapabilityConfig {
+        id: CAPABILITY_COMPACTION.to_string(),
+        enabled: true,
+        implementation: Some("structured".to_string()),
+        params: json!({}),
+    });
+    assert_eq!(CompactionSetup::resolve(&structured).strategy, "structured");
+
+    // An absent implementation records the default `model` strategy.
+    let mut plain = GgCapabilitySet::minimal("mock/x");
+    plain
+        .capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_COMPACTION));
+    assert_eq!(CompactionSetup::resolve(&plain).strategy, "model");
+}
+
 /// The default model summarizer is answered offline by the mock's marker path, returning
 /// the deterministic canned summary — and **without** consuming a scripted turn, so the
 /// mock's main script stays in step across a compaction boundary.
@@ -246,6 +279,7 @@ async fn does_not_compact_when_disabled() {
             trigger_fullness: 0.0,
             ..CompactionPolicy::default()
         },
+        strategy: "model",
         summarizer: Box::new(ModelSummarizer),
     };
     let mut ctx = model(10);
@@ -266,6 +300,7 @@ async fn does_not_compact_below_the_threshold() {
             trigger_fullness: 0.9,
             ..CompactionPolicy::default()
         },
+        strategy: "model",
         summarizer: Box::new(ModelSummarizer),
     };
     let mut ctx = model(100_000);
@@ -286,6 +321,7 @@ async fn does_not_compact_with_no_ephemeral_history() {
             trigger_fullness: 0.1,
             ..CompactionPolicy::default()
         },
+        strategy: "model",
         summarizer: Box::new(ModelSummarizer),
     };
     // Over the threshold, but every item is pinned — there is nothing to summarize.
@@ -315,6 +351,7 @@ async fn compacts_and_retains_pinned_state_verbatim() {
             trigger_fullness: 0.5,
             ..CompactionPolicy::default()
         },
+        strategy: "model",
         summarizer: Box::new(ModelSummarizer),
     };
 
@@ -382,15 +419,22 @@ async fn compacts_and_retains_pinned_state_verbatim() {
     .await
     .expect("compaction fired at the threshold");
 
-    // The telemetry: reclaimed window and the retention proof.
+    // The telemetry: reclaimed window, the retention proof, and the strategy/summary/pre-post
+    // composition the console's Compaction view reads.
     match event {
         GgTelemetryKind::Compaction {
+            strategy,
             trigger_fullness,
             before_tokens,
             after_tokens,
             summary_tokens,
             retained,
+            before_by_source,
+            after_by_source,
+            summary,
+            summary_fallback,
         } => {
+            assert_eq!(strategy, "model");
             assert_eq!(trigger_fullness, 0.5);
             assert_eq!(before_tokens, before);
             assert!(after_tokens < before_tokens, "compaction reclaimed window");
@@ -399,6 +443,29 @@ async fn compacts_and_retains_pinned_state_verbatim() {
             assert_eq!(retained.tasks, 2);
             assert_eq!(retained.memories, 1);
             assert_eq!(retained.issues, 2);
+            // The mock answered the summarization request off-script, so it is a real summary,
+            // not the fallback note.
+            assert_eq!(summary, MOCK_COMPACTION_SUMMARY);
+            assert!(!summary_fallback);
+            // The pre/post composition straddles the boundary: the ephemeral bands are present
+            // before and collapsed after, while the pinned bands persist. Both carry every band.
+            let before_tok = |src| band_tokens(&before_by_source, src);
+            let after_tok = |src| band_tokens(&after_by_source, src);
+            assert_eq!(before_by_source.len(), GgContextSource::ALL.len());
+            assert_eq!(after_by_source.len(), GgContextSource::ALL.len());
+            assert!(before_tok(GgContextSource::Assistant) > 0);
+            assert!(before_tok(GgContextSource::ToolOutput) > 0);
+            assert!(before_tok(GgContextSource::FileView) > 0);
+            assert_eq!(after_tok(GgContextSource::Assistant), 0);
+            assert_eq!(after_tok(GgContextSource::ToolOutput), 0);
+            assert_eq!(after_tok(GgContextSource::FileView), 0);
+            // The summary lands in the History band, and the pinned bands survive the boundary
+            // (their exact token counts can shift slightly — a dangling tool-role skill message
+            // is re-framed to a user message — but the bodies are retained verbatim, asserted
+            // below).
+            assert!(after_tok(GgContextSource::History) > 0);
+            assert!(before_tok(GgContextSource::Skill) > 0);
+            assert!(after_tok(GgContextSource::Skill) > 0);
         }
         other => panic!("expected a Compaction event, got {other:?}"),
     }

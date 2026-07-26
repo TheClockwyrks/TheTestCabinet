@@ -326,6 +326,9 @@ pub struct CompactionSetup {
     pub enabled: bool,
     /// The resolved trigger policy.
     pub policy: CompactionPolicy,
+    /// The name of the selected strategy ([`strategy_name`]) — recorded on each compaction
+    /// event so the console can label which summarizer produced a summary.
+    pub strategy: &'static str,
     /// The selected summarization strategy.
     pub summarizer: Box<dyn Summarizer>,
 }
@@ -342,12 +345,12 @@ impl CompactionSetup {
         let policy = capability
             .map(|cap| CompactionPolicy::resolve(&cap.params))
             .unwrap_or_default();
-        let summarizer =
-            resolve_summarizer(capability.and_then(|cap| cap.implementation.as_deref()));
+        let implementation = capability.and_then(|cap| cap.implementation.as_deref());
         Self {
             enabled,
             policy,
-            summarizer,
+            strategy: strategy_name(implementation),
+            summarizer: resolve_summarizer(implementation),
         }
     }
 }
@@ -375,8 +378,9 @@ pub struct RetainedCounts {
 /// On a fire it summarizes the [ephemeral history plus the build prompt](ContextModel::summary_source_messages)
 /// with `setup.summarizer`, then rewrites the window via
 /// [`ContextModel::compact_history`] — keeping the pinned prefix verbatim and replacing the
-/// history with the summary. The returned event carries the before/after token totals (the
-/// reclaim), the summary's token cost, and the [`retained`](RetainedCounts) counts.
+/// history with the summary. The returned event carries the strategy name, the before/after
+/// token totals (the reclaim) and per-source composition, the summary text (and whether it fell
+/// back), the summary's token cost, and the [`retained`](RetainedCounts) counts.
 pub async fn compact_if_needed(
     context: &mut ContextModel,
     client: &dyn ModelClient,
@@ -399,6 +403,7 @@ pub async fn compact_if_needed(
     }
 
     let before_tokens = context.total_tokens();
+    let before_by_source = context.usage_by_source();
     let input = context.summary_source_messages();
     let summary_text = setup
         .summarizer
@@ -407,14 +412,19 @@ pub async fn compact_if_needed(
             client,
         })
         .await;
+    // A summary equal to the fixed fallback note means the summarization call failed and
+    // degraded; recorded explicitly so a study reads it as a failure, not a real recap.
+    let summary_fallback = summary_text == FALLBACK_SUMMARY;
 
     let summary_message = Message::user(format!("{SUMMARY_PREFACE}{summary_text}"));
     context.compact_history(summary_message);
 
     let after_tokens = context.total_tokens();
+    let after_by_source = context.usage_by_source();
     let summary_tokens = context.tokens_for(GgContextSource::History);
 
     Some(GgTelemetryKind::Compaction {
+        strategy: setup.strategy.to_string(),
         trigger_fullness: setup.policy.trigger_fullness,
         before_tokens,
         after_tokens,
@@ -425,6 +435,10 @@ pub async fn compact_if_needed(
             memories: retained.memories,
             issues: retained.issues,
         },
+        before_by_source,
+        after_by_source,
+        summary: summary_text,
+        summary_fallback,
     })
 }
 

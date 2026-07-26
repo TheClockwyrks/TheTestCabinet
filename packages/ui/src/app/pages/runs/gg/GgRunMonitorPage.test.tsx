@@ -278,11 +278,16 @@ const EVENTS: HarnessEvent[] = [
   // evicting a file view itself.
   gg({
     type: "compaction",
+    strategy: "model",
     triggerFullness: 0.85,
     beforeTokens: 4400,
     afterTokens: 1800,
     summaryTokens: 300,
     retained: { skills: 1, tasks: 3, memories: 1, issues: 2 },
+    beforeBySource: bySource({ system: 1000, assistant: 2400, tool_output: 1000 }),
+    afterBySource: bySource({ system: 1000, user_prompt: 500, history: 300 }),
+    summary: "Summary of earlier work: scaffolded the project and wired the renderer.",
+    summaryFallback: false,
   }),
   gg({
     type: "context_breakdown",

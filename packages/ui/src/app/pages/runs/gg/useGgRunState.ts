@@ -196,11 +196,23 @@ export interface CompactionBoundary {
   timestamp: string;
   // The graph turn index the reclaimed window shows at — where to draw the marker.
   turn: number;
+  // The summarization strategy that produced this summary (`model` / `structured`),
+  // so the Compaction view can label and compare boundaries by strategy.
+  strategy: string;
   triggerFullness: number;
   beforeTokens: number;
   afterTokens: number;
   summaryTokens: number;
   retained: GgRetainedState;
+  // The per-source window composition straddling the boundary — the same bands as a
+  // `ContextSnapshot`, so the Compaction view shows exactly what the reclaim dropped
+  // without depending on the surrounding breakdown snapshots.
+  beforeBySource: GgContextSourceUsage[];
+  afterBySource: GgContextSourceUsage[];
+  // The summary text the strategy produced (raw, without gg's recap heading), and
+  // whether it degraded to the fixed fallback note because the summarization call failed.
+  summary: string;
+  summaryFallback: boolean;
 }
 
 // One `context_managed` action — the agent reclaiming window space itself (evicting
@@ -952,11 +964,16 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
           key: `${index}`,
           timestamp: event.timestamp,
           turn,
+          strategy: gg.strategy,
           triggerFullness: gg.triggerFullness,
           beforeTokens: gg.beforeTokens,
           afterTokens: gg.afterTokens,
           summaryTokens: gg.summaryTokens,
           retained: gg.retained,
+          beforeBySource: gg.beforeBySource,
+          afterBySource: gg.afterBySource,
+          summary: gg.summary,
+          summaryFallback: gg.summaryFallback,
         });
         break;
       case "context_managed":

@@ -1468,6 +1468,13 @@ export type GgTelemetryKind =
   | {
       type: "compaction";
       /**
+       * The name of the [summarization strategy](https://docs.testcabinet.ai/gg/compaction/)
+       * that produced this summary — the capability's resolved `implementation`, `model`
+       * (the default prose recap) or `structured` (fixed sections). Recorded per boundary so
+       * the console's Compaction view can compare what each strategy retained.
+       */
+      strategy: string;
+      /**
        * The fullness threshold (a `0.0..=1.0` fraction, the capability's
        * `triggerFullness` param) that tripped this compaction.
        */
@@ -1489,6 +1496,32 @@ export type GgTelemetryKind =
        * The pinned state carried across the boundary verbatim (the retention proof).
        */
       retained: GgRetainedState;
+      /**
+       * The per-source window composition **immediately before** compaction, one band per
+       * [`GgContextSource`] in [`GgContextSource::ALL`] order — the same shape as
+       * [`ContextBreakdown`](Self::ContextBreakdown)'s `by_source`. Paired with
+       * [`after_by_source`](Self::Compaction::after_by_source) it shows exactly which bands
+       * the summarize-and-restart reclaimed, without depending on the context-visibility
+       * capability being on.
+       */
+      beforeBySource: Array<GgContextSourceUsage>;
+      /**
+       * The per-source window composition **immediately after** compaction: the pinned bands
+       * unchanged and the ephemeral bands collapsed into the single `History` summary item.
+       */
+      afterBySource: Array<GgContextSourceUsage>;
+      /**
+       * The summary text the strategy produced (the raw summarizer output, without the
+       * recap heading gg prepends when it re-seeds the window). Recorded so the summary can
+       * be read back and compared across strategies.
+       */
+      summary: string;
+      /**
+       * Whether the summarization call failed and the summary degraded to gg's fixed
+       * fallback note rather than a real recap — so a study can tell a produced summary from
+       * a failed one instead of inferring it from the text.
+       */
+      summaryFallback: boolean;
     }
   | {
       type: "context_managed";
@@ -2059,6 +2092,13 @@ export type GgTelemetryEvent = {
   | {
       type: "compaction";
       /**
+       * The name of the [summarization strategy](https://docs.testcabinet.ai/gg/compaction/)
+       * that produced this summary — the capability's resolved `implementation`, `model`
+       * (the default prose recap) or `structured` (fixed sections). Recorded per boundary so
+       * the console's Compaction view can compare what each strategy retained.
+       */
+      strategy: string;
+      /**
        * The fullness threshold (a `0.0..=1.0` fraction, the capability's
        * `triggerFullness` param) that tripped this compaction.
        */
@@ -2080,6 +2120,32 @@ export type GgTelemetryEvent = {
        * The pinned state carried across the boundary verbatim (the retention proof).
        */
       retained: GgRetainedState;
+      /**
+       * The per-source window composition **immediately before** compaction, one band per
+       * [`GgContextSource`] in [`GgContextSource::ALL`] order — the same shape as
+       * [`ContextBreakdown`](Self::ContextBreakdown)'s `by_source`. Paired with
+       * [`after_by_source`](Self::Compaction::after_by_source) it shows exactly which bands
+       * the summarize-and-restart reclaimed, without depending on the context-visibility
+       * capability being on.
+       */
+      beforeBySource: Array<GgContextSourceUsage>;
+      /**
+       * The per-source window composition **immediately after** compaction: the pinned bands
+       * unchanged and the ephemeral bands collapsed into the single `History` summary item.
+       */
+      afterBySource: Array<GgContextSourceUsage>;
+      /**
+       * The summary text the strategy produced (the raw summarizer output, without the
+       * recap heading gg prepends when it re-seeds the window). Recorded so the summary can
+       * be read back and compared across strategies.
+       */
+      summary: string;
+      /**
+       * Whether the summarization call failed and the summary degraded to gg's fixed
+       * fallback note rather than a real recap — so a study can tell a produced summary from
+       * a failed one instead of inferring it from the text.
+       */
+      summaryFallback: boolean;
     }
   | {
       type: "context_managed";
