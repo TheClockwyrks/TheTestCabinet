@@ -25,6 +25,7 @@ import {
   type SpeculationRole,
 } from "./AgentTreeView";
 import { ContextFillGraph, ContextUsageBar } from "./ContextFillGraph";
+import { RequestsView } from "./RequestsView";
 import { PlanView } from "./PlanView";
 import { BoardView } from "./BoardView";
 import { TaskDagView } from "./TaskDagView";
@@ -39,6 +40,7 @@ import {
   KnowledgeIcon,
   OverviewIcon,
   PlanIcon,
+  RequestsIcon,
   TasksIcon,
 } from "./ggIcons";
 
@@ -80,16 +82,19 @@ export type AgentFileKind =
   | "overview"
   | "activity"
   | "context"
+  | "requests"
   | "plan"
   | "board"
   | "tasks"
   | "knowledge";
 
-// The order files list in a folder.
+// The order files list in a folder. Requests sits beside Context — it is the itemized,
+// message-level companion to the stacked Context graph.
 const FILE_ORDER: ReadonlyArray<AgentFileKind> = [
   "overview",
   "activity",
   "context",
+  "requests",
   "plan",
   "board",
   "tasks",
@@ -108,6 +113,10 @@ const FILE_CAPABILITIES: Record<AgentFileKind, ReadonlyArray<string>> = {
   overview: [],
   activity: [],
   context: [],
+  // The message log rides on the same capability as the breakdown graph (see
+  // gg/context-visibility): with context visibility off, gg emits neither, so the file
+  // is hidden rather than shown perpetually empty.
+  requests: ["context-visibility"],
   plan: ["planning"],
   board: ["epics-and-issues"],
   tasks: ["tasks"],
@@ -118,6 +127,7 @@ const FILE_LABELS: Record<AgentFileKind, string> = {
   overview: "overview",
   activity: "activity",
   context: "context",
+  requests: "requests",
   plan: "plan",
   board: "board",
   tasks: "tasks",
@@ -133,6 +143,7 @@ const FILE_ICONS: Record<
   overview: OverviewIcon,
   activity: ActivityIcon,
   context: ContextIcon,
+  requests: RequestsIcon,
   plan: PlanIcon,
   board: BoardIcon,
   tasks: TasksIcon,
@@ -485,6 +496,16 @@ function FileContent({
             capabilitySet={capabilitySet}
             compactions={state.compactions}
             planImplementTurn={state.plan?.implementTurn ?? null}
+          />
+        </div>
+      );
+    case "requests":
+      return (
+        <div className={panels.panelBody}>
+          <RequestsView
+            prompts={state.prompts}
+            pool={state.messagePool}
+            live={live}
           />
         </div>
       );

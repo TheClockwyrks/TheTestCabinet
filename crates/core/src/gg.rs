@@ -1145,6 +1145,66 @@ pub struct GgContextSourceUsage {
     pub tokens: u64,
 }
 
+/// A pointer from one turn's [`Prompt`](GgTelemetryKind::Prompt) into the
+/// [message pool](GgTelemetryKind::ContextMessage) — one message in the request, in
+/// the order it was sent.
+///
+/// The message's content is carried once, on its [`ContextMessage`](GgTelemetryKind::ContextMessage)
+/// definition; a prompt references it by [`id`](Self::id) so a message repeated across
+/// turns is never restreamed. [`source`](Self::source) is the [`GgContextSource`] band
+/// the message occupies **this turn** — carried on the reference rather than the pooled
+/// message because a single message can change bands over its life (a mutable block
+/// superseded into [`History`](GgContextSource::History) keeps its content, and thus its
+/// id, but moves band). It is what lets a request's message list line up, message by
+/// message, with the per-source [`ContextBreakdown`](GgTelemetryKind::ContextBreakdown).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgPromptRef {
+    /// The pooled message's stable id (a fingerprint of its content).
+    pub id: String,
+    /// The context-window band this message occupies this turn.
+    pub source: GgContextSource,
+}
+
+/// A tool call recorded on a pooled assistant [`ContextMessage`](GgTelemetryKind::ContextMessage)
+/// — the message-log form of an assistant turn's request to invoke a tool.
+///
+/// Mirrors the loop's own tool-call shape (id, name, and parsed JSON arguments); it is a
+/// distinct type from the live [`ToolCall`](GgTelemetryKind::ToolCall) event because that
+/// carries only the *latest* call for the feed, while this is the verbatim call as it sat
+/// in the window.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgLoggedToolCall {
+    /// The provider-assigned call id (keying the `tool` result that answers it).
+    pub id: String,
+    /// The tool's name.
+    pub name: String,
+    /// The arguments the assistant passed, as a free-form JSON object.
+    #[cfg_attr(feature = "contract", ts(type = "Record<string, unknown>"))]
+    pub args: Value,
+}
+
+/// A **descriptor** of an image attached to a pooled message — its media type, decoded
+/// size, and the tokens it is charged — recorded in place of the base64 bytes.
+///
+/// A request log exists to show *what the model was sent*, and an inline picture's bytes
+/// are neither readable nor cheap: a single reference mockup can be megabytes of base64,
+/// which would dominate the run record while adding nothing a reader of a request needs.
+/// The descriptor keeps the picture accountable (it is why a `read_file` view's token
+/// figure is what it is) without carrying the pixels.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgLoggedImage {
+    /// The IANA media type (`image/png`, `image/jpeg`, …).
+    pub media_type: String,
+    /// The image's decoded size in bytes — what the file on disk measured.
+    pub bytes: u64,
+}
+
 /// The state of one [skill](https://docs.testcabinet.ai/gg/skills/) at a point in a run
 /// — a band of a [`SkillsState`](GgTelemetryKind::SkillsState) event.
 ///
@@ -2383,6 +2443,89 @@ pub enum GgTelemetryKind {
         /// fullness signal compaction triggers on.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         fullness: Option<f64>,
+    },
+    /// A single **message** in an agent's context window, recorded in full the first time
+    /// it enters any prompt on this agent's stream — the pool entry every
+    /// [`Prompt`](Self::Prompt) points into so a message repeated across turns is stored
+    /// once, not once per turn.
+    ///
+    /// gg's window is [append-only](https://docs.testcabinet.ai/gg/context-visibility/): a
+    /// turn extends the previous turn's prompt rather than rewriting it, so the same
+    /// messages recur across most turns. Rather than restream the whole prompt every turn,
+    /// gg assigns each message a stable [`id`](Self::ContextMessage::id) — a fingerprint of
+    /// its content — and emits its body **once**, here; each turn's [`Prompt`](Self::Prompt)
+    /// is then a sequence of [pointers](GgPromptRef) into this pool, and the console
+    /// reassembles a turn's exact request by resolving them. The pool is per agent (each
+    /// agent's stream carries the definitions its own prompts reference). Emitted only when
+    /// the [context-visibility](CAPABILITY_CONTEXT_VISIBILITY) capability is on; the run's
+    /// [`tokens`](Self::ContextMessage::tokens) figure is the same estimate the breakdown
+    /// bands are summed from, so a message's own contribution to fullness is legible.
+    ///
+    /// An attached image is recorded as a lightweight [descriptor](GgLoggedImage) — its
+    /// media type, decoded size, and the tokens it is charged — never its base64 bytes,
+    /// which would bloat the stream without adding anything the reader of a *request* needs.
+    ContextMessage {
+        /// The message's stable id: a fingerprint of its content, shared by every
+        /// [`Prompt`](Self::Prompt) reference and by the same message wherever it recurs.
+        id: String,
+        /// The message's role (`system`, `user`, `assistant`, or `tool`).
+        role: String,
+        /// The message's textual content, when it has any (absent for an assistant turn
+        /// that only called tools).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        content: Option<String>,
+        /// The tool calls an assistant message requested, in order (empty for every other
+        /// role).
+        #[serde(default)]
+        tool_calls: Vec<GgLoggedToolCall>,
+        /// For a `tool` message, the id of the assistant tool call it answers.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        tool_call_id: Option<String>,
+        /// Descriptors of any images attached to the message — the media type and size of
+        /// each, never its bytes (see [`GgLoggedImage`]). Empty for a text-only message.
+        #[serde(default)]
+        images: Vec<GgLoggedImage>,
+        /// The estimated tokens this message occupies — the same per-item estimate the
+        /// [`ContextBreakdown`](Self::ContextBreakdown) bands sum, so a message's own share
+        /// of the window is legible.
+        tokens: u64,
+    },
+    /// One agent turn's exact **request and response**, as pointers into the
+    /// [message pool](Self::ContextMessage) — the itemized, message-level companion to the
+    /// per-source [`ContextBreakdown`](Self::ContextBreakdown).
+    ///
+    /// [`request`](Self::Prompt::request) is the ordered list of messages sent to the model
+    /// this turn, each a [pointer](GgPromptRef) to a pooled
+    /// [`ContextMessage`](Self::ContextMessage) tagged with the [`GgContextSource`] band it
+    /// occupies — so a turn's request is reconstructed without restreaming any message, and
+    /// every message lines up with the band it contributes to on the context graph.
+    /// [`response_id`](Self::Prompt::response_id) points at the assistant reply (also
+    /// pooled, so it reappears as a request pointer on the next turn, its id unchanged), or
+    /// is absent when the turn produced no assistant message at all.
+    /// [`tokens`](Self::Prompt::tokens)/[`cost`](Self::Prompt::cost) are the turn's actual
+    /// provider usage — the same figures the incremental [`Usage`](Self::Usage) carries,
+    /// bundled here so a turn's request→response reads as one self-contained record.
+    /// Emitted once per turn (immediately after the model call) when the
+    /// [context-visibility](CAPABILITY_CONTEXT_VISIBILITY) capability is on.
+    Prompt {
+        /// The messages sent to the model this turn, in order — pointers into the pool.
+        request: Vec<GgPromptRef>,
+        /// The estimated total tokens across the request (the sum of the pointed-to
+        /// messages' estimates) — the numerator of this turn's fullness, matching the
+        /// adjacent [`ContextBreakdown`](Self::ContextBreakdown).
+        total_tokens: u64,
+        /// The pooled id of the assistant reply this request produced. Absent when the turn
+        /// produced no assistant message (neither text nor tool calls).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        response_id: Option<String>,
+        /// Why the model's turn stopped (`stop`, `tool_calls`, `length`, …).
+        finish_reason: String,
+        /// The turn's normalized token usage (the same delta the [`Usage`](Self::Usage)
+        /// event carries), bundled so the request→response record is self-contained.
+        tokens: TokenCounts,
+        /// The turn's cost, when the provider reported one.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cost: Option<Cost>,
     },
     /// The [skills](https://docs.testcabinet.ai/gg/skills/) available to the model and
     /// which of them have been read.

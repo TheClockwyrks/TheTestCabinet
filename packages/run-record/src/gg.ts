@@ -241,6 +241,76 @@ export type GgContextSourceUsage = {
 };
 
 /**
+ * A pointer from one turn's [`Prompt`](GgTelemetryKind::Prompt) into the
+ * [message pool](GgTelemetryKind::ContextMessage) — one message in the request, in
+ * the order it was sent.
+ *
+ * The message's content is carried once, on its [`ContextMessage`](GgTelemetryKind::ContextMessage)
+ * definition; a prompt references it by [`id`](Self::id) so a message repeated across
+ * turns is never restreamed. [`source`](Self::source) is the [`GgContextSource`] band
+ * the message occupies **this turn** — carried on the reference rather than the pooled
+ * message because a single message can change bands over its life (a mutable block
+ * superseded into [`History`](GgContextSource::History) keeps its content, and thus its
+ * id, but moves band). It is what lets a request's message list line up, message by
+ * message, with the per-source [`ContextBreakdown`](GgTelemetryKind::ContextBreakdown).
+ */
+export type GgPromptRef = {
+  /**
+   * The pooled message's stable id (a fingerprint of its content).
+   */
+  id: string;
+  /**
+   * The context-window band this message occupies this turn.
+   */
+  source: GgContextSource;
+};
+
+/**
+ * A tool call recorded on a pooled assistant [`ContextMessage`](GgTelemetryKind::ContextMessage)
+ * — the message-log form of an assistant turn's request to invoke a tool.
+ *
+ * Mirrors the loop's own tool-call shape (id, name, and parsed JSON arguments); it is a
+ * distinct type from the live [`ToolCall`](GgTelemetryKind::ToolCall) event because that
+ * carries only the *latest* call for the feed, while this is the verbatim call as it sat
+ * in the window.
+ */
+export type GgLoggedToolCall = {
+  /**
+   * The provider-assigned call id (keying the `tool` result that answers it).
+   */
+  id: string;
+  /**
+   * The tool's name.
+   */
+  name: string;
+  /**
+   * The arguments the assistant passed, as a free-form JSON object.
+   */
+  args: Record<string, unknown>;
+};
+
+/**
+ * A **descriptor** of an image attached to a pooled message — its media type, decoded
+ * size, and the tokens it is charged — recorded in place of the base64 bytes.
+ *
+ * A request log exists to show *what the model was sent*, and an inline picture's bytes
+ * are neither readable nor cheap: a single reference mockup can be megabytes of base64,
+ * which would dominate the run record while adding nothing a reader of a request needs.
+ * The descriptor keeps the picture accountable (it is why a `read_file` view's token
+ * figure is what it is) without carrying the pixels.
+ */
+export type GgLoggedImage = {
+  /**
+   * The IANA media type (`image/png`, `image/jpeg`, …).
+   */
+  mediaType: string;
+  /**
+   * The image's decoded size in bytes — what the file on disk measured.
+   */
+  bytes: number;
+};
+
+/**
  * The state of one [skill](https://docs.testcabinet.ai/gg/skills/) at a point in a run
  * — a band of a [`SkillsState`](GgTelemetryKind::SkillsState) event.
  *
@@ -1281,6 +1351,74 @@ export type GgTelemetryKind =
       fullness?: number;
     }
   | {
+      type: "context_message";
+      /**
+       * The message's stable id: a fingerprint of its content, shared by every
+       * [`Prompt`](Self::Prompt) reference and by the same message wherever it recurs.
+       */
+      id: string;
+      /**
+       * The message's role (`system`, `user`, `assistant`, or `tool`).
+       */
+      role: string;
+      /**
+       * The message's textual content, when it has any (absent for an assistant turn
+       * that only called tools).
+       */
+      content?: string;
+      /**
+       * The tool calls an assistant message requested, in order (empty for every other
+       * role).
+       */
+      toolCalls: Array<GgLoggedToolCall>;
+      /**
+       * For a `tool` message, the id of the assistant tool call it answers.
+       */
+      toolCallId?: string;
+      /**
+       * Descriptors of any images attached to the message — the media type and size of
+       * each, never its bytes (see [`GgLoggedImage`]). Empty for a text-only message.
+       */
+      images: Array<GgLoggedImage>;
+      /**
+       * The estimated tokens this message occupies — the same per-item estimate the
+       * [`ContextBreakdown`](Self::ContextBreakdown) bands sum, so a message's own share
+       * of the window is legible.
+       */
+      tokens: number;
+    }
+  | {
+      type: "prompt";
+      /**
+       * The messages sent to the model this turn, in order — pointers into the pool.
+       */
+      request: Array<GgPromptRef>;
+      /**
+       * The estimated total tokens across the request (the sum of the pointed-to
+       * messages' estimates) — the numerator of this turn's fullness, matching the
+       * adjacent [`ContextBreakdown`](Self::ContextBreakdown).
+       */
+      totalTokens: number;
+      /**
+       * The pooled id of the assistant reply this request produced. Absent when the turn
+       * produced no assistant message (neither text nor tool calls).
+       */
+      responseId?: string;
+      /**
+       * Why the model's turn stopped (`stop`, `tool_calls`, `length`, …).
+       */
+      finishReason: string;
+      /**
+       * The turn's normalized token usage (the same delta the [`Usage`](Self::Usage)
+       * event carries), bundled so the request→response record is self-contained.
+       */
+      tokens: TokenMetrics;
+      /**
+       * The turn's cost, when the provider reported one.
+       */
+      cost?: CostMetrics;
+    }
+  | {
       type: "skills_state";
       /**
        * One entry per available skill, in the order the catalog lists them.
@@ -1802,6 +1940,74 @@ export type GgTelemetryEvent = {
        * fullness signal compaction triggers on.
        */
       fullness?: number;
+    }
+  | {
+      type: "context_message";
+      /**
+       * The message's stable id: a fingerprint of its content, shared by every
+       * [`Prompt`](Self::Prompt) reference and by the same message wherever it recurs.
+       */
+      id: string;
+      /**
+       * The message's role (`system`, `user`, `assistant`, or `tool`).
+       */
+      role: string;
+      /**
+       * The message's textual content, when it has any (absent for an assistant turn
+       * that only called tools).
+       */
+      content?: string;
+      /**
+       * The tool calls an assistant message requested, in order (empty for every other
+       * role).
+       */
+      toolCalls: Array<GgLoggedToolCall>;
+      /**
+       * For a `tool` message, the id of the assistant tool call it answers.
+       */
+      toolCallId?: string;
+      /**
+       * Descriptors of any images attached to the message — the media type and size of
+       * each, never its bytes (see [`GgLoggedImage`]). Empty for a text-only message.
+       */
+      images: Array<GgLoggedImage>;
+      /**
+       * The estimated tokens this message occupies — the same per-item estimate the
+       * [`ContextBreakdown`](Self::ContextBreakdown) bands sum, so a message's own share
+       * of the window is legible.
+       */
+      tokens: number;
+    }
+  | {
+      type: "prompt";
+      /**
+       * The messages sent to the model this turn, in order — pointers into the pool.
+       */
+      request: Array<GgPromptRef>;
+      /**
+       * The estimated total tokens across the request (the sum of the pointed-to
+       * messages' estimates) — the numerator of this turn's fullness, matching the
+       * adjacent [`ContextBreakdown`](Self::ContextBreakdown).
+       */
+      totalTokens: number;
+      /**
+       * The pooled id of the assistant reply this request produced. Absent when the turn
+       * produced no assistant message (neither text nor tool calls).
+       */
+      responseId?: string;
+      /**
+       * Why the model's turn stopped (`stop`, `tool_calls`, `length`, …).
+       */
+      finishReason: string;
+      /**
+       * The turn's normalized token usage (the same delta the [`Usage`](Self::Usage)
+       * event carries), bundled so the request→response record is self-contained.
+       */
+      tokens: TokenMetrics;
+      /**
+       * The turn's cost, when the provider reported one.
+       */
+      cost?: CostMetrics;
     }
   | {
       type: "skills_state";

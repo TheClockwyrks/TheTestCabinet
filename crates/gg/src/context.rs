@@ -553,6 +553,26 @@ impl ContextModel {
         self.items.iter().map(|item| item.message.clone()).collect()
     }
 
+    /// The per-item view of the current prompt for the [message log](crate::message_log):
+    /// each item's [`source`](GgContextSource) band, its [`Message`], and its cached token
+    /// estimate, in the order they are sent. This is the itemized form of
+    /// [`messages`](Self::messages) — the same messages the client consumes, each carrying
+    /// the band and token estimate the console needs to line a request's messages up with
+    /// the per-source [breakdown](Self::breakdown_event).
+    pub fn prompt_items(&self) -> impl Iterator<Item = (GgContextSource, &Message, usize)> {
+        self.items
+            .iter()
+            .map(|item| (item.source, &item.message, item.tokens))
+    }
+
+    /// Estimate the tokens `message` would occupy under this model's estimator — used to
+    /// charge the assistant reply in the [message log](crate::message_log) with the same
+    /// estimator the window's items are counted by, so the reply's figure is comparable to
+    /// the request's.
+    pub fn estimate(&self, message: &Message) -> usize {
+        self.estimator.estimate_message(message)
+    }
+
     /// The estimated total tokens across every item.
     pub fn total_tokens(&self) -> u64 {
         self.items.iter().map(|item| item.tokens as u64).sum()

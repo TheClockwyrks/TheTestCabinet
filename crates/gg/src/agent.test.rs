@@ -102,6 +102,9 @@ fn test_context_setup(emit_breakdown: bool) -> ContextSetup {
         estimator: Arc::new(HeuristicTokenEstimator::new()),
         window_limit: Some(128_000),
         emit_breakdown,
+        // The message log rides on the same capability as the breakdown, so a test that
+        // exercises the breakdown exercises the log too.
+        log_messages: emit_breakdown,
     }
 }
 
@@ -112,6 +115,7 @@ fn test_context_setup_with_window(emit_breakdown: bool, window_limit: u64) -> Co
         estimator: Arc::new(HeuristicTokenEstimator::new()),
         window_limit: Some(window_limit),
         emit_breakdown,
+        log_messages: emit_breakdown,
     }
 }
 

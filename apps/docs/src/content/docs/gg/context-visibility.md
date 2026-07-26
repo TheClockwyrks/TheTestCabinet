@@ -82,6 +82,37 @@ can produce: with [skills](/gg/skills/) disabled there is no Skills band to expl
 A source that holds tokens is never hidden, whatever the configuration says, so
 nothing can silently drop out of the stack.
 
+## The message log: the exact requests, de-duplicated
+
+The graph shows the window's *composition*; the **message log** shows its *contents* —
+the precise messages gg sent the model each turn, and the reply it got back. It is the
+itemized companion to the graph, and the console renders it as a **Requests** file beside
+Context in the [Agents explorer](/gg/telemetry/). Reading it, a turn's request is no
+longer a stack of coloured bands but the actual system prompt, build prompt, tool results,
+and file views that filled them — each tagged with the band it occupies (the same palette
+as the graph) and its own estimated token cost, so a band on the graph and the messages
+that make it up line up one to one.
+
+Recording every turn's whole prompt verbatim would be quadratic: because the window is
+[append-only](#the-window-renders-as-an-append-only-prompt), the overwhelming majority of a
+turn's messages are byte-identical to ones sent on earlier turns. So the log is
+**content-addressed**. Each message is fingerprinted by its content and its body is streamed
+**once**, the first time it appears; every turn is then a sequence of **pointers** into that
+shared message set — the request as an ordered list of ids, plus the id of the reply (which,
+being a message too, is pooled and reappears as a pointer on the next turn). A message that
+sits unchanged in the window for forty turns costs one body and forty pointers, not forty
+copies. The pool is **per agent**, so each agent's stream carries the definitions its own
+prompts reference and reads on its own.
+
+An attached image is logged as a **descriptor** — its media type, decoded size, and the
+tokens it is charged — never its base64 bytes: a request log exists to show what was sent,
+and a multi-megabyte inline picture is neither readable nor worth storing once per unique
+read.
+
+The log rides on this same capability: with context visibility off gg emits neither the
+graph nor the log, so an ablation's off arm carries no message telemetry at all, and the
+Requests file is offered only for a run that has the capability.
+
 ## The window renders as an append-only prompt
 
 **A turn never rewrites what an earlier turn already sent.** Everything already in the

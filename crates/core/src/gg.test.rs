@@ -1166,3 +1166,57 @@ fn replay_record_round_trips_through_json() {
     let back: GgReplayRecord = serde_json::from_str(&json).unwrap();
     assert_eq!(back, record);
 }
+
+/// The message-log events (`context_message` / `prompt`) round-trip through the wire in
+/// camelCase, with the tagged discriminant, image descriptors (never bytes), and an
+/// omitted `responseId`/`cost` when absent.
+#[test]
+fn message_log_events_round_trip() {
+    let message = GgTelemetryKind::ContextMessage {
+        id: "mdeadbeef".to_string(),
+        role: "tool".to_string(),
+        content: Some("wrote index.html".to_string()),
+        tool_calls: Vec::new(),
+        tool_call_id: Some("call_1".to_string()),
+        images: vec![GgLoggedImage {
+            media_type: "image/png".to_string(),
+            bytes: 4096,
+        }],
+        tokens: 128,
+    };
+    let value = serde_json::to_value(&message).expect("serialize");
+    assert_eq!(value["type"], json!("context_message"));
+    assert_eq!(value["toolCallId"], json!("call_1"));
+    assert_eq!(value["images"][0]["mediaType"], json!("image/png"));
+    // The descriptor never carries the base64 bytes.
+    assert!(value["images"][0].get("dataBase64").is_none());
+    let back: GgTelemetryKind = serde_json::from_value(value).expect("deserialize");
+    assert_eq!(back, message);
+
+    let prompt = GgTelemetryKind::Prompt {
+        request: vec![
+            GgPromptRef {
+                id: "msystem".to_string(),
+                source: GgContextSource::System,
+            },
+            GgPromptRef {
+                id: "muser".to_string(),
+                source: GgContextSource::UserPrompt,
+            },
+        ],
+        total_tokens: 30,
+        response_id: None,
+        finish_reason: "stop".to_string(),
+        tokens: TokenCounts::default(),
+        cost: None,
+    };
+    let value = serde_json::to_value(&prompt).expect("serialize");
+    assert_eq!(value["type"], json!("prompt"));
+    assert_eq!(value["totalTokens"], json!(30));
+    assert_eq!(value["request"][0]["source"], json!("system"));
+    // An absent response and cost are omitted from the wire, not serialized as null.
+    assert!(value.get("responseId").is_none());
+    assert!(value.get("cost").is_none());
+    let back: GgTelemetryKind = serde_json::from_value(value).expect("deserialize");
+    assert_eq!(back, prompt);
+}

@@ -121,6 +121,7 @@ use crate::limits::{
     AgentLimits, FatalFault, RunLimits, RunSpend, TurnErrorKind, TurnOutcome, resolve_run_limits,
 };
 use crate::memories::{MemoriesRuntime, MemoryCaps};
+use crate::message_log::finish_reason_token;
 use crate::model::{
     ImageContent, Message, ModelClient, ModelError, ModelResponse, ToolCall, ToolDefinition,
 };
@@ -997,6 +998,7 @@ impl Orchestrator {
             estimator: Arc::clone(&self.estimator),
             window_limit: resolve_window_limit(&self.caps, &self.model_windows, model_id),
             emit_breakdown: self.caps.is_enabled(CAPABILITY_CONTEXT_VISIBILITY),
+            log_messages: self.caps.is_enabled(CAPABILITY_CONTEXT_VISIBILITY),
         }
     }
 
@@ -4499,6 +4501,36 @@ impl Agent {
                     ),
                 ));
             }
+            // Log this turn's exact request and response to the message log — the
+            // de-duplicated ContextMessage/Prompt stream the console renders as the
+            // per-message Requests view — when context visibility is on. Captured here,
+            // *before* the assistant reply is appended, so `prompt_items` is exactly the
+            // window that was sent this turn (post vision-recovery, if any). The reply is
+            // built the same way `push_assistant` will record it (no native tool calls in
+            // responses-as-code mode) and pooled too, so it reappears — id unchanged — as a
+            // request pointer on the next turn.
+            if context_setup.log_messages {
+                let reply = Message::assistant(
+                    response.text.clone(),
+                    if code.enabled {
+                        Vec::new()
+                    } else {
+                        response.tool_calls.clone()
+                    },
+                );
+                let reply_tokens = context.estimate(&reply);
+                let has_reply = reply.content.is_some() || !reply.tool_calls.is_empty();
+                let request: Vec<(GgContextSource, &Message, usize)> =
+                    context.prompt_items().collect();
+                emitter.log_prompt(
+                    &request,
+                    has_reply.then_some((&reply, reply_tokens)),
+                    response.usage,
+                    response.cost,
+                    finish_reason_token(&response.finish_reason),
+                );
+            }
+
             context.push_assistant(
                 response.text.clone(),
                 if code.enabled {
@@ -5016,6 +5048,12 @@ struct ContextSetup {
     /// Whether to emit the per-turn context breakdown. Gated on the context-visibility
     /// capability; the accounting itself is computed regardless.
     emit_breakdown: bool,
+    /// Whether to log each turn's exact request/response to the
+    /// [message log](crate::message_log) — the de-duplicated
+    /// [`ContextMessage`](GgTelemetryKind::ContextMessage)/[`Prompt`](GgTelemetryKind::Prompt)
+    /// stream the console renders as the per-message Requests view. Gated on the same
+    /// context-visibility capability as the breakdown (the message log is its itemized form).
+    log_messages: bool,
 }
 
 /// The agent-managed-context configuration threaded into the [turn loop](Agent::drive): whether the

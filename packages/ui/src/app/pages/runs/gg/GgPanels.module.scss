@@ -1604,3 +1604,251 @@ $fsm-hue: #2dd4bf;
   flex-direction: column;
   gap: t.$space-lg;
 }
+
+// --- Requests view (the de-duplicated message log) ---------------------------
+
+// The itemized companion to the Context graph: a stack of turn cards, each holding
+// that turn's request (messages colored by the same context-source palette the graph
+// uses) and its response.
+.requests {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+// One turn, a collapsible card.
+.reqTurn {
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: t.$color-bg;
+  overflow: hidden;
+}
+
+.reqTurnSummary {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+  flex-wrap: wrap;
+  padding: t.$space-xs t.$space-sm;
+  cursor: pointer;
+  list-style: none;
+  font-size: t.$font-sm;
+
+  &::-webkit-details-marker {
+    display: none;
+  }
+}
+
+.reqTurnLabel {
+  font-weight: 600;
+  color: t.$color-text;
+}
+
+.reqTurnMeta {
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+// The finish reason, pushed to the trailing edge; tinted when the turn ended cleanly.
+.reqFinish {
+  margin-left: auto;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+
+  &[data-finish="stop"] {
+    color: t.$color-positive;
+  }
+
+  &[data-finish="length"],
+  &[data-finish="content_filter"] {
+    color: t.$color-negative;
+  }
+}
+
+.reqTurnBody {
+  padding: 0 t.$space-sm t.$space-sm;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+// The "Request" / "Response" section captions within a turn.
+.reqSectionLabel {
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$color-text-muted;
+  margin-top: t.$space-xs;
+}
+
+.reqMessages {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+// One message, tinted on its leading edge with its context-source band color so a
+// request reads as the itemization of the stacked graph.
+.reqMessage {
+  border-left: 3px solid t.$color-border;
+  border-radius: t.$radius-sm;
+  background: s.$panel-bg;
+
+  &[data-missing] {
+    padding: t.$space-2xs t.$space-xs;
+  }
+}
+
+.reqMissing {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-style: italic;
+}
+
+.reqMessageDetails {
+  width: 100%;
+}
+
+.reqMessageSummary {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-xs;
+  padding: t.$space-2xs t.$space-xs;
+  cursor: pointer;
+  list-style: none;
+  font-size: t.$font-sm;
+
+  &::-webkit-details-marker {
+    display: none;
+  }
+}
+
+// A small square swatch of the message's band color (echoing the graph legend).
+.reqBand {
+  flex: 0 0 auto;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 2px;
+  align-self: center;
+  background: t.$color-border;
+}
+
+.reqRole {
+  font-weight: 600;
+  color: t.$color-text;
+}
+
+.reqBandLabel {
+  color: t.$color-text-muted;
+  text-transform: lowercase;
+}
+
+// The one-line gist, taking the slack and truncating.
+.reqPreview {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: t.$color-text-muted;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reqTokens {
+  flex: 0 0 auto;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+.reqMessageBody {
+  padding: 0 t.$space-xs t.$space-xs;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+// The verbatim message text — a scrollable, wrapped code block so a large file view
+// never blows out the pane.
+.reqContent {
+  margin: 0;
+  padding: t.$space-xs;
+  border-radius: t.$radius-sm;
+  background: t.$color-bg;
+  border: t.$border-hairline solid t.$color-border;
+  font-family: monospace;
+  font-size: t.$font-sm;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 24rem;
+  overflow: auto;
+}
+
+.reqToolCalls {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+.reqToolCall {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+.reqToolName {
+  font-family: monospace;
+  font-size: t.$font-sm;
+  color: t.$color-accent;
+}
+
+.reqToolArgs {
+  margin: 0;
+  padding: t.$space-xs;
+  border-radius: t.$radius-sm;
+  background: t.$color-bg;
+  border: t.$border-hairline solid t.$color-border;
+  font-family: monospace;
+  font-size: t.$font-sm;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 18rem;
+  overflow: auto;
+}
+
+.reqImages {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-2xs;
+}
+
+.reqImage {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+  padding: 0 t.$space-2xs;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+}
+
+.reqAnswers {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+.reqEmptyResponse {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-style: italic;
+}

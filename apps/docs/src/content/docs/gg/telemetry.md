@@ -18,6 +18,10 @@ The telemetry must let the console display:
   agents.
 - The **[context-window breakdown](/gg/context-visibility/)** over time — the
   stacked line graph.
+- The **[message log](/gg/context-visibility/#the-message-log-the-exact-requests-de-duplicated)** —
+  the exact request each turn sent and the reply it got, streamed as a de-duplicated pool
+  of message bodies (`context_message`) plus one pointer list per turn (`prompt`), so the
+  console can reconstruct every prompt without the stream carrying a repeated message twice.
 
 The very first event of a session, `session_started`, carries the run's whole
 [capability set](/gg/overview/#the-capability-set). That is what lets a console shape
@@ -34,7 +38,8 @@ through **two** surfaces:
   output) splits shown as rings, how many agents ran, the enforced FSM process, and
   the configuration the run's [independent variable](/gg/overview/) is.
 - The **Agents** explorer — everything else. The rich views (activity, context-window
-  breakdown, plan, board, tasks, knowledge) are inherently **per agent** — *whose*
+  breakdown, the [message log](/gg/context-visibility/#the-message-log-the-exact-requests-de-duplicated),
+  plan, board, tasks, knowledge) are inherently **per agent** — *whose*
   window filled, *whose* task list this is — so they cannot honestly be shown as one
   global panel. The explorer lays the run out as a **filesystem**: every agent is a
   folder, the things you can monitor about it are its files, and every agent an agent

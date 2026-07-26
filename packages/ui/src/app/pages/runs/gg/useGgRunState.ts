@@ -21,9 +21,12 @@ import type {
   GgCodeReviewPhase,
   GgContextAction,
   GgContextSourceUsage,
+  GgLoggedImage,
+  GgLoggedToolCall,
   GgMemoryCaps,
   GgMemoryEntry,
   GgPlanPhase,
+  GgPromptRef,
   GgRetainedState,
   GgSkillState,
   GgSpeculationPhase,
@@ -210,6 +213,39 @@ export interface ContextAction {
   reclaimedTokens: number;
   items: number;
   detail: string;
+}
+
+// One pooled message from the message log (`context_message`) — the full body of a
+// single message in the window, recorded once and referenced by id from each turn's
+// prompt (see gg/context-visibility). `tokens` is its estimated share of the window,
+// the same per-item estimate the context-breakdown bands are summed from. Images are
+// carried as descriptors (media type + size), never their bytes.
+export interface PooledMessage {
+  id: string;
+  // system | user | assistant | tool.
+  role: string;
+  content?: string;
+  toolCalls: GgLoggedToolCall[];
+  toolCallId?: string;
+  images: GgLoggedImage[];
+  tokens: number;
+}
+
+// One turn's exact request and response (`prompt`) — pointers into the message pool.
+// `request` is the ordered messages sent this turn, each tagged with the source band
+// it occupies (so the request lines up with the stacked context graph); `responseId`
+// points at the pooled assistant reply (null when the turn produced none). `tokens`/
+// `cost` are the turn's actual provider usage, bundled so the request→response reads
+// as one record. `turn` is the 0-based index of this prompt within the agent's stream,
+// matching the context graph's turn axis.
+export interface PromptTurn {
+  turn: number;
+  request: GgPromptRef[];
+  totalTokens: number;
+  responseId: string | null;
+  finishReason: string;
+  tokens: TokenMetrics;
+  cost: CostMetrics | null;
 }
 
 // The latest `memory_state` — the model's self-curated memories and the caps gg
@@ -574,6 +610,10 @@ function ggFeedRow(
       };
     case "usage":
     case "context_breakdown":
+    // The message log drives the per-agent Requests view, not the feed, so its two
+    // kinds render no row.
+    case "context_message":
+    case "prompt":
     case "skills_state":
     case "memory_state":
     case "tasks_state":
@@ -643,6 +683,11 @@ export interface DerivedGgState {
   latestContext: ContextSnapshot | null;
   compactions: CompactionBoundary[];
   contextActions: ContextAction[];
+  // The message log: the pooled messages (keyed by id) and each turn's request/response
+  // as pointers into that pool. Empty when context visibility is off (no
+  // `context_message`/`prompt` events).
+  messagePool: Map<string, PooledMessage>;
+  prompts: PromptTurn[];
   skills: GgSkillState[];
   memory: GgMemoryState | null;
   tasks: GgTaskEntry[];
@@ -748,6 +793,11 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
   const contextSeries: ContextSnapshot[] = [];
   const compactions: CompactionBoundary[] = [];
   const contextActions: ContextAction[] = [];
+  // The message log: the pool of message bodies (by id) and each turn's request/response
+  // as pointers into it (see gg/context-visibility). The pool is per agent, so within one
+  // agent's partition of the stream every prompt's pointers resolve against these.
+  const messagePool = new Map<string, PooledMessage>();
+  const prompts: PromptTurn[] = [];
   let sawSession = false;
   let sessionEndStatus: string | null = null;
   let skills: GgSkillState[] = [];
@@ -919,6 +969,34 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
           detail: gg.detail,
         });
         break;
+      case "context_message":
+        // A pool definition: record the message body under its id. gg emits it once per
+        // unique message (the first time it enters a prompt on this agent's stream), so a
+        // later definition of the same id would only re-affirm it — keep the latest.
+        messagePool.set(gg.id, {
+          id: gg.id,
+          role: gg.role,
+          content: gg.content,
+          toolCalls: gg.toolCalls,
+          toolCallId: gg.toolCallId,
+          images: gg.images,
+          tokens: gg.tokens,
+        });
+        break;
+      case "prompt":
+        // One turn's request/response as pointers into the pool. The prompt's index in
+        // this list is its turn number, matching the context-breakdown turn axis (both are
+        // emitted once per turn, the breakdown just before the prompt).
+        prompts.push({
+          turn: prompts.length,
+          request: gg.request,
+          totalTokens: gg.totalTokens,
+          responseId: gg.responseId ?? null,
+          finishReason: gg.finishReason,
+          tokens: gg.tokens,
+          cost: gg.cost ?? null,
+        });
+        break;
       case "skills_state":
         skills = gg.skills;
         break;
@@ -1087,6 +1165,8 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
       : null,
     compactions,
     contextActions,
+    messagePool,
+    prompts,
     skills,
     memory,
     tasks,

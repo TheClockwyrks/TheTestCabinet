@@ -82,6 +82,17 @@ export function ContextIcon({ className }: IconProps) {
   );
 }
 
+// Requests — a request/response exchange (two opposed message chevrons), the exact
+// messages sent to and returned from the model.
+export function RequestsIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <path d="M3 8h13l-3-3M16 8l3 3" />
+      <path d="M21 16H8l3 3M8 16l-3-3" />
+    </Icon>
+  );
+}
+
 // Plan — a clipboard of ordered steps.
 export function PlanIcon({ className }: IconProps) {
   return (

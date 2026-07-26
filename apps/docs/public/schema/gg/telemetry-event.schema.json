@@ -280,6 +280,41 @@
         }
       ]
     },
+    "GgLoggedImage": {
+      "description": "A **descriptor** of an image attached to a pooled message — its media type, decoded\nsize, and the tokens it is charged — recorded in place of the base64 bytes.\n\nA request log exists to show *what the model was sent*, and an inline picture's bytes\nare neither readable nor cheap: a single reference mockup can be megabytes of base64,\nwhich would dominate the run record while adding nothing a reader of a request needs.\nThe descriptor keeps the picture accountable (it is why a `read_file` view's token\nfigure is what it is) without carrying the pixels.",
+      "properties": {
+        "bytes": {
+          "description": "The image's decoded size in bytes — what the file on disk measured.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "mediaType": {
+          "description": "The IANA media type (`image/png`, `image/jpeg`, …).",
+          "type": "string"
+        }
+      },
+      "required": ["mediaType", "bytes"],
+      "type": "object"
+    },
+    "GgLoggedToolCall": {
+      "description": "A tool call recorded on a pooled assistant [`ContextMessage`](GgTelemetryKind::ContextMessage)\n— the message-log form of an assistant turn's request to invoke a tool.\n\nMirrors the loop's own tool-call shape (id, name, and parsed JSON arguments); it is a\ndistinct type from the live [`ToolCall`](GgTelemetryKind::ToolCall) event because that\ncarries only the *latest* call for the feed, while this is the verbatim call as it sat\nin the window.",
+      "properties": {
+        "args": {
+          "description": "The arguments the assistant passed, as a free-form JSON object."
+        },
+        "id": {
+          "description": "The provider-assigned call id (keying the `tool` result that answers it).",
+          "type": "string"
+        },
+        "name": {
+          "description": "The tool's name.",
+          "type": "string"
+        }
+      },
+      "required": ["id", "name", "args"],
+      "type": "object"
+    },
     "GgMemoryCaps": {
       "description": "The bounds gg enforces on the model's self-curated [memories] — a band of the\n[`MemoryState`](GgTelemetryKind::MemoryState) event so the console can show how close\nthe model is to each limit.\n\nBecause memories are curated by the *model itself* (unlike [skills], authored ahead of\nthe run), they must be bounded so self-curated notes cannot crowd out the working\ncontext. When a write would exceed a cap, gg rejects it and instructs the model to\nrevise or evict rather than silently truncating or dropping. Lengths are measured in\ncharacters of a memory's **body** (its `description` is a short one-liner, like a\nskill's).\n\n[memories]: https://docs.testcabinet.ai/gg/memories/\n[skills]: https://docs.testcabinet.ai/gg/skills/",
       "properties": {
@@ -380,6 +415,21 @@
           "type": "string"
         }
       ]
+    },
+    "GgPromptRef": {
+      "description": "A pointer from one turn's [`Prompt`](GgTelemetryKind::Prompt) into the\n[message pool](GgTelemetryKind::ContextMessage) — one message in the request, in\nthe order it was sent.\n\nThe message's content is carried once, on its [`ContextMessage`](GgTelemetryKind::ContextMessage)\ndefinition; a prompt references it by [`id`](Self::id) so a message repeated across\nturns is never restreamed. [`source`](Self::source) is the [`GgContextSource`] band\nthe message occupies **this turn** — carried on the reference rather than the pooled\nmessage because a single message can change bands over its life (a mutable block\nsuperseded into [`History`](GgContextSource::History) keeps its content, and thus its\nid, but moves band). It is what lets a request's message list line up, message by\nmessage, with the per-source [`ContextBreakdown`](GgTelemetryKind::ContextBreakdown).",
+      "properties": {
+        "id": {
+          "description": "The pooled message's stable id (a fingerprint of its content).",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/GgContextSource",
+          "description": "The context-window band this message occupies this turn."
+        }
+      },
+      "required": ["id", "source"],
+      "type": "object"
     },
     "GgResponseHealing": {
       "description": "What gg had to do to a model's response before it could run it — the healing record of one\ncode-shaped turn.\n\nHealing is textual and conservative: it only ever **deletes**, so a healed program is always a\nsubsequence of the response the model sent, and every repair is disclosed to the model in its\nturn feedback — this record is a fact the model was told, never something done behind it.\n\nA response that needed nothing carries the default and is omitted from the wire entirely, so\nthe presence of this object *is* \"something was unusual about this response\".",
@@ -714,6 +764,102 @@
         }
       },
       "required": ["type", "bySource", "totalTokens"],
+      "type": "object"
+    },
+    {
+      "description": "A single **message** in an agent's context window, recorded in full the first time\nit enters any prompt on this agent's stream — the pool entry every\n[`Prompt`](Self::Prompt) points into so a message repeated across turns is stored\nonce, not once per turn.\n\ngg's window is [append-only](https://docs.testcabinet.ai/gg/context-visibility/): a\nturn extends the previous turn's prompt rather than rewriting it, so the same\nmessages recur across most turns. Rather than restream the whole prompt every turn,\ngg assigns each message a stable [`id`](Self::ContextMessage::id) — a fingerprint of\nits content — and emits its body **once**, here; each turn's [`Prompt`](Self::Prompt)\nis then a sequence of [pointers](GgPromptRef) into this pool, and the console\nreassembles a turn's exact request by resolving them. The pool is per agent (each\nagent's stream carries the definitions its own prompts reference). Emitted only when\nthe [context-visibility](CAPABILITY_CONTEXT_VISIBILITY) capability is on; the run's\n[`tokens`](Self::ContextMessage::tokens) figure is the same estimate the breakdown\nbands are summed from, so a message's own contribution to fullness is legible.\n\nAn attached image is recorded as a lightweight [descriptor](GgLoggedImage) — its\nmedia type, decoded size, and the tokens it is charged — never its base64 bytes,\nwhich would bloat the stream without adding anything the reader of a *request* needs.",
+      "properties": {
+        "content": {
+          "description": "The message's textual content, when it has any (absent for an assistant turn\nthat only called tools).",
+          "type": ["string", "null"]
+        },
+        "id": {
+          "description": "The message's stable id: a fingerprint of its content, shared by every\n[`Prompt`](Self::Prompt) reference and by the same message wherever it recurs.",
+          "type": "string"
+        },
+        "images": {
+          "default": [],
+          "description": "Descriptors of any images attached to the message — the media type and size of\neach, never its bytes (see [`GgLoggedImage`]). Empty for a text-only message.",
+          "items": {
+            "$ref": "#/$defs/GgLoggedImage"
+          },
+          "type": "array"
+        },
+        "role": {
+          "description": "The message's role (`system`, `user`, `assistant`, or `tool`).",
+          "type": "string"
+        },
+        "tokens": {
+          "description": "The estimated tokens this message occupies — the same per-item estimate the\n[`ContextBreakdown`](Self::ContextBreakdown) bands sum, so a message's own share\nof the window is legible.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "toolCallId": {
+          "description": "For a `tool` message, the id of the assistant tool call it answers.",
+          "type": ["string", "null"]
+        },
+        "toolCalls": {
+          "default": [],
+          "description": "The tool calls an assistant message requested, in order (empty for every other\nrole).",
+          "items": {
+            "$ref": "#/$defs/GgLoggedToolCall"
+          },
+          "type": "array"
+        },
+        "type": {
+          "const": "context_message",
+          "type": "string"
+        }
+      },
+      "required": ["type", "id", "role", "tokens"],
+      "type": "object"
+    },
+    {
+      "description": "One agent turn's exact **request and response**, as pointers into the\n[message pool](Self::ContextMessage) — the itemized, message-level companion to the\nper-source [`ContextBreakdown`](Self::ContextBreakdown).\n\n[`request`](Self::Prompt::request) is the ordered list of messages sent to the model\nthis turn, each a [pointer](GgPromptRef) to a pooled\n[`ContextMessage`](Self::ContextMessage) tagged with the [`GgContextSource`] band it\noccupies — so a turn's request is reconstructed without restreaming any message, and\nevery message lines up with the band it contributes to on the context graph.\n[`response_id`](Self::Prompt::response_id) points at the assistant reply (also\npooled, so it reappears as a request pointer on the next turn, its id unchanged), or\nis absent when the turn produced no assistant message at all.\n[`tokens`](Self::Prompt::tokens)/[`cost`](Self::Prompt::cost) are the turn's actual\nprovider usage — the same figures the incremental [`Usage`](Self::Usage) carries,\nbundled here so a turn's request→response reads as one self-contained record.\nEmitted once per turn (immediately after the model call) when the\n[context-visibility](CAPABILITY_CONTEXT_VISIBILITY) capability is on.",
+      "properties": {
+        "cost": {
+          "anyOf": [
+            {
+              "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/CostMetrics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The turn's cost, when the provider reported one."
+        },
+        "finishReason": {
+          "description": "Why the model's turn stopped (`stop`, `tool_calls`, `length`, …).",
+          "type": "string"
+        },
+        "request": {
+          "description": "The messages sent to the model this turn, in order — pointers into the pool.",
+          "items": {
+            "$ref": "#/$defs/GgPromptRef"
+          },
+          "type": "array"
+        },
+        "responseId": {
+          "description": "The pooled id of the assistant reply this request produced. Absent when the turn\nproduced no assistant message (neither text nor tool calls).",
+          "type": ["string", "null"]
+        },
+        "tokens": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/TokenMetrics",
+          "description": "The turn's normalized token usage (the same delta the [`Usage`](Self::Usage)\nevent carries), bundled so the request→response record is self-contained."
+        },
+        "totalTokens": {
+          "description": "The estimated total tokens across the request (the sum of the pointed-to\nmessages' estimates) — the numerator of this turn's fullness, matching the\nadjacent [`ContextBreakdown`](Self::ContextBreakdown).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "type": {
+          "const": "prompt",
+          "type": "string"
+        }
+      },
+      "required": ["type", "request", "totalTokens", "finishReason", "tokens"],
       "type": "object"
     },
     {

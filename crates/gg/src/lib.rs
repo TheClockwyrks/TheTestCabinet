@@ -31,6 +31,7 @@ mod git;
 mod healing;
 mod limits;
 mod memories;
+mod message_log;
 mod model;
 mod planning;
 mod prompts;

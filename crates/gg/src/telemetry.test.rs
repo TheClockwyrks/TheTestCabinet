@@ -153,3 +153,136 @@ fn now_rfc3339_is_parseable() {
     assert!(!stamp.is_empty());
     OffsetDateTime::parse(&stamp, &Rfc3339).expect("valid RFC 3339 timestamp");
 }
+
+/// `log_prompt` streams each message's body once (as a `ContextMessage`) and each turn's
+/// request/response as pointers into that pool: a message repeated on a later turn is not
+/// re-defined, and the `Prompt` refs carry the ids in order with their bands.
+#[test]
+fn log_prompt_deduplicates_across_turns() {
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-1".to_string()), Box::new(sink.clone()))
+        .for_agent("root", None);
+
+    let system = Message::system("you are gg");
+    let prompt = Message::user("build a game");
+    let reply1 = Message::assistant(Some("on it".to_string()), Vec::new());
+
+    // Turn 1: system + user prompt → assistant reply.
+    let request1 = [
+        (GgContextSource::System, &system, 10usize),
+        (GgContextSource::UserPrompt, &prompt, 20usize),
+    ];
+    emitter.log_prompt(
+        &request1,
+        Some((&reply1, 5)),
+        TokenCounts::default(),
+        None,
+        "stop".to_string(),
+    );
+
+    // Turn 2: the same system + prompt (repeats) + turn 1's reply now in the window as
+    // history → a new assistant reply.
+    let reply2 = Message::assistant(Some("done".to_string()), Vec::new());
+    let request2 = [
+        (GgContextSource::System, &system, 10usize),
+        (GgContextSource::UserPrompt, &prompt, 20usize),
+        (GgContextSource::Assistant, &reply1, 5usize),
+    ];
+    emitter.log_prompt(
+        &request2,
+        Some((&reply2, 4)),
+        TokenCounts::default(),
+        None,
+        "stop".to_string(),
+    );
+
+    let events = sink.events();
+
+    // Every unique message is defined exactly once: system, prompt, reply1, reply2 = 4.
+    let defined: Vec<&str> = events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::ContextMessage { id, .. } => Some(id.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        defined.len(),
+        4,
+        "one definition per unique message: {defined:?}"
+    );
+    let unique: std::collections::HashSet<&str> = defined.iter().copied().collect();
+    assert_eq!(unique.len(), 4, "no message is defined twice");
+
+    // Two prompts, in order.
+    let prompts: Vec<&GgTelemetryKind> = events
+        .iter()
+        .map(|e| &e.kind)
+        .filter(|k| matches!(k, GgTelemetryKind::Prompt { .. }))
+        .collect();
+    assert_eq!(prompts.len(), 2);
+
+    // Turn 1's request points at the system + prompt ids (in order, with bands), and its
+    // response points at reply1.
+    let sys_id = fingerprint(&system);
+    let prompt_id = fingerprint(&prompt);
+    let reply1_id = fingerprint(&reply1);
+    match prompts[0] {
+        GgTelemetryKind::Prompt {
+            request,
+            response_id,
+            total_tokens,
+            ..
+        } => {
+            assert_eq!(request.len(), 2);
+            assert_eq!(request[0].id, sys_id);
+            assert_eq!(request[0].source, GgContextSource::System);
+            assert_eq!(request[1].id, prompt_id);
+            assert_eq!(*total_tokens, 30);
+            assert_eq!(response_id.as_deref(), Some(reply1_id.as_str()));
+        }
+        other => panic!("expected Prompt, got {other:?}"),
+    }
+
+    // Turn 2 references reply1 by its unchanged id — proving the response pooled on turn 1
+    // is reused as a request pointer, not redefined.
+    match prompts[1] {
+        GgTelemetryKind::Prompt { request, .. } => {
+            assert_eq!(request.len(), 3);
+            assert_eq!(request[2].id, reply1_id);
+            assert_eq!(request[2].source, GgContextSource::Assistant);
+        }
+        other => panic!("expected Prompt, got {other:?}"),
+    }
+
+    // reply1 is defined once (on turn 1) and never redefined on turn 2.
+    assert_eq!(
+        defined.iter().filter(|id| **id == reply1_id).count(),
+        1,
+        "reply1 is defined exactly once"
+    );
+}
+
+/// A turn that produced no assistant message carries no response pointer.
+#[test]
+fn log_prompt_omits_absent_response() {
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(None, Box::new(sink.clone())).for_agent("root", None);
+    let system = Message::system("s");
+    emitter.log_prompt(
+        &[(GgContextSource::System, &system, 3)],
+        None,
+        TokenCounts::default(),
+        None,
+        "stop".to_string(),
+    );
+    let events = sink.events();
+    let prompt = events
+        .iter()
+        .find_map(|e| match &e.kind {
+            GgTelemetryKind::Prompt { response_id, .. } => Some(response_id.clone()),
+            _ => None,
+        })
+        .expect("a prompt was emitted");
+    assert_eq!(prompt, None);
+}

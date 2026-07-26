@@ -24,6 +24,55 @@ fn call(id: &str, name: &str) -> ToolCall {
 }
 
 #[test]
+fn prompt_items_expose_source_message_and_tokens_in_order() {
+    let mut ctx = model(Some(1000));
+    ctx.push_system("system");
+    ctx.push_user_prompt("build a game");
+    ctx.push_tool_result(tool_output_source("write_file"), "c1", "wrote index.html");
+
+    let items: Vec<_> = ctx.prompt_items().collect();
+    assert_eq!(items.len(), 3);
+
+    // Each item carries its band, its message, and the cached estimate — in push order,
+    // matching what `messages()` renders and what `total_tokens()` sums.
+    let (sources, messages, tokens): (Vec<_>, Vec<_>, Vec<_>) = {
+        let mut s = Vec::new();
+        let mut m = Vec::new();
+        let mut t = Vec::new();
+        for (source, message, tok) in &items {
+            s.push(*source);
+            m.push((*message).clone());
+            t.push(*tok);
+        }
+        (s, m, t)
+    };
+    assert_eq!(
+        sources,
+        vec![
+            GgContextSource::System,
+            GgContextSource::UserPrompt,
+            GgContextSource::ToolOutput,
+        ]
+    );
+    assert_eq!(messages, ctx.messages());
+    assert_eq!(
+        tokens.iter().map(|t| *t as u64).sum::<u64>(),
+        ctx.total_tokens()
+    );
+}
+
+#[test]
+fn estimate_matches_the_models_estimator() {
+    let ctx = model(Some(1000));
+    let message = Message::user("some prompt text");
+    // The public estimate helper agrees with the estimator the window is counted by.
+    assert_eq!(
+        ctx.estimate(&message) as u64,
+        HeuristicTokenEstimator::new().estimate_message(&message) as u64
+    );
+}
+
+#[test]
 fn renders_to_messages_in_push_order_faithfully() {
     let mut ctx = model(Some(1000));
     ctx.push_system("system");

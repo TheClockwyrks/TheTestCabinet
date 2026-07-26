@@ -30,12 +30,15 @@ use std::io::Write;
 use std::sync::Arc;
 
 use test_cabinet_core::gg::{
-    GgHealingStrategy, GgLimitBreach, GgRunLimits, GgSessionSummary, GgTelemetryEvent,
-    GgTelemetryKind,
+    GgContextSource, GgHealingStrategy, GgLimitBreach, GgPromptRef, GgRunLimits, GgSessionSummary,
+    GgTelemetryEvent, GgTelemetryKind,
 };
+use test_cabinet_core::metrics::{Cost, TokenCounts};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
+use crate::message_log::{MessagePool, context_message_event, fingerprint};
+use crate::model::Message;
 use crate::summary::SessionSummaryTracker;
 
 /// A destination for serialized telemetry lines.
@@ -101,6 +104,14 @@ pub struct Emitter {
     /// accumulate into the one summary; [`finalize_summary`](Self::finalize_summary) reads it at
     /// session end.
     summary: Arc<SessionSummaryTracker>,
+    /// The per-agent [message pool](MessagePool) backing [`log_prompt`](Self::log_prompt):
+    /// which message fingerprints have already been streamed as
+    /// [`ContextMessage`](GgTelemetryKind::ContextMessage) definitions on this agent's
+    /// stream, so each message's body is emitted once and referenced by id thereafter.
+    /// Unlike [`summary`](Self::summary), this is **not** shared across agents — each
+    /// [agent-scoped](Self::for_agent) emitter gets a fresh pool so its stream always
+    /// carries the definitions its own prompts reference.
+    messages: Arc<MessagePool>,
 }
 
 impl Emitter {
@@ -122,6 +133,7 @@ impl Emitter {
             issue_id: None,
             sink: Arc::from(sink),
             summary: Arc::new(SessionSummaryTracker::new()),
+            messages: Arc::new(MessagePool::new()),
         }
     }
 
@@ -155,6 +167,10 @@ impl Emitter {
             issue_id,
             sink: Arc::clone(&self.sink),
             summary: Arc::clone(&self.summary),
+            // A fresh pool per agent: an agent's stream must carry the definitions its own
+            // prompts reference (the console reduces the log per agent), so pools are never
+            // shared the way the run-wide summary is.
+            messages: Arc::new(MessagePool::new()),
         }
     }
 
@@ -266,6 +282,70 @@ impl Emitter {
     /// [finalizing](Self::finalize_summary).
     pub fn record_limit_hit(&self, breach: Option<GgLimitBreach>) {
         self.summary.record_limit_hit(breach);
+    }
+
+    /// Log one turn's exact request and response to the
+    /// [message log](https://docs.testcabinet.ai/gg/context-visibility/): stream the body of
+    /// every message not yet seen on this agent's stream (as a
+    /// [`ContextMessage`](GgTelemetryKind::ContextMessage)), then a
+    /// [`Prompt`](GgTelemetryKind::Prompt) carrying the request as ordered
+    /// [pointers](GgPromptRef) into that pool plus the response.
+    ///
+    /// `request` is the turn's messages in order, each with the
+    /// [`GgContextSource`] band it occupies *this turn* and its estimated tokens (from
+    /// [`ContextModel::prompt_items`](crate::context::ContextModel::prompt_items)). `response`
+    /// is the assistant reply the turn produced and its estimated tokens — pooled like any
+    /// message (so it reappears, its id unchanged, as a request pointer next turn), or `None`
+    /// when the turn produced no assistant message. `usage`/`cost`/`finish_reason` are the
+    /// turn's actual provider outcome.
+    ///
+    /// De-duplication makes this cheap on gg's [append-only](crate::message_log) window: only
+    /// the messages new *this* turn (typically just the latest assistant/tool exchange, and
+    /// any rebuilt mutable block) carry a body; the rest are one id apiece.
+    pub fn log_prompt(
+        &self,
+        request: &[(GgContextSource, &Message, usize)],
+        response: Option<(&Message, usize)>,
+        usage: TokenCounts,
+        cost: Option<Cost>,
+        finish_reason: String,
+    ) {
+        // Stream each request message's body the first time this agent sends it, and build
+        // the ordered pointer list. `total_tokens` sums the per-item estimates so it agrees
+        // with the adjacent breakdown.
+        let mut refs = Vec::with_capacity(request.len());
+        let mut total_tokens: u64 = 0;
+        for (source, message, tokens) in request {
+            let id = fingerprint(message);
+            if self.messages.register(&id) {
+                self.emit(context_message_event(id.clone(), message, *tokens as u64));
+            }
+            total_tokens += *tokens as u64;
+            refs.push(GgPromptRef {
+                id,
+                source: *source,
+            });
+        }
+
+        // Pool the assistant reply too, so it is a first-class message the next turn can
+        // reference and its own token share is legible. A turn with no assistant message
+        // (neither text nor tool calls) carries no response pointer.
+        let response_id = response.map(|(message, tokens)| {
+            let id = fingerprint(message);
+            if self.messages.register(&id) {
+                self.emit(context_message_event(id.clone(), message, tokens as u64));
+            }
+            id
+        });
+
+        self.emit(GgTelemetryKind::Prompt {
+            request: refs,
+            total_tokens,
+            response_id,
+            finish_reason,
+            tokens: usage,
+            cost,
+        });
     }
 }
 
