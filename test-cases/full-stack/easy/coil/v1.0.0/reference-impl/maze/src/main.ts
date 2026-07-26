@@ -56,13 +56,11 @@ async function main(): Promise<void> {
   let elapsed = 0;
   let lastEat = -10; // start well before now so no bite plays on load
 
+  // The bite anim only — the audio cues themselves are played by Game.advance() (see
+  // game.ts), so they fire identically whether a tick is driven by this wall-clock loop
+  // or by the debug API's step().
   function applyEvents(ev: TickEvents): void {
-    if (ev.ate) {
-      audio.play("eat");
-      lastEat = elapsed;
-    }
-    if (ev.comboRose) audio.play("combo");
-    if (ev.died) audio.play("death");
+    if (ev.ate) lastEat = elapsed;
   }
 
   function biteFrame(): number {

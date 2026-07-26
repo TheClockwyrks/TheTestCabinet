@@ -322,3 +322,51 @@ export async function tileMaxDistFrom(api, col, row, ref) {
   }
   return max;
 }
+
+// ---- Audio (reads the Web Audio cues the build actually schedules) ----------
+//
+// Deepcore's cues are produced `.wav` files (specs/assets.md) decoded and played through
+// the Web Audio API (src/audio.ts), so the driver reports every source the build starts
+// (see `api.audio`). The game must not autoplay: `Audio.resume()` builds the graph and
+// starts decoding only on the first real user interaction (main.ts's `gesture()`), so
+// before driving an event whose cue is checked, arm audio with a GENUINE browser gesture.
+// A build may feed the debug API through a purely logical input path and unlock audio only
+// from a real DOM event (a keydown OR a pointer), so arming uses both `api.userKey` and a
+// corner `api.userClick` rather than a debug `press`/`keyDown` — those would leave a
+// conformant build's AudioContext uncreated, so no cue would ever be scheduled though it
+// plays fine for a real player. `KeyZ` has no game binding (src/input.ts) and (4, 4) sits in
+// the top-left corner of the status bar — above `VIEWPORT_Y` so it is never part of the mine
+// view, and left of every status-bar readout/button (the gauges start at x=16, the BAG/PAUSE/
+// MUTE buttons at x>=1058) and every menu's centered buttons/panels — so arming never lands on
+// a clickable and never disturbs game state, in the mine or on any menu.
+//
+// Unlike a synth cue scheduled inline, Deepcore's audio is QUEUED: play() calls land in
+// `game.sndQueue`/`game.activeLoops` (the deterministic sim, which a validate-pass `step`
+// advances instantly with no painted frame), and only the real, wall-clock-driven animation
+// frame loop in main.ts drains that queue into actual `AudioBufferSourceNode`s. A settle after
+// arming (letting the decode of the produced clips finish) and a short settle after driving a
+// cue's event (letting one real frame drain the queue) are both real pauses — never simulation
+// time — so they belong here rather than in `api.advance`.
+export async function armAudio(api) {
+  await api.userKey("KeyZ");
+  await api.userClick(4, 4);
+  // Let the first-gesture decode of the produced clips (Audio.resume(), an async
+  // fetch + decodeAudioData per cue) finish before any cue is driven, so the very first
+  // cue after arming is never dropped for landing before its buffer was ready.
+  await api.settle(250);
+}
+
+/** The number of Web Audio sources the build has started so far. */
+export async function audioCount(api) {
+  return (await api.audio()).length;
+}
+
+/**
+ * A real pause (never simulation time) long enough for one animation frame to drain a
+ * just-queued cue (`game.sndQueue` / `game.activeLoops`) into an actual Web Audio source
+ * (main.ts's per-frame `audio.play()` / `setLoop()` / `syncLoops()`). Call this in `act`,
+ * after driving the event and before reading `audioCount` again.
+ */
+export async function drainAudioQueue(api) {
+  await api.settle(60);
+}

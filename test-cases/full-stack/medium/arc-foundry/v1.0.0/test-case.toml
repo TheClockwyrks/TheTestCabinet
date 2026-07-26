@@ -824,24 +824,95 @@ reference = "gameplay"
 proof = "gameplay"
 
 # --- Audio --------------------------------------------------------------------
+# Each mandated cue (specs/assets.md "Audio") is its own review item, decided
+# automatically: a reporter-side Web Audio probe reads the sources the build has
+# started (`api.audio`, see `validation/_helpers.mjs`'s `armAudio`/`audioCount`), so a
+# check confirms a cue plays on its event without inspecting the sound itself — a build
+# fails exactly the cue it omits, the same taxonomy floe's Audio category uses. The
+# build must not autoplay, so each check arms audio with a real gesture (a key tap and
+# a corner click) first. The exact timbre, the fire-cue-per-family distinctness, and
+# the slow/burn status cues' quality stay for the reviewer; only that the matching
+# produced clip is scheduled is scored here.
 [[review.categories]]
 id = "audio"
 title = "Audio"
 [[review.categories.items]]
-id = "sfx-cues"
-title = "Produced fire, stamp, combine, kill, and leak cues"
-description = "The yard has produced sound: a stamp clunk, a fire cue per component family, a combine chime, a kill pop, a rock-settle thunk, and a leak alarm, played on the matching events via Web Audio (no downloaded or hand-oscillated stand-in)."
-proof = "pressure"
+id = "stamp"
+title = "Stamp cue"
+description = "A press/stamp clunk, produced with the audio tools, plays when a rock drops from the scrap-press."
+validation = { script = "validation/audio/stamp.mjs", outputs = [
+  { id = "stamp", name = "The rock drop whose cue is checked", kind = "video" },
+] }
 [[review.categories.items]]
-id = "status-cues"
-title = "Produced slow and burn status cues"
-description = "A slow hum plays while a unit is slowed and a burn sizzle while a burn DoT ticks — distinct produced status cues."
-proof = "pressure"
+id = "zap"
+title = "Capacitor/Emitter fire cue"
+description = "A sharp zap, produced with the audio tools, plays when a Capacitor or Emitter fires."
+validation = { script = "validation/audio/zap.mjs", outputs = [
+  { id = "zap", name = "The shot whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "chain"
+title = "Coil fire cue"
+description = "A crackling chain, produced with the audio tools, plays when a Coil fires."
+validation = { script = "validation/audio/chain.mjs", outputs = [
+  { id = "chain", name = "The shot whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "discharge"
+title = "Arc-Node/Discharge Rig fire cue"
+description = "A discharge boom, produced with the audio tools, plays when an Arc-Node or Discharge Rig fires."
+validation = { script = "validation/audio/discharge.mjs", outputs = [
+  { id = "discharge", name = "The shot whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "combine"
+title = "Combine chime"
+description = "A combine chime, produced with the audio tools, plays when a quality-combine or recipe-combine folds structures into one (the same cue a combination-tower spawn reuses)."
+validation = { script = "validation/audio/combine.mjs", outputs = [
+  { id = "combine", name = "The fold whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "kill"
+title = "Kill cue"
+description = "A kill/ground-out pop, produced with the audio tools, plays when a shot destroys a unit."
+validation = { script = "validation/audio/kill.mjs", outputs = [
+  { id = "kill", name = "The kill whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "settle"
+title = "Rock-settle cue"
+description = "A rock-settle thunk, produced with the audio tools, plays when a structure hardens in place — unkept rocks at wave start, and a build-phase dismantle."
+validation = { script = "validation/audio/settle.mjs", outputs = [
+  { id = "settle", name = "The hardening whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "leak"
+title = "Leak alarm"
+description = "A leak alarm, produced with the audio tools, plays when a unit grounds out at the Collector and Grid Integrity drops."
+validation = { script = "validation/audio/leak.mjs", outputs = [
+  { id = "leak", name = "The leak whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "slow"
+title = "Slow status cue"
+description = "A slow hum (an icy/EM shimmer), produced with the audio tools, plays for a Choke's slow."
+validation = { script = "validation/audio/slow.mjs", outputs = [
+  { id = "slow", name = "The shot whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "burn"
+title = "Burn status cue"
+description = "A burn sizzle (a crackling overcurrent DoT cue), produced with the audio tools, plays for a Rectifier's burn."
+validation = { script = "validation/audio/burn.mjs", outputs = [
+  { id = "burn", name = "The shot whose cue is checked", kind = "video" },
+] }
 [[review.categories.items]]
 id = "music"
 title = "Produced industrial-electro music bed"
-description = "A tense, driving industrial-electro reactor music bed the build produced with the music tool loops under play."
-proof = "pressure"
+description = "A tense, driving industrial-electro reactor music bed the build produced with the music tool loops under play, once the player first interacts."
+validation = { script = "validation/audio/music.mjs", outputs = [
+  { id = "music", name = "The arming whose cue is checked", kind = "video" },
+] }
 [[review.categories.items]]
 id = "no-autostart-mute"
 title = "Audio waits for interaction and can be muted"
