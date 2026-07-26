@@ -517,6 +517,11 @@ export default defineConfig({
             // How a capability set is named, saved, and launched in the console —
             // the operator-facing counterpart to the overview's design material.
             "gg/configurations",
+            // The ceilings a run is bounded by. Beside Configurations rather than
+            // under Capabilities: a ceiling is an operator's guardrail that applies
+            // to every capability and to both execution modes, not a feature under
+            // ablation.
+            "gg/execution-limits",
             // How gg's model-facing prose is authored (Handlebars templates) and
             // how the system prompt is assembled from the capability set. Not a
             // capability: it cuts across all of them.
@@ -545,6 +550,10 @@ export default defineConfig({
                 "gg/multi-model",
                 "gg/toolset-ablation",
                 "gg/responses-as-code",
+                // A property of the capability above it — the counted, disclosed
+                // repairs gg makes to a reply before running it as a program — so it
+                // sits inside this group, unlike the run-level limits.
+                "gg/response-healing",
                 "gg/telemetry",
                 "gg/result-aggregation",
                 "gg/replay",

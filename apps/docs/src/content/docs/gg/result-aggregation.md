@@ -19,6 +19,29 @@ run pays off — it is the dimension every aggregate query slices by. Result
 aggregation depends directly on the [telemetry](/gg/telemetry/) schema: we can only
 aggregate over fields we durably record, so the two are designed together.
 
+## Facets and metrics worth knowing about
+
+Most facets come straight off the capability set — whether a capability is on, which
+implementation it uses, a capability param, a slot's model, the preset. Two additions are
+worth calling out because they answer questions the rest cannot:
+
+- **`limitHit`** groups a run by which [execution ceiling](/gg/execution-limits/) stopped
+  it, or `"none"` for a run that hit none. It is distinct from terminal status because
+  two ceilings share the status `limit_exceeded` while two others have statuses of their
+  own, so this is the facet that answers "which ceiling?" directly.
+- **Thirteen [response-healing](/gg/response-healing/) metrics** — how many of a run's
+  replies had to be repaired before they could run, how many applications each strategy
+  made, how many replies were not programs at all (and, of those, how many offered several
+  programs — split by whether the reply fenced them or pasted them bare, which are two
+  different mistakes), and the computed `healing_rate`. Averaging that rate across a bucket
+  grouped by primary model answers "which models still need their replies repaired?" in one
+  query, which is exactly the instruction-following signal responses-as-code exists to
+  measure.
+
+Ablating a healing strategy needs no new facet: a **capability param** facet over
+`responses-as-code` / `healing.strip-fences` resolves the dotted path, and a run that left
+the strategy at its default buckets as *absent* rather than as a value it never declared.
+
 ## Where it lives
 
 Aggregation is one tab of the console's **gg analysis** UI, entered from the

@@ -98,6 +98,14 @@ the capability set, and the harness becomes a laboratory. It must be:
   [configuration](/gg/configurations/): registered on an operator's account, then
   picked by name when a run is launched.
 
+The set carries one thing that is *not* a capability: the run's
+[**execution limits**](/gg/execution-limits/) — the ceilings on turns, wall clock,
+consecutive errors, recent error rate and cost that stop a run and record which one
+stopped it. They live here rather than among the capabilities because a capability is a
+feature under ablation while a ceiling is an operator's guardrail over all of them, and
+because the set is what a run *records*, so a run stopped by a ceiling carries both the
+breach and the ceiling that produced it.
+
 The capability set is a **first-class Test Cabinet concept** that **replaces** the
 `harness + model + orchestrator` tuple for a gg run (only the test case and variant
 carry over — those are test-case-level). Making it first-class is what keeps an
@@ -183,6 +191,8 @@ saved, launched, and analyzed in the console is
   experimental variable.
 - [Responses as code](/gg/responses-as-code/) — agents emit code run in a wasmtime
   sandbox instead of discrete tool calls.
+- [Response healing](/gg/response-healing/) — the counted, disclosed repairs gg makes
+  to a reply before running it as a program.
 
 **Observability**
 

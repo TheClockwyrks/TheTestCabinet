@@ -35,6 +35,15 @@ consume them (below), and the per-tool [ablation](/gg/toolset-ablation/) overrid
 an ablation arm is to duplicate the arm beside it and change the one thing under
 test.
 
+Above the capability groups sits the **Run limits** fieldset — the
+[execution ceilings](/gg/execution-limits/) the whole run is bounded by: turns per agent,
+wall-clock seconds, consecutive errors, error rate and its window, and cost. They are not
+capabilities (they apply to every capability and to both execution modes at once), so
+they sit above the catalogue rather than inside a group of it. **Leaving a field empty
+leaves that ceiling off**, and an untouched fieldset writes no `limits` key at all, so
+every configuration saved before limits existed round-trips unchanged. The one field with
+a default is turns per agent, which is 50 when empty.
+
 One param is worth knowing about before you run a compaction study: context
 visibility's [**window limit**](/gg/context-visibility/#the-window-a-run-is-measured-against)
 narrows the window a run is measured against, so a compaction arm can be exercised

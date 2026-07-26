@@ -20,6 +20,11 @@ renders a test case's [`prompt.hbs`](/testing/end-to-end/overview/#prompt-templa
 | `memories.hbs`     | The pinned [memories](/gg/memories/) block.                                  |
 | `plan-mode.hbs`    | The [planning](/gg/planning/) capability's read-only plan-mode guidance.     |
 | `plan-framing.hbs` | How an accepted plan is framed as it seeds the fresh implementation context. |
+| `code-result.hbs`  | The turn feedback for a [responses-as-code](/gg/responses-as-code/) program that ran — its call roster, its output, and anything it needs telling. |
+| `code-transpile-error.hbs` | The turn feedback for a [program](/gg/responses-as-code/) that did not compile, so nothing ran. |
+| `code-sandbox-error.hbs` | The turn feedback for a [program](/gg/responses-as-code/) the sandbox could not run to a result — a fuel or memory ceiling. |
+| `code-not-a-program.hbs` | The turn feedback for a reply that was not a program at all — prose, empty, comments only, or several candidate blocks. |
+| `healing-note.hbs`  | The partial at the top of all four code feedback templates, disclosing what [healing](/gg/response-healing/) repaired. |
 
 ## The system prompt is assembled from the capability set
 
@@ -49,6 +54,40 @@ the build instead of reaching a model.
 
 Because the prompt is one file, editing it is editing prose: rewording the tasks section,
 reordering the capability sections, or tightening the base framing needs no Rust change.
+
+## The code-mode arm teaches a different contract
+
+[Responses as code](/gg/responses-as-code/) replaces the base framing's ending rule as
+well as its tool listing, so `system.hbs` renders one of two whole arms. The code arm
+teaches four things the tool-calling arm has no need of, and each is gated on something
+about the run:
+
+- **What a reply *is*.** The model's whole reply is the program: no fence, no language
+  tag, no prose around it, exactly one program per reply — with a top-level `return`
+  named as the thing that ends it, since a model that pastes a second draft after the
+  first is pasting it after a `return` — and nothing that narrates a result the model has
+  not seen yet. **No backtick fence appears anywhere in the rendered code-mode
+  prompt** — every worked example is indented instead, and a test asserts it — because an
+  example is the one part of a prompt a model copies verbatim, so a fenced one would both
+  re-teach the abolished contract and corrupt the instruction-following signal the
+  capability exists to collect.
+- **Why not to fence**, gated on whether [healing](/gg/response-healing/)'s fence
+  stripping is armed. With it off, a fence really is a syntax error on line 1 and the
+  prompt says so; with it on, that sentence would be false — gg strips the fence and says
+  it did — and a model that tested the claim would learn that gg's rules are negotiable.
+  The armed arm therefore states the repair honestly and calls it a repair rather than
+  the contract.
+- **How the run ends**: `finish(summary)`, and nothing else. The signature and its
+  documentation are interpolated from the sandbox's own catalogue, like every tool
+  signature, and the section is gated on the run being in code mode at all — a
+  tool-calling run can never be shown a function it has no way to call.
+- **Whose ending it is**, gated on whether the agent is a **delegated** worker rather than
+  the run's root. A subagent renders this same prompt, and a model told "this ends the
+  run" while it is a delegated worker has a strong reason not to call it — and a worker
+  that never calls it never returns the verdict a [code review](/gg/code-reviews/) or a
+  [speculation](/gg/speculative-execution/) judge is waiting for. The same fix runs
+  through the briefs gg generates for those roles: in code mode they ask for a `finish`
+  call rather than for a final message.
 
 ## The pinned blocks carry state, not instructions
 
