@@ -6,7 +6,13 @@
 // and outgoing speeds are read off the real collision. The outgoing speed must match
 // the incoming one — the obstacle reflects the ball without accelerating it.
 
-import { clearPaddles, startPlaying, TICK, ball0 } from "../_helpers.mjs";
+import {
+  clearPaddles,
+  pinObstaclesUpright,
+  startPlaying,
+  TICK,
+  ball0,
+} from "../_helpers.mjs";
 
 const OBSTACLE_A = { faceX: 480, y: 220 };
 const SPEED = 600;
@@ -24,6 +30,10 @@ export default function item() {
     async arrange(api) {
       await startPlaying(api);
       await clearPaddles(api);
+      // The bank shot targets obstacle A's base-x left face; pin the gyre obstacles
+      // upright so the reflection is the clean, axis-aligned one this speed check reads
+      // (a no-op in base/multi and for an already-upright build).
+      await pinObstaclesUpright(api);
       await api.call("setBall", 0, {
         x: OBSTACLE_A.faceX - 180,
         y: OBSTACLE_A.y,

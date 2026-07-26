@@ -32,10 +32,20 @@ export default function item() {
         hit.paddle.vy,
         100,
       );
-      check.expectGt(
-        "its motion imparts significant spin to the ball (spin)",
+      // The spin imparted must TRACK the AI paddle's own motion (physics.md:
+      // `spin += paddleVy * 0.85`), not clear a fixed magnitude. The AI is deliberately
+      // slower than the human (560 vs 720 px/s) and eases off as it nears the ball, so
+      // its contact speed — and thus its spin — is whatever its own chase produces. A
+      // fixed floor tuned to a hard human swing (spin > 400 needs vy > ~470) rejects a
+      // conformant, gentler AI that still applies the spin mechanic correctly. Reading
+      // spin against the paddle's actual vy is robust to how fast the AI happens to be
+      // moving while still catching a build that imparts no (or wrong) spin.
+      const expectedSpin = hit.paddle.vy * 0.85;
+      check.expectClose(
+        "its motion imparts spin tracking the paddle's speed (spin ≈ vy × 0.85)",
         hit.ball.spin,
-        400,
+        expectedSpin,
+        Math.max(50, expectedSpin * 0.25),
       );
     },
   };

@@ -13,6 +13,7 @@
 
 import {
   clearPaddles,
+  pinObstaclesUpright,
   startPlaying,
   FIELD_H,
   SPEED_CAP,
@@ -52,6 +53,10 @@ export default function item() {
     // up. The paddle and wall probes are re-posed inside `act`, after this one has run.
     async arrange(api) {
       await startPlaying(api);
+      // The obstacle probe fires at obstacle A's base-x left face; pin the gyre
+      // obstacles upright so that face sits where the assertion expects (a no-op in
+      // base/multi and for an already-upright build).
+      await pinObstaclesUpright(api);
       await arrangeBankOff(api, OBSTACLE_A, SPEED_CAP);
     },
 
