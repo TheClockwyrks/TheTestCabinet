@@ -122,22 +122,24 @@ and varying the configuration is an ablation; fixing the configuration and varyi
 the model is a model comparison.
 
 A launched gg run is watched on gg's own live monitor, which renders its
-[telemetry](/gg/telemetry/) — the agent tree, the epic/issue board, and the
-context-fill graphs. The **panel selector leads the view**, and everything about the
-run is one of the panels it selects, starting with **Dashboard**: the run's status,
-its running token/cost tally, the configuration it is running under, and the enforced
-[FSM](/gg/fsms/) process. That view is not only for the session that launched the run:
+[telemetry](/gg/telemetry/) through **two** surfaces, led by a tab selector:
+**Dashboard** — the whole-run read-out (status, the token/cost tally with its
+caching and reasoning splits as rings, how many agents ran, the enforced
+[FSM](/gg/fsms/) process, and the configuration it is running under) — and
+**Agents**, the per-agent explorer that lays the run out as a filesystem (an agent
+is a folder, the things you can monitor about it are its files, and a spawned agent
+is a folder under `subagents`). That view is not only for the session that launched
+the run:
 
 - The **Runs** list opens an in-flight gg run on gg's monitor, not the generic
   harness feed.
 - A finished gg run keeps a **gg tab** on its detail page, which rebuilds the very
-  same panels from the recorded telemetry stream.
-- The panels offered are **only the ones the run's capability set justifies** — gg
-  announces its configuration on the stream's first event, so a run with no board and
-  no planning pass is not asked to show empty Board and Plan panels. Three panels are
-  unconditional, because they read gg's own account of the run rather than the product
-  of a capability: **Dashboard**, **Activity**, and **Context**.
-- The **Activity** panel is gg's telemetry rendered through the *same* feed every
+  same two surfaces from the recorded telemetry stream.
+- Inside the Agents explorer, a **file appears only where that agent produced that
+  kind of data** — gg announces its configuration on the stream's first event, so an
+  agent with no board and no planning pass simply has no board or plan file, rather
+  than an empty panel. Every agent always has an **overview** and an **activity** file.
+- The **activity** file is gg's telemetry rendered through the *same* feed every
   other harness's events render through, so it honors the layout picked in
   **Settings → Appearance** and a gg run doesn't read differently from every other
   run.

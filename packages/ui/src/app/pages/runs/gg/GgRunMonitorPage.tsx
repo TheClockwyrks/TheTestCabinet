@@ -30,6 +30,7 @@ export function GgRunMonitorPage() {
     sawSession,
     sessionEndStatus,
     usage,
+    agents,
     fsm,
     capabilitySet,
   } = state;
@@ -80,6 +81,7 @@ export function GgRunMonitorPage() {
           <GgDashboard
             status={dashboardStatus}
             usage={usage}
+            agentCount={agents.size}
             fsm={fsm}
             capabilitySet={capabilitySet}
           >

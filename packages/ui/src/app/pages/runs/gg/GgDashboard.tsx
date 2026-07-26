@@ -11,6 +11,14 @@ function formatTokens(n: number): string {
 function formatCost(n: number | null): string {
   return n == null ? "—" : `$${n.toFixed(4)}`;
 }
+// A share as a whole percent, with a `<1%` floor so a rare-but-present slice never
+// rounds away to nothing and an exact `0%` when the class is truly empty.
+function formatPercent(fraction: number): string {
+  const pct = fraction * 100;
+  if (pct === 0) return "0%";
+  if (pct < 1) return "<1%";
+  return `${Math.round(pct)}%`;
+}
 
 // The run's lifecycle read-out, as the host page knows it. Only the live monitor
 // has one: on a finished run's gg tab the run's own header already carries its
@@ -29,6 +37,8 @@ export interface GgDashboardStatus {
 interface GgDashboardProps {
   status?: GgDashboardStatus;
   usage: UsageTally;
+  /** How many agents ran (the root plus every subagent it spawned). */
+  agentCount: number;
   fsm: FsmProgress | null;
   /** The run's recorded configuration — its independent variable. */
   capabilitySet: GgCapabilitySet | null;
@@ -38,9 +48,9 @@ interface GgDashboardProps {
 
 /**
  * The Dashboard panel of a gg run: everything about the run *as a whole* rather
- * than about one of its capabilities — its status, the running token/cost tally,
- * the configuration it ran under, and the enforced FSM process when a machine
- * drives it.
+ * than about one of its agents — its status, the running token/cost tally with its
+ * caching and reasoning splits, how many agents ran, the configuration it ran
+ * under, and the enforced FSM process when a machine drives it.
  *
  * It is the first panel on both surfaces a gg run is read through (the live
  * monitor and a finished run's gg tab), so the run-level read-out no longer
@@ -50,10 +60,14 @@ interface GgDashboardProps {
 export function GgDashboard({
   status,
   usage,
+  agentCount,
   fsm,
   capabilitySet,
   children,
 }: GgDashboardProps) {
+  const totalInput = usage.uncachedInput + usage.cachedInput;
+  const totalOutput = usage.output + usage.reasoning;
+
   return (
     <div className={styles.dashboard}>
       <div className={styles.cards}>
@@ -65,24 +79,6 @@ export function GgDashboard({
             {usage.anyTokens ? formatTokens(usage.totalTokens) : "—"}{" "}
             <span className={styles.metricUnit}>tokens</span>
           </span>
-          <div className={styles.breakdown}>
-            <span>
-              <span className={styles.breakdownKey}>in</span>
-              {formatTokens(usage.uncachedInput)}
-            </span>
-            <span>
-              <span className={styles.breakdownKey}>cached</span>
-              {formatTokens(usage.cachedInput)}
-            </span>
-            <span>
-              <span className={styles.breakdownKey}>out</span>
-              {formatTokens(usage.output)}
-            </span>
-            <span>
-              <span className={styles.breakdownKey}>reasoning</span>
-              {formatTokens(usage.reasoning)}
-            </span>
-          </div>
           <span className={styles.metricCost}>
             {formatCost(usage.comparable)}
             {usage.actual != null && usage.actual !== usage.comparable && (
@@ -92,7 +88,31 @@ export function GgDashboard({
               </span>
             )}
           </span>
+          <span className={styles.agentsStat}>
+            <span className={styles.agentsCount}>{agentCount}</span>{" "}
+            <span className={styles.metricUnit}>
+              agent{agentCount === 1 ? "" : "s"}
+            </span>
+          </span>
         </div>
+
+        {/* The two-segment splits the run's tokens break into, each a ring with the
+            raw counts in its legend: how much input was served from cache, and how
+            much output was reasoning. */}
+        <TokenRing
+          title="Input caching"
+          primary={{ label: "cached", value: usage.cachedInput }}
+          secondary={{ label: "uncached", value: usage.uncachedInput }}
+          total={totalInput}
+          emptyMessage="No input tokens yet."
+        />
+        <TokenRing
+          title="Output reasoning"
+          primary={{ label: "reasoning", value: usage.reasoning }}
+          secondary={{ label: "output", value: usage.output }}
+          total={totalOutput}
+          emptyMessage="No output tokens yet."
+        />
 
         {capabilitySet && <ConfigurationCard set={capabilitySet} />}
       </div>
@@ -104,6 +124,158 @@ export function GgDashboard({
 
       {children}
     </div>
+  );
+}
+
+// SVG geometry for a two-segment ring: a 120-unit box with a 46-unit radius leaves
+// room for the 14-unit stroke; arcs are drawn from 12 o'clock by rotating -90°.
+const RING_BOX = 120;
+const RING_CENTER = RING_BOX / 2;
+const RING_RADIUS = 46;
+const RING_STROKE = 14;
+const RING_CIRC = 2 * Math.PI * RING_RADIUS;
+
+interface RingSegment {
+  label: string;
+  value: number;
+}
+
+// A ring card breaking one token class into two shares. The center reads the
+// primary share as a percent (e.g. "62% cached"); the legend gives both segments'
+// raw token counts and shares, so the ring replaces the old text-only breakdown
+// without losing the numbers. Empty (no tokens of this class yet) reads as a note.
+function TokenRing({
+  title,
+  primary,
+  secondary,
+  total,
+  emptyMessage,
+}: {
+  title: string;
+  primary: RingSegment;
+  secondary: RingSegment;
+  total: number;
+  emptyMessage: string;
+}) {
+  const primaryFraction = total > 0 ? primary.value / total : 0;
+  const secondaryFraction = total > 0 ? secondary.value / total : 0;
+  const primaryDash = primaryFraction * RING_CIRC;
+  // The secondary arc starts where the primary ends (clockwise from 12 o'clock).
+  const secondaryOffset = -primaryFraction * RING_CIRC;
+  const secondaryDash = secondaryFraction * RING_CIRC;
+
+  return (
+    <div className={styles.card}>
+      <span className={styles.cardLabel}>{title}</span>
+      {total === 0 ? (
+        <p className={styles.ringEmpty}>{emptyMessage}</p>
+      ) : (
+        <div className={styles.ringBody}>
+          <svg
+            className={styles.ring}
+            viewBox={`0 0 ${RING_BOX} ${RING_BOX}`}
+            role="img"
+            aria-label={`${title}: ${formatPercent(primaryFraction)} ${
+              primary.label
+            } (${formatTokens(primary.value)}), ${formatPercent(
+              secondaryFraction,
+            )} ${secondary.label} (${formatTokens(secondary.value)})`}
+          >
+            <circle
+              className={styles.ringTrack}
+              cx={RING_CENTER}
+              cy={RING_CENTER}
+              r={RING_RADIUS}
+              strokeWidth={RING_STROKE}
+            />
+            {secondaryDash > 0 && (
+              <circle
+                className={styles.ringArcSecondary}
+                cx={RING_CENTER}
+                cy={RING_CENTER}
+                r={RING_RADIUS}
+                strokeWidth={RING_STROKE}
+                strokeDasharray={`${secondaryDash} ${RING_CIRC - secondaryDash}`}
+                strokeDashoffset={secondaryOffset}
+                transform={`rotate(-90 ${RING_CENTER} ${RING_CENTER})`}
+              />
+            )}
+            {primaryDash > 0 && (
+              <circle
+                className={styles.ringArcPrimary}
+                cx={RING_CENTER}
+                cy={RING_CENTER}
+                r={RING_RADIUS}
+                strokeWidth={RING_STROKE}
+                strokeDasharray={`${primaryDash} ${RING_CIRC - primaryDash}`}
+                strokeDashoffset={0}
+                transform={`rotate(-90 ${RING_CENTER} ${RING_CENTER})`}
+              />
+            )}
+            <text
+              className={styles.ringCenterValue}
+              x={RING_CENTER}
+              y={RING_CENTER}
+              textAnchor="middle"
+              dominantBaseline="central"
+            >
+              {formatPercent(primaryFraction)}
+            </text>
+            <text
+              className={styles.ringCenterLabel}
+              x={RING_CENTER}
+              y={RING_CENTER + 18}
+              textAnchor="middle"
+              dominantBaseline="central"
+            >
+              {primary.label}
+            </text>
+          </svg>
+          <ul className={styles.ringLegend}>
+            <RingLegendRow
+              variant="primary"
+              label={primary.label}
+              value={primary.value}
+              fraction={primaryFraction}
+            />
+            <RingLegendRow
+              variant="secondary"
+              label={secondary.label}
+              value={secondary.value}
+              fraction={secondaryFraction}
+            />
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RingLegendRow({
+  variant,
+  label,
+  value,
+  fraction,
+}: {
+  variant: "primary" | "secondary";
+  label: string;
+  value: number;
+  fraction: number;
+}) {
+  return (
+    <li className={styles.legendItem}>
+      <span
+        className={
+          variant === "primary"
+            ? styles.legendSwatchPrimary
+            : styles.legendSwatchSecondary
+        }
+      />
+      <span className={styles.legendLabel}>{label}</span>
+      <span className={styles.legendValue}>
+        {formatTokens(value)} · {formatPercent(fraction)}
+      </span>
+    </li>
   );
 }
 

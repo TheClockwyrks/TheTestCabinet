@@ -321,6 +321,13 @@ export interface GgRunState {
   // --- Activity feed -------------------------------------------------------
   feed: FeedRow[];
 
+  // --- Per-agent slices ----------------------------------------------------
+  // The same fold run over each agent's own slice of the stream, keyed by agent id
+  // (always including the root). What the globally-merged fields above cannot say —
+  // whose context filled, whose task list this is — reads off the per-agent entry,
+  // so a multi-agent run is legible agent by agent rather than as one blurred whole.
+  perAgent: Map<string, DerivedGgState>;
+
   // --- Token/cost tally ----------------------------------------------------
   // The global running tally. When per-slot rollups are present it is derived as
   // the sum of the latest `slotUsage` rollups (their authoritative per-slot totals),
@@ -660,7 +667,7 @@ const EMPTY_USAGE: UsageTally = {
 
 // The id of the root agent — the tree is always rooted here (see the subagent
 // contract: a single-agent run stamps every event with `"root"`).
-const ROOT_ID = "root";
+export const ROOT_ID = "root";
 
 // Accumulate one set of null-aware token counts (and any cost) into a tally. Used
 // for both the incremental `usage` deltas and the per-(slot, model) `slot_usage`
@@ -1075,6 +1082,37 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
   };
 }
 
+// Fold the stream once per agent, so each agent can be read in isolation — its own
+// activity, context-window fill, plan, board, tasks, and knowledge — rather than
+// only as one globally-merged view. gg stamps every event with the agent that
+// emitted it (the envelope's `agentId`), so the per-agent view is exact: partition
+// the stream by owning agent, then run the same single-pass fold over each
+// partition. Non-gg rows (the orchestrator's own setup/teardown) have no agent, so
+// they belong to the root. The result always contains the root, even before any
+// agent-attributed event has arrived.
+export function reduceGgEventsPerAgent(
+  events: HarnessEvent[],
+): Map<string, DerivedGgState> {
+  const byAgent = new Map<string, HarnessEvent[]>();
+  const bucket = (id: string): HarnessEvent[] => {
+    let arr = byAgent.get(id);
+    if (!arr) {
+      arr = [];
+      byAgent.set(id, arr);
+    }
+    return arr;
+  };
+  // Seed the root so a run with no agent-attributed events still yields it.
+  bucket(ROOT_ID);
+  for (const event of events) {
+    const id = event.type === "gg" ? (event.event.agentId ?? ROOT_ID) : ROOT_ID;
+    bucket(id).push(event);
+  }
+  const perAgent = new Map<string, DerivedGgState>();
+  for (const [id, evts] of byAgent) perAgent.set(id, reduceGgEvents(evts));
+  return perAgent;
+}
+
 // --- The hook ----------------------------------------------------------------
 
 // Owns the live subscription to a gg run and reduces its telemetry into
@@ -1118,6 +1156,7 @@ export function useGgRunState(jobId: string | undefined): GgRunState {
   }, [worker, jobId]);
 
   const derived = useMemo(() => reduceGgEvents(events), [events]);
+  const perAgent = useMemo(() => reduceGgEventsPerAgent(events), [events]);
 
   // Prefer what gg announced on the stream — it is known from the run's first event,
   // where the record's copy only lands at the end — and fall back to the completed
@@ -1134,8 +1173,9 @@ export function useGgRunState(jobId: string | undefined): GgRunState {
       status,
       error,
       capabilitySet,
+      perAgent,
       ...derived,
     }),
-    [status, error, capabilitySet, derived],
+    [status, error, capabilitySet, perAgent, derived],
   );
 }

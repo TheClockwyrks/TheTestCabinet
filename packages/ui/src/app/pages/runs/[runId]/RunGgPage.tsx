@@ -7,7 +7,7 @@ import { useRunEvents } from "../../../data/useRunEvents";
 import { routes } from "../../../routes";
 import { GgDashboard } from "../gg/GgDashboard";
 import { GgRunPanels } from "../gg/GgRunPanels";
-import { reduceGgEvents } from "../gg/useGgRunState";
+import { reduceGgEvents, reduceGgEventsPerAgent } from "../gg/useGgRunState";
 import styles from "./RunEventsPage.module.scss";
 
 // The gg tab (`/runs/:runId/gg`): a finished gg run read through the very same
@@ -32,8 +32,13 @@ function RunGgBody({ run }: { run: RunRecord }) {
   const state = useRunEvents(run.id);
   const events = state.status === "ready" ? state.data.events : null;
   // Fold the recorded stream into the same typed state the live monitor derives, so
-  // both views are the same reduction of the same events.
+  // both views are the same reduction of the same events — globally, and once per
+  // agent for the Agents explorer's per-agent files.
   const derived = useMemo(() => reduceGgEvents(events ?? []), [events]);
+  const perAgent = useMemo(
+    () => reduceGgEventsPerAgent(events ?? []),
+    [events],
+  );
   // Prefer the configuration gg announced on the stream; fall back to the one the
   // record stores (the run's recorded independent variable) when the stream predates
   // that announcement or could not be read at all.
@@ -75,7 +80,7 @@ function RunGgBody({ run }: { run: RunRecord }) {
   return (
     <section className={`${styles.section} ${styles.sectionFill}`}>
       <GgRunPanels
-        state={derived}
+        state={{ ...derived, perAgent }}
         capabilitySet={capabilitySet}
         live={false}
         // The same Dashboard the live monitor leads with, minus the status card:
@@ -86,6 +91,7 @@ function RunGgBody({ run }: { run: RunRecord }) {
         dashboard={
           <GgDashboard
             usage={derived.usage}
+            agentCount={derived.agents.size}
             fsm={derived.fsm}
             capabilitySet={capabilitySet}
           >

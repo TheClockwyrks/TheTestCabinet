@@ -22,16 +22,27 @@ The telemetry must let the console display:
 The very first event of a session, `session_started`, carries the run's whole
 [capability set](/gg/overview/#the-capability-set). That is what lets a console shape
 itself to the run from the moment it starts watching rather than only once the run
-record lands: the live monitor (and a finished run's gg tab) offers exactly the
-panels the run's configuration justifies, so a run with no epic/issue board and no
-planning pass is never asked to show an empty Board or Plan. A stream recorded before
-gg announced it simply omits the field, and the recorded set on the run record stands
-in.
+record lands. A stream recorded before gg announced it simply omits the field, and
+the recorded set on the run record stands in.
 
-The panels that read gg's own account of the run rather than the product of a
-capability — the Dashboard (what the run is and what it cost), the Activity feed
-(every session emits a stream), and the Context breakdown — are **always** offered,
-gated by nothing.
+The console (the live monitor and a finished run's gg tab, which are the **same**
+view over the same stream — live, then rebuilt from the recording) reads a run
+through **two** surfaces:
+
+- The **Dashboard** — the whole-run read-out: status, the token/cost tally with its
+  **caching** (cached vs uncached input) and **reasoning** (reasoning vs non-reasoning
+  output) splits shown as rings, how many agents ran, the enforced FSM process, and
+  the configuration the run's [independent variable](/gg/overview/) is.
+- The **Agents** explorer — everything else. The rich views (activity, context-window
+  breakdown, plan, board, tasks, knowledge) are inherently **per agent** — *whose*
+  window filled, *whose* task list this is — so they cannot honestly be shown as one
+  global panel. The explorer lays the run out as a **filesystem**: every agent is a
+  folder, the things you can monitor about it are its files, and every agent an agent
+  spawned is a folder under a `subagents` folder — so the
+  [delegation tree](/gg/subagents/) *is* the directory tree, rooted at the main agent.
+  A file appears only where that agent produced that kind of data (a capability being
+  off, or an agent never using it, simply means the file is absent), so each folder
+  lists exactly what there is to read about that agent.
 
 ## Two events every run may end on
 

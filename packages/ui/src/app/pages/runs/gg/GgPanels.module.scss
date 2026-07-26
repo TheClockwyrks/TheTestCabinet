@@ -852,17 +852,10 @@ $context-palette: (
   word-break: break-word;
 }
 
-// --- Agents (subagent tree + per-slot usage + workflows) ---------------------
+// --- Agents (identity card + per-slot usage + workflows + speculation) -------
 
-// The Agents panel is a stack of sections: the workflow strip (when a workflow
-// ran), the agent tree (the signature multi-agent view), and the per-slot usage
-// breakdown (when the run spanned several models). Each is a captioned block.
-.agents {
-  display: flex;
-  flex-direction: column;
-  gap: t.$space-lg;
-}
-
+// A captioned block used on an agent's Overview file: the per-slot usage breakdown,
+// the workflow strip, or the speculation summary, each a caption over its content.
 .agentSection {
   display: flex;
   flex-direction: column;
@@ -870,33 +863,7 @@ $context-palette: (
   min-width: 0;
 }
 
-// The rooted agent tree. The top-level list has no connector; nested child lists
-// carry a left rule so parent→child nesting reads as connected branches.
-.agentTree,
-.agentChildren {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: t.$space-xs;
-}
-
-.agentChildren {
-  margin-top: t.$space-xs;
-  margin-left: t.$space-md;
-  padding-left: t.$space-md;
-  border-left: t.$border-hairline solid
-    color-mix(in srgb, t.$color-border 70%, transparent);
-}
-
-.agentBranch {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-// One agent node. A left rule keyed to its status (running/waiting/done/failed)
+// One agent's identity card. A left rule keyed to its status (running/waiting/done/failed)
 // makes the run's shape — who is active, who is blocked — legible at a glance.
 .agentRow {
   display: flex;
@@ -1467,6 +1434,204 @@ $fsm-hue: #2dd4bf;
   padding: t.$space-md;
 }
 
+// The tab selector leads the view directly. The host above it (the run-detail tab
+// strip, or the live monitor's header) already provides the gap, so the selector
+// carries none of its own on top — only the small space down to the panel below.
 .tabBar {
-  margin: t.$space-lg 0 t.$space-sm;
+  margin: 0 0 t.$space-sm;
+}
+
+// --- Agents explorer (filesystem view) ---------------------------------------
+
+// The two-pane explorer: a directory-style sidebar of agents-as-folders on the
+// left, the selected file's view on the right. Fills the page like the panel body
+// it replaces (host is `PageLayout fill` / the run-detail column).
+.explorer {
+  flex: 1 1 auto;
+  min-height: 18rem;
+  display: flex;
+  gap: t.$space-md;
+  align-items: stretch;
+}
+
+.explorerSidebar {
+  flex: 0 0 auto;
+  width: 17rem;
+  max-width: 40%;
+  overflow: auto;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+  padding: t.$space-xs;
+}
+
+// The content column stacks its section label over the selected view, which itself
+// fills the remaining height (the feed and graphs scroll internally).
+.explorerContent {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+// The tree: nested lists, each level indented by inline padding on the row (so the
+// whole clickable row — not just its text — carries the indent).
+.fsTree,
+.fsChildren {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.fsNode {
+  min-width: 0;
+}
+
+// One row in the tree — a folder toggle or a file link. A full-width button so the
+// entire row is the hit target, laid out as an icon/name/meta line.
+.fsRow {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: t.$space-2xs;
+  padding: t.$space-2xs t.$space-xs;
+  border: none;
+  background: none;
+  border-radius: t.$radius-sm;
+  color: t.$color-text;
+  font: inherit;
+  font-size: t.$font-sm;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+
+  &:hover {
+    background: color-mix(in srgb, t.$color-accent 8%, transparent);
+  }
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    outline-offset: -1px;
+  }
+}
+
+// The selected file reads filled in the accent, so the current view is obvious.
+.fsRowActive {
+  background: color-mix(in srgb, t.$color-accent 16%, transparent);
+  color: t.$color-text;
+
+  &:hover {
+    background: color-mix(in srgb, t.$color-accent 20%, transparent);
+  }
+}
+
+// A file row (as opposed to a folder toggle) leaves room where a folder's caret
+// would sit, so files line up under their folder's name.
+.fsFile {
+  padding-left: t.$space-xs;
+}
+
+.fsCaret {
+  flex: 0 0 auto;
+  width: 0.9rem;
+  color: t.$color-text-muted;
+  font-size: 0.7rem;
+}
+
+.fsIcon {
+  flex: 0 0 auto;
+  font-size: 0.85rem;
+  color: t.$color-text-muted;
+}
+
+.fsName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+// A trailing hint on a folder row — "main agent", a subagent's slot, a subagents
+// count — subordinate to the name it annotates.
+.fsMeta {
+  flex: 0 0 auto;
+  margin-left: t.$space-2xs;
+  font-size: 0.72rem;
+  color: t.$color-text-muted;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+// The chosen best-of-K attempt, starred on its folder.
+.fsWinner {
+  flex: 0 0 auto;
+  color: t.$color-accent;
+  font-size: 0.8rem;
+}
+
+// A small status dot pushed to the row's trailing edge, tinted by the agent's
+// lifecycle status so the tree reads who is running vs done vs failed at a glance.
+.fsStatusDot {
+  flex: 0 0 auto;
+  margin-left: auto;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: t.$color-text-muted;
+
+  &[data-status="running"] {
+    background: t.$color-accent;
+  }
+  &[data-status="blocked"] {
+    background: t.$color-accent-2;
+  }
+  &[data-status="done"] {
+    background: t.$color-positive;
+  }
+  &[data-status="failed"] {
+    background: t.$color-negative;
+  }
+}
+
+// The content pane's Overview file: the agent's identity card, its token tally, and
+// (for the root) the run's delegation structure, stacked.
+.overview {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-lg;
+}
+
+// The agent's own token/cost tally on its Overview.
+.agentUsage {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+.agentUsageTotal {
+  font-size: t.$font-md;
+  font-weight: 600;
+  color: t.$color-text;
+  font-variant-numeric: tabular-nums;
+}
+
+.agentUsageUnit,
+.agentUsageCost {
+  font-size: t.$font-sm;
+  font-weight: 400;
+  color: t.$color-text-muted;
+}
+
+.agentUsageBreakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-2xs t.$space-md;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+.agentUsageKey {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-right: t.$space-2xs;
 }

@@ -1,17 +1,18 @@
-// The Agents panel: the signature Phase-4 view of a multi-agent gg run. gg is
-// headless, so this live tree — who spawned whom, and who is running versus
-// blocked waiting on their subagents — is the only window into the run's
-// delegation shape (see gg/subagents.md). Alongside the tree it shows the two
-// other things a multi-agent run needs that a single-model view cannot express:
-// the per-(slot, model) usage/cost breakdown (a gg run spans several models, one
-// per slot, so there is no single figure — see gg/multi-model.md) and the
-// declared-workflow stage structure (fan-out + sequencing — see gg/workflows.md).
+// The reusable pieces of a multi-agent gg run's read-out. gg is headless, so an
+// agent's identity (who it is, what it runs on, the worktree it works in, what it
+// returned) and the run's delegation structure (per-slot cost, declared workflows,
+// best-of-K speculations) are the only window into its shape (see gg/subagents.md,
+// gg/multi-model.md, gg/workflows.md, gg/speculative-execution.md).
 //
-// Everything reads from `GgRunState`: `agentTree` (always rooted at "root", so a
-// single-agent run is a one-node tree), `slotUsage` (latest rollup per pair, empty
-// on a single-model run), and `workflows` (empty when no workflow ran).
+// The subagent *tree* itself is drawn by the Agents explorer's filesystem sidebar
+// (see GgAgentsExplorer), so this module no longer renders it; it exports the
+// per-agent identity row the explorer shows on an agent's Overview, the run-level
+// structure panels (per-slot usage / workflows / speculation) it shows on the
+// root's Overview, and the winner/loser classification the sidebar marks the tree
+// with.
 
 import type {
+  AgentNode,
   AgentTreeNode,
   SlotUsage,
   SpeculationState,
@@ -25,20 +26,10 @@ import type {
 } from "@test-cabinet/run-record/gg";
 import styles from "./GgPanels.module.scss";
 
-interface AgentTreeViewProps {
-  tree: AgentTreeNode;
-  slotUsage: SlotUsage[];
-  workflows: Workflow[];
-  // The best-of-K speculations run this session (see gg/speculative-execution);
-  // empty when speculative execution is off, so the tree carries no winner marking
-  // and no speculation summary.
-  speculations: SpeculationState[];
-}
-
 // A per-agent speculation role, derived from the speculations plus the tree: the
 // winning attempt (kept, merged) reads distinct, a losing attempt (discarded) is
 // de-emphasized. The judge and non-attempt nodes carry no role.
-type SpeculationRole = "winner" | "loser";
+export type SpeculationRole = "winner" | "loser";
 
 // The phase label for the speculation summary. `fanned_out` reads as the K attempts
 // still racing; `judged` as a winner picked; `merged` as the winner folded back in.
@@ -55,7 +46,7 @@ const SPECULATION_PHASE_LABELS: Record<GgSpeculationPhase, string> = {
 // worktree (each attempt fans out in isolation), the winner being the one that
 // merged and the rest the discarded losers. A sibling with no worktree — the judge —
 // carries no role, so it is neither marked a winner nor dimmed.
-function classifySpeculationRoles(
+export function classifySpeculationRoles(
   tree: AgentTreeNode,
   speculations: SpeculationState[],
 ): Map<string, SpeculationRole> {
@@ -87,7 +78,7 @@ function classifySpeculationRoles(
 // The human label for an agent's lifecycle status. `blocked` is called out as
 // "waiting" because that is the state that matters at a glance in a multi-agent
 // run — an agent that has released its slot and is waiting on its subagents.
-const STATUS_LABELS: Record<GgAgentStatus, string> = {
+export const STATUS_LABELS: Record<GgAgentStatus, string> = {
   running: "running",
   blocked: "waiting",
   done: "done",
@@ -118,80 +109,17 @@ function slotTokenTotal(usage: SlotUsage): number {
   );
 }
 
-export function AgentTreeView({
-  tree,
-  slotUsage,
-  workflows,
-  speculations,
-}: AgentTreeViewProps) {
-  // A single-agent run is just the root with no children; say so plainly rather
-  // than drawing a one-node "tree" with no context.
-  const soloRun = tree.children.length === 0;
-  // Winner/loser marking for the tree nodes (empty when no speculation ran).
-  const speculationRoles = classifySpeculationRoles(tree, speculations);
-
-  return (
-    <div className={styles.agents}>
-      {workflows.length > 0 && <WorkflowStrip workflows={workflows} />}
-
-      {speculations.length > 0 && (
-        <SpeculationPanel speculations={speculations} />
-      )}
-
-      <section className={styles.agentSection}>
-        <span className={styles.subPanelLabel}>Agent tree</span>
-        {soloRun ? (
-          <p className={styles.empty}>
-            A single agent so far — the root agent is working on the main tree.
-            As it delegates, spawned subagents (and their models and worktrees)
-            join the tree here.
-          </p>
-        ) : (
-          <ul className={styles.agentTree}>
-            <AgentBranch node={tree} roles={speculationRoles} />
-          </ul>
-        )}
-      </section>
-
-      {slotUsage.length > 0 && <SlotUsagePanel slotUsage={slotUsage} />}
-    </div>
-  );
-}
-
-// One node of the tree and its children, rendered as a nested list so the
-// parent/child nesting reads as connected rows (the nested `<ul>` carries the
-// connector rule). `roles` carries the speculation winner/loser marking down to
-// each node.
-function AgentBranch({
-  node,
-  roles,
-}: {
-  node: AgentTreeNode;
-  roles: Map<string, SpeculationRole>;
-}) {
-  return (
-    <li className={styles.agentBranch}>
-      <AgentRow node={node} role={roles.get(node.id)} />
-      {node.children.length > 0 && (
-        <ul className={styles.agentChildren}>
-          {node.children.map((child) => (
-            <AgentBranch key={child.id} node={child} roles={roles} />
-          ))}
-        </ul>
-      )}
-    </li>
-  );
-}
-
-// A single agent node: its id + status, its slot/model + depth, the brief it was
-// dispatched with, a worktree indicator when it ran in an isolated worktree, and
-// its return summary once it returned. Running / waiting / done / failed are the
-// glanceable states, so the status chip leads.
-function AgentRow({
+// An agent's identity card, shown on its Overview file in the Agents explorer: its
+// id + status, its slot/model + depth, the brief it was dispatched with, a worktree
+// indicator when it ran in an isolated worktree, and its return summary once it
+// returned. Running / waiting / done / failed are the glanceable states, so the
+// status chip leads. `role` marks the chosen best-of-K winner (its losing
+// co-attempts read dimmed via `data-spec-role`).
+export function AgentIdentity({
   node,
   role,
 }: {
-  node: AgentTreeNode;
+  node: AgentNode;
   role?: SpeculationRole;
 }) {
   const isRoot = node.parentId == null;
@@ -263,7 +191,7 @@ function AgentRow({
 // The per-(slot, model) usage read-out: a gg run spans several models (one per
 // slot), so cost is accounted per slot rather than as one figure. The header total
 // is the sum of these rollups, so this is the breakdown behind that number.
-function SlotUsagePanel({ slotUsage }: { slotUsage: SlotUsage[] }) {
+export function SlotUsagePanel({ slotUsage }: { slotUsage: SlotUsage[] }) {
   return (
     <section className={styles.agentSection}>
       <span className={styles.subPanelLabel}>Per-slot usage</span>
@@ -289,7 +217,7 @@ function SlotUsagePanel({ slotUsage }: { slotUsage: SlotUsage[] }) {
 // each. A stage reads as in-flight until its `finished` arrives; its item count is
 // how many subagents it fanned out (those agents show as nodes in the tree above,
 // so this just labels the stage structure).
-function WorkflowStrip({ workflows }: { workflows: Workflow[] }) {
+export function WorkflowStrip({ workflows }: { workflows: Workflow[] }) {
   return (
     <section className={styles.agentSection}>
       <span className={styles.subPanelLabel}>Workflows</span>
@@ -323,7 +251,7 @@ function StageChip({ stage }: { stage: WorkflowStage }) {
 // (fanned out → judged → merged), and the winning attempt once picked — so the
 // "K tried, this one won and merged" shape is legible above the tree, where the
 // attempt nodes (winner marked, losers dimmed) are drawn.
-function SpeculationPanel({
+export function SpeculationPanel({
   speculations,
 }: {
   speculations: SpeculationState[];

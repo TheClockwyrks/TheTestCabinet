@@ -112,19 +112,119 @@
   font-weight: 400;
 }
 
-.breakdown {
-  display: flex;
-  flex-wrap: wrap;
-  gap: t.$space-xs t.$space-md;
-  font-size: t.$font-sm;
-  color: t.$color-text-muted;
+// The agent-count stat under the token tally: a big number over its unit, so "how
+// many agents ran" reads at a glance on the whole-run card.
+.agentsStat {
   font-variant-numeric: tabular-nums;
 }
 
-.breakdownKey {
+.agentsCount {
+  font-size: t.$font-lg;
+  font-weight: 600;
+  color: t.$color-text;
+}
+
+// --- Token split rings (input caching / output reasoning) --------------------
+
+// A ring card: the gauge beside its legend. The legend gives the raw token counts
+// and shares the ring replaces the old text-only breakdown with.
+.ringBody {
+  display: flex;
+  align-items: center;
+  gap: t.$space-md;
+}
+
+.ring {
+  flex: 0 0 auto;
+  width: 6rem;
+  height: 6rem;
+}
+
+.ringTrack {
+  fill: none;
+  stroke: color-mix(in srgb, t.$color-border 45%, transparent);
+}
+
+// The primary share (cached / reasoning) takes the accent; the secondary the muted
+// remainder, so the ring reads "how much of this is the interesting class".
+.ringArcPrimary {
+  fill: none;
+  stroke: t.$color-accent;
+  stroke-linecap: butt;
+}
+
+.ringArcSecondary {
+  fill: none;
+  stroke: color-mix(in srgb, t.$color-text-muted 55%, transparent);
+  stroke-linecap: butt;
+}
+
+.ringCenterValue {
+  fill: t.$color-text;
+  font-size: 1.5rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.ringCenterLabel {
+  fill: t.$color-text-muted;
+  font-size: 0.85rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  margin-right: t.$space-xs;
+}
+
+.ringEmpty {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  margin: 0;
+}
+
+.ringLegend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  min-width: 0;
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: t.$space-xs;
+  font-size: t.$font-sm;
+  min-width: 0;
+}
+
+.legendSwatchPrimary,
+.legendSwatchSecondary {
+  flex: 0 0 auto;
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: t.$radius-sm;
+}
+
+.legendSwatchPrimary {
+  background: t.$color-accent;
+}
+
+.legendSwatchSecondary {
+  background: color-mix(in srgb, t.$color-text-muted 55%, transparent);
+}
+
+.legendLabel {
+  color: t.$color-text;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: t.$font-sm;
+}
+
+.legendValue {
+  margin-left: auto;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 // --- The configuration card --------------------------------------------------
