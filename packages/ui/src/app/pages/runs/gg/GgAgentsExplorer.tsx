@@ -15,6 +15,7 @@ import type {
   Workflow,
 } from "./useGgRunState";
 import { ROOT_ID } from "./useGgRunState";
+import { capabilityOn } from "./ggCatalog";
 import {
   AgentIdentity,
   SlotUsagePanel,
@@ -70,9 +71,7 @@ function ggFeedLine(row: FeedRow): FeedLine {
 }
 
 // The "files" an agent folder can contain — the things a gg run lets you monitor
-// about one agent. `overview` and `activity` are always present (every agent has an
-// identity and a stream); the rest appear only when this agent produced that kind
-// of data, so an agent's folder lists exactly what there is to read about it.
+// about one agent.
 export type AgentFileKind =
   | "overview"
   | "activity"
@@ -81,6 +80,35 @@ export type AgentFileKind =
   | "board"
   | "tasks"
   | "knowledge";
+
+// The order files list in a folder.
+const FILE_ORDER: ReadonlyArray<AgentFileKind> = [
+  "overview",
+  "activity",
+  "context",
+  "plan",
+  "board",
+  "tasks",
+  "knowledge",
+];
+
+// Which capabilities a file needs before it is worth offering — a file is shown
+// when *any* of its capabilities is on (Knowledge covers skills and memories
+// independently). An empty list is unconditional: overview and activity read gg's
+// own account of any run, and Context is always offered because every run has a
+// window that fills. This mirrors the run's [capability set], so the folder shows a
+// file for a capability the run *has* even before that capability has produced
+// anything — the file then shows its own "nothing yet" state rather than being
+// absent — and hides a file only for a capability the run does not have at all.
+const FILE_CAPABILITIES: Record<AgentFileKind, ReadonlyArray<string>> = {
+  overview: [],
+  activity: [],
+  context: [],
+  plan: ["planning"],
+  board: ["epics-and-issues"],
+  tasks: ["tasks"],
+  knowledge: ["skills", "memories"],
+};
 
 const FILE_LABELS: Record<AgentFileKind, string> = {
   overview: "overview",
@@ -103,18 +131,18 @@ const FILE_ICONS: Record<AgentFileKind, string> = {
   knowledge: "✶",
 };
 
-// Which files an agent's folder offers, given its own reduced slice. Overview and
-// activity are unconditional; the work views appear only where this agent has the
-// data — a capability being off (or an agent never using it) simply means the file
-// is absent, keeping each folder honest about what it holds.
-function filesFor(state: DerivedGgState): AgentFileKind[] {
-  const files: AgentFileKind[] = ["overview", "activity"];
-  if (state.contextSeries.length > 0) files.push("context");
-  if (state.plan) files.push("plan");
-  if (state.board) files.push("board");
-  if (state.tasks.length > 0) files.push("tasks");
-  if (state.skills.length > 0 || state.memory) files.push("knowledge");
-  return files;
+// Which files a folder offers, given the run's configuration. A file is offered
+// when the run's capability set justifies it — so a file for an enabled capability
+// is always present (showing its own empty state until data arrives) and a file for
+// a capability the run does not have is never shown. Before gg announces the set
+// (set == null), only the unconditional files are offered.
+function filesFor(set: GgCapabilitySet | null): AgentFileKind[] {
+  return FILE_ORDER.filter((file) => {
+    const needed = FILE_CAPABILITIES[file];
+    if (needed.length === 0) return true;
+    if (!set) return false;
+    return needed.some((id) => capabilityOn(set, id));
+  });
 }
 
 interface GgAgentsExplorerProps {
@@ -195,19 +223,23 @@ export function GgAgentsExplorer({
   });
 
   // Keep the selection valid as the live stream grows and reshapes: if the selected
-  // agent or file has gone away (a stream re-read, or an agent that had not yet
-  // produced that file), fall back to the root's overview.
+  // agent is gone (a stream re-read) or the selected file is no longer offered (the
+  // announced configuration justifies a different set), fall back to the root's
+  // overview — which is unconditional, so it is always a valid landing.
   useEffect(() => {
-    const state = perAgent.get(selection.agentId);
-    if (state && filesFor(state).includes(selection.file)) return;
+    if (
+      nodeById.has(selection.agentId) &&
+      filesFor(capabilitySet).includes(selection.file)
+    )
+      return;
     setSelection({ agentId: ROOT_ID, file: "overview" });
-  }, [perAgent, selection]);
+  }, [nodeById, capabilitySet, selection]);
 
   const selectedState = perAgent.get(selection.agentId);
   const selectedNode = nodeById.get(selection.agentId);
 
   const ctx: ExplorerCtx = {
-    perAgent,
+    capabilitySet,
     roles,
     collapsed,
     toggle,
@@ -246,7 +278,7 @@ export function GgAgentsExplorer({
 // --- Sidebar (the directory tree) --------------------------------------------
 
 interface ExplorerCtx {
-  perAgent: Map<string, DerivedGgState>;
+  capabilitySet: GgCapabilitySet | null;
   roles: Map<string, SpeculationRole>;
   collapsed: ReadonlySet<string>;
   toggle: (key: string) => void;
@@ -270,8 +302,7 @@ function FolderNode({
   depth: number;
   ctx: ExplorerCtx;
 }) {
-  const state = ctx.perAgent.get(node.id);
-  const files = state ? filesFor(state) : ["overview" as const];
+  const files = filesFor(ctx.capabilitySet);
   const folderKey = `folder:${node.id}`;
   const open = !ctx.collapsed.has(folderKey);
   const isRoot = node.parentId == null;
@@ -504,8 +535,11 @@ function FileContent({
         </>
       );
     case "knowledge": {
-      const showSkills = state.skills.length > 0;
-      const showMemories = state.memory != null;
+      // Each half is shown when its own capability is on (its list carries its own
+      // empty state until entries arrive), so a memories-only run reads as a
+      // memories panel rather than a half-empty split.
+      const showSkills = capabilityOn(capabilitySet, "skills");
+      const showMemories = capabilityOn(capabilitySet, "memories");
       return (
         <>
           <span className={runExec.sectionLabel}>{label} · knowledge</span>

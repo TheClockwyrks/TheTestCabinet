@@ -135,10 +135,12 @@ the run:
   harness feed.
 - A finished gg run keeps a **gg tab** on its detail page, which rebuilds the very
   same two surfaces from the recorded telemetry stream.
-- Inside the Agents explorer, a **file appears only where that agent produced that
-  kind of data** — gg announces its configuration on the stream's first event, so an
-  agent with no board and no planning pass simply has no board or plan file, rather
-  than an empty panel. Every agent always has an **overview** and an **activity** file.
+- Inside the Agents explorer, a **file is offered when the run's capability set
+  justifies it**, not when data happens to have arrived — gg announces its
+  configuration on the stream's first event, so a run with the tasks capability
+  always has a **tasks** file (empty until the model builds its list), while a run
+  with no epics-and-issues and no planning pass has no board or plan file. Every
+  agent always has **overview**, **activity**, and **context** files.
 - The **activity** file is gg's telemetry rendered through the *same* feed every
   other harness's events render through, so it honors the layout picked in
   **Settings → Appearance** and a gg run doesn't read differently from every other

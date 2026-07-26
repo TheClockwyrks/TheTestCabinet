@@ -40,9 +40,11 @@ through **two** surfaces:
   folder, the things you can monitor about it are its files, and every agent an agent
   spawned is a folder under a `subagents` folder — so the
   [delegation tree](/gg/subagents/) *is* the directory tree, rooted at the main agent.
-  A file appears only where that agent produced that kind of data (a capability being
-  off, or an agent never using it, simply means the file is absent), so each folder
-  lists exactly what there is to read about that agent.
+  A file is offered when the run's configuration justifies it, not when data happens
+  to have arrived: a capability the run **has** always has its file (showing its own
+  "nothing yet" state until the first event streams), a capability the run **lacks**
+  has none, and **Context** is always offered because every run has a window that
+  fills. Overview and activity are unconditional too.
 
 ## Two events every run may end on
 

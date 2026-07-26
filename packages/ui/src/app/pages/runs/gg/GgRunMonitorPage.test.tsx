@@ -521,38 +521,34 @@ describe("GgRunMonitorPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("offers a file only where the agent produced that kind of data", () => {
-    // A narrow run: tasks + memories, nothing else. The root's folder offers those
-    // files (and the unconditional overview/activity), but not context/plan/board.
+  it("offers a file for every enabled capability, even before it has data", () => {
+    // A narrow run: tasks + memories on, and NO tasks/memory events have arrived
+    // yet. The files a capability justifies are offered up front — a file is gated
+    // by the run's configuration, not by whether data has streamed — so `tasks` and
+    // `knowledge` are present (showing their own empty state), Context is
+    // unconditional, and the capabilities the run lacks (planning, board) offer no
+    // file at all.
     renderMonitor([
       sessionStarted(["shell", "tasks", "memories"]),
       gg({ type: "assistant_message", text: "Working." }),
-      gg({
-        type: "tasks_state",
-        tasks: [
-          { id: "t1", title: "Do the thing", status: "pending", blockedBy: [] },
-        ],
-      }),
-      gg({
-        type: "memory_state",
-        memories: [{ name: "controls", description: "Decided.", len: 40 }],
-        count: 1,
-        totalLen: 40,
-        caps: { maxCount: 16, maxLenPerMemory: 2000, maxTotalLen: 16000 },
-      }),
     ]);
     openTab("Agents");
     for (const file of [
       "root overview",
       "root activity",
+      "root context",
       "root tasks",
       "root knowledge",
     ]) {
       expect(screen.getByRole("button", { name: file })).toBeInTheDocument();
     }
-    for (const file of ["root context", "root plan", "root board"]) {
+    for (const file of ["root plan", "root board"]) {
       expect(screen.queryByRole("button", { name: file })).toBeNull();
     }
+    // An enabled-but-empty file is present and shows its own "nothing yet" state,
+    // rather than being hidden until data arrives.
+    openFile("root tasks");
+    expect(screen.getByText(/No tasks yet/)).toBeInTheDocument();
   });
 
   it("nests subagents as folders under their spawner, each read on its own file", () => {
