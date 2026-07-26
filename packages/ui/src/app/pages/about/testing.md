@@ -21,5 +21,5 @@ failures rather than override them during the human review because implementing
 the debug API correctly is a part of the test case, and many review items are
 difficult to precisely judge simply by playing the game. This does mean that
 some models may get dinged on items that work as intended, but fortunately,
-those models have an easy path to reclaiming those points: stop messing up your
+those models have an easy path to reclaiming those points: stop clanking up your
 debug APIs.
