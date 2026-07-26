@@ -1924,6 +1924,44 @@ fn a_folder_whose_versions_disagree_on_slug_is_rejected() {
 }
 
 #[test]
+fn a_version_directory_without_a_manifest_is_skipped_not_a_broken_version() {
+    // A version's build artifacts (a `reference-impl/` with its `node_modules/`,
+    // `dist/`, …) can linger on disk after the manifest itself has moved to another
+    // branch, leaving a directory that looks like a version but carries no
+    // `test-case.toml`. Such a directory is not a version: discovery skips it rather
+    // than surfacing it as a broken one, so a single stray folder can't make the
+    // whole catalog fail to `list()`.
+    let dir = tempfile::tempdir().expect("temp dir");
+    write_slugged_case(dir.path(), "carom", "v1.0.0", "pong");
+    // A manifest-less `v2.0.1` alongside it, holding only leftover build output.
+    let orphan = dir
+        .path()
+        .join("end-to-end/easy/carom/v2.0.1/reference-impl/base");
+    fs::create_dir_all(&orphan).expect("orphan artifact dir");
+    fs::write(orphan.join("index.html"), "<html></html>").expect("orphan artifact");
+    let catalog = TestCaseCatalog::new(dir.path());
+
+    // The catalog still lists the case, and only the real (manifest-backed) version.
+    let cases = catalog
+        .list()
+        .expect("list skips the manifest-less directory");
+    let case = cases
+        .iter()
+        .find(|c| c.slug == "pong")
+        .expect("the real case is listed");
+    assert_eq!(
+        case.versions,
+        ["v1.0.0"],
+        "the manifest-less v2.0.1 is not counted as a version"
+    );
+    assert_eq!(
+        catalog.versions("carom").expect("versions"),
+        ["v1.0.0"],
+        "version discovery skips the manifest-less directory too"
+    );
+}
+
+#[test]
 fn an_ill_formed_slug_is_rejected() {
     let dir = tempfile::tempdir().expect("temp dir");
     write_slugged_case(dir.path(), "shouty", "v1.0.0", "Not A Slug");

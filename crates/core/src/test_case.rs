@@ -3857,6 +3857,15 @@ impl TestCaseCatalog {
 
     /// The version subdirectories of a folder, newest first. An error only when the
     /// folder is unreadable; a folder with no versions yields an empty list.
+    ///
+    /// A subdirectory only counts as a version if it actually holds the folder's
+    /// manifest (`test-case.toml`, or `game-jam.toml` for a jam). A version's build
+    /// artifacts (a `reference-impl/` with its `node_modules/`, `dist/`, …) can
+    /// linger on disk after the manifest itself has moved to another branch, and a
+    /// version whose only contents are those leftovers is not a version at all —
+    /// counting it would make the whole catalog fail to `list()` the moment
+    /// resolution tried to read a manifest that isn't there. So a directory with no
+    /// manifest is silently skipped rather than surfaced as a broken version.
     fn version_names(&self, folder: &str) -> Result<Vec<String>> {
         let dir = self.root.join(folder);
         if !dir.is_dir() {
@@ -3864,7 +3873,11 @@ impl TestCaseCatalog {
                 slug: folder.to_string(),
             });
         }
-        let mut versions = read_dir_names(&dir)?;
+        let manifest_file = manifest_file_for(folder);
+        let mut versions: Vec<String> = read_dir_names(&dir)?
+            .into_iter()
+            .filter(|version| dir.join(version).join(manifest_file).is_file())
+            .collect();
         // Newest first. Versions are compared component-wise so `v1.10.0` sorts
         // after `v1.9.0` rather than lexically before it.
         versions.sort_by_key(|v| std::cmp::Reverse(version_key(v)));
