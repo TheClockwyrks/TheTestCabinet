@@ -81,6 +81,7 @@ export function GgRunMonitorPage() {
           <GgDashboard
             status={dashboardStatus}
             usage={usage}
+            slotUsage={state.slotUsage}
             agentCount={agents.size}
             fsm={fsm}
             capabilitySet={capabilitySet}

@@ -1017,6 +1017,22 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
     }
   });
 
+  // Once the gg session has ended, no agent is still executing. gg emits a terminal
+  // `agent_returned`/`agent_status` for a subagent, but the ROOT never returns to a
+  // parent, so its completion is only implied by `session_ended` — leaving it at its
+  // seeded "running" for the whole life of a finished run's read-out. Reconcile any
+  // agent still in a non-terminal state (the root, or one a truncated stream stranded
+  // mid-flight) to the session's outcome, so a concluded run never reads as live.
+  if (sessionEndStatus != null) {
+    const terminal: GgAgentStatus =
+      sessionEndStatus === "completed" ? "done" : "failed";
+    for (const node of agents.values()) {
+      if (node.status === "running" || node.status === "blocked") {
+        node.status = terminal;
+      }
+    }
+  }
+
   const slotUsage = [...slotUsageByKey.values()];
 
   // Reconcile the header total with the per-slot rollups. When any `slot_usage`

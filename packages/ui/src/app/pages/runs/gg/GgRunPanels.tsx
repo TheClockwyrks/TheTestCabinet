@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { SegmentedControl, type SegmentedOption } from "@test-cabinet/ui";
 import type { GgCapabilitySet } from "@test-cabinet/run-record/gg";
-import runExec from "../RunExec.module.scss";
 import panels from "./GgPanels.module.scss";
 import type { GgRunState } from "./useGgRunState";
 import { GgAgentsExplorer } from "./GgAgentsExplorer";
@@ -77,7 +76,7 @@ export function GgRunPanels({
   live,
   dashboard,
 }: GgRunPanelsProps) {
-  const { agentTree, slotUsage, workflows, speculations, perAgent } = state;
+  const { agentTree, workflows, speculations, perAgent } = state;
 
   const hasDashboard = dashboard != null;
   const tabs = useMemo(() => ggTabsFor(hasDashboard), [hasDashboard]);
@@ -100,20 +99,16 @@ export function GgRunPanels({
       </div>
 
       {/* The Dashboard's own content is a set of cards, each already a panel, so it
-          is not wrapped in the shared panel body — that would frame a frame. */}
-      {tab === "dashboard" && (
-        <>
-          <span className={runExec.sectionLabel}>dashboard</span>
-          {dashboard}
-        </>
-      )}
+          is not wrapped in the shared panel body — that would frame a frame. The tab
+          selector directly above already reads "Dashboard", so no section label
+          restates it here. */}
+      {tab === "dashboard" && dashboard}
 
       {tab === "agents" && (
         <GgAgentsExplorer
           tree={agentTree}
           perAgent={perAgent}
           capabilitySet={capabilitySet}
-          slotUsage={slotUsage}
           workflows={workflows}
           speculations={speculations}
           live={live}

@@ -1202,6 +1202,15 @@ export function useGalleryData(): GalleryData {
   return ctx;
 }
 
+// The gallery data if a provider is in scope, else null — for the rare consumer
+// that can do without it rather than require one. The gg run views use it to price
+// a run's tokens against the model catalog when it is loaded, while still rendering
+// (minus the derived cost split) in a context, like a bare test harness, that never
+// mounts the provider.
+export function useGalleryDataOptional(): GalleryData | null {
+  return useContext(GalleryDataContext);
+}
+
 // A process-wide cache of fetched per-part `.glb` files, keyed by their resolved URL.
 // Mesh geometry is immutable per published/produced run, so a file fetched once
 // (for the viewer, its fallback, or a re-mount) is reused rather than re-fetched.

@@ -12,11 +12,39 @@
   gap: t.$space-md;
 }
 
-// The card row: as many cards as fit, each keeping a readable minimum width and
-// collapsing to one column when cramped.
+// A bento of cards rather than a uniform grid: a twelve-column track lets tiles
+// take different widths (the token and cost widgets earn the room their rings and
+// splits want; the stat and status tiles stay narrow) so the read-out has a
+// deliberate shape. The card spans below pair up to fill each row (7+5, 8+4, 12), and
+// `align-items: stretch` gives the two tiles in a row a shared height — so a wide
+// widget and its shorter neighbor line up flush rather than leaving a gap beneath the
+// shorter one. Every card is full-width when the row is too narrow to bento.
 .cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  grid-template-columns: 1fr;
+  grid-auto-flow: dense;
+  gap: t.$space-md;
+  align-items: stretch;
+}
+
+// The twelve-column track engages only when the whole read-out is wide enough to
+// bento; below that the single-column base leaves every card a full row (a span
+// clamps to the lone column), so the layout collapses cleanly on narrow screens.
+@media (min-width: 52rem) {
+  .cards {
+    grid-template-columns: repeat(12, 1fr);
+  }
+}
+
+// A pane-responsive grid for the same widgets where the space is narrower than the
+// viewport — the agent Overview, which sits in the explorer's content pane beside a
+// sidebar. Tracks size to the *pane*, not the window, so the Tokens and Cost
+// widgets sit side by side only when the pane can hold both and stack the moment it
+// can't (what caused text to spill past the pane and force a horizontal scrollbar).
+// `min(22rem, 100%)` keeps a lone column from overflowing a pane under 22rem.
+.overviewCards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(22rem, 100%), 1fr));
   gap: t.$space-md;
   align-items: start;
 }
@@ -30,6 +58,32 @@
   flex-direction: column;
   gap: t.$space-sm;
   min-width: 0;
+}
+
+// Bento spans for the twelve-column dashboard grid. A span clamps to one column
+// under the bento breakpoint (single-column track) and in the auto-fit overview
+// grid, so a widget carrying one still stacks correctly where there is no bento.
+.cardFull {
+  grid-column: span 12;
+}
+.cardTwoThirds {
+  grid-column: span 8;
+}
+.cardWide {
+  grid-column: span 7;
+}
+.cardHalf {
+  grid-column: span 5;
+}
+.cardThird {
+  grid-column: span 4;
+}
+
+// A stat tile whose content is short (the agent count) sits beside a taller
+// neighbor; center its label+figure in the shared row height so it reads as a
+// deliberate KPI tile rather than a value stranded at the top of empty space.
+.cardCenter {
+  justify-content: center;
 }
 
 .cardLabel {
@@ -91,7 +145,7 @@
   margin-left: auto;
 }
 
-// The token/cost tally: a big total over a per-class breakdown.
+// A headline figure — the cost total, the agent count — big over its unit.
 .metricValue {
   font-size: t.$font-lg;
   font-weight: 600;
@@ -99,35 +153,76 @@
   font-variant-numeric: tabular-nums;
 }
 
-.metricCost {
-  color: t.$color-text;
-  font-variant-numeric: tabular-nums;
-}
-
-// The unit beside a figure ("tokens", "(actual …)") — present but subordinate to
-// the number it qualifies.
+// The unit beside a figure ("tokens", "agents", "actual …") — present but
+// subordinate to the number it qualifies.
 .metricUnit {
   color: t.$color-text-muted;
   font-size: t.$font-sm;
   font-weight: 400;
 }
 
-// The agent-count stat under the token tally: a big number over its unit, so "how
-// many agents ran" reads at a glance on the whole-run card.
-.agentsStat {
-  font-variant-numeric: tabular-nums;
+// --- Tokens widget totals ----------------------------------------------------
+
+// The input / output / total figures across the top of the Tokens widget.
+.widgetTotals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-md t.$space-lg;
 }
 
-.agentsCount {
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.statValue {
   font-size: t.$font-lg;
   font-weight: 600;
   color: t.$color-text;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
 }
 
-// --- Token split rings (input caching / output reasoning) --------------------
+.statLabel {
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$color-text-muted;
+}
 
-// A ring card: the gauge beside its legend. The legend gives the raw token counts
-// and shares the ring replaces the old text-only breakdown with.
+.statSub {
+  font-size: 0.72rem;
+  color: t.$color-text-muted;
+}
+
+// --- Split rings (input caching / output reasoning / input-vs-output cost) ----
+
+// The two rings of the Tokens widget sit side by side, wrapping when cramped.
+.ringRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-md t.$space-lg;
+}
+
+// One labeled ring block: its title over the gauge-and-legend.
+.ringGroup {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  min-width: 0;
+}
+
+.ringGroupLabel {
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$color-text-muted;
+}
+
+// A ring: the gauge beside its legend. The legend gives the raw figures and shares
+// the ring replaces the old text-only breakdown with.
 .ringBody {
   display: flex;
   align-items: center;
@@ -225,6 +320,64 @@
   color: t.$color-text-muted;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+// --- Cost breakdown rows -----------------------------------------------------
+
+// The per-class cost split: a label, a proportional bar, and the dollar amount, so
+// each class reads both as a magnitude and as a figure.
+.costRows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+.costRow {
+  display: grid;
+  grid-template-columns: 6rem 1fr auto;
+  align-items: center;
+  gap: t.$space-sm;
+  font-size: t.$font-sm;
+}
+
+.costRowLabel {
+  color: t.$color-text;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.72rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.costRowBar {
+  height: 0.5rem;
+  border-radius: 9999px;
+  background: color-mix(in srgb, t.$color-border 45%, transparent);
+  overflow: hidden;
+}
+
+.costRowBarFill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: t.$color-accent;
+}
+
+.costRowAmount {
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+// A subordinate caption under a widget — e.g. that the cost split is derived.
+.cardNote {
+  margin: 0;
+  font-size: 0.72rem;
+  color: t.$color-text-muted;
 }
 
 // --- The configuration card --------------------------------------------------

@@ -1538,9 +1538,13 @@ $fsm-hue: #2dd4bf;
   font-size: 0.7rem;
 }
 
+// The leading icon on a tree row — a folder for an agent, a line-art mark for a
+// file. An SVG sized in CSS (drawn in `currentColor`), so it takes the row's muted
+// tone and the active row's accent alike.
 .fsIcon {
   flex: 0 0 auto;
-  font-size: 0.85rem;
+  width: 0.95rem;
+  height: 0.95rem;
   color: t.$color-text-muted;
 }
 
@@ -1592,46 +1596,11 @@ $fsm-hue: #2dd4bf;
   }
 }
 
-// The content pane's Overview file: the agent's identity card, its token tally, and
-// (for the root) the run's delegation structure, stacked.
+// The content pane's Overview file: the agent's identity card, its context-usage
+// bar, its Tokens and Cost widgets (the Dashboard's, scoped to this agent), and —
+// for the root — the run's delegation structure, stacked.
 .overview {
   display: flex;
   flex-direction: column;
   gap: t.$space-lg;
-}
-
-// The agent's own token/cost tally on its Overview.
-.agentUsage {
-  display: flex;
-  flex-direction: column;
-  gap: t.$space-2xs;
-}
-
-.agentUsageTotal {
-  font-size: t.$font-md;
-  font-weight: 600;
-  color: t.$color-text;
-  font-variant-numeric: tabular-nums;
-}
-
-.agentUsageUnit,
-.agentUsageCost {
-  font-size: t.$font-sm;
-  font-weight: 400;
-  color: t.$color-text-muted;
-}
-
-.agentUsageBreakdown {
-  display: flex;
-  flex-wrap: wrap;
-  gap: t.$space-2xs t.$space-md;
-  font-size: t.$font-sm;
-  color: t.$color-text-muted;
-  font-variant-numeric: tabular-nums;
-}
-
-.agentUsageKey {
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  margin-right: t.$space-2xs;
 }

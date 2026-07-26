@@ -91,6 +91,7 @@ function RunGgBody({ run }: { run: RunRecord }) {
         dashboard={
           <GgDashboard
             usage={derived.usage}
+            slotUsage={derived.slotUsage}
             agentCount={derived.agents.size}
             fsm={derived.fsm}
             capabilitySet={capabilitySet}

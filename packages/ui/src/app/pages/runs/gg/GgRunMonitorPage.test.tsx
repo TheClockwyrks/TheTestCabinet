@@ -369,7 +369,9 @@ describe("GgRunMonitorPage", () => {
     // read without touching the selector.
     expect(screen.getByRole("radio", { name: "Dashboard" })).toBeChecked();
     expect(screen.getByText("Running")).toBeInTheDocument();
-    expect(screen.getByText("Tokens & cost")).toBeInTheDocument();
+    // Tokens and cost read as two separate widgets now.
+    expect(screen.getByText("Tokens")).toBeInTheDocument();
+    expect(screen.getByText("Cost")).toBeInTheDocument();
     expect(screen.getByText("Configuration")).toBeInTheDocument();
     expect(screen.getByText("mock/scripted-builder")).toBeInTheDocument();
     // A single-agent run reads as one agent.
@@ -466,13 +468,20 @@ describe("GgRunMonitorPage", () => {
     renderMonitor();
     openTab("Agents");
     openFile("root context");
-    expect(
-      screen.getByRole("meter", { name: "Context window fullness" }),
-    ).toBeInTheDocument();
+    // The composition story lives on the context file — the source legend and the
+    // compaction boundary with its retained state.
     expect(screen.getByText("System")).toBeInTheDocument();
-    // The compaction boundary is marked under the graph with its retained state.
     expect(
       screen.getByText("Compacted at turn 2: 4.4k → 1.8k tokens"),
+    ).toBeInTheDocument();
+    // The fullness meter moved to the agent's Overview, beside its other
+    // whole-agent figures, so it no longer heads the context panel.
+    expect(
+      screen.queryByRole("meter", { name: "Context window fullness" }),
+    ).not.toBeInTheDocument();
+    openFile("root overview");
+    expect(
+      screen.getByRole("meter", { name: "Context window fullness" }),
     ).toBeInTheDocument();
   });
 
@@ -610,6 +619,12 @@ describe("GgRunMonitorPage", () => {
     // The Dashboard counts all three agents.
     expect(screen.getByText("3")).toBeInTheDocument();
     expect(screen.getByText("agents")).toBeInTheDocument();
+    // The per-slot usage breakdown is a whole-run cost fact, so it reads on the
+    // Dashboard: the reviewer slot's model, and its cost both as the Cost widget's
+    // total and in the per-slot row — so more than one node carries the figure.
+    expect(screen.getByText("Per-slot usage")).toBeInTheDocument();
+    expect(screen.getByText("reviewer")).toBeInTheDocument();
+    expect(screen.getAllByText("$0.0021").length).toBeGreaterThan(1);
 
     openTab("Agents");
     // The delegation tree is the directory tree: root → subagents → the two children.
@@ -617,10 +632,10 @@ describe("GgRunMonitorPage", () => {
     expect(screen.getByText("agent-0")).toBeInTheDocument();
     expect(screen.getByText("agent-1")).toBeInTheDocument();
 
-    // The root's Overview (the default) carries the run-level delegation structure:
-    // the per-slot usage/cost and the declared workflow. The root itself is waiting.
+    // The root's Overview (the default) carries the run-level delegation structure —
+    // the declared workflow — and the root itself is waiting. (Per-slot usage no
+    // longer lives here; it reads on the Dashboard above.)
     expect(screen.getByText("waiting")).toBeInTheDocument();
-    expect(screen.getByText("$0.0021")).toBeInTheDocument();
     expect(screen.getByText("review")).toBeInTheDocument();
     expect(screen.getByText("×3")).toBeInTheDocument();
 
@@ -639,6 +654,21 @@ describe("GgRunMonitorPage", () => {
     // The builder is still running.
     openFile("agent-1 overview");
     expect(screen.getByText("running")).toBeInTheDocument();
+  });
+
+  it("reconciles the root agent to the session outcome once the run concludes", () => {
+    // gg never emits a terminal status for the ROOT agent — its completion is only
+    // implied by `session_ended` — so a concluded run must not leave the root's
+    // Overview reading as "running" after the fact.
+    renderMonitor([
+      sessionStarted(),
+      gg({ type: "assistant_message", text: "Built the thing." }),
+      gg({ type: "session_ended", status: "completed" }),
+    ]);
+    openTab("Agents");
+    // The root's Overview (the default landing) reads the run as done, not running.
+    expect(screen.getByText("done")).toBeInTheDocument();
+    expect(screen.queryByText("running")).toBeNull();
   });
 
   it("shows the FSM current-state strip and marks transitions on the activity file", () => {

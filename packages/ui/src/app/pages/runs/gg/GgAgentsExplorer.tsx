@@ -1,35 +1,46 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ComponentType } from "react";
 import type { GgCapabilitySet } from "@test-cabinet/run-record/gg";
 import { FeedView, type FeedLine } from "../../../components/FeedView";
 import { useAppSettings } from "../../../store/appSettings";
 import runExec from "../RunExec.module.scss";
 import panels from "./GgPanels.module.scss";
+import dash from "./GgDashboard.module.scss";
 import type {
   AgentNode,
   AgentTreeNode,
   DerivedGgState,
   FeedRow,
-  SlotUsage,
   SpeculationState,
-  UsageTally,
   Workflow,
 } from "./useGgRunState";
 import { ROOT_ID } from "./useGgRunState";
 import { capabilityOn } from "./ggCatalog";
+import { soleModelId, useGgCostBreakdown } from "./ggCost";
+import { CostWidget, TokensWidget } from "./GgOverviewWidgets";
 import {
   AgentIdentity,
-  SlotUsagePanel,
   SpeculationPanel,
   WorkflowStrip,
   classifySpeculationRoles,
   type SpeculationRole,
 } from "./AgentTreeView";
-import { ContextFillGraph } from "./ContextFillGraph";
+import { ContextFillGraph, ContextUsageBar } from "./ContextFillGraph";
 import { PlanView } from "./PlanView";
 import { BoardView } from "./BoardView";
 import { TaskDagView } from "./TaskDagView";
 import { SkillsList } from "./SkillsList";
 import { MemoriesList } from "./MemoriesList";
+import {
+  ActivityIcon,
+  BoardIcon,
+  ContextIcon,
+  FolderIcon,
+  FolderOpenIcon,
+  KnowledgeIcon,
+  OverviewIcon,
+  PlanIcon,
+  TasksIcon,
+} from "./ggIcons";
 
 // The Agents explorer: a gg run read agent by agent, laid out like a filesystem.
 //
@@ -44,13 +55,6 @@ import { MemoriesList } from "./MemoriesList";
 // — the same rich panels a gg run has always been read through, now scoped to one
 // agent rather than blurred across all of them.
 
-const numberFmt = new Intl.NumberFormat("en-US");
-function formatTokens(n: number): string {
-  return numberFmt.format(n);
-}
-function formatCost(n: number | null): string {
-  return n == null ? "—" : `$${n.toFixed(4)}`;
-}
 function cx(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(" ");
 }
@@ -120,15 +124,19 @@ const FILE_LABELS: Record<AgentFileKind, string> = {
   knowledge: "knowledge",
 };
 
-// A leading glyph per file kind, so the tree scans like a real file browser.
-const FILE_ICONS: Record<AgentFileKind, string> = {
-  overview: "◆",
-  activity: "≡",
-  context: "▨",
-  plan: "❑",
-  board: "▦",
-  tasks: "☑",
-  knowledge: "✶",
+// A leading icon per file kind, drawn from the shared line-art set (see ggIcons)
+// so the tree scans like a real file browser rather than by ad-hoc glyphs.
+const FILE_ICONS: Record<
+  AgentFileKind,
+  ComponentType<{ className?: string }>
+> = {
+  overview: OverviewIcon,
+  activity: ActivityIcon,
+  context: ContextIcon,
+  plan: PlanIcon,
+  board: BoardIcon,
+  tasks: TasksIcon,
+  knowledge: KnowledgeIcon,
 };
 
 // Which files a folder offers, given the run's configuration. A file is offered
@@ -153,10 +161,10 @@ interface GgAgentsExplorerProps {
   perAgent: Map<string, DerivedGgState>;
   // The run's configuration — decides which context bands are worth listing.
   capabilitySet: GgCapabilitySet | null;
-  // Run-level delegation structure, shown on the root agent's Overview: per-slot
-  // usage/cost, declared workflows, best-of-K speculations. Empty when the run had
-  // none.
-  slotUsage: SlotUsage[];
+  // Run-level delegation structure, shown on the root agent's Overview: declared
+  // workflows and best-of-K speculations. (Per-slot usage is a whole-run cost fact,
+  // so it reads on the Dashboard beside the token/cost tally, not here.) Empty when
+  // the run had none.
   workflows: Workflow[];
   speculations: SpeculationState[];
   // Whether the stream is still arriving — a live activity feed auto-follows its
@@ -178,7 +186,6 @@ export function GgAgentsExplorer({
   tree,
   perAgent,
   capabilitySet,
-  slotUsage,
   workflows,
   speculations,
   live,
@@ -262,7 +269,6 @@ export function GgAgentsExplorer({
             file={selection.file}
             role={roles.get(selectedNode.id)}
             capabilitySet={capabilitySet}
-            slotUsage={slotUsage}
             workflows={workflows}
             speculations={speculations}
             live={live}
@@ -321,9 +327,11 @@ function FolderNode({
         <span className={panels.fsCaret} aria-hidden="true">
           {open ? "▾" : "▸"}
         </span>
-        <span className={panels.fsIcon} aria-hidden="true">
-          📁
-        </span>
+        {open ? (
+          <FolderOpenIcon className={panels.fsIcon} />
+        ) : (
+          <FolderIcon className={panels.fsIcon} />
+        )}
         <span className={panels.fsName}>{isRoot ? "root" : node.id}</span>
         {isRoot && <span className={panels.fsMeta}>main agent</span>}
         {node.slot && !isRoot && (
@@ -345,6 +353,7 @@ function FolderNode({
           {files.map((file) => {
             const selected =
               ctx.selection.agentId === node.id && ctx.selection.file === file;
+            const FileIcon = FILE_ICONS[file];
             return (
               <li key={file}>
                 <button
@@ -362,9 +371,7 @@ function FolderNode({
                   aria-current={selected ? "true" : undefined}
                   onClick={() => ctx.onSelect({ agentId: node.id, file })}
                 >
-                  <span className={panels.fsIcon} aria-hidden="true">
-                    {FILE_ICONS[file]}
-                  </span>
+                  <FileIcon className={panels.fsIcon} />
                   <span className={panels.fsName}>{FILE_LABELS[file]}</span>
                 </button>
               </li>
@@ -404,9 +411,11 @@ function SubagentsFolder({
         <span className={panels.fsCaret} aria-hidden="true">
           {open ? "▾" : "▸"}
         </span>
-        <span className={panels.fsIcon} aria-hidden="true">
-          📁
-        </span>
+        {open ? (
+          <FolderOpenIcon className={panels.fsIcon} />
+        ) : (
+          <FolderIcon className={panels.fsIcon} />
+        )}
         <span className={panels.fsName}>subagents</span>
         <span className={panels.fsMeta}>{node.children.length}</span>
       </button>
@@ -434,7 +443,6 @@ function FileContent({
   file,
   role,
   capabilitySet,
-  slotUsage,
   workflows,
   speculations,
   live,
@@ -444,64 +452,45 @@ function FileContent({
   file: AgentFileKind;
   role?: SpeculationRole;
   capabilitySet: GgCapabilitySet | null;
-  slotUsage: SlotUsage[];
   workflows: Workflow[];
   speculations: SpeculationState[];
   live: boolean;
 }) {
   const isRoot = node.parentId == null;
-  const label = isRoot ? "root" : node.id;
 
+  // No file view restates "<agent> · <file>" over its content: the sidebar's active
+  // row already names the agent and the file being read, so a header here would only
+  // echo it. Each view leads straight into its own content.
   switch (file) {
     case "overview":
       return (
-        <>
-          <span className={runExec.sectionLabel}>{label} · overview</span>
-          <div className={panels.panelBody}>
-            <div className={panels.overview}>
-              <AgentIdentity node={node} role={role} />
-              <AgentUsageSummary usage={state.usage} />
-              {/* The run's delegation structure hangs off the main agent — it is a
-                  whole-run fact, not one subagent's, so it reads on the root. */}
-              {isRoot && workflows.length > 0 && (
-                <WorkflowStrip workflows={workflows} />
-              )}
-              {isRoot && speculations.length > 0 && (
-                <SpeculationPanel speculations={speculations} />
-              )}
-              {isRoot && slotUsage.length > 0 && (
-                <SlotUsagePanel slotUsage={slotUsage} />
-              )}
-            </div>
-          </div>
-        </>
+        <OverviewFile
+          node={node}
+          state={state}
+          role={role}
+          isRoot={isRoot}
+          capabilitySet={capabilitySet}
+          workflows={workflows}
+          speculations={speculations}
+        />
       );
     case "activity":
-      return (
-        <>
-          <span className={runExec.sectionLabel}>{label} · activity</span>
-          <ActivityFeed feed={state.feed} live={live} />
-        </>
-      );
+      return <ActivityFeed feed={state.feed} live={live} />;
     case "context":
       return (
-        <>
-          <span className={runExec.sectionLabel}>{label} · context window</span>
-          <div className={panels.panelBody}>
-            <ContextFillGraph
-              series={state.contextSeries}
-              latest={state.latestContext}
-              capabilitySet={capabilitySet}
-              compactions={state.compactions}
-              planImplementTurn={state.plan?.implementTurn ?? null}
-            />
-          </div>
-        </>
+        <div className={panels.panelBody}>
+          <ContextFillGraph
+            series={state.contextSeries}
+            latest={state.latestContext}
+            capabilitySet={capabilitySet}
+            compactions={state.compactions}
+            planImplementTurn={state.plan?.implementTurn ?? null}
+          />
+        </div>
       );
     case "plan":
       return (
         <>
-          <span className={runExec.sectionLabel}>{label} · plan</span>
           <RetainedNote
             count={state.compactions.length}
             what="submitted plan"
@@ -514,7 +503,6 @@ function FileContent({
     case "board":
       return (
         <>
-          <span className={runExec.sectionLabel}>{label} · board</span>
           <RetainedNote
             count={state.compactions.length}
             what="epic/issue board"
@@ -527,7 +515,6 @@ function FileContent({
     case "tasks":
       return (
         <>
-          <span className={runExec.sectionLabel}>{label} · tasks</span>
           <RetainedNote count={state.compactions.length} what="task list" />
           <div className={panels.panelBody}>
             <TaskDagView tasks={state.tasks} />
@@ -542,7 +529,6 @@ function FileContent({
       const showMemories = capabilityOn(capabilitySet, "memories");
       return (
         <>
-          <span className={runExec.sectionLabel}>{label} · knowledge</span>
           <RetainedNote
             count={state.compactions.length}
             what={knowledgeLabel(showSkills, showMemories)}
@@ -606,37 +592,60 @@ function ActivityFeed({ feed, live }: { feed: FeedRow[]; live: boolean }) {
   );
 }
 
-// The agent's own token/cost tally — the sum of its usage, so a subagent's cost is
-// legible on its Overview rather than only folded into the run total.
-function AgentUsageSummary({ usage }: { usage: UsageTally }) {
+// An agent's Overview file: the same read-out the whole-run Dashboard gives, scoped
+// to this one agent. Its identity card, how full its context window is, and its own
+// Tokens and Cost widgets (the very components the Dashboard uses, fed this agent's
+// usage) — so a subagent's cost is legible in the same shape as the run's, not a
+// different-looking summary. The run's delegation structure (workflows,
+// speculations) is a whole-run fact, so it hangs off the root agent only; a
+// session-scoped card (status, agent count, the configuration, the per-slot usage
+// tally) has no place on one agent, so none appears here — those read on the
+// Dashboard.
+function OverviewFile({
+  node,
+  state,
+  role,
+  isRoot,
+  capabilitySet,
+  workflows,
+  speculations,
+}: {
+  node: AgentNode;
+  state: DerivedGgState;
+  role?: SpeculationRole;
+  isRoot: boolean;
+  capabilitySet: GgCapabilitySet | null;
+  workflows: Workflow[];
+  speculations: SpeculationState[];
+}) {
+  // Price this agent's own usage: prefer its per-slot rollups, falling back to its
+  // aggregate tally at the agent's model (the run's sole model on the root, when it
+  // carries none of its own).
+  const costBreakdown = useGgCostBreakdown(
+    state.slotUsage,
+    state.usage,
+    node.modelId ?? soleModelId(capabilitySet),
+  );
   return (
-    <div className={panels.agentUsage}>
-      <span className={panels.subPanelLabel}>Tokens &amp; cost</span>
-      <span className={panels.agentUsageTotal}>
-        {usage.anyTokens ? formatTokens(usage.totalTokens) : "—"}{" "}
-        <span className={panels.agentUsageUnit}>tokens</span>
-        <span className={panels.agentUsageCost}>
-          {" · "}
-          {formatCost(usage.comparable)}
-        </span>
-      </span>
-      <div className={panels.agentUsageBreakdown}>
-        <span>
-          <span className={panels.agentUsageKey}>in</span>
-          {formatTokens(usage.uncachedInput)}
-        </span>
-        <span>
-          <span className={panels.agentUsageKey}>cached</span>
-          {formatTokens(usage.cachedInput)}
-        </span>
-        <span>
-          <span className={panels.agentUsageKey}>out</span>
-          {formatTokens(usage.output)}
-        </span>
-        <span>
-          <span className={panels.agentUsageKey}>reasoning</span>
-          {formatTokens(usage.reasoning)}
-        </span>
+    <div className={panels.panelBody}>
+      <div className={panels.overview}>
+        <AgentIdentity node={node} role={role} />
+        <ContextUsageBar latest={state.latestContext} />
+        {/* The pane-responsive grid, not the Dashboard's viewport bento: this pane
+            is narrower than the window, so the widgets must stack on the pane's own
+            width. */}
+        <div className={dash.overviewCards}>
+          <TokensWidget usage={state.usage} />
+          <CostWidget usage={state.usage} breakdown={costBreakdown} />
+        </div>
+        {/* The run's delegation structure hangs off the main agent — it is a
+            whole-run fact, not one subagent's, so it reads on the root. */}
+        {isRoot && workflows.length > 0 && (
+          <WorkflowStrip workflows={workflows} />
+        )}
+        {isRoot && speculations.length > 0 && (
+          <SpeculationPanel speculations={speculations} />
+        )}
       </div>
     </div>
   );
