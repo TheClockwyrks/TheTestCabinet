@@ -268,6 +268,20 @@ function makeScriptApi(page, handle, outDir, producedImages) {
     snapshot: () => call("snapshot", []),
     // A generic call into any case-declared control operation.
     call: (method, ...args) => call(method, args),
+    // Deliver a genuine, browser-trusted key tap through Chromium's own input
+    // pipeline — NOT the debug API. Two things separate this from a debug
+    // `press`/`keyDown`: it dispatches a real DOM `keydown`/`keyup` the build's
+    // own listeners catch, and it counts as the user gesture Chromium's autoplay
+    // policy requires. A build is free to feed the debug API through a purely
+    // logical input path (the contract only asks that injected input reach the
+    // same game handling the keyboard does), and to create or resume its
+    // AudioContext lazily from a real DOM interaction rather than from that
+    // logical path — both are conformant. When it does, driving input through
+    // the debug API never unlocks its audio, so no cue is ever scheduled and the
+    // `audio` probe reads nothing though the build plays fine for a real player.
+    // A real tap here arms such a build. `code` is a `KeyboardEvent.code`; pass a
+    // key the game does not bind so arming never disturbs game state.
+    userKey: (code) => page.keyboard.press(String(code)),
     // Real wall-clock pause: unlike `step` (which advances the simulation
     // instantly), this lets the build's render loop animate on screen, so a video
     // output captures real motion.
