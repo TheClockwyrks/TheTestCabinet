@@ -7,12 +7,13 @@
 // bloom begins.
 
 import {
-  startPlaying,
+  armAudio,
+  audioCount,
   denAllExcept,
   findFarTile,
   pred,
-  armAudio,
-  audioCount,
+  quietBoard,
+  startPlaying,
 } from "../_helpers.mjs";
 
 export default function item() {
@@ -32,7 +33,7 @@ export default function item() {
         ty: far.ty,
         mode: "wander",
       });
-      await api.call("poseLastPlankton");
+      await quietBoard(api);
       await armAudio(api);
     },
 

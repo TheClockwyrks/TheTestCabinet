@@ -3,7 +3,7 @@
 // Entering play and clearing the board is instant (`arrange`); the two brightness settings
 // and the moment each needs to take effect in the sim are `act`, so the clip shows the
 // circle at rest and then wide.
-import { startPlaying } from "../_helpers.mjs";
+import { quietBoard, startPlaying } from "../_helpers.mjs";
 
 export default function item() {
   let r0;
@@ -14,7 +14,7 @@ export default function item() {
 
     async arrange(api) {
       await startPlaying(api);
-      await api.call("poseLastPlankton"); // keep the forager from eating and skewing G
+      await quietBoard(api); // keep the forager from eating and skewing G
     },
 
     async act(api) {

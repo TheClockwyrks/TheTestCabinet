@@ -3,11 +3,12 @@
 // The straight corridor is posed instantly (`arrange`); the run down it — where the speed
 // settles at the cap — is the real sim, so it is `act` and is what the clip shows.
 import {
-  startPlaying,
-  findSightLine,
-  denAllExcept,
-  pred,
   GLOAMFIN_CHASE,
+  denAllExcept,
+  findSightLine,
+  pred,
+  quietBoard,
+  startPlaying,
 } from "../_helpers.mjs";
 
 export default function item() {
@@ -20,16 +21,14 @@ export default function item() {
       const snap = await startPlaying(api);
       const line = findSightLine(snap, 4); // straight corridor, 4 tiles apart
       await denAllExcept(api, ["gloamfin"]);
-      await api.call("setForager", {
-        tx: line.forager.tx,
-        ty: line.forager.ty,
-      });
+      // The forager first: `chase` fixes on wherever it is standing when the mode is
+      // set, so it has to be parked on the far end of the straight run by then.
+      await quietBoard(api, line.forager);
       await api.call("setPredator", "gloamfin", {
         tx: line.pred.tx,
         ty: line.pred.ty,
         mode: "chase",
       });
-      await api.call("poseLastPlankton");
     },
 
     async act(api) {

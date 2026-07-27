@@ -3,7 +3,13 @@
 //
 // The lone Gloamfin is posed instantly (`arrange`); the sweep that waits for its ping to
 // be well in flight is `act`, and is what the clip shows.
-import { startPlaying, denAllExcept, findFarTile, pred } from "../_helpers.mjs";
+import {
+  denAllExcept,
+  findFarTile,
+  pred,
+  quietBoard,
+  startPlaying,
+} from "../_helpers.mjs";
 
 // Tiles revealed FAR from the forager (beyond the reach of the local passive light) —
 // any such revealed tile would have to come from something other than the light.
@@ -38,7 +44,7 @@ export default function item() {
         ty: far.ty,
         mode: "wander",
       });
-      await api.call("poseLastPlankton");
+      await quietBoard(api);
     },
 
     async act(api) {

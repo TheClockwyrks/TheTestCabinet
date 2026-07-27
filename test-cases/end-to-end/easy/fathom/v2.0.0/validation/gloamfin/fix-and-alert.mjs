@@ -4,10 +4,11 @@
 // The close pair is posed instantly (`arrange`); the hearing that turns a wander into a
 // chase takes the real sim, so it is `act` and is what the clip shows.
 import {
-  startPlaying,
-  findSightLine,
   denAllExcept,
+  findSightLine,
   pred,
+  quietBoard,
+  startPlaying,
 } from "../_helpers.mjs";
 
 export default function item() {
@@ -21,16 +22,12 @@ export default function item() {
       const snap = await startPlaying(api);
       const line = findSightLine(snap, 2); // 64 px — inside close hearing
       await denAllExcept(api, ["gloamfin"]);
-      await api.call("setForager", {
-        tx: line.forager.tx,
-        ty: line.forager.ty,
-      });
       await api.call("setPredator", "gloamfin", {
         tx: line.pred.tx,
         ty: line.pred.ty,
         mode: "wander",
       });
-      await api.call("poseLastPlankton");
+      await quietBoard(api, line.forager);
     },
 
     async act(api) {

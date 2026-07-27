@@ -4,7 +4,13 @@
 // Posing the Flarefish far from the forager is instant (`arrange`); waiting out its ~7 s
 // cadence is the check itself, so it is `act` and the clip opens on that wait (the record
 // pass films the beginning of it and stops on its budget — the verdict is already made).
-import { startPlaying, denAllExcept, findFarTile, pred } from "../_helpers.mjs";
+import {
+  denAllExcept,
+  findFarTile,
+  pred,
+  quietBoard,
+  startPlaying,
+} from "../_helpers.mjs";
 
 export default function item() {
   let r;
@@ -21,7 +27,7 @@ export default function item() {
         ty: far.ty,
         mode: "wander",
       });
-      await api.call("poseLastPlankton");
+      await quietBoard(api);
     },
 
     async act(api) {

@@ -6,10 +6,11 @@
 // gives the build a frame to paint for the capture.
 import {
   DIRS,
-  startPlaying,
-  findSightLine,
   denAllExcept,
+  findSightLine,
   pred,
+  quietBoard,
+  startPlaying,
 } from "../_helpers.mjs";
 
 export default function item() {
@@ -29,16 +30,12 @@ export default function item() {
       const snap = await startPlaying(api);
       await denAllExcept(api, ["gloamfin"]);
       line = findSightLine(snap, 4); // 128 px: beyond the light (96), inside the circle (192)
-      await api.call("setForager", {
-        tx: line.forager.tx,
-        ty: line.forager.ty,
-      });
       await api.call("setPredator", "gloamfin", {
         tx: line.pred.tx,
         ty: line.pred.ty,
         mode: "wander",
       });
-      await api.call("poseLastPlankton");
+      await quietBoard(api, line.forager);
     },
 
     async act(api) {

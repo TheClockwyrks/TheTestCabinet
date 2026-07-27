@@ -5,14 +5,16 @@
 // pulse, the choice of tile, the two samples and the return trip are all `act`. The
 // return uses `setForager`, a control op — `reset` in act would freeze the recording.
 import {
-  startPlaying,
   findStraightRun,
-  openTiles,
-  tileCenter,
-  stepTile,
   isOpen,
-  sampleColor,
   luminance,
+  openTiles,
+  parkForager,
+  quietBoard,
+  sampleColor,
+  startPlaying,
+  stepTile,
+  tileCenter,
 } from "../_helpers.mjs";
 import { isFogBlack, sampleFog } from "./_kindle.mjs";
 
@@ -32,8 +34,10 @@ export default function item() {
       // (the vision circle stays at rest) and a single pulse reveals tiles straight down
       // the corridor well past the vision circle.
       const run = findStraightRun(snap, 9);
-      await api.call("setForager", { tx: run.tx, ty: run.ty, dir: run.dir });
-      await api.call("poseLastPlankton");
+      // Parked, not merely placed: every distance below is measured from the forager,
+      // so a build whose forager swims off on its own would move the frame of reference
+      // mid-measurement as well as eating the last pellet.
+      await quietBoard(api, { tx: run.tx, ty: run.ty });
       await api.call("clearCooldowns");
     },
 
@@ -77,7 +81,7 @@ export default function item() {
       // the circle is the WINDOWED half the point is named for.
       fog = await sampleFog(api, s, [s.forager, p]);
 
-      await api.call("setForager", { tx: place.tx, ty: place.ty }); // return near it
+      await parkForager(api, place); // return near it, and stay there
       await api.advance(6); // 6 ticks = the old 0.05 s
       await api.settle(120); // and again, so the redrawn ground has been painted
       colAfter = await sampleColor(api, p.x, p.y);

@@ -4,10 +4,11 @@
 // The distant drifter is posed instantly (`arrange`); `act` lets the pose settle, gives
 // the build a frame to paint, and reads back what was drawn where the drifter is.
 import {
-  startPlaying,
   denAllExcept,
   findFarTile,
+  quietBoard,
   sampleColor,
+  startPlaying,
 } from "../_helpers.mjs";
 import { isFogBlack, sampleFog } from "./_kindle.mjs";
 
@@ -26,7 +27,7 @@ export default function item() {
       await denAllExcept(api, []);
       const far = findFarTile(snap, snap.forager, 9); // beyond the vision circle
       await api.call("spawnDrifter", { tx: far.tx, ty: far.ty });
-      await api.call("poseLastPlankton");
+      await quietBoard(api);
     },
 
     async act(api) {

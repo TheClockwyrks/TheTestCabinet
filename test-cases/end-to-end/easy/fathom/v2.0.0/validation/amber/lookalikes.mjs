@@ -6,14 +6,15 @@
 // The whole scene is posed with control ops (`arrange`); `act` only lets the posed
 // change take effect, gives the build a frame to paint, and reads the pixels back.
 import {
-  startPlaying,
-  openTiles,
-  tileCenter,
-  denAllExcept,
-  pred,
-  sampleAmberOrb,
   colorDistance,
+  denAllExcept,
   isAmber,
+  openTiles,
+  pred,
+  quietBoard,
+  sampleAmberOrb,
+  startPlaying,
+  tileCenter,
 } from "../_helpers.mjs";
 
 export default function item() {
@@ -51,7 +52,7 @@ export default function item() {
         mode: "wander",
       });
       await api.call("spawnDrifter", { tx: b[0], ty: b[1] });
-      await api.call("poseLastPlankton");
+      await quietBoard(api);
     },
 
     async act(api) {

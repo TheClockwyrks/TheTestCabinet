@@ -5,14 +5,15 @@
 // relative to where the Flarefish has wandered to), so the wait for the bloom and the
 // sampling that follows are both `act`.
 import {
-  startPlaying,
   denAllExcept,
   findFarTile,
-  openTiles,
-  tileCenter,
-  pred,
-  sampleColor,
   luminance,
+  openTiles,
+  pred,
+  quietBoard,
+  sampleColor,
+  startPlaying,
+  tileCenter,
 } from "../_helpers.mjs";
 import { isFogBlack } from "./_kindle.mjs";
 
@@ -39,7 +40,7 @@ export default function item() {
         ty: far.ty,
         mode: "wander",
       });
-      await api.call("poseLastPlankton");
+      await quietBoard(api);
     },
 
     async act(api) {

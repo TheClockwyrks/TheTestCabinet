@@ -7,13 +7,14 @@
 // gesture, and the log must grow across the ping.
 
 import {
-  startPlaying,
-  denAllExcept,
-  findFarTile,
   actGloamPings,
-  ticksFor,
   armAudio,
   audioCount,
+  denAllExcept,
+  findFarTile,
+  quietBoard,
+  startPlaying,
+  ticksFor,
 } from "../_helpers.mjs";
 
 export default function item() {
@@ -33,7 +34,7 @@ export default function item() {
         ty: far.ty,
         mode: "wander",
       });
-      await api.call("poseLastPlankton");
+      await quietBoard(api);
       await armAudio(api);
     },
 

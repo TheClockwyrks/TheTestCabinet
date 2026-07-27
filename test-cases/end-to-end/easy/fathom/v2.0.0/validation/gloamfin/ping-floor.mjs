@@ -3,12 +3,13 @@
 // Posing a lone wandering Gloamfin is instant (`arrange`); the long watch that collects
 // enough pings to measure the gap between them is `act`, and the clip opens on it.
 import {
-  startPlaying,
+  GLOAMFIN_PING_MIN_GAP,
+  actGloamPings,
   denAllExcept,
   findFarTile,
-  actGloamPings,
+  quietBoard,
+  startPlaying,
   ticksFor,
-  GLOAMFIN_PING_MIN_GAP,
 } from "../_helpers.mjs";
 
 export default function item() {
@@ -26,7 +27,7 @@ export default function item() {
         ty: far.ty,
         mode: "wander",
       });
-      await api.call("poseLastPlankton");
+      await quietBoard(api);
     },
 
     async act(api) {
