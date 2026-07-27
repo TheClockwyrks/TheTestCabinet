@@ -34,7 +34,10 @@ export default function item() {
 
     async assert(api, check) {
       check.expectOk("the tower placed", placed);
-      check.expectOk(
+      // Hard: the trip read below is off the tower, so a soft guard would let the
+      // script throw on a null instead — which the driver records as the build
+      // failing the debug-API contract rather than as this check's own verdict.
+      check.assertOk(
         "the tower is still present after the surge passed",
         t !== null,
       );

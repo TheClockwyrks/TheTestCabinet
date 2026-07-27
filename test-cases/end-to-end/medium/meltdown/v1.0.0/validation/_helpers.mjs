@@ -201,21 +201,43 @@ export async function heatOf(api, id) {
 }
 
 /**
+ * Where `build` parks the held preview after a place — the top-left tile of a
+ * footprint in the far bottom-right of the floor, clear of every scenario any item
+ * lays out (nothing here builds past column 40 / row 34, and the columns the maze
+ * and sealing walls occupy are 20-26).
+ */
+export const PARK_COL = 46;
+export const PARK_ROW = 33;
+
+/**
  * Build a tower through the real placement code and return the placed tower's id
  * (the newest tower whose footprint top-left and type match), or null if the
  * placement was refused. Routes through canPlaceAt, so an invalid placement builds
  * nothing and returns null.
  *
- * The held placement is CANCELLED afterward. Placement legitimately stays armed
- * after a place (`specs/controls.md`, and `building.place-stays-armed` is the item
- * that checks it), but the preview then sits on the footprint just built — which is
- * now occupied, so the preview is INVALID and the build paints the invalid-footprint
- * highlight (`#ff4d4d`, `specs/controls.md`) over it. Any check that samples the
- * rendered tower afterward would read that overlay instead of the tower's own body:
- * a correct cold emitter (`#3a7bd5`) reads warm-red through it. Since this helper is
- * for LAYING OUT a floor rather than for exercising the shop, it drops the preview
- * so what the floor draws is the towers themselves. A check whose subject IS the
- * armed state drives `armTower`/`movePreview`/`place` directly instead.
+ * The held placement is MOVED OFF the scenario afterward. Placement legitimately
+ * stays armed after a place (`specs/controls.md`, and `building.place-stays-armed` is
+ * the item that checks it), but the preview then sits on the footprint just built —
+ * which is now occupied, so the preview is INVALID and the build paints the
+ * invalid-footprint highlight (`#ff4d4d`, `specs/controls.md`) over it. Any check that
+ * samples the rendered tower afterward would read that overlay instead of the tower's
+ * own body: a correct cold emitter (`#3a7bd5`) reads warm-red through it.
+ *
+ * Parked with `movePreview`, NOT cancelled with an Esc keypress, because this runs in
+ * nearly every item's arrange and so must not depend on anything but the placement
+ * ops it is already using. Esc is a THREE-WAY binding — cancel the placement, else
+ * deselect, else pause (`specs/controls.md`) — so what it does here depends on the
+ * build having left a placement armed and on its having bound the key in that order.
+ * Get either wrong and Esc pauses the game instead, in `arrange`, silently: every
+ * `advance` afterwards is then a no-op, and heat, cooling, targeting, economy and
+ * audio items all report a frozen world as if their subject were broken. Those are
+ * separate items with their own verdicts (`controls.cancel-placement` and
+ * `building.place-stays-armed` are where an Esc or arming defect belongs), and laying
+ * out a floor must not be able to fail them. `movePreview` means one thing, and is a
+ * harmless no-op on a build holding nothing.
+ *
+ * A check whose subject IS the armed state drives `armTower`/`movePreview`/`place`
+ * directly instead.
  */
 export async function build(api, type, col, row, rot = 0) {
   await api.call("placeTower", type, col, row, rot);
@@ -223,9 +245,9 @@ export async function build(api, type, col, row, rot = 0) {
     (t) => t.type === type && t.col === col && t.row === row,
   );
   if (matches.length === 0) return null;
-  // Esc cancels a held placement (`specs/controls.md`). Consumes no time, so this
-  // stays arrange-callable.
-  await api.call("press", "Escape");
+  // Park the preview off the scenario instead of cancelling it. Consumes no time,
+  // so this stays arrange-callable. See PARK_COL/PARK_ROW.
+  await api.call("movePreview", PARK_COL, PARK_ROW);
   return matches.reduce((a, b) => (b.id > a.id ? b : a)).id;
 }
 
@@ -260,64 +282,173 @@ export async function pixelAt(api, x, y) {
   return api.pixel(u, v);
 }
 
-/**
- * Sample the solid body color of a tower at an interior point offset up-and-left
- * of its center, clear of the central glyph and the bottom heat-read bar, averaged
- * over a small cluster so a stray antialiased pixel cannot swing the reading.
- */
-export async function sampleTowerBody(api, t) {
-  const s = t.size * TILE;
-  const c = fpCenter(t.col, t.row, t.size);
-  const px = c.x - s * 0.3;
-  const py = c.y - s * 0.3;
-  const offsets = [
-    [0, 0],
-    [3, 0],
-    [-3, 0],
-    [0, 3],
-    [0, -3],
-  ];
-  let r = 0;
-  let g = 0;
-  let b = 0;
-  for (const [dx, dy] of offsets) {
-    const p = await pixelAt(api, px + dx, py + dy);
-    r += p.r;
-    g += p.g;
-    b += p.b;
-  }
-  const n = offsets.length;
-  return { r: r / n, g: g / n, b: b / n };
-}
-
 export function colorDist(a, b) {
   return Math.hypot(a.r - b.r, a.g - b.g, a.b - b.b);
 }
 
+function median(xs) {
+  const s = [...xs].sort((a, b) => a - b);
+  const n = s.length;
+  return n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2;
+}
+
 /**
- * ACT-phase read of a tower's painted body color: let a frame land, then sample.
+ * Bare-floor tile centers, used as the reference for "this pixel is the floor, not
+ * the tower". Sampled from THIS build rather than assumed, so the comparison is
+ * against the build's own floor color and never an absolute brightness (a build is
+ * free to paint a lighter or darker floor than the reference's `#15181d`).
+ *
+ * A clear patch in the floor's upper right: no item builds past column 40 or above
+ * row 2 there, it is well clear of the parked preview (PARK_COL/PARK_ROW) and of the
+ * top vent (columns 22-29), and tile CENTERS dodge the faint tile-grid lines.
+ */
+const FLOOR_PROBE_TILES = [
+  [42, 3],
+  [44, 6],
+  [46, 9],
+];
+
+/**
+ * How far a sampled pixel must sit from the build's own floor color to count as
+ * painted by the tower. Small — it only has to clear the floor's own tile-grid
+ * contrast — because what it separates is "floor" from "anything the tower drew",
+ * not dark from bright.
+ */
+const FLOOR_TOLERANCE = 24;
+
+/** The build's own floor color, per {@link FLOOR_PROBE_TILES}. */
+export async function sampleFloor(api) {
+  const seen = [];
+  for (const [col, row] of FLOOR_PROBE_TILES) {
+    const c = tileCenter(col, row);
+    seen.push(await pixelAt(api, c.x, c.y));
+  }
+  return {
+    r: median(seen.map((p) => p.r)),
+    g: median(seen.map((p) => p.g)),
+    b: median(seen.map((p) => p.b)),
+  };
+}
+
+/**
+ * How far a pixel must move between the two posed states to count as part of what
+ * the build repaints to express the change. Comfortably above frame-to-frame
+ * antialiasing jitter and far below any real color step on the heat ramp.
+ */
+const CHANGE_TOLERANCE = 24;
+
+// The sample grid over a tower footprint. The bottom strip is left out because the
+// on-footprint heat read lives there (`specs/heat.md`): a separate readout with its
+// own unfilled track and redline marker, so its pixels are not the tower's glow.
+const GRID_N = 8; // 8x8 = 64 points, dense enough to land on a border-drawn glow
+const GRID_INSET = 3; // clear of the footprint's outer edge and its antialiasing
+const HEAT_BAR_STRIP = 12;
+
+/**
+ * Read every point of the sample grid over a tower's footprint, plus the build's own
+ * floor color. The raw material for {@link glowBetween}; on its own it decides
+ * nothing.
+ *
+ * Returns `{ floor, points: [{ r, g, b }] }` in a fixed grid order (so two samples of
+ * the same tower are point-for-point comparable), or null if the tower is gone.
+ */
+async function sampleTowerGrid(api, t) {
+  const s = t.size * TILE;
+  const x0 = FLOOR_X0 + t.col * TILE;
+  const y0 = FLOOR_Y0 + t.row * TILE;
+  const floor = await sampleFloor(api);
+  const points = [];
+  for (let i = 0; i < GRID_N; i += 1) {
+    for (let j = 0; j < GRID_N; j += 1) {
+      const x = x0 + GRID_INSET + ((s - 2 * GRID_INSET) * i) / (GRID_N - 1);
+      const y =
+        y0 +
+        GRID_INSET +
+        ((s - GRID_INSET - HEAT_BAR_STRIP) * j) / (GRID_N - 1);
+      points.push(await pixelAt(api, x, y));
+    }
+  }
+  return { floor, points };
+}
+
+/**
+ * ACT-phase read of a tower's painted footprint: let a frame land, then sample the
+ * whole grid. Pair two of these with {@link glowBetween}.
  *
  * The settle is a REAL pause in both passes, not `advance`. These checks read the
  * pixels the build actually painted, which needs a frame to have been drawn since
  * the heat/trip state was posed — and in the validate pass `advance` is instant, so
- * it produces no frame at all. This replaces the old `await api.wait(90)` that every
- * pixel script did by hand before calling `sampleTowerBody`. See `api.settle` in
- * validation.mjs.
+ * it produces no frame at all. See `api.settle` in validation.mjs.
  *
  * The settle is generous because it is the ONLY lever a pixel check has against the
  * renderer. `getImageData` happily returns the last frame that was painted, so a
  * settle that comes up short does not fail loudly — it silently reads the canvas as it
- * was BEFORE the state this check posed, and reports a confident wrong colour. At 90 ms
+ * was BEFORE the state this check posed, and reports a confident wrong color. At 90 ms
  * that raced often enough to flake roughly one full-suite run in two; the only two
  * items that sample pixels are this one's callers, so the wider margin costs a fraction
  * of a second across the whole suite.
  *
- * Returns `{ r, g, b }` (0–255), or null if the tower is gone.
+ * Returns the sample, or null if the tower is gone.
  */
-export async function actSampleTowerBody(api, id, { settleMs = 300 } = {}) {
+export async function actSampleTower(api, id, { settleMs = 300 } = {}) {
   await api.settle(settleMs);
   const t = await tower(api, id);
-  return t ? sampleTowerBody(api, t) : null;
+  return t ? sampleTowerGrid(api, t) : null;
+}
+
+/**
+ * Given two samples of the same tower posed differently — cold and hot, or online
+ * and tripped — report the color its GLOW read in each, as `{ before, after }`.
+ *
+ * Finding the glow by asking what MOVED is the whole point. Where in a footprint the
+ * heat color is painted is the build's own presentation choice: `specs/overview.md`
+ * asks only that "an emitter's glow color tracks its heat along the ramp" and that a
+ * tripped one is unmistakable, never that the body is a solid fill. The obvious
+ * implementations both encode a guess about the rendering and both get it wrong on
+ * some conformant build:
+ *
+ *   * One interior point offset from the center bets the body is filled solid. A
+ *     build that draws the tower as a lit frame around a dark interior — an ordinary
+ *     industrial look — paints the entire ramp on its border, and the center read
+ *     returns the same dead color at every heat, failing a build that renders the
+ *     ramp perfectly.
+ *   * Summarizing the whole footprint instead bets the glow is most of what the
+ *     footprint paints. It is not, on that same framed build, once the interior is
+ *     lit rather than black: the majority color is then an inert fill that never
+ *     tracks heat, and the reading is flat again.
+ *
+ * The pixels that carry the ramp, however they are arranged, are exactly the ones
+ * that differ between the two states — so mask to those and let the build place its
+ * glow wherever it likes. Two guards keep the mask honest: a point must also read as
+ * something other than the build's own floor (sampled, never an absolute brightness,
+ * so a lighter or darker floor than the reference's is fine), and the summary is a
+ * MEDIAN, so minority features that happen to shift — the cyan radiator fins, a
+ * center glyph, a lit highlight — cannot drag the reading the way a mean would.
+ *
+ * Returns null when NOTHING in the footprint moved between the two states, which is
+ * not a measurement failure but the finding itself: a tower that paints the same
+ * whether it is cold or white-hot, or online or tripped, communicates nothing. The
+ * caller asserts on that rather than reporting a color.
+ */
+export function glowBetween(before, after) {
+  if (!before || !after) return null;
+  const moved = [];
+  for (let i = 0; i < before.points.length; i += 1) {
+    const a = before.points[i];
+    const b = after.points[i];
+    if (colorDist(a, b) <= CHANGE_TOLERANCE) continue;
+    const aIsFloor = colorDist(a, before.floor) <= FLOOR_TOLERANCE;
+    const bIsFloor = colorDist(b, after.floor) <= FLOOR_TOLERANCE;
+    if (aIsFloor && bIsFloor) continue;
+    moved.push([a, b]);
+  }
+  if (moved.length === 0) return null;
+  const summarize = (pick) => ({
+    r: median(moved.map((m) => pick(m).r)),
+    g: median(moved.map((m) => pick(m).g)),
+    b: median(moved.map((m) => pick(m).b)),
+  });
+  return { before: summarize((m) => m[0]), after: summarize((m) => m[1]) };
 }
 
 // ---- Trip scenarios --------------------------------------------------------
