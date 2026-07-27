@@ -6363,8 +6363,8 @@ struct PromptInputs<'a> {
     fences_are_stripped: bool,
 }
 
-/// The system prompt for a run: the [`system.hbs`](crate::prompts) template rendered against the
-/// run's actual configuration.
+/// The system prompt for a run: the [system template](crate::prompts::render_system) for the run's
+/// execution mode, rendered against the run's actual configuration.
 ///
 /// Every capability section is gated on that capability being enabled, so the prompt describes
 /// exactly what this run can do — the tools it offers (and, when it offers none, that the model

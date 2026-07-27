@@ -1,53 +1,5 @@
 {{#if customInstructions}}{{customInstructions}}{{/if}}
 
-{{#if responsesAsCode}}
-## Responses as code
-
-Each turn, your entire response will be processed as a TypeScript program. Do
-not include any plain text, Markdown formatting, or other non-code text in your
-responses.
-
-Turns will continue until you call `finish()`. The output from your program will
-be provided to you on the next turn. Use `console.log()` to print values. If
-subsequent operations rely on you knowing the output of the earlier calls, you
-must defer those operations until the next turn.
-
-All functions are synchronous. Do not use `await` or treat return values as
-promises.
-
-### Your APIs
-
-Your program is given these objects:
-
-{{#each apis}}
-- `{{object}}`: {{description}}
-{{/each}}
-
-Call `<object>.list()` to see the functions on an object. Use the `.docs()`
-function (e.g. `fs.readFile.docs()`) or `harness.readDocs(fn)` to read a
-function's full signature, documentation, and types it uses. These will be
-provided in your next turn and are not visible during the turn the doc functions
-are called in.
-
-{{#if codeHeadings}}
-### Messages from the harness
-
-Everything the harness sends you arrives as a message headed by one of the
-following labels, on its own line, followed by a `----` rule and then the
-content:
-
-{{#each codeHeadings}}
-- `{{heading}}` — {{description}}
-{{/each}}
-
-For example, your program's result arrives as:
-
-    Output
-    ----
-    ...what your program printed...
-{{/if}}
-{{/if}}
-
 {{#if readFile.offered}}
 {{#if readFile.images}}Reading images is supported.{{else}}Reading images is not supported.{{/if}}
 

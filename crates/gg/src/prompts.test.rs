@@ -202,6 +202,88 @@ fn the_task_section_carries_the_tool_instructions() {
     assert!(flat(&prompt).contains("At most 100 may be recorded."));
 }
 
+/// The two execution modes render **different** capability sections: a tool-calling run names each
+/// capability's free-standing tools (`add_task`, `spawn_subagent`, `create_epic`), while a
+/// responses-as-code run names their grouped methods (`tasks.addTask`, `agents.spawnSubagent`,
+/// `project.createEpic`) — because in code mode there is no free-standing `add_task`, only a method
+/// on the `tasks` object. This is the whole point of the split, so it is pinned directly: the same
+/// context, rendered in each mode, must teach the calls that mode actually offers.
+#[test]
+fn the_two_modes_name_calls_in_their_own_form() {
+    // A context with every call-naming section on, in the given mode. `apis` carries `harness` so
+    // the code arm has an object to render; it is inert on the tool-calling arm.
+    fn every_section_on(responses_as_code: bool) -> SystemContext {
+        SystemContext {
+            responses_as_code,
+            apis: vec![ApiView {
+                object: "harness".to_string(),
+                description: "the run itself".to_string(),
+            }],
+            tasks: Some(TasksView { max_tasks: 100 }),
+            spawnable_agents: vec![SpawnableAgentView {
+                name: "reviewer".to_string(),
+                description: "review the work".to_string(),
+            }],
+            board: Some(BoardView {
+                max_epics: 50,
+                max_issues: 200,
+                max_retries: 1,
+            }),
+            ..SystemContext::default()
+        }
+    }
+
+    // Tool-calling: the free-standing tool names, and none of the grouped forms.
+    let tools = flat(&render_system(&every_section_on(false), None));
+    for tool in [
+        "`add_task`",
+        "`spawn_subagent`",
+        "`create_epic`",
+        "`create_issue`",
+    ] {
+        assert!(
+            tools.contains(tool),
+            "tool-calling missing `{tool}`:\n{tools}"
+        );
+    }
+    for grouped in [
+        "tasks.addTask",
+        "agents.spawnSubagent",
+        "project.createEpic",
+    ] {
+        assert!(
+            !tools.contains(grouped),
+            "tool-calling leaked grouped form `{grouped}`:\n{tools}"
+        );
+    }
+
+    // Responses-as-code: the grouped methods, and none of the free-standing tool names.
+    let code = flat(&render_system(&every_section_on(true), None));
+    for grouped in [
+        "`tasks.addTask`",
+        "`tasks.setBlockedBy`",
+        "`agents.spawnSubagent`",
+        "`project.createEpic`",
+        "`project.createIssue`",
+    ] {
+        assert!(
+            code.contains(grouped),
+            "code mode missing `{grouped}`:\n{code}"
+        );
+    }
+    for tool in [
+        "`add_task`",
+        "`spawn_subagent`",
+        "`create_epic`",
+        "`create_issue`",
+    ] {
+        assert!(
+            !code.contains(tool),
+            "code mode leaked free-standing tool `{tool}`:\n{code}"
+        );
+    }
+}
+
 /// The image line states, neutrally, whether reading images is supported — and says nothing at all
 /// when `read_file` is not offered, since there is then no tool that could show or describe one.
 #[test]

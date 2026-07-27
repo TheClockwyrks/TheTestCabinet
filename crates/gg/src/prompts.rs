@@ -56,8 +56,20 @@ use std::sync::OnceLock;
 use handlebars::{Handlebars, RenderError};
 use serde::Serialize;
 
-/// The system prompt: the base framing plus one conditional section per enabled capability.
-const SYSTEM_TEMPLATE: &str = include_str!("../templates/system.hbs");
+/// The **tool-calling** system prompt: the base framing plus one conditional section per enabled
+/// capability, with each capability's tools named as the free-standing calls a tool-calling run
+/// makes (`add_task`, `spawn_subagent`, `create_epic`).
+const SYSTEM_TOOLS_TEMPLATE: &str = include_str!("../templates/system-tools.hbs");
+
+/// The **responses-as-code** system prompt: the same capability sections, plus the code-protocol
+/// framing (the reply *is* a program, discovery through `object.list()`/`fn.docs()`, the message
+/// headings), with each capability's calls named in their grouped form — methods on an API object
+/// (`tasks.addTask`, `agents.spawnSubagent`, `project.createEpic`) rather than free-standing tools.
+///
+/// The two templates are selected between by [`render_system`] on the run's execution mode; they are
+/// separate files rather than one branching template because the code arm rewrites every section's
+/// calls into their grouped form, so almost nothing between the arms is shared prose.
+const SYSTEM_CODE_TEMPLATE: &str = include_str!("../templates/system-code.hbs");
 
 /// The pinned [task list](crate::tasks) block.
 const TASKS_TEMPLATE: &str = include_str!("../templates/tasks.hbs");
@@ -123,7 +135,8 @@ const HEALING_NOTE_TEMPLATE: &str = include_str!("../templates/healing-note.hbs"
 /// templates include as a `{{> partial}}`, since handlebars resolves a partial against the same
 /// registry. The tests iterate this list to assert every template parses.
 const TEMPLATES: &[(&str, &str)] = &[
-    ("system", SYSTEM_TEMPLATE),
+    ("system-tools", SYSTEM_TOOLS_TEMPLATE),
+    ("system-code", SYSTEM_CODE_TEMPLATE),
     ("tasks", TASKS_TEMPLATE),
     ("board", BOARD_TEMPLATE),
     ("memories", MEMORIES_TEMPLATE),
@@ -186,7 +199,7 @@ fn render<T: Serialize>(name: &str, context: &T) -> String {
 /// Normalize the system prompt's whitespace: collapse any run of three or more newlines to a
 /// blank-line separator.
 ///
-/// This is what lets `system.hbs` stay readable. A `{{#if}}` section that renders nothing still
+/// This is what lets the system templates stay readable. A `{{#if}}` section that renders nothing still
 /// leaves its surrounding blank lines behind, so without this every one of its dozen conditional
 /// sections would have to be written with Handlebars' `~` whitespace-control markers — exactly
 /// the noise that makes a template hard to maintain. Collapsing here means a section can be
@@ -217,7 +230,7 @@ fn tidy(rendered: &str) -> String {
 // The system prompt
 // ---------------------------------------------------------------------------
 
-/// The variables `system.hbs` may reference — one field per capability the prompt describes,
+/// The variables the system templates may reference — one field per capability the prompt describes,
 /// carrying that capability's configuration so the prompt can state a run's actual limits
 /// instead of restating a default in prose.
 ///
@@ -427,35 +440,61 @@ pub struct FsmView {
     pub machine: String,
 }
 
+/// The built-in template name for a run's execution mode: the code arm under
+/// [responses-as-code](SystemContext::responses_as_code), the tool-calling arm otherwise. The two
+/// are registered separately (see [`TEMPLATES`]) and this is the only place that decides between
+/// them, so a run is rendered against exactly the arm whose contract it will actually be held to.
+fn system_template_name(responses_as_code: bool) -> &'static str {
+    if responses_as_code {
+        "system-code"
+    } else {
+        "system-tools"
+    }
+}
+
 /// Render the [system prompt](SystemContext) for a run.
+///
+/// The built-in template is chosen by the run's [execution mode](SystemContext::responses_as_code):
+/// the [code arm](SYSTEM_CODE_TEMPLATE) for a responses-as-code run, the
+/// [tool-calling arm](SYSTEM_TOOLS_TEMPLATE) otherwise.
 ///
 /// `template_override` is an agent profile's
 /// [full-template override](test_cabinet_core::gg::GgAgentConfig::system_prompt_template): when
 /// present (and non-blank) it is rendered against the same [`SystemContext`] instead of the
 /// built-in template. A malformed override — one that references a variable the context does not
-/// carry — falls back to the built-in template rather than aborting the run, since it is
-/// operator-authored input, not an embedded artifact the tests pin.
+/// carry — falls back to the built-in template for the run's mode rather than aborting the run,
+/// since it is operator-authored input, not an embedded artifact the tests pin.
 pub fn render_system(context: &SystemContext, template_override: Option<&str>) -> String {
+    let builtin = system_template_name(context.responses_as_code);
     let rendered = match template_override.map(str::trim).filter(|t| !t.is_empty()) {
         Some(template) => engine()
             .render_template(template, context)
-            .unwrap_or_else(|_| render("system", context)),
-        None => render("system", context),
+            .unwrap_or_else(|_| render(builtin, context)),
+        None => render(builtin, context),
     };
     tidy(&rendered)
 }
 
-/// The built-in system-prompt template, verbatim — the default an operator's
+/// The built-in **tool-calling** system-prompt template, verbatim — the default an operator's
 /// [`GgAgentConfig::system_prompt_template`](test_cabinet_core::gg::GgAgentConfig::system_prompt_template)
-/// override starts from, and what the console seeds its editor with. The per-capability
-/// sections are inlined into this one file, so it is self-contained Handlebars (no partials).
+/// override starts from for a tool-calling agent, and what the console seeds its editor with for
+/// one. The per-capability sections are inlined into this one file, so it is self-contained
+/// Handlebars (no partials).
 ///
 /// The console's copy is generated from the same `.hbs` file (see `scripts/gen-contract.mjs`); this
 /// accessor is the in-crate mirror, used by the prompt tests to pin that the template parses and
 /// renders on its own.
 #[allow(dead_code)]
 pub fn default_system_prompt_template() -> &'static str {
-    SYSTEM_TEMPLATE
+    SYSTEM_TOOLS_TEMPLATE
+}
+
+/// The built-in **responses-as-code** system-prompt template, verbatim — the default an operator's
+/// override starts from for a code-mode agent, and what the console seeds its editor with for one.
+/// Like its tool-calling sibling it is self-contained Handlebars (no partials).
+#[allow(dead_code)]
+pub fn default_system_prompt_template_code() -> &'static str {
+    SYSTEM_CODE_TEMPLATE
 }
 
 // ---------------------------------------------------------------------------

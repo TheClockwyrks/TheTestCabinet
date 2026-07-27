@@ -12,19 +12,20 @@ carries its own prompts.
 This is the same templating idiom — and the same strict-mode, no-escaping engine — that
 renders a test case's [`prompt.hbs`](/testing/end-to-end/overview/#prompt-template).
 
-| Template           | What it renders                                                              |
-| ------------------ | ---------------------------------------------------------------------------- |
-| `system.hbs`       | The system prompt: the base framing plus one section per enabled capability. |
-| `tasks.hbs`        | The pinned [task list](/gg/tasks/) block.                                    |
-| `board.hbs`        | The pinned [Project management](/gg/project-management/) board block.        |
-| `memories.hbs`     | The pinned [memories](/gg/memories/) block.                                  |
-| `plan-mode.hbs`    | The [planning](/gg/planning/) capability's read-only plan-mode guidance.     |
-| `plan-framing.hbs` | How an accepted plan is framed as it seeds the fresh implementation context. |
-| `code-result.hbs`  | The turn feedback for a [responses-as-code](/gg/responses-as-code/) program that ran — its call roster, its output, and anything it needs telling. |
-| `code-transpile-error.hbs` | The turn feedback for a [program](/gg/responses-as-code/) that did not compile, so nothing ran. |
-| `code-sandbox-error.hbs` | The turn feedback for a [program](/gg/responses-as-code/) the sandbox could not run to a result — a fuel or memory ceiling. |
-| `code-not-a-program.hbs` | The turn feedback for a reply that was not a program at all — prose, empty, comments only, or several candidate blocks. |
-| `healing-note.hbs`  | The partial at the top of all four code feedback templates, disclosing what [healing](/gg/response-healing/) repaired. |
+| Template                   | What it renders                                                                                                                                                                        |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `system-tools.hbs`         | The **tool-calling** system prompt: the base framing plus one section per enabled capability, each naming its free-standing tools (`add_task`, `create_epic`).                         |
+| `system-code.hbs`          | The **responses-as-code** system prompt: the same capability sections with their calls in grouped-method form (`tasks.addTask`, `project.createEpic`), plus the code-protocol framing. |
+| `tasks.hbs`                | The pinned [task list](/gg/tasks/) block.                                                                                                                                              |
+| `board.hbs`                | The pinned [Project management](/gg/project-management/) board block.                                                                                                                  |
+| `memories.hbs`             | The pinned [memories](/gg/memories/) block.                                                                                                                                            |
+| `plan-mode.hbs`            | The [planning](/gg/planning/) capability's read-only plan-mode guidance.                                                                                                               |
+| `plan-framing.hbs`         | How an accepted plan is framed as it seeds the fresh implementation context.                                                                                                           |
+| `code-result.hbs`          | The turn feedback for a [responses-as-code](/gg/responses-as-code/) program that ran — its call roster, its output, and anything it needs telling.                                     |
+| `code-transpile-error.hbs` | The turn feedback for a [program](/gg/responses-as-code/) that did not compile, so nothing ran.                                                                                        |
+| `code-sandbox-error.hbs`   | The turn feedback for a [program](/gg/responses-as-code/) the sandbox could not run to a result — a fuel or memory ceiling.                                                            |
+| `code-not-a-program.hbs`   | The turn feedback for a reply that was not a program at all — prose, empty, comments only, or several candidate blocks.                                                                |
+| `healing-note.hbs`         | The partial at the top of all four code feedback templates, disclosing what [healing](/gg/response-healing/) repaired.                                                                 |
 
 ## The system prompt is assembled from the capability set
 
@@ -33,8 +34,8 @@ to the prompt: **a capability that is off contributes no prompt text at all**. T
 what makes an [ablation](/gg/overview/#the-capability-set) clean — the off arm's model
 is never told about a feature it does not have.
 
-So `system.hbs` is one `{{#if}}` section per capability, over a rendering context that
-carries both _whether_ each capability is on and _how it is configured_. A run's actual
+So each system template is one `{{#if}}` section per capability, over a rendering context
+that carries both _whether_ each capability is on and _how it is configured_. A run's actual
 limits are interpolated inline rather than restated in prose:
 
 - the `read_file` [line cap](/gg/filesystem/#read-modes), and whether it is a hard
@@ -52,17 +53,25 @@ documented list of what a template may reference, and the crate's tests render e
 template with the capability sections both on and off — so a typo in a `.hbs` file fails
 the build instead of reaching a model.
 
-Because the prompt is one file, editing it is editing prose: rewording the tasks section,
-reordering the capability sections, or tightening the base framing needs no Rust change.
+Because each prompt is one self-contained file, editing it is editing prose: rewording the
+tasks section, reordering the capability sections, or tightening the base framing needs no
+Rust change.
 
-## The code-mode arm teaches a different contract
+## Two whole templates, chosen by execution mode
 
-[Responses as code](/gg/responses-as-code/) replaces the base framing's ending rule as
-well as its tool listing, so `system.hbs` renders one of two whole arms. The code arm
-teaches four things the tool-calling arm has no need of, and each is gated on something
-about the run:
+[Responses as code](/gg/responses-as-code/) does not just add to the tool-calling prompt —
+it rewrites it. Every capability's calls change shape (there is no free-standing `add_task`
+in code mode, only `tasks.addTask`, a method on the `tasks` object), and the base framing's
+ending rule and tool listing are replaced wholesale. So the two arms are **separate files**,
+`system-tools.hbs` and `system-code.hbs`, and `prompts::render_system` selects between them
+on the run's execution mode. An operator's per-agent template override still renders against
+the same context in either mode; the console seeds its editor with whichever built-in default
+matches the agent's mode.
 
-- **What a reply *is*.** The model's whole reply is the program: no fence, no language
+The code arm teaches four things the tool-calling arm has no need of, and each is gated on
+something about the run:
+
+- **What a reply _is_.** The model's whole reply is the program: no fence, no language
   tag, no prose around it, exactly one program per reply — with a top-level `return`
   named as the thing that ends it, since a model that pastes a second draft after the
   first is pasting it after a `return` — and nothing that narrates a result the model has

@@ -1,5 +1,8 @@
 import { useState, type ReactNode } from "react";
-import { DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE } from "@test-cabinet/run-record/gg-system-prompt";
+import {
+  DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE,
+  DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE_CODE,
+} from "@test-cabinet/run-record/gg-system-prompt";
 import type { Model } from "../../../../client/types";
 import { ModelCombobox } from "../../../components/ModelCombobox";
 import { familyOf } from "../../../data/families";
@@ -143,7 +146,9 @@ export function GgConfigEditor({
   function updateAgent(index: number, patch: Partial<GgAgentDraft>) {
     onChange({
       ...value,
-      agents: value.agents.map((a, i) => (i === index ? { ...a, ...patch } : a)),
+      agents: value.agents.map((a, i) =>
+        i === index ? { ...a, ...patch } : a,
+      ),
     });
   }
   function addAgent() {
@@ -252,7 +257,9 @@ export function GgConfigEditor({
         {/* Model slots — the launch-time model parameters. Declaring them is what
             keeps one configuration reusable across models: the New run page asks for
             these, pre-filled with any default, and agents bind to them by name. */}
-        <p className={`${runExec.sectionLabel} ${runExec.sectionLabelBackdrop}`}>
+        <p
+          className={`${runExec.sectionLabel} ${runExec.sectionLabelBackdrop}`}
+        >
           Model slots
         </p>
         <p className={`${runExec.muted} ${gg.backdropNote}`}>
@@ -308,7 +315,8 @@ export function GgConfigEditor({
                 </div>
                 {unused && (
                   <p className={gg.fieldError}>
-                    No agent binds this slot, so launching will never ask for it.
+                    No agent binds this slot, so launching will never ask for
+                    it.
                   </p>
                 )}
               </div>
@@ -328,12 +336,14 @@ export function GgConfigEditor({
         {/* Agents — the per-agent profiles. The first is always the Root, which
             drives the run's top-level session and is the default for issue dispatch,
             Code Review, and speculation judging. */}
-        <p className={`${runExec.sectionLabel} ${runExec.sectionLabelBackdrop}`}>
+        <p
+          className={`${runExec.sectionLabel} ${runExec.sectionLabelBackdrop}`}
+        >
           Agents
         </p>
         <p className={`${runExec.muted} ${gg.backdropNote}`}>
-          Each agent has its own capabilities, model, custom prompt, and the set of
-          agents it may spawn. Open one to configure it.
+          Each agent has its own capabilities, model, custom prompt, and the set
+          of agents it may spawn. Open one to configure it.
         </p>
         <div className={gg.slotList}>
           {value.agents.map((agent, i) => {
@@ -404,12 +414,16 @@ export function GgConfigEditor({
   const paramsErrors = agentParamErrors(agent);
   const declaredSlots = value.modelSlots.map((s) => s.name.trim());
 
-  const patchAgent = (patch: Partial<GgAgentDraft>) => updateAgent(index, patch);
+  const patchAgent = (patch: Partial<GgAgentDraft>) =>
+    updateAgent(index, patch);
   const updateCap = (id: string, patch: Partial<GgCapabilityDraft>) =>
     patchAgent({
       capabilities: {
         ...agent.capabilities,
-        [id]: { ...(agent.capabilities[id] ?? blankCapabilityDraft()), ...patch },
+        [id]: {
+          ...(agent.capabilities[id] ?? blankCapabilityDraft()),
+          ...patch,
+        },
       },
     });
   const setParam = (id: string, key: string, param: string) => {
@@ -417,7 +431,9 @@ export function GgConfigEditor({
     updateCap(id, { params: { ...(base.params ?? {}), [key]: param } });
   };
   const setToolAblation = (tools: ReadonlyArray<string>, on: boolean) =>
-    patchAgent({ disabledTools: setToolBundle(agent.disabledTools, tools, on) });
+    patchAgent({
+      disabledTools: setToolBundle(agent.disabledTools, tools, on),
+    });
   const toggleSubagent = (target: string, on: boolean) => {
     const others = agent.subagents.filter((s) => s.agent !== target);
     patchAgent({
@@ -431,14 +447,23 @@ export function GgConfigEditor({
       ),
     });
 
+  // gg renders one of two built-in system prompts per agent, chosen by its execution
+  // mode: the responses-as-code arm names each capability's grouped methods and teaches
+  // the code protocol; the tool-calling arm names the free-standing tools. The editor
+  // seeds (and resets to) whichever default this agent will actually run against, so an
+  // operator starts from the prompt gg would have used.
+  const defaultPrompt = agent.capabilities["responses-as-code"]?.enabled
+    ? DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE_CODE
+    : DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE;
+
   // The full system prompt shown in the (collapsed-by-default) editor: this agent's
-  // override, or the built-in default. Editing it to exactly the default stores no
-  // override.
-  const promptValue = agent.systemPromptTemplate || DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE;
+  // override, or the built-in default for its mode. Editing it to exactly that default
+  // stores no override.
+  const promptValue = agent.systemPromptTemplate || defaultPrompt;
   const promptOverridden = agent.systemPromptTemplate.trim().length > 0;
   function setPrompt(next: string) {
     patchAgent({
-      systemPromptTemplate: next === DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE ? "" : next,
+      systemPromptTemplate: next === defaultPrompt ? "" : next,
     });
   }
 
@@ -697,7 +722,11 @@ export function GgConfigEditor({
                                         value={draft.params?.[p.key] ?? ""}
                                         disabled={readOnly}
                                         onChange={(e) =>
-                                          setParam(cap.id, p.key, e.target.value)
+                                          setParam(
+                                            cap.id,
+                                            p.key,
+                                            e.target.value,
+                                          )
                                         }
                                       >
                                         {(p.options ?? []).map((o) => (
@@ -712,7 +741,11 @@ export function GgConfigEditor({
                                         value={draft.params?.[p.key] ?? ""}
                                         disabled={readOnly}
                                         onChange={(e) =>
-                                          setParam(cap.id, p.key, e.target.value)
+                                          setParam(
+                                            cap.id,
+                                            p.key,
+                                            e.target.value,
+                                          )
                                         }
                                       >
                                         {/* An agent named by a stored param that no
@@ -740,7 +773,11 @@ export function GgConfigEditor({
                                         value={draft.params?.[p.key] ?? ""}
                                         disabled={readOnly}
                                         onChange={(e) =>
-                                          setParam(cap.id, p.key, e.target.value)
+                                          setParam(
+                                            cap.id,
+                                            p.key,
+                                            e.target.value,
+                                          )
                                         }
                                         placeholder={p.placeholder}
                                         spellCheck={false}
@@ -757,7 +794,11 @@ export function GgConfigEditor({
                                         value={draft.params?.[p.key] ?? ""}
                                         disabled={readOnly}
                                         onChange={(e) =>
-                                          setParam(cap.id, p.key, e.target.value)
+                                          setParam(
+                                            cap.id,
+                                            p.key,
+                                            e.target.value,
+                                          )
                                         }
                                         placeholder={p.placeholder}
                                       />
@@ -826,8 +867,8 @@ export function GgConfigEditor({
       </p>
       <p className={`${runExec.muted} ${gg.backdropNote}`}>
         The agents this one may spawn (with <code>spawn_subagent</code>,{" "}
-        <code>speculate</code>, or <code>run_workflow</code>). Enable a target and
-        describe when to use it — the description is what this agent sees.
+        <code>speculate</code>, or <code>run_workflow</code>). Enable a target
+        and describe when to use it — the description is what this agent sees.
       </p>
       <div className={gg.subagentList}>
         {value.agents.map((target) => {
@@ -897,10 +938,10 @@ export function GgConfigEditor({
         {promptOpen && (
           <div className={gg.capList}>
             <p className={`${runExec.muted}`}>
-              The full template gg renders for this agent. Custom instructions are
-              inserted at the <code>{"{{customInstructions}}"}</code> block near the
-              top. Edit here only to rewrite the whole prompt; leaving it equal to
-              the default stores no override.
+              The full template gg renders for this agent. Custom instructions
+              are inserted at the <code>{"{{customInstructions}}"}</code> block
+              near the top. Edit here only to rewrite the whole prompt; leaving
+              it equal to the default stores no override.
             </p>
             <textarea
               className={`${gg.textarea} ${gg.promptTextarea}`}
@@ -914,7 +955,7 @@ export function GgConfigEditor({
               <button
                 type="button"
                 className={runExec.secondary}
-                onClick={() => setPrompt(DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE)}
+                onClick={() => setPrompt(defaultPrompt)}
               >
                 Reset to default
               </button>
