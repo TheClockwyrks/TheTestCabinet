@@ -55,10 +55,14 @@ export default function item() {
       // With the critter idle, the bear does not re-emerge.
       idle = await api.until((s) => s.bears[0].present, { max: 120, poll: 6 }); // 1 s
 
-      // Once the critter advances, the bear returns.
+      // Once the critter advances, the bear returns. The window is generous for the
+      // reason in `hunter/emerges.mjs`: specs/hunter.md pins no re-emerge delay, so
+      // sizing this to one build's constant would fail another equally correct build.
+      // The `idle` sweep above is what holds the fairness rule; this one only has to
+      // establish that the bear does come back.
       await api.call("setLane", 15, { cols: [] });
       await api.call("placeCritter", 20, 15);
-      back = await api.until((s) => s.bears[0].present, { max: 144, poll: 6 }); // 1.2 s
+      back = await api.until((s) => s.bears[0].present, { max: 600, poll: 6 }); // 5 s
     },
 
     async assert(api, check) {
