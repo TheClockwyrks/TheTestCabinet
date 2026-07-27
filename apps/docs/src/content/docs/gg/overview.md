@@ -144,6 +144,8 @@ saved, launched, and analyzed in the console is
 
 **Context**
 
+- [Autoload specifications](/gg/autoload-specifications/) — seed an agent's opening
+  context with the whole test-case brief, optionally locked in place.
 - [Compaction](/gg/compaction/) — summarize and restart a thread to continue past
   the context window.
 - [Context visibility](/gg/context-visibility/) — track what is consuming the

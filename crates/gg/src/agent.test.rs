@@ -64,6 +64,8 @@ fn invocation(dir: &Path, set: GgCapabilitySet) -> GgInvocation {
         // No declared modalities: the offline default, under which every model is
         // treated optimistically about image input (see `crate::vision`).
         model_modalities: BTreeMap::new(),
+        // No provided files by default; the autoload-specifications tests set this.
+        provided_files: Vec::new(),
     }
 }
 
@@ -229,6 +231,8 @@ async fn drive_root(
             test_context_setup(false),
             no_compaction(),
             no_amc(),
+            no_autoload(),
+            &[],
             SkillsRuntime::disabled(),
             MemoriesRuntime::disabled(),
             TasksRuntime::disabled(),
@@ -413,6 +417,15 @@ fn no_amc() -> AmcSetup {
     AmcSetup {
         enabled: false,
         archive: Arc::new(Mutex::new(ArchiveStore::new())),
+    }
+}
+
+/// The autoload-specifications setup with the capability **off** — every `drive` e2e that is not
+/// exercising autoload passes this (paired with an empty provided-files slice).
+fn no_autoload() -> AutoloadSetup {
+    AutoloadSetup {
+        enabled: false,
+        locked: false,
     }
 }
 
@@ -881,6 +894,8 @@ async fn drive_exhausts_the_turn_ceiling_when_the_model_never_stops() {
             test_context_setup(false),
             no_compaction(),
             no_amc(),
+            no_autoload(),
+            &[],
             SkillsRuntime::disabled(),
             MemoriesRuntime::disabled(),
             TasksRuntime::disabled(),
@@ -933,6 +948,8 @@ async fn drive_times_out_at_a_passed_deadline() {
             test_context_setup(false),
             no_compaction(),
             no_amc(),
+            no_autoload(),
+            &[],
             SkillsRuntime::disabled(),
             MemoriesRuntime::disabled(),
             TasksRuntime::disabled(),
@@ -986,6 +1003,8 @@ async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
             test_context_setup(false),
             no_compaction(),
             no_amc(),
+            no_autoload(),
+            &[],
             SkillsRuntime::disabled(),
             MemoriesRuntime::disabled(),
             TasksRuntime::disabled(),
@@ -1040,6 +1059,8 @@ async fn drive_ends_model_error_on_exhausted_retries() {
             test_context_setup(false),
             no_compaction(),
             no_amc(),
+            no_autoload(),
+            &[],
             SkillsRuntime::disabled(),
             MemoriesRuntime::disabled(),
             TasksRuntime::disabled(),
@@ -1090,6 +1111,8 @@ async fn drive_ends_auth_error_when_the_credential_is_refused() {
             test_context_setup(false),
             no_compaction(),
             no_amc(),
+            no_autoload(),
+            &[],
             SkillsRuntime::disabled(),
             MemoriesRuntime::disabled(),
             TasksRuntime::disabled(),
@@ -1177,6 +1200,113 @@ fn system_prompt_states_the_configured_read_cap() {
 /// does not depend on where the template happens to hard-wrap.
 fn flat(rendered: &str) -> String {
     rendered.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// The four PNG magic bytes plus a little payload, so `sniff_image` recognizes it as a picture.
+const FAKE_PNG: &[u8] = b"\x89PNG\r\n\x1a\nrest-of-the-file";
+
+/// Autoloading seeds the provided files as `read_file` pairs the model did not have to
+/// request: a synthesized assistant call per file, immediately answered by its contents (a
+/// text spec as text, a reference mockup as an attached image), in the order provided.
+#[tokio::test]
+async fn autoload_seeds_the_provided_files_as_read_pairs() {
+    let dir = TempDir::new().unwrap();
+    std::fs::write(dir.path().join("SPEC.md"), "# The spec\n\nBuild a game.\n").unwrap();
+    std::fs::create_dir_all(dir.path().join("reference")).unwrap();
+    std::fs::write(dir.path().join("reference").join("title.png"), FAKE_PNG).unwrap();
+
+    let ctx = ToolContext::new(dir.path());
+    let emitter = Emitter::with_sink(None, Box::new(CollectingSink::new()));
+    let mut context = ContextModel::new(Arc::new(HeuristicTokenEstimator::new()), Some(100_000));
+
+    let provided = vec![
+        PathBuf::from("SPEC.md"),
+        PathBuf::from("reference/title.png"),
+    ];
+    autoload_specifications(&mut context, &provided, &ctx, false, &emitter).await;
+
+    // Two file views, in the order provided, tagged with their paths — ephemeral (not locked).
+    let views: Vec<_> = context
+        .items()
+        .iter()
+        .filter(|item| item.source() == GgContextSource::FileView)
+        .collect();
+    assert_eq!(views.len(), 2);
+    assert!(views.iter().all(|v| v.retention() == Retention::Ephemeral));
+
+    // The spec's full text is in the window, and the mockup is attached as a real image (the
+    // offline default treats an unknown model as able to see one).
+    let messages = context.messages();
+    assert!(
+        messages.iter().any(|m| m
+            .content
+            .as_deref()
+            .is_some_and(|c| c.contains("Build a game."))),
+        "the spec's contents are loaded"
+    );
+    assert!(
+        messages.iter().any(|m| !m.images.is_empty()),
+        "the reference mockup is attached as an image"
+    );
+
+    // Every synthesized `read_file` call is answered by a matching tool result — a well-formed
+    // opening conversation, exactly as a real read would produce.
+    let assistant_calls = context
+        .items()
+        .iter()
+        .filter(|item| item.source() == GgContextSource::Assistant)
+        .count();
+    assert_eq!(assistant_calls, 2, "one read_file call per provided file");
+}
+
+/// Locked autoload pins the injected views, so they survive a compaction verbatim while an
+/// unlocked one is summarized away.
+#[tokio::test]
+async fn locked_autoload_survives_compaction() {
+    let dir = TempDir::new().unwrap();
+    std::fs::write(dir.path().join("SPEC.md"), "the whole specification").unwrap();
+    let ctx = ToolContext::new(dir.path());
+    let emitter = Emitter::with_sink(None, Box::new(CollectingSink::new()));
+    let provided = vec![PathBuf::from("SPEC.md")];
+
+    // Unlocked: the view is ephemeral, so a compaction drops it.
+    let mut unlocked = ContextModel::new(Arc::new(HeuristicTokenEstimator::new()), Some(100_000));
+    unlocked.push_system("system");
+    unlocked.push_user_prompt("build");
+    autoload_specifications(&mut unlocked, &provided, &ctx, false, &emitter).await;
+    unlocked.compact_history(Message::user("SUMMARY"));
+    assert!(
+        !unlocked
+            .messages()
+            .iter()
+            .any(|m| m.content.as_deref() == Some("the whole specification")),
+        "an unlocked spec is summarized away"
+    );
+
+    // Locked: the view is pinned, so it stays verbatim across the same compaction.
+    let mut locked = ContextModel::new(Arc::new(HeuristicTokenEstimator::new()), Some(100_000));
+    locked.push_system("system");
+    locked.push_user_prompt("build");
+    autoload_specifications(&mut locked, &provided, &ctx, true, &emitter).await;
+    assert!(
+        context_has_pinned_file_view(&locked),
+        "a locked spec is pinned before compaction"
+    );
+    locked.compact_history(Message::user("SUMMARY"));
+    assert!(
+        locked
+            .messages()
+            .iter()
+            .any(|m| m.content.as_deref() == Some("the whole specification")),
+        "a locked spec is kept across compaction"
+    );
+}
+
+/// Whether `ctx` holds a pinned file view — a locked autoloaded spec.
+fn context_has_pinned_file_view(ctx: &ContextModel) -> bool {
+    ctx.items().iter().any(|item| {
+        item.source() == GgContextSource::FileView && item.retention() == Retention::Pinned
+    })
 }
 
 /// The system prompt states, up front, whether this run's model can be shown an image.
@@ -1284,6 +1414,7 @@ impl DisabledRuntimes {
             code_reviews: false,
             speculative: false,
             responses_as_code: false,
+            autoload_specs: None,
             profile: &self.profile,
             delegated: false,
             fences_are_stripped: true,
@@ -1742,6 +1873,8 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
             test_context_setup(true),
             no_compaction(),
             no_amc(),
+            no_autoload(),
+            &[],
             runtime,
             MemoriesRuntime::disabled(),
             TasksRuntime::disabled(),
@@ -1926,6 +2059,8 @@ async fn drive_enforces_memory_caps_end_to_end() {
             test_context_setup(true),
             no_compaction(),
             no_amc(),
+            no_autoload(),
+            &[],
             SkillsRuntime::disabled(),
             memories,
             TasksRuntime::disabled(),
@@ -2126,6 +2261,8 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
             test_context_setup(true),
             no_compaction(),
             no_amc(),
+            no_autoload(),
+            &[],
             SkillsRuntime::disabled(),
             MemoriesRuntime::disabled(),
             tasks,
@@ -2432,6 +2569,8 @@ async fn drive_compacts_at_the_threshold_and_retains_pinned_state() {
             test_context_setup_with_window(true, 4_000),
             compaction_at(0.6),
             no_amc(),
+            no_autoload(),
+            &[],
             skills,
             memories,
             tasks,
@@ -2594,6 +2733,8 @@ async fn drive_never_compacts_when_capability_off() {
             test_context_setup_with_window(true, 4_000),
             no_compaction(),
             no_amc(),
+            no_autoload(),
+            &[],
             skills,
             memories,
             tasks,
@@ -2693,6 +2834,8 @@ async fn drive_manages_context_end_to_end() {
             test_context_setup(true),
             no_compaction(),
             amc_with(Arc::clone(&archive)),
+            no_autoload(),
+            &[],
             SkillsRuntime::disabled(),
             MemoriesRuntime::disabled(),
             TasksRuntime::disabled(),
@@ -2804,6 +2947,8 @@ async fn drive_without_amc_offers_no_context_management() {
             test_context_setup(true),
             no_compaction(),
             no_amc(),
+            no_autoload(),
+            &[],
             SkillsRuntime::disabled(),
             MemoriesRuntime::disabled(),
             TasksRuntime::disabled(),
@@ -2892,6 +3037,8 @@ async fn drive_plans_then_implements_from_a_fresh_context() {
             test_context_setup(true),
             no_compaction(),
             no_amc(),
+            no_autoload(),
+            &[],
             SkillsRuntime::disabled(),
             MemoriesRuntime::disabled(),
             TasksRuntime::disabled(),
@@ -3053,6 +3200,8 @@ async fn drive_without_planning_offers_no_planning() {
             test_context_setup(true),
             no_compaction(),
             no_amc(),
+            no_autoload(),
+            &[],
             SkillsRuntime::disabled(),
             MemoriesRuntime::disabled(),
             TasksRuntime::disabled(),

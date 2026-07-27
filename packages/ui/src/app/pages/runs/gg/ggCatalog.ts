@@ -182,6 +182,20 @@ export const READ_MODE_HINT =
 // The line cap gg falls back to when a capped read mode names none.
 export const DEFAULT_READ_LINE_CAP = 250;
 
+// Whether the autoload-specifications capability **locks** the injected specs into the
+// window. The values are gg's implementation ids (`crates/core/src/gg.rs`); the empty
+// value is the default (not locked — ordinary, droppable file reads), and `locked` pins
+// them across compaction and eviction.
+export const AUTOLOAD_LOCKED_OPTIONS = [
+  { value: "", label: "Not locked (default)" },
+  { value: "locked", label: "Locked" },
+] as const;
+
+// What the locked lever does — the detail lifted off the picker's option labels into the
+// field's help tooltip.
+export const AUTOLOAD_LOCKED_HINT =
+  "Not locked injects the specs as ordinary file reads that compaction may summarize away and agent-managed context may evict. Locked pins them into the window verbatim across every compaction boundary and spares them from eviction.";
+
 // The response-healing strategies, in the order gg's pipeline applies them — the
 // conservative, deletion-only repairs gg makes to a model's reply before running it
 // as a program. Each is independently switchable, and switching one off is an
@@ -395,6 +409,16 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         hint: "Run the model against a smaller window than it really has — the way to exercise compaction on a million-token model without paying for a million tokens. Can only narrow: a value above the model catalog's figure for the model is clamped to it.",
       },
     ],
+  },
+  {
+    id: "autoload-specs",
+    name: "Autoload specifications",
+    group: "Context",
+    purpose:
+      "Seed an agent's opening context with the full contents of every file the test case provided — its specification and reference images — as though it had already read each, so the whole brief is in the window from the first turn.",
+    implementationLabel: "Locked",
+    implementationOptions: AUTOLOAD_LOCKED_OPTIONS,
+    implementationHint: AUTOLOAD_LOCKED_HINT,
   },
   {
     id: "compaction",

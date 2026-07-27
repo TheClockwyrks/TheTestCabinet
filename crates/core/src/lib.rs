@@ -490,6 +490,7 @@ where
         test_case: &TestCaseVersion,
         variant: &Variant,
         seeded: &SeededRepo,
+        provided_files: &[PathBuf],
         request: &RunRequest,
         orchestrator: &Orchestrator,
         events: &mut dyn EventSink,
@@ -867,6 +868,7 @@ where
                 request,
                 &base_prompt,
                 WORKSPACE_DIR,
+                provided_files,
                 max_runtime,
                 run_id,
                 events,
@@ -1173,11 +1175,28 @@ where
             &references,
             live.as_ref().map(LivePreview::endpoint),
         )?;
+        // The workspace-relative paths of everything the test case provided — its specs
+        // (in seeded order) then its rendered reference images (under `reference/`, the
+        // layout `FsRepoSeeder::seed` writes) — for a gg run's autoload-specifications
+        // capability. Computed here, where the seeded spec and reference lists are both in
+        // hand, so gg is told exactly which seeded files are the test case's brief rather
+        // than having to tell them apart from a starter-workspace scaffold. Unused by a
+        // third-party-harness run.
+        let provided_files: Vec<PathBuf> = specs
+            .iter()
+            .map(|spec| spec.dest.clone())
+            .chain(
+                references
+                    .iter()
+                    .map(|reference| Path::new("reference").join(reference.file_name())),
+            )
+            .collect();
         let (handle, outcome, environment, scheduling_wait) = self
             .execute(
                 test_case,
                 &variant,
                 &seeded,
+                &provided_files,
                 request,
                 &orchestrator,
                 events,

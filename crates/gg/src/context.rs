@@ -511,9 +511,33 @@ impl ContextModel {
         content: impl Into<String>,
         images: Vec<ImageContent>,
     ) {
+        self.push_file_view_with_retention(
+            path,
+            tool_call_id,
+            content,
+            images,
+            Retention::Ephemeral,
+        );
+    }
+
+    /// Like [`push_file_view`](Self::push_file_view) but recording the view with an explicit
+    /// [`Retention`]. An ordinary `read_file` is [`Ephemeral`](Retention::Ephemeral) working
+    /// material; a **locked** [autoloaded specification](https://docs.testcabinet.ai/gg/autoload-specifications/)
+    /// is [`Pinned`](Retention::Pinned) instead, so it is kept in the window verbatim across a
+    /// [compaction](Self::compact_history) boundary (its `tool` message re-framed to a `user`
+    /// message that carries its text *and* its image) and is spared by
+    /// [`evict_file_views`](Self::evict_file_views).
+    pub fn push_file_view_with_retention(
+        &mut self,
+        path: Option<String>,
+        tool_call_id: impl Into<String>,
+        content: impl Into<String>,
+        images: Vec<ImageContent>,
+        retention: Retention,
+    ) {
         self.push_labeled(
             GgContextSource::FileView,
-            Retention::Ephemeral,
+            retention,
             Message::tool_result(tool_call_id, content).with_images(images),
             path,
         );
@@ -658,16 +682,20 @@ impl ContextModel {
     /// dangle (a provider requires a `tool` message to follow the assistant `tool_calls` it
     /// answers). So a retained `tool`-role item is re-framed as a standalone `user` message
     /// carrying the **identical body** — the retained content is verbatim; only the message
-    /// envelope changes so the post-reset sequence is valid. Its
-    /// [`source`](GgContextSource) tag (and thus its accounting band) is unchanged, and its
-    /// token estimate is recomputed for the new envelope.
+    /// envelope changes so the post-reset sequence is valid. Any **attached image** the item
+    /// carried travels with it (a locked, autoloaded reference mockup is pinned as an image
+    /// `tool` result, and a `user` message carries images just as a `tool` result does), so a
+    /// picture kept across a compaction boundary stays a picture rather than degrading to its
+    /// caption. Its [`source`](GgContextSource) tag (and thus its accounting band) is
+    /// unchanged, and its token estimate is recomputed for the new envelope.
     pub fn clear_ephemeral(&mut self) {
         let estimator = Arc::clone(&self.estimator);
         self.items.retain(|item| item.retention.is_pinned());
         for item in &mut self.items {
             if item.message.role == Role::Tool {
                 let content = item.message.content.take().unwrap_or_default();
-                let message = Message::user(content);
+                let images = std::mem::take(&mut item.message.images);
+                let message = Message::user(content).with_images(images);
                 item.tokens = estimator.estimate_message(&message);
                 item.message = message;
             }
@@ -820,10 +848,21 @@ impl ContextModel {
     /// is removed. Returns what was reclaimed (count, tokens, and the distinct paths), for the
     /// tool result and the [`ContextManaged`](test_cabinet_core::gg::GgTelemetryKind::ContextManaged)
     /// telemetry. The next [breakdown](Self::breakdown_event) shows the file-view band drop.
+    ///
+    /// A [`Pinned`](Retention::Pinned) file view — a **locked**
+    /// [autoloaded specification](https://docs.testcabinet.ai/gg/autoload-specifications/) — is
+    /// spared even by a blanket `None` eviction: locking it means it is kept in the window, and
+    /// eviction is exactly the removal locking exists to prevent. Ordinary file reads are
+    /// ephemeral and evict as before.
     pub fn evict_file_views(&mut self, path: Option<&str>) -> EvictionResult {
         let mut result = EvictionResult::default();
         self.items.retain(|item| {
             if item.source != GgContextSource::FileView {
+                return true;
+            }
+            // A locked (pinned) autoloaded spec is kept in the window by definition — eviction
+            // does not touch it.
+            if item.retention.is_pinned() {
                 return true;
             }
             // A targeted eviction spares views of other paths.

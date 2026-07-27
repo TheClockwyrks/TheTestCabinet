@@ -181,7 +181,7 @@ export type GgCapabilityConfig = {
  * harness becomes a laboratory.
  *
  * A set stored before capabilities were per-agent — a flat `capabilities` / `slots` /
- * `disabledTools` shape — is migrated on deserialize (see [`GgCapabilitySetRaw`]) into
+ * `disabledTools` shape — is migrated on deserialize (see `GgCapabilitySetRaw`) into
  * a single [Root agent](ROOT_AGENT), so no data migration is needed.
  */
 export type GgCapabilitySet = {
@@ -748,7 +748,7 @@ export type GgSpeculationPhase = "fanned_out" | "judged" | "merged";
  * (50) is preserved because a gg run has always had one. A value that cannot bound anything — a
  * zero window, a negative rate, a rate above `1.0` — is a startup warning and is ignored, never
  * an error, on the same terms as an unknown name in
- * [`disabled_tools`](GgCapabilitySet::disabled_tools). The run records the ceilings that were
+ * [`disabled_tools`](GgAgentConfig::disabled_tools). The run records the ceilings that were
  * actually in force on [`GgSessionSummary::limits`], so a default is a recorded fact rather than
  * a hidden one.
  *
@@ -1290,7 +1290,7 @@ export type GgSessionSummary = {
    * in the order they were presented to the model. This is what the run's
    * [capability set](GgCapabilitySet) *actually resolved to* — a capability contributes
    * its tools only when enabled (and, for the stateful ones, only when its store is
-   * non-empty), minus any individually [withheld](GgCapabilitySet::disabled_tools) tool —
+   * non-empty), minus any individually [withheld](GgAgentConfig::disabled_tools) tool —
    * so recording it durably makes the toolset a first-class experimental variable a query
    * can slice by ("group by whether `edit_file` was offered", "runs with only
    * `write_file`"). Because switching a capability on/off *is* offering/withholding its

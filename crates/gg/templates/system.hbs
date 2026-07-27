@@ -257,6 +257,21 @@ trying to view reference images.
 {{/if}}
 {{/if}}
 
+{{#if autoloadSpecs}}
+## The specification is already loaded
+
+Every file this test case provided — its full specification and its reference images — has
+**already been read into your context** above, as `read_file` results you did not have to
+request. You do not need to re-read them to get started: the whole brief is in front of you.
+{{#if autoloadSpecs.locked}}
+These entries are **pinned**: they stay in your context verbatim for the whole session, even
+across a context compaction, so you can always rely on the full specification being present.
+{{else}}
+These are ordinary file reads: they may be summarized away when your context is compacted, so
+if you need a detail again later, re-read the file rather than trusting your memory of it.
+{{/if}}
+{{/if}}
+
 {{#if skills}}
 ## Skills
 

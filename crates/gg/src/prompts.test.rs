@@ -139,6 +139,7 @@ fn full_system() -> SystemContext {
         }),
         code_reviews: true,
         speculative: true,
+        autoload_specs: Some(AutoloadView { locked: true }),
     }
 }
 
@@ -253,6 +254,50 @@ fn the_task_section_carries_the_tool_instructions() {
             "the tasks section must state `{instruction}`:\n{prompt}"
         );
     }
+}
+
+/// The autoload-specifications section renders only when the capability is on, and its wording
+/// tracks the locked lever: an off run is told nothing, an unlocked run is told to re-read, a
+/// locked run is promised the brief stays.
+#[test]
+fn autoload_section_tracks_the_locked_lever() {
+    let off = flat(&render_system(
+        &SystemContext {
+            autoload_specs: None,
+            ..full_system()
+        },
+        None,
+    ));
+    assert!(
+        !off.contains("specification is already loaded"),
+        "a run without autoload is told nothing about it"
+    );
+
+    let unlocked = flat(&render_system(
+        &SystemContext {
+            autoload_specs: Some(AutoloadView { locked: false }),
+            ..full_system()
+        },
+        None,
+    ));
+    assert!(unlocked.contains("specification is already loaded"));
+    assert!(
+        unlocked.contains("re-read the file"),
+        "an unlocked run is told the specs may be dropped and to re-read"
+    );
+
+    let locked = flat(&render_system(
+        &SystemContext {
+            autoload_specs: Some(AutoloadView { locked: true }),
+            ..full_system()
+        },
+        None,
+    ));
+    assert!(locked.contains("specification is already loaded"));
+    assert!(
+        locked.contains("pinned"),
+        "a locked run is promised the specs stay across compaction"
+    );
 }
 
 /// A capped `read_file` states its cap up front; an uncapped one says nothing about reads, and a

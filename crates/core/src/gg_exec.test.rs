@@ -456,7 +456,8 @@ fn gg_request(model: &str) -> RunRequest {
 #[test]
 fn build_invocation_carries_the_run_id_workspace_prompt_and_set() {
     let request = gg_request("mock/echo");
-    let invocation = build_invocation(&request, "the build prompt", "/work", "run-123").unwrap();
+    let invocation =
+        build_invocation(&request, "the build prompt", "/work", &[], "run-123").unwrap();
     assert_eq!(invocation.session_id, "run-123");
     assert_eq!(invocation.workspace_dir, PathBuf::from("/work"));
     assert_eq!(invocation.prompt, "the build prompt");
@@ -474,7 +475,8 @@ fn build_invocation_carries_the_resolved_model_windows() {
     let mut request = gg_request("anthropic/claude-opus-4.8");
     request.gg_model_windows =
         std::collections::BTreeMap::from([("anthropic/claude-opus-4.8".to_string(), 200_000)]);
-    let invocation = build_invocation(&request, "the build prompt", "/work", "run-123").unwrap();
+    let invocation =
+        build_invocation(&request, "the build prompt", "/work", &[], "run-123").unwrap();
     assert_eq!(
         invocation.model_windows.get("anthropic/claude-opus-4.8"),
         Some(&200_000)
@@ -484,7 +486,7 @@ fn build_invocation_carries_the_resolved_model_windows() {
     // refused before any container work, because gg assumes no default.
     let mut request = gg_request("mock/echo");
     request.gg_model_windows.clear();
-    let err = build_invocation(&request, "prompt", "/work", "run-123")
+    let err = build_invocation(&request, "prompt", "/work", &[], "run-123")
         .expect_err("a bound model with no window is a configuration error");
     assert!(
         err.to_string().contains("mock/echo"),
@@ -502,7 +504,8 @@ fn build_invocation_carries_the_resolved_model_windows() {
 #[test]
 fn build_invocation_carries_the_resolved_model_modalities() {
     let request = gg_request("anthropic/claude-opus-4.8");
-    let invocation = build_invocation(&request, "the build prompt", "/work", "run-123").unwrap();
+    let invocation =
+        build_invocation(&request, "the build prompt", "/work", &[], "run-123").unwrap();
     assert_eq!(
         invocation
             .model_modalities
@@ -514,7 +517,7 @@ fn build_invocation_carries_the_resolved_model_modalities() {
     // No modalities at all is a launchable configuration, unlike a missing window.
     let mut request = gg_request("mock/echo");
     request.gg_model_modalities.clear();
-    let invocation = build_invocation(&request, "prompt", "/work", "run-123")
+    let invocation = build_invocation(&request, "prompt", "/work", &[], "run-123")
         .expect("unknown modalities never block a run");
     assert!(invocation.model_modalities.is_empty());
 }

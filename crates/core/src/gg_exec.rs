@@ -269,7 +269,10 @@ fn release_download_command(repo: &str, version: &str, target: &str, dest: &str)
 /// surrounding [`RunEngine::execute`](crate::RunEngine::execute), plus the resolved
 /// `install`, the run's `request` (for its capability set), the rendered `base_prompt`,
 /// the seeded `workspace_dir`, the run's `max_runtime` (which bounds the release
-/// download), the `run_id` (used as the gg session id), and the run's `events` sink.
+/// download), the `run_id` (used as the gg session id), the `provided_files` the test
+/// case seeded (workspace-relative spec and reference paths, for the
+/// [autoload-specifications](test_cabinet_core::gg::CAPABILITY_AUTOLOAD_SPECS)
+/// capability), and the run's `events` sink.
 ///
 /// The caller bounds this whole future by the run's maximum runtime exactly as a
 /// third-party harness session is bounded.
@@ -281,6 +284,7 @@ pub(crate) async fn run_gg(
     request: &RunRequest,
     base_prompt: &str,
     workspace_dir: &str,
+    provided_files: &[PathBuf],
     max_runtime: u64,
     run_id: &str,
     events: &mut dyn EventSink,
@@ -346,7 +350,7 @@ pub(crate) async fn run_gg(
     // 2. Write the invocation file gg reads via `--config`. Its capability set is the
     //    run's (validated present for a gg run); the credential is *not* in it — gg reads
     //    OPENROUTER_API_KEY from the container env the shared auth plumbing injected.
-    let invocation = build_invocation(request, base_prompt, workspace_dir, run_id)?;
+    let invocation = build_invocation(request, base_prompt, workspace_dir, provided_files, run_id)?;
     let json = serde_json::to_vec(&invocation)?;
     write_container_file(runtime, handle, GG_INVOCATION_PATH, &json, 0o600).await?;
 
@@ -420,14 +424,16 @@ pub(crate) async fn run_gg(
 }
 
 /// Construct the [`GgInvocation`] for this run: the run id as the session id, the
-/// seeded workspace, the rendered prompt, the run's validated capability set, and the
+/// seeded workspace, the rendered prompt, the run's validated capability set, the
 /// [per-model context windows](GgInvocation::model_windows) the launch resolved from the
 /// model catalog (gg holds no model table of its own, so what it is told here is all it
-/// knows about the models it runs).
+/// knows about the models it runs), and the [test-case-provided
+/// files](GgInvocation::provided_files) the autoload-specifications capability injects.
 fn build_invocation(
     request: &RunRequest,
     base_prompt: &str,
     workspace_dir: &str,
+    provided_files: &[PathBuf],
     run_id: &str,
 ) -> Result<GgInvocation> {
     Ok(GgInvocation {
@@ -437,6 +443,7 @@ fn build_invocation(
         capability_set: request.gg_capability_set()?.clone(),
         model_windows: request.gg_model_windows.clone(),
         model_modalities: request.gg_model_modalities.clone(),
+        provided_files: provided_files.to_vec(),
     })
 }
 

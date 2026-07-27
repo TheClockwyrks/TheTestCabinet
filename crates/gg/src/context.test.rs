@@ -286,6 +286,76 @@ fn evict_file_views_removes_all_or_by_path_and_reclaims_tokens() {
 }
 
 #[test]
+fn a_locked_file_view_is_spared_by_eviction() {
+    let mut ctx = model(Some(100_000));
+    // An ordinary (ephemeral) read and a locked (pinned) autoloaded spec, both file views.
+    ctx.push_file_view(Some("read.md".to_string()), "c1", "a read spec", Vec::new());
+    ctx.push_file_view_with_retention(
+        Some("locked.md".to_string()),
+        "c2",
+        "a locked spec",
+        Vec::new(),
+        Retention::Pinned,
+    );
+
+    // A blanket eviction reclaims the ephemeral read but leaves the locked view in place.
+    let result = ctx.evict_file_views(None);
+    assert_eq!(result.items, 1);
+    assert_eq!(result.paths, vec!["read.md".to_string()]);
+    assert!(
+        ctx.items()
+            .iter()
+            .any(|item| item.source() == GgContextSource::FileView
+                && item.retention() == Retention::Pinned),
+        "the locked view survives a blanket eviction"
+    );
+    // A targeted eviction of the locked path also spares it.
+    let targeted = ctx.evict_file_views(Some("locked.md"));
+    assert_eq!(targeted.items, 0);
+}
+
+#[test]
+fn compaction_keeps_a_locked_file_view_and_carries_its_image() {
+    let mut ctx = model(Some(100_000));
+    ctx.push_system("system");
+    ctx.push_user_prompt("build");
+    // A locked autoloaded reference image, pinned as an image `tool` result.
+    let image = ImageContent::new("image/png", "AAAA".to_string(), 3);
+    ctx.push_assistant(None, vec![call("c1", "read_file")]);
+    ctx.push_file_view_with_retention(
+        Some("reference/title.png".to_string()),
+        "c1",
+        "`reference/title.png` — PNG image, 3 bytes. The image follows.",
+        vec![image],
+        Retention::Pinned,
+    );
+    // Some ephemeral thread material that a compaction will drop.
+    ctx.push_assistant(Some("working".to_string()), Vec::new());
+
+    ctx.compact_history(Message::user("SUMMARY"));
+
+    // The ephemeral assistant call that "read" it is gone, but the locked view's body stays,
+    // re-framed to a user message that still carries the picture (not degraded to its caption).
+    let carried = ctx
+        .items()
+        .iter()
+        .find(|item| item.source() == GgContextSource::FileView)
+        .expect("the locked file view survived compaction");
+    assert_eq!(carried.retention(), Retention::Pinned);
+    assert_eq!(carried.message().role, Role::User);
+    assert_eq!(
+        carried.message().images.len(),
+        1,
+        "the image travels with the re-framed message"
+    );
+    assert!(
+        ctx.messages()
+            .iter()
+            .any(|m| m.content.as_deref() == Some("SUMMARY"))
+    );
+}
+
+#[test]
 fn evict_file_views_on_a_missing_path_reclaims_nothing() {
     let mut ctx = model(Some(100_000));
     ctx.push_file_view(Some("a.js".to_string()), "c1", "body", Vec::new());

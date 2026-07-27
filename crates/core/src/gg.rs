@@ -96,6 +96,29 @@ pub const FILESYSTEM_TOOL_CAPABILITIES: &[&str] = &[
 /// [compaction]: https://docs.testcabinet.ai/gg/compaction/
 pub const CAPABILITY_CONTEXT_VISIBILITY: &str = "context-visibility";
 
+/// The stable id of the autoload-specifications capability: when on, an agent's very
+/// first context is seeded with the **full contents of every file the test case
+/// provided** — its specifications and reference images — injected as though the model
+/// had already `read_file`d each, so the model starts with the whole brief in the window
+/// rather than having to discover and read it.
+///
+/// Off (the default) the agent starts with only the build prompt and reads what it needs
+/// itself; on, it is a distinct arm of the "does front-loading the whole spec help?"
+/// study. Its [`implementation`](GgCapabilityConfig::implementation) is the **locked**
+/// lever: the default (empty) injects the specs as ordinary, ephemeral file reads that
+/// [compaction](CAPABILITY_COMPACTION) may summarize away and
+/// [agent-managed context](CAPABILITY_AGENT_MANAGED_CONTEXT) may evict, while
+/// [`AUTOLOAD_LOCKED_IMPL`] pins them so they are kept in the window verbatim across every
+/// compaction boundary and cannot be evicted.
+pub const CAPABILITY_AUTOLOAD_SPECS: &str = "autoload-specs";
+
+/// The [`implementation`](GgCapabilityConfig::implementation) of
+/// [`CAPABILITY_AUTOLOAD_SPECS`] that **locks** the autoloaded specifications into the
+/// window — pinned across compaction and immune to eviction — rather than injecting them
+/// as ordinary, droppable file reads (the default when the implementation is empty or
+/// unrecognized).
+pub const AUTOLOAD_LOCKED_IMPL: &str = "locked";
+
 /// The stable id of the Phase 1 skills capability: markdown-with-front-matter skills
 /// whose descriptions are shown up front and whose bodies, once read, are retained
 /// across a compaction boundary.
@@ -1267,6 +1290,18 @@ pub struct GgInvocation {
     /// run.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub model_modalities: BTreeMap<String, Vec<String>>,
+    /// The **workspace-relative paths of every file the test case provided** — its
+    /// specifications (in seeded order) followed by its rendered reference images — that
+    /// the [autoload-specifications](CAPABILITY_AUTOLOAD_SPECS) capability injects into an
+    /// agent's opening context.
+    ///
+    /// `core` computes this list when it seeds the run (it is the authority on which
+    /// seeded files came from the test case, as opposed to a starter-workspace scaffold or
+    /// the model's own output) and pushes it in here, so gg need not — and cannot reliably
+    /// — rediscover it by scanning the workspace. Empty when nothing was seeded or every
+    /// agent leaves autoload off, in which case gg reads none of them up front.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub provided_files: Vec<PathBuf>,
 }
 
 /// The **source** a context-window contribution is attributed to, for the per-source

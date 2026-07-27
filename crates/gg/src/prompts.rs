@@ -336,6 +336,21 @@ pub struct SystemContext {
     pub code_reviews: bool,
     /// Whether speculative execution (`speculate`) is available this run.
     pub speculative: bool,
+    /// Whether this agent's opening context was pre-seeded with the test case's specifications and
+    /// reference images, and if so whether they are locked into the window. `None` renders no
+    /// section — the model was told nothing about a feature it does not have.
+    pub autoload_specs: Option<AutoloadView>,
+}
+
+/// The [autoload-specifications](test_cabinet_core::gg::CAPABILITY_AUTOLOAD_SPECS) section's state:
+/// the capability is on (so the section renders at all), and whether the injected material is
+/// **locked** into the window.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutoloadView {
+    /// Whether the autoloaded specs are pinned across compaction (and immune to eviction), so the
+    /// prompt can promise the brief stays rather than that it merely started there.
+    pub locked: bool,
 }
 
 /// How much of a file one `read_file` call returns — the

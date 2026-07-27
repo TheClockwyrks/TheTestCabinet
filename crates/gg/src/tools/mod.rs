@@ -95,7 +95,7 @@ pub use data::{
     ShellData, SpeculationData, SubagentHandleData, SubagentResultData, ToolData, ToolFailure,
     UsagePair, WorkflowData, saturating_u32, saturating_u64,
 };
-pub use filesystem::{READ_FILE_TOOL, ReadPolicy};
+pub use filesystem::{READ_FILE_TOOL, ReadFileTool, ReadPolicy};
 pub use fsm::{ADVANCE_STATE_TOOL, is_fsm_tool};
 pub use memories::is_memory_tool;
 pub use planning::{ENTER_PLAN_MODE_TOOL, SUBMIT_PLAN_TOOL, is_planning_tool};

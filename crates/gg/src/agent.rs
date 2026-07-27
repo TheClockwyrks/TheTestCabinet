@@ -87,15 +87,16 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use serde_json::Value;
+use serde_json::{Value, json};
 use test_cabinet_core::gg::{
-    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_CODE_REVIEWS, CAPABILITY_CONTEXT_VISIBILITY,
-    CAPABILITY_MEMORIES, CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_REPLAY,
-    CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS,
-    CAPABILITY_TASKS, CAPABILITY_WORKFLOWS, CAPABILITY_WORKTREES, GgAgentConfig, GgAgentStatus,
-    GgCandidateShape, GgCapabilitySet, GgCodeReviewPhase, GgContextAction, GgContextSource,
-    GgHealingStrategy, GgLimitBreach, GgLimitKind, GgNotAProgram, GgPlanPhase, GgResponseHealing,
-    GgRunLimits, GgSlotBinding, GgSpeculationPhase, GgTelemetryKind, GgWorkflowPhase, ROOT_AGENT,
+    AUTOLOAD_LOCKED_IMPL, CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_AUTOLOAD_SPECS,
+    CAPABILITY_CODE_REVIEWS, CAPABILITY_CONTEXT_VISIBILITY, CAPABILITY_MEMORIES,
+    CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_REPLAY, CAPABILITY_RESPONSES_AS_CODE,
+    CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS,
+    CAPABILITY_WORKFLOWS, CAPABILITY_WORKTREES, GgAgentConfig, GgAgentStatus, GgCandidateShape,
+    GgCapabilitySet, GgCodeReviewPhase, GgContextAction, GgContextSource, GgHealingStrategy,
+    GgLimitBreach, GgLimitKind, GgNotAProgram, GgPlanPhase, GgResponseHealing, GgRunLimits,
+    GgSlotBinding, GgSpeculationPhase, GgTelemetryKind, GgWorkflowPhase, ROOT_AGENT,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 use tokio::sync::{mpsc, oneshot};
@@ -127,9 +128,9 @@ use crate::model::{
 };
 use crate::planning::PlanningRuntime;
 use crate::prompts::{
-    self, BoardView, CodeCallView, CodeErrorView, CodeNotAProgramContext, CodeResultContext,
-    CodeSandboxErrorContext, CodeTranspileErrorContext, FsmView, MemoriesView, ReadFileView,
-    SpawnableAgentView, SystemContext, TasksView, ToolView,
+    self, AutoloadView, BoardView, CodeCallView, CodeErrorView, CodeNotAProgramContext,
+    CodeResultContext, CodeSandboxErrorContext, CodeTranspileErrorContext, FsmView, MemoriesView,
+    ReadFileView, SpawnableAgentView, SystemContext, TasksView, ToolView,
 };
 use crate::replay::{GgRecorder, RecordingClient};
 use crate::sandbox::{
@@ -146,13 +147,13 @@ use crate::tools::VisionContext;
 use crate::tools::{
     ARCHIVE_THREAD_TOOL, AgentStatusData, COMPLETE_ISSUE_TOOL, CompletionData,
     DEFAULT_ARCHIVE_KEEP_RECENT, ENTER_PLAN_MODE_TOOL, EVICT_FILE_VIEW_TOOL, READ_FILE_TOOL,
-    READ_SKILL_TOOL, RUN_WORKFLOW_TOOL, ReadPolicy, ReclaimData, RuntimeSet, SEND_MESSAGE_TOOL,
-    SPAWN_SUBAGENT_TOOL, SPECULATE_TOOL, SUBMIT_PLAN_TOOL, SpeculationData, SubagentHandleData,
-    SubagentResultData, TURN_LEVEL_TOOLS, ToolContext, ToolData, ToolFailure, ToolOutcome,
-    ToolRegistry, WAIT_FOR_ISSUE_TOOL, WAIT_FOR_SUBAGENTS_TOOL, WorkflowData, is_board_tool,
-    is_context_reclaim_tool, is_fsm_tool, is_memory_tool, is_planning_tool, is_subagent_tool,
-    is_task_tool, parse_archive_keep_recent, parse_evict_path, plan_mode_offers, read_policy,
-    saturating_u32, saturating_u64, unknown_disabled_tools,
+    READ_SKILL_TOOL, RUN_WORKFLOW_TOOL, ReadFileTool, ReadPolicy, ReclaimData, RuntimeSet,
+    SEND_MESSAGE_TOOL, SPAWN_SUBAGENT_TOOL, SPECULATE_TOOL, SUBMIT_PLAN_TOOL, SpeculationData,
+    SubagentHandleData, SubagentResultData, TURN_LEVEL_TOOLS, Tool, ToolContext, ToolData,
+    ToolFailure, ToolOutcome, ToolRegistry, WAIT_FOR_ISSUE_TOOL, WAIT_FOR_SUBAGENTS_TOOL,
+    WorkflowData, is_board_tool, is_context_reclaim_tool, is_fsm_tool, is_memory_tool,
+    is_planning_tool, is_subagent_tool, is_task_tool, parse_archive_keep_recent, parse_evict_path,
+    plan_mode_offers, read_policy, saturating_u32, saturating_u64, unknown_disabled_tools,
 };
 use crate::vision::VisionSupport;
 
@@ -786,6 +787,12 @@ struct Orchestrator {
     workspace_dir: PathBuf,
     /// The root's build prompt (a subagent is driven by its brief instead).
     prompt: String,
+    /// The workspace-relative paths of every file the test case provided — its specs then its
+    /// reference images, as [`core` computed them](GgInvocation::provided_files) — that an agent
+    /// whose profile enables [autoload-specifications](CAPABILITY_AUTOLOAD_SPECS) reads into its
+    /// opening context. Empty when nothing was seeded; consulted per agent, since autoload is a
+    /// per-agent capability.
+    provided_files: Vec<PathBuf>,
     /// Whether the [subagents](CAPABILITY_SUBAGENTS) capability is on — gates the spawn tools, the
     /// per-agent delegation context, and the agent-tree telemetry.
     subagents_enabled: bool,
@@ -954,6 +961,7 @@ impl Orchestrator {
             caps: set.clone(),
             workspace_dir: invocation.workspace_dir.clone(),
             prompt: invocation.prompt.clone(),
+            provided_files: invocation.provided_files.clone(),
             subagents_enabled: set.is_enabled(CAPABILITY_SUBAGENTS),
             project_management_enabled: set.is_enabled(CAPABILITY_PROJECT_MANAGEMENT),
             workflows_enabled: set.is_enabled(CAPABILITY_WORKFLOWS),
@@ -1809,6 +1817,22 @@ async fn run_agent(
         enabled: profile.is_enabled(CAPABILITY_AGENT_MANAGED_CONTEXT),
         archive: Arc::clone(&archive_store),
     };
+    let autoload = AutoloadSetup::resolve(&profile);
+    if is_root && autoload.enabled {
+        emitter.emit(log(
+            "info",
+            format!(
+                "autoload-specifications enabled; the {} file(s) the test case provided are \
+                 seeded into the opening context{}.",
+                orch.provided_files.len(),
+                if autoload.locked {
+                    ", locked (kept across compaction)"
+                } else {
+                    ""
+                },
+            ),
+        ));
+    }
     if is_root && compaction.enabled {
         emitter.emit(log(
             "info",
@@ -1881,6 +1905,8 @@ async fn run_agent(
             context_setup,
             compaction,
             amc,
+            autoload,
+            &orch.provided_files,
             skills,
             memories,
             tasks,
@@ -4696,6 +4722,8 @@ impl Agent {
         context_setup: ContextSetup,
         compaction: CompactionSetup,
         amc: AmcSetup,
+        autoload: AutoloadSetup,
+        provided_files: &[PathBuf],
         mut skills: SkillsRuntime,
         memories: MemoriesRuntime,
         tasks: TasksRuntime,
@@ -4747,6 +4775,10 @@ impl Agent {
             code_reviews: code_reviews_active,
             speculative: speculative_active,
             responses_as_code: code.enabled,
+            // Whether this agent's opening context is pre-seeded with the test case's specs and
+            // reference images, so the prompt can tell the model they are already loaded (and,
+            // when locked, that they stay) rather than leaving it to infer why they are there.
+            autoload_specs: autoload.enabled.then_some(autoload.locked),
             profile,
             // A subagent renders this same prompt, and the ending section has to say what `finish`
             // actually ends *for the reader*: a root agent's summary is the run's last word, a
@@ -4761,6 +4793,21 @@ impl Agent {
             fences_are_stripped: code.healing.enabled(HealingStrategy::StripFences),
         }));
         context.push_user_prompt(prompt);
+
+        // Autoload the specifications: when this agent's profile enables the capability, seed the
+        // test case's provided files (its specs and reference images) into the opening context as
+        // though the model had already `read_file`d each — before the first turn, so the model
+        // starts with the whole brief in the window. Locked pins them across compaction.
+        if autoload.enabled {
+            autoload_specifications(
+                &mut context,
+                provided_files,
+                tool_ctx,
+                autoload.locked,
+                emitter,
+            )
+            .await;
+        }
 
         // FSM start: emit the machine's entry state and inject its guidance, so the run is driven
         // through the process from the very first turn. Only the root carries an active machine.
@@ -5636,6 +5683,41 @@ struct AmcSetup {
     archive: Arc<Mutex<ArchiveStore>>,
 }
 
+/// Whether — and how — an agent's opening context is seeded with the test case's
+/// [provided files](Orchestrator::provided_files), the
+/// [autoload-specifications](CAPABILITY_AUTOLOAD_SPECS) capability.
+///
+/// Resolved per agent from its own profile (autoload is a per-agent capability), so a run can
+/// front-load the whole spec for one agent and let another read what it needs.
+#[derive(Debug, Clone, Copy)]
+struct AutoloadSetup {
+    /// Whether this agent front-loads the provided files. When off (the default), the agent opens
+    /// with only the build prompt and reads what it needs itself.
+    enabled: bool,
+    /// Whether the autoloaded views are **locked** — [pinned](Retention::Pinned) into the window,
+    /// kept verbatim across every [compaction](crate::compaction) boundary and immune to
+    /// [eviction](ContextModel::evict_file_views). Off, they are ordinary ephemeral file reads that
+    /// compaction may summarize and agent-managed context may evict.
+    locked: bool,
+}
+
+impl AutoloadSetup {
+    /// Resolve the autoload behavior from `profile`: on when it enables
+    /// [`CAPABILITY_AUTOLOAD_SPECS`], locked when that capability's exact
+    /// [implementation](GgAgentConfig::capability) is [`AUTOLOAD_LOCKED_IMPL`] (the default, empty,
+    /// or any unrecognized value leaves the views ephemeral).
+    fn resolve(profile: &GgAgentConfig) -> Self {
+        let enabled = profile.is_enabled(CAPABILITY_AUTOLOAD_SPECS);
+        let locked = enabled
+            && profile
+                .capability(CAPABILITY_AUTOLOAD_SPECS)
+                .and_then(|cap| cap.implementation.as_deref())
+                .map(str::trim)
+                == Some(AUTOLOAD_LOCKED_IMPL);
+        Self { enabled, locked }
+    }
+}
+
 /// How a run conducts its turns when [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) is on: the
 /// run-wide mode flag, the per-program [sandbox ceilings](SandboxLimits), and which
 /// [healing](crate::healing) strategies are armed.
@@ -6151,6 +6233,11 @@ struct PromptInputs<'a> {
     speculative: bool,
     /// Whether the run responds with programs rather than native tool calls.
     responses_as_code: bool,
+    /// Whether this agent's opening context is pre-seeded with the test case's specifications and
+    /// reference images ([autoload-specifications](CAPABILITY_AUTOLOAD_SPECS)), and if so whether
+    /// they are **locked**: `None` off, `Some(false)` on, `Some(true)` on and locked. Gates the
+    /// prompt section that tells the model the brief is already in its window.
+    autoload_specs: Option<bool>,
     /// This agent's [profile](GgAgentConfig): the source of its operator custom instructions, its
     /// optional full-template override, and the [subagents](GgAgentConfig::subagents) it may spawn
     /// (enumerated in the prompt so the model knows who it can delegate to, and why).
@@ -6187,6 +6274,7 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
         code_reviews,
         speculative,
         responses_as_code,
+        autoload_specs,
         profile,
         delegated,
         fences_are_stripped,
@@ -6304,6 +6392,9 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
             }),
             code_reviews,
             speculative,
+            // On → a section telling the model the whole brief is already in its window; the
+            // `locked` flag decides whether it also promises the material stays across compaction.
+            autoload_specs: autoload_specs.map(|locked| AutoloadView { locked }),
         },
         // A profile may override the whole prompt template; `None` uses the built-in one.
         profile.system_prompt_template.as_deref(),
@@ -6335,6 +6426,69 @@ fn plan_mode_refusal(name: &str, in_plan_mode: bool) -> String {
             "`{name}` is only available in plan mode; call `enter_plan_mode` first to start a \
              read-only planning pass."
         )
+    }
+}
+
+/// Seed `context` with the test case's [provided files](Orchestrator::provided_files) — its
+/// specifications then its reference images — as though the agent had already `read_file`d each:
+/// one synthesized `read_file` assistant call per file, immediately answered by the file's contents
+/// (a [`FileView`](GgContextSource::FileView), image and all), so the model opens with the whole
+/// brief already in the window. This is the [autoload-specifications](CAPABILITY_AUTOLOAD_SPECS)
+/// capability's whole effect.
+///
+/// The files are read **whole** — an unlimited [`ReadPolicy`], independent of the run's own
+/// `read_file` [line cap](ReadPolicy) — because the capability's promise is the *full* contents of
+/// every spec, not a capped first window of it. Image handling is the read tool's own: a mockup is
+/// attached as a picture when this agent's model can see one and described otherwise, so an
+/// autoloaded reference behaves exactly like a read one. When `locked`, each view is
+/// [`Pinned`](Retention::Pinned) so it survives compaction and eviction; otherwise the views are
+/// ordinary ephemeral reads that compaction may summarize and agent-managed context may evict. The
+/// synthesized assistant call is always ephemeral — only the file view is ever locked — mirroring
+/// how a read skill pins the body but not the `read_skill` call that fetched it. A file that cannot
+/// be read (a reference that failed to seed) is skipped with a warning rather than failing the run.
+async fn autoload_specifications(
+    context: &mut ContextModel,
+    provided_files: &[PathBuf],
+    tool_ctx: &ToolContext,
+    locked: bool,
+    emitter: &Emitter,
+) {
+    if provided_files.is_empty() {
+        return;
+    }
+    let reader = ReadFileTool::new(ReadPolicy::Unlimited);
+    let retention = if locked {
+        Retention::Pinned
+    } else {
+        Retention::Ephemeral
+    };
+    for (index, path) in provided_files.iter().enumerate() {
+        let rel = path.to_string_lossy().into_owned();
+        let outcome = reader.invoke(json!({ "path": rel }), tool_ctx).await;
+        if !outcome.ok {
+            emitter.emit(log(
+                "warn",
+                format!("autoload skipped `{rel}`: {}", outcome.output),
+            ));
+            continue;
+        }
+        // A deterministic, per-agent-unique id (the turn loop never assigns an `autoload-` one)
+        // pairs the synthesized assistant call with its result, so the opening conversation is
+        // well-formed exactly as a real read would be.
+        let call_id = format!("autoload-{index}");
+        let call = ToolCall {
+            id: call_id.clone(),
+            name: READ_FILE_TOOL.to_string(),
+            arguments: json!({ "path": rel }),
+        };
+        context.push_assistant(None, vec![call]);
+        context.push_file_view_with_retention(
+            Some(rel),
+            &call_id,
+            outcome.output,
+            outcome.images,
+            retention,
+        );
     }
 }
 
