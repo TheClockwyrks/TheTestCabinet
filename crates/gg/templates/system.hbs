@@ -83,32 +83,19 @@ agents listed above.
 {{#if board}}
 ## Project management
 
-For a substantial build, decompose the work on a shared project board. One board
-serves the whole run and every agent can read and edit it. Group related work into
-epics with `create_epic`. Break the work into issues with `create_issue`. Each
-issue carries `inScope`, `outOfScope`, and `completionCriteria` alongside its
-title; write them precisely, because they are the brief gg hands the agent it
-assigns to the issue. Revise an issue with `update_issue`, set its dependencies
-with `set_issue_blocked_by`, and drop entries with `remove_epic` and
-`remove_issue`. At most {{board.maxEpics}} epics and {{board.maxIssues}} issues may
-be recorded.
+You have access to a shared project board that you and other agents may use.
+This board is shared across the entire run.
 
-Submitting an issue enqueues it rather than handing it to a subagent. Once every
-issue it is blocked by is done, gg spawns a dedicated agent, gives it the issue's
-brief, and that agent implements the issue and marks it done with `complete_issue`.
-Decompose the work into well-scoped issues with clear dependencies and let the
-board drive the build. Reserve `spawn_subagent` for ad-hoc helpers that are not
-board issues.
+Use epics to group related issues. Epics are used exclusively for organizational
+purposes and can be created using `create_epic`.
 
-Call `wait_for_issue` with an issue's id to sequence your work behind it. You are
-suspended, which frees capacity for other agents, until that issue reaches a
-terminal state, then you resume and learn whether it was done or failed. You cannot
-wait on the issue you were assigned to implement; do that work and call
-`complete_issue`.
+Issues represent units of work to be completed. These are created using
+`create_issue` and may have dependencies configured. Submitting an issue will
+cause a subagent to be dispatched to handle the issue once all dependencies have
+been completed (or immediately, if it has no dependencies).
 
-Issues form a directed acyclic graph. Cycles are rejected, and an issue is ready
-only once all of its blockers are done. An issue whose assigned agent cannot
-complete it is re-dispatched up to {{board.maxRetries}} time(s) and then marked
-failed. A failed issue is terminal but not done, so anything depending on it stays
-blocked.
+Use `wait_for_issue` to suspend until the issue you specify has been completed.
+Use `complete_issue` to mark an issue as completed.
+
+At most {{board.maxEpics}} epics and {{board.maxIssues}} issues may be created.
 {{/if}}
