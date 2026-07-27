@@ -868,6 +868,63 @@ export async function startPlaying(api, seed = 1) {
 export const pred = (snap, kind) => snap.predators.find((p) => p.kind === kind);
 
 /**
+ * Hold the forager still on a tile, as a BYSTANDER, for a scenario that reads
+ * something else (a predator's patrol, a drifter's persistence, a cue).
+ *
+ * WHY THIS EXISTS. `specs/movement.md` and `specs/instrumentation.md` disagree about
+ * what a forager with no key held does. Movement describes the arcade rule — it
+ * "keeps going straight until it can either turn that way or reaches a wall and
+ * stops", and a direction key only "sets the desired direction" — so a conforming
+ * build may well swim on its own. Instrumentation describes `setForager` as leaving
+ * it "at rest (as if no movement key is held)", which reads as stopped. Both are
+ * legitimate; a check must not silently require one.
+ *
+ * A drifting bystander wrecks these scenarios outright: it grazes plankton (which
+ * re-brightens `G` and moves every light-range threshold), and once `poseLastPlankton`
+ * has stripped the board to a single adjacent pellet, its very first step eats it,
+ * clears the maze and descends — re-denning every predator mid-measurement.
+ *
+ * So pose the forager FACING A WALL. Its heading leads nowhere, so it cannot leave the
+ * tile under either reading, using nothing but the documented `setForager`. On a build
+ * that already rests, this is a no-op beyond the facing.
+ *
+ * `tile` defaults to wherever the forager already stands. Returns the snapshot taken
+ * after parking. Only for scenarios where the forager's own facing does not matter —
+ * a check that reads its heading must pose that heading itself.
+ */
+export async function parkForager(api, tile) {
+  const snap = await api.snapshot();
+  const tx = tile ? tile.tx : snap.forager.tx;
+  const ty = tile ? tile.ty : snap.forager.ty;
+  const open = openNeighborDirs(snap, tx, ty);
+  // A one-wide maze leaves nearly every tile with at least one walled side; a full
+  // crossroads has none, in which case the best available is to leave the facing
+  // alone (a resting build still holds, and the caller's finder picked the tile).
+  const walled = ["up", "down", "left", "right"].filter(
+    (d) => !open.includes(d),
+  );
+  await api.call(
+    "setForager",
+    walled.length ? { tx, ty, dir: walled[0] } : { tx, ty },
+  );
+  return api.snapshot();
+}
+
+/**
+ * Strip the board to one plankton for a scenario the forager only watches: park it
+ * facing a wall FIRST, so the single pellet `poseLastPlankton` leaves adjacent to it
+ * cannot be eaten, and the maze cannot clear out from under the measurement.
+ *
+ * Pair this with `parkForager` (see there for why a bystander forager may drift). Use
+ * plain `poseLastPlankton` — never this — in a check that is ABOUT clearing the maze.
+ */
+export async function quietBoard(api, tile) {
+  const snap = await parkForager(api, tile);
+  await api.call("poseLastPlankton");
+  return snap;
+}
+
+/**
  * Park every predator in the den (a clean baseline), except the ones named in
  * `except`. Used so a scenario reads one predator's behavior undisturbed.
  */
@@ -1045,28 +1102,54 @@ export async function arrangeMoveKey(api, dir) {
  * recorded clip shows the forager swimming for a readable moment before the key is
  * released (they cannot affect the returned states, which were already captured).
  *
- * Pair with `arrangeMoveKey`. Returns `{ before, after, code }` forager states — what
- * the old `driveMoveKey` returned — for `movedAlong` to judge.
+ * Pair with `arrangeMoveKey`. Returns `{ before, after, code, grid }` — the forager
+ * states either side of the held key, plus the grid frame `movedAlong` measures in.
  */
 export async function actMoveKey(
   api,
   code,
   { ticks = 30, tailTicks = 60 } = {},
 ) {
-  const before = (await api.snapshot()).forager;
+  const start = await api.snapshot();
+  const before = start.forager;
   await api.call("keyDown", code);
   await api.advance(ticks); // 30 ticks = the old 0.25s, ~one tile at 128 px/s
   const after = (await api.snapshot()).forager;
   await api.advance(tailTicks); // 60 ticks (0.5s) of visible travel for the clip
   await api.call("keyUp", code);
-  return { before, after, code };
+  return { before, after, code, grid: start.grid };
 }
 
-/** True if the forager's move went the expected way (tile changed along `dir`). */
-export function movedAlong(before, after, dir) {
+/**
+ * True if the forager's move went the expected way: its POSITION advanced at least half
+ * a tile along `dir`.
+ *
+ * WHY POSITION AND NOT THE TILE INDEX. This used to compare `tx`/`ty` either side of the
+ * hold, and that made the verdict a coin flip. The window is 30 ticks, and at the
+ * forager's fixed `128 px/s` (specs/movement.md) 30 ticks is 32 px — with a 32 px tile,
+ * EXACTLY one tile. So the read landed precisely on the tile boundary, and which side of
+ * it the index had reached came down to floating-point accumulation: a build that
+ * integrates to y = 128.0000000000001 rather than 128.0 has not "arrived" at the next
+ * centre by a 1e-13 margin, reports the tile it came from, and failed a movement it had
+ * performed perfectly. Widening the window would only move the coin flip somewhere else,
+ * because builds legitimately differ on WHEN the index flips: on crossing the boundary
+ * geometrically, or on arriving at the next centre. `snapshot` pins neither ("the tile it
+ * is on/nearest"), so no tile-index comparison can be the honest signal here.
+ *
+ * Position is exact, convention-free, and sits in the same snapshot. Half a tile is the
+ * threshold because it is unambiguous in both directions: far more than any jitter or
+ * sub-pixel drift, and comfortably under the 32 px a conforming build covers in the
+ * window — so this reads "it went that way", and leaves how fast to
+ * `maze-movement/constant-speed`. A held key that does nothing still measures 0.
+ *
+ * No wrap guard is needed: `findOpenWithNeighbor` never places the forager on a border
+ * column, so half a tile of travel cannot cross the wrap tunnel's seam.
+ */
+export function movedAlong(before, after, dir, grid) {
   const [dc, dr] = DIRS[dir];
-  if (dc !== 0) return Math.sign(after.tx - before.tx) === Math.sign(dc);
-  return Math.sign(after.ty - before.ty) === Math.sign(dr);
+  const min = grid.tile / 2;
+  if (dc !== 0) return (after.x - before.x) * dc >= min;
+  return (after.y - before.y) * dr >= min;
 }
 
 /**

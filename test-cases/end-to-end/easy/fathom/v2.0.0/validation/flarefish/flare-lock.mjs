@@ -6,13 +6,14 @@
 // re-pose behind a wall, and the lock that follows are all `act`. Re-posing there uses
 // `setForager`, a control op — `reset` would take the clock back and freeze the clip.
 import {
-  startPlaying,
   denAllExcept,
   findFarTile,
-  openTiles,
-  tileCenter,
   losClear,
+  openTiles,
   pred,
+  quietBoard,
+  startPlaying,
+  tileCenter,
 } from "../_helpers.mjs";
 
 // An open tile within the flare bloom of `tile` (euclidean < 185 px) whose line of
@@ -46,7 +47,7 @@ export default function item() {
         ty: far.ty,
         mode: "wander",
       });
-      await api.call("poseLastPlankton");
+      await quietBoard(api);
     },
 
     async act(api) {

@@ -3,10 +3,11 @@
 // The close, lit sight line is posed instantly (`arrange`); the fix, the ink drop and the
 // broken fix are the real sim, so they are `act` and are what the clip shows.
 import {
-  startPlaying,
-  findSightLine,
   denAllExcept,
+  findSightLine,
   pred,
+  quietBoard,
+  startPlaying,
 } from "../_helpers.mjs";
 
 export default function item() {
@@ -20,16 +21,12 @@ export default function item() {
       const snap = await startPlaying(api);
       const line = findSightLine(snap, 2); // close, so ink at the forager covers the line
       await denAllExcept(api, ["lanternjaw"]);
-      await api.call("setForager", {
-        tx: line.forager.tx,
-        ty: line.forager.ty,
-      });
       await api.call("setPredator", "lanternjaw", {
         tx: line.pred.tx,
         ty: line.pred.ty,
         mode: "wander",
       });
-      await api.call("poseLastPlankton");
+      await quietBoard(api, line.forager);
       await api.call("setBrightness", 1);
     },
 

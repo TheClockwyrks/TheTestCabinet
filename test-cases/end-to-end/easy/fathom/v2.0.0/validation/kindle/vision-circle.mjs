@@ -5,12 +5,13 @@
 // Which tiles are revealed is only known after the flood has run, so the pulse, the
 // choice of the two tiles and the sampling are all `act`.
 import {
-  startPlaying,
   findStraightRun,
-  openTiles,
-  tileCenter,
-  sampleColor,
   luminance,
+  openTiles,
+  quietBoard,
+  sampleColor,
+  startPlaying,
+  tileCenter,
   unmetPrecondition,
 } from "../_helpers.mjs";
 import { isFogBlack, sampleFog } from "./_kindle.mjs";
@@ -31,8 +32,10 @@ export default function item() {
       // eat (so brightness — and the vision circle — stay at rest), and a single pulse
       // reveals tiles straight down the corridor well past the vision circle.
       const run = findStraightRun(snap, 9);
-      await api.call("setForager", { tx: run.tx, ty: run.ty, dir: run.dir });
-      await api.call("poseLastPlankton");
+      // Parked, not merely placed: every distance below is measured from the forager,
+      // so a build whose forager swims off on its own would move the frame of reference
+      // mid-measurement as well as eating the last pellet.
+      await quietBoard(api, { tx: run.tx, ty: run.ty });
       await api.call("clearCooldowns");
     },
 

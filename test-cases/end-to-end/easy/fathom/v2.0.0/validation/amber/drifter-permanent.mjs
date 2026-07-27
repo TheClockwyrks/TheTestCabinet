@@ -2,7 +2,12 @@
 //
 // Spawning the drifter is instant (`arrange`); the long stretch of time it has to
 // survive IS the check, so it is `act` and is what the clip shows.
-import { startPlaying, findFarTile, denAllExcept } from "../_helpers.mjs";
+import {
+  denAllExcept,
+  findFarTile,
+  quietBoard,
+  startPlaying,
+} from "../_helpers.mjs";
 
 export default function item() {
   let n0;
@@ -16,7 +21,7 @@ export default function item() {
       await denAllExcept(api, []); // den all predators so none disturbs the scene
       const far = findFarTile(snap, snap.forager, 10); // far from the stationary forager, so it is not eaten
       await api.call("spawnDrifter", { tx: far.tx, ty: far.ty });
-      await api.call("poseLastPlankton");
+      await quietBoard(api);
     },
 
     async act(api) {

@@ -5,10 +5,11 @@
 // pulse and watching the front reach it is the real sim, so it is `act` — the clip is the
 // ping travelling out and the Gloamfin turning.
 import {
-  startPlaying,
   denAllExcept,
   findSonarSenseTiles,
   pred,
+  quietBoard,
+  startPlaying,
 } from "../_helpers.mjs";
 
 export default function item() {
@@ -27,7 +28,7 @@ export default function item() {
         ty: target.ty,
         mode: "wander",
       });
-      await api.call("poseLastPlankton");
+      await quietBoard(api);
     },
 
     async act(api) {

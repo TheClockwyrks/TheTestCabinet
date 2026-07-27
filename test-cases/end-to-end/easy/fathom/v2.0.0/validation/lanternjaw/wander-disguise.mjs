@@ -5,12 +5,13 @@
 // sim to have run, and the switch into `chase` between them is a control op, so the whole
 // drift-then-hunt sequence is `act` — and that is what the clip shows.
 import {
-  startPlaying,
-  findSonarTarget,
-  denAllExcept,
-  pred,
   DRIFTER_SPEED,
   PREDATOR_SPEED,
+  denAllExcept,
+  findSonarTarget,
+  pred,
+  quietBoard,
+  startPlaying,
 } from "../_helpers.mjs";
 
 export default function item() {
@@ -30,7 +31,7 @@ export default function item() {
         ty: target.ty,
         mode: "wander",
       });
-      await api.call("poseLastPlankton");
+      await quietBoard(api);
     },
 
     async act(api) {

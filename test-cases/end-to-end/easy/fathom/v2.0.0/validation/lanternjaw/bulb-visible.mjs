@@ -4,12 +4,13 @@
 // The blind pair is posed instantly (`arrange`); `act` lets the pose settle, gives the
 // build a frame to paint, and reads the amber halo back off the canvas.
 import {
-  startPlaying,
-  findOccludedPair,
   denAllExcept,
-  pred,
-  sampleAmberOrb,
+  findOccludedPair,
   isAmber,
+  pred,
+  quietBoard,
+  sampleAmberOrb,
+  startPlaying,
 } from "../_helpers.mjs";
 
 export default function item() {
@@ -23,13 +24,12 @@ export default function item() {
       const snap = await startPlaying(api);
       const bp = findOccludedPair(snap); // close enough for the Kindle circle, LOS blocked so unlit
       await denAllExcept(api, ["lanternjaw"]);
-      await api.call("setForager", { tx: bp.forager.tx, ty: bp.forager.ty });
       await api.call("setPredator", "lanternjaw", {
         tx: bp.pred.tx,
         ty: bp.pred.ty,
         mode: "wander",
       });
-      await api.call("poseLastPlankton");
+      await quietBoard(api, bp.forager);
     },
 
     async act(api) {

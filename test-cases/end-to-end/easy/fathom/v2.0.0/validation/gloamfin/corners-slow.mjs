@@ -3,7 +3,13 @@
 //
 // The corner is posed instantly (`arrange`); the sampling sweep across the turn is the
 // measurement itself, so it is `act` and is what the clip shows.
-import { startPlaying, findCorner, pred, FORAGER_SPEED } from "../_helpers.mjs";
+import {
+  FORAGER_SPEED,
+  findCorner,
+  pred,
+  quietBoard,
+  startPlaying,
+} from "../_helpers.mjs";
 
 export default function item() {
   let sawBelow = false;
@@ -17,13 +23,14 @@ export default function item() {
       const c = findCorner(snap);
       // Forager on the perpendicular arm; Gloamfin on the approach arm, chasing — its path
       // to the forager turns a perpendicular corner at the junction.
-      await api.call("setForager", { tx: c.perpTile.tx, ty: c.perpTile.ty });
+      // The forager first, and PARKED: `chase` fixes on wherever it is standing when the
+      // mode is set, and the corner it must round is the one between them.
+      await quietBoard(api, c.perpTile);
       await api.call("setPredator", "gloamfin", {
         tx: c.back.tx,
         ty: c.back.ty,
         mode: "chase",
       });
-      await api.call("poseLastPlankton");
     },
 
     async act(api) {

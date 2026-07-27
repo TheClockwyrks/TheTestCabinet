@@ -4,11 +4,12 @@
 // The distant drifter is posed instantly (`arrange`); `act` lets the pose settle, gives
 // the build a frame to paint, and reads the amber halo back off the canvas.
 import {
-  startPlaying,
   denAllExcept,
   findFarTile,
-  sampleAmberOrb,
   isAmber,
+  quietBoard,
+  sampleAmberOrb,
+  startPlaying,
 } from "../_helpers.mjs";
 
 export default function item() {
@@ -23,7 +24,7 @@ export default function item() {
       await denAllExcept(api, []);
       const far = findFarTile(snap, snap.forager, 9); // far out in the dark
       await api.call("spawnDrifter", { tx: far.tx, ty: far.ty });
-      await api.call("poseLastPlankton");
+      await quietBoard(api);
     },
 
     async act(api) {
