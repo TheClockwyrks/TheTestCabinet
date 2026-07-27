@@ -129,6 +129,7 @@ fn full_system() -> SystemContext {
         board: Some(BoardView {
             max_epics: 50,
             max_issues: 200,
+            max_retries: 1,
         }),
         planning: true,
         fsm: Some(FsmView {
@@ -181,7 +182,7 @@ fn a_bare_run_renders_only_the_base_prompt() {
         "## Skills",
         "## Memories",
         "## Tasks",
-        "## Epics and issues",
+        "## Project management",
         "## Planning",
         "## Process",
         "## Code Reviews",
@@ -209,7 +210,7 @@ fn a_full_run_renders_every_section_with_its_configuration() {
         "## Skills",
         "## Memories",
         "## Tasks",
-        "## Epics and issues",
+        "## Project management",
         "## Planning",
         "## Process",
         "## Code Reviews",
@@ -1612,6 +1613,9 @@ fn the_task_block_is_state_not_instructions() {
                 marker: "[x]".to_string(),
                 ready: false,
                 blocked_by: None,
+                in_scope: None,
+                out_of_scope: None,
+                completion_criteria: None,
             },
             TaskItemView {
                 id: "movement".to_string(),
@@ -1621,6 +1625,9 @@ fn the_task_block_is_state_not_instructions() {
                 marker: "[ ]".to_string(),
                 ready: false,
                 blocked_by: Some("`scaffold`".to_string()),
+                in_scope: None,
+                out_of_scope: None,
+                completion_criteria: None,
             },
         ],
     });

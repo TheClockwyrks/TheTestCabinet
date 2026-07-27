@@ -43,10 +43,11 @@ interface GgDashboardProps {
    */
   perAgent: Map<string, DerivedGgState>;
   /**
-   * The rooted delegation tree — the agent overview lists agents in tree order and
-   * indents subagents under their spawner.
+   * The delegation forest — the agent overview lists agents in forest order (root
+   * first, then each dispatched top-level agent) and indents subagents under their
+   * spawner.
    */
-  agentTree: AgentTreeNode;
+  agentForest: AgentTreeNode[];
   fsm: FsmProgress | null;
   /** The run's recorded configuration — its independent variable. */
   capabilitySet: GgCapabilitySet | null;
@@ -84,7 +85,7 @@ export function GgDashboard({
   usage,
   slotUsage,
   perAgent,
-  agentTree,
+  agentForest,
   fsm,
   capabilitySet,
   children,
@@ -107,7 +108,7 @@ export function GgDashboard({
           className={styles.cardHalf}
         />
 
-        <AgentsCard agentTree={agentTree} perAgent={perAgent} />
+        <AgentsCard agentForest={agentForest} perAgent={perAgent} />
 
         {/* The per-slot usage breakdown behind the cost total: a gg run spans one
             model per slot, so cost is accounted per slot rather than as one figure.
@@ -162,7 +163,7 @@ interface AgentOverviewRowData {
 // 100% — rather than against the run-level tally, which is accounted per slot and a
 // slot can span more than one agent.
 function buildAgentRows(
-  tree: AgentTreeNode,
+  forest: AgentTreeNode[],
   perAgent: Map<string, DerivedGgState>,
 ): AgentOverviewRowData[] {
   const ordered: Array<{ node: AgentTreeNode; depth: number }> = [];
@@ -170,7 +171,7 @@ function buildAgentRows(
     ordered.push({ node, depth });
     node.children.forEach((child) => walk(child, depth + 1));
   };
-  walk(tree, 0);
+  forest.forEach((root) => walk(root, 0));
 
   const runTokens = ordered.reduce(
     (sum, { node }) => sum + (perAgent.get(node.id)?.usage.totalTokens ?? 0),
@@ -202,16 +203,16 @@ function buildAgentRows(
 // explorer (when the panels provide the navigation channel; a Dashboard shown
 // outside them renders the rows as plain, un-clickable stats).
 function AgentsCard({
-  agentTree,
+  agentForest,
   perAgent,
 }: {
-  agentTree: AgentTreeNode;
+  agentForest: AgentTreeNode[];
   perAgent: Map<string, DerivedGgState>;
 }) {
   const nav = useGgExplorerNav();
   const rows = useMemo(
-    () => buildAgentRows(agentTree, perAgent),
-    [agentTree, perAgent],
+    () => buildAgentRows(agentForest, perAgent),
+    [agentForest, perAgent],
   );
 
   return (

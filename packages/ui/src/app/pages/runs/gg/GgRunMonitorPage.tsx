@@ -82,7 +82,7 @@ export function GgRunMonitorPage() {
             usage={usage}
             slotUsage={state.slotUsage}
             perAgent={state.perAgent}
-            agentTree={state.agentTree}
+            agentForest={state.agentForest}
             fsm={fsm}
             capabilitySet={capabilitySet}
           >

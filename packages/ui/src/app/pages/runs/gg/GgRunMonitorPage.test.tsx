@@ -116,7 +116,7 @@ const ALL_CAPABILITIES = [
   "skills",
   "memories",
   "tasks",
-  "epics-and-issues",
+  "project-management",
   "planning",
   "subagents",
   "multi-model",
@@ -228,6 +228,7 @@ const EVENTS: HarnessEvent[] = [
         status: "done",
         blockedBy: [],
         epicId: "e1",
+        retries: 0,
       },
       {
         id: "i2",
@@ -238,6 +239,7 @@ const EVENTS: HarnessEvent[] = [
         status: "in_progress",
         blockedBy: ["i1"],
         epicId: "e1",
+        retries: 0,
       },
       {
         id: "i3",
@@ -248,6 +250,7 @@ const EVENTS: HarnessEvent[] = [
         status: "open",
         blockedBy: ["i2"],
         epicId: "e1",
+        retries: 0,
       },
       {
         id: "i4",
@@ -257,6 +260,7 @@ const EVENTS: HarnessEvent[] = [
         completionCriteria: "A sound plays on a move.",
         status: "open",
         blockedBy: [],
+        retries: 0,
       },
     ],
   }),
@@ -350,11 +354,13 @@ function renderMonitor(events: HarnessEvent[] = EVENTS) {
   );
 }
 
-// The view is led by a two-tab selector: the whole-run Dashboard (the default), and
-// the per-agent Agents explorer. Everything a run lets you read about one agent is a
-// "file" inside that agent's folder in the explorer, so reading an agent's activity,
-// context, tasks, … starts by opening the Agents tab.
-function openTab(name: "Dashboard" | "Agents") {
+// The view is led by a tab selector: the whole-run Dashboard (the default), the
+// per-agent Agents explorer, and — when the project-management capability is on — the
+// run-global Project board. Everything a run lets you read about one agent is a
+// "file" inside that agent's folder in the Agents explorer, so reading an agent's
+// activity, context, tasks, … starts by opening the Agents tab; the shared board is
+// read on the Project tab.
+function openTab(name: "Dashboard" | "Agents" | "Project") {
   fireEvent.click(screen.getByRole("radio", { name }));
 }
 
@@ -434,12 +440,14 @@ describe("GgRunMonitorPage", () => {
       "root activity",
       "root context",
       "root plan",
-      "root board",
       "root tasks",
       "root knowledge",
     ]) {
       expect(screen.getByRole("button", { name: file })).toBeInTheDocument();
     }
+    // The board is no longer a per-agent file — it reads on the run-global Project
+    // tab instead.
+    expect(screen.queryByRole("button", { name: "root board" })).toBeNull();
   });
 
   it("renders the gg-native activity feed on an agent's activity file", () => {
@@ -507,17 +515,23 @@ describe("GgRunMonitorPage", () => {
     expect(screen.getByText("Blocked")).toBeInTheDocument();
   });
 
-  it("renders the epic/issue board on an agent's board file", () => {
+  it("renders the run-global epic/issue board on the Project tab", () => {
     renderMonitor();
-    openTab("Agents");
-    openFile("root board");
-    expect(screen.getByText("Rendering")).toBeInTheDocument();
-    expect(screen.getByText("Add win overlay")).toBeInTheDocument();
+    openTab("Project");
+    // The board is a filesystem of epics-as-folders whose files are an epic summary
+    // and each issue under it — the epic titles, the ungrouped bucket, and every
+    // issue title read in the sidebar. ("Rendering" reads twice: the epic folder and
+    // the epic summary the default landing selects.)
+    expect(screen.getAllByText("Rendering").length).toBeGreaterThan(0);
     expect(screen.getByText("Ungrouped")).toBeInTheDocument();
+    expect(screen.getByText("Add win overlay")).toBeInTheDocument();
     expect(screen.getByText("Wire audio")).toBeInTheDocument();
-    expect(screen.getAllByText("ready").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("blocked").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Brief").length).toBe(4);
+    // Selecting a blocked issue shows its detail: its status, its blocked-by edge,
+    // its readiness, and its retries count.
+    openFile("issue Add win overlay");
+    expect(screen.getByText("blocked")).toBeInTheDocument();
+    expect(screen.getByText("Retries")).toBeInTheDocument();
+    expect(screen.getByText("Show a win banner.")).toBeInTheDocument();
   });
 
   it("renders the plan on an agent's plan file", () => {
@@ -548,8 +562,8 @@ describe("GgRunMonitorPage", () => {
     // yet. The files a capability justifies are offered up front — a file is gated
     // by the run's configuration, not by whether data has streamed — so `tasks` and
     // `knowledge` are present (showing their own empty state), Context is
-    // unconditional, and the capabilities the run lacks (planning, board) offer no
-    // file at all.
+    // unconditional, and the capability the run lacks (planning) offers no file at
+    // all.
     renderMonitor([
       sessionStarted(["shell", "tasks", "memories"]),
       gg({ type: "assistant_message", text: "Working." }),
@@ -567,6 +581,8 @@ describe("GgRunMonitorPage", () => {
     for (const file of ["root plan", "root board"]) {
       expect(screen.queryByRole("button", { name: file })).toBeNull();
     }
+    // With project-management off there is also no Project tab.
+    expect(screen.queryByRole("radio", { name: "Project" })).toBeNull();
     // An enabled-but-empty file is present and shows its own "nothing yet" state,
     // rather than being hidden until data arrives.
     openFile("root tasks");
@@ -787,7 +803,7 @@ describe("GgRunMonitorPage", () => {
     expect(screen.getByText("tdd → implement")).toBeInTheDocument();
   });
 
-  it("surfaces Code Review status and actionable items on an agent's board file", () => {
+  it("surfaces Code Review status and actionable items on the Project tab", () => {
     const issue = (
       id: string,
       title: string,
@@ -800,6 +816,7 @@ describe("GgRunMonitorPage", () => {
       completionCriteria: "",
       status,
       blockedBy: [] as string[],
+      retries: 0,
     });
     const events: HarnessEvent[] = [
       sessionStarted(),
@@ -820,11 +837,15 @@ describe("GgRunMonitorPage", () => {
       ggIssue("i2", { type: "code_review", phase: "approved" }),
     ];
     renderMonitor(events);
-    openTab("Agents");
-    openFile("root board");
+    openTab("Project");
+    // The first issue's detail carries its changes-requested review and the actionable
+    // items a fix agent must address before re-review.
+    openFile("issue Set up the canvas");
     expect(screen.getByText("changes requested")).toBeInTheDocument();
     expect(screen.getByText("Handle the empty-input case")).toBeInTheDocument();
     expect(screen.getByText("Add a unit test")).toBeInTheDocument();
+    // The second issue's review approved, gating its acceptance.
+    openFile("issue Draw the board");
     expect(screen.getByText("approved")).toBeInTheDocument();
   });
 
@@ -899,13 +920,14 @@ describe("GgRunMonitorPage", () => {
     renderMonitor([]);
     // No session_started yet ⇒ Queued on the Dashboard.
     expect(screen.getByText("Queued")).toBeInTheDocument();
-    // Only the two tabs are ever offered — the per-agent views live inside Agents,
-    // not as their own capability-gated tabs.
+    // Dashboard and Agents are the unconditional tabs — the per-agent views live
+    // inside Agents, not as their own capability-gated tabs. With no announced
+    // capability set the run-global Project tab is not offered either.
     expect(
       screen.getByRole("radio", { name: "Dashboard" }),
     ).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: "Agents" })).toBeInTheDocument();
-    expect(screen.queryByRole("radio", { name: "Board" })).toBeNull();
+    expect(screen.queryByRole("radio", { name: "Project" })).toBeNull();
     expect(screen.queryByRole("radio", { name: "Context" })).toBeNull();
     // The Agents explorer still shows the root, whose activity waits on telemetry.
     openTab("Agents");

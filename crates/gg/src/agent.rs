@@ -90,7 +90,7 @@ use std::time::Instant;
 use serde_json::Value;
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_CODE_REVIEWS, CAPABILITY_CONTEXT_VISIBILITY,
-    CAPABILITY_EPICS_ISSUES, CAPABILITY_MEMORIES, CAPABILITY_MULTI_MODEL, CAPABILITY_REPLAY,
+    CAPABILITY_MEMORIES, CAPABILITY_MULTI_MODEL, CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_REPLAY,
     CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS,
     CAPABILITY_TASKS, CAPABILITY_WORKFLOWS, CAPABILITY_WORKTREES, GgAgentStatus, GgCandidateShape,
     GgCapabilitySet, GgCodeReviewPhase, GgContextAction, GgContextSource, GgHealingStrategy,
@@ -102,7 +102,7 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 
 use crate::archive::ArchiveStore;
-use crate::board::{BoardCaps, BoardRuntime};
+use crate::board::{BoardCaps, BoardRuntime, IssueStatus};
 use crate::client::{ClientFactory, DefaultClientFactory, provider_for};
 use crate::compaction::{self, CompactionSetup, RetainedCounts, compact_if_needed};
 use crate::config::GgInvocation;
@@ -137,8 +137,10 @@ use crate::sandbox::{
     SandboxOutcome, ToolInvoker, UnreachableTail, run_program, scope_tools,
 };
 use crate::skills::{DEFAULT_SKILLS_DIR, ReadRecord, SkillLibrary, SkillsRuntime};
-use crate::subagents::{AgentCtx, AgentReturn, ChildHandle, ParentWait, Scheduler, SubagentConfig};
-use crate::tasks::{TasksRuntime, resolve_max_tasks};
+use crate::subagents::{
+    AgentCtx, AgentReturn, ChildHandle, ParentWait, Scheduler, SubagentConfig, WaiterToken,
+};
+use crate::tasks::{TasksRuntime, resolve_max_tasks, resolve_task_mode};
 use crate::telemetry::Emitter;
 use crate::tools::VisionContext;
 use crate::tools::{
@@ -147,10 +149,10 @@ use crate::tools::{
     READ_SKILL_TOOL, RUN_WORKFLOW_TOOL, ReadPolicy, ReclaimData, RuntimeSet, SEND_MESSAGE_TOOL,
     SPAWN_SUBAGENT_TOOL, SPECULATE_TOOL, SUBMIT_PLAN_TOOL, SpeculationData, SubagentHandleData,
     SubagentResultData, TURN_LEVEL_TOOLS, ToolContext, ToolData, ToolFailure, ToolOutcome,
-    ToolRegistry, WAIT_FOR_SUBAGENTS_TOOL, WorkflowData, is_board_tool, is_context_reclaim_tool,
-    is_fsm_tool, is_memory_tool, is_planning_tool, is_subagent_tool, is_task_tool,
-    parse_archive_keep_recent, parse_evict_path, plan_mode_offers, read_policy, saturating_u32,
-    saturating_u64, unknown_disabled_tools,
+    ToolRegistry, WAIT_FOR_ISSUE_TOOL, WAIT_FOR_SUBAGENTS_TOOL, WorkflowData, is_board_tool,
+    is_context_reclaim_tool, is_fsm_tool, is_memory_tool, is_planning_tool, is_subagent_tool,
+    is_task_tool, parse_archive_keep_recent, parse_evict_path, plan_mode_offers, read_policy,
+    saturating_u32, saturating_u64, unknown_disabled_tools,
 };
 use crate::vision::VisionSupport;
 
@@ -796,6 +798,11 @@ struct Orchestrator {
     /// Whether the [subagents](CAPABILITY_SUBAGENTS) capability is on — gates the spawn tools, the
     /// per-agent delegation context, and the agent-tree telemetry.
     subagents_enabled: bool,
+    /// Whether the [project-management](CAPABILITY_PROJECT_MANAGEMENT) capability is on — gates the
+    /// board tools, the `wait_for_issue` tool, and the auto-[dispatch](Self::pump_dispatch) of an
+    /// actionable issue to a freshly spawned top-level agent. A run with it on is multi-agent even
+    /// with [`subagents`](CAPABILITY_SUBAGENTS) off (see [`multi_agent`](Self::multi_agent)).
+    project_management_enabled: bool,
     /// Whether the [workflows](CAPABILITY_WORKFLOWS) capability is on — gates the `run_workflow`
     /// tool. Workflows are built on the subagent machinery, so a run with workflows on (even if
     /// [`subagents`](CAPABILITY_SUBAGENTS) is off) still gets the per-agent delegation context and
@@ -833,10 +840,21 @@ struct Orchestrator {
     /// Per-[issue](test_cabinet_core::gg::GgBoardIssue) dispatch facts a
     /// [Code Review](handle_code_review) needs: the commit the issue's work began at (its review
     /// baseline) and the [slot](GgSlotBinding) it was worked on (where a fix agent re-runs).
-    /// Captured on the **first** dispatch of each issue (`spawn_subagent { issueId }`) and read back
-    /// when the issue is completed; an issue never dispatched to a subagent falls back to the run
-    /// baseline and the primary slot. Guarded so concurrently-dispatching agents can record.
+    /// Captured on the **first** dispatch of each issue and read back when the issue is completed;
+    /// an issue never dispatched falls back to the run baseline and the primary slot. Guarded so
+    /// concurrently-dispatching agents can record.
     issue_dispatch: Mutex<HashMap<String, IssueDispatchMeta>>,
+    /// The run's **single, global** [project-management board](crate::board) — one
+    /// [`BoardRuntime`] shared by every agent (each agent's board tools mutate this same store),
+    /// and the queue the [dispatcher](Self::pump_dispatch) reads. [`disabled`](BoardRuntime::disabled)
+    /// when the [project-management](CAPABILITY_PROJECT_MANAGEMENT) capability is off.
+    board: BoardRuntime,
+    /// The agents blocked in a [`wait_for_issue`](Self::begin_issue_wait), keyed by the issue id
+    /// each awaits. Each entry is the [scheduler waiter tokens](WaiterToken) of the agents waiting
+    /// on that issue; when the issue reaches a terminal state they are all
+    /// [marked ready](Scheduler::mark_ready). Guarded so a completing agent and a fresh waiter can
+    /// touch it concurrently.
+    issue_waits: Mutex<HashMap<String, Vec<WaiterToken>>>,
     /// Serializes every git operation on the shared repository (worktree add/merge/remove, and a
     /// Code Review's baseline diff), since concurrently-finishing subagents would otherwise race on
     /// `.git` and the main working tree. Held only across the synchronous git calls, never across an
@@ -944,6 +962,7 @@ impl Orchestrator {
             prompt: invocation.prompt.clone(),
             multi_model,
             subagents_enabled: set.is_enabled(CAPABILITY_SUBAGENTS),
+            project_management_enabled: set.is_enabled(CAPABILITY_PROJECT_MANAGEMENT),
             workflows_enabled: set.is_enabled(CAPABILITY_WORKFLOWS),
             worktrees_capability: worktrees.capability,
             worktrees_root: worktrees.root,
@@ -956,6 +975,8 @@ impl Orchestrator {
                 healing: healing.config,
             },
             issue_dispatch: Mutex::new(HashMap::new()),
+            board: resolve_board(set),
+            issue_waits: Mutex::new(HashMap::new()),
             git_lock: Mutex::new(()),
             config: SubagentConfig::resolve(set),
             scheduler: Scheduler::new(SubagentConfig::resolve(set).max_parallel),
@@ -1023,6 +1044,15 @@ impl Orchestrator {
     /// so a workflow's fanned-out agents animate the live tree exactly like ad-hoc subagents.
     fn delegation_enabled(&self) -> bool {
         self.subagents_enabled || self.workflows_enabled
+    }
+
+    /// Whether the run is **multi-agent** — either [delegation](Self::delegation_enabled) is on, or
+    /// [project management](CAPABILITY_PROJECT_MANAGEMENT) is (which auto-dispatches issues to
+    /// spawned top-level agents). This is what gates the agent-tree
+    /// [status telemetry](GgAgentStatus): a project-management run animates its dispatched agents in
+    /// the live tree just as a delegating run animates its subagents.
+    fn multi_agent(&self) -> bool {
+        self.delegation_enabled() || self.project_management_enabled
     }
 
     /// The run's [baseline commit](Self::baseline_commit) sha — the seeded workspace committed at
@@ -1153,14 +1183,345 @@ impl Orchestrator {
         let _guard = self.git_lock.lock().expect("git lock");
         git::diff_since(&self.workspace_dir, baseline).unwrap_or_default()
     }
+
+    // -- Project-management auto-dispatch (crate::board) ------------------------------------------
+    //
+    // These five methods are the orchestrator's half of the [project-management](crate::board)
+    // capability: the board store owns *what* is dispatchable and the retry bookkeeping; this owns
+    // the *spawning* of a top-level agent per actionable issue and the waking of agents blocked in
+    // a `wait_for_issue`. All are no-ops when the capability is off (the board is disabled).
+
+    /// **Pump the dispatcher and wake ready issue-waiters** after any board change — the single
+    /// entry point the loop calls when a board tool mutates the shared board, and the completion
+    /// path calls when an assigned agent finishes. It (1) wakes every agent whose awaited issue has
+    /// reached a terminal state, then (2) spawns a top-level agent for every issue that has become
+    /// actionable. It does **not** emit the [`BoardState`](GgTelemetryKind::BoardState) telemetry —
+    /// the caller does that after (in the loop, [`record_tool_result`] already re-emits it), so the
+    /// snapshot reflects the assignments this made.
+    fn pump_and_wake(self: &Arc<Self>, emitter: &Emitter) {
+        self.wake_ready_issue_waiters();
+        self.pump_dispatch(emitter);
+    }
+
+    /// [Pump and wake](Self::pump_and_wake) **and** re-emit the board state — the variant the
+    /// [completion path](run_agent) uses, where there is no following `record_tool_result` to emit
+    /// the snapshot.
+    fn on_issue_progress(self: &Arc<Self>, emitter: &Emitter) {
+        self.pump_and_wake(emitter);
+        if let Some(state) = self.board.state_event() {
+            emitter.emit(state);
+        }
+    }
+
+    /// Spawn a **top-level agent** for every issue that is [dispatchable now](BoardRuntime::dispatchable_ids).
+    /// Each dispatch mints a fresh agent id, atomically [claims](BoardRuntime::assign_issue) the
+    /// issue for it (so two concurrent pumps cannot both take one — a lost claim just wastes the
+    /// minted id), and spawns the agent with the issue's brief. The agents are top-level (no parent,
+    /// depth 0), so they surface as their own roots in the Agents tree.
+    fn pump_dispatch(self: &Arc<Self>, emitter: &Emitter) {
+        for issue_id in self.board.dispatchable_ids() {
+            let agent_id = self.next_agent_id();
+            if self.board.assign_issue(&issue_id, &agent_id) {
+                let brief = self.issue_brief_or_fallback(&issue_id);
+                emitter.emit(log(
+                    "info",
+                    format!("dispatching issue `{issue_id}` to agent `{agent_id}`."),
+                ));
+                self.spawn_issue_agent(agent_id, issue_id, brief, 0, emitter);
+            }
+        }
+    }
+
+    /// **Re-dispatch** issue `issue_id` to a fresh top-level agent after a failed attempt, recording
+    /// its new `retry` count. A no-op if the board no longer accepts it (already terminal).
+    fn redispatch_issue(self: &Arc<Self>, issue_id: &str, retry: u32, emitter: &Emitter) {
+        let agent_id = self.next_agent_id();
+        if self.board.redispatch_issue(issue_id, &agent_id, retry) {
+            let brief = self.issue_brief_or_fallback(issue_id);
+            emitter.emit(log(
+                "info",
+                format!(
+                    "re-dispatching issue `{issue_id}` (attempt {}) to agent `{agent_id}`.",
+                    retry + 1
+                ),
+            ));
+            self.spawn_issue_agent(agent_id, issue_id.to_string(), brief, retry, emitter);
+        }
+    }
+
+    /// The issue's [brief](BoardRuntime::issue_brief), or a bare fallback if it vanished between the
+    /// claim and this read (it cannot normally, since the claim just touched it).
+    fn issue_brief_or_fallback(&self, issue_id: &str) -> String {
+        self.board
+            .issue_brief(issue_id)
+            .unwrap_or_else(|| format!("Implement issue `{issue_id}`."))
+    }
+
+    /// Build and schedule one top-level [issue](crate::board) agent: resolve its client on the
+    /// primary slot, mint its wiring, and `tokio::spawn` it through [`run_agent`] with the
+    /// [`Issue`](AgentRole::Issue) role, registering its handle so the session joins it. If the
+    /// client cannot resolve (a missing credential), the issue is [failed](BoardRuntime::fail_issue)
+    /// and its waiters woken rather than left stuck [`InProgress`](crate::board::IssueStatus::InProgress).
+    fn spawn_issue_agent(
+        self: &Arc<Self>,
+        agent_id: String,
+        issue_id: String,
+        brief: String,
+        retry: u32,
+        emitter: &Emitter,
+    ) {
+        // Dispatched issue agents run on the primary slot (collapsed when multi-model is off).
+        let slot = effective_slot(PRIMARY_SLOT, self.multi_model).to_string();
+        let binding = match slot_binding(&self.caps, &slot) {
+            Ok(binding) => binding.clone(),
+            Err(err) => return self.abort_issue_dispatch(&issue_id, &slot, &err, emitter),
+        };
+        let client = match self.factory.client_for(&binding) {
+            Ok(client) => client,
+            Err(err) => {
+                return self.abort_issue_dispatch(&issue_id, &slot, &err.to_string(), emitter);
+            }
+        };
+        // Record the issue's dispatch facts on its first dispatch (retry 0), so a later Code Review
+        // has an issue-level baseline and the slot to re-run a fix agent on.
+        if retry == 0 {
+            self.record_issue_dispatch(&issue_id, &slot);
+        }
+        let agent = Agent {
+            id: agent_id,
+            parent_id: None,
+            depth: 0,
+            slot,
+        };
+        let role = AgentRole::Issue {
+            brief,
+            issue_id,
+            retry,
+        };
+        let (_inbox_tx, inbox_rx) = mpsc::unbounded_channel();
+        let orch = Arc::clone(self);
+        let handle = tokio::spawn(async move {
+            run_agent(orch, agent, role, client, inbox_rx).await;
+        });
+        self.tasks.lock().expect("subagent tasks lock").push(handle);
+    }
+
+    /// Give up on dispatching `issue_id` (its client could not resolve): mark it
+    /// [`Failed`](crate::board::IssueStatus::Failed), wake its waiters, and re-emit the board — so a
+    /// missing credential surfaces on the board rather than hanging every dependent.
+    fn abort_issue_dispatch(
+        self: &Arc<Self>,
+        issue_id: &str,
+        slot: &str,
+        err: &str,
+        emitter: &Emitter,
+    ) {
+        emitter.emit(log(
+            "error",
+            format!(
+                "cannot dispatch issue `{issue_id}` on the `{slot}` slot: {err}; marking it failed."
+            ),
+        ));
+        self.board.fail_issue(issue_id);
+        self.on_issue_progress(emitter);
+    }
+
+    /// Wake every agent whose awaited issue has reached a terminal state. Called on any board
+    /// change; idempotent (an already-woken issue has no waiters left).
+    fn wake_ready_issue_waiters(&self) {
+        // Snapshot the awaited ids without holding the waits lock across the board lock.
+        let awaited: Vec<String> = {
+            let waits = self.issue_waits.lock().expect("issue waits lock");
+            waits.keys().cloned().collect()
+        };
+        for issue_id in awaited {
+            if self.board.issue_is_terminal(&issue_id) {
+                self.wake_issue_waiters(&issue_id);
+            }
+        }
+    }
+
+    /// Mark every agent waiting on `issue_id` ready to resume (its wait condition — the issue is
+    /// terminal — is met), removing them from the registry.
+    fn wake_issue_waiters(&self, issue_id: &str) {
+        let tokens = self
+            .issue_waits
+            .lock()
+            .expect("issue waits lock")
+            .remove(issue_id);
+        for token in tokens.into_iter().flatten() {
+            self.scheduler.mark_ready(token);
+        }
+    }
+
+    /// Begin an agent's [`wait_for_issue`](handle_wait_for_issue) on `issue_id`: if the issue is
+    /// already terminal, return [`AlreadyTerminal`](IssueWaitOutcome::AlreadyTerminal) so the caller
+    /// does not block; otherwise **free the caller's running slot** and register it as a blocked
+    /// waiter on the issue, returning the resume channel it awaits. The post-registration
+    /// re-check closes the race where the issue goes terminal between the first check and the
+    /// registration (the caller would otherwise never be woken).
+    fn begin_issue_wait(self: &Arc<Self>, issue_id: &str) -> IssueWaitOutcome {
+        if self.board.issue_is_terminal(issue_id) {
+            return IssueWaitOutcome::AlreadyTerminal;
+        }
+        let (token, rx) = self.scheduler.block_and_release();
+        self.issue_waits
+            .lock()
+            .expect("issue waits lock")
+            .entry(issue_id.to_string())
+            .or_default()
+            .push(token);
+        // Close the register-after-completion race: if the issue completed while we were
+        // registering, wake ourselves now so the freed slot is reclaimed and the wait resolves.
+        if self.board.issue_is_terminal(issue_id) {
+            self.wake_issue_waiters(issue_id);
+        }
+        IssueWaitOutcome::Blocked(rx)
+    }
+}
+
+/// The outcome of [beginning an issue wait](Orchestrator::begin_issue_wait).
+enum IssueWaitOutcome {
+    /// The awaited issue is already terminal (done, failed, or gone) — the caller keeps its slot
+    /// and does not block.
+    AlreadyTerminal,
+    /// The caller freed its running slot and must await this channel; it resolves once the awaited
+    /// issue reaches a terminal state **and** a slot is free to resume on.
+    Blocked(oneshot::Receiver<()>),
+}
+
+/// Handle `wait_for_issue`: suspend this agent until the named [board issue](crate::board) reaches
+/// a terminal state ([`Done`](IssueStatus::Done) or [`Failed`](IssueStatus::Failed)).
+///
+/// An unknown issue is a [not-found](ToolFailure::NotFound) error. An already-terminal issue returns
+/// immediately. Otherwise the agent [frees its slot and blocks](Orchestrator::begin_issue_wait) on
+/// the orchestrator's issue-wait registry — animating the live tree with a
+/// [`Blocked`](GgAgentStatus::Blocked)→[`Running`](GgAgentStatus::Running) transition — until the
+/// issue's assigned agent completes or fails it, then reports which. gg refuses to submit a
+/// [cyclic dependency](crate::board), so waiting can never deadlock on a cycle; a failed issue is
+/// terminal, so a wait on one that ultimately fails resolves rather than hanging.
+async fn handle_wait_for_issue(
+    project: &ProjectContext,
+    agent: &Agent,
+    board: &BoardRuntime,
+    emitter: &Emitter,
+    call: &ToolCall,
+) -> ToolOutcome {
+    let issue_id = match call.arguments.get("issueId").and_then(Value::as_str) {
+        Some(id) if !id.trim().is_empty() => id.trim().to_string(),
+        _ => {
+            return ToolOutcome::failed(
+                ToolFailure::InvalidArgument,
+                "wait_for_issue needs a non-empty `issueId` (the id of the issue to wait for).",
+            );
+        }
+    };
+    // An agent cannot wait on the very issue it was dispatched to implement — it would block itself
+    // forever (nothing else completes its issue). Guide it to do the work instead.
+    if project.assigned_issue.as_deref() == Some(issue_id.as_str()) {
+        return ToolOutcome::failed(
+            ToolFailure::InvalidArgument,
+            format!(
+                "you cannot wait on issue `{issue_id}`: it is the issue you were assigned to \
+                 implement. Do the work and call `complete_issue` when it is done."
+            ),
+        );
+    }
+    let Some(status) = board.issue_status(&issue_id) else {
+        return ToolOutcome::failed(
+            ToolFailure::NotFound,
+            format!(
+                "no issue `{issue_id}` is on the board (your current board is in your context); \
+                 create it with `create_issue` or correct the id."
+            ),
+        );
+    };
+    if status.is_terminal() {
+        return issue_wait_result(&issue_id, status);
+    }
+    match project.orch.begin_issue_wait(&issue_id) {
+        IssueWaitOutcome::AlreadyTerminal => {}
+        IssueWaitOutcome::Blocked(rx) => {
+            if project.orch.multi_agent() {
+                emitter.emit(agent_status(GgAgentStatus::Blocked));
+            }
+            // The sender is held by the scheduler until this agent is granted a slot after its
+            // issue goes terminal; a dropped sender (impossible here) would also end the wait.
+            let _ = rx.await;
+            if project.orch.multi_agent() {
+                emitter.emit(agent_status(GgAgentStatus::Running));
+            }
+            let _ = agent; // the agent identity is carried by the scoped `emitter`.
+        }
+    }
+    // Report the issue's final state (it is terminal now, unless it was removed while we waited).
+    match board.issue_status(&issue_id) {
+        Some(status) => issue_wait_result(&issue_id, status),
+        None => ToolOutcome::ok(
+            format!("issue `{issue_id}` is no longer on the board."),
+            format!("waited for issue `{issue_id}` (removed)"),
+        ),
+    }
+}
+
+/// The [`ToolOutcome`] `wait_for_issue` returns once its awaited issue is terminal (or was found
+/// already terminal): a success either way — the wait *completed* — that reports whether the issue
+/// was accepted or failed, so the waiting agent can branch on it.
+fn issue_wait_result(issue_id: &str, status: IssueStatus) -> ToolOutcome {
+    match status {
+        IssueStatus::Done => ToolOutcome::ok(
+            format!("Issue `{issue_id}` is done."),
+            format!("issue `{issue_id}` done"),
+        ),
+        IssueStatus::Failed => ToolOutcome::ok(
+            format!(
+                "Issue `{issue_id}` failed — its assigned agent could not complete it within the \
+                 retry budget. Anything depending on it will stay blocked."
+            ),
+            format!("issue `{issue_id}` failed"),
+        ),
+        // Only ever called with a terminal status; a non-terminal one means the issue was replaced
+        // between checks, which is reported honestly rather than asserted away.
+        IssueStatus::Open | IssueStatus::InProgress => ToolOutcome::ok(
+            format!("Issue `{issue_id}` is {}.", status_word(status)),
+            format!("issue `{issue_id}` {}", status_word(status)),
+        ),
+    }
+}
+
+/// A human word for an [`IssueStatus`], for the `wait_for_issue` fallback message.
+fn status_word(status: IssueStatus) -> &'static str {
+    match status {
+        IssueStatus::Open => "open",
+        IssueStatus::InProgress => "in progress",
+        IssueStatus::Done => "done",
+        IssueStatus::Failed => "failed",
+    }
 }
 
 /// How an agent driven by [`run_agent`] is dispatched: the [`Root`](Self::Root) driven by the
-/// run's build prompt, or a [`Sub`](Self::Sub)agent driven by a delegated brief and wired to
-/// signal its spawner on completion.
+/// run's build prompt, a [`Sub`](Self::Sub)agent driven by a delegated brief and wired to
+/// signal its spawner on completion, or an [`Issue`](Self::Issue) agent gg auto-dispatched to
+/// implement a [board issue](crate::board).
 enum AgentRole {
     /// The root agent, driven by the run's build prompt.
     Root,
+    /// A **top-level** agent gg auto-dispatched to implement a [board issue](crate::board): driven
+    /// by the issue's structured brief, tied to its `issue_id`, and — unlike a [`Sub`](Self::Sub) —
+    /// answering to no spawner (it has no parent and delivers no return value). When its loop ends
+    /// the [completion path](run_agent) checks whether it marked its issue done and, if not,
+    /// re-dispatches it (up to the [retry cap](crate::board::BoardCaps::max_retries)) or fails it.
+    Issue {
+        /// The issue's structured brief that drives the agent (its build prompt).
+        brief: String,
+        /// The board issue this agent was dispatched to implement (scopes its telemetry, and is
+        /// what it is expected to `complete_issue`).
+        issue_id: String,
+        /// How many times this issue has already been re-dispatched — `0` on its first attempt.
+        /// Compared against the [retry cap](crate::board::BoardCaps::max_retries) when the agent
+        /// finishes without completing it.
+        retry: u32,
+    },
     /// A spawned subagent, driven by `brief`, that on completion delivers its
     /// [return value](AgentReturn) on `result`, flips `finished` (so `send_message` stops), and
     /// signals its spawner's [`ParentWait`].
@@ -1238,6 +1599,22 @@ struct SubagentContext {
     ctx: AgentCtx,
 }
 
+/// A single agent's [project-management](crate::board) context, threaded into [`Agent::drive`] when
+/// the [project-management](CAPABILITY_PROJECT_MANAGEMENT) capability is on: the
+/// [orchestrator](Orchestrator) (to auto-dispatch actionable issues after a board mutation and to
+/// suspend the agent in a `wait_for_issue`) and — when this agent was *itself* auto-dispatched to
+/// implement an issue — that issue's id.
+struct ProjectContext {
+    /// The shared orchestrator whose board this agent's tools mutate and whose dispatcher its board
+    /// changes drive.
+    orch: Arc<Orchestrator>,
+    /// The board issue this agent was dispatched to implement, when it was — so the loop frames
+    /// `finish` as "return this issue's result" rather than "end the run", and knows the agent is
+    /// expected to `complete_issue`. `None` for the root and for a subagent that was not
+    /// issue-dispatched.
+    assigned_issue: Option<String>,
+}
+
 /// Build and drive one agent to completion: acquire a running slot, resolve its stream and
 /// resources, drive its [turn loop](Agent::drive), fold its usage into the shared
 /// [accounting](SlotAccounting), and — for a subagent — deliver its [return value](AgentReturn)
@@ -1261,6 +1638,7 @@ async fn run_agent(
     let is_root = matches!(role, AgentRole::Root);
     let issue_id = match &role {
         AgentRole::Sub { issue_id, .. } => issue_id.clone(),
+        AgentRole::Issue { issue_id, .. } => Some(issue_id.clone()),
         AgentRole::Root => None,
     };
     // Scope this agent's stream to its node in the tree (and to the issue it was dispatched for).
@@ -1279,11 +1657,13 @@ async fn run_agent(
         ),
     ));
 
-    // Announce this agent to the tree: its slot/model, depth, (for a subagent) the brief it was
-    // dispatched with, and the isolated worktree branch it runs in when it was dispatched with one.
-    // The root carries no brief (it is driven by the build prompt) and always runs in the main tree.
+    // Announce this agent to the tree: its slot/model, depth, the brief it was dispatched with (for
+    // a subagent, or an auto-dispatched issue agent), and the isolated worktree branch it runs in
+    // when it was dispatched with one. The root carries no brief (it is driven by the build prompt)
+    // and always runs in the main tree.
     let brief = match &role {
         AgentRole::Sub { brief, .. } => Some(brief.clone()),
+        AgentRole::Issue { brief, .. } => Some(brief.clone()),
         AgentRole::Root => None,
     };
     let worktree_branch = match &role {
@@ -1299,19 +1679,21 @@ async fn run_agent(
         brief,
         worktree: worktree_branch,
     });
-    // The running transition is only meaningful (and only emitted) when delegation is on (subagents
-    // or workflows) — it is what animates the live tree.
-    if orch.delegation_enabled() {
+    // The running transition is only meaningful (and only emitted) when the run is multi-agent
+    // (delegation, or project-management auto-dispatch) — it is what animates the live tree.
+    if orch.multi_agent() {
         emitter.emit(agent_status(GgAgentStatus::Running));
     }
 
-    // Build this agent's resources the same way for every agent. The runtimes (memories, tasks,
-    // board, planning) and the archive are per-agent (a subagent has its own scratchpad/board);
-    // the skills library and estimator are shared through the orchestrator.
+    // Build this agent's resources. The memory/task/planning runtimes and the archive are
+    // **per-agent** (a subagent has its own scratchpad, task list, and plan); the skills library
+    // and estimator are shared through the orchestrator; and the **project-management board is
+    // shared run-wide** — every agent's board tools mutate the one [`orch.board`], the global work
+    // queue the dispatcher reads (cloning a `BoardRuntime` shares its store).
     let skills = orch.skills_runtime();
     let memories = resolve_memories(&orch.caps);
     let tasks = resolve_tasks(&orch.caps);
-    let board = resolve_board(&orch.caps);
+    let board = orch.board.clone();
     let planning = PlanningRuntime::resolve(&orch.caps);
     // The FSM engine drives only the **root** agent (the run's top-level process); a subagent does
     // scoped work and is not itself driven through a machine, so it gets a disabled runtime.
@@ -1420,9 +1802,22 @@ async fn run_agent(
         ctx: AgentCtx::new(inbox_rx),
     });
 
+    // When project management is enabled, this agent gets a project context so its loop can trigger
+    // auto-dispatch after a board mutation and block in `wait_for_issue`; it also carries the issue
+    // this agent was itself dispatched to implement (if any), so the loop knows `finish` returns a
+    // result rather than ending the run. Off, the board tools were never offered.
+    let project = orch.project_management_enabled.then(|| ProjectContext {
+        orch: Arc::clone(&orch),
+        assigned_issue: match &role {
+            AgentRole::Issue { issue_id, .. } => Some(issue_id.clone()),
+            _ => None,
+        },
+    });
+
     let prompt = match &role {
         AgentRole::Root => orch.prompt.clone(),
         AgentRole::Sub { brief, .. } => brief.clone(),
+        AgentRole::Issue { brief, .. } => brief.clone(),
     };
 
     // Replay capture: when the capability is on, wrap this agent's client so every model turn it
@@ -1465,6 +1860,7 @@ async fn run_agent(
             orch.speculative_active(),
             orch.code,
             subagent_context,
+            project,
             orch.replay.clone(),
         )
         .await;
@@ -1476,7 +1872,7 @@ async fn run_agent(
         .record(&end.slot, &model_id, end.tokens, end.cost);
 
     let failed = is_failure_status(end.status);
-    if orch.delegation_enabled() {
+    if orch.multi_agent() {
         emitter.emit(agent_status(if failed {
             GgAgentStatus::Failed
         } else {
@@ -1489,6 +1885,36 @@ async fn run_agent(
             // The root frees its slot so any cap-limited subagents it spawned can now run to
             // completion while the session joins them.
             orch.scheduler.release();
+        }
+        AgentRole::Issue {
+            issue_id, retry, ..
+        } => {
+            // Free the slot first (like the root), so a re-dispatch or a newly-unblocked issue can
+            // acquire it, then reconcile the issue against what the agent did.
+            orch.scheduler.release();
+            if orch.board.issue_is_done(&issue_id) {
+                // The agent accepted its issue (via `complete_issue`, possibly Code-Review gated).
+                // Unblock any dependents and wake anyone waiting on it.
+                orch.on_issue_progress(emitter);
+            } else if (retry as usize) < orch.board.max_retries() {
+                // It finished without completing the issue and retries remain: re-dispatch it to a
+                // fresh agent. The issue stays `InProgress` (its waiters keep waiting).
+                orch.redispatch_issue(&issue_id, retry + 1, emitter);
+                orch.on_issue_progress(emitter);
+            } else {
+                // Retries exhausted: mark it failed (terminal, but not done — dependents stay
+                // blocked) and wake anyone waiting on it.
+                orch.board.fail_issue(&issue_id);
+                emitter.emit(log(
+                    "warn",
+                    format!(
+                        "issue `{issue_id}` could not be completed after {} attempt(s); marking it \
+                         failed.",
+                        retry + 1
+                    ),
+                ));
+                orch.on_issue_progress(emitter);
+            }
         }
         AgentRole::Sub {
             worktree,
@@ -1749,12 +2175,11 @@ fn provider_label_for(orch: &Orchestrator, slot: &str) -> &'static str {
 async fn handle_subagent_call(
     sub: &mut SubagentContext,
     spawner: &Agent,
-    board: &BoardRuntime,
     emitter: &Emitter,
     call: &ToolCall,
 ) -> ToolOutcome {
     match call.name.as_str() {
-        SPAWN_SUBAGENT_TOOL => spawn_subagent(sub, spawner, board, &call.arguments),
+        SPAWN_SUBAGENT_TOOL => spawn_subagent(sub, spawner, &call.arguments),
         WAIT_FOR_SUBAGENTS_TOOL => wait_for_subagents(sub, emitter, &call.arguments).await,
         SEND_MESSAGE_TOOL => send_message(sub, &call.arguments),
         RUN_WORKFLOW_TOOL => run_workflow(sub, spawner, emitter, &call.arguments).await,
@@ -1767,42 +2192,22 @@ async fn handle_subagent_call(
 /// scheduler (spawning its task), and return its id immediately — the parent keeps running (parallel
 /// by default). A spawn at the [max depth](SubagentConfig::max_depth) is **refused** (a tool error),
 /// not queued.
-fn spawn_subagent(
-    sub: &mut SubagentContext,
-    spawner: &Agent,
-    board: &BoardRuntime,
-    args: &Value,
-) -> ToolOutcome {
-    // The brief comes from a dispatched board issue (its structured scope is the brief) or from a
-    // free-form `prompt`.
-    let (brief, issue_id) = match args.get("issueId").and_then(Value::as_str) {
-        Some(issue_id) if !issue_id.trim().is_empty() => {
-            let issue_id = issue_id.trim().to_string();
-            match board.issue_brief(&issue_id) {
-                Some(brief) => (brief, Some(issue_id)),
-                None => {
-                    return ToolOutcome::failed(
-                        ToolFailure::NotFound,
-                        format!(
-                            "cannot dispatch issue `{issue_id}`: no such issue is on your board \
-                             (or you have no board). Create it with `create_issue`, or pass a \
-                             `prompt` instead."
-                        ),
-                    );
-                }
-            }
+///
+/// A subagent is always driven by a free-form `prompt` brief: board **issues** are no longer
+/// hand-dispatched to subagents — the [project-management](crate::board) capability
+/// [auto-dispatches](Orchestrator::pump_dispatch) an actionable issue to a top-level agent itself.
+fn spawn_subagent(sub: &mut SubagentContext, spawner: &Agent, args: &Value) -> ToolOutcome {
+    let brief = match args.get("prompt").and_then(Value::as_str) {
+        Some(prompt) if !prompt.trim().is_empty() => prompt.trim().to_string(),
+        _ => {
+            return ToolOutcome::failed(
+                ToolFailure::InvalidArgument,
+                "spawn_subagent needs a non-empty `prompt` (the subagent's brief).",
+            );
         }
-        _ => match args.get("prompt").and_then(Value::as_str) {
-            Some(prompt) if !prompt.trim().is_empty() => (prompt.trim().to_string(), None),
-            _ => {
-                return ToolOutcome::failed(
-                    ToolFailure::InvalidArgument,
-                    "spawn_subagent needs a non-empty `prompt` (the subagent's brief) or an \
-                     `issueId` to dispatch.",
-                );
-            }
-        },
     };
+    // Ad-hoc subagents carry no board issue (issues auto-dispatch to their own top-level agents).
+    let issue_id = None;
 
     // The requested slot (default primary) and optional worktree isolation are dispatch properties.
     let requested_slot = args
@@ -4171,6 +4576,7 @@ impl Agent {
         speculative: bool,
         code: CodeSetup,
         mut subagents: Option<SubagentContext>,
+        project: Option<ProjectContext>,
         replay: Option<Arc<GgRecorder>>,
     ) -> LoopEnd {
         let max_turns = limits.limits.max_turns;
@@ -4213,8 +4619,12 @@ impl Agent {
             // actually ends *for the reader*: a root agent's summary is the run's last word, a
             // delegated worker's is the answer it hands back. A worker told "this ends the run" has
             // a strong reason not to call it — and a worker that never calls it never returns a
-            // verdict.
-            delegated: self.depth > 0,
+            // verdict. A top-level agent auto-dispatched for a board issue (depth 0, but with an
+            // assigned issue) is a worker too: `finish` returns its issue's result, not the run's.
+            delegated: self.depth > 0
+                || project
+                    .as_ref()
+                    .is_some_and(|project| project.assigned_issue.is_some()),
             fences_are_stripped: code.healing.enabled(HealingStrategy::StripFences),
         }));
         context.push_user_prompt(prompt);
@@ -4551,6 +4961,7 @@ impl Agent {
                     registry,
                     tool_ctx,
                     board: &board,
+                    project: project.as_ref(),
                     memories: &memories,
                     tasks: &tasks,
                     planning: &planning,
@@ -4706,9 +5117,19 @@ impl Agent {
                             submitted_plan = Some(plan);
                         }
                         advance.outcome
+                    } else if let Some(project) = project
+                        .as_ref()
+                        .filter(|_| call.name == WAIT_FOR_ISSUE_TOOL)
+                    {
+                        // Project management: `wait_for_issue` suspends this agent until the named
+                        // board issue reaches a terminal state. Intercepted here (like the
+                        // delegation tools) because it must free this agent's scheduler slot and
+                        // block on the orchestrator's issue-wait registry, which the tool cannot
+                        // reach.
+                        handle_wait_for_issue(project, self, &board, emitter, call).await
                     } else if let Some(sub) = subagents.as_mut() {
                         if is_subagent_tool(&call.name) {
-                            handle_subagent_call(sub, self, &board, emitter, call).await
+                            handle_subagent_call(sub, self, emitter, call).await
                         } else if speculative_active && call.name == SPECULATE_TOOL {
                             // Speculative execution: `speculate` is intercepted here (like the
                             // delegation tools) so gg runs the best-of-K fan-out → judge → merge
@@ -4762,6 +5183,19 @@ impl Agent {
                 // context.
                 if let Some(recorder) = &replay {
                     recorder.record_tool_result(&self.id, call, &outcome);
+                }
+
+                // Project management: a successful board mutation may have made issues actionable
+                // (dispatch a new agent) or moved one to a terminal state (wake its waiters and
+                // unblock dependents). Pump the dispatcher and wake issue-waiters *before*
+                // `record_tool_result` re-emits the board state below, so the emitted snapshot and
+                // the refreshed pinned block reflect the resulting assignments. Idempotent, so a
+                // board tool that changed nothing dispatch-relevant is harmless.
+                if let Some(project) = project.as_ref()
+                    && outcome.ok
+                    && is_board_tool(&call.name)
+                {
+                    project.orch.pump_and_wake(emitter);
                 }
 
                 // Planning transitions: like the agent-managed-context reclaim, the tool only
@@ -5378,24 +5812,25 @@ fn resolve_tasks(set: &GgCapabilitySet) -> TasksRuntime {
     if !set.is_enabled(CAPABILITY_TASKS) {
         return TasksRuntime::disabled();
     }
-    let max_tasks = set
-        .capability(CAPABILITY_TASKS)
-        .map(|cap| resolve_max_tasks(&cap.params))
+    let params = set.capability(CAPABILITY_TASKS).map(|cap| &cap.params);
+    let max_tasks = params
+        .map(resolve_max_tasks)
         .unwrap_or(crate::tasks::DEFAULT_MAX_TASKS);
-    TasksRuntime::new(max_tasks)
+    let mode = params.map(resolve_task_mode).unwrap_or_default();
+    TasksRuntime::with_mode(max_tasks, mode)
 }
 
 /// Build the run's [`BoardRuntime`] from the capability set: when the
-/// [`epics-and-issues`](CAPABILITY_EPICS_ISSUES) capability is enabled, an enabled runtime with
+/// [`project-management`](CAPABILITY_PROJECT_MANAGEMENT) capability is enabled, an enabled runtime with
 /// an empty board bounded by the [caps resolved](BoardCaps::resolve) from the capability's
 /// params; otherwise a [disabled](BoardRuntime::disabled) runtime (an ablation's off arm) that
 /// offers nothing.
 fn resolve_board(set: &GgCapabilitySet) -> BoardRuntime {
-    if !set.is_enabled(CAPABILITY_EPICS_ISSUES) {
+    if !set.is_enabled(CAPABILITY_PROJECT_MANAGEMENT) {
         return BoardRuntime::disabled();
     }
     let caps = set
-        .capability(CAPABILITY_EPICS_ISSUES)
+        .capability(CAPABILITY_PROJECT_MANAGEMENT)
         .map(|cap| BoardCaps::resolve(&cap.params))
         .unwrap_or_default();
     BoardRuntime::new(caps)
@@ -5694,6 +6129,7 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
             BoardView {
                 max_epics: caps.max_epics,
                 max_issues: caps.max_issues,
+                max_retries: caps.max_retries,
             }
         }),
         planning: planning.offers_planning(),

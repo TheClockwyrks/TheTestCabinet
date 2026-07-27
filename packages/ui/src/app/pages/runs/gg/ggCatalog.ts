@@ -225,9 +225,28 @@ export const DEFAULT_SKILLS_DIR = ".gg/skills";
 export const DEFAULT_MAX_TASKS = 100;
 export const DEFAULT_MAX_EPICS = 50;
 export const DEFAULT_MAX_ISSUES = 200;
+// How many times gg re-dispatches a failed issue before marking it `failed`
+// (`crates/gg/src/board.rs`). Surfaced as the project-management capability's
+// `maxRetries` default so an operator sees what leaving the field empty means.
+export const DEFAULT_MAX_RETRIES = 1;
 export const DEFAULT_MEMORY_MAX_COUNT = 8;
 export const DEFAULT_MEMORY_MAX_LEN_PER = 2000;
 export const DEFAULT_MEMORY_MAX_TOTAL_LEN = 8000;
+
+// The two shapes the tasks list can take (`crates/gg/src/tasks.rs`): the default
+// **simple** mode is a bare title/description to-do list, while **issues** mode
+// requires the same structured sections (in-scope / out-of-scope / completion
+// criteria) a board issue carries, so a task is scoped enough to hand off. The value
+// is gg's mode id; `simple` is the default and is seeded so a fresh field shows it.
+export const TASKS_MODE_OPTIONS = [
+  { value: "simple", label: "Simple" },
+  { value: "issues", label: "Issues (structured)" },
+] as const;
+
+// What each tasks mode does — the detail lifted off the picker's option labels into
+// the Mode field's help tooltip.
+export const TASKS_MODE_HINT =
+  "Simple keeps a lightweight title/description to-do list. Issues requires each task to carry the structured in-scope / out-of-scope / completion-criteria sections a board issue does.";
 
 export const FSM_MACHINE_OPTIONS = [
   { value: "", label: "(none)" },
@@ -469,6 +488,14 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     defaultOn: true,
     params: [
       {
+        key: "mode",
+        label: "Mode",
+        kind: "select",
+        defaultValue: "simple",
+        hint: TASKS_MODE_HINT,
+        options: TASKS_MODE_OPTIONS,
+      },
+      {
         key: "maxTasks",
         label: "Max tasks",
         kind: "number",
@@ -493,11 +520,11 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     ],
   },
   {
-    id: "epics-and-issues",
-    name: "Epics & issues",
+    id: "project-management",
+    name: "Project management",
     group: "Work tracking",
     purpose:
-      "A heavyweight work-decomposition board with scoped, completion-criteria'd issues safe to hand to a subagent.",
+      "A single, run-global board of scoped, completion-criteria'd issues that auto-dispatch: submitting an issue enqueues it, and gg spawns a top-level agent to implement it once its blockers clear — re-dispatching a failed issue up to `maxRetries` before marking it failed.",
     params: [
       {
         key: "maxEpics",
@@ -513,6 +540,13 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         defaultValue: String(DEFAULT_MAX_ISSUES),
         hint: "How many issues the board may hold.",
       },
+      {
+        key: "maxRetries",
+        label: "Max retries",
+        kind: "number",
+        defaultValue: String(DEFAULT_MAX_RETRIES),
+        hint: "How many times gg re-dispatches an issue whose assigned agent finished without completing it before marking the issue failed.",
+      },
     ],
     tools: [
       "create_epic",
@@ -522,12 +556,18 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
       "complete_issue",
       "remove_epic",
       "remove_issue",
+      "wait_for_issue",
     ],
     toolAblation: [
       {
         label: "Issue dependencies",
         tools: ["set_issue_blocked_by"],
         hint: "Off makes the board flat — issues can't be marked blocked-by one another.",
+      },
+      {
+        label: "Await an issue",
+        tools: ["wait_for_issue"],
+        hint: "Off leaves auto-dispatch fire-and-forget — the model can enqueue an issue but not block on its dispatched agent finishing.",
       },
       {
         label: "Revise the board",

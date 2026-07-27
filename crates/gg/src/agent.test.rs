@@ -33,13 +33,14 @@ use crate::telemetry::{CollectingSink, Emitter};
 use crate::tools::{RuntimeSet, ToolContext, ToolRegistry, VisionContext};
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_CODE_REVIEWS, CAPABILITY_COMPACTION,
-    CAPABILITY_CONTEXT_VISIBILITY, CAPABILITY_EPICS_ISSUES, CAPABILITY_FSM, CAPABILITY_MULTI_MODEL,
-    CAPABILITY_PLANNING, CAPABILITY_READ_FILE, CAPABILITY_REPLAY, CAPABILITY_RESPONSES_AS_CODE,
-    CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS,
-    CAPABILITY_WORKFLOWS, CAPABILITY_WORKTREES, GG_REPLAY_ARTIFACT_PATH, GgAgentStatus,
-    GgCapabilityConfig, GgCapabilitySet, GgCodeReviewPhase, GgContextAction, GgContextSource,
-    GgIssueStatus, GgPlanPhase, GgReplayEntryKind, GgReplayRecord, GgSessionSummary, GgSlotBinding,
-    GgSpeculationPhase, GgTelemetryEvent, GgTelemetryKind, GgWorkflowPhase, PRIMARY_SLOT,
+    CAPABILITY_CONTEXT_VISIBILITY, CAPABILITY_FSM, CAPABILITY_MULTI_MODEL, CAPABILITY_PLANNING,
+    CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_READ_FILE, CAPABILITY_REPLAY,
+    CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE,
+    CAPABILITY_SUBAGENTS, CAPABILITY_WORKFLOWS, CAPABILITY_WORKTREES, GG_REPLAY_ARTIFACT_PATH,
+    GgAgentStatus, GgCapabilityConfig, GgCapabilitySet, GgCodeReviewPhase, GgContextAction,
+    GgContextSource, GgIssueStatus, GgPlanPhase, GgReplayEntryKind, GgReplayRecord,
+    GgSessionSummary, GgSlotBinding, GgSpeculationPhase, GgTelemetryEvent, GgTelemetryKind,
+    GgWorkflowPhase, PRIMARY_SLOT,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
@@ -238,6 +239,7 @@ async fn drive_root(
             false,
             false,
             code,
+            None,
             None,
             None,
         )
@@ -890,6 +892,7 @@ async fn drive_exhausts_the_turn_ceiling_when_the_model_never_stops() {
             no_code(),
             None,
             None,
+            None,
         )
         .await;
 
@@ -938,6 +941,7 @@ async fn drive_times_out_at_a_passed_deadline() {
             false,
             false,
             no_code(),
+            None,
             None,
             None,
         )
@@ -989,6 +993,7 @@ async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
             false,
             false,
             no_code(),
+            None,
             None,
             None,
         )
@@ -1043,6 +1048,7 @@ async fn drive_ends_model_error_on_exhausted_retries() {
             no_code(),
             None,
             None,
+            None,
         )
         .await;
 
@@ -1089,6 +1095,7 @@ async fn drive_ends_auth_error_when_the_credential_is_refused() {
             false,
             false,
             no_code(),
+            None,
             None,
             None,
         )
@@ -1733,6 +1740,7 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
             no_code(),
             None,
             None,
+            None,
         )
         .await;
     assert_eq!(end.status, "completed");
@@ -1913,6 +1921,7 @@ async fn drive_enforces_memory_caps_end_to_end() {
             false,
             false,
             no_code(),
+            None,
             None,
             None,
         )
@@ -2110,6 +2119,7 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
             no_code(),
             None,
             None,
+            None,
         )
         .await;
     assert_eq!(end.status, "completed");
@@ -2165,15 +2175,15 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
 // Epics & issues: ablation, and the board built through the loop
 // ---------------------------------------------------------------------------
 
-/// `minimal`, plus the (opt-in) epics-and-issues capability enabled.
+/// `minimal`, plus the (opt-in) project-management capability enabled.
 fn minimal_with_epics_issues(model: &str) -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal(model);
     set.capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_EPICS_ISSUES));
+        .push(GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT));
     set
 }
 
-/// With the epics-and-issues capability off (its default — it is opt-in), the run offers no
+/// With the project-management capability off (its default — it is opt-in), the run offers no
 /// board tools and emits no `BoardState`, even though the default script tries to build a board.
 /// The board calls come back as unknown tools and no Board tokens accumulate.
 #[tokio::test]
@@ -2181,7 +2191,7 @@ async fn run_without_epics_issues_capability_offers_no_board_tools_or_state() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-noboard".to_string()), Box::new(sink.clone()));
-    // `minimal` does not include epics-and-issues, so the board is off.
+    // `minimal` does not include project-management, so the board is off.
     let inv = invocation(dir.path(), GgCapabilitySet::minimal("mock/echo"));
 
     assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
@@ -2413,6 +2423,7 @@ async fn drive_compacts_at_the_threshold_and_retains_pinned_state() {
             no_code(),
             None,
             None,
+            None,
         )
         .await;
     assert_eq!(end.status, "completed");
@@ -2573,6 +2584,7 @@ async fn drive_never_compacts_when_capability_off() {
             no_code(),
             None,
             None,
+            None,
         )
         .await;
     assert_eq!(end.status, "completed");
@@ -2665,6 +2677,7 @@ async fn drive_manages_context_end_to_end() {
             false,
             false,
             no_code(),
+            None,
             None,
             None,
         )
@@ -2776,6 +2789,7 @@ async fn drive_without_amc_offers_no_context_management() {
             no_code(),
             None,
             None,
+            None,
         )
         .await;
     assert_eq!(end.status, "completed");
@@ -2859,6 +2873,7 @@ async fn drive_plans_then_implements_from_a_fresh_context() {
             false,
             false,
             no_code(),
+            None,
             None,
             None,
         )
@@ -3018,6 +3033,7 @@ async fn drive_without_planning_offers_no_planning() {
             false,
             false,
             no_code(),
+            None,
             None,
             None,
         )
@@ -4838,11 +4854,11 @@ fn parse_workflow_stages_rejects_malformed_declarations() {
 /// The board issue the scripted Code Review e2es create, dispatch, and complete.
 const REVIEW_ISSUE_ID: &str = "feat-1";
 
-/// [`subagent_set`], plus the epics-and-issues and code-reviews capabilities — a review-gated run.
+/// [`subagent_set`], plus the project-management and code-reviews capabilities — a review-gated run.
 fn code_review_set(extra_slots: &[&str]) -> GgCapabilitySet {
     let mut set = subagent_set(4, 3, extra_slots);
     set.capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_EPICS_ISSUES));
+        .push(GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT));
     set.capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_CODE_REVIEWS));
     set
@@ -4863,43 +4879,67 @@ fn tool_call_response(id: &str, name: &str, args: serde_json::Value) -> ModelRes
     }
 }
 
-/// The scripted **root** for a Code Review e2e: build one issue, dispatch its work to a `worker`
-/// subagent, wait, then `complete_issue` — which (code-reviews on) triggers the review.
-fn code_review_root_mock(model_id: &str) -> MockClient {
-    MockClient::new(
-        model_id,
-        vec![
-            tool_call_response(
-                "epic",
-                "create_epic",
-                json!({ "id": "e1", "title": "Build", "description": "the build" }),
-            ),
-            tool_call_response(
-                "issue",
-                "create_issue",
-                json!({
-                    "id": REVIEW_ISSUE_ID,
-                    "title": "Add the widget",
-                    "inScope": "Implement the widget.",
-                    "outOfScope": "Unrelated changes.",
-                    "completionCriteria": "The widget is fully implemented.",
-                    "epicId": "e1",
-                }),
-            ),
-            tool_call_response(
-                "dispatch",
-                "spawn_subagent",
-                json!({ "issueId": REVIEW_ISSUE_ID, "slot": "worker" }),
-            ),
-            tool_call_response("wait", "wait_for_subagents", json!({})),
-            tool_call_response(
-                "complete",
-                "complete_issue",
-                json!({ "id": REVIEW_ISSUE_ID }),
-            ),
-            stop_response(),
-        ],
-    )
+/// The scripted **primary** slot for a Code Review e2e in the auto-dispatch model. Each agent that
+/// resolves the primary slot is served in dispatch order:
+///
+/// - **agent 0 (the root)**: create one epic and one issue, then finish. Submitting the issue
+///   enqueues it, so gg auto-dispatches a top-level agent to implement it — there is no manual
+///   `spawn_subagent { issueId }` any more.
+/// - **agent 1 (that dispatched issue agent)**: write its work file, then `complete_issue` — which,
+///   with code-reviews on, triggers the gating review — then finish.
+/// - **agents 2+ (the fix agents the review loop dispatches on the issue's slot, primary)**: write a
+///   distinct work file and finish, so each fix round leaves a countable trace and the re-review's
+///   diff has new content.
+fn code_review_primary_producer(
+    counter: Arc<AtomicUsize>,
+) -> impl Fn(&GgSlotBinding) -> Box<dyn ModelClient> + Send + Sync + 'static {
+    move |b| {
+        let n = counter.fetch_add(1, Ordering::SeqCst);
+        let responses = match n {
+            0 => vec![
+                tool_call_response(
+                    "epic",
+                    "create_epic",
+                    json!({ "id": "e1", "title": "Build", "description": "the build" }),
+                ),
+                tool_call_response(
+                    "issue",
+                    "create_issue",
+                    json!({
+                        "id": REVIEW_ISSUE_ID,
+                        "title": "Add the widget",
+                        "inScope": "Implement the widget.",
+                        "outOfScope": "Unrelated changes.",
+                        "completionCriteria": "The widget is fully implemented.",
+                        "epicId": "e1",
+                    }),
+                ),
+                stop_response(),
+            ],
+            1 => vec![
+                tool_call_response(
+                    "write",
+                    "write_file",
+                    json!({ "path": format!("work-{n}.txt"), "contents": "work\n" }),
+                ),
+                tool_call_response(
+                    "complete",
+                    "complete_issue",
+                    json!({ "id": REVIEW_ISSUE_ID }),
+                ),
+                stop_response(),
+            ],
+            _ => vec![
+                tool_call_response(
+                    "write",
+                    "write_file",
+                    json!({ "path": format!("work-{n}.txt"), "contents": "work\n" }),
+                ),
+                stop_response(),
+            ],
+        };
+        Box::new(MockClient::new(&b.model_id, responses))
+    }
 }
 
 /// A reviewer that returns a clean, parseable verdict in one turn — APPROVED, or CHANGES REQUESTED
@@ -4921,28 +4961,6 @@ fn reviewer_verdict_mock(model_id: &str, approved: bool) -> MockClient {
             cost: None,
         }],
     )
-}
-
-/// A `worker`-slot producer whose Nth dispatch writes `work-N.txt` then finishes — so the initial
-/// worker and each fix agent leave a distinct, countable trace, and the reviewer's diff has real
-/// content to review.
-fn counting_worker_producer(
-    counter: Arc<AtomicUsize>,
-) -> impl Fn(&GgSlotBinding) -> Box<dyn ModelClient> + Send + Sync + 'static {
-    move |b| {
-        let n = counter.fetch_add(1, Ordering::SeqCst);
-        Box::new(MockClient::new(
-            &b.model_id,
-            vec![
-                tool_call_response(
-                    "write",
-                    "write_file",
-                    json!({ "path": format!("work-{n}.txt"), "contents": "work\n" }),
-                ),
-                stop_response(),
-            ],
-        ))
-    }
 }
 
 /// A `reviewer`-slot producer that requests changes for its first `approve_after` dispatches, then
@@ -4992,6 +5010,184 @@ fn last_issue_status(
     })
 }
 
+/// A project-management capability set (a global board with auto-dispatch), optionally with a
+/// `maxRetries` override.
+fn project_set(max_retries: Option<u64>) -> GgCapabilitySet {
+    let mut set = GgCapabilitySet::minimal("mock/primary");
+    let mut cap = GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT);
+    if let Some(retries) = max_retries {
+        cap.params = json!({ "maxRetries": retries });
+    }
+    set.capabilities.push(cap);
+    set
+}
+
+/// A well-formed `create_issue` call for `id`.
+fn create_issue_call(id: &str) -> ModelResponse {
+    tool_call_response(
+        "issue",
+        "create_issue",
+        json!({
+            "id": id,
+            "title": "Add the widget",
+            "inScope": "Implement the widget.",
+            "outOfScope": "Nothing else.",
+            "completionCriteria": "The widget works.",
+        }),
+    )
+}
+
+/// **Submitting an issue auto-dispatches a top-level agent that implements it.** The root only
+/// files the issue and finishes; gg — not the root — spawns a dedicated top-level agent, hands it
+/// the issue's structured brief, and that agent completes it.
+#[tokio::test]
+async fn submitting_an_issue_auto_dispatches_an_agent_that_completes_it() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-pm".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), project_set(None));
+
+    let counter = Arc::new(AtomicUsize::new(0));
+    let factory = ScriptedFactory::new().slot("primary", move |b| {
+        let n = counter.fetch_add(1, Ordering::SeqCst);
+        let responses = if n == 0 {
+            // The root files the issue and finishes — no manual dispatch.
+            vec![create_issue_call("feat-1"), stop_response()]
+        } else {
+            // The auto-dispatched agent completes its assigned issue.
+            vec![
+                tool_call_response("complete", "complete_issue", json!({ "id": "feat-1" })),
+                stop_response(),
+            ]
+        };
+        Box::new(MockClient::new(&b.model_id, responses))
+    });
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran
+    );
+    let events = sink.events();
+    let spawns = agent_spawns(&events);
+    assert_eq!(
+        spawns.len(),
+        2,
+        "the root and exactly one auto-dispatched issue agent run"
+    );
+    let dispatched = spawns
+        .iter()
+        .find(|(id, _, _, _, _)| id.as_deref() != Some("root"))
+        .expect("an auto-dispatched agent");
+    assert_eq!(
+        dispatched.1, None,
+        "the auto-dispatched agent is top-level (no parent)"
+    );
+    assert_eq!(dispatched.3, 0, "the auto-dispatched agent is at depth 0");
+    assert!(
+        dispatched
+            .4
+            .as_deref()
+            .is_some_and(|b| b.contains("Implement the widget.")),
+        "the agent was handed the issue's structured brief"
+    );
+    assert_eq!(
+        last_issue_status(&events, "feat-1"),
+        Some(GgIssueStatus::Done),
+        "the issue is completed by its assigned agent"
+    );
+}
+
+/// **An issue its assigned agent cannot complete is re-dispatched, then marked failed.** With the
+/// default one retry, an issue whose agents keep finishing without completing it is attempted twice
+/// and then goes to the terminal `failed` state (its dependents would stay blocked).
+#[tokio::test]
+async fn an_uncompleted_issue_is_retried_then_failed() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-pm-fail".to_string()), Box::new(sink.clone()));
+    // Default retries (1) → two attempts before failing.
+    let inv = invocation(dir.path(), project_set(Some(1)));
+
+    let counter = Arc::new(AtomicUsize::new(0));
+    let factory = ScriptedFactory::new().slot("primary", move |b| {
+        let n = counter.fetch_add(1, Ordering::SeqCst);
+        let responses = if n == 0 {
+            vec![create_issue_call("feat-1"), stop_response()]
+        } else {
+            // The dispatched agent finishes without completing its issue.
+            vec![stop_response()]
+        };
+        Box::new(MockClient::new(&b.model_id, responses))
+    });
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran
+    );
+    let events = sink.events();
+    let dispatched = agent_spawns(&events)
+        .iter()
+        .filter(|(id, _, _, _, _)| id.as_deref() != Some("root"))
+        .count();
+    assert_eq!(
+        dispatched, 2,
+        "the issue is attempted `maxRetries + 1` = 2 times"
+    );
+    assert_eq!(
+        last_issue_status(&events, "feat-1"),
+        Some(GgIssueStatus::Failed),
+        "the issue is marked failed once its retries are exhausted"
+    );
+}
+
+/// **An agent can wait on an issue until it reaches a terminal state.** The root files an issue
+/// (auto-dispatched and completed by another agent) and `wait_for_issue`s on it; the wait resolves
+/// once the issue is done and reports it.
+#[tokio::test]
+async fn an_agent_can_wait_for_an_issue_until_it_completes() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-pm-wait".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), project_set(None));
+
+    let counter = Arc::new(AtomicUsize::new(0));
+    let factory = ScriptedFactory::new().slot("primary", move |b| {
+        let n = counter.fetch_add(1, Ordering::SeqCst);
+        let responses = if n == 0 {
+            // The root files the issue, waits on it, then finishes.
+            vec![
+                create_issue_call("feat-1"),
+                tool_call_response("wait", "wait_for_issue", json!({ "issueId": "feat-1" })),
+                stop_response(),
+            ]
+        } else {
+            vec![
+                tool_call_response("complete", "complete_issue", json!({ "id": "feat-1" })),
+                stop_response(),
+            ]
+        };
+        Box::new(MockClient::new(&b.model_id, responses))
+    });
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran
+    );
+    let events = sink.events();
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::ToolResult { name, ok: true, summary: Some(s) }
+                if name == "wait_for_issue" && s.contains("done")
+        )),
+        "the root's wait_for_issue resolved and reported the issue done"
+    );
+    assert_eq!(
+        last_issue_status(&events, "feat-1"),
+        Some(GgIssueStatus::Done),
+    );
+}
+
 /// Completing an issue with the capability on triggers a **Code Review** rather than accepting the
 /// issue: a reviewer is dispatched against the baseline diff, one round requests changes (a fix
 /// agent runs with the original brief plus the items), and a re-review approves — only then is the
@@ -5001,15 +5197,14 @@ async fn completing_an_issue_triggers_a_code_review_and_accepts_on_approval() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-cr".to_string()), Box::new(sink.clone()));
-    let inv = invocation(dir.path(), code_review_set(&["worker", "reviewer"]));
+    let inv = invocation(dir.path(), code_review_set(&["reviewer"]));
 
-    let worker_counter = Arc::new(AtomicUsize::new(0));
+    let primary_counter = Arc::new(AtomicUsize::new(0));
     let review_counter = Arc::new(AtomicUsize::new(0));
     let factory = ScriptedFactory::new()
-        .slot("primary", |b| Box::new(code_review_root_mock(&b.model_id)))
         .slot(
-            "worker",
-            counting_worker_producer(Arc::clone(&worker_counter)),
+            "primary",
+            code_review_primary_producer(Arc::clone(&primary_counter)),
         )
         .slot(
             "reviewer",
@@ -5088,22 +5283,23 @@ async fn completing_an_issue_triggers_a_code_review_and_accepts_on_approval() {
         2,
         "a reviewer is dispatched for the first review and the re-review"
     );
-    // The reviewer's brief carries the diff against the baseline (the initial worker's file appears
-    // in it), so the review is genuinely of the work, diffed against the baseline.
+    // The reviewer's brief carries the diff against the baseline (the dispatched issue agent's file
+    // appears in it), so the review is genuinely of the work, diffed against the baseline.
     assert!(
         spawns
             .iter()
             .any(|(_, _, slot, _, brief)| slot == "reviewer"
                 && brief.as_deref().is_some_and(
-                    |b| b.contains("work-0.txt") && b.contains("diff against the baseline")
+                    |b| b.contains("work-1.txt") && b.contains("diff against the baseline")
                 )),
         "the reviewer is given the baseline diff of the work"
     );
-    // A fix agent ran on the work slot with the ORIGINAL issue brief plus the review's items.
+    // A fix agent ran on the issue's slot (primary) with the ORIGINAL issue brief plus the review's
+    // items. It is distinguished from the issue agent (also primary) by the review items in its brief.
     let fix_spawns: Vec<_> = spawns
         .iter()
         .filter(|(_, _, slot, _, brief)| {
-            slot == "worker"
+            slot == "primary"
                 && brief
                     .as_deref()
                     .is_some_and(|b| b.contains("Requested changes from Code Review"))
@@ -5124,12 +5320,12 @@ async fn completing_an_issue_triggers_a_code_review_and_accepts_on_approval() {
         "the fix agent gets the reviewer's actionable items"
     );
 
-    // The fix agent actually ran (the initial worker wrote work-0, the fix agent work-1).
+    // The work actually happened (the dispatched issue agent wrote work-1, the fix agent work-2).
     assert!(
-        dir.path().join("work-0.txt").exists(),
-        "the initial worker ran"
+        dir.path().join("work-1.txt").exists(),
+        "the dispatched issue agent ran"
     );
-    assert!(dir.path().join("work-1.txt").exists(), "the fix agent ran");
+    assert!(dir.path().join("work-2.txt").exists(), "the fix agent ran");
 
     assert!(matches!(
         &events.last().unwrap().kind,
@@ -5145,15 +5341,14 @@ async fn code_review_fix_loop_has_no_cycle_limit_and_terminates_on_approval() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-cr-n".to_string()), Box::new(sink.clone()));
-    let inv = invocation(dir.path(), code_review_set(&["worker", "reviewer"]));
+    let inv = invocation(dir.path(), code_review_set(&["reviewer"]));
 
-    let worker_counter = Arc::new(AtomicUsize::new(0));
+    let primary_counter = Arc::new(AtomicUsize::new(0));
     let review_counter = Arc::new(AtomicUsize::new(0));
     let factory = ScriptedFactory::new()
-        .slot("primary", |b| Box::new(code_review_root_mock(&b.model_id)))
         .slot(
-            "worker",
-            counting_worker_producer(Arc::clone(&worker_counter)),
+            "primary",
+            code_review_primary_producer(Arc::clone(&primary_counter)),
         )
         .slot(
             "reviewer",
@@ -5196,7 +5391,7 @@ async fn code_review_fix_loop_has_no_cycle_limit_and_terminates_on_approval() {
     assert_eq!(
         spawns
             .iter()
-            .filter(|(_, _, slot, _, brief)| slot == "worker"
+            .filter(|(_, _, slot, _, brief)| slot == "primary"
                 && brief
                     .as_deref()
                     .is_some_and(|b| b.contains("Requested changes from Code Review")))
@@ -5226,13 +5421,16 @@ async fn code_review_off_completes_the_issue_directly() {
     set.capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS));
     set.capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_EPICS_ISSUES));
+        .push(GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT));
     let inv = invocation(dir.path(), set);
 
-    // A root that files an issue and completes it directly (no dispatch — no review to run).
-    let factory = ScriptedFactory::new().slot("primary", |b| {
-        Box::new(MockClient::new(
-            &b.model_id,
+    // The root files an issue (which auto-dispatches an agent to implement it); that dispatched
+    // agent completes it directly — with code-reviews off there is no review to run. A stateful
+    // primary producer serves the root (agent 0) then the dispatched issue agent (agent 1).
+    let counter = Arc::new(AtomicUsize::new(0));
+    let factory = ScriptedFactory::new().slot("primary", move |b| {
+        let n = counter.fetch_add(1, Ordering::SeqCst);
+        let responses = if n == 0 {
             vec![
                 tool_call_response(
                     "epic",
@@ -5250,14 +5448,19 @@ async fn code_review_off_completes_the_issue_directly() {
                         "completionCriteria": "The widget is fully implemented.",
                     }),
                 ),
+                stop_response(),
+            ]
+        } else {
+            vec![
                 tool_call_response(
                     "complete",
                     "complete_issue",
                     json!({ "id": REVIEW_ISSUE_ID }),
                 ),
                 stop_response(),
-            ],
-        ))
+            ]
+        };
+        Box::new(MockClient::new(&b.model_id, responses))
     });
 
     assert_eq!(
@@ -5272,10 +5475,11 @@ async fn code_review_off_completes_the_issue_directly() {
         code_reviews(&events).is_empty(),
         "no CodeReview telemetry when the capability is off"
     );
+    // The root plus the one auto-dispatched issue agent — no reviewer or fix subagents.
     assert_eq!(
         agent_spawns(&events).len(),
-        1,
-        "only the root runs — no reviewer or fix subagents"
+        2,
+        "the root and the one auto-dispatched issue agent run — no reviewer or fix subagents"
     );
     // `complete_issue` accepted the issue directly (the plain tool confirmation, not a review).
     assert!(
@@ -5313,7 +5517,7 @@ async fn code_review_offline_e2e_through_the_default_factory() {
     set.capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS));
     set.capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_EPICS_ISSUES));
+        .push(GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT));
     set.capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_CODE_REVIEWS));
     set.slots
@@ -5523,7 +5727,7 @@ async fn session_summary_counts_match_a_code_review_run_stream() {
     set.capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS));
     set.capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_EPICS_ISSUES));
+        .push(GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT));
     set.capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_CODE_REVIEWS));
     set.slots

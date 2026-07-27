@@ -3,7 +3,11 @@ title: "Subagents"
 ---
 
 The largest delegation capability. An agent must be able to **spawn other agents**,
-and then either work **in parallel** with them or **block** until they return.
+and then either work **in parallel** with them or **block** until they return. This
+is for **ad-hoc** delegation: `spawn_subagent` takes a free-form `prompt`. Staffing a
+scoped work item is a separate concern — [Project management](/gg/project-management/)
+board issues **auto-dispatch** to dedicated top-level agents, so an agent no longer
+hands an issue to a subagent by hand.
 
 Requirements:
 
@@ -21,7 +25,7 @@ Requirements:
 The agent tree this produces — who spawned whom, who is running versus blocked — is
 exactly what the [telemetry](/gg/telemetry/) capability streams to the console for
 live visualization. Subagents also underpin [workflows](/gg/workflows/),
-[speculative execution](/gg/speculative-execution/), issue dispatch, and
+[speculative execution](/gg/speculative-execution/), and
 [Code Reviews](/gg/code-reviews/); a spawned agent can run in an isolated
 [worktree](/gg/worktrees/), and on a different
 [slot](/gg/multi-model/#slots) than its parent.

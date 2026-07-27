@@ -1184,42 +1184,46 @@ async fn a_sandbox_limit_counts_as_an_error_turn_but_a_handled_tool_failure_does
 /// Every brief gg generates used to tell its agent to end by *stopping*, which this protocol
 /// abolishes — a reviewer that never calls `finish` never reaches `completed`, so gg would report it
 /// as having ended without a verdict and the issue would never be accepted. This drives the whole
-/// Code Review through the code path: the root's single program builds the board, dispatches the
-/// work, waits for it and completes the issue; the reviewer's program finishes with the verdict.
+/// Code Review through the code path: the root program files the board issue (which auto-dispatches
+/// an agent to implement it), the dispatched agent's program does the work and completes the issue,
+/// and the reviewer's program finishes with the verdict.
 #[tokio::test]
 async fn a_code_mode_reviewer_verdict_parses() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-code-review".to_string()), Box::new(sink.clone()));
-    let mut set = code_review_set(&["worker", "reviewer"]);
+    let mut set = code_review_set(&["reviewer"]);
     set.capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE));
     let inv = invocation(dir.path(), set);
+    // The primary slot serves the root (agent 0: build the board, then finish — creating the issue
+    // auto-dispatches an agent to implement it) then that dispatched issue agent (agent 1: write the
+    // work and `completeIssue`, which triggers the gating review, then finish).
+    let primary_counter = Arc::new(AtomicUsize::new(0));
     let factory = ScriptedFactory::new()
-        .slot(PRIMARY_SLOT, |b| {
-            Box::new(MockClient::new(
-                &b.model_id,
+        .slot(PRIMARY_SLOT, move |b| {
+            let n = primary_counter.fetch_add(1, Ordering::SeqCst);
+            let programs = if n == 0 {
                 vec![
                     code_reply(&format!(
                         "createEpic({{ id: \"e1\", title: \"Build\", description: \"the build\" \
                          }});\ncreateIssue({{ id: \"{REVIEW_ISSUE_ID}\", title: \"Add the widget\", \
                          inScope: \"Implement the widget.\", outOfScope: \"Unrelated changes.\", \
                          completionCriteria: \"The widget is fully implemented.\", epicId: \"e1\" \
-                         }});\nconst child = spawnSubagent({{ issueId: \"{REVIEW_ISSUE_ID}\", slot: \
-                         \"worker\" }});\nwaitForSubagents([child.id]);\nreturn \
+                         }});"
+                    )),
+                    code_reply(FINISHING_PROGRAM),
+                ]
+            } else {
+                vec![
+                    code_reply(&format!(
+                        "writeFile(\"widget.txt\", \"the widget\\n\");\nreturn \
                          completeIssue(\"{REVIEW_ISSUE_ID}\");"
                     )),
                     code_reply(FINISHING_PROGRAM),
-                ],
-            ))
-        })
-        .slot("worker", |b| {
-            Box::new(MockClient::new(
-                &b.model_id,
-                vec![code_reply(
-                    "writeFile(\"widget.txt\", \"the widget\\n\");\nfinish(\"built the widget\");",
-                )],
-            ))
+                ]
+            };
+            Box::new(MockClient::new(&b.model_id, programs))
         })
         .slot("reviewer", |b| {
             Box::new(MockClient::new(

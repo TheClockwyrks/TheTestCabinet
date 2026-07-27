@@ -16,7 +16,7 @@ renders a test case's [`prompt.hbs`](/testing/end-to-end/overview/#prompt-templa
 | ------------------ | ---------------------------------------------------------------------------- |
 | `system.hbs`       | The system prompt: the base framing plus one section per enabled capability. |
 | `tasks.hbs`        | The pinned [task list](/gg/tasks/) block.                                    |
-| `board.hbs`        | The pinned [epic/issue board](/gg/epics-and-issues/) block.                  |
+| `board.hbs`        | The pinned [Project management](/gg/project-management/) board block.        |
 | `memories.hbs`     | The pinned [memories](/gg/memories/) block.                                  |
 | `plan-mode.hbs`    | The [planning](/gg/planning/) capability's read-only plan-mode guidance.     |
 | `plan-framing.hbs` | How an accepted plan is framed as it seeds the fresh implementation context. |
@@ -41,7 +41,7 @@ limits are interpolated inline rather than restated in prose:
   ceiling or a default the agent may exceed;
 - the [memories](/gg/memories/) budget (count, per-memory length, total length);
 - the [task](/gg/tasks/) count ceiling;
-- the [epic and issue](/gg/epics-and-issues/) ceilings;
+- the [Project management](/gg/project-management/) epic and issue ceilings;
 - the name of the [FSM](/gg/fsms/) driving the run;
 - the catalog of available [skills](/gg/skills/), each with its description.
 
@@ -91,7 +91,7 @@ about the run:
 
 ## The pinned blocks carry state, not instructions
 
-The [task list](/gg/tasks/), [board](/gg/epics-and-issues/), and
+The [task list](/gg/tasks/), [board](/gg/project-management/), and
 [memories](/gg/memories/) are each pushed into the window as a **pinned** block that is
 rebuilt whenever the model changes it. Those blocks are **state only** — a heading and
 the current items:

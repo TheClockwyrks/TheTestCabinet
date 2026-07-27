@@ -138,9 +138,11 @@ the run:
 - Inside the Agents explorer, a **file is offered when the run's capability set
   justifies it**, not when data happens to have arrived — gg announces its
   configuration on the stream's first event, so a run with the tasks capability
-  always has a **tasks** file (empty until the model builds its list), while a run
-  with no epics-and-issues and no planning pass has no board or plan file. Every
-  agent always has **overview**, **activity**, and **context** files.
+  always has a per-agent **tasks** file (empty until the model builds its list), while
+  a run with no planning pass has no plan file. Every agent always has **overview**,
+  **activity**, and **context** files. The [Project management](/gg/project-management/)
+  board is **not** a per-agent file — because it is shared run-wide it surfaces as a
+  run-global **Project** section, present only when that capability is on.
 - The **activity** file is gg's telemetry rendered through the *same* feed every
   other harness's events render through, so it honors the layout picked in
   **Settings → Appearance** and a gg run doesn't read differently from every other

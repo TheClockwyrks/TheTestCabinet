@@ -280,7 +280,7 @@ describe("gg capability params", () => {
           params: { maxCount: 5, maxLenPerMemory: 1500, maxTotalLen: 6000 },
         },
         {
-          id: "epics-and-issues",
+          id: "project-management",
           enabled: true,
           params: { maxEpics: 20, maxIssues: 80 },
         },
@@ -300,7 +300,7 @@ describe("gg capability params", () => {
       maxLenPerMemory: 1500,
       maxTotalLen: 6000,
     });
-    expect(paramsOf(back, "epics-and-issues")).toEqual({
+    expect(paramsOf(back, "project-management")).toEqual({
       maxEpics: 20,
       maxIssues: 80,
     });

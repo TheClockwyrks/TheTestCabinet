@@ -2,7 +2,7 @@
 title: "Code Reviews"
 ---
 
-Before an [issue](/gg/epics-and-issues/) is **accepted** (marked complete), gg can
+Before a [board issue](/gg/project-management/) is **accepted** (marked complete), gg can
 **trigger a Code Review** on it to have the work verified. (This capability is
 always called a **Code Review**, never just a "review", to keep it distinct from The
 Test Cabinet's own [test-run reviews](/components/backend/).)

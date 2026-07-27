@@ -395,6 +395,20 @@ impl Scheduler {
         Self::pump(&mut state);
     }
 
+    /// Mark the blocked waiter `token` **ready** (its wait condition is now met) without releasing
+    /// a slot, then grant. Used for an [issue wait](crate::agent): the agent that satisfies the
+    /// wait (by completing or failing the awaited issue) is a *different* agent whose own slot is
+    /// accounted for by its own lifecycle, so unlike [`finish_and_ready`](Self::finish_and_ready)
+    /// this only flips readiness — the freed-slot bookkeeping is not this call's to do. A `token`
+    /// that matches no current waiter is a no-op (it was already granted).
+    pub fn mark_ready(&self, token: WaiterToken) {
+        let mut state = self.state.lock().expect("scheduler lock");
+        if let Some(waiter) = state.waiters.iter_mut().find(|w| w.ticket == token.0) {
+            waiter.ready = true;
+        }
+        Self::pump(&mut state);
+    }
+
     /// Grant free slots to the best eligible waiters until no slot is free or no waiter is
     /// eligible. Each grant increments `running`, removes the chosen waiter, and wakes it.
     fn pump(state: &mut SchedulerState) {

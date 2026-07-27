@@ -142,6 +142,30 @@ export function BoardIcon({ className }: IconProps) {
   );
 }
 
+// Epic — a stack of grouped cards: the epic-summary "file" at the head of an epic
+// folder in the Project explorer.
+export function EpicIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <rect x="3" y="4" width="14" height="10" rx="1" />
+      <path d="M7 18h14" />
+      <path d="M7 21h11" />
+    </Icon>
+  );
+}
+
+// Issue — a single ticket card with a status dot: one issue "file" under its epic
+// folder in the Project explorer.
+export function IssueIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <rect x="4" y="4" width="16" height="16" rx="2" />
+      <path d="M8 10h8" />
+      <path d="M8 14h5" />
+    </Icon>
+  );
+}
+
 // Tasks — a checked list.
 export function TasksIcon({ className }: IconProps) {
   return (

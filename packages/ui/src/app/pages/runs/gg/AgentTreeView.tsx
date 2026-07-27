@@ -48,7 +48,7 @@ const SPECULATION_PHASE_LABELS: Record<GgSpeculationPhase, string> = {
 // merged and the rest the discarded losers. A sibling with no worktree — the judge —
 // carries no role, so it is neither marked a winner nor dimmed.
 export function classifySpeculationRoles(
-  tree: AgentTreeNode,
+  forest: AgentTreeNode[],
   speculations: SpeculationState[],
 ): Map<string, SpeculationRole> {
   const roles = new Map<string, SpeculationRole>();
@@ -72,7 +72,7 @@ export function classifySpeculationRoles(
     }
     node.children.forEach(visit);
   };
-  visit(tree);
+  forest.forEach(visit);
   return roles;
 }
 

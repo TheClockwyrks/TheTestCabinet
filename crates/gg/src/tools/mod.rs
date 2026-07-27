@@ -65,11 +65,10 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use test_cabinet_core::gg::{
-    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_EDIT_FILE, CAPABILITY_EPICS_ISSUES,
-    CAPABILITY_FSM, CAPABILITY_LIST_DIR, CAPABILITY_MEMORIES, CAPABILITY_PLANNING,
-    CAPABILITY_READ_FILE, CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE,
-    CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WORKFLOWS, CAPABILITY_WRITE_FILE,
-    GgCapabilitySet,
+    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_EDIT_FILE, CAPABILITY_FSM, CAPABILITY_LIST_DIR,
+    CAPABILITY_MEMORIES, CAPABILITY_PLANNING, CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_READ_FILE,
+    CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS,
+    CAPABILITY_TASKS, CAPABILITY_WORKFLOWS, CAPABILITY_WRITE_FILE, GgCapabilitySet,
 };
 
 use crate::archive::ArchiveStore;
@@ -80,7 +79,7 @@ use crate::skills::SkillLibrary;
 use crate::tasks::TaskStore;
 use crate::vision::VisionSupport;
 
-pub use board::{COMPLETE_ISSUE_TOOL, is_board_tool};
+pub use board::{COMPLETE_ISSUE_TOOL, WAIT_FOR_ISSUE_TOOL, is_board_tool};
 pub use context::{
     ARCHIVE_THREAD_TOOL, DEFAULT_ARCHIVE_KEEP_RECENT, EVICT_FILE_VIEW_TOOL, SEARCH_ARCHIVE_TOOL,
     is_context_reclaim_tool, parse_archive_keep_recent, parse_evict_path,
@@ -138,6 +137,7 @@ pub const ALL_TOOL_NAMES: &[&str] = &[
     "complete_issue",
     "remove_epic",
     "remove_issue",
+    "wait_for_issue",
     "evict_file_view",
     "archive_thread",
     "search_archive",
@@ -509,7 +509,7 @@ impl ToolRegistry {
     /// Assemble the offered toolset from the *enabled* capabilities in `capabilities`,
     /// **without** any bound runtime store — so the [`skills`](CAPABILITY_SKILLS),
     /// [`memories`](CAPABILITY_MEMORIES), [`tasks`](CAPABILITY_TASKS),
-    /// [`epics-and-issues`](CAPABILITY_EPICS_ISSUES), and
+    /// [`project-management`](CAPABILITY_PROJECT_MANAGEMENT), and
     /// [`agent-managed-context`](CAPABILITY_AGENT_MANAGED_CONTEXT) capabilities contribute no
     /// tools even when enabled (there is no store for them to mutate).
     ///
@@ -542,7 +542,7 @@ impl ToolRegistry {
     /// `write_memory`/`update_memory`/`delete_memory` tools when a memory store is bound; the
     /// [`tasks`](CAPABILITY_TASKS) capability contributes the
     /// `add_task`/`update_task`/`set_blocked_by`/`complete_task`/`remove_task` tools when a task
-    /// store is bound; the [`epics-and-issues`](CAPABILITY_EPICS_ISSUES) capability contributes
+    /// store is bound; the [`project-management`](CAPABILITY_PROJECT_MANAGEMENT) capability contributes
     /// the
     /// `create_epic`/`create_issue`/`update_issue`/`set_issue_blocked_by`/`complete_issue`/`remove_epic`/`remove_issue`
     /// tools when a board store is bound (the model creates the memories, tasks, epics, and
@@ -613,7 +613,7 @@ impl ToolRegistry {
             tools.push(Box::new(tasks::RemoveTaskTool::new(Arc::clone(tasks))));
         }
 
-        if capabilities.is_enabled(CAPABILITY_EPICS_ISSUES)
+        if capabilities.is_enabled(CAPABILITY_PROJECT_MANAGEMENT)
             && let Some(board) = runtimes.board
         {
             tools.push(Box::new(board::CreateEpicTool::new(Arc::clone(board))));
@@ -625,6 +625,10 @@ impl ToolRegistry {
             tools.push(Box::new(board::CompleteIssueTool::new(Arc::clone(board))));
             tools.push(Box::new(board::RemoveEpicTool::new(Arc::clone(board))));
             tools.push(Box::new(board::RemoveIssueTool::new(Arc::clone(board))));
+            // `wait_for_issue` is a declaration the loop intercepts (like the delegation tools) —
+            // it suspends the agent on the orchestrator's issue-wait registry, which a self-contained
+            // tool cannot reach — so it needs no bound store of its own.
+            tools.push(Box::new(board::WaitForIssueTool));
         }
 
         if capabilities.is_enabled(CAPABILITY_AGENT_MANAGED_CONTEXT)

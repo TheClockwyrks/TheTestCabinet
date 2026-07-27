@@ -93,7 +93,7 @@ function RunGgBody({ run }: { run: RunRecord }) {
             usage={derived.usage}
             slotUsage={derived.slotUsage}
             perAgent={perAgent}
-            agentTree={derived.agentTree}
+            agentForest={derived.agentForest}
             fsm={derived.fsm}
             capabilitySet={capabilitySet}
           >

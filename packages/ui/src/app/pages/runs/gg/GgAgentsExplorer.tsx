@@ -30,13 +30,11 @@ import { PromptView } from "./PromptView";
 import { RequestsView } from "./RequestsView";
 import { CompactionView } from "./CompactionView";
 import { PlanView } from "./PlanView";
-import { BoardView } from "./BoardView";
 import { TaskDagView } from "./TaskDagView";
 import { SkillsList } from "./SkillsList";
 import { MemoriesList } from "./MemoriesList";
 import {
   ActivityIcon,
-  BoardIcon,
   CompactionIcon,
   ContextIcon,
   FolderIcon,
@@ -55,8 +53,8 @@ import {
 // *whose* context filled, *whose* task list this is, or what one subagent did in
 // isolation — those are per-agent facts (see gg/subagents.md). The explorer makes
 // each agent a folder whose "files" are the things a run lets you monitor about it
-// (its activity, its context-window fill, its plan, its board, its tasks, its
-// knowledge), and nests every agent an agent spawned under a `subagents` folder, so
+// (its activity, its context-window fill, its plan, its tasks, its knowledge), and
+// nests every agent an agent spawned under a `subagents` folder, so
 // the delegation tree *is* the directory tree. The top-level folder is the main
 // (root) agent. Selecting a file opens that view for that agent in the content pane
 // — the same rich panels a gg run has always been read through, now scoped to one
@@ -91,7 +89,6 @@ export type AgentFileKind =
   | "requests"
   | "compaction"
   | "plan"
-  | "board"
   | "tasks"
   | "knowledge";
 
@@ -108,7 +105,6 @@ const FILE_ORDER: ReadonlyArray<AgentFileKind> = [
   "requests",
   "compaction",
   "plan",
-  "board",
   "tasks",
   "knowledge",
 ];
@@ -140,7 +136,6 @@ const FILE_CAPABILITIES: Record<AgentFileKind, ReadonlyArray<string>> = {
   // empty. Its own record travels on the compaction event, so it needs nothing else.
   compaction: ["compaction"],
   plan: ["planning"],
-  board: ["epics-and-issues"],
   tasks: ["tasks"],
   knowledge: ["skills", "memories"],
 };
@@ -153,7 +148,6 @@ const FILE_LABELS: Record<AgentFileKind, string> = {
   requests: "requests",
   compaction: "compaction",
   plan: "plan",
-  board: "board",
   tasks: "tasks",
   knowledge: "knowledge",
 };
@@ -171,7 +165,6 @@ const FILE_ICONS: Record<
   requests: RequestsIcon,
   compaction: CompactionIcon,
   plan: PlanIcon,
-  board: BoardIcon,
   tasks: TasksIcon,
   knowledge: KnowledgeIcon,
 };
@@ -191,9 +184,10 @@ function filesFor(set: GgCapabilitySet | null): AgentFileKind[] {
 }
 
 interface GgAgentsExplorerProps {
-  // The rooted delegation tree (from the globally-merged fold), drawn as the
-  // directory tree. Always rooted at the main agent.
-  tree: AgentTreeNode;
+  // The delegation forest (from the globally-merged fold), drawn as the directory
+  // tree. Led by the main agent, with any board-dispatched issue agents as further
+  // top-level folders beside it.
+  forest: AgentTreeNode[];
   // Each agent's own reduced slice, keyed by agent id (always including the root).
   perAgent: Map<string, DerivedGgState>;
   // The run's configuration — decides which context bands are worth listing.
@@ -227,7 +221,7 @@ interface Selection {
  * on the left; the selected file's view on the right.
  */
 export function GgAgentsExplorer({
-  tree,
+  forest,
   perAgent,
   capabilitySet,
   workflows,
@@ -237,22 +231,22 @@ export function GgAgentsExplorer({
   onFocusHandled,
 }: GgAgentsExplorerProps) {
   // A flat id → tree-node index, so the content pane can resolve the selected agent
-  // to its node (for its identity card) without re-walking the tree.
+  // to its node (for its identity card) without re-walking the forest.
   const nodeById = useMemo(() => {
     const map = new Map<string, AgentTreeNode>();
     const walk = (node: AgentTreeNode) => {
       map.set(node.id, node);
       node.children.forEach(walk);
     };
-    walk(tree);
+    forest.forEach(walk);
     return map;
-  }, [tree]);
+  }, [forest]);
 
   // Winner/loser marking for the tree (empty when no speculation ran), so the
   // sidebar can star a chosen best-of-K attempt and dim its losing co-attempts.
   const roles = useMemo(
-    () => classifySpeculationRoles(tree, speculations),
-    [tree, speculations],
+    () => classifySpeculationRoles(forest, speculations),
+    [forest, speculations],
   );
 
   // The open/closed state of the tree's folders, keyed `folder:<id>` (an agent
@@ -325,7 +319,9 @@ export function GgAgentsExplorer({
     <div className={panels.explorer}>
       <nav className={panels.explorerSidebar} aria-label="Agents">
         <ul className={panels.fsTree}>
-          <FolderNode node={tree} depth={0} ctx={ctx} />
+          {forest.map((root) => (
+            <FolderNode key={root.id} node={root} depth={0} ctx={ctx} />
+          ))}
         </ul>
       </nav>
       <div className={panels.explorerContent}>
@@ -378,7 +374,10 @@ function FolderNode({
   const files = filesFor(ctx.capabilitySet);
   const folderKey = `folder:${node.id}`;
   const open = !ctx.collapsed.has(folderKey);
-  const isRoot = node.parentId == null;
+  // The main agent is the "root" folder; a board-dispatched issue agent is also
+  // top-level (parentless) but reads by its own id, so key on the id rather than
+  // on being parentless.
+  const isRoot = node.id === ROOT_ID;
   const label = isRoot ? "root" : node.id;
   const role = ctx.roles.get(node.id);
 
@@ -523,7 +522,9 @@ function FileContent({
   speculations: SpeculationState[];
   live: boolean;
 }) {
-  const isRoot = node.parentId == null;
+  // Only the main agent carries the run-level delegation structure on its Overview; a
+  // dispatched top-level issue agent is parentless too but is not the run's root.
+  const isRoot = node.id === ROOT_ID;
 
   // No file view restates "<agent> · <file>" over its content: the sidebar's active
   // row already names the agent and the file being read, so a header here would only
@@ -591,18 +592,6 @@ function FileContent({
           />
           <div className={panels.panelBody}>
             <PlanView plan={state.plan} />
-          </div>
-        </>
-      );
-    case "board":
-      return (
-        <>
-          <RetainedNote
-            count={state.compactions.length}
-            what="epic/issue board"
-          />
-          <div className={panels.panelBody}>
-            <BoardView board={state.board} codeReviews={state.codeReviews} />
           </div>
         </>
       );

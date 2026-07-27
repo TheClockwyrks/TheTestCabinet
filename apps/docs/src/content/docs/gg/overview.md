@@ -34,7 +34,7 @@ of owning both sides drive that separation:
   deliberately *not* similar, and a multi-model gg run has **no single model to
   plot**. Lumping gg in would distort both the existing graphs and gg's own data,
   so gg results are surfaced **separately**, in views built for them (the agent
-  tree, the epic/issue board, context-fill graphs, and
+  tree, the run-global project board, context-fill graphs, and
   [Kibana-style aggregation](/gg/result-aggregation/)).
 - **It is invoked directly, not as an orchestrated subprocess.** The
   [orchestrator](/orchestrators/overview/) layer exists to loop a *stateless
@@ -160,8 +160,8 @@ saved, launched, and analyzed in the console is
 **Work tracking**
 
 - [Tasks](/gg/tasks/) — a lightweight blocked-by DAG of to-dos.
-- [Epics & issues](/gg/epics-and-issues/) — heavyweight, scoped, dispatchable work
-  items.
+- [Project management](/gg/project-management/) — a run-global board of scoped,
+  auto-dispatched work items.
 - [Planning](/gg/planning/) — a read-only planning pass, then implement from a
   fresh context.
 

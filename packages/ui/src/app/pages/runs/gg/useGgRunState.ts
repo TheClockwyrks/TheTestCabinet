@@ -387,11 +387,13 @@ export interface GgRunState {
   // deltas). The sum across pairs reconciles with `usage` above.
   slotUsage: SlotUsage[];
 
-  // --- Subagent tree (Phase 4) ---------------------------------------------
-  // The flat agent map, keyed by agent id, and the same nodes as a tree rooted at
-  // "root". A single-agent run is a one-node tree (just root); subagents extend it.
+  // --- Subagent forest (Phase 4) -------------------------------------------
+  // The flat agent map, keyed by agent id, and the same nodes as a delegation
+  // forest led by the "root" agent. A single-agent run is a one-node forest (just
+  // root); spawned subagents nest under their spawner, and issue agents the board
+  // auto-dispatched sit at the top level beside root (see `buildAgentForest`).
   agents: Map<string, AgentNode>;
-  agentTree: AgentTreeNode;
+  agentForest: AgentTreeNode[];
 
   // --- Declared workflows (Phase 4) ----------------------------------------
   // The workflows run this session, in first-seen order, each with its stages in
@@ -687,7 +689,7 @@ export interface DerivedGgState {
   usage: UsageTally;
   slotUsage: SlotUsage[];
   agents: Map<string, AgentNode>;
-  agentTree: AgentTreeNode;
+  agentForest: AgentTreeNode[];
   workflows: Workflow[];
   sawSession: boolean;
   sessionEndStatus: string | null;
@@ -862,21 +864,40 @@ function addTokens(
   }
 }
 
-// Build the rooted subagent tree from the flat agent map. Always rooted at "root"
-// (seeded even when the stream introduced no agents), with each node's children in
-// spawn order. An orphan — a node whose parent was never seen — is attached under
-// root so an out-of-order or truncated stream still yields one connected tree.
-function buildAgentTree(agents: Map<string, AgentNode>): AgentTreeNode {
+// Build the delegation **forest** from the flat agent map — an array of top-level
+// trees, always led by the main "root" agent (seeded even when the stream introduced
+// no agents), each node's children in spawn order.
+//
+// The run is a forest rather than a single tree because the project-management board
+// auto-dispatches issues: submitting an issue spawns a **top-level** agent
+// (`parentAgentId` unset, depth 0) to implement it, so those agents sit beside root
+// rather than under it. A parentless, depth-0 agent is therefore its own root; the
+// main agent comes first, then the dispatched agents in spawn order. A genuine orphan
+// — a node whose named parent was never seen, or a bare placeholder with no depth yet
+// — is still attached under root so an out-of-order or truncated stream stays
+// connected rather than sprouting stray roots.
+function buildAgentForest(agents: Map<string, AgentNode>): AgentTreeNode[] {
   const nodes = new Map<string, AgentTreeNode>();
   for (const [id, node] of agents) nodes.set(id, { ...node, children: [] });
   const root = nodes.get(ROOT_ID)!;
+  const roots: AgentTreeNode[] = [root];
   for (const node of nodes.values()) {
     if (node.id === ROOT_ID) continue;
-    const parent =
-      (node.parentId != null ? nodes.get(node.parentId) : undefined) ?? root;
-    parent.children.push(node);
+    if (node.parentId != null) {
+      // A spawned subagent nests under its parent; a node naming a parent the stream
+      // never introduced falls back under root.
+      (nodes.get(node.parentId) ?? root).children.push(node);
+    } else if (node.depth === 0) {
+      // A dispatched top-level agent — parentless and at depth 0 — is a sibling of
+      // root in the forest.
+      roots.push(node);
+    } else {
+      // A parentless placeholder with no depth yet is a truncation artifact, not a
+      // deliberate top-level agent; keep it under root.
+      root.children.push(node);
+    }
   }
-  return root;
+  return roots;
 }
 
 // Fold the whole event log into the derived state in a single pass. Resilient to a
@@ -1278,7 +1299,7 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
     usage,
     slotUsage,
     agents,
-    agentTree: buildAgentTree(agents),
+    agentForest: buildAgentForest(agents),
     workflows,
     sawSession,
     sessionEndStatus,

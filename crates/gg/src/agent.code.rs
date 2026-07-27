@@ -644,6 +644,9 @@ pub(super) struct CodeTurn<'a> {
     pub(super) tool_ctx: &'a ToolContext,
     /// The epic/issue board, for its state event and for the Code Review gate.
     pub(super) board: &'a BoardRuntime,
+    /// The [project-management](crate::board) context, when the capability is on — for the
+    /// auto-dispatch pump after a board mutation and for `wait_for_issue`. `None` when off.
+    pub(super) project: Option<&'a ProjectContext>,
     /// The memory scratchpad, for its state event.
     pub(super) memories: &'a MemoriesRuntime,
     /// The task list, for its state event.
@@ -682,6 +685,9 @@ impl CodeTurn<'_> {
     /// discarded.
     pub(super) fn delegated(&self) -> bool {
         self.spawner.depth > 0
+            || self
+                .project
+                .is_some_and(|project| project.assigned_issue.is_some())
     }
 }
 
@@ -856,6 +862,14 @@ async fn run_code_program(
                 // mirroring the tool-calling path — the pinned block itself is refreshed at the next
                 // turn boundary.
                 if outcome.ok {
+                    // Project management: pump auto-dispatch + wake issue-waiters before re-emitting
+                    // the board, so the snapshot reflects the resulting assignments (mirrors the
+                    // tool-calling loop).
+                    if is_board_tool(&call.name)
+                        && let Some(project) = turn.project
+                    {
+                        project.orch.pump_and_wake(emitter);
+                    }
                     let state = if is_memory_tool(&call.name) {
                         turn.memories.state_event()
                     } else if is_task_tool(&call.name) {
@@ -993,9 +1007,12 @@ async fn dispatch_code_tool_call(
     if turn.fsm_active && !turn.fsm.offers(&call.name) {
         return ToolOutcome::failed(ToolFailure::Refused, fsm_refusal(&call.name, turn.fsm));
     }
+    // `wait_for_issue` is not bound in the responses-as-code guest (see
+    // `signatures::NON_SANDBOX_TOOLS`) — a composed program has no good shape for a blocking wait —
+    // so no interception for it is needed here; a program creates issues and lets gg auto-dispatch.
     if let Some(sub) = subagents.as_mut() {
         if is_subagent_tool(&call.name) {
-            return handle_subagent_call(sub, turn.spawner, turn.board, turn.emitter, call).await;
+            return handle_subagent_call(sub, turn.spawner, turn.emitter, call).await;
         }
         if turn.speculative_active && call.name == SPECULATE_TOOL {
             return handle_speculate(sub, turn.spawner, turn.board, turn.emitter, call).await;

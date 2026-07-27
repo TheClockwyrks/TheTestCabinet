@@ -276,7 +276,7 @@
       "type": "integer"
     },
     "issuesCreated": {
-      "description": "How many distinct [issues](GgBoardIssue) the run ever created on its\n[board](GgTelemetryKind::BoardState) — the count of distinct issue ids observed across the\nrun. `0` when the epics-and-issues capability was off.",
+      "description": "How many distinct [issues](GgBoardIssue) the run ever created on its\n[board](GgTelemetryKind::BoardState) — the count of distinct issue ids observed across the\nrun. `0` when the project-management capability was off.",
       "format": "uint64",
       "minimum": 0,
       "type": "integer"

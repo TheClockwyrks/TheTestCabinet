@@ -69,32 +69,28 @@ impl Tool for SpawnSubagentTool {
             SPAWN_SUBAGENT_TOOL,
             "Delegate a scoped piece of work to a child agent that runs in parallel with you. \
              Provide a `prompt` — a self-contained brief telling the subagent exactly what to do \
-             and what 'done' means — OR an `issueId` to dispatch one of your board issues (its \
-             scope and completion criteria become the brief). Optionally pass a `slot` to run the \
-             subagent on a different model slot (only takes effect when multi-model is enabled; \
-             otherwise it runs on the primary model). Optionally pass `worktree: true` to run the \
-             subagent in an isolated copy of the workspace (a git worktree) instead of the shared \
-             tree — its file changes are invisible to you and to sibling agents until it finishes, \
-             and are then merged back into the workspace if it completes cleanly (a merge conflict \
-             is reported back to you, not dropped) or discarded if it fails. Use a worktree when \
-             you run several subagents that might touch the same files, or want a throwaway \
-             attempt; it requires the `worktrees` capability. Returns the new subagent's id \
-             immediately — it is scheduled and runs on its own; call `wait_for_subagents` to \
-             collect its result, or `send_message` to guide it while it runs. Subagents that share \
-             your workspace (no worktree) should be given non-overlapping briefs. Spawning is \
-             refused if you are already at the maximum delegation depth.",
+             and what 'done' means. (Board issues are not dispatched this way: submitting an issue \
+             automatically spawns an agent for it once its blockers are done.) Optionally pass a \
+             `slot` to run the subagent on a different model slot (only takes effect when \
+             multi-model is enabled; otherwise it runs on the primary model). Optionally pass \
+             `worktree: true` to run the subagent in an isolated copy of the workspace (a git \
+             worktree) instead of the shared tree — its file changes are invisible to you and to \
+             sibling agents until it finishes, and are then merged back into the workspace if it \
+             completes cleanly (a merge conflict is reported back to you, not dropped) or discarded \
+             if it fails. Use a worktree when you run several subagents that might touch the same \
+             files, or want a throwaway attempt; it requires the `worktrees` capability. Returns \
+             the new subagent's id immediately — it is scheduled and runs on its own; call \
+             `wait_for_subagents` to collect its result, or `send_message` to guide it while it \
+             runs. Subagents that share your workspace (no worktree) should be given \
+             non-overlapping briefs. Spawning is refused if you are already at the maximum \
+             delegation depth.",
             json!({
                 "type": "object",
                 "properties": {
                     "prompt": {
                         "type": "string",
                         "description": "A self-contained brief for the subagent (what to do and \
-                                        how it will be judged done). Provide this or `issueId`."
-                    },
-                    "issueId": {
-                        "type": "string",
-                        "description": "The id of a board issue to dispatch; its scope and \
-                                        completion criteria become the subagent's brief."
+                                        how it will be judged done)."
                     },
                     "slot": {
                         "type": "string",

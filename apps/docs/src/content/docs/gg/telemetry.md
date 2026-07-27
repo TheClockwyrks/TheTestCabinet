@@ -11,7 +11,8 @@ first-party and rich rather than an afterthought.
 
 The telemetry must let the console display:
 
-- **[Epics and issues](/gg/epics-and-issues/)** and their statuses (the live board).
+- The **[Project management](/gg/project-management/)** board and its issue statuses
+  (the live, run-global board).
 - The **[agents/subagents](/gg/subagents/)** that are running, and the **tree** they
   form.
 - For each agent, whether it is **actively executing or blocked** waiting on other
@@ -41,9 +42,12 @@ through **two** surfaces:
   **peak** its context window reached, its **share of the run's tokens**, and the
   **tools it used** — and each row is a link into that agent's files in the Agents
   explorer, so the whole-run view and the per-agent one are one click apart.
+- The **Project** view — the run-global [Project management](/gg/project-management/)
+  board. Because the board is now shared run-wide rather than per agent, it is its own
+  top-level section, **not** a file under any one agent.
 - The **Agents** explorer — everything else. The rich views (the prompt the agent was
   given, activity, context-window breakdown, the [message log](/gg/context-visibility/#the-message-log-the-exact-requests-de-duplicated),
-  plan, board, tasks, knowledge) are inherently **per agent** — *whose*
+  plan, tasks, knowledge) are inherently **per agent** — *whose*
   window filled, *whose* task list this is — so they cannot honestly be shown as one
   global panel. The explorer lays the run out as a **filesystem**: every agent is a
   folder, the things you can monitor about it are its files, and every agent an agent

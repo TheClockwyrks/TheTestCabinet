@@ -24,7 +24,7 @@ use super::{
     invalid_argument, required_str, saturating_u32,
 };
 use crate::model::ToolDefinition;
-use crate::tasks::{TaskChange, TaskError, TaskStatus, TaskStore};
+use crate::tasks::{StructuredFields, TaskChange, TaskError, TaskMode, TaskStatus, TaskStore};
 
 /// The `add_task` tool name.
 pub const ADD_TASK_TOOL: &str = "add_task";
@@ -157,34 +157,48 @@ impl Tool for AddTaskTool {
     }
 
     fn definition(&self) -> ToolDefinition {
-        ToolDefinition::new(
-            ADD_TASK_TOOL,
+        let mode = self.store.lock().expect("task store lock").mode();
+        let mut properties = json!({
+            "id": {
+                "type": "string",
+                "description": "A short, unique id for the task (used to reference it)."
+            },
+            "title": {
+                "type": "string",
+                "description": "A short title for the task."
+            },
+            "description": {
+                "type": "string",
+                "description": "An optional longer description of the task."
+            },
+            "blockedBy": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Optional ids of tasks that must be done before this one."
+            }
+        });
+        let mut required = vec!["id", "title"];
+        let description = if mode == TaskMode::Issues {
+            merge_structured_properties(&mut properties);
+            required.extend(["inScope", "outOfScope", "completionCriteria"]);
+            "Add a task to your plan. Provide a unique `id` (a short slug you will use to \
+             reference it), a `title`, an optional `description`, the structured sections \
+             `inScope` / `outOfScope` / `completionCriteria` (this list is in issues mode, so \
+             these are required), and an optional `blockedBy` list of the ids of tasks that must \
+             finish first. The list is a DAG — a blocker that would create a cycle is refused."
+        } else {
             "Add a task to your plan. Provide a unique `id` (a short slug you will use to \
              reference it), a `title`, an optional `description`, and an optional \
              `blockedBy` list of the ids of tasks that must finish first. The list is a DAG \
-             — a blocker that would create a cycle is refused.",
+             — a blocker that would create a cycle is refused."
+        };
+        ToolDefinition::new(
+            ADD_TASK_TOOL,
+            description,
             json!({
                 "type": "object",
-                "properties": {
-                    "id": {
-                        "type": "string",
-                        "description": "A short, unique id for the task (used to reference it)."
-                    },
-                    "title": {
-                        "type": "string",
-                        "description": "A short title for the task."
-                    },
-                    "description": {
-                        "type": "string",
-                        "description": "An optional longer description of the task."
-                    },
-                    "blockedBy": {
-                        "type": "array",
-                        "items": { "type": "string" },
-                        "description": "Optional ids of tasks that must be done before this one."
-                    }
-                },
-                "required": ["id", "title"],
+                "properties": properties,
+                "required": required,
                 "additionalProperties": false
             }),
         )
@@ -203,12 +217,22 @@ impl Tool for AddTaskTool {
             Ok(description) => description,
             Err(error) => return error.into(),
         };
+        let structured = match read_structured(&args, ADD_TASK_TOOL) {
+            Ok(structured) => structured,
+            Err(error) => return error.into(),
+        };
         let blocked_by = match id_array(&args, "blockedBy", ADD_TASK_TOOL, false) {
             Ok(blocked_by) => blocked_by,
             Err(error) => return error.into(),
         };
         let mut store = self.store.lock().expect("task store lock");
-        match store.add(&id, &title, description.as_deref(), &blocked_by) {
+        match store.add(
+            &id,
+            &title,
+            description.as_deref(),
+            structured.as_fields(),
+            &blocked_by,
+        ) {
             Ok(TaskChange::Added) => ToolOutcome::ok(
                 format!("Added task `{id}`. {}", usage_note(&store)),
                 format!("added task `{id}`"),
@@ -218,6 +242,54 @@ impl Tool for AddTaskTool {
             Err(err) => ToolOutcome::failed(failure_for(&err), format!("add_task: {err}")),
         }
     }
+}
+
+/// The three structured-section strings a task tool parsed from its args, owned so they can back
+/// a borrowing [`StructuredFields`]. Each is `None` when the argument was absent.
+struct OwnedStructured {
+    in_scope: Option<String>,
+    out_of_scope: Option<String>,
+    completion_criteria: Option<String>,
+}
+
+impl OwnedStructured {
+    /// Borrow the owned strings as a [`StructuredFields`] to hand the store.
+    fn as_fields(&self) -> StructuredFields<'_> {
+        StructuredFields {
+            in_scope: self.in_scope.as_deref(),
+            out_of_scope: self.out_of_scope.as_deref(),
+            completion_criteria: self.completion_criteria.as_deref(),
+        }
+    }
+}
+
+/// Parse the optional `inScope` / `outOfScope` / `completionCriteria` string arguments a task tool
+/// accepts in [issues](TaskMode::Issues) mode. Absent ones yield `None`; the store enforces which
+/// are required for the current mode (so a simple-mode call that happens to pass them is harmless).
+fn read_structured(args: &Value, tool: &str) -> Result<OwnedStructured, ArgumentError> {
+    Ok(OwnedStructured {
+        in_scope: optional_str(args, "inScope", tool)?,
+        out_of_scope: optional_str(args, "outOfScope", tool)?,
+        completion_criteria: optional_str(args, "completionCriteria", tool)?,
+    })
+}
+
+/// Add the three structured-section properties to a task tool's `properties` object, for the
+/// [issues](TaskMode::Issues)-mode schema.
+fn merge_structured_properties(properties: &mut Value) {
+    let object = properties.as_object_mut().expect("properties object");
+    object.insert(
+        "inScope".to_string(),
+        json!({ "type": "string", "description": "What the task is responsible for." }),
+    );
+    object.insert(
+        "outOfScope".to_string(),
+        json!({ "type": "string", "description": "What the task is deliberately not responsible for." }),
+    );
+    object.insert(
+        "completionCriteria".to_string(),
+        json!({ "type": "string", "description": "How the task will be judged done." }),
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -243,32 +315,44 @@ impl Tool for UpdateTaskTool {
     }
 
     fn definition(&self) -> ToolDefinition {
-        ToolDefinition::new(
-            UPDATE_TASK_TOOL,
+        let mode = self.store.lock().expect("task store lock").mode();
+        let mut properties = json!({
+            "id": {
+                "type": "string",
+                "description": "The id of the task to revise."
+            },
+            "title": {
+                "type": "string",
+                "description": "A new title (replaces the old one)."
+            },
+            "description": {
+                "type": "string",
+                "description": "A new description (empty clears it)."
+            },
+            "status": {
+                "type": "string",
+                "enum": ["pending", "in_progress", "done"],
+                "description": "A new status."
+            }
+        });
+        let description = if mode == TaskMode::Issues {
+            merge_structured_properties(&mut properties);
+            "Revise a task by `id`: change its `title`, `description`, `status` (`pending`, \
+             `in_progress`, or `done`), and/or its structured sections `inScope` / `outOfScope` \
+             / `completionCriteria` (a supplied section cannot be cleared — issues-mode tasks \
+             always carry it). Supply at least one field to change. To change what a task is \
+             blocked by, use `set_blocked_by` instead."
+        } else {
             "Revise a task by `id`: change its `title`, `description`, and/or `status` \
              (`pending`, `in_progress`, or `done`). Supply at least one field to change. To \
-             change what a task is blocked by, use `set_blocked_by` instead.",
+             change what a task is blocked by, use `set_blocked_by` instead."
+        };
+        ToolDefinition::new(
+            UPDATE_TASK_TOOL,
+            description,
             json!({
                 "type": "object",
-                "properties": {
-                    "id": {
-                        "type": "string",
-                        "description": "The id of the task to revise."
-                    },
-                    "title": {
-                        "type": "string",
-                        "description": "A new title (replaces the old one)."
-                    },
-                    "description": {
-                        "type": "string",
-                        "description": "A new description (empty clears it)."
-                    },
-                    "status": {
-                        "type": "string",
-                        "enum": ["pending", "in_progress", "done"],
-                        "description": "A new status."
-                    }
-                },
+                "properties": properties,
                 "required": ["id"],
                 "additionalProperties": false
             }),
@@ -288,6 +372,10 @@ impl Tool for UpdateTaskTool {
             Ok(description) => description,
             Err(error) => return error.into(),
         };
+        let structured = match read_structured(&args, UPDATE_TASK_TOOL) {
+            Ok(structured) => structured,
+            Err(error) => return error.into(),
+        };
         let status = match optional_str(&args, "status", UPDATE_TASK_TOOL) {
             Ok(Some(raw)) => match TaskStatus::parse(&raw) {
                 Some(status) => Some(status),
@@ -302,7 +390,13 @@ impl Tool for UpdateTaskTool {
             Err(error) => return error.into(),
         };
         let mut store = self.store.lock().expect("task store lock");
-        match store.update(&id, title.as_deref(), description.as_deref(), status) {
+        match store.update(
+            &id,
+            title.as_deref(),
+            description.as_deref(),
+            status,
+            structured.as_fields(),
+        ) {
             // A revision changes no count, so there is nothing structured to report: the caller
             // asked for a change and got one.
             Ok(TaskChange::Updated) => ToolOutcome::ok(

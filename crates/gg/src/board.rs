@@ -1,19 +1,20 @@
-//! The gg **epics & issues** capability: the model's heavyweight work-decomposition board —
-//! a [blocked-by DAG](crate::dag) of structured, dispatchable issues grouped into epics, and
-//! **retained across compaction** like the [task list](crate::tasks).
+//! The gg **project management** capability: the run's single, **global** work-decomposition
+//! board — a [blocked-by DAG](crate::dag) of structured, dispatchable issues grouped into
+//! epics, **shared by every agent in the run** and **retained across compaction** like the
+//! [task list](crate::tasks).
 //!
-//! Where a [task](crate::tasks) is a one-line to-do, an
-//! [issue](https://docs.testcabinet.ai/gg/epics-and-issues/) is substantial enough to organize
-//! a large build and **safe to hand to a subagent** (Phase 4). An [`Issue`] carries structured
-//! sections — a title, an optional description, and the three that make it dispatchable:
-//! **in-scope**, **out-of-scope**, and **completion criteria** — that tell a subagent exactly
-//! what it is and is not responsible for and how it will be judged done. Related issues are
-//! grouped under an [`Epic`] for organization.
+//! Where a [task](crate::tasks) is an agent-scoped to-do, an
+//! [issue](https://docs.testcabinet.ai/gg/project-management/) is a run-global work item
+//! substantial enough to organize a large build and **safe to dispatch to an agent**. An
+//! [`Issue`] carries structured sections — a title, an optional description, and the three that
+//! make it dispatchable: **in-scope**, **out-of-scope**, and **completion criteria** — that
+//! tell the agent gg assigns it exactly what it is and is not responsible for and how it will be
+//! judged done. Related issues are grouped under an [`Epic`] for organization.
 //!
-//! The model builds and revises the board itself — `create_epic`/`create_issue` to add,
+//! Any agent may build and revise the board — `create_epic`/`create_issue` to add,
 //! `update_issue` to revise an issue's fields or status, `set_issue_blocked_by` to declare the
 //! DAG edges, `complete_issue` to mark one done, and `remove_epic`/`remove_issue` to drop one.
-//! The whole board is pushed into the context window as a single
+//! The whole board is pushed into each agent's context window as a single
 //! [`Board`](test_cabinet_core::gg::GgContextSource::Board)-sourced,
 //! [`Pinned`](crate::context::Retention::Pinned) item, so the
 //! [context accounting](crate::context) attributes it to the board and
@@ -27,26 +28,34 @@
 //! existence/self-block checks and its [`BoardError`] messages. A refused edge leaves the board
 //! unchanged.
 //!
-//! # The dispatch seam (Phase 4)
+//! # Auto-dispatch
 //!
-//! An issue's structured fields are, by design, everything a subagent brief needs. Phase 4's
-//! subagents will read an [`Issue`] off the [`BoardStore`] and dispatch it — nothing here
-//! builds subagents, but the shape is chosen so dispatch is a read of the board, not a
-//! reshaping of it. See [`Issue::in_scope`]/[`Issue::out_of_scope`]/[`Issue::completion_criteria`].
+//! Submitting an issue **enqueues** it. gg — not the agent — dispatches the work: the
+//! [orchestrator](crate::agent) watches the board, and once every issue an [`Issue`] is blocked
+//! by is [`Done`](IssueStatus::Done), it [assigns](BoardStore::assign_issue) a freshly spawned
+//! **top-level agent** to implement it (its structured fields become that agent's brief), moving
+//! the issue to [`InProgress`](IssueStatus::InProgress). An assigned agent that finishes without
+//! completing its issue is re-dispatched up to [`max_retries`](BoardCaps::max_retries) times
+//! (default 1); once those are exhausted the issue is marked [`Failed`](IssueStatus::Failed) — a
+//! terminal-but-not-done state that leaves its dependents blocked. The store owns the
+//! bookkeeping (each issue's [assignment](Issue::assigned_agent) and
+//! [retry count](Issue::retries)); the orchestrator owns the spawning. See
+//! [`BoardStore::actionable_unassigned_issues`].
 //!
 //! # Shapes
 //!
 //! - [`Epic`] / [`Issue`] — the board's nodes.
 //! - [`BoardStore`] — the mutable, invariant-enforcing, cycle-rejecting owner of the board,
-//!   shared (`Arc<Mutex>`) between the loop and the [board tools](crate::tools).
-//! - [`BoardRuntime`] — the loop's live view: whether the capability is on, the shared store,
+//!   shared (`Arc<Mutex>`) across the whole run — one board, held by the orchestrator and handed
+//!   to every agent's [board tools](crate::tools).
+//! - [`BoardRuntime`] — the run's live view: whether the capability is on, the shared store,
 //!   and the derivations the loop needs (the caps the system prompt states, the
 //!   [`BoardState`](test_cabinet_core::gg::GgTelemetryKind::BoardState) telemetry, and the
 //!   pinned context block).
 //!
-//! The capability is **ablatable**: when it is off the loop builds a
+//! The capability is **ablatable**: when it is off the run builds a
 //! [`disabled`](BoardRuntime::disabled) runtime, so there are no board tools, no prompt
-//! text, no context block, and no telemetry — the feature vanishes.
+//! text, no context block, no telemetry, and no auto-dispatch — the feature vanishes.
 
 use std::fmt;
 use std::sync::{Arc, Mutex};
@@ -62,23 +71,36 @@ use crate::prompts::{self, BoardBlockContext, EpicItemView, IssueItemView};
 pub const DEFAULT_MAX_EPICS: usize = 50;
 
 /// Default ceiling on the number of issues the board may hold at once. Generous — the board is
-/// the model's decomposition of a large build — but bounded so a runaway loop cannot fill the
+/// the run's decomposition of a large build — but bounded so a runaway loop cannot fill the
 /// window with issues.
 pub const DEFAULT_MAX_ISSUES: usize = 200;
 
-/// The epics-and-issues capability param naming the [epic ceiling](BoardCaps::max_epics).
+/// Default number of times gg re-dispatches an issue whose assigned agent finished without
+/// completing it before giving up and marking it [`Failed`](IssueStatus::Failed). One retry (so
+/// two attempts in all) is a middle ground: it absorbs a single flaky attempt without letting a
+/// genuinely-stuck issue respawn agents without end.
+pub const DEFAULT_MAX_RETRIES: usize = 1;
+
+/// The project-management capability param naming the [epic ceiling](BoardCaps::max_epics).
 const PARAM_MAX_EPICS: &str = "maxEpics";
 
-/// The epics-and-issues capability param naming the [issue ceiling](BoardCaps::max_issues).
+/// The project-management capability param naming the [issue ceiling](BoardCaps::max_issues).
 const PARAM_MAX_ISSUES: &str = "maxIssues";
 
-/// The count ceilings the [`BoardStore`] enforces, resolved from the capability's params.
+/// The project-management capability param naming the [retry ceiling](BoardCaps::max_retries).
+const PARAM_MAX_RETRIES: &str = "maxRetries";
+
+/// The ceilings the [`BoardStore`] enforces, resolved from the capability's params.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BoardCaps {
     /// The maximum number of epics the board may hold at once.
     pub max_epics: usize,
     /// The maximum number of issues the board may hold at once.
     pub max_issues: usize,
+    /// How many times an issue is re-dispatched after an assigned agent fails to complete it
+    /// before it is marked [`Failed`](IssueStatus::Failed). Zero means no retry — one attempt
+    /// only.
+    pub max_retries: usize,
 }
 
 impl Default for BoardCaps {
@@ -86,19 +108,24 @@ impl Default for BoardCaps {
         Self {
             max_epics: DEFAULT_MAX_EPICS,
             max_issues: DEFAULT_MAX_ISSUES,
+            max_retries: DEFAULT_MAX_RETRIES,
         }
     }
 }
 
 impl BoardCaps {
-    /// Resolve the caps from an epics-and-issues-capability `params` object: `maxEpics` /
-    /// `maxIssues` override the defaults when present as positive integers; a missing, zero, or
-    /// non-integer value keeps the default.
+    /// Resolve the caps from a project-management-capability `params` object: `maxEpics` /
+    /// `maxIssues` / `maxRetries` override the defaults when present as integers; a missing or
+    /// non-integer value keeps the default. `maxEpics`/`maxIssues` additionally require a
+    /// positive value (a board must be able to hold at least one), while `maxRetries` accepts
+    /// zero (no retry).
     pub fn resolve(params: &Value) -> Self {
         let default = Self::default();
         Self {
             max_epics: positive_usize(params, PARAM_MAX_EPICS).unwrap_or(default.max_epics),
             max_issues: positive_usize(params, PARAM_MAX_ISSUES).unwrap_or(default.max_issues),
+            max_retries: nonnegative_usize(params, PARAM_MAX_RETRIES)
+                .unwrap_or(default.max_retries),
         }
     }
 }
@@ -112,24 +139,35 @@ fn positive_usize(params: &Value, key: &str) -> Option<usize> {
         .map(|n| n as usize)
 }
 
+/// A non-negative-integer param value (zero allowed), or `None` when absent or non-integer.
+fn nonnegative_usize(params: &Value, key: &str) -> Option<usize> {
+    params.get(key).and_then(Value::as_u64).map(|n| n as usize)
+}
+
 /// The lifecycle status of an [`Issue`].
 ///
-/// An issue is *actionable* only when it is not [`Done`](Self::Done) and every issue it is
-/// blocked by is [`Done`](Self::Done).
+/// An issue is *actionable* only when it is not [terminal](Self::is_terminal) and every issue it
+/// is blocked by is [`Done`](Self::Done). It reaches a terminal state either by being accepted
+/// ([`Done`](Self::Done)) or by exhausting its retries ([`Failed`](Self::Failed)); a
+/// [`Failed`](Self::Failed) blocker is terminal but not done, so it leaves its dependents
+/// permanently blocked.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IssueStatus {
-    /// Not started.
+    /// Enqueued, not yet dispatched.
     Open,
-    /// Being worked on.
+    /// An agent has been assigned and is working it.
     InProgress,
-    /// Complete.
+    /// Accepted complete.
     Done,
+    /// The assigned agent could not complete it within its retries. Terminal, but not
+    /// [`Done`](Self::Done).
+    Failed,
 }
 
 impl IssueStatus {
-    /// Parse a model-supplied status token (`"open"`, `"in_progress"`, `"done"`), tolerating a
-    /// couple of natural spellings. Returns `None` for anything else so the tool can reject it
-    /// with guidance.
+    /// Parse a model-supplied status token (`"open"`, `"in_progress"`, `"done"`, `"failed"`),
+    /// tolerating a couple of natural spellings. Returns `None` for anything else so the tool can
+    /// reject it with guidance.
     pub fn parse(raw: &str) -> Option<Self> {
         match raw
             .trim()
@@ -140,8 +178,16 @@ impl IssueStatus {
             "open" | "todo" | "pending" => Some(IssueStatus::Open),
             "in_progress" | "inprogress" | "doing" => Some(IssueStatus::InProgress),
             "done" | "complete" | "completed" => Some(IssueStatus::Done),
+            "failed" | "failure" | "abandoned" => Some(IssueStatus::Failed),
             _ => None,
         }
+    }
+
+    /// Whether the status is **terminal** — the issue will not be worked further. Both
+    /// [`Done`](Self::Done) and [`Failed`](Self::Failed) are terminal; only [`Done`](Self::Done)
+    /// unblocks dependents.
+    pub fn is_terminal(self) -> bool {
+        matches!(self, IssueStatus::Done | IssueStatus::Failed)
     }
 
     /// The contract form of the status for the
@@ -151,6 +197,7 @@ impl IssueStatus {
             IssueStatus::Open => GgIssueStatus::Open,
             IssueStatus::InProgress => GgIssueStatus::InProgress,
             IssueStatus::Done => GgIssueStatus::Done,
+            IssueStatus::Failed => GgIssueStatus::Failed,
         }
     }
 
@@ -160,6 +207,7 @@ impl IssueStatus {
             IssueStatus::Open => "open",
             IssueStatus::InProgress => "in progress",
             IssueStatus::Done => "done",
+            IssueStatus::Failed => "failed",
         }
     }
 
@@ -169,6 +217,7 @@ impl IssueStatus {
             IssueStatus::Open => "[ ]",
             IssueStatus::InProgress => "[~]",
             IssueStatus::Done => "[x]",
+            IssueStatus::Failed => "[!]",
         }
     }
 }
@@ -230,6 +279,15 @@ pub struct Issue {
     blocked_by: Vec<String>,
     /// The id of the [`Epic`] this issue is grouped under, when any.
     epic_id: Option<String>,
+    /// The id of the agent gg [dispatched](crate::agent) to implement this issue, set when the
+    /// issue is [assigned](BoardStore::assign_issue) (moving it to
+    /// [`InProgress`](IssueStatus::InProgress)) and left in place after a terminal state as the
+    /// last agent that worked it. `None` while the issue is [`Open`](IssueStatus::Open).
+    assigned_agent: Option<String>,
+    /// How many times this issue has been **re-dispatched** after an assigned agent finished
+    /// without completing it. `0` until the first retry; bounded by
+    /// [`max_retries`](BoardCaps::max_retries).
+    retries: u32,
 }
 
 // Field accessors are the issue's read surface for the tests, the console-facing derivations,
@@ -279,6 +337,16 @@ impl Issue {
     /// The epic this issue is grouped under, if any.
     pub fn epic_id(&self) -> Option<&str> {
         self.epic_id.as_deref()
+    }
+
+    /// The agent gg dispatched to implement this issue, if one is (or was) assigned.
+    pub fn assigned_agent(&self) -> Option<&str> {
+        self.assigned_agent.as_deref()
+    }
+
+    /// How many times this issue has been re-dispatched after a failed attempt.
+    pub fn retries(&self) -> u32 {
+        self.retries
     }
 }
 
@@ -574,6 +642,8 @@ impl BoardStore {
             status: IssueStatus::Open,
             blocked_by: blockers,
             epic_id,
+            assigned_agent: None,
+            retries: 0,
         });
         Ok(BoardChange::IssueCreated)
     }
@@ -661,6 +731,89 @@ impl BoardStore {
         };
         self.issues[index].status = IssueStatus::Done;
         Ok(BoardChange::IssueCompleted)
+    }
+
+    /// The caps' [retry ceiling](BoardCaps::max_retries).
+    pub fn max_retries(&self) -> usize {
+        self.caps.max_retries
+    }
+
+    /// The status of the issue with id `id`, if it exists — the read the
+    /// [dispatcher](crate::agent) consults to decide an assigned agent's issue is done, or to
+    /// answer a [wait](crate::agent).
+    pub fn issue_status(&self, id: &str) -> Option<IssueStatus> {
+        self.issue_status_of(id)
+    }
+
+    /// The ids of every issue that is **dispatchable right now**: [`Open`](IssueStatus::Open),
+    /// not yet [assigned](Issue::assigned_agent), and with every blocker
+    /// [`Done`](IssueStatus::Done). These are the issues the [dispatcher](crate::agent) spawns an
+    /// agent for. The assignment itself is a separate, re-validating step
+    /// ([`assign_issue`](Self::assign_issue)), so two concurrent pumps cannot both claim one.
+    pub fn dispatchable_ids(&self) -> Vec<String> {
+        self.issues
+            .iter()
+            .filter(|issue| {
+                issue.status == IssueStatus::Open
+                    && issue.assigned_agent.is_none()
+                    && self.is_ready(issue)
+            })
+            .map(|issue| issue.id.clone())
+            .collect()
+    }
+
+    /// **Claim** the [`Open`](IssueStatus::Open) issue `id` for the agent `agent_id`: move it to
+    /// [`InProgress`](IssueStatus::InProgress) and record the assignment. Returns `false` — the
+    /// issue is left untouched — if no such issue exists or it is no longer open-and-unassigned
+    /// (a concurrent pump already claimed it, or it reached a terminal state). This is the atomic
+    /// step that makes dispatch race-free: the [dispatcher](crate::agent) mints an agent id, then
+    /// claims here, and only spawns when the claim succeeds.
+    pub fn assign_issue(&mut self, id: &str, agent_id: &str) -> bool {
+        let Some(index) = self.issue_position(id) else {
+            return false;
+        };
+        let issue = &mut self.issues[index];
+        if issue.status != IssueStatus::Open || issue.assigned_agent.is_some() {
+            return false;
+        }
+        issue.status = IssueStatus::InProgress;
+        issue.assigned_agent = Some(agent_id.to_string());
+        true
+    }
+
+    /// **Re-dispatch** the issue `id` to a fresh agent after a failed attempt: reassign it to
+    /// `agent_id`, move it back to [`InProgress`](IssueStatus::InProgress), and record its new
+    /// [retry count](Issue::retries). Returns `false` (untouched) if no such issue exists or it
+    /// has already reached a terminal state. Unlike [`assign_issue`](Self::assign_issue) this does
+    /// not require the issue to be [`Open`](IssueStatus::Open) — a re-dispatch follows an agent
+    /// that left it [`InProgress`](IssueStatus::InProgress).
+    pub fn redispatch_issue(&mut self, id: &str, agent_id: &str, retries: u32) -> bool {
+        let Some(index) = self.issue_position(id) else {
+            return false;
+        };
+        let issue = &mut self.issues[index];
+        if issue.status.is_terminal() {
+            return false;
+        }
+        issue.status = IssueStatus::InProgress;
+        issue.assigned_agent = Some(agent_id.to_string());
+        issue.retries = retries;
+        true
+    }
+
+    /// Mark the issue `id` [`Failed`](IssueStatus::Failed) — its retries are exhausted. Returns
+    /// `false` (untouched) if no such issue exists or it is already terminal. The assignment is
+    /// left in place as the last agent that worked it.
+    pub fn fail_issue(&mut self, id: &str) -> bool {
+        let Some(index) = self.issue_position(id) else {
+            return false;
+        };
+        let issue = &mut self.issues[index];
+        if issue.status.is_terminal() {
+            return false;
+        }
+        issue.status = IssueStatus::Failed;
+        true
     }
 
     /// Remove an epic. Refused if no epic of that id exists. Any issue grouped under it is
@@ -752,9 +905,11 @@ impl BoardStore {
         Ok(out)
     }
 
-    /// Whether an issue is actionable: not done, and every issue it is blocked by is done.
+    /// Whether an issue is actionable: not [terminal](IssueStatus::is_terminal), and every issue
+    /// it is blocked by is [`Done`](IssueStatus::Done). A [`Failed`](IssueStatus::Failed) blocker
+    /// is terminal but not done, so it never satisfies this.
     fn is_ready(&self, issue: &Issue) -> bool {
-        issue.status != IssueStatus::Done
+        !issue.status.is_terminal()
             && issue
                 .blocked_by
                 .iter()
@@ -795,6 +950,8 @@ impl BoardStore {
                 status: issue.status.to_contract(),
                 blocked_by: issue.blocked_by.clone(),
                 epic_id: issue.epic_id.clone(),
+                assigned_agent_id: issue.assigned_agent.clone(),
+                retries: issue.retries,
             })
             .collect();
         GgTelemetryKind::BoardState { epics, issues }
@@ -848,7 +1005,7 @@ impl BoardStore {
     /// epic grouping, ready/blocked state) plus the structured brief. The DAG derivations are done
     /// here, in the store that owns the graph; the template only lays the result out.
     fn issue_view(&self, issue: &Issue) -> IssueItemView {
-        let open = issue.status != IssueStatus::Done;
+        let open = !issue.status.is_terminal();
         let ready = open && self.is_ready(issue);
         IssueItemView {
             id: issue.id.clone(),
@@ -987,9 +1144,9 @@ impl BoardRuntime {
         self.store.lock().expect("board store lock").context_block()
     }
 
-    /// The [dispatch brief](BoardStore::issue_brief) for the issue with id `id`, for a subagent
-    /// dispatched against it (`spawn_subagent { issueId }`), or `None` when the capability is off
-    /// or no such issue exists.
+    /// The [dispatch brief](BoardStore::issue_brief) for the issue with id `id` — the brief gg
+    /// hands the agent it [dispatches](crate::agent) to implement it — or `None` when the
+    /// capability is off or no such issue exists.
     pub fn issue_brief(&self, id: &str) -> Option<String> {
         if !self.enabled {
             return None;
@@ -1012,6 +1169,91 @@ impl BoardRuntime {
             .expect("board store lock")
             .complete_issue(id)
             .is_ok()
+    }
+
+    /// The caps' [retry ceiling](BoardCaps::max_retries) — how many times the
+    /// [dispatcher](crate::agent) re-dispatches a failed issue before marking it
+    /// [`Failed`](IssueStatus::Failed). Zero when the capability is off.
+    pub fn max_retries(&self) -> usize {
+        if !self.enabled {
+            return 0;
+        }
+        self.store.lock().expect("board store lock").max_retries()
+    }
+
+    /// The status of the issue with id `id`, or `None` when the capability is off or no such issue
+    /// exists — the read the [dispatcher](crate::agent) and a [wait](crate::agent) consult.
+    pub fn issue_status(&self, id: &str) -> Option<IssueStatus> {
+        if !self.enabled {
+            return None;
+        }
+        self.store
+            .lock()
+            .expect("board store lock")
+            .issue_status(id)
+    }
+
+    /// Whether the issue with id `id` has reached a terminal state
+    /// ([`Done`](IssueStatus::Done) or [`Failed`](IssueStatus::Failed)) — what a
+    /// [wait](crate::agent) resolves on. A missing issue reads as terminal so a wait on an id that
+    /// was removed does not hang.
+    pub fn issue_is_terminal(&self, id: &str) -> bool {
+        match self.issue_status(id) {
+            Some(status) => status.is_terminal(),
+            None => true,
+        }
+    }
+
+    /// Whether the issue with id `id` is [`Done`](IssueStatus::Done) — the check the
+    /// [dispatcher](crate::agent) makes to tell an accepted issue from one its assigned agent left
+    /// unfinished.
+    pub fn issue_is_done(&self, id: &str) -> bool {
+        self.issue_status(id) == Some(IssueStatus::Done)
+    }
+
+    /// The ids of every issue that is [dispatchable right now](BoardStore::dispatchable_ids), or
+    /// an empty list when the capability is off.
+    pub fn dispatchable_ids(&self) -> Vec<String> {
+        if !self.enabled {
+            return Vec::new();
+        }
+        self.store
+            .lock()
+            .expect("board store lock")
+            .dispatchable_ids()
+    }
+
+    /// [Claim](BoardStore::assign_issue) the issue `id` for agent `agent_id`, returning whether the
+    /// claim succeeded. `false` when the capability is off.
+    pub fn assign_issue(&self, id: &str, agent_id: &str) -> bool {
+        if !self.enabled {
+            return false;
+        }
+        self.store
+            .lock()
+            .expect("board store lock")
+            .assign_issue(id, agent_id)
+    }
+
+    /// [Re-dispatch](BoardStore::redispatch_issue) the issue `id` to `agent_id` with a new retry
+    /// count, returning whether it was applied. `false` when the capability is off.
+    pub fn redispatch_issue(&self, id: &str, agent_id: &str, retries: u32) -> bool {
+        if !self.enabled {
+            return false;
+        }
+        self.store
+            .lock()
+            .expect("board store lock")
+            .redispatch_issue(id, agent_id, retries)
+    }
+
+    /// Mark the issue `id` [`Failed`](IssueStatus::Failed), returning whether it was applied.
+    /// `false` when the capability is off.
+    pub fn fail_issue(&self, id: &str) -> bool {
+        if !self.enabled {
+            return false;
+        }
+        self.store.lock().expect("board store lock").fail_issue(id)
     }
 }
 

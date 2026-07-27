@@ -1,4 +1,4 @@
-// The board panel: gg's epic/issue board rendered live (see gg/epics-and-issues).
+// The board panel: gg's epic/issue board rendered live (see gg/project-management).
 // The board is the heavyweight work tier above the tasks list — issues grouped
 // under epics, each issue carrying the structured brief (in-scope / out-of-scope /
 // completion criteria) that makes it safe to dispatch to a subagent. gg re-emits
@@ -27,16 +27,17 @@ interface BoardViewProps {
   codeReviews: Map<string, CodeReviewState>;
 }
 
-// The derived readiness of an issue: done issues are done; otherwise an incomplete
-// blocker makes it blocked (and names which), and everything else is ready to be
-// picked up (or dispatched to a subagent).
-type Readiness = "ready" | "blocked" | "done";
+// The derived readiness of an issue: a done issue is done and a failed one is failed
+// (both terminal); otherwise an incomplete blocker makes it blocked (and names
+// which), and everything else is ready to be picked up (or dispatched to an agent).
+export type Readiness = "ready" | "blocked" | "done" | "failed";
 
-function deriveIssue(
+export function deriveIssue(
   issue: GgBoardIssue,
   byId: Map<string, GgBoardIssue>,
 ): { readiness: Readiness; incomplete: string[] } {
   if (issue.status === "done") return { readiness: "done", incomplete: [] };
+  if (issue.status === "failed") return { readiness: "failed", incomplete: [] };
   const incomplete = issue.blockedBy.filter(
     (id) => byId.get(id)?.status !== "done",
   );
@@ -46,23 +47,25 @@ function deriveIssue(
   };
 }
 
-const STATUS_LABELS: Record<GgIssueStatus, string> = {
+export const STATUS_LABELS: Record<GgIssueStatus, string> = {
   open: "open",
   in_progress: "in progress",
   done: "done",
+  failed: "failed",
 };
 
-const READINESS_LABELS: Record<Readiness, string> = {
+export const READINESS_LABELS: Record<Readiness, string> = {
   ready: "ready",
   blocked: "blocked",
   done: "done",
+  failed: "failed",
 };
 
 // The Code Review badge label per phase (see gg/code-reviews): a review gates an
 // issue's acceptance, so "in review" while the reviewer inspects the diff, "changes
 // requested" while a fix agent works the actionable items, "approved" once the issue
 // may finally be accepted.
-const REVIEW_LABELS: Record<GgCodeReviewPhase, string> = {
+export const REVIEW_LABELS: Record<GgCodeReviewPhase, string> = {
   requested: "in review",
   changes_requested: "changes requested",
   approved: "approved",
@@ -81,8 +84,8 @@ export function BoardView({ board, codeReviews }: BoardViewProps) {
   if (!board || (board.epics.length === 0 && board.issues.length === 0)) {
     return (
       <p className={styles.empty}>
-        No board yet — the epics-and-issues capability streams the model's board
-        here, grouping issues under epics with their scope and completion
+        No board yet — the project-management capability streams the model's
+        board here, grouping issues under epics with their scope and completion
         criteria as it decomposes the work.
       </p>
     );
@@ -213,7 +216,7 @@ function IssueCard({
 // The actionable items a Code Review's `changes_requested` returned, listed under
 // the issue so the gate's remaining work is visible on the board — it is precisely
 // what a fix agent, dispatched with the original task plus these items, addresses.
-function ReviewItems({ items }: { items: string[] }) {
+export function ReviewItems({ items }: { items: string[] }) {
   return (
     <div className={styles.reviewItems}>
       <span className={styles.reviewItemsLabel}>Changes requested</span>
@@ -232,7 +235,7 @@ function ReviewItems({ items }: { items: string[] }) {
 // DAG's blockers: an outstanding blocker reads warm (the reason the issue can't
 // start), a satisfied one reads muted with its check. The label is "blocked by"
 // while any edge is outstanding, "depends on" once all are satisfied.
-function Blockers({
+export function Blockers({
   issue,
   byId,
   incomplete,
@@ -270,7 +273,7 @@ function Blockers({
 // collapsed `<details>`. The scope boundaries and acceptance criteria are what
 // make an issue safe to hand to a subagent, so they are always available but kept
 // out of the scan by default.
-function IssueBrief({ issue }: { issue: GgBoardIssue }) {
+export function IssueBrief({ issue }: { issue: GgBoardIssue }) {
   return (
     <details className={styles.brief}>
       <summary className={styles.briefSummary}>Brief</summary>

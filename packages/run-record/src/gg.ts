@@ -434,6 +434,21 @@ export type GgTaskEntry = {
    */
   description?: string;
   /**
+   * What the task **is** responsible for — present only in the tasks capability's
+   * **issues** [mode](https://docs.testcabinet.ai/gg/tasks/), which requires the same
+   * structured sections as a [board issue](GgBoardIssue). Absent in the default **simple**
+   * mode.
+   */
+  inScope?: string;
+  /**
+   * What the task is **not** responsible for — present only in **issues** mode.
+   */
+  outOfScope?: string;
+  /**
+   * How the task will be judged **done** — present only in **issues** mode.
+   */
+  completionCriteria?: string;
+  /**
    * The task's status.
    */
   status: GgTaskStatus;
@@ -446,20 +461,23 @@ export type GgTaskEntry = {
 };
 
 /**
- * The status of one [issue](https://docs.testcabinet.ai/gg/epics-and-issues/) on the
+ * The status of one [issue](https://docs.testcabinet.ai/gg/project-management/) on the
  * [board](GgTelemetryKind::BoardState) — the heavyweight counterpart to
  * [`GgTaskStatus`].
  *
- * An issue moves from [`Open`](Self::Open) (not started) through
- * [`InProgress`](Self::InProgress) (being worked) to [`Done`](Self::Done) (complete). Like a
- * task, an issue is *actionable* only when all of its blockers are [`Done`](Self::Done); the
- * console derives that from the blocked-by edges and each blocker's status rather than a
- * separate flag.
+ * An issue moves from [`Open`](Self::Open) (enqueued, not yet dispatched) through
+ * [`InProgress`](Self::InProgress) (an agent has been assigned and is working it) to a
+ * terminal state — [`Done`](Self::Done) (accepted complete) or [`Failed`](Self::Failed) (its
+ * assigned agent could not complete it within the configured retries). Like a task, an issue
+ * is *actionable* only when all of its blockers are [`Done`](Self::Done); the console derives
+ * that from the blocked-by edges and each blocker's status rather than a separate flag. A
+ * [`Failed`](Self::Failed) blocker is terminal but **not** done, so it leaves its dependents
+ * permanently blocked — surfaced on the board rather than silently unblocking them.
  */
-export type GgIssueStatus = "open" | "in_progress" | "done";
+export type GgIssueStatus = "open" | "in_progress" | "done" | "failed";
 
 /**
- * One [epic](https://docs.testcabinet.ai/gg/epics-and-issues/) on the board — a grouping of
+ * One [epic](https://docs.testcabinet.ai/gg/project-management/) on the board — a grouping of
  * related [issues](GgBoardIssue) reported in a [`BoardState`](GgTelemetryKind::BoardState)
  * event.
  *
@@ -484,7 +502,7 @@ export type GgBoardEpic = {
 };
 
 /**
- * One [issue](https://docs.testcabinet.ai/gg/epics-and-issues/) on the board — a node of the
+ * One [issue](https://docs.testcabinet.ai/gg/project-management/) on the board — a node of the
  * blocked-by DAG reported in a [`BoardState`](GgTelemetryKind::BoardState) event.
  *
  * An issue is the **heavyweight** counterpart to a [task](GgTaskEntry): rather than just a
@@ -525,7 +543,7 @@ export type GgBoardIssue = {
    */
   outOfScope: string;
   /**
-   * How the issue will be judged **done** — the acceptance criteria a dispatched subagent
+   * How the issue will be judged **done** — the acceptance criteria the assigned agent
    * is held to.
    */
   completionCriteria: string;
@@ -543,6 +561,21 @@ export type GgBoardIssue = {
    * The id of the [epic](GgBoardEpic) this issue is grouped under, when any.
    */
   epicId?: string;
+  /**
+   * The id of the agent gg [dispatched](https://docs.testcabinet.ai/gg/project-management/)
+   * to implement this issue, when one is assigned (its status is then
+   * [`InProgress`](GgIssueStatus::InProgress)) — the link the console follows from the issue
+   * to that agent in the Agents explorer. `None` while the issue is
+   * [`Open`](GgIssueStatus::Open), and after a terminal state carries the last agent that
+   * worked it.
+   */
+  assignedAgentId?: string;
+  /**
+   * How many times gg has **re-dispatched** this issue after an assigned agent finished
+   * without completing it. Bounded by the capability's `maxRetries`; once exhausted the
+   * issue is marked [`Failed`](GgIssueStatus::Failed). `0` until the first retry.
+   */
+  retries: number;
 };
 
 /**
@@ -555,7 +588,7 @@ export type GgBoardIssue = {
  * Each figure is a **count of retained items**, not a token figure: how many read
  * [skills](GgContextSource::Skill), how many [tasks](GgContextSource::TaskList), how many
  * in-play [memories](GgContextSource::Memory), and how many
- * [issues](https://docs.testcabinet.ai/gg/epics-and-issues/) on the
+ * [issues](https://docs.testcabinet.ai/gg/project-management/) on the
  * [board](GgContextSource::Board) remained pinned after the ephemeral history was replaced by
  * the summary. The epic/issue board is retained across the boundary just like the task list,
  * so its issue count is reported here as part of the retention proof.
@@ -1205,7 +1238,7 @@ export type GgSessionSummary = {
   /**
    * How many distinct [issues](GgBoardIssue) the run ever created on its
    * [board](GgTelemetryKind::BoardState) — the count of distinct issue ids observed across the
-   * run. `0` when the epics-and-issues capability was off.
+   * run. `0` when the project-management capability was off.
    */
   issuesCreated: number;
   /**

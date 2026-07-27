@@ -4,7 +4,7 @@ title: "Speculative execution"
 
 Best-of-K: attempt the same piece of work several times in parallel and keep the
 best result. gg fans out K [subagents](/gg/subagents/) at the same task or
-[issue](/gg/epics-and-issues/) — optionally with different approaches, or on
+[board issue](/gg/project-management/) — optionally with different approaches, or on
 different [slots](/gg/multi-model/#slots) — each in its own
 [worktree](/gg/worktrees/), then a judge (or a [Code Review](/gg/code-reviews/))
 selects the winning attempt to merge and discards the rest.

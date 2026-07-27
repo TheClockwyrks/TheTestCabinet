@@ -62,6 +62,9 @@ pub const DEFAULT_MAX_TASKS: usize = 100;
 /// The tasks capability param naming the [maximum number of tasks](TaskStore::max_tasks).
 const PARAM_MAX_TASKS: &str = "maxTasks";
 
+/// The tasks capability param naming the list [mode](TaskMode).
+const PARAM_MODE: &str = "mode";
+
 /// Resolve the task-count ceiling from a tasks-capability `params` object: `maxTasks`
 /// overrides [`DEFAULT_MAX_TASKS`] when present as a positive integer; a missing, zero, or
 /// non-integer value keeps the default.
@@ -72,6 +75,53 @@ pub fn resolve_max_tasks(params: &Value) -> usize {
         .filter(|&n| n > 0)
         .map(|n| n as usize)
         .unwrap_or(DEFAULT_MAX_TASKS)
+}
+
+/// The shape a [task](Task) takes, selected by the tasks capability's `mode` param.
+///
+/// The two modes are the same list — an agent-scoped, compaction-surviving blocked-by DAG —
+/// differing only in what a task **must** carry:
+///
+/// - [`Simple`](Self::Simple) (the default): a lightweight to-do — a title and an optional
+///   description.
+/// - [`Issues`](Self::Issues): the task requires the same **structured sections** as a
+///   [project-management board issue](crate::board) — an in-scope, an out-of-scope, and a
+///   completion criteria (a title stays required, a description stays optional) — so a task is
+///   scoped and acceptance-criteria'd without pulling in the global board and its auto-dispatch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TaskMode {
+    /// A lightweight to-do: title (+ optional description).
+    #[default]
+    Simple,
+    /// A structured item: title, in-scope, out-of-scope, and completion criteria required (like a
+    /// board [issue](crate::board)).
+    Issues,
+}
+
+impl TaskMode {
+    /// Parse a `mode` param token, tolerating a couple of natural spellings. An unknown or absent
+    /// value keeps the default ([`Simple`](Self::Simple)).
+    pub fn parse(raw: &str) -> Self {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "issues" | "issue" | "structured" => TaskMode::Issues,
+            _ => TaskMode::Simple,
+        }
+    }
+
+    /// Whether this mode requires a task's structured scope/completion sections.
+    fn requires_structure(self) -> bool {
+        matches!(self, TaskMode::Issues)
+    }
+}
+
+/// Resolve the list [mode](TaskMode) from a tasks-capability `params` object: `mode` selects
+/// `simple` (the default) or `issues`; a missing or unrecognized value keeps `simple`.
+pub fn resolve_task_mode(params: &Value) -> TaskMode {
+    params
+        .get(PARAM_MODE)
+        .and_then(Value::as_str)
+        .map(TaskMode::parse)
+        .unwrap_or_default()
 }
 
 /// The lifecycle status of a [`Task`].
@@ -149,6 +199,13 @@ pub struct Task {
     /// The ids of the tasks this one is blocked by (deduplicated, existence-checked, and
     /// kept acyclic).
     blocked_by: Vec<String>,
+    /// What the task **is** responsible for — required (and `Some`) in
+    /// [issues](TaskMode::Issues) mode, always `None` in [simple](TaskMode::Simple) mode.
+    in_scope: Option<String>,
+    /// What the task is **not** responsible for — required in issues mode, else `None`.
+    out_of_scope: Option<String>,
+    /// How the task will be judged **done** — required in issues mode, else `None`.
+    completion_criteria: Option<String>,
 }
 
 // Field accessors are the task's read surface for the tests and console-facing
@@ -178,6 +235,21 @@ impl Task {
     /// The ids this task is blocked by.
     pub fn blocked_by(&self) -> &[String] {
         &self.blocked_by
+    }
+
+    /// What the task is responsible for, in [issues](TaskMode::Issues) mode.
+    pub fn in_scope(&self) -> Option<&str> {
+        self.in_scope.as_deref()
+    }
+
+    /// What the task is not responsible for, in issues mode.
+    pub fn out_of_scope(&self) -> Option<&str> {
+        self.out_of_scope.as_deref()
+    }
+
+    /// How the task is judged done, in issues mode.
+    pub fn completion_criteria(&self) -> Option<&str> {
+        self.completion_criteria.as_deref()
     }
 }
 
@@ -258,8 +330,8 @@ impl fmt::Display for TaskError {
             ),
             TaskError::NoUpdateFields => write!(
                 f,
-                "`update_task` needs at least one of `title`, `description`, or `status` to \
-                 change."
+                "`update_task` needs at least one of `title`, `description`, or `status` (or, in \
+                 issues mode, `inScope`/`outOfScope`/`completionCriteria`) to change."
             ),
         }
     }
@@ -280,6 +352,37 @@ pub enum TaskChange {
     Removed,
 }
 
+/// The three structured sections a task carries in [issues](TaskMode::Issues) mode, as supplied
+/// to [`add`](TaskStore::add) / [`update`](TaskStore::update). Each is `None` when the caller did
+/// not supply it (in simple mode they are ignored; in issues mode a missing one on `add` is
+/// refused). Mirrors a [board issue](crate::board)'s scope fields.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct StructuredFields<'a> {
+    /// What the task is responsible for.
+    pub in_scope: Option<&'a str>,
+    /// What the task is not responsible for.
+    pub out_of_scope: Option<&'a str>,
+    /// How the task is judged done.
+    pub completion_criteria: Option<&'a str>,
+}
+
+impl StructuredFields<'_> {
+    /// Whether any of the three sections was supplied.
+    fn any(&self) -> bool {
+        self.in_scope.is_some() || self.out_of_scope.is_some() || self.completion_criteria.is_some()
+    }
+}
+
+/// The cleaned, stored form of a task's [structured sections](StructuredFields) after
+/// [mode](TaskMode) resolution — every field `Some` in issues mode, every field `None` in simple
+/// mode.
+#[derive(Debug, Clone, Default)]
+struct ResolvedStructured {
+    in_scope: Option<String>,
+    out_of_scope: Option<String>,
+    completion_criteria: Option<String>,
+}
+
 /// The mutable, cycle-rejecting DAG of the model's tasks.
 ///
 /// The store is the single owner of the task list; the [tools](crate::tools) and the
@@ -291,14 +394,21 @@ pub enum TaskChange {
 #[derive(Debug, Clone)]
 pub struct TaskStore {
     max_tasks: usize,
+    mode: TaskMode,
     tasks: Vec<Task>,
 }
 
 impl TaskStore {
-    /// An empty store holding at most `max_tasks` tasks.
+    /// An empty [simple](TaskMode::Simple)-mode store holding at most `max_tasks` tasks.
     pub fn new(max_tasks: usize) -> Self {
+        Self::with_mode(max_tasks, TaskMode::Simple)
+    }
+
+    /// An empty store holding at most `max_tasks` tasks, in list [mode](TaskMode) `mode`.
+    pub fn with_mode(max_tasks: usize, mode: TaskMode) -> Self {
         Self {
             max_tasks,
+            mode,
             tasks: Vec::new(),
         }
     }
@@ -306,6 +416,11 @@ impl TaskStore {
     /// The task-count ceiling this store enforces.
     pub fn max_tasks(&self) -> usize {
         self.max_tasks
+    }
+
+    /// The list [mode](TaskMode) this store enforces.
+    pub fn mode(&self) -> TaskMode {
+        self.mode
     }
 
     /// The number of tasks currently held.
@@ -324,11 +439,13 @@ impl TaskStore {
     /// the store is at the count cap, a `blocked_by` entry is empty/self/unknown, or an
     /// edge would create a cycle. A newly added task has no dependents, so its only failure
     /// mode against the DAG is referencing a non-existent blocker.
+    #[allow(clippy::too_many_arguments)]
     pub fn add(
         &mut self,
         id: &str,
         title: &str,
         description: Option<&str>,
+        structured: StructuredFields<'_>,
         blocked_by: &[String],
     ) -> Result<TaskChange, TaskError> {
         let id = id.trim();
@@ -339,6 +456,9 @@ impl TaskStore {
         if title.is_empty() {
             return Err(TaskError::EmptyField("title"));
         }
+        // In issues mode the three structured sections are required; in simple mode they are
+        // absent (any supplied value is ignored). Validated before any mutation.
+        let structured = self.resolve_structured(structured)?;
         if self.position(id).is_some() {
             return Err(TaskError::Duplicate(id.to_string()));
         }
@@ -360,32 +480,70 @@ impl TaskStore {
             description: clean_description(description),
             status: TaskStatus::Pending,
             blocked_by: blockers,
+            in_scope: structured.in_scope,
+            out_of_scope: structured.out_of_scope,
+            completion_criteria: structured.completion_criteria,
         });
         Ok(TaskChange::Added)
     }
 
-    /// Revise a task's `title`, `description`, and/or `status` in place. At least one must
-    /// be supplied. A `None` field is left unchanged; an empty `description` clears it. The
-    /// blocked-by set is not touched here (use [`set_blocked_by`](Self::set_blocked_by)).
+    /// Validate and normalize a task's structured sections against the store's [mode](TaskMode).
+    ///
+    /// In [issues](TaskMode::Issues) mode all three are required (a missing or empty one is an
+    /// [`EmptyField`](TaskError::EmptyField)); in [simple](TaskMode::Simple) mode they are ignored
+    /// and the result is empty, so a simple-mode task never carries structure. Returns the cleaned
+    /// `Some` values to store.
+    fn resolve_structured(
+        &self,
+        structured: StructuredFields<'_>,
+    ) -> Result<ResolvedStructured, TaskError> {
+        if !self.mode.requires_structure() {
+            return Ok(ResolvedStructured::default());
+        }
+        Ok(ResolvedStructured {
+            in_scope: Some(require_field(structured.in_scope, "inScope")?),
+            out_of_scope: Some(require_field(structured.out_of_scope, "outOfScope")?),
+            completion_criteria: Some(require_field(
+                structured.completion_criteria,
+                "completionCriteria",
+            )?),
+        })
+    }
+
+    /// Revise a task's `title`, `description`, `status`, and — in [issues](TaskMode::Issues) mode
+    /// — its `structured` scope/completion sections, in place. At least one must be supplied. A
+    /// `None` field is left unchanged; an empty `description` clears it. A structured section
+    /// supplied in issues mode must be non-empty (it cannot be cleared — issues-mode tasks must
+    /// always carry it); supplied in simple mode it is ignored. The blocked-by set is not touched
+    /// here (use [`set_blocked_by`](Self::set_blocked_by)).
     pub fn update(
         &mut self,
         id: &str,
         title: Option<&str>,
         description: Option<&str>,
         status: Option<TaskStatus>,
+        structured: StructuredFields<'_>,
     ) -> Result<TaskChange, TaskError> {
         let id = id.trim();
         if id.is_empty() {
             return Err(TaskError::EmptyField("id"));
         }
-        if title.is_none() && description.is_none() && status.is_none() {
+        // Structured fields count as a change only in issues mode; in simple mode they are ignored,
+        // so an update carrying only them is "no fields".
+        let structured_changes = self.mode.requires_structure() && structured.any();
+        if title.is_none() && description.is_none() && status.is_none() && !structured_changes {
             return Err(TaskError::NoUpdateFields);
         }
-        // Validate the title before mutating so a refused update applies nothing.
+        // Validate everything before mutating so a refused update applies nothing.
         if let Some(title) = title
             && title.trim().is_empty()
         {
             return Err(TaskError::EmptyField("title"));
+        }
+        if self.mode.requires_structure() {
+            require_non_empty_when_present(structured.in_scope, "inScope")?;
+            require_non_empty_when_present(structured.out_of_scope, "outOfScope")?;
+            require_non_empty_when_present(structured.completion_criteria, "completionCriteria")?;
         }
         let Some(index) = self.position(id) else {
             return Err(TaskError::NotFound(id.to_string()));
@@ -398,6 +556,18 @@ impl TaskStore {
         }
         if let Some(status) = status {
             self.tasks[index].status = status;
+        }
+        if structured_changes {
+            if let Some(in_scope) = structured.in_scope {
+                self.tasks[index].in_scope = Some(in_scope.trim().to_string());
+            }
+            if let Some(out_of_scope) = structured.out_of_scope {
+                self.tasks[index].out_of_scope = Some(out_of_scope.trim().to_string());
+            }
+            if let Some(completion_criteria) = structured.completion_criteria {
+                self.tasks[index].completion_criteria =
+                    Some(completion_criteria.trim().to_string());
+            }
         }
         Ok(TaskChange::Updated)
     }
@@ -521,6 +691,9 @@ impl TaskStore {
                 id: task.id.clone(),
                 title: task.title.clone(),
                 description: task.description.clone(),
+                in_scope: task.in_scope.clone(),
+                out_of_scope: task.out_of_scope.clone(),
+                completion_criteria: task.completion_criteria.clone(),
                 status: task.status.to_contract(),
                 blocked_by: task.blocked_by.clone(),
             })
@@ -560,6 +733,9 @@ impl TaskStore {
                             .collect::<Vec<_>>()
                             .join(", ")
                     }),
+                    in_scope: task.in_scope.clone(),
+                    out_of_scope: task.out_of_scope.clone(),
+                    completion_criteria: task.completion_criteria.clone(),
                 }
             })
             .collect();
@@ -575,6 +751,26 @@ fn clean_description(description: Option<&str>) -> Option<String> {
         .map(str::trim)
         .filter(|d| !d.is_empty())
         .map(str::to_string)
+}
+
+/// Trim a required structured field, refusing an absent or empty (whitespace-only) value.
+fn require_field(value: Option<&str>, field: &'static str) -> Result<String, TaskError> {
+    match value.map(str::trim) {
+        Some(trimmed) if !trimmed.is_empty() => Ok(trimmed.to_string()),
+        _ => Err(TaskError::EmptyField(field)),
+    }
+}
+
+/// Refuse an empty (whitespace-only) value when a structured field is present in an update; a
+/// `None` (unchanged) field is fine.
+fn require_non_empty_when_present(
+    value: Option<&str>,
+    field: &'static str,
+) -> Result<(), TaskError> {
+    match value {
+        Some(v) if v.trim().is_empty() => Err(TaskError::EmptyField(field)),
+        _ => Ok(()),
+    }
 }
 
 /// The loop's live view of the tasks capability: whether it is on and the shared
@@ -594,11 +790,20 @@ pub struct TasksRuntime {
 }
 
 impl TasksRuntime {
-    /// An enabled runtime with an empty store holding at most `max_tasks` tasks.
+    /// An enabled runtime with an empty [simple](TaskMode::Simple)-mode store holding at most
+    /// `max_tasks` tasks. (The binary always resolves a mode through
+    /// [`with_mode`](Self::with_mode); this simple-mode shorthand is the tests' convenience.)
+    #[allow(dead_code)]
     pub fn new(max_tasks: usize) -> Self {
+        Self::with_mode(max_tasks, TaskMode::Simple)
+    }
+
+    /// An enabled runtime with an empty store holding at most `max_tasks` tasks, in list
+    /// [mode](TaskMode) `mode`.
+    pub fn with_mode(max_tasks: usize, mode: TaskMode) -> Self {
         Self {
             enabled: true,
-            store: Arc::new(Mutex::new(TaskStore::new(max_tasks))),
+            store: Arc::new(Mutex::new(TaskStore::with_mode(max_tasks, mode))),
         }
     }
 

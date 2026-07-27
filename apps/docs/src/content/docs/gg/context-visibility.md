@@ -124,7 +124,7 @@ every message after the edit. On a long run that is most of its token bill.
 
 Two kinds of state make that non-trivial.
 
-**Mutable blocks.** The memory block, the task list, the epic/issue board, and the
+**Mutable blocks.** The memory block, the task list, the [Project management](/gg/project-management/) board, and the
 fullness signal are each rebuilt from their backing store at every turn boundary so the
 model always sees current state, and each is a *single* live block. Two rules keep the
 rebuild append-only:

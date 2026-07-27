@@ -442,6 +442,8 @@ pub struct BoardView {
     pub max_epics: usize,
     /// The maximum number of issues the board may hold at once.
     pub max_issues: usize,
+    /// How many times gg re-dispatches a failed issue before marking it failed.
+    pub max_retries: usize,
 }
 
 /// The process driving the run, named in the prompt.
@@ -743,6 +745,13 @@ pub struct TaskItemView {
     /// The task's incomplete blockers, pre-formatted (``` `a`, `b` ```), or `None` when the task
     /// is ready or done.
     pub blocked_by: Option<String>,
+    /// What the task covers — present only in the tasks capability's **issues**
+    /// [mode](crate::tasks), which requires the structured sections. `None` in **simple** mode.
+    pub in_scope: Option<String>,
+    /// What the task deliberately does not cover — present only in **issues** mode.
+    pub out_of_scope: Option<String>,
+    /// What makes the task done — present only in **issues** mode.
+    pub completion_criteria: Option<String>,
 }
 
 /// Render the pinned [task list](crate::tasks) block.

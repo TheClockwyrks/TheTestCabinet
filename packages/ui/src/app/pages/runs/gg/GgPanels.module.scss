@@ -446,6 +446,12 @@ $context-palette: (
     color: t.$color-positive;
     border-color: t.$color-positive;
   }
+  // A terminally failed issue — its assigned agent exhausted its retries — reads in
+  // the negative tone so it is distinct from an in-flight or blocked one.
+  &[data-task-state="failed"] {
+    color: t.$color-negative;
+    border-color: t.$color-negative;
+  }
 }
 
 .taskBody {
@@ -653,6 +659,10 @@ $context-palette: (
     color: t.$color-positive;
     border-color: t.$color-positive;
   }
+  &[data-status="failed"] {
+    color: t.$color-negative;
+    border-color: t.$color-negative;
+  }
 }
 
 .issueId {
@@ -776,6 +786,101 @@ $context-palette: (
   color: t.$color-text;
   word-break: break-word;
   white-space: pre-wrap;
+}
+
+// --- Project explorer (the run-global board detail pane) ---------------------
+
+// The detail pane content for one selected epic or issue: a stack of the header, an
+// optional description, its meta rows, blockers, review items, and the brief.
+.projDetail {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+}
+
+.projDetailHead {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+  flex-wrap: wrap;
+}
+
+.projDetailTitle {
+  margin: 0;
+  margin-right: auto;
+  font-size: t.$font-md;
+  font-weight: 600;
+  color: t.$color-text;
+  word-break: break-word;
+
+  &[data-status="done"] {
+    color: t.$color-text-muted;
+    text-decoration: line-through;
+  }
+  &[data-status="failed"] {
+    color: t.$color-negative;
+  }
+}
+
+// An epic's issue tally by status — a row of the same status badges the issue detail
+// carries, so the epic reads its progress in the same vocabulary.
+.projStatusSummary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-xs;
+}
+
+// The issue's meta rows (assigned agent, retries) as a compact label/value list.
+.projMeta {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+.projMetaRow {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+}
+
+.projMetaLabel {
+  flex: 0 0 auto;
+  width: 8rem;
+  color: t.$color-text-muted;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.72rem;
+}
+
+.projMetaValue {
+  margin: 0;
+  min-width: 0;
+  color: t.$color-text;
+  font-variant-numeric: tabular-nums;
+  word-break: break-word;
+}
+
+// The assigned-agent link — a plain button that reads as a link into the Agents
+// explorer, so clicking an issue's agent jumps to that agent's files.
+.projAgentLink {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-family: monospace;
+  color: t.$color-accent;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+
+  &:hover {
+    color: t.$color-text;
+  }
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    outline-offset: 2px;
+  }
 }
 
 // --- Plan (planning pass) ----------------------------------------------------

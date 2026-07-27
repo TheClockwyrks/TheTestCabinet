@@ -99,7 +99,7 @@ const SOURCE_CAPABILITIES: Partial<Record<GgContextSource, readonly string[]>> =
     skill: ["skills"],
     memory: ["memories"],
     task_list: ["tasks"],
-    board: ["epics-and-issues"],
+    board: ["project-management"],
     plan: ["planning"],
   };
 

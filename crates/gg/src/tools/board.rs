@@ -12,7 +12,7 @@
 //! pinned [`Board`](test_cabinet_core::gg::GgContextSource::Board) block.
 //!
 //! The tools are contributed to the registry only when the
-//! [`epics-and-issues`](test_cabinet_core::gg::CAPABILITY_EPICS_ISSUES) capability is enabled and
+//! [`project-management`](test_cabinet_core::gg::CAPABILITY_PROJECT_MANAGEMENT) capability is enabled and
 //! a store is bound; when it is off, none are offered (ablation).
 
 use std::sync::{Arc, Mutex};
@@ -717,6 +717,59 @@ impl Tool for RemoveIssueTool {
             Ok(_) => unreachable!("remove_issue yields IssueRemoved"),
             Err(err) => ToolOutcome::failed(failure_for(&err), format!("remove_issue: {err}")),
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// wait_for_issue
+// ---------------------------------------------------------------------------
+
+/// The `wait_for_issue` tool name.
+pub const WAIT_FOR_ISSUE_TOOL: &str = "wait_for_issue";
+
+/// Declares `wait_for_issue` — suspend the agent until a board issue reaches a terminal state.
+///
+/// Like the [delegation tools](crate::tools::subagents), this is **not** self-contained: waiting
+/// frees the agent's scheduler slot and blocks on the orchestrator's issue-wait registry, which a
+/// [`Tool`] cannot reach. So the [turn loop](crate::agent) **intercepts** the call and performs the
+/// wait; this declaration exists only so the tool is offered, listed, and ablatable uniformly. Its
+/// [`invoke`](Tool::invoke) is a defensive fallback that never runs in a correctly wired session.
+pub struct WaitForIssueTool;
+
+#[async_trait]
+impl Tool for WaitForIssueTool {
+    fn name(&self) -> &str {
+        WAIT_FOR_ISSUE_TOOL
+    }
+
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition::new(
+            WAIT_FOR_ISSUE_TOOL,
+            "Wait until a board issue is finished before continuing. Provide the `issueId`. Your \
+             turn is suspended (freeing capacity for other agents) until that issue reaches a \
+             terminal state — done, or failed if its assigned agent could not complete it — then \
+             resumes and tells you which. Use this to sequence your own work behind an issue you \
+             depend on. You cannot wait on the issue you were assigned to implement (do the work \
+             and call `complete_issue` instead).",
+            json!({
+                "type": "object",
+                "properties": {
+                    "issueId": {
+                        "type": "string",
+                        "description": "The id of the board issue to wait for."
+                    }
+                },
+                "required": ["issueId"],
+                "additionalProperties": false
+            }),
+        )
+    }
+
+    async fn invoke(&self, _args: Value, _ctx: &ToolContext) -> ToolOutcome {
+        ToolOutcome::error(format!(
+            "`{WAIT_FOR_ISSUE_TOOL}` is a project-management tool handled by the gg runtime; it \
+             cannot be dispatched here."
+        ))
     }
 }
 

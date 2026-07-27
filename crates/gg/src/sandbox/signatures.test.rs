@@ -41,8 +41,8 @@ fn the_signature_catalogue_covers_every_tool() {
     );
     assert_eq!(
         expected.len(),
-        ALL_TOOL_NAMES.len() - TURN_LEVEL_TOOLS.len(),
-        "the sandbox binds every gg tool but the turn-level transitions"
+        ALL_TOOL_NAMES.len() - TURN_LEVEL_TOOLS.len() - NON_SANDBOX_TOOLS.len(),
+        "the sandbox binds every gg tool but the turn-level transitions and the non-sandbox tools"
     );
 }
 

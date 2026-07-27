@@ -404,14 +404,14 @@ fn registry_gates_task_tools_on_capability_and_a_bound_store() {
     }
 }
 
-/// The board tools are offered only when the epics-and-issues capability is enabled **and** a
+/// The board tools are offered only when the project-management capability is enabled **and** a
 /// board store is bound — capability off, or no store bound, offers none.
 #[test]
 fn registry_gates_board_tools_on_capability_and_a_bound_store() {
     use std::sync::Mutex;
 
     use crate::board::{BoardCaps, BoardStore};
-    use test_cabinet_core::gg::CAPABILITY_EPICS_ISSUES;
+    use test_cabinet_core::gg::CAPABILITY_PROJECT_MANAGEMENT;
 
     let empty = Arc::new(SkillLibrary::empty());
     let store = Arc::new(Mutex::new(BoardStore::new(BoardCaps::default())));
@@ -426,7 +426,9 @@ fn registry_gates_board_tools_on_capability_and_a_bound_store() {
     ];
 
     // Enabled capability + a bound store => all seven board tools are offered.
-    let on = set_with(vec![GgCapabilityConfig::enabled(CAPABILITY_EPICS_ISSUES)]);
+    let on = set_with(vec![GgCapabilityConfig::enabled(
+        CAPABILITY_PROJECT_MANAGEMENT,
+    )]);
     let registry = ToolRegistry::from_run(&on, &RuntimeSet::new(&empty).with_board(&store));
     for name in names {
         assert!(offers(&registry, name), "expected `{name}` offered");
@@ -442,7 +444,9 @@ fn registry_gates_board_tools_on_capability_and_a_bound_store() {
     }
 
     // Disabled capability => no board tools even with a bound store (the ablation off arm).
-    let off = set_with(vec![GgCapabilityConfig::disabled(CAPABILITY_EPICS_ISSUES)]);
+    let off = set_with(vec![GgCapabilityConfig::disabled(
+        CAPABILITY_PROJECT_MANAGEMENT,
+    )]);
     let registry = ToolRegistry::from_run(&off, &RuntimeSet::new(&empty).with_board(&store));
     for name in names {
         assert!(
@@ -626,8 +630,8 @@ fn all_tool_names_matches_a_maximal_registry() {
     use crate::memories::{MemoryCaps, MemoryStore};
     use crate::tasks::TaskStore;
     use test_cabinet_core::gg::{
-        CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_EPICS_ISSUES, CAPABILITY_FSM,
-        CAPABILITY_MEMORIES, CAPABILITY_PLANNING, CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS,
+        CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_FSM, CAPABILITY_MEMORIES, CAPABILITY_PLANNING,
+        CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS,
         CAPABILITY_TASKS, CAPABILITY_WORKFLOWS,
     };
 
@@ -649,7 +653,7 @@ fn all_tool_names_matches_a_maximal_registry() {
         GgCapabilityConfig::enabled(CAPABILITY_SKILLS),
         GgCapabilityConfig::enabled(CAPABILITY_MEMORIES),
         GgCapabilityConfig::enabled(CAPABILITY_TASKS),
-        GgCapabilityConfig::enabled(CAPABILITY_EPICS_ISSUES),
+        GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT),
         GgCapabilityConfig::enabled(CAPABILITY_AGENT_MANAGED_CONTEXT),
         GgCapabilityConfig::enabled(CAPABILITY_PLANNING),
         GgCapabilityConfig::enabled(CAPABILITY_FSM),

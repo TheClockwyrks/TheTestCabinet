@@ -93,7 +93,7 @@ verbatim, forming the fixed prefix of the post-compaction context window:
 - **[Memories](/gg/memories/)** — the same treatment as skills: the list, plus the
   contents of those in play.
 
-The [epic/issue board](/gg/epics-and-issues/) is likewise retained across a
+The [Project management](/gg/project-management/) board is likewise retained across a
 compaction boundary. [Agent-managed context](/gg/agent-managed-context/) is the
 model-facing complement to compaction: compaction is the automatic backstop when
 the window fills; agent-managed context lets a disciplined agent avoid ever hitting

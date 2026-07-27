@@ -1,17 +1,31 @@
 {{#if board}}
-## Epics and issues
+## Project management (epics & issues)
 
-For a substantial build you can decompose the work on an **epic/issue board** — the heavyweight
-counterpart to a task list. Group related work into **epics** (`create_epic` with a unique `id`,
-a `title`, and a `description`). Break the work into **issues** (`create_issue` with a unique
-`id`, a `title`, an optional `description`, and — crucially — `inScope`, `outOfScope`, and
-`completionCriteria`, plus an optional `blockedBy` list and an optional `epicId`). Fill in an
-issue's scope and completion criteria precisely: they are the brief that lets the issue be
-handed off and judged done. Revise an issue with `update_issue`, set its dependencies with
-`set_issue_blocked_by`, mark it done with `complete_issue`, and drop epics/issues with
-`remove_epic`/`remove_issue`. Hold at most {{board.maxEpics}} epics and {{board.maxIssues}} issues.
+For a substantial build you decompose the work on a **shared project board** — one board for the
+whole run, visible to and editable by every agent, the heavyweight counterpart to your personal
+task list. Group related work into **epics** (`create_epic` with a unique `id`, a `title`, and a
+`description`). Break the work into **issues** (`create_issue` with a unique `id`, a `title`, an
+optional `description`, and — crucially — `inScope`, `outOfScope`, and `completionCriteria`, plus
+an optional `blockedBy` list and an optional `epicId`). Fill in an issue's scope and completion
+criteria precisely: they are the **brief** gg hands the agent it assigns to implement it. Revise an
+issue with `update_issue`, set its dependencies with `set_issue_blocked_by`, and drop epics/issues
+with `remove_epic`/`remove_issue`. Hold at most {{board.maxEpics}} epics and {{board.maxIssues}}
+issues.
 
-Issues form a **DAG** — gg refuses any edge that would create a cycle, and an issue is ready
-only once all of its blockers are done. Your board is shown back to you under "Your epic/issue
-board" and survives context compaction, so keep it current.
+**Submitting an issue enqueues it — you do not hand it to a subagent yourself.** Once every issue
+it is blocked by is done, gg automatically spawns a dedicated agent, hands it the issue's brief,
+and that agent implements the issue and marks it done with `complete_issue`. So decompose the work
+into well-scoped issues with clear dependencies and let the board drive the build; reserve
+`spawn_subagent` for ad-hoc helpers that are not board issues.
+
+If you need to continue only after some issue is finished, call `wait_for_issue` with its `id`:
+your turn is suspended (freeing capacity for other agents) until that issue reaches a terminal
+state, then resumes and tells you whether it was done or failed. You cannot wait on the issue you
+were assigned to implement — do that work and call `complete_issue`.
+
+Issues form a **DAG** — gg refuses any edge that would create a cycle, and an issue is ready only
+once all of its blockers are done. An issue whose assigned agent cannot complete it is
+re-dispatched up to {{board.maxRetries}} time(s) and then marked **failed**; a failed issue is
+terminal but not done, so anything depending on it stays blocked. The board is shown back to every
+agent under "Your epic/issue board" and survives context compaction, so keep it current.
 {{/if}}

@@ -12,7 +12,9 @@ fn store() -> TaskStore {
 
 /// Add a task with just an id and title (no description, no blockers).
 fn add(store: &mut TaskStore, id: &str) {
-    store.add(id, id, None, &[]).expect("add task");
+    store
+        .add(id, id, None, StructuredFields::default(), &[])
+        .expect("add task");
 }
 
 /// The tasks' ids in list order.
@@ -29,7 +31,13 @@ fn add_creates_a_pending_task_in_add_order() {
     let mut store = store();
     add(&mut store, "a");
     store
-        .add("b", "Build B", Some("the second task"), &[])
+        .add(
+            "b",
+            "Build B",
+            Some("the second task"),
+            StructuredFields::default(),
+            &[],
+        )
         .unwrap();
     assert_eq!(ids(&store), vec!["a", "b"]);
     let b = &store.tasks()[1];
@@ -43,16 +51,16 @@ fn add_creates_a_pending_task_in_add_order() {
 fn add_rejects_empty_fields_and_duplicates() {
     let mut store = store();
     assert_eq!(
-        store.add("", "t", None, &[]),
+        store.add("", "t", None, StructuredFields::default(), &[]),
         Err(TaskError::EmptyField("id"))
     );
     assert_eq!(
-        store.add("a", "  ", None, &[]),
+        store.add("a", "  ", None, StructuredFields::default(), &[]),
         Err(TaskError::EmptyField("title"))
     );
     add(&mut store, "a");
     assert_eq!(
-        store.add("a", "again", None, &[]),
+        store.add("a", "again", None, StructuredFields::default(), &[]),
         Err(TaskError::Duplicate("a".to_string()))
     );
     // The rejected duplicate did not add a second entry.
@@ -64,7 +72,7 @@ fn add_enforces_the_count_cap() {
     let mut store = TaskStore::new(1);
     add(&mut store, "a");
     assert_eq!(
-        store.add("b", "B", None, &[]),
+        store.add("b", "B", None, StructuredFields::default(), &[]),
         Err(TaskError::CountCap { cap: 1 })
     );
     assert_eq!(store.count(), 1);
@@ -75,20 +83,34 @@ fn update_changes_fields_and_requires_at_least_one() {
     let mut store = store();
     add(&mut store, "a");
     assert_eq!(
-        store.update("a", None, None, None),
+        store.update("a", None, None, None, StructuredFields::default()),
         Err(TaskError::NoUpdateFields)
     );
     store
-        .update("a", Some("New title"), None, Some(TaskStatus::InProgress))
+        .update(
+            "a",
+            Some("New title"),
+            None,
+            Some(TaskStatus::InProgress),
+            StructuredFields::default(),
+        )
         .unwrap();
     assert_eq!(store.tasks()[0].title(), "New title");
     assert_eq!(store.tasks()[0].status(), TaskStatus::InProgress);
     // An empty description clears it.
-    store.update("a", None, Some(""), None).unwrap();
+    store
+        .update("a", None, Some(""), None, StructuredFields::default())
+        .unwrap();
     assert_eq!(store.tasks()[0].description(), None);
     // Updating an unknown task fails.
     assert_eq!(
-        store.update("missing", Some("x"), None, None),
+        store.update(
+            "missing",
+            Some("x"),
+            None,
+            None,
+            StructuredFields::default()
+        ),
         Err(TaskError::NotFound("missing".to_string()))
     );
 }
@@ -165,7 +187,13 @@ fn blocked_by_rejects_unknown_and_self_references() {
     assert!(store.tasks()[0].blocked_by().is_empty());
     // Adding a task that references a non-existent blocker also fails.
     assert_eq!(
-        store.add("b", "B", None, &["ghost".to_string()]),
+        store.add(
+            "b",
+            "B",
+            None,
+            StructuredFields::default(),
+            &["ghost".to_string()]
+        ),
         Err(TaskError::BlockerNotFound("ghost".to_string()))
     );
     assert_eq!(store.count(), 1);
@@ -218,7 +246,13 @@ fn add_with_a_forward_blocker_is_acyclic_and_allowed() {
     // A brand-new task can be blocked by an existing one without any cycle risk (it has no
     // dependents yet).
     store
-        .add("b", "B", None, &["a".to_string()])
+        .add(
+            "b",
+            "B",
+            None,
+            StructuredFields::default(),
+            &["a".to_string()],
+        )
         .expect("forward edge is fine");
     assert_eq!(store.tasks()[1].blocked_by(), &["a".to_string()]);
 }
@@ -321,11 +355,142 @@ fn enabled_runtime_emits_empty_state_and_no_block_until_a_task_exists() {
         .store()
         .lock()
         .unwrap()
-        .add("a", "A", None, &[])
+        .add("a", "A", None, StructuredFields::default(), &[])
         .unwrap();
     assert!(runtime.context_block().is_some());
     let GgTelemetryKind::TasksState { tasks } = runtime.state_event().unwrap() else {
         panic!("expected TasksState");
     };
     assert_eq!(tasks.len(), 1);
+}
+
+// ---------------------------------------------------------------------------
+// Issues mode
+// ---------------------------------------------------------------------------
+
+#[test]
+fn task_mode_resolves_from_params_and_defaults_to_simple() {
+    assert_eq!(resolve_task_mode(&json!({})), TaskMode::Simple);
+    assert_eq!(
+        resolve_task_mode(&json!({ "mode": "issues" })),
+        TaskMode::Issues
+    );
+    assert_eq!(
+        resolve_task_mode(&json!({ "mode": "simple" })),
+        TaskMode::Simple
+    );
+    // An unrecognized value keeps the default.
+    assert_eq!(
+        resolve_task_mode(&json!({ "mode": "nonsense" })),
+        TaskMode::Simple
+    );
+}
+
+#[test]
+fn simple_mode_ignores_structured_fields() {
+    let mut store = TaskStore::with_mode(DEFAULT_MAX_TASKS, TaskMode::Simple);
+    // Even if structured fields are passed, a simple-mode task stores none of them.
+    store
+        .add(
+            "a",
+            "A",
+            None,
+            StructuredFields {
+                in_scope: Some("scope"),
+                out_of_scope: Some("nope"),
+                completion_criteria: Some("done"),
+            },
+            &[],
+        )
+        .expect("simple add");
+    let task = &store.tasks()[0];
+    assert_eq!(task.in_scope(), None);
+    assert_eq!(task.out_of_scope(), None);
+    assert_eq!(task.completion_criteria(), None);
+}
+
+#[test]
+fn issues_mode_requires_the_structured_fields() {
+    let mut store = TaskStore::with_mode(DEFAULT_MAX_TASKS, TaskMode::Issues);
+    // A missing structured field is refused (nothing is added).
+    assert_eq!(
+        store.add("a", "A", None, StructuredFields::default(), &[]),
+        Err(TaskError::EmptyField("inScope"))
+    );
+    assert_eq!(store.count(), 0);
+
+    // A complete structured item is accepted and carries its sections.
+    store
+        .add(
+            "a",
+            "A",
+            Some("overview"),
+            StructuredFields {
+                in_scope: Some("the widget"),
+                out_of_scope: Some("everything else"),
+                completion_criteria: Some("the widget works"),
+            },
+            &[],
+        )
+        .expect("issues add");
+    let task = &store.tasks()[0];
+    assert_eq!(task.in_scope(), Some("the widget"));
+    assert_eq!(task.out_of_scope(), Some("everything else"));
+    assert_eq!(task.completion_criteria(), Some("the widget works"));
+
+    // The structured sections reach the telemetry contract.
+    let GgTelemetryKind::TasksState { tasks } = store.state_event() else {
+        panic!("tasks state");
+    };
+    assert_eq!(tasks[0].in_scope.as_deref(), Some("the widget"));
+    assert_eq!(
+        tasks[0].completion_criteria.as_deref(),
+        Some("the widget works")
+    );
+}
+
+#[test]
+fn issues_mode_update_rejects_clearing_a_structured_field() {
+    let mut store = TaskStore::with_mode(DEFAULT_MAX_TASKS, TaskMode::Issues);
+    store
+        .add(
+            "a",
+            "A",
+            None,
+            StructuredFields {
+                in_scope: Some("scope"),
+                out_of_scope: Some("nope"),
+                completion_criteria: Some("done"),
+            },
+            &[],
+        )
+        .unwrap();
+    // An empty structured field on update is refused (issues-mode tasks must always carry it).
+    assert_eq!(
+        store.update(
+            "a",
+            None,
+            None,
+            None,
+            StructuredFields {
+                in_scope: Some(""),
+                ..StructuredFields::default()
+            },
+        ),
+        Err(TaskError::EmptyField("inScope"))
+    );
+    // A non-empty revision is applied.
+    store
+        .update(
+            "a",
+            None,
+            None,
+            None,
+            StructuredFields {
+                in_scope: Some("a sharper scope"),
+                ..StructuredFields::default()
+            },
+        )
+        .expect("structured update");
+    assert_eq!(store.tasks()[0].in_scope(), Some("a sharper scope"));
 }

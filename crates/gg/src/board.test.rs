@@ -1,4 +1,4 @@
-//! Tests for the epics-and-issues board store, its cycle guard, its invariants, and its
+//! Tests for the project-management board store, its cycle guard, its invariants, and its
 //! derivations.
 
 use serde_json::json;
@@ -333,6 +333,7 @@ fn count_caps_are_enforced_per_kind() {
     let mut store = BoardStore::new(BoardCaps {
         max_epics: 1,
         max_issues: 1,
+        ..BoardCaps::default()
     });
     add_epic(&mut store, "e1");
     assert_eq!(
@@ -470,4 +471,102 @@ fn enabled_runtime_offers_caps_and_state() {
         .unwrap();
     assert_eq!(runtime.issue_count(), 1);
     assert!(runtime.context_block().is_some());
+}
+
+// ---------------------------------------------------------------------------
+// Auto-dispatch: dispatchable, assignment, retry, and failure
+// ---------------------------------------------------------------------------
+
+#[test]
+fn max_retries_resolves_from_params_and_defaults() {
+    assert_eq!(BoardCaps::default().max_retries, DEFAULT_MAX_RETRIES);
+    assert_eq!(
+        BoardCaps::resolve(&json!({ "maxRetries": 3 })).max_retries,
+        3
+    );
+    // Zero is a valid retry count (one attempt only); a missing value keeps the default.
+    assert_eq!(
+        BoardCaps::resolve(&json!({ "maxRetries": 0 })).max_retries,
+        0
+    );
+    assert_eq!(
+        BoardCaps::resolve(&json!({})).max_retries,
+        DEFAULT_MAX_RETRIES
+    );
+}
+
+#[test]
+fn only_open_unassigned_issues_with_done_blockers_are_dispatchable() {
+    let mut store = store();
+    add_issue(&mut store, "a", &[]);
+    add_issue(&mut store, "b", &["a"]);
+    // `a` is actionable (no blockers); `b` is blocked by the not-yet-done `a`.
+    assert_eq!(store.dispatchable_ids(), vec!["a".to_string()]);
+
+    // Claim `a`: it moves to in-progress and is no longer dispatchable (nor re-claimable).
+    assert!(store.assign_issue("a", "agent-1"));
+    assert_eq!(store.issue_status("a"), Some(IssueStatus::InProgress));
+    assert!(store.dispatchable_ids().is_empty());
+    assert!(
+        !store.assign_issue("a", "agent-2"),
+        "a second claim of the same issue is refused"
+    );
+
+    // Completing `a` unblocks `b`, which becomes dispatchable.
+    store.complete_issue("a").unwrap();
+    assert_eq!(store.dispatchable_ids(), vec!["b".to_string()]);
+}
+
+#[test]
+fn a_failed_blocker_leaves_dependents_blocked() {
+    let mut store = store();
+    add_issue(&mut store, "a", &[]);
+    add_issue(&mut store, "b", &["a"]);
+    store.assign_issue("a", "agent-1");
+    // `a` fails: it is terminal but not done, so `b` never becomes dispatchable.
+    assert!(store.fail_issue("a"));
+    assert_eq!(store.issue_status("a"), Some(IssueStatus::Failed));
+    assert!(store.issue_status("a").unwrap().is_terminal());
+    assert_ne!(store.issue_status("a"), Some(IssueStatus::Done));
+    assert!(
+        store.dispatchable_ids().is_empty(),
+        "a dependent of a failed issue stays blocked"
+    );
+}
+
+#[test]
+fn redispatch_reassigns_and_records_the_retry_count() {
+    let mut store = store();
+    add_issue(&mut store, "a", &[]);
+    store.assign_issue("a", "agent-1");
+    // A second attempt reassigns to a fresh agent and records the retry.
+    assert!(store.redispatch_issue("a", "agent-2", 1));
+    let issue = store.issues().iter().find(|i| i.id() == "a").unwrap();
+    assert_eq!(issue.status(), IssueStatus::InProgress);
+    assert_eq!(issue.assigned_agent(), Some("agent-2"));
+    assert_eq!(issue.retries(), 1);
+    // A terminal issue is never re-dispatched.
+    store.complete_issue("a").unwrap();
+    assert!(!store.redispatch_issue("a", "agent-3", 2));
+}
+
+#[test]
+fn a_failed_issue_status_round_trips_to_the_contract() {
+    let mut store = store();
+    add_issue(&mut store, "a", &[]);
+    store.assign_issue("a", "agent-1");
+    store.fail_issue("a");
+    let GgTelemetryKind::BoardState { issues, .. } = runtime_state(&store) else {
+        panic!("board state");
+    };
+    let a = issues.iter().find(|i| i.id == "a").unwrap();
+    assert_eq!(a.status, GgIssueStatus::Failed);
+    assert_eq!(a.assigned_agent_id.as_deref(), Some("agent-1"));
+}
+
+/// The board's telemetry state, for the contract-mapping assertions.
+fn runtime_state(store: &BoardStore) -> GgTelemetryKind {
+    let runtime = BoardRuntime::new(store.caps());
+    *runtime.store().lock().unwrap() = store.clone();
+    runtime.state_event().expect("enabled runtime state")
 }

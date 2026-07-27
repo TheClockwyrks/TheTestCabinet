@@ -134,20 +134,26 @@ pub const CAPABILITY_COMPACTION: &str = "compaction";
 /// [agent-managed context]: https://docs.testcabinet.ai/gg/agent-managed-context/
 pub const CAPABILITY_AGENT_MANAGED_CONTEXT: &str = "agent-managed-context";
 
-/// The stable id of the Phase 3 [epics & issues] capability: the heavyweight
-/// counterpart to [tasks](CAPABILITY_TASKS) that expands the lightweight to-do list
-/// into a work-decomposition board substantial enough to organize a large build.
-/// [Epics](GgBoardEpic) group related [issues](GgBoardIssue), and an issue carries
-/// structured sections — title, description, in-scope, out-of-scope, and completion
-/// criteria — whose explicit scope boundaries and completion criteria are what make it
-/// safe to hand to a subagent (Phase 4). Issues share the [tasks](CAPABILITY_TASKS)
-/// blocked-by DAG (gg rejects any edge that would introduce a cycle), and the whole
-/// board is retained across a [compaction](CAPABILITY_COMPACTION) boundary verbatim,
-/// like the task list. Opt-in, like compaction and agent-managed context — an ablation's
-/// off arm simply never offers the board tools.
+/// The stable id of the [project management] capability: the heavyweight counterpart to
+/// [tasks](CAPABILITY_TASKS) that expands the lightweight to-do list into a **single,
+/// run-global work board** substantial enough to organize a large build, shared by every
+/// agent in the run. [Epics](GgBoardEpic) group related [issues](GgBoardIssue), and an issue
+/// carries structured sections — title, description, in-scope, out-of-scope, and completion
+/// criteria — whose explicit scope boundaries and completion criteria are the brief gg hands
+/// the agent it dispatches to implement it. Unlike agent-scoped [tasks](CAPABILITY_TASKS),
+/// **submitting an issue enqueues it on the shared board**: once every issue it is blocked by
+/// is done, gg **automatically spawns a top-level agent and assigns it the issue** — agents no
+/// longer hand-dispatch issues to subagents. An agent may [wait on an issue] until it reaches a
+/// terminal state, and an issue whose assigned agent cannot complete it after its
+/// `maxRetries` (default 1) retries is marked [failed](GgIssueStatus::Failed). Issues share the
+/// [tasks](CAPABILITY_TASKS) blocked-by DAG (gg rejects any edge that would introduce a cycle),
+/// and the whole board is retained across a [compaction](CAPABILITY_COMPACTION) boundary
+/// verbatim. Opt-in, like compaction and agent-managed context — an ablation's off arm simply
+/// never offers the board tools.
 ///
-/// [epics & issues]: https://docs.testcabinet.ai/gg/epics-and-issues/
-pub const CAPABILITY_EPICS_ISSUES: &str = "epics-and-issues";
+/// [project management]: https://docs.testcabinet.ai/gg/project-management/
+/// [wait on an issue]: https://docs.testcabinet.ai/gg/project-management/
+pub const CAPABILITY_PROJECT_MANAGEMENT: &str = "project-management";
 
 /// The stable id of the Phase 3 [planning] capability: a **read-only planning pass**
 /// followed by a **fresh-context implementation pass**. When enabled the model is offered
@@ -238,7 +244,7 @@ pub const CAPABILITY_WORKTREES: &str = "worktrees";
 pub const CAPABILITY_WORKFLOWS: &str = "workflows";
 
 /// The stable id of the Phase 5 [Code Reviews] capability: gating an
-/// [issue](CAPABILITY_EPICS_ISSUES)'s **acceptance** on a verification pass. Always called a
+/// [issue](CAPABILITY_PROJECT_MANAGEMENT)'s **acceptance** on a verification pass. Always called a
 /// **Code Review** (never a bare "review") to keep it distinct from The Test Cabinet's own
 /// test-run reviews.
 ///
@@ -291,7 +297,7 @@ pub const CAPABILITY_FSM: &str = "fsm";
 /// same piece of work several times in parallel and keeping only the best result.
 ///
 /// When enabled, the model can call `speculate` with a task (a free-form prompt or an
-/// [issue](CAPABILITY_EPICS_ISSUES)) and a count `K`: gg fans out `K`
+/// [issue](CAPABILITY_PROJECT_MANAGEMENT)) and a count `K`: gg fans out `K`
 /// [subagents](CAPABILITY_SUBAGENTS) at the same task — optionally with different approach hints, or
 /// on different [model slots](CAPABILITY_MULTI_MODEL) — **each in its own
 /// [worktree](CAPABILITY_WORKTREES)** so the attempts do not collide, driven by the same
@@ -1098,7 +1104,7 @@ pub enum GgContextSource {
     /// The model's [task](https://docs.testcabinet.ai/gg/tasks/) list — retained across
     /// a compaction boundary.
     TaskList,
-    /// The model's [epic/issue board](https://docs.testcabinet.ai/gg/epics-and-issues/)
+    /// The model's [epic/issue board](https://docs.testcabinet.ai/gg/project-management/)
     /// — the heavyweight work-decomposition counterpart to the task list, retained across
     /// a compaction boundary.
     Board,
@@ -1299,6 +1305,21 @@ pub struct GgTaskEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub description: Option<String>,
+    /// What the task **is** responsible for — present only in the tasks capability's
+    /// **issues** [mode](https://docs.testcabinet.ai/gg/tasks/), which requires the same
+    /// structured sections as a [board issue](GgBoardIssue). Absent in the default **simple**
+    /// mode.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub in_scope: Option<String>,
+    /// What the task is **not** responsible for — present only in **issues** mode.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub out_of_scope: Option<String>,
+    /// How the task will be judged **done** — present only in **issues** mode.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub completion_criteria: Option<String>,
     /// The task's status.
     pub status: GgTaskStatus,
     /// The ids of the tasks this task is blocked by (must all be
@@ -1307,28 +1328,34 @@ pub struct GgTaskEntry {
     pub blocked_by: Vec<String>,
 }
 
-/// The status of one [issue](https://docs.testcabinet.ai/gg/epics-and-issues/) on the
+/// The status of one [issue](https://docs.testcabinet.ai/gg/project-management/) on the
 /// [board](GgTelemetryKind::BoardState) — the heavyweight counterpart to
 /// [`GgTaskStatus`].
 ///
-/// An issue moves from [`Open`](Self::Open) (not started) through
-/// [`InProgress`](Self::InProgress) (being worked) to [`Done`](Self::Done) (complete). Like a
-/// task, an issue is *actionable* only when all of its blockers are [`Done`](Self::Done); the
-/// console derives that from the blocked-by edges and each blocker's status rather than a
-/// separate flag.
+/// An issue moves from [`Open`](Self::Open) (enqueued, not yet dispatched) through
+/// [`InProgress`](Self::InProgress) (an agent has been assigned and is working it) to a
+/// terminal state — [`Done`](Self::Done) (accepted complete) or [`Failed`](Self::Failed) (its
+/// assigned agent could not complete it within the configured retries). Like a task, an issue
+/// is *actionable* only when all of its blockers are [`Done`](Self::Done); the console derives
+/// that from the blocked-by edges and each blocker's status rather than a separate flag. A
+/// [`Failed`](Self::Failed) blocker is terminal but **not** done, so it leaves its dependents
+/// permanently blocked — surfaced on the board rather than silently unblocking them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub enum GgIssueStatus {
-    /// Not started.
+    /// Enqueued, not yet dispatched.
     Open,
-    /// Being worked on.
+    /// An agent has been assigned and is working it.
     InProgress,
-    /// Complete — an issue's blockers must all reach this before it is actionable.
+    /// Accepted complete — an issue's blockers must all reach this before it is actionable.
     Done,
+    /// The assigned agent could not complete the issue within its configured retries. Terminal,
+    /// but not [`Done`](Self::Done): its dependents stay blocked.
+    Failed,
 }
 
-/// One [epic](https://docs.testcabinet.ai/gg/epics-and-issues/) on the board — a grouping of
+/// One [epic](https://docs.testcabinet.ai/gg/project-management/) on the board — a grouping of
 /// related [issues](GgBoardIssue) reported in a [`BoardState`](GgTelemetryKind::BoardState)
 /// event.
 ///
@@ -1348,7 +1375,7 @@ pub struct GgBoardEpic {
     pub description: String,
 }
 
-/// One [issue](https://docs.testcabinet.ai/gg/epics-and-issues/) on the board — a node of the
+/// One [issue](https://docs.testcabinet.ai/gg/project-management/) on the board — a node of the
 /// blocked-by DAG reported in a [`BoardState`](GgTelemetryKind::BoardState) event.
 ///
 /// An issue is the **heavyweight** counterpart to a [task](GgTaskEntry): rather than just a
@@ -1382,7 +1409,7 @@ pub struct GgBoardIssue {
     /// What the issue is **not** responsible for — the explicit exclusions that bound a
     /// dispatched subagent's work.
     pub out_of_scope: String,
-    /// How the issue will be judged **done** — the acceptance criteria a dispatched subagent
+    /// How the issue will be judged **done** — the acceptance criteria the assigned agent
     /// is held to.
     pub completion_criteria: String,
     /// The issue's status.
@@ -1395,6 +1422,20 @@ pub struct GgBoardIssue {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub epic_id: Option<String>,
+    /// The id of the agent gg [dispatched](https://docs.testcabinet.ai/gg/project-management/)
+    /// to implement this issue, when one is assigned (its status is then
+    /// [`InProgress`](GgIssueStatus::InProgress)) — the link the console follows from the issue
+    /// to that agent in the Agents explorer. `None` while the issue is
+    /// [`Open`](GgIssueStatus::Open), and after a terminal state carries the last agent that
+    /// worked it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub assigned_agent_id: Option<String>,
+    /// How many times gg has **re-dispatched** this issue after an assigned agent finished
+    /// without completing it. Bounded by the capability's `maxRetries`; once exhausted the
+    /// issue is marked [`Failed`](GgIssueStatus::Failed). `0` until the first retry.
+    #[serde(default)]
+    pub retries: u32,
 }
 
 /// The state of one model-curated [memory](https://docs.testcabinet.ai/gg/memories/) at a
@@ -1427,7 +1468,7 @@ pub struct GgMemoryEntry {
 /// Each figure is a **count of retained items**, not a token figure: how many read
 /// [skills](GgContextSource::Skill), how many [tasks](GgContextSource::TaskList), how many
 /// in-play [memories](GgContextSource::Memory), and how many
-/// [issues](https://docs.testcabinet.ai/gg/epics-and-issues/) on the
+/// [issues](https://docs.testcabinet.ai/gg/project-management/) on the
 /// [board](GgContextSource::Board) remained pinned after the ephemeral history was replaced by
 /// the summary. The epic/issue board is retained across the boundary just like the task list,
 /// so its issue count is reported here as part of the retention proof.
@@ -2010,7 +2051,7 @@ pub struct GgSessionSummary {
     pub healing: GgHealingSummary,
     /// How many distinct [issues](GgBoardIssue) the run ever created on its
     /// [board](GgTelemetryKind::BoardState) — the count of distinct issue ids observed across the
-    /// run. `0` when the epics-and-issues capability was off.
+    /// run. `0` when the project-management capability was off.
     pub issues_created: u64,
     /// How many distinct issues the run ever drove to [`Done`](GgIssueStatus::Done) — the count of
     /// distinct issue ids observed at `Done` at any point (so an issue reopened and re-completed
@@ -2577,12 +2618,12 @@ pub enum GgTelemetryKind {
         /// nodes). Each carries its status and the ids it is blocked by.
         tasks: Vec<GgTaskEntry>,
     },
-    /// The model's [epic/issue board](https://docs.testcabinet.ai/gg/epics-and-issues/) — the
+    /// The model's [epic/issue board](https://docs.testcabinet.ai/gg/project-management/) — the
     /// heavyweight work-decomposition counterpart to the [task list](Self::TasksState), whose
     /// issues form a blocked-by DAG retained across a [compaction] boundary verbatim.
     ///
     /// Emitted once at session start (an empty board) when the
-    /// [epics-and-issues](CAPABILITY_EPICS_ISSUES) capability is enabled, and again after every
+    /// [project-management](CAPABILITY_PROJECT_MANAGEMENT) capability is enabled, and again after every
     /// successful mutation
     /// (`create_epic`/`create_issue`/`update_issue`/`set_issue_blocked_by`/`complete_issue`/`remove_epic`/`remove_issue`)
     /// so the console can render the live board. The whole board is also a pinned

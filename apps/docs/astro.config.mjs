@@ -540,7 +540,7 @@ export default defineConfig({
                 "gg/skills",
                 "gg/memories",
                 "gg/tasks",
-                "gg/epics-and-issues",
+                "gg/project-management",
                 "gg/planning",
                 "gg/subagents",
                 "gg/workflows",
