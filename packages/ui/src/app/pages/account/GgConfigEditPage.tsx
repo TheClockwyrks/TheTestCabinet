@@ -9,7 +9,6 @@ import { LoadingState } from "../../components/LoadingState";
 import { PageLayout } from "../../components/PageLayout";
 import { routes } from "../../routes";
 import { GgConfigEditor } from "../runs/gg/GgConfigEditor";
-import { CAP_GROUPS, type CapGroup } from "../runs/gg/ggCatalog";
 import {
   capabilitySetFromDraft,
   draftFromCapabilitySet,
@@ -48,18 +47,6 @@ export function GgConfigEditPage() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [draft, setDraft] = useState<GgConfigDraft>(() => emptyDraft());
-  const [collapsed, setCollapsed] = useState<Set<CapGroup>>(
-    () => new Set(CAP_GROUPS.filter((g) => !g.startOpen).map((g) => g.group)),
-  );
-
-  function toggleGroup(group: CapGroup) {
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (next.has(group)) next.delete(group);
-      else next.add(group);
-      return next;
-    });
-  }
 
   useEffect(() => {
     if (!backend || !token) {
@@ -202,13 +189,7 @@ export function GgConfigEditPage() {
             </label>
           </div>
 
-          <GgConfigEditor
-            value={draft}
-            onChange={setDraft}
-            models={models}
-            collapsed={collapsed}
-            onToggleGroup={toggleGroup}
-          />
+          <GgConfigEditor value={draft} onChange={setDraft} models={models} />
 
           <div className={exec.actions}>
             <div className={exec.actionsEnd}>

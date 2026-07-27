@@ -44,7 +44,7 @@
 //! the captured record and never re-runs healing.)
 
 use serde_json::Value;
-use test_cabinet_core::gg::{CAPABILITY_RESPONSES_AS_CODE, GgCapabilitySet};
+use test_cabinet_core::gg::{CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig};
 
 // ---------------------------------------------------------------------------------------------
 // The public API
@@ -253,7 +253,7 @@ pub struct ResolvedHealing {
 ///
 /// A capability that is present but **disabled** configures nothing: healing never runs for such a
 /// run, so honouring its params would be recording an intention that had no effect.
-pub fn resolve_healing(set: &GgCapabilitySet) -> ResolvedHealing {
+pub fn resolve_healing(set: &GgAgentConfig) -> ResolvedHealing {
     let mut resolved = ResolvedHealing {
         config: HealingConfig::default(),
         unknown_params: Vec::new(),

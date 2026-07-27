@@ -49,7 +49,7 @@ fn gg_record(
     ran_out: bool,
 ) -> test_cabinet_core::run_record::RunRecord {
     let mut set = GgCapabilitySet::minimal("mock/echo");
-    set.capabilities.push(if compaction_on {
+    set.agents[0].capabilities.push(if compaction_on {
         GgCapabilityConfig::enabled(CAPABILITY_COMPACTION)
     } else {
         GgCapabilityConfig::disabled(CAPABILITY_COMPACTION)

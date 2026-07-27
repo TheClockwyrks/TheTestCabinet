@@ -49,18 +49,21 @@ function brief(fn: string, request: BriefInput): SubagentBrief {
 
 /**
  * Delegate scoped work to a child agent and return its handle immediately — the child runs in
- * parallel while your program continues. Brief it with exactly one of `prompt` (self-contained
- * instructions) or `issueId` (a board issue); `slot` picks a model slot and `worktree` runs it in an
- * isolated git worktree merged back on clean completion. Throws `refused` at the delegation depth
- * cap.
+ * parallel while your program continues. Name the `agent` to run it as (one of the agents you may
+ * spawn — the system prompt lists them; it selects the child's model, tools, and instructions) and
+ * brief it with exactly one of `prompt` (self-contained instructions) or `issueId` (a board issue);
+ * `worktree` runs it in an isolated git worktree merged back on clean completion. Throws `refused`
+ * at the delegation depth cap, and `invalid-argument` if `agent` is not one you may spawn.
  */
 export function spawnSubagent(
-  request: ({ prompt: string } | { issueId: string }) & { slot?: string; worktree?: boolean },
+  request: { agent: string } & ({ prompt: string } | { issueId: string }) & {
+    worktree?: boolean;
+  },
 ): SubagentHandle {
   return call(() =>
     raw.spawnSubagent({
+      agent: request.agent,
       task: brief("spawnSubagent", request),
-      slot: request.slot,
       worktree: request.worktree,
     }),
   );
@@ -116,17 +119,18 @@ export function sendMessage(agentId: string, message: string): void {
 }
 
 /**
- * Run a declared multi-stage fan-out as one unit and return the final stage's results. Each stage's
- * `prompt` is a template in which `{{item}}` is the item being worked and `{{prior}}` is the
- * previous stage's collected results; the first stage must supply `items`, and a later stage that
- * omits them fans out over the previous stage's results instead. Blocks until every stage is done.
+ * Run a declared multi-stage fan-out as one unit and return the final stage's results. Each stage
+ * names the `agent` to run its children as (one of the agents you may spawn), and its `prompt` is a
+ * template in which `{{item}}` is the item being worked and `{{prior}}` is the previous stage's
+ * collected results; the first stage must supply `items`, and a later stage that omits them fans out
+ * over the previous stage's results instead. Blocks until every stage is done.
  */
 export function runWorkflow(
   stages: {
     name?: string;
     prompt: string;
     items?: string[];
-    slot?: string;
+    agent: string;
     worktree?: boolean;
   }[],
 ): WorkflowReport {
@@ -136,7 +140,7 @@ export function runWorkflow(
         name: stage.name,
         prompt: stage.prompt,
         items: stage.items,
-        slot: stage.slot,
+        agent: stage.agent,
         worktree: stage.worktree,
       })),
     ),
@@ -145,23 +149,22 @@ export function runWorkflow(
 
 /**
  * Attempt the same task K times in parallel isolated worktrees, judge the attempts, then merge the
- * winner and discard the losers. `attempts` is clamped to 2–6 and defaults to 2; `approaches` and
- * `slots` are positional per-attempt hints, and attempts past the end of either list get none.
- * Blocks until the winner is merged.
+ * winner and discard the losers. Name the `agent` to run every attempt as (one of the agents you may
+ * spawn). `attempts` is clamped to 2–6 and defaults to 2; `approaches` are positional per-attempt
+ * hints, and attempts past the end of the list get none. Blocks until the winner is merged.
  */
 export function speculate(
-  request: ({ prompt: string } | { issueId: string }) & {
+  request: { agent: string } & ({ prompt: string } | { issueId: string }) & {
     attempts?: number;
     approaches?: string[];
-    slots?: string[];
   },
 ): SpeculationReport {
   return call(() =>
     raw.speculate({
+      agent: request.agent,
       task: brief("speculate", request),
       attempts: uint("speculate", "attempts", request.attempts, U8_MAX),
       approaches: list("speculate", "approaches", request.approaches),
-      slots: list("speculate", "slots", request.slots),
     }),
   );
 }

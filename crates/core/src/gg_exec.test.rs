@@ -461,7 +461,7 @@ fn build_invocation_carries_the_run_id_workspace_prompt_and_set() {
     assert_eq!(invocation.workspace_dir, PathBuf::from("/work"));
     assert_eq!(invocation.prompt, "the build prompt");
     assert_eq!(
-        invocation.capability_set.model_for_slot(PRIMARY_SLOT),
+        invocation.capability_set.root().resolved_model_id(),
         Some("mock/echo")
     );
 }

@@ -244,7 +244,7 @@ pub enum GgFacet {
     ///
     /// Resolves to `"true"`/`"false"` for a run that recorded a [summary](GgSessionSummary) (the
     /// durable record of what it offered) — `"false"` catching both a tool its capability withheld
-    /// and one individually [disabled](crate::gg::GgCapabilitySet::disabled_tools) — and to absent
+    /// and one individually [disabled](crate::gg::GgAgentConfig::disabled_tools) — and to absent
     /// only for a run that never ran a session (no summary, so the offered toolset is unknown).
     ToolOffered {
         /// The tool's name (for example `"edit_file"` or `"speculate"`).
@@ -291,7 +291,8 @@ impl GgFacet {
                 .and_then(|set| set.capability(capability))
                 .and_then(|cfg| param_scalar(&cfg.params, param)),
             GgFacet::SlotModel { slot } => capability_set
-                .and_then(|set| set.model_for_slot(slot))
+                .and_then(|set| set.agent(slot))
+                .and_then(|agent| agent.resolved_model_id())
                 .map(str::to_string),
             GgFacet::ToolOffered { tool } => {
                 // The offered toolset lives on the summary (the durable record of what the run
@@ -351,7 +352,7 @@ impl GgCapabilitySet {
     /// [enabled](Self::is_enabled) flag, its
     /// [implementation](crate::gg::GgCapabilityConfig::implementation), and each of its
     /// top-level [params](crate::gg::GgCapabilityConfig::params); and for every
-    /// [slot](Self::slots) its bound model.
+    /// [agent](Self::agents) its bound model.
     ///
     /// This is the extraction the aggregation's group-by facets draw from: switching a
     /// capability on/off is offering/withholding its tools, so a capability's facets
@@ -365,7 +366,7 @@ impl GgCapabilitySet {
             GgFacet::Preset {},
             GgFacet::Preset {}.resolve("", Some(self), None),
         ));
-        for cfg in &self.capabilities {
+        for cfg in &self.root().capabilities {
             out.push(binding(
                 GgFacet::CapabilityEnabled {
                     capability: cfg.id.clone(),
@@ -390,12 +391,12 @@ impl GgCapabilitySet {
                 }
             }
         }
-        for slot in &self.slots {
+        for agent in &self.agents {
             out.push(binding(
                 GgFacet::SlotModel {
-                    slot: slot.slot.clone(),
+                    slot: agent.name.clone(),
                 },
-                Some(slot.model_id.clone()),
+                Some(agent.model_id.clone()),
             ));
         }
         out
@@ -411,7 +412,7 @@ impl GgSessionSummary {
     /// enumerates the capability/slot/preset dimensions, and the summary enumerates the *tool*
     /// dimensions — because the exact offered toolset is recorded on the summary, not fully derivable
     /// from the capability set (a stateful capability offers its tools only when its store is
-    /// non-empty, and individual tools may be [withheld](GgCapabilitySet::disabled_tools)). A console
+    /// non-empty, and individual tools may be [withheld](crate::gg::GgAgentConfig::disabled_tools)). A console
     /// unions the two off a representative run to populate its facet picker; every enumerated facet
     /// is also filterable and groupable in a [`GgAggregateQuery`].
     pub fn tool_facets(&self) -> Vec<GgFacetBinding> {

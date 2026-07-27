@@ -33,14 +33,14 @@ use crate::telemetry::{CollectingSink, Emitter};
 use crate::tools::{RuntimeSet, ToolContext, ToolRegistry, VisionContext};
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_CODE_REVIEWS, CAPABILITY_COMPACTION,
-    CAPABILITY_CONTEXT_VISIBILITY, CAPABILITY_FSM, CAPABILITY_MULTI_MODEL, CAPABILITY_PLANNING,
+    CAPABILITY_CONTEXT_VISIBILITY, CAPABILITY_FSM, CAPABILITY_PLANNING,
     CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_READ_FILE, CAPABILITY_REPLAY,
     CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE,
     CAPABILITY_SUBAGENTS, CAPABILITY_WORKFLOWS, CAPABILITY_WORKTREES, GG_REPLAY_ARTIFACT_PATH,
-    GgAgentStatus, GgCapabilityConfig, GgCapabilitySet, GgCodeReviewPhase, GgContextAction,
-    GgContextSource, GgIssueStatus, GgPlanPhase, GgReplayEntryKind, GgReplayRecord,
-    GgSessionSummary, GgSlotBinding, GgSpeculationPhase, GgTelemetryEvent, GgTelemetryKind,
-    GgWorkflowPhase, PRIMARY_SLOT,
+    GgAgentConfig, GgAgentStatus, GgCapabilityConfig, GgCapabilitySet, GgCodeReviewPhase,
+    GgContextAction, GgContextSource, GgIssueStatus, GgPlanPhase, GgReplayEntryKind,
+    GgReplayRecord, GgSessionSummary, GgSlotBinding, GgSubagentRef, GgTelemetryEvent,
+    GgTelemetryKind, GgWorkflowPhase, ROOT_AGENT,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
@@ -218,7 +218,7 @@ async fn drive_root(
     code: CodeSetup,
 ) -> LoopEnd {
     let ctx = ToolContext::new(dir);
-    Agent::root(PRIMARY_SLOT)
+    Agent::root()
         .drive(
             client,
             "go",
@@ -239,6 +239,7 @@ async fn drive_root(
             false,
             false,
             code,
+            &GgAgentConfig::root(),
             None,
             None,
             None,
@@ -274,7 +275,7 @@ fn code_set(model_id: &str, params: serde_json::Value) -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal(model_id);
     let mut cap = GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE);
     cap.params = params;
-    set.capabilities.push(cap);
+    set.agents[0].capabilities.push(cap);
     set
 }
 
@@ -374,7 +375,7 @@ async fn drive_recorded_code_run(
     let inv = invocation(dir.path(), set);
     let client = RecordingClient::new("mock/primary", script);
     let shared = Arc::clone(&client);
-    let factory = ScriptedFactory::new().slot(PRIMARY_SLOT, move |_| {
+    let factory = ScriptedFactory::new().slot(ROOT_AGENT, move |_| {
         Box::new(SharedRecordingClient(Arc::clone(&shared)))
     });
     let outcome = run_with_factory(&inv, &emitter, Arc::new(factory)).await;
@@ -863,12 +864,12 @@ async fn run_reports_launch_failure_when_a_model_has_no_context_window() {
 async fn drive_exhausts_the_turn_ceiling_when_the_model_never_stops() {
     let dir = TempDir::new().unwrap();
     let ctx = ToolContext::new(dir.path());
-    let registry = ToolRegistry::from_capabilities(&GgCapabilitySet::minimal("mock/loop"));
+    let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/loop").root());
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
 
     let never_stops = MockClient::new("mock/loop", vec![looping_response(); 5]);
-    let agent = Agent::root("primary");
+    let agent = Agent::root();
     let end = agent
         .drive(
             &never_stops,
@@ -890,6 +891,7 @@ async fn drive_exhausts_the_turn_ceiling_when_the_model_never_stops() {
             false,
             false,
             no_code(),
+            &GgAgentConfig::root(),
             None,
             None,
             None,
@@ -914,12 +916,12 @@ async fn drive_exhausts_the_turn_ceiling_when_the_model_never_stops() {
 async fn drive_times_out_at_a_passed_deadline() {
     let dir = TempDir::new().unwrap();
     let ctx = ToolContext::new(dir.path());
-    let registry = ToolRegistry::from_capabilities(&GgCapabilitySet::minimal("mock/loop"));
+    let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/loop").root());
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
 
     let client = MockClient::with_default_script("mock/echo");
-    let agent = Agent::root("primary");
+    let agent = Agent::root();
     let end = agent
         .drive(
             &client,
@@ -941,6 +943,7 @@ async fn drive_times_out_at_a_passed_deadline() {
             false,
             false,
             no_code(),
+            &GgAgentConfig::root(),
             None,
             None,
             None,
@@ -964,14 +967,14 @@ async fn drive_times_out_at_a_passed_deadline() {
 async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
     let dir = TempDir::new().unwrap();
     let ctx = ToolContext::new(dir.path());
-    let registry = ToolRegistry::from_capabilities(&GgCapabilitySet::minimal("mock/x"));
+    let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/x").root());
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
 
     let client = FailingClient {
         mode: FailureMode::Fatal,
     };
-    let agent = Agent::root("primary");
+    let agent = Agent::root();
     let end = agent
         .drive(
             &client,
@@ -993,6 +996,7 @@ async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
             false,
             false,
             no_code(),
+            &GgAgentConfig::root(),
             None,
             None,
             None,
@@ -1017,14 +1021,14 @@ async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
 async fn drive_ends_model_error_on_exhausted_retries() {
     let dir = TempDir::new().unwrap();
     let ctx = ToolContext::new(dir.path());
-    let registry = ToolRegistry::from_capabilities(&GgCapabilitySet::minimal("mock/x"));
+    let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/x").root());
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
 
     let client = FailingClient {
         mode: FailureMode::Retryable,
     };
-    let agent = Agent::root("primary");
+    let agent = Agent::root();
     let end = agent
         .drive(
             &client,
@@ -1046,6 +1050,7 @@ async fn drive_ends_model_error_on_exhausted_retries() {
             false,
             false,
             no_code(),
+            &GgAgentConfig::root(),
             None,
             None,
             None,
@@ -1066,14 +1071,14 @@ async fn drive_ends_model_error_on_exhausted_retries() {
 async fn drive_ends_auth_error_when_the_credential_is_refused() {
     let dir = TempDir::new().unwrap();
     let ctx = ToolContext::new(dir.path());
-    let registry = ToolRegistry::from_capabilities(&GgCapabilitySet::minimal("mock/x"));
+    let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/x").root());
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
 
     let client = FailingClient {
         mode: FailureMode::Auth,
     };
-    let agent = Agent::root("primary");
+    let agent = Agent::root();
     let end = agent
         .drive(
             &client,
@@ -1095,6 +1100,7 @@ async fn drive_ends_auth_error_when_the_credential_is_refused() {
             false,
             false,
             no_code(),
+            &GgAgentConfig::root(),
             None,
             None,
             None,
@@ -1125,18 +1131,14 @@ async fn drive_ends_auth_error_when_the_credential_is_refused() {
 #[test]
 fn system_prompt_reflects_the_offered_tools() {
     let runtimes = DisabledRuntimes::new();
-    let registry = ToolRegistry::from_capabilities(&GgCapabilitySet::minimal("mock/x"));
+    let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/x").root());
     let full = system_prompt(runtimes.inputs(&registry));
     assert!(full.contains("write_file"));
     assert!(full.contains("shell"));
 
-    let empty_set = GgCapabilitySet {
-        model_slots: Vec::new(),
-        preset: None,
+    let empty_set = GgAgentConfig {
         capabilities: Vec::new(),
-        slots: Vec::new(),
-        disabled_tools: Vec::new(),
-        limits: GgRunLimits::default(),
+        ..GgAgentConfig::root()
     };
     let empty_registry = ToolRegistry::from_capabilities(&empty_set);
     let empty = system_prompt(runtimes.inputs(&empty_registry));
@@ -1149,7 +1151,7 @@ fn system_prompt_reflects_the_offered_tools() {
 #[test]
 fn system_prompt_states_the_configured_read_cap() {
     let mut set = GgCapabilitySet::minimal("mock/x");
-    let read_file = set
+    let read_file = set.agents[0]
         .capabilities
         .iter_mut()
         .find(|cap| cap.id == CAPABILITY_READ_FILE)
@@ -1158,10 +1160,10 @@ fn system_prompt_states_the_configured_read_cap() {
     read_file.params = json!({ "lineCap": 42 });
 
     let library = Arc::new(SkillLibrary::empty());
-    let registry = ToolRegistry::from_run(&set, &RuntimeSet::new(&library));
+    let registry = ToolRegistry::from_run(set.root(), &RuntimeSet::new(&library));
     let runtimes = DisabledRuntimes::new();
     let capped = system_prompt(PromptInputs {
-        read_policy: read_policy(&set),
+        read_policy: read_policy(set.root()),
         ..runtimes.inputs(&registry)
     });
     assert!(capped.contains("at most **42 lines**"), "{capped}");
@@ -1186,7 +1188,7 @@ fn flat(rendered: &str) -> String {
 fn system_prompt_states_whether_images_can_be_seen() {
     let set = GgCapabilitySet::minimal("mock/x");
     let library = Arc::new(SkillLibrary::empty());
-    let registry = ToolRegistry::from_run(&set, &RuntimeSet::new(&library));
+    let registry = ToolRegistry::from_run(set.root(), &RuntimeSet::new(&library));
 
     let seeing = DisabledRuntimes::new();
     let prompt = system_prompt(seeing.inputs(&registry));
@@ -1208,9 +1210,11 @@ fn system_prompt_states_whether_images_can_be_seen() {
 #[test]
 fn system_prompt_omits_image_guidance_without_read_file() {
     let mut set = GgCapabilitySet::minimal("mock/x");
-    set.disabled_tools.push(READ_FILE_TOOL.to_string());
+    set.agents[0]
+        .disabled_tools
+        .push(READ_FILE_TOOL.to_string());
     let library = Arc::new(SkillLibrary::empty());
-    let registry = ToolRegistry::from_run(&set, &RuntimeSet::new(&library));
+    let registry = ToolRegistry::from_run(set.root(), &RuntimeSet::new(&library));
 
     let prompt = system_prompt(DisabledRuntimes::new().inputs(&registry));
     assert!(!prompt.contains("see images"), "{prompt}");
@@ -1218,7 +1222,6 @@ fn system_prompt_omits_image_guidance_without_read_file() {
 
 /// Every capability runtime, disabled — owned by the caller so a prompt test can borrow
 /// [`PromptInputs`] from it without binding six locals of its own.
-#[derive(Default)]
 struct DisabledRuntimes {
     skills: Option<SkillsRuntime>,
     memories: Option<MemoriesRuntime>,
@@ -1229,6 +1232,10 @@ struct DisabledRuntimes {
     /// The vision context the prompt reads to decide whether to promise images. Owned here
     /// for the same reason as the runtimes: `PromptInputs` borrows it.
     vision: VisionContext,
+    /// The agent profile the prompt renders for — a bare Root, since these prompt tests do not
+    /// vary custom instructions or the delegation allowlist. Owned here so `PromptInputs` can
+    /// borrow it.
+    profile: GgAgentConfig,
 }
 
 impl DisabledRuntimes {
@@ -1244,6 +1251,7 @@ impl DisabledRuntimes {
             // Nothing declared: the optimistic default, under which the prompt promises
             // the model it can see images.
             vision: VisionContext::unknown(),
+            profile: GgAgentConfig::root(),
         }
     }
 
@@ -1276,6 +1284,7 @@ impl DisabledRuntimes {
             code_reviews: false,
             speculative: false,
             responses_as_code: false,
+            profile: &self.profile,
             delegated: false,
             fences_are_stripped: true,
         }
@@ -1327,7 +1336,7 @@ fn add_cost_accumulates_optionally() {
 /// ablation's off arm records what it turned off).
 fn minimal_without_context_visibility(model: &str) -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal(model);
-    for cap in &mut set.capabilities {
+    for cap in &mut set.agents[0].capabilities {
         if cap.id == CAPABILITY_CONTEXT_VISIBILITY {
             cap.enabled = false;
         }
@@ -1470,8 +1479,11 @@ fn resolve_window_limit_takes_the_catalog_window_and_never_guesses() {
 #[test]
 fn validate_model_windows_requires_every_bound_model() {
     let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
-    set.slots
-        .push(GgSlotBinding::new("subagent", "openai/gpt-5.4-mini"));
+    set.agents.push(GgAgentConfig {
+        name: "subagent".to_string(),
+        model_id: "openai/gpt-5.4-mini".to_string(),
+        ..GgAgentConfig::root()
+    });
 
     let err = validate_model_windows(&set, &windows("anthropic/claude-opus-4.8", 200_000))
         .expect_err("a bound model with no window is a launch failure");
@@ -1494,7 +1506,7 @@ fn validate_model_windows_requires_every_bound_model() {
 #[test]
 fn resolve_window_limit_narrows_with_the_param() {
     let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
-    for cap in &mut set.capabilities {
+    for cap in &mut set.agents[0].capabilities {
         if cap.id == CAPABILITY_CONTEXT_VISIBILITY {
             cap.params = json!({ "windowLimit": 42_000 });
         }
@@ -1505,7 +1517,7 @@ fn resolve_window_limit_narrows_with_the_param() {
         Some(42_000)
     );
 
-    for cap in &mut set.capabilities {
+    for cap in &mut set.agents[0].capabilities {
         if cap.id == CAPABILITY_CONTEXT_VISIBILITY {
             cap.params = json!({ "windowLimit": 0 });
         }
@@ -1521,7 +1533,7 @@ fn resolve_window_limit_narrows_with_the_param() {
 #[test]
 fn resolve_window_limit_clamps_an_override_above_the_model_window() {
     let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
-    for cap in &mut set.capabilities {
+    for cap in &mut set.agents[0].capabilities {
         if cap.id == CAPABILITY_CONTEXT_VISIBILITY {
             cap.params = json!({ "windowLimit": 2_000_000 });
         }
@@ -1546,7 +1558,8 @@ fn resolve_window_limit_clamps_an_override_above_the_model_window() {
 #[test]
 fn resolve_window_limit_reserves_compaction_headroom() {
     let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
-    set.capabilities
+    set.agents[0]
+        .capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_COMPACTION));
     let catalog = windows("anthropic/claude-opus-4.8", 200_000);
     assert_eq!(
@@ -1554,7 +1567,7 @@ fn resolve_window_limit_reserves_compaction_headroom() {
         Some(160_000)
     );
 
-    for cap in &mut set.capabilities {
+    for cap in &mut set.agents[0].capabilities {
         if cap.id == CAPABILITY_CONTEXT_VISIBILITY {
             cap.params = json!({ "windowLimit": 50_000 });
         }
@@ -1591,9 +1604,10 @@ fn resolve_window_limit_is_per_model() {
 #[test]
 fn resolve_window_limit_honors_the_override_on_any_capability() {
     let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
-    set.capabilities
+    set.agents[0]
+        .capabilities
         .retain(|cap| cap.id != CAPABILITY_CONTEXT_VISIBILITY);
-    for cap in &mut set.capabilities {
+    for cap in &mut set.agents[0].capabilities {
         if cap.id == CAPABILITY_SHELL {
             cap.params = json!({ "windowLimit": 32_000 });
         }
@@ -1615,7 +1629,7 @@ fn resolve_window_limit_honors_the_override_on_any_capability() {
 /// `minimal`, with the skills capability disabled (the ablation off arm).
 fn minimal_without_skills(model: &str) -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal(model);
-    for cap in &mut set.capabilities {
+    for cap in &mut set.agents[0].capabilities {
         if cap.id == CAPABILITY_SKILLS {
             cap.enabled = false;
         }
@@ -1700,7 +1714,7 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
     assert_eq!(library.len(), 1);
 
     let set = GgCapabilitySet::minimal("mock/echo");
-    let registry = ToolRegistry::from_run(&set, &RuntimeSet::new(&library));
+    let registry = ToolRegistry::from_run(set.root(), &RuntimeSet::new(&library));
     let runtime = SkillsRuntime::new(Arc::clone(&library));
     let ctx = ToolContext::new(dir.path());
     let sink = CollectingSink::new();
@@ -1716,7 +1730,7 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
         ],
     );
 
-    let agent = Agent::root("primary");
+    let agent = Agent::root();
     let end = agent
         .drive(
             &client,
@@ -1738,6 +1752,7 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
             false,
             false,
             no_code(),
+            &GgAgentConfig::root(),
             None,
             None,
             None,
@@ -1791,7 +1806,7 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
 /// `minimal`, with the memories capability disabled (the ablation off arm).
 fn minimal_without_memories(model: &str) -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal(model);
-    for cap in &mut set.capabilities {
+    for cap in &mut set.agents[0].capabilities {
         if cap.id == test_cabinet_core::gg::CAPABILITY_MEMORIES {
             cap.enabled = false;
         }
@@ -1885,7 +1900,7 @@ async fn drive_enforces_memory_caps_end_to_end() {
     let library = Arc::new(SkillLibrary::empty());
     let memory_store = memories.store();
     let registry = ToolRegistry::from_run(
-        &set,
+        set.root(),
         &RuntimeSet::new(&library).with_memories(&memory_store),
     );
 
@@ -1899,7 +1914,7 @@ async fn drive_enforces_memory_caps_end_to_end() {
         ],
     );
 
-    let agent = Agent::root("primary");
+    let agent = Agent::root();
     let end = agent
         .drive(
             &client,
@@ -1921,6 +1936,7 @@ async fn drive_enforces_memory_caps_end_to_end() {
             false,
             false,
             no_code(),
+            &GgAgentConfig::root(),
             None,
             None,
             None,
@@ -1990,7 +2006,7 @@ async fn drive_enforces_memory_caps_end_to_end() {
 /// `minimal`, with the tasks capability disabled (the ablation off arm).
 fn minimal_without_tasks(model: &str) -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal(model);
-    for cap in &mut set.capabilities {
+    for cap in &mut set.agents[0].capabilities {
         if cap.id == CAPABILITY_TASKS {
             cap.enabled = false;
         }
@@ -2062,7 +2078,10 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
     let set = GgCapabilitySet::minimal("mock/echo");
     let library = Arc::new(SkillLibrary::empty());
     let task_store = tasks.store();
-    let registry = ToolRegistry::from_run(&set, &RuntimeSet::new(&library).with_tasks(&task_store));
+    let registry = ToolRegistry::from_run(
+        set.root(),
+        &RuntimeSet::new(&library).with_tasks(&task_store),
+    );
 
     // add a, add b (blocked by a), try a blocked-by b (cycle → refused), complete a, stop.
     let call = |id: &str, name: &str, args: serde_json::Value| ModelResponse {
@@ -2095,7 +2114,7 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
         ],
     );
 
-    let agent = Agent::root("primary");
+    let agent = Agent::root();
     let end = agent
         .drive(
             &client,
@@ -2117,6 +2136,7 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
             false,
             false,
             no_code(),
+            &GgAgentConfig::root(),
             None,
             None,
             None,
@@ -2178,7 +2198,8 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
 /// `minimal`, plus the (opt-in) project-management capability enabled.
 fn minimal_with_epics_issues(model: &str) -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal(model);
-    set.capabilities
+    set.agents[0]
+        .capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT));
     set
 }
@@ -2376,7 +2397,7 @@ fn compaction_runtimes(dir: &Path) -> (ToolRegistry, SkillsRuntime, MemoriesRunt
     let memory_store = memories.store();
     let task_store = tasks.store();
     let registry = ToolRegistry::from_run(
-        &set,
+        set.root(),
         &RuntimeSet::new(&library)
             .with_memories(&memory_store)
             .with_tasks(&task_store),
@@ -2399,7 +2420,7 @@ async fn drive_compacts_at_the_threshold_and_retains_pinned_state() {
 
     // A small window and a moderate threshold, so the ballooned ephemeral turn crosses it
     // while the pinned prefix alone stays under it.
-    let agent = Agent::root("primary");
+    let agent = Agent::root();
     let end = agent
         .drive(
             &client,
@@ -2421,6 +2442,7 @@ async fn drive_compacts_at_the_threshold_and_retains_pinned_state() {
             false,
             false,
             no_code(),
+            &GgAgentConfig::root(),
             None,
             None,
             None,
@@ -2560,7 +2582,7 @@ async fn drive_never_compacts_when_capability_off() {
     let (registry, skills, memories, tasks) = compaction_runtimes(dir.path());
     let client = MockClient::new("mock/echo", compaction_script());
 
-    let agent = Agent::root("primary");
+    let agent = Agent::root();
     let end = agent
         .drive(
             &client,
@@ -2582,6 +2604,7 @@ async fn drive_never_compacts_when_capability_off() {
             false,
             false,
             no_code(),
+            &GgAgentConfig::root(),
             None,
             None,
             None,
@@ -2615,7 +2638,7 @@ async fn drive_never_compacts_when_capability_off() {
 /// defaults, so the reclaim tools are offered and the fullness signal is injected.
 fn minimal_with_amc(model: &str) -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal(model);
-    set.capabilities.push(GgCapabilityConfig::enabled(
+    set.agents[0].capabilities.push(GgCapabilityConfig::enabled(
         CAPABILITY_AGENT_MANAGED_CONTEXT,
     ));
     set
@@ -2652,10 +2675,13 @@ async fn drive_manages_context_end_to_end() {
     let set = minimal_with_amc("mock/echo");
     let archive = Arc::new(Mutex::new(ArchiveStore::new()));
     let library = Arc::new(SkillLibrary::empty());
-    let registry = ToolRegistry::from_run(&set, &RuntimeSet::new(&library).with_archive(&archive));
+    let registry = ToolRegistry::from_run(
+        set.root(),
+        &RuntimeSet::new(&library).with_archive(&archive),
+    );
 
     let client = MockClient::with_agent_managed_context_script("mock/echo");
-    let agent = Agent::root("primary");
+    let agent = Agent::root();
     let end = agent
         .drive(
             &client,
@@ -2677,6 +2703,7 @@ async fn drive_manages_context_end_to_end() {
             false,
             false,
             no_code(),
+            &GgAgentConfig::root(),
             None,
             None,
             None,
@@ -2756,7 +2783,7 @@ async fn drive_without_amc_offers_no_context_management() {
     // Minimal set (no agent-managed-context), and no archive bound to the registry.
     let set = GgCapabilitySet::minimal("mock/echo");
     let library = Arc::new(SkillLibrary::empty());
-    let registry = ToolRegistry::from_run(&set, &RuntimeSet::new(&library));
+    let registry = ToolRegistry::from_run(set.root(), &RuntimeSet::new(&library));
     for name in ["evict_file_view", "archive_thread", "search_archive"] {
         assert!(
             !registry.definitions().iter().any(|d| d.name == name),
@@ -2765,7 +2792,7 @@ async fn drive_without_amc_offers_no_context_management() {
     }
 
     let client = MockClient::with_agent_managed_context_script("mock/echo");
-    let agent = Agent::root("primary");
+    let agent = Agent::root();
     let end = agent
         .drive(
             &client,
@@ -2787,6 +2814,7 @@ async fn drive_without_amc_offers_no_context_management() {
             false,
             false,
             no_code(),
+            &GgAgentConfig::root(),
             None,
             None,
             None,
@@ -2819,7 +2847,8 @@ async fn drive_without_amc_offers_no_context_management() {
 /// `minimal`, plus the (opt-in) planning capability enabled.
 fn minimal_with_planning(model: &str) -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal(model);
-    set.capabilities
+    set.agents[0]
+        .capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_PLANNING));
     set
 }
@@ -2848,10 +2877,10 @@ async fn drive_plans_then_implements_from_a_fresh_context() {
 
     let set = minimal_with_planning("mock/echo");
     let library = Arc::new(SkillLibrary::empty());
-    let registry = ToolRegistry::from_run(&set, &RuntimeSet::new(&library));
+    let registry = ToolRegistry::from_run(set.root(), &RuntimeSet::new(&library));
 
     let client = MockClient::with_planning_script("mock/echo");
-    let agent = Agent::root("primary");
+    let agent = Agent::root();
     let end = agent
         .drive(
             &client,
@@ -2867,12 +2896,13 @@ async fn drive_plans_then_implements_from_a_fresh_context() {
             MemoriesRuntime::disabled(),
             TasksRuntime::disabled(),
             BoardRuntime::disabled(),
-            PlanningRuntime::resolve(&set),
+            PlanningRuntime::resolve(set.root()),
             FsmRuntime::disabled(),
             ReadPolicy::default(),
             false,
             false,
             no_code(),
+            &GgAgentConfig::root(),
             None,
             None,
             None,
@@ -3008,10 +3038,10 @@ async fn drive_without_planning_offers_no_planning() {
     // `minimal` does not include planning, so it is off.
     let set = GgCapabilitySet::minimal("mock/echo");
     let library = Arc::new(SkillLibrary::empty());
-    let registry = ToolRegistry::from_run(&set, &RuntimeSet::new(&library));
+    let registry = ToolRegistry::from_run(set.root(), &RuntimeSet::new(&library));
 
     let client = MockClient::with_planning_script("mock/echo");
-    let agent = Agent::root("primary");
+    let agent = Agent::root();
     let end = agent
         .drive(
             &client,
@@ -3033,6 +3063,7 @@ async fn drive_without_planning_offers_no_planning() {
             false,
             false,
             no_code(),
+            &GgAgentConfig::root(),
             None,
             None,
             None,
@@ -3127,7 +3158,7 @@ async fn run_tags_events_as_root_and_emits_agent_spawned_and_slot_usage() {
         .collect();
     assert_eq!(spawns.len(), 1, "exactly one AgentSpawned for the root");
     let (slot, model_id, depth, brief, worktree) = &spawns[0];
-    assert_eq!(slot, PRIMARY_SLOT);
+    assert_eq!(slot, ROOT_AGENT);
     assert_eq!(model_id, "mock/echo");
     assert_eq!(*depth, 0);
     assert!(brief.is_none(), "the root carries no delegated brief");
@@ -3166,7 +3197,7 @@ async fn run_tags_events_as_root_and_emits_agent_spawned_and_slot_usage() {
         .collect();
     assert_eq!(rollups.len(), 1, "one SlotUsage rollup for the one slot");
     let (slot, model_id, tokens, cost) = &rollups[0];
-    assert_eq!(slot, PRIMARY_SLOT);
+    assert_eq!(slot, ROOT_AGENT);
     assert_eq!(model_id, "mock/echo");
     assert!(
         tokens.total().is_some_and(|t| t > 0),
@@ -3217,7 +3248,7 @@ async fn run_reports_a_refused_credential_as_a_launch_failure() {
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-auth".to_string()), Box::new(sink.clone()));
     let inv = invocation(dir.path(), GgCapabilitySet::minimal("mock/primary"));
-    let factory = ScriptedFactory::new().slot("primary", |_| {
+    let factory = ScriptedFactory::new().slot(ROOT_AGENT, |_| {
         Box::new(FailingClient {
             mode: FailureMode::Auth,
         })
@@ -3272,124 +3303,80 @@ async fn run_tags_launch_failure_events_as_root() {
     );
 }
 
-/// A capability set binding two slots, so slot resolution can be exercised across the
-/// multi-model toggle.
-fn two_slot_set(primary_model: &str, subagent_model: &str) -> GgCapabilitySet {
-    let mut set = GgCapabilitySet::minimal(primary_model);
-    set.slots
-        .push(GgSlotBinding::new("subagent", subagent_model));
-    set
-}
-
-/// The multi-model toggle decides which slot an agent runs on: on, it runs on the slot it
-/// requested; off, every agent collapses to the primary slot (the ablation off arm).
+/// Agent-profile validation rejects the launch-blocking misconfigurations and accepts a good set.
+/// (The old `effective_slot` / `slot_binding` / multi-model-collapse tests were removed with the
+/// slot mechanism they exercised — an agent now runs under a named profile, not a resolved slot.)
 #[test]
-fn effective_slot_respects_the_multi_model_toggle() {
-    // On: the requested slot is honored.
-    assert_eq!(effective_slot("subagent", true), "subagent");
-    assert_eq!(effective_slot(PRIMARY_SLOT, true), PRIMARY_SLOT);
-    // Off: everything falls back to primary.
-    assert_eq!(effective_slot("subagent", false), PRIMARY_SLOT);
-    assert_eq!(effective_slot(PRIMARY_SLOT, false), PRIMARY_SLOT);
-}
+fn validate_agents_enforces_the_profile_invariants() {
+    // A good set (Root bound, unique, resolved) validates.
+    assert!(validate_agents(&GgCapabilitySet::minimal("mock/echo")).is_ok());
 
-/// Slot resolution picks the binding for the effective slot: with multi-model on a `subagent`
-/// request resolves to the subagent model, and with it off the same request collapses to the
-/// primary model — one binding-set, two behaviors driven purely by the toggle.
-#[test]
-fn slot_resolution_picks_the_right_binding_per_toggle() {
-    let set = two_slot_set("mock/primary-model", "mock/subagent-model");
+    // No Root profile: nothing to run.
+    let no_root = GgCapabilitySet {
+        agents: vec![GgAgentConfig {
+            name: "subagent".to_string(),
+            model_id: "mock/b".to_string(),
+            ..GgAgentConfig::root()
+        }],
+        ..GgCapabilitySet::default()
+    };
+    assert!(validate_agents(&no_root).unwrap_err().contains(ROOT_AGENT));
 
-    // Multi-model ON: a subagent request resolves to the subagent slot's model.
-    let slot = effective_slot("subagent", true);
-    assert_eq!(slot, "subagent");
-    assert_eq!(
-        slot_binding(&set, slot).unwrap().model_id,
-        "mock/subagent-model"
-    );
+    // An agent still deferred to a model slot never had its model supplied.
+    let deferred = GgCapabilitySet {
+        agents: vec![GgAgentConfig {
+            model_id: String::new(),
+            model_slot: Some("critic".to_string()),
+            ..GgAgentConfig::root()
+        }],
+        ..GgCapabilitySet::default()
+    };
+    let err = validate_agents(&deferred).unwrap_err();
+    assert!(err.contains("model slot"), "unexpected reason: {err}");
 
-    // Multi-model OFF: the same request collapses to primary, resolving the primary model.
-    let slot = effective_slot("subagent", false);
-    assert_eq!(slot, PRIMARY_SLOT);
-    assert_eq!(
-        slot_binding(&set, slot).unwrap().model_id,
-        "mock/primary-model"
-    );
-
-    // A request for an unbound slot is an error naming it.
-    let err = slot_binding(&set, "reviewer").unwrap_err();
-    assert!(err.contains("reviewer"), "the error names the missing slot");
-}
-
-/// Slot-binding validation rejects the launch-blocking misconfigurations and accepts a good set.
-#[test]
-fn validate_slots_enforces_the_binding_invariants() {
-    // A good set (primary bound, unique, non-empty) validates.
-    assert!(validate_slots(&GgCapabilitySet::minimal("mock/echo")).is_ok());
-    assert!(validate_slots(&two_slot_set("mock/a", "mock/b")).is_ok());
-
-    // No primary slot bound: nothing to run.
-    let no_primary = GgCapabilitySet {
-        model_slots: Vec::new(),
-        preset: None,
-        capabilities: Vec::new(),
-        slots: vec![GgSlotBinding::new("subagent", "mock/b")],
-        disabled_tools: Vec::new(),
-        limits: GgRunLimits::default(),
+    // A duplicate agent name is ambiguous.
+    let dup = GgCapabilitySet {
+        agents: vec![
+            GgAgentConfig {
+                model_id: "mock/a".to_string(),
+                ..GgAgentConfig::root()
+            },
+            GgAgentConfig {
+                model_id: "mock/b".to_string(),
+                ..GgAgentConfig::root()
+            },
+        ],
+        ..GgCapabilitySet::default()
     };
     assert!(
-        validate_slots(&no_primary)
+        validate_agents(&dup)
             .unwrap_err()
-            .contains(PRIMARY_SLOT)
+            .contains("more than once")
     );
 
-    // A binding still deferred to a model slot never had its model supplied: the
-    // launch skipped it, so say which slot and which parameter.
-    let deferred = GgCapabilitySet {
-        model_slots: Vec::new(),
-        preset: None,
-        capabilities: Vec::new(),
-        slots: vec![GgSlotBinding::deferred(PRIMARY_SLOT, "critic")],
-        disabled_tools: Vec::new(),
-        limits: GgRunLimits::default(),
-    };
-    let err = validate_slots(&deferred).unwrap_err();
-    assert!(err.contains("critic"), "unexpected reason: {err}");
-    assert!(err.contains("launching"), "unexpected reason: {err}");
-
-    // A duplicate slot name is ambiguous.
-    let dup = GgCapabilitySet {
-        model_slots: Vec::new(),
-        preset: None,
-        capabilities: Vec::new(),
-        slots: vec![
-            GgSlotBinding::new(PRIMARY_SLOT, "mock/a"),
-            GgSlotBinding::new(PRIMARY_SLOT, "mock/b"),
-        ],
-        disabled_tools: Vec::new(),
-        limits: GgRunLimits::default(),
-    };
-    assert!(validate_slots(&dup).unwrap_err().contains("more than once"));
-
-    // An empty model id or slot name is rejected.
+    // An empty model id is rejected.
     let empty_model = GgCapabilitySet {
-        model_slots: Vec::new(),
-        preset: None,
-        capabilities: Vec::new(),
-        slots: vec![GgSlotBinding::new(PRIMARY_SLOT, "")],
-        disabled_tools: Vec::new(),
-        limits: GgRunLimits::default(),
+        agents: vec![GgAgentConfig {
+            model_id: String::new(),
+            ..GgAgentConfig::root()
+        }],
+        ..GgCapabilitySet::default()
     };
-    assert!(validate_slots(&empty_model).is_err());
-    let empty_slot = GgCapabilitySet {
-        model_slots: Vec::new(),
-        preset: None,
-        capabilities: Vec::new(),
-        slots: vec![GgSlotBinding::new("", "mock/a")],
-        disabled_tools: Vec::new(),
-        limits: GgRunLimits::default(),
+    assert!(validate_agents(&empty_model).is_err());
+
+    // A subagent allowlist naming an agent this set does not declare is rejected.
+    let dangling = GgCapabilitySet {
+        agents: vec![GgAgentConfig {
+            model_id: "mock/a".to_string(),
+            subagents: vec![GgSubagentRef {
+                agent: "ghost".to_string(),
+                description: String::new(),
+            }],
+            ..GgAgentConfig::root()
+        }],
+        ..GgCapabilitySet::default()
     };
-    assert!(validate_slots(&empty_slot).is_err());
+    assert!(validate_agents(&dangling).unwrap_err().contains("ghost"));
 }
 
 /// Per-slot accounting keys on `(slot, model)`: usage on the same slot/model accumulates, a
@@ -3412,8 +3399,8 @@ fn slot_accounting_sums_per_slot_and_model() {
 
     let mut acc = SlotAccounting::default();
     // Two records on the same (slot, model) accumulate.
-    acc.record(PRIMARY_SLOT, "mock/opus", counts(100, 10), cost(0.01));
-    acc.record(PRIMARY_SLOT, "mock/opus", counts(50, 5), cost(0.02));
+    acc.record(ROOT_AGENT, "mock/opus", counts(100, 10), cost(0.01));
+    acc.record(ROOT_AGENT, "mock/opus", counts(50, 5), cost(0.02));
     // A different model on the same slot is its own rollup (a re-pointed slot stays attributable).
     acc.record("subagent", "mock/haiku", counts(30, 3), cost(0.001));
 
@@ -3427,7 +3414,7 @@ fn slot_accounting_sums_per_slot_and_model() {
             tokens,
             cost,
         } => {
-            assert_eq!(slot, PRIMARY_SLOT);
+            assert_eq!(slot, ROOT_AGENT);
             assert_eq!(model_id, "mock/opus");
             assert_eq!(tokens.uncached_input, Some(150));
             assert_eq!(tokens.output, Some(15));
@@ -3449,38 +3436,6 @@ fn slot_accounting_sums_per_slot_and_model() {
         }
         other => panic!("expected the subagent/haiku rollup second, got {other:?}"),
     }
-}
-
-/// With multi-model off, a run that also binds a non-primary slot still resolves the root to the
-/// primary model — the toggle (default off) forces the primary slot, and the AgentSpawned reports
-/// it. This is the ablation off arm at the `run` level.
-#[tokio::test]
-async fn run_forces_primary_slot_when_multi_model_off() {
-    let dir = TempDir::new().unwrap();
-    let sink = CollectingSink::new();
-    let emitter = Emitter::with_sink(Some("run-mm-off".to_string()), Box::new(sink.clone()));
-    // Two slots bound, but multi-model is not enabled (it is opt-in, absent from `minimal`).
-    let set = two_slot_set("mock/primary-model", "mock/subagent-model");
-    assert!(!set.is_enabled(CAPABILITY_MULTI_MODEL));
-    let inv = invocation(dir.path(), set);
-
-    assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
-
-    let events = sink.events();
-    let (slot, model_id) = events
-        .iter()
-        .find_map(|e| match &e.kind {
-            GgTelemetryKind::AgentSpawned { slot, model_id, .. } => {
-                Some((slot.clone(), model_id.clone()))
-            }
-            _ => None,
-        })
-        .expect("an AgentSpawned was emitted");
-    assert_eq!(slot, PRIMARY_SLOT, "the root runs on the primary slot");
-    assert_eq!(
-        model_id, "mock/primary-model",
-        "with multi-model off the root resolves the primary model"
-    );
 }
 
 // ---------------------------------------------------------------------------
@@ -3527,20 +3482,39 @@ impl ClientFactory for ScriptedFactory {
     }
 }
 
-/// A capability set with subagents (`maxParallel`/`maxDepth`) and multi-model enabled on top of the
-/// minimal defaults, plus a binding for each named `extra_slot` (`mock/<slot>`).
-fn subagent_set(max_parallel: u64, max_depth: u64, extra_slots: &[&str]) -> GgCapabilitySet {
-    let mut set = GgCapabilitySet::minimal("mock/primary");
-    set.capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_MULTI_MODEL));
+/// A capability set with subagents (`maxParallel`/`maxDepth`) on the Root plus one
+/// [agent profile](GgAgentConfig) per named `extra_agent` (model `mock/<name>`, on the Root's
+/// primary `mock/primary`). Every profile may spawn every declared agent (a permissive test
+/// allowlist), and every profile carries the same subagents caps so a child can spawn a grandchild.
+fn subagent_set(max_parallel: u64, max_depth: u64, extra_agents: &[&str]) -> GgCapabilitySet {
     let mut subagents = GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS);
     subagents.params = json!({ "maxParallel": max_parallel, "maxDepth": max_depth });
-    set.capabilities.push(subagents);
-    for slot in extra_slots {
-        set.slots
-            .push(GgSlotBinding::new(*slot, format!("mock/{slot}")));
+    // The delegation allowlist shared by every profile: the Root plus each extra agent.
+    let allowlist: Vec<GgSubagentRef> = std::iter::once(ROOT_AGENT)
+        .chain(extra_agents.iter().copied())
+        .map(|name| GgSubagentRef {
+            agent: name.to_string(),
+            description: String::new(),
+        })
+        .collect();
+    let profile = |name: &str, model: &str| {
+        let mut agent = GgAgentConfig {
+            name: name.to_string(),
+            model_id: model.to_string(),
+            subagents: allowlist.clone(),
+            ..GgAgentConfig::root()
+        };
+        agent.capabilities.push(subagents.clone());
+        agent
+    };
+    let mut agents = vec![profile(ROOT_AGENT, "mock/primary")];
+    for name in extra_agents {
+        agents.push(profile(name, &format!("mock/{name}")));
     }
-    set
+    GgCapabilitySet {
+        agents,
+        ..GgCapabilitySet::default()
+    }
 }
 
 /// Every `AgentSpawned` in the stream, as `(agentId, parentId, slot, depth, brief)`.
@@ -3569,7 +3543,7 @@ fn subagent_tools_are_gated_on_the_capability() {
     let names = ["spawn_subagent", "wait_for_subagents", "send_message"];
 
     // Off (minimal has no subagents): none offered.
-    let off = ToolRegistry::from_capabilities(&GgCapabilitySet::minimal("mock/echo"));
+    let off = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/echo").root());
     for name in names {
         assert!(
             !off.definitions().iter().any(|d| d.name == name),
@@ -3577,15 +3551,33 @@ fn subagent_tools_are_gated_on_the_capability() {
         );
     }
 
-    // On: all three offered.
+    // On (and with at least one agent it may spawn): all three offered.
     let mut set = GgCapabilitySet::minimal("mock/echo");
-    set.capabilities
+    set.agents[0]
+        .capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS));
-    let on = ToolRegistry::from_capabilities(&set);
+    set.agents[0].subagents.push(GgSubagentRef {
+        agent: ROOT_AGENT.to_string(),
+        description: String::new(),
+    });
+    let on = ToolRegistry::from_capabilities(set.root());
     for name in names {
         assert!(
             on.definitions().iter().any(|d| d.name == name),
             "`{name}` must be offered when subagents is on"
+        );
+    }
+
+    // On but with an empty allowlist: there is no agent to spawn, so the tools stay withheld.
+    let mut empty = GgCapabilitySet::minimal("mock/echo");
+    empty.agents[0]
+        .capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS));
+    let empty = ToolRegistry::from_capabilities(empty.root());
+    for name in names {
+        assert!(
+            !empty.definitions().iter().any(|d| d.name == name),
+            "`{name}` must not be offered with an empty subagent allowlist"
         );
     }
 }
@@ -3601,7 +3593,7 @@ async fn run_spawns_a_subagent_that_runs_under_cap_one_and_returns() {
     let emitter = Emitter::with_sink(Some("run-sub".to_string()), Box::new(sink.clone()));
     let inv = invocation(dir.path(), subagent_set(1, 3, &["subagent"]));
     let factory = ScriptedFactory::new()
-        .slot("primary", |b| {
+        .slot(ROOT_AGENT, |b| {
             Box::new(MockClient::with_subagent_parent_script(&b.model_id))
         })
         .slot("subagent", |b| {
@@ -3629,7 +3621,7 @@ async fn run_spawns_a_subagent_that_runs_under_cap_one_and_returns() {
         spawns.iter().any(
             |(id, parent, slot, depth, brief)| id.as_deref() == Some(ROOT_AGENT_ID)
                 && parent.is_none()
-                && slot == PRIMARY_SLOT
+                && slot == ROOT_AGENT
                 && *depth == 0
                 && brief.is_none()
         ),
@@ -3720,7 +3712,7 @@ async fn run_spawns_a_subagent_that_runs_under_cap_one_and_returns() {
     assert!(
         rollups
             .iter()
-            .any(|(slot, model)| slot == PRIMARY_SLOT && model == "mock/primary")
+            .any(|(slot, model)| slot == ROOT_AGENT && model == "mock/primary")
     );
     assert!(
         rollups
@@ -3751,7 +3743,7 @@ async fn spawn_is_refused_at_the_max_depth() {
             tool_calls: vec![ToolCall {
                 id: "call_deep".to_string(),
                 name: "spawn_subagent".to_string(),
-                arguments: json!({ "prompt": "do the sub-sub work", "slot": "worker" }),
+                arguments: json!({ "prompt": "do the sub-sub work", "agent": "worker" }),
             }],
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
@@ -3763,7 +3755,7 @@ async fn spawn_is_refused_at_the_max_depth() {
         ))
     };
     let factory = ScriptedFactory::new()
-        .slot("primary", |b| {
+        .slot(ROOT_AGENT, |b| {
             Box::new(MockClient::with_subagent_parent_script(&b.model_id))
         })
         .slot("subagent", move |_| child_tries_to_spawn());
@@ -3814,7 +3806,7 @@ async fn subagents_recurse_within_the_depth_cap() {
             tool_calls: vec![ToolCall {
                 id: "call_gspawn".to_string(),
                 name: "spawn_subagent".to_string(),
-                arguments: json!({ "prompt": "do the leaf work", "slot": "worker" }),
+                arguments: json!({ "prompt": "do the leaf work", "agent": "worker" }),
             }],
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
@@ -3838,7 +3830,7 @@ async fn subagents_recurse_within_the_depth_cap() {
     };
 
     let factory = ScriptedFactory::new()
-        .slot("primary", |b| {
+        .slot(ROOT_AGENT, |b| {
             Box::new(MockClient::with_subagent_parent_script(&b.model_id))
         })
         .slot("subagent", move |_| child_spawns_grandchild())
@@ -3937,7 +3929,7 @@ async fn send_message_reaches_a_running_subagent_and_affects_it() {
             tool_calls: vec![ToolCall {
                 id: "call_spawn".to_string(),
                 name: "spawn_subagent".to_string(),
-                arguments: json!({ "prompt": "await instructions", "slot": "subagent" }),
+                arguments: json!({ "prompt": "await instructions", "agent": "subagent" }),
             }],
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
@@ -3972,7 +3964,7 @@ async fn send_message_reaches_a_running_subagent_and_affects_it() {
     };
 
     let factory = ScriptedFactory::new()
-        .slot("primary", move |_| parent_messages_child())
+        .slot(ROOT_AGENT, move |_| parent_messages_child())
         .slot("subagent", |_| Box::new(InboxProbeClient));
 
     assert_eq!(
@@ -4026,7 +4018,7 @@ async fn send_message_refuses_unknown_and_finished_targets() {
             tool_calls: vec![ToolCall {
                 id: "s".to_string(),
                 name: "spawn_subagent".to_string(),
-                arguments: json!({ "prompt": "quick work", "slot": "subagent" }),
+                arguments: json!({ "prompt": "quick work", "agent": "subagent" }),
             }],
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
@@ -4072,7 +4064,7 @@ async fn send_message_refuses_unknown_and_finished_targets() {
     };
 
     let factory = ScriptedFactory::new()
-        .slot("primary", move |_| parent())
+        .slot(ROOT_AGENT, move |_| parent())
         .slot("subagent", |b| {
             Box::new(MockClient::with_subagent_child_script(&b.model_id))
         });
@@ -4118,7 +4110,8 @@ fn worktree_subagent_set(
     extra_slots: &[&str],
 ) -> GgCapabilitySet {
     let mut set = subagent_set(max_parallel, max_depth, extra_slots);
-    set.capabilities
+    set.agents[0]
+        .capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_WORKTREES));
     set
 }
@@ -4135,7 +4128,7 @@ async fn run_spawns_a_worktree_subagent_that_isolates_then_merges_back() {
     let emitter = Emitter::with_sink(Some("run-wt".to_string()), Box::new(sink.clone()));
     let inv = invocation(dir.path(), worktree_subagent_set(1, 3, &["subagent"]));
     let factory = ScriptedFactory::new()
-        .slot("primary", |b| {
+        .slot(ROOT_AGENT, |b| {
             Box::new(MockClient::with_worktree_subagent_parent_script(
                 &b.model_id,
             ))
@@ -4246,7 +4239,7 @@ async fn worktree_dispatch_is_refused_without_the_capability() {
     // subagents + multi-model, but NOT worktrees.
     let inv = invocation(dir.path(), subagent_set(4, 3, &["subagent"]));
     let factory = ScriptedFactory::new()
-        .slot("primary", |b| {
+        .slot(ROOT_AGENT, |b| {
             Box::new(MockClient::with_worktree_subagent_parent_script(
                 &b.model_id,
             ))
@@ -4315,7 +4308,7 @@ async fn worktree_subagent_work_is_discarded_when_it_does_not_complete() {
         ))
     };
     let factory = ScriptedFactory::new()
-        .slot("primary", |b| {
+        .slot(ROOT_AGENT, |b| {
             Box::new(MockClient::with_worktree_subagent_parent_script(
                 &b.model_id,
             ))
@@ -4366,7 +4359,8 @@ async fn worktree_subagent_work_is_discarded_when_it_does_not_complete() {
 /// [`subagent_set`], plus the (opt-in) workflows capability enabled — a declared-workflow run.
 fn workflow_set(max_parallel: u64, max_depth: u64, extra_slots: &[&str]) -> GgCapabilitySet {
     let mut set = subagent_set(max_parallel, max_depth, extra_slots);
-    set.capabilities
+    set.agents[0]
+        .capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_WORKFLOWS));
     set
 }
@@ -4435,17 +4429,23 @@ fn workflow_stages(events: &[test_cabinet_core::gg::GgTelemetryEvent]) -> Vec<St
 #[test]
 fn run_workflow_tool_is_gated_on_the_workflows_capability() {
     // Off (minimal has no workflows): not offered.
-    let off = ToolRegistry::from_capabilities(&GgCapabilitySet::minimal("mock/echo"));
+    let off = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/echo").root());
     assert!(
         !off.definitions().iter().any(|d| d.name == "run_workflow"),
         "run_workflow must not be offered when workflows is off"
     );
 
-    // On: offered — even without the subagents capability, since workflows carries its own runtime.
+    // On (with an agent it may run stages as): offered — even without the subagents capability,
+    // since workflows carries its own runtime.
     let mut set = GgCapabilitySet::minimal("mock/echo");
-    set.capabilities
+    set.agents[0]
+        .capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_WORKFLOWS));
-    let on = ToolRegistry::from_capabilities(&set);
+    set.agents[0].subagents.push(GgSubagentRef {
+        agent: ROOT_AGENT.to_string(),
+        description: String::new(),
+    });
+    let on = ToolRegistry::from_capabilities(set.root());
     assert!(
         on.definitions().iter().any(|d| d.name == "run_workflow"),
         "run_workflow must be offered when workflows is on"
@@ -4465,7 +4465,7 @@ async fn run_workflow_fans_out_then_sequences_and_returns_final_results() {
     // Cap of 2 so stage one's two subagents genuinely run in parallel under the global cap.
     let inv = invocation(dir.path(), workflow_set(2, 3, &["worker"]));
     let factory = ScriptedFactory::new()
-        .slot("primary", |b| {
+        .slot(ROOT_AGENT, |b| {
             Box::new(MockClient::with_workflow_parent_script(&b.model_id))
         })
         .slot("worker", counting_worker());
@@ -4625,7 +4625,7 @@ async fn run_workflow_fans_out_then_sequences_and_returns_final_results() {
             _ => None,
         })
         .collect();
-    assert!(slots.iter().any(|s| s == PRIMARY_SLOT));
+    assert!(slots.iter().any(|s| s == ROOT_AGENT));
     assert!(slots.iter().any(|s| s == "worker"));
 
     assert!(matches!(
@@ -4645,7 +4645,7 @@ async fn workflow_reuses_the_global_cap_and_completes_under_cap_one() {
     let emitter = Emitter::with_sink(Some("run-wf1".to_string()), Box::new(sink.clone()));
     let inv = invocation(dir.path(), workflow_set(1, 3, &["worker"]));
     let factory = ScriptedFactory::new()
-        .slot("primary", |b| {
+        .slot(ROOT_AGENT, |b| {
             Box::new(MockClient::with_workflow_parent_script(&b.model_id))
         })
         .slot("worker", counting_worker());
@@ -4706,7 +4706,8 @@ async fn workflow_stage_runs_each_item_in_its_own_worktree() {
     let emitter = Emitter::with_sink(Some("run-wf-wt".to_string()), Box::new(sink.clone()));
     // subagents + multi-model + workflows + worktrees, with the worker slot bound.
     let mut set = workflow_set(2, 3, &["worker"]);
-    set.capabilities
+    set.agents[0]
+        .capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_WORKTREES));
     let inv = invocation(dir.path(), set);
 
@@ -4723,7 +4724,7 @@ async fn workflow_stage_runs_each_item_in_its_own_worktree() {
                             "name": "build",
                             "prompt": "Create the {{item}} part in isolation.",
                             "items": ["alpha", "beta"],
-                            "slot": "worker",
+                            "agent": "worker",
                             "worktree": true
                         }
                     ]
@@ -4736,7 +4737,7 @@ async fn workflow_stage_runs_each_item_in_its_own_worktree() {
         Box::new(MockClient::new("mock/primary", vec![run, stop_response()]))
     };
     let factory = ScriptedFactory::new()
-        .slot("primary", move |_| parent())
+        .slot(ROOT_AGENT, move |_| parent())
         .slot("worker", counting_worker());
 
     assert_eq!(
@@ -4826,21 +4827,26 @@ fn parse_workflow_stages_rejects_malformed_declarations() {
         "empty stages"
     );
     assert!(
-        parse_workflow_stages(&json!({ "stages": [{ "items": ["a"] }] })).is_err(),
+        parse_workflow_stages(&json!({ "stages": [{ "items": ["a"], "agent": "Root" }] })).is_err(),
         "a stage needs a prompt"
+    );
+    assert!(
+        parse_workflow_stages(&json!({ "stages": [{ "prompt": "do it", "items": ["a"] }] }))
+            .is_err(),
+        "a stage needs an agent to run as"
     );
     assert!(
         parse_workflow_stages(&json!({ "stages": "nope" })).is_err(),
         "stages must be an array"
     );
-    // A well-formed declaration parses, defaulting name/slot and reading items.
+    // A well-formed declaration parses, defaulting the name and reading its agent and items.
     let parsed = parse_workflow_stages(&json!({
-        "stages": [{ "prompt": "do {{item}}", "items": ["a", "b"] }]
+        "stages": [{ "prompt": "do {{item}}", "agent": ROOT_AGENT, "items": ["a", "b"] }]
     }))
     .expect("a well-formed stage parses");
     assert_eq!(parsed.len(), 1);
     assert_eq!(parsed[0].name, "stage-1");
-    assert_eq!(parsed[0].slot, PRIMARY_SLOT);
+    assert_eq!(parsed[0].slot, ROOT_AGENT);
     assert_eq!(
         parsed[0].items.as_deref(),
         Some(&["a".to_string(), "b".to_string()][..])
@@ -4857,10 +4863,15 @@ const REVIEW_ISSUE_ID: &str = "feat-1";
 /// [`subagent_set`], plus the project-management and code-reviews capabilities — a review-gated run.
 fn code_review_set(extra_slots: &[&str]) -> GgCapabilitySet {
     let mut set = subagent_set(4, 3, extra_slots);
-    set.capabilities
+    set.agents[0]
+        .capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT));
-    set.capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_CODE_REVIEWS));
+    // The reviewer runs under a dedicated `reviewer` agent (these e2es script it separately); the
+    // issue and fix agents stay on the Root.
+    set.agents[0].capabilities.push(GgCapabilityConfig {
+        params: json!({ "reviewerAgent": "reviewer" }),
+        ..GgCapabilityConfig::enabled(CAPABILITY_CODE_REVIEWS)
+    });
     set
 }
 
@@ -5018,7 +5029,7 @@ fn project_set(max_retries: Option<u64>) -> GgCapabilitySet {
     if let Some(retries) = max_retries {
         cap.params = json!({ "maxRetries": retries });
     }
-    set.capabilities.push(cap);
+    set.agents[0].capabilities.push(cap);
     set
 }
 
@@ -5048,7 +5059,7 @@ async fn submitting_an_issue_auto_dispatches_an_agent_that_completes_it() {
     let inv = invocation(dir.path(), project_set(None));
 
     let counter = Arc::new(AtomicUsize::new(0));
-    let factory = ScriptedFactory::new().slot("primary", move |b| {
+    let factory = ScriptedFactory::new().slot(ROOT_AGENT, move |b| {
         let n = counter.fetch_add(1, Ordering::SeqCst);
         let responses = if n == 0 {
             // The root files the issue and finishes — no manual dispatch.
@@ -5109,7 +5120,7 @@ async fn an_uncompleted_issue_is_retried_then_failed() {
     let inv = invocation(dir.path(), project_set(Some(1)));
 
     let counter = Arc::new(AtomicUsize::new(0));
-    let factory = ScriptedFactory::new().slot("primary", move |b| {
+    let factory = ScriptedFactory::new().slot(ROOT_AGENT, move |b| {
         let n = counter.fetch_add(1, Ordering::SeqCst);
         let responses = if n == 0 {
             vec![create_issue_call("feat-1"), stop_response()]
@@ -5151,7 +5162,7 @@ async fn an_agent_can_wait_for_an_issue_until_it_completes() {
     let inv = invocation(dir.path(), project_set(None));
 
     let counter = Arc::new(AtomicUsize::new(0));
-    let factory = ScriptedFactory::new().slot("primary", move |b| {
+    let factory = ScriptedFactory::new().slot(ROOT_AGENT, move |b| {
         let n = counter.fetch_add(1, Ordering::SeqCst);
         let responses = if n == 0 {
             // The root files the issue, waits on it, then finishes.
@@ -5203,7 +5214,7 @@ async fn completing_an_issue_triggers_a_code_review_and_accepts_on_approval() {
     let review_counter = Arc::new(AtomicUsize::new(0));
     let factory = ScriptedFactory::new()
         .slot(
-            "primary",
+            ROOT_AGENT,
             code_review_primary_producer(Arc::clone(&primary_counter)),
         )
         .slot(
@@ -5299,7 +5310,7 @@ async fn completing_an_issue_triggers_a_code_review_and_accepts_on_approval() {
     let fix_spawns: Vec<_> = spawns
         .iter()
         .filter(|(_, _, slot, _, brief)| {
-            slot == "primary"
+            slot == ROOT_AGENT
                 && brief
                     .as_deref()
                     .is_some_and(|b| b.contains("Requested changes from Code Review"))
@@ -5347,7 +5358,7 @@ async fn code_review_fix_loop_has_no_cycle_limit_and_terminates_on_approval() {
     let review_counter = Arc::new(AtomicUsize::new(0));
     let factory = ScriptedFactory::new()
         .slot(
-            "primary",
+            ROOT_AGENT,
             code_review_primary_producer(Arc::clone(&primary_counter)),
         )
         .slot(
@@ -5391,7 +5402,7 @@ async fn code_review_fix_loop_has_no_cycle_limit_and_terminates_on_approval() {
     assert_eq!(
         spawns
             .iter()
-            .filter(|(_, _, slot, _, brief)| slot == "primary"
+            .filter(|(_, _, slot, _, brief)| slot == ROOT_AGENT
                 && brief
                     .as_deref()
                     .is_some_and(|b| b.contains("Requested changes from Code Review")))
@@ -5418,9 +5429,11 @@ async fn code_review_off_completes_the_issue_directly() {
 
     // Subagents + a board, but NOT code-reviews.
     let mut set = GgCapabilitySet::minimal("mock/primary");
-    set.capabilities
+    set.agents[0]
+        .capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS));
-    set.capabilities
+    set.agents[0]
+        .capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT));
     let inv = invocation(dir.path(), set);
 
@@ -5428,7 +5441,7 @@ async fn code_review_off_completes_the_issue_directly() {
     // agent completes it directly — with code-reviews off there is no review to run. A stateful
     // primary producer serves the root (agent 0) then the dispatched issue agent (agent 1).
     let counter = Arc::new(AtomicUsize::new(0));
-    let factory = ScriptedFactory::new().slot("primary", move |b| {
+    let factory = ScriptedFactory::new().slot(ROOT_AGENT, move |b| {
         let n = counter.fetch_add(1, Ordering::SeqCst);
         let responses = if n == 0 {
             vec![
@@ -5502,6 +5515,38 @@ async fn code_review_off_completes_the_issue_directly() {
     );
 }
 
+/// The agent topology for the offline Code Review e2e (driven by the `DefaultClientFactory`
+/// `mock/demo-*` scripts). The `code-review-parent` script is message-driven and plays **three
+/// roles on the Root profile** — the root that files the issue, the agent auto-dispatched to
+/// implement it (issue agent, defaulting to Root), and each fix agent (the issue's own profile,
+/// i.e. Root). Only the reviewer is a distinct model, chosen by the `reviewerAgent` param. Root
+/// keeps the `subagents` capability so the Code Review's delegation machinery engages; its
+/// allowlist is empty because it never model-spawns (issue dispatch and the review are
+/// orchestrator-internal).
+fn code_review_e2e_set() -> GgCapabilitySet {
+    let mut root = GgAgentConfig {
+        model_id: "mock/demo-code-review-parent".to_string(),
+        ..GgAgentConfig::root()
+    };
+    root.capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS));
+    root.capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT));
+    root.capabilities.push(GgCapabilityConfig {
+        params: json!({ "reviewerAgent": "reviewer" }),
+        ..GgCapabilityConfig::enabled(CAPABILITY_CODE_REVIEWS)
+    });
+    let reviewer = GgAgentConfig {
+        name: "reviewer".to_string(),
+        model_id: "mock/demo-review-reviewer".to_string(),
+        ..GgAgentConfig::root()
+    };
+    GgCapabilitySet {
+        agents: vec![root, reviewer],
+        ..GgCapabilitySet::default()
+    }
+}
+
 /// The full review → fix → approve cycle driven **offline through the real binary path** (the
 /// `DefaultClientFactory` + the `mock/…` model-id scripts), not the in-crate scripted factory: the
 /// reviewer requests the fix marker, the fixer writes it, and the re-review approves.
@@ -5511,19 +5556,7 @@ async fn code_review_offline_e2e_through_the_default_factory() {
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-cr-mock".to_string()), Box::new(sink.clone()));
 
-    let mut set = GgCapabilitySet::minimal("mock/demo-code-review-parent");
-    set.capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_MULTI_MODEL));
-    set.capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS));
-    set.capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT));
-    set.capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_CODE_REVIEWS));
-    set.slots
-        .push(GgSlotBinding::new("worker", "mock/demo-review-worker"));
-    set.slots
-        .push(GgSlotBinding::new("reviewer", "mock/demo-review-reviewer"));
+    let set = code_review_e2e_set();
     let inv = invocation(dir.path(), set);
 
     // `run` uses the production DefaultClientFactory, which selects the mock scripts by model id.
@@ -5665,7 +5698,7 @@ async fn run_emits_a_session_summary_immediately_before_session_ended() {
         slot_keys
     );
     assert_eq!(summary.slot_costs.len(), 1);
-    assert_eq!(summary.slot_costs[0].slot, PRIMARY_SLOT);
+    assert_eq!(summary.slot_costs[0].slot, ROOT_AGENT);
     // The effective toolset is recorded on the summary: the exact set of tools the run offered its
     // agent (shell + the filesystem tools among them), so the toolset is a durable, slice-by
     // ablation variable.
@@ -5692,7 +5725,7 @@ async fn a_per_tool_override_is_reflected_in_the_recorded_effective_toolset() {
     let emitter = Emitter::with_sink(Some("run-ablate".to_string()), Box::new(sink.clone()));
     // Filesystem stays on, but `edit_file` is individually withheld (the apply-patch-vs-write lever).
     let mut set = GgCapabilitySet::minimal("mock/echo");
-    set.disabled_tools = vec!["edit_file".to_string()];
+    set.agents[0].disabled_tools = vec!["edit_file".to_string()];
     let inv = invocation(dir.path(), set);
 
     assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
@@ -5721,19 +5754,7 @@ async fn session_summary_counts_match_a_code_review_run_stream() {
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-cr-summary".to_string()), Box::new(sink.clone()));
 
-    let mut set = GgCapabilitySet::minimal("mock/demo-code-review-parent");
-    set.capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_MULTI_MODEL));
-    set.capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS));
-    set.capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT));
-    set.capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_CODE_REVIEWS));
-    set.slots
-        .push(GgSlotBinding::new("worker", "mock/demo-review-worker"));
-    set.slots
-        .push(GgSlotBinding::new("reviewer", "mock/demo-review-reviewer"));
+    let set = code_review_e2e_set();
     let inv = invocation(dir.path(), set);
 
     assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
@@ -5873,7 +5894,7 @@ fn fsm_set_for(machine: &str, model_id: &str) -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal(model_id);
     let mut cap = GgCapabilityConfig::enabled(CAPABILITY_FSM);
     cap.params = json!({ "machine": machine });
-    set.capabilities.push(cap);
+    set.agents[0].capabilities.push(cap);
     set
 }
 
@@ -5915,7 +5936,7 @@ async fn fsm_tdd_cannot_advance_to_implement_before_tests_exist() {
     let inv = invocation(dir.path(), fsm_set("tdd"));
 
     // The scripted agent *tries* to advance before writing any test — the engine must refuse it.
-    let factory = ScriptedFactory::new().slot("primary", |b| {
+    let factory = ScriptedFactory::new().slot(ROOT_AGENT, |b| {
         Box::new(MockClient::new(
             &b.model_id,
             vec![
@@ -6048,19 +6069,26 @@ async fn fsm_review_gated_accepts_only_after_a_code_review_approves() {
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-rg".to_string()), Box::new(sink.clone()));
 
-    // review-gated needs delegation (to dispatch the reviewer) and a distinct reviewer model.
+    // review-gated needs delegation (to dispatch the reviewer) and a distinct reviewer agent.
     let mut set = fsm_set("review-gated");
-    set.capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_MULTI_MODEL));
-    set.capabilities
+    set.agents[0]
+        .capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS));
-    set.slots
-        .push(GgSlotBinding::new("reviewer", "mock/reviewer"));
+    // Point the Code Review at a dedicated `reviewer` agent (default would be Root).
+    set.agents[0].capabilities.push(GgCapabilityConfig {
+        params: json!({ "reviewerAgent": "reviewer" }),
+        ..GgCapabilityConfig::enabled(CAPABILITY_CODE_REVIEWS)
+    });
+    set.agents.push(GgAgentConfig {
+        name: "reviewer".to_string(),
+        model_id: "mock/reviewer".to_string(),
+        ..GgAgentConfig::root()
+    });
     let inv = invocation(dir.path(), set);
 
     let review_counter = Arc::new(AtomicUsize::new(0));
     let factory = ScriptedFactory::new()
-        .slot("primary", |b| {
+        .slot(ROOT_AGENT, |b| {
             Box::new(MockClient::new(
                 &b.model_id,
                 vec![
@@ -6184,7 +6212,7 @@ async fn fsm_plan_first_reuses_the_planning_flow() {
         "plan-first works without the standalone planning capability"
     );
 
-    let factory = ScriptedFactory::new().slot("primary", |b| {
+    let factory = ScriptedFactory::new().slot(ROOT_AGENT, |b| {
         Box::new(MockClient::new(
             &b.model_id,
             vec![
@@ -6298,7 +6326,7 @@ async fn fsm_absent_or_unknown_machine_leaves_behavior_unchanged() {
         let emitter = Emitter::with_sink(Some("run-bogus".to_string()), Box::new(sink.clone()));
         // Give it a benign one-shot script so the run completes.
         let inv = invocation(dir.path(), fsm_set("does-not-exist"));
-        let factory = ScriptedFactory::new().slot("primary", |b| {
+        let factory = ScriptedFactory::new().slot(ROOT_AGENT, |b| {
             Box::new(MockClient::new(&b.model_id, vec![stop_response()]))
         });
         assert_eq!(
@@ -6329,10 +6357,15 @@ async fn fsm_absent_or_unknown_machine_leaves_behavior_unchanged() {
 /// capabilities — a best-of-K run. Every attempt needs its own worktree, so worktrees is required.
 fn speculative_set(extra_slots: &[&str]) -> GgCapabilitySet {
     let mut set = subagent_set(4, 3, extra_slots);
-    set.capabilities
+    set.agents[0]
+        .capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_WORKTREES));
-    set.capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_SPECULATIVE));
+    // The judge runs under a dedicated `judge` agent (these e2es script it separately); the
+    // attempts run under the `attempt` agent named in the `speculate` call.
+    set.agents[0].capabilities.push(GgCapabilityConfig {
+        params: json!({ "judgeAgent": "judge" }),
+        ..GgCapabilityConfig::enabled(CAPABILITY_SPECULATIVE)
+    });
     set
 }
 
@@ -6427,7 +6460,7 @@ async fn speculate_runs_best_of_k_over_worktrees_and_merges_only_the_winner() {
     // The root speculates: two attempts on the `attempt` slot, then stops.
     let attempt_counter = Arc::new(AtomicUsize::new(0));
     let factory = ScriptedFactory::new()
-        .slot("primary", |b| {
+        .slot(ROOT_AGENT, |b| {
             Box::new(MockClient::new(
                 &b.model_id,
                 vec![
@@ -6437,7 +6470,7 @@ async fn speculate_runs_best_of_k_over_worktrees_and_merges_only_the_winner() {
                         json!({
                             "prompt": "Implement the widget as well as you can.",
                             "attempts": 2,
-                            "slots": ["attempt", "attempt"],
+                            "agent": "attempt",
                         }),
                     ),
                     stop_response(),
@@ -6575,24 +6608,31 @@ async fn speculate_runs_best_of_k_over_worktrees_and_merges_only_the_winner() {
 fn speculate_tool_is_gated_on_the_capability() {
     // Off (subagents + worktrees on, but not speculative): not offered.
     let mut off = GgCapabilitySet::minimal("mock/echo");
-    off.capabilities
+    off.agents[0]
+        .capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS));
-    off.capabilities
+    off.agents[0]
+        .capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_WORKTREES));
     assert!(
-        !ToolRegistry::from_capabilities(&off)
+        !ToolRegistry::from_capabilities(off.root())
             .definitions()
             .iter()
             .any(|d| d.name == "speculate"),
         "`speculate` must not be offered when speculative-execution is off"
     );
 
-    // On: offered.
+    // On (with an agent it may run attempts as): offered.
     let mut on = off.clone();
-    on.capabilities
+    on.agents[0]
+        .capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_SPECULATIVE));
+    on.agents[0].subagents.push(GgSubagentRef {
+        agent: ROOT_AGENT.to_string(),
+        description: String::new(),
+    });
     assert!(
-        ToolRegistry::from_capabilities(&on)
+        ToolRegistry::from_capabilities(on.root())
             .definitions()
             .iter()
             .any(|d| d.name == "speculate"),
@@ -6611,11 +6651,12 @@ async fn speculate_is_refused_without_worktrees() {
 
     // subagents + multi-model + speculative, but NOT worktrees.
     let mut set = subagent_set(4, 3, &["attempt", "judge"]);
-    set.capabilities
+    set.agents[0]
+        .capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_SPECULATIVE));
     let inv = invocation(dir.path(), set);
 
-    let factory = ScriptedFactory::new().slot("primary", |b| {
+    let factory = ScriptedFactory::new().slot(ROOT_AGENT, |b| {
         Box::new(MockClient::new(
             &b.model_id,
             vec![
@@ -6670,19 +6711,38 @@ async fn speculate_offline_e2e_through_the_default_factory() {
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-spec-offline".to_string()), Box::new(sink.clone()));
 
-    let mut set = GgCapabilitySet::minimal("mock/x-speculate-parent");
-    set.capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_MULTI_MODEL));
-    set.capabilities
+    let mut root = GgAgentConfig {
+        model_id: "mock/x-speculate-parent".to_string(),
+        // The `speculate` call names the `attempt` agent, so it must be in the caller's allowlist.
+        subagents: vec![GgSubagentRef {
+            agent: "attempt".to_string(),
+            description: String::new(),
+        }],
+        ..GgAgentConfig::root()
+    };
+    root.capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS));
-    set.capabilities
+    root.capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_WORKTREES));
-    set.capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_SPECULATIVE));
-    set.slots
-        .push(GgSlotBinding::new("attempt", "mock/x-speculate-attempt"));
-    set.slots
-        .push(GgSlotBinding::new("judge", "mock/x-speculate-judge"));
+    // The judge runs under a dedicated `judge` agent (default would be Root).
+    root.capabilities.push(GgCapabilityConfig {
+        params: json!({ "judgeAgent": "judge" }),
+        ..GgCapabilityConfig::enabled(CAPABILITY_SPECULATIVE)
+    });
+    let attempt = GgAgentConfig {
+        name: "attempt".to_string(),
+        model_id: "mock/x-speculate-attempt".to_string(),
+        ..GgAgentConfig::root()
+    };
+    let judge = GgAgentConfig {
+        name: "judge".to_string(),
+        model_id: "mock/x-speculate-judge".to_string(),
+        ..GgAgentConfig::root()
+    };
+    let set = GgCapabilitySet {
+        agents: vec![root, attempt, judge],
+        ..GgCapabilitySet::default()
+    };
     let inv = invocation(dir.path(), set);
 
     // The real production path: `run` with the DefaultClientFactory, selecting scripts by model id.
@@ -6782,7 +6842,8 @@ fn parse_judge_verdict_reads_the_winner_and_rejects_no_verdict() {
 /// The minimal set with the (debug-only) [replay](CAPABILITY_REPLAY) capability enabled on top.
 fn minimal_with_replay(model: &str) -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal(model);
-    set.capabilities
+    set.agents[0]
+        .capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_REPLAY));
     set
 }
@@ -6918,11 +6979,12 @@ async fn replay_capture_interleaves_a_multi_agent_run() {
     let emitter = Emitter::with_sink(Some("run-replay-sub".to_string()), Box::new(sink.clone()));
     // Subagents + multi-model + replay on top of the minimal defaults, with a subagent slot bound.
     let mut set = subagent_set(1, 3, &["subagent"]);
-    set.capabilities
+    set.agents[0]
+        .capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_REPLAY));
     let inv = invocation(dir.path(), set);
     let factory = ScriptedFactory::new()
-        .slot("primary", |b| {
+        .slot(ROOT_AGENT, |b| {
             Box::new(MockClient::with_subagent_parent_script(&b.model_id))
         })
         .slot("subagent", |b| {
@@ -7116,7 +7178,7 @@ async fn a_provider_refusing_images_does_not_fail_the_run() {
 
     let client = VisionRefusingClient::new("mock/text-only");
     let produced = Arc::clone(&client);
-    let factory = Arc::new(ScriptedFactory::new().slot(PRIMARY_SLOT, move |_| {
+    let factory = Arc::new(ScriptedFactory::new().slot(ROOT_AGENT, move |_| {
         Box::new(SharedClient(Arc::clone(&produced)))
     }));
 

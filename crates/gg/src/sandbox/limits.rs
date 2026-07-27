@@ -8,7 +8,7 @@
 //! allowed fifty times the fuel, and nothing accumulates across them.
 
 use serde_json::Value;
-use test_cabinet_core::gg::{CAPABILITY_RESPONSES_AS_CODE, GgCapabilitySet};
+use test_cabinet_core::gg::{CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig};
 use wasmtime::ResourceLimiter;
 
 /// The sandbox limits one program runs under.
@@ -74,7 +74,7 @@ impl Default for SandboxLimits {
 /// purpose to measure what that does. What protects the operator from a mystifying failure is the
 /// error message, which names the configured cap and says the guest engine needs about 10 MiB of
 /// heap before a program runs at all.
-pub fn resolve_sandbox_limits(set: &GgCapabilitySet) -> SandboxLimits {
+pub fn resolve_sandbox_limits(set: &GgAgentConfig) -> SandboxLimits {
     let mut limits = SandboxLimits::default();
     let Some(capability) = set.capability(CAPABILITY_RESPONSES_AS_CODE) else {
         return limits;

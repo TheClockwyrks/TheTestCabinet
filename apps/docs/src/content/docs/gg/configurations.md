@@ -27,13 +27,12 @@ read-only **built-ins** every operator shares:
 | `no-compaction` | Everything on except the compaction backstop — the context-overflow arm. |
 | `shell-only` | Shell and nothing else — the ablation extreme. |
 
-Creating or editing one opens the capability-set editor: the full capability
-catalogue grouped by concern (each capability's on/off toggle, its swappable
-implementation, and its params), the **model slots** and the **role bindings** that
-consume them (below), and the per-tool [ablation](/gg/toolset-ablation/) overrides.
-**Duplicate** seeds a new configuration from an existing one — the usual way to build
-an ablation arm is to duplicate the arm beside it and change the one thing under
-test.
+Creating or editing one opens the capability-set editor. At the top sit the two
+run-level fieldsets — the **Run limits** (below) and the **model slots** (below) —
+followed by the **Agents** section (below), where the capabilities themselves are
+configured, since in gg they are **per agent**. **Duplicate** seeds a new
+configuration from an existing one — the usual way to build an ablation arm is to
+duplicate the arm beside it and change the one thing under test.
 
 Above the capability groups sits the **Run limits** fieldset — the
 [execution ceilings](/gg/execution-limits/) the whole run is bounded by: turns per agent,
@@ -53,11 +52,38 @@ boundary. It can only narrow — the model's real window is a hard limit.
 A configuration is deliberately **test-case-free**, and it does not have to name the
 models it runs on.
 
+## Agents
+
+gg's capabilities are configured **per agent**, not once for the whole run. A
+configuration declares one or more **agent profiles**; the first is always the
+**Root agent**, which drives the run's top-level session and cannot be removed.
+Adding more profiles is how a study gives different agents different tools, models,
+prompts, or execution modes — a cheap-and-fast scout, a careful reviewer, a
+code-writing implementer.
+
+Opening an agent switches the editor into that profile's own view (with a back
+control to the run-level form). Each profile carries:
+
+- its own enabled **capabilities**, their implementations and params, and per-tool
+  [ablation](/gg/toolset-ablation/) overrides — so [responses as
+  code](/gg/responses-as-code/) is a per-agent choice too, and one run can mix
+  code-emitting and tool-calling agents;
+- **one model**, either pinned outright or deferred to a run-level [model
+  slot](#model-slots) (below);
+- optional **custom instructions** — operator prose inserted into the agent's
+  [system prompt](/gg/prompts/) — and, for full control, a complete **system-prompt
+  template override** (the editor seeds it with gg's built-in template so the normal
+  edit is just the custom-instructions field);
+- a **subagents allowlist** — the other profiles this agent may spawn, each with a
+  caller-scoped description telling it when to use that target. This is what governs
+  [delegation](/gg/subagents/): an agent is spawned **by name**, and only names in
+  the allowlist can be spawned (a profile may list itself, allowing recursion).
+
 ## Model slots
 
-A configuration is meant to be reusable across models, so the models it runs on are
-not all baked into it. It declares named **model slots** — launch-time model
-parameters — and each [role binding](/gg/multi-model/#slots) either:
+A configuration is meant to be reusable across models, so the models its agents run
+on are not all baked into it. It declares run-level named **model slots** —
+launch-time model parameters — and each agent's model either:
 
 - **pins a model** outright, an *internal* binding that is identical on every run of
   the configuration and is never asked about again; or
@@ -65,21 +91,24 @@ parameters — and each [role binding](/gg/multi-model/#slots) either:
   launched.
 
 A model slot may carry a **default**, which the launch form pre-fills. Model slots are
-named separately from the roles they feed precisely so two roles can share one: "run
+named separately from the agents they feed precisely so two agents can share one: "run
 the reviewer *and* the judge on whatever I pick for `critic`" is one launch input, not
 two. gg routes every live model through OpenRouter and infers its provider from the
-model id, so a slot never needs a provider pinned onto it.
+model id, so a slot never needs a provider pinned onto it — and because each agent
+carries its own model, a run can span **several, possibly cross-provider models** at
+once, which is why gg accounts usage and cost **per agent profile** rather than as one
+figure for one model.
 
 The default a fresh configuration starts from is the simple case — one `primary`
-model slot, with the `primary` role deferred to it — so a configuration that says
-nothing about models still asks for exactly one at launch. A configuration saved
-before model slots existed reads as that same shape.
+model slot, with the Root agent deferred to it — so a configuration that says nothing
+about models still asks for exactly one at launch. A configuration saved before
+capabilities were per-agent reads as a single Root agent bound that same way.
 
 Declaring a slot is an authoring-time concern only. **Launching resolves every
 deferred binding to a concrete model**, so the capability set a run carries — and
 records — is fully pinned, which is what keeps
 [result aggregation](/gg/result-aggregation/) sliceable by "which model ran this
-role". The backend rejects a launch that leaves one unresolved, naming the role.
+agent". The backend rejects a launch that leaves one unresolved, naming the agent.
 
 ## Storage
 

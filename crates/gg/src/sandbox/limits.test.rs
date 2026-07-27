@@ -5,19 +5,19 @@
 //! turns an ablation into a run of the default arm under another name.
 
 use serde_json::json;
-use test_cabinet_core::gg::{CAPABILITY_RESPONSES_AS_CODE, GgCapabilityConfig, GgCapabilitySet};
+use test_cabinet_core::gg::{CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig, GgCapabilityConfig};
 use wasmtime::ResourceLimiter;
 
 use super::*;
 
-/// A capability set carrying `responses-as-code` with the given params.
-fn set_with(params: serde_json::Value) -> GgCapabilitySet {
-    GgCapabilitySet {
+/// An agent profile carrying `responses-as-code` with the given params.
+fn set_with(params: serde_json::Value) -> GgAgentConfig {
+    GgAgentConfig {
         capabilities: vec![GgCapabilityConfig {
             params,
             ..GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE)
         }],
-        ..GgCapabilitySet::default()
+        ..GgAgentConfig::root()
     }
 }
 
@@ -25,7 +25,7 @@ fn set_with(params: serde_json::Value) -> GgCapabilitySet {
 #[test]
 fn an_absent_capability_resolves_to_the_defaults() {
     assert_eq!(
-        resolve_sandbox_limits(&GgCapabilitySet::default()),
+        resolve_sandbox_limits(&GgAgentConfig::root()),
         SandboxLimits::default()
     );
 }

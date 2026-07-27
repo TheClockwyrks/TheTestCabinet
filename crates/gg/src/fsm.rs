@@ -40,7 +40,7 @@
 
 use std::path::Path;
 
-use test_cabinet_core::gg::{CAPABILITY_FSM, GgCapabilitySet};
+use test_cabinet_core::gg::{CAPABILITY_FSM, GgAgentConfig, GgCapabilitySet};
 
 use crate::planning::{Planner, resolve_planner};
 use crate::tools::{ADVANCE_STATE_TOOL, is_read_only_tool};
@@ -218,7 +218,7 @@ impl FsmRuntime {
     /// its entry state; otherwise (absent capability, no `machine`, or an unrecognized name)
     /// [disabled](Self::disabled). The `implementation` selects the [`Planner`] for `plan-first`
     /// (the same seam the planning capability uses).
-    pub fn resolve(set: &GgCapabilitySet) -> Self {
+    pub fn resolve(set: &GgAgentConfig) -> Self {
         let Some(cap) = set.capability(CAPABILITY_FSM).filter(|cap| cap.enabled) else {
             return Self::disabled();
         };

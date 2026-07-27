@@ -74,8 +74,9 @@ function RunGgBody({ run }: { run: RunRecord }) {
   // Whether the run was captured for replay — the debug-only `replay` capability was
   // on, so a stored replay record exists to step through.
   const replayCaptured =
-    capabilitySet?.capabilities.some((c) => c.id === "replay" && c.enabled) ??
-    false;
+    capabilitySet?.agents?.[0]?.capabilities.some(
+      (c) => c.id === "replay" && c.enabled,
+    ) ?? false;
 
   return (
     <section className={`${styles.section} ${styles.sectionFill}`}>

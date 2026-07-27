@@ -365,34 +365,43 @@ function StatusCard({ status }: { status: GgDashboardStatus }) {
   );
 }
 
-// The run's configuration: the preset it came from (when named), which capabilities
-// were on, and the model bound to each slot. This is the run's independent
-// variable, so it reads as a first-class card rather than a footnote.
+// The run's configuration: the preset it came from (when named), and — per agent
+// profile — the model it ran on and which capabilities were on. This is the run's
+// independent variable, so it reads as a first-class card rather than a footnote.
 function ConfigurationCard({ set }: { set: GgCapabilitySet }) {
-  const enabled = set.capabilities.filter((c) => c.enabled).map((c) => c.id);
+  const agents = set.agents ?? [];
   return (
     <div className={`${styles.card} ${styles.cardWide}`}>
       <span className={styles.cardLabel}>Configuration</span>
       {set.preset && <span className={styles.configPreset}>{set.preset}</span>}
-      <div className={styles.slots}>
-        {set.slots.map((slot) => (
-          <span key={slot.slot} className={styles.slot}>
-            <span className={styles.slotName}>{slot.slot}</span>
-            {slot.modelId}
-          </span>
-        ))}
-      </div>
-      <div className={styles.capabilities}>
-        {enabled.length === 0 ? (
-          <span className={styles.capabilityNone}>no capabilities enabled</span>
-        ) : (
-          enabled.map((id) => (
-            <span key={id} className={styles.capability}>
-              {id}
-            </span>
-          ))
-        )}
-      </div>
+      {agents.map((agent) => {
+        const enabled = agent.capabilities
+          .filter((c) => c.enabled)
+          .map((c) => c.id);
+        return (
+          <div key={agent.name} className={styles.agentConfig}>
+            <div className={styles.slots}>
+              <span className={styles.slot}>
+                <span className={styles.slotName}>{agent.name}</span>
+                {agent.modelId}
+              </span>
+            </div>
+            <div className={styles.capabilities}>
+              {enabled.length === 0 ? (
+                <span className={styles.capabilityNone}>
+                  no capabilities enabled
+                </span>
+              ) : (
+                enabled.map((id) => (
+                  <span key={id} className={styles.capability}>
+                    {id}
+                  </span>
+                ))
+              )}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

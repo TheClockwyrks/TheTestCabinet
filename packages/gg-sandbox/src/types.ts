@@ -184,9 +184,9 @@ export interface ArchiveSearch {
 export interface SubagentHandle {
   /** The child's id — pass it to `waitForSubagents` or `sendMessage`. */
   id: string;
-  /** The model slot it was placed on. */
+  /** The agent profile it runs as. */
   slot: string;
-  /** The model actually bound to that slot. */
+  /** The model actually bound to that agent. */
   modelId: string;
   /** The worktree branch it runs on, when it is isolated. */
   worktreeBranch: string | undefined;

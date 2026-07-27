@@ -548,7 +548,6 @@ export default defineConfig({
                 "gg/speculative-execution",
                 "gg/code-reviews",
                 "gg/fsms",
-                "gg/multi-model",
                 "gg/toolset-ablation",
                 "gg/responses-as-code",
                 // A property of the capability above it — the counted, disclosed

@@ -23,16 +23,16 @@ of owning both sides drive that separation:
 
 - **Its configuration surface is much richer and unshared.** A conventional run is
   a flat tuple of harness + model + orchestrator. A gg run is configured by a
-  [capability set](#the-capability-set) — which capabilities are on, which tool
-  implementations back them, which [FSM](/gg/fsms/) (if any) drives it, and a
-  binding of **multiple, possibly cross-provider models to
-  [slots](/gg/multi-model/#slots)**. None of that maps onto the existing run
-  dimensions, so gg gets its own configuration space rather than overloading them.
+  [capability set](#the-capability-set) — a set of **per-agent
+  [profiles](/gg/configurations/#agents)**, each with its own capabilities, tool
+  implementations, [FSM](/gg/fsms/) (if any), and one **possibly cross-provider
+  model**. None of that maps onto the existing run dimensions, so gg gets its own
+  configuration space rather than overloading them.
 - **Its results belong in a separate comparison space.** The current metric graphs
   plot results **per model**, precisely because the third-party harnesses are so
   similar that which harness ran barely matters. gg breaks both assumptions: it is
-  deliberately *not* similar, and a multi-model gg run has **no single model to
-  plot**. Lumping gg in would distort both the existing graphs and gg's own data,
+  deliberately *not* similar, and a run whose agents span several models has **no
+  single model to plot**. Lumping gg in would distort both the existing graphs and gg's own data,
   so gg results are surfaced **separately**, in views built for them (the agent
   tree, the run-global project board, context-fill graphs, and
   [Kibana-style aggregation](/gg/result-aggregation/)).
@@ -80,9 +80,10 @@ section. Every capability is:
   the basis for **A/B comparisons** between two implementations of the same
   capability.
 
-A gg run is configured by a **capability set**: which capabilities are on, which
-implementation each uses, its parameters, and the
-[slot](/gg/multi-model/#slots) bindings. The capability set is the
+A gg run is configured by a **capability set**: one or more per-agent
+[profiles](/gg/configurations/#agents) — each with its own enabled capabilities,
+their implementations and parameters, and one model binding — plus the run-level
+model slots and limits. The capability set is the
 *independent variable* of an experiment — freeze the model and the test case, vary
 the capability set, and the harness becomes a laboratory. It must be:
 
@@ -185,8 +186,6 @@ saved, launched, and analyzed in the console is
 
 - [Filesystem tools](/gg/filesystem/) — read, write, edit, and list files; one
   capability per tool, and `read_file`'s capped read modes.
-- [Multi-model](/gg/multi-model/) — bind multiple, possibly cross-provider models
-  to slots.
 - [Toolset ablation](/gg/toolset-ablation/) — treat the offered toolset as an
   experimental variable.
 - [Responses as code](/gg/responses-as-code/) — agents emit code run in a wasmtime

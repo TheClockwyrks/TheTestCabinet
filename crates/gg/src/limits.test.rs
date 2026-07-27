@@ -9,7 +9,7 @@
 //! recording one and running on — lives in `agent.limits.test.rs`, where there is a loop to stop.
 
 use serde_json::json;
-use test_cabinet_core::gg::{GgCapabilityConfig, GgCapabilitySet, GgRunLimits};
+use test_cabinet_core::gg::{GgAgentConfig, GgCapabilityConfig, GgCapabilitySet, GgRunLimits};
 
 use super::*;
 
@@ -298,16 +298,19 @@ fn legacy_params_on_a_capability_are_warned_about() {
     // console round-trips undeclared params losslessly, so a stored configuration can still carry
     // one. Silently resolving it to 50 is the failure this warning exists to prevent.
     let set = GgCapabilitySet {
-        capabilities: vec![
-            GgCapabilityConfig {
-                params: json!({ "maxTurns": 8 }),
-                ..GgCapabilityConfig::enabled("shell")
-            },
-            GgCapabilityConfig {
-                params: json!({ "maxRuntimeSecs": 600, "dir": "skills" }),
-                ..GgCapabilityConfig::enabled("skills")
-            },
-        ],
+        agents: vec![GgAgentConfig {
+            capabilities: vec![
+                GgCapabilityConfig {
+                    params: json!({ "maxTurns": 8 }),
+                    ..GgCapabilityConfig::enabled("shell")
+                },
+                GgCapabilityConfig {
+                    params: json!({ "maxRuntimeSecs": 600, "dir": "skills" }),
+                    ..GgCapabilityConfig::enabled("skills")
+                },
+            ],
+            ..GgAgentConfig::root()
+        }],
         ..GgCapabilitySet::default()
     };
 
@@ -338,9 +341,12 @@ fn resolution_never_fails_a_launch() {
     // still resolves to a usable, bounded configuration — an ablation sweep shares one document
     // across arms, and an arm that cannot launch measures nothing at all.
     let set = GgCapabilitySet {
-        capabilities: vec![GgCapabilityConfig {
-            params: json!({ "maxTurns": 8, "maxRuntimeSecs": 600 }),
-            ..GgCapabilityConfig::enabled("shell")
+        agents: vec![GgAgentConfig {
+            capabilities: vec![GgCapabilityConfig {
+                params: json!({ "maxTurns": 8, "maxRuntimeSecs": 600 }),
+                ..GgCapabilityConfig::enabled("shell")
+            }],
+            ..GgAgentConfig::root()
         }],
         limits: GgRunLimits {
             max_turns: Some(0),

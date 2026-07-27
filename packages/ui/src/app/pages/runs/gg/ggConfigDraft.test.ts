@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { GgCapabilitySet } from "@test-cabinet/run-record/gg";
+import type {
+  GgAgentConfig,
+  GgCapabilityConfig,
+  GgCapabilitySet,
+} from "@test-cabinet/run-record/gg";
+import { DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE } from "@test-cabinet/run-record/gg-system-prompt";
 import {
   bindModelSlots,
   capabilitySetFromDraft,
@@ -11,14 +16,34 @@ import {
 } from "./ggConfigDraft";
 import { DEFAULT_MAX_TURNS, RUN_LIMIT_SPECS } from "./ggCatalog";
 
-// A capability set as the wire carries it, with only the fields these assertions
-// care about (the capability list is irrelevant to slot resolution).
+// One agent profile with only the fields a given assertion cares about; the rest take
+// the defaults the wire type uses. Pins a placeholder model by default so a fixture is
+// launchable (an agent with neither a pinned model nor a model slot is a save error);
+// tests that exercise deferral pass an explicit `modelSlot`, which wins.
+function agent(partial: Partial<GgAgentConfig> = {}): GgAgentConfig {
+  return { name: "Root", capabilities: [], modelId: "mock/x", ...partial };
+}
+
+// A capability set as the wire carries it (per-agent now), defaulting to a bare Root.
 function set(partial: Partial<GgCapabilitySet>): GgCapabilitySet {
-  return { capabilities: [], slots: [], ...partial };
+  return { agents: [agent()], ...partial };
+}
+
+// A set whose single Root agent carries the given capabilities.
+function capSet(capabilities: GgCapabilityConfig[]): GgCapabilitySet {
+  return { agents: [agent({ capabilities })] };
+}
+
+// The Root agent's capability rows in a draft / wire set.
+function draftCaps(d: ReturnType<typeof draftFromCapabilitySet>) {
+  return d.agents[0]!.capabilities;
+}
+function setCaps(s: GgCapabilitySet) {
+  return s.agents[0]!.capabilities;
 }
 
 describe("gg model slots", () => {
-  it("asks only for the slots a role actually defers to", () => {
+  it("asks only for the slots an agent actually defers to", () => {
     const configured = set({
       modelSlots: [
         { name: "primary" },
@@ -26,10 +51,10 @@ describe("gg model slots", () => {
         // Declared but consumed by nothing — asking for it would change nothing.
         { name: "orphan" },
       ],
-      slots: [
-        { slot: "primary", modelId: "", modelSlot: "primary" },
-        { slot: "reviewer", modelId: "", modelSlot: "critic" },
-        { slot: "judge", modelId: "openai/o-fixed" },
+      agents: [
+        agent({ modelSlot: "primary" }),
+        agent({ name: "reviewer", modelSlot: "critic" }),
+        agent({ name: "judge", modelId: "openai/o-fixed" }),
       ],
     });
     expect(launchModelSlots(configured)).toEqual([
@@ -38,58 +63,56 @@ describe("gg model slots", () => {
     ]);
   });
 
-  it("resolves every deferred role and drops the declarations", () => {
+  it("resolves every deferred agent and drops the declarations", () => {
     const configured = set({
       preset: "critic-sweep",
       modelSlots: [{ name: "critic" }],
-      slots: [
-        { slot: "primary", modelId: "", modelSlot: "primary" },
-        { slot: "reviewer", modelId: "", modelSlot: "critic" },
-        { slot: "judge", modelId: "openai/o-fixed" },
+      agents: [
+        agent({ modelSlot: "critic" }),
+        agent({ name: "reviewer", modelSlot: "critic" }),
+        agent({ name: "judge", modelId: "openai/o-fixed" }),
       ],
     });
     const launched = bindModelSlots(configured, {
-      primary: "anthropic/claude-opus-4.8",
       critic: "anthropic/claude-haiku-4.5",
     });
-    // Two roles share the `critic` slot only in intent here, but the shape is the
-    // point: what runs is fully pinned, and the internally pinned `judge` is
-    // untouched.
-    expect(launched.slots).toEqual([
-      { slot: "primary", modelId: "anthropic/claude-opus-4.8" },
-      {
-        slot: "reviewer",
-        modelId: "anthropic/claude-haiku-4.5",
-      },
-      { slot: "judge", modelId: "openai/o-fixed" },
+    // What runs is fully pinned; two agents share the `critic` slot, and the
+    // internally pinned `judge` is untouched.
+    expect(
+      launched.agents.map((a) => ({ name: a.name, modelId: a.modelId })),
+    ).toEqual([
+      { name: "Root", modelId: "anthropic/claude-haiku-4.5" },
+      { name: "reviewer", modelId: "anthropic/claude-haiku-4.5" },
+      { name: "judge", modelId: "openai/o-fixed" },
     ]);
+    expect(launched.agents.every((a) => a.modelSlot === undefined)).toBe(true);
     expect(launched.modelSlots).toBeUndefined();
     expect(launched.preset).toBe("critic-sweep");
   });
 
-  it("keeps a configuration saved before model slots existed launchable", () => {
-    // The old shape: nothing bound at all, the launch form supplying the one model.
-    const legacy = set({ preset: "minimal", slots: [] });
-    expect(launchModelSlots(legacy)).toEqual([{ name: "primary" }]);
+  it("still asks for a model when an agent names an undeclared slot", () => {
+    const configured = set({ agents: [agent({ modelSlot: "primary" })] });
+    expect(launchModelSlots(configured)).toEqual([{ name: "primary" }]);
     expect(
-      bindModelSlots(legacy, { primary: "openai/gpt-5.6-sol" }).slots,
-    ).toEqual([{ slot: "primary", modelId: "openai/gpt-5.6-sol" }]);
-    // Opening it in the editor reads as the new shape rather than a broken binding.
-    const draft = draftFromCapabilitySet(legacy);
-    expect(draft.modelSlots).toEqual([{ name: "primary", defaultModelId: "" }]);
-    expect(draft.slots[0]).toMatchObject({
-      slot: "primary",
-      source: "model-slot",
-      modelSlot: "primary",
-    });
+      bindModelSlots(configured, { primary: "openai/gpt-5.6-sol" }).agents[0]
+        ?.modelId,
+    ).toBe("openai/gpt-5.6-sol");
+  });
+
+  it("synthesizes a Root when a set carries no agents", () => {
+    const draft = draftFromCapabilitySet({
+      agents: [],
+    } as unknown as GgCapabilitySet);
+    expect(draft.agents).toHaveLength(1);
+    expect(draft.agents[0]!.name).toBe("Root");
   });
 
   it("round-trips a declared slot through the editor draft", () => {
     const configured = set({
       modelSlots: [{ name: "critic", defaultModelId: "anthropic/haiku" }],
-      slots: [
-        { slot: "primary", modelId: "", modelSlot: "critic" },
-        { slot: "reviewer", modelId: "openai/o-fixed" },
+      agents: [
+        agent({ modelSlot: "critic" }),
+        agent({ name: "reviewer", modelId: "openai/o-fixed" }),
       ],
     });
     const back = capabilitySetFromDraft(
@@ -99,85 +122,164 @@ describe("gg model slots", () => {
     expect(back.modelSlots).toEqual([
       { name: "critic", defaultModelId: "anthropic/haiku" },
     ]);
-    expect(back.slots).toEqual([
-      { slot: "primary", modelId: "", modelSlot: "critic" },
-      { slot: "reviewer", modelId: "openai/o-fixed" },
+    expect(
+      back.agents.map((a) => ({
+        name: a.name,
+        modelId: a.modelId,
+        modelSlot: a.modelSlot,
+      })),
+    ).toEqual([
+      { name: "Root", modelId: "", modelSlot: "critic" },
+      { name: "reviewer", modelId: "openai/o-fixed", modelSlot: undefined },
     ]);
   });
 
-  it("refuses to save a role bound to a slot that was never declared", () => {
+  it("refuses to save an agent bound to a slot that was never declared", () => {
     const draft = emptyDraft();
     expect(draftSaveError(draft)).toBeNull();
-    draft.slots = [{ ...draft.slots[0]!, modelSlot: "nope" }];
+    draft.agents[0]!.modelSlot = "nope";
     expect(draftSaveError(draft)).toContain("nope");
   });
 });
 
-describe("gg filesystem capabilities", () => {
-  it("expands a legacy `filesystem` capability into the per-tool ones", () => {
-    const legacy = set({
-      capabilities: [
-        { id: "shell", enabled: true, params: {} },
-        { id: "filesystem", enabled: true, params: {} },
+describe("gg agents", () => {
+  it("round-trips a multi-agent configuration with a subagent allowlist", () => {
+    const configured = set({
+      modelSlots: [{ name: "primary" }],
+      agents: [
+        agent({
+          modelSlot: "primary",
+          subagents: [{ agent: "reviewer", description: "for hard reviews" }],
+        }),
+        agent({ name: "reviewer", modelId: "openai/o-fixed" }),
       ],
     });
+    const back = capabilitySetFromDraft(
+      draftFromCapabilitySet(configured),
+      null,
+    );
+    expect(back.agents.map((a) => a.name)).toEqual(["Root", "reviewer"]);
+    expect(back.agents[0]!.subagents).toEqual([
+      { agent: "reviewer", description: "for hard reviews" },
+    ]);
+  });
+
+  it("round-trips a custom prompt and a full template override", () => {
+    const configured = set({
+      agents: [
+        agent({
+          modelSlot: "primary",
+          customInstructions: "Prefer TDD.",
+          systemPromptTemplate: "You are a custom agent. {{customInstructions}}",
+        }),
+      ],
+      modelSlots: [{ name: "primary" }],
+    });
+    const draft = draftFromCapabilitySet(configured);
+    expect(draft.agents[0]!.customInstructions).toBe("Prefer TDD.");
+    const back = capabilitySetFromDraft(draft, null);
+    expect(back.agents[0]!.customInstructions).toBe("Prefer TDD.");
+    expect(back.agents[0]!.systemPromptTemplate).toBe(
+      "You are a custom agent. {{customInstructions}}",
+    );
+  });
+
+  it("stores no override when the template is left at the default", () => {
+    const draft = emptyDraft();
+    // The editor seeds the textarea with the default and blanks it back to "" on a
+    // match, so a draft carrying the default verbatim writes no override.
+    draft.agents[0]!.systemPromptTemplate = "";
+    expect(
+      capabilitySetFromDraft(draft, null).agents[0]!.systemPromptTemplate,
+    ).toBeUndefined();
+    // A non-empty override is preserved.
+    draft.agents[0]!.systemPromptTemplate = DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE + "\nextra";
+    expect(
+      capabilitySetFromDraft(draft, null).agents[0]!.systemPromptTemplate,
+    ).toContain("extra");
+  });
+
+  it("refuses structural agent errors", () => {
+    const draft = emptyDraft();
+    draft.agents.push(agentDraft("reviewer"));
+    expect(draftSaveError(draft)).toBeNull();
+
+    // Duplicate names.
+    draft.agents[1]!.name = "Root";
+    expect(draftSaveError(draft)).toContain("unique");
+    draft.agents[1]!.name = "reviewer";
+
+    // A subagent pointing at an agent that does not exist.
+    draft.agents[0]!.subagents = [{ agent: "ghost", description: "" }];
+    expect(draftSaveError(draft)).toContain("ghost");
+    draft.agents[0]!.subagents = [{ agent: "reviewer", description: "" }];
+    expect(draftSaveError(draft)).toBeNull();
+
+    // The first agent must be the Root.
+    draft.agents[0]!.name = "notroot";
+    expect(draftSaveError(draft)).toContain("Root");
+  });
+});
+
+// A minimal agent draft for tests that push a second agent onto an existing draft.
+function agentDraft(name: string) {
+  const base = emptyDraft().agents[0]!;
+  return { ...base, name, subagents: [] };
+}
+
+describe("gg filesystem capabilities", () => {
+  it("expands a legacy `filesystem` capability into the per-tool ones", () => {
+    const legacy = capSet([
+      { id: "shell", enabled: true, params: {} },
+      { id: "filesystem", enabled: true, params: {} },
+    ]);
     const draft = draftFromCapabilitySet(legacy);
 
     for (const id of ["read-file", "write-file", "edit-file", "list-dir"]) {
-      expect(draft.capabilities[id]?.enabled, id).toBe(true);
+      expect(draftCaps(draft)[id]?.enabled, id).toBe(true);
     }
-    // The expansion carries no per-tool configuration: an umbrella configured none,
-    // so `read_file` keeps its default (unlimited) read mode.
-    expect(draft.capabilities["read-file"]?.implementation).toBe("");
+    expect(draftCaps(draft)["read-file"]?.implementation).toBe("");
 
-    // Saving the reopened configuration writes the modern ids and drops the umbrella.
     const saved = capabilitySetFromDraft(draft, null);
-    const ids = saved.capabilities.map((cap) => cap.id);
+    const ids = setCaps(saved).map((cap) => cap.id);
     expect(ids).toContain("read-file");
     expect(ids).not.toContain("filesystem");
   });
 
   it("carries a disabled legacy capability through as four off rows", () => {
-    const legacy = set({
-      capabilities: [{ id: "filesystem", enabled: false, params: {} }],
-    });
+    const legacy = capSet([{ id: "filesystem", enabled: false, params: {} }]);
     const draft = draftFromCapabilitySet(legacy);
     for (const id of ["read-file", "write-file", "edit-file", "list-dir"]) {
-      expect(draft.capabilities[id]?.enabled, id).toBe(false);
+      expect(draftCaps(draft)[id]?.enabled, id).toBe(false);
     }
   });
 
   it("lets an explicit per-tool capability override the legacy umbrella", () => {
-    const mixed = set({
-      capabilities: [
-        { id: "filesystem", enabled: true, params: {} },
-        { id: "edit-file", enabled: false, params: {} },
-      ],
-    });
+    const mixed = capSet([
+      { id: "filesystem", enabled: true, params: {} },
+      { id: "edit-file", enabled: false, params: {} },
+    ]);
     const draft = draftFromCapabilitySet(mixed);
-    expect(draft.capabilities["edit-file"]?.enabled).toBe(false);
-    expect(draft.capabilities["read-file"]?.enabled).toBe(true);
+    expect(draftCaps(draft)["edit-file"]?.enabled).toBe(false);
+    expect(draftCaps(draft)["read-file"]?.enabled).toBe(true);
   });
 
   it("round-trips a capped read mode and its line cap", () => {
-    const configured = set({
-      capabilities: [
-        {
-          id: "read-file",
-          enabled: true,
-          implementation: "hard-cap",
-          params: { lineCap: 250 },
-        },
-      ],
-    });
+    const configured = capSet([
+      {
+        id: "read-file",
+        enabled: true,
+        implementation: "hard-cap",
+        params: { lineCap: 250 },
+      },
+    ]);
     const draft = draftFromCapabilitySet(configured);
-    expect(draft.capabilities["read-file"]?.implementation).toBe("hard-cap");
-    // A dedicated param control holds text; nothing spills into the passthrough.
-    expect(draft.capabilities["read-file"]?.params?.lineCap).toBe("250");
-    expect(draft.capabilities["read-file"]?.extraParams).toEqual({});
+    expect(draftCaps(draft)["read-file"]?.implementation).toBe("hard-cap");
+    expect(draftCaps(draft)["read-file"]?.params?.lineCap).toBe("250");
+    expect(draftCaps(draft)["read-file"]?.extraParams).toEqual({});
 
     const back = capabilitySetFromDraft(draft, null);
-    const readFile = back.capabilities.find((cap) => cap.id === "read-file");
+    const readFile = setCaps(back).find((cap) => cap.id === "read-file");
     expect(readFile?.implementation).toBe("hard-cap");
     expect(readFile?.params).toEqual({ lineCap: 250 });
   });
@@ -187,45 +289,40 @@ describe("gg filesystem capabilities", () => {
 // members are on unless switched off, so only the off ones are ever written.
 const CODE = "responses-as-code";
 
-function healingOf(set: GgCapabilitySet): unknown {
-  return set.capabilities.find((cap) => cap.id === CODE)?.params?.healing;
+function healingOf(s: GgCapabilitySet): unknown {
+  return setCaps(s).find((cap) => cap.id === CODE)?.params?.healing;
 }
 
 describe("gg response-healing toggles", () => {
   it("writes nothing when every strategy is left on", () => {
     const draft = emptyDraft();
-    draft.capabilities[CODE] = {
-      ...draft.capabilities[CODE]!,
+    draft.agents[0]!.capabilities[CODE] = {
+      ...draft.agents[0]!.capabilities[CODE]!,
       enabled: true,
     };
-    // The default arm of the ablation is an absent key, not five explicit `true`s.
     expect(healingOf(capabilitySetFromDraft(draft, null))).toBeUndefined();
   });
 
   it("round-trips the strategies a configuration switches off", () => {
-    const configured = set({
-      capabilities: [
-        {
-          id: CODE,
-          enabled: true,
-          params: { healing: { "strip-prose": false } },
-        },
-      ],
-    });
+    const configured = capSet([
+      {
+        id: CODE,
+        enabled: true,
+        params: { healing: { "strip-prose": false } },
+      },
+    ]);
     const draft = draftFromCapabilitySet(configured);
-    expect(draft.capabilities[CODE]?.params?.healing).toBe("strip-prose");
-    // Nothing spills into the passthrough, which is what would make the toggles and
-    // a stray raw param fight over the same key on the way back.
-    expect(draft.capabilities[CODE]?.extraParams).toEqual({});
+    expect(draftCaps(draft)[CODE]?.params?.healing).toBe("strip-prose");
+    expect(draftCaps(draft)[CODE]?.extraParams).toEqual({});
     expect(healingOf(capabilitySetFromDraft(draft, null))).toEqual({
       "strip-prose": false,
     });
   });
 
   it("reads the `false` master switch as every strategy off", () => {
-    const configured = set({
-      capabilities: [{ id: CODE, enabled: true, params: { healing: false } }],
-    });
+    const configured = capSet([
+      { id: CODE, enabled: true, params: { healing: false } },
+    ]);
     const draft = draftFromCapabilitySet(configured);
     expect(healingOf(capabilitySetFromDraft(draft, null))).toEqual({
       "strip-fences": false,
@@ -238,21 +335,16 @@ describe("gg response-healing toggles", () => {
   });
 
   it("preserves a value the control cannot represent in the passthrough", () => {
-    // gg reports `stripProse` as an unknown healing key and runs every strategy;
-    // silently rewriting it as "strip-prose off" would run the other arm of the
-    // ablation under this configuration's name.
-    const configured = set({
-      capabilities: [
-        {
-          id: CODE,
-          enabled: true,
-          params: { healing: { stripProse: false } },
-        },
-      ],
-    });
+    const configured = capSet([
+      {
+        id: CODE,
+        enabled: true,
+        params: { healing: { stripProse: false } },
+      },
+    ]);
     const draft = draftFromCapabilitySet(configured);
-    expect(draft.capabilities[CODE]?.params?.healing).toBeUndefined();
-    expect(draft.capabilities[CODE]?.extraParams).toEqual({
+    expect(draftCaps(draft)[CODE]?.params?.healing).toBeUndefined();
+    expect(draftCaps(draft)[CODE]?.extraParams).toEqual({
       healing: { stripProse: false },
     });
     expect(healingOf(capabilitySetFromDraft(draft, null))).toEqual({
@@ -261,37 +353,32 @@ describe("gg response-healing toggles", () => {
   });
 });
 
-// Every param gg reads now has a dedicated control (no raw-JSON field), so a stored
-// value routes to its control on the way in and is written back typed — and a param
-// no control covers is preserved verbatim rather than dropped.
 describe("gg capability params", () => {
   function paramsOf(s: GgCapabilitySet, id: string): Record<string, unknown> {
-    return (s.capabilities.find((cap) => cap.id === id)?.params ??
-      {}) as Record<string, unknown>;
+    return (setCaps(s).find((cap) => cap.id === id)?.params ?? {}) as Record<
+      string,
+      unknown
+    >;
   }
 
   it("round-trips the numeric caps that used to need hand-edited JSON", () => {
-    const configured = set({
-      capabilities: [
-        { id: "tasks", enabled: true, params: { maxTasks: 40 } },
-        {
-          id: "memories",
-          enabled: true,
-          params: { maxCount: 5, maxLenPerMemory: 1500, maxTotalLen: 6000 },
-        },
-        {
-          id: "project-management",
-          enabled: true,
-          params: { maxEpics: 20, maxIssues: 80 },
-        },
-      ],
-    });
+    const configured = capSet([
+      { id: "tasks", enabled: true, params: { maxTasks: 40 } },
+      {
+        id: "memories",
+        enabled: true,
+        params: { maxCount: 5, maxLenPerMemory: 1500, maxTotalLen: 6000 },
+      },
+      {
+        id: "project-management",
+        enabled: true,
+        params: { maxEpics: 20, maxIssues: 80 },
+      },
+    ]);
     const draft = draftFromCapabilitySet(configured);
-    // Each stored value lands in its dedicated control (as text) with an empty
-    // passthrough — nothing is left reachable only through raw JSON.
-    expect(draft.capabilities.tasks?.params?.maxTasks).toBe("40");
-    expect(draft.capabilities.tasks?.extraParams).toEqual({});
-    expect(draft.capabilities.memories?.params?.maxLenPerMemory).toBe("1500");
+    expect(draftCaps(draft).tasks?.params?.maxTasks).toBe("40");
+    expect(draftCaps(draft).tasks?.extraParams).toEqual({});
+    expect(draftCaps(draft).memories?.params?.maxLenPerMemory).toBe("1500");
 
     const back = capabilitySetFromDraft(draft, null);
     expect(paramsOf(back, "tasks")).toEqual({ maxTasks: 40 });
@@ -300,37 +387,30 @@ describe("gg capability params", () => {
       maxLenPerMemory: 1500,
       maxTotalLen: 6000,
     });
-    expect(paramsOf(back, "project-management")).toEqual({
+    expect(paramsOf(back, "project-management")).toMatchObject({
       maxEpics: 20,
       maxIssues: 80,
     });
   });
 
   it("round-trips a string param through its text control", () => {
-    const configured = set({
-      capabilities: [
-        { id: "skills", enabled: true, params: { dir: "docs/skills" } },
-      ],
-    });
+    const configured = capSet([
+      { id: "skills", enabled: true, params: { dir: "docs/skills" } },
+    ]);
     const draft = draftFromCapabilitySet(configured);
-    expect(draft.capabilities.skills?.params?.dir).toBe("docs/skills");
+    expect(draftCaps(draft).skills?.params?.dir).toBe("docs/skills");
     expect(paramsOf(capabilitySetFromDraft(draft, null), "skills")).toEqual({
       dir: "docs/skills",
     });
   });
 
   it("preserves a param no control covers through a round-trip", () => {
-    // A key a newer client wrote (or a legacy one) has no dedicated control here.
-    // Dropping it on resave would silently change what the configuration means, so
-    // it is carried verbatim in the passthrough and re-emitted untouched.
-    const configured = set({
-      capabilities: [
-        { id: "tasks", enabled: true, params: { maxTasks: 10, futureKnob: 3 } },
-      ],
-    });
+    const configured = capSet([
+      { id: "tasks", enabled: true, params: { maxTasks: 10, futureKnob: 3 } },
+    ]);
     const draft = draftFromCapabilitySet(configured);
-    expect(draft.capabilities.tasks?.params?.maxTasks).toBe("10");
-    expect(draft.capabilities.tasks?.extraParams).toEqual({ futureKnob: 3 });
+    expect(draftCaps(draft).tasks?.params?.maxTasks).toBe("10");
+    expect(draftCaps(draft).tasks?.extraParams).toEqual({ futureKnob: 3 });
     expect(paramsOf(capabilitySetFromDraft(draft, null), "tasks")).toEqual({
       maxTasks: 10,
       futureKnob: 3,
@@ -340,15 +420,9 @@ describe("gg capability params", () => {
 
 describe("gg run limits", () => {
   it("seeds gg's default turn ceiling into a fresh form, and no other ceiling", () => {
-    // A fresh configuration now shows gg's real defaults rather than empty boxes, so
-    // the one ceiling that has a default — the turn ceiling — is emitted at it, while
-    // every other ceiling stays off until set. (Seeding 50 documents the default; gg
-    // uses it anyway, so no measurement changes.)
     expect(capabilitySetFromDraft(emptyDraft(), null).limits).toEqual({
       maxTurns: DEFAULT_MAX_TURNS,
     });
-    // And every declared ceiling has a control, so none of them can only be set by
-    // hand-editing the stored JSON.
     expect(RUN_LIMIT_SPECS.map((spec) => spec.key).sort()).toEqual(
       Object.keys(emptyDraft().limits).sort(),
     );
@@ -398,8 +472,6 @@ describe("gg run limits", () => {
     draft.limits.maxTurns = "8";
     draft.limits.maxErrorRate = "0.5";
     draft.limits.errorRateWindow = "8";
-    // Legal, and saved as written — it just cannot stop a run any earlier than the
-    // turn ceiling already would.
     expect(draftSaveError(draft)).toBeNull();
     expect(runLimitsWarning(draft.limits)).toContain("(8)");
     draft.limits.errorRateWindow = "4";

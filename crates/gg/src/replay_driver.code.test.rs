@@ -112,7 +112,8 @@ fn tool_result(agent: &str, seq: u64, tool: &ToolCall, outcome: &ToolOutcome) ->
 /// difference between a rule scoped to a run and a rule that fires on any id that looks right.
 fn code_record(entries: Vec<GgReplayEntry>) -> GgReplayRecord {
     let mut caps = GgCapabilitySet::minimal("mock/echo");
-    caps.capabilities
+    caps.agents[0]
+        .capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE));
     GgReplayRecord {
         session_id: "run-replay-code".to_string(),

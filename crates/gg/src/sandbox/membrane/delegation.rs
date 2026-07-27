@@ -53,9 +53,9 @@ impl DelegationHost for MembraneState {
         let outcome = self.call(
             SPAWN_SUBAGENT_TOOL,
             json!({
+                "agent": request.agent,
                 "prompt": prompt,
                 "issueId": issue_id,
-                "slot": request.slot,
                 "worktree": request.worktree,
             }),
         )?;
@@ -125,7 +125,7 @@ impl DelegationHost for MembraneState {
                     // error) are different requests, so the option is lowered as it stands: a
                     // missing `items` becomes JSON null, an empty one becomes `[]`.
                     "items": stage.items,
-                    "slot": stage.slot,
+                    "agent": stage.agent,
                     "worktree": stage.worktree,
                 })
             })
@@ -154,11 +154,11 @@ impl DelegationHost for MembraneState {
         let outcome = self.call(
             SPECULATE_TOOL,
             json!({
+                "agent": request.agent,
                 "prompt": prompt,
                 "issueId": issue_id,
                 "attempts": attempts,
                 "approaches": request.approaches,
-                "slots": request.slots,
             }),
         )?;
         match outcome.data {

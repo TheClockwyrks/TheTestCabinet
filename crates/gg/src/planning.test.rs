@@ -13,7 +13,7 @@ fn disabled_runtime_offers_no_planning() {
 #[test]
 fn resolve_without_capability_is_disabled() {
     let set = GgCapabilitySet::minimal("mock/x");
-    let runtime = PlanningRuntime::resolve(&set);
+    let runtime = PlanningRuntime::resolve(set.root());
     assert!(!runtime.offers_planning());
 }
 
@@ -22,9 +22,10 @@ fn resolve_without_capability_is_disabled() {
 #[test]
 fn resolve_with_capability_is_enabled() {
     let mut set = GgCapabilitySet::minimal("mock/x");
-    set.capabilities
+    set.agents[0]
+        .capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_PLANNING));
-    let runtime = PlanningRuntime::resolve(&set);
+    let runtime = PlanningRuntime::resolve(set.root());
     assert!(runtime.offers_planning());
 }
 

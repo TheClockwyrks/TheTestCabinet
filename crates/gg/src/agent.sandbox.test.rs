@@ -108,7 +108,7 @@ async fn drive_code_run(
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-code".to_string()), Box::new(sink.clone()));
     let inv = invocation(dir.path(), set);
-    let factory = ScriptedFactory::new().slot(PRIMARY_SLOT, client);
+    let factory = ScriptedFactory::new().slot(ROOT_AGENT, client);
     let outcome = run_with_factory(&inv, &emitter, Arc::new(factory)).await;
     (outcome, sink.events())
 }
@@ -460,7 +460,8 @@ async fn code_execution_tool_calls_equals_the_telemetry_pair_count() {
 async fn the_synthetic_call_ids_are_unique_within_a_turn() {
     let dir = TempDir::new().unwrap();
     let mut set = code_set("mock/primary", json!({}));
-    set.capabilities
+    set.agents[0]
+        .capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_REPLAY));
     let (outcome, _events) = drive_code_run(&dir, set, |b| {
         one_program(
@@ -508,11 +509,14 @@ async fn a_program_subagent_still_honours_the_scheduler() {
     // Subagents + multi-model + responses-as-code, under a cap of 1 (so the child only runs once
     // the waiting parent frees its slot — the scheduler's blocked-frees-slot rule).
     let mut set = subagent_set(1, 3, &["subagent"]);
-    set.capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE));
+    for agent in &mut set.agents {
+        agent
+            .capabilities
+            .push(GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE));
+    }
     let inv = invocation(dir.path(), set);
     let factory = ScriptedFactory::new()
-        .slot("primary", |b| {
+        .slot(ROOT_AGENT, |b| {
             Box::new(MockClient::with_responses_as_code_parent_script(
                 &b.model_id,
             ))
@@ -582,7 +586,7 @@ async fn a_program_read_of_a_picture_shows_it_to_the_model() {
 
     let seen = Arc::new(Mutex::new(Vec::<bool>::new()));
     let recorded = Arc::clone(&seen);
-    let factory = ScriptedFactory::new().slot(PRIMARY_SLOT, move |b| {
+    let factory = ScriptedFactory::new().slot(ROOT_AGENT, move |b| {
         Box::new(ImageWatchingClient {
             model_id: b.model_id.clone(),
             turn: AtomicUsize::new(0),
@@ -657,7 +661,7 @@ async fn a_program_reclaim_really_acts_on_the_live_window() {
     let dir = TempDir::new().unwrap();
     std::fs::write(dir.path().join("big.txt"), "a line\n".repeat(400)).unwrap();
     let mut set = code_set("mock/primary", json!({}));
-    set.capabilities.push(GgCapabilityConfig::enabled(
+    set.agents[0].capabilities.push(GgCapabilityConfig::enabled(
         CAPABILITY_AGENT_MANAGED_CONTEXT,
     ));
     let (outcome, events) = drive_code_run(&dir, set, |b| {
@@ -807,7 +811,7 @@ async fn drive_counted_code_run(
     let inv = invocation(dir.path(), set);
     let client = Arc::new(MockClient::new("mock/primary", script));
     let shared = Arc::clone(&client);
-    let factory = ScriptedFactory::new().slot(PRIMARY_SLOT, move |_| {
+    let factory = ScriptedFactory::new().slot(ROOT_AGENT, move |_| {
         Box::new(SharedMockClient(Arc::clone(&shared)))
     });
     let outcome = run_with_factory(&inv, &emitter, Arc::new(factory)).await;
@@ -1042,19 +1046,22 @@ async fn a_stopped_subagent_returns_a_status_line_not_its_program_source() {
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-code-stop".to_string()), Box::new(sink.clone()));
     let mut set = subagent_set(2, 3, &["subagent"]);
-    set.capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE));
+    for agent in &mut set.agents {
+        agent
+            .capabilities
+            .push(GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE));
+    }
     // Two turns each: the parent spawns-and-waits then finishes; the child never gets to.
     set.limits.max_turns = Some(2);
     let inv = invocation(dir.path(), set);
     let factory = ScriptedFactory::new()
-        .slot(PRIMARY_SLOT, |b| {
+        .slot(ROOT_AGENT, |b| {
             Box::new(MockClient::new(
                 &b.model_id,
                 vec![
                     code_reply(
-                        "const child = spawnSubagent({ prompt: \"Do the work.\", slot: \
-                         \"subagent\" });\nreturn waitForSubagents([child.id]);",
+                        "const child = spawnSubagent({ agent: \"subagent\", prompt: \
+                         \"Do the work.\" });\nreturn waitForSubagents([child.id]);",
                     ),
                     code_reply(FINISHING_PROGRAM),
                 ],
@@ -1193,15 +1200,18 @@ async fn a_code_mode_reviewer_verdict_parses() {
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-code-review".to_string()), Box::new(sink.clone()));
     let mut set = code_review_set(&["reviewer"]);
-    set.capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE));
+    for agent in &mut set.agents {
+        agent
+            .capabilities
+            .push(GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE));
+    }
     let inv = invocation(dir.path(), set);
     // The primary slot serves the root (agent 0: build the board, then finish — creating the issue
     // auto-dispatches an agent to implement it) then that dispatched issue agent (agent 1: write the
     // work and `completeIssue`, which triggers the gating review, then finish).
     let primary_counter = Arc::new(AtomicUsize::new(0));
     let factory = ScriptedFactory::new()
-        .slot(PRIMARY_SLOT, move |b| {
+        .slot(ROOT_AGENT, move |b| {
             let n = primary_counter.fetch_add(1, Ordering::SeqCst);
             let programs = if n == 0 {
                 vec![
@@ -1274,19 +1284,22 @@ async fn a_code_mode_speculation_merges_the_winners_worktree() {
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-code-spec".to_string()), Box::new(sink.clone()));
     let mut set = speculative_set(&["attempt", "judge"]);
-    set.capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE));
+    for agent in &mut set.agents {
+        agent
+            .capabilities
+            .push(GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE));
+    }
     let inv = invocation(dir.path(), set);
     let counter = Arc::new(AtomicUsize::new(0));
     let attempts = Arc::clone(&counter);
     let factory = ScriptedFactory::new()
-        .slot(PRIMARY_SLOT, |b| {
+        .slot(ROOT_AGENT, |b| {
             Box::new(MockClient::new(
                 &b.model_id,
                 vec![
                     code_reply(
-                        "return speculate({ prompt: \"Implement the widget.\", attempts: 2, slots: \
-                         [\"attempt\", \"attempt\"] });",
+                        "return speculate({ agent: \"attempt\", prompt: \"Implement the widget.\", \
+                         attempts: 2 });",
                     ),
                     code_reply(FINISHING_PROGRAM),
                 ],
@@ -1352,19 +1365,23 @@ async fn a_code_mode_subagents_worktree_is_merged() {
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-code-wt".to_string()), Box::new(sink.clone()));
     let mut set = subagent_set(2, 3, &["subagent"]);
-    set.capabilities
+    set.agents[0]
+        .capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_WORKTREES));
-    set.capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE));
+    for agent in &mut set.agents {
+        agent
+            .capabilities
+            .push(GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE));
+    }
     let inv = invocation(dir.path(), set);
     let factory = ScriptedFactory::new()
-        .slot(PRIMARY_SLOT, |b| {
+        .slot(ROOT_AGENT, |b| {
             Box::new(MockClient::new(
                 &b.model_id,
                 vec![
                     code_reply(
-                        "const child = spawnSubagent({ prompt: \"Write the file.\", slot: \
-                         \"subagent\", worktree: true });\nreturn waitForSubagents([child.id]);",
+                        "const child = spawnSubagent({ agent: \"subagent\", prompt: \
+                         \"Write the file.\", worktree: true });\nreturn waitForSubagents([child.id]);",
                     ),
                     code_reply(FINISHING_PROGRAM),
                 ],

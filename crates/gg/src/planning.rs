@@ -34,7 +34,7 @@
 //! [`disabled`](PlanningRuntime::disabled) runtime, so there are no planning tools, no prompt
 //! text, no read-only mode, and no telemetry — the feature vanishes.
 
-use test_cabinet_core::gg::{CAPABILITY_PLANNING, GgCapabilitySet};
+use test_cabinet_core::gg::{CAPABILITY_PLANNING, GgAgentConfig};
 
 use crate::prompts;
 
@@ -127,7 +127,7 @@ impl PlanningRuntime {
     /// [planning](CAPABILITY_PLANNING) capability is present and on, with its
     /// [planner](resolve_planner) read from its `implementation`; otherwise
     /// [disabled](Self::disabled).
-    pub fn resolve(set: &GgCapabilitySet) -> Self {
+    pub fn resolve(set: &GgAgentConfig) -> Self {
         if !set.is_enabled(CAPABILITY_PLANNING) {
             return Self::disabled();
         }

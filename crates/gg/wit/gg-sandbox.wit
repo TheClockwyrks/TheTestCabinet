@@ -514,11 +514,11 @@ interface delegation {
 
     /// A spawn request.
     record spawn-request {
+        /// The agent to run the child as — the name of one of the agents you may spawn (the
+        /// system prompt lists them). Selects the child's model, tools, and instructions.
+        agent: string,
         /// What the child should do.
         task: subagent-brief,
-        /// The model slot to run it on; `none` uses the primary slot. Honoured only when
-        /// multi-model is enabled. The system prompt lists this run's bound slots.
-        slot: option<string>,
         /// Run the child in an isolated git worktree, merged back on clean completion and discarded
         /// on failure. Requires the worktrees capability.
         worktree: option<bool>,
@@ -528,9 +528,9 @@ interface delegation {
     record subagent-handle {
         /// The child's id — pass it to `wait-for-subagents` or `send-message`.
         id: string,
-        /// The slot it was placed on.
+        /// The agent profile it runs as.
         slot: string,
-        /// The model actually bound to that slot.
+        /// The model actually bound to that agent.
         model-id: string,
         /// The worktree branch it runs on, when it is isolated.
         worktree-branch: option<string>,
@@ -561,8 +561,8 @@ interface delegation {
         /// The items to fan out over. `none` on a later stage means "fan out over the previous
         /// stage's results"; an EMPTY list is an error. The first stage must supply items.
         items: option<list<string>>,
-        /// The model slot for this stage's children.
-        slot: option<string>,
+        /// The agent to run this stage's children as — one of the agents you may spawn.
+        agent: string,
         /// Run this stage's children in isolated worktrees.
         worktree: option<bool>,
     }
@@ -579,6 +579,8 @@ interface delegation {
 
     /// A best-of-K request.
     record speculate-request {
+        /// The agent to run every attempt as — one of the agents you may spawn.
+        agent: string,
         /// What every attempt should do.
         task: subagent-brief,
         /// K — how many attempts. Clamped to 2–6 by the host, as the native path clamps it;
@@ -586,8 +588,6 @@ interface delegation {
         attempts: option<u8>,
         /// Per-attempt approach hints, positional. Extra attempts get no hint.
         approaches: list<string>,
-        /// Per-attempt model slots, positional.
-        slots: list<string>,
     }
 
     /// What a speculation merged.

@@ -14,12 +14,7 @@ import { PromptHeader } from "../../components/PromptHeader";
 import { useTestCaseName } from "../../data/useTestCaseName";
 import { useTestCases } from "../../data/useTestCases";
 import { routes } from "../../routes";
-import {
-  CAPABILITIES,
-  COMMON_ROLE_SLOTS,
-  PRIMARY_SLOT,
-  ALL_TOOL_NAMES,
-} from "../runs/gg/ggCatalog";
+import { CAPABILITIES, ROOT_AGENT, ALL_TOOL_NAMES } from "../runs/gg/ggCatalog";
 import {
   AGGREGATIONS,
   COMPARE_OPS,
@@ -542,13 +537,13 @@ function FacetPicker({
             type="text"
             value={facet.slot}
             onChange={(e) => onChange({ slot: e.target.value })}
-            placeholder="slot"
-            aria-label="slot"
+            placeholder="agent profile"
+            aria-label="agent profile"
           />
+          {/* The `slotModel` facet keys on the agent profile name now; the Root is the
+              one profile every configuration has, so it is the only safe suggestion. */}
           <datalist id="gg-analyze-slots">
-            {[PRIMARY_SLOT, ...COMMON_ROLE_SLOTS].map((s) => (
-              <option key={s} value={s} />
-            ))}
+            <option value={ROOT_AGENT} />
           </datalist>
         </>
       )}

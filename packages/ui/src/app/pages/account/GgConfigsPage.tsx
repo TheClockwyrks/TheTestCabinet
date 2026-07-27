@@ -16,11 +16,13 @@ import {
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
 
-// How many capabilities a configuration turns on — the one-glance summary of what
-// a configuration actually is.
+// How many capabilities a configuration's Root agent turns on — the one-glance
+// summary of what a configuration actually is. (Capabilities are per agent now; the
+// Root is the run's headline profile.)
 function enabledCount(option: GgConfigOption): number {
-  return (option.capabilitySet.capabilities ?? []).filter((c) => c.enabled)
-    .length;
+  return (option.capabilitySet.agents?.[0]?.capabilities ?? []).filter(
+    (c) => c.enabled,
+  ).length;
 }
 
 // The gg tab (`/account/gg`): the operator's registered gg configurations — named
@@ -84,7 +86,7 @@ export function GgConfigsPage() {
   );
 
   const renderSaved = (config: GgConfig) => {
-    const on = (config.capabilitySet.capabilities ?? []).filter(
+    const on = (config.capabilitySet.agents?.[0]?.capabilities ?? []).filter(
       (c) => c.enabled,
     ).length;
     return (

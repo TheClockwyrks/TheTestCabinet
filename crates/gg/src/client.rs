@@ -1276,7 +1276,7 @@ impl MockClient {
                 name: "spawn_subagent".to_string(),
                 arguments: json!({
                     "prompt": "Create a file with a greeting in it.",
-                    "slot": "subagent",
+                    "agent": "subagent",
                 }),
             }],
             finish_reason: FinishReason::ToolCalls,
@@ -1337,7 +1337,7 @@ impl MockClient {
                 name: "spawn_subagent".to_string(),
                 arguments: json!({
                     "prompt": "Create a file with a greeting in it.",
-                    "slot": "subagent",
+                    "agent": "subagent",
                     "worktree": true,
                 }),
             }],
@@ -1401,14 +1401,14 @@ impl MockClient {
                             "name": "generate",
                             "prompt": "Create the {{item}} component of the game.",
                             "items": ["player", "world"],
-                            "slot": "worker"
+                            "agent": "worker"
                         },
                         {
                             "name": "assemble",
                             "prompt": "Assemble the finished components into the game. Prior \
                                        results:\n{{prior}}",
                             "items": ["assemble"],
-                            "slot": "worker"
+                            "agent": "worker"
                         }
                     ]
                 }),
@@ -1583,7 +1583,7 @@ impl MockClient {
                 arguments: json!({
                     "prompt": "Implement the feature as well as you can.",
                     "attempts": 3,
-                    "slots": ["attempt", "attempt", "attempt"],
+                    "agent": "attempt",
                 }),
             }],
             finish_reason: FinishReason::ToolCalls,
@@ -1773,7 +1773,7 @@ impl MockClient {
         };
         let program = ModelResponse {
             text: Some(
-                "const child = spawnSubagent({ prompt: \"Write the greeting file.\", slot: \"subagent\" });\n\
+                "const child = spawnSubagent({ agent: \"subagent\", prompt: \"Write the greeting file.\" });\n\
                  const results = waitForSubagents([child.id]);\n\
                  return results.map((r) => r.summary);"
                     .to_string(),

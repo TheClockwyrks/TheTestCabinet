@@ -5,7 +5,7 @@
 //! implementation* backs each — so a capability is, in practice, "offer this tool"
 //! and an A/B is "offer a different implementation of it". The set of tools
 //! exposed to the model is derived from the run's
-//! [`GgCapabilitySet`]: a capability that
+//! [`GgAgentConfig`]: a capability that
 //! is off contributes no tools and no prompt text (the basis for
 //! [ablation](test_cabinet_core::gg)).
 //!
@@ -27,7 +27,7 @@
 //! # Capability gating
 //!
 //! [`ToolRegistry::from_capabilities`] assembles the offered toolset from *only* the
-//! enabled capabilities of a [`GgCapabilitySet`]: a disabled (or absent) capability
+//! enabled capabilities of a [`GgAgentConfig`]: a disabled (or absent) capability
 //! contributes no tools, so the model is never shown their schemas and never sees
 //! them in a prompt. This is the concrete basis for toolset ablation. The Phase 0
 //! toolset is what the core loop needs to build a test case:
@@ -68,7 +68,7 @@ use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_EDIT_FILE, CAPABILITY_FSM, CAPABILITY_LIST_DIR,
     CAPABILITY_MEMORIES, CAPABILITY_PLANNING, CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_READ_FILE,
     CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS,
-    CAPABILITY_TASKS, CAPABILITY_WORKFLOWS, CAPABILITY_WRITE_FILE, GgCapabilitySet,
+    CAPABILITY_TASKS, CAPABILITY_WORKFLOWS, CAPABILITY_WRITE_FILE, GgAgentConfig,
 };
 
 use crate::archive::ArchiveStore;
@@ -107,7 +107,7 @@ pub use subagents::{
 pub use tasks::is_task_tool;
 
 /// Every tool name gg can offer, across **all** capabilities — the canonical vocabulary a per-tool
-/// [override](GgCapabilitySet::disabled_tools) is validated against.
+/// [override](GgAgentConfig::disabled_tools) is validated against.
 ///
 /// A name in a run's `disabled_tools` that is **not** in this set is unknown (a typo, or a tool that
 /// no longer exists) and is surfaced as a startup warning by [`unknown_disabled_tools`]; a name that
@@ -167,7 +167,7 @@ pub const ALL_TOOL_NAMES: &[&str] = &[
 /// cannot call.
 pub const TURN_LEVEL_TOOLS: &[&str] = &[ENTER_PLAN_MODE_TOOL, SUBMIT_PLAN_TOOL, ADVANCE_STATE_TOOL];
 
-/// The names in a capability set's per-tool [overrides](GgCapabilitySet::disabled_tools) that are
+/// The names in a capability set's per-tool [overrides](GgAgentConfig::disabled_tools) that are
 /// **unknown** — not a tool gg can offer at all (a typo, or a removed tool), validated against
 /// [`ALL_TOOL_NAMES`].
 ///
@@ -175,7 +175,7 @@ pub const TURN_LEVEL_TOOLS: &[&str] = &[ENTER_PLAN_MODE_TOOL, SUBMIT_PLAN_TOOL, 
 /// override should be loud but must not abort a study, and a name that is a real tool yet is not
 /// offered by *this* run's enabled capabilities (so it withholds nothing) is deliberately *not*
 /// flagged — a preset can list a tool that only some arms of a sweep offer.
-pub fn unknown_disabled_tools(capabilities: &GgCapabilitySet) -> Vec<String> {
+pub fn unknown_disabled_tools(capabilities: &GgAgentConfig) -> Vec<String> {
     capabilities
         .disabled_tools
         .iter()
@@ -194,7 +194,7 @@ pub fn unknown_disabled_tools(capabilities: &GgCapabilitySet) -> Vec<String> {
 /// Resolved both here (to build the tool) and by the [loop](crate::agent), which states the
 /// resulting cap in the [system prompt](crate::prompts) — one resolution, so what the prompt
 /// promises and what the tool enforces cannot drift apart.
-pub fn read_policy(capabilities: &GgCapabilitySet) -> ReadPolicy {
+pub fn read_policy(capabilities: &GgAgentConfig) -> ReadPolicy {
     capabilities
         .capability(CAPABILITY_READ_FILE)
         .map(|cap| ReadPolicy::resolve(cap.implementation.as_deref(), &cap.params))
@@ -432,7 +432,7 @@ pub trait Tool: Send + Sync {
 }
 
 /// The toolset offered to the agent for a run, assembled from the enabled
-/// capabilities in a [`GgCapabilitySet`].
+/// capabilities in a [`GgAgentConfig`].
 ///
 /// The registry is the concrete basis for toolset ablation: a capability that is off
 /// contributes no tools, so the model is offered no schema and shown no prompt text
@@ -520,7 +520,7 @@ impl ToolRegistry {
     // memory/task/board stores); this bare convenience is exercised by the toolset tests, so the
     // non-test build sees it as unused.
     #[allow(dead_code)]
-    pub fn from_capabilities(capabilities: &GgCapabilitySet) -> Self {
+    pub fn from_capabilities(capabilities: &GgAgentConfig) -> Self {
         let skills = Arc::new(SkillLibrary::empty());
         Self::from_run(capabilities, &RuntimeSet::new(&skills))
     }
@@ -530,7 +530,7 @@ impl ToolRegistry {
     /// thread archive) that the stateful tools mutate.
     ///
     /// Each capability contributes its tools only when
-    /// [`is_enabled`](GgCapabilitySet::is_enabled) reports it on: the
+    /// [`is_enabled`](GgAgentConfig::is_enabled) reports it on: the
     /// [`shell`](CAPABILITY_SHELL) capability contributes the `shell` tool; the
     /// [`read-file`](CAPABILITY_READ_FILE), [`write-file`](CAPABILITY_WRITE_FILE),
     /// [`edit-file`](CAPABILITY_EDIT_FILE), and [`list-dir`](CAPABILITY_LIST_DIR)
@@ -558,7 +558,7 @@ impl ToolRegistry {
     /// [`workflows`](CAPABILITY_WORKFLOWS) capability contributes the `run_workflow` tool (likewise
     /// a declaration the loop intercepts to drive declared fan-out/sequencing over the same
     /// scheduler). A disabled or absent capability contributes nothing.
-    pub fn from_run(capabilities: &GgCapabilitySet, runtimes: &RuntimeSet<'_>) -> Self {
+    pub fn from_run(capabilities: &GgAgentConfig, runtimes: &RuntimeSet<'_>) -> Self {
         let mut tools: Vec<Box<dyn Tool>> = Vec::new();
 
         if capabilities.is_enabled(CAPABILITY_SHELL) {
@@ -659,34 +659,43 @@ impl ToolRegistry {
             tools.push(Box::new(fsm::AdvanceStateTool));
         }
 
-        if capabilities.is_enabled(CAPABILITY_SUBAGENTS) {
+        // The agents this profile may spawn — its delegation allowlist. A spawn tool is only worth
+        // offering when there is at least one target it can name (an empty allowlist means this
+        // agent delegates to no one), and each tool's description enumerates the allowed agents with
+        // their caller-scoped guidance so the model knows who it may spawn and why.
+        let spawnable = &capabilities.subagents;
+        let can_delegate = !spawnable.is_empty();
+
+        if capabilities.is_enabled(CAPABILITY_SUBAGENTS) && can_delegate {
             // The subagent tools only *declare* themselves; the loop intercepts their calls and
             // performs the spawn/wait/message against the orchestrator and scheduler (they act on
             // the agent tree, which a self-contained tool cannot reach).
-            tools.push(Box::new(subagents::SpawnSubagentTool));
+            tools.push(Box::new(subagents::SpawnSubagentTool::new(
+                spawnable.clone(),
+            )));
             tools.push(Box::new(subagents::WaitForSubagentsTool));
             tools.push(Box::new(subagents::SendMessageTool));
         }
 
-        if capabilities.is_enabled(CAPABILITY_WORKFLOWS) {
+        if capabilities.is_enabled(CAPABILITY_WORKFLOWS) && can_delegate {
             // The `run_workflow` tool is declared like the subagent tools and intercepted by the
             // loop, which drives the declared stages against the same subagent scheduler. It is
             // offered independently of `subagents` (a run may declare workflows without ad-hoc
             // spawning) — the loop builds the delegation runtime whenever either capability is on.
-            tools.push(Box::new(subagents::RunWorkflowTool));
+            tools.push(Box::new(subagents::RunWorkflowTool::new(spawnable.clone())));
         }
 
-        if capabilities.is_enabled(CAPABILITY_SPECULATIVE) {
+        if capabilities.is_enabled(CAPABILITY_SPECULATIVE) && can_delegate {
             // The `speculate` tool is declared like the subagent tools and intercepted by the loop,
             // which runs the best-of-K fan-out → judge → merge routine against the same subagent
             // scheduler and worktree machinery. It engages only when the delegation runtime is built
             // (subagents or workflows on) and worktree isolation is available; the loop refuses it
             // otherwise.
-            tools.push(Box::new(subagents::SpeculateTool));
+            tools.push(Box::new(subagents::SpeculateTool::new(spawnable.clone())));
         }
 
         // Apply the per-tool ablation overrides last: an individually
-        // [withheld](GgCapabilitySet::disabled_tools) tool is dropped from the offered set even
+        // [withheld](GgAgentConfig::disabled_tools) tool is dropped from the offered set even
         // though the capability that contributes it is on, so it is never shown to the model (no
         // schema, absent from [`definitions`](Self::definitions)) and never dispatchable (absent
         // from [`dispatch`](Self::dispatch)). This is the finest-grained toolset ablation lever —
@@ -706,7 +715,7 @@ impl ToolRegistry {
     }
 
     /// The names of the offered tools, in registration order — the run's **effective toolset** after
-    /// capability gating and per-tool [overrides](GgCapabilitySet::disabled_tools).
+    /// capability gating and per-tool [overrides](GgAgentConfig::disabled_tools).
     ///
     /// Recorded on the run's [session summary](test_cabinet_core::gg::GgSessionSummary::effective_tools)
     /// so the exact set of tools a run offered is a durable, slice-by ablation variable — the ground
@@ -720,7 +729,7 @@ impl ToolRegistry {
     }
 
     /// Whether the tool named `name` is offered this run — after capability gating and per-tool
-    /// [overrides](GgCapabilitySet::disabled_tools). The [system prompt](crate::prompts) asks this
+    /// [overrides](GgAgentConfig::disabled_tools). The [system prompt](crate::prompts) asks this
     /// before describing a specific tool's configuration, so a withheld tool is never explained.
     pub fn offers(&self, name: &str) -> bool {
         self.tools.iter().any(|tool| tool.name() == name)

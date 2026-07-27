@@ -480,3 +480,66 @@
   font-size: t.$font-sm;
   color: t.$color-text;
 }
+
+// --- Agents / per-agent view ----------------------------------------------------
+
+// The agent-name field row at the top of the per-agent view, set off from the Back
+// control above it.
+.agentHeading {
+  margin: t.$space-md 0;
+}
+
+// The subagent allowlist: one row per candidate agent, its enable toggle over an
+// optional caller-scoped description that appears when enabled.
+.subagentList {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  margin-bottom: t.$space-md;
+}
+
+.subagentRow {
+  display: flex;
+  align-items: center;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+}
+
+// The description field takes the row's spare width once its target is enabled.
+.subagentDescription {
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+
+// The custom-instructions and system-prompt editors: a full-width monospace-friendly
+// textarea on the same surface as the inputs.
+.textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: t.$space-sm;
+  margin-bottom: t.$space-md;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+  color: t.$color-text;
+  font: inherit;
+  line-height: 1.4;
+  resize: vertical;
+
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    outline-offset: 1px;
+  }
+
+  &:disabled {
+    opacity: 0.6;
+  }
+}
+
+// The full system-prompt template is Handlebars source, so it reads as code.
+.promptTextarea {
+  font-family: var(--ttc-font-mono, monospace);
+  font-size: t.$font-sm;
+  white-space: pre;
+  overflow-wrap: normal;
+}

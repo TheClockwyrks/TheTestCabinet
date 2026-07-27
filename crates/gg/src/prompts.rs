@@ -123,54 +123,6 @@ const CODE_NOT_A_PROGRAM_TEMPLATE: &str = include_str!("../templates/code-not-a-
 /// the not-a-program verdict again.
 const HEALING_NOTE_TEMPLATE: &str = include_str!("../templates/healing-note.hbs");
 
-/// The per-capability sections of the [system prompt](SYSTEM_TEMPLATE), one file each under
-/// `templates/capabilities/`.
-///
-/// `system.hbs` grows one optional section per toggleable capability, and inlining every one kept
-/// a dozen `{{#if}}` blocks and their prose in a single file. Each section is instead its own
-/// partial, gate and all, that `system.hbs` includes as `{{> capabilities/<name>}}` — the same
-/// partial mechanism [`HEALING_NOTE_TEMPLATE`] uses. A partial renders against the enclosing
-/// [`SystemContext`], so the `{{#if}}` gate inside each file still governs whether the capability
-/// contributes any text: the ablation property is unchanged, the layout is one file per capability.
-const CAPABILITY_TEMPLATES: &[(&str, &str)] = &[
-    (
-        "capabilities/read-file",
-        include_str!("../templates/capabilities/read-file.hbs"),
-    ),
-    (
-        "capabilities/skills",
-        include_str!("../templates/capabilities/skills.hbs"),
-    ),
-    (
-        "capabilities/memories",
-        include_str!("../templates/capabilities/memories.hbs"),
-    ),
-    (
-        "capabilities/tasks",
-        include_str!("../templates/capabilities/tasks.hbs"),
-    ),
-    (
-        "capabilities/board",
-        include_str!("../templates/capabilities/board.hbs"),
-    ),
-    (
-        "capabilities/planning",
-        include_str!("../templates/capabilities/planning.hbs"),
-    ),
-    (
-        "capabilities/process",
-        include_str!("../templates/capabilities/process.hbs"),
-    ),
-    (
-        "capabilities/code-reviews",
-        include_str!("../templates/capabilities/code-reviews.hbs"),
-    ),
-    (
-        "capabilities/speculative",
-        include_str!("../templates/capabilities/speculative.hbs"),
-    ),
-];
-
 /// The template names registered with the [engine], in the order they are registered. Each name
 /// is what [`render`] looks up — and, for [`HEALING_NOTE_TEMPLATE`], what the four feedback
 /// templates include as a `{{> partial}}`, since handlebars resolves a partial against the same
@@ -206,7 +158,7 @@ fn engine() -> &'static Handlebars<'static> {
         let mut engine = Handlebars::new();
         engine.set_strict_mode(true);
         engine.register_escape_fn(handlebars::no_escape);
-        for (name, source) in TEMPLATES.iter().chain(CAPABILITY_TEMPLATES) {
+        for (name, source) in TEMPLATES.iter() {
             engine
                 .register_template_string(name, source)
                 .unwrap_or_else(|err| panic!("gg template `{name}` does not parse: {err}"));
@@ -291,6 +243,17 @@ pub struct SystemContext {
     /// Whether the run is in [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/)
     /// mode, where the tools are described as functions a program calls rather than as tool calls.
     pub responses_as_code: bool,
+    /// Operator-authored instructions for the agent whose prompt this is — the
+    /// [`GgAgentConfig::custom_instructions`](test_cabinet_core::gg::GgAgentConfig::custom_instructions)
+    /// of its profile. `None` (or empty) renders no additional-instructions section. The
+    /// template inserts it near the top so it frames the whole session.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub custom_instructions: Option<String>,
+    /// The agents this one may spawn as subagents, each with the caller-scoped description that
+    /// tells this agent when to use it. Enumerated in the prompt so the model knows which names
+    /// `spawn_subagent`/`speculate`/`run_workflow` accept. Empty renders no section.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub spawnable_agents: Vec<SpawnableAgentView>,
     /// How a program ends the session — `finish`, with the signature and sentence the
     /// [SDK](crate::sandbox::prompt_views) itself declares for it.
     ///
@@ -414,6 +377,18 @@ pub struct SkillView {
     pub description: String,
 }
 
+/// One agent this agent may spawn, as the system prompt lists it — the target's name and the
+/// caller-scoped description of when to use it.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpawnableAgentView {
+    /// The target agent profile's name — a value `spawn_subagent`/`speculate`/`run_workflow`
+    /// accept for their `agent` argument.
+    pub name: String,
+    /// Caller-scoped guidance on when to spawn this agent. May be empty.
+    pub description: String,
+}
+
 /// The memories budget the prompt states.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -455,8 +430,34 @@ pub struct FsmView {
 }
 
 /// Render the [system prompt](SystemContext) for a run.
-pub fn render_system(context: &SystemContext) -> String {
-    tidy(&render("system", context))
+///
+/// `template_override` is an agent profile's
+/// [full-template override](test_cabinet_core::gg::GgAgentConfig::system_prompt_template): when
+/// present (and non-blank) it is rendered against the same [`SystemContext`] instead of the
+/// built-in template. A malformed override — one that references a variable the context does not
+/// carry — falls back to the built-in template rather than aborting the run, since it is
+/// operator-authored input, not an embedded artifact the tests pin.
+pub fn render_system(context: &SystemContext, template_override: Option<&str>) -> String {
+    let rendered = match template_override.map(str::trim).filter(|t| !t.is_empty()) {
+        Some(template) => engine()
+            .render_template(template, context)
+            .unwrap_or_else(|_| render("system", context)),
+        None => render("system", context),
+    };
+    tidy(&rendered)
+}
+
+/// The built-in system-prompt template, verbatim — the default an operator's
+/// [`GgAgentConfig::system_prompt_template`](test_cabinet_core::gg::GgAgentConfig::system_prompt_template)
+/// override starts from, and what the console seeds its editor with. The per-capability
+/// sections are inlined into this one file, so it is self-contained Handlebars (no partials).
+///
+/// The console's copy is generated from the same `.hbs` file (see `scripts/gen-contract.mjs`); this
+/// accessor is the in-crate mirror, used by the prompt tests to pin that the template parses and
+/// renders on its own.
+#[allow(dead_code)]
+pub fn default_system_prompt_template() -> &'static str {
+    SYSTEM_TEMPLATE
 }
 
 // ---------------------------------------------------------------------------

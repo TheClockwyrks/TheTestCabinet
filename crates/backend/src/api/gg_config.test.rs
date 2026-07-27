@@ -61,5 +61,5 @@ fn config_from_input_keeps_an_unbound_capability_set() {
         ..sample_input("skeleton")
     };
     let config = config_from_input("c1".to_string(), input, "2026-07-24T00:00:00Z").unwrap();
-    assert!(config.capability_set.slots.is_empty());
+    assert!(config.capability_set.root().resolved_model_id().is_none());
 }

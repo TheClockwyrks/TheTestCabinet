@@ -75,6 +75,8 @@ fn full_system() -> SystemContext {
             ),
         ],
         responses_as_code: false,
+        custom_instructions: None,
+        spawnable_agents: Vec::new(),
         // `session` is carried even here, where the mode is off: it is `Some` in code mode and
         // `None` in tool-calling mode in production, and pinning the tool-calling render with it
         // present is how `the_tool_calling_prompt_is_unchanged_by_the_code_mode_rewrite` proves the
@@ -149,7 +151,7 @@ fn full_system() -> SystemContext {
 #[test]
 fn every_template_is_registered() {
     let engine = engine();
-    for (name, _) in TEMPLATES.iter().chain(CAPABILITY_TEMPLATES) {
+    for (name, _) in TEMPLATES.iter() {
         assert!(
             engine.get_template(name).is_some(),
             "template `{name}` is not registered"
@@ -175,7 +177,7 @@ fn tidy_collapses_blank_runs() {
 /// contributes no prompt text at all.
 #[test]
 fn a_bare_run_renders_only_the_base_prompt() {
-    let prompt = render_system(&bare_system());
+    let prompt = render_system(&bare_system(), None);
     assert!(prompt.starts_with("You are gg, The Test Cabinet's autonomous coding agent."));
     assert!(prompt.contains("no tools available"));
     for absent in [
@@ -204,7 +206,7 @@ fn a_bare_run_renders_only_the_base_prompt() {
 /// inline rather than a hardcoded default.
 #[test]
 fn a_full_run_renders_every_section_with_its_configuration() {
-    let prompt = render_system(&full_system());
+    let prompt = render_system(&full_system(), None);
     for section in [
         "## Your tools",
         "## Skills",
@@ -236,7 +238,7 @@ fn a_full_run_renders_every_section_with_its_configuration() {
 /// to repeat on every refresh — so the two never say the same thing twice.
 #[test]
 fn the_task_section_carries_the_tool_instructions() {
-    let prompt = render_system(&full_system());
+    let prompt = render_system(&full_system(), None);
     for instruction in [
         "`add_task`",
         "`update_task`",
@@ -257,22 +259,28 @@ fn the_task_section_carries_the_tool_instructions() {
 /// default cap is described as a nudge rather than a ceiling.
 #[test]
 fn the_read_cap_is_stated_only_when_one_is_in_force() {
-    let uncapped = render_system(&SystemContext {
-        read_file: ReadFileView::default(),
-        ..full_system()
-    });
+    let uncapped = render_system(
+        &SystemContext {
+            read_file: ReadFileView::default(),
+            ..full_system()
+        },
+        None,
+    );
     assert!(!uncapped.contains("lines"), "no cap, no read guidance");
 
-    let default_cap = render_system(&SystemContext {
-        read_file: ReadFileView {
-            offered: true,
-            capped: true,
-            hard_cap: false,
-            line_cap: 40,
-            images: true,
+    let default_cap = render_system(
+        &SystemContext {
+            read_file: ReadFileView {
+                offered: true,
+                capped: true,
+                hard_cap: false,
+                line_cap: 40,
+                images: true,
+            },
+            ..full_system()
         },
-        ..full_system()
-    });
+        None,
+    );
     assert!(flat(&default_cap).contains("**40 lines** by default"));
     assert!(flat(&default_cap).contains("not a ceiling"));
 }
@@ -281,10 +289,13 @@ fn the_read_cap_is_stated_only_when_one_is_in_force() {
 /// sandbox binds — not a bespoke language, and not a hand-written paraphrase of the API.
 #[test]
 fn code_mode_teaches_typescript_and_lists_the_real_signatures() {
-    let prompt = render_system(&SystemContext {
-        responses_as_code: true,
-        ..full_system()
-    });
+    let prompt = render_system(
+        &SystemContext {
+            responses_as_code: true,
+            ..full_system()
+        },
+        None,
+    );
     let flat = flat(&prompt);
     assert!(prompt.contains("## Your reply is a program"));
     assert!(flat.contains("**Every reply you send is a TypeScript program**"));
@@ -319,7 +330,7 @@ fn code_mode_names_the_turn_level_transitions_it_cannot_compose() {
     context.responses_as_code = true;
     // The registry offers `enter_plan_mode`, but the sandbox does not bind it.
     context.tools.push(unbound("enter_plan_mode"));
-    let prompt = render_system(&context);
+    let prompt = render_system(&context, None);
     let flat = flat(&prompt);
     assert!(
         flat.contains(
@@ -336,11 +347,14 @@ fn code_mode_names_the_turn_level_transitions_it_cannot_compose() {
         "a tool with no signature must not render a bullet:\n{prompt}"
     );
 
-    let without = render_system(&SystemContext {
-        responses_as_code: true,
-        turn_level_tools: Vec::new(),
-        ..full_system()
-    });
+    let without = render_system(
+        &SystemContext {
+            responses_as_code: true,
+            turn_level_tools: Vec::new(),
+            ..full_system()
+        },
+        None,
+    );
     assert!(!without.contains("turn-level transitions"));
 }
 
@@ -348,16 +362,19 @@ fn code_mode_names_the_turn_level_transitions_it_cannot_compose() {
 /// value, which is a real (if narrow) thing to be able to do.
 #[test]
 fn code_mode_without_tools_says_a_program_can_only_compute() {
-    let toolless = render_system(&SystemContext {
-        responses_as_code: true,
-        tools: Vec::new(),
-        helpers: Vec::new(),
-        code: CodeTeachingView {
-            example_pure: true,
-            ..CodeTeachingView::default()
+    let toolless = render_system(
+        &SystemContext {
+            responses_as_code: true,
+            tools: Vec::new(),
+            helpers: Vec::new(),
+            code: CodeTeachingView {
+                example_pure: true,
+                ..CodeTeachingView::default()
+            },
+            ..full_system()
         },
-        ..full_system()
-    });
+        None,
+    );
     assert!(toolless.contains("only compute, log what it computed, and `finish`"));
     assert!(!toolless.contains("Your tools this run"));
     // It still gets a worked example — a program that only computes is a real, if narrow, thing to
@@ -397,22 +414,25 @@ fn code_mode_teaching_never_names_a_tool_the_run_withheld() {
         "shell",
     ];
 
-    let shell_only = render_system(&SystemContext {
-        responses_as_code: true,
-        tools: vec![bound(
-            "shell",
-            "shell(command: string, options?: { timeoutSecs?: number; }): ShellOutput",
-            "Run a shell command in the workspace.",
-        )],
-        helpers: Vec::new(),
-        turn_level_tools: Vec::new(),
-        code: CodeTeachingView {
-            example_shell: true,
-            shell: true,
-            ..CodeTeachingView::default()
+    let shell_only = render_system(
+        &SystemContext {
+            responses_as_code: true,
+            tools: vec![bound(
+                "shell",
+                "shell(command: string, options?: { timeoutSecs?: number; }): ShellOutput",
+                "Run a shell command in the workspace.",
+            )],
+            helpers: Vec::new(),
+            turn_level_tools: Vec::new(),
+            code: CodeTeachingView {
+                example_shell: true,
+                shell: true,
+                ..CodeTeachingView::default()
+            },
+            ..full_system()
         },
-        ..full_system()
-    });
+        None,
+    );
     assert!(
         shell_only.contains("\n    const build = shell(\"npm run build\");"),
         "a shell-only run still gets a worked example:\n{shell_only}"
@@ -424,17 +444,20 @@ fn code_mode_teaching_never_names_a_tool_the_run_withheld() {
         );
     }
 
-    let toolless = render_system(&SystemContext {
-        responses_as_code: true,
-        tools: Vec::new(),
-        helpers: Vec::new(),
-        turn_level_tools: Vec::new(),
-        code: CodeTeachingView {
-            example_pure: true,
-            ..CodeTeachingView::default()
+    let toolless = render_system(
+        &SystemContext {
+            responses_as_code: true,
+            tools: Vec::new(),
+            helpers: Vec::new(),
+            turn_level_tools: Vec::new(),
+            code: CodeTeachingView {
+                example_pure: true,
+                ..CodeTeachingView::default()
+            },
+            ..full_system()
         },
-        ..full_system()
-    });
+        None,
+    );
     assert!(
         toolless.contains("## Ending the run"),
         "the ungated ending section renders even here, which is what makes the absences below \
@@ -485,13 +508,16 @@ fn the_code_prompt_never_shows_a_code_fence() {
     for code in examples {
         for stripped in [true, false] {
             for delegated in [true, false] {
-                let prompt = render_system(&SystemContext {
-                    responses_as_code: true,
-                    code,
-                    fences_are_stripped: stripped,
-                    delegated,
-                    ..full_system()
-                });
+                let prompt = render_system(
+                    &SystemContext {
+                        responses_as_code: true,
+                        code,
+                        fences_are_stripped: stripped,
+                        delegated,
+                        ..full_system()
+                    },
+                    None,
+                );
                 assert!(
                     !prompt.contains("```"),
                     "the code prompt must show no fence (example {code:?}, stripped {stripped}, \
@@ -510,10 +536,13 @@ fn the_code_prompt_never_shows_a_code_fence() {
 /// has just *checked* the work rather than from a memory of an earlier turn.
 #[test]
 fn the_code_prompt_teaches_that_only_finish_ends_the_run() {
-    let prompt = render_system(&SystemContext {
-        responses_as_code: true,
-        ..full_system()
-    });
+    let prompt = render_system(
+        &SystemContext {
+            responses_as_code: true,
+            ..full_system()
+        },
+        None,
+    );
     let flat = flat(&prompt);
     for clause in [
         "`finish(summary: string): void` — End this run.",
@@ -544,11 +573,14 @@ fn the_code_prompt_teaches_that_only_finish_ends_the_run() {
 
     // The section is gated on the catalogue actually offering the function: a context with no
     // `session` renders no ending section at all, rather than a bullet with an empty signature.
-    let without = render_system(&SystemContext {
-        responses_as_code: true,
-        session: None,
-        ..full_system()
-    });
+    let without = render_system(
+        &SystemContext {
+            responses_as_code: true,
+            session: None,
+            ..full_system()
+        },
+        None,
+    );
     for absent in [
         "## Ending the run",
         "finish(summary: string): void",
@@ -579,10 +611,13 @@ fn the_code_prompt_teaches_that_only_finish_ends_the_run() {
 /// is the one thing a model that wants to look first will not do.
 #[test]
 fn the_reply_rules_redirect_a_second_program_into_the_first() {
-    let prompt = render_system(&SystemContext {
-        responses_as_code: true,
-        ..full_system()
-    });
+    let prompt = render_system(
+        &SystemContext {
+            responses_as_code: true,
+            ..full_system()
+        },
+        None,
+    );
     let flat = flat(&prompt);
     for clause in [
         // The redirect: where the impulse to look first actually belongs.
@@ -704,11 +739,14 @@ fn the_worked_example_is_the_whole_arc_in_one_program() {
         ),
     ];
     for (code, opens, checks, finishes) in arcs {
-        let prompt = render_system(&SystemContext {
-            responses_as_code: true,
-            code,
-            ..full_system()
-        });
+        let prompt = render_system(
+            &SystemContext {
+                responses_as_code: true,
+                code,
+                ..full_system()
+            },
+            None,
+        );
         let flat = flat(&prompt);
         assert!(
             prompt.contains(opens),
@@ -743,11 +781,14 @@ fn the_worked_example_is_the_whole_arc_in_one_program() {
     }
 
     // A delegated worker is shown the same arc, ending the thing it can actually end.
-    let child = render_system(&SystemContext {
-        responses_as_code: true,
-        delegated: true,
-        ..full_system()
-    });
+    let child = render_system(
+        &SystemContext {
+            responses_as_code: true,
+            delegated: true,
+            ..full_system()
+        },
+        None,
+    );
     assert!(
         flat(&child)
             .contains("ending the session only on the branch where the work is really done."),
@@ -770,10 +811,13 @@ fn the_worked_example_is_the_whole_arc_in_one_program() {
 /// re-checking what this one just verified). The two rules then say one thing.
 #[test]
 fn the_ending_section_scopes_the_no_re_check_rule_to_one_program() {
-    let prompt = render_system(&SystemContext {
-        responses_as_code: true,
-        ..full_system()
-    });
+    let prompt = render_system(
+        &SystemContext {
+            responses_as_code: true,
+            ..full_system()
+        },
+        None,
+    );
     let flat = flat(&prompt);
     assert!(
         flat.contains(
@@ -816,16 +860,22 @@ fn the_ending_section_scopes_the_no_re_check_rule_to_one_program() {
 /// subagent's worktree discarded unmerged.
 #[test]
 fn the_code_prompt_is_role_aware_about_what_finish_ends() {
-    let root = render_system(&SystemContext {
-        responses_as_code: true,
-        delegated: false,
-        ..full_system()
-    });
-    let child = render_system(&SystemContext {
-        responses_as_code: true,
-        delegated: true,
-        ..full_system()
-    });
+    let root = render_system(
+        &SystemContext {
+            responses_as_code: true,
+            delegated: false,
+            ..full_system()
+        },
+        None,
+    );
+    let child = render_system(
+        &SystemContext {
+            responses_as_code: true,
+            delegated: true,
+            ..full_system()
+        },
+        None,
+    );
 
     assert!(root.contains("## Ending the run"), "{root}");
     assert!(!root.contains("## Ending your session"), "{root}");
@@ -864,16 +914,22 @@ fn the_code_prompt_is_role_aware_about_what_finish_ends() {
 /// instruction-following signal this capability exists to collect.
 #[test]
 fn the_fence_rule_matches_the_healing_configuration() {
-    let stripped = flat(&render_system(&SystemContext {
-        responses_as_code: true,
-        fences_are_stripped: true,
-        ..full_system()
-    }));
-    let literal = flat(&render_system(&SystemContext {
-        responses_as_code: true,
-        fences_are_stripped: false,
-        ..full_system()
-    }));
+    let stripped = flat(&render_system(
+        &SystemContext {
+            responses_as_code: true,
+            fences_are_stripped: true,
+            ..full_system()
+        },
+        None,
+    ));
+    let literal = flat(&render_system(
+        &SystemContext {
+            responses_as_code: true,
+            fences_are_stripped: false,
+            ..full_system()
+        },
+        None,
+    ));
 
     for rendered in [&stripped, &literal] {
         assert!(rendered.contains(
@@ -903,7 +959,7 @@ fn the_fence_rule_matches_the_healing_configuration() {
 /// `session`, `delegated` and `fences_are_stripped`, and the `{{else}}` arm references none of them.
 #[test]
 fn the_tool_calling_prompt_is_unchanged_by_the_code_mode_rewrite() {
-    let prompt = render_system(&full_system());
+    let prompt = render_system(&full_system(), None);
     assert!(
         prompt.starts_with(
             "You are gg, The Test Cabinet's autonomous coding agent. You are building a game in \
@@ -938,7 +994,7 @@ fn the_tool_calling_prompt_is_unchanged_by_the_code_mode_rewrite() {
 fn tool_calling_mode_with_planning_still_names_enter_plan_mode() {
     let mut context = full_system();
     context.tools.push(unbound("enter_plan_mode"));
-    let prompt = render_system(&context);
+    let prompt = render_system(&context, None);
     assert!(flat(&prompt).contains("`write_file`, `enter_plan_mode`"));
     assert!(prompt.contains("## Planning"));
 }

@@ -484,7 +484,7 @@ fn resolve_error_rate(
 /// capability and per param, so a set that carries the same stale key on three capabilities gets
 /// three lines naming three capabilities rather than one line naming none.
 fn warn_about_legacy_params(set: &GgCapabilitySet, warnings: &mut Vec<String>) {
-    for capability in &set.capabilities {
+    for capability in set.agents.iter().flat_map(|agent| &agent.capabilities) {
         for param in LEGACY_CAPABILITY_PARAMS {
             if capability.params.get(param).is_some() {
                 warnings.push(format!(

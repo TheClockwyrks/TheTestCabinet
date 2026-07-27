@@ -30,10 +30,14 @@ per agent.
 The board **runs itself**. Submitting an issue **enqueues** it. Once every issue it
 is blocked by is **Done**, gg **automatically spawns a dedicated top-level agent**
 and assigns it the issue — the issue's structured fields become that agent's brief.
-Agents no longer hand issues to [subagents](/gg/subagents/) by hand; the old
-`spawn_subagent { issueId }` path is gone, and `spawn_subagent` now takes only a
-free-form `prompt` for ad-hoc delegation. Auto-spawned agents appear as
-**top-level** agents in the Agents view, not under whoever filed the issue.
+The agent runs under the capability's **`issueAgent`**
+[profile](/gg/configurations/#agents) (defaulting to the
+[Root agent](/gg/configurations/#agents)), so a study can staff issue work with a
+purpose-built implementer. Agents no longer hand issues to
+[subagents](/gg/subagents/) by hand; the old `spawn_subagent { issueId }` path is
+gone, and `spawn_subagent` now names the [agent](/gg/subagents/) to spawn for ad-hoc
+delegation. Auto-spawned agents appear as **top-level** agents in the Agents view,
+not under whoever filed the issue.
 
 An issue moves through:
 
@@ -64,6 +68,7 @@ Board tools: `create_epic`, `create_issue`, `update_issue`, `set_issue_blocked_b
 | `maxEpics` | 50 | Maximum epics on the board. |
 | `maxIssues` | 200 | Maximum issues on the board. |
 | `maxRetries` | 1 | Re-dispatches of a failed assignment before the issue is marked failed; may be 0 for no retry. |
+| `issueAgent` | `Root` | The [agent profile](/gg/configurations/#agents) a dispatched issue runs under. |
 
 Like every capability this one is **ablatable**: switched off, there are no board
 tools and no auto-dispatch, and gg behaves as if the board does not exist.

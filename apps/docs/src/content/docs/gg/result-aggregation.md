@@ -22,7 +22,7 @@ aggregate over fields we durably record, so the two are designed together.
 ## Facets and metrics worth knowing about
 
 Most facets come straight off the capability set — whether a capability is on, which
-implementation it uses, a capability param, a slot's model, the preset. Two additions are
+implementation it uses, a capability param, an agent profile's model, the preset. Two additions are
 worth calling out because they answer questions the rest cannot:
 
 - **`limitHit`** groups a run by which [execution ceiling](/gg/execution-limits/) stopped

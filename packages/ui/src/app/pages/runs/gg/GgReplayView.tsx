@@ -292,15 +292,18 @@ function ReplayHeader({
 }
 
 function CapabilityLine({ set }: { set: GgCapabilitySet }) {
-  const enabled = set.capabilities.filter((c) => c.enabled).map((c) => c.id);
-  const primary = set.slots.find((s) => s.slot === "primary") ?? set.slots[0];
+  // The Root agent stands in for the run's headline config on this one-line summary.
+  const root = set.agents?.[0];
+  const enabled = (root?.capabilities ?? [])
+    .filter((c) => c.enabled)
+    .map((c) => c.id);
   return (
     <div className={styles.headerRow}>
       <span className={styles.headerKey}>config</span>
       <span className={styles.headerVal}>
         {set.preset ? `preset ${set.preset} · ` : ""}
         {enabled.length ? enabled.join(", ") : "no capabilities"}
-        {primary ? ` · ${primary.modelId}` : ""}
+        {root?.modelId ? ` · ${root.modelId}` : ""}
       </span>
     </div>
   );

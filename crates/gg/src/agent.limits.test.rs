@@ -83,7 +83,8 @@ async fn a_consecutive_error_ceiling_stops_a_live_session_rather_than_only_recor
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-limits".to_string()), Box::new(sink.clone()));
     let mut set = GgCapabilitySet::minimal("mock/primary");
-    set.capabilities
+    set.agents[0]
+        .capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE));
     set.limits = GgRunLimits {
         max_turns: Some(20),
@@ -93,7 +94,7 @@ async fn a_consecutive_error_ceiling_stops_a_live_session_rather_than_only_recor
     let inv = invocation(dir.path(), set);
     let client = Arc::new(MockClient::new("mock/primary", prose_script(10)));
     let shared = Arc::clone(&client);
-    let factory = ScriptedFactory::new().slot(PRIMARY_SLOT, move |_| {
+    let factory = ScriptedFactory::new().slot(ROOT_AGENT, move |_| {
         Box::new(SharedMockClient(Arc::clone(&shared)))
     });
 
@@ -139,7 +140,7 @@ async fn an_unlimited_run_burns_its_turn_ceiling_instead() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
-    let registry = ToolRegistry::from_capabilities(&GgCapabilitySet::minimal("mock/primary"));
+    let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/primary").root());
     let client = MockClient::new("mock/primary", prose_script(DEFAULT_MAX_TURNS + 5));
 
     let end = drive_root(
@@ -181,7 +182,7 @@ async fn an_error_rate_ceiling_stops_a_run_that_is_mostly_failing() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
-    let registry = ToolRegistry::from_capabilities(&GgCapabilitySet::minimal("mock/primary"));
+    let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/primary").root());
     let client = MockClient::new("mock/primary", prose_script(8));
 
     let end = drive_root(
@@ -245,7 +246,7 @@ async fn a_cost_ceiling_stops_the_run_at_the_next_turn_boundary() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
-    let registry = ToolRegistry::from_capabilities(&GgCapabilitySet::minimal("mock/primary"));
+    let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/primary").root());
     let client = MockClient::new("mock/primary", vec![priced_turn(1.0); 6]);
 
     let end = drive_root(
@@ -295,7 +296,7 @@ async fn a_cost_ceiling_is_shared_across_every_agent() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
-    let registry = ToolRegistry::from_capabilities(&GgCapabilitySet::minimal("mock/primary"));
+    let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/primary").root());
     let shared = setup_from(GgRunLimits {
         max_turns: Some(4),
         max_cost: Some(1.5),
@@ -365,7 +366,7 @@ async fn an_unpriced_run_is_never_stopped_by_a_cost_ceiling() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
-    let registry = ToolRegistry::from_capabilities(&GgCapabilitySet::minimal("mock/primary"));
+    let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/primary").root());
     let mut unpriced = priced_turn(1.0);
     unpriced.cost = None;
     let client = MockClient::new("mock/primary", vec![unpriced; 3]);
@@ -404,7 +405,7 @@ async fn the_turn_ceiling_and_the_deadline_now_record_a_breach_too() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
-    let registry = ToolRegistry::from_capabilities(&GgCapabilitySet::minimal("mock/primary"));
+    let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/primary").root());
 
     let exhausted = drive_root(
         &MockClient::new("mock/primary", vec![priced_turn(0.0); 4]),
@@ -467,7 +468,7 @@ async fn a_model_api_error_is_still_fatal_on_the_first_occurrence() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
-    let registry = ToolRegistry::from_capabilities(&GgCapabilitySet::minimal("mock/primary"));
+    let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/primary").root());
 
     let end = drive_root(
         &FailingClient {
@@ -513,7 +514,7 @@ async fn a_host_fault_ends_the_session_without_charging_the_model() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
-    let registry = ToolRegistry::from_capabilities(&GgCapabilitySet::minimal("mock/primary"));
+    let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/primary").root());
 
     crate::sandbox::force_next_program_fault(SandboxError::Host(
         "the code sandbox task did not complete: task panicked".to_string(),
@@ -590,7 +591,7 @@ async fn a_limit_stopped_run_keeps_everything_it_built() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
-    let registry = ToolRegistry::from_capabilities(&GgCapabilitySet::minimal("mock/primary"));
+    let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/primary").root());
     let write = ModelResponse {
         text: Some("writing".to_string()),
         tool_calls: vec![ToolCall {
@@ -641,7 +642,7 @@ async fn a_limit_stopped_run_keeps_everything_it_built() {
 #[tokio::test]
 async fn every_turn_records_exactly_one_outcome() {
     let dir = TempDir::new().unwrap();
-    let registry = ToolRegistry::from_capabilities(&GgCapabilitySet::minimal("mock/primary"));
+    let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/primary").root());
 
     let arms: Vec<(&str, Box<dyn ModelClient>, LimitsSetup, CodeSetup)> = vec![
         (
@@ -754,10 +755,15 @@ async fn a_subagents_error_ceiling_ends_it_alone_and_discards_its_worktree() {
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-sub-limits".to_string()), Box::new(sink.clone()));
     let mut set = subagent_set(2, 3, &["subagent"]);
-    set.capabilities
+    set.agents[0]
+        .capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_WORKTREES));
-    set.capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE));
+    // Both the parent and the child run programs, so responses-as-code is on for every profile.
+    for agent in &mut set.agents {
+        agent
+            .capabilities
+            .push(GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE));
+    }
     set.limits = GgRunLimits {
         max_turns: Some(6),
         max_consecutive_errors: Some(2),
@@ -765,13 +771,13 @@ async fn a_subagents_error_ceiling_ends_it_alone_and_discards_its_worktree() {
     };
     let inv = invocation(dir.path(), set);
     let factory = ScriptedFactory::new()
-        .slot(PRIMARY_SLOT, |b| {
+        .slot(ROOT_AGENT, |b| {
             Box::new(MockClient::new(
                 &b.model_id,
                 vec![
                     code_reply(
-                        "const child = spawnSubagent({ prompt: \"Do the work.\", slot: \
-                         \"subagent\", worktree: true });\nreturn waitForSubagents([child.id]);",
+                        "const child = spawnSubagent({ agent: \"subagent\", prompt: \
+                         \"Do the work.\", worktree: true });\nreturn waitForSubagents([child.id]);",
                     ),
                     code_reply(FINISHING_PROGRAM),
                 ],
@@ -845,11 +851,11 @@ async fn unusable_limit_declarations_warn_on_the_root_stream_and_launch_anyway()
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-warn".to_string()), Box::new(sink.clone()));
     let mut set = GgCapabilitySet::minimal("mock/echo");
-    set.capabilities[0].params = json!({ "maxTurns": 8 });
+    set.agents[0].capabilities[0].params = json!({ "maxTurns": 8 });
     let mut code = GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE);
     code.params = json!({ "healing": { "stripFences": false } });
     code.enabled = false;
-    set.capabilities.push(code);
+    set.agents[0].capabilities.push(code);
     set.limits = GgRunLimits {
         max_consecutive_errors: Some(0),
         max_error_rate: Some(0.5),

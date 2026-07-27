@@ -1,20 +1,19 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE } from "@test-cabinet/run-record/gg-system-prompt";
 import type { Model } from "../../../../client/types";
 import { ModelCombobox } from "../../../components/ModelCombobox";
 import { familyOf } from "../../../data/families";
 import {
   CAPABILITIES,
   CAP_GROUPS,
-  COMMON_ROLE_SLOTS,
-  PRIMARY_SLOT,
   RUN_LIMIT_SPECS,
   type CapGroup,
   type RunLimitSpec,
 } from "./ggCatalog";
 import {
+  agentParamErrors,
+  blankAgentDraft,
   blankCapabilityDraft,
-  blankSlot,
-  draftParamErrors,
   referencedModelSlots,
   runLimitsError,
   runLimitsWarning,
@@ -22,32 +21,27 @@ import {
   togglesDraftValue,
   togglesOff,
   toolBundleOn,
+  type GgAgentDraft,
   type GgCapabilityDraft,
   type GgConfigDraft,
   type GgModelSlotDraft,
-  type GgSlotDraft,
 } from "./ggConfigDraft";
 import runExec from "../RunExec.module.scss";
 import gg from "./GgConfigEditor.module.scss";
 
-// gg reaches every slot's model through OpenRouter, so a slot must be bound to the
-// model's *OpenRouter* slug (`openai/gpt-5.6-sol`), never a provider-native one
-// (`gpt-5.6-sol`, which only the Codex CLI answers to). Scoping the picker to this
-// family makes it commit the right alias for a model catalogued under several.
+// gg reaches every model through OpenRouter, so a binding must name the model's
+// *OpenRouter* slug (`openai/gpt-5.6-sol`). Scoping the picker to this family makes it
+// commit the right alias for a model catalogued under several.
 const GG_MODEL_FAMILY = familyOf("gg");
 
 // The `step` a ceiling's number input moves in: whole turns/seconds/errors for a
-// count, a twentieth for a rate, and anything at all for money — a cost ceiling of
-// 12.50 must be typeable, and a stepped money input rejects it in browsers that
-// validate against the step.
+// count, a twentieth for a rate, and anything for money.
 function limitStep(kind: RunLimitSpec["kind"]): number | "any" {
   if (kind === "count") return 1;
   return kind === "fraction" ? 0.05 : "any";
 }
 
-// A "?" affordance whose help text appears in a custom on-hover/focus tooltip rather
-// than a permanent subtitle — the details that used to sit under every field, kept
-// out of the way until asked for. Focusable and labelled so it reads to AT too.
+// A "?" affordance whose help text appears in a custom on-hover/focus tooltip.
 function HelpTip({ text }: { text: string }) {
   return (
     <span
@@ -61,8 +55,7 @@ function HelpTip({ text }: { text: string }) {
   );
 }
 
-// A field label with an optional help tooltip beside it, used by every control that
-// carries an explanation. Keeps the tooltip and the label caption on one line.
+// A field label with an optional help tooltip beside it.
 function FieldLabel({ label, hint }: { label: ReactNode; hint?: string }) {
   return (
     <span className={runExec.fieldLabel}>
@@ -72,10 +65,8 @@ function FieldLabel({ label, hint }: { label: ReactNode; hint?: string }) {
   );
 }
 
-// The capability enable control: a slider switch rather than a checkbox, so turning
-// a capability on reads as flipping it live and reveals its config beneath. Kept as
-// a real `<input type="checkbox">` (only its chrome is the slider) so it stays a
-// checkbox to assistive tech and to the test suite.
+// The capability enable control: a slider switch that stays a real checkbox to AT and
+// to the test suite.
 function Switch({
   checked,
   disabled,
@@ -104,11 +95,8 @@ interface GgConfigEditorProps {
   value: GgConfigDraft;
   /** Called with the whole next draft on every edit. */
   onChange: (next: GgConfigDraft) => void;
-  /** The model catalog backing the per-slot pickers (free text is still allowed). */
+  /** The model catalog backing the per-agent pickers (free text is still allowed). */
   models: Model[];
-  /** Which capability groups start collapsed, and the toggle for that state. */
-  collapsed: ReadonlySet<CapGroup>;
-  onToggleGroup: (group: CapGroup) => void;
   /**
    * Render every control disabled — how a built-in configuration is shown, since
    * those are shared and read-only (duplicate one to make it yours).
@@ -116,49 +104,69 @@ interface GgConfigEditorProps {
   readOnly?: boolean;
 }
 
-// The gg capability-set editor: the run's execution ceilings, the full capability
-// catalog grouped by concern, the declared model slots and the role bindings that
-// consume them. Per-tool ablation lives inside each capability now (its expanded
-// config), not in a section of its own — a capability's sub-features are what a
-// study varies, so they belong with the capability that owns them.
+// The gg capability-set editor. Its top level is the run's execution ceilings, the
+// declared launch-time model slots, and the list of **agent profiles**; opening an
+// agent switches to a per-agent view (its capabilities, model, custom prompt, and the
+// agents it may spawn) with a Back control. Capabilities are per agent now — there is
+// no run-global capability list — so an ablation can vary what each agent in a run can
+// do, and give different agents different models or even different execution modes.
 //
-// This is the one authoring surface for a gg configuration — the account section's
-// gg tab mounts it to register a named configuration, and it renders read-only when
-// showing a built-in. It is deliberately *not* a launcher: a configuration carries
-// no test case, and the models it does not pin outright are declared as *model
-// slots* the new-run form asks for when it launches the configuration (see
-// `launchModelSlots` / `bindModelSlots`).
+// This is the one authoring surface for a gg configuration. It is deliberately *not* a
+// launcher: a configuration carries no test case, and the models it does not pin
+// outright are declared as *model slots* the new-run form asks for at launch.
 export function GgConfigEditor({
   value,
   onChange,
   models,
-  collapsed,
-  onToggleGroup,
   readOnly = false,
 }: GgConfigEditorProps) {
-  const paramsErrors = draftParamErrors(value);
+  // Which agent's per-agent view is open, or `null` for the top-level form. Owned here
+  // so the page that mounts the editor stays a thin wrapper.
+  const [editingAgent, setEditingAgent] = useState<number | null>(null);
+  // Which capability groups are collapsed in the per-agent view.
+  const [collapsed, setCollapsed] = useState<Set<CapGroup>>(
+    () => new Set(CAP_GROUPS.filter((g) => !g.startOpen).map((g) => g.group)),
+  );
+  // Whether the (collapsed-by-default) full system-prompt template is expanded.
+  const [promptOpen, setPromptOpen] = useState(false);
 
-  // --- Capability mutators --------------------------------------------------
-  function updateDraft(id: string, patch: Partial<GgCapabilityDraft>) {
-    onChange({
-      ...value,
-      capabilities: {
-        ...value.capabilities,
-        [id]: {
-          ...(value.capabilities[id] ?? blankCapabilityDraft()),
-          ...patch,
-        },
-      },
+  function toggleGroup(group: CapGroup) {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(group)) next.delete(group);
+      else next.add(group);
+      return next;
     });
   }
-  function setParam(id: string, key: string, param: string) {
-    const base = value.capabilities[id] ?? blankCapabilityDraft();
-    updateDraft(id, { params: { ...(base.params ?? {}), [key]: param } });
-  }
 
-  // --- Run-limit mutator ----------------------------------------------------
-  function setLimit(key: RunLimitSpec["key"], limit: string) {
-    onChange({ ...value, limits: { ...value.limits, [key]: limit } });
+  // --- Agent mutators -------------------------------------------------------
+  function updateAgent(index: number, patch: Partial<GgAgentDraft>) {
+    onChange({
+      ...value,
+      agents: value.agents.map((a, i) => (i === index ? { ...a, ...patch } : a)),
+    });
+  }
+  function addAgent() {
+    // A unique default name so the added agent is immediately valid.
+    const taken = new Set(value.agents.map((a) => a.name));
+    let n = value.agents.length + 1;
+    let name = `agent-${n}`;
+    while (taken.has(name)) name = `agent-${++n}`;
+    onChange({ ...value, agents: [...value.agents, blankAgentDraft(name)] });
+  }
+  function removeAgent(index: number) {
+    const removed = value.agents[index]?.name;
+    onChange({
+      ...value,
+      agents: value.agents
+        .filter((_, i) => i !== index)
+        // Drop every allowlist entry that pointed at the removed agent, or it would
+        // dangle.
+        .map((a) => ({
+          ...a,
+          subagents: a.subagents.filter((s) => s.agent !== removed),
+        })),
+    });
   }
 
   // --- Model-slot (launch parameter) mutators -------------------------------
@@ -167,20 +175,20 @@ export function GgConfigEditor({
     const next = value.modelSlots.map((s, i) =>
       i === index ? { ...s, ...patch } : s,
     );
-    // Renaming a declaration must carry every role bound to it along, or the rename
+    // Renaming a declaration must carry every agent bound to it along, or the rename
     // would silently orphan them.
     const renamed =
       patch.name !== undefined && previous && patch.name !== previous.name;
     onChange({
       ...value,
       modelSlots: next,
-      slots: renamed
-        ? value.slots.map((s) =>
-            s.source === "model-slot" && s.modelSlot === previous.name
-              ? { ...s, modelSlot: patch.name! }
-              : s,
+      agents: renamed
+        ? value.agents.map((a) =>
+            a.modelSource === "model-slot" && a.modelSlot === previous.name
+              ? { ...a, modelSlot: patch.name! }
+              : a,
           )
-        : value.slots,
+        : value.agents,
     });
   }
   function addModelSlot() {
@@ -196,90 +204,333 @@ export function GgConfigEditor({
     });
   }
 
-  // --- Role-binding mutators ------------------------------------------------
-  function updateSlot(index: number, patch: Partial<GgSlotDraft>) {
-    onChange({
-      ...value,
-      slots: value.slots.map((s, i) => (i === index ? { ...s, ...patch } : s)),
-    });
-  }
-  function addSlot() {
-    onChange({
-      ...value,
-      slots: [
-        ...value.slots,
-        // Default a new role to the first declared model slot, so the common case
-        // ("another role on a model I pick at launch") needs one more click, not four.
-        {
-          ...blankSlot(),
-          modelSlot: value.modelSlots[0]?.name ?? PRIMARY_SLOT,
-        },
-      ],
-    });
-  }
-  function removeSlot(index: number) {
-    onChange({ ...value, slots: value.slots.filter((_, i) => i !== index) });
-  }
-
-  // --- Tool-ablation mutator ------------------------------------------------
-  // A capability's per-feature slider withholds or restores a whole tool bundle at
-  // once; the wire format stays per-tool (`disabledTools`).
-  function setToolAblation(tools: ReadonlyArray<string>, on: boolean) {
-    onChange({
-      ...value,
-      disabledTools: setToolBundle(value.disabledTools, tools, on),
-    });
-  }
-
-  // The declared model slots, and which of them a role actually binds — a slot
-  // nothing consumes is dead weight the launch form will never ask about, so the
-  // editor says so rather than letting it look wired up.
-  const declaredNames = value.modelSlots.map((s) => s.name.trim());
-  const referenced = referencedModelSlots(value);
-
-  // The ceilings are checked as a set rather than per field: the rate ceiling's two
-  // halves are only meaningful together, so "which field is wrong" is not always a
-  // question with an answer.
   const limitsError = runLimitsError(value.limits);
   const limitsWarning = runLimitsWarning(value.limits);
 
+  // --- Top-level view -------------------------------------------------------
+  function setLimit(key: RunLimitSpec["key"], limit: string) {
+    onChange({ ...value, limits: { ...value.limits, [key]: limit } });
+  }
+
+  if (editingAgent === null) {
+    const referenced = referencedModelSlots(value);
+    return (
+      <>
+        {/* Run limits — the operator's guardrails, applied to every agent and both
+            execution modes at once, so they sit above the agents rather than inside
+            one. */}
+        <section className={gg.limitsWidget}>
+          <p className={runExec.sectionLabel}>
+            Run limits
+            <HelpTip text="The ceilings that stop a run and record which one stopped it. Leave a field empty to leave that ceiling off. A cost ceiling stops the run before its next turn, so the final cost can exceed it by up to one turn." />
+          </p>
+          <div className={gg.limitGrid}>
+            {RUN_LIMIT_SPECS.map((spec) => (
+              <label key={spec.key} className={gg.capParamField}>
+                <FieldLabel label={spec.label} hint={spec.hint} />
+                <input
+                  className={runExec.input}
+                  type="number"
+                  min={0}
+                  max={spec.kind === "fraction" ? 1 : undefined}
+                  step={limitStep(spec.kind)}
+                  value={value.limits[spec.key]}
+                  disabled={readOnly}
+                  onChange={(e) => setLimit(spec.key, e.target.value)}
+                  placeholder={spec.placeholder}
+                />
+              </label>
+            ))}
+          </div>
+          {limitsError ? (
+            <p className={gg.fieldError}>{limitsError}</p>
+          ) : (
+            limitsWarning && <p className={gg.limitWarning}>{limitsWarning}</p>
+          )}
+        </section>
+
+        {/* Model slots — the launch-time model parameters. Declaring them is what
+            keeps one configuration reusable across models: the New run page asks for
+            these, pre-filled with any default, and agents bind to them by name. */}
+        <p className={`${runExec.sectionLabel} ${runExec.sectionLabelBackdrop}`}>
+          Model slots
+        </p>
+        <p className={`${runExec.muted} ${gg.backdropNote}`}>
+          The models this configuration asks for at launch. Give each a name the
+          launch form can label, and an optional default. Agents below bind to
+          these by name.
+        </p>
+        <div className={gg.slotList}>
+          {value.modelSlots.map((modelSlot, i) => {
+            const unused = !referenced.has(modelSlot.name.trim());
+            return (
+              <div key={i} className={gg.slotBlock}>
+                <div className={gg.slotFields}>
+                  <label className={`${runExec.field} ${gg.slotNameField}`}>
+                    <span className={runExec.fieldLabel}>Slot name</span>
+                    <input
+                      className={runExec.input}
+                      type="text"
+                      value={modelSlot.name}
+                      disabled={readOnly}
+                      onChange={(e) =>
+                        updateModelSlot(i, { name: e.target.value })
+                      }
+                      placeholder="e.g. primary"
+                    />
+                  </label>
+                  <label className={`${runExec.field} ${gg.slotModelField}`}>
+                    <span className={runExec.fieldLabel}>
+                      Default model (optional)
+                    </span>
+                    <ModelCombobox
+                      value={modelSlot.defaultModelId}
+                      onChange={(v) =>
+                        updateModelSlot(i, { defaultModelId: v })
+                      }
+                      models={models}
+                      harnessFamily={GG_MODEL_FAMILY}
+                      inputClassName={runExec.input}
+                      disabled={readOnly}
+                      placeholder="left to the launcher"
+                    />
+                  </label>
+                  {!readOnly && (
+                    <button
+                      type="button"
+                      className={gg.slotRemove}
+                      onClick={() => removeModelSlot(i)}
+                      aria-label={`Remove the ${modelSlot.name || "unnamed"} model slot`}
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+                {unused && (
+                  <p className={gg.fieldError}>
+                    No agent binds this slot, so launching will never ask for it.
+                  </p>
+                )}
+              </div>
+            );
+          })}
+          {!readOnly && (
+            <button
+              type="button"
+              className={runExec.secondary}
+              onClick={addModelSlot}
+            >
+              + Add model slot
+            </button>
+          )}
+        </div>
+
+        {/* Agents — the per-agent profiles. The first is always the Root, which
+            drives the run's top-level session and is the default for issue dispatch,
+            Code Review, and speculation judging. */}
+        <p className={`${runExec.sectionLabel} ${runExec.sectionLabelBackdrop}`}>
+          Agents
+        </p>
+        <p className={`${runExec.muted} ${gg.backdropNote}`}>
+          Each agent has its own capabilities, model, custom prompt, and the set of
+          agents it may spawn. Open one to configure it.
+        </p>
+        <div className={gg.slotList}>
+          {value.agents.map((agent, i) => {
+            const onCount = CAPABILITIES.filter(
+              (c) => agent.capabilities[c.id]?.enabled,
+            ).length;
+            const modelSummary =
+              agent.modelSource === "model-slot"
+                ? `slot: ${agent.modelSlot || "—"}`
+                : agent.modelId || "no model";
+            return (
+              <div key={i} className={gg.slotBlock}>
+                <div className={gg.slotTop}>
+                  <span className={gg.slotName}>
+                    <span className={gg.capName}>
+                      {agent.name || "unnamed"}
+                    </span>
+                    <span className={gg.capId}>
+                      {onCount} on · {modelSummary}
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    className={runExec.secondary}
+                    onClick={() => setEditingAgent(i)}
+                    style={{ marginLeft: "auto" }}
+                  >
+                    {readOnly ? "View" : "Edit"}
+                  </button>
+                  {!readOnly && i !== 0 && (
+                    <button
+                      type="button"
+                      className={gg.slotRemove}
+                      onClick={() => removeAgent(i)}
+                      aria-label={`Remove the ${agent.name || "unnamed"} agent`}
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          {!readOnly && (
+            <button
+              type="button"
+              className={runExec.secondary}
+              onClick={addAgent}
+            >
+              + Add agent
+            </button>
+          )}
+        </div>
+      </>
+    );
+  }
+
+  // --- Per-agent view -------------------------------------------------------
+  const index = editingAgent;
+  const agent = value.agents[index];
+  // A guard against a stale index (e.g. the edited agent was removed): fall back to
+  // the top-level view rather than crashing.
+  if (!agent) {
+    setEditingAgent(null);
+    return null;
+  }
+  const isRoot = index === 0;
+  const paramsErrors = agentParamErrors(agent);
+  const declaredSlots = value.modelSlots.map((s) => s.name.trim());
+
+  const patchAgent = (patch: Partial<GgAgentDraft>) => updateAgent(index, patch);
+  const updateCap = (id: string, patch: Partial<GgCapabilityDraft>) =>
+    patchAgent({
+      capabilities: {
+        ...agent.capabilities,
+        [id]: { ...(agent.capabilities[id] ?? blankCapabilityDraft()), ...patch },
+      },
+    });
+  const setParam = (id: string, key: string, param: string) => {
+    const base = agent.capabilities[id] ?? blankCapabilityDraft();
+    updateCap(id, { params: { ...(base.params ?? {}), [key]: param } });
+  };
+  const setToolAblation = (tools: ReadonlyArray<string>, on: boolean) =>
+    patchAgent({ disabledTools: setToolBundle(agent.disabledTools, tools, on) });
+  const toggleSubagent = (target: string, on: boolean) => {
+    const others = agent.subagents.filter((s) => s.agent !== target);
+    patchAgent({
+      subagents: on ? [...others, { agent: target, description: "" }] : others,
+    });
+  };
+  const setSubagentDescription = (target: string, description: string) =>
+    patchAgent({
+      subagents: agent.subagents.map((s) =>
+        s.agent === target ? { ...s, description } : s,
+      ),
+    });
+
+  // The full system prompt shown in the (collapsed-by-default) editor: this agent's
+  // override, or the built-in default. Editing it to exactly the default stores no
+  // override.
+  const promptValue = agent.systemPromptTemplate || DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE;
+  const promptOverridden = agent.systemPromptTemplate.trim().length > 0;
+  function setPrompt(next: string) {
+    patchAgent({
+      systemPromptTemplate: next === DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE ? "" : next,
+    });
+  }
+
   return (
     <>
-      {/* Run limits — the operator's guardrails, deliberately not capabilities:
-          they apply to every capability and to both execution modes at once, so
-          they sit above the catalog rather than inside a group of it. Panelled into
-          their own widget so the fields read against a surface, not the backdrop. */}
-      <section className={gg.limitsWidget}>
-        <p className={runExec.sectionLabel}>
-          Run limits
-          <HelpTip text="The ceilings that stop a run and record which one stopped it. Leave a field empty to leave that ceiling off. A cost ceiling stops the run before its next turn, so the final cost can exceed it by up to one turn." />
-        </p>
-        <div className={gg.limitGrid}>
-          {RUN_LIMIT_SPECS.map((spec) => (
-            <label key={spec.key} className={gg.capParamField}>
-              <FieldLabel label={spec.label} hint={spec.hint} />
-              <input
-                className={runExec.input}
-                type="number"
-                min={0}
-                max={spec.kind === "fraction" ? 1 : undefined}
-                step={limitStep(spec.kind)}
-                value={value.limits[spec.key]}
-                disabled={readOnly}
-                onChange={(e) => setLimit(spec.key, e.target.value)}
-                placeholder={spec.placeholder}
-              />
-            </label>
-          ))}
-        </div>
-        {limitsError ? (
-          <p className={gg.fieldError}>{limitsError}</p>
-        ) : (
-          limitsWarning && <p className={gg.limitWarning}>{limitsWarning}</p>
-        )}
-      </section>
+      <button
+        type="button"
+        className={runExec.secondary}
+        onClick={() => setEditingAgent(null)}
+      >
+        ← Back to configuration
+      </button>
 
-      {/* The full capability catalog, grouped by concern, collapsible. */}
+      <div className={gg.agentHeading}>
+        <label className={`${runExec.field} ${gg.slotNameField}`}>
+          <span className={runExec.fieldLabel}>Agent name</span>
+          <input
+            className={runExec.input}
+            type="text"
+            value={agent.name}
+            // The Root's name is fixed — the runtime references it by name.
+            disabled={readOnly || isRoot}
+            onChange={(e) => patchAgent({ name: e.target.value })}
+            placeholder="e.g. reviewer"
+          />
+        </label>
+      </div>
+
+      {/* Model binding — one model per agent, taken from a declared model slot (at
+          launch) or pinned here. */}
+      <div className={gg.slotFields}>
+        <label className={`${runExec.field} ${gg.slotSourceField}`}>
+          <span className={runExec.fieldLabel}>Model from</span>
+          <select
+            className={runExec.select}
+            value={agent.modelSource}
+            disabled={readOnly}
+            onChange={(e) =>
+              patchAgent({
+                modelSource: e.target.value as GgAgentDraft["modelSource"],
+              })
+            }
+          >
+            <option value="model-slot">a model slot (at launch)</option>
+            <option value="model">a specific model (fixed here)</option>
+          </select>
+        </label>
+        {agent.modelSource === "model-slot" ? (
+          <label className={`${runExec.field} ${gg.slotModelField}`}>
+            <span className={runExec.fieldLabel}>Model slot</span>
+            <select
+              className={runExec.select}
+              value={agent.modelSlot}
+              disabled={readOnly}
+              onChange={(e) => patchAgent({ modelSlot: e.target.value })}
+            >
+              {!declaredSlots.includes(agent.modelSlot.trim()) && (
+                <option value={agent.modelSlot}>
+                  {agent.modelSlot || "(none)"}
+                </option>
+              )}
+              {declaredSlots.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <label className={`${runExec.field} ${gg.slotModelField}`}>
+            <span className={runExec.fieldLabel}>Model</span>
+            <ModelCombobox
+              value={agent.modelId}
+              onChange={(v) => patchAgent({ modelId: v })}
+              models={models}
+              harnessFamily={GG_MODEL_FAMILY}
+              inputClassName={runExec.input}
+              disabled={readOnly}
+              placeholder="model id (e.g. anthropic/claude-opus-4.8)"
+            />
+          </label>
+        )}
+      </div>
+      {agent.modelSource === "model-slot" &&
+        !declaredSlots.includes(agent.modelSlot.trim()) && (
+          <p className={gg.fieldError}>
+            That model slot isn&rsquo;t declared on the configuration.
+          </p>
+        )}
+
+      {/* The full capability catalog, grouped by concern, collapsible — this agent's
+          capabilities. */}
       <p className={`${runExec.sectionLabel} ${runExec.sectionLabelBackdrop}`}>
         Capabilities
       </p>
@@ -287,14 +538,14 @@ export function GgConfigEditor({
         const groupCaps = CAPABILITIES.filter((c) => c.group === group);
         const isCollapsed = collapsed.has(group);
         const onCount = groupCaps.filter(
-          (c) => value.capabilities[c.id]?.enabled,
+          (c) => agent.capabilities[c.id]?.enabled,
         ).length;
         return (
           <div key={group} className={gg.group}>
             <button
               type="button"
               className={gg.groupHeader}
-              onClick={() => onToggleGroup(group)}
+              onClick={() => toggleGroup(group)}
               aria-expanded={!isCollapsed}
             >
               <span className={gg.groupToggle}>{isCollapsed ? "▸" : "▾"}</span>
@@ -307,11 +558,16 @@ export function GgConfigEditor({
               <div className={gg.capList}>
                 {groupCaps.map((cap) => {
                   const draft =
-                    value.capabilities[cap.id] ?? blankCapabilityDraft();
+                    agent.capabilities[cap.id] ?? blankCapabilityDraft();
                   const enabled = Boolean(draft.enabled);
                   const error = paramsErrors[cap.id];
+                  // Run-level "which agent runs this?" knobs (issueAgent/reviewer/
+                  // judge) are read off the Root agent, so only offer them there.
+                  const params = (cap.params ?? []).filter(
+                    (p) => p.kind !== "agent" || isRoot,
+                  );
                   const hasBody =
-                    cap.params?.length ||
+                    params.length ||
                     cap.implementationLabel ||
                     cap.toolAblation?.length ||
                     error;
@@ -325,7 +581,7 @@ export function GgConfigEditor({
                           checked={enabled}
                           disabled={readOnly}
                           onChange={(next) =>
-                            updateDraft(cap.id, { enabled: next })
+                            updateCap(cap.id, { enabled: next })
                           }
                         />
                         <span className={gg.capName}>{cap.name}</span>
@@ -334,7 +590,7 @@ export function GgConfigEditor({
                       <p className={gg.capPurpose}>{cap.purpose}</p>
                       {enabled && hasBody && (
                         <div className={gg.capBody}>
-                          {(cap.params?.length || cap.implementationLabel) && (
+                          {(params.length || cap.implementationLabel) && (
                             <div className={gg.capParamGrid}>
                               {cap.implementationLabel && (
                                 <label className={gg.capParamField}>
@@ -342,16 +598,13 @@ export function GgConfigEditor({
                                     label={cap.implementationLabel}
                                     hint={cap.implementationHint}
                                   />
-                                  {/* A closed set of implementations is a picker, so
-                                      an operator never has to remember how a mode is
-                                      spelled; an open-ended one stays free text. */}
                                   {cap.implementationOptions ? (
                                     <select
                                       className={runExec.select}
                                       value={draft.implementation ?? ""}
                                       disabled={readOnly}
                                       onChange={(e) =>
-                                        updateDraft(cap.id, {
+                                        updateCap(cap.id, {
                                           implementation: e.target.value,
                                         })
                                       }
@@ -369,7 +622,7 @@ export function GgConfigEditor({
                                       value={draft.implementation ?? ""}
                                       disabled={readOnly}
                                       onChange={(e) =>
-                                        updateDraft(cap.id, {
+                                        updateCap(cap.id, {
                                           implementation: e.target.value,
                                         })
                                       }
@@ -382,11 +635,7 @@ export function GgConfigEditor({
                                   )}
                                 </label>
                               )}
-                              {(cap.params ?? []).map((p) => {
-                                // A toggles param is several controls, so it is a
-                                // group rather than a `<label>` — wrapping a set of
-                                // checkboxes in one label would make clicking the
-                                // group's caption flip whichever one came first.
+                              {params.map((p) => {
                                 if (p.kind === "toggles") {
                                   const off = togglesOff(
                                     p,
@@ -448,16 +697,39 @@ export function GgConfigEditor({
                                         value={draft.params?.[p.key] ?? ""}
                                         disabled={readOnly}
                                         onChange={(e) =>
-                                          setParam(
-                                            cap.id,
-                                            p.key,
-                                            e.target.value,
-                                          )
+                                          setParam(cap.id, p.key, e.target.value)
                                         }
                                       >
                                         {(p.options ?? []).map((o) => (
                                           <option key={o.value} value={o.value}>
                                             {o.label}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    ) : p.kind === "agent" ? (
+                                      <select
+                                        className={runExec.select}
+                                        value={draft.params?.[p.key] ?? ""}
+                                        disabled={readOnly}
+                                        onChange={(e) =>
+                                          setParam(cap.id, p.key, e.target.value)
+                                        }
+                                      >
+                                        {/* An agent named by a stored param that no
+                                            longer exists stays selectable so the
+                                            value round-trips until re-pointed. */}
+                                        {draft.params?.[p.key] &&
+                                          !value.agents.some(
+                                            (a) =>
+                                              a.name === draft.params?.[p.key],
+                                          ) && (
+                                            <option value={draft.params[p.key]}>
+                                              {draft.params[p.key]} (missing)
+                                            </option>
+                                          )}
+                                        {value.agents.map((a) => (
+                                          <option key={a.name} value={a.name}>
+                                            {a.name}
                                           </option>
                                         ))}
                                       </select>
@@ -468,11 +740,7 @@ export function GgConfigEditor({
                                         value={draft.params?.[p.key] ?? ""}
                                         disabled={readOnly}
                                         onChange={(e) =>
-                                          setParam(
-                                            cap.id,
-                                            p.key,
-                                            e.target.value,
-                                          )
+                                          setParam(cap.id, p.key, e.target.value)
                                         }
                                         placeholder={p.placeholder}
                                         spellCheck={false}
@@ -489,11 +757,7 @@ export function GgConfigEditor({
                                         value={draft.params?.[p.key] ?? ""}
                                         disabled={readOnly}
                                         onChange={(e) =>
-                                          setParam(
-                                            cap.id,
-                                            p.key,
-                                            e.target.value,
-                                          )
+                                          setParam(cap.id, p.key, e.target.value)
                                         }
                                         placeholder={p.placeholder}
                                       />
@@ -503,9 +767,6 @@ export function GgConfigEditor({
                               })}
                             </div>
                           )}
-                          {/* Per-feature ablation: withhold a sub-feature of this
-                              capability without turning the whole thing off. Each
-                              slider covers a bundle of tools that move together. */}
                           {cap.toolAblation?.length ? (
                             <div
                               className={gg.ablationGroup}
@@ -521,15 +782,10 @@ export function GgConfigEditor({
                                     key={bundle.label}
                                     className={gg.ablationItem}
                                   >
-                                    {/* The label wraps the switch + name (so its
-                                        accessible name is the feature and clicking
-                                        the name toggles it); the help tip sits
-                                        outside, or a click on it would flip the
-                                        switch too. */}
                                     <label className={gg.ablationLabel}>
                                       <Switch
                                         checked={toolBundleOn(
-                                          value.disabledTools,
+                                          agent.disabledTools,
                                           bundle.tools,
                                         )}
                                         disabled={readOnly}
@@ -563,222 +819,108 @@ export function GgConfigEditor({
         );
       })}
 
-      {/* Model slots — the launch-time model parameters. Declaring them is what
-          keeps one configuration reusable across models: the New run page asks for
-          these, pre-filled with any default, and never asks about a role this
-          configuration pinned itself. */}
+      {/* Subagents — which other agents this one may spawn, each with caller-scoped
+          guidance. An agent may list itself, for recursion. */}
       <p className={`${runExec.sectionLabel} ${runExec.sectionLabelBackdrop}`}>
-        Model slots
+        Subagents
       </p>
       <p className={`${runExec.muted} ${gg.backdropNote}`}>
-        The models this configuration asks for at launch. Give each a name the
-        launch form can label, and an optional default. Roles below bind to
-        these by name.
-        <HelpTip text="A slot lets two roles share one launch input — and a role bound to a slot with a default starts on that model unless the launcher overrides it." />
+        The agents this one may spawn (with <code>spawn_subagent</code>,{" "}
+        <code>speculate</code>, or <code>run_workflow</code>). Enable a target and
+        describe when to use it — the description is what this agent sees.
       </p>
-      <div className={gg.slotList}>
-        {value.modelSlots.map((modelSlot, i) => {
-          const unused = !referenced.has(modelSlot.name.trim());
+      <div className={gg.subagentList}>
+        {value.agents.map((target) => {
+          const entry = agent.subagents.find((s) => s.agent === target.name);
+          const on = Boolean(entry);
           return (
-            <div key={i} className={gg.slotBlock}>
-              {/* Slot name and its optional default model on one row, with the
-                  remove control aligned to their bottom edge. */}
-              <div className={gg.slotFields}>
-                <label className={`${runExec.field} ${gg.slotNameField}`}>
-                  <span className={runExec.fieldLabel}>Slot name</span>
-                  <input
-                    className={runExec.input}
-                    type="text"
-                    value={modelSlot.name}
-                    disabled={readOnly}
-                    onChange={(e) =>
-                      updateModelSlot(i, { name: e.target.value })
-                    }
-                    placeholder="e.g. primary"
-                  />
-                </label>
-                <label className={`${runExec.field} ${gg.slotModelField}`}>
-                  <span className={runExec.fieldLabel}>
-                    Default model (optional)
-                  </span>
-                  <ModelCombobox
-                    value={modelSlot.defaultModelId}
-                    onChange={(v) => updateModelSlot(i, { defaultModelId: v })}
-                    models={models}
-                    harnessFamily={GG_MODEL_FAMILY}
-                    inputClassName={runExec.input}
-                    disabled={readOnly}
-                    placeholder="left to the launcher"
-                  />
-                </label>
-                {!readOnly && (
-                  <button
-                    type="button"
-                    className={gg.slotRemove}
-                    onClick={() => removeModelSlot(i)}
-                    aria-label={`Remove the ${modelSlot.name || "unnamed"} model slot`}
-                  >
-                    ✕
-                  </button>
-                )}
-              </div>
-              {unused && (
-                <p className={gg.fieldError}>
-                  No role binds this slot, so launching will never ask for it.
-                </p>
+            <div key={target.name} className={gg.subagentRow}>
+              <label className={gg.ablationLabel}>
+                <Switch
+                  checked={on}
+                  disabled={readOnly}
+                  onChange={(next) => toggleSubagent(target.name, next)}
+                />
+                <span className={gg.ablationName}>
+                  {target.name}
+                  {target.name === agent.name && (
+                    <span className={gg.capId}> (self)</span>
+                  )}
+                </span>
+              </label>
+              {on && (
+                <input
+                  className={`${runExec.input} ${gg.subagentDescription}`}
+                  type="text"
+                  value={entry?.description ?? ""}
+                  disabled={readOnly}
+                  onChange={(e) =>
+                    setSubagentDescription(target.name, e.target.value)
+                  }
+                  placeholder="when to use this agent"
+                />
               )}
             </div>
           );
         })}
-        {!readOnly && (
-          <button
-            type="button"
-            className={runExec.secondary}
-            onClick={addModelSlot}
-          >
-            + Add model slot
-          </button>
-        )}
       </div>
 
-      {/* Role bindings — every model the configuration needs, each taken from a
-          declared model slot or pinned outright here. */}
+      {/* Custom instructions — the field an operator edits normally; inserted into the
+          system prompt. */}
       <p className={`${runExec.sectionLabel} ${runExec.sectionLabelBackdrop}`}>
-        Role bindings
+        Custom instructions
       </p>
-      <p className={`${runExec.muted} ${gg.backdropNote}`}>
-        Every model this configuration needs, by the role capabilities reference
-        it by. A role from a model slot is chosen at launch; one pinned to a
-        specific model is fixed here and never surfaces on the New run page
-        again.
-      </p>
-      <datalist id="gg-role-slots">
-        {COMMON_ROLE_SLOTS.map((s) => (
-          <option key={s} value={s} />
-        ))}
-      </datalist>
-      <div className={gg.slotList}>
-        {value.slots.map((slot, i) => {
-          const isPrimary = slot.slot === PRIMARY_SLOT && i === 0;
-          const fromModelSlot = slot.source === "model-slot";
-          const dangling =
-            fromModelSlot && !declaredNames.includes(slot.modelSlot.trim());
-          return (
-            <div key={i} className={gg.slotBlock}>
-              {/* Row 1: the role identity only. "Model from" and the model control
-                  drop to their own row below, so a stacked label+input never sits
-                  beside the single-line role caption. */}
-              <div className={gg.slotTop}>
-                {isPrimary ? (
-                  <span className={gg.slotName}>
-                    <span className={gg.capName}>primary</span>
-                    <span className={gg.capId}>
-                      the model that drives the run
-                    </span>
-                  </span>
-                ) : (
-                  <label className={`${runExec.field} ${gg.slotNameField}`}>
-                    <span className={runExec.fieldLabel}>Role</span>
-                    <input
-                      className={runExec.input}
-                      type="text"
-                      list="gg-role-slots"
-                      value={slot.slot}
-                      disabled={readOnly}
-                      onChange={(e) => updateSlot(i, { slot: e.target.value })}
-                      placeholder="e.g. reviewer"
-                    />
-                  </label>
-                )}
-                {!isPrimary && !readOnly && (
-                  <button
-                    type="button"
-                    className={gg.slotRemove}
-                    onClick={() => removeSlot(i)}
-                    aria-label={`Remove the ${slot.slot || "unnamed"} role`}
-                  >
-                    ✕
-                  </button>
-                )}
-              </div>
-              {/* Row 2: "Model from" beside the model (or model-slot) control it
-                  governs, both label+input pairs of equal height. */}
-              <div className={gg.slotFields}>
-                <label className={`${runExec.field} ${gg.slotSourceField}`}>
-                  <span className={runExec.fieldLabel}>Model from</span>
-                  <select
-                    className={runExec.select}
-                    value={slot.source}
-                    disabled={readOnly}
-                    onChange={(e) =>
-                      updateSlot(i, {
-                        source: e.target.value as GgSlotDraft["source"],
-                      })
-                    }
-                  >
-                    <option value="model-slot">a model slot (at launch)</option>
-                    <option value="model">a specific model (fixed here)</option>
-                  </select>
-                </label>
-                {fromModelSlot ? (
-                  <label className={`${runExec.field} ${gg.slotModelField}`}>
-                    <span className={runExec.fieldLabel}>Model slot</span>
-                    <select
-                      className={runExec.select}
-                      value={slot.modelSlot}
-                      disabled={readOnly}
-                      onChange={(e) =>
-                        updateSlot(i, { modelSlot: e.target.value })
-                      }
-                    >
-                      {dangling && (
-                        <option value={slot.modelSlot}>
-                          {slot.modelSlot || "(none)"}
-                        </option>
-                      )}
-                      {declaredNames.map((name) => (
-                        <option key={name} value={name}>
-                          {name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                ) : (
-                  <label className={`${runExec.field} ${gg.slotModelField}`}>
-                    <span className={runExec.fieldLabel}>Model</span>
-                    <ModelCombobox
-                      value={slot.modelId}
-                      onChange={(v) => updateSlot(i, { modelId: v })}
-                      models={models}
-                      harnessFamily={GG_MODEL_FAMILY}
-                      inputClassName={runExec.input}
-                      disabled={readOnly}
-                      placeholder="model id (e.g. anthropic/claude-opus-4.8)"
-                    />
-                  </label>
-                )}
-              </div>
-              {dangling && (
-                <span className={gg.fieldError}>
-                  That model slot isn&rsquo;t declared above.
-                </span>
-              )}
-            </div>
-          );
-        })}
-        {!readOnly && (
-          <button type="button" className={runExec.secondary} onClick={addSlot}>
-            + Add role binding
-          </button>
-        )}
-        {!value.capabilities["multi-model"]?.enabled &&
-          value.slots.length > 1 && (
-            <p className={`${runExec.muted} ${gg.backdropNote}`}>
-              Extra roles resolve only when the <code>multi-model</code>{" "}
-              capability is on — with it off, every agent falls back to the
-              primary slot.
+      <textarea
+        className={gg.textarea}
+        value={agent.customInstructions}
+        disabled={readOnly}
+        onChange={(e) => patchAgent({ customInstructions: e.target.value })}
+        placeholder="Extra instructions for this agent, inserted into its system prompt."
+        rows={4}
+      />
+
+      {/* System prompt — the full Handlebars template, collapsed by default. Editing
+          it is the escape hatch; most operators only touch Custom instructions. */}
+      <div className={gg.group}>
+        <button
+          type="button"
+          className={gg.groupHeader}
+          onClick={() => setPromptOpen((v) => !v)}
+          aria-expanded={promptOpen}
+        >
+          <span className={gg.groupToggle}>{promptOpen ? "▾" : "▸"}</span>
+          <span className={gg.groupName}>System Prompt</span>
+          <span className={gg.groupCount}>
+            {promptOverridden ? "overridden" : "default"}
+          </span>
+        </button>
+        {promptOpen && (
+          <div className={gg.capList}>
+            <p className={`${runExec.muted}`}>
+              The full template gg renders for this agent. Custom instructions are
+              inserted at the <code>{"{{customInstructions}}"}</code> block near the
+              top. Edit here only to rewrite the whole prompt; leaving it equal to
+              the default stores no override.
             </p>
-          )}
+            <textarea
+              className={`${gg.textarea} ${gg.promptTextarea}`}
+              value={promptValue}
+              disabled={readOnly}
+              onChange={(e) => setPrompt(e.target.value)}
+              spellCheck={false}
+              rows={20}
+            />
+            {!readOnly && promptOverridden && (
+              <button
+                type="button"
+                className={runExec.secondary}
+                onClick={() => setPrompt(DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE)}
+              >
+                Reset to default
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </>
   );

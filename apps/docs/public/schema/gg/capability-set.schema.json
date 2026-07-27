@@ -1,5 +1,55 @@
 {
   "$defs": {
+    "GgAgentConfig": {
+      "description": "A single **agent profile** within a [`GgCapabilitySet`] — the per-agent unit that\nmakes gg's capabilities configurable independently for each agent in a run.\n\nEvery profile has a unique [`name`](Self::name) (the first is always the\n[Root](ROOT_AGENT)), its own enabled [capabilities](Self::capabilities) and per-tool\n[ablation](Self::disabled_tools), its own model (pinned via [`model_id`](Self::model_id)\nor [deferred](Self::model_slot) to a launch-time [model slot](GgModelSlot)), an optional\n[custom prompt](Self::custom_instructions) / [full template override](Self::system_prompt_template),\nand the set of other agents it may spawn as [subagents](Self::subagents).\n\nAn agent is spawned **by name**: `spawn_subagent`, `speculate`, and `run_workflow`\nall name the target agent, which must appear in the caller's [`subagents`](Self::subagents)\nallowlist. A profile may list itself, allowing recursion.",
+      "properties": {
+        "capabilities": {
+          "default": [],
+          "description": "The capabilities this agent is configured with, each identified by a stable id.\nA capability absent from this list is off *and* unconfigured; one present but\n[disabled](GgCapabilityConfig::enabled) is off but records the configuration it\nwould have used, which keeps an ablation's on/off arms symmetric.",
+          "items": {
+            "$ref": "#/$defs/GgCapabilityConfig"
+          },
+          "type": "array"
+        },
+        "customInstructions": {
+          "description": "Operator-authored instructions inserted into this agent's system prompt. `None`\n(or empty) leaves the stock prompt. This is the field an operator edits normally;\n[`system_prompt_template`](Self::system_prompt_template) is the escape hatch for\nrewriting the whole prompt.",
+          "type": ["string", "null"]
+        },
+        "disabledTools": {
+          "description": "Individual tool names to **withhold** from this agent even when the capability\nthat offers them is on — the finest-grained ablation lever, one notch below\ntoggling a whole [capability](GgCapabilityConfig::enabled). A named tool is not\noffered to the model and not dispatchable, exactly as if its capability were off.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "modelId": {
+          "default": "",
+          "description": "The opaque model id this agent runs on, passed through to the model client.\nEmpty while the binding is [deferred](Self::model_slot) to a model slot the\nlaunch has not filled in yet.",
+          "type": "string"
+        },
+        "modelSlot": {
+          "description": "The [model slot](GgModelSlot) this agent takes its model from at launch, when it\ndoes not pin one itself. `None` on a pinned binding — which is every binding on\nthe set a run records, because launching resolves the deferred ones.",
+          "type": ["string", "null"]
+        },
+        "name": {
+          "description": "The profile's name, unique within a set. `\"Root\"` ([`ROOT_AGENT`]) for the\nfirst profile.",
+          "type": "string"
+        },
+        "subagents": {
+          "description": "The other agents this agent may spawn as subagents — the delegation allowlist.\nEach entry names a target agent (which may be this agent itself) and carries a\ncaller-scoped [description](GgSubagentRef::description) telling this agent when to\nuse that target. Empty means this agent spawns nothing.",
+          "items": {
+            "$ref": "#/$defs/GgSubagentRef"
+          },
+          "type": "array"
+        },
+        "systemPromptTemplate": {
+          "description": "A full Handlebars override of this agent's system-prompt template. `None` uses\ngg's built-in template (into which [`custom_instructions`](Self::custom_instructions)\nare inserted). Set only when an operator deliberately rewrites the whole prompt.",
+          "type": ["string", "null"]
+        }
+      },
+      "required": ["name"],
+      "type": "object"
+    },
     "GgCapabilityConfig": {
       "description": "The configuration of a single capability within a [`GgCapabilitySet`].\n\nA capability is identified by a stable [`id`](Self::id) (an open string, not a\nclosed enum, so later phases add capabilities freely), can be toggled\n[on or off](Self::enabled), can select among alternate\n[implementations](Self::implementation) for A/B comparisons, and carries\nfree-form [`params`](Self::params) for tuning.",
       "properties": {
@@ -78,43 +128,84 @@
       },
       "type": "object"
     },
-    "GgSlotBinding": {
-      "description": "A binding of a model to a named slot in a [`GgCapabilitySet`].\n\nModel selection is expressed through slots so capabilities reference models by\nrole (`\"primary\"`, `\"reviewer\"`, …) rather than by a hardcoded id, and a study can\nre-point a slot — even to a model from a different provider — without touching\ncapability logic. The provider is always inferred from the model id (gg routes\nevery live model through OpenRouter), so there is nothing to pin here.\n\nA binding either **pins** a model — [`model_id`](Self::model_id) names it, and every\nrun of the configuration uses it — or **defers** to a declared\n[model slot](Self::model_slot), leaving the model to be supplied when the run is\nlaunched. Only a pinned binding is [resolved](Self::is_resolved); launching turns\nevery deferred one into a pinned one, so the set a run records has no deferred\nbinding left.",
+    "GgSubagentRef": {
+      "description": "One entry in an [agent's](GgAgentConfig) delegation allowlist: a target agent this\nagent may spawn, plus the caller-scoped [description](Self::description) that tells\nthe spawning agent when to use it.\n\nThe description is scoped to the `(spawner, target)` pair, so the same target can\ncarry different guidance depending on which agent is allowed to spawn it.",
       "properties": {
-        "modelId": {
-          "default": "",
-          "description": "The opaque model id bound to the slot, passed through to the model client. Empty\nwhile the binding is [deferred](Self::model_slot) to a model slot the launch has\nnot filled in yet.",
+        "agent": {
+          "description": "The name of the target agent this agent may spawn (may be the spawner itself).",
           "type": "string"
         },
-        "modelSlot": {
-          "description": "The [model slot](GgModelSlot) this binding takes its model from at launch, when\nit does not pin one itself. `None` on a pinned binding — which is every binding\non the set a run records, because launching resolves the deferred ones.",
-          "type": ["string", "null"]
-        },
-        "slot": {
-          "description": "The slot name capabilities reference (for example [`PRIMARY_SLOT`]).",
+        "description": {
+          "default": "",
+          "description": "Caller-scoped guidance on when to spawn `agent`, surfaced in the spawning\nagent's `spawn_subagent` tool description. May be empty.",
           "type": "string"
         }
       },
-      "required": ["slot"],
+      "required": ["agent"],
       "type": "object"
     }
   },
   "$id": "https://docs.testcabinet.ai/schema/gg/capability-set.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "The declarative, inspectable configuration of a gg run — its *independent\nvariable*.\n\nA gg run is configured by a capability set rather than a harness+model+orchestrator\ntuple: which capabilities are on, which implementation each uses, their parameters,\nand how models bind to [slots](GgSlotBinding). The set is expressed as data so a\nrun's exact configuration is recorded on the run and reproducible, and so\n[result aggregation](https://docs.testcabinet.ai) can slice results by\nconfiguration. Freeze the model and the test case, vary the capability set, and\nthe harness becomes a laboratory.\n\nThe capability collection is intentionally **open**: capabilities are identified\nby stable string id, not a closed enum, so later phases add capabilities without a\nbreaking change. A capability that is absent from [`Self::capabilities`] is\ndistinguishable from one that is present but disabled — see [`Self::is_enabled`].",
+  "description": "The declarative, inspectable configuration of a gg run — its *independent\nvariable*.\n\nA gg run is configured by a capability set rather than a harness+model+orchestrator\ntuple. Its capabilities are **per agent**: the set declares one or more\n[agent profiles](GgAgentConfig) — the first is always the [Root](ROOT_AGENT) —\neach with its own enabled capabilities, model binding, custom prompt, and the set\nof other agents it may spawn as subagents. The set is expressed as data so a run's\nexact configuration is recorded and reproducible, and so\n[result aggregation](https://docs.testcabinet.ai) can slice results by\nconfiguration. Freeze the model and the test case, vary the capability set, and the\nharness becomes a laboratory.\n\nA set stored before capabilities were per-agent — a flat `capabilities` / `slots` /\n`disabledTools` shape — is migrated on deserialize (see [`GgCapabilitySetRaw`]) into\na single [Root agent](ROOT_AGENT), so no data migration is needed.",
   "properties": {
-    "capabilities": {
-      "default": [],
-      "description": "The capabilities this run is configured with, each identified by a stable id.\nA capability absent from this list is off *and* unconfigured; one present but\n[disabled](GgCapabilityConfig::enabled) is off but records the configuration it\nwould have used, which keeps an ablation's on/off arms symmetric.",
+    "agents": {
+      "default": [
+        {
+          "capabilities": [
+            {
+              "enabled": true,
+              "id": "shell",
+              "params": {}
+            },
+            {
+              "enabled": true,
+              "id": "read-file",
+              "params": {}
+            },
+            {
+              "enabled": true,
+              "id": "write-file",
+              "params": {}
+            },
+            {
+              "enabled": true,
+              "id": "edit-file",
+              "params": {}
+            },
+            {
+              "enabled": true,
+              "id": "list-dir",
+              "params": {}
+            },
+            {
+              "enabled": true,
+              "id": "context-visibility",
+              "params": {}
+            },
+            {
+              "enabled": true,
+              "id": "skills",
+              "params": {}
+            },
+            {
+              "enabled": true,
+              "id": "memories",
+              "params": {}
+            },
+            {
+              "enabled": true,
+              "id": "tasks",
+              "params": {}
+            }
+          ],
+          "modelId": "",
+          "name": "Root"
+        }
+      ],
+      "description": "The agent profiles this run is configured with, each with its own capabilities,\nmodel binding, and delegation graph. **The first is always the\n[Root agent](ROOT_AGENT)** — it drives the top-level session and is the default\nprofile for issue dispatch and helper agents. Never empty: the migration and\n[`Default`] both guarantee at least a Root.",
       "items": {
-        "$ref": "#/$defs/GgCapabilityConfig"
-      },
-      "type": "array"
-    },
-    "disabledTools": {
-      "description": "Individual tool names to **withhold** from the agent even when the capability\nthat offers them is on — the finest-grained ablation lever, one notch below\ntoggling a whole [capability](GgCapabilityConfig::enabled).\n\nBecause gg's modularity comes from the toolset, the *set of tools offered* is\nitself an experimental variable: turning a capability off is the coarse way to\nwithhold its tools, and this list is the fine way — drop a single over-used or\ncompeting tool (say `edit_file` while keeping `write_file`, to ask \"does\nwhole-file rewriting beat patching?\") without disabling the rest of its\ncapability. A named tool is not offered to the model (no schema, not\ndispatchable) exactly as if its capability were off, and the run records the\nresulting [effective toolset](GgSessionSummary::effective_tools) so a study can\nslice by which tools were actually present. A name here that no enabled\ncapability offers withholds nothing (it is reported as a startup warning, not an\nerror, so a sweep can list a tool that only some arms offer).",
-      "items": {
-        "type": "string"
+        "$ref": "#/$defs/GgAgentConfig"
       },
       "type": "array"
     },
@@ -123,7 +214,7 @@
       "description": "The **execution ceilings** this run is bounded by — the turn, runtime, error and\ncost guardrails that stop a session and record which one stopped it.\n\nThey ride on the capability set rather than on the [launch envelope](GgInvocation)\nbecause the set is what a run *records*: a ceiling that stopped a run is only\ninterpretable beside the value it was set to. They are deliberately not a\ncapability — a capability is a feature under ablation, a ceiling is an operator's\nguardrail over every capability at once — so they never appear in the\n[`capabilityEnabled`](crate::gg_aggregate::GgFacet::CapabilityEnabled) facet space.\nA set that declares none omits the key entirely, so every configuration stored\nbefore ceilings existed round-trips unchanged."
     },
     "modelSlots": {
-      "description": "The [launch-time model parameters](GgModelSlot) this set declares, for the\n[bindings](GgSlotBinding::model_slot) above that defer to one instead of pinning\na model. Empty for a fully pinned set — and empty on the set a run *records*,\nbecause launching resolves every deferred binding first.",
+      "description": "The [launch-time model parameters](GgModelSlot) this set declares, for the\n[agent bindings](GgAgentConfig::model_slot) that defer to one instead of pinning\na model. Empty for a fully pinned set — and empty on the set a run *records*,\nbecause launching resolves every deferred binding first.",
       "items": {
         "$ref": "#/$defs/GgModelSlot"
       },
@@ -132,14 +223,6 @@
     "preset": {
       "description": "The name of a saved preset this set was assembled from (for example\n`\"minimal\"`, `\"full\"`, or `\"planning-A\"`), when it is a named preset rather\nthan a hand-assembled configuration. A study is a sweep over presets, so this\nrecords which one produced a run.",
       "type": ["string", "null"]
-    },
-    "slots": {
-      "default": [],
-      "description": "The model-slot bindings for this run. Capabilities reference models by slot\nname, never by a hardcoded id, so a study re-points a slot without touching any\ncapability's logic. Phase 0 binds a single [`PRIMARY_SLOT`]; the type allows\nmany, possibly cross-provider.",
-      "items": {
-        "$ref": "#/$defs/GgSlotBinding"
-      },
-      "type": "array"
     }
   },
   "title": "GgCapabilitySet",

@@ -19,9 +19,31 @@
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
+use test_cabinet_core::gg::GgSubagentRef;
 
 use super::{Tool, ToolContext, ToolOutcome};
 use crate::model::ToolDefinition;
+
+/// Render an agent's [delegation allowlist](GgSubagentRef) as a sentence for a delegation tool's
+/// description, so the model is told — in both execution modes — exactly which names it may pass as
+/// `agent`, and the caller-scoped guidance for each. Never empty in practice: a delegation tool is
+/// only offered to an agent whose allowlist has at least one entry.
+fn agent_menu(agents: &[GgSubagentRef]) -> String {
+    if agents.is_empty() {
+        return "(no agents are available to you)".to_string();
+    }
+    agents
+        .iter()
+        .map(|reference| {
+            if reference.description.trim().is_empty() {
+                format!("`{}`", reference.agent)
+            } else {
+                format!("`{}` ({})", reference.agent, reference.description.trim())
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("; ")
+}
 
 /// The `spawn_subagent` tool name.
 pub const SPAWN_SUBAGENT_TOOL: &str = "spawn_subagent";
@@ -55,8 +77,20 @@ fn handled_by_loop(name: &str) -> ToolOutcome {
     ))
 }
 
-/// Declares `spawn_subagent` — schedule a child agent and return immediately.
-pub struct SpawnSubagentTool;
+/// Declares `spawn_subagent` — schedule a child agent and return immediately. Carries the spawning
+/// agent's [delegation allowlist](GgSubagentRef) so its description names the agents that may be
+/// spawned.
+pub struct SpawnSubagentTool {
+    /// The agents this agent may spawn, listed in its `agent` argument's description.
+    agents: Vec<GgSubagentRef>,
+}
+
+impl SpawnSubagentTool {
+    /// Declare `spawn_subagent` for an agent whose allowlist is `agents`.
+    pub fn new(agents: Vec<GgSubagentRef>) -> Self {
+        Self { agents }
+    }
+}
 
 #[async_trait]
 impl Tool for SpawnSubagentTool {
@@ -67,36 +101,39 @@ impl Tool for SpawnSubagentTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
             SPAWN_SUBAGENT_TOOL,
-            "Delegate a scoped piece of work to a child agent that runs in parallel with you. \
-             Provide a `prompt` — a self-contained brief telling the subagent exactly what to do \
-             and what 'done' means. (Board issues are not dispatched this way: submitting an issue \
-             automatically spawns an agent for it once its blockers are done.) Optionally pass a \
-             `slot` to run the subagent on a different model slot (only takes effect when \
-             multi-model is enabled; otherwise it runs on the primary model). Optionally pass \
-             `worktree: true` to run the subagent in an isolated copy of the workspace (a git \
-             worktree) instead of the shared tree — its file changes are invisible to you and to \
-             sibling agents until it finishes, and are then merged back into the workspace if it \
-             completes cleanly (a merge conflict is reported back to you, not dropped) or discarded \
-             if it fails. Use a worktree when you run several subagents that might touch the same \
-             files, or want a throwaway attempt; it requires the `worktrees` capability. Returns \
-             the new subagent's id immediately — it is scheduled and runs on its own; call \
-             `wait_for_subagents` to collect its result, or `send_message` to guide it while it \
-             runs. Subagents that share your workspace (no worktree) should be given \
-             non-overlapping briefs. Spawning is refused if you are already at the maximum \
-             delegation depth.",
+            format!(
+                "Delegate a scoped piece of work to a child agent that runs in parallel with you. \
+                 Provide an `agent` — the name of the agent to run it as, which configures the \
+                 subagent's model, tools, and instructions — and a `prompt`, a self-contained brief \
+                 telling the subagent exactly what to do and what 'done' means. The agents you may \
+                 spawn: {menu}. (Board issues are not dispatched this way: submitting an issue \
+                 automatically spawns an agent for it once its blockers are done.) Optionally pass \
+                 `worktree: true` to run the subagent in an isolated copy of the workspace (a git \
+                 worktree) instead of the shared tree — its file changes are invisible to you and to \
+                 sibling agents until it finishes, and are then merged back into the workspace if it \
+                 completes cleanly (a merge conflict is reported back to you, not dropped) or \
+                 discarded if it fails. Use a worktree when you run several subagents that might \
+                 touch the same files, or want a throwaway attempt; it requires the `worktrees` \
+                 capability. Returns the new subagent's id immediately — it is scheduled and runs \
+                 on its own; call `wait_for_subagents` to collect its result, or `send_message` to \
+                 guide it while it runs. Subagents that share your workspace (no worktree) should be \
+                 given non-overlapping briefs. Spawning is refused if you are already at the maximum \
+                 delegation depth.",
+                menu = agent_menu(&self.agents),
+            ),
             json!({
                 "type": "object",
                 "properties": {
+                    "agent": {
+                        "type": "string",
+                        "description": "The name of the agent to run the subagent as (one of the \
+                                        agents you may spawn). This selects its model, tools, and \
+                                        instructions."
+                    },
                     "prompt": {
                         "type": "string",
                         "description": "A self-contained brief for the subagent (what to do and \
                                         how it will be judged done)."
-                    },
-                    "slot": {
-                        "type": "string",
-                        "description": "Optional model slot to run the subagent on (for example \
-                                        `subagent` or `reviewer`); only honored when multi-model \
-                                        is enabled, else the primary model is used."
                     },
                     "worktree": {
                         "type": "boolean",
@@ -106,6 +143,7 @@ impl Tool for SpawnSubagentTool {
                                         capability. Defaults to false (shares your workspace)."
                     }
                 },
+                "required": ["agent", "prompt"],
                 "additionalProperties": false
             }),
         )
@@ -192,8 +230,20 @@ impl Tool for SendMessageTool {
     }
 }
 
-/// Declares `run_workflow` — run a declared, multi-stage subagent fan-out as one unit.
-pub struct RunWorkflowTool;
+/// Declares `run_workflow` — run a declared, multi-stage subagent fan-out as one unit. Carries the
+/// spawning agent's [delegation allowlist](GgSubagentRef) so its stage `agent` description names the
+/// agents that may run a stage.
+pub struct RunWorkflowTool {
+    /// The agents this agent may run stages as.
+    agents: Vec<GgSubagentRef>,
+}
+
+impl RunWorkflowTool {
+    /// Declare `run_workflow` for an agent whose allowlist is `agents`.
+    pub fn new(agents: Vec<GgSubagentRef>) -> Self {
+        Self { agents }
+    }
+}
 
 #[async_trait]
 impl Tool for RunWorkflowTool {
@@ -204,24 +254,28 @@ impl Tool for RunWorkflowTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
             RUN_WORKFLOW_TOOL,
-            "Run a declared, multi-stage workflow of subagents as a single unit — fan-out plus \
-             sequencing — instead of spawning and waiting on subagents by hand. You provide an \
-             ordered list of `stages`; gg runs them in order, and this call returns only when the \
-             whole workflow is done, with the final stage's results. Each stage FANS OUT one \
-             subagent per item and runs them in parallel (under the same global concurrency and \
-             depth limits as ad-hoc subagents — a workflow gets no extra budget), waits for all of \
-             them, then feeds their results into the next stage (SEQUENCING). A stage's `prompt` is \
-             a template applied once per item to form that subagent's brief: write `{{item}}` where \
-             the item text should go, and `{{prior}}` where the previous stage's collected results \
-             should go. The FIRST stage must list its `items` explicitly; a later stage that omits \
-             `items` fans out over the previous stage's results (one subagent per result, each \
-             seeing its result as `{{item}}`) — or give it a single item and reference `{{prior}}` \
-             to have one subagent consolidate all of the previous stage's results. Optionally set a \
-             stage's `slot` (a model slot, honored only when multi-model is enabled) or \
-             `worktree: true` (run each of that stage's subagents in its own isolated git worktree, \
-             merged back on clean completion; requires the `worktrees` capability). Use a workflow \
-             when the work has a clear map-then-reduce or pipeline shape; use `spawn_subagent` for \
-             ad-hoc delegation.",
+            format!(
+                "Run a declared, multi-stage workflow of subagents as a single unit — fan-out plus \
+                 sequencing — instead of spawning and waiting on subagents by hand. You provide an \
+                 ordered list of `stages`; gg runs them in order, and this call returns only when \
+                 the whole workflow is done, with the final stage's results. Each stage FANS OUT \
+                 one subagent per item and runs them in parallel (under the same global concurrency \
+                 and depth limits as ad-hoc subagents — a workflow gets no extra budget), waits for \
+                 all of them, then feeds their results into the next stage (SEQUENCING). Each stage \
+                 names the `agent` to run its subagents as (which configures their model, tools, and \
+                 instructions); the agents you may use: {menu}. A stage's `prompt` is a template \
+                 applied once per item to form that subagent's brief: write `{{item}}` where the \
+                 item text should go, and `{{prior}}` where the previous stage's collected results \
+                 should go. The FIRST stage must list its `items` explicitly; a later stage that \
+                 omits `items` fans out over the previous stage's results (one subagent per result, \
+                 each seeing its result as `{{item}}`) — or give it a single item and reference \
+                 `{{prior}}` to have one subagent consolidate all of the previous stage's results. \
+                 Optionally set a stage's `worktree: true` (run each of that stage's subagents in \
+                 its own isolated git worktree, merged back on clean completion; requires the \
+                 `worktrees` capability). Use a workflow when the work has a clear map-then-reduce \
+                 or pipeline shape; use `spawn_subagent` for ad-hoc delegation.",
+                menu = agent_menu(&self.agents),
+            ),
             json!({
                 "type": "object",
                 "properties": {
@@ -252,10 +306,10 @@ impl Tool for RunWorkflowTool {
                                                     omit it to fan out over the previous stage's \
                                                     results."
                                 },
-                                "slot": {
+                                "agent": {
                                     "type": "string",
-                                    "description": "Optional model slot for this stage's subagents \
-                                                    (honored only when multi-model is enabled)."
+                                    "description": "The name of the agent to run this stage's \
+                                                    subagents as (one of the agents you may spawn)."
                                 },
                                 "worktree": {
                                     "type": "boolean",
@@ -265,7 +319,7 @@ impl Tool for RunWorkflowTool {
                                                     capability. Defaults to false."
                                 }
                             },
-                            "required": ["prompt"],
+                            "required": ["prompt", "agent"],
                             "additionalProperties": false
                         }
                     }
@@ -282,7 +336,19 @@ impl Tool for RunWorkflowTool {
 }
 
 /// Declares `speculate` — attempt the same task K times in parallel (best-of-K) and keep the best.
-pub struct SpeculateTool;
+/// Carries the spawning agent's [delegation allowlist](GgSubagentRef) so its `agent` description
+/// names the agents the attempts may run as.
+pub struct SpeculateTool {
+    /// The agents this agent may run the attempts as.
+    agents: Vec<GgSubagentRef>,
+}
+
+impl SpeculateTool {
+    /// Declare `speculate` for an agent whose allowlist is `agents`.
+    pub fn new(agents: Vec<GgSubagentRef>) -> Self {
+        Self { agents }
+    }
+}
 
 #[async_trait]
 impl Tool for SpeculateTool {
@@ -293,25 +359,35 @@ impl Tool for SpeculateTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
             SPECULATE_TOOL,
-            "Attempt the same piece of work several times in parallel and keep only the BEST result \
-             (best-of-K). Provide a `prompt` — a self-contained brief for the task — OR an `issueId` \
-             to speculate on one of your board issues (its scope and completion criteria become the \
-             task), and `attempts` (K, the number of parallel tries, 2–6). gg fans out K subagents at \
-             the SAME task, EACH IN ITS OWN ISOLATED WORKTREE so they cannot collide, runs them in \
-             parallel under the same concurrency and depth limits as ordinary subagents (no extra \
-             budget), then a JUDGE scores their work against the task's completion criteria and picks \
-             a winner. gg MERGES the winner's worktree back into your workspace and DISCARDS the \
-             losing attempts — so when this call returns, your workspace holds exactly the winning \
-             attempt's changes. Optionally pass `approaches` (an array of hints, one per attempt, to \
-             steer the tries in different directions) and/or `slots` (an array of model slots, one \
-             per attempt, honored only when multi-model is enabled). Requires the `worktrees` \
-             capability (for isolation); refused without it. Use this for a hard or open-ended piece \
-             of work where one careful attempt may not be enough and you can afford K× the tokens for \
-             a better result; use `spawn_subagent` for ordinary single-attempt delegation. This call \
-             returns only when the winner has been merged.",
+            format!(
+                "Attempt the same piece of work several times in parallel and keep only the BEST \
+                 result (best-of-K). Provide an `agent` — the agent to run every attempt as (which \
+                 configures their model, tools, and instructions; you may use: {menu}) — and a \
+                 `prompt` (a self-contained brief for the task) OR an `issueId` to speculate on one \
+                 of your board issues (its scope and completion criteria become the task), and \
+                 `attempts` (K, the number of parallel tries, 2–6). gg fans out K subagents at the \
+                 SAME task, EACH IN ITS OWN ISOLATED WORKTREE so they cannot collide, runs them in \
+                 parallel under the same concurrency and depth limits as ordinary subagents (no \
+                 extra budget), then a JUDGE scores their work against the task's completion \
+                 criteria and picks a winner. gg MERGES the winner's worktree back into your \
+                 workspace and DISCARDS the losing attempts — so when this call returns, your \
+                 workspace holds exactly the winning attempt's changes. Optionally pass `approaches` \
+                 (an array of hints, one per attempt, to steer the tries in different directions). \
+                 Requires the `worktrees` capability (for isolation); refused without it. Use this \
+                 for a hard or open-ended piece of work where one careful attempt may not be enough \
+                 and you can afford K× the tokens for a better result; use `spawn_subagent` for \
+                 ordinary single-attempt delegation. This call returns only when the winner has \
+                 been merged.",
+                menu = agent_menu(&self.agents),
+            ),
             json!({
                 "type": "object",
                 "properties": {
+                    "agent": {
+                        "type": "string",
+                        "description": "The name of the agent to run every attempt as (one of the \
+                                        agents you may spawn)."
+                    },
                     "prompt": {
                         "type": "string",
                         "description": "A self-contained brief for the task to attempt K times \
@@ -335,15 +411,9 @@ impl Tool for SpeculateTool {
                         "description": "Optional per-attempt approach hints, one per attempt, to \
                                         steer the tries in different directions (extra attempts \
                                         beyond the list get no hint)."
-                    },
-                    "slots": {
-                        "type": "array",
-                        "items": { "type": "string" },
-                        "description": "Optional per-attempt model slots, one per attempt (honored \
-                                        only when multi-model is enabled; otherwise all attempts \
-                                        run on the primary model)."
                     }
                 },
+                "required": ["agent"],
                 "additionalProperties": false
             }),
         )

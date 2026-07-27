@@ -103,14 +103,15 @@ function tokensFromTally(usage: UsageTally): TokenMetrics {
   };
 }
 
-// The single model a run's usage can be attributed to when there is no per-slot
-// rollup to attribute it precisely — the sole slot's model, or the one every slot
+// The single model a run's usage can be attributed to when there is no per-agent
+// rollup to attribute it precisely — the sole agent's model, or the one every agent
 // shares. Null when the run binds several distinct models (then an aggregate tally
 // cannot be split by model, so no fallback breakdown is derivable) or when the set
 // is not yet known.
 export function soleModelId(set: GgCapabilitySet | null): string | null {
-  if (!set || set.slots.length === 0) return null;
-  const ids = new Set(set.slots.map((s) => s.modelId));
+  const ids = new Set(
+    (set?.agents ?? []).map((a) => a.modelId).filter((id) => id),
+  );
   return ids.size === 1 ? [...ids][0]! : null;
 }
 

@@ -2,6 +2,7 @@
 //! scheduler rather than by a tool implementation.
 
 use serde_json::json;
+use test_cabinet_core::gg::ROOT_AGENT;
 
 use super::*;
 use crate::sandbox::fake::{CallLog, all_tools, canned_outcome, membrane, membrane_with};
@@ -17,17 +18,17 @@ fn a_subagent_brief_is_exactly_one_of_prompt_or_issue() {
 
     state
         .spawn_subagent(SpawnRequest {
+            agent: "subagent".to_string(),
             task: SubagentBrief::Prompt("write the lexer".to_string()),
-            slot: Some("subagent".to_string()),
             worktree: Some(true),
         })
         .expect("spawned");
     assert_eq!(
         log.args("spawn_subagent"),
         Some(json!({
+            "agent": "subagent",
             "prompt": "write the lexer",
             "issueId": null,
-            "slot": "subagent",
             "worktree": true,
         }))
     );
@@ -36,17 +37,17 @@ fn a_subagent_brief_is_exactly_one_of_prompt_or_issue() {
     let mut state = membrane(&log);
     let handle = state
         .spawn_subagent(SpawnRequest {
+            agent: ROOT_AGENT.to_string(),
             task: SubagentBrief::Issue("i1".to_string()),
-            slot: None,
             worktree: None,
         })
         .expect("spawned");
     assert_eq!(
         log.args("spawn_subagent"),
         Some(json!({
+            "agent": ROOT_AGENT,
             "prompt": null,
             "issueId": "i1",
-            "slot": null,
             "worktree": null,
         }))
     );
@@ -141,21 +142,21 @@ fn absent_items_and_empty_items_are_different_workflow_stages() {
                 name: Some("survey".to_string()),
                 prompt: "look at {{item}}".to_string(),
                 items: Some(vec!["a.ts".to_string(), "b.ts".to_string()]),
-                slot: None,
+                agent: ROOT_AGENT.to_string(),
                 worktree: None,
             },
             WorkflowStage {
                 name: None,
                 prompt: "summarise {{prior}}".to_string(),
                 items: None,
-                slot: Some("subagent".to_string()),
+                agent: "subagent".to_string(),
                 worktree: Some(false),
             },
             WorkflowStage {
                 name: Some("empty".to_string()),
                 prompt: "never runs".to_string(),
                 items: Some(Vec::new()),
-                slot: None,
+                agent: ROOT_AGENT.to_string(),
                 worktree: None,
             },
         ])
@@ -176,21 +177,21 @@ fn absent_items_and_empty_items_are_different_workflow_stages() {
                 "name": "survey",
                 "prompt": "look at {{item}}",
                 "items": ["a.ts", "b.ts"],
-                "slot": null,
+                "agent": ROOT_AGENT,
                 "worktree": null,
             },
             {
                 "name": null,
                 "prompt": "summarise {{prior}}",
                 "items": null,
-                "slot": "subagent",
+                "agent": "subagent",
                 "worktree": false,
             },
             {
                 "name": "empty",
                 "prompt": "never runs",
                 "items": [],
-                "slot": null,
+                "agent": ROOT_AGENT,
                 "worktree": null,
             },
         ])
@@ -208,10 +209,10 @@ fn attempts_is_clamped_to_the_two_to_six_range() {
         let mut state = membrane_with(&log, &all_tools(), None, canned_outcome);
         state
             .speculate(SpeculateRequest {
+                agent: ROOT_AGENT.to_string(),
                 task: SubagentBrief::Prompt("try it".to_string()),
                 attempts: requested,
                 approaches: vec!["be bold".to_string()],
-                slots: Vec::new(),
             })
             .expect("speculated");
         assert_eq!(
@@ -231,10 +232,10 @@ fn a_speculation_reports_its_winner_and_rationale() {
 
     let report = state
         .speculate(SpeculateRequest {
+            agent: "subagent".to_string(),
             task: SubagentBrief::Issue("i1".to_string()),
             attempts: Some(2),
             approaches: Vec::new(),
-            slots: vec!["subagent".to_string()],
         })
         .expect("speculated");
 
@@ -244,11 +245,11 @@ fn a_speculation_reports_its_winner_and_rationale() {
     assert_eq!(
         log.args("speculate"),
         Some(json!({
+            "agent": "subagent",
             "prompt": null,
             "issueId": "i1",
             "attempts": 2,
             "approaches": [],
-            "slots": ["subagent"],
         }))
     );
 }

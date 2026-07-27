@@ -59,7 +59,7 @@ function caps(ids: readonly string[]): GgCapabilitySet {
     enabled: true,
     params: {},
   }));
-  return { capabilities, slots: [{ slot: "primary", modelId: "mock/x" }] };
+  return { agents: [{ name: "Root", capabilities, modelId: "mock/x" }] };
 }
 
 describe("contextYMax", () => {

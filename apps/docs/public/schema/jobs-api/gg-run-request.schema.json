@@ -5,7 +5,7 @@
   "properties": {
     "capabilitySet": {
       "$ref": "https://docs.testcabinet.ai/schema/gg/capability-set.schema.json",
-      "description": "The declarative capability set configuring the run: which capabilities are\non, their implementations/params, and the model-slot bindings. Must bind a\nmodel to the [`PRIMARY_SLOT`]."
+      "description": "The declarative capability set configuring the run: its agent profiles (each\nwith its own capabilities, model binding, and delegation graph) and the\nrun-level model slots and limits. Must bind a model to the [`ROOT_AGENT`]."
     },
     "maxRuntimeSeconds": {
       "description": "Optional override for the maximum harness runtime, in seconds.",

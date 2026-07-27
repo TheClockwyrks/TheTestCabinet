@@ -16,48 +16,50 @@ fn sample_request() -> GgRunRequest {
 }
 
 #[test]
-fn into_launch_body_fixes_harness_and_lifts_primary_model() {
+fn into_launch_body_fixes_harness_and_lifts_root_model() {
     // The gg-native request lowers onto a launch body with the harness fixed to gg,
-    // no orchestrator, and the primary-slot model lifted into the representative
+    // no orchestrator, and the Root agent's model lifted into the representative
     // `model` identity — with the capability set carried through verbatim.
     let launch = sample_request()
         .into_launch_body()
-        .expect("primary slot is bound");
+        .expect("the Root agent is bound");
     assert_eq!(launch.harness, HarnessSlug::Gg);
     assert_eq!(launch.model, "mock/echo");
     assert_eq!(launch.orchestrator, None);
     let set = launch
         .gg_capability_set
         .expect("the launch body carries the capability set");
-    assert_eq!(set.model_for_slot(PRIMARY_SLOT), Some("mock/echo"));
+    assert_eq!(set.root().resolved_model_id(), Some("mock/echo"));
 }
 
 #[test]
-fn into_launch_body_requires_a_primary_slot_model() {
-    // The default capability set carries the Phase 0 capabilities but binds no slot,
+fn into_launch_body_requires_a_root_agent_model() {
+    // The default capability set carries the Phase 0 capabilities but binds no model,
     // so it cannot launch: the handler rejects it with a gg-specific message.
     let req = GgRunRequest {
         capability_set: GgCapabilitySet::default(),
         ..sample_request()
     };
     let err = req.into_launch_body().unwrap_err();
-    assert!(err.contains("primary"), "unexpected reason: {err}");
+    assert!(err.contains("Root"), "unexpected reason: {err}");
 }
 
 #[test]
-fn into_launch_body_rejects_a_set_with_a_model_slot_left_unbound() {
-    // A configuration's model slots are filled in by the launch form. One arriving
+fn into_launch_body_rejects_a_set_with_an_agent_left_unbound() {
+    // A configuration's model slots are filled in by the launch form. An agent arriving
     // still deferred means the launch was incomplete — reject it here, naming the
-    // role, rather than burning a container on a run gg would refuse to start.
+    // agent, rather than burning a container on a run gg would refuse to start.
     let mut set = GgCapabilitySet::minimal("mock/echo");
     set.model_slots = vec![test_cabinet_core::gg::GgModelSlot {
         name: "critic".to_string(),
         default_model_id: None,
     }];
-    set.slots
-        .push(test_cabinet_core::gg::GgSlotBinding::deferred(
-            "reviewer", "critic",
-        ));
+    set.agents.push(test_cabinet_core::gg::GgAgentConfig {
+        name: "reviewer".to_string(),
+        model_id: String::new(),
+        model_slot: Some("critic".to_string()),
+        ..test_cabinet_core::gg::GgAgentConfig::root()
+    });
     let err = GgRunRequest {
         capability_set: set,
         ..sample_request()
@@ -65,7 +67,7 @@ fn into_launch_body_rejects_a_set_with_a_model_slot_left_unbound() {
     .into_launch_body()
     .unwrap_err();
     assert!(err.contains("reviewer"), "unexpected reason: {err}");
-    assert!(err.contains("unresolved"), "unexpected reason: {err}");
+    assert!(err.contains("without a model"), "unexpected reason: {err}");
 }
 
 #[test]
@@ -174,10 +176,11 @@ async fn launch_resolves_the_bound_models_context_windows() {
         .unwrap();
 
     let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
-    set.slots.push(test_cabinet_core::gg::GgSlotBinding::new(
-        "subagent",
-        "openai/gpt-5.4-mini",
-    ));
+    set.agents.push(test_cabinet_core::gg::GgAgentConfig {
+        name: "subagent".to_string(),
+        model_id: "openai/gpt-5.4-mini".to_string(),
+        ..test_cabinet_core::gg::GgAgentConfig::root()
+    });
     let mut launch = GgRunRequest {
         capability_set: set,
         ..sample_request()
@@ -217,14 +220,16 @@ async fn launch_resolves_the_bound_models_input_modalities() {
         .unwrap();
 
     let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
-    set.slots.push(test_cabinet_core::gg::GgSlotBinding::new(
-        "subagent",
-        "z-ai/glm-5.2",
-    ));
-    set.slots.push(test_cabinet_core::gg::GgSlotBinding::new(
-        "reviewer",
-        "mystery/model",
-    ));
+    set.agents.push(test_cabinet_core::gg::GgAgentConfig {
+        name: "subagent".to_string(),
+        model_id: "z-ai/glm-5.2".to_string(),
+        ..test_cabinet_core::gg::GgAgentConfig::root()
+    });
+    set.agents.push(test_cabinet_core::gg::GgAgentConfig {
+        name: "reviewer".to_string(),
+        model_id: "mystery/model".to_string(),
+        ..test_cabinet_core::gg::GgAgentConfig::root()
+    });
     let mut launch = GgRunRequest {
         capability_set: set,
         ..sample_request()

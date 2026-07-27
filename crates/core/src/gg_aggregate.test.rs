@@ -1,8 +1,8 @@
 use super::*;
 
 use crate::gg::{
-    GgCapabilityConfig, GgHealingStrategy, GgHealingSummary, GgLimitBreach, GgLimitKind,
-    GgRunLimits, GgSlotBinding, PRIMARY_SLOT,
+    GgAgentConfig, GgCapabilityConfig, GgHealingStrategy, GgHealingSummary, GgLimitBreach,
+    GgLimitKind, GgRunLimits, ROOT_AGENT,
 };
 use serde_json::json;
 
@@ -52,7 +52,7 @@ fn row() -> GgAggregateRow {
 /// ablation lever), keeping the default capabilities.
 fn set_with_compaction(model: &str, on: bool) -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal(model);
-    set.capabilities.push(if on {
+    set.agents[0].capabilities.push(if on {
         GgCapabilityConfig::enabled(crate::gg::CAPABILITY_COMPACTION)
     } else {
         GgCapabilityConfig::disabled(crate::gg::CAPABILITY_COMPACTION)
@@ -61,24 +61,27 @@ fn set_with_compaction(model: &str, on: bool) -> GgCapabilitySet {
 }
 
 #[test]
-fn facets_extracts_enabled_impl_params_slots_and_preset() {
-    // A hand-built set with a preset, a params-carrying capability, and a bound slot
+fn facets_extracts_enabled_impl_params_agent_models_and_preset() {
+    // A hand-built set with a preset, a params-carrying capability, and a bound Root agent
     // exposes exactly the sliceable facets a study picks from.
     let mut set = GgCapabilitySet {
-        model_slots: Vec::new(),
         preset: Some("planning-A".to_string()),
-        capabilities: vec![GgCapabilityConfig {
-            id: crate::gg::CAPABILITY_COMPACTION.to_string(),
-            enabled: true,
-            implementation: Some("summarize-v2".to_string()),
-            params: json!({ "summaryHeadroom": 0.2 }),
+        agents: vec![GgAgentConfig {
+            capabilities: vec![GgCapabilityConfig {
+                id: crate::gg::CAPABILITY_COMPACTION.to_string(),
+                enabled: true,
+                implementation: Some("summarize-v2".to_string()),
+                params: json!({ "summaryHeadroom": 0.2 }),
+            }],
+            model_id: "mock/echo".to_string(),
+            ..GgAgentConfig::root()
         }],
-        slots: vec![GgSlotBinding::new(PRIMARY_SLOT, "mock/echo")],
-        disabled_tools: Vec::new(),
+        model_slots: Vec::new(),
         limits: GgRunLimits::default(),
     };
     // A capability with no implementation selected reports the "default" bucket.
-    set.capabilities
+    set.agents[0]
+        .capabilities
         .push(GgCapabilityConfig::enabled(crate::gg::CAPABILITY_SKILLS));
 
     let facets = set.facets();
@@ -117,9 +120,10 @@ fn facets_extracts_enabled_impl_params_slots_and_preset() {
         }),
         Some("0.2".to_string())
     );
+    // The per-agent model facet is keyed by the agent profile's name.
     assert_eq!(
         find(&GgFacet::SlotModel {
-            slot: PRIMARY_SLOT.to_string()
+            slot: ROOT_AGENT.to_string()
         }),
         Some("mock/echo".to_string())
     );
@@ -524,7 +528,7 @@ fn a_healing_toggle_slices_through_the_capability_param_facet() {
     };
 
     let mut off = GgCapabilitySet::minimal("mock/echo");
-    off.capabilities.push(GgCapabilityConfig {
+    off.agents[0].capabilities.push(GgCapabilityConfig {
         params: json!({ "healing": { "strip-fences": false } }),
         ..GgCapabilityConfig::enabled(crate::gg::CAPABILITY_RESPONSES_AS_CODE)
     });
@@ -536,7 +540,7 @@ fn a_healing_toggle_slices_through_the_capability_param_facet() {
     // The other arm of the ablation — the capability on, healing left alone — resolves to absent,
     // which a query selects with `Absent` rather than needing a synthesized "true".
     let mut default_healing = GgCapabilitySet::minimal("mock/echo");
-    default_healing
+    default_healing.agents[0]
         .capabilities
         .push(GgCapabilityConfig::enabled(
             crate::gg::CAPABILITY_RESPONSES_AS_CODE,

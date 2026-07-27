@@ -45,7 +45,8 @@
 use async_trait::async_trait;
 use serde_json::Value;
 use test_cabinet_core::gg::{
-    CAPABILITY_COMPACTION, GgCapabilitySet, GgContextSource, GgRetainedState, GgTelemetryKind,
+    CAPABILITY_COMPACTION, GgAgentConfig, GgCapabilitySet, GgContextSource, GgRetainedState,
+    GgTelemetryKind,
 };
 
 use crate::context::ContextModel;
@@ -332,7 +333,7 @@ impl CompactionSetup {
     /// summarizer read from its config. A disabled/absent capability yields a setup whose
     /// [`enabled`](Self::enabled) is `false` (and a default policy/summarizer that is never
     /// used).
-    pub fn resolve(set: &GgCapabilitySet) -> Self {
+    pub fn resolve(set: &GgAgentConfig) -> Self {
         let capability = set.capability(CAPABILITY_COMPACTION);
         let enabled = set.is_enabled(CAPABILITY_COMPACTION);
         let policy = capability

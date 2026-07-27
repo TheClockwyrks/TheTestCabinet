@@ -109,7 +109,7 @@ two stages.
 
 **Declared, up front.** The [model catalog](/components/backend/) records the input
 modalities OpenRouter reports per model, and the launch pushes them into the run
-alongside each model's [context window](/gg/multi-model/). A model declared *without*
+alongside each model's [context window](/gg/configurations/#model-slots). A model declared *without*
 `image` is simply never sent one: `read_file` describes the file instead of attaching it,
 the system prompt tells the model up front that it cannot see images and that re-reading
 will not change that, and no request is wasted.

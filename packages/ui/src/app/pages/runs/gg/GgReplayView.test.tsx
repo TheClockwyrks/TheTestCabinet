@@ -24,8 +24,13 @@ const RECORD: GgReplayRecord = {
   sessionId: "run-xyz",
   capabilitySet: {
     preset: "full",
-    capabilities: [{ id: "replay", enabled: true, params: {} }],
-    slots: [{ slot: "primary", modelId: "test/model" }],
+    agents: [
+      {
+        name: "Root",
+        capabilities: [{ id: "replay", enabled: true, params: {} }],
+        modelId: "test/model",
+      },
+    ],
   },
   entries: [
     {

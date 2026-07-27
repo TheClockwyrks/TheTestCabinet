@@ -90,12 +90,12 @@ use std::time::Instant;
 use serde_json::Value;
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_CODE_REVIEWS, CAPABILITY_CONTEXT_VISIBILITY,
-    CAPABILITY_MEMORIES, CAPABILITY_MULTI_MODEL, CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_REPLAY,
+    CAPABILITY_MEMORIES, CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_REPLAY,
     CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS,
-    CAPABILITY_TASKS, CAPABILITY_WORKFLOWS, CAPABILITY_WORKTREES, GgAgentStatus, GgCandidateShape,
-    GgCapabilitySet, GgCodeReviewPhase, GgContextAction, GgContextSource, GgHealingStrategy,
-    GgLimitBreach, GgLimitKind, GgNotAProgram, GgPlanPhase, GgResponseHealing, GgRunLimits,
-    GgSlotBinding, GgSpeculationPhase, GgTelemetryKind, GgWorkflowPhase, PRIMARY_SLOT,
+    CAPABILITY_TASKS, CAPABILITY_WORKFLOWS, CAPABILITY_WORKTREES, GgAgentConfig, GgAgentStatus,
+    GgCandidateShape, GgCapabilitySet, GgCodeReviewPhase, GgContextAction, GgContextSource,
+    GgHealingStrategy, GgLimitBreach, GgLimitKind, GgNotAProgram, GgPlanPhase, GgResponseHealing,
+    GgRunLimits, GgSlotBinding, GgSpeculationPhase, GgTelemetryKind, GgWorkflowPhase, ROOT_AGENT,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 use tokio::sync::{mpsc, oneshot};
@@ -129,7 +129,7 @@ use crate::planning::PlanningRuntime;
 use crate::prompts::{
     self, BoardView, CodeCallView, CodeErrorView, CodeNotAProgramContext, CodeResultContext,
     CodeSandboxErrorContext, CodeTranspileErrorContext, FsmView, MemoriesView, ReadFileView,
-    SystemContext, TasksView, ToolView,
+    SpawnableAgentView, SystemContext, TasksView, ToolView,
 };
 use crate::replay::{GgRecorder, RecordingClient};
 use crate::sandbox::{
@@ -243,19 +243,20 @@ pub enum SessionOutcome {
 /// beneath it.
 pub const ROOT_AGENT_ID: &str = "root";
 
-/// The conventional [model slot](GgSlotBinding) a [Code Review](handle_code_review)'s reviewer runs
-/// on when [multi-model](CAPABILITY_MULTI_MODEL) is enabled and the slot is bound: a dedicated
-/// `reviewer` model, distinct from the model that did (and will fix) the work. When multi-model is
-/// off, or no `reviewer` slot is bound, the reviewer collapses to the [`primary`](PRIMARY_SLOT)
-/// slot like any other agent.
-const REVIEWER_SLOT: &str = "reviewer";
+/// The [project-management](CAPABILITY_PROJECT_MANAGEMENT) capability param naming the
+/// [agent profile](GgAgentConfig) an auto-dispatched issue's agent runs under. Absent means the
+/// [Root](ROOT_AGENT).
+const PARAM_ISSUE_AGENT: &str = "issueAgent";
 
-/// The conventional [model slot](GgSlotBinding) a [speculative execution](handle_speculate)'s judge
-/// runs on when [multi-model](CAPABILITY_MULTI_MODEL) is enabled and it is bound: a dedicated `judge`
-/// model that scores the K attempts. When absent (or multi-model off), the judge falls back to the
-/// [`reviewer`](REVIEWER_SLOT) slot if bound, else the [`primary`](PRIMARY_SLOT) slot — so a
-/// best-of-K run needs no extra slot binding to work.
-const JUDGE_SLOT: &str = "judge";
+/// The [code-reviews](CAPABILITY_CODE_REVIEWS) capability param naming the
+/// [agent profile](GgAgentConfig) a [Code Review](handle_code_review)'s reviewer runs under. Absent
+/// means the [Root](ROOT_AGENT).
+const PARAM_REVIEWER_AGENT: &str = "reviewerAgent";
+
+/// The [speculative-execution](CAPABILITY_SPECULATIVE) capability param naming the
+/// [agent profile](GgAgentConfig) a [speculation](handle_speculate)'s judge runs under. Absent
+/// means the [Root](ROOT_AGENT).
+const PARAM_JUDGE_AGENT: &str = "judgeAgent";
 
 /// The default number of parallel attempts a [`speculate`](handle_speculate) call makes when it names
 /// no `attempts` count.
@@ -290,19 +291,23 @@ pub struct Agent {
     pub parent_id: Option<String>,
     /// The agent's depth in the tree: `0` for the root, `parent.depth + 1` for a child.
     pub depth: usize,
-    /// The model [slot](GgSlotBinding) this agent runs on.
+    /// The [agent profile](GgAgentConfig) name this agent runs under — the key its
+    /// capabilities, model binding, and system prompt resolve from. The root runs under
+    /// [`ROOT_AGENT`]; a spawned child under whichever profile its spawner named. Carried
+    /// under the field name `slot` because it is what the [per-profile
+    /// accounting](SlotAccounting) and the `AgentSpawned`/`SlotUsage` telemetry key on.
     pub slot: String,
 }
 
 impl Agent {
-    /// The **root** agent for a run: [`ROOT_AGENT_ID`], no parent, depth `0`, on `slot`
-    /// (the [`primary`](PRIMARY_SLOT) slot).
-    pub fn root(slot: impl Into<String>) -> Self {
+    /// The **root** agent for a run: [`ROOT_AGENT_ID`], no parent, depth `0`, running under the
+    /// [Root](ROOT_AGENT) profile.
+    pub fn root() -> Self {
         Self {
             id: ROOT_AGENT_ID.to_string(),
             parent_id: None,
             depth: 0,
-            slot: slot.into(),
+            slot: ROOT_AGENT.to_string(),
         }
     }
 }
@@ -370,74 +375,69 @@ impl SlotAccounting {
     }
 }
 
-/// Resolve the model slot an agent that requested `requested_slot` actually runs on, given
-/// whether the [multi-model](CAPABILITY_MULTI_MODEL) capability is enabled.
+/// Build the client [binding](GgSlotBinding) for the [agent profile](GgAgentConfig) named
+/// `profile` in `set`, or an error naming what is wrong. The seam every agent resolves its client
+/// through: the root resolves the [Root](ROOT_AGENT) profile; a spawned child resolves whichever
+/// profile its spawner named.
 ///
-/// With multi-model **on**, an agent runs on the slot it requested (so a subagent can be
-/// dispatched on a cheaper or role-specific slot). With it **off**, every agent collapses to the
-/// [`primary`](PRIMARY_SLOT) slot — the ablation off arm that pins a whole run to a single model.
-/// The root always requests [`primary`](PRIMARY_SLOT), so the toggle only becomes observable once
-/// Phase 4B spawns subagents on other slots. Pure, so the rule is unit tested directly.
-fn effective_slot(requested_slot: &str, multi_model_enabled: bool) -> &str {
-    if multi_model_enabled {
-        requested_slot
-    } else {
-        PRIMARY_SLOT
-    }
+/// A [`GgSlotBinding`] is still the [factory](ClientFactory)'s input DTO (it keys purely on the
+/// model id); its `slot` field carries the profile name so the resolved model is attributed to the
+/// right profile in telemetry.
+fn profile_binding(set: &GgCapabilitySet, profile: &str) -> Result<GgSlotBinding, String> {
+    let agent = set.agent(profile).ok_or_else(|| {
+        format!("no `{profile}` agent profile is declared; there is no model to run")
+    })?;
+    let model_id = agent.resolved_model_id().ok_or_else(|| {
+        format!("the `{profile}` agent profile has no model bound; there is no model to run")
+    })?;
+    Ok(GgSlotBinding::new(profile, model_id))
 }
 
-/// Find the [binding](GgSlotBinding) for `slot` in `set`, or an error naming the missing slot.
-/// The seam every agent resolves its client through: the root looks up [`primary`](PRIMARY_SLOT);
-/// Phase 4B looks up a child's [effective slot](effective_slot).
-fn slot_binding<'a>(set: &'a GgCapabilitySet, slot: &str) -> Result<&'a GgSlotBinding, String> {
-    set.slots
-        .iter()
-        .find(|binding| binding.slot == slot)
-        .ok_or_else(|| format!("no `{slot}` model slot is bound; there is no model to run"))
-}
-
-/// Validate a run's [slot bindings](GgSlotBinding) before launch: the [`primary`](PRIMARY_SLOT)
-/// slot must be bound (the root has no model otherwise), every binding must name a non-empty slot
-/// and model id, and no slot name may be bound twice (an ambiguous binding). Returns a
+/// Validate a run's [agent profiles](GgAgentConfig) before launch: the [Root](ROOT_AGENT) profile
+/// must exist and be bound to a model (the run has no model otherwise), every profile must have a
+/// non-empty name and a resolved model, no name may be declared twice, and every
+/// [subagent reference](GgAgentConfig::subagents) must name a declared profile. Returns a
 /// human-readable error on the first problem, so a misconfiguration fails loudly at launch rather
-/// than resolving an arbitrary binding mid-run. Pure, so it is unit tested directly.
-fn validate_slots(set: &GgCapabilitySet) -> Result<(), String> {
-    let mut seen: Vec<&str> = Vec::with_capacity(set.slots.len());
-    for binding in &set.slots {
-        if binding.slot.trim().is_empty() {
-            return Err("a slot binding has an empty slot name".to_string());
+/// than surfacing mid-run. Pure, so it is unit tested directly.
+fn validate_agents(set: &GgCapabilitySet) -> Result<(), String> {
+    let mut seen: Vec<&str> = Vec::with_capacity(set.agents.len());
+    for agent in &set.agents {
+        let name = agent.name.trim();
+        if name.is_empty() {
+            return Err("an agent profile has an empty name".to_string());
         }
-        if let Some(model_slot) = binding
+        if agent
             .model_slot
             .as_deref()
-            .filter(|_| !binding.is_resolved())
+            .is_some_and(|_| !agent.is_resolved())
         {
-            // A configuration is launched, not run: whoever launched it was supposed to
-            // fill in every deferred model slot. One left over means the launch skipped
-            // it, so say which — the operator can only fix it on the launch form.
+            // A configuration is launched, not run: whoever launched it was supposed to bind a
+            // model to every deferred profile. One left over means the launch skipped it.
             return Err(format!(
-                "the `{}` slot still defers to the `{model_slot}` model slot; \
-                 launching must bind a model to it",
-                binding.slot
+                "the `{name}` agent still defers to a model slot; launching must bind a model to it"
             ));
         }
-        if binding.model_id.trim().is_empty() {
-            return Err(format!(
-                "the `{}` slot is bound to an empty model id",
-                binding.slot
-            ));
+        if !agent.is_resolved() {
+            return Err(format!("the `{name}` agent is bound to an empty model id"));
         }
-        if seen.contains(&binding.slot.as_str()) {
-            return Err(format!(
-                "the `{}` slot is bound more than once",
-                binding.slot
-            ));
+        if seen.contains(&name) {
+            return Err(format!("the `{name}` agent is declared more than once"));
         }
-        seen.push(&binding.slot);
+        seen.push(name);
     }
-    if !set.slots.iter().any(|binding| binding.slot == PRIMARY_SLOT) {
+    for agent in &set.agents {
+        for reference in &agent.subagents {
+            if set.agent(&reference.agent).is_none() {
+                return Err(format!(
+                    "the `{}` agent may spawn `{}`, which is not a declared agent profile",
+                    agent.name, reference.agent
+                ));
+            }
+        }
+    }
+    if set.agent(ROOT_AGENT).is_none() {
         return Err(format!(
-            "no `{PRIMARY_SLOT}` model slot is bound; there is no model to run"
+            "no `{ROOT_AGENT}` agent profile is declared; there is no model to run"
         ));
     }
     Ok(())
@@ -476,11 +476,6 @@ pub(crate) async fn run_with_factory(
     factory: Arc<dyn ClientFactory>,
 ) -> SessionOutcome {
     let set = &invocation.capability_set;
-    let multi_model = set.is_enabled(CAPABILITY_MULTI_MODEL);
-    // The root runs on the `primary` slot: `effective_slot` collapses to primary when multi-model
-    // is off, and the root already requests primary, so this is primary either way — the seam a
-    // subagent requesting another slot reuses.
-    let root_slot = effective_slot(PRIMARY_SLOT, multi_model).to_string();
 
     // Scope the stream to the root up front, so every event (launch diagnostics included) is
     // attributed to it.
@@ -492,14 +487,14 @@ pub(crate) async fn run_with_factory(
         capability_set: Some(set.clone()),
     });
 
-    // Launch check 1: the slot bindings must be well-formed and bind `primary`.
-    if let Err(err) = validate_slots(set) {
+    // Launch check 1: the agent profiles must be well-formed and declare a bound `Root`.
+    if let Err(err) = validate_agents(set) {
         root_emitter.emit(log("error", err));
         root_emitter.emit(session_ended("error"));
         return SessionOutcome::LaunchFailed;
     }
-    let binding = match slot_binding(set, &root_slot) {
-        Ok(binding) => binding.clone(),
+    let binding = match profile_binding(set, ROOT_AGENT) {
+        Ok(binding) => binding,
         Err(err) => {
             root_emitter.emit(log("error", err));
             root_emitter.emit(session_ended("error"));
@@ -525,7 +520,7 @@ pub(crate) async fn run_with_factory(
             root_emitter.emit(log(
                 "error",
                 format!(
-                    "could not resolve the `{root_slot}` slot (model `{}`): {err}",
+                    "could not resolve the `{ROOT_AGENT}` agent (model `{}`): {err}",
                     binding.model_id
                 ),
             ));
@@ -550,7 +545,6 @@ pub(crate) async fn run_with_factory(
         invocation,
         emitter,
         factory,
-        multi_model,
         worktrees,
         &mut launch_warnings,
     ));
@@ -599,7 +593,7 @@ pub(crate) async fn run_with_factory(
     // Drive the root agent. Its inbox is unused (nothing spawns the root), but every agent owns
     // one for uniformity.
     let (_root_inbox_tx, root_inbox_rx) = mpsc::unbounded_channel();
-    let root_agent = Agent::root(root_slot);
+    let root_agent = Agent::root();
     let end = run_agent(
         Arc::clone(&orch),
         root_agent,
@@ -674,8 +668,8 @@ pub(crate) async fn run_with_factory(
     root_emitter.emit(log(
         "info",
         format!(
-            "root agent `{ROOT_AGENT_ID}` (slot `{root_slot_label}`) {status}.",
-            root_slot_label = end.slot,
+            "root agent `{ROOT_AGENT_ID}` (profile `{root_profile}`) {status}.",
+            root_profile = end.slot,
             status = if is_failure_status(end.status) {
                 "failed"
             } else {
@@ -792,9 +786,6 @@ struct Orchestrator {
     workspace_dir: PathBuf,
     /// The root's build prompt (a subagent is driven by its brief instead).
     prompt: String,
-    /// Whether [multi-model](CAPABILITY_MULTI_MODEL) is on — decides whether a subagent may run on
-    /// a non-primary [slot](GgSlotBinding) or collapses to primary.
-    multi_model: bool,
     /// Whether the [subagents](CAPABILITY_SUBAGENTS) capability is on — gates the spawn tools, the
     /// per-agent delegation context, and the agent-tree telemetry.
     subagents_enabled: bool,
@@ -832,10 +823,12 @@ struct Orchestrator {
     /// the attempts and run the judge), so it only engages when
     /// [`delegation_enabled`](Self::delegation_enabled); worktree isolation is checked at call time.
     speculative_enabled: bool,
-    /// How a run conducts its turns when [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) is on:
-    /// the run-wide mode flag, the per-program sandbox ceilings, and the armed
-    /// [healing](crate::healing) strategies. Resolved once here and handed to every agent, because
-    /// all three are properties of *how a turn is conducted*, not of a single agent.
+    /// The **[Root](ROOT_AGENT) agent's** code setup: whether its turns are conducted as
+    /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE), the per-program sandbox ceilings, and the
+    /// armed [healing](crate::healing) strategies. Since responses-as-code is now a **per-agent**
+    /// capability, each agent's own setup is resolved from its profile at run time (see
+    /// [`code_setup`](Self::code_setup)); this field carries the Root's, used for the run-level
+    /// launch log and the sandbox warm-up decision.
     code: CodeSetup,
     /// Per-[issue](test_cabinet_core::gg::GgBoardIssue) dispatch facts a
     /// [Code Review](handle_code_review) needs: the commit the issue's work began at (its review
@@ -934,7 +927,6 @@ impl Orchestrator {
         invocation: &GgInvocation,
         emitter: &Emitter,
         factory: Arc<dyn ClientFactory>,
-        multi_model: bool,
         worktrees: WorktreesSetup,
         warnings: &mut Vec<String>,
     ) -> Self {
@@ -944,7 +936,9 @@ impl Orchestrator {
         let skills = resolve_skills(set, &invocation.workspace_dir);
         let limits = resolve_run_limits(set, warnings);
         let deadline = limits.max_runtime.map(|budget| Instant::now() + budget);
-        let healing = healing::resolve_healing(set);
+        // The Root agent's code setup: responses-as-code is per-agent, but the Root's is what the
+        // run-level launch log and the sandbox warm-up decision key on.
+        let healing = healing::resolve_healing(set.root());
         // An unreadable `healing` key is reported rather than guessed at: `{"stripFences": false}`
         // would otherwise run the default arm under the disabled arm's name, and every number an
         // ablation produced would be a measurement of the wrong thing.
@@ -960,7 +954,6 @@ impl Orchestrator {
             caps: set.clone(),
             workspace_dir: invocation.workspace_dir.clone(),
             prompt: invocation.prompt.clone(),
-            multi_model,
             subagents_enabled: set.is_enabled(CAPABILITY_SUBAGENTS),
             project_management_enabled: set.is_enabled(CAPABILITY_PROJECT_MANAGEMENT),
             workflows_enabled: set.is_enabled(CAPABILITY_WORKFLOWS),
@@ -970,8 +963,8 @@ impl Orchestrator {
             code_reviews_enabled: set.is_enabled(CAPABILITY_CODE_REVIEWS),
             speculative_enabled: set.is_enabled(CAPABILITY_SPECULATIVE),
             code: CodeSetup {
-                enabled: set.is_enabled(CAPABILITY_RESPONSES_AS_CODE),
-                limits: sandbox::resolve_sandbox_limits(set),
+                enabled: set.root().is_enabled(CAPABILITY_RESPONSES_AS_CODE),
+                limits: sandbox::resolve_sandbox_limits(set.root()),
                 healing: healing.config,
             },
             issue_dispatch: Mutex::new(HashMap::new()),
@@ -1085,27 +1078,59 @@ impl Orchestrator {
         self.speculative_enabled && self.delegation_enabled()
     }
 
-    /// The [slot](GgSlotBinding) a [speculative execution](handle_speculate)'s **judge** runs on: the
-    /// dedicated [`judge`](JUDGE_SLOT) slot when [multi-model](CAPABILITY_MULTI_MODEL) is on and it is
-    /// bound, else the [`reviewer`](REVIEWER_SLOT) slot when bound (the judge is a reviewer-shaped
-    /// role), else [`primary`](PRIMARY_SLOT) — so best-of-K works with no extra binding.
-    fn judge_slot(&self) -> String {
-        if self.multi_model {
-            if slot_binding(&self.caps, JUDGE_SLOT).is_ok() {
-                return JUDGE_SLOT.to_string();
-            }
-            if slot_binding(&self.caps, REVIEWER_SLOT).is_ok() {
-                return REVIEWER_SLOT.to_string();
-            }
-        }
-        PRIMARY_SLOT.to_string()
+    /// The [agent profile](GgAgentConfig) an agent named `profile` runs under: the declared profile,
+    /// or the [Root](ROOT_AGENT) when the name is not one this run declares (so a stale reference
+    /// falls back to a working profile rather than refusing).
+    fn profile_or_root(&self, profile: &str) -> &GgAgentConfig {
+        self.caps.agent(profile).unwrap_or_else(|| self.caps.root())
     }
 
-    /// Record the [dispatch facts](IssueDispatchMeta) for `issue_id` the first time it is dispatched
-    /// (`spawn_subagent { issueId }`), capturing the commit its work began at (for a later
-    /// [Code Review](handle_code_review)'s baseline) and the slot it ran on. Only the **first**
-    /// dispatch is recorded (`or_insert`), so a later reviewer or fix agent dispatched against the
-    /// same issue does not clobber the real work baseline/slot.
+    /// The name of an [agent profile](GgAgentConfig) a run-level capability points a helper agent at:
+    /// the string `param` on the [Root](ROOT_AGENT)'s config for capability `cap_id`, when it names a
+    /// declared profile, else the [Root](ROOT_AGENT). These knobs (the issue, reviewer, and judge
+    /// agents) are read off the Root because they govern the run as a whole, not one agent's turn.
+    fn helper_profile(&self, cap_id: &str, param: &str) -> String {
+        self.caps
+            .root()
+            .capability(cap_id)
+            .and_then(|cfg| cfg.params.get(param))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|name| !name.is_empty() && self.caps.agent(name).is_some())
+            .unwrap_or(ROOT_AGENT)
+            .to_string()
+    }
+
+    /// The [agent profile](GgAgentConfig) an auto-dispatched [issue](crate::board)'s agent runs
+    /// under — the [project-management](CAPABILITY_PROJECT_MANAGEMENT) capability's
+    /// [`issueAgent`](PARAM_ISSUE_AGENT) param, defaulting to the [Root](ROOT_AGENT).
+    fn issue_profile(&self) -> String {
+        self.helper_profile(CAPABILITY_PROJECT_MANAGEMENT, PARAM_ISSUE_AGENT)
+    }
+
+    /// The [agent profile](GgAgentConfig) a [speculative execution](handle_speculate)'s **judge** runs
+    /// under — the [speculative-execution](CAPABILITY_SPECULATIVE) capability's
+    /// [`judgeAgent`](PARAM_JUDGE_AGENT) param, defaulting to the [Root](ROOT_AGENT).
+    fn judge_profile(&self) -> String {
+        self.helper_profile(CAPABILITY_SPECULATIVE, PARAM_JUDGE_AGENT)
+    }
+
+    /// The per-agent [code setup](CodeSetup) for `profile`: whether its turns run as
+    /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE), and the sandbox ceilings and
+    /// [healing](crate::healing) strategies its own responses-as-code config resolves to.
+    fn code_setup(&self, profile: &GgAgentConfig) -> CodeSetup {
+        CodeSetup {
+            enabled: profile.is_enabled(CAPABILITY_RESPONSES_AS_CODE),
+            limits: sandbox::resolve_sandbox_limits(profile),
+            healing: healing::resolve_healing(profile).config,
+        }
+    }
+
+    /// Record the [dispatch facts](IssueDispatchMeta) for `issue_id` the first time it is dispatched,
+    /// capturing the commit its work began at (for a later [Code Review](handle_code_review)'s
+    /// baseline) and the [agent profile](GgAgentConfig) it ran under. Only the **first** dispatch is
+    /// recorded (`or_insert`), so a later reviewer or fix agent dispatched against the same issue does
+    /// not clobber the real work baseline/profile.
     fn record_issue_dispatch(&self, issue_id: &str, work_slot: &str) {
         let initial_commit = if self.baseline_commit.is_some() {
             git::head_commit(&self.workspace_dir).ok()
@@ -1134,29 +1159,24 @@ impl Orchestrator {
             .or_else(|| self.baseline_commit().map(str::to_string))
     }
 
-    /// The [slot](GgSlotBinding) a [Code Review](handle_code_review)'s **fix agent** for `issue_id`
-    /// runs on: the slot the issue's work was dispatched on (so the fix is done by the same kind of
-    /// agent), or [`primary`](PRIMARY_SLOT) when the issue was never dispatched to a subagent.
+    /// The [agent profile](GgAgentConfig) a [Code Review](handle_code_review)'s **fix agent** for
+    /// `issue_id` runs under: the profile the issue's work was dispatched under (so the fix is done by
+    /// the same kind of agent), or the [Root](ROOT_AGENT) when the issue was never dispatched to a
+    /// subagent.
     fn issue_work_slot(&self, issue_id: &str) -> String {
         self.issue_dispatch
             .lock()
             .expect("issue dispatch lock")
             .get(issue_id)
             .map(|meta| meta.work_slot.clone())
-            .unwrap_or_else(|| PRIMARY_SLOT.to_string())
+            .unwrap_or_else(|| ROOT_AGENT.to_string())
     }
 
-    /// The [slot](GgSlotBinding) a [Code Review](handle_code_review)'s **reviewer** runs on: the
-    /// dedicated [`reviewer`](REVIEWER_SLOT) slot when [multi-model](CAPABILITY_MULTI_MODEL) is on
-    /// and that slot is bound, else [`primary`](PRIMARY_SLOT). (When multi-model is off,
-    /// [`dispatch_child`] would collapse a `reviewer` request to primary anyway; resolving it here
-    /// keeps the dispatch from failing on an unbound `reviewer` slot.)
+    /// The [agent profile](GgAgentConfig) a [Code Review](handle_code_review)'s **reviewer** runs
+    /// under — the [code-reviews](CAPABILITY_CODE_REVIEWS) capability's
+    /// [`reviewerAgent`](PARAM_REVIEWER_AGENT) param, defaulting to the [Root](ROOT_AGENT).
     fn reviewer_slot(&self) -> String {
-        if self.multi_model && slot_binding(&self.caps, REVIEWER_SLOT).is_ok() {
-            REVIEWER_SLOT.to_string()
-        } else {
-            PRIMARY_SLOT.to_string()
-        }
+        self.helper_profile(CAPABILITY_CODE_REVIEWS, PARAM_REVIEWER_AGENT)
     }
 
     /// The textual diff of the work for `issue_id` against its [review baseline](Self::issue_baseline)
@@ -1270,10 +1290,10 @@ impl Orchestrator {
         retry: u32,
         emitter: &Emitter,
     ) {
-        // Dispatched issue agents run on the primary slot (collapsed when multi-model is off).
-        let slot = effective_slot(PRIMARY_SLOT, self.multi_model).to_string();
-        let binding = match slot_binding(&self.caps, &slot) {
-            Ok(binding) => binding.clone(),
+        // Dispatched issue agents run under the configured issue agent profile (default Root).
+        let slot = self.issue_profile();
+        let binding = match profile_binding(&self.caps, &slot) {
+            Ok(binding) => binding,
             Err(err) => return self.abort_issue_dispatch(&issue_id, &slot, &err, emitter),
         };
         let client = match self.factory.client_for(&binding) {
@@ -1283,7 +1303,7 @@ impl Orchestrator {
             }
         };
         // Record the issue's dispatch facts on its first dispatch (retry 0), so a later Code Review
-        // has an issue-level baseline and the slot to re-run a fix agent on.
+        // has an issue-level baseline and the profile to re-run a fix agent under.
         if retry == 0 {
             self.record_issue_dispatch(&issue_id, &slot);
         }
@@ -1647,11 +1667,16 @@ async fn run_agent(
             .for_agent_on_issue(agent.id.clone(), agent.parent_id.clone(), issue_id);
     let emitter = &emitter;
 
+    // This agent's profile — the source of its capabilities, model, execution mode, and prompt.
+    // A name this run does not declare falls back to the Root (a spawned child always names a
+    // declared profile; this only guards a stale internal reference).
+    let profile = orch.profile_or_root(&agent.slot).clone();
+
     let model_id = client.model_id().to_string();
     emitter.emit(log(
         "info",
         format!(
-            "{} slot resolved to model `{model_id}` ({} provider).",
+            "agent profile `{}` resolved to model `{model_id}` ({} provider).",
             agent.slot,
             provider_label_for(&orch, &agent.slot),
         ),
@@ -1691,14 +1716,14 @@ async fn run_agent(
     // shared run-wide** — every agent's board tools mutate the one [`orch.board`], the global work
     // queue the dispatcher reads (cloning a `BoardRuntime` shares its store).
     let skills = orch.skills_runtime();
-    let memories = resolve_memories(&orch.caps);
-    let tasks = resolve_tasks(&orch.caps);
+    let memories = resolve_memories(&profile);
+    let tasks = resolve_tasks(&profile);
     let board = orch.board.clone();
-    let planning = PlanningRuntime::resolve(&orch.caps);
+    let planning = PlanningRuntime::resolve(&profile);
     // The FSM engine drives only the **root** agent (the run's top-level process); a subagent does
     // scoped work and is not itself driven through a machine, so it gets a disabled runtime.
     let fsm = if is_root {
-        FsmRuntime::resolve(&orch.caps)
+        FsmRuntime::resolve(&profile)
     } else {
         FsmRuntime::disabled()
     };
@@ -1707,8 +1732,10 @@ async fn run_agent(
     let memory_store = memories.store();
     let task_store = tasks.store();
     let board_store = board.store();
+    // This agent's toolset, model, and prompt all come from **its own profile**, so a run can give
+    // different agents different capabilities. The board store it binds is the run-global one.
     let registry = ToolRegistry::from_run(
-        &orch.caps,
+        &profile,
         &RuntimeSet::new(&library)
             .with_memories(&memory_store)
             .with_tasks(&task_store)
@@ -1730,6 +1757,11 @@ async fn run_agent(
     // asking can see one. The registry behind it is the run's, not this agent's.
     let tool_ctx = ToolContext::new(workspace_dir).with_vision(&model_id, Arc::clone(&orch.vision));
 
+    // This agent's execution mode (traditional tool calling vs a code-shaped reply) and the sandbox
+    // ceilings/healing behind it come from its **own profile**, so a run can mix agents that call
+    // tools with agents that write programs.
+    let code = orch.code_setup(&profile);
+
     // Announce the run's configuration once, on the root's stream, so the console shows the enabled
     // capabilities from the start; subagents inherit the same configuration and stay quiet.
     if is_root {
@@ -1744,7 +1776,7 @@ async fn run_agent(
             &fsm,
             orch.code_reviews_active(),
             orch.speculative_active(),
-            orch.code.enabled,
+            code.enabled,
         );
         announce_fsm(emitter, &orch.caps, &fsm);
         // Record the run's effective toolset on the session summary — the exact set of tool names
@@ -1755,12 +1787,12 @@ async fn run_agent(
         // Record the run's execution mode (code-shaped responses vs traditional tool calling) so the
         // "does responses-as-code help?" study is a durable, sliceable outcome dimension alongside
         // the capabilityEnabled facet.
-        emitter.record_execution_mode(if orch.code.enabled {
+        emitter.record_execution_mode(if code.enabled {
             "responses_as_code"
         } else {
             "tool_calling"
         });
-        for unknown in unknown_disabled_tools(&orch.caps) {
+        for unknown in unknown_disabled_tools(&profile) {
             emitter.emit(log(
                 "warn",
                 format!(
@@ -1772,9 +1804,9 @@ async fn run_agent(
     }
 
     let context_setup = orch.context_setup(&model_id);
-    let compaction = CompactionSetup::resolve(&orch.caps);
+    let compaction = CompactionSetup::resolve(&profile);
     let amc = AmcSetup {
-        enabled: orch.caps.is_enabled(CAPABILITY_AGENT_MANAGED_CONTEXT),
+        enabled: profile.is_enabled(CAPABILITY_AGENT_MANAGED_CONTEXT),
         archive: Arc::clone(&archive_store),
     };
     if is_root && compaction.enabled {
@@ -1855,10 +1887,11 @@ async fn run_agent(
             board,
             planning,
             fsm,
-            read_policy(&orch.caps),
+            read_policy(&profile),
             orch.code_reviews_active(),
             orch.speculative_active(),
-            orch.code,
+            code,
+            &profile,
             subagent_context,
             project,
             orch.replay.clone(),
@@ -2154,12 +2187,12 @@ fn agent_status(status: GgAgentStatus) -> GgTelemetryKind {
     GgTelemetryKind::AgentStatus { status }
 }
 
-/// A human-readable provider label for the model bound to `slot`, for an agent's resolution log
-/// line. Falls back to `"mock"` when the slot cannot be resolved (it always can here — it was
-/// resolved to build the client — so this is only defensive).
-fn provider_label_for(orch: &Orchestrator, slot: &str) -> &'static str {
-    match slot_binding(&orch.caps, slot) {
-        Ok(binding) => provider_label(binding),
+/// A human-readable provider label for the model the [profile](GgAgentConfig) named `profile` is
+/// bound to, for an agent's resolution log line. Falls back to `"mock"` when the profile cannot be
+/// resolved (it always can here — it was resolved to build the client — so this is only defensive).
+fn provider_label_for(orch: &Orchestrator, profile: &str) -> &'static str {
+    match profile_binding(&orch.caps, profile) {
+        Ok(binding) => provider_label(&binding),
         Err(_) => "mock",
     }
 }
@@ -2206,23 +2239,21 @@ fn spawn_subagent(sub: &mut SubagentContext, spawner: &Agent, args: &Value) -> T
             );
         }
     };
+    // The target agent profile must be named and must be one this agent may spawn.
+    let profile = match resolve_delegation_target(&sub.orch, spawner, args) {
+        Ok(profile) => profile,
+        Err(refusal) => return refusal,
+    };
     // Ad-hoc subagents carry no board issue (issues auto-dispatch to their own top-level agents).
     let issue_id = None;
 
-    // The requested slot (default primary) and optional worktree isolation are dispatch properties.
-    let requested_slot = args
-        .get("slot")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|slot| !slot.is_empty())
-        .unwrap_or(PRIMARY_SLOT);
     let want_worktree = args
         .get("worktree")
         .and_then(Value::as_bool)
         .unwrap_or(false);
 
     let worktree = want_worktree.then_some(WorktreeDisposition::Merge);
-    match dispatch_child(sub, spawner, brief, issue_id, requested_slot, worktree) {
+    match dispatch_child(sub, spawner, brief, issue_id, &profile, worktree) {
         Ok(child) => {
             let worktree_note = match &child.worktree_branch {
                 Some(branch) => format!(
@@ -2233,7 +2264,7 @@ fn spawn_subagent(sub: &mut SubagentContext, spawner: &Agent, args: &Value) -> T
             };
             ToolOutcome::ok(
                 format!(
-                    "Spawned subagent `{id}` on slot `{slot}` (model `{model}`). It is running in \
+                    "Spawned subagent `{id}` as agent `{slot}` (model `{model}`). It is running in \
                      parallel — call `wait_for_subagents` to collect its result, or `send_message` \
                      to guide it while it works.{worktree_note}",
                     id = child.id,
@@ -2311,6 +2342,55 @@ impl From<DispatchError> for ToolOutcome {
     }
 }
 
+/// Resolve and validate the `agent` argument of a model-invoked delegation call
+/// (`spawn_subagent`/`speculate`/`run_workflow`) against the spawner's
+/// [allowlist](GgAgentConfig::subagents), returning the target profile name or a model-facing
+/// refusal that names the agents this agent may spawn. An agent may name itself.
+// The `Err` is a `ToolOutcome` — the model-facing refusal — which is deliberately the same
+// large enum every tool returns; boxing it here alone would just add an unwrap at each call site.
+#[allow(clippy::result_large_err)]
+fn resolve_delegation_target(
+    orch: &Orchestrator,
+    spawner: &Agent,
+    args: &Value,
+) -> Result<String, ToolOutcome> {
+    let spawner_profile = orch.profile_or_root(&spawner.slot);
+    let allowed = || {
+        if spawner_profile.subagents.is_empty() {
+            "none".to_string()
+        } else {
+            spawner_profile
+                .subagents
+                .iter()
+                .map(|reference| format!("`{}`", reference.agent))
+                .collect::<Vec<_>>()
+                .join(", ")
+        }
+    };
+    match args
+        .get("agent")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|agent| !agent.is_empty())
+    {
+        Some(agent) if spawner_profile.can_spawn(agent) => Ok(agent.to_string()),
+        Some(agent) => Err(ToolOutcome::failed(
+            ToolFailure::InvalidArgument,
+            format!(
+                "cannot spawn `{agent}`: it is not one of the agents you may spawn. Pass one of: {}.",
+                allowed()
+            ),
+        )),
+        None => Err(ToolOutcome::failed(
+            ToolFailure::InvalidArgument,
+            format!(
+                "this call needs an `agent` — the name of the agent to run. You may spawn: {}.",
+                allowed()
+            ),
+        )),
+    }
+}
+
 /// Dispatch one child agent — the shared spawn path behind both `spawn_subagent` and each
 /// [workflow](run_workflow) stage's fan-out.
 ///
@@ -2326,7 +2406,7 @@ fn dispatch_child(
     spawner: &Agent,
     brief: String,
     issue_id: Option<String>,
-    requested_slot: &str,
+    profile_name: &str,
     worktree_disposition: Option<WorktreeDisposition>,
 ) -> Result<DispatchedChild, DispatchError> {
     let orch = &sub.orch;
@@ -2345,24 +2425,22 @@ fn dispatch_child(
         ));
     }
 
-    // The requested slot, collapsed to primary when multi-model is off. A slot this run does not
-    // bind is a bad *argument*, which is what tells a program to pass a different one.
-    let slot = effective_slot(requested_slot, orch.multi_model).to_string();
-    let binding = slot_binding(&orch.caps, &slot)
-        .map_err(|err| {
-            DispatchError::new(
-                ToolFailure::InvalidArgument,
-                format!("cannot spawn on the `{slot}` slot: {err}"),
-            )
-        })?
-        .clone();
-    // The slot is bound but its client would not resolve — a missing credential, a provider that
+    // The child runs under the named agent profile. A profile this run does not declare (or one
+    // with no model) is a bad *argument*, which is what tells a program to pass a different one.
+    let slot = profile_name.to_string();
+    let binding = profile_binding(&orch.caps, &slot).map_err(|err| {
+        DispatchError::new(
+            ToolFailure::InvalidArgument,
+            format!("cannot spawn agent `{slot}`: {err}"),
+        )
+    })?;
+    // The profile is bound but its client would not resolve — a missing credential, a provider that
     // could not be built. Nothing about the call was wrong, so it is an I/O-class failure.
     let client = orch.factory.client_for(&binding).map_err(|err| {
         DispatchError::new(
             ToolFailure::IoError,
             format!(
-                "cannot spawn on the `{slot}` slot (model `{}`): {err}",
+                "cannot spawn agent `{slot}` (model `{}`): {err}",
                 binding.model_id
             ),
         )
@@ -2370,9 +2448,9 @@ fn dispatch_child(
     let model_id = client.model_id().to_string();
 
     // Record this issue's dispatch facts on its first dispatch, so a later Code Review of it has an
-    // issue-level baseline (the commit its work began at) and knows which slot to re-run a fix agent
-    // on. Only the first dispatch is kept, so a reviewer/fix agent dispatched against the same issue
-    // (which also carries its issueId) does not overwrite the real work baseline/slot.
+    // issue-level baseline (the commit its work began at) and knows which profile to re-run a fix
+    // agent under. Only the first dispatch is kept, so a reviewer/fix agent dispatched against the
+    // same issue (which also carries its issueId) does not overwrite the real work baseline/profile.
     if let Some(issue_id) = &issue_id {
         orch.record_issue_dispatch(issue_id, &slot);
     }
@@ -2885,8 +2963,13 @@ async fn handle_code_review(
         // other than a clean verdict aborts the review with the issue unaccepted (never accept work
         // no reviewer approved).
         let diff = orch.review_diff(&issue_id);
-        let review_brief = build_review_brief(&brief, &diff, orch.code.enabled);
         let reviewer_slot = orch.reviewer_slot();
+        let review_brief = build_review_brief(
+            &brief,
+            &diff,
+            orch.profile_or_root(&reviewer_slot)
+                .is_enabled(CAPABILITY_RESPONSES_AS_CODE),
+        );
         let verdict = match dispatch_reviewer(
             sub,
             spawner,
@@ -2952,8 +3035,13 @@ async fn handle_code_review(
             Some(verdict.items.clone()),
             baseline.clone(),
         ));
-        let fix_brief = build_fix_brief(&brief, &verdict.items, orch.code.enabled);
         let work_slot = orch.issue_work_slot(&issue_id);
+        let fix_brief = build_fix_brief(
+            &brief,
+            &verdict.items,
+            orch.profile_or_root(&work_slot)
+                .is_enabled(CAPABILITY_RESPONSES_AS_CODE),
+        );
         let fixer = match dispatch_child(
             sub,
             spawner,
@@ -3289,6 +3377,15 @@ async fn handle_speculate(
         },
     };
 
+    // The agent profile every attempt runs under, validated against this agent's allowlist.
+    let attempt_profile = match resolve_delegation_target(&orch, spawner, &call.arguments) {
+        Ok(profile) => profile,
+        Err(refusal) => return refusal,
+    };
+    let attempt_code = orch
+        .profile_or_root(&attempt_profile)
+        .is_enabled(CAPABILITY_RESPONSES_AS_CODE);
+
     // K — clamped into [2, MAX]; fewer than two would not be best-of-anything.
     let attempts = call
         .arguments
@@ -3297,7 +3394,6 @@ async fn handle_speculate(
         .unwrap_or(DEFAULT_SPECULATION_ATTEMPTS)
         .clamp(2, MAX_SPECULATION_ATTEMPTS);
     let approaches = parse_string_array(&call.arguments, "approaches");
-    let slots = parse_string_array(&call.arguments, "slots");
 
     // Depth cap up front: every attempt is `spawner.depth + 1`, so an agent at the max depth cannot
     // speculate at all — refuse rather than failing on the first attempt's dispatch.
@@ -3332,19 +3428,14 @@ async fn handle_speculate(
             i,
             attempts as usize,
             approaches.get(i),
-            orch.code.enabled,
+            attempt_code,
         );
-        let slot = slots
-            .get(i)
-            .map(String::as_str)
-            .filter(|slot| !slot.is_empty())
-            .unwrap_or(PRIMARY_SLOT);
         match dispatch_child(
             sub,
             spawner,
             brief,
             issue_id.clone(),
-            slot,
+            &attempt_profile,
             Some(WorktreeDisposition::Speculative),
         ) {
             Ok(child) => match (child.worktree_branch, child.worktree_path) {
@@ -3436,8 +3527,14 @@ async fn handle_speculate(
             "only one attempt produced usable work".to_string(),
         )
     } else {
-        let judge_brief = build_judge_brief(&base_brief, &fanned, &candidates, orch.code.enabled);
-        let judge_slot = orch.judge_slot();
+        let judge_slot = orch.judge_profile();
+        let judge_brief = build_judge_brief(
+            &base_brief,
+            &fanned,
+            &candidates,
+            orch.profile_or_root(&judge_slot)
+                .is_enabled(CAPABILITY_RESPONSES_AS_CODE),
+        );
         match dispatch_judge(
             sub,
             spawner,
@@ -3965,8 +4062,13 @@ async fn process_review_gate(
         baseline.clone(),
     ));
     let diff = orch.run_diff();
-    let review_brief = build_review_brief(&orch.prompt, &diff, orch.code.enabled);
     let reviewer_slot = orch.reviewer_slot();
+    let review_brief = build_review_brief(
+        &orch.prompt,
+        &diff,
+        orch.profile_or_root(&reviewer_slot)
+            .is_enabled(CAPABILITY_RESPONSES_AS_CODE),
+    );
     let verdict = match dispatch_reviewer(sub, spawner, emitter, None, review_brief, &reviewer_slot)
         .await
     {
@@ -4175,6 +4277,31 @@ async fn run_workflow(
         Err(err) => return ToolOutcome::failed(ToolFailure::InvalidArgument, err),
     };
 
+    // Every stage names an agent to run its subagents, and each must be one this agent may spawn.
+    let spawner_profile = sub.orch.profile_or_root(&spawner.slot);
+    for stage in &stages {
+        if !spawner_profile.can_spawn(&stage.slot) {
+            let allowed = if spawner_profile.subagents.is_empty() {
+                "none".to_string()
+            } else {
+                spawner_profile
+                    .subagents
+                    .iter()
+                    .map(|reference| format!("`{}`", reference.agent))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            };
+            return ToolOutcome::failed(
+                ToolFailure::InvalidArgument,
+                format!(
+                    "workflow stage `{}` names agent `{}`, which is not one you may spawn. Use one \
+                     of: {allowed}.",
+                    stage.name, stage.slot
+                ),
+            );
+        }
+    }
+
     // Depth cap up front: every fanned-out agent is `spawner.depth + 1`, so an agent already at the
     // max depth cannot run a workflow at all — refuse the whole thing rather than failing on the
     // first stage's first dispatch.
@@ -4377,11 +4504,15 @@ fn parse_workflow_stages(args: &Value) -> Result<Vec<WorkflowStageSpec>, String>
         };
 
         let slot = stage
-            .get("slot")
+            .get("agent")
             .and_then(Value::as_str)
             .map(str::trim)
-            .filter(|slot| !slot.is_empty())
-            .unwrap_or(PRIMARY_SLOT)
+            .filter(|agent| !agent.is_empty())
+            .ok_or_else(|| {
+                format!(
+                    "workflow stage `{name}` needs an `agent` — the agent to run its subagents."
+                )
+            })?
             .to_string();
         let worktree = stage
             .get("worktree")
@@ -4575,6 +4706,7 @@ impl Agent {
         code_reviews: bool,
         speculative: bool,
         code: CodeSetup,
+        profile: &GgAgentConfig,
         mut subagents: Option<SubagentContext>,
         project: Option<ProjectContext>,
         replay: Option<Arc<GgRecorder>>,
@@ -4615,6 +4747,7 @@ impl Agent {
             code_reviews: code_reviews_active,
             speculative: speculative_active,
             responses_as_code: code.enabled,
+            profile,
             // A subagent renders this same prompt, and the ending section has to say what `finish`
             // actually ends *for the reader*: a root agent's summary is the run's last word, a
             // delegated worker's is the answer it hands back. A worker told "this ends the run" has
@@ -5708,6 +5841,7 @@ fn resolve_window_limit(
     // on the run, and this one stays here because it is genuinely a property of one capability's
     // configuration rather than of the run.
     let configured = set
+        .root()
         .capabilities
         .iter()
         .find_map(|capability| {
@@ -5792,11 +5926,11 @@ fn resolve_skills_dir(set: &GgCapabilitySet, workspace_dir: &Path) -> PathBuf {
 /// empty store bounded by the [caps resolved](MemoryCaps::resolve) from the capability's
 /// params; otherwise a [disabled](MemoriesRuntime::disabled) runtime (an ablation's off
 /// arm) that offers nothing.
-fn resolve_memories(set: &GgCapabilitySet) -> MemoriesRuntime {
-    if !set.is_enabled(CAPABILITY_MEMORIES) {
+fn resolve_memories(profile: &GgAgentConfig) -> MemoriesRuntime {
+    if !profile.is_enabled(CAPABILITY_MEMORIES) {
         return MemoriesRuntime::disabled();
     }
-    let caps = set
+    let caps = profile
         .capability(CAPABILITY_MEMORIES)
         .map(|cap| MemoryCaps::resolve(&cap.params))
         .unwrap_or_default();
@@ -5808,11 +5942,11 @@ fn resolve_memories(set: &GgCapabilitySet) -> MemoriesRuntime {
 /// DAG holding at most the [count resolved](resolve_max_tasks) from the capability's params;
 /// otherwise a [disabled](TasksRuntime::disabled) runtime (an ablation's off arm) that
 /// offers nothing.
-fn resolve_tasks(set: &GgCapabilitySet) -> TasksRuntime {
-    if !set.is_enabled(CAPABILITY_TASKS) {
+fn resolve_tasks(profile: &GgAgentConfig) -> TasksRuntime {
+    if !profile.is_enabled(CAPABILITY_TASKS) {
         return TasksRuntime::disabled();
     }
-    let params = set.capability(CAPABILITY_TASKS).map(|cap| &cap.params);
+    let params = profile.capability(CAPABILITY_TASKS).map(|cap| &cap.params);
     let max_tasks = params
         .map(resolve_max_tasks)
         .unwrap_or(crate::tasks::DEFAULT_MAX_TASKS);
@@ -6017,6 +6151,10 @@ struct PromptInputs<'a> {
     speculative: bool,
     /// Whether the run responds with programs rather than native tool calls.
     responses_as_code: bool,
+    /// This agent's [profile](GgAgentConfig): the source of its operator custom instructions, its
+    /// optional full-template override, and the [subagents](GgAgentConfig::subagents) it may spawn
+    /// (enumerated in the prompt so the model knows who it can delegate to, and why).
+    profile: &'a GgAgentConfig,
     /// Whether the agent this prompt is for is a **delegated** worker rather than the run's root,
     /// which decides what the ending section says `finish` ends: the run, or this worker's task.
     delegated: bool,
@@ -6049,9 +6187,27 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
         code_reviews,
         speculative,
         responses_as_code,
+        profile,
         delegated,
         fences_are_stripped,
     } = inputs;
+
+    // The agents this one may spawn, each with its caller-scoped description — enumerated in the
+    // prompt (in both execution modes) so the model knows which names `spawn_subagent`/`speculate`/
+    // `run_workflow` accept and when to reach for each. Only meaningful when this agent has the
+    // delegation machinery; an empty allowlist renders no section.
+    let spawnable_agents: Vec<SpawnableAgentView> = if registry.offers(SPAWN_SUBAGENT_TOOL) {
+        profile
+            .subagents
+            .iter()
+            .map(|reference| SpawnableAgentView {
+                name: reference.agent.clone(),
+                description: reference.description.clone(),
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
 
     // The code-mode surface, reflected out of the sandbox SDK's own emitted declarations and
     // filtered to exactly the tools this run binds into a program's scope — so the prompt can
@@ -6097,48 +6253,61 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
         images: offers_read && !vision.declared_text_only(),
     };
 
-    prompts::render_system(&SystemContext {
-        tools,
-        responses_as_code,
-        // How a program ends the run, shown to every code-mode run whatever it enables — the one
-        // entry here that is not a projection of the enabled set, because no capability offers it
-        // and no ablation withholds it. A tool-calling run is told `None`, and its ending rule is
-        // the untouched "stop calling tools" one.
-        session: responses_as_code.then_some(views.session),
-        delegated,
-        fences_are_stripped,
-        code: views.teaching,
-        types: views.types,
-        helpers: views.helpers,
-        turn_level_tools,
-        read_file,
-        skills: skills.prompt_entries(),
-        memories: memories.offers_memories().then(|| {
-            let caps = memories.caps();
-            MemoriesView {
-                max_count: caps.max_count,
-                max_len_per_memory: caps.max_len_per_memory,
-                max_total_len: caps.max_total_len,
-            }
-        }),
-        tasks: tasks.offers_tasks().then(|| TasksView {
-            max_tasks: tasks.max_tasks(),
-        }),
-        board: board.offers_board().then(|| {
-            let caps = board.caps();
-            BoardView {
-                max_epics: caps.max_epics,
-                max_issues: caps.max_issues,
-                max_retries: caps.max_retries,
-            }
-        }),
-        planning: planning.offers_planning(),
-        fsm: fsm.is_active().then(|| FsmView {
-            machine: fsm.machine_name().to_string(),
-        }),
-        code_reviews,
-        speculative,
-    })
+    prompts::render_system(
+        &SystemContext {
+            tools,
+            responses_as_code,
+            // Operator-authored instructions for this agent's profile, inserted near the top of the
+            // prompt; `None`/empty renders no section.
+            custom_instructions: profile
+                .custom_instructions
+                .as_deref()
+                .map(str::trim)
+                .filter(|text| !text.is_empty())
+                .map(str::to_string),
+            spawnable_agents,
+            // How a program ends the run, shown to every code-mode run whatever it enables — the one
+            // entry here that is not a projection of the enabled set, because no capability offers it
+            // and no ablation withholds it. A tool-calling run is told `None`, and its ending rule is
+            // the untouched "stop calling tools" one.
+            session: responses_as_code.then_some(views.session),
+            delegated,
+            fences_are_stripped,
+            code: views.teaching,
+            types: views.types,
+            helpers: views.helpers,
+            turn_level_tools,
+            read_file,
+            skills: skills.prompt_entries(),
+            memories: memories.offers_memories().then(|| {
+                let caps = memories.caps();
+                MemoriesView {
+                    max_count: caps.max_count,
+                    max_len_per_memory: caps.max_len_per_memory,
+                    max_total_len: caps.max_total_len,
+                }
+            }),
+            tasks: tasks.offers_tasks().then(|| TasksView {
+                max_tasks: tasks.max_tasks(),
+            }),
+            board: board.offers_board().then(|| {
+                let caps = board.caps();
+                BoardView {
+                    max_epics: caps.max_epics,
+                    max_issues: caps.max_issues,
+                    max_retries: caps.max_retries,
+                }
+            }),
+            planning: planning.offers_planning(),
+            fsm: fsm.is_active().then(|| FsmView {
+                machine: fsm.machine_name().to_string(),
+            }),
+            code_reviews,
+            speculative,
+        },
+        // A profile may override the whole prompt template; `None` uses the built-in one.
+        profile.system_prompt_template.as_deref(),
+    )
 }
 
 /// The model-facing message for a tool call refused by the loop's plan-mode guard.

@@ -27,9 +27,10 @@ steps:
 store of model facts, so the window is resolved *where the catalog lives* and
 **pushed into the run** when it is triggered: at enqueue the backend looks up every
 model the capability set binds and stamps the figures onto the launch, which carry
-through the driver into gg's invocation. A [multi-model](/gg/multi-model/) run
-carries one entry per bound model, so each agent is measured against its own model's
-window rather than the primary's. A run container never reaches back out for this.
+through the driver into gg's invocation. A run whose [agents](/gg/configurations/#agents)
+span several models carries one entry per bound model, so each agent is measured
+against its own model's window rather than the Root's. A run container never reaches
+back out for this.
 
 A model the catalog has not observed yet — the first run against a just-released
 model — is fetched from OpenRouter at that moment, for **that model only**, not the

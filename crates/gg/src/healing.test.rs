@@ -11,7 +11,7 @@
 //! pinned as a microsecond-scale unit test.
 
 use serde_json::json;
-use test_cabinet_core::gg::{CAPABILITY_RESPONSES_AS_CODE, GgCapabilityConfig, GgCapabilitySet};
+use test_cabinet_core::gg::{CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig, GgCapabilityConfig};
 
 use super::*;
 
@@ -291,14 +291,14 @@ pub(super) fn healed(reply: &str) -> Healed {
     heal(reply, false, &HealingConfig::default())
 }
 
-/// A capability set carrying `responses-as-code` with the given params.
-fn set_with(params: serde_json::Value) -> GgCapabilitySet {
-    GgCapabilitySet {
+/// An agent profile carrying `responses-as-code` with the given params.
+fn set_with(params: serde_json::Value) -> GgAgentConfig {
+    GgAgentConfig {
         capabilities: vec![GgCapabilityConfig {
             params,
             ..GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE)
         }],
-        ..GgCapabilitySet::default()
+        ..GgAgentConfig::root()
     }
 }
 
@@ -757,7 +757,7 @@ fn absent_healing_arms_everything() {
         assert!(resolved.unknown_params.is_empty(), "{params}");
     }
     assert_eq!(
-        resolve_healing(&GgCapabilitySet::default()).config,
+        resolve_healing(&GgAgentConfig::root()).config,
         HealingConfig::default()
     );
 }
@@ -814,12 +814,12 @@ fn a_non_boolean_toggle_stays_armed_and_is_reported() {
 /// run, so honouring its params would record an intention that had no effect.
 #[test]
 fn healing_params_on_a_disabled_capability_are_ignored() {
-    let set = GgCapabilitySet {
+    let set = GgAgentConfig {
         capabilities: vec![GgCapabilityConfig {
             params: json!({ "healing": false }),
             ..GgCapabilityConfig::disabled(CAPABILITY_RESPONSES_AS_CODE)
         }],
-        ..GgCapabilitySet::default()
+        ..GgAgentConfig::root()
     };
     let resolved = resolve_healing(&set);
     assert_eq!(resolved.config, HealingConfig::default());

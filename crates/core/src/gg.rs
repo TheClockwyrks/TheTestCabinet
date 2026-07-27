@@ -171,22 +171,6 @@ pub const CAPABILITY_PROJECT_MANAGEMENT: &str = "project-management";
 /// [planning]: https://docs.testcabinet.ai/gg/planning/
 pub const CAPABILITY_PLANNING: &str = "planning";
 
-/// The stable id of the Phase 4 [multi-model] capability: the ablation lever that decides
-/// whether a run's [subagents] may be dispatched on **non-`primary` model slots**.
-///
-/// Model selection is expressed through [slots](GgSlotBinding): a run binds one or more
-/// slots (a [`PRIMARY_SLOT`] and, optionally, role slots like `subagent`/`planner`/
-/// `reviewer`), possibly cross-provider. When this capability is **on**, an agent dispatched
-/// "on the `reviewer` slot" resolves its client from that slot's binding; when it is **off**,
-/// every agent falls back to the [`PRIMARY_SLOT`], so a whole run collapses to a single model
-/// — the off arm of a "does a cheaper subagent model cost accuracy?" study. Because slot
-/// resolution is the only thing this gates, a run with a single bound slot behaves identically
-/// on or off. Opt-in, like the other Phase 2+ capabilities.
-///
-/// [multi-model]: https://docs.testcabinet.ai/gg/multi-model/
-/// [subagents]: https://docs.testcabinet.ai/gg/subagents/
-pub const CAPABILITY_MULTI_MODEL: &str = "multi-model";
-
 /// The stable id of the Phase 4 [subagents] capability: the delegation core — an agent's
 /// ability to **spawn other agents**, work in parallel with them or **block** until they
 /// return, **message** a running child, and receive its **return value**.
@@ -196,9 +180,10 @@ pub const CAPABILITY_MULTI_MODEL: &str = "multi-model";
 /// caps how many agents run at once (a spawn beyond the cap **blocks until a slot frees**), and a
 /// `maxDepth` param bounds recursion (a spawn at `maxDepth` is **refused**, not queued). A blocked
 /// parent frees its running slot so other work runs but retains priority over not-yet-started
-/// agents. Off (its default — it is opt-in), the tools vanish and a run stays single-agent. Which
-/// [model slot](GgSlotBinding) a subagent runs on is governed by [multi-model](CAPABILITY_MULTI_MODEL),
-/// orthogonally to the parallelism cap.
+/// agents. Off (its default — it is opt-in), the tools vanish and a run stays single-agent. A
+/// subagent is spawned **by name** — `spawn_subagent` names the target [agent profile](GgAgentConfig),
+/// which must appear in the caller's [allowlist](GgAgentConfig::subagents) — and runs on that
+/// profile's own model, orthogonally to the parallelism cap.
 ///
 /// [subagents]: https://docs.testcabinet.ai/gg/subagents/
 /// [scheduler]: https://docs.testcabinet.ai/gg/subagents/#scheduling
@@ -234,7 +219,8 @@ pub const CAPABILITY_WORKTREES: &str = "worktrees";
 /// (a workflow gets no separate pool). The fanned-out agents are ordinary subagents: they appear in
 /// the [agent tree](https://docs.testcabinet.ai/gg/subagents/) with the same
 /// [`AgentSpawned`](GgTelemetryKind::AgentSpawned)/[`AgentStatus`](GgTelemetryKind::AgentStatus)/[`AgentReturned`](GgTelemetryKind::AgentReturned)
-/// telemetry, can run on any [model slot](CAPABILITY_MULTI_MODEL), and can each run in an isolated
+/// telemetry, each run under a named [agent profile](GgAgentConfig) (on that profile's own model),
+/// and can each run in an isolated
 /// [worktree](CAPABILITY_WORKTREES); the workflow's own structure is streamed as
 /// [`WorkflowStage`](GgTelemetryKind::WorkflowStage) stage-boundary events. Off (its default — it is
 /// opt-in), the tool vanishes. [FSM-driven processes] push declared control flow further still.
@@ -250,8 +236,8 @@ pub const CAPABILITY_WORKFLOWS: &str = "workflows";
 ///
 /// When enabled, marking an issue done with `complete_issue` no longer accepts it immediately:
 /// gg **triggers a Code Review**, dispatching a reviewer [subagent](CAPABILITY_SUBAGENTS)
-/// (optionally on a dedicated `reviewer` [model slot](GgSlotBinding) when
-/// [multi-model](CAPABILITY_MULTI_MODEL) is on) with the **diff** of the work against a baseline
+/// (running under the configured reviewer [agent profile](GgAgentConfig), defaulting to the
+/// [Root](ROOT_AGENT)) with the **diff** of the work against a baseline
 /// — the issue's initial commit captured when its work began, falling back to the run's
 /// [baseline](CAPABILITY_WORKTREES) — plus the issue's scope and completion criteria. The reviewer
 /// either **approves** (the issue is then accepted and marked done) or returns one or more
@@ -298,8 +284,8 @@ pub const CAPABILITY_FSM: &str = "fsm";
 ///
 /// When enabled, the model can call `speculate` with a task (a free-form prompt or an
 /// [issue](CAPABILITY_PROJECT_MANAGEMENT)) and a count `K`: gg fans out `K`
-/// [subagents](CAPABILITY_SUBAGENTS) at the same task — optionally with different approach hints, or
-/// on different [model slots](CAPABILITY_MULTI_MODEL) — **each in its own
+/// [subagents](CAPABILITY_SUBAGENTS) at the same task — under a named [agent profile](GgAgentConfig),
+/// optionally with different approach hints — **each in its own
 /// [worktree](CAPABILITY_WORKTREES)** so the attempts do not collide, driven by the same
 /// [scheduler](CAPABILITY_SUBAGENTS) (honoring the one global parallelism cap and the depth cap — no
 /// separate budget). Once the attempts finish, a **judge** — a dedicated judge subagent (or a
@@ -408,22 +394,29 @@ pub const CAPABILITY_REPLAY: &str = "replay";
 /// off this one constant so the paths never drift.
 pub const GG_REPLAY_ARTIFACT_PATH: &str = ".gg/replay.json";
 
+/// The conventional name of the **Root agent** — the one agent every
+/// [`GgCapabilitySet`] must declare, which drives the run's top-level session. It is
+/// unremovable in the editor and is the default profile for issue dispatch, Code
+/// Review, and speculation-judge helpers.
+pub const ROOT_AGENT: &str = "Root";
+
 /// The declarative, inspectable configuration of a gg run — its *independent
 /// variable*.
 ///
 /// A gg run is configured by a capability set rather than a harness+model+orchestrator
-/// tuple: which capabilities are on, which implementation each uses, their parameters,
-/// and how models bind to [slots](GgSlotBinding). The set is expressed as data so a
-/// run's exact configuration is recorded on the run and reproducible, and so
+/// tuple. Its capabilities are **per agent**: the set declares one or more
+/// [agent profiles](GgAgentConfig) — the first is always the [Root](ROOT_AGENT) —
+/// each with its own enabled capabilities, model binding, custom prompt, and the set
+/// of other agents it may spawn as subagents. The set is expressed as data so a run's
+/// exact configuration is recorded and reproducible, and so
 /// [result aggregation](https://docs.testcabinet.ai) can slice results by
-/// configuration. Freeze the model and the test case, vary the capability set, and
-/// the harness becomes a laboratory.
+/// configuration. Freeze the model and the test case, vary the capability set, and the
+/// harness becomes a laboratory.
 ///
-/// The capability collection is intentionally **open**: capabilities are identified
-/// by stable string id, not a closed enum, so later phases add capabilities without a
-/// breaking change. A capability that is absent from [`Self::capabilities`] is
-/// distinguishable from one that is present but disabled — see [`Self::is_enabled`].
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// A set stored before capabilities were per-agent — a flat `capabilities` / `slots` /
+/// `disabledTools` shape — is migrated on deserialize (see `GgCapabilitySetRaw`) into
+/// a single [Root agent](ROOT_AGENT), so no data migration is needed.
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgCapabilitySet {
@@ -434,41 +427,19 @@ pub struct GgCapabilitySet {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub preset: Option<String>,
-    /// The capabilities this run is configured with, each identified by a stable id.
-    /// A capability absent from this list is off *and* unconfigured; one present but
-    /// [disabled](GgCapabilityConfig::enabled) is off but records the configuration it
-    /// would have used, which keeps an ablation's on/off arms symmetric.
-    #[serde(default)]
-    pub capabilities: Vec<GgCapabilityConfig>,
-    /// The model-slot bindings for this run. Capabilities reference models by slot
-    /// name, never by a hardcoded id, so a study re-points a slot without touching any
-    /// capability's logic. Phase 0 binds a single [`PRIMARY_SLOT`]; the type allows
-    /// many, possibly cross-provider.
-    #[serde(default)]
-    pub slots: Vec<GgSlotBinding>,
+    /// The agent profiles this run is configured with, each with its own capabilities,
+    /// model binding, and delegation graph. **The first is always the
+    /// [Root agent](ROOT_AGENT)** — it drives the top-level session and is the default
+    /// profile for issue dispatch and helper agents. Never empty: the migration and
+    /// [`Default`] both guarantee at least a Root.
+    #[serde(default = "default_agents")]
+    pub agents: Vec<GgAgentConfig>,
     /// The [launch-time model parameters](GgModelSlot) this set declares, for the
-    /// [bindings](GgSlotBinding::model_slot) above that defer to one instead of pinning
+    /// [agent bindings](GgAgentConfig::model_slot) that defer to one instead of pinning
     /// a model. Empty for a fully pinned set — and empty on the set a run *records*,
     /// because launching resolves every deferred binding first.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub model_slots: Vec<GgModelSlot>,
-    /// Individual tool names to **withhold** from the agent even when the capability
-    /// that offers them is on — the finest-grained ablation lever, one notch below
-    /// toggling a whole [capability](GgCapabilityConfig::enabled).
-    ///
-    /// Because gg's modularity comes from the toolset, the *set of tools offered* is
-    /// itself an experimental variable: turning a capability off is the coarse way to
-    /// withhold its tools, and this list is the fine way — drop a single over-used or
-    /// competing tool (say `edit_file` while keeping `write_file`, to ask "does
-    /// whole-file rewriting beat patching?") without disabling the rest of its
-    /// capability. A named tool is not offered to the model (no schema, not
-    /// dispatchable) exactly as if its capability were off, and the run records the
-    /// resulting [effective toolset](GgSessionSummary::effective_tools) so a study can
-    /// slice by which tools were actually present. A name here that no enabled
-    /// capability offers withholds nothing (it is reported as a startup warning, not an
-    /// error, so a sweep can list a tool that only some arms offer).
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub disabled_tools: Vec<String>,
     /// The **execution ceilings** this run is bounded by — the turn, runtime, error and
     /// cost guardrails that stop a session and record which one stopped it.
     ///
@@ -485,94 +456,79 @@ pub struct GgCapabilitySet {
 }
 
 impl Default for GgCapabilitySet {
-    /// A capability set carrying the default capabilities but **no** slot binding, so it
-    /// needs no model id. Use [`Self::minimal`] to build a launchable set bound to a
-    /// model.
+    /// A capability set carrying a single [Root agent](ROOT_AGENT) with the default
+    /// capabilities but **no** model binding, so it needs no model id. Use
+    /// [`Self::minimal`] to build a launchable set bound to a model.
     fn default() -> Self {
         Self {
             preset: None,
-            capabilities: default_capabilities(),
-            slots: Vec::new(),
+            agents: default_agents(),
             model_slots: Vec::new(),
-            disabled_tools: Vec::new(),
             limits: GgRunLimits::default(),
         }
     }
 }
 
 impl GgCapabilitySet {
-    /// The reasonable "minimal" set: the [`PRIMARY_SLOT`] bound to `model_id` and the
-    /// default capabilities ([`CAPABILITY_SHELL`], the four
+    /// The reasonable "minimal" set: a single [Root agent](ROOT_AGENT) bound to
+    /// `model_id` with the default capabilities ([`CAPABILITY_SHELL`], the four
     /// [filesystem tools](FILESYSTEM_TOOL_CAPABILITIES),
     /// [`CAPABILITY_CONTEXT_VISIBILITY`], [`CAPABILITY_SKILLS`], [`CAPABILITY_MEMORIES`],
     /// and [`CAPABILITY_TASKS`]) present and enabled. This is a launchable configuration —
-    /// the smallest set that runs a gg session end to end. (Skills is inert unless the
-    /// workspace was seeded with a skills directory, and memories and tasks start empty
-    /// until the model writes one, so their presence here does not change a run that uses
-    /// none of them.)
+    /// the smallest set that runs a gg session end to end.
     pub fn minimal(model_id: impl Into<String>) -> Self {
         Self {
             preset: Some("minimal".to_string()),
-            capabilities: default_capabilities(),
-            slots: vec![GgSlotBinding::new(PRIMARY_SLOT, model_id)],
+            agents: vec![GgAgentConfig {
+                model_id: model_id.into(),
+                ..GgAgentConfig::root()
+            }],
             model_slots: Vec::new(),
-            disabled_tools: Vec::new(),
             limits: GgRunLimits::default(),
         }
     }
 
-    /// Whether the tool named `tool` is [withheld](Self::disabled_tools) from the agent
-    /// even when its capability is on — the per-tool ablation override. A withheld tool
-    /// is not offered to the model and not dispatchable, exactly as if its capability
-    /// were off.
-    pub fn is_tool_disabled(&self, tool: &str) -> bool {
-        self.disabled_tools.iter().any(|t| t == tool)
+    /// The [Root agent](ROOT_AGENT) — the first profile, which drives the top-level
+    /// session. Guaranteed to exist (the migration and [`Default`] never yield an empty
+    /// agent list), so this returns a reference rather than an `Option`.
+    pub fn root(&self) -> &GgAgentConfig {
+        self.agents
+            .first()
+            .expect("a gg capability set always has at least a Root agent")
     }
 
-    /// The configuration for the capability with the given id, or `None` when the
-    /// capability is absent from this set (which is distinct from present-but-disabled).
-    ///
-    /// This lookup is **exact**: it never falls back to a
-    /// [legacy alias](Self::effective_capability), so it is the right one for reading a
-    /// capability's own [implementation](GgCapabilityConfig::implementation) and
-    /// [params](GgCapabilityConfig::params) — an alias configures nothing, and inheriting
-    /// another capability's params would be a fabrication.
-    pub fn capability(&self, id: &str) -> Option<&GgCapabilityConfig> {
-        self.capabilities.iter().find(|c| c.id == id)
+    /// The agent profile with the given `name`, or `None` when this set declares none.
+    pub fn agent(&self, name: &str) -> Option<&GgAgentConfig> {
+        self.agents.iter().find(|a| a.name == name)
     }
 
-    /// The configuration that decides whether the capability with the given id is on: its
-    /// own, or — only when this set does not mention it at all — that of the
-    /// [legacy capability](CAPABILITY_FILESYSTEM) it was split out of.
-    ///
-    /// The alias is what keeps capability sets stored before a split launchable and
-    /// readable without a data migration. It is deliberately one-way and one-deep: a set
-    /// that names a modern id uses it verbatim (so an explicitly disabled `read-file` stays
-    /// off even beside a legacy `filesystem`), and the alias supplies *presence and
-    /// enabledness only*.
-    pub fn effective_capability(&self, id: &str) -> Option<&GgCapabilityConfig> {
-        self.capability(id)
-            .or_else(|| legacy_alias(id).and_then(|legacy| self.capability(legacy)))
-    }
+    // --- Root-agent conveniences ------------------------------------------------
+    //
+    // These forward to the [Root agent](Self::root) for the run-level reads that
+    // predate per-agent capabilities — launch validation, result-aggregation facets,
+    // and the session summary, all of which describe a run by its Root. Code that
+    // *executes* a specific agent must read that agent's own [`GgAgentConfig`], never
+    // these.
 
-    /// Whether the capability with the given id is present **and** enabled, honoring the
-    /// [legacy aliases](Self::effective_capability). An absent capability and a
-    /// present-but-disabled one both report `false`; use [`Self::capability`] to tell them
-    /// apart.
+    /// Whether the [Root agent](Self::root) has the capability with `id` enabled.
     pub fn is_enabled(&self, id: &str) -> bool {
-        self.effective_capability(id).is_some_and(|c| c.enabled)
+        self.root().is_enabled(id)
     }
 
-    /// The model id bound to the named slot, or `None` when no such slot is bound —
-    /// or when the binding that names it is still
-    /// [deferred](GgSlotBinding::model_slot) to a [model slot](GgModelSlot) the launch
-    /// has not filled in, which is not a binding to a model at all.
-    pub fn model_for_slot(&self, slot: &str) -> Option<&str> {
-        self.slots
-            .iter()
-            .find(|b| b.slot == slot)
-            .filter(|b| b.is_resolved())
-            .map(|b| b.model_id.trim())
+    /// The [Root agent's](Self::root) exact config for the capability with `id` (never
+    /// alias-resolved).
+    pub fn capability(&self, id: &str) -> Option<&GgCapabilityConfig> {
+        self.root().capability(id)
+    }
+
+    /// The [Root agent's](Self::root) effective (alias-aware) config for `id`.
+    pub fn effective_capability(&self, id: &str) -> Option<&GgCapabilityConfig> {
+        self.root().effective_capability(id)
+    }
+
+    /// Whether `tool` is withheld from the [Root agent](Self::root).
+    pub fn is_tool_disabled(&self, tool: &str) -> bool {
+        self.root().is_tool_disabled(tool)
     }
 
     /// The declaration of the named [model slot](GgModelSlot), or `None` when this set
@@ -581,22 +537,21 @@ impl GgCapabilitySet {
         self.model_slots.iter().find(|s| s.name == name)
     }
 
-    /// Every distinct model this set can actually run an agent on, in binding order —
-    /// the resolved [slot bindings'](GgSlotBinding) model ids, deduplicated.
+    /// Every distinct model the set can actually run an agent on, in agent order —
+    /// each agent's resolved model id, deduplicated.
     ///
     /// This is the list a launch resolves per-model facts for (the context window each
     /// model's agents are measured against, pushed in via
-    /// [`GgInvocation::model_windows`]): a [multi-model](https://docs.testcabinet.ai/gg/multi-model/)
-    /// run spans several models, so one figure for "the run's model" would be wrong for
-    /// every agent off the primary slot. A still-[deferred](GgSlotBinding::model_slot)
-    /// binding names no model and is skipped.
+    /// [`GgInvocation::model_windows`]): a run may span several models, so one figure
+    /// for "the run's model" would be wrong for every agent off the Root's model. An
+    /// agent whose binding is still [deferred](GgAgentConfig::model_slot) names no model
+    /// and is skipped.
     pub fn bound_model_ids(&self) -> Vec<&str> {
         let mut ids: Vec<&str> = Vec::new();
-        for binding in &self.slots {
-            if !binding.is_resolved() {
+        for agent in &self.agents {
+            let Some(id) = agent.resolved_model_id() else {
                 continue;
-            }
-            let id = binding.model_id.trim();
+            };
             if !ids.contains(&id) {
                 ids.push(id);
             }
@@ -604,19 +559,268 @@ impl GgCapabilitySet {
         ids
     }
 
-    /// The role slots whose binding is still [deferred](GgSlotBinding::model_slot) to a
-    /// [model slot](GgModelSlot) — the launch inputs a configuration is still waiting
-    /// on, in binding order.
+    /// The agents whose model binding is still [deferred](GgAgentConfig::model_slot) to a
+    /// [model slot](GgModelSlot) the launch has not filled in — the launch inputs a
+    /// configuration is still waiting on, in agent order (by agent name).
     ///
     /// Launching resolves every one of them, so this is empty for the capability set a
     /// run records; a non-empty result is a configuration being *launched*, not run.
-    pub fn unresolved_slots(&self) -> Vec<&str> {
-        self.slots
+    pub fn unresolved_agents(&self) -> Vec<&str> {
+        self.agents
             .iter()
-            .filter(|b| !b.is_resolved())
-            .map(|b| b.slot.as_str())
+            .filter(|a| !a.is_resolved())
+            .map(|a| a.name.as_str())
             .collect()
     }
+}
+
+/// The migration shape [`GgCapabilitySet`] deserializes through: it accepts both the
+/// modern per-agent form (an `agents` list) and the legacy flat form (top-level
+/// `capabilities` / `slots` / `disabledTools`), folding the latter into a single
+/// [Root agent](ROOT_AGENT). This is why no stored configuration needs a data
+/// migration — every set ever written still reads back.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GgCapabilitySetRaw {
+    #[serde(default)]
+    preset: Option<String>,
+    #[serde(default)]
+    agents: Option<Vec<GgAgentConfig>>,
+    #[serde(default)]
+    model_slots: Vec<GgModelSlot>,
+    #[serde(default)]
+    limits: GgRunLimits,
+    // --- legacy flat fields (pre per-agent) -----------------------------------
+    #[serde(default)]
+    capabilities: Option<Vec<GgCapabilityConfig>>,
+    #[serde(default)]
+    slots: Option<Vec<GgSlotBinding>>,
+    #[serde(default)]
+    disabled_tools: Option<Vec<String>>,
+}
+
+// Hand-written rather than derived so the migration shape ([`GgCapabilitySetRaw`]) drives
+// deserialization while `Serialize`/`ts_rs`/`schemars` still reflect the canonical
+// per-agent struct. (A `#[serde(from = …)]` would make schemars demand the Raw type also
+// implement `JsonSchema`, leaking the legacy fields into the generated schema.)
+impl<'de> Deserialize<'de> for GgCapabilitySet {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        Ok(GgCapabilitySetRaw::deserialize(deserializer)?.into())
+    }
+}
+
+impl From<GgCapabilitySetRaw> for GgCapabilitySet {
+    fn from(raw: GgCapabilitySetRaw) -> Self {
+        let agents = match raw.agents {
+            Some(agents) if !agents.is_empty() => agents,
+            _ => vec![GgAgentConfig::from_legacy(
+                raw.capabilities.unwrap_or_else(default_capabilities),
+                raw.slots.unwrap_or_default(),
+                raw.disabled_tools.unwrap_or_default(),
+            )],
+        };
+        GgCapabilitySet {
+            preset: raw.preset,
+            agents,
+            model_slots: raw.model_slots,
+            limits: raw.limits,
+        }
+    }
+}
+
+/// A single **agent profile** within a [`GgCapabilitySet`] — the per-agent unit that
+/// makes gg's capabilities configurable independently for each agent in a run.
+///
+/// Every profile has a unique [`name`](Self::name) (the first is always the
+/// [Root](ROOT_AGENT)), its own enabled [capabilities](Self::capabilities) and per-tool
+/// [ablation](Self::disabled_tools), its own model (pinned via [`model_id`](Self::model_id)
+/// or [deferred](Self::model_slot) to a launch-time [model slot](GgModelSlot)), an optional
+/// [custom prompt](Self::custom_instructions) / [full template override](Self::system_prompt_template),
+/// and the set of other agents it may spawn as [subagents](Self::subagents).
+///
+/// An agent is spawned **by name**: `spawn_subagent`, `speculate`, and `run_workflow`
+/// all name the target agent, which must appear in the caller's [`subagents`](Self::subagents)
+/// allowlist. A profile may list itself, allowing recursion.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgAgentConfig {
+    /// The profile's name, unique within a set. `"Root"` ([`ROOT_AGENT`]) for the
+    /// first profile.
+    pub name: String,
+    /// The capabilities this agent is configured with, each identified by a stable id.
+    /// A capability absent from this list is off *and* unconfigured; one present but
+    /// [disabled](GgCapabilityConfig::enabled) is off but records the configuration it
+    /// would have used, which keeps an ablation's on/off arms symmetric.
+    #[serde(default)]
+    pub capabilities: Vec<GgCapabilityConfig>,
+    /// The opaque model id this agent runs on, passed through to the model client.
+    /// Empty while the binding is [deferred](Self::model_slot) to a model slot the
+    /// launch has not filled in yet.
+    #[serde(default)]
+    pub model_id: String,
+    /// The [model slot](GgModelSlot) this agent takes its model from at launch, when it
+    /// does not pin one itself. `None` on a pinned binding — which is every binding on
+    /// the set a run records, because launching resolves the deferred ones.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub model_slot: Option<String>,
+    /// Individual tool names to **withhold** from this agent even when the capability
+    /// that offers them is on — the finest-grained ablation lever, one notch below
+    /// toggling a whole [capability](GgCapabilityConfig::enabled). A named tool is not
+    /// offered to the model and not dispatchable, exactly as if its capability were off.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub disabled_tools: Vec<String>,
+    /// Operator-authored instructions inserted into this agent's system prompt. `None`
+    /// (or empty) leaves the stock prompt. This is the field an operator edits normally;
+    /// [`system_prompt_template`](Self::system_prompt_template) is the escape hatch for
+    /// rewriting the whole prompt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub custom_instructions: Option<String>,
+    /// A full Handlebars override of this agent's system-prompt template. `None` uses
+    /// gg's built-in template (into which [`custom_instructions`](Self::custom_instructions)
+    /// are inserted). Set only when an operator deliberately rewrites the whole prompt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub system_prompt_template: Option<String>,
+    /// The other agents this agent may spawn as subagents — the delegation allowlist.
+    /// Each entry names a target agent (which may be this agent itself) and carries a
+    /// caller-scoped [description](GgSubagentRef::description) telling this agent when to
+    /// use that target. Empty means this agent spawns nothing.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub subagents: Vec<GgSubagentRef>,
+}
+
+impl GgAgentConfig {
+    /// A fresh [Root agent](ROOT_AGENT) with the default capabilities and no model
+    /// binding.
+    pub fn root() -> Self {
+        Self {
+            name: ROOT_AGENT.to_string(),
+            capabilities: default_capabilities(),
+            model_id: String::new(),
+            model_slot: None,
+            disabled_tools: Vec::new(),
+            custom_instructions: None,
+            system_prompt_template: None,
+            subagents: Vec::new(),
+        }
+    }
+
+    /// Fold a legacy flat capability set (top-level `capabilities` / `slots` /
+    /// `disabledTools`) into a single [Root agent](ROOT_AGENT): its model is taken from
+    /// the legacy [`PRIMARY_SLOT`] binding (or the first binding), and the other role
+    /// slots — a pre-per-agent concept — are dropped.
+    fn from_legacy(
+        capabilities: Vec<GgCapabilityConfig>,
+        slots: Vec<GgSlotBinding>,
+        disabled_tools: Vec<String>,
+    ) -> Self {
+        let primary = slots
+            .iter()
+            .find(|b| b.slot == PRIMARY_SLOT)
+            .or_else(|| slots.first());
+        let (model_id, model_slot) = primary
+            .map(|b| (b.model_id.clone(), b.model_slot.clone()))
+            .unwrap_or_default();
+        Self {
+            name: ROOT_AGENT.to_string(),
+            capabilities,
+            model_id,
+            model_slot,
+            disabled_tools,
+            custom_instructions: None,
+            system_prompt_template: None,
+            subagents: Vec::new(),
+        }
+    }
+
+    /// Whether the tool named `tool` is [withheld](Self::disabled_tools) from this agent
+    /// even when its capability is on — the per-tool ablation override.
+    pub fn is_tool_disabled(&self, tool: &str) -> bool {
+        self.disabled_tools.iter().any(|t| t == tool)
+    }
+
+    /// The configuration for the capability with the given id, or `None` when it is
+    /// absent from this agent (distinct from present-but-disabled).
+    ///
+    /// **Exact** — it never falls back to a [legacy alias](Self::effective_capability),
+    /// so it is the right lookup for a capability's own
+    /// [implementation](GgCapabilityConfig::implementation) and
+    /// [params](GgCapabilityConfig::params).
+    pub fn capability(&self, id: &str) -> Option<&GgCapabilityConfig> {
+        self.capabilities.iter().find(|c| c.id == id)
+    }
+
+    /// The configuration that decides whether the capability with the given id is on:
+    /// its own, or — only when this agent does not mention it at all — that of the
+    /// [legacy capability](CAPABILITY_FILESYSTEM) it was split out of.
+    pub fn effective_capability(&self, id: &str) -> Option<&GgCapabilityConfig> {
+        self.capability(id)
+            .or_else(|| legacy_alias(id).and_then(|legacy| self.capability(legacy)))
+    }
+
+    /// Whether the capability with the given id is present **and** enabled for this
+    /// agent, honoring the [legacy aliases](Self::effective_capability).
+    pub fn is_enabled(&self, id: &str) -> bool {
+        self.effective_capability(id).is_some_and(|c| c.enabled)
+    }
+
+    /// The model id this agent runs on, or `None` while its binding is still
+    /// [deferred](Self::model_slot) to a model slot the launch has not filled in.
+    pub fn resolved_model_id(&self) -> Option<&str> {
+        let id = self.model_id.trim();
+        (!id.is_empty()).then_some(id)
+    }
+
+    /// Whether this agent names a model to run — a pinned binding, or a deferred one the
+    /// launch has since filled in.
+    pub fn is_resolved(&self) -> bool {
+        self.resolved_model_id().is_some()
+    }
+
+    /// Whether this agent may spawn the agent named `target` — i.e. `target` appears in
+    /// its [`subagents`](Self::subagents) allowlist.
+    pub fn can_spawn(&self, target: &str) -> bool {
+        self.subagents.iter().any(|s| s.agent == target)
+    }
+
+    /// The caller-scoped description for spawning `target`, or `None` when `target` is
+    /// not in this agent's allowlist.
+    pub fn subagent_description(&self, target: &str) -> Option<&str> {
+        self.subagents
+            .iter()
+            .find(|s| s.agent == target)
+            .map(|s| s.description.as_str())
+    }
+}
+
+/// One entry in an [agent's](GgAgentConfig) delegation allowlist: a target agent this
+/// agent may spawn, plus the caller-scoped [description](Self::description) that tells
+/// the spawning agent when to use it.
+///
+/// The description is scoped to the `(spawner, target)` pair, so the same target can
+/// carry different guidance depending on which agent is allowed to spawn it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgSubagentRef {
+    /// The name of the target agent this agent may spawn (may be the spawner itself).
+    pub agent: String,
+    /// Caller-scoped guidance on when to spawn `agent`, surfaced in the spawning
+    /// agent's `spawn_subagent` tool description. May be empty.
+    #[serde(default)]
+    pub description: String,
+}
+
+/// A single Root agent with the default capabilities — the [`Default`] and migration
+/// fallback for [`GgCapabilitySet::agents`].
+fn default_agents() -> Vec<GgAgentConfig> {
+    vec![GgAgentConfig::root()]
 }
 
 /// The capability a legacy umbrella id stands in for `id`, when `id` is one that was split
@@ -837,7 +1041,7 @@ pub struct GgModelSlot {
 /// (50) is preserved because a gg run has always had one. A value that cannot bound anything — a
 /// zero window, a negative rate, a rate above `1.0` — is a startup warning and is ignored, never
 /// an error, on the same terms as an unknown name in
-/// [`disabled_tools`](GgCapabilitySet::disabled_tools). The run records the ceilings that were
+/// [`disabled_tools`](GgAgentConfig::disabled_tools). The run records the ceilings that were
 /// actually in force on [`GgSessionSummary::limits`], so a default is a recorded fact rather than
 /// a hidden one.
 ///
@@ -2067,7 +2271,7 @@ pub struct GgSessionSummary {
     /// in the order they were presented to the model. This is what the run's
     /// [capability set](GgCapabilitySet) *actually resolved to* — a capability contributes
     /// its tools only when enabled (and, for the stateful ones, only when its store is
-    /// non-empty), minus any individually [withheld](GgCapabilitySet::disabled_tools) tool —
+    /// non-empty), minus any individually [withheld](GgAgentConfig::disabled_tools) tool —
     /// so recording it durably makes the toolset a first-class experimental variable a query
     /// can slice by ("group by whether `edit_file` was offered", "runs with only
     /// `write_file`"). Because switching a capability on/off *is* offering/withholding its
@@ -2752,11 +2956,13 @@ pub enum GgTelemetryKind {
     /// `parent_agent_id` and the `slot`/`modelId` together are why gg usage is accounted **per
     /// slot** (see [`SlotUsage`](Self::SlotUsage)) rather than for one model.
     AgentSpawned {
-        /// The [model slot](GgSlotBinding) this agent runs on (for example [`PRIMARY_SLOT`], or
-        /// a role slot like `subagent`). Orthogonal to the parallelism cap.
+        /// The [agent profile](GgAgentConfig) name this agent runs under (for example
+        /// [`ROOT_AGENT`], or an operator-named profile). gg usage is accounted per profile
+        /// (see [`SlotUsage`](Self::SlotUsage)); the field keeps its `slot` name for wire
+        /// stability, but it now names the agent profile rather than a role slot.
         slot: String,
-        /// The concrete model id the [`slot`](Self::AgentSpawned::slot) resolved to for this
-        /// agent — the seam that makes a run span several models, one per slot.
+        /// The concrete model id this agent's [profile](Self::AgentSpawned::slot) is bound to
+        /// — the seam that makes a run span several models, one per profile.
         model_id: String,
         /// The agent's depth in the [subagent tree](https://docs.testcabinet.ai/gg/subagents/):
         /// `0` for the root, `parent.depth + 1` for a spawned child. A spawn that would exceed

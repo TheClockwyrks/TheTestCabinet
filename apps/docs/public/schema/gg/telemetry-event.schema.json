@@ -1125,11 +1125,11 @@
           "type": "integer"
         },
         "modelId": {
-          "description": "The concrete model id the [`slot`](Self::AgentSpawned::slot) resolved to for this\nagent — the seam that makes a run span several models, one per slot.",
+          "description": "The concrete model id this agent's [profile](Self::AgentSpawned::slot) is bound to\n— the seam that makes a run span several models, one per profile.",
           "type": "string"
         },
         "slot": {
-          "description": "The [model slot](GgSlotBinding) this agent runs on (for example [`PRIMARY_SLOT`], or\na role slot like `subagent`). Orthogonal to the parallelism cap.",
+          "description": "The [agent profile](GgAgentConfig) name this agent runs under (for example\n[`ROOT_AGENT`], or an operator-named profile). gg usage is accounted per profile\n(see [`SlotUsage`](Self::SlotUsage)); the field keeps its `slot` name for wire\nstability, but it now names the agent profile rather than a role slot.",
           "type": "string"
         },
         "type": {

@@ -78,7 +78,7 @@ fn config_reads_params_and_clamps_parallel() {
     let mut set = GgCapabilitySet::minimal("mock/x");
     let mut cap = GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS);
     cap.params = serde_json::json!({ "maxParallel": 2, "maxDepth": 5 });
-    set.capabilities.push(cap);
+    set.agents[0].capabilities.push(cap);
     let config = SubagentConfig::resolve(&set);
     assert_eq!(config.max_parallel, 2);
     assert_eq!(config.max_depth, 5);
@@ -87,7 +87,7 @@ fn config_reads_params_and_clamps_parallel() {
     let mut set = GgCapabilitySet::minimal("mock/x");
     let mut cap = GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS);
     cap.params = serde_json::json!({ "maxParallel": 0 });
-    set.capabilities.push(cap);
+    set.agents[0].capabilities.push(cap);
     assert_eq!(
         SubagentConfig::resolve(&set).max_parallel,
         DEFAULT_MAX_PARALLEL

@@ -83,8 +83,8 @@ const DUAL_FAMILY_MODEL = {
 } as unknown as Model;
 
 // A saved configuration exercising the whole model-slot contract: two declared
-// launch slots (one carrying a default), a role deferring to each, and a `judge`
-// role pinned to a model *inside* the configuration — which must never be asked
+// launch slots (one carrying a default), an agent deferring to each, and a `judge`
+// agent pinned to a model *inside* the configuration — which must never be asked
 // about again on the launch form.
 const SAVED_CONFIG = {
   id: "cfg-1",
@@ -93,15 +93,19 @@ const SAVED_CONFIG = {
   updatedAt: "2026-07-23T00:00:00Z",
   capabilitySet: {
     preset: "critic-sweep",
-    capabilities: [{ id: "shell", enabled: true, params: {} }],
     modelSlots: [
       { name: "primary" },
       { name: "critic", defaultModelId: "anthropic/claude-haiku-4.5" },
     ],
-    slots: [
-      { slot: "primary", modelId: "", modelSlot: "primary" },
-      { slot: "reviewer", modelId: "", modelSlot: "critic" },
-      { slot: "judge", modelId: "openai/o-fixed", provider: "openrouter" },
+    agents: [
+      {
+        name: "Root",
+        capabilities: [{ id: "shell", enabled: true, params: {} }],
+        modelId: "",
+        modelSlot: "primary",
+      },
+      { name: "reviewer", capabilities: [], modelId: "", modelSlot: "critic" },
+      { name: "judge", capabilities: [], modelId: "openai/o-fixed" },
     ],
   },
 };
@@ -211,14 +215,15 @@ describe("NewRunPage", () => {
 
     const request = launchGgRun.mock.calls[0]![0];
     expect(request.testCase).toBe("carom");
-    expect(request.capabilitySet.slots[0]).toMatchObject({
-      slot: "primary",
+    // The Root agent resolved to the model picked for its `primary` slot.
+    expect(request.capabilitySet.agents[0]).toMatchObject({
+      name: "Root",
       modelId: "openai/gpt-5.6-sol",
     });
     // The built-in the picker opened on drove the capability set, and records
     // itself as the run's `preset` facet.
     expect(request.capabilitySet.preset).toBe("minimal");
-    const ids = request.capabilitySet.capabilities.map(
+    const ids = request.capabilitySet.agents[0].capabilities.map(
       (c: { id: string }) => c.id,
     );
     expect(ids).toContain("shell");
@@ -253,15 +258,23 @@ describe("NewRunPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Launch run" }));
     await waitFor(() => expect(launchGgRun).toHaveBeenCalledTimes(1));
 
-    // The launched set is fully pinned: each deferred role resolved to the model its
+    // The launched set is fully pinned: each deferred agent resolved to the model its
     // slot collected, the internal `judge` binding carried through untouched, and the
     // declarations dropped — what runs is what the run records.
     const { capabilitySet } = launchGgRun.mock.calls[0]![0];
-    expect(capabilitySet.slots).toEqual([
-      { slot: "primary", modelId: "openai/gpt-5.6-sol" },
-      { slot: "reviewer", modelId: "anthropic/claude-haiku-4.5" },
-      { slot: "judge", modelId: "openai/o-fixed", provider: "openrouter" },
+    expect(
+      capabilitySet.agents.map((a: { name: string; modelId: string }) => ({
+        name: a.name,
+        modelId: a.modelId,
+      })),
+    ).toEqual([
+      { name: "Root", modelId: "openai/gpt-5.6-sol" },
+      { name: "reviewer", modelId: "anthropic/claude-haiku-4.5" },
+      { name: "judge", modelId: "openai/o-fixed" },
     ]);
+    expect(capabilitySet.agents.every((a: { modelSlot?: string }) => !a.modelSlot)).toBe(
+      true,
+    );
     expect(capabilitySet.modelSlots).toBeUndefined();
   });
 });

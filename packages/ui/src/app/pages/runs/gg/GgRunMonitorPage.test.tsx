@@ -132,12 +132,17 @@ function sessionStarted(
   return gg({
     type: "session_started",
     capabilitySet: {
-      capabilities: capabilities.map((id) => ({
-        id,
-        enabled: true,
-        params: {},
-      })),
-      slots: [{ slot: "primary", modelId: "mock/scripted-builder" }],
+      agents: [
+        {
+          name: "Root",
+          capabilities: capabilities.map((id) => ({
+            id,
+            enabled: true,
+            params: {},
+          })),
+          modelId: "mock/scripted-builder",
+        },
+      ],
     },
   });
 }

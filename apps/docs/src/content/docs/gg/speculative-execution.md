@@ -3,10 +3,13 @@ title: "Speculative execution"
 ---
 
 Best-of-K: attempt the same piece of work several times in parallel and keep the
-best result. gg fans out K [subagents](/gg/subagents/) at the same task or
-[board issue](/gg/project-management/) — optionally with different approaches, or on
-different [slots](/gg/multi-model/#slots) — each in its own
-[worktree](/gg/worktrees/), then a judge (or a [Code Review](/gg/code-reviews/))
+best result. `speculate` names the [agent profile](/gg/configurations/#agents) to run
+the attempts under (from the caller's [allowlist](/gg/subagents/)), and gg fans out K
+[subagents](/gg/subagents/) of it at the same task or
+[board issue](/gg/project-management/) — optionally with different approaches — each
+in its own [worktree](/gg/worktrees/), then a **judge** — a subagent run under the
+capability's **`judgeAgent`** profile (defaulting to the
+[Root agent](/gg/configurations/#agents)), or a [Code Review](/gg/code-reviews/) —
 selects the winning attempt to merge and discards the rest.
 
 Every primitive it needs already exists, so it is largely an [FSM](/gg/fsms/)

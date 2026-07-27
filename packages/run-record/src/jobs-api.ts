@@ -135,9 +135,9 @@ export type GgRunRequest = {
    */
   variant?: string;
   /**
-   * The declarative capability set configuring the run: which capabilities are
-   * on, their implementations/params, and the model-slot bindings. Must bind a
-   * model to the [`PRIMARY_SLOT`].
+   * The declarative capability set configuring the run: its agent profiles (each
+   * with its own capabilities, model binding, and delegation graph) and the
+   * run-level model slots and limits. Must bind a model to the [`ROOT_AGENT`].
    */
   capabilitySet: GgCapabilitySet;
   /**

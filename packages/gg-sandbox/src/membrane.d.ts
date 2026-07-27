@@ -400,10 +400,10 @@ declare module "test-cabinet:gg/delegation" {
 
   /** A spawn request. */
   export interface SpawnRequest {
+    /** The agent to run the child as — one of the agents you may spawn. */
+    agent: string;
     /** What the child should do. */
     task: SubagentBrief;
-    /** The model slot to run it on; `undefined` uses the primary slot. */
-    slot: string | undefined;
     /** Run the child in an isolated git worktree, merged back on clean completion. */
     worktree: boolean | undefined;
   }
@@ -412,9 +412,9 @@ declare module "test-cabinet:gg/delegation" {
   export interface SubagentHandle {
     /** The child's id. */
     id: string;
-    /** The slot it was placed on. */
+    /** The agent profile it runs as. */
     slot: string;
-    /** The model actually bound to that slot. */
+    /** The model actually bound to that agent. */
     modelId: string;
     /** The worktree branch it runs on, when it is isolated. */
     worktreeBranch: string | undefined;
@@ -447,8 +447,8 @@ declare module "test-cabinet:gg/delegation" {
     prompt: string;
     /** The items to fan out over; `undefined` on a later stage reuses the prior results. */
     items: string[] | undefined;
-    /** The model slot for this stage's children. */
-    slot: string | undefined;
+    /** The agent to run this stage's children as — one of the agents you may spawn. */
+    agent: string;
     /** Run this stage's children in isolated worktrees. */
     worktree: boolean | undefined;
   }
@@ -465,14 +465,14 @@ declare module "test-cabinet:gg/delegation" {
 
   /** A best-of-K request. */
   export interface SpeculateRequest {
+    /** The agent to run every attempt as — one of the agents you may spawn. */
+    agent: string;
     /** What every attempt should do. */
     task: SubagentBrief;
     /** K — how many attempts. Clamped to 2–6 by the host. */
     attempts: number | undefined;
     /** Per-attempt approach hints, positional. */
     approaches: string[];
-    /** Per-attempt model slots, positional. */
-    slots: string[];
   }
 
   /** What a speculation merged. */

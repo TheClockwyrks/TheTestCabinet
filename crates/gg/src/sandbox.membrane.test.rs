@@ -178,12 +178,12 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "spawn_subagent",
-            program: "spawnSubagent({ prompt: \"write the lexer\", slot: \"subagent\", worktree: true });",
+            program: "spawnSubagent({ agent: \"subagent\", prompt: \"write the lexer\", worktree: true });",
             expected: || {
                 json!({
+                    "agent": "subagent",
                     "prompt": "write the lexer",
                     "issueId": null,
-                    "slot": "subagent",
                     "worktree": true,
                 })
             },
@@ -200,14 +200,14 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "run_workflow",
-            program: "runWorkflow([{ prompt: \"look at {{item}}\", items: [\"a.ts\"] }]);",
+            program: "runWorkflow([{ prompt: \"look at {{item}}\", agent: \"subagent\", items: [\"a.ts\"] }]);",
             expected: || {
                 json!({
                     "stages": [{
                         "name": null,
                         "prompt": "look at {{item}}",
                         "items": ["a.ts"],
-                        "slot": null,
+                        "agent": "subagent",
                         "worktree": null,
                     }],
                 })
@@ -215,14 +215,14 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "speculate",
-            program: "speculate({ issueId: \"i1\", attempts: 3, approaches: [\"be bold\"] });",
+            program: "speculate({ agent: \"attempt\", issueId: \"i1\", attempts: 3, approaches: [\"be bold\"] });",
             expected: || {
                 json!({
+                    "agent": "attempt",
                     "prompt": null,
                     "issueId": "i1",
                     "attempts": 3,
                     "approaches": ["be bold"],
-                    "slots": [],
                 })
             },
         },

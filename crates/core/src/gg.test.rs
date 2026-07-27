@@ -5,8 +5,22 @@ use serde_json::json;
 use super::*;
 use crate::metrics::TokenCounts;
 
+/// A single-agent capability set whose [Root](ROOT_AGENT) profile carries `capabilities` — the
+/// common shape these tests need now that capabilities are per-agent.
+fn root_set(capabilities: Vec<GgCapabilityConfig>) -> GgCapabilitySet {
+    GgCapabilitySet {
+        preset: None,
+        agents: vec![GgAgentConfig {
+            capabilities,
+            ..GgAgentConfig::root()
+        }],
+        model_slots: Vec::new(),
+        limits: GgRunLimits::default(),
+    }
+}
+
 #[test]
-fn minimal_capability_set_binds_the_primary_slot_and_phase0_capabilities() {
+fn minimal_capability_set_binds_the_root_model_and_phase0_capabilities() {
     let set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
     assert_eq!(set.preset.as_deref(), Some("minimal"));
     assert!(set.is_enabled(CAPABILITY_SHELL));
@@ -22,16 +36,21 @@ fn minimal_capability_set_binds_the_primary_slot_and_phase0_capabilities() {
     assert!(set.capability("compaction").is_none());
     assert!(!set.is_enabled(CAPABILITY_AGENT_MANAGED_CONTEXT));
     assert!(set.capability(CAPABILITY_AGENT_MANAGED_CONTEXT).is_none());
+    // The Root agent is bound to the given model.
+    assert_eq!(set.root().name, ROOT_AGENT);
     assert_eq!(
-        set.model_for_slot(PRIMARY_SLOT),
+        set.root().resolved_model_id(),
         Some("anthropic/claude-opus-4.8")
     );
 }
 
 #[test]
-fn default_capability_set_needs_no_model_and_binds_no_slot() {
+fn default_capability_set_needs_no_model_and_binds_no_agent_model() {
     let set = GgCapabilitySet::default();
-    assert!(set.slots.is_empty());
+    // Exactly one agent — the Root — with no model bound.
+    assert_eq!(set.agents.len(), 1);
+    assert_eq!(set.root().name, ROOT_AGENT);
+    assert!(set.root().resolved_model_id().is_none());
     assert!(set.preset.is_none());
     // The default capabilities are still present, just unbound to any model.
     assert!(set.is_enabled(CAPABILITY_SHELL));
@@ -44,87 +63,91 @@ fn default_capability_set_needs_no_model_and_binds_no_slot() {
 /// stored data being migrated.
 #[test]
 fn the_legacy_filesystem_capability_stands_in_for_the_per_tool_ones() {
-    let set = GgCapabilitySet {
-        model_slots: Vec::new(),
-        preset: None,
-        capabilities: vec![GgCapabilityConfig::enabled(CAPABILITY_FILESYSTEM)],
-        slots: Vec::new(),
-        disabled_tools: Vec::new(),
-        limits: GgRunLimits::default(),
-    };
+    let set = root_set(vec![GgCapabilityConfig::enabled(CAPABILITY_FILESYSTEM)]);
+    let root = set.root();
     for capability in FILESYSTEM_TOOL_CAPABILITIES {
-        assert!(set.is_enabled(capability), "expected `{capability}` on");
+        assert!(root.is_enabled(capability), "expected `{capability}` on");
         // The alias supplies enabledness only: the per-tool capability is still absent, so
         // nothing reads another capability's params as if they were its own.
-        assert!(set.capability(capability).is_none());
+        assert!(root.capability(capability).is_none());
         assert_eq!(
-            set.effective_capability(capability).map(|c| c.id.as_str()),
+            root.effective_capability(capability).map(|c| c.id.as_str()),
             Some(CAPABILITY_FILESYSTEM)
         );
     }
 
     // Turning the umbrella off turns all four off.
-    let off = GgCapabilitySet {
-        capabilities: vec![GgCapabilityConfig::disabled(CAPABILITY_FILESYSTEM)],
-        ..set.clone()
-    };
+    let off = root_set(vec![GgCapabilityConfig::disabled(CAPABILITY_FILESYSTEM)]);
     for capability in FILESYSTEM_TOOL_CAPABILITIES {
-        assert!(!off.is_enabled(capability));
+        assert!(!off.root().is_enabled(capability));
     }
 
     // An explicit per-tool capability wins over the umbrella beside it, in both directions.
-    let mixed = GgCapabilitySet {
-        capabilities: vec![
-            GgCapabilityConfig::enabled(CAPABILITY_FILESYSTEM),
-            GgCapabilityConfig::disabled(CAPABILITY_EDIT_FILE),
-        ],
-        ..set.clone()
-    };
-    assert!(!mixed.is_enabled(CAPABILITY_EDIT_FILE));
-    assert!(mixed.is_enabled(CAPABILITY_READ_FILE));
+    let mixed = root_set(vec![
+        GgCapabilityConfig::enabled(CAPABILITY_FILESYSTEM),
+        GgCapabilityConfig::disabled(CAPABILITY_EDIT_FILE),
+    ]);
+    assert!(!mixed.root().is_enabled(CAPABILITY_EDIT_FILE));
+    assert!(mixed.root().is_enabled(CAPABILITY_READ_FILE));
 
     // The alias is one-way: a modern set does not answer to the legacy id.
     assert!(!GgCapabilitySet::default().is_enabled(CAPABILITY_FILESYSTEM));
 }
 
+/// A capability set stored in the legacy **flat** shape (top-level `capabilities`/`slots`) still
+/// deserializes: the migration folds it into a single [Root](ROOT_AGENT) agent.
+#[test]
+fn a_legacy_flat_capability_set_migrates_to_a_root_agent() {
+    let flat = json!({
+        "capabilities": [{ "id": CAPABILITY_SHELL, "enabled": true, "params": {} }],
+        "slots": [{ "slot": PRIMARY_SLOT, "modelId": "anthropic/claude-opus-4.8" }],
+    });
+    let set: GgCapabilitySet = serde_json::from_value(flat).expect("migrate legacy shape");
+    assert_eq!(set.agents.len(), 1);
+    assert_eq!(set.root().name, ROOT_AGENT);
+    assert!(set.root().is_enabled(CAPABILITY_SHELL));
+    assert_eq!(
+        set.root().resolved_model_id(),
+        Some("anthropic/claude-opus-4.8")
+    );
+}
+
 #[test]
 fn disabled_capability_is_present_but_off() {
-    let set = GgCapabilitySet {
-        model_slots: Vec::new(),
-        preset: None,
-        capabilities: vec![GgCapabilityConfig::disabled(CAPABILITY_SHELL)],
-        slots: Vec::new(),
-        disabled_tools: Vec::new(),
-        limits: GgRunLimits::default(),
-    };
+    let set = root_set(vec![GgCapabilityConfig::disabled(CAPABILITY_SHELL)]);
     // Present-but-disabled reports not-enabled but is still findable.
-    assert!(!set.is_enabled(CAPABILITY_SHELL));
-    assert!(set.capability(CAPABILITY_SHELL).is_some());
+    assert!(!set.root().is_enabled(CAPABILITY_SHELL));
+    assert!(set.root().capability(CAPABILITY_SHELL).is_some());
 }
 
 #[test]
 fn capability_set_round_trips_through_json() {
     let set = GgCapabilitySet {
-        model_slots: Vec::new(),
         preset: Some("planning-A".to_string()),
-        capabilities: vec![
-            GgCapabilityConfig::enabled(CAPABILITY_SHELL),
-            GgCapabilityConfig {
-                id: "compaction".to_string(),
-                enabled: true,
-                implementation: Some("summarize-v2".to_string()),
-                params: json!({ "threshold": 0.8 }),
+        agents: vec![
+            GgAgentConfig {
+                name: ROOT_AGENT.to_string(),
+                capabilities: vec![
+                    GgCapabilityConfig::enabled(CAPABILITY_SHELL),
+                    GgCapabilityConfig {
+                        id: "compaction".to_string(),
+                        enabled: true,
+                        implementation: Some("summarize-v2".to_string()),
+                        params: json!({ "threshold": 0.8 }),
+                    },
+                ],
+                model_id: "anthropic/claude-opus-4.8".to_string(),
+                disabled_tools: vec!["edit_file".to_string()],
+                ..GgAgentConfig::root()
             },
-        ],
-        slots: vec![
-            GgSlotBinding::new(PRIMARY_SLOT, "anthropic/claude-opus-4.8"),
-            GgSlotBinding {
-                slot: "reviewer".to_string(),
+            GgAgentConfig {
+                name: "reviewer".to_string(),
+                capabilities: vec![GgCapabilityConfig::enabled(CAPABILITY_SHELL)],
                 model_id: "openai/gpt-5.5".to_string(),
-                model_slot: None,
+                ..GgAgentConfig::root()
             },
         ],
-        disabled_tools: vec!["edit_file".to_string()],
+        model_slots: Vec::new(),
         limits: GgRunLimits::default(),
     };
     let value = serde_json::to_value(&set).expect("serialize");
@@ -278,28 +301,37 @@ fn a_limit_breach_round_trips_with_and_without_its_window() {
 }
 
 #[test]
-fn a_deferred_binding_is_unresolved_until_a_launch_fills_its_model_slot() {
-    // The shape a saved configuration carries: the `primary` role deferred to a
-    // declared model slot, and `judge` pinned inside the configuration.
+fn a_deferred_agent_is_unresolved_until_a_launch_fills_its_model_slot() {
+    // The shape a saved configuration carries: the Root agent deferred to a declared model
+    // slot, and a `judge` agent pinned inside the configuration.
     let mut set = GgCapabilitySet {
+        preset: None,
+        agents: vec![
+            GgAgentConfig {
+                model_id: String::new(),
+                model_slot: Some("critic".to_string()),
+                ..GgAgentConfig::root()
+            },
+            GgAgentConfig {
+                name: "judge".to_string(),
+                model_id: "openai/o-fixed".to_string(),
+                ..GgAgentConfig::root()
+            },
+        ],
         model_slots: vec![GgModelSlot {
             name: "critic".to_string(),
             default_model_id: Some("anthropic/claude-haiku-4.5".to_string()),
         }],
-        preset: None,
-        capabilities: Vec::new(),
-        slots: vec![
-            GgSlotBinding::deferred(PRIMARY_SLOT, "critic"),
-            GgSlotBinding::new("judge", "openai/o-fixed"),
-        ],
-        disabled_tools: Vec::new(),
         limits: GgRunLimits::default(),
     };
-    // A deferred binding names no model, so it binds nothing yet — and it is exactly
-    // what a launch must fill in.
-    assert_eq!(set.unresolved_slots(), vec![PRIMARY_SLOT]);
-    assert_eq!(set.model_for_slot(PRIMARY_SLOT), None);
-    assert_eq!(set.model_for_slot("judge"), Some("openai/o-fixed"));
+    // A deferred agent names no model, so it binds nothing yet — and it is exactly what a
+    // launch must fill in.
+    assert_eq!(set.unresolved_agents(), vec![ROOT_AGENT]);
+    assert_eq!(set.root().resolved_model_id(), None);
+    assert_eq!(
+        set.agent("judge").and_then(|a| a.resolved_model_id()),
+        Some("openai/o-fixed")
+    );
     assert_eq!(
         set.model_slot("critic")
             .and_then(|s| s.default_model_id.as_deref()),
@@ -307,30 +339,45 @@ fn a_deferred_binding_is_unresolved_until_a_launch_fills_its_model_slot() {
     );
 
     // Launching resolves it, and the set is then runnable.
-    set.slots[0] = GgSlotBinding::new(PRIMARY_SLOT, "anthropic/claude-opus-4.8");
-    assert!(set.unresolved_slots().is_empty());
+    set.agents[0].model_id = "anthropic/claude-opus-4.8".to_string();
+    set.agents[0].model_slot = None;
+    assert!(set.unresolved_agents().is_empty());
     assert_eq!(
-        set.model_for_slot(PRIMARY_SLOT),
+        set.root().resolved_model_id(),
         Some("anthropic/claude-opus-4.8")
     );
 }
 
 /// The models a launch resolves per-model facts for: every distinct model an agent can
-/// run on, deduplicated, with a still-deferred binding (which names no model) skipped.
+/// run on, deduplicated, with a still-deferred agent (which names no model) skipped.
 #[test]
 fn bound_model_ids_lists_each_resolved_model_once() {
     let set = GgCapabilitySet {
-        model_slots: Vec::new(),
         preset: None,
-        capabilities: Vec::new(),
-        slots: vec![
-            GgSlotBinding::new(PRIMARY_SLOT, "anthropic/claude-opus-4.8"),
-            GgSlotBinding::new("subagent", "openai/gpt-5.4-mini"),
-            // Two roles sharing one model contribute one entry.
-            GgSlotBinding::new("judge", "openai/gpt-5.4-mini"),
-            GgSlotBinding::deferred("reviewer", "critic"),
+        agents: vec![
+            GgAgentConfig {
+                model_id: "anthropic/claude-opus-4.8".to_string(),
+                ..GgAgentConfig::root()
+            },
+            GgAgentConfig {
+                name: "subagent".to_string(),
+                model_id: "openai/gpt-5.4-mini".to_string(),
+                ..GgAgentConfig::root()
+            },
+            // Two agents sharing one model contribute one entry.
+            GgAgentConfig {
+                name: "judge".to_string(),
+                model_id: "openai/gpt-5.4-mini".to_string(),
+                ..GgAgentConfig::root()
+            },
+            GgAgentConfig {
+                name: "reviewer".to_string(),
+                model_id: String::new(),
+                model_slot: Some("critic".to_string()),
+                ..GgAgentConfig::root()
+            },
         ],
-        disabled_tools: Vec::new(),
+        model_slots: Vec::new(),
         limits: GgRunLimits::default(),
     };
     assert_eq!(
@@ -343,20 +390,21 @@ fn bound_model_ids_lists_each_resolved_model_once() {
 
 #[test]
 fn a_set_without_model_slots_deserializes_unchanged() {
-    // Every configuration saved before model slots existed omits both fields.
+    // Every configuration saved before model slots existed omits the field; a legacy flat set
+    // migrates to a single Root agent.
     let set: GgCapabilitySet = serde_json::from_value(json!({
         "capabilities": [{ "id": "shell", "enabled": true }],
         "slots": [{ "slot": "primary", "modelId": "anthropic/claude-opus-4.8" }],
     }))
     .expect("deserialize");
     assert!(set.model_slots.is_empty());
-    assert!(set.slots[0].model_slot.is_none());
-    assert!(set.slots[0].is_resolved());
-    // And a fully pinned set serializes without either field, so a recorded run's
+    assert!(set.root().model_slot.is_none());
+    assert!(set.root().is_resolved());
+    // And a fully pinned set serializes without a `modelSlots` field, so a recorded run's
     // configuration reads exactly as it did before.
     let value = serde_json::to_value(&set).expect("serialize");
     assert!(value.get("modelSlots").is_none());
-    assert!(value["slots"][0].get("modelSlot").is_none());
+    assert!(value["agents"][0].get("modelSlot").is_none());
 }
 
 #[test]

@@ -12,7 +12,7 @@ Requirements:
 
 - Trigger when the thread nears the **active model's** window (the threshold is
   defined by the `summaryHeadroom` capability parameter, not a constant — and note
-  that with [multi-model](/gg/multi-model/) different agents have different window
+  that [agents](/gg/configurations/#agents) on different models have different window
   sizes).
 - Produce a summary that preserves enough working state for the model to continue
   without losing the thread of what it was doing.

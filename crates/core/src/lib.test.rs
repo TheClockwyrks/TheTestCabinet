@@ -423,10 +423,11 @@ fn a_gg_run_without_a_capability_set_is_a_configuration_error() {
 #[test]
 fn a_gg_run_without_a_model_window_is_a_configuration_error() {
     let mut set = crate::gg::GgCapabilitySet::minimal("mock/primary");
-    set.slots.push(crate::gg::GgSlotBinding::new(
-        "subagent",
-        "openai/gpt-5.4-mini",
-    ));
+    set.agents.push(crate::gg::GgAgentConfig {
+        name: "subagent".to_string(),
+        model_id: "openai/gpt-5.4-mini".to_string(),
+        ..crate::gg::GgAgentConfig::root()
+    });
     let request = RunRequest {
         harness: HarnessSlug::Gg,
         gg_capability_set: Some(set),

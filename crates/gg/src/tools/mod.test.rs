@@ -6,21 +6,17 @@ use tempfile::TempDir;
 use test_cabinet_core::gg::{
     CAPABILITY_EDIT_FILE, CAPABILITY_FILESYSTEM, CAPABILITY_LIST_DIR, CAPABILITY_READ_FILE,
     CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_WRITE_FILE, FILESYSTEM_TOOL_CAPABILITIES,
-    GgCapabilityConfig, GgCapabilitySet, GgRunLimits,
+    GgAgentConfig, GgCapabilityConfig,
 };
 
 use crate::model::ToolCall;
 use crate::skills::SkillLibrary;
 
-/// A capability set with the given capability configs and no slot binding.
-fn set_with(capabilities: Vec<GgCapabilityConfig>) -> GgCapabilitySet {
-    GgCapabilitySet {
-        model_slots: Vec::new(),
-        preset: None,
+/// An agent profile with the given capability configs and no model binding.
+fn set_with(capabilities: Vec<GgCapabilityConfig>) -> GgAgentConfig {
+    GgAgentConfig {
         capabilities,
-        slots: Vec::new(),
-        disabled_tools: Vec::new(),
-        limits: GgRunLimits::default(),
+        ..GgAgentConfig::root()
     }
 }
 
@@ -41,7 +37,7 @@ fn offers(registry: &ToolRegistry, name: &str) -> bool {
 /// The default Phase 0 set (shell + filesystem enabled) offers the full toolset.
 #[test]
 fn registry_offers_all_phase0_tools_when_both_capabilities_enabled() {
-    let registry = ToolRegistry::from_capabilities(&GgCapabilitySet::default());
+    let registry = ToolRegistry::from_capabilities(&GgAgentConfig::root());
 
     // shell + read_file + write_file + edit_file + list_dir
     assert_eq!(registry.len(), 5);
@@ -221,7 +217,7 @@ fn registry_is_empty_when_no_capabilities_present() {
 #[tokio::test]
 async fn dispatch_unknown_tool_returns_error_outcome() {
     let dir = TempDir::new().unwrap();
-    let registry = ToolRegistry::from_capabilities(&GgCapabilitySet::default());
+    let registry = ToolRegistry::from_capabilities(&GgAgentConfig::root());
     let ctx = ToolContext::new(dir.path());
 
     let call = ToolCall {
@@ -266,7 +262,7 @@ async fn dispatch_withheld_tool_returns_error_outcome() {
 #[tokio::test]
 async fn dispatch_routes_to_the_named_tool() {
     let dir = TempDir::new().unwrap();
-    let registry = ToolRegistry::from_capabilities(&GgCapabilitySet::default());
+    let registry = ToolRegistry::from_capabilities(&GgAgentConfig::root());
     let ctx = ToolContext::new(dir.path());
 
     let call = ToolCall {
@@ -558,10 +554,9 @@ fn per_tool_override_withholds_only_the_named_tool() {
 #[tokio::test]
 async fn dispatch_per_tool_disabled_tool_returns_error_outcome() {
     let dir = TempDir::new().unwrap();
-    let set = GgCapabilitySet {
-        model_slots: Vec::new(),
+    let set = GgAgentConfig {
         disabled_tools: vec!["edit_file".to_string()],
-        ..GgCapabilitySet::default()
+        ..GgAgentConfig::root()
     };
     let registry = ToolRegistry::from_capabilities(&set);
     let ctx = ToolContext::new(dir.path());
@@ -581,10 +576,9 @@ async fn dispatch_per_tool_disabled_tool_returns_error_outcome() {
 #[test]
 fn tool_names_reports_the_effective_toolset() {
     // The default set is shell + filesystem.
-    let set = GgCapabilitySet {
-        model_slots: Vec::new(),
+    let set = GgAgentConfig {
         disabled_tools: vec!["write_file".to_string()],
-        ..GgCapabilitySet::default()
+        ..GgAgentConfig::root()
     };
     let registry = ToolRegistry::from_capabilities(&set);
     assert_eq!(
@@ -632,7 +626,7 @@ fn all_tool_names_matches_a_maximal_registry() {
     use test_cabinet_core::gg::{
         CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_FSM, CAPABILITY_MEMORIES, CAPABILITY_PLANNING,
         CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS,
-        CAPABILITY_TASKS, CAPABILITY_WORKFLOWS,
+        CAPABILITY_TASKS, CAPABILITY_WORKFLOWS, GgSubagentRef, ROOT_AGENT,
     };
 
     let dir = TempDir::new().unwrap();
@@ -661,7 +655,13 @@ fn all_tool_names_matches_a_maximal_registry() {
         GgCapabilityConfig::enabled(CAPABILITY_WORKFLOWS),
         GgCapabilityConfig::enabled(CAPABILITY_SPECULATIVE),
     ]);
-    let set = set_with(capabilities);
+    let mut set = set_with(capabilities);
+    // A maximal registry offers the delegation tools too, which requires at least one agent this
+    // profile may spawn.
+    set.subagents.push(GgSubagentRef {
+        agent: ROOT_AGENT.to_string(),
+        description: String::new(),
+    });
     let registry = ToolRegistry::from_run(
         &set,
         &RuntimeSet::new(&library)

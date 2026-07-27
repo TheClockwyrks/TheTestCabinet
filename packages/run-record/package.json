@@ -31,6 +31,10 @@
       "types": "./dist/gg.d.ts",
       "default": "./dist/gg.js"
     },
+    "./gg-system-prompt": {
+      "types": "./dist/gg-system-prompt.d.ts",
+      "default": "./dist/gg-system-prompt.js"
+    },
     "./gg-aggregate": {
       "types": "./dist/gg-aggregate.d.ts",
       "default": "./dist/gg-aggregate.js"

@@ -12,7 +12,7 @@ fn fsm_set(machine: &str) -> GgCapabilitySet {
     if !machine.is_empty() {
         cap.params = json!({ PARAM_MACHINE: machine });
     }
-    set.capabilities.push(cap);
+    set.agents[0].capabilities.push(cap);
     set
 }
 
@@ -20,7 +20,7 @@ fn fsm_set(machine: &str) -> GgCapabilitySet {
 /// the machine, authored in the harness.
 #[test]
 fn built_in_machines_have_their_states_in_order() {
-    let tdd = FsmRuntime::resolve(&fsm_set(MACHINE_TDD));
+    let tdd = FsmRuntime::resolve(fsm_set(MACHINE_TDD).root());
     assert_eq!(tdd.machine_name(), MACHINE_TDD);
     assert_eq!(
         state_names(&tdd),
@@ -28,14 +28,14 @@ fn built_in_machines_have_their_states_in_order() {
         "tdd is write tests → implement → verify"
     );
 
-    let review = FsmRuntime::resolve(&fsm_set(MACHINE_REVIEW_GATED));
+    let review = FsmRuntime::resolve(fsm_set(MACHINE_REVIEW_GATED).root());
     assert_eq!(
         state_names(&review),
         vec!["develop", "review", "accept"],
         "review-gated is develop → review → accept"
     );
 
-    let plan = FsmRuntime::resolve(&fsm_set(MACHINE_PLAN_FIRST));
+    let plan = FsmRuntime::resolve(fsm_set(MACHINE_PLAN_FIRST).root());
     assert_eq!(
         state_names(&plan),
         vec!["plan", "implement"],
@@ -59,21 +59,21 @@ fn state_names(fsm: &FsmRuntime) -> Vec<&'static str> {
 #[test]
 fn no_or_unknown_machine_is_inactive() {
     // Absent capability.
-    assert!(!FsmRuntime::resolve(&GgCapabilitySet::minimal("mock/echo")).is_active());
+    assert!(!FsmRuntime::resolve(GgCapabilitySet::minimal("mock/echo").root()).is_active());
     // Enabled but no `machine` param.
-    assert!(!FsmRuntime::resolve(&fsm_set("")).is_active());
+    assert!(!FsmRuntime::resolve(fsm_set("").root()).is_active());
     // Enabled with an unrecognized machine name.
-    let bogus = FsmRuntime::resolve(&fsm_set("does-not-exist"));
+    let bogus = FsmRuntime::resolve(fsm_set("does-not-exist").root());
     assert!(!bogus.is_active(), "an unknown machine drives nothing");
     // The disabled capability is off even with a machine named.
     let mut disabled = fsm_set(MACHINE_TDD);
-    disabled
+    disabled.agents[0]
         .capabilities
         .iter_mut()
         .find(|c| c.id == CAPABILITY_FSM)
         .unwrap()
         .enabled = false;
-    assert!(!FsmRuntime::resolve(&disabled).is_active());
+    assert!(!FsmRuntime::resolve(disabled.root()).is_active());
 }
 
 /// `configured_machine` reports the raw configured name (so the announce path can warn about an
@@ -175,7 +175,7 @@ fn unconditional_guard_always_allows() {
 #[test]
 fn tool_gating_mirrors_the_state_policy() {
     // plan-first plan state: read-only.
-    let plan = FsmRuntime::resolve(&fsm_set(MACHINE_PLAN_FIRST));
+    let plan = FsmRuntime::resolve(fsm_set(MACHINE_PLAN_FIRST).root());
     assert_eq!(plan.current_state().unwrap().name, "plan");
     assert!(plan.offers("read_file"), "read-only tools are offered");
     assert!(plan.offers("list_dir"));
@@ -189,7 +189,7 @@ fn tool_gating_mirrors_the_state_policy() {
     );
 
     // tdd write_tests: full toolset, and advance_state offered (Advance exit).
-    let tdd = FsmRuntime::resolve(&fsm_set(MACHINE_TDD));
+    let tdd = FsmRuntime::resolve(fsm_set(MACHINE_TDD).root());
     assert!(tdd.offers("write_file"), "an All state offers every tool");
     assert!(tdd.offers(ADVANCE_STATE_TOOL));
 
@@ -203,7 +203,7 @@ fn tool_gating_mirrors_the_state_policy() {
 /// review-gated return to `develop`), and neither runs off the ends.
 #[test]
 fn advance_and_revert_step_through_states() {
-    let mut fsm = FsmRuntime::resolve(&fsm_set(MACHINE_TDD));
+    let mut fsm = FsmRuntime::resolve(fsm_set(MACHINE_TDD).root());
     assert_eq!(fsm.current_index(), 0);
     assert_eq!(fsm.current_state().unwrap().name, "write_tests");
 
@@ -216,7 +216,7 @@ fn advance_and_revert_step_through_states() {
     assert_eq!(fsm.current_index(), 2);
 
     // Loop-back to an earlier state.
-    let mut review = FsmRuntime::resolve(&fsm_set(MACHINE_REVIEW_GATED));
+    let mut review = FsmRuntime::resolve(fsm_set(MACHINE_REVIEW_GATED).root());
     review.advance(); // develop → review
     assert_eq!(review.current_state().unwrap().name, "review");
     let develop = review.index_of("develop").unwrap();

@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use super::*;
-use test_cabinet_core::gg::{GgCapabilitySet, PRIMARY_SLOT};
+use test_cabinet_core::gg::GgCapabilitySet;
 
 /// A fully-specified invocation file deserializes into the expected fields and its
 /// capability set round-trips.
@@ -36,7 +36,7 @@ fn deserializes_a_full_invocation_file() {
     assert!(invocation.prompt.contains("Build the game"));
     assert_eq!(invocation.capability_set.preset.as_deref(), Some("minimal"));
     assert_eq!(
-        invocation.capability_set.model_for_slot(PRIMARY_SLOT),
+        invocation.capability_set.root().resolved_model_id(),
         Some("anthropic/claude-opus-4-8")
     );
     assert!(invocation.capability_set.is_enabled("shell"));
@@ -64,7 +64,7 @@ fn defaults_the_capability_set_when_omitted() {
     let invocation: GgInvocation = serde_json::from_str(json).expect("valid invocation");
 
     assert_eq!(invocation.capability_set, GgCapabilitySet::default());
-    assert_eq!(invocation.capability_set.model_for_slot(PRIMARY_SLOT), None);
+    assert_eq!(invocation.capability_set.root().resolved_model_id(), None);
 }
 
 /// `load` reads and parses a file from disk, attaching a diagnosable error for a

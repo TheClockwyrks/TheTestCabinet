@@ -25,7 +25,7 @@ fn healing_set(params: serde_json::Value) -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal("mock/primary");
     let mut capability = GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE);
     capability.params = params;
-    set.capabilities.push(capability);
+    set.agents[0].capabilities.push(capability);
     set
 }
 
@@ -84,7 +84,7 @@ async fn a_healed_turn_reports_what_was_healed_on_its_code_execution() {
     std::fs::write(dir.path().join("src/a.ts"), "export const a = 1;\n").unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
-    let registry = ToolRegistry::from_capabilities(&GgCapabilitySet::minimal("mock/primary"));
+    let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/primary").root());
     let client = MockClient::new(
         "mock/primary",
         vec![
@@ -198,7 +198,7 @@ async fn a_not_a_program_response_never_reaches_the_sandbox() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
-    let registry = ToolRegistry::from_capabilities(&GgCapabilitySet::minimal("mock/primary"));
+    let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/primary").root());
     let client = MockClient::new(
         "mock/primary",
         vec![
@@ -322,7 +322,7 @@ async fn disarming_a_strategy_changes_only_what_healing_returns() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
-    let registry = ToolRegistry::from_capabilities(&GgCapabilitySet::minimal("mock/primary"));
+    let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/primary").root());
     let mut healing = HealingConfig::default();
     healing.set(HealingStrategy::StripFences, false);
     // Prose, then a fenced program — the shape a model actually sends. With the strategy armed the
@@ -373,7 +373,7 @@ async fn an_unreadable_healing_param_is_logged_at_warn() {
         dir.path(),
         healing_set(json!({ "healing": { "stripFences": false, "strip-prose": 0 } })),
     );
-    let factory = ScriptedFactory::new().slot(PRIMARY_SLOT, |b| {
+    let factory = ScriptedFactory::new().slot(ROOT_AGENT, |b| {
         Box::new(MockClient::new(
             &b.model_id,
             vec![code_reply(FINISHING_PROGRAM)],

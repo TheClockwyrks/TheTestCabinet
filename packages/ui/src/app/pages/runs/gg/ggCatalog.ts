@@ -11,24 +11,24 @@ import type {
   GgRunLimits,
 } from "@test-cabinet/run-record/gg";
 
-/** Whether a run's capability set has the named capability on. */
+// Whether a run's capability set has the named capability on. Capabilities are
+// per-agent now, so a run-level "is X on?" question is answered by the **Root** agent
+// (agents[0]) — the profile that drives the top-level session.
 export function capabilityOn(set: GgCapabilitySet | null, id: string): boolean {
-  return set?.capabilities.some((c) => c.id === id && c.enabled) ?? false;
+  return (
+    set?.agents?.[0]?.capabilities.some((c) => c.id === id && c.enabled) ?? false
+  );
 }
 
-// The slot every gg run must bind — the primary model that drives the agent loop.
-// The backend 400s a capability set that leaves it unbound.
-export const PRIMARY_SLOT = "primary";
+// The conventional name of the Root agent — the unremovable first profile that drives
+// the run's top-level session, and the default target for issue dispatch, Code Review,
+// and speculation judging. Mirrors `ROOT_AGENT` in `crates/core/src/gg.rs`.
+export const ROOT_AGENT = "Root";
 
-// The role slots multi-model runs commonly bind, beyond the primary. Free text is
-// allowed too; these seed the datalist so the common ones are one click away, and
-// the analyze page offers them as `slotModel` facet targets.
-export const COMMON_ROLE_SLOTS = [
-  "subagent",
-  "planner",
-  "reviewer",
-  "judge",
-] as const;
+// The conventional name of the first model slot a fresh configuration declares — the
+// launch input the Root agent's model defers to by default. Kept for the New run
+// page's launch-summary heuristic and the draft's default model-slot name.
+export const PRIMARY_SLOT = "primary";
 
 // The concern each capability belongs to, and the group render order + which start
 // collapsed (the entirely opt-in, off-by-default groups) so the config form is not
@@ -72,7 +72,18 @@ export const CAP_GROUPS: ReadonlyArray<{
 export interface ParamSpec {
   key: string;
   label: string;
-  kind: "fraction" | "number" | "bytes" | "select" | "text" | "toggles";
+  // `agent` renders a <select> over the configuration's own agent names (value = the
+  // agent name, coerced to a JSON string param), so a param can point at an agent
+  // profile — how the run-level "which agent runs this?" knobs (issue/reviewer/judge)
+  // are configured. The list of choices is threaded in by the editor.
+  kind:
+    | "fraction"
+    | "number"
+    | "bytes"
+    | "select"
+    | "text"
+    | "toggles"
+    | "agent";
   hint?: string;
   placeholder?: string;
   // The value gg falls back to when this param is left unset, seeded into the field
@@ -547,6 +558,13 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         defaultValue: String(DEFAULT_MAX_RETRIES),
         hint: "How many times gg re-dispatches an issue whose assigned agent finished without completing it before marking the issue failed.",
       },
+      {
+        key: "issueAgent",
+        label: "Issue agent",
+        kind: "agent",
+        defaultValue: ROOT_AGENT,
+        hint: "Which agent profile gg runs a dispatched issue under. A run-level knob read off the Root agent.",
+      },
     ],
     tools: [
       "create_epic",
@@ -618,13 +636,6 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     ],
   },
   {
-    id: "multi-model",
-    name: "Multi-model",
-    group: "Delegation",
-    purpose:
-      "Let subagents resolve to non-primary model slots; off collapses the whole run to the primary model.",
-  },
-  {
     id: "worktrees",
     name: "Worktrees",
     group: "Delegation",
@@ -646,6 +657,15 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     group: "Process & quality",
     purpose:
       "Gate an issue's acceptance on a reviewer subagent that approves or returns actionable fix items.",
+    params: [
+      {
+        key: "reviewerAgent",
+        label: "Reviewer agent",
+        kind: "agent",
+        defaultValue: ROOT_AGENT,
+        hint: "Which agent profile runs the Code Review. A run-level knob read off the Root agent.",
+      },
+    ],
   },
   {
     id: "fsm",
@@ -670,6 +690,15 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     group: "Process & quality",
     purpose:
       "Best-of-K — attempt a piece of work K times in parallel worktrees and keep the judged winner.",
+    params: [
+      {
+        key: "judgeAgent",
+        label: "Judge agent",
+        kind: "agent",
+        defaultValue: ROOT_AGENT,
+        hint: "Which agent profile judges the K attempts and picks the winner. A run-level knob read off the Root agent.",
+      },
+    ],
     tools: ["speculate"],
   },
   // --- Debugging --------------------------------------------------------------

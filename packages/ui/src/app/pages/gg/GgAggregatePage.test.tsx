@@ -119,7 +119,7 @@ describe("GgAggregatePage", () => {
 
     // Every clause of the incoming query is loaded back into the builder…
     expect(screen.getByDisplayValue("carom")).toBeInTheDocument();
-    expect(screen.getByLabelText("slot")).toHaveValue("primary");
+    expect(screen.getByLabelText("agent profile")).toHaveValue("primary");
     expect(screen.getByLabelText("aggregation")).toHaveValue("sum");
     expect(screen.getByLabelText("summary field")).toHaveValue(
       "issues_reopened",

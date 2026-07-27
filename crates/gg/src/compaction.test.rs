@@ -60,18 +60,18 @@ fn setup_resolves_from_the_capability_set() {
     use test_cabinet_core::gg::{CAPABILITY_COMPACTION, GgCapabilityConfig, GgCapabilitySet};
 
     // Absent: disabled.
-    let off = CompactionSetup::resolve(&GgCapabilitySet::minimal("mock/x"));
+    let off = CompactionSetup::resolve(GgCapabilitySet::minimal("mock/x").root());
     assert!(!off.enabled);
 
     // Present + enabled with a param: enabled, headroom read (and the trigger derived from it).
     let mut set = GgCapabilitySet::minimal("mock/x");
-    set.capabilities.push(GgCapabilityConfig {
+    set.agents[0].capabilities.push(GgCapabilityConfig {
         id: CAPABILITY_COMPACTION.to_string(),
         enabled: true,
         implementation: None,
         params: json!({ "summaryHeadroom": 0.3 }),
     });
-    let on = CompactionSetup::resolve(&set);
+    let on = CompactionSetup::resolve(set.root());
     assert!(on.enabled);
     assert_eq!(on.policy.summary_headroom, 0.3);
     assert_eq!(on.policy.trigger_fullness(), 1.0 - 0.3);
@@ -133,13 +133,14 @@ fn working_window_only_reserves_when_compaction_is_on() {
     assert_eq!(working_window(&off, 200_000), 200_000);
 
     let mut on = GgCapabilitySet::minimal("mock/x");
-    on.capabilities
+    on.agents[0]
+        .capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_COMPACTION));
     assert_eq!(working_window(&on, 200_000), 160_000);
 
     // A disabled compaction capability that carries params is still an off arm.
     let mut disabled = GgCapabilitySet::minimal("mock/x");
-    disabled.capabilities.push(GgCapabilityConfig {
+    disabled.agents[0].capabilities.push(GgCapabilityConfig {
         id: CAPABILITY_COMPACTION.to_string(),
         enabled: false,
         implementation: None,
@@ -149,7 +150,7 @@ fn working_window_only_reserves_when_compaction_is_on() {
 
     // The headroom param is honored on the enabled arm.
     let mut tuned = GgCapabilitySet::minimal("mock/x");
-    tuned.capabilities.push(GgCapabilityConfig {
+    tuned.agents[0].capabilities.push(GgCapabilityConfig {
         id: CAPABILITY_COMPACTION.to_string(),
         enabled: true,
         implementation: None,
@@ -183,20 +184,23 @@ fn setup_records_the_selected_strategy() {
     use test_cabinet_core::gg::{CAPABILITY_COMPACTION, GgCapabilityConfig, GgCapabilitySet};
 
     let mut structured = GgCapabilitySet::minimal("mock/x");
-    structured.capabilities.push(GgCapabilityConfig {
+    structured.agents[0].capabilities.push(GgCapabilityConfig {
         id: CAPABILITY_COMPACTION.to_string(),
         enabled: true,
         implementation: Some("structured".to_string()),
         params: json!({}),
     });
-    assert_eq!(CompactionSetup::resolve(&structured).strategy, "structured");
+    assert_eq!(
+        CompactionSetup::resolve(structured.root()).strategy,
+        "structured"
+    );
 
     // An absent implementation records the default `model` strategy.
     let mut plain = GgCapabilitySet::minimal("mock/x");
-    plain
+    plain.agents[0]
         .capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_COMPACTION));
-    assert_eq!(CompactionSetup::resolve(&plain).strategy, "model");
+    assert_eq!(CompactionSetup::resolve(plain.root()).strategy, "model");
 }
 
 /// The default model summarizer is answered offline by the mock's marker path, returning

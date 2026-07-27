@@ -1,9 +1,0 @@
-{{#if fsm}}
-## Process
-
-This run is driven through a fixed **{{fsm.machine}}** process: you are placed in an ordered sequence
-of states and must complete each before the next. Follow the guidance for your current
-state, and call `advance_state` to move on once its condition is met — gg **refuses** the
-advance while the condition is unmet, so you cannot skip ahead (for example, you cannot start
-implementing before your tests exist). Some states restrict which tools you may use.
-{{/if}}

@@ -187,7 +187,8 @@ fn main() -> Result<()> {
         TsModule {
             file: "gg.ts",
             decls: ts_decls![&cfg;
-                gg::GgSlotBinding, gg::GgModelSlot, gg::GgCapabilityConfig, gg::GgCapabilitySet,
+                gg::GgAgentConfig, gg::GgSubagentRef, gg::GgModelSlot,
+                gg::GgCapabilityConfig, gg::GgCapabilitySet,
                 gg::GgContextSource, gg::GgContextSourceUsage,
                 gg::GgPromptRef, gg::GgLoggedToolCall, gg::GgLoggedImage,
                 gg::GgSkillState,
@@ -324,8 +325,9 @@ fn main() -> Result<()> {
             rel_path: "gg/capability-set.schema.json",
             root: Some("GgCapabilitySet"),
             owns: &[
+                "GgAgentConfig",
+                "GgSubagentRef",
                 "GgCapabilityConfig",
-                "GgSlotBinding",
                 "GgModelSlot",
                 "GgRunLimits",
             ],

@@ -32,7 +32,7 @@ use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
 
 use test_cabinet_core::LaunchBody;
-use test_cabinet_core::gg::{GgCapabilitySet, PRIMARY_SLOT};
+use test_cabinet_core::gg::{GgCapabilitySet, ROOT_AGENT};
 use test_cabinet_core::gg_aggregate::{GgAggregateQuery, GgAggregateResponse};
 use test_cabinet_core::run_record::HarnessSlug;
 
@@ -71,9 +71,9 @@ pub struct GgRunRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub variant: Option<String>,
-    /// The declarative capability set configuring the run: which capabilities are
-    /// on, their implementations/params, and the model-slot bindings. Must bind a
-    /// model to the [`PRIMARY_SLOT`].
+    /// The declarative capability set configuring the run: its agent profiles (each
+    /// with its own capabilities, model binding, and delegation graph) and the
+    /// run-level model slots and limits. Must bind a model to the [`ROOT_AGENT`].
     pub capability_set: GgCapabilitySet,
     /// Optional override for the maximum harness runtime, in seconds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -97,37 +97,36 @@ impl GgRunRequest {
 
     /// Lower this gg-native request onto the canonical [`LaunchBody`] the enqueue
     /// substrate speaks: the harness fixed to [`HarnessSlug::Gg`], the capability set
-    /// carried through, and the [`PRIMARY_SLOT`] model lifted into
+    /// carried through, and the [`ROOT_AGENT`] model lifted into
     /// [`LaunchBody::model`] so a gg run still has a representative model identity for
     /// the existing per-model listings and the active-run summary.
     ///
     /// Returns the human-readable reason when the capability set does not bind a
-    /// model to the primary slot — the one gg-specific precondition the flat
+    /// model to the Root agent — the one gg-specific precondition the flat
     /// [`build_new_job`](super::jobs::build_new_job) validation cannot express.
     fn into_launch_body(self) -> Result<LaunchBody, String> {
         // Every [model slot](test_cabinet_core::gg::GgModelSlot) a configuration declares
-        // is filled in by the launch form, so a set arriving here with one still deferred
-        // was launched incompletely — reject it now, by name, rather than letting the run
-        // reach a container and fail its slot check there.
-        let unresolved = self.capability_set.unresolved_slots();
+        // is filled in by the launch form, so a set arriving here with an agent still
+        // deferred was launched incompletely — reject it now, by name, rather than letting
+        // the run reach a container and fail its check there.
+        let unresolved = self.capability_set.unresolved_agents();
         if !unresolved.is_empty() {
             return Err(format!(
-                "the gg capability set leaves the {} slot binding(s) unresolved; \
+                "the gg capability set leaves the {} agent(s) without a model; \
                  bind a model to every declared model slot before launching",
                 unresolved
                     .iter()
-                    .map(|slot| format!("`{slot}`"))
+                    .map(|agent| format!("`{agent}`"))
                     .collect::<Vec<_>>()
                     .join(", ")
             ));
         }
         let model = self
             .capability_set
-            .model_for_slot(PRIMARY_SLOT)
-            .map(str::trim)
-            .filter(|m| !m.is_empty())
+            .root()
+            .resolved_model_id()
             .ok_or_else(|| {
-                format!("the gg capability set must bind a model to the `{PRIMARY_SLOT}` slot")
+                format!("the gg capability set must bind a model to the `{ROOT_AGENT}` agent")
             })?
             .to_string();
         let variant = self.resolved_variant();
@@ -157,7 +156,7 @@ impl GgRunRequest {
 ///
 /// The handler validates the request — the test-case version must be ingested (and
 /// not an experimental version the deployment has not opted into), the variant must
-/// exist, and the capability set must bind a model to the [`PRIMARY_SLOT`] — then
+/// exist, and the capability set must bind a model to the [`ROOT_AGENT`] — then
 /// enqueues a `queued` job carrying the gg launch body verbatim. It returns the same
 /// [`LaunchAck`] a conventional launch does, so the console watches a gg run through
 /// the existing `GET /jobs/{id}` status and `GET /jobs/{id}/live` monitor unchanged.

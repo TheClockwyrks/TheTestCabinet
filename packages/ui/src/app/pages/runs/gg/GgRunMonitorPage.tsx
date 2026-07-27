@@ -39,8 +39,9 @@ export function GgRunMonitorPage() {
   // link on the terminal outcome is shown only in that case (it is debug tooling, not
   // a normal result surface).
   const replayCaptured =
-    capabilitySet?.capabilities.some((c) => c.id === "replay" && c.enabled) ??
-    false;
+    capabilitySet?.agents?.[0]?.capabilities.some(
+      (c) => c.id === "replay" && c.enabled,
+    ) ?? false;
 
   const dashboardStatus: GgDashboardStatus = {
     ...statusPhase(status, sawSession),
