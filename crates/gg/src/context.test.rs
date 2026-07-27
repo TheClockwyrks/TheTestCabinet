@@ -11,7 +11,17 @@ use test_cabinet_core::gg::GgContextSource;
 /// A model measuring with the deterministic heuristic estimator (chars/4 + framing) and
 /// a fixed window, so token counts in these tests are exact and fast.
 fn model(window_limit: Option<u64>) -> ContextModel {
-    ContextModel::new(Arc::new(HeuristicTokenEstimator::new()), window_limit)
+    ContextModel::new(
+        Arc::new(HeuristicTokenEstimator::new()),
+        window_limit,
+        false,
+    )
+}
+
+/// Like [`model`] but in [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE)
+/// mode, where synthesized `user` messages carry a [heading](code_heading).
+fn code_model(window_limit: Option<u64>) -> ContextModel {
+    ContextModel::new(Arc::new(HeuristicTokenEstimator::new()), window_limit, true)
 }
 
 /// A tool call with the given name and id, for building assistant/tool items.
@@ -941,4 +951,95 @@ fn strip_images_is_a_no_op_when_there_are_none() {
     let before = ctx.total_tokens();
     assert_eq!(ctx.strip_images("[note]"), 0);
     assert_eq!(ctx.total_tokens(), before);
+}
+
+// ---------------------------------------------------------------------------
+// Responses-as-code message headings
+// ---------------------------------------------------------------------------
+
+#[test]
+fn code_mode_heads_synthesized_user_messages_by_source() {
+    let mut ctx = code_model(Some(100_000));
+    ctx.push_system("the system prompt");
+    ctx.push_user_prompt("build a game");
+    ctx.push(
+        GgContextSource::ToolOutput,
+        Retention::Ephemeral,
+        Message::user("it printed hi"),
+    );
+    ctx.push_assistant(Some("return 1;".to_string()), Vec::new());
+
+    let messages = ctx.messages();
+    // The system prompt is `system`-role, so it is never headed — the model reads it as instructions,
+    // not as one of the labelled messages.
+    assert_eq!(messages[0].content.as_deref(), Some("the system prompt"));
+    // The task and the program's output each carry their heading, on its own line before a rule.
+    assert_eq!(
+        messages[1].content.as_deref(),
+        Some("Task\n----\nbuild a game")
+    );
+    assert_eq!(
+        messages[2].content.as_deref(),
+        Some("Output\n----\nit printed hi")
+    );
+    // The assistant's own program is never headed — it is the model's message, not gg's synthesis.
+    assert_eq!(messages[3].content.as_deref(), Some("return 1;"));
+}
+
+#[test]
+fn tool_calling_mode_heads_nothing() {
+    // The same pushes off the code path carry no heading: message kinds are distinguished by role
+    // and tool-call structure there, so a heading would be noise.
+    let mut ctx = model(Some(100_000));
+    ctx.push_user_prompt("build a game");
+    ctx.push(
+        GgContextSource::ToolOutput,
+        Retention::Ephemeral,
+        Message::user("it printed hi"),
+    );
+    let messages = ctx.messages();
+    assert_eq!(messages[0].content.as_deref(), Some("build a game"));
+    assert_eq!(messages[1].content.as_deref(), Some("it printed hi"));
+}
+
+#[test]
+fn an_unchanged_headed_block_is_not_re_pushed() {
+    // The append-only rule must survive headings: a mutable block rebuilt byte-identically has to
+    // stay put, or a code run would supersede its memory/board block every turn and lose the prompt
+    // cache. `source_block_is` heads the candidate before comparing, so the headed stored block and
+    // the un-headed rebuild still match.
+    let mut ctx = code_model(Some(100_000));
+    ctx.replace_source(
+        GgContextSource::Memory,
+        Retention::Pinned,
+        Some(Message::user("- remember the physics")),
+    );
+    let after_first: Vec<_> = ctx.messages();
+    assert_eq!(
+        after_first[0].content.as_deref(),
+        Some("Memories\n----\n- remember the physics")
+    );
+
+    // Rebuilding the identical block is a no-op: still exactly one item, unmoved.
+    ctx.replace_source(
+        GgContextSource::Memory,
+        Retention::Pinned,
+        Some(Message::user("- remember the physics")),
+    );
+    assert_eq!(ctx.messages(), after_first);
+}
+
+#[test]
+fn every_source_has_a_heading_except_the_assistants_own_turn() {
+    // The heading vocabulary is closed and documented in the system prompt; the one source without a
+    // heading is the assistant's own program, which gg never synthesizes.
+    for source in GgContextSource::ALL {
+        match source {
+            GgContextSource::Assistant => assert!(code_heading(source).is_none()),
+            other => assert!(
+                code_heading(other).is_some(),
+                "{other:?} has no heading; add one and list it in the system prompt"
+            ),
+        }
+    }
 }

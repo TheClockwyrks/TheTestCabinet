@@ -241,6 +241,21 @@ export const HEALING_STRATEGY_OPTIONS: ReadonlyArray<{
   },
 ];
 
+// How the assistant message a code turn records is derived from the model's reply
+// (`crates/gg/src/healing.rs`). Under responses-as-code the reply is a program healing
+// rewrites before running, so the transcript can store either what the model *sent* or
+// what gg actually *ran* — a lever a study slices on. The empty value is gg's default
+// (no post-processing), so leaving the field alone changes nothing.
+export const ASSISTANT_MESSAGE_OPTIONS = [
+  { value: "", label: "No post-processing (default)" },
+  { value: "response-healing", label: "Post-response healing" },
+] as const;
+
+// What each assistant-message mode does — the detail lifted off the picker's option
+// labels into the field's help tooltip.
+export const ASSISTANT_MESSAGE_HINT =
+  "No post-processing records the reply exactly as the model sent it (healing still runs and is disclosed, but its output is not stored). Post-response healing records the healed program gg actually ran whenever healing changed the reply, and the reply verbatim when it did not.";
+
 // The workspace-relative directory gg reads authored skills from when a
 // configuration names none (`crates/gg/src/skills.rs`).
 export const DEFAULT_SKILLS_DIR = ".gg/skills";
@@ -390,6 +405,13 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         kind: "toggles",
         options: HEALING_STRATEGY_OPTIONS,
         hint: `Repairs gg makes to a reply before running it — deletion only, so a healed program is always a subsequence of what the model sent, and every repair is disclosed to the model in its turn feedback. ${TOGGLES_HINT}`,
+      },
+      {
+        key: "assistantMessages",
+        label: "Assistant messages",
+        kind: "select",
+        options: ASSISTANT_MESSAGE_OPTIONS,
+        hint: ASSISTANT_MESSAGE_HINT,
       },
     ],
   },

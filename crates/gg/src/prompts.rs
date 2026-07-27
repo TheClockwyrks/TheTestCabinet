@@ -237,6 +237,14 @@ pub struct SystemContext {
     /// `fn.docs()`, which is the whole point of the redesign — only the objects and what each is for.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub apis: Vec<ApiView>,
+    /// The [message headings](crate::context::code_heading) this run's synthesized `user` messages
+    /// can carry — the vocabulary the prompt names so a model reading a plain-text transcript knows
+    /// what a `Task`, an `Output`, or a `Memories` block in front of it is. Empty on the tool-calling
+    /// path (message kinds are carried by role there); on the code path it lists the base headings
+    /// plus one per enabled capability that synthesizes a message kind of its own — the same
+    /// per-capability gating [`apis`](Self::apis) and every other section follows.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub code_headings: Vec<CodeHeadingView>,
     /// Operator-authored instructions for the agent whose prompt this is — the
     /// [`GgAgentConfig::custom_instructions`](test_cabinet_core::gg::GgAgentConfig::custom_instructions)
     /// of its profile. `None` (or empty) renders no additional-instructions section. The
@@ -329,6 +337,20 @@ pub struct ReadFileView {
     /// the model text-only; a model whose modalities are unknown is described as able to
     /// see images, matching the optimistic default the tool itself takes.
     pub images: bool,
+}
+
+/// One message [heading](crate::context::code_heading) the prompt documents: the exact word that
+/// precedes a synthesized `user` message (before its `\n----\n` rule) and a one-line description of
+/// what such a message carries, so the model reads the transcript's structure rather than inferring
+/// it.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodeHeadingView {
+    /// The heading word itself (`Task`, `Output`, `Memories`), matching what
+    /// [`code_heading`](crate::context::code_heading) prefixes the message with.
+    pub heading: String,
+    /// A one-line description of what a message under this heading carries.
+    pub description: String,
 }
 
 /// One API object a code program has, as the system prompt names it: the object identifier a

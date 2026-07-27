@@ -157,6 +157,7 @@ fn no_code() -> CodeSetup {
         enabled: false,
         limits: SandboxLimits::default(),
         healing: HealingConfig::default(),
+        assistant_messages: AssistantMessageMode::None,
     }
 }
 
@@ -1225,7 +1226,11 @@ async fn autoload_seeds_the_provided_files_as_read_pairs() {
 
     let ctx = ToolContext::new(dir.path());
     let emitter = Emitter::with_sink(None, Box::new(CollectingSink::new()));
-    let mut context = ContextModel::new(Arc::new(HeuristicTokenEstimator::new()), Some(100_000));
+    let mut context = ContextModel::new(
+        Arc::new(HeuristicTokenEstimator::new()),
+        Some(100_000),
+        false,
+    );
 
     let provided = vec![
         PathBuf::from("SPEC.md"),
@@ -1278,7 +1283,11 @@ async fn locked_autoload_survives_compaction() {
     let provided = vec![PathBuf::from("SPEC.md")];
 
     // Unlocked: the view is ephemeral, so a compaction drops it.
-    let mut unlocked = ContextModel::new(Arc::new(HeuristicTokenEstimator::new()), Some(100_000));
+    let mut unlocked = ContextModel::new(
+        Arc::new(HeuristicTokenEstimator::new()),
+        Some(100_000),
+        false,
+    );
     unlocked.push_system("system");
     unlocked.push_user_prompt("build");
     autoload_specifications(&mut unlocked, &provided, &ctx, false, &emitter).await;
@@ -1292,7 +1301,11 @@ async fn locked_autoload_survives_compaction() {
     );
 
     // Locked: the view is pinned, so it stays verbatim across the same compaction.
-    let mut locked = ContextModel::new(Arc::new(HeuristicTokenEstimator::new()), Some(100_000));
+    let mut locked = ContextModel::new(
+        Arc::new(HeuristicTokenEstimator::new()),
+        Some(100_000),
+        false,
+    );
     locked.push_system("system");
     locked.push_user_prompt("build");
     autoload_specifications(&mut locked, &provided, &ctx, true, &emitter).await;

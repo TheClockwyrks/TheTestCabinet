@@ -31,6 +31,7 @@ fn code_on() -> CodeSetup {
         enabled: true,
         limits: SandboxLimits::default(),
         healing: HealingConfig::default(),
+        assistant_messages: AssistantMessageMode::None,
     }
 }
 

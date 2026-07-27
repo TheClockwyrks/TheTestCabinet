@@ -28,6 +28,24 @@ function (e.g. `fs.readFile.docs()`) or `harness.readDocs(fn)` to read a
 function's full signature, documentation, and types it uses. These will be
 provided in your next turn and are not visible during the turn the doc functions
 are called in.
+
+{{#if codeHeadings}}
+### Messages from the harness
+
+Everything the harness sends you arrives as a message headed by one of the
+following labels, on its own line, followed by a `----` rule and then the
+content:
+
+{{#each codeHeadings}}
+- `{{heading}}` — {{description}}
+{{/each}}
+
+For example, your program's result arrives as:
+
+    Output
+    ----
+    ...what your program printed...
+{{/if}}
 {{/if}}
 
 {{#if readFile.offered}}

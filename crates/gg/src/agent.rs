@@ -108,7 +108,7 @@ use crate::client::{ClientFactory, DefaultClientFactory, provider_for};
 use crate::compaction::{self, CompactionSetup, RetainedCounts, compact_if_needed};
 use crate::config::GgInvocation;
 use crate::context::{
-    BpeTokenEstimator, ContextModel, Retention, TokenEstimator, tool_output_source,
+    BpeTokenEstimator, ContextModel, Retention, TokenEstimator, code_heading, tool_output_source,
 };
 use crate::docs::DocsRuntime;
 use crate::fsm::{
@@ -116,8 +116,8 @@ use crate::fsm::{
 };
 use crate::git;
 use crate::healing::{
-    self, CandidateShape, Healed, HealingConfig, HealingStrategy, HealingVerdict,
-    NotAProgramReason, plural,
+    self, AssistantMessageMode, CandidateShape, Healed, HealingConfig, HealingStrategy,
+    HealingVerdict, NotAProgramReason, plural,
 };
 use crate::limits::{
     AgentLimits, FatalFault, RunLimits, RunSpend, TurnErrorKind, TurnOutcome, resolve_run_limits,
@@ -129,9 +129,9 @@ use crate::model::{
 };
 use crate::planning::PlanningRuntime;
 use crate::prompts::{
-    self, ApiView, AutoloadView, BoardView, CodeCallView, CodeErrorView, CodeNotAProgramContext,
-    CodeResultContext, CodeSandboxErrorContext, CodeTranspileErrorContext, FsmView, MemoriesView,
-    ReadFileView, SpawnableAgentView, SystemContext, TasksView,
+    self, ApiView, AutoloadView, BoardView, CodeCallView, CodeErrorView, CodeHeadingView,
+    CodeNotAProgramContext, CodeResultContext, CodeSandboxErrorContext, CodeTranspileErrorContext,
+    FsmView, MemoriesView, ReadFileView, SpawnableAgentView, SystemContext, TasksView,
 };
 use crate::replay::{GgRecorder, RecordingClient};
 use crate::sandbox::{
@@ -571,6 +571,10 @@ pub(crate) async fn run_with_factory(
     // there and an armed set recorded for one would be an intention with no effect.
     if orch.code.enabled {
         root_emitter.emit(log("info", orch.code.healing.armed_summary()));
+        root_emitter.emit(log(
+            "info",
+            healing::assistant_messages_summary(orch.code.assistant_messages),
+        ));
         root_emitter.record_healing(
             orch.code
                 .healing
@@ -958,6 +962,16 @@ impl Orchestrator {
                 HealingStrategy::ALL.map(HealingStrategy::id).join(", ")
             ));
         }
+        // The `assistantMessages` mode is read literally and reported on mismatch for the same reason
+        // healing keys are: a typo would otherwise pick a mode the study did not ask for, silently.
+        for unknown in &healing::resolve_assistant_messages(set.root()).unknown_params {
+            warnings.push(format!(
+                "the `{CAPABILITY_RESPONSES_AS_CODE}` capability declares `{unknown}`, which gg \
+                 could not read as an assistant-message mode; it changes nothing. Set it to \
+                 `\"none\"` (record the reply as sent) or `\"response-healing\"` (record the healed \
+                 program)."
+            ));
+        }
         Self {
             caps: set.clone(),
             workspace_dir: invocation.workspace_dir.clone(),
@@ -975,6 +989,7 @@ impl Orchestrator {
                 enabled: set.root().is_enabled(CAPABILITY_RESPONSES_AS_CODE),
                 limits: sandbox::resolve_sandbox_limits(set.root()),
                 healing: healing.config,
+                assistant_messages: healing::resolve_assistant_messages(set.root()).mode,
             },
             issue_dispatch: Mutex::new(HashMap::new()),
             board: resolve_board(set),
@@ -1131,6 +1146,7 @@ impl Orchestrator {
             enabled: profile.is_enabled(CAPABILITY_RESPONSES_AS_CODE),
             limits: sandbox::resolve_sandbox_limits(profile),
             healing: healing::resolve_healing(profile).config,
+            assistant_messages: healing::resolve_assistant_messages(profile).mode,
         }
     }
 
@@ -4765,7 +4781,11 @@ impl Agent {
         // read skills, the memory block, the task list) is appended as a tagged item, so the
         // window can be accounted by source and the pinned/ephemeral split is available for
         // Phase 2 compaction.
-        let mut context = ContextModel::new(context_setup.estimator, context_setup.window_limit);
+        let mut context = ContextModel::new(
+            context_setup.estimator,
+            context_setup.window_limit,
+            code.enabled,
+        );
         context.push_system(system_prompt(PromptInputs {
             registry,
             skills: &skills,
@@ -5093,6 +5113,31 @@ impl Agent {
                     ),
                 ));
             }
+            // Responses-as-code heals the reply *before* the assistant message is recorded, because
+            // the recorded message may be the healed program rather than the raw reply — that is the
+            // `assistantMessages` lever (see `AssistantMessageMode`). Healing is done here, once, and
+            // the `Healed` is handed to `run_code_turn` so the turn does not re-heal the same reply.
+            // On the tool-calling path there is no program and no healing; the reply is recorded as
+            // sent.
+            let healed = code.enabled.then(|| {
+                healing::heal(
+                    response.text.as_deref().unwrap_or_default(),
+                    !response.tool_calls.is_empty(),
+                    &code.healing,
+                )
+            });
+            // The text the assistant turn is recorded with. Under post-response healing it is the
+            // healed program gg actually ran — but only when healing changed anything
+            // (`rewritten()`); a reply healing left alone, or one that was not a program, is recorded
+            // verbatim. Under no-post-processing (and on the tool-calling path) it is always the raw
+            // reply. The healing that runs regardless is still disclosed in the turn's feedback.
+            let assistant_text = match (&healed, code.assistant_messages) {
+                (Some(healed), AssistantMessageMode::ResponseHealing) if healed.rewritten() => {
+                    Some(healed.program.clone())
+                }
+                _ => response.text.clone(),
+            };
+
             // Log this turn's exact request and response to the message log — the
             // de-duplicated ContextMessage/Prompt stream the console renders as the
             // per-message Requests view. Emitted every turn (context visibility is
@@ -5103,7 +5148,7 @@ impl Agent {
             // responses-as-code mode) and pooled too, so it reappears — id unchanged — as a
             // request pointer on the next turn.
             let reply = Message::assistant(
-                response.text.clone(),
+                assistant_text.clone(),
                 if code.enabled {
                     Vec::new()
                 } else {
@@ -5122,7 +5167,7 @@ impl Agent {
             );
 
             context.push_assistant(
-                response.text.clone(),
+                assistant_text,
                 if code.enabled {
                     Vec::new()
                 } else {
@@ -5131,7 +5176,7 @@ impl Agent {
             );
 
             // Responses-as-code turn: the model was offered no native tools, so its **whole reply**
-            // is a TypeScript program. Heal it, run it in the wasmtime sandbox — bridging every
+            // is a TypeScript program. Run the healed program in the wasmtime sandbox — bridging every
             // typed call to the real toolset (and, for a delegation tool, the scheduler) — and act
             // on what the turn asks for. There is no implicit ending here: a session under this
             // capability ends only when a program calls `finish`, or when a ceiling stops the run.
@@ -5155,8 +5200,7 @@ impl Agent {
                     speculative_active,
                 };
                 let decision = run_code_turn(
-                    response.text.as_deref().unwrap_or_default(),
-                    !response.tool_calls.is_empty(),
+                    healed.expect("code mode heals the reply before recording the assistant turn"),
                     &code,
                     limits.deadline,
                     &turn_ctx,
@@ -5730,6 +5774,10 @@ struct CodeSetup {
     /// The [healing](crate::healing) strategies armed for this run — the ablation lever that decides
     /// which malformations of a reply gg repairs before compiling it, and which it lets fail.
     healing: HealingConfig,
+    /// How the assistant message this run *records* is derived from the model's reply — the reply as
+    /// sent, or the healed program that ran. Governs only what the next turn re-reads, never whether a
+    /// reply is healed before it runs. See [`AssistantMessageMode`](crate::healing::AssistantMessageMode).
+    assistant_messages: AssistantMessageMode,
 }
 
 /// The [execution ceilings](RunLimits) threaded into the [turn loop](Agent::drive), together with
@@ -6299,6 +6347,87 @@ fn api_views(registry: &ToolRegistry) -> Vec<ApiView> {
         .collect()
 }
 
+/// The [message headings](code_heading) a responses-as-code run documents in its system prompt, in
+/// the order a model meets them: the four base headings every code run can show, then one per enabled
+/// capability that synthesizes a message kind of its own.
+///
+/// Each heading string is read from [`code_heading`] rather than spelled out again, so the prompt and
+/// the prefix a message actually carries cannot drift; this function owns only the *descriptions* and
+/// the *gating*. A gate that is off drops its heading entirely — the model is never told about a
+/// message kind this run cannot produce, matching every other section's ablation behaviour.
+fn code_heading_views(
+    memories: bool,
+    tasks: bool,
+    board: bool,
+    plan: bool,
+    files: bool,
+) -> Vec<CodeHeadingView> {
+    // (source, one-line description, whether this run can produce it). The heading word itself comes
+    // from `code_heading(source)`, the single source of truth both this list and the prefix share.
+    let rows: &[(GgContextSource, &str, bool)] = &[
+        (
+            GgContextSource::UserPrompt,
+            "the task you are working on, or a message from a parent agent",
+            true,
+        ),
+        (
+            GgContextSource::ToolOutput,
+            "the result of your last program — what it printed, and whether it ran, failed, or was \
+             stopped",
+            true,
+        ),
+        (
+            GgContextSource::System,
+            "a process notice from the harness (a mode change, or guidance)",
+            true,
+        ),
+        (
+            GgContextSource::History,
+            "a summary standing in for older turns the harness compacted out of the window",
+            true,
+        ),
+        (
+            GgContextSource::Skill,
+            "documentation or a skill you asked to read, delivered on the following turn",
+            true,
+        ),
+        (
+            GgContextSource::Memory,
+            "your durable memories, as they currently stand",
+            memories,
+        ),
+        (
+            GgContextSource::TaskList,
+            "your task list, as it currently stands",
+            tasks,
+        ),
+        (
+            GgContextSource::Board,
+            "the epic/issue board, as it currently stands",
+            board,
+        ),
+        (
+            GgContextSource::Plan,
+            "your accepted plan, or plan-mode guidance",
+            plan,
+        ),
+        (
+            GgContextSource::FileView,
+            "the contents of a file seeded into your context",
+            files,
+        ),
+    ];
+    rows.iter()
+        .filter(|(_, _, on)| *on)
+        .filter_map(|(source, description, _)| {
+            code_heading(*source).map(|heading| CodeHeadingView {
+                heading: heading.to_string(),
+                description: (*description).to_string(),
+            })
+        })
+        .collect()
+}
+
 fn system_prompt(inputs: PromptInputs<'_>) -> String {
     let PromptInputs {
         registry,
@@ -6349,6 +6478,24 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
         images: offers_read && !vision.declared_text_only(),
     };
 
+    // The message headings this run can put in front of a synthesized `user` message — only under
+    // responses-as-code, where the transcript is plain text and the model needs the vocabulary named
+    // (the tool-calling path distinguishes message kinds by role). The base four are intrinsic to the
+    // protocol; each remaining heading is listed exactly when the capability that produces its message
+    // kind is on, so the prompt describes only what this run can actually show — the same ablation
+    // discipline every other section follows.
+    let code_headings = if responses_as_code {
+        code_heading_views(
+            memories.offers_memories(),
+            tasks.offers_tasks(),
+            board.offers_board(),
+            planning.offers_planning() || fsm.is_active(),
+            offers_read || autoload_specs.is_some(),
+        )
+    } else {
+        Vec::new()
+    };
+
     prompts::render_system(
         &SystemContext {
             responses_as_code,
@@ -6359,6 +6506,7 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
             } else {
                 Vec::new()
             },
+            code_headings,
             // Operator-authored instructions for this agent's profile, inserted near the top of the
             // prompt; `None`/empty renders no section.
             custom_instructions: profile

@@ -35,6 +35,7 @@ fn code_with(healing: HealingConfig) -> CodeSetup {
         enabled: true,
         limits: SandboxLimits::default(),
         healing,
+        assistant_messages: AssistantMessageMode::None,
     }
 }
 
@@ -400,4 +401,105 @@ async fn an_unreadable_healing_param_is_logged_at_warn() {
         &events.last().expect("a terminal event").kind,
         GgTelemetryKind::SessionEnded { status } if status == "completed"
     ));
+}
+
+// ---------------------------------------------------------------------------
+// The assistant-message mode, end to end
+// ---------------------------------------------------------------------------
+
+/// The `assistant`-role message from a recorded turn's request.
+fn assistant_message(request: &[Message]) -> String {
+    request
+        .iter()
+        .find(|message| message.role == crate::model::Role::Assistant)
+        .and_then(|message| message.content.clone())
+        .expect("the turn's request carries the prior assistant turn")
+}
+
+/// **Post-response healing records the healed program as the assistant turn.**
+///
+/// Under `assistantMessages: "response-healing"` the message the model re-reads next turn is the
+/// program gg actually ran — the fence and the prose either side of it gone — not the malformed reply
+/// it sent. (The reply is still healed and still disclosed in the feedback under either mode; the mode
+/// governs only what the transcript stores.)
+#[tokio::test]
+async fn response_healing_mode_records_the_healed_program() {
+    let dir = TempDir::new().unwrap();
+    std::fs::create_dir_all(dir.path().join("src")).unwrap();
+    let (_, _, requests) = drive_recorded_code_run(
+        &dir,
+        healing_set(json!({ "assistantMessages": "response-healing" })),
+        vec![code_reply(FENCED_PROGRAM), code_reply(FINISHING_PROGRAM)],
+    )
+    .await;
+
+    // The second turn's request carries the first turn's assistant message — the healed program.
+    let assistant = assistant_message(&requests[1]);
+    assert!(
+        !assistant.contains("```"),
+        "the fence is gone:\n{assistant}"
+    );
+    assert!(
+        !assistant.contains("I see the issue"),
+        "the prose either side is gone:\n{assistant}"
+    );
+    assert!(
+        assistant.trim_start().starts_with("const srcFiles"),
+        "the healed program stands on its own:\n{assistant}"
+    );
+}
+
+/// **No post-processing (the default) records the reply verbatim, fence and prose and all.**
+///
+/// The mirror of the above: a run that says nothing about `assistantMessages` stores exactly what the
+/// model sent, which is what a study of a model's code-only compliance reads.
+#[tokio::test]
+async fn no_post_processing_records_the_raw_reply() {
+    let dir = TempDir::new().unwrap();
+    std::fs::create_dir_all(dir.path().join("src")).unwrap();
+    let (_, _, requests) = drive_recorded_code_run(
+        &dir,
+        healing_set(json!({})),
+        vec![code_reply(FENCED_PROGRAM), code_reply(FINISHING_PROGRAM)],
+    )
+    .await;
+
+    let assistant = assistant_message(&requests[1]);
+    assert!(
+        assistant.contains("```ts"),
+        "the reply is stored as sent, fence and all:\n{assistant}"
+    );
+    assert!(
+        assistant.contains("I see the issue"),
+        "including its prose:\n{assistant}"
+    );
+}
+
+/// **A code run heads every user message it synthesizes.**
+///
+/// The task the model works on and the output of its program each arrive under their heading — the
+/// vocabulary the system prompt names — so a plain-text transcript reads as structured turns rather
+/// than an undifferentiated wall.
+#[tokio::test]
+async fn a_code_run_heads_the_task_and_the_program_output() {
+    let dir = TempDir::new().unwrap();
+    let (_, _, requests) = drive_recorded_code_run(
+        &dir,
+        healing_set(json!({})),
+        vec![code_reply("return 1;"), code_reply(FINISHING_PROGRAM)],
+    )
+    .await;
+
+    let contents: Vec<&str> = requests[1]
+        .iter()
+        .filter_map(|message| message.content.as_deref())
+        .collect();
+    assert!(
+        contents.iter().any(|c| c.starts_with("Task\n----\n")),
+        "the task is headed:\n{contents:#?}"
+    );
+    assert!(
+        contents.iter().any(|c| c.starts_with("Output\n----\n")),
+        "the program's output is headed:\n{contents:#?}"
+    );
 }

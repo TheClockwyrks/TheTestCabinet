@@ -291,6 +291,102 @@ pub fn resolve_healing(set: &GgAgentConfig) -> ResolvedHealing {
     resolved
 }
 
+/// How the assistant message gg *records* for a code turn is derived from the model's reply — the
+/// half of responses-as-code that decides what the **next** turn's prompt shows the model of *this*
+/// turn.
+///
+/// Under responses-as-code the reply is a program, and [healing](heal) rewrites it before it runs.
+/// That leaves a choice with no analogue on the tool-calling path: is the assistant turn the model
+/// re-reads next turn the reply it *sent*, or the program gg actually *ran*? Both are defensible and
+/// the difference is measurable, so it is a lever rather than a hard-coded policy — the same reason
+/// [healing itself](HealingConfig) is.
+///
+/// Whichever mode is chosen, healing still runs and is still disclosed in the turn's feedback: the
+/// mode governs only the stored assistant message, never whether a reply is repaired before it runs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AssistantMessageMode {
+    /// **No post-processing.** The assistant message is the reply exactly as the model returned it,
+    /// byte for byte. Healing still repairs the reply before running it, but that repair does not
+    /// leak into the recorded message — so the transcript shows what the model actually wrote, which
+    /// is what a study of a model's code-only compliance wants to read. The default.
+    #[default]
+    None,
+    /// **Post-response healing.** The assistant message is the [healed](Healed::program) program —
+    /// what gg actually compiled and ran — whenever healing rewrote the reply, and the reply
+    /// verbatim when it did not ([`Healed::rewritten`] is false). The model then re-reads a clean,
+    /// running program next turn rather than the malformed one it sent, which is what a run optimised
+    /// for task completion rather than compliance measurement wants.
+    ResponseHealing,
+}
+
+/// Resolve the [assistant-message mode](AssistantMessageMode) from the
+/// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability's `assistantMessages` param.
+///
+/// | `params.assistantMessages` | Mode |
+/// | --- | --- |
+/// | absent / `null` / `"none"` | [`None`](AssistantMessageMode::None) — no post-processing (the default) |
+/// | `"response-healing"` | [`ResponseHealing`](AssistantMessageMode::ResponseHealing) |
+/// | anything else | [`None`](AssistantMessageMode::None), and the value is reported |
+///
+/// Read literally and reported on mismatch for the same reason [`resolve_healing`] is: the value is
+/// contract-visible (the console's capability catalogue writes it, persisted run data records it), so
+/// a typo must change nothing silently rather than pick a mode the study did not ask for. A capability
+/// that is present but **disabled** configures nothing.
+pub fn resolve_assistant_messages(set: &GgAgentConfig) -> ResolvedAssistantMessages {
+    let mut resolved = ResolvedAssistantMessages {
+        mode: AssistantMessageMode::default(),
+        unknown_params: Vec::new(),
+    };
+    let Some(capability) = set
+        .capability(CAPABILITY_RESPONSES_AS_CODE)
+        .filter(|capability| capability.enabled)
+    else {
+        return resolved;
+    };
+    let Some(value) = capability.params.get("assistantMessages") else {
+        return resolved;
+    };
+
+    match value {
+        Value::Null => {}
+        Value::String(mode) if mode == "none" => {}
+        Value::String(mode) if mode == "response-healing" => {
+            resolved.mode = AssistantMessageMode::ResponseHealing;
+        }
+        _ => resolved
+            .unknown_params
+            .push("assistantMessages".to_string()),
+    }
+    resolved
+}
+
+/// A resolved [assistant-message mode](AssistantMessageMode) together with the `assistantMessages`
+/// value gg could not read, if any — the same shape [`ResolvedHealing`] takes, and reported the same
+/// way at launch.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedAssistantMessages {
+    /// The mode this run records assistant turns under.
+    pub mode: AssistantMessageMode,
+    /// The `assistantMessages` value that named no mode gg knows, or the bare `assistantMessages`
+    /// when it was not a recognised string. Reported at `warn` when the run starts.
+    pub unknown_params: Vec<String>,
+}
+
+/// The launch-time `info` line naming the [assistant-message mode](AssistantMessageMode) a code run
+/// records under — the counterpart of [`HealingConfig::armed_summary`], and emitted for the same
+/// reason: the two arms are otherwise indistinguishable in an operator's log.
+pub fn assistant_messages_summary(mode: AssistantMessageMode) -> String {
+    match mode {
+        AssistantMessageMode::None => "assistant messages: recorded as the model sent them (no \
+                                       post-processing)"
+            .to_string(),
+        AssistantMessageMode::ResponseHealing => {
+            "assistant messages: recorded as the healed program that ran (post-response healing)"
+                .to_string()
+        }
+    }
+}
+
 /// How many times the pipeline may run its rewriting strategies before it gives up on reaching a
 /// fixpoint.
 ///

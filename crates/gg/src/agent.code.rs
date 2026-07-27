@@ -104,8 +104,8 @@ impl CodeTurnOutcome {
 // One code turn
 // ---------------------------------------------------------------------------
 
-/// Run one responses-as-code turn: heal the reply into a program, run it, and report what the loop
-/// must do next.
+/// Run one responses-as-code turn from an already-[healed](Healed) reply: run its program, and
+/// report what the loop must do next.
 ///
 /// Every effect the turn has on the world happens inside this function — the healing, the sandbox
 /// run, the servicing of each composed call, the telemetry, the replay capture. What comes back is
@@ -120,10 +120,13 @@ impl CodeTurnOutcome {
 /// Classification and feedback are decided at the *same* match, rather than by a separate
 /// classifier the feedback then re-derives: the two decisions read the same facts, and splitting
 /// them is how they drift.
+/// `healed` is the reply already run through [healing](healing::heal) by the caller — done there, not
+/// here, because the loop needs the healed program *before* this turn runs to decide what assistant
+/// message to record (see [`AssistantMessageMode`](crate::healing::AssistantMessageMode)), and healing
+/// the same reply twice would be the kind of duplicated decision that drifts.
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn run_code_turn(
-    reply: &str,
-    had_tool_calls: bool,
+    healed: Healed,
     code: &CodeSetup,
     deadline: Option<Instant>,
     turn: &CodeTurn<'_>,
@@ -133,7 +136,6 @@ pub(super) async fn run_code_turn(
     subagents: &mut Option<SubagentContext>,
 ) -> CodeTurnOutcome {
     let emitter = turn.emitter;
-    let healed = healing::heal(reply, had_tool_calls, &code.healing);
     if healed.did_not_converge {
         emitter.emit(log(
             "warn",

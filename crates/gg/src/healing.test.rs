@@ -827,6 +827,67 @@ fn healing_params_on_a_disabled_capability_are_ignored() {
 }
 
 // ---------------------------------------------------------------------------------------------
+// The assistant-message mode
+// ---------------------------------------------------------------------------------------------
+
+/// A capability that says nothing about assistant messages records the reply as sent — the default,
+/// and the behaviour every run had before the mode existed.
+#[test]
+fn absent_assistant_messages_is_no_post_processing() {
+    for params in [json!({}), json!({ "assistantMessages": null })] {
+        let resolved = resolve_assistant_messages(&set_with(params.clone()));
+        assert_eq!(resolved.mode, AssistantMessageMode::None, "{params}");
+        assert!(resolved.unknown_params.is_empty(), "{params}");
+    }
+    assert_eq!(
+        resolve_assistant_messages(&GgAgentConfig::root()).mode,
+        AssistantMessageMode::None
+    );
+}
+
+/// The two named modes each resolve to their variant, and neither is reported.
+#[test]
+fn each_named_mode_resolves() {
+    let none = resolve_assistant_messages(&set_with(json!({ "assistantMessages": "none" })));
+    assert_eq!(none.mode, AssistantMessageMode::None);
+    assert!(none.unknown_params.is_empty());
+
+    let healing = resolve_assistant_messages(&set_with(
+        json!({ "assistantMessages": "response-healing" }),
+    ));
+    assert_eq!(healing.mode, AssistantMessageMode::ResponseHealing);
+    assert!(healing.unknown_params.is_empty());
+}
+
+/// A value naming no mode gg knows falls back to the default and is **reported**, never guessed at —
+/// the same discipline the healing keys follow, and for the same reason: a mode is a lever a study
+/// slices on, so a typo must change nothing silently.
+#[test]
+fn an_unknown_assistant_messages_value_is_reported() {
+    for unreadable in [json!("healed"), json!(true), json!(5), json!([])] {
+        let resolved =
+            resolve_assistant_messages(&set_with(json!({ "assistantMessages": unreadable })));
+        assert_eq!(resolved.mode, AssistantMessageMode::None);
+        assert_eq!(resolved.unknown_params, vec!["assistantMessages"]);
+    }
+}
+
+/// A present but **disabled** capability configures nothing, exactly as its healing params do.
+#[test]
+fn assistant_messages_on_a_disabled_capability_are_ignored() {
+    let set = GgAgentConfig {
+        capabilities: vec![GgCapabilityConfig {
+            params: json!({ "assistantMessages": "response-healing" }),
+            ..GgCapabilityConfig::disabled(CAPABILITY_RESPONSES_AS_CODE)
+        }],
+        ..GgAgentConfig::root()
+    };
+    let resolved = resolve_assistant_messages(&set);
+    assert_eq!(resolved.mode, AssistantMessageMode::None);
+    assert!(resolved.unknown_params.is_empty());
+}
+
+// ---------------------------------------------------------------------------------------------
 // Disclosure
 // ---------------------------------------------------------------------------------------------
 

@@ -34,6 +34,7 @@ fn full_system() -> SystemContext {
             },
         ],
         responses_as_code: false,
+        code_headings: Vec::new(),
         custom_instructions: None,
         spawnable_agents: Vec::new(),
         delegated: false,

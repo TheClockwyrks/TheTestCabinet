@@ -24,7 +24,11 @@ fn band_tokens(usage: &[GgContextSourceUsage], source: GgContextSource) -> u64 {
 /// A context model measured with the deterministic heuristic estimator and the given window,
 /// so fullness in these tests is exact and fast.
 fn model(window_limit: u64) -> ContextModel {
-    ContextModel::new(Arc::new(HeuristicTokenEstimator::new()), Some(window_limit))
+    ContextModel::new(
+        Arc::new(HeuristicTokenEstimator::new()),
+        Some(window_limit),
+        false,
+    )
 }
 
 /// A model client for the summarizer: the scripted mock (which answers a marked

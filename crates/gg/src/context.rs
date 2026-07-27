@@ -309,15 +309,28 @@ pub struct ContextModel {
     /// The active model's context-window limit, when known — the denominator of
     /// [`fullness`](Self::fullness).
     window_limit: Option<u64>,
+    /// Whether this run is in [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE)
+    /// mode, where every user message gg synthesizes is prefixed with a [heading](code_heading) so a
+    /// model reading a plain-text transcript can tell the task from the program's output from a
+    /// rebuilt state block. Off on the tool-calling path, where those distinctions are carried by the
+    /// message role and the tool-call structure instead, and no heading is added.
+    code_mode: bool,
 }
 
 impl ContextModel {
-    /// A new, empty model measuring with `estimator` against an optional `window_limit`.
-    pub fn new(estimator: Arc<dyn TokenEstimator>, window_limit: Option<u64>) -> Self {
+    /// A new, empty model measuring with `estimator` against an optional `window_limit`. `code_mode`
+    /// arms the [per-message headings](code_heading) responses-as-code prefixes every synthesized
+    /// user message with.
+    pub fn new(
+        estimator: Arc<dyn TokenEstimator>,
+        window_limit: Option<u64>,
+        code_mode: bool,
+    ) -> Self {
         Self {
             items: Vec::new(),
             estimator,
             window_limit,
+            code_mode,
         }
     }
 
@@ -338,6 +351,7 @@ impl ContextModel {
         message: Message,
         label: Option<String>,
     ) {
+        let message = self.headed(source, message);
         let tokens = self.estimator.estimate_message(&message);
         self.items.push(ContextItem {
             source,
@@ -346,6 +360,21 @@ impl ContextModel {
             tokens,
             label,
         });
+    }
+
+    /// Prefix a synthesized `user` message with its [code-mode heading](code_heading) when this run
+    /// is in [code mode](Self::code_mode) — the transform every stored user message goes through, so
+    /// what a code run sends, logs, and pools all carry the same headed body.
+    ///
+    /// A no-op off the code path, on a non-`user` message (the real system prompt and the assistant's
+    /// own programs are never headed), and on a source with no heading. Applied at the single
+    /// [`push_labeled`](Self::push_labeled) choke point rather than at render time so the heading is
+    /// part of the message's identity: its token estimate accounts for it, its [message-log
+    /// fingerprint](crate::message_log::fingerprint) is stable across the turns it is pooled over, and
+    /// the append-only equality check ([`source_block_is`](Self::source_block_is)) — which heads the
+    /// *incoming* candidate the same way — compares like against like.
+    fn headed(&self, source: GgContextSource, message: Message) -> Message {
+        apply_code_heading(self.code_mode, source, message)
     }
 
     /// Bring the **mutable, single-block** `source` up to date with `message` (or with
@@ -430,7 +459,10 @@ impl ContextModel {
         }
         match (current, message) {
             (None, None) => true,
-            (Some(item), Some(message)) => &item.message == message,
+            // The stored block was headed at push, so the candidate is headed the same way before
+            // the comparison — otherwise a code-mode block would never match its own rebuild and
+            // would supersede every turn, thrashing the prompt cache the append-only rule protects.
+            (Some(item), Some(message)) => item.message == self.headed(source, message.clone()),
             _ => false,
         }
     }
@@ -690,12 +722,20 @@ impl ContextModel {
     /// unchanged, and its token estimate is recomputed for the new envelope.
     pub fn clear_ephemeral(&mut self) {
         let estimator = Arc::clone(&self.estimator);
+        let code_mode = self.code_mode;
         self.items.retain(|item| item.retention.is_pinned());
         for item in &mut self.items {
             if item.message.role == Role::Tool {
                 let content = item.message.content.take().unwrap_or_default();
                 let images = std::mem::take(&mut item.message.images);
-                let message = Message::user(content).with_images(images);
+                // The re-framed item is now a `user` message, so under code mode it earns the same
+                // heading a `user` block of its source would have carried had it been pushed as one
+                // (its `tool` form was headingless because only `user` messages are headed).
+                let message = apply_code_heading(
+                    code_mode,
+                    item.source,
+                    Message::user(content).with_images(images),
+                );
                 item.tokens = estimator.estimate_message(&message);
                 item.message = message;
             }
@@ -941,6 +981,60 @@ impl ContextModel {
             keep
         });
         result
+    }
+}
+
+/// The model-facing **heading** a synthesized `user` message of `source` carries under
+/// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE), or `None` for a source
+/// whose messages are never headed.
+///
+/// On the code path every model reply is a program and everything gg says back is plain-text `user`
+/// content, so — unlike the tool-calling path, where a tool result is structurally distinct from the
+/// task — the model has only the prose to tell the task from a program's output from a rebuilt state
+/// block. The heading is that signal: gg prefixes each user message with `<heading>\n----\n`, and the
+/// [system prompt](crate::prompts) names every heading a run's enabled capabilities can produce so
+/// the model knows the vocabulary up front.
+///
+/// [`Assistant`](GgContextSource::Assistant) is `None` because an assistant turn is the model's own
+/// program, never gg's synthesis; [`System`](GgContextSource::System) maps to a heading for the
+/// process *notices* pushed as `user` guidance, but the base system prompt and the fullness signal
+/// are `system`-role and so are never headed regardless.
+///
+/// The strings are the closed vocabulary the prompt documents, so a new source must be given a
+/// heading here and listed there in the same change.
+pub fn code_heading(source: GgContextSource) -> Option<&'static str> {
+    match source {
+        GgContextSource::UserPrompt => Some("Task"),
+        GgContextSource::ToolOutput => Some("Output"),
+        GgContextSource::FileView => Some("File"),
+        GgContextSource::Skill => Some("Documentation"),
+        GgContextSource::Memory => Some("Memories"),
+        GgContextSource::TaskList => Some("Tasks"),
+        GgContextSource::Board => Some("Board"),
+        GgContextSource::Plan => Some("Plan"),
+        GgContextSource::History => Some("Summary"),
+        GgContextSource::System => Some("Notice"),
+        GgContextSource::Assistant => None,
+    }
+}
+
+/// Prefix a `user` `message` with its [heading](code_heading) when `code_mode` is on — the pure core
+/// of [`ContextModel::headed`], factored out so [`clear_ephemeral`](ContextModel::clear_ephemeral)
+/// can head a re-framed item without a `&self` borrow it cannot take mid-iteration.
+///
+/// A no-op off the code path, on a non-`user` message, and on a source [`code_heading`] does not
+/// name — so calling it on any message is safe, and only the ones that should be headed are.
+fn apply_code_heading(code_mode: bool, source: GgContextSource, message: Message) -> Message {
+    if !code_mode || message.role != Role::User {
+        return message;
+    }
+    let Some(heading) = code_heading(source) else {
+        return message;
+    };
+    let body = message.content.unwrap_or_default();
+    Message {
+        content: Some(format!("{heading}\n----\n{body}")),
+        ..message
     }
 }
 
