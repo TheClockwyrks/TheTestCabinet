@@ -14,6 +14,7 @@ import {
   sampleColor,
   luminance,
 } from "../_helpers.mjs";
+import { isFogBlack } from "./_kindle.mjs";
 
 const man = (a, b, c, d) => Math.abs(a - c) + Math.abs(b - d);
 
@@ -24,6 +25,7 @@ export default function item() {
   let near;
   let col;
   let fogCol;
+  let afterFadeCol;
 
   return {
     id: "kindle.flare-second-circle",
@@ -69,6 +71,20 @@ export default function item() {
       // A REAL pause (the old wait(150)) so the bloom has been painted before sampling.
       await api.settle(150);
       col = await sampleColor(api, near.p.x, near.p.y);
+
+      // Then let the bloom go out and read the SAME tile again. "When the flare fades,
+      // its circle disappears entirely ... everything the flare had lit that lies
+      // outside your own vision circle goes pitch black again" (specs/gameplay.md), so
+      // this tile must return to fog. It is what makes the point a check of the flare
+      // rather than of brightness: a build that simply draws the whole maze also lights
+      // this tile during the bloom, and only the fade separates the two.
+      await api.until((sn) => pred(sn, "flarefish").flaring === false, {
+        max: 300,
+        poll: 12,
+      });
+      await api.advance(90); // 90 ticks = 0.75 s, comfortably past the fade
+      await api.settle(150);
+      afterFadeCol = await sampleColor(api, near.p.x, near.p.y);
       // A far fog tile for reference.
       const fog = openTiles(s).find(
         ([c, r2]) =>
@@ -100,6 +116,10 @@ export default function item() {
         "the flare draws the maze beyond the vision circle",
         luminance(col),
         luminance(fogCol) + 6,
+      );
+      check.expectOk(
+        "and it is the flare doing it — once the bloom fades the tile goes black again",
+        isFogBlack(afterFadeCol, fogCol),
       );
     },
   };
