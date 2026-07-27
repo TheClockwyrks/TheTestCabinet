@@ -1209,11 +1209,15 @@ $context-palette: (
   gap: t.$space-2xs;
 }
 
+// Each slot reads as a two-line row now the panel sits in a narrow tile: the slot
+// label and its cost on the first line, the model's display name and its token total
+// on the second. A two-column grid (label/name on the left, cost/tokens right-aligned
+// on the right) keeps the two lines' figures in a column.
 .slotRow {
   display: grid;
-  grid-template-columns: minmax(5rem, auto) 1fr auto auto;
+  grid-template-columns: 1fr auto;
   align-items: baseline;
-  gap: t.$space-sm;
+  gap: t.$space-2xs t.$space-sm;
   font-size: t.$font-sm;
   padding: t.$space-xs t.$space-sm;
   border: t.$border-hairline solid
@@ -1241,6 +1245,8 @@ $context-palette: (
 .slotTokens {
   color: t.$color-text-muted;
   font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
 }
 
 .slotCost {
@@ -1581,9 +1587,24 @@ $fsm-hue: #2dd4bf;
   padding: t.$space-md;
 }
 
+// The panels' own layout root: the tab selector and the panel it selects, laid out
+// as a column with one gap between them, filling the host so the Agents explorer can
+// grow to the bottom of the page. Owning the layout here (rather than leaning on the
+// host container's flex gap) is what makes the space below the selector identical on
+// the live monitor (a gapless `PageLayout fill` column) and a finished run's gg tab
+// (a `gap`ped section) — the two used to differ by exactly this gap.
+.panelsRoot {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+}
+
 // The tab selector leads the view directly. The host above it (the run-detail tab
-// strip, or the live monitor's header) already provides the gap, so the selector
-// carries none of its own on top — only the small space down to the panel below.
+// strip, or the live monitor's header) already provides the gap above, so the
+// selector carries none of its own on top — only a small space of its own added to
+// `.panelsRoot`'s gap down to the panel below.
 .tabBar {
   margin: 0 0 t.$space-sm;
 }

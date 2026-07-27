@@ -113,34 +113,40 @@ export function GgRunPanels({
 
   return (
     <GgExplorerNavContext.Provider value={nav}>
-      {/* The tab selector, leading the view. */}
-      <div className={panels.tabBar}>
-        <SegmentedControl
-          options={tabs}
-          value={tab}
-          onChange={setTab}
-          ariaLabel="gg panel"
-        />
+      {/* The panels own their own vertical rhythm (see `.panelsRoot`) so the space
+          below the selector reads the same on both hosts — the live monitor's gapless
+          fill column and the finished run's gapped section — rather than inheriting
+          whichever gap the host container happens to carry. */}
+      <div className={panels.panelsRoot}>
+        {/* The tab selector, leading the view. */}
+        <div className={panels.tabBar}>
+          <SegmentedControl
+            options={tabs}
+            value={tab}
+            onChange={setTab}
+            ariaLabel="gg panel"
+          />
+        </div>
+
+        {/* The Dashboard's own content is a set of cards, each already a panel, so it
+            is not wrapped in the shared panel body — that would frame a frame. The tab
+            selector directly above already reads "Dashboard", so no section label
+            restates it here. */}
+        {tab === "dashboard" && dashboard}
+
+        {tab === "agents" && (
+          <GgAgentsExplorer
+            tree={agentTree}
+            perAgent={perAgent}
+            capabilitySet={capabilitySet}
+            workflows={workflows}
+            speculations={speculations}
+            live={live}
+            focusAgent={focusAgent}
+            onFocusHandled={onFocusHandled}
+          />
+        )}
       </div>
-
-      {/* The Dashboard's own content is a set of cards, each already a panel, so it
-          is not wrapped in the shared panel body — that would frame a frame. The tab
-          selector directly above already reads "Dashboard", so no section label
-          restates it here. */}
-      {tab === "dashboard" && dashboard}
-
-      {tab === "agents" && (
-        <GgAgentsExplorer
-          tree={agentTree}
-          perAgent={perAgent}
-          capabilitySet={capabilitySet}
-          workflows={workflows}
-          speculations={speculations}
-          live={live}
-          focusAgent={focusAgent}
-          onFocusHandled={onFocusHandled}
-        />
-      )}
     </GgExplorerNavContext.Provider>
   );
 }

@@ -15,7 +15,7 @@
 // A bento of cards rather than a uniform grid: a twelve-column track lets tiles
 // take different widths (the token and cost widgets earn the room their rings and
 // splits want; the stat and status tiles stay narrow) so the read-out has a
-// deliberate shape. The card spans below pair up to fill each row (7+5, 8+4, 12), and
+// deliberate shape. The card spans below pair up to fill each row (7+5, 12), and
 // `align-items: stretch` gives the two tiles in a row a shared height — so a wide
 // widget and its shorter neighbor line up flush rather than leaving a gap beneath the
 // shorter one. Every card is full-width when the row is too narrow to bento.
@@ -66,17 +66,11 @@
 .cardFull {
   grid-column: span 12;
 }
-.cardTwoThirds {
-  grid-column: span 8;
-}
 .cardWide {
   grid-column: span 7;
 }
 .cardHalf {
   grid-column: span 5;
-}
-.cardThird {
-  grid-column: span 4;
 }
 
 .cardLabel {
@@ -192,7 +186,18 @@
 
 // --- Split rings (input caching / output reasoning / input-vs-output cost) ----
 
-// The two rings of the Tokens widget sit side by side, wrapping when cramped.
+// The two rings of the Tokens widget sit side by side, wrapping when cramped. They
+// stand a step further below the figures above them than the card's uniform
+// $space-sm gap gives — otherwise the first ring reads almost against the totals,
+// noticeably tighter than the gap between the two rings themselves. (A round ring
+// already carries a little air beneath a line of text, so this only closes the rest
+// of the way, not all of it.) `.ringSpaced` carries the same step for the Cost
+// widget's lone ring.
+.ringRow,
+.ringSpaced {
+  margin-top: t.$space-sm;
+}
+
 .ringRow {
   display: flex;
   flex-wrap: wrap;

@@ -109,18 +109,20 @@ export function GgDashboard({
 
         <AgentsCard agentTree={agentTree} perAgent={perAgent} />
 
-        {capabilitySet && <ConfigurationCard set={capabilitySet} />}
-
         {/* The per-slot usage breakdown behind the cost total: a gg run spans one
             model per slot, so cost is accounted per slot rather than as one figure.
-            A whole-run fact across every agent, so it reads here, full width, rather
-            than on any single agent's Overview. Absent on a single-model run that
+            A whole-run fact across every agent, so it reads here rather than on any
+            single agent's Overview. It pairs on one row with the configuration — the
+            narrow tile (mirroring the Cost widget's width) on the left, the
+            configuration the wider tile beside it. Absent on a single-model run that
             emitted only the global usage deltas. */}
         {slotUsage.length > 0 && (
-          <div className={`${styles.card} ${styles.cardFull}`}>
+          <div className={`${styles.card} ${styles.cardHalf}`}>
             <SlotUsagePanel slotUsage={slotUsage} />
           </div>
         )}
+
+        {capabilitySet && <ConfigurationCard set={capabilitySet} />}
       </div>
 
       {/* The enforced FSM process, when a machine drives the run: the current state
@@ -368,7 +370,7 @@ function StatusCard({ status }: { status: GgDashboardStatus }) {
 function ConfigurationCard({ set }: { set: GgCapabilitySet }) {
   const enabled = set.capabilities.filter((c) => c.enabled).map((c) => c.id);
   return (
-    <div className={`${styles.card} ${styles.cardTwoThirds}`}>
+    <div className={`${styles.card} ${styles.cardWide}`}>
       <span className={styles.cardLabel}>Configuration</span>
       {set.preset && <span className={styles.configPreset}>{set.preset}</span>}
       <div className={styles.slots}>

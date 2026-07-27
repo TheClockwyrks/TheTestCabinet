@@ -24,6 +24,7 @@ import type {
   GgAgentStatus,
   GgSpeculationPhase,
 } from "@test-cabinet/run-record/gg";
+import { useFindModelOptional } from "../../../data/useModels";
 import styles from "./GgPanels.module.scss";
 
 // A per-agent speculation role, derived from the speculations plus the tree: the
@@ -192,22 +193,36 @@ export function AgentIdentity({
 // slot), so cost is accounted per slot rather than as one figure. The header total
 // is the sum of these rollups, so this is the breakdown behind that number.
 export function SlotUsagePanel({ slotUsage }: { slotUsage: SlotUsage[] }) {
+  // Resolve each slot's model id to its catalog display name (the run records the
+  // slug); fall back to the id itself where the catalog is absent (a bare harness
+  // context that never mounts the gallery provider) or the model is unknown.
+  const findModel = useFindModelOptional();
   return (
     <section className={styles.agentSection}>
       <span className={styles.subPanelLabel}>Per-slot usage</span>
       <ul className={styles.slotList}>
-        {slotUsage.map((usage) => (
-          <li key={`${usage.slot} ${usage.modelId}`} className={styles.slotRow}>
-            <span className={styles.slotName}>{usage.slot}</span>
-            <span className={styles.slotModel}>{usage.modelId}</span>
-            <span className={styles.slotTokens}>
-              {shortTokens(slotTokenTotal(usage))} tok
-            </span>
-            <span className={styles.slotCost}>
-              {formatCost(usage.cost?.comparable ?? null)}
-            </span>
-          </li>
-        ))}
+        {slotUsage.map((usage) => {
+          const modelName = findModel?.(usage.modelId)?.name ?? usage.modelId;
+          return (
+            <li
+              key={`${usage.slot} ${usage.modelId}`}
+              className={styles.slotRow}
+            >
+              {/* First line: the slot label and its cost. */}
+              <span className={styles.slotName}>{usage.slot}</span>
+              <span className={styles.slotCost}>
+                {formatCost(usage.cost?.comparable ?? null)}
+              </span>
+              {/* Second line: the model's display name and its token total. */}
+              <span className={styles.slotModel} title={usage.modelId}>
+                {modelName}
+              </span>
+              <span className={styles.slotTokens}>
+                {shortTokens(slotTokenTotal(usage))} tok
+              </span>
+            </li>
+          );
+        })}
       </ul>
     </section>
   );

@@ -57,6 +57,7 @@ export function SplitRing({
   total,
   emptyMessage,
   formatValue = formatTokens,
+  className,
 }: {
   label: string;
   primary: RingSegment;
@@ -64,6 +65,8 @@ export function SplitRing({
   total: number;
   emptyMessage: string;
   formatValue?: (n: number) => string;
+  /** Extra classes on the ring group — e.g. the Cost widget's top-spacing step. */
+  className?: string;
 }) {
   const primaryFraction = total > 0 ? primary.value / total : 0;
   const secondaryFraction = total > 0 ? secondary.value / total : 0;
@@ -73,7 +76,11 @@ export function SplitRing({
   const secondaryDash = secondaryFraction * RING_CIRC;
 
   return (
-    <div className={styles.ringGroup}>
+    <div
+      className={
+        className ? `${styles.ringGroup} ${className}` : styles.ringGroup
+      }
+    >
       <span className={styles.ringGroupLabel}>{label}</span>
       {total === 0 ? (
         <p className={styles.ringEmpty}>{emptyMessage}</p>
@@ -332,6 +339,7 @@ export function CostWidget({
             total={breakdown.total * scale}
             emptyMessage="No priced tokens yet."
             formatValue={formatCost}
+            className={styles.ringSpaced}
           />
           <p className={styles.cardNote}>
             Split derived from catalog prices; reasoning billed as output.
