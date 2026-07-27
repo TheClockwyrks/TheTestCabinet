@@ -407,14 +407,16 @@ describe("GgRunMonitorPage", () => {
       }),
     ]);
     expect(screen.getByText("Input caching")).toBeInTheDocument();
-    expect(screen.getByText("Output reasoning")).toBeInTheDocument();
+    expect(screen.getByText("Output tokens")).toBeInTheDocument();
     // The input ring reads 60% cached in its center; its legend gives both raw
     // counts and shares.
     expect(screen.getByText("60%")).toBeInTheDocument();
     expect(screen.getByText("1,200 · 60%")).toBeInTheDocument();
     expect(screen.getByText("800 · 40%")).toBeInTheDocument();
-    // The output ring reads 25% reasoning.
-    expect(screen.getByText("25%")).toBeInTheDocument();
+    // The output ring centers on the output share (75%) — "reasoning" is too long
+    // to read inside the ring — while its legend still carries both classes' raw
+    // counts and shares (25% of output was reasoning).
+    expect(screen.getByText("75%")).toBeInTheDocument();
     expect(screen.getByText("100 · 25%")).toBeInTheDocument();
     expect(screen.getByText("300 · 75%")).toBeInTheDocument();
   });

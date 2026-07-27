@@ -238,8 +238,9 @@
   stroke: color-mix(in srgb, t.$color-border 45%, transparent);
 }
 
-// The primary share (cached / reasoning) takes the accent; the secondary the muted
-// remainder, so the ring reads "how much of this is the interesting class".
+// The primary share (cached input / output / input's share of cost) takes the
+// accent and is the class named in the ring's center; the secondary the muted
+// remainder.
 .ringArcPrimary {
   fill: none;
   stroke: t.$color-accent;

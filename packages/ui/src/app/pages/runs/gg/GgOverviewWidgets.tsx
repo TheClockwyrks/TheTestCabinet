@@ -232,10 +232,14 @@ export function TokensWidget({
               total={totalInput}
               emptyMessage="No input tokens yet."
             />
+            {/* Centered on the output share (not reasoning): "reasoning" is too
+                long to sit legibly inside the ring, and output is the larger,
+                headline class. The reasoning share stays readable off the arc and
+                legend. */}
             <SplitRing
-              label="Output reasoning"
-              primary={{ label: "reasoning", value: usage.reasoning }}
-              secondary={{ label: "output", value: usage.output }}
+              label="Output tokens"
+              primary={{ label: "output", value: usage.output }}
+              secondary={{ label: "reasoning", value: usage.reasoning }}
               total={totalOutput}
               emptyMessage="No output tokens yet."
             />
