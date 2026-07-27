@@ -8,14 +8,15 @@ import {
   denAllExcept,
   findFarTile,
   sampleColor,
-  isDark,
 } from "../_helpers.mjs";
+import { isFogBlack, sampleFog } from "./_kindle.mjs";
 
 export default function item() {
   let hasDrifter;
   let dist;
   let windowRadius;
   let col;
+  let fog;
 
   return {
     id: "kindle.beyond-circle",
@@ -38,6 +39,10 @@ export default function item() {
       // A REAL pause (the old wait(120)) so the scene has been painted before sampling.
       await api.settle(120);
       col = await sampleColor(api, d.x, d.y);
+      // Compare against the build's own flat fog rather than an absolute darkness cut:
+      // a dim-but-drawn amber glow, or ground a build with no vision circle is still
+      // painting out there, both read as "dark" while plainly not being clipped.
+      fog = await sampleFog(api, s, [s.forager, d]);
       await api.screenshot("clipped");
     },
 
@@ -49,8 +54,8 @@ export default function item() {
         windowRadius,
       );
       check.expectOk(
-        "the amber drifter is clipped to black beyond the circle",
-        isDark(col),
+        "the amber drifter is clipped to the flat fog beyond the circle",
+        isFogBlack(col, fog),
       );
     },
   };

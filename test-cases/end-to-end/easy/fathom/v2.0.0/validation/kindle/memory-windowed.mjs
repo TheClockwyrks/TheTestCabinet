@@ -14,12 +14,14 @@ import {
   sampleColor,
   luminance,
 } from "../_helpers.mjs";
+import { isFogBlack, sampleFog } from "./_kindle.mjs";
 
 export default function item() {
   let beyond;
   let visibility;
   let colBefore;
   let colAfter;
+  let fog;
 
   return {
     id: "kindle.memory-windowed",
@@ -68,6 +70,12 @@ export default function item() {
       await api.settle(120);
       const p = tileCenter(s.grid, beyond.c, beyond.r);
       colBefore = await sampleColor(api, p.x, p.y);
+      // The build's own flat fog. Without this the item only tested the REMEMBERED
+      // half: a build with no vision circle at all draws this tile dim now and lit
+      // once the forager returns, which satisfies "returning redraws it" while never
+      // having hidden anything. Requiring the tile to read as fog while it is outside
+      // the circle is the WINDOWED half the point is named for.
+      fog = await sampleFog(api, s, [s.forager, p]);
 
       await api.call("setForager", { tx: place.tx, ty: place.ty }); // return near it
       await api.advance(6); // 6 ticks = the old 0.05 s
@@ -86,6 +94,10 @@ export default function item() {
         "it is still remembered underneath (not forgotten)",
         visibility,
         "u",
+      );
+      check.expectOk(
+        "while outside the circle it is hidden — painted back to the flat fog",
+        isFogBlack(colBefore, fog),
       );
       check.expectGt(
         "returning redraws the remembered ground",

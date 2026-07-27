@@ -11,15 +11,16 @@ import {
   tileCenter,
   sampleColor,
   luminance,
-  isDark,
   unmetPrecondition,
 } from "../_helpers.mjs";
+import { isFogBlack, sampleFog } from "./_kindle.mjs";
 
 export default function item() {
   let inside;
   let beyond;
   let ci;
   let cb;
+  let fog;
 
   return {
     id: "kindle.vision-circle",
@@ -70,13 +71,18 @@ export default function item() {
       const pb = tileCenter(s.grid, beyond.c, beyond.r);
       ci = await sampleColor(api, pi.x, pi.y);
       cb = await sampleColor(api, pb.x, pb.y);
+      // The build's own flat fog, to compare the outer sample against. Explored
+      // ground beyond the circle must be painted back to exactly this — merely being
+      // "dark" does not separate it from the REMEMBERED dim a build with no vision
+      // circle would draw there (see ./_kindle.mjs).
+      fog = await sampleFog(api, s, [f]);
       await api.screenshot("circle");
     },
 
     async assert(api, check) {
       check.expectOk(
-        "explored ground beyond the vision circle is pitch black",
-        isDark(cb),
+        "explored ground beyond the vision circle is painted back to the flat fog",
+        isFogBlack(cb, fog),
       );
       check.expectGt(
         "terrain inside the vision circle is drawn",
