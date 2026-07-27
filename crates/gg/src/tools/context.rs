@@ -123,9 +123,25 @@ impl Tool for EvictFileViewTool {
         // reclaimed. This placeholder therefore carries no data of its own: it has not yet
         // happened, and reporting a guess would be worse than reporting nothing.
         match parse_evict_path(&args) {
-            Ok(_) => ToolOutcome::ok("evicting file views", "evict file views"),
+            Ok(path) => self.evict(path),
             Err(message) => invalid_argument(message),
         }
+    }
+}
+
+impl EvictFileViewTool {
+    /// Validate an `evict_file_view` call — the **standard, typed** API function both the JSON
+    /// [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach. It only
+    /// validates: the [loop](crate::agent) performs the reclaim against the live window and rewrites
+    /// this outcome (and its [`ToolData::Reclaim`]) with what it actually freed. `None` evicts all
+    /// file views; an empty path is refused.
+    pub(crate) fn evict(&self, path: Option<String>) -> ToolOutcome {
+        if matches!(&path, Some(path) if path.trim().is_empty()) {
+            return invalid_argument(format!(
+                "`{EVICT_FILE_VIEW_TOOL}`: `path` must not be empty"
+            ));
+        }
+        ToolOutcome::ok("evicting file views", "evict file views")
     }
 }
 
@@ -170,9 +186,20 @@ impl Tool for ArchiveThreadTool {
         // Validate only; the loop performs the archival against the live window and rewrites this
         // result (and attaches its `ToolData::Reclaim`) with what it actually moved out.
         match parse_archive_keep_recent(&args) {
-            Ok(_) => ToolOutcome::ok("archiving thread history", "archive thread"),
+            Ok(keep_recent_turns) => self.archive(keep_recent_turns),
             Err(message) => invalid_argument(message),
         }
+    }
+}
+
+impl ArchiveThreadTool {
+    /// Validate an `archive_thread` call — the **standard, typed** API function both the JSON
+    /// [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach. It only
+    /// validates: the [loop](crate::agent) performs the archival against the live window and rewrites
+    /// this outcome (and its [`ToolData::Reclaim`]) with what it actually moved out. `keep_recent_turns`
+    /// is the count of most-recent turns to keep live.
+    pub(crate) fn archive(&self, _keep_recent_turns: usize) -> ToolOutcome {
+        ToolOutcome::ok("archiving thread history", "archive thread")
     }
 }
 
@@ -223,6 +250,14 @@ impl Tool for SearchArchiveTool {
             Ok(query) => query,
             Err(error) => return error.into(),
         };
+        self.search(query)
+    }
+}
+
+impl SearchArchiveTool {
+    /// Search the out-of-window archive — the **standard, typed** `search_archive` API function both
+    /// the JSON [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach.
+    pub(crate) fn search(&self, query: String) -> ToolOutcome {
         if query.trim().is_empty() {
             return invalid_argument(format!(
                 "`{SEARCH_ARCHIVE_TOOL}`: `query` must not be empty"

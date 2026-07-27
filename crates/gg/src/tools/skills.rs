@@ -83,7 +83,14 @@ impl Tool for ReadSkillTool {
             Ok(name) => name,
             Err(error) => return error.into(),
         };
+        self.read(name)
+    }
+}
 
+impl ReadSkillTool {
+    /// Read a skill body by name — the **standard, typed** `read_skill` API function both the JSON
+    /// [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach.
+    pub(crate) fn read(&self, name: String) -> ToolOutcome {
         match self.library.get(&name) {
             // The skill's body *is* the structured result — there is nothing about it to describe
             // that the text does not already say — so this call carries no sidecar.

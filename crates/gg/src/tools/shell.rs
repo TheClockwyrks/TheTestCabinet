@@ -113,7 +113,16 @@ fn parse_timeout(args: &Value) -> Result<Duration, ArgumentError> {
 
 /// Spawn `command` under `sh -c` in the workspace, enforce `timeout`, and turn the
 /// result into a [`ToolOutcome`]. `ok` is true only for a clean exit (status `0`).
-async fn run_command(command: &str, timeout: Duration, ctx: &ToolContext) -> ToolOutcome {
+///
+/// This is the **standard, typed** `shell` API function both call paths reach: the JSON
+/// tool-calling [adapter](Tool::invoke) after it parses `command`/`timeout_secs`, and the
+/// [responses-as-code membrane](crate::sandbox) directly with the command and the
+/// budget-clamped timeout a program passed.
+pub(crate) async fn run_command(
+    command: &str,
+    timeout: Duration,
+    ctx: &ToolContext,
+) -> ToolOutcome {
     let mut command_builder = Command::new("sh");
     command_builder
         .arg("-c")

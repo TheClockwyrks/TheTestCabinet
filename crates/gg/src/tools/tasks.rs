@@ -225,6 +225,21 @@ impl Tool for AddTaskTool {
             Ok(blocked_by) => blocked_by,
             Err(error) => return error.into(),
         };
+        self.add(id, title, description, structured, blocked_by)
+    }
+}
+
+impl AddTaskTool {
+    /// Add a task — the **standard, typed** `add_task` API function both the JSON
+    /// [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach.
+    pub(crate) fn add(
+        &self,
+        id: String,
+        title: String,
+        description: Option<String>,
+        structured: OwnedStructured,
+        blocked_by: Vec<String>,
+    ) -> ToolOutcome {
         let mut store = self.store.lock().expect("task store lock");
         match store.add(
             &id,
@@ -246,10 +261,15 @@ impl Tool for AddTaskTool {
 
 /// The three structured-section strings a task tool parsed from its args, owned so they can back
 /// a borrowing [`StructuredFields`]. Each is `None` when the argument was absent.
-struct OwnedStructured {
-    in_scope: Option<String>,
-    out_of_scope: Option<String>,
-    completion_criteria: Option<String>,
+///
+/// `pub(crate)` (and `Default`) so the [responses-as-code membrane](crate::sandbox) can hand the
+/// typed [`add`](AddTaskTool::add)/[`update`](UpdateTaskTool::update) functions an empty set — a
+/// program's task input carries no structured sections, exactly as the native task schema's did not.
+#[derive(Default)]
+pub(crate) struct OwnedStructured {
+    pub(crate) in_scope: Option<String>,
+    pub(crate) out_of_scope: Option<String>,
+    pub(crate) completion_criteria: Option<String>,
 }
 
 impl OwnedStructured {
@@ -389,6 +409,22 @@ impl Tool for UpdateTaskTool {
             Ok(None) => None,
             Err(error) => return error.into(),
         };
+        self.update(id, title, description, structured, status)
+    }
+}
+
+impl UpdateTaskTool {
+    /// Revise a task in place — the **standard, typed** `update_task` API function both the JSON
+    /// [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach. A `None`
+    /// field is left alone; an empty `description` clears it.
+    pub(crate) fn update(
+        &self,
+        id: String,
+        title: Option<String>,
+        description: Option<String>,
+        structured: OwnedStructured,
+        status: Option<TaskStatus>,
+    ) -> ToolOutcome {
         let mut store = self.store.lock().expect("task store lock");
         match store.update(
             &id,
@@ -466,6 +502,14 @@ impl Tool for SetBlockedByTool {
             Ok(blocked_by) => blocked_by,
             Err(error) => return error.into(),
         };
+        self.set_blocked_by(id, blocked_by)
+    }
+}
+
+impl SetBlockedByTool {
+    /// Set (or clear) a task's blockers — the **standard, typed** `set_blocked_by` API function both
+    /// the JSON [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach.
+    pub(crate) fn set_blocked_by(&self, id: String, blocked_by: Vec<String>) -> ToolOutcome {
         let mut store = self.store.lock().expect("task store lock");
         match store.set_blocked_by(&id, &blocked_by) {
             Ok(TaskChange::BlockersSet) => {
@@ -528,6 +572,14 @@ impl Tool for CompleteTaskTool {
             Ok(id) => id,
             Err(error) => return error.into(),
         };
+        self.complete(id)
+    }
+}
+
+impl CompleteTaskTool {
+    /// Mark a task done — the **standard, typed** `complete_task` API function both the JSON
+    /// [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach.
+    pub(crate) fn complete(&self, id: String) -> ToolOutcome {
         let mut store = self.store.lock().expect("task store lock");
         match store.complete(&id) {
             // Completing a task leaves the list the same size, so — like `update_task` — there is
@@ -588,6 +640,14 @@ impl Tool for RemoveTaskTool {
             Ok(id) => id,
             Err(error) => return error.into(),
         };
+        self.remove(id)
+    }
+}
+
+impl RemoveTaskTool {
+    /// Remove a task — the **standard, typed** `remove_task` API function both the JSON
+    /// [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach.
+    pub(crate) fn remove(&self, id: String) -> ToolOutcome {
         let mut store = self.store.lock().expect("task store lock");
         match store.remove(&id) {
             Ok(TaskChange::Removed) => ToolOutcome::ok(

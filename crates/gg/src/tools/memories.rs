@@ -150,6 +150,14 @@ impl Tool for WriteMemoryTool {
             Ok(fields) => fields,
             Err(error) => return error.into(),
         };
+        self.write(name, description, body)
+    }
+}
+
+impl WriteMemoryTool {
+    /// Record a memory — the **standard, typed** `write_memory` API function both the JSON
+    /// [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach.
+    pub(crate) fn write(&self, name: String, description: String, body: String) -> ToolOutcome {
         let mut store = self.store.lock().expect("memory store lock");
         match store.write(&name, &description, &body) {
             Ok(MemoryChange::Written) => ToolOutcome::ok(
@@ -219,6 +227,14 @@ impl Tool for UpdateMemoryTool {
             Ok(fields) => fields,
             Err(error) => return error.into(),
         };
+        self.update(name, description, body)
+    }
+}
+
+impl UpdateMemoryTool {
+    /// Revise a memory in place — the **standard, typed** `update_memory` API function both the JSON
+    /// [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach.
+    pub(crate) fn update(&self, name: String, description: String, body: String) -> ToolOutcome {
         let mut store = self.store.lock().expect("memory store lock");
         match store.update(&name, &description, &body) {
             Ok(MemoryChange::Updated) => ToolOutcome::ok(
@@ -278,6 +294,14 @@ impl Tool for DeleteMemoryTool {
             Ok(name) => name,
             Err(error) => return error.into(),
         };
+        self.delete(name)
+    }
+}
+
+impl DeleteMemoryTool {
+    /// Remove a memory — the **standard, typed** `delete_memory` API function both the JSON
+    /// [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach.
+    pub(crate) fn delete(&self, name: String) -> ToolOutcome {
         let mut store = self.store.lock().expect("memory store lock");
         match store.delete(&name) {
             Ok(MemoryChange::Deleted) => ToolOutcome::ok(

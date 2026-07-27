@@ -208,6 +208,19 @@ impl Tool for CreateEpicTool {
             Ok(v) => v,
             Err(error) => return error.into(),
         };
+        self.create_epic(id, title, description)
+    }
+}
+
+impl CreateEpicTool {
+    /// Create an epic — the **standard, typed** `create_epic` API function both the JSON
+    /// [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach.
+    pub(crate) fn create_epic(
+        &self,
+        id: String,
+        title: String,
+        description: String,
+    ) -> ToolOutcome {
         let mut store = self.store.lock().expect("board store lock");
         match store.create_epic(&id, &title, &description) {
             Ok(BoardChange::EpicCreated) => ToolOutcome::ok(
@@ -323,6 +336,34 @@ impl Tool for CreateIssueTool {
             Ok(v) => v,
             Err(error) => return error.into(),
         };
+        self.create_issue(
+            id,
+            title,
+            description,
+            in_scope,
+            out_of_scope,
+            completion_criteria,
+            blocked_by,
+            epic_id,
+        )
+    }
+}
+
+impl CreateIssueTool {
+    /// Create an issue — the **standard, typed** `create_issue` API function both the JSON
+    /// [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn create_issue(
+        &self,
+        id: String,
+        title: String,
+        description: Option<String>,
+        in_scope: String,
+        out_of_scope: String,
+        completion_criteria: String,
+        blocked_by: Vec<String>,
+        epic_id: Option<String>,
+    ) -> ToolOutcome {
         let mut store = self.store.lock().expect("board store lock");
         match store.create_issue(
             &id,
@@ -448,6 +489,35 @@ impl Tool for UpdateIssueTool {
             Ok(None) => None,
             Err(error) => return error.into(),
         };
+        self.update_issue(
+            id,
+            title,
+            description,
+            in_scope,
+            out_of_scope,
+            completion_criteria,
+            status,
+            epic_id,
+        )
+    }
+}
+
+impl UpdateIssueTool {
+    /// Revise an issue in place — the **standard, typed** `update_issue` API function both the JSON
+    /// [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach. A `None`
+    /// field is left alone; an empty `description`/`epic_id` clears (ungroups) it.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn update_issue(
+        &self,
+        id: String,
+        title: Option<String>,
+        description: Option<String>,
+        in_scope: Option<String>,
+        out_of_scope: Option<String>,
+        completion_criteria: Option<String>,
+        status: Option<IssueStatus>,
+        epic_id: Option<String>,
+    ) -> ToolOutcome {
         let update = IssueUpdate {
             title: title.as_deref(),
             description: description.as_deref(),
@@ -527,6 +597,14 @@ impl Tool for SetIssueBlockedByTool {
             Ok(v) => v,
             Err(error) => return error.into(),
         };
+        self.set_issue_blocked_by(id, blocked_by)
+    }
+}
+
+impl SetIssueBlockedByTool {
+    /// Replace an issue's blockers — the **standard, typed** `set_issue_blocked_by` API function both
+    /// the JSON [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach.
+    pub(crate) fn set_issue_blocked_by(&self, id: String, blocked_by: Vec<String>) -> ToolOutcome {
         let mut store = self.store.lock().expect("board store lock");
         match store.set_issue_blocked_by(&id, &blocked_by) {
             Ok(BoardChange::BlockersSet) => {
@@ -588,6 +666,15 @@ impl Tool for CompleteIssueTool {
             Ok(v) => v,
             Err(error) => return error.into(),
         };
+        self.complete_issue(id)
+    }
+}
+
+impl CompleteIssueTool {
+    /// Mark an issue done — the **standard, typed** `complete_issue` API function both the JSON
+    /// [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach. (With
+    /// Code Reviews enabled the [loop](crate::agent) intercepts this instead, reporting its review.)
+    pub(crate) fn complete_issue(&self, id: String) -> ToolOutcome {
         let mut store = self.store.lock().expect("board store lock");
         match store.complete_issue(&id) {
             Ok(BoardChange::IssueCompleted) => {
@@ -651,6 +738,14 @@ impl Tool for RemoveEpicTool {
             Ok(v) => v,
             Err(error) => return error.into(),
         };
+        self.remove_epic(id)
+    }
+}
+
+impl RemoveEpicTool {
+    /// Remove an epic — the **standard, typed** `remove_epic` API function both the JSON
+    /// [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach.
+    pub(crate) fn remove_epic(&self, id: String) -> ToolOutcome {
         let mut store = self.store.lock().expect("board store lock");
         match store.remove_epic(&id) {
             Ok(BoardChange::EpicRemoved) => ToolOutcome::ok(
@@ -707,6 +802,14 @@ impl Tool for RemoveIssueTool {
             Ok(v) => v,
             Err(error) => return error.into(),
         };
+        self.remove_issue(id)
+    }
+}
+
+impl RemoveIssueTool {
+    /// Remove an issue — the **standard, typed** `remove_issue` API function both the JSON
+    /// [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach.
+    pub(crate) fn remove_issue(&self, id: String) -> ToolOutcome {
         let mut store = self.store.lock().expect("board store lock");
         match store.remove_issue(&id) {
             Ok(BoardChange::IssueRemoved) => ToolOutcome::ok(

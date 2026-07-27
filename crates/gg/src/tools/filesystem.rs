@@ -226,16 +226,6 @@ pub fn resolve_within(root: &Path, rel: &str) -> Result<PathBuf, String> {
 /// missing file: the path the caller supplied is not one this tool accepts, and the fix is to
 /// supply a different one. (Nothing is revealed about whether the target exists, which is the point
 /// of checking lexically before touching the filesystem.)
-fn resolve_arg(
-    args: &Value,
-    field: &str,
-    tool: &str,
-    root: &Path,
-) -> Result<PathBuf, ArgumentError> {
-    let rel = required_str(args, field, tool)?;
-    resolve_within(root, &rel).map_err(|why| ArgumentError(format!("`{tool}`: {why}")))
-}
-
 /// Read `field` from `args` as an **optional** positive integer (the `offset`/`limit`
 /// paging arguments). Absent or `null` is `None` — the caller's default applies — while a
 /// present value that is not a positive integer is an error rather than a silent default,
@@ -658,18 +648,38 @@ impl Tool for ReadFileTool {
             Ok(rel) => rel,
             Err(error) => return error.into(),
         };
-        let path = match resolve_within(&ctx.workspace_dir, &rel_path) {
-            Ok(path) => path,
-            Err(why) => return invalid_argument(format!("`read_file`: {why}")),
-        };
         let offset = match positive_arg(&args, "offset", "read_file") {
-            Ok(offset) => offset.unwrap_or(1),
+            Ok(offset) => offset,
             Err(error) => return error.into(),
         };
         let limit = match positive_arg(&args, "limit", "read_file") {
             Ok(limit) => limit,
             Err(error) => return error.into(),
         };
+        self.read(ctx, rel_path, offset, limit)
+    }
+}
+
+impl ReadFileTool {
+    /// Read a workspace file — the **standard, typed** `read_file` API function both call paths
+    /// reach: the JSON tool-calling [adapter](Tool::invoke) after it parses its arguments, and the
+    /// [responses-as-code membrane](crate::sandbox) directly with the typed values a program passed.
+    ///
+    /// `offset` is normalised to gg's 1-based first line (a `Some(0)` — which the WIT `option<u32>`
+    /// admits but the schema's `minimum: 1` forbids — reads from the start, rather than costing a
+    /// turn on an argument error about a constraint the signature never stated).
+    pub(crate) fn read(
+        &self,
+        ctx: &ToolContext,
+        rel_path: String,
+        offset: Option<usize>,
+        limit: Option<usize>,
+    ) -> ToolOutcome {
+        let path = match resolve_within(&ctx.workspace_dir, &rel_path) {
+            Ok(path) => path,
+            Err(why) => return invalid_argument(format!("`read_file`: {why}")),
+        };
+        let offset = offset.map(|offset| offset.max(1)).unwrap_or(1);
 
         let bytes = match std::fs::read(&path) {
             Ok(bytes) => bytes,
@@ -732,13 +742,30 @@ impl Tool for WriteFileTool {
     }
 
     async fn invoke(&self, args: Value, ctx: &ToolContext) -> ToolOutcome {
-        let path = match resolve_arg(&args, "path", "write_file", &ctx.workspace_dir) {
-            Ok(path) => path,
+        let rel_path = match required_str(&args, "path", "write_file") {
+            Ok(rel) => rel,
             Err(error) => return error.into(),
         };
         let contents = match required_str(&args, "contents", "write_file") {
             Ok(contents) => contents,
             Err(error) => return error.into(),
+        };
+        self.write(ctx, rel_path, contents)
+    }
+}
+
+impl WriteFileTool {
+    /// Write a workspace file — the **standard, typed** `write_file` API function both the JSON
+    /// [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach.
+    pub(crate) fn write(
+        &self,
+        ctx: &ToolContext,
+        rel_path: String,
+        contents: String,
+    ) -> ToolOutcome {
+        let path = match resolve_within(&ctx.workspace_dir, &rel_path) {
+            Ok(path) => path,
+            Err(why) => return invalid_argument(format!("`write_file`: {why}")),
         };
 
         if let Some(parent) = path.parent()
@@ -805,8 +832,8 @@ impl Tool for EditFileTool {
     }
 
     async fn invoke(&self, args: Value, ctx: &ToolContext) -> ToolOutcome {
-        let path = match resolve_arg(&args, "path", "edit_file", &ctx.workspace_dir) {
-            Ok(path) => path,
+        let rel_path = match required_str(&args, "path", "edit_file") {
+            Ok(rel) => rel,
             Err(error) => return error.into(),
         };
         let old_string = match required_str(&args, "old_string", "edit_file") {
@@ -816,6 +843,25 @@ impl Tool for EditFileTool {
         let new_string = match required_str(&args, "new_string", "edit_file") {
             Ok(value) => value,
             Err(error) => return error.into(),
+        };
+        self.edit(ctx, rel_path, old_string, new_string)
+    }
+}
+
+impl EditFileTool {
+    /// Replace an exact, unique occurrence in a workspace file — the **standard, typed** `edit_file`
+    /// API function both the JSON [adapter](Tool::invoke) and the
+    /// [responses-as-code membrane](crate::sandbox) reach.
+    pub(crate) fn edit(
+        &self,
+        ctx: &ToolContext,
+        rel_path: String,
+        old_string: String,
+        new_string: String,
+    ) -> ToolOutcome {
+        let path = match resolve_within(&ctx.workspace_dir, &rel_path) {
+            Ok(path) => path,
+            Err(why) => return invalid_argument(format!("`edit_file`: {why}")),
         };
 
         if old_string.is_empty() {
@@ -907,12 +953,22 @@ impl Tool for ListDirTool {
     async fn invoke(&self, args: Value, ctx: &ToolContext) -> ToolOutcome {
         // `path` is optional here and defaults to the workspace root.
         let rel = match args.get("path") {
-            None | Some(Value::Null) => ".".to_string(),
-            Some(Value::String(value)) => value.clone(),
+            None | Some(Value::Null) => None,
+            Some(Value::String(value)) => Some(value.clone()),
             Some(_) => {
                 return invalid_argument("`list_dir`: argument `path` must be a string");
             }
         };
+        self.list(ctx, rel)
+    }
+}
+
+impl ListDirTool {
+    /// List a workspace directory — the **standard, typed** `list_dir` API function both the JSON
+    /// [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach. A `None`
+    /// path lists the workspace root.
+    pub(crate) fn list(&self, ctx: &ToolContext, rel_path: Option<String>) -> ToolOutcome {
+        let rel = rel_path.unwrap_or_else(|| ".".to_string());
         let dir = match resolve_within(&ctx.workspace_dir, &rel) {
             Ok(dir) => dir,
             Err(why) => return invalid_argument(format!("`list_dir`: {why}")),
