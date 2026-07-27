@@ -28,8 +28,11 @@ fn minimal_capability_set_binds_the_root_model_and_phase0_capabilities() {
     for capability in FILESYSTEM_TOOL_CAPABILITIES {
         assert!(set.is_enabled(capability), "expected `{capability}` on");
     }
-    // Context visibility is a default-on capability (it adds no tools, only accounting).
-    assert!(set.is_enabled(CAPABILITY_CONTEXT_VISIBILITY));
+    // Context visibility is not a capability, so the context-window override is the only
+    // context knob — and it is opt-in, so a minimal set carries none of it. (Context
+    // visibility itself is always on, exercised by the gg-crate emission tests.)
+    assert!(!set.is_enabled(CAPABILITY_CONTEXT_WINDOW_OVERRIDE));
+    assert!(set.capability(CAPABILITY_CONTEXT_WINDOW_OVERRIDE).is_none());
     // An absent capability is distinguishable from a present one. Both Phase 2 backstops are
     // opt-in, so neither is in the minimal set.
     assert!(!set.is_enabled("compaction"));
@@ -55,7 +58,7 @@ fn default_capability_set_needs_no_model_and_binds_no_agent_model() {
     // The default capabilities are still present, just unbound to any model.
     assert!(set.is_enabled(CAPABILITY_SHELL));
     assert!(set.is_enabled(CAPABILITY_READ_FILE));
-    assert!(set.is_enabled(CAPABILITY_CONTEXT_VISIBILITY));
+    assert!(set.is_enabled(CAPABILITY_SKILLS));
 }
 
 /// A capability set written before the filesystem split names only the umbrella id. It

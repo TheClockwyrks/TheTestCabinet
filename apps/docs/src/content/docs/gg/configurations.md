@@ -4,7 +4,7 @@ title: "Configurations"
 
 A gg run is configured by a [capability set](/gg/overview/#the-capability-set), not
 by a `(harness, model, orchestrator)` tuple. A **configuration** is that capability
-set, *named* — the "named / preset-able" requirement the overview sets out, made
+set, _named_ — the "named / preset-able" requirement the overview sets out, made
 concrete: a study is then a sweep over configurations rather than hand-assembled
 flag soup, and every run records which configuration produced it, so
 [result aggregation](/gg/result-aggregation/) can slice by it natively.
@@ -20,12 +20,12 @@ every launch form.
 **Account → gg** lists the configurations on the signed-in account, plus the
 read-only **built-ins** every operator shares:
 
-| Built-in | What it is |
-| --- | --- |
-| `minimal` | The default capability set — the launchable baseline. |
-| `full` | Every capability on, with the standard compaction and subagent params. |
+| Built-in        | What it is                                                               |
+| --------------- | ------------------------------------------------------------------------ |
+| `minimal`       | The default capability set — the launchable baseline.                    |
+| `full`          | Every capability on, with the standard compaction and subagent params.   |
 | `no-compaction` | Everything on except the compaction backstop — the context-overflow arm. |
-| `shell-only` | Shell and nothing else — the ablation extreme. |
+| `shell-only`    | Shell and nothing else — the ablation extreme.                           |
 
 Creating or editing one opens the capability-set editor. At the top sit the two
 run-level fieldsets — the **Run limits** (below) and the **model slots** (below) —
@@ -43,11 +43,12 @@ leaves that ceiling off**, and an untouched fieldset writes no `limits` key at a
 every configuration saved before limits existed round-trips unchanged. The one field with
 a default is turns per agent, which is 50 when empty.
 
-One param is worth knowing about before you run a compaction study: context
-visibility's [**window limit**](/gg/context-visibility/#the-window-a-run-is-measured-against)
+One capability is worth knowing about before you run a compaction study: the
+[**Context Window Override**](/gg/context-visibility/#the-window-a-run-is-measured-against)
 narrows the window a run is measured against, so a compaction arm can be exercised
 against a million-token model without spending a million tokens of input to reach a
-boundary. It can only narrow — the model's real window is a hard limit.
+boundary. It can only narrow — the model's real window is a hard limit — and it is off
+by default, so a normal run uses the model's full window.
 
 A configuration is deliberately **test-case-free**, and it does not have to name the
 models it runs on.
@@ -85,14 +86,14 @@ A configuration is meant to be reusable across models, so the models its agents 
 on are not all baked into it. It declares run-level named **model slots** —
 launch-time model parameters — and each agent's model either:
 
-- **pins a model** outright, an *internal* binding that is identical on every run of
+- **pins a model** outright, an _internal_ binding that is identical on every run of
   the configuration and is never asked about again; or
 - **defers to a model slot**, leaving the model to be supplied when a run is
   launched.
 
 A model slot may carry a **default**, which the launch form pre-fills. Model slots are
 named separately from the agents they feed precisely so two agents can share one: "run
-the reviewer *and* the judge on whatever I pick for `critic`" is one launch input, not
+the reviewer _and_ the judge on whatever I pick for `critic`" is one launch input, not
 two. gg routes every live model through OpenRouter and infers its provider from the
 model id, so a slot never needs a provider pinned onto it — and because each agent
 carries its own model, a run can span **several, possibly cross-provider models** at
@@ -114,12 +115,12 @@ agent". The backend rejects a launch that leaves one unresolved, naming the agen
 
 Configurations are per-account and private, stored by the backend:
 
-| Endpoint | Purpose |
-| --- | --- |
-| `GET /gg/configs` | The account's configurations. |
-| `POST /gg/configs` | Register one. |
-| `PUT /gg/configs/{id}` | Update one in place. |
-| `DELETE /gg/configs/{id}` | Delete one. |
+| Endpoint                  | Purpose                       |
+| ------------------------- | ----------------------------- |
+| `GET /gg/configs`         | The account's configurations. |
+| `POST /gg/configs`        | Register one.                 |
+| `PUT /gg/configs/{id}`    | Update one in place.          |
+| `DELETE /gg/configs/{id}` | Delete one.                   |
 
 Deleting a configuration does not disturb runs launched from it: every gg run
 records its own resolved capability set, so the analysis surfaces keep slicing by
@@ -128,7 +129,7 @@ what actually ran.
 ## Launching one
 
 gg is launched from the **ordinary New run page**, not a separate form. Picking
-**gg** in the *Orchestrator* selector switches the form into the gg run mode:
+**gg** in the _Orchestrator_ selector switches the form into the gg run mode:
 
 - The per-row **Harness** column becomes a **gg configuration** column, offering
   the built-ins and the account's own configurations.
@@ -141,7 +142,7 @@ gg is launched from the **ordinary New run page**, not a separate form. Picking
 gg is not really an orchestrator — it is its own executor, and the
 [orchestrator](/orchestrators/overview/) dimension does not apply to a gg run (see
 [Overview](/gg/overview/#how-gg-fits-into-the-test-cabinet)). It is offered in that
-selector because that is where an operator says *how a run is conducted*, which
+selector because that is where an operator says _how a run is conducted_, which
 makes it the one place the choice belongs. Unlike `ralph`, gg is offered for every
 test type: it replaces the harness, not the session strategy.
 
@@ -172,7 +173,7 @@ the run:
   **activity**, and **context** files. The [Project management](/gg/project-management/)
   board is **not** a per-agent file — because it is shared run-wide it surfaces as a
   run-global **Project** section, present only when that capability is on.
-- The **activity** file is gg's telemetry rendered through the *same* feed every
+- The **activity** file is gg's telemetry rendered through the _same_ feed every
   other harness's events render through, so it honors the layout picked in
   **Settings → Appearance** and a gg run doesn't read differently from every other
   run.

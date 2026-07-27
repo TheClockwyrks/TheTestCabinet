@@ -760,7 +760,7 @@
       "type": "object"
     },
     {
-      "description": "The per-source breakdown of what fills the context window, assembled for a turn.\n\nEmitted once per turn when the\n[context-visibility](CAPABILITY_CONTEXT_VISIBILITY) capability is enabled (the\naccounting is always computed; only this emission is gated). The console renders\nthe stream of these as a stacked line graph of window fullness by category over\nthe run. All token figures are estimates (see [`GgContextSourceUsage`]).",
+      "description": "The per-source breakdown of what fills the context window, assembled for a turn.\n\nEmitted once per turn, always — context visibility is not a capability that can be\nswitched off, but the intrinsic accounting every run reports. The console renders\nthe stream of these as a stacked line graph of window fullness by category over\nthe run. All token figures are estimates (see [`GgContextSourceUsage`]).",
       "properties": {
         "bySource": {
           "description": "One band per [`GgContextSource`], in [`GgContextSource::ALL`] order (a source\nthat contributed nothing this turn is present with `0`), so the graph's bands\nstay stable across turns.",
@@ -785,7 +785,7 @@
           "type": "string"
         },
         "windowLimit": {
-          "description": "The active model's context-window limit, when known (a capability param or a\nbuilt-in per-model default). The denominator of fullness.",
+          "description": "The active model's context-window limit, when known — its catalog window, or the\nsmaller figure an enabled [context-window override](CAPABILITY_CONTEXT_WINDOW_OVERRIDE)\nnarrowed it to. The denominator of fullness.",
           "format": "uint64",
           "minimum": 0,
           "type": ["integer", "null"]
@@ -795,7 +795,7 @@
       "type": "object"
     },
     {
-      "description": "A single **message** in an agent's context window, recorded in full the first time\nit enters any prompt on this agent's stream — the pool entry every\n[`Prompt`](Self::Prompt) points into so a message repeated across turns is stored\nonce, not once per turn.\n\ngg's window is [append-only](https://docs.testcabinet.ai/gg/context-visibility/): a\nturn extends the previous turn's prompt rather than rewriting it, so the same\nmessages recur across most turns. Rather than restream the whole prompt every turn,\ngg assigns each message a stable [`id`](Self::ContextMessage::id) — a fingerprint of\nits content — and emits its body **once**, here; each turn's [`Prompt`](Self::Prompt)\nis then a sequence of [pointers](GgPromptRef) into this pool, and the console\nreassembles a turn's exact request by resolving them. The pool is per agent (each\nagent's stream carries the definitions its own prompts reference). Emitted only when\nthe [context-visibility](CAPABILITY_CONTEXT_VISIBILITY) capability is on; the run's\n[`tokens`](Self::ContextMessage::tokens) figure is the same estimate the breakdown\nbands are summed from, so a message's own contribution to fullness is legible.\n\nAn attached image is recorded as a lightweight [descriptor](GgLoggedImage) — its\nmedia type, decoded size, and the tokens it is charged — never its base64 bytes,\nwhich would bloat the stream without adding anything the reader of a *request* needs.",
+      "description": "A single **message** in an agent's context window, recorded in full the first time\nit enters any prompt on this agent's stream — the pool entry every\n[`Prompt`](Self::Prompt) points into so a message repeated across turns is stored\nonce, not once per turn.\n\ngg's window is [append-only](https://docs.testcabinet.ai/gg/context-visibility/): a\nturn extends the previous turn's prompt rather than rewriting it, so the same\nmessages recur across most turns. Rather than restream the whole prompt every turn,\ngg assigns each message a stable [`id`](Self::ContextMessage::id) — a fingerprint of\nits content — and emits its body **once**, here; each turn's [`Prompt`](Self::Prompt)\nis then a sequence of [pointers](GgPromptRef) into this pool, and the console\nreassembles a turn's exact request by resolving them. The pool is per agent (each\nagent's stream carries the definitions its own prompts reference). Emitted every turn;\nthe run's\n[`tokens`](Self::ContextMessage::tokens) figure is the same estimate the breakdown\nbands are summed from, so a message's own contribution to fullness is legible.\n\nAn attached image is recorded as a lightweight [descriptor](GgLoggedImage) — its\nmedia type, decoded size, and the tokens it is charged — never its base64 bytes,\nwhich would bloat the stream without adding anything the reader of a *request* needs.",
       "properties": {
         "content": {
           "description": "The message's textual content, when it has any (absent for an assistant turn\nthat only called tools).",
@@ -844,7 +844,7 @@
       "type": "object"
     },
     {
-      "description": "One agent turn's exact **request and response**, as pointers into the\n[message pool](Self::ContextMessage) — the itemized, message-level companion to the\nper-source [`ContextBreakdown`](Self::ContextBreakdown).\n\n[`request`](Self::Prompt::request) is the ordered list of messages sent to the model\nthis turn, each a [pointer](GgPromptRef) to a pooled\n[`ContextMessage`](Self::ContextMessage) tagged with the [`GgContextSource`] band it\noccupies — so a turn's request is reconstructed without restreaming any message, and\nevery message lines up with the band it contributes to on the context graph.\n[`response_id`](Self::Prompt::response_id) points at the assistant reply (also\npooled, so it reappears as a request pointer on the next turn, its id unchanged), or\nis absent when the turn produced no assistant message at all.\n[`tokens`](Self::Prompt::tokens)/[`cost`](Self::Prompt::cost) are the turn's actual\nprovider usage — the same figures the incremental [`Usage`](Self::Usage) carries,\nbundled here so a turn's request→response reads as one self-contained record.\nEmitted once per turn (immediately after the model call) when the\n[context-visibility](CAPABILITY_CONTEXT_VISIBILITY) capability is on.",
+      "description": "One agent turn's exact **request and response**, as pointers into the\n[message pool](Self::ContextMessage) — the itemized, message-level companion to the\nper-source [`ContextBreakdown`](Self::ContextBreakdown).\n\n[`request`](Self::Prompt::request) is the ordered list of messages sent to the model\nthis turn, each a [pointer](GgPromptRef) to a pooled\n[`ContextMessage`](Self::ContextMessage) tagged with the [`GgContextSource`] band it\noccupies — so a turn's request is reconstructed without restreaming any message, and\nevery message lines up with the band it contributes to on the context graph.\n[`response_id`](Self::Prompt::response_id) points at the assistant reply (also\npooled, so it reappears as a request pointer on the next turn, its id unchanged), or\nis absent when the turn produced no assistant message at all.\n[`tokens`](Self::Prompt::tokens)/[`cost`](Self::Prompt::cost) are the turn's actual\nprovider usage — the same figures the incremental [`Usage`](Self::Usage) carries,\nbundled here so a turn's request→response reads as one self-contained record.\nEmitted once per turn, immediately after the model call.",
       "properties": {
         "cost": {
           "anyOf": [
@@ -1002,7 +1002,7 @@
           "type": "integer"
         },
         "beforeBySource": {
-          "description": "The per-source window composition **immediately before** compaction, one band per\n[`GgContextSource`] in [`GgContextSource::ALL`] order — the same shape as\n[`ContextBreakdown`](Self::ContextBreakdown)'s `by_source`. Paired with\n[`after_by_source`](Self::Compaction::after_by_source) it shows exactly which bands\nthe summarize-and-restart reclaimed, without depending on the context-visibility\ncapability being on.",
+          "description": "The per-source window composition **immediately before** compaction, one band per\n[`GgContextSource`] in [`GgContextSource::ALL`] order — the same shape as\n[`ContextBreakdown`](Self::ContextBreakdown)'s `by_source`. Paired with\n[`after_by_source`](Self::Compaction::after_by_source) it shows exactly which bands\nthe summarize-and-restart reclaimed.",
           "items": {
             "$ref": "#/$defs/GgContextSourceUsage"
           },

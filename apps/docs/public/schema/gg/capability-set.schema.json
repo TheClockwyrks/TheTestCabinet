@@ -180,11 +180,6 @@
             },
             {
               "enabled": true,
-              "id": "context-visibility",
-              "params": {}
-            },
-            {
-              "enabled": true,
               "id": "skills",
               "params": {}
             },

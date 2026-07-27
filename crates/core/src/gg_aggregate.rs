@@ -57,7 +57,7 @@ pub enum GgSummaryField {
     /// `1.0`/`0.0`, so averaging a bucket yields the context-overflow **rate**.
     RanOutOfContext,
     /// [`final_fullness`](GgSessionSummary::final_fullness) — the only field that can
-    /// be genuinely absent (context visibility off), yielding `None`.
+    /// be genuinely absent (no window limit was known), yielding `None`.
     FinalFullness,
     /// [`code_reviews`](GgSessionSummary::code_reviews).
     CodeReviews,
@@ -125,7 +125,7 @@ pub enum GgSummaryField {
 
 impl GgSummaryField {
     /// Project this field of `summary` to an `f64`, or `None` when the field is
-    /// genuinely absent — [`FinalFullness`](Self::FinalFullness) (context visibility off)
+    /// genuinely absent — [`FinalFullness`](Self::FinalFullness) (no window limit was known)
     /// and [`HealingRate`](Self::HealingRate) (a run with no code-shaped turn to rate) are
     /// the only two that ever are.
     pub fn value(self, summary: &GgSessionSummary) -> Option<f64> {

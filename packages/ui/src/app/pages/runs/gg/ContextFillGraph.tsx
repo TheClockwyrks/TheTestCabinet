@@ -5,8 +5,8 @@
 // (total vs the window limit) surfaced prominently, since that is what compaction
 // (Phase 2) acts on.
 //
-// gg streams a `context_breakdown` snapshot each turn while the context-visibility
-// capability is on; `series` is those snapshots in order and `latest` is the most
+// gg streams a `context_breakdown` snapshot each turn — context visibility is
+// intrinsic, so this is unconditional; `series` is those snapshots in order and `latest` is the most
 // recent. We draw the over-time stacked area once there are two turns to connect,
 // and always show the current per-source composition as a swatch legend (which
 // doubles as the chart's key) beneath the fullness header.
@@ -261,7 +261,7 @@ export function ContextFillGraph({
     return (
       <p className={styles.empty}>
         No context breakdown yet — gg streams a per-source breakdown of the
-        window on every turn when the context-visibility capability is on.
+        window on every turn.
       </p>
     );
   }

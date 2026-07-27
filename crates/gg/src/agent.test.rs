@@ -33,7 +33,7 @@ use crate::telemetry::{CollectingSink, Emitter};
 use crate::tools::{RuntimeSet, ToolContext, ToolRegistry, VisionContext};
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_CODE_REVIEWS, CAPABILITY_COMPACTION,
-    CAPABILITY_CONTEXT_VISIBILITY, CAPABILITY_FSM, CAPABILITY_PLANNING,
+    CAPABILITY_CONTEXT_WINDOW_OVERRIDE, CAPABILITY_FSM, CAPABILITY_PLANNING,
     CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_READ_FILE, CAPABILITY_REPLAY,
     CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE,
     CAPABILITY_SUBAGENTS, CAPABILITY_WORKFLOWS, CAPABILITY_WORKTREES, GG_REPLAY_ARTIFACT_PATH,
@@ -98,27 +98,21 @@ fn seed_default_skill(dir: &Path) {
 }
 
 /// A [`ContextSetup`] for the `drive` unit tests: the cheap heuristic estimator (so the
-/// tests never build the BPE vocab), a fixed window, and breakdown emission per the
-/// argument.
-fn test_context_setup(emit_breakdown: bool) -> ContextSetup {
+/// tests never build the BPE vocab) and a fixed window. The per-turn breakdown and message
+/// log are always emitted — context visibility is intrinsic, not a toggle.
+fn test_context_setup() -> ContextSetup {
     ContextSetup {
         estimator: Arc::new(HeuristicTokenEstimator::new()),
         window_limit: Some(128_000),
-        emit_breakdown,
-        // The message log rides on the same capability as the breakdown, so a test that
-        // exercises the breakdown exercises the log too.
-        log_messages: emit_breakdown,
     }
 }
 
 /// A [`ContextSetup`] with a chosen window limit, so a `drive` test can make a short mock
 /// run cross a compaction boundary by shrinking the window.
-fn test_context_setup_with_window(emit_breakdown: bool, window_limit: u64) -> ContextSetup {
+fn test_context_setup_with_window(window_limit: u64) -> ContextSetup {
     ContextSetup {
         estimator: Arc::new(HeuristicTokenEstimator::new()),
         window_limit: Some(window_limit),
-        emit_breakdown,
-        log_messages: emit_breakdown,
     }
 }
 
@@ -228,7 +222,7 @@ async fn drive_root(
             &ctx,
             emitter,
             limits,
-            test_context_setup(false),
+            test_context_setup(),
             no_compaction(),
             no_amc(),
             no_autoload(),
@@ -891,7 +885,7 @@ async fn drive_exhausts_the_turn_ceiling_when_the_model_never_stops() {
             &ctx,
             &emitter,
             no_limits(2),
-            test_context_setup(false),
+            test_context_setup(),
             no_compaction(),
             no_amc(),
             no_autoload(),
@@ -945,7 +939,7 @@ async fn drive_times_out_at_a_passed_deadline() {
             &ctx,
             &emitter,
             no_limits_until(50, Instant::now()),
-            test_context_setup(false),
+            test_context_setup(),
             no_compaction(),
             no_amc(),
             no_autoload(),
@@ -1000,7 +994,7 @@ async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
             &ctx,
             &emitter,
             no_limits(5),
-            test_context_setup(false),
+            test_context_setup(),
             no_compaction(),
             no_amc(),
             no_autoload(),
@@ -1056,7 +1050,7 @@ async fn drive_ends_model_error_on_exhausted_retries() {
             &ctx,
             &emitter,
             no_limits(5),
-            test_context_setup(false),
+            test_context_setup(),
             no_compaction(),
             no_amc(),
             no_autoload(),
@@ -1108,7 +1102,7 @@ async fn drive_ends_auth_error_when_the_credential_is_refused() {
             &ctx,
             &emitter,
             no_limits(5),
-            test_context_setup(false),
+            test_context_setup(),
             no_compaction(),
             no_amc(),
             no_autoload(),
@@ -1460,26 +1454,14 @@ fn add_cost_accumulates_optionally() {
 }
 
 // ---------------------------------------------------------------------------
-// Context visibility: the per-turn breakdown and its gating
+// Context visibility: the per-turn breakdown, always emitted
 // ---------------------------------------------------------------------------
 
-/// `minimal`, but with the context-visibility capability disabled (kept present so the
-/// ablation's off arm records what it turned off).
-fn minimal_without_context_visibility(model: &str) -> GgCapabilitySet {
-    let mut set = GgCapabilitySet::minimal(model);
-    for cap in &mut set.agents[0].capabilities {
-        if cap.id == CAPABILITY_CONTEXT_VISIBILITY {
-            cap.enabled = false;
-        }
-    }
-    set
-}
-
-/// With context visibility on (the default), the loop emits a `ContextBreakdown` each
-/// turn — after the turn starts and before the turn's tool call — accounting the window
-/// by source with a total, a window limit, and a fullness ratio.
+/// The loop emits a `ContextBreakdown` each turn — after the turn starts and before the
+/// turn's tool call — accounting the window by source with a total, a window limit, and a
+/// fullness ratio. Context visibility is intrinsic, so this happens on every run.
 #[tokio::test]
-async fn run_emits_context_breakdown_each_turn_when_visibility_enabled() {
+async fn run_emits_context_breakdown_each_turn() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-cv".to_string()), Box::new(sink.clone()));
@@ -1504,7 +1486,7 @@ async fn run_emits_context_breakdown_each_turn_when_visibility_enabled() {
     // The default mock scripts two turns; a breakdown is emitted at the top of each.
     assert!(
         !breakdowns.is_empty(),
-        "context visibility on should emit a breakdown per turn"
+        "a breakdown should be emitted per turn"
     );
     let turns = events
         .iter()
@@ -1556,24 +1538,32 @@ async fn run_emits_context_breakdown_each_turn_when_visibility_enabled() {
     assert!(first_turn < first_breakdown && first_breakdown < first_call);
 }
 
-/// With context visibility off, no `ContextBreakdown` is emitted — but the run is
-/// otherwise unchanged (the accounting is still computed internally; only the telemetry
-/// is gated), so the file is still produced and the session completes.
+/// Context visibility is not a capability, so no configuration can switch it off: a run whose
+/// set carries no context capability at all still emits a `ContextBreakdown` every turn. The
+/// minimal set is exactly that — the context-window override is opt-in, so `minimal` declares
+/// none of it — and the breakdown is emitted regardless.
 #[tokio::test]
-async fn run_omits_context_breakdown_when_visibility_disabled() {
+async fn run_emits_context_breakdown_without_any_context_capability() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-nocv".to_string()), Box::new(sink.clone()));
-    let inv = invocation(dir.path(), minimal_without_context_visibility("mock/echo"));
+
+    let set = GgCapabilitySet::minimal("mock/echo");
+    // Precondition: the set names no context capability that could gate the breakdown.
+    assert!(
+        set.capability(CAPABILITY_CONTEXT_WINDOW_OVERRIDE).is_none(),
+        "the minimal set should carry no context capability"
+    );
+    let inv = invocation(dir.path(), set);
 
     assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
     let events = sink.events();
 
     assert!(
-        !events
+        events
             .iter()
             .any(|e| matches!(e.kind, GgTelemetryKind::ContextBreakdown { .. })),
-        "context visibility off must not emit any breakdown"
+        "context visibility is intrinsic and must emit a breakdown regardless of capabilities"
     );
     // The rest of the run is intact.
     assert!(dir.path().join("index.html").exists());
@@ -1632,16 +1622,21 @@ fn validate_model_windows_requires_every_bound_model() {
     assert!(validate_model_windows(&GgCapabilitySet::default(), &BTreeMap::new()).is_ok());
 }
 
-/// The `windowLimit` param narrows the catalog's figure, and a zero (or non-integer) one is
-/// ignored in favor of it.
+/// A `context-window-override` capability enabled with the given `windowLimit`, the lever the
+/// resolve-window tests narrow a model's window with.
+fn window_override(limit: u64) -> GgCapabilityConfig {
+    GgCapabilityConfig {
+        params: json!({ "windowLimit": limit }),
+        ..GgCapabilityConfig::enabled(CAPABILITY_CONTEXT_WINDOW_OVERRIDE)
+    }
+}
+
+/// An enabled `context-window-override` narrows the catalog's figure by its `windowLimit`, and
+/// a zero (or non-integer) one is ignored in favor of it.
 #[test]
 fn resolve_window_limit_narrows_with_the_param() {
     let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
-    for cap in &mut set.agents[0].capabilities {
-        if cap.id == CAPABILITY_CONTEXT_VISIBILITY {
-            cap.params = json!({ "windowLimit": 42_000 });
-        }
-    }
+    set.agents[0].capabilities.push(window_override(42_000));
     let catalog = windows("anthropic/claude-opus-4.8", 200_000);
     assert_eq!(
         resolve_window_limit(&set, &catalog, "anthropic/claude-opus-4.8"),
@@ -1649,7 +1644,7 @@ fn resolve_window_limit_narrows_with_the_param() {
     );
 
     for cap in &mut set.agents[0].capabilities {
-        if cap.id == CAPABILITY_CONTEXT_VISIBILITY {
+        if cap.id == CAPABILITY_CONTEXT_WINDOW_OVERRIDE {
             cap.params = json!({ "windowLimit": 0 });
         }
     }
@@ -1659,16 +1654,52 @@ fn resolve_window_limit_narrows_with_the_param() {
     );
 }
 
+/// A `context-window-override` that is present but **disabled** narrows nothing — its recorded
+/// `windowLimit` is the off arm's remembered configuration, not an applied one — so the model
+/// runs against its full catalog window.
+#[test]
+fn resolve_window_limit_ignores_a_disabled_override() {
+    let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
+    set.agents[0].capabilities.push(GgCapabilityConfig {
+        enabled: false,
+        ..window_override(42_000)
+    });
+    assert_eq!(
+        resolve_window_limit(
+            &set,
+            &windows("anthropic/claude-opus-4.8", 200_000),
+            "anthropic/claude-opus-4.8"
+        ),
+        Some(200_000)
+    );
+}
+
+/// The override is read **only** from the `context-window-override` capability: a `windowLimit`
+/// param stashed on some other capability is not a window override and is ignored.
+#[test]
+fn resolve_window_limit_ignores_the_param_on_another_capability() {
+    let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
+    for cap in &mut set.agents[0].capabilities {
+        if cap.id == CAPABILITY_SHELL {
+            cap.params = json!({ "windowLimit": 32_000 });
+        }
+    }
+    assert_eq!(
+        resolve_window_limit(
+            &set,
+            &windows("anthropic/claude-opus-4.8", 200_000),
+            "anthropic/claude-opus-4.8"
+        ),
+        Some(200_000)
+    );
+}
+
 /// The window-limit override may only *narrow* the model's window: the catalog's figure is a
 /// hard limit, so an override above it is clamped back down to it rather than believed.
 #[test]
 fn resolve_window_limit_clamps_an_override_above_the_model_window() {
     let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
-    for cap in &mut set.agents[0].capabilities {
-        if cap.id == CAPABILITY_CONTEXT_VISIBILITY {
-            cap.params = json!({ "windowLimit": 2_000_000 });
-        }
-    }
+    set.agents[0].capabilities.push(window_override(2_000_000));
     let catalog = windows("anthropic/claude-opus-4.8", 200_000);
     assert_eq!(
         resolve_window_limit(&set, &catalog, "anthropic/claude-opus-4.8"),
@@ -1698,11 +1729,7 @@ fn resolve_window_limit_reserves_compaction_headroom() {
         Some(160_000)
     );
 
-    for cap in &mut set.agents[0].capabilities {
-        if cap.id == CAPABILITY_CONTEXT_VISIBILITY {
-            cap.params = json!({ "windowLimit": 50_000 });
-        }
-    }
+    set.agents[0].capabilities.push(window_override(50_000));
     assert_eq!(
         resolve_window_limit(&set, &catalog, "anthropic/claude-opus-4.8"),
         Some(40_000)
@@ -1726,30 +1753,6 @@ fn resolve_window_limit_is_per_model() {
     assert_eq!(
         resolve_window_limit(&set, &catalog, "openai/gpt-5.4-mini"),
         Some(400_000)
-    );
-}
-
-/// The override is honored wherever it is declared — it governs compaction and the fullness
-/// signal, not just the visibility capability it sits on by convention, so ablating
-/// context-visibility off must not silently restore the model's full window.
-#[test]
-fn resolve_window_limit_honors_the_override_on_any_capability() {
-    let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
-    set.agents[0]
-        .capabilities
-        .retain(|cap| cap.id != CAPABILITY_CONTEXT_VISIBILITY);
-    for cap in &mut set.agents[0].capabilities {
-        if cap.id == CAPABILITY_SHELL {
-            cap.params = json!({ "windowLimit": 32_000 });
-        }
-    }
-    assert_eq!(
-        resolve_window_limit(
-            &set,
-            &windows("anthropic/claude-opus-4.8", 200_000),
-            "anthropic/claude-opus-4.8"
-        ),
-        Some(32_000)
     );
 }
 
@@ -1870,7 +1873,7 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
             &ctx,
             &emitter,
             no_limits(10),
-            test_context_setup(true),
+            test_context_setup(),
             no_compaction(),
             no_amc(),
             no_autoload(),
@@ -2056,7 +2059,7 @@ async fn drive_enforces_memory_caps_end_to_end() {
             &ctx,
             &emitter,
             no_limits(10),
-            test_context_setup(true),
+            test_context_setup(),
             no_compaction(),
             no_amc(),
             no_autoload(),
@@ -2258,7 +2261,7 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
             &ctx,
             &emitter,
             no_limits(10),
-            test_context_setup(true),
+            test_context_setup(),
             no_compaction(),
             no_amc(),
             no_autoload(),
@@ -2566,7 +2569,7 @@ async fn drive_compacts_at_the_threshold_and_retains_pinned_state() {
             &ctx,
             &emitter,
             no_limits(10),
-            test_context_setup_with_window(true, 4_000),
+            test_context_setup_with_window(4_000),
             compaction_at(0.6),
             no_amc(),
             no_autoload(),
@@ -2730,7 +2733,7 @@ async fn drive_never_compacts_when_capability_off() {
             &ctx,
             &emitter,
             no_limits(10),
-            test_context_setup_with_window(true, 4_000),
+            test_context_setup_with_window(4_000),
             no_compaction(),
             no_amc(),
             no_autoload(),
@@ -2831,7 +2834,7 @@ async fn drive_manages_context_end_to_end() {
             &ctx,
             &emitter,
             no_limits(20),
-            test_context_setup(true),
+            test_context_setup(),
             no_compaction(),
             amc_with(Arc::clone(&archive)),
             no_autoload(),
@@ -2944,7 +2947,7 @@ async fn drive_without_amc_offers_no_context_management() {
             &ctx,
             &emitter,
             no_limits(20),
-            test_context_setup(true),
+            test_context_setup(),
             no_compaction(),
             no_amc(),
             no_autoload(),
@@ -3034,7 +3037,7 @@ async fn drive_plans_then_implements_from_a_fresh_context() {
             &ctx,
             &emitter,
             no_limits(20),
-            test_context_setup(true),
+            test_context_setup(),
             no_compaction(),
             no_amc(),
             no_autoload(),
@@ -3197,7 +3200,7 @@ async fn drive_without_planning_offers_no_planning() {
             &ctx,
             &emitter,
             no_limits(20),
-            test_context_setup(true),
+            test_context_setup(),
             no_compaction(),
             no_amc(),
             no_autoload(),

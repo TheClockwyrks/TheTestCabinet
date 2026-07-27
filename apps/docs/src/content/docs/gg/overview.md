@@ -2,7 +2,7 @@
 title: "Overview"
 ---
 
-**gg** is The Test Cabinet's own coding harness — the first authored *inside* this
+**gg** is The Test Cabinet's own coding harness — the first authored _inside_ this
 repository rather than integrated from a third party, and the headline feature of
 **v0.7.0**. This section documents its design: what gg is, how a run is configured,
 how it fits into The Test Cabinet, and each capability it ships (one page per
@@ -10,7 +10,7 @@ capability).
 
 gg lives in **its own top-level section**, not under
 [Harnesses](/harnesses/overview/). That catalogue describes third-party tools The
-Test Cabinet integrates with from *one* side; gg is different in kind. We own
+Test Cabinet integrates with from _one_ side; gg is different in kind. We own
 **both sides**, so gg is a distinct **run mode** with its own configuration
 surface, its own result views, and its own comparison space — a first-party
 subsystem of The Test Cabinet, not a ninth entry in the harness catalogue.
@@ -31,21 +31,21 @@ of owning both sides drive that separation:
 - **Its results belong in a separate comparison space.** The current metric graphs
   plot results **per model**, precisely because the third-party harnesses are so
   similar that which harness ran barely matters. gg breaks both assumptions: it is
-  deliberately *not* similar, and a run whose agents span several models has **no
+  deliberately _not_ similar, and a run whose agents span several models has **no
   single model to plot**. Lumping gg in would distort both the existing graphs and gg's own data,
   so gg results are surfaced **separately**, in views built for them (the agent
   tree, the run-global project board, context-fill graphs, and
   [Kibana-style aggregation](/gg/result-aggregation/)).
 - **It is invoked directly, not as an orchestrated subprocess.** The
-  [orchestrator](/orchestrators/overview/) layer exists to loop a *stateless
-  external harness* across sessions (`ralph`) because such a harness cannot
-  continue past its own context window. gg continues *within* one logical session
+  [orchestrator](/orchestrators/overview/) layer exists to loop a _stateless
+  external harness_ across sessions (`ralph`) because such a harness cannot
+  continue past its own context window. gg continues _within_ one logical session
   via [compaction](/gg/compaction/) and integrates directly with The Test Cabinet,
   so there is **no external session loop, no `tcab-session` wrapper, and no harness
   subprocess** to orchestrate. The orchestrator dimension does not apply to a gg
   run: gg **is** the executor.
 
-What gg **does** reuse is the shared run *infrastructure*, since that is
+What gg **does** reuse is the shared run _infrastructure_, since that is
 test-case-level, not harness-level: the run container, the test case's seeding and
 `init`, the run's maximum-runtime bound, and the
 [validation](/components/core/validation/) and scoring of the produced game. A gg
@@ -84,7 +84,7 @@ A gg run is configured by a **capability set**: one or more per-agent
 [profiles](/gg/configurations/#agents) — each with its own enabled capabilities,
 their implementations and parameters, and one model binding — plus the run-level
 model slots and limits. The capability set is the
-*independent variable* of an experiment — freeze the model and the test case, vary
+_independent variable_ of an experiment — freeze the model and the test case, vary
 the capability set, and the harness becomes a laboratory. It must be:
 
 - **Declarative and inspectable** — expressible as data, so a run's exact
@@ -99,12 +99,12 @@ the capability set, and the harness becomes a laboratory. It must be:
   [configuration](/gg/configurations/): registered on an operator's account, then
   picked by name when a run is launched.
 
-The set carries one thing that is *not* a capability: the run's
+The set carries one thing that is _not_ a capability: the run's
 [**execution limits**](/gg/execution-limits/) — the ceilings on turns, wall clock,
 consecutive errors, recent error rate and cost that stop a run and record which one
 stopped it. They live here rather than among the capabilities because a capability is a
 feature under ablation while a ceiling is an operator's guardrail over all of them, and
-because the set is what a run *records*, so a run stopped by a ceiling carries both the
+because the set is what a run _records_, so a run stopped by a ceiling carries both the
 breach and the ceiling that produced it.
 
 The capability set is a **first-class Test Cabinet concept** that **replaces** the
@@ -118,7 +118,7 @@ surfaces fit it.
 ## Modularity through tools
 
 Modularity is deliberately kept cheap. gg ships **one or more agent-loop
-implementations**, and *beyond that* modularity comes almost entirely from **which
+implementations**, and _beyond that_ modularity comes almost entirely from **which
 tools are offered to the agents** — a different set of tools, or a different
 implementation of a given tool, reconfigures behaviour without a combinatorial
 explosion of pluggable subsystems. So "swap the compaction strategy" or "swap the
@@ -148,8 +148,10 @@ saved, launched, and analyzed in the console is
   context with the whole test-case brief, optionally locked in place.
 - [Compaction](/gg/compaction/) — summarize and restart a thread to continue past
   the context window.
-- [Context visibility](/gg/context-visibility/) — track what is consuming the
-  window, by source.
+- [Context Window Override](/gg/context-visibility/#the-window-a-run-is-measured-against)
+  — narrow the window a run is measured against, to exercise compaction against a
+  large-window model cheaply. (The per-source [context visibility](/gg/context-visibility/)
+  accounting itself is intrinsic, not a capability.)
 - [Agent-managed context](/gg/agent-managed-context/) — let an agent evict file
   views and archive thread history.
 

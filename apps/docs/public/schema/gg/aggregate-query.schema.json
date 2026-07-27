@@ -361,7 +361,7 @@
         },
         {
           "const": "final_fullness",
-          "description": "[`final_fullness`](GgSessionSummary::final_fullness) — the only field that can\nbe genuinely absent (context visibility off), yielding `None`.",
+          "description": "[`final_fullness`](GgSessionSummary::final_fullness) — the only field that can\nbe genuinely absent (no window limit was known), yielding `None`.",
           "type": "string"
         },
         {

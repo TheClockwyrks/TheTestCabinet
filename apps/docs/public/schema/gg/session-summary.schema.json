@@ -246,7 +246,7 @@
       "type": "string"
     },
     "finalFullness": {
-      "description": "The window fullness (`total_tokens / window_limit`) reported by the **last**\n[`ContextBreakdown`](GgTelemetryKind::ContextBreakdown) of the run, when any carried a\nfullness figure. `None` when context visibility was off or no limit was known.",
+      "description": "The window fullness (`total_tokens / window_limit`) reported by the **last**\n[`ContextBreakdown`](GgTelemetryKind::ContextBreakdown) of the run, when any carried a\nfullness figure. `None` when no window limit was known.",
       "format": "double",
       "type": ["number", "null"]
     },

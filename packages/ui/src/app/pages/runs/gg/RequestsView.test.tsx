@@ -114,7 +114,7 @@ describe("message log reduction", () => {
     expect(state.prompts[1]!.request[2]!.id).toBe("m_reply1");
   });
 
-  it("empty when the stream carries no message log (context visibility off)", () => {
+  it("empty when the stream carries no message log", () => {
     const state = reduceGgEvents([
       gg({ type: "session_started" } as GgTelemetryKind),
     ]);

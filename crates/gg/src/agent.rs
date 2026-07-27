@@ -90,7 +90,7 @@ use std::time::Instant;
 use serde_json::{Value, json};
 use test_cabinet_core::gg::{
     AUTOLOAD_LOCKED_IMPL, CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_AUTOLOAD_SPECS,
-    CAPABILITY_CODE_REVIEWS, CAPABILITY_CONTEXT_VISIBILITY, CAPABILITY_MEMORIES,
+    CAPABILITY_CODE_REVIEWS, CAPABILITY_CONTEXT_WINDOW_OVERRIDE, CAPABILITY_MEMORIES,
     CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_REPLAY, CAPABILITY_RESPONSES_AS_CODE,
     CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS,
     CAPABILITY_WORKFLOWS, CAPABILITY_WORKTREES, GgAgentConfig, GgAgentStatus, GgCandidateShape,
@@ -157,12 +157,12 @@ use crate::tools::{
 };
 use crate::vision::VisionSupport;
 
-/// Capability param (context-visibility by convention, read from any capability that
-/// carries it) naming the context window to run the model against, in tokens. It may only
-/// *narrow* the [catalog's figure](GgInvocation::model_windows) — the model's real window is
-/// a hard limit — so a larger value is clamped to it, and a value of `0` or a non-integer is
-/// ignored. Narrowing it is how a study exercises compaction against a 1M-token model
-/// without paying for a million tokens of input.
+/// The [context-window-override](CAPABILITY_CONTEXT_WINDOW_OVERRIDE) capability's param
+/// naming the context window to run the model against, in tokens. It may only *narrow* the
+/// [catalog's figure](GgInvocation::model_windows) — the model's real window is a hard limit
+/// — so a larger value is clamped to it, and a value of `0` or a non-integer is ignored.
+/// Narrowing it is how a study exercises compaction against a 1M-token model without paying
+/// for a million tokens of input. Read only when the capability is enabled.
 const PARAM_WINDOW_LIMIT: &str = "windowLimit";
 
 /// Skills capability param naming the directory authored skills are loaded from. A
@@ -1013,14 +1013,13 @@ impl Orchestrator {
         }
     }
 
-    /// The context accounting for an agent running `model_id`: the shared estimator, the model's
-    /// window limit, and whether to emit the per-turn breakdown (gated on context visibility).
+    /// The context accounting for an agent running `model_id`: the shared estimator and the
+    /// model's window limit (its catalog window, narrowed by an enabled
+    /// [context-window override](CAPABILITY_CONTEXT_WINDOW_OVERRIDE)).
     fn context_setup(&self, model_id: &str) -> ContextSetup {
         ContextSetup {
             estimator: Arc::clone(&self.estimator),
             window_limit: resolve_window_limit(&self.caps, &self.model_windows, model_id),
-            emit_breakdown: self.caps.is_enabled(CAPABILITY_CONTEXT_VISIBILITY),
-            log_messages: self.caps.is_enabled(CAPABILITY_CONTEXT_VISIBILITY),
         }
     }
 
@@ -4985,11 +4984,9 @@ impl Agent {
             };
 
             // The context for this turn is fully assembled (every prior item is in the
-            // model). Emit its per-source breakdown when context visibility is on; the
-            // accounting itself was computed regardless.
-            if context_setup.emit_breakdown {
-                emitter.emit(context.breakdown_event());
-            }
+            // model). Emit its per-source breakdown — context visibility is intrinsic, so this
+            // is emitted every turn.
+            emitter.emit(context.breakdown_event());
 
             let response = match complete_with_vision_recovery(
                 client,
@@ -5093,33 +5090,31 @@ impl Agent {
             }
             // Log this turn's exact request and response to the message log — the
             // de-duplicated ContextMessage/Prompt stream the console renders as the
-            // per-message Requests view — when context visibility is on. Captured here,
+            // per-message Requests view. Emitted every turn (context visibility is
+            // intrinsic). Captured here,
             // *before* the assistant reply is appended, so `prompt_items` is exactly the
             // window that was sent this turn (post vision-recovery, if any). The reply is
             // built the same way `push_assistant` will record it (no native tool calls in
             // responses-as-code mode) and pooled too, so it reappears — id unchanged — as a
             // request pointer on the next turn.
-            if context_setup.log_messages {
-                let reply = Message::assistant(
-                    response.text.clone(),
-                    if code.enabled {
-                        Vec::new()
-                    } else {
-                        response.tool_calls.clone()
-                    },
-                );
-                let reply_tokens = context.estimate(&reply);
-                let has_reply = reply.content.is_some() || !reply.tool_calls.is_empty();
-                let request: Vec<(GgContextSource, &Message, usize)> =
-                    context.prompt_items().collect();
-                emitter.log_prompt(
-                    &request,
-                    has_reply.then_some((&reply, reply_tokens)),
-                    response.usage,
-                    response.cost,
-                    finish_reason_token(&response.finish_reason),
-                );
-            }
+            let reply = Message::assistant(
+                response.text.clone(),
+                if code.enabled {
+                    Vec::new()
+                } else {
+                    response.tool_calls.clone()
+                },
+            );
+            let reply_tokens = context.estimate(&reply);
+            let has_reply = reply.content.is_some() || !reply.tool_calls.is_empty();
+            let request: Vec<(GgContextSource, &Message, usize)> = context.prompt_items().collect();
+            emitter.log_prompt(
+                &request,
+                has_reply.then_some((&reply, reply_tokens)),
+                response.usage,
+                response.cost,
+                finish_reason_token(&response.finish_reason),
+            );
 
             context.push_assistant(
                 response.text.clone(),
@@ -5650,8 +5645,10 @@ fn recorded_limits(limits: &RunLimits) -> GgRunLimits {
 }
 
 /// The context-accounting configuration threaded into the [turn loop](Agent::drive): the
-/// [token estimator](TokenEstimator), the active model's window limit, and whether to
-/// emit the per-turn [`ContextBreakdown`](GgTelemetryKind::ContextBreakdown).
+/// [token estimator](TokenEstimator) and the active model's window limit. The per-turn
+/// [`ContextBreakdown`](GgTelemetryKind::ContextBreakdown) and the
+/// [message log](crate::message_log) are always emitted — context visibility is intrinsic,
+/// not a capability that can be switched off.
 struct ContextSetup {
     /// The estimator every context item is measured with. Shared (`Arc`) so it can back
     /// the async loop and, in later phases, spawned subagents.
@@ -5659,15 +5656,6 @@ struct ContextSetup {
     /// The active model's context-window limit in tokens, when known — the fullness
     /// denominator.
     window_limit: Option<u64>,
-    /// Whether to emit the per-turn context breakdown. Gated on the context-visibility
-    /// capability; the accounting itself is computed regardless.
-    emit_breakdown: bool,
-    /// Whether to log each turn's exact request/response to the
-    /// [message log](crate::message_log) — the de-duplicated
-    /// [`ContextMessage`](GgTelemetryKind::ContextMessage)/[`Prompt`](GgTelemetryKind::Prompt)
-    /// stream the console renders as the per-message Requests view. Gated on the same
-    /// context-visibility capability as the breakdown (the message log is its itemized form).
-    log_messages: bool,
 }
 
 /// The agent-managed-context configuration threaded into the [turn loop](Agent::drive): whether the
@@ -5897,9 +5885,10 @@ fn apply_context_reclaim(
 ///
 /// 1. **The model's window**, from `windows` — the model catalog's figure for each bound
 ///    model, [pushed in with the invocation](GgInvocation::model_windows) — **narrowed** by
-///    an explicit [`PARAM_WINDOW_LIMIT`] override. The override may only make the window
-///    *smaller*: the model's real window is a hard limit, so a larger "override" is not a
-///    configuration gg can honor — it is clamped rather than rejected, so a study that
+///    the [context-window-override](CAPABILITY_CONTEXT_WINDOW_OVERRIDE) capability's
+///    [`PARAM_WINDOW_LIMIT`], when that capability is enabled. The override may only make the
+///    window *smaller*: the model's real window is a hard limit, so a larger "override" is not
+///    a configuration gg can honor — it is clamped rather than rejected, so a study that
 ///    raises a window it misjudged still runs.
 /// 2. **The working window**, [reduced by the summary headroom](crate::compaction::working_window)
 ///    when compaction is on, reserving room for the summarization call itself.
@@ -5916,17 +5905,17 @@ fn resolve_window_limit(
     model_id: &str,
 ) -> Option<u64> {
     let model_window = windows.get(model_id).copied()?;
-    // The override lives on context-visibility by convention, but it governs compaction and the
-    // fullness signal too — so it is honored on any capability that carries it rather than being
-    // silently ignored when visibility is ablated off. It is the last param read this way: the run's
-    // execution ceilings moved to `capabilitySet.limits`, where they are declared once and recorded
-    // on the run, and this one stays here because it is genuinely a property of one capability's
-    // configuration rather than of the run.
+    // The narrowing override is a property of the context-window-override capability's
+    // configuration and applies only when that capability is enabled — a disabled override
+    // records the window it *would* have narrowed to (keeping an ablation's on/off arms
+    // symmetric) without narrowing anything. Execution ceilings moved to
+    // `capabilitySet.limits`; this window narrowing stays a capability param because it is
+    // genuinely a lever a study toggles, not a run-wide ceiling.
     let configured = set
         .root()
-        .capabilities
-        .iter()
-        .find_map(|capability| {
+        .capability(CAPABILITY_CONTEXT_WINDOW_OVERRIDE)
+        .filter(|capability| capability.enabled)
+        .and_then(|capability| {
             capability
                 .params
                 .get(PARAM_WINDOW_LIMIT)

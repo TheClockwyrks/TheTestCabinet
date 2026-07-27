@@ -1205,7 +1205,7 @@ export type GgSessionSummary = {
   /**
    * The window fullness (`total_tokens / window_limit`) reported by the **last**
    * [`ContextBreakdown`](GgTelemetryKind::ContextBreakdown) of the run, when any carried a
-   * fullness figure. `None` when context visibility was off or no limit was known.
+   * fullness figure. `None` when no window limit was known.
    */
   finalFullness?: number;
   /**
@@ -1404,8 +1404,9 @@ export type GgTelemetryKind =
        */
       totalTokens: number;
       /**
-       * The active model's context-window limit, when known (a capability param or a
-       * built-in per-model default). The denominator of fullness.
+       * The active model's context-window limit, when known — its catalog window, or the
+       * smaller figure an enabled [context-window override](CAPABILITY_CONTEXT_WINDOW_OVERRIDE)
+       * narrowed it to. The denominator of fullness.
        */
       windowLimit?: number;
       /**
@@ -1565,8 +1566,7 @@ export type GgTelemetryKind =
        * [`GgContextSource`] in [`GgContextSource::ALL`] order — the same shape as
        * [`ContextBreakdown`](Self::ContextBreakdown)'s `by_source`. Paired with
        * [`after_by_source`](Self::Compaction::after_by_source) it shows exactly which bands
-       * the summarize-and-restart reclaimed, without depending on the context-visibility
-       * capability being on.
+       * the summarize-and-restart reclaimed.
        */
       beforeBySource: Array<GgContextSourceUsage>;
       /**
@@ -2030,8 +2030,9 @@ export type GgTelemetryEvent = {
        */
       totalTokens: number;
       /**
-       * The active model's context-window limit, when known (a capability param or a
-       * built-in per-model default). The denominator of fullness.
+       * The active model's context-window limit, when known — its catalog window, or the
+       * smaller figure an enabled [context-window override](CAPABILITY_CONTEXT_WINDOW_OVERRIDE)
+       * narrowed it to. The denominator of fullness.
        */
       windowLimit?: number;
       /**
@@ -2191,8 +2192,7 @@ export type GgTelemetryEvent = {
        * [`GgContextSource`] in [`GgContextSource::ALL`] order — the same shape as
        * [`ContextBreakdown`](Self::ContextBreakdown)'s `by_source`. Paired with
        * [`after_by_source`](Self::Compaction::after_by_source) it shows exactly which bands
-       * the summarize-and-restart reclaimed, without depending on the context-visibility
-       * capability being on.
+       * the summarize-and-restart reclaimed.
        */
       beforeBySource: Array<GgContextSourceUsage>;
       /**

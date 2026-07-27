@@ -16,7 +16,8 @@ import type {
 // (agents[0]) — the profile that drives the top-level session.
 export function capabilityOn(set: GgCapabilitySet | null, id: string): boolean {
   return (
-    set?.agents?.[0]?.capabilities.some((c) => c.id === id && c.enabled) ?? false
+    set?.agents?.[0]?.capabilities.some((c) => c.id === id && c.enabled) ??
+    false
   );
 }
 
@@ -394,19 +395,19 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
   },
   // --- Context ----------------------------------------------------------------
   {
-    id: "context-visibility",
-    name: "Context visibility",
+    id: "context-window-override",
+    name: "Context Window Override",
     group: "Context",
     purpose:
-      "Per-source accounting of what fills the window, streamed as the stacked context graph.",
-    defaultOn: true,
+      "Run the model against a smaller context window than its real one — the way to exercise compaction on a million-token model without paying for a million tokens. Off by default: the model runs against its full catalog window.",
+    defaultOn: false,
     params: [
       {
         key: "windowLimit",
         label: "Window limit (tokens)",
         kind: "number",
         placeholder: "e.g. 100000",
-        hint: "Run the model against a smaller window than it really has — the way to exercise compaction on a million-token model without paying for a million tokens. Can only narrow: a value above the model catalog's figure for the model is clamped to it.",
+        hint: "The window to run the model against, in tokens. Can only narrow: a value above the model catalog's figure for the model is clamped to it, and 0 (or blank) applies no override.",
       },
     ],
   },

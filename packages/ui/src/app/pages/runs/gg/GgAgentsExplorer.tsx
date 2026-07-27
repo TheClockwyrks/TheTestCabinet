@@ -120,17 +120,15 @@ const FILE_ORDER: ReadonlyArray<AgentFileKind> = [
 const FILE_CAPABILITIES: Record<AgentFileKind, ReadonlyArray<string>> = {
   overview: [],
   // Unconditional: a subagent's brief rides on the (always-present) spawn event, and
-  // the root's opening prompt is a first-class thing to read. When the *rendered*
-  // prompt isn't recorded (context visibility off), the file shows the brief or says
-  // so rather than being absent — the same "offered, may be empty" contract as
-  // overview and activity.
+  // the root's opening prompt is a first-class thing to read. An older run that recorded
+  // no rendered prompt shows the brief or says so rather than being absent — the same
+  // "offered, may be empty" contract as overview and activity.
   prompt: [],
   activity: [],
   context: [],
-  // The message log rides on the same capability as the breakdown graph (see
-  // gg/context-visibility): with context visibility off, gg emits neither, so the file
-  // is hidden rather than shown perpetually empty.
-  requests: ["context-visibility"],
+  // The message log and the breakdown graph are context visibility, which is intrinsic —
+  // every run emits both — so the file is always offered.
+  requests: [],
   // The Compaction file rides on the compaction capability itself: with the backstop
   // off, a run never compacts, so the file is hidden rather than shown perpetually
   // empty. Its own record travels on the compaction event, so it needs nothing else.
@@ -779,7 +777,7 @@ function AgentToolsPanel({ breakdown }: { breakdown: GgToolBreakdown }) {
       <p className={panels.toolNote}>
         {outputTokensKnown
           ? "Calls, and each tool’s result tokens as a share of all tokens that entered this agent’s window."
-          : "Call counts only — result-token attribution needs the context-visibility capability."}
+          : "Call counts only — result-token attribution wasn’t recorded for this run."}
       </p>
     </section>
   );

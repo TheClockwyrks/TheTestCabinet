@@ -111,7 +111,7 @@ function ggIssue(issueId: string, kind: GgTelemetryKind): HarnessEvent {
 const ALL_CAPABILITIES = [
   "shell",
   "filesystem",
-  "context-visibility",
+  "context-window-override",
   "compaction",
   "skills",
   "memories",

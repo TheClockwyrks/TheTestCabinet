@@ -4,8 +4,8 @@
 //
 // For a subagent this is the whole point of reading its prompt: the *brief its
 // parent handed it* is the direct content of the delegation, so it leads — and it
-// comes off the spawn event, so it is present whatever the context-visibility
-// capability is set to. Beneath it (and, for the root, alone) is the rendered
+// comes off the spawn event, so it is present even for an older run that recorded
+// no rendered prompt. Beneath it (and, for the root, alone) is the rendered
 // opening prompt: the system framing and the build/user prompt the agent actually
 // started its first turn from, resolved from the de-duplicated message log.
 
@@ -92,13 +92,12 @@ export function PromptView({
 }
 
 // Why the rendered prompt is missing, in the agent's own terms: still streaming, or
-// not recorded because context visibility was off (in which case a subagent still
-// has its brief above).
+// simply not recorded for this run (in which case a subagent still has its brief above).
 function emptyPromptNote(live: boolean, hasBrief: boolean): string {
   if (live) return "Waiting for the first request…";
   if (hasBrief)
-    return "The exact prompt isn’t recorded — context visibility was off, so only the brief above is available.";
-  return "The exact prompt isn’t recorded for this run (context visibility was off).";
+    return "The exact prompt isn’t recorded for this run — only the brief above is available.";
+  return "The exact prompt isn’t recorded for this run.";
 }
 
 // One prompt message: its band tag (colored to match the Context graph), its role

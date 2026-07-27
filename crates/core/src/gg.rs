@@ -86,15 +86,22 @@ pub const FILESYSTEM_TOOL_CAPABILITIES: &[&str] = &[
     CAPABILITY_LIST_DIR,
 ];
 
-/// The stable id of the Phase 1 context-visibility capability: the per-source
-/// accounting of what fills the context window (skills, memories, file contents, the
-/// thread, tool output, …). The accounting itself is always computed — [compaction]
-/// and agent-managed context need the fullness signal — but this capability gates the
-/// [`ContextBreakdown`](GgTelemetryKind::ContextBreakdown) telemetry the console renders
-/// as a stacked line graph, so an ablation's off arm stops emitting it.
+/// The stable id of the context-window-override capability: when on, the agent's model is
+/// measured against the smaller window this capability's `windowLimit` param declares
+/// instead of the model's full [catalog window](GgContextSourceUsage). It is a **narrowing**
+/// lever only — the model's real window is a hard limit, so an override above it is clamped
+/// back down rather than believed — and narrowing the window is how a study exercises
+/// [compaction] against a 1M-token model without paying for a million tokens of input.
+///
+/// This capability offers no tool and adds nothing to the window; it is purely a
+/// configuration knob. **Context visibility itself is not a capability:** the per-source
+/// accounting of what fills the window (skills, memories, file contents, the thread, tool
+/// output, …), which the console renders as a stacked line graph, is always computed and
+/// always emitted — [compaction] and agent-managed context depend on its fullness signal —
+/// independent of this or any other capability.
 ///
 /// [compaction]: https://docs.testcabinet.ai/gg/compaction/
-pub const CAPABILITY_CONTEXT_VISIBILITY: &str = "context-visibility";
+pub const CAPABILITY_CONTEXT_WINDOW_OVERRIDE: &str = "context-window-override";
 
 /// The stable id of the autoload-specifications capability: when on, an agent's very
 /// first context is seeded with the **full contents of every file the test case
@@ -495,10 +502,9 @@ impl Default for GgCapabilitySet {
 impl GgCapabilitySet {
     /// The reasonable "minimal" set: a single [Root agent](ROOT_AGENT) bound to
     /// `model_id` with the default capabilities ([`CAPABILITY_SHELL`], the four
-    /// [filesystem tools](FILESYSTEM_TOOL_CAPABILITIES),
-    /// [`CAPABILITY_CONTEXT_VISIBILITY`], [`CAPABILITY_SKILLS`], [`CAPABILITY_MEMORIES`],
-    /// and [`CAPABILITY_TASKS`]) present and enabled. This is a launchable configuration —
-    /// the smallest set that runs a gg session end to end.
+    /// [filesystem tools](FILESYSTEM_TOOL_CAPABILITIES), [`CAPABILITY_SKILLS`],
+    /// [`CAPABILITY_MEMORIES`], and [`CAPABILITY_TASKS`]) present and enabled. This is a
+    /// launchable configuration — the smallest set that runs a gg session end to end.
     pub fn minimal(model_id: impl Into<String>) -> Self {
         Self {
             preset: Some("minimal".to_string()),
@@ -856,15 +862,19 @@ fn legacy_alias(id: &str) -> Option<&'static str> {
 
 /// The default enabled capabilities: the shell and the four
 /// [filesystem tools](FILESYSTEM_TOOL_CAPABILITIES) the core agent loop needs to build a
-/// test case, plus [context visibility](CAPABILITY_CONTEXT_VISIBILITY),
-/// [skills](CAPABILITY_SKILLS), [memories](CAPABILITY_MEMORIES), and [tasks](CAPABILITY_TASKS).
+/// test case, plus [skills](CAPABILITY_SKILLS), [memories](CAPABILITY_MEMORIES), and
+/// [tasks](CAPABILITY_TASKS).
 ///
 /// The filesystem tools are listed one capability apiece rather than under the
 /// [umbrella](CAPABILITY_FILESYSTEM) they used to share, so each carries its own
 /// implementation and params; all four are on, which is the same default toolset as before.
 ///
-/// Context visibility is on by default because the per-source window accounting is
-/// foundational and adds no tools. Skills is on by default because it is inert unless a
+/// The [context-window override](CAPABILITY_CONTEXT_WINDOW_OVERRIDE) is deliberately *not*
+/// here: it is an opt-in narrowing lever a study turns on when it wants to measure a model
+/// against a smaller window, and is inert (and misleading) when on with no window declared,
+/// so a default run leaves it off and measures the model against its full catalog window.
+///
+/// Skills is on by default because it is inert unless a
 /// skills directory is actually present in the workspace: with no skills to offer it
 /// contributes no `read_skill` tool and no prompt text, so a default run behaves exactly
 /// as before, and a run whose workspace *was* seeded with skills lights them up. Memories
@@ -882,7 +892,6 @@ fn default_capabilities() -> Vec<GgCapabilityConfig> {
         GgCapabilityConfig::enabled(CAPABILITY_WRITE_FILE),
         GgCapabilityConfig::enabled(CAPABILITY_EDIT_FILE),
         GgCapabilityConfig::enabled(CAPABILITY_LIST_DIR),
-        GgCapabilityConfig::enabled(CAPABILITY_CONTEXT_VISIBILITY),
         GgCapabilityConfig::enabled(CAPABILITY_SKILLS),
         GgCapabilityConfig::enabled(CAPABILITY_MEMORIES),
         GgCapabilityConfig::enabled(CAPABILITY_TASKS),
@@ -2238,7 +2247,7 @@ pub struct GgSessionSummary {
     pub context_overflow_count: u64,
     /// The window fullness (`total_tokens / window_limit`) reported by the **last**
     /// [`ContextBreakdown`](GgTelemetryKind::ContextBreakdown) of the run, when any carried a
-    /// fullness figure. `None` when context visibility was off or no limit was known.
+    /// fullness figure. `None` when no window limit was known.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub final_fullness: Option<f64>,
@@ -2705,9 +2714,8 @@ pub enum GgTelemetryKind {
     },
     /// The per-source breakdown of what fills the context window, assembled for a turn.
     ///
-    /// Emitted once per turn when the
-    /// [context-visibility](CAPABILITY_CONTEXT_VISIBILITY) capability is enabled (the
-    /// accounting is always computed; only this emission is gated). The console renders
+    /// Emitted once per turn, always — context visibility is not a capability that can be
+    /// switched off, but the intrinsic accounting every run reports. The console renders
     /// the stream of these as a stacked line graph of window fullness by category over
     /// the run. All token figures are estimates (see [`GgContextSourceUsage`]).
     ContextBreakdown {
@@ -2717,8 +2725,9 @@ pub enum GgTelemetryKind {
         by_source: Vec<GgContextSourceUsage>,
         /// The estimated total tokens across every source — the numerator of fullness.
         total_tokens: u64,
-        /// The active model's context-window limit, when known (a capability param or a
-        /// built-in per-model default). The denominator of fullness.
+        /// The active model's context-window limit, when known — its catalog window, or the
+        /// smaller figure an enabled [context-window override](CAPABILITY_CONTEXT_WINDOW_OVERRIDE)
+        /// narrowed it to. The denominator of fullness.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         window_limit: Option<u64>,
         /// `total_tokens / window_limit` in `0.0..=1.0+`, when a limit is known — the
@@ -2738,8 +2747,8 @@ pub enum GgTelemetryKind {
     /// its content — and emits its body **once**, here; each turn's [`Prompt`](Self::Prompt)
     /// is then a sequence of [pointers](GgPromptRef) into this pool, and the console
     /// reassembles a turn's exact request by resolving them. The pool is per agent (each
-    /// agent's stream carries the definitions its own prompts reference). Emitted only when
-    /// the [context-visibility](CAPABILITY_CONTEXT_VISIBILITY) capability is on; the run's
+    /// agent's stream carries the definitions its own prompts reference). Emitted every turn;
+    /// the run's
     /// [`tokens`](Self::ContextMessage::tokens) figure is the same estimate the breakdown
     /// bands are summed from, so a message's own contribution to fullness is legible.
     ///
@@ -2787,8 +2796,7 @@ pub enum GgTelemetryKind {
     /// [`tokens`](Self::Prompt::tokens)/[`cost`](Self::Prompt::cost) are the turn's actual
     /// provider usage — the same figures the incremental [`Usage`](Self::Usage) carries,
     /// bundled here so a turn's request→response reads as one self-contained record.
-    /// Emitted once per turn (immediately after the model call) when the
-    /// [context-visibility](CAPABILITY_CONTEXT_VISIBILITY) capability is on.
+    /// Emitted once per turn, immediately after the model call.
     Prompt {
         /// The messages sent to the model this turn, in order — pointers into the pool.
         request: Vec<GgPromptRef>,
@@ -2913,8 +2921,7 @@ pub enum GgTelemetryKind {
         /// [`GgContextSource`] in [`GgContextSource::ALL`] order — the same shape as
         /// [`ContextBreakdown`](Self::ContextBreakdown)'s `by_source`. Paired with
         /// [`after_by_source`](Self::Compaction::after_by_source) it shows exactly which bands
-        /// the summarize-and-restart reclaimed, without depending on the context-visibility
-        /// capability being on.
+        /// the summarize-and-restart reclaimed.
         before_by_source: Vec<GgContextSourceUsage>,
         /// The per-source window composition **immediately after** compaction: the pinned bands
         /// unchanged and the ephemeral bands collapsed into the single `History` summary item.

@@ -12,19 +12,25 @@ memories, file contents, the thread/history, tool output, and so on.
   in the console as a **stacked line graph** showing how an agent's context window
   fills over the course of a run, by category.
 
+Context visibility is **not a capability** — it is intrinsic to every gg run and
+cannot be switched off; every run emits the breakdown and the message log. The one
+thing you _can_ configure here is the [**Context Window Override**](#the-window-a-run-is-measured-against),
+a capability that narrows the window a run is measured against.
+
 ## The window a run is measured against
 
 gg resolves the fullness denominator per agent, from the agent's own model, in two
 steps:
 
 1. **The model's window**, from the [model catalog](/quickstarts/devops/add-or-update-a-model/),
-   optionally **narrowed** by the `windowLimit` capability parameter.
+   optionally **narrowed** by the [Context Window Override](/gg/configurations/)
+   capability's `windowLimit`.
 2. **The working window** — that figure less the summary reserve when
    [compaction](/gg/compaction/#enabling-compaction-shrinks-the-window-the-agent-gets)
    is on.
 
 **gg holds no model table of its own.** The catalog the backend owns is the single
-store of model facts, so the window is resolved *where the catalog lives* and
+store of model facts, so the window is resolved _where the catalog lives_ and
 **pushed into the run** when it is triggered: at enqueue the backend looks up every
 model the capability set binds and stamps the figures onto the launch, which carry
 through the driver into gg's invocation. A run whose [agents](/gg/configurations/#agents)
@@ -58,7 +64,7 @@ infrastructure**, not a launchable model. No catalog or provider lists it, so it
 refused by this same rule rather than by a special case; it reaches gg only from a
 test that builds the invocation itself and supplies the windows a launch would have.
 
-`windowLimit` can only make the window *smaller*. The model's real window is a hard
+`windowLimit` can only make the window _smaller_. The model's real window is a hard
 limit, so a larger value is not a configuration gg can honor; it is clamped back
 down to the catalog's figure rather than rejected, so a study that misjudged a window
 still runs. Narrowing it is how you exercise compaction against a million-token model
@@ -66,9 +72,11 @@ still runs. Narrowing it is how you exercise compaction against a million-token 
 window and the same summarize-and-restart behavior plays out an order of magnitude
 sooner and cheaper.
 
-The parameter sits on this capability by convention, but gg honors it on whichever
-capability carries it — it governs compaction and the fullness signal too, so
-ablating context visibility off must not silently restore the model's full window.
+This narrowing is its own capability — **Context Window Override** — **off by
+default**, so a normal run is measured against the model's full window. Turning it on
+with a `windowLimit` narrows the window; a value of `0` (or a disabled override) narrows
+nothing. It is the one lever that touches this window: context visibility itself is not a
+capability and cannot be switched off.
 
 ## Reading the graph
 
@@ -85,7 +93,7 @@ nothing can silently drop out of the stack.
 
 ## The message log: the exact requests, de-duplicated
 
-The graph shows the window's *composition*; the **message log** shows its *contents* —
+The graph shows the window's _composition_; the **message log** shows its _contents_ —
 the precise messages gg sent the model each turn, and the reply it got back. It is the
 itemized companion to the graph, and the console renders it as a **Requests** file beside
 Context in the [Agents explorer](/gg/telemetry/). Reading it, a turn's request is no
@@ -110,30 +118,30 @@ tokens it is charged — never its base64 bytes: a request log exists to show wh
 and a multi-megabyte inline picture is neither readable nor worth storing once per unique
 read.
 
-The log rides on this same capability: with context visibility off gg emits neither the
-graph nor the log, so an ablation's off arm carries no message telemetry at all, and the
-Requests file is offered only for a run that has the capability.
+The log and the graph are both context visibility, which is intrinsic to every gg run —
+there is no capability to switch it off — so every run emits both, and the Requests file
+is always offered.
 
 ## The window renders as an append-only prompt
 
 **A turn never rewrites what an earlier turn already sent.** Everything already in the
-window stays exactly where it is, byte for byte; a turn only *appends*. This is a rule
+window stays exactly where it is, byte for byte; a turn only _appends_. This is a rule
 gg holds itself to, not an implementation detail, because it is the whole basis of
 provider **prompt caching**: a request reads the cache only for a prefix the provider
-has already seen, so any edit *behind* the end of the prompt throws away the cache for
+has already seen, so any edit _behind_ the end of the prompt throws away the cache for
 every message after the edit. On a long run that is most of its token bill.
 
 Two kinds of state make that non-trivial.
 
 **Mutable blocks.** The memory block, the task list, the [Project management](/gg/project-management/) board, and the
 fullness signal are each rebuilt from their backing store at every turn boundary so the
-model always sees current state, and each is a *single* live block. Two rules keep the
+model always sees current state, and each is a _single_ live block. Two rules keep the
 rebuild append-only:
 
 - **An unchanged block does not move.** When it comes back byte-identical the rebuild is
   skipped and the block keeps its position, rather than being lifted to the tail behind
   the history accumulated since. Re-appending an unchanged block would rewrite the prompt
-  just before its end *every turn*, so no turn would ever extend the last one.
+  just before its end _every turn_, so no turn would ever extend the last one.
 - **A changed block is superseded, not removed.** The old copy is left exactly where it
   sits and retagged as ordinary ephemeral history; the new one is appended at the tail.
   Deleting it instead would be at its most expensive precisely when the block had held
@@ -147,7 +155,7 @@ same rule is why the fullness signal reports
 [rounded figures](/gg/agent-managed-context/): a line that moved by a handful of tokens
 would otherwise supersede itself every turn for no benefit.
 
-**File views.** A `read_file` result is a snapshot of the file *as it was read*, and
+**File views.** A `read_file` result is a snapshot of the file _as it was read_, and
 nothing later rewrites it — not a `write_file`, not an `edit_file`, not a re-read. Each
 read appends its own view. So the agent's own writes never silently rewrite the prompt
 behind them, and an agent that needs the current contents of a file it has changed reads
@@ -155,7 +163,7 @@ it again, which appends. This is also the honest reading: the earlier view is wh
 agent actually saw at that point, and editing history to show contents the agent never
 read would be a lie about the thread as well as a cache miss.
 
-How much *enters* the window per read is configurable: under a capped
+How much _enters_ the window per read is configurable: under a capped
 [read mode](/gg/filesystem/#read-modes) a view holds only the window that call returned,
 and paging through a file appends one view per page.
 
