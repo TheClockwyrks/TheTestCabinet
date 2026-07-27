@@ -40,7 +40,13 @@ export default function item() {
 
     async assert(api, check) {
       check.expectEq("the unit is a flyer", start.flying, true);
-      check.expectOk("the flyer crosses to the right, over the wall", r.hit);
+      // Hard: the cross-axis read below is off `end`, so a soft guard would let the
+      // script throw on a null instead — which the driver records as the build
+      // failing the debug-API contract rather than as this check's own verdict.
+      check.assertOk(
+        "the flyer crosses to the right, over the wall",
+        r.hit && end !== null,
+      );
       check.expectClose(
         "the flyer holds a straight line (constant y)",
         end.y,

@@ -2,34 +2,53 @@
 //
 // The Flak targets flyers only — it cannot damage a ground unit, but it damages a
 // flyer in range (specs/towers.md). We put a Flak on the lane and confirm a ground
-// Mote passes it untouched, then a Drift is damaged.
+// Mote walks through its range untouched, then a Drift is damaged.
+//
+// The ground half reads the FLAK's own lifetime `damageDealt` rather than the Mote's
+// remaining HP. Reading the Mote instead only works while there is a Mote to read:
+// a Flak that wrongly shoots ground units kills a 40 HP Mote in about two shots at
+// this heat, well before it crosses — so on exactly the build this item exists to
+// catch, the unit is gone and there is no HP left to compare. The tower's counter
+// survives the unit and answers the question directly, and it is the same counter
+// `info.counts` checks the build maintains.
 
 import {
   newGame,
   restartGame,
   build,
   spawn,
-  unit,
+  tower,
+  fpCenter,
+  TILE,
+  TOWER_SIZE,
   TICK,
 } from "../_helpers.mjs";
 
-// Pose a hot Flak on the lane with a unit of `surgeType` walking into its range, and
-// return that unit's id. `start` is the fresh-match helper to use: `newGame` in
-// arrange, and `restartGame` in act — this item is a genuine two-configuration
-// comparison (ground unit, then flyer), so the second setup has to be posed mid-drive,
-// where `reset()` (and therefore `newGame`) throws.
+// The Flak's lane position, and the range it covers from there (specs/towers.md).
+const FLAK_COL = 10;
+const FLAK_ROW = 17;
+const FLAK_RANGE_PX = 8 * TILE;
+const FLAK_CENTER = fpCenter(FLAK_COL, FLAK_ROW, TOWER_SIZE.flak);
+
+// Pose a hot Flak on the lane with a unit of `surgeType` walking into its range.
+// `start` is the fresh-match helper to use: `newGame` in arrange, and `restartGame`
+// in act — this item is a genuine two-configuration comparison (ground unit, then
+// flyer), so the second setup has to be posed mid-drive, where `reset()` (and
+// therefore `newGame`) throws.
 async function poseFlakAgainst(api, start, surgeType) {
   await start(api, "containment", "medium", 100000);
   await api.call("setLives", 100000);
-  const flak = await build(api, "flak", 10, 17);
+  const flak = await build(api, "flak", FLAK_COL, FLAK_ROW);
   await api.call("setHeat", flak, 80);
-  return spawn(api, surgeType, "left");
+  const target = await spawn(api, surgeType, "left");
+  return { flak, target };
 }
 
 export default function item() {
-  let mote;
-  let m;
-  let passed;
+  let flakId;
+  let moteId;
+  let sawInRange = false;
+  let groundDamage;
   let r;
 
   return {
@@ -37,44 +56,51 @@ export default function item() {
 
     // Configuration A: a ground Mote walking past the Flak.
     async arrange(api) {
-      mote = await poseFlakAgainst(api, newGame, "mote");
+      const posed = await poseFlakAgainst(api, newGame, "mote");
+      flakId = posed.flak;
+      moteId = posed.target;
     },
 
-    // Walk the Mote well past the Flak (1200 ticks = the old 20s cap, polled every 6
-    // ticks — the old 0.1s chunk), then re-pose the same Flak against a Drift and let
-    // it fire. 360 ticks = the old 6s cap, polled every tick to catch the first hit.
+    // Walk the Mote through the Flak's range and out the far side (1200 ticks = the
+    // old 20s cap, polled every 6 ticks — the old 0.1s chunk; at 60 px/s that is a
+    // 6 px stride through a ~300 px window, so the pass cannot be stepped over). The
+    // sweep also records that the Mote really was in range, without which "the Flak
+    // did no damage" would be true of a Mote that never came near it. Then re-pose
+    // the same Flak against a Drift and let it fire: 360 ticks = the old 6s cap,
+    // polled every tick to catch the first hit.
     async act(api) {
-      await api.until((s) => s.surge.some((u) => u.id === mote && u.x > 700), {
-        max: 1200,
-        poll: 6,
-      });
-      m = await unit(api, mote);
-      // Read the Mote's HP as it passed (if still alive) — the Flak never hit it.
-      passed = (await api.snapshot()).surge.find((u) => u.id === mote);
+      await api.until(
+        (s) => {
+          const u = s.surge.find((x) => x.id === moteId);
+          if (
+            u &&
+            Math.hypot(u.x - FLAK_CENTER.x, u.y - FLAK_CENTER.y) <=
+              FLAK_RANGE_PX
+          ) {
+            sawInRange = true;
+          }
+          return !u || u.x > FLAK_CENTER.x + FLAK_RANGE_PX;
+        },
+        { max: 1200, poll: 6 },
+      );
+      groundDamage = (await tower(api, flakId))?.damageDealt ?? null;
 
-      const drift = await poseFlakAgainst(api, restartGame, "drift");
+      const air = await poseFlakAgainst(api, restartGame, "drift");
       r = await api.until(
-        (s) => s.surge.some((u) => u.id === drift && u.hp < u.maxHp),
+        (s) => s.surge.some((u) => u.id === air.target && u.hp < u.maxHp),
         { max: 360, poll: TICK },
       );
     },
 
     async assert(api, check) {
-      check.expectOk("the Mote crossed past the Flak", m !== null || true);
-      if (passed) {
-        check.expectClose(
-          "the Flak did not damage the ground Mote",
-          passed.hp,
-          passed.maxHp,
-          0.01,
-        );
-      } else {
-        check.expectOk(
-          "the Mote left the floor undamaged (leaked, never killed)",
-          true,
-        );
-      }
-
+      // Hard: without a Mote inside the Flak's range there was never an opportunity
+      // to shoot it, and "no damage" below would mean nothing.
+      check.assertOk("the Mote walked into the Flak's range", sawInRange);
+      check.expectEq(
+        "the Flak dealt no damage at all to the ground Mote",
+        groundDamage,
+        0,
+      );
       check.expectOk("the Flak damaged the flyer", r.hit);
     },
   };

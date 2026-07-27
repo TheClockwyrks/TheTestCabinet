@@ -1,51 +1,68 @@
-// Automated validation for the Audio item `game-over-cue`: the Game-over sting
-// plays when the last life is lost. Audio is read from the Web Audio sources the
-// build starts (see `api.audio`). With one life and no defense, a real Mote leaks
-// and ends the run (the same setup as `states.gameover`); audio is armed, and the
-// real game-over transition must grow the audio log.
+// Automated validation for the Audio item `game-over-cue`: the Game-over sting plays
+// when the run ends. Audio is read from the Web Audio sources the build starts (see
+// `api.audio`).
+//
+// The probe COUNTS sources; it cannot say which cue started one. The run ends on the
+// tick a leak takes the last life, and a leak plays its own cue, so "the log grew as
+// the run ended" is true of a build with no Game-over sting at all. The two are
+// separated by differencing: each window below contains exactly ONE leak, and only
+// the second one is fatal.
+
+//
+// The baseline window's own cue is measured but NOT asserted on. Whether a shot or a
+// leak is itself audible belongs to `audio.fire-cue` and `audio.leak-cue`; requiring
+// it here too would fail this item for a defect another item already owns, and the
+// comparison below is sound either way — a build that plays nothing at all fails it,
+// because then neither window grows.
 
 import { newGame, spawn, armAudio, audioCount } from "../_helpers.mjs";
 
 export default function item() {
-  let before;
-  let after;
+  let onLeak;
+  let onFatal;
+  let survived;
   let ended;
 
   return {
     id: "audio.game-over-cue",
 
-    // The Mote's walk across the floor to its leak takes ~15s of real time — past
-    // the 8s default record budget, so the record pass would unwind before the tail
-    // advance ever ran. This lengthens only the record pass, not the verdict.
-    clipMs: 30000,
-
-    // One life and no towers, so the first leak is the last.
+    // Two lives and one Mote on the floor: this leak costs a life without ending the
+    // run, which is the control for the fatal one released after it.
     async arrange(api) {
-      await newGame(api, "containment", "medium");
-      await api.call("setLives", 1);
+      await newGame(api, "containment", "medium", 100000);
+      await api.call("setLives", 2);
       await spawn(api, "mote", "left");
       await armAudio(api);
     },
 
-    // 1800 ticks = the old 30s cap, polled every 12 ticks (the old 0.2s chunk) — the
-    // screen only changes at the leak.
+    // Window 1: a survivable leak. Window 2: an identical leak that takes the last
+    // life and ends the run. 1800 ticks = 30s, ample for a 60 px/s Mote to cross.
     async act(api) {
-      before = await audioCount(api);
-      const r = await api.until((s) => s.screen === "gameover", {
+      const leakBefore = await audioCount(api);
+      const first = await api.until((s) => s.lives <= 1, {
         max: 1800,
-        poll: 12,
+        poll: 6,
       });
-      after = await audioCount(api);
-      ended = r.hit;
-      await api.advance(30); // a short tail so the clip shows the loss
+      onLeak = (await audioCount(api)) - leakBefore;
+      survived = first.hit && (await api.snapshot()).screen === "playing";
+
+      await spawn(api, "mote", "left");
+      const fatalBefore = await audioCount(api);
+      const over = await api.until((s) => s.screen === "gameover", {
+        max: 1800,
+        poll: 6,
+      });
+      onFatal = (await audioCount(api)) - fatalBefore;
+      ended = over.hit;
     },
 
     async assert(api, check) {
+      check.expectOk("a leak costs a life without ending the run", survived);
       check.expectOk("the last-life leak ends the run", ended);
       check.expectGt(
-        "the Game-over sting plays (Web Audio sources started)",
-        after,
-        before,
+        "the fatal leak plays more than a survivable one (the Game-over sting)",
+        onFatal,
+        onLeak,
       );
     },
   };
