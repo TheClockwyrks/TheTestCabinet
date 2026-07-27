@@ -26,10 +26,16 @@ export default function item() {
     },
 
     // Both hunters emerging and setting off after the critter — the clip.
+    //
+    // The window is generous, and more so than the single-bear items: specs/hunter.md
+    // says only that the second bear is "staggered from the first" and pins neither
+    // delay, so the second bear's total wait is the build's own call. A window sized
+    // to one build's stagger would fail another that simply staggers wider. What is
+    // under test is that BOTH bears eventually emerge.
     async act(api) {
       r = await api.until(
         (s) => s.bears.length === 2 && s.bears[0].present && s.bears[1].present,
-        { max: 360, poll: 12 }, // 3 s at a 0.1 s cadence
+        { max: 900, poll: 12 }, // 7.5 s at a 0.1 s cadence
       );
     },
 

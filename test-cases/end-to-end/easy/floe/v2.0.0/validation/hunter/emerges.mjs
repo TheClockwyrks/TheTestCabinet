@@ -28,8 +28,14 @@ export default function item() {
     // Wait for the real emerge logic to bring a bear out of the near shore — the
     // moment the clip should show. (The old clip drove a held-key climb instead;
     // the assertions drove the posed advance, so that is what is filmed.)
+    // The window is deliberately generous. specs/hunter.md fixes only that the bear
+    // emerges "after a short delay", once the critter "has advanced a few tiles" — it
+    // pins no number, so the delay is the build's own call and a window sized to one
+    // particular build's constant would fail another build that is equally correct,
+    // just slower off the mark. What is under test is that the bear DOES emerge, so
+    // the sweep allows several seconds; a build that never emerges still fails.
     async act(api) {
-      r = await api.until((s) => s.bears[0].present, { max: 144, poll: 6 }); // 1.2 s at 0.05 s
+      r = await api.until((s) => s.bears[0].present, { max: 600, poll: 6 }); // 5 s at 0.05 s
     },
 
     async assert(api, check) {

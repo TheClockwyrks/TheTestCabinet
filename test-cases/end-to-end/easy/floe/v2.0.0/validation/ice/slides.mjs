@@ -41,13 +41,21 @@ export default function item() {
 
     async arrange(api) {
       await startCrossing(api);
-      before = (await api.snapshot()).lanes.ice;
     },
 
     // The validate pass advances the sim by exactly this much (no stray wall-clock
     // frames), so the slide equals dir*speed*TILE*dt to within float rounding. Half a
     // second of traffic sliding along the lanes is also the clip.
+    //
+    // BOTH ends of the measured span are read here, in `act`, rather than opening it
+    // back in `arrange`. The runtime only settles the build onto its manual clock
+    // BETWEEN the two phases, so a span that starts in `arrange` also contains
+    // however much wall-clock time the driver's own round trips happened to take —
+    // which is not a fixed number of ticks, and lands the comparison a tick or two
+    // off a tolerance this tight at random. Reading `before` here makes the span
+    // exactly the `advance` below, and the check deterministic.
     async act(api) {
+      before = (await api.snapshot()).lanes.ice;
       await api.advance(DT_TICKS);
       after = (await api.snapshot()).lanes.ice;
     },

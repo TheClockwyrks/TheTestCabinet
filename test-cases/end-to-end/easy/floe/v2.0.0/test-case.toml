@@ -759,3 +759,21 @@ validation = { script = "validation/audio/game-over.mjs", outputs = [
 id = "graceful"
 title = "Muteable and gracefully silent"
 description = "Audio stays fully playable muted (a mute toggle is provided), never fails the game if audio cannot start, and does not begin until the player first interacts."
+
+# --- Instrumentation (the debug API's own contract) ---------------------------
+# Every other category checks the GAME through the debug API. This one checks the
+# debug API itself, where a defect is otherwise invisible: the clock contract from
+# specs/instrumentation.md, which is what makes a scripted scenario reproducible at
+# all. A build that breaks it plays perfectly for a person and answers every declared
+# call, so only a direct test finds it — and until one does, the damage surfaces as
+# unrelated checks reporting defects that are not there, or missing ones that are.
+[[review.categories]]
+id = "instrumentation"
+title = "Instrumentation"
+[[review.categories.items]]
+id = "manual-clock"
+title = "The simulation runs only when stepped"
+description = "After `reset()` the simulation advances only when `step()` asks it to: control operations pose the world without starting the clock, real time passing on its own moves nothing, and `step(120)` advances exactly one second. Only `setAutoStep(true)` hands the clock back."
+validation = { script = "validation/instrumentation/manual-clock.mjs", outputs = [
+  { id = "clock", name = "The posed scene the clock was observed on", kind = "image" },
+] }
