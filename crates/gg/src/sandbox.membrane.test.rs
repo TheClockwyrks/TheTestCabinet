@@ -162,6 +162,11 @@ fn crossings() -> Vec<Crossing> {
             expected: || json!({ "id": "i1" }),
         },
         Crossing {
+            tool: "wait_for_issue",
+            program: "project.waitForIssue(\"i1\");",
+            expected: || json!({ "issueId": "i1" }),
+        },
+        Crossing {
             tool: "evict_file_view",
             program: "context.evictFileView(\"src/a.ts\");",
             expected: || json!({ "path": "src/a.ts" }),

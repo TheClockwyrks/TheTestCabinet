@@ -194,7 +194,7 @@ scope. There is no dispatcher to name a tool through and no JSON to hand-assembl
 | `listDir(path?: string)` | `DirEntry[]` |
 | `spawnSubagent(request: ({ prompt: string; } \| { issueId: string; }) & { slot?: string; worktree?: boolean; })` | `SubagentHandle` |
 
-Twenty-nine of gg's thirty-two tools are bound this way — everything except the three
+Thirty of gg's thirty-three tools are bound this way — everything except the three
 [turn-level transitions](#turn-level-transitions-are-not-composable) — plus one
 convenience helper, `readTextFile(path, options?)`, for the overwhelmingly common case
 of wanting a file's text rather than its metadata, and `finish(summary)`, which is a

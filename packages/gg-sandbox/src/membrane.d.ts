@@ -312,6 +312,9 @@ declare module "test-cabinet:gg/board" {
   export function removeEpic(id: string): BoardUsage;
   /** Remove an issue and every blocker edge pointing at it. */
   export function removeIssue(id: string): BoardUsage;
+  /** Register a deferred wait on an issue and return an acknowledgement; the run suspends after the
+   * program ends, not inside it. */
+  export function waitForIssue(id: string): string;
 }
 
 /** Managing the agent's own context window. */

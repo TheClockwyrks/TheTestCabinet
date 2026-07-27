@@ -137,3 +137,16 @@ export function removeEpic(id: string): BoardUsage {
 export function removeIssue(id: string): BoardUsage {
   return call(() => raw.removeIssue(id));
 }
+
+/**
+ * Register a wait on an issue and return an acknowledgement. It does not block inside your
+ * program — it records the wait and returns at once, so the rest of your program still runs; the
+ * suspension happens after the program ends, between turns. Once the program finishes the run
+ * suspends, freeing this agent's slot for others, until the issue is terminal (done, or failed if
+ * its assigned agent could not complete it), then resumes on the next turn. Use it to sequence your
+ * next turn's work behind an issue you depend on. You cannot wait on the issue you were assigned to
+ * implement. Throws `not-found` for an unknown id.
+ */
+export function waitForIssue(id: string): string {
+  return call(() => raw.waitForIssue(id));
+}

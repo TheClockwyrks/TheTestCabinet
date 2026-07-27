@@ -22,21 +22,7 @@ use serde::Deserialize;
 // The whole-vocabulary partition backs [`sandbox_tool_names`], which is a drift gate rather than a
 // run-time need — so, like it, the names it is built from are only reachable under test.
 #[cfg(test)]
-use crate::tools::{ALL_TOOL_NAMES, TURN_LEVEL_TOOLS, WAIT_FOR_ISSUE_TOOL};
-
-/// gg tools the responses-as-code guest deliberately does **not** bind — the one class the sandbox
-/// omits beyond the [turn-level transitions](TURN_LEVEL_TOOLS).
-///
-/// [`wait_for_issue`](WAIT_FOR_ISSUE_TOOL) is a **blocking** [project-management](crate::board)
-/// coordination call: it suspends the calling agent until a board issue is terminal. That fits the
-/// native tool-calling loop (where a turn is the unit of work and the loop can free the agent's slot
-/// and await), but not a composed program, which would block mid-execution on a call whose result
-/// is a control-flow wait rather than a value. So it is offered on the native path and withheld from
-/// the guest; a program still creates issues (and gg [auto-dispatches](crate::agent) them) — it just
-/// does not block-wait on one. Withholding it here is what keeps the guest, the committed component,
-/// and the signature catalogue in agreement without binding a call the guest has no good shape for.
-#[cfg(test)]
-const NON_SANDBOX_TOOLS: &[&str] = &[WAIT_FOR_ISSUE_TOOL];
+use crate::tools::{ALL_TOOL_NAMES, TURN_LEVEL_TOOLS};
 
 /// The committed catalogue, emitted by the guest package's `signatures` script alongside the
 /// component itself.
@@ -159,12 +145,13 @@ pub(crate) fn catalogue() -> &'static SignatureCatalogue {
 
 /// The gg tool names the sandbox binds into a program's scope: [`ALL_TOOL_NAMES`] minus the
 /// [turn-level transitions](TURN_LEVEL_TOOLS), which change the loop's mode rather than producing a
-/// value, and minus the [non-sandbox tools](NON_SANDBOX_TOOLS), the blocking calls a composed
-/// program has no good shape for.
+/// value. Every other gg tool is bound — responses-as-code is the richer interface, so the guest's
+/// surface is the whole vocabulary bar the three transitions a composed program has nothing to
+/// compose them into.
 ///
 /// Derived rather than listed, so a tool added to gg is bound (or its absence from the guest is a
-/// test failure) without anyone remembering to edit a second list — the two small subtractions are
-/// the only exceptions, each named and justified where it is defined.
+/// test failure) without anyone remembering to edit a second list — the turn-level subtraction is
+/// the only exception, named and justified where it is defined.
 ///
 /// `#[cfg(test)]` because a run never needs the whole vocabulary — it binds *its own* enabled set,
 /// which the loop derives from the registry. The set-equality drift gates
@@ -175,7 +162,7 @@ pub(crate) fn sandbox_tool_names() -> Vec<&'static str> {
     ALL_TOOL_NAMES
         .iter()
         .copied()
-        .filter(|name| !TURN_LEVEL_TOOLS.contains(name) && !NON_SANDBOX_TOOLS.contains(name))
+        .filter(|name| !TURN_LEVEL_TOOLS.contains(name))
         .collect()
 }
 

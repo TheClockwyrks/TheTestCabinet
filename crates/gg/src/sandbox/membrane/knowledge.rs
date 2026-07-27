@@ -55,6 +55,8 @@ const SET_ISSUE_BLOCKED_BY_TOOL: &str = "set_issue_blocked_by";
 const REMOVE_EPIC_TOOL: &str = "remove_epic";
 /// The `remove_issue` tool name.
 const REMOVE_ISSUE_TOOL: &str = "remove_issue";
+/// The `wait_for_issue` tool name.
+const WAIT_FOR_ISSUE_TOOL: &str = "wait_for_issue";
 
 impl<A: ToolApi> SkillsHost for MembraneState<A> {
     fn read_skill(&mut self, name: String) -> Result<String, ToolError> {
@@ -238,6 +240,15 @@ impl<A: ToolApi> BoardHost for MembraneState<A> {
     fn remove_issue(&mut self, id: String) -> Result<BoardUsage, ToolError> {
         let outcome = self.call(REMOVE_ISSUE_TOOL, |api| api.remove_issue(id))?;
         board_usage(self, REMOVE_ISSUE_TOOL, outcome.data)
+    }
+
+    fn wait_for_issue(&mut self, id: String) -> Result<String, ToolError> {
+        // The wait is *deferred*: the api records the requested wait and returns its acknowledgement
+        // at once, and the loop suspends the agent after the program ends. So this is a plain
+        // string-returning call — the acknowledgement is `outcome.output`, exactly as `read_skill`'s
+        // body is — not a blocking one like `wait_for_subagents`.
+        let outcome = self.call(WAIT_FOR_ISSUE_TOOL, |api| api.wait_for_issue(id))?;
+        Ok(outcome.output)
     }
 }
 

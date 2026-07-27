@@ -79,3 +79,36 @@ agents available to you:
 Choose the agent whose purpose best fits the work. You may only spawn the
 agents listed above.
 {{/if}}
+
+{{#if board}}
+## Project management
+
+For a substantial build, decompose the work on a shared project board. One board
+serves the whole run and every agent can read and edit it. Group related work into
+epics with `create_epic`. Break the work into issues with `create_issue`. Each
+issue carries `inScope`, `outOfScope`, and `completionCriteria` alongside its
+title; write them precisely, because they are the brief gg hands the agent it
+assigns to the issue. Revise an issue with `update_issue`, set its dependencies
+with `set_issue_blocked_by`, and drop entries with `remove_epic` and
+`remove_issue`. At most {{board.maxEpics}} epics and {{board.maxIssues}} issues may
+be recorded.
+
+Submitting an issue enqueues it rather than handing it to a subagent. Once every
+issue it is blocked by is done, gg spawns a dedicated agent, gives it the issue's
+brief, and that agent implements the issue and marks it done with `complete_issue`.
+Decompose the work into well-scoped issues with clear dependencies and let the
+board drive the build. Reserve `spawn_subagent` for ad-hoc helpers that are not
+board issues.
+
+Call `wait_for_issue` with an issue's id to sequence your work behind it. You are
+suspended, which frees capacity for other agents, until that issue reaches a
+terminal state, then you resume and learn whether it was done or failed. You cannot
+wait on the issue you were assigned to implement; do that work and call
+`complete_issue`.
+
+Issues form a directed acyclic graph. Cycles are rejected, and an issue is ready
+only once all of its blockers are done. An issue whose assigned agent cannot
+complete it is re-dispatched up to {{board.maxRetries}} time(s) and then marked
+failed. A failed issue is terminal but not done, so anything depending on it stays
+blocked.
+{{/if}}

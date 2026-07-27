@@ -145,6 +145,12 @@ pub trait ToolApi: Send + 'static {
     fn complete_issue(&mut self, id: String) -> ToolOutcome;
     fn remove_epic(&mut self, id: String) -> ToolOutcome;
     fn remove_issue(&mut self, id: String) -> ToolOutcome;
+    /// Register a deferred wait on a board issue and return the acknowledgement. Unlike the
+    /// delegation family, this does **not** block on the calling thread: it records the requested
+    /// wait (validating the id) and returns at once, and the loop performs the actual suspension
+    /// after the program ends. A composed program has no shape for a mid-execution control-flow
+    /// wait, so the wait is deferred to a place that does — between turns.
+    fn wait_for_issue(&mut self, id: String) -> ToolOutcome;
     fn evict_file_view(&mut self, path: Option<String>) -> ToolOutcome;
     fn archive_thread(&mut self, keep_recent_turns: Option<u32>) -> ToolOutcome;
     fn search_archive(&mut self, query: String) -> ToolOutcome;

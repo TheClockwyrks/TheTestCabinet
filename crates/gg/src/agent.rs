@@ -1461,9 +1461,28 @@ async fn handle_wait_for_issue(
             );
         }
     };
+    wait_for_issue_by_id(project, agent, board, emitter, &issue_id).await
+}
+
+/// Suspend this agent until `issue_id` is terminal, then report which — the core of
+/// [`handle_wait_for_issue`](handle_wait_for_issue) once the id is in hand.
+///
+/// It is a function of its own because two paths reach the same wait: the native tool-calling loop,
+/// which parses the id off a `wait_for_issue` [`ToolCall`] and calls it through
+/// [`handle_wait_for_issue`]; and the responses-as-code loop, which performs the *deferred* waits a
+/// program [registered](LoopToolApi::register_issue_wait) once that program has ended, calling this
+/// directly for each recorded id. Both share the self-issue guard, the not-found check, the
+/// already-terminal short-circuit, and the slot-freeing block, so neither can drift from the other.
+async fn wait_for_issue_by_id(
+    project: &ProjectContext,
+    agent: &Agent,
+    board: &BoardRuntime,
+    emitter: &Emitter,
+    issue_id: &str,
+) -> ToolOutcome {
     // An agent cannot wait on the very issue it was dispatched to implement — it would block itself
     // forever (nothing else completes its issue). Guide it to do the work instead.
-    if project.assigned_issue.as_deref() == Some(issue_id.as_str()) {
+    if project.assigned_issue.as_deref() == Some(issue_id) {
         return ToolOutcome::failed(
             ToolFailure::InvalidArgument,
             format!(
@@ -1472,7 +1491,7 @@ async fn handle_wait_for_issue(
             ),
         );
     }
-    let Some(status) = board.issue_status(&issue_id) else {
+    let Some(status) = board.issue_status(issue_id) else {
         return ToolOutcome::failed(
             ToolFailure::NotFound,
             format!(
@@ -1482,9 +1501,9 @@ async fn handle_wait_for_issue(
         );
     };
     if status.is_terminal() {
-        return issue_wait_result(&issue_id, status);
+        return issue_wait_result(issue_id, status);
     }
-    match project.orch.begin_issue_wait(&issue_id) {
+    match project.orch.begin_issue_wait(issue_id) {
         IssueWaitOutcome::AlreadyTerminal => {}
         IssueWaitOutcome::Blocked(rx) => {
             if project.orch.multi_agent() {
@@ -1500,8 +1519,8 @@ async fn handle_wait_for_issue(
         }
     }
     // Report the issue's final state (it is terminal now, unless it was removed while we waited).
-    match board.issue_status(&issue_id) {
-        Some(status) => issue_wait_result(&issue_id, status),
+    match board.issue_status(issue_id) {
+        Some(status) => issue_wait_result(issue_id, status),
         None => ToolOutcome::ok(
             format!("issue `{issue_id}` is no longer on the board."),
             format!("waited for issue `{issue_id}` (removed)"),
@@ -5267,6 +5286,7 @@ impl Agent {
                             skills: turn_skills,
                             docs: turn_docs,
                             subagents: turn_subagents,
+                            issue_waits: turn_issue_waits,
                         } = state.expect("a non-fatal code turn hands back its per-turn state");
                         context = turn_context;
                         skills = turn_skills;
@@ -5293,6 +5313,31 @@ impl Agent {
                                 true,
                                 last_report.as_deref(),
                                 last_text,
+                            );
+                        }
+                        // The deferred half of a program's `wait_for_issue`: the program only
+                        // *registered* each wait (a mid-execution block has no shape in a composed
+                        // program), so the loop performs it here — after the turn's feedback is
+                        // recorded and only when the run is not already stopping — suspending the
+                        // agent on each awaited issue in turn before taking the next turn. Each wait
+                        // frees this agent's scheduler slot while it blocks, exactly as the native
+                        // path's does, so other agents keep running. The terminal status of each is
+                        // pushed back so the next program learns whether the issue was done or
+                        // failed, the same value the native `wait_for_issue` returns.
+                        if !turn_issue_waits.is_empty()
+                            && let Some(project) = project.as_ref()
+                        {
+                            let mut resolved = Vec::with_capacity(turn_issue_waits.len());
+                            for issue_id in &turn_issue_waits {
+                                let outcome =
+                                    wait_for_issue_by_id(project, self, &board, emitter, issue_id)
+                                        .await;
+                                resolved.push(outcome.output);
+                            }
+                            context.push(
+                                GgContextSource::ToolOutput,
+                                Retention::Ephemeral,
+                                Message::user(resolved.join("\n\n")),
                             );
                         }
                         continue;

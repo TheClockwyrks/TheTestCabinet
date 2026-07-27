@@ -395,6 +395,12 @@ interface board {
     remove-epic: func(id: string) -> result<board-usage, tool-error>;
     /// Remove an issue and every blocker edge pointing at it.
     remove-issue: func(id: string) -> result<board-usage, tool-error>;
+    /// Register a wait on an issue and return an acknowledgement. It does NOT block inside the
+    /// program: it records the wait and returns at once, so the rest of the program still runs.
+    /// After the program ends the run suspends — freeing this agent's slot for others — until the
+    /// issue is terminal (done, or failed if its assigned agent could not complete it), then
+    /// resumes and reports which. You cannot wait on the issue you were assigned to implement.
+    wait-for-issue: func(id: string) -> result<string, tool-error>;
 }
 
 /// Managing the agent's own context window.

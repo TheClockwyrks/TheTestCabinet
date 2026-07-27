@@ -191,6 +191,8 @@ pub(super) async fn run_code_turn(
                 skills,
                 docs,
                 subagents,
+                // Nothing ran, so no program could have requested a wait.
+                issue_waits: Vec::new(),
             }),
         );
     }
@@ -746,6 +748,10 @@ pub(super) struct CodeTurnState {
     pub(super) docs: DocsRuntime,
     /// This agent's delegation context, when the capability is on.
     pub(super) subagents: Option<SubagentContext>,
+    /// The board issues this turn's program asked to wait on, in first-requested order (empty when
+    /// it requested none, or never ran a program). The loop suspends the agent on each — after the
+    /// turn's feedback is recorded — before taking the next turn.
+    pub(super) issue_waits: Vec<String>,
 }
 
 /// Run a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program in the wasmtime sandbox and
@@ -798,6 +804,7 @@ async fn run_code_program(
         skills,
         docs,
         subagents,
+        issue_waits_requested: Vec::new(),
         spawner: turn.spawner.clone(),
         tool_ctx: turn.tool_ctx.clone(),
         read_policy: turn.read_policy,
@@ -830,6 +837,7 @@ async fn run_code_program(
                 skills: api.skills,
                 docs: api.docs,
                 subagents: api.subagents,
+                issue_waits: api.issue_waits_requested,
             };
             (outcome, Some(state))
         }
@@ -954,6 +962,11 @@ pub(super) struct LoopToolApi {
     pub(super) skills: SkillsRuntime,
     pub(super) docs: DocsRuntime,
     pub(super) subagents: Option<SubagentContext>,
+    /// The board issues this program asked to wait on, in first-requested order. A `wait_for_issue`
+    /// call records its id here rather than blocking, and the loop performs the actual suspension
+    /// once the program has ended — the deferral a composed program needs, since a mid-execution
+    /// control-flow wait has no shape in one.
+    pub(super) issue_waits_requested: Vec<String>,
     // cloned/borrowed-by-value loop state:
     spawner: Agent,
     tool_ctx: ToolContext,
@@ -1148,6 +1161,69 @@ impl LoopToolApi {
             ),
         };
         self.complete(call, outcome, None)
+    }
+
+    /// Validate a `wait_for_issue` request and record it for the loop to honour after the program
+    /// ends — the non-blocking near half of the deferred wait.
+    ///
+    /// It runs the same checks the native [`handle_wait_for_issue`](super::handle_wait_for_issue)
+    /// runs before it blocks — a non-empty id, the project capability, not the agent's own assigned
+    /// issue, and an issue that is actually on the board — so a program learns of a bad id *as a
+    /// throw on the call*, in the turn it made it, rather than at the between-turns suspension where
+    /// it has no program to catch it. What it does not do is block: it appends the id to
+    /// [`issue_waits_requested`](LoopToolApi::issue_waits_requested) (deduplicated) and returns an
+    /// acknowledgement, and the loop suspends on it once the whole program has run.
+    fn register_issue_wait(&mut self, id: String) -> ToolOutcome {
+        let issue_id = id.trim();
+        if issue_id.is_empty() {
+            return ToolOutcome::failed(
+                ToolFailure::InvalidArgument,
+                "wait_for_issue needs a non-empty `issueId` (the id of the issue to wait for)."
+                    .to_string(),
+            );
+        }
+        if self.project.is_none() {
+            return ToolOutcome::failed(
+                ToolFailure::Unavailable,
+                "`wait_for_issue` is not available: this run has no project-management board."
+                    .to_string(),
+            );
+        }
+        if self
+            .project
+            .as_ref()
+            .and_then(|project| project.assigned_issue.as_deref())
+            == Some(issue_id)
+        {
+            return ToolOutcome::failed(
+                ToolFailure::InvalidArgument,
+                format!(
+                    "you cannot wait on issue `{issue_id}`: it is the issue you were assigned to \
+                     implement. Do the work and call `complete_issue` when it is done."
+                ),
+            );
+        }
+        if self.board.issue_status(issue_id).is_none() {
+            return ToolOutcome::failed(
+                ToolFailure::NotFound,
+                format!(
+                    "no issue `{issue_id}` is on the board (your current board is in your context); \
+                     create it with `create_issue` or correct the id."
+                ),
+            );
+        }
+        let issue_id = issue_id.to_string();
+        if !self.issue_waits_requested.contains(&issue_id) {
+            self.issue_waits_requested.push(issue_id.clone());
+        }
+        ToolOutcome::ok(
+            format!(
+                "Wait registered for issue `{issue_id}`. This program keeps running; after it ends \
+                 the run suspends until the issue is terminal (done or failed), then resumes and \
+                 tells you which."
+            ),
+            format!("wait registered for issue `{issue_id}`"),
+        )
     }
 }
 
@@ -1436,6 +1512,15 @@ impl ToolApi for LoopToolApi {
     fn remove_issue(&mut self, id: String) -> ToolOutcome {
         self.serviced("remove_issue", json!({ "id": id }), |api| {
             RemoveIssueTool::new(api.board.store()).remove_issue(id.clone())
+        })
+    }
+    fn wait_for_issue(&mut self, id: String) -> ToolOutcome {
+        // Deferred, not blocking: `register_issue_wait` validates the id and records the request;
+        // the loop suspends the agent after the program ends. Serviced like any ordinary call — it
+        // streams a `ToolCall`/`ToolResult` pair and shows up in the composed-calls roster — but the
+        // wait itself is not one of the delegation family's `block_on`s.
+        self.serviced(WAIT_FOR_ISSUE_TOOL, json!({ "issueId": id }), |api| {
+            api.register_issue_wait(id.clone())
         })
     }
     fn evict_file_view(&mut self, path: Option<String>) -> ToolOutcome {

@@ -5377,6 +5377,91 @@ async fn an_agent_can_wait_for_an_issue_until_it_completes() {
     );
 }
 
+/// A project-management set (global board + auto-dispatch) with responses-as-code on, so the root
+/// and the agents gg auto-dispatches both run their turns as programs.
+fn code_project_set() -> GgCapabilitySet {
+    let mut set = project_set(None);
+    set.agents[0]
+        .capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE));
+    set
+}
+
+/// **A responses-as-code program waits on an issue, deferred until the program ends.** The root
+/// files an issue and calls `project.waitForIssue` in the *same* program — which records the wait
+/// and returns rather than blocking inside the program — so the turn continues; then, after the
+/// program has run, the loop suspends the root until the auto-dispatched agent completes the issue,
+/// and the root resumes and finishes. This is the deferral that gives a composed program a shape for
+/// a control-flow wait it otherwise has none for: the call is honoured between turns, not within
+/// one.
+#[tokio::test]
+async fn a_code_program_waits_for_an_issue_after_it_ends() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-pm-code-wait".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), code_project_set());
+
+    let counter = Arc::new(AtomicUsize::new(0));
+    let factory = ScriptedFactory::new().slot(ROOT_AGENT, move |b| {
+        let n = counter.fetch_add(1, Ordering::SeqCst);
+        let responses = if n == 0 {
+            // The root files the issue and registers the wait in one program. There is no `finish`,
+            // so the turn continues — and the wait does not block here; the loop performs it once
+            // the program has ended, after which the root's next program finishes.
+            vec![
+                code_reply(
+                    "project.createIssue({ id: \"feat-1\", title: \"Add the widget\", \
+                     inScope: \"Implement the widget.\", outOfScope: \"Nothing else.\", \
+                     completionCriteria: \"The widget works.\" });\n\
+                     project.waitForIssue(\"feat-1\");",
+                ),
+                code_reply(FINISHING_PROGRAM),
+            ]
+        } else {
+            // The auto-dispatched issue agent completes the issue, then finishes.
+            vec![code_reply(
+                "project.completeIssue(\"feat-1\");\nharness.finish(\"issue done\");",
+            )]
+        };
+        Box::new(MockClient::new(&b.model_id, responses))
+    });
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran
+    );
+    let events = sink.events();
+
+    // The program's `waitForIssue` was bound and serviced under responses-as-code — it registered
+    // the wait rather than throwing, which is the parity this change exists to give.
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::ToolResult { name, ok: true, .. } if name == "wait_for_issue"
+        )),
+        "the program's waitForIssue was serviced"
+    );
+    // The deferred wait actually suspended the root after its program ended — the whole point, and
+    // what distinguishes it from a no-op that just kept looping.
+    assert!(
+        events
+            .iter()
+            .any(|e| e.agent_id.as_deref() == Some(ROOT_AGENT_ID)
+                && matches!(
+                    e.kind,
+                    GgTelemetryKind::AgentStatus {
+                        status: GgAgentStatus::Blocked
+                    }
+                )),
+        "the root suspended on the deferred wait after its program ended"
+    );
+    assert_eq!(
+        last_issue_status(&events, "feat-1"),
+        Some(GgIssueStatus::Done),
+        "the awaited issue reached a terminal Done state",
+    );
+}
+
 /// Completing an issue with the capability on triggers a **Code Review** rather than accepting the
 /// issue: a reviewer is dispatched against the baseline diff, one round requests changes (a fix
 /// agent runs with the original brief plus the items), and a re-review approves — only then is the

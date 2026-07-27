@@ -286,6 +286,9 @@ impl ToolApi for FakeToolApi {
     fn remove_issue(&mut self, id: String) -> ToolOutcome {
         self.call("remove_issue", json!({ "id": id }))
     }
+    fn wait_for_issue(&mut self, id: String) -> ToolOutcome {
+        self.call("wait_for_issue", json!({ "issueId": id }))
+    }
     fn evict_file_view(&mut self, path: Option<String>) -> ToolOutcome {
         self.call("evict_file_view", json!({ "path": path }))
     }
@@ -434,6 +437,7 @@ pub(crate) fn canned_outcome(name: &str, args: &Value) -> ToolOutcome {
             }))
         }
         "update_issue" | "set_issue_blocked_by" => ToolOutcome::ok("noted", "board"),
+        "wait_for_issue" => ToolOutcome::ok("wait registered", "wait registered"),
         "complete_issue" => ToolOutcome::ok("accepted", "issue done").with_data(
             ToolData::Completion(CompletionData {
                 code_reviewed: true,
