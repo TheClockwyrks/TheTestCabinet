@@ -91,7 +91,7 @@ async fn a_healed_turn_reports_what_was_healed_on_its_code_execution() {
             // A real fenced reply, with prose either side of the block.
             code_reply(FENCED_PROGRAM),
             // The same shape, sent the way the prompt asks for it.
-            code_reply("return listDir(\"src\").length;"),
+            code_reply("return fs.listDir(\"src\").length;"),
             code_reply(FINISHING_PROGRAM),
         ],
     );
@@ -211,8 +211,8 @@ async fn a_not_a_program_response_never_reaches_the_sandbox() {
             // The same refusal in its other shape: two programs pasted together with no fence
             // anywhere, which is what a model sends once fences are gone from the contract.
             code_reply(
-                "const files = listDir(\"src\");\nreturn files.length;\n\n\
-                 const files = listDir(\".\");\nreturn files.map((e) => e.name);",
+                "const files = fs.listDir(\"src\");\nreturn files.length;\n\n\
+                 const files = fs.listDir(\".\");\nreturn files.map((e) => e.name);",
             ),
         ],
     );
@@ -303,7 +303,7 @@ async fn a_transpile_failure_over_prose_is_reported_as_not_a_program() {
             .content
             .as_deref()
             .is_some_and(|text| text.contains("Every turn of this run is a program")
-                && text.contains("finish("))),
+                && text.contains("harness.finish("))),
         "the model was told what to do instead"
     );
 }

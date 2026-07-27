@@ -26,6 +26,7 @@ mod compaction;
 mod config;
 mod context;
 mod dag;
+mod docs;
 mod fsm;
 mod git;
 mod healing;

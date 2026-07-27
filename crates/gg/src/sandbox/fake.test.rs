@@ -16,7 +16,7 @@ use std::time::Instant;
 use serde_json::Value;
 
 use super::membrane::MembraneState;
-use super::{SandboxLimits, ToolInvoker};
+use super::{FunctionSummary, SandboxLimits, ToolInvoker};
 use crate::model::ImageContent;
 use crate::tools::{
     ArchiveHitData, ArchiveSearchData, BoardUsageData, CompletionData, DirEntryData, DirEntryKind,
@@ -120,6 +120,22 @@ impl ToolInvoker for FakeInvoker {
                 args: args.clone(),
             });
         (self.responder)(name, &args)
+    }
+
+    /// The fake does not model the catalogue: it echoes the object so a test can assert the request
+    /// reached the host, and otherwise stays out of the way. Documentation lookups are not tool
+    /// calls, so they are not recorded in the [call log](CallLog).
+    fn list_functions(&mut self, object: &str) -> Vec<FunctionSummary> {
+        vec![FunctionSummary {
+            name: format!("{object}Function"),
+            summary: format!("a function on `{object}`"),
+        }]
+    }
+
+    /// Answers every name with a canned line, so a program that reads docs gets a value rather than
+    /// a `not-found`.
+    fn read_docs(&mut self, name: &str) -> Option<String> {
+        Some(format!("documentation for `{name}`"))
     }
 }
 

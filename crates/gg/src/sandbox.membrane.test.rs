@@ -28,57 +28,57 @@ fn crossings() -> Vec<Crossing> {
     vec![
         Crossing {
             tool: "shell",
-            program: "shell(\"npm test\", { timeoutSecs: 30 });",
+            program: "system.shell(\"npm test\", { timeoutSecs: 30 });",
             expected: || json!({ "command": "npm test", "timeout_secs": 30.0 }),
         },
         Crossing {
             tool: "read_file",
-            program: "readFile(\"src/a.ts\", { offset: 2, limit: 5 });",
+            program: "fs.readFile(\"src/a.ts\", { offset: 2, limit: 5 });",
             expected: || json!({ "path": "src/a.ts", "offset": 2, "limit": 5 }),
         },
         Crossing {
             tool: "write_file",
-            program: "writeFile(\"out.txt\", \"hello\");",
+            program: "fs.writeFile(\"out.txt\", \"hello\");",
             expected: || json!({ "path": "out.txt", "contents": "hello" }),
         },
         Crossing {
             tool: "edit_file",
-            program: "editFile(\"src/a.ts\", \"alpha\", \"beta\");",
+            program: "fs.editFile(\"src/a.ts\", \"alpha\", \"beta\");",
             expected: || json!({ "path": "src/a.ts", "old_string": "alpha", "new_string": "beta" }),
         },
         Crossing {
             tool: "list_dir",
-            program: "listDir(\"src\");",
+            program: "fs.listDir(\"src\");",
             expected: || json!({ "path": "src" }),
         },
         Crossing {
             tool: "read_skill",
-            program: "readSkill(\"testing\");",
+            program: "skills.readSkill(\"testing\");",
             expected: || json!({ "name": "testing" }),
         },
         Crossing {
             tool: "write_memory",
-            program: "writeMemory({ name: \"layout\", description: \"d\", body: \"b\" });",
+            program: "memory.writeMemory({ name: \"layout\", description: \"d\", body: \"b\" });",
             expected: || json!({ "name": "layout", "description": "d", "body": "b" }),
         },
         Crossing {
             tool: "update_memory",
-            program: "updateMemory({ name: \"layout\", description: \"d2\", body: \"b2\" });",
+            program: "memory.updateMemory({ name: \"layout\", description: \"d2\", body: \"b2\" });",
             expected: || json!({ "name": "layout", "description": "d2", "body": "b2" }),
         },
         Crossing {
             tool: "delete_memory",
-            program: "deleteMemory(\"layout\");",
+            program: "memory.deleteMemory(\"layout\");",
             expected: || json!({ "name": "layout" }),
         },
         Crossing {
             tool: "add_task",
-            program: "addTask({ id: \"t1\", title: \"T\", description: \"D\", blockedBy: [\"t0\"] });",
+            program: "tasks.addTask({ id: \"t1\", title: \"T\", description: \"D\", blockedBy: [\"t0\"] });",
             expected: || json!({ "id": "t1", "title": "T", "description": "D", "blockedBy": ["t0"] }),
         },
         Crossing {
             tool: "update_task",
-            program: "updateTask(\"t1\", { title: \"T2\", description: null, status: \"in_progress\" });",
+            program: "tasks.updateTask(\"t1\", { title: \"T2\", description: null, status: \"in_progress\" });",
             expected: || {
                 // `description: null` is the sentinel that CLEARS it, and `in_progress` is gg's own
                 // spelling — the membrane's `in-progress` never reaches a model or a tool.
@@ -87,28 +87,28 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "set_blocked_by",
-            program: "setBlockedBy(\"t1\", []);",
+            program: "tasks.setBlockedBy(\"t1\", []);",
             expected: || json!({ "id": "t1", "blockedBy": [] }),
         },
         Crossing {
             tool: "complete_task",
-            program: "completeTask(\"t1\");",
+            program: "tasks.completeTask(\"t1\");",
             expected: || json!({ "id": "t1" }),
         },
         Crossing {
             tool: "remove_task",
-            program: "removeTask(\"t1\");",
+            program: "tasks.removeTask(\"t1\");",
             expected: || json!({ "id": "t1" }),
         },
         Crossing {
             tool: "create_epic",
-            program: "createEpic({ id: \"e1\", title: \"E\", description: \"D\" });",
+            program: "project.createEpic({ id: \"e1\", title: \"E\", description: \"D\" });",
             expected: || json!({ "id": "e1", "title": "E", "description": "D" }),
         },
         Crossing {
             tool: "create_issue",
             program: concat!(
-                "createIssue({ id: \"i1\", title: \"I\", inScope: \"s\", outOfScope: \"o\", ",
+                "project.createIssue({ id: \"i1\", title: \"I\", inScope: \"s\", outOfScope: \"o\", ",
                 "completionCriteria: \"c\" });",
             ),
             expected: || {
@@ -126,7 +126,7 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "update_issue",
-            program: "updateIssue(\"i1\", { status: \"done\", epicId: null });",
+            program: "project.updateIssue(\"i1\", { status: \"done\", epicId: null });",
             expected: || {
                 // `epicId: null` ungroups the issue, which gg's schema spells as the empty string;
                 // an omitted `description` leaves it alone, so its key is absent entirely.
@@ -143,42 +143,42 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "set_issue_blocked_by",
-            program: "setIssueBlockedBy(\"i1\", [\"i0\"]);",
+            program: "project.setIssueBlockedBy(\"i1\", [\"i0\"]);",
             expected: || json!({ "id": "i1", "blockedBy": ["i0"] }),
         },
         Crossing {
             tool: "complete_issue",
-            program: "completeIssue(\"i1\");",
+            program: "project.completeIssue(\"i1\");",
             expected: || json!({ "id": "i1" }),
         },
         Crossing {
             tool: "remove_epic",
-            program: "removeEpic(\"e1\");",
+            program: "project.removeEpic(\"e1\");",
             expected: || json!({ "id": "e1" }),
         },
         Crossing {
             tool: "remove_issue",
-            program: "removeIssue(\"i1\");",
+            program: "project.removeIssue(\"i1\");",
             expected: || json!({ "id": "i1" }),
         },
         Crossing {
             tool: "evict_file_view",
-            program: "evictFileView(\"src/a.ts\");",
+            program: "context.evictFileView(\"src/a.ts\");",
             expected: || json!({ "path": "src/a.ts" }),
         },
         Crossing {
             tool: "archive_thread",
-            program: "archiveThread(3);",
+            program: "context.archiveThread(3);",
             expected: || json!({ "keep_recent_turns": 3 }),
         },
         Crossing {
             tool: "search_archive",
-            program: "searchArchive(\"the parser\");",
+            program: "context.searchArchive(\"the parser\");",
             expected: || json!({ "query": "the parser" }),
         },
         Crossing {
             tool: "spawn_subagent",
-            program: "spawnSubagent({ agent: \"subagent\", prompt: \"write the lexer\", worktree: true });",
+            program: "agents.spawnSubagent({ agent: \"subagent\", prompt: \"write the lexer\", worktree: true });",
             expected: || {
                 json!({
                     "agent": "subagent",
@@ -190,17 +190,17 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "wait_for_subagents",
-            program: "waitForSubagents([\"agent-1\"]);",
+            program: "agents.waitForSubagents([\"agent-1\"]);",
             expected: || json!({ "ids": ["agent-1"] }),
         },
         Crossing {
             tool: "send_message",
-            program: "sendMessage(\"agent-1\", \"prefer the simpler parser\");",
+            program: "agents.sendMessage(\"agent-1\", \"prefer the simpler parser\");",
             expected: || json!({ "agentId": "agent-1", "message": "prefer the simpler parser" }),
         },
         Crossing {
             tool: "run_workflow",
-            program: "runWorkflow([{ prompt: \"look at {{item}}\", agent: \"subagent\", items: [\"a.ts\"] }]);",
+            program: "agents.runWorkflow([{ prompt: \"look at {{item}}\", agent: \"subagent\", items: [\"a.ts\"] }]);",
             expected: || {
                 json!({
                     "stages": [{
@@ -215,7 +215,7 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "speculate",
-            program: "speculate({ agent: \"attempt\", issueId: \"i1\", attempts: 3, approaches: [\"be bold\"] });",
+            program: "agents.speculate({ agent: \"attempt\", issueId: \"i1\", attempts: 3, approaches: [\"be bold\"] });",
             expected: || {
                 json!({
                     "agent": "attempt",
@@ -272,11 +272,18 @@ fn every_tool_crosses_the_membrane_with_its_typed_arguments() {
     // that is merely defined, or defined as something other than a function, would fail a model in a
     // way no error message could explain.
     let catalogue = crate::sandbox::signatures::catalogue();
-    let names: Vec<&str> = catalogue
+    // Each tool is bound as `object.js` now, not as a bare identifier — so the check references the
+    // functions the way a program actually reaches them.
+    let names: Vec<String> = catalogue
         .tools
         .iter()
-        .map(|entry| entry.js.as_str())
-        .chain(catalogue.helpers.iter().map(|helper| helper.js.as_str()))
+        .map(|entry| format!("{}.{}", entry.object, entry.js))
+        .chain(
+            catalogue
+                .helpers
+                .iter()
+                .map(|helper| format!("{}.{}", helper.object, helper.js)),
+        )
         .collect();
 
     let program = format!(

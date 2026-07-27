@@ -9,7 +9,7 @@ Split the task across several smaller programs, one per turn.
 {{#if calls}}The {{calls}} tool call(s) it had already made stand.
 {{/if}}
 {{#if finishRevoked}}
-You called `finish(...)` in that program, but a program the sandbox stopped has not finished: the
-run is still going. Do the remaining work in smaller programs and call `finish(...)` again from one
+You called `harness.finish(...)` in that program, but a program the sandbox stopped has not finished: the
+run is still going. Do the remaining work in smaller programs and call `harness.finish(...)` again from one
 that runs to its end.
 {{/if}}

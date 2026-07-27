@@ -523,7 +523,7 @@ async fn a_host_fault_ends_the_session_without_charging_the_model() {
     let end = drive_root(
         &MockClient::new(
             "mock/primary",
-            vec![code_reply("writeFile(\"a.txt\", \"hi\");"); 3],
+            vec![code_reply("fs.writeFile(\"a.txt\", \"hi\");"); 3],
         ),
         dir.path(),
         &registry,
@@ -776,8 +776,8 @@ async fn a_subagents_error_ceiling_ends_it_alone_and_discards_its_worktree() {
                 &b.model_id,
                 vec![
                     code_reply(
-                        "const child = spawnSubagent({ agent: \"subagent\", prompt: \
-                         \"Do the work.\", worktree: true });\nreturn waitForSubagents([child.id]);",
+                        "const child = agents.spawnSubagent({ agent: \"subagent\", prompt: \
+                         \"Do the work.\", worktree: true });\nreturn agents.waitForSubagents([child.id]);",
                     ),
                     code_reply(FINISHING_PROGRAM),
                 ],
@@ -788,7 +788,7 @@ async fn a_subagents_error_ceiling_ends_it_alone_and_discards_its_worktree() {
                 &b.model_id,
                 vec![
                     // The child's first turn does real work in its worktree...
-                    code_reply("writeFile(\"child-work.txt\", \"work\\n\");\nreturn 1;"),
+                    code_reply("fs.writeFile(\"child-work.txt\", \"work\\n\");\nreturn 1;"),
                     // ...and then it stops being able to write a program at all.
                     code_reply(PROSE),
                     code_reply(PROSE),

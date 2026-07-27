@@ -65,6 +65,7 @@ use crate::tools::{ToolData, ToolFailure, ToolOutcome};
 mod capture;
 mod context;
 mod delegation;
+mod docs;
 mod knowledge;
 mod session;
 mod turns;

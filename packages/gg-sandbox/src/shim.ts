@@ -38,13 +38,14 @@
 
 import * as feedback from "test-cabinet:gg/feedback";
 import type { ProgramError } from "test-cabinet:gg/feedback";
-import { HELPER_CATALOGUE, SESSION_ENTRY, TOOL_CATALOGUE } from "./catalogue.js";
+import { HELPER_CATALOGUE, OBJECT_FOR_MODULE, SESSION_ENTRY, TOOL_CATALOGUE } from "./catalogue.js";
 import { ToolError, asToolError } from "./errors.js";
 import * as helpers from "./helpers.js";
 import { finish } from "./session.js";
 import * as boardMod from "./tools/board.js";
 import * as contextMod from "./tools/context.js";
 import * as delegationMod from "./tools/delegation.js";
+import * as docsMod from "./tools/docs.js";
 import * as filesMod from "./tools/files.js";
 import * as memoriesMod from "./tools/memories.js";
 import * as shellMod from "./tools/shell.js";
@@ -307,33 +308,89 @@ function guard(js: string, fn: ToolFn): ToolFn {
   };
 }
 
+/** The non-enumerable key a bound function carries the name `harness.readDocs` fetches its docs by. */
+const DOCS_NAME = Symbol("gg.docsName");
+
 /**
- * The names a program may use, bound to the functions behind them.
+ * Wrap a bound function so its documentation is reachable two ways: `fn.docs()` fetches it, and
+ * `harness.readDocs(fn)` finds the name to fetch it by. `name` is the name a program calls the
+ * function by (`readFile`, `finish`, `list`), which is what the host's doc directory is keyed on.
  *
- * Only the run's enabled tools are included, plus a helper whose required tool is enabled. These
- * names become the evaluated function's *parameters*, which shadow any global of the same name — so
- * this object is both the capability set and its enforcement.
- *
- * `finish` is the one exception: it is bound **unconditionally**, because no capability offers it and
- * a run that enables nothing at all must still be able to end. It goes through {@link guard} like
- * everything else, so a completion declared from deferred work — which lands after the turn is over
- * and would otherwise end a run silently from outside it — is reported like any other deferred call.
+ * `.docs` is a non-enumerable property so it never shows up when a model iterates an object, and the
+ * name is a `Symbol` for the same reason — neither is part of the callable surface, only reachable
+ * when asked for by name.
  */
-function buildScope(enabled: readonly string[]): Record<string, unknown> {
+function documented(fn: ToolFn, name: string): ToolFn {
+  const wrapped: ToolFn = (...args) => fn(...args);
+  Object.defineProperty(wrapped, "docs", { value: () => docsMod.readDoc(name) });
+  Object.defineProperty(wrapped, DOCS_NAME, { value: name });
+  return wrapped;
+}
+
+/**
+ * `harness.readDocs`: fetch a function's documentation given the function itself (`readDocs(fs.readFile)`)
+ * or its name (`readDocs("readFile")`). The equivalent of `fn.docs()`, for a model that reaches for a
+ * top-level call instead of a method on the function.
+ */
+function readDocs(target: unknown): string {
+  const name =
+    typeof target === "string"
+      ? target
+      : (target as Record<symbol, unknown> | null | undefined)?.[DOCS_NAME];
+  return docsMod.readDoc(typeof name === "string" ? name : String(name));
+}
+
+/**
+ * The API objects a program may use, each bound to the functions behind it.
+ *
+ * A program does not receive flat identifiers. It receives a small set of namespaced objects — `fs`,
+ * `project`, `system`, `harness`, … — one per {@link OBJECT_FOR_MODULE} namespace that has at least
+ * one bound function, and each function is reached as `object.name(...)`. These object names become
+ * the evaluated function's *parameters*, which shadow any global of the same name, so this map is
+ * both the capability set and its enforcement: a withheld tool is a missing method, and a namespace
+ * with nothing enabled is a missing object.
+ *
+ * Every object also carries a `list()` (the directory of its own functions), and every bound
+ * function carries a `.docs()` — both routed to the {@link docsMod} carve-out. The `harness` object
+ * is present whatever a run enables: it holds `finish` (no capability offers it and a run that
+ * enables nothing must still be able to end) and `readDocs`. Everything goes through {@link guard},
+ * so a call made from deferred work — which lands after the turn is over — is reported.
+ */
+function buildScope(enabled: readonly string[]): Record<string, Record<string, unknown>> {
   const on = new Set(enabled);
-  const scope: Record<string, unknown> = {};
+  const objects = new Map<string, Record<string, unknown>>();
+  // Fetch (creating on first use) the object for a namespace, seeding it with the `list()` directory
+  // every object shares.
+  const objectFor = (name: string): Record<string, unknown> => {
+    let object = objects.get(name);
+    if (!object) {
+      object = { list: documented(guard("list", () => docsMod.listFunctions(name)), "list") };
+      objects.set(name, object);
+    }
+    return object;
+  };
+
   for (const entry of TOOL_CATALOGUE) {
     if (!on.has(entry.tool)) continue;
     const fn = lookup(MODULES[entry.module] ?? {}, entry.js);
-    if (fn) scope[entry.js] = guard(entry.js, fn);
+    const object = OBJECT_FOR_MODULE[entry.module];
+    if (fn && object) objectFor(object)[entry.js] = documented(guard(entry.js, fn), entry.js);
   }
   for (const helper of HELPER_CATALOGUE) {
     if (!on.has(helper.requires)) continue;
     const fn = lookup(HELPERS, helper.js);
-    if (fn) scope[helper.js] = guard(helper.js, fn);
+    // A helper lives on the object of the tool it is built on.
+    const required = TOOL_CATALOGUE.find((entry) => entry.tool === helper.requires);
+    const object = required ? OBJECT_FOR_MODULE[required.module] : undefined;
+    if (fn && object) objectFor(object)[helper.js] = documented(guard(helper.js, fn), helper.js);
   }
-  scope[SESSION_ENTRY.js] = guard(SESSION_ENTRY.js, finish as ToolFn);
-  return scope;
+
+  // `harness`: always present. `finish` ends the run; `readDocs` is the top-level doc lookup.
+  const harness = objectFor(OBJECT_FOR_MODULE[SESSION_ENTRY.module] ?? "harness");
+  harness[SESSION_ENTRY.js] = documented(guard(SESSION_ENTRY.js, finish as ToolFn), SESSION_ENTRY.js);
+  harness["readDocs"] = documented(guard("readDocs", readDocs as ToolFn), "readDocs");
+
+  return Object.fromEntries(objects);
 }
 
 /**
@@ -355,10 +412,10 @@ export function run(program: string, enabled: string[]): void {
   ended = false;
   deferredNoted = false;
 
-  const scope = buildScope(enabled);
-  // Captured BEFORE `ToolError` joins the scope: the unknown-name hint lists what a program may
-  // CALL, and a model that is offered `ToolError` there will eventually try to call it. `finish` is
-  // in the list, because a program that misspelled it deserves to be shown the right spelling.
+  const scope: Record<string, unknown> = buildScope(enabled);
+  // Captured BEFORE `ToolError` joins the scope: the unknown-name hint lists the OBJECTS a program
+  // may reach (`fs`, `project`, `harness`, …), and a model offered `ToolError` there would be
+  // pointed at a class as though it were an API object.
   const callable = Object.keys(scope);
   // Bound so `catch (e) { if (e instanceof ToolError) … }` — the shape the system prompt teaches —
   // works inside a program.
@@ -408,13 +465,14 @@ function describe(thrown: unknown, names: readonly string[]): ProgramError {
     };
   }
   if (err instanceof ReferenceError) {
-    // The most common cause is a tool this run withheld, so answer the question the model is about
-    // to ask: which names does it actually have?
+    // The most common cause is a program reaching for a flat name (`readFile`) instead of the
+    // object form (`fs.readFile`), so answer the question it is about to ask: which objects does it
+    // have? Each object's `list()` then names that object's functions.
     return {
       kind: "unknown-name",
       message:
-        `${err.message}. The functions available to your program this run are: ` +
-        `${names.join(", ")}.`,
+        `${err.message}. The API objects available to your program this run are: ` +
+        `${names.join(", ")}. Call \`<object>.list()\` to see an object's functions.`,
       location,
     };
   }

@@ -243,6 +243,13 @@ pub struct SystemContext {
     /// Whether the run is in [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/)
     /// mode, where the tools are described as functions a program calls rather than as tool calls.
     pub responses_as_code: bool,
+    /// The API objects a code program has this run, each with a one-line description — the section
+    /// the prompt names so a model knows which objects to inspect with `object.list()`. Empty on the
+    /// tool-calling path (where tools are in the request); on the code path it always carries at
+    /// least `harness`. Not the *functions* — those are discovered on demand with `list()` and
+    /// `fn.docs()`, which is the whole point of the redesign — only the objects and what each is for.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub apis: Vec<ApiView>,
     /// Operator-authored instructions for the agent whose prompt this is — the
     /// [`GgAgentConfig::custom_instructions`](test_cabinet_core::gg::GgAgentConfig::custom_instructions)
     /// of its profile. `None` (or empty) renders no additional-instructions section. The
@@ -380,6 +387,18 @@ pub struct ReadFileView {
     /// the model text-only; a model whose modalities are unknown is described as able to
     /// see images, matching the optimistic default the tool itself takes.
     pub images: bool,
+}
+
+/// One API object a code program has, as the system prompt names it: the object identifier a
+/// program reaches (`fs`) and a one-line description of what it is for. The functions on it are not
+/// listed — the model discovers those with `object.list()` and `fn.docs()`.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiView {
+    /// The object identifier a program reaches (`fs`, `project`, `harness`).
+    pub object: String,
+    /// A one-line description of what the object is for.
+    pub description: String,
 }
 
 /// One available skill as the system prompt lists it.
@@ -675,7 +694,7 @@ pub fn render_code_result(context: &CodeResultContext) -> String {
     try_render("code-result", context).unwrap_or_else(|_| {
         format!(
             "Your program ran. Continue by emitting your next program. When the work is done and \
-             you have checked it, end {} with `finish(\"...\")` from inside a program — nothing \
+             you have checked it, end {} with `harness.finish(\"...\")` from inside a program — nothing \
              else ends it.",
             ending(context.delegated)
         )
@@ -721,7 +740,7 @@ pub fn render_code_not_a_program(context: &CodeNotAProgramContext) -> String {
     try_render("code-not-a-program", context).unwrap_or_else(|_| {
         format!(
             "{} Every turn of this run is a program: reply with code alone. If you believe the \
-             task is complete, saying so does not end {} — call `finish(\"...\")` from inside a \
+             task is complete, saying so does not end {} — call `harness.finish(\"...\")` from inside a \
              program instead.",
             context.reason,
             ending(context.delegated)

@@ -393,6 +393,25 @@ declare module "test-cabinet:gg/session" {
   export function finish(summary: string): void;
 }
 
+/**
+ * Documentation lookup — the second model-facing carve-out, bound into every program's scope and
+ * never a gg tool. `src/tools/docs.ts` is its only importer.
+ */
+declare module "test-cabinet:gg/docs" {
+  /** One function in an API object's directory. */
+  export interface FunctionSummary {
+    /** The function name on its object — `readFile` in `fs.readFile(...)`. */
+    name: string;
+    /** A one-line description of what the function does. */
+    summary: string;
+  }
+
+  /** List one API object's bound functions, each with a one-line summary. */
+  export function listFunctions(object: string): FunctionSummary[];
+  /** Full docs for one function by the name it is called by; injects a durable copy into context. */
+  export function readDocs(name: string): string;
+}
+
 /** Delegating work to child agents. */
 declare module "test-cabinet:gg/delegation" {
   /** What a child agent is asked to do — exactly one of a written brief or a board issue. */

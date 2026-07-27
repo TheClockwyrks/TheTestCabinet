@@ -278,7 +278,7 @@ async fn tool_calling_mode_is_unchanged_and_records_its_mode() {
 #[tokio::test]
 async fn a_native_tool_call_on_a_code_turn_is_ignored_loudly() {
     let dir = TempDir::new().unwrap();
-    let mut script = program_script(&["return writeFile(\"from-program.txt\", \"hi\");"]);
+    let mut script = program_script(&["return fs.writeFile(\"from-program.txt\", \"hi\");"]);
     script[0].tool_calls = vec![ToolCall {
         id: "call_habit".to_string(),
         name: "write_file".to_string(),
@@ -400,9 +400,9 @@ async fn composed_calls_stream_call_then_result_telemetry_in_order() {
     let (outcome, events) = drive_code_run(&dir, code_set("mock/primary", json!({})), |b| {
         one_program(
             &b.model_id,
-            "const text = readTextFile(\"seed.txt\");\n\
-             writeFile(\"copy.txt\", text.toUpperCase());\n\
-             const entries = listDir(\".\");\n\
+            "const text = fs.readTextFile(\"seed.txt\");\n\
+             fs.writeFile(\"copy.txt\", text.toUpperCase());\n\
+             const entries = fs.listDir(\".\");\n\
              return entries.length;",
         )
     })
@@ -436,8 +436,8 @@ async fn code_execution_tool_calls_equals_the_telemetry_pair_count() {
     let (outcome, events) = drive_code_run(&dir, code_set("mock/primary", json!({})), |b| {
         one_program(
             &b.model_id,
-            "for (let i = 0; i < 5; i += 1) {\n  writeFile(`out-${i}.txt`, String(i));\n}\n\
-             return listDir(\".\").length;",
+            "for (let i = 0; i < 5; i += 1) {\n  fs.writeFile(`out-${i}.txt`, String(i));\n}\n\
+             return fs.listDir(\".\").length;",
         )
     })
     .await;
@@ -466,8 +466,8 @@ async fn the_synthetic_call_ids_are_unique_within_a_turn() {
     let (outcome, _events) = drive_code_run(&dir, set, |b| {
         one_program(
             &b.model_id,
-            "writeFile(\"a.txt\", \"1\");\nwriteFile(\"b.txt\", \"2\");\n\
-             writeFile(\"c.txt\", \"3\");\nreturn 3;",
+            "fs.writeFile(\"a.txt\", \"1\");\nfs.writeFile(\"b.txt\", \"2\");\n\
+             fs.writeFile(\"c.txt\", \"3\");\nreturn 3;",
         )
     })
     .await;
@@ -629,9 +629,9 @@ impl ModelClient for ImageWatchingClient {
             .unwrap()
             .push(messages.iter().any(|m| !m.images.is_empty()));
         let text = if self.turn.fetch_add(1, Ordering::SeqCst) == 0 {
-            "const read = readFile(\"ref.png\");\nreturn read.kind;"
+            "const read = fs.readFile(\"ref.png\");\nreturn read.kind;"
         } else {
-            "finish(\"I have seen the mockup.\");"
+            "harness.finish(\"I have seen the mockup.\");"
         };
         Ok(code_reply(text))
     }
@@ -669,12 +669,12 @@ async fn a_program_reclaim_really_acts_on_the_live_window() {
             &b.model_id,
             &[
                 // Turn 1: read a large file, so the thread carries a large turn.
-                "return readTextFile(\"big.txt\").length;",
+                "return fs.readTextFile(\"big.txt\").length;",
                 // Turn 2: both reclaims, reporting what each one says it freed. Returning the
                 // reports at all proves the loop rewrote the outcomes: an un-rewritten outcome has
                 // no structured result and would have thrown.
-                "const evicted = evictFileView();\n\
-                 const archived = archiveThread(0);\n\
+                "const evicted = context.evictFileView();\n\
+                 const archived = context.archiveThread(0);\n\
                  console.log(evicted.detail);\n\
                  return { evicted: evicted.items, archived: archived.items, \
                  freed: archived.reclaimedTokens };",
@@ -738,9 +738,9 @@ async fn a_program_read_skill_pins_the_skill_and_emits_skills_state() {
         &dir,
         code_set("mock/primary", json!({})),
         program_script(&[
-            &format!("return readSkill(\"{DEFAULT_MOCK_SKILL}\").length;"),
+            &format!("return skills.readSkill(\"{DEFAULT_MOCK_SKILL}\").length;"),
             // A second read of the same skill must not pin a second copy.
-            &format!("return readSkill(\"{DEFAULT_MOCK_SKILL}\").length;"),
+            &format!("return skills.readSkill(\"{DEFAULT_MOCK_SKILL}\").length;"),
         ]),
     )
     .await;
@@ -834,9 +834,9 @@ async fn a_program_that_finishes_ends_the_session_as_completed() {
         &dir,
         code_set("mock/primary", json!({})),
         vec![
-            code_reply("finish(\"wrote the scaffold\");"),
+            code_reply("harness.finish(\"wrote the scaffold\");"),
             // Never reached: the loop must not ask for another turn after a completion.
-            code_reply("writeFile(\"after-the-end.txt\", \"nope\");"),
+            code_reply("fs.writeFile(\"after-the-end.txt\", \"nope\");"),
         ],
     )
     .await;
@@ -868,8 +868,8 @@ async fn a_program_that_finishes_ends_the_session_as_completed() {
         &dir,
         code_set("mock/primary", json!({})),
         vec![
-            code_reply("finish(\"done despite myself\");\nthrow new Error(\"boom\");"),
-            code_reply("finish(\"and this time it really is done\");"),
+            code_reply("harness.finish(\"done despite myself\");\nthrow new Error(\"boom\");"),
+            code_reply("harness.finish(\"and this time it really is done\");"),
         ],
     )
     .await;
@@ -986,7 +986,7 @@ async fn a_reply_that_is_not_a_program_does_not_end_the_session() {
         requests[1].iter().any(|message| message
             .content
             .as_deref()
-            .is_some_and(|text| text.contains("finish("))),
+            .is_some_and(|text| text.contains("harness.finish("))),
         "and it was told the one thing that does end the run"
     );
 }
@@ -1008,8 +1008,8 @@ async fn a_session_that_never_finishes_is_exhausted_not_completed() {
         &dir,
         set,
         vec![
-            code_reply("writeFile(\"one.txt\", \"1\");\nreturn 1;"),
-            code_reply("writeFile(\"two.txt\", \"2\");\nreturn 2;"),
+            code_reply("fs.writeFile(\"one.txt\", \"1\");\nreturn 1;"),
+            code_reply("fs.writeFile(\"two.txt\", \"2\");\nreturn 2;"),
             code_reply(FINISHING_PROGRAM),
         ],
     )
@@ -1060,8 +1060,8 @@ async fn a_stopped_subagent_returns_a_status_line_not_its_program_source() {
                 &b.model_id,
                 vec![
                     code_reply(
-                        "const child = spawnSubagent({ agent: \"subagent\", prompt: \
-                         \"Do the work.\" });\nreturn waitForSubagents([child.id]);",
+                        "const child = agents.spawnSubagent({ agent: \"subagent\", prompt: \
+                         \"Do the work.\" });\nreturn agents.waitForSubagents([child.id]);",
                     ),
                     code_reply(FINISHING_PROGRAM),
                 ],
@@ -1156,8 +1156,8 @@ async fn a_sandbox_limit_counts_as_an_error_turn_but_a_handled_tool_failure_does
         set,
         vec![
             code_reply(
-                "let caught = false;\ntry {\n  readTextFile(\"absent.txt\");\n} catch (e) {\n  \
-                 caught = true;\n}\nwriteFile(\"handled.txt\", String(caught));\nreturn caught;",
+                "let caught = false;\ntry {\n  fs.readTextFile(\"absent.txt\");\n} catch (e) {\n  \
+                 caught = true;\n}\nfs.writeFile(\"handled.txt\", String(caught));\nreturn caught;",
             ),
             code_reply(FINISHING_PROGRAM),
         ],
@@ -1216,8 +1216,8 @@ async fn a_code_mode_reviewer_verdict_parses() {
             let programs = if n == 0 {
                 vec![
                     code_reply(&format!(
-                        "createEpic({{ id: \"e1\", title: \"Build\", description: \"the build\" \
-                         }});\ncreateIssue({{ id: \"{REVIEW_ISSUE_ID}\", title: \"Add the widget\", \
+                        "project.createEpic({{ id: \"e1\", title: \"Build\", description: \"the build\" \
+                         }});\nproject.createIssue({{ id: \"{REVIEW_ISSUE_ID}\", title: \"Add the widget\", \
                          inScope: \"Implement the widget.\", outOfScope: \"Unrelated changes.\", \
                          completionCriteria: \"The widget is fully implemented.\", epicId: \"e1\" \
                          }});"
@@ -1227,8 +1227,8 @@ async fn a_code_mode_reviewer_verdict_parses() {
             } else {
                 vec![
                     code_reply(&format!(
-                        "writeFile(\"widget.txt\", \"the widget\\n\");\nreturn \
-                         completeIssue(\"{REVIEW_ISSUE_ID}\");"
+                        "fs.writeFile(\"widget.txt\", \"the widget\\n\");\nreturn \
+                         project.completeIssue(\"{REVIEW_ISSUE_ID}\");"
                     )),
                     code_reply(FINISHING_PROGRAM),
                 ]
@@ -1238,7 +1238,7 @@ async fn a_code_mode_reviewer_verdict_parses() {
         .slot("reviewer", |b| {
             Box::new(MockClient::new(
                 &b.model_id,
-                vec![code_reply("finish(\"CODE REVIEW: APPROVED\");")],
+                vec![code_reply("harness.finish(\"CODE REVIEW: APPROVED\");")],
             ))
         });
 
@@ -1267,7 +1267,7 @@ async fn a_code_mode_reviewer_verdict_parses() {
         .and_then(|(_, _, _, _, brief)| brief)
         .expect("a reviewer was dispatched");
     assert!(
-        review_brief.contains("finish(\"CODE REVIEW: APPROVED\")"),
+        review_brief.contains("harness.finish(\"CODE REVIEW: APPROVED\")"),
         "the code-mode brief asks for the verdict the way a program gives one: {review_brief}"
     );
     assert_eq!(ended_with(&events), "completed");
@@ -1298,7 +1298,7 @@ async fn a_code_mode_speculation_merges_the_winners_worktree() {
                 &b.model_id,
                 vec![
                     code_reply(
-                        "return speculate({ agent: \"attempt\", prompt: \"Implement the widget.\", \
+                        "return agents.speculate({ agent: \"attempt\", prompt: \"Implement the widget.\", \
                          attempts: 2 });",
                     ),
                     code_reply(FINISHING_PROGRAM),
@@ -1310,7 +1310,7 @@ async fn a_code_mode_speculation_merges_the_winners_worktree() {
             Box::new(MockClient::new(
                 &b.model_id,
                 vec![code_reply(&format!(
-                    "writeFile(\"attempt-{n}.txt\", \"attempt {n}\\n\");\nfinish(\"attempt {n} \
+                    "fs.writeFile(\"attempt-{n}.txt\", \"attempt {n}\\n\");\nharness.finish(\"attempt {n} \
                      built the widget\");"
                 ))],
             ))
@@ -1319,7 +1319,7 @@ async fn a_code_mode_speculation_merges_the_winners_worktree() {
             Box::new(MockClient::new(
                 &b.model_id,
                 vec![code_reply(
-                    "finish(\"SPECULATION JUDGE: WINNER 1\\nIt is the most complete.\");",
+                    "harness.finish(\"SPECULATION JUDGE: WINNER 1\\nIt is the most complete.\");",
                 )],
             ))
         });
@@ -1380,8 +1380,8 @@ async fn a_code_mode_subagents_worktree_is_merged() {
                 &b.model_id,
                 vec![
                     code_reply(
-                        "const child = spawnSubagent({ agent: \"subagent\", prompt: \
-                         \"Write the file.\", worktree: true });\nreturn waitForSubagents([child.id]);",
+                        "const child = agents.spawnSubagent({ agent: \"subagent\", prompt: \
+                         \"Write the file.\", worktree: true });\nreturn agents.waitForSubagents([child.id]);",
                     ),
                     code_reply(FINISHING_PROGRAM),
                 ],
@@ -1391,7 +1391,7 @@ async fn a_code_mode_subagents_worktree_is_merged() {
             Box::new(MockClient::new(
                 &b.model_id,
                 vec![code_reply(
-                    "writeFile(\"isolated.txt\", \"from the worktree\\n\");\nfinish(\"wrote the \
+                    "fs.writeFile(\"isolated.txt\", \"from the worktree\\n\");\nharness.finish(\"wrote the \
                      file in my worktree\");",
                 )],
             ))
@@ -1443,10 +1443,10 @@ async fn statements_after_a_top_level_return_are_disclosed_to_the_model_and_the_
         code_set("mock/primary", json!({})),
         vec![
             code_reply(
-                "const src = listDir(\"src\");\n\
+                "const src = fs.listDir(\"src\");\n\
                  return { count: src.length };\n\n\
-                 writeFile(\"MANIFEST.md\", \"- a.ts (1 lines)\\n\");\n\
-                 finish(\"wrote the manifest\");",
+                 fs.writeFile(\"MANIFEST.md\", \"- a.ts (1 lines)\\n\");\n\
+                 harness.finish(\"wrote the manifest\");",
             ),
             code_reply(FINISHING_PROGRAM),
         ],
@@ -1481,7 +1481,7 @@ async fn statements_after_a_top_level_return_are_disclosed_to_the_model_and_the_
         "the model was not told what did not run:\n{feedback}"
     );
     assert!(
-        feedback.contains("writeFile(\"MANIFEST.md\""),
+        feedback.contains("fs.writeFile(\"MANIFEST.md\""),
         "the model was not shown WHICH statement, so it cannot recognise the half that was lost:\n\
          {feedback}"
     );
@@ -1546,7 +1546,7 @@ async fn a_program_that_finishes_and_keeps_going_still_does_the_work() {
         &dir,
         code_set("mock/primary", json!({})),
         vec![code_reply(
-            "finish(\"all done\");\nwriteFile(\"MANIFEST.md\", \"- a.ts (1 lines)\\n\");",
+            "harness.finish(\"all done\");\nfs.writeFile(\"MANIFEST.md\", \"- a.ts (1 lines)\\n\");",
         )],
     )
     .await;

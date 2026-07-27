@@ -27,17 +27,6 @@ fn bound(name: &str, signature: &str, doc: &str) -> ToolView {
     }
 }
 
-/// A tool the registry offers that the **sandbox does not bind** — a turn-level transition. It has
-/// a name and nothing else, which is precisely what the code section must skip and the tool-calling
-/// section must still list.
-fn unbound(name: &str) -> ToolView {
-    ToolView {
-        name: name.to_string(),
-        signature: String::new(),
-        doc: String::new(),
-    }
-}
-
 /// `finish` as the committed catalogue declares it — the one function the prompt shows every
 /// code-mode run whatever it enables.
 ///
@@ -57,6 +46,17 @@ fn session_view() -> ToolView {
 /// A context with every capability **on**, so the maximal prompt is exercised.
 fn full_system() -> SystemContext {
     SystemContext {
+        apis: vec![
+            ApiView {
+                object: "fs".to_string(),
+                description: "read, write, and edit workspace files".to_string(),
+            },
+            ApiView {
+                object: "harness".to_string(),
+                description: "the run itself — end it with `finish`, and read documentation"
+                    .to_string(),
+            },
+        ],
         tools: vec![
             bound(
                 "read_file",
@@ -173,875 +173,187 @@ fn tidy_collapses_blank_runs() {
 // The system prompt
 // ---------------------------------------------------------------------------
 
-/// With every capability off, the prompt is the base framing and the "no tools" line — and
-/// **none** of the capability sections. This is the ablation property: a disabled capability
-/// contributes no prompt text at all.
+/// With every capability off, the base prompt is (almost) nothing: no custom instructions, no code
+/// section, no image or read guidance, and none of the capability sections.
 #[test]
-fn a_bare_run_renders_only_the_base_prompt() {
+fn a_bare_run_renders_almost_nothing() {
     let prompt = render_system(&bare_system(), None);
-    assert!(prompt.starts_with("You are gg, The Test Cabinet's autonomous coding agent."));
-    assert!(prompt.contains("no tools available"));
     for absent in [
-        "## Skills",
-        "## Memories",
+        "## Responses as code",
         "## Tasks",
-        "## Project management",
-        "## Planning",
-        "## Process",
-        "## Code Reviews",
-        "## Speculative execution",
-        "## Your reply is a program",
-        "## Ending the run",
-        "read_file",
+        "## Subagents",
+        "Reading images",
+        "Your APIs",
     ] {
         assert!(
             !prompt.contains(absent),
-            "a bare run's prompt must not mention `{absent}`:\n{prompt}"
+            "the bare prompt leaked `{absent}`:\n{prompt}"
         );
     }
-    // Skipped sections leave no run of blank lines behind.
     assert!(!prompt.contains("\n\n\n"), "prompt has a blank-line run");
 }
 
-/// With every capability on, each section renders once and states that run's configured limits
-/// inline rather than a hardcoded default.
+/// In responses-as-code mode the prompt names the API objects a program has, teaches discovery
+/// through `object.list()` and `fn.docs()`, and points at `harness.finish` to end the run — and it
+/// lists no tool signatures or type declarations at all. Those are discovered on demand.
 #[test]
-fn a_full_run_renders_every_section_with_its_configuration() {
-    let prompt = render_system(&full_system(), None);
-    for section in [
-        "## Your tools",
-        "## Skills",
-        "## Memories",
-        "## Tasks",
-        "## Project management",
-        "## Planning",
-        "## Process",
-        "## Code Reviews",
-        "## Speculative execution",
-    ] {
-        assert!(prompt.contains(section), "missing `{section}`:\n{prompt}");
-    }
-    // The tools are listed, and the skills catalog carries each description.
+fn code_mode_names_objects_and_teaches_discovery() {
+    let context = SystemContext {
+        responses_as_code: true,
+        apis: vec![
+            ApiView {
+                object: "fs".to_string(),
+                description: "read, write, and edit workspace files".to_string(),
+            },
+            ApiView {
+                object: "system".to_string(),
+                description: "run shell commands in the workspace".to_string(),
+            },
+            ApiView {
+                object: "harness".to_string(),
+                description: "the run itself — end it with `finish`, and read documentation"
+                    .to_string(),
+            },
+        ],
+        ..SystemContext::default()
+    };
+    let prompt = render_system(&context, None);
     let flat = flat(&prompt);
-    assert!(flat.contains("`read_file`, `list_dir`, `write_file`"));
-    assert!(flat.contains("- physics: How to tune the simulation."));
-    // Configuration is interpolated, not restated in prose.
-    assert!(flat.contains("at most **250 lines**"));
-    assert!(flat.contains("at most 8 memories, 2000 characters of body each"));
-    assert!(flat.contains("8000 characters in total"));
-    assert!(flat.contains("Hold at most 100 tasks."));
-    assert!(flat.contains("at most 50 epics and 200 issues"));
-    assert!(flat.contains("**tdd** process"));
+    assert!(prompt.contains("## Responses as code"), "{prompt}");
+    assert!(flat.contains("`fs` — read, write, and edit"), "{prompt}");
+    assert!(flat.contains("`system` — run shell commands"), "{prompt}");
+    assert!(flat.contains("`harness`"), "{prompt}");
+    assert!(flat.contains("<object>.list()"), "{prompt}");
+    assert!(flat.contains(".docs()"), "{prompt}");
+    assert!(flat.contains("harness.finish(summary)"), "{prompt}");
+    // The signature dump is gone: no TypeScript signatures, no type declarations, no `ToolError`.
+    assert!(!prompt.contains("): FileRead"), "{prompt}");
+    assert!(!prompt.contains("interface DirEntry"), "{prompt}");
+    assert!(!prompt.contains("ToolError"), "{prompt}");
+}
+
+/// A tool-calling run's non-code sections still render: the read-cap and image facts (when
+/// `read_file` is offered and capped), and the task instructions. The remaining capability sections
+/// were trimmed from the prompt and are re-added as they are validated.
+#[test]
+fn a_full_run_renders_the_read_facts_and_tasks() {
+    let prompt = render_system(&full_system(), None);
+    let flat = flat(&prompt);
+    assert!(prompt.contains("Reading images is supported."), "{prompt}");
+    assert!(flat.contains("at most **250 lines**"), "{prompt}");
+    assert!(prompt.contains("## Tasks"), "{prompt}");
     assert!(!prompt.contains("\n\n\n"), "prompt has a blank-line run");
 }
 
-/// The task section states how to *use* the task tools — the instructions the pinned block used
-/// to repeat on every refresh — so the two never say the same thing twice.
+/// The task section carries its tool instructions and this run's ceiling.
 #[test]
 fn the_task_section_carries_the_tool_instructions() {
-    let prompt = render_system(&full_system(), None);
-    for instruction in [
-        "`add_task`",
-        "`update_task`",
-        "`set_blocked_by`",
-        "`complete_task`",
-        "`remove_task`",
-        "DAG",
-        "\"Your tasks\"",
-    ] {
+    let context = SystemContext {
+        tasks: Some(TasksView { max_tasks: 100 }),
+        ..SystemContext::default()
+    };
+    let prompt = render_system(&context, None);
+    for instruction in ["`add_task`", "`complete_task`", "directed acyclic graph"] {
         assert!(
             flat(&prompt).contains(instruction),
-            "the tasks section must state `{instruction}`:\n{prompt}"
+            "missing `{instruction}`:\n{prompt}"
         );
     }
+    assert!(flat(&prompt).contains("At most 100 may be recorded."));
 }
 
-/// The autoload-specifications section renders only when the capability is on, and its wording
-/// tracks the locked lever: an off run is told nothing, an unlocked run is told to re-read, a
-/// locked run is promised the brief stays.
+/// The image line states, neutrally, whether reading images is supported — and says nothing at all
+/// when `read_file` is not offered, since there is then no tool that could show or describe one.
 #[test]
-fn autoload_section_tracks_the_locked_lever() {
-    let off = flat(&render_system(
-        &SystemContext {
-            autoload_specs: None,
-            ..full_system()
+fn the_image_support_is_stated_only_when_read_file_is_offered() {
+    let supported = SystemContext {
+        read_file: ReadFileView {
+            offered: true,
+            images: true,
+            ..ReadFileView::default()
         },
-        None,
-    ));
+        ..SystemContext::default()
+    };
     assert!(
-        !off.contains("specification is already loaded"),
-        "a run without autoload is told nothing about it"
+        render_system(&supported, None).contains("Reading images is supported."),
+        "supported run"
     );
-
-    let unlocked = flat(&render_system(
-        &SystemContext {
-            autoload_specs: Some(AutoloadView { locked: false }),
-            ..full_system()
+    let blind = SystemContext {
+        read_file: ReadFileView {
+            offered: true,
+            images: false,
+            ..ReadFileView::default()
         },
-        None,
-    ));
-    assert!(unlocked.contains("specification is already loaded"));
+        ..SystemContext::default()
+    };
     assert!(
-        unlocked.contains("re-read the file"),
-        "an unlocked run is told the specs may be dropped and to re-read"
+        render_system(&blind, None).contains("Reading images is not supported."),
+        "text-only run"
     );
-
-    let locked = flat(&render_system(
-        &SystemContext {
-            autoload_specs: Some(AutoloadView { locked: true }),
-            ..full_system()
+    let withheld = SystemContext {
+        read_file: ReadFileView {
+            offered: false,
+            ..ReadFileView::default()
         },
-        None,
-    ));
-    assert!(locked.contains("specification is already loaded"));
-    assert!(
-        locked.contains("pinned"),
-        "a locked run is promised the specs stay across compaction"
-    );
+        ..SystemContext::default()
+    };
+    assert!(!render_system(&withheld, None).contains("Reading images"));
 }
 
-/// A capped `read_file` states its cap up front; an uncapped one says nothing about reads, and a
-/// default cap is described as a nudge rather than a ceiling.
+/// The read cap is stated only when one is in force, and it gives the configured number.
 #[test]
 fn the_read_cap_is_stated_only_when_one_is_in_force() {
-    let uncapped = render_system(
-        &SystemContext {
-            read_file: ReadFileView::default(),
-            ..full_system()
+    let capped = SystemContext {
+        read_file: ReadFileView {
+            offered: true,
+            capped: true,
+            line_cap: 40,
+            images: true,
+            ..ReadFileView::default()
         },
-        None,
-    );
-    assert!(!uncapped.contains("lines"), "no cap, no read guidance");
-
-    let default_cap = render_system(
-        &SystemContext {
-            read_file: ReadFileView {
-                offered: true,
-                capped: true,
-                hard_cap: false,
-                line_cap: 40,
-                images: true,
-            },
-            ..full_system()
+        ..SystemContext::default()
+    };
+    assert!(flat(&render_system(&capped, None)).contains("at most **40 lines**"));
+    let uncapped = SystemContext {
+        read_file: ReadFileView {
+            offered: true,
+            capped: false,
+            images: true,
+            ..ReadFileView::default()
         },
-        None,
-    );
-    assert!(flat(&default_cap).contains("**40 lines** by default"));
-    assert!(flat(&default_cap).contains("not a ceiling"));
+        ..SystemContext::default()
+    };
+    assert!(!render_system(&uncapped, None).contains("lines"));
 }
 
-/// In responses-as-code mode the prompt teaches **TypeScript** and lists the real signatures the
-/// sandbox binds — not a bespoke language, and not a hand-written paraphrase of the API.
+/// A code run with no workspace capabilities still names `harness` — a program can always end the
+/// run — and names no other object.
 #[test]
-fn code_mode_teaches_typescript_and_lists_the_real_signatures() {
-    let prompt = render_system(
-        &SystemContext {
-            responses_as_code: true,
-            ..full_system()
-        },
-        None,
-    );
-    let flat = flat(&prompt);
-    assert!(prompt.contains("## Your reply is a program"));
-    assert!(flat.contains("**Every reply you send is a TypeScript program**"));
-    // A real signature, rendered verbatim from the catalogue, with the SDK's own sentence.
-    assert!(
-        flat.contains("`listDir(path?: string): DirEntry[]` — List a workspace directory"),
-        "the code section must render the real signature:\n{prompt}"
-    );
-    // ...and the declaration of the type that signature returns, so the fields are not guessed at.
-    assert!(flat.contains("interface DirEntry { name: string; kind:"));
-    // The helper is offered alongside the tool it wraps.
-    assert!(flat.contains("`readTextFile(path: string): string`"));
-    // ...and `finish`, which is the one entry no toolset can withhold.
-    assert!(flat.contains("`finish(summary: string): void` — End this run."));
-    // The traditional listing, and every trace of the bespoke language this replaced, are gone: its
-    // builtin list and the tool-calling heading. (The dialect's *name* is not spelled here — the
-    // repo-wide grep that retires it would count this file as a live reference.)
-    for absent in ["## Your tools", "Builtins"] {
-        assert!(
-            !prompt.contains(absent),
-            "a code-mode prompt must not mention `{absent}`:\n{prompt}"
-        );
-    }
-}
-
-/// The turn-level transitions are named as *not composable* when the run offers them, and the note
-/// is absent when it does not — and they never appear in the signature list, because they have no
-/// signature to render.
-#[test]
-fn code_mode_names_the_turn_level_transitions_it_cannot_compose() {
-    let mut context = full_system();
-    context.responses_as_code = true;
-    // The registry offers `enter_plan_mode`, but the sandbox does not bind it.
-    context.tools.push(unbound("enter_plan_mode"));
+fn code_mode_with_no_workspace_tools_still_names_harness() {
+    let context = SystemContext {
+        responses_as_code: true,
+        apis: vec![ApiView {
+            object: "harness".to_string(),
+            description: "the run itself".to_string(),
+        }],
+        ..SystemContext::default()
+    };
     let prompt = render_system(&context, None);
-    let flat = flat(&prompt);
-    assert!(
-        flat.contains(
-            "`enter_plan_mode`, `submit_plan` are turn-level transitions, not values, so they are \
-             not available inside a program at all — and every turn of this run is a program, so \
-             this run cannot make them at any point. Do the work directly instead."
-        ),
-        "the note must name the transitions and say the run cannot make them at all:\n{prompt}"
-    );
-    // The unbound tool contributes no bullet: a signature-less entry is skipped rather than
-    // rendered as an empty backtick pair.
-    assert!(
-        !prompt.contains("- `` —"),
-        "a tool with no signature must not render a bullet:\n{prompt}"
-    );
-
-    let without = render_system(
-        &SystemContext {
-            responses_as_code: true,
-            turn_level_tools: Vec::new(),
-            ..full_system()
-        },
-        None,
-    );
-    assert!(!without.contains("turn-level transitions"));
+    assert!(prompt.contains("`harness`"), "{prompt}");
+    assert!(prompt.contains("harness.finish(summary)"), "{prompt}");
+    assert!(!prompt.contains("`fs`"), "{prompt}");
 }
 
-/// A code-mode run with no tools at all says so plainly: a program can still compute and return a
-/// value, which is a real (if narrow) thing to be able to do.
+/// The tool-calling prompt names no tools at all: on that path the tools are in the request, so the
+/// prompt renders no API section and no tool name.
 #[test]
-fn code_mode_without_tools_says_a_program_can_only_compute() {
-    let toolless = render_system(
-        &SystemContext {
-            responses_as_code: true,
-            tools: Vec::new(),
-            helpers: Vec::new(),
-            code: CodeTeachingView {
-                example_pure: true,
-                ..CodeTeachingView::default()
-            },
-            ..full_system()
-        },
-        None,
-    );
-    assert!(toolless.contains("only compute, log what it computed, and `finish`"));
-    assert!(!toolless.contains("Your tools this run"));
-    // It still gets a worked example — a program that only computes is a real, if narrow, thing to
-    // be able to write, and an example is how `return` and `console.log` are taught at all.
-    assert!(
-        toolless.contains("\n    const waves = [1, 2, 3, 4]"),
-        "a toolless run still gets its indented worked example:\n{toolless}"
-    );
-    // ...and it is still told how to end the run, because `finish` is not a capability and nothing
-    // withholds it. A toolset that produced a protocol with no exit would be the one bug this
-    // section cannot recover from.
-    assert!(toolless.contains("## Ending the run"), "{toolless}");
-}
-
-/// **The prompt never names a function the run withheld.**
-///
-/// The worked example is the one part of the prompt a model copies verbatim, so an example naming a
-/// tool this run does not bind is a `ReferenceError` on turn one — and it would falsify the property
-/// [toolset ablation](https://docs.testcabinet.ai/gg/toolset-ablation/) rests on, that a withheld
-/// capability contributes no prompt text. Asserted over every reduced toolset the projection can
-/// produce, including the empty one.
-///
-/// The ending section is the case worth calling out. It is the one part of the code arm that is
-/// **ungated** — every run is shown `finish` — so its worked example is the one example that has to
-/// type-check against a scope containing nothing but `finish` itself. The toolless render below is
-/// what holds it to that.
-#[test]
-fn code_mode_teaching_never_names_a_tool_the_run_withheld() {
-    /// Every function name the code section's prose can mention, so a case can assert the absence
-    /// of all the ones its toolset does not bind.
-    const NAMED: &[&str] = &[
-        "listDir",
-        "readTextFile",
-        "readFile",
-        "editFile",
-        "writeFile",
-        "shell",
-    ];
-
-    let shell_only = render_system(
-        &SystemContext {
-            responses_as_code: true,
-            tools: vec![bound(
-                "shell",
-                "shell(command: string, options?: { timeoutSecs?: number; }): ShellOutput",
-                "Run a shell command in the workspace.",
-            )],
-            helpers: Vec::new(),
-            turn_level_tools: Vec::new(),
-            code: CodeTeachingView {
-                example_shell: true,
-                shell: true,
-                ..CodeTeachingView::default()
-            },
-            ..full_system()
-        },
-        None,
-    );
-    assert!(
-        shell_only.contains("\n    const build = shell(\"npm run build\");"),
-        "a shell-only run still gets a worked example:\n{shell_only}"
-    );
-    for absent in NAMED.iter().filter(|name| **name != "shell") {
-        assert!(
-            !shell_only.contains(absent),
-            "a shell-only run must not be taught `{absent}`:\n{shell_only}"
-        );
-    }
-
-    let toolless = render_system(
-        &SystemContext {
-            responses_as_code: true,
-            tools: Vec::new(),
-            helpers: Vec::new(),
-            turn_level_tools: Vec::new(),
-            code: CodeTeachingView {
-                example_pure: true,
-                ..CodeTeachingView::default()
-            },
-            ..full_system()
-        },
-        None,
-    );
-    assert!(
-        toolless.contains("## Ending the run"),
-        "the ungated ending section renders even here, which is what makes the absences below \
-         cover it:\n{toolless}"
-    );
-    for absent in NAMED {
-        assert!(
-            !toolless.contains(absent),
-            "a run with no tools must not be taught `{absent}`:\n{toolless}"
-        );
-    }
-}
-
-/// **The code-mode prompt contains no backtick fence anywhere.**
-///
-/// The contract it teaches is that the model's whole reply is the program, so a fenced example would
-/// be the one place in the prompt that silently re-teaches the fenced protocol it replaced — and it
-/// would do it in the part of the document models copy most literally. It would also corrupt the
-/// measurement the capability exists to make: "how often does this model still wrap its program in a
-/// fence" means nothing if gg showed it one.
-///
-/// Asserted over every render the code arm can produce — each of the four worked examples, both
-/// arms of the fence rule, and both roles — because the examples are the only place a fence could
-/// plausibly creep back in.
-#[test]
-fn the_code_prompt_never_shows_a_code_fence() {
-    let examples = [
-        CodeTeachingView {
-            example_compose: true,
-            read_file: true,
-            ..CodeTeachingView::default()
-        },
-        CodeTeachingView {
-            example_shell: true,
-            shell: true,
-            ..CodeTeachingView::default()
-        },
-        CodeTeachingView {
-            example_write: true,
-            edit_file: true,
-            ..CodeTeachingView::default()
-        },
-        CodeTeachingView {
-            example_pure: true,
-            ..CodeTeachingView::default()
-        },
-    ];
-    for code in examples {
-        for stripped in [true, false] {
-            for delegated in [true, false] {
-                let prompt = render_system(
-                    &SystemContext {
-                        responses_as_code: true,
-                        code,
-                        fences_are_stripped: stripped,
-                        delegated,
-                        ..full_system()
-                    },
-                    None,
-                );
-                assert!(
-                    !prompt.contains("```"),
-                    "the code prompt must show no fence (example {code:?}, stripped {stripped}, \
-                     delegated {delegated}):\n{prompt}"
-                );
-            }
-        }
-    }
-}
-
-/// **The prompt says, in the run's own words, that `finish` is the only ending.**
-///
-/// Nothing else terminates a responses-as-code session: prose does not, an empty reply does not, and
-/// the loop has no implicit ending left to fall back on. So the section has to carry the whole
-/// contract — the signature, the once-only rule, and the instruction to call it from a program that
-/// has just *checked* the work rather than from a memory of an earlier turn.
-#[test]
-fn the_code_prompt_teaches_that_only_finish_ends_the_run() {
-    let prompt = render_system(
-        &SystemContext {
-            responses_as_code: true,
-            ..full_system()
-        },
-        None,
-    );
-    let flat = flat(&prompt);
-    for clause in [
-        "`finish(summary: string): void` — End this run.",
-        "**`finish` is the only thing that ends this run.** Prose does not end it.",
-        "Saying \"done\", \"task complete\", or \"the file has been created\" does not end it",
-        "Call it from inside a program that has just **checked** the work with the tools",
-        "`finish` does **not** stop your program.",
-        "So put it last.",
-        "If that program then throws, the ending is cancelled and you get another turn",
-        "Calling `finish` twice is not an error; the last summary is the one that counts.",
-    ] {
-        assert!(
-            flat.contains(clause),
-            "the ending section must state `{clause}`:\n{prompt}"
-        );
-    }
-    // The reply rules that stop a model narrating a completion it has not seen.
-    for clause in [
-        "**Never write gg's side of the conversation.**",
-        "do not report success",
-        "a reply that is only comments is not a program.",
-    ] {
-        assert!(
-            flat.contains(clause),
-            "the reply rules must state `{clause}`:\n{prompt}"
-        );
-    }
-
-    // The section is gated on the catalogue actually offering the function: a context with no
-    // `session` renders no ending section at all, rather than a bullet with an empty signature.
-    let without = render_system(
-        &SystemContext {
-            responses_as_code: true,
-            session: None,
-            ..full_system()
-        },
-        None,
-    );
-    for absent in [
-        "## Ending the run",
-        "finish(summary: string): void",
-        "the only thing that ends this run",
-        "`finish` does **not** stop your program.",
-    ] {
-        assert!(
-            !without.contains(absent),
-            "a context with no `session` must not render `{absent}`:\n{without}"
-        );
-    }
-}
-
-/// **The reply rules redirect a second program into the first, instead of forbidding it again.**
-///
-/// The modal turn-1 mistake of the round-2 model set was a reply carrying two whole programs: an
-/// exploratory draft ending in a top-level `return`, and the real program pasted below it — measured
-/// twice for `openai/gpt-5.6-terra`, once for `openai/gpt-5.6-sol`, once for
-/// `google/gemini-3.6-flash`. The prompt already prohibited it in as many words *and one session
-/// repeated the prohibition in its task prompt*, so a third prohibition is not the fix. What the
-/// models are doing is looking before they leap, in the one place they can — and the surface they
-/// have (loops, conditionals, values) makes the look and the leap fit in **one** program, so the rule
-/// points them there and names the cheap alternative for the case where it genuinely does not fit.
-///
-/// The prohibition survives, because the consequence is worth stating exactly once: two programs
-/// declare the same top-level names twice, which one program cannot do, so **neither** of them runs.
-/// What must not survive is the old instruction to *delete* half of what the model just wrote, which
-/// is the one thing a model that wants to look first will not do.
-#[test]
-fn the_reply_rules_redirect_a_second_program_into_the_first() {
-    let prompt = render_system(
-        &SystemContext {
-            responses_as_code: true,
-            ..full_system()
-        },
-        None,
-    );
-    let flat = flat(&prompt);
-    for clause in [
-        // The redirect: where the impulse to look first actually belongs.
-        "**Look before you leap — inside the same program.** Call the tool, branch on what it \
-         returned, and carry on: with loops, conditionals and variables one program can explore, \
-         decide, act and check its own work in a single pass.",
-        // ...and what to do when one program truly is not enough, which costs one turn rather than
-        // the whole reply. It names the only channel there is, because a `return` would tell the
-        // model nothing.
-        "If you genuinely cannot choose without seeing gg's answer, `console.log` what you learned \
-         and stop there; the turn ends when your program does, and you choose next turn.",
-        // The redirect for the reply that is already drafted twice — and the consequence, stated
-        // once: it is not that gg disapproves, it is that nothing runs.
-        "**One program per reply — if you have drafted two, merge them.**",
-        "A reply that offers gg two programs runs **neither**: the second declares the top-level \
-         names the first already declared, which one program cannot do, so nothing in your reply \
-         runs — not the exploration, not the work, not the `finish`.",
-        // Merging is named as cheap, because a model that believes it is losing something will not
-        // do it.
-        "Merging costs you nothing you cannot express: the second draft's statements go after the \
-         first's, using the values it computed, with an `if` where you would have waited for a turn.",
-    ] {
-        assert!(
-            flat.contains(clause),
-            "the reply rules must state `{clause}`:\n{prompt}"
-        );
-    }
-    // The order that did not work, and that tells a model to throw away work it has just done, is
-    // gone from the prompt entirely.
-    for absent in [
-        "choose one and delete the other",
-        "Never paste a second program below the first.",
-        "Send exactly one program.",
-    ] {
-        assert!(
-            !flat.contains(absent),
-            "the prompt must no longer order the model to delete half its reply (`{absent}`):\n\
-             {prompt}"
-        );
-    }
-}
-
-/// **The worked example is the whole arc, in one program.**
-///
-/// Round 2's best single turn — `openai/gpt-5.6-terra`, one reply, every assertion green — explored
-/// the workspace, computed from what it found, wrote the deliverable, checked it with a second tool
-/// call, and called `finish`, all in one program. `openai/gpt-5.6-sol` and `anthropic/claude-opus-5`
-/// wrote the same shape unprompted. Nothing in the prompt showed it: every worked example stopped at
-/// a `return`, which is the shape of a turn that has to be followed by another one.
-///
-/// So each of the examples now ends the same way — do the work, check it with the tools, and
-/// `finish` on the branch where the check came back clean — and the check is a property of every one
-/// of them, because the example is the piece of the prompt a model copies verbatim. The richest one
-/// shows the whole arc including the write and the re-read, which is the turn the capability exists
-/// to make possible. It is also what makes the ending section's rule demonstrable rather than merely
-/// stated: that section points at this example rather than carrying a second, tool-free one of its
-/// own.
-///
-/// No example `return`s a value, and that is load-bearing rather than cosmetic. A returned value
-/// goes nowhere, so an example that ended in one would teach the single mistake the feedback then
-/// has to correct.
-#[test]
-fn the_worked_example_is_the_whole_arc_in_one_program() {
-    let arcs = [
-        (
-            CodeTeachingView {
-                example_build: true,
-                read_file: true,
-                ..CodeTeachingView::default()
-            },
-            "    const specs = listDir(\"specs\")",
-            "const left = specs.filter((e) => !readTextFile(`specs/${e.name}`).includes(\"## Rules\"));",
-            "if (left.length === 0) finish(`Added a rules section to ${missing.length} of \
-             ${specs.length} spec files; every one documents its rules now.`);",
-        ),
-        (
-            CodeTeachingView {
-                example_compose: true,
-                read_file: true,
-                ..CodeTeachingView::default()
-            },
-            "    const specs = listDir(\"specs\")",
-            "console.log(`checked ${specs.length} spec files; without a rules section: \
-             ${missing.map((e) => e.name).join(\", \") || \"none\"}`);",
-            "if (missing.length === 0) finish(`Checked all ${specs.length} spec files; every \
-             one documents its rules.`);",
-        ),
-        (
-            CodeTeachingView {
-                example_shell: true,
-                shell: true,
-                ..CodeTeachingView::default()
-            },
-            "    const build = shell(\"npm run build\");",
-            "console.log(tests.output.split(\"\\n\").slice(-20).join(\"\\n\"));",
-            "if (tests.exitCode === 0) finish(\"Fixed the collision check, rebuilt, and ran \
-             the suite: the build and every test pass.\");",
-        ),
-        (
-            CodeTeachingView {
-                example_write: true,
-                ..CodeTeachingView::default()
-            },
-            "    const levels = [1, 2, 3].map((n) => ({ id: n, enemies: n * 4 }));",
-            "console.log(`wrote ${levels.length} level files, ${bytes} bytes in all`);",
-            "if (bytes > 0) finish(`Wrote ${levels.length} level files under levels/ \
-             (${bytes} bytes).`);",
-        ),
-        (
-            CodeTeachingView {
-                example_pure: true,
-                ..CodeTeachingView::default()
-            },
-            "    const waves = [1, 2, 3, 4].map((n) => ({ wave: n, enemies: n * 5 }));",
-            "console.log(`planned ${waves.length} waves, ${total} enemies in all: \
-             ${JSON.stringify(waves)}`);",
-            "if (total <= 100) finish(`Planned ${waves.length} waves, ramping to \
-             ${waves[waves.length - 1].enemies} enemies.`);",
-        ),
-    ];
-    for (code, opens, checks, finishes) in arcs {
-        let prompt = render_system(
-            &SystemContext {
-                responses_as_code: true,
-                code,
-                ..full_system()
-            },
-            None,
-        );
-        let flat = flat(&prompt);
-        assert!(
-            prompt.contains(opens),
-            "the {code:?} example must begin at its first `const`:\n{prompt}"
-        );
-        // It says what it found — with the only channel that carries anything — and only then
-        // finishes. Both halves matter: an example that only finished would teach a model to
-        // conclude on turn one.
-        assert!(
-            flat.contains(checks),
-            "the {code:?} example must report what it found before it concludes:\n{prompt}"
-        );
-        assert!(
-            flat.contains(finishes),
-            "the {code:?} example must end the run on the checked-good branch:\n{prompt}"
-        );
-        // No example hands a value back through a channel that discards it.
-        assert!(
-            !prompt.contains("    return "),
-            "no worked example may `return` a value — it would go nowhere:\n{prompt}"
-        );
-        // The framing says what shape is being shown, so a model reading the example knows the
-        // `finish` at the end is the point rather than an accident of this task's size.
-        assert!(
-            flat.contains(
-                "A whole reply looks like this — one program that looks, decides, acts, and checks \
-                 what it did, ending the run only on the branch where the work is really done."
-            ),
-            "the example must be introduced as the whole arc:\n{prompt}"
-        );
-        assert!(!prompt.contains("\n\n\n"), "prompt has a blank-line run");
-    }
-
-    // A delegated worker is shown the same arc, ending the thing it can actually end.
-    let child = render_system(
-        &SystemContext {
-            responses_as_code: true,
-            delegated: true,
-            ..full_system()
-        },
-        None,
-    );
-    assert!(
-        flat(&child)
-            .contains("ending the session only on the branch where the work is really done."),
-        "{child}"
-    );
-}
-
-/// **The ending section's two rules about re-checking do not contradict each other.**
-///
-/// They used to. One line said to call `finish` from a program that has just *checked* the work
-/// rather than from recollection; a later line said not to re-check work already verified. When the
-/// check happened on the **previous** turn those are opposite instructions, and `anthropic/claude-opus-5`
-/// split its behaviour across the seam in round 2: it computed the exact predicate `finish` needed,
-/// returned it instead of branching on it, and then spent a third turn — a third of the run's cost —
-/// re-reading the file it had already read back, to call `finish` from a program that had checked
-/// something.
-///
-/// The fix is to scope the second rule to the **same program** as the first: a program that has
-/// already checked the work finishes there, rather than deferring to a turn that checks nothing (or
-/// re-checking what this one just verified). The two rules then say one thing.
-#[test]
-fn the_ending_section_scopes_the_no_re_check_rule_to_one_program() {
-    let prompt = render_system(
-        &SystemContext {
-            responses_as_code: true,
-            ..full_system()
-        },
-        None,
-    );
-    let flat = flat(&prompt);
-    assert!(
-        flat.contains(
-            "Call it from inside a program that has just **checked** the work with the tools — \
-             read the file back, run the test, look at the exit code — rather than from your \
-             recollection of an earlier turn. The worked example above ends exactly that way: it \
-             does the work, checks what it did, and calls `finish` on the branch where the check \
-             came back clean."
-        ),
-        "the section must point at the worked example as the shape it is asking for:\n{prompt}"
-    );
-    assert!(
-        flat.contains(
-            "That check belongs in the **same program** as the `finish`. If the program you are \
-             writing has already verified the work, end the run right there — there is nothing to \
-             gain from spending another turn re-reading what this program just read, and nothing \
-             to gain from putting the `finish` off until a turn that has checked nothing."
-        ),
-        "the no-re-check rule must be scoped to the program that did the checking:\n{prompt}"
-    );
-    // The unscoped sentence — which, read on a turn whose check happened earlier, said the opposite
-    // of the rule above it — is gone.
-    assert!(
-        !flat.contains("Re-checking work you have already verified"),
-        "the unscoped re-check sentence must not survive:\n{prompt}"
-    );
-    // ...and the ending section no longer carries a worked example of its own, which was a program
-    // that checked and did no work — the two-turn shape this section exists to discourage.
-    assert!(
-        !prompt.contains("const problems = []"),
-        "the ending section must not model a program that only checks:\n{prompt}"
-    );
-}
-
-/// **The ending section says what `finish` ends *for the model reading it*.**
-///
-/// A delegated agent renders this same prompt. Told that `finish` "ends the run", a subagent has a
-/// strong reason not to call it — and a worker that never calls it never returns a summary, which is
-/// exactly what leaves a Code Review unaccepted, a speculation judge without a winner, and a
-/// subagent's worktree discarded unmerged.
-#[test]
-fn the_code_prompt_is_role_aware_about_what_finish_ends() {
-    let root = render_system(
-        &SystemContext {
-            responses_as_code: true,
-            delegated: false,
-            ..full_system()
-        },
-        None,
-    );
-    let child = render_system(
-        &SystemContext {
-            responses_as_code: true,
-            delegated: true,
-            ..full_system()
-        },
-        None,
-    );
-
-    assert!(root.contains("## Ending the run"), "{root}");
-    assert!(!root.contains("## Ending your session"), "{root}");
-    assert!(child.contains("## Ending your session"), "{child}");
-    assert!(!child.contains("## Ending the run"), "{child}");
-
-    let flat_root = flat(&root);
-    let flat_child = flat(&child);
-    assert!(flat_root.contains("**`finish` is the only thing that ends this run.**"));
-    assert!(flat_root.contains("`finish` ends the **run**, and its summary is your last word"));
-    assert!(flat_child.contains("**`finish` is the only thing that ends your session.**"));
-    assert!(
-        flat_child.contains("`finish` ends the **session**, and its summary is your last word")
-    );
-    // The subagent is told what its summary is *for*: it is the whole of what its spawner sees.
-    assert!(
-        flat_child.contains(
-            "The summary you pass to `finish` is what you return to the agent that asked you for \
-             this work: it is your whole answer, and it is the only thing that agent sees, so put \
-             the verdict or the result in it."
-        ),
-        "{child}"
-    );
-    assert!(
-        !flat_root.contains("the agent that asked you for this work"),
-        "{root}"
-    );
-}
-
-/// **The fence rule tells the truth about this run's healing configuration.**
-///
-/// Both arms say "do not put your program in a code block"; what differs is the reason, and the
-/// reason has to be true. With [`strip-fences`](crate::healing::HealingStrategy::StripFences) armed,
-/// "a fence is a syntax error" is false — gg removes it and discloses that it did — and a model that
-/// tests the claim learns that gg's rules are negotiable, contaminating the very
-/// instruction-following signal this capability exists to collect.
-#[test]
-fn the_fence_rule_matches_the_healing_configuration() {
-    let stripped = flat(&render_system(
-        &SystemContext {
-            responses_as_code: true,
-            fences_are_stripped: true,
-            ..full_system()
-        },
-        None,
-    ));
-    let literal = flat(&render_system(
-        &SystemContext {
-            responses_as_code: true,
-            fences_are_stripped: false,
-            ..full_system()
-        },
-        None,
-    ));
-
-    for rendered in [&stripped, &literal] {
-        assert!(rendered.contains(
-            "**Do not put your program in a code block.** No backtick fences, no `ts` tag."
-        ));
-    }
-    assert!(stripped.contains(
-        "Send the code alone. (gg will strip a fence and tell you it did — but that is a repair, \
-         not the contract.)"
-    ));
-    assert!(!stripped.contains("a syntax error on line 1"), "{stripped}");
-    assert!(literal.contains(
-        "gg compiles your reply exactly as you send it, and a fence is not code — it is a syntax \
-         error on line 1."
-    ));
-    assert!(!literal.contains("that is a repair"), "{literal}");
-}
-
-/// **The tool-calling prompt is byte-for-byte what it was before the code mode was rewritten.**
-///
-/// The two modes share one template and one context, and the code arm's rewrite touched the base
-/// paragraph they both render — so the ending sentence is gated *inline* rather than as a standalone
-/// block, which is the only way Handlebars leaves the surrounding whitespace alone. This pins the
-/// exact result, including the line break that falls inside the gated sentence.
-///
-/// It also pins the inertness of the three fields the code arm added: a tool-calling context carries
-/// `session`, `delegated` and `fences_are_stripped`, and the `{{else}}` arm references none of them.
-#[test]
-fn the_tool_calling_prompt_is_unchanged_by_the_code_mode_rewrite() {
+fn the_tool_calling_prompt_names_no_tools() {
+    // `full_system()` is a tool-calling context (`responses_as_code` is false).
     let prompt = render_system(&full_system(), None);
-    assert!(
-        prompt.starts_with(
-            "You are gg, The Test Cabinet's autonomous coding agent. You are building a game in \
-             the\ncurrent workspace directory. Work incrementally: inspect the workspace, then \
-             create and edit\nfiles to implement the game the user describes. When the game is \
-             complete and the task is\ndone, stop calling tools and give a short final summary of \
-             what you built.\n\n## Your tools\n"
-        ),
-        "the tool-calling base paragraph must render exactly as it always has:\n{prompt}"
-    );
-    // Not one word of the code arm leaks, including the three fields it added to the context.
-    // (`finish` is matched as the function rather than as a substring: the tasks section says
-    // "tasks must finish first", which is prose about the task DAG and not about ending anything.)
-    for absent in [
-        "## Your reply is a program",
-        "## Ending the run",
-        "`finish`",
-        "finish(",
-        "code block",
-    ] {
-        assert!(
-            !prompt.contains(absent),
-            "the tool-calling prompt must not mention `{absent}`:\n{prompt}"
-        );
-    }
-}
-
-/// The regression that would silently disable plan mode for the **non**-code execution mode: the
-/// tool-calling arm lists every offered tool by name, including the turn-level transitions the
-/// sandbox does not bind.
-#[test]
-fn tool_calling_mode_with_planning_still_names_enter_plan_mode() {
-    let mut context = full_system();
-    context.tools.push(unbound("enter_plan_mode"));
-    let prompt = render_system(&context, None);
-    assert!(flat(&prompt).contains("`write_file`, `enter_plan_mode`"));
-    assert!(prompt.contains("## Planning"));
+    assert!(!prompt.contains("## Responses as code"), "{prompt}");
+    assert!(!prompt.contains("Your APIs"), "{prompt}");
+    assert!(!prompt.contains("`fs`"), "{prompt}");
+    assert!(!prompt.contains("write_file"), "{prompt}");
 }
 
 // ---------------------------------------------------------------------------
@@ -1115,7 +427,7 @@ fn the_result_feedback_shows_the_output_the_roster_and_how_to_finish() {
     assert!(
         flat(&rendered).ends_with(
             "Continue by emitting your next program. When the work is done and you have checked \
-             it, end the run with `finish(\"...\")` from inside a program — nothing else ends it."
+             it, end the run with `harness.finish(\"...\")` from inside a program — nothing else ends it."
         ),
         "the termination rule must close every result:\n{rendered}"
     );
@@ -1263,7 +575,10 @@ fn the_feedback_says_when_a_finish_was_revoked() {
         flat(&threw).contains("a program that fails has not finished: the run is still going"),
         "{threw}"
     );
-    assert!(flat(&threw).contains("call `finish(...)` again"), "{threw}");
+    assert!(
+        flat(&threw).contains("call `harness.finish(...)` again"),
+        "{threw}"
+    );
 
     let stopped = render_code_sandbox_error(&CodeSandboxErrorContext {
         healing: Vec::new(),
@@ -1316,7 +631,7 @@ fn the_transpile_feedback_says_nothing_ran() {
          budget.\n\nRemember that gg compiles your **entire reply**: anything in it that is not \
          TypeScript — a code fence, a\nsentence, a heading — is a syntax error in your program. \
          And if you meant to say the task is finished,\nsaying so does not end the run: only \
-         `finish(\"...\")`, called from inside a program, does.\n\nNothing ran, so nothing \
+         `harness.finish(\"...\")`, called from inside a program, does.\n\nNothing ran, so nothing \
          changed. Fix the syntax and reply with a corrected program."
     );
 }
@@ -1405,7 +720,7 @@ fn every_code_feedback_reports_what_was_healed() {
                 "Only text was removed — nothing was added, and nothing was reordered. Your whole \
                  reply is the program, so you can send the TypeScript on its own: anything you \
                  want to say belongs in a `console.log(…)`, or in the summary you pass to \
-                 `finish(…)`."
+                 `harness.finish(…)`."
             ),
             "the note must bound what gg changed and say where prose belongs:\n{rendered}"
         );
@@ -1669,12 +984,12 @@ fn the_not_a_program_feedback_names_the_reply_and_teaches_finish() {
         assert!(
             flat(&rendered).contains(
                 "If you believe the task is complete, saying so does not end the run — only \
-                 `finish` does, and you call it from inside a program:"
+                 `harness.finish` does, and you call it from inside a program:"
             ),
             "{rendered}"
         );
         assert!(
-            rendered.ends_with("    finish(\"what you did, in a sentence or two\");"),
+            rendered.ends_with("    harness.finish(\"what you did, in a sentence or two\");"),
             "the feedback must close on the call that would have ended the run:\n{rendered}"
         );
         assert_no_blank_run(&rendered);

@@ -38,6 +38,33 @@ export interface CatalogueEntry {
 }
 
 /**
+ * The **API object** each module's functions are grouped under in a program's scope.
+ *
+ * A program does not receive flat identifiers (`readFile`, `createIssue`, …). It receives a small
+ * set of namespaced objects — `fs.readFile`, `project.createIssue` — one per module that offers at
+ * least one enabled function, so the surface a model has to reason about is a handful of objects
+ * rather than thirty loose names. The shim ({@link "./shim.js"}) builds those objects from this map;
+ * a module absent here would have its functions dropped, so every module in {@link TOOL_CATALOGUE}
+ * (plus `session`, which carries `finish`) must appear.
+ *
+ * The names are model-facing product surface, chosen for what a model already expects the object to
+ * mean: `fs` for the workspace filesystem, `system` for running commands, `project` for the
+ * epic/issue board, `agents` for delegation, `harness` for the two calls that are about the run
+ * itself rather than the workspace (`finish`, and the documentation lookup).
+ */
+export const OBJECT_FOR_MODULE: Readonly<Record<string, string>> = {
+  shell: "system",
+  files: "fs",
+  skills: "skills",
+  memories: "memory",
+  tasks: "tasks",
+  board: "project",
+  context: "context",
+  delegation: "agents",
+  session: "harness",
+};
+
+/**
  * A helper bound alongside a tool: not a tool itself, so it can never perturb the
  * `ALL_TOOL_NAMES` bijection, but bound into scope and catalogued for the prompt whenever the tool
  * it is built on is enabled.

@@ -4,8 +4,8 @@ Your program stopped{{#if error.location}} at {{error.location}}{{/if}}: {{error
 {{#if calls}}Everything it did before that still stands.
 {{/if}}
 {{#if finishRevoked}}
-You called `finish(...)` in that program, but a program that fails has not finished: the run is
-still going. Fix what threw, check the work, and call `finish(...)` again from a program that runs
+You called `harness.finish(...)` in that program, but a program that fails has not finished: the run is
+still going. Fix what threw, check the work, and call `harness.finish(...)` again from a program that runs
 to its end.
 {{/if}}
 {{else}}
@@ -58,4 +58,4 @@ turn)
 {{/if}}
 
 Continue by emitting your next program. When the work is done and you have checked it, end {{#if delegated}}your session{{else}}the run{{/if}} with
-`finish("...")` from inside a program — nothing else ends it.
+`harness.finish("...")` from inside a program — nothing else ends it.

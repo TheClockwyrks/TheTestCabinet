@@ -121,9 +121,9 @@ fn a_program_runs_typed_calls_in_order() {
     // The headline: list, filter, read each, write once, log a summary. This is the program the
     // capability exists for — it cannot be written at all against untyped tool output.
     let (outcome, log) = run(concat!(
-        "const files = listDir(\"src\").filter((e) => e.kind === \"file\" && e.name.endsWith(\".ts\"));\n",
-        "const texts = files.map((e) => readTextFile(`src/${e.name}`));\n",
-        "const written = writeFile(\"out/summary.txt\", texts.join(\"\\n\"));\n",
+        "const files = fs.listDir(\"src\").filter((e) => e.kind === \"file\" && e.name.endsWith(\".ts\"));\n",
+        "const texts = files.map((e) => fs.readTextFile(`src/${e.name}`));\n",
+        "const written = fs.writeFile(\"out/summary.txt\", texts.join(\"\\n\"));\n",
         "console.log(JSON.stringify({ files: files.map((f) => f.name), written }));",
     ));
     let reported = logged_json(&outcome);
@@ -155,7 +155,7 @@ fn a_program_runs_typed_calls_in_order() {
     assert_eq!(outcome.logs_suppressed, 0);
 
     // An object argument arrives under the tool's OWN schema key names, camelCase and all.
-    let (_, log) = run("addTask({ id: \"t1\", title: \"write it\", blockedBy: [\"t0\"] });");
+    let (_, log) = run("tasks.addTask({ id: \"t1\", title: \"write it\", blockedBy: [\"t0\"] });");
     assert_eq!(
         log.args("add_task"),
         Some(json!({
@@ -170,7 +170,7 @@ fn a_program_runs_typed_calls_in_order() {
     // *not* compared: it is a measurement of work, and the engine is free to do that work slightly
     // differently. What must be identical is everything a replay depends on.
     let program = concat!(
-        "const entries = listDir(\"src\");\n",
+        "const entries = fs.listDir(\"src\");\n",
         "console.log(entries.filter((e) => e.kind === \"file\").map((e) => e.name).join(\", \"));",
     );
     let (first, first_log) = run(program);
@@ -235,7 +235,7 @@ fn the_sandbox_globals_are_denied_not_trapped() {
     // recorded — but it lands outside the turn and a throw inside it is invisible, so the model is
     // told plainly rather than shown a clean turn over a half-failed program.
     let (outcome, log) = run(concat!(
-        "Promise.resolve().then(() => writeFile(\"late.txt\", \"x\"));\n",
+        "Promise.resolve().then(() => fs.writeFile(\"late.txt\", \"x\"));\n",
         "console.log(\"done\");",
     ));
     assert_eq!(logs(&outcome), ["done"]);
@@ -268,7 +268,7 @@ fn the_limits_stop_a_runaway_program() {
 
     // The calls that landed before the trap are still the model's to see: they really happened.
     let (outcome, log) = run_with(
-        "listDir(\"src\");\nwhile (true) {}",
+        "fs.listDir(\"src\");\nwhile (true) {}",
         &all_tools(),
         small_fuel,
         canned_outcome,
@@ -336,8 +336,8 @@ fn the_limits_stop_a_runaway_program() {
         concat!(
             "let total = 0;\n",
             "for (let i = 0; i < 20; i++) {\n",
-            "  const text = readTextFile(`src/file-${i}.ts`);\n",
-            "  total += writeFile(`src/file-${i}.ts`, text.replace(/alpha/g, \"beta\"));\n",
+            "  const text = fs.readTextFile(`src/file-${i}.ts`);\n",
+            "  total += fs.writeFile(`src/file-${i}.ts`, text.replace(/alpha/g, \"beta\"));\n",
             "}\n",
             "console.log(total);",
         ),
@@ -386,7 +386,7 @@ fn the_limits_stop_a_runaway_program() {
 fn a_program_ends_the_run_by_calling_finish() {
     // 1. The plain case. The completion is carried out verbatim and the turn is not a failure:
     //    nothing was thrown, because `finish` throws nothing.
-    let (outcome, log) = run("finish(\"wrote the manifest\");");
+    let (outcome, log) = run("harness.finish(\"wrote the manifest\");");
     assert_eq!(completion(&outcome).summary, "wrote the manifest");
     assert_eq!(completion(&outcome).superseded, 0);
     assert!(logs(&outcome).is_empty());
@@ -397,8 +397,8 @@ fn a_program_ends_the_run_by_calling_finish() {
     //    program has ended. A model that tidies up after declaring itself done gets the tidying it
     //    asked for rather than a silently discarded half-reply.
     let (outcome, log) = run(concat!(
-        "finish(\"done\");\n",
-        "writeFile(\"after.txt\", \"x\");\n",
+        "harness.finish(\"done\");\n",
+        "fs.writeFile(\"after.txt\", \"x\");\n",
         "console.log(\"tidied up\");",
     ));
     assert_eq!(completion(&outcome).summary, "done");
@@ -414,7 +414,7 @@ fn a_program_ends_the_run_by_calling_finish() {
     //    not fire must fall through to the rest of the program.
     let (outcome, _) = run(concat!(
         "const n = 7;\n",
-        "if (n > 10) { finish(\"big enough\"); }\n",
+        "if (n > 10) { harness.finish(\"big enough\"); }\n",
         "console.log(n);",
     ));
     assert_eq!(logs(&outcome), ["7"]);
@@ -426,8 +426,8 @@ fn a_program_ends_the_run_by_calling_finish() {
     // 4. …and the branch that does fire declares the ending without cutting the program short.
     let (outcome, log) = run(concat!(
         "const n = 12;\n",
-        "if (n > 10) { finish(\"big enough\"); }\n",
-        "writeFile(\"after.txt\", \"x\");",
+        "if (n > 10) { harness.finish(\"big enough\"); }\n",
+        "fs.writeFile(\"after.txt\", \"x\");",
     ));
     assert_eq!(completion(&outcome).summary, "big enough");
     assert_eq!(log.names(), ["write_file"]);
@@ -436,8 +436,8 @@ fn a_program_ends_the_run_by_calling_finish() {
     //    `finish` is an ordinary thing for a program to write — two branches that both run, a call
     //    inside a loop — and the later summary is the one written with more of the work behind it.
     let (outcome, _) = run(concat!(
-        "finish(\"the first word\");\n",
-        "finish(\"the last word\");\n",
+        "harness.finish(\"the first word\");\n",
+        "harness.finish(\"the last word\");\n",
         "console.log(\"neither call threw\");",
     ));
     assert_eq!(logs(&outcome), ["neither call threw"]);
@@ -453,7 +453,7 @@ fn a_program_ends_the_run_by_calling_finish() {
     //    to swallow.
     let (outcome, _) = run(concat!(
         "try { throw new Error(\"handled\"); } catch (e) { console.log(\"recovered\"); }\n",
-        "finish(\"done anyway\");",
+        "harness.finish(\"done anyway\");",
     ));
     assert_eq!(completion(&outcome).summary, "done anyway");
     assert_eq!(logs(&outcome), ["recovered"]);
@@ -462,7 +462,7 @@ fn a_program_ends_the_run_by_calling_finish() {
     //    finished running, so gg does not end the run on it — it reports the throw, keeps the
     //    abandoned summary for the feedback, and gives the model another turn.
     let (outcome, _) = run(concat!(
-        "finish(\"done\");\n",
+        "harness.finish(\"done\");\n",
         "throw new Error(\"and then it fell over\");",
     ));
     assert!(
@@ -481,7 +481,11 @@ fn a_program_ends_the_run_by_calling_finish() {
 
     // 8. A summary that is not a usable summary finishes nothing: the model is told what to write and
     //    the run carries on, rather than ending on an empty final word.
-    for program in ["finish(\"\");", "finish(\"   \");", "finish(42 as any);"] {
+    for program in [
+        "harness.finish(\"\");",
+        "harness.finish(\"   \");",
+        "harness.finish(42 as any);",
+    ] {
         let (outcome, _) = run(program);
         assert!(
             outcome.completion.is_none(),

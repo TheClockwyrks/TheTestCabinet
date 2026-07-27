@@ -110,6 +110,7 @@ use crate::config::GgInvocation;
 use crate::context::{
     BpeTokenEstimator, ContextModel, Retention, TokenEstimator, tool_output_source,
 };
+use crate::docs::DocsRuntime;
 use crate::fsm::{
     FsmRuntime, MACHINE_REVIEW_GATED, StateExit, ToolPolicy, configured_machine, is_builtin_machine,
 };
@@ -128,14 +129,14 @@ use crate::model::{
 };
 use crate::planning::PlanningRuntime;
 use crate::prompts::{
-    self, AutoloadView, BoardView, CodeCallView, CodeErrorView, CodeNotAProgramContext,
+    self, ApiView, AutoloadView, BoardView, CodeCallView, CodeErrorView, CodeNotAProgramContext,
     CodeResultContext, CodeSandboxErrorContext, CodeTranspileErrorContext, FsmView, MemoriesView,
     ReadFileView, SpawnableAgentView, SystemContext, TasksView, ToolView,
 };
 use crate::replay::{GgRecorder, RecordingClient};
 use crate::sandbox::{
-    self, FINISH_FUNCTION, PROGRAM_CALL_ID_PREFIX, ProgramResult, SandboxError, SandboxLimits,
-    SandboxOutcome, ToolInvoker, UnreachableTail, run_program, scope_tools,
+    self, FINISH_FUNCTION, FunctionSummary, PROGRAM_CALL_ID_PREFIX, ProgramResult, SandboxError,
+    SandboxLimits, SandboxOutcome, ToolInvoker, UnreachableTail, run_program, scope_tools,
 };
 use crate::skills::{DEFAULT_SKILLS_DIR, ReadRecord, SkillLibrary, SkillsRuntime};
 use crate::subagents::{
@@ -3121,11 +3122,11 @@ fn build_review_brief(issue_brief: &str, diff: &str, code: bool) -> String {
     // protocol the verdict is written in.
     let verdict = if code {
         "Review the diff carefully against the completion criteria and the in/out-of-scope \
-         boundaries. When you are done, end your session by calling `finish()` from inside a \
+         boundaries. When you are done, end your session by calling `harness.finish()` from inside a \
          program, passing exactly one verdict as its summary:\n\
          - If the work fully satisfies the completion criteria and stays in scope:\n\
-         `finish(\"CODE REVIEW: APPROVED\")`\n\
-         - Otherwise:\n`finish(\"CODE REVIEW: CHANGES REQUESTED\\n1. …\")`\n\
+         `harness.finish(\"CODE REVIEW: APPROVED\")`\n\
+         - Otherwise:\n`harness.finish(\"CODE REVIEW: CHANGES REQUESTED\\n1. …\")`\n\
          where the summary continues with a numbered list of specific, actionable items that must \
          be fixed before the work can be accepted. Be concrete: each item should say what is wrong \
          and what to change."
@@ -3165,7 +3166,7 @@ fn build_fix_brief(issue_brief: &str, items: &[String], code: bool) -> String {
         );
     }
     let ending = if code {
-        "then call `finish()` from inside a program with a short summary of what you changed — \
+        "then call `harness.finish()` from inside a program with a short summary of what you changed — \
          your changes will be re-reviewed"
     } else {
         "then stop — your changes will be re-reviewed"
@@ -3689,7 +3690,7 @@ fn build_attempt_brief(
     code: bool,
 ) -> String {
     let ending = if code {
-        "When you are done, call `finish()` from inside a program with a short summary of what you \
+        "When you are done, call `harness.finish()` from inside a program with a short summary of what you \
          built and why it is a strong solution"
     } else {
         "When you are done, stop with a short summary of what you built and why it is a strong \
@@ -3753,7 +3754,7 @@ fn build_judge_brief(
         brief.push_str(&format!(
             "\n\n## Your verdict\nCompare the {n} attempts against the task's completion criteria — \
              correctness, completeness, and quality — and pick the single best one. End your \
-             session by calling `finish()` from inside a program whose summary begins with exactly \
+             session by calling `harness.finish()` from inside a program whose summary begins with exactly \
              one line:\n`SPECULATION JUDGE: WINNER <n>`\nwhere <n> is the attempt number (1–{n}) \
              you chose — followed by a one-sentence rationale for your choice."
         ));
@@ -4752,6 +4753,10 @@ impl Agent {
         // by the loop's plan-mode state (read-only tools only while planning); otherwise the whole
         // set is offered every turn.
         let all_tools = registry.definitions();
+        // The per-agent documentation carve-out, behind `object.list()` and `fn.docs()`. Built from
+        // the same scope-bound tool set the program's objects are, and always present (docs are not a
+        // capability), so a code turn can always answer a lookup. Unused on the tool-calling path.
+        let mut docs = crate::docs::DocsRuntime::new(scope_tools(registry));
 
         // Build the source-tagged context model in place of a flat transcript, seeded with
         // the two pinned items every session opens with: the system prompt (which lists any
@@ -5157,6 +5162,7 @@ impl Agent {
                     &turn_ctx,
                     &mut context,
                     &mut skills,
+                    &mut docs,
                     &mut subagents,
                 )
                 .await;
@@ -6249,6 +6255,50 @@ struct PromptInputs<'a> {
 /// [memories](crate::memories), [tasks](crate::tasks), [board](crate::board), and
 /// [planning](crate::planning) capabilities, each stating that run's configured limits. A
 /// disabled capability contributes nothing at all: no tools, no prose, no context.
+/// The API objects a code program has this run, in a fixed display order, each with the one-line
+/// description the prompt names it by.
+///
+/// An object appears exactly when the run binds at least one of its functions — derived from the
+/// enabled tools through the [signature catalogue](crate::sandbox::catalogue_functions), the same
+/// grouping the guest builds a program's scope from — so a withheld capability drops its whole
+/// object rather than leaving a named-but-empty one. `harness` always appears, because it carries
+/// `finish` (which no capability gates) and the documentation lookup. The descriptions are stable
+/// product surface authored here; the *functions* on each object are not listed at all, because a
+/// model discovers those on demand with `object.list()` and `fn.docs()`.
+fn api_views(registry: &ToolRegistry) -> Vec<ApiView> {
+    const OBJECTS: &[(&str, &str)] = &[
+        ("fs", "read, write, and edit workspace files"),
+        ("system", "run shell commands in the workspace"),
+        (
+            "project",
+            "the epic/issue board — decompose work into dispatchable issues",
+        ),
+        ("tasks", "your task list"),
+        ("memory", "durable memories that survive context compaction"),
+        ("context", "manage your own context window"),
+        ("agents", "delegate work to child agents"),
+        ("skills", "read authored skills"),
+        (
+            "harness",
+            "the run itself — end it with `finish`, and read documentation",
+        ),
+    ];
+    let enabled: HashSet<String> = scope_tools(registry).into_iter().collect();
+    let present: HashSet<&'static str> = crate::sandbox::catalogue_functions()
+        .into_iter()
+        .filter(|function| function.gate.is_none_or(|tool| enabled.contains(tool)))
+        .map(|function| function.object)
+        .collect();
+    OBJECTS
+        .iter()
+        .filter(|(object, _)| present.contains(object))
+        .map(|(object, description)| ApiView {
+            object: (*object).to_string(),
+            description: (*description).to_string(),
+        })
+        .collect()
+}
+
 fn system_prompt(inputs: PromptInputs<'_>) -> String {
     let PromptInputs {
         registry,
@@ -6334,6 +6384,13 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
         &SystemContext {
             tools,
             responses_as_code,
+            // The API objects the model can inspect — only under responses-as-code, where a program
+            // reaches them by name; the tool-calling path puts the tools in the request instead.
+            apis: if responses_as_code {
+                api_views(registry)
+            } else {
+                Vec::new()
+            },
             // Operator-authored instructions for this agent's profile, inserted near the top of the
             // prompt; `None`/empty renders no section.
             custom_instructions: profile

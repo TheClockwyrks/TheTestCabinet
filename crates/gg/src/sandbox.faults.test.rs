@@ -36,8 +36,8 @@ fn program_faults_are_reported_not_trapped() {
     // An uncaught tool failure names its tool and its class, and everything before it stands.
     let (outcome, log) = run_with(
         concat!(
-            "const entries = listDir(\"src\");\n",
-            "const text = readTextFile(\"missing.ts\");\n",
+            "const entries = fs.listDir(\"src\");\n",
+            "const text = fs.readTextFile(\"missing.ts\");\n",
             "return text.length + entries.length;",
         ),
         &all_tools(),
@@ -67,7 +67,7 @@ fn program_faults_are_reported_not_trapped() {
     let (outcome, _) = run_with(
         concat!(
             "try {\n",
-            "  readTextFile(\"missing.ts\");\n",
+            "  fs.readTextFile(\"missing.ts\");\n",
             "} catch (e) {\n",
             "  console.log(JSON.stringify({ code: e.code, tool: e.tool, caught: true }));\n",
             "}\n",
@@ -92,7 +92,7 @@ fn program_faults_are_reported_not_trapped() {
     let (outcome, _) = run_with(
         concat!(
             "try {\n",
-            "  editFile(\"a.ts\", \"x\", \"y\");\n",
+            "  fs.editFile(\"a.ts\", \"x\", \"y\");\n",
             "} catch (e) {\n",
             "  console.log(JSON.stringify({ direct: JSON.parse(JSON.stringify(e)), inArray: [e] }));\n",
             "}\n",
@@ -126,12 +126,12 @@ fn program_faults_are_reported_not_trapped() {
         "and it must survive nested inside a logged structure"
     );
 
-    // A tool this run WITHHELD is an undefined identifier, not a call that travels to the host to be
-    // refused — and the message answers the question the model is about to ask by listing the names
+    // A capability this run WITHHELD is a missing object, not a call that travels to the host to be
+    // refused — and the message answers the question the model is about to ask by listing the objects
     // it does have. `ToolError` is deliberately not among them: it is catchable, not callable.
     let (outcome, log) = run_with(
-        "return listDir(\"src\");",
-        &["shell".to_string(), "read_file".to_string()],
+        "return fs.listDir(\"src\");",
+        &["shell".to_string()],
         SandboxLimits::default(),
         canned_outcome,
     );
@@ -139,13 +139,13 @@ fn program_faults_are_reported_not_trapped() {
     let error = program_error(&outcome);
     assert_eq!(error.kind, ProgramErrorKind::UnknownName);
     assert!(
-        error.message.contains("listDir is not defined"),
+        error.message.contains("fs is not defined"),
         "{}",
         error.message
     );
     assert!(
-        error.message.contains("shell") && error.message.contains("readFile"),
-        "the model must be told what it does have: {}",
+        error.message.contains("system") && error.message.contains("harness"),
+        "the model must be told which objects it does have: {}",
         error.message
     );
     assert!(
@@ -155,7 +155,7 @@ fn program_faults_are_reported_not_trapped() {
     );
     assert!(
         log.calls().is_empty(),
-        "a withheld tool must never reach the loop"
+        "a withheld capability must never reach the loop"
     );
 
     // The three mistakes a model makes because its TypeScript was stripped, not CHECKED. Each is
@@ -163,7 +163,7 @@ fn program_faults_are_reported_not_trapped() {
     //
     // The options object, passed positionally — the shape the native tool-calling schema would have
     // taken. Left alone this silently uses the default and the model never learns.
-    let (outcome, _) = run("shell(\"npm test\", 300);");
+    let (outcome, _) = run("system.shell(\"npm test\", 300);");
     let error = program_error(&outcome);
     assert!(
         error.message.contains("options object"),
@@ -173,7 +173,7 @@ fn program_faults_are_reported_not_trapped() {
 
     // A negative `offset` lowers by two's-complement wrap into 4294967295, and the read then fails
     // for a reason with nothing to do with what was written.
-    let (outcome, _) = run("readFile(\"a.ts\", { offset: -1 });");
+    let (outcome, _) = run("fs.readFile(\"a.ts\", { offset: -1 });");
     let error = program_error(&outcome);
     assert!(
         error.message.contains("whole number between 0 and"),
@@ -183,7 +183,7 @@ fn program_faults_are_reported_not_trapped() {
 
     // An absent `list<T>` record field is defaulted rather than tripping the lowering over an
     // `undefined` with a message that names neither tool nor field.
-    let (outcome, log) = run("addTask({ id: \"t1\", title: \"T\" });");
+    let (outcome, log) = run("tasks.addTask({ id: \"t1\", title: \"T\" });");
     assert!(
         matches!(&outcome.result, Ok(result) if result.error.is_none()),
         "an omitted optional list must simply default: {:?}",
@@ -255,7 +255,7 @@ fn a_bad_return_value_is_explained_rather_than_lost() {
     assert!(error.message.contains("nope"), "{}", error.message);
 
     // And a program that says nothing at all is a clean run — not an error, and not a trap.
-    let (outcome, log) = run("writeFile(\"a.txt\", \"hi\");");
+    let (outcome, log) = run("fs.writeFile(\"a.txt\", \"hi\");");
     match &outcome.result {
         Ok(result) => assert!(result.error.is_none(), "nothing went wrong"),
         Err(error) => panic!("the sandbox failed: {error}"),

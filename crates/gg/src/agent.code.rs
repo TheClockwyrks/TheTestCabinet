@@ -129,6 +129,7 @@ pub(super) async fn run_code_turn(
     turn: &CodeTurn<'_>,
     context: &mut ContextModel,
     skills: &mut SkillsRuntime,
+    docs: &mut DocsRuntime,
     subagents: &mut Option<SubagentContext>,
 ) -> CodeTurnOutcome {
     let emitter = turn.emitter;
@@ -175,6 +176,7 @@ pub(super) async fn run_code_turn(
         turn,
         context,
         skills,
+        docs,
         subagents,
     )
     .await;
@@ -705,6 +707,29 @@ struct CodeToolRequest {
     reply: oneshot::Sender<ToolOutcome>,
 }
 
+/// Everything a code program asks the loop to service, sent from the (blocking) sandbox thread to
+/// the async loop. Most are tool calls; the other two are the [documentation carve-out](crate::docs)
+/// — `object.list()` and `fn.docs()` — which are not tools (no capability offers them) but still
+/// need the loop, because only it holds the run's enabled set and the agent's context.
+enum CodeRequest {
+    /// A tool call to dispatch, gated and recorded exactly as a native one.
+    Tool(CodeToolRequest),
+    /// `object.list()`: the directory of one API object's bound functions.
+    ListFunctions {
+        /// The API object whose directory is wanted (`fs`, `project`, …).
+        object: String,
+        /// Where the directory is delivered back to the blocked sandbox thread.
+        reply: oneshot::Sender<Vec<FunctionSummary>>,
+    },
+    /// `fn.docs()` / `harness.readDocs(fn)`: one function's full documentation, pinned into context.
+    ReadDocs {
+        /// The function name whose docs are wanted (`readFile`, `finish`).
+        name: String,
+        /// The documentation text, or `None` for a name this run did not bind.
+        reply: oneshot::Sender<Option<String>>,
+    },
+}
+
 /// The [`ToolInvoker`] the loop bridges a code program's tool calls through: it forwards each
 /// `(name, args)` to the async loop over a channel and blocks (on its own blocking thread) for the
 /// serviced [`ToolOutcome`].
@@ -713,9 +738,10 @@ struct CodeToolRequest {
 /// program's **delegation** tool still go through the [scheduler](Scheduler) and its calls still
 /// respect plan-mode read-only and FSM state gating: the loop services each request exactly as it
 /// would an ordinary tool call, streaming the same telemetry and recording the same replay entry.
+/// The two documentation calls ride the same channel so they, too, reach the agent's live context.
 struct ChannelInvoker {
-    /// The channel each tool call is forwarded to the loop on.
-    tx: mpsc::UnboundedSender<CodeToolRequest>,
+    /// The channel each request is forwarded to the loop on.
+    tx: mpsc::UnboundedSender<CodeRequest>,
 }
 
 impl ToolInvoker for ChannelInvoker {
@@ -726,11 +752,11 @@ impl ToolInvoker for ChannelInvoker {
         // program is thrown a typed `io-error` it can tell apart from a real tool failure.
         if self
             .tx
-            .send(CodeToolRequest {
+            .send(CodeRequest::Tool(CodeToolRequest {
                 name: name.to_string(),
                 args,
                 reply: reply_tx,
-            })
+            }))
             .is_err()
         {
             return ToolOutcome::failed(
@@ -746,6 +772,40 @@ impl ToolInvoker for ChannelInvoker {
                 "the code sandbox's tool bridge was dropped before the call returned.",
             )
         })
+    }
+
+    fn list_functions(&mut self, object: &str) -> Vec<FunctionSummary> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        // A broken bridge yields an empty directory rather than an error: `object.list()` is a
+        // discovery aid, and an empty list is a truthful (if unhelpful) answer to it.
+        if self
+            .tx
+            .send(CodeRequest::ListFunctions {
+                object: object.to_string(),
+                reply: reply_tx,
+            })
+            .is_err()
+        {
+            return Vec::new();
+        }
+        reply_rx.blocking_recv().unwrap_or_default()
+    }
+
+    fn read_docs(&mut self, name: &str) -> Option<String> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        // A broken bridge yields `None`, which the membrane renders as `not-found` — the same
+        // failure the program would see for a name that does not exist.
+        if self
+            .tx
+            .send(CodeRequest::ReadDocs {
+                name: name.to_string(),
+                reply: reply_tx,
+            })
+            .is_err()
+        {
+            return None;
+        }
+        reply_rx.blocking_recv().ok().flatten()
     }
 }
 
@@ -776,6 +836,7 @@ impl ToolInvoker for ChannelInvoker {
 /// put forty files in the window — consuming reads inside the program instead of the context is one
 /// of the reasons responses-as-code exists. The pictures a read produced still reach the model:
 /// they ride out on [`SandboxOutcome::images`] and are attached to the turn's feedback.
+#[allow(clippy::too_many_arguments)]
 async fn run_code_program(
     source: &str,
     limits: SandboxLimits,
@@ -783,10 +844,11 @@ async fn run_code_program(
     turn: &CodeTurn<'_>,
     context: &mut ContextModel,
     skills: &mut SkillsRuntime,
+    docs: &mut DocsRuntime,
     subagents: &mut Option<SubagentContext>,
 ) -> SandboxOutcome {
     let emitter = turn.emitter;
-    let (tx, mut rx) = mpsc::unbounded_channel::<CodeToolRequest>();
+    let (tx, mut rx) = mpsc::unbounded_channel::<CodeRequest>();
     let program = source.to_string();
     // The tools bound into the program's scope: the run's offered toolset minus the turn-level
     // transitions. Derived from the same registry the system prompt was rendered from, so the
@@ -814,7 +876,7 @@ async fn run_code_program(
             joined = &mut sandbox => break joined,
         };
         match request {
-            Some(request) => {
+            Some(CodeRequest::Tool(request)) => {
                 // The synthetic call id is ordinal-keyed so it is unique **within a turn**: a
                 // program that calls one tool twice would otherwise produce two records under one
                 // id, which is wrong for anything keyed by it (the replay driver, most of all).
@@ -890,6 +952,24 @@ async fn run_code_program(
                 pin_read_skill(context, skills, &call, &outcome, emitter);
 
                 let _ = request.reply.send(outcome);
+            }
+            // `object.list()`: a directory of one object's functions. No dispatch, no telemetry, no
+            // roster entry — it is discovery, not a tool call — so it is answered straight from the
+            // docs runtime, which knows the run's enabled set.
+            Some(CodeRequest::ListFunctions { object, reply }) => {
+                let _ = reply.send(docs.list(&object));
+            }
+            // `fn.docs()` / `harness.readDocs(fn)`: one function's documentation. A fresh lookup is
+            // pinned into context (retained across compaction) exactly as a read skill is, so the
+            // model keeps it across turns; a repeat lookup hands the text back and pins nothing.
+            Some(CodeRequest::ReadDocs { name, reply }) => {
+                let text = docs.read(&name).map(|read| {
+                    if read.fresh {
+                        pin_docs(context, &read.text);
+                    }
+                    read.text
+                });
+                let _ = reply.send(text);
             }
             None => break (&mut sandbox).await,
         }
@@ -975,6 +1055,28 @@ fn pin_read_skill(
             emitter.emit(state);
         }
     }
+}
+
+/// Pin a fresh `fn.docs()` lookup into the context — the documentation counterpart of
+/// [`pin_read_skill`].
+///
+/// Documentation the model asked for is reference material it should keep, so it is pinned
+/// (retained verbatim across a compaction boundary) rather than left in the summarizable history —
+/// exactly as a read skill is. It is pinned as a standalone `user` message for the same reason a
+/// read skill is: a code turn's assistant message carries no native `tool_calls`, so there is no
+/// call for a `tool` message to answer.
+///
+/// It reuses the [`Skill`](GgContextSource::Skill) source rather than adding a context source of its
+/// own: a read skill and a fetched doc are the same *kind* of thing — authored reference material
+/// the model pulled in on demand and keeps across compaction — so they share the one band. The
+/// [`DocsRuntime`] is what guarantees the pin happens at most once per function; this only records
+/// the block it was handed.
+fn pin_docs(context: &mut ContextModel, text: &str) {
+    context.push(
+        GgContextSource::Skill,
+        Retention::Pinned,
+        Message::user(text.to_string()),
+    );
 }
 
 /// Service one tool call a code program made — the code-mode counterpart of the tool-calling loop's

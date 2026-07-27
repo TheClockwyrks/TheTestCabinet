@@ -80,11 +80,10 @@ pub(crate) struct ToolSignature {
     /// The gg tool name (`read_file`), which is what the run's enabled set is expressed in.
     pub tool: String,
     /// The function name a program calls (`readFile`).
-    #[allow(
-        dead_code,
-        reason = "the prompt renders the full signature, which already contains this name"
-    )]
     pub js: String,
+    /// The API object this function is grouped under in a program's scope (`fs`) — what
+    /// `object.list()` enumerates and what `readDocs` routes by.
+    pub object: String,
     /// The full TypeScript signature, as the SDK declares it.
     pub signature: String,
     /// The SDK's own one-paragraph documentation for the function.
@@ -105,6 +104,8 @@ pub(crate) struct ToolSignature {
 pub(crate) struct SessionSignature {
     /// The function name a program calls (`finish`).
     pub js: String,
+    /// The API object this function is grouped under (`harness`).
+    pub object: String,
     /// The full TypeScript signature, as the SDK declares it — `finish(summary: string): void`.
     /// The `void` is load-bearing prompt text: it tells a model at a glance that the call returns
     /// like any other, so what follows it still runs.
@@ -125,6 +126,8 @@ pub(crate) struct HelperSignature {
     pub requires: String,
     /// The function name a program calls (`readTextFile`).
     pub js: String,
+    /// The API object this helper is grouped under — the same object as the tool it wraps (`fs`).
+    pub object: String,
     /// The full TypeScript signature.
     pub signature: String,
     /// The SDK's own documentation.
@@ -375,6 +378,97 @@ pub fn prompt_views(enabled: &[String]) -> PromptViews {
         types,
         teaching: code_teaching(&offered),
     }
+}
+
+/// One documented function as the [docs carve-out](crate::docs) sees it: the object it lives on, the
+/// name a program calls it by, the gg tool whose being enabled gates it, and everything a doc lookup
+/// renders.
+///
+/// It is the catalogue projected for a purpose the prompt does not serve: the model asks for one
+/// function's documentation on demand (`fs.readFile.docs()`), rather than being shown every
+/// signature up front. The prose is the SDK's own JSDoc, reflected here exactly as the prompt's was.
+pub struct CatalogueFunction {
+    /// The API object it is grouped under (`fs`).
+    pub object: &'static str,
+    /// The name a program calls it by (`readFile`) — what `readDocs` is keyed on.
+    pub name: &'static str,
+    /// The gg tool whose being enabled gates this function; `None` for a carve-out that is always
+    /// bound (`finish`).
+    pub gate: Option<&'static str>,
+    /// The one-line summary `object.list()` shows — the first sentence of the documentation.
+    pub summary: &'static str,
+    /// The full TypeScript signature.
+    pub signature: &'static str,
+    /// The SDK's own paragraph of documentation.
+    pub doc: &'static str,
+    /// The type names this function's signature refers to, transitively closed.
+    pub types: &'static [String],
+}
+
+/// The first sentence of a documentation paragraph — up to and including the first period that ends
+/// one — for the one-line summary a directory lists. The whole text when it has no sentence break.
+fn first_sentence(doc: &'static str) -> &'static str {
+    let bytes = doc.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'.' && (i + 1 == bytes.len() || bytes[i + 1] == b' ') {
+            return doc[..=i].trim_end();
+        }
+        i += 1;
+    }
+    doc
+}
+
+/// Every function the committed catalogue documents — `finish`, the tools, and the one helper — each
+/// projected as a [`CatalogueFunction`]. The docs runtime filters these by the run's enabled set and
+/// adds the two meta functions (`list`, `readDocs`) itself, since those are the carve-out's own and
+/// have no catalogue entry.
+pub fn catalogue_functions() -> Vec<CatalogueFunction> {
+    let catalogue = catalogue();
+    let mut functions = Vec::with_capacity(catalogue.tools.len() + catalogue.helpers.len() + 1);
+    let session = &catalogue.session;
+    functions.push(CatalogueFunction {
+        object: session.object.as_str(),
+        name: session.js.as_str(),
+        gate: None,
+        summary: first_sentence(&session.doc),
+        signature: session.signature.as_str(),
+        doc: session.doc.as_str(),
+        types: session.types.as_slice(),
+    });
+    for tool in &catalogue.tools {
+        functions.push(CatalogueFunction {
+            object: tool.object.as_str(),
+            name: tool.js.as_str(),
+            gate: Some(tool.tool.as_str()),
+            summary: first_sentence(&tool.doc),
+            signature: tool.signature.as_str(),
+            doc: tool.doc.as_str(),
+            types: tool.types.as_slice(),
+        });
+    }
+    for helper in &catalogue.helpers {
+        functions.push(CatalogueFunction {
+            object: helper.object.as_str(),
+            name: helper.js.as_str(),
+            gate: Some(helper.requires.as_str()),
+            summary: first_sentence(&helper.doc),
+            signature: helper.signature.as_str(),
+            doc: helper.doc.as_str(),
+            types: helper.types.as_slice(),
+        });
+    }
+    functions
+}
+
+/// The declaration of one catalogued type, by name — what a doc lookup appends for a referenced type
+/// the session has not already been shown.
+pub fn type_declaration(name: &str) -> Option<&'static str> {
+    catalogue()
+        .types
+        .iter()
+        .find(|declaration| declaration.name == name)
+        .map(|declaration| declaration.declaration.as_str())
 }
 
 /// Which pieces of tool-specific teaching `offered` licenses.

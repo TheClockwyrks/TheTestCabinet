@@ -281,7 +281,7 @@ fn code_set(model_id: &str, params: serde_json::Value) -> GgCapabilitySet {
 ///
 /// There is no prose turn that could end one and there cannot be: under this protocol every reply is
 /// a program, so a reply that is not code is a failed turn rather than a conclusion.
-const FINISHING_PROGRAM: &str = "finish(\"done\");";
+const FINISHING_PROGRAM: &str = "harness.finish(\"done\");";
 const FINISHING_SUMMARY: &str = "done";
 
 /// A fuel ceiling high enough for the guest engine to start (its own setup floor is a few million)
@@ -1142,24 +1142,44 @@ async fn drive_ends_auth_error_when_the_credential_is_refused() {
 // Prompt and accounting helpers
 // ---------------------------------------------------------------------------
 
-/// The system prompt lists the enabled tools, and notes when none are available. (What each
-/// capability's section *says* is covered by the [prompt template tests](crate::prompts); this
-/// covers the wiring from a run's registry and runtimes into the rendering context.)
+/// Under responses-as-code the system prompt names the API objects a program has — one per module
+/// with a bound function — rather than listing every tool. It never lists the tool *functions*: the
+/// model discovers those with `object.list()` and `fn.docs()`. `harness` is always named, since it
+/// carries `finish` whatever a run enables. (What each capability's section *says* is covered by the
+/// [prompt template tests](crate::prompts); this covers the wiring from a run's registry into the
+/// rendering context.)
 #[test]
-fn system_prompt_reflects_the_offered_tools() {
+fn system_prompt_names_the_api_objects_in_code_mode() {
     let runtimes = DisabledRuntimes::new();
     let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/x").root());
-    let full = system_prompt(runtimes.inputs(&registry));
-    assert!(full.contains("write_file"));
-    assert!(full.contains("shell"));
+    let full = system_prompt(PromptInputs {
+        responses_as_code: true,
+        ..runtimes.inputs(&registry)
+    });
+    // The file and shell objects are present (the minimal set binds their tools); the harness object
+    // always is. The prompt teaches discovery, not a tool list.
+    assert!(full.contains("`fs`"), "{full}");
+    assert!(full.contains("`system`"), "{full}");
+    assert!(full.contains("`harness`"), "{full}");
+    assert!(full.contains(".list()"), "{full}");
+    assert!(full.contains(".docs()"), "{full}");
+    // No tool function is spelled out in the prompt.
+    assert!(!full.contains("writeFile"), "{full}");
+    assert!(!full.contains("write_file"), "{full}");
 
+    // A run that enables nothing still has `harness` (and so `finish`), and no workspace objects.
     let empty_set = GgAgentConfig {
         capabilities: Vec::new(),
         ..GgAgentConfig::root()
     };
     let empty_registry = ToolRegistry::from_capabilities(&empty_set);
-    let empty = system_prompt(runtimes.inputs(&empty_registry));
-    assert!(empty.contains("no tools"));
+    let empty = system_prompt(PromptInputs {
+        responses_as_code: true,
+        ..runtimes.inputs(&empty_registry)
+    });
+    assert!(empty.contains("`harness`"), "{empty}");
+    assert!(!empty.contains("`fs`"), "{empty}");
+    assert!(!empty.contains("`system`"), "{empty}");
 }
 
 /// The system prompt states the run's `read_file` line cap — a per-run configuration value the
@@ -1188,12 +1208,6 @@ fn system_prompt_states_the_configured_read_cap() {
     // The default (unlimited) mode says nothing about a cap.
     let uncapped = system_prompt(runtimes.inputs(&registry));
     assert!(!uncapped.contains("42 lines"));
-}
-
-/// A rendered prompt with every run of whitespace collapsed to one space, so a phrase check
-/// does not depend on where the template happens to hard-wrap.
-fn flat(rendered: &str) -> String {
-    rendered.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// The four PNG magic bytes plus a little payload, so `sniff_image` recognizes it as a picture.
@@ -1316,17 +1330,16 @@ fn system_prompt_states_whether_images_can_be_seen() {
 
     let seeing = DisabledRuntimes::new();
     let prompt = system_prompt(seeing.inputs(&registry));
-    assert!(flat(&prompt).contains("You can **see images**"), "{prompt}");
+    assert!(prompt.contains("Reading images is supported."), "{prompt}");
 
-    // A model the catalog declared text-only is told so, and told that retrying will not
-    // help — the alternative is it learning that one wasted read at a time.
+    // A model the catalog declared text-only is told so, plainly — a fact about the run, stated
+    // without narration about "the model you are running on".
     let blind = DisabledRuntimes::text_only("mock/x");
     let prompt = system_prompt(blind.inputs(&registry));
     assert!(
-        flat(&prompt).contains("You **cannot see images**"),
+        prompt.contains("Reading images is not supported."),
         "{prompt}"
     );
-    assert!(prompt.contains("will not change that"), "{prompt}");
 }
 
 /// With `read_file` withheld entirely, the prompt says nothing about images either way —
@@ -1341,7 +1354,7 @@ fn system_prompt_omits_image_guidance_without_read_file() {
     let registry = ToolRegistry::from_run(set.root(), &RuntimeSet::new(&library));
 
     let prompt = system_prompt(DisabledRuntimes::new().inputs(&registry));
-    assert!(!prompt.contains("see images"), "{prompt}");
+    assert!(!prompt.contains("Reading images"), "{prompt}");
 }
 
 /// Every capability runtime, disabled — owned by the caller so a prompt test can borrow

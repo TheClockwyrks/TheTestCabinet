@@ -229,8 +229,17 @@ function reflect(js, expectedFile, { functions, types }) {
 
 /** Build the whole catalogue. */
 async function build() {
-  const { TOOL_CATALOGUE, HELPER_CATALOGUE, SESSION_ENTRY } = await loadCatalogue();
+  const { TOOL_CATALOGUE, HELPER_CATALOGUE, SESSION_ENTRY, OBJECT_FOR_MODULE } =
+    await loadCatalogue();
   const declarations = index(await loadHeaders());
+  // The API object a module's functions are grouped under in a program's scope. The host groups the
+  // catalogue by this to build each object's `list()` directory and to route `readDocs`.
+  const objectForModule = (module) => {
+    const object = OBJECT_FOR_MODULE[module];
+    if (!object) throw new Error(`module \`${module}\` has no API object in OBJECT_FOR_MODULE.`);
+    return object;
+  };
+  const moduleForTool = (tool) => TOOL_CATALOGUE.find((entry) => entry.tool === tool)?.module;
 
   /** @type {Set<string>} */
   const used = new Set(referencedTypes(ALWAYS_INCLUDED_TYPE, declarations.types));
@@ -244,6 +253,7 @@ async function build() {
   for (const name of ending.referenced) used.add(name);
   const session = {
     js: SESSION_ENTRY.js,
+    object: objectForModule(SESSION_ENTRY.module),
     signature: ending.signature,
     doc: ending.doc,
     types: sorted(ending.referenced),
@@ -256,13 +266,29 @@ async function build() {
       declarations,
     );
     for (const name of referenced) used.add(name);
-    return { tool: entry.tool, js: entry.js, signature, doc, types: sorted(referenced) };
+    return {
+      tool: entry.tool,
+      js: entry.js,
+      object: objectForModule(entry.module),
+      signature,
+      doc,
+      types: sorted(referenced),
+    };
   });
 
   const helpers = HELPER_CATALOGUE.map((entry) => {
     const { signature, doc, referenced } = reflect(entry.js, "helpers.d.ts", declarations);
     for (const name of referenced) used.add(name);
-    return { requires: entry.requires, js: entry.js, signature, doc, types: sorted(referenced) };
+    const module = moduleForTool(entry.requires);
+    if (!module) throw new Error(`helper \`${entry.js}\` requires unknown tool \`${entry.requires}\`.`);
+    return {
+      requires: entry.requires,
+      js: entry.js,
+      object: objectForModule(module),
+      signature,
+      doc,
+      types: sorted(referenced),
+    };
   });
 
   const types = sorted(used).map((name) => ({

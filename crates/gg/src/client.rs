@@ -1686,12 +1686,12 @@ impl MockClient {
         // file per `.txt` name, skipping the `.md` one.
         let program = ModelResponse {
             text: Some(format!(
-                "const entries = listDir(\".\");\n\
+                "const entries = fs.listDir(\".\");\n\
                  const names: string[] = [\"{}\", \"{}\", \"notes.md\", \"{}\"];\n\
                  const written: string[] = [];\n\
                  for (const name of names) {{\n\
                  \x20 if (name.endsWith(\".txt\")) {{\n\
-                 \x20   writeFile(name, \"level data\");\n\
+                 \x20   fs.writeFile(name, \"level data\");\n\
                  \x20   written.push(name);\n\
                  \x20 }}\n\
                  }}\n\
@@ -1709,7 +1709,7 @@ impl MockClient {
         };
         let finish = ModelResponse {
             text: Some(
-                "finish(\"The level files are written; the game scaffold is complete.\");"
+                "harness.finish(\"The level files are written; the game scaffold is complete.\");"
                     .to_string(),
             ),
             tool_calls: Vec::new(),
@@ -1745,7 +1745,9 @@ impl MockClient {
             cost: None,
         };
         let finish = ModelResponse {
-            text: Some("finish(\"I kept the scaffold simple; the game is ready.\");".to_string()),
+            text: Some(
+                "harness.finish(\"I kept the scaffold simple; the game is ready.\");".to_string(),
+            ),
             tool_calls: Vec::new(),
             finish_reason: FinishReason::Stop,
             usage,
@@ -1758,8 +1760,8 @@ impl MockClient {
     /// subagent and waits for it, proving a program's delegation tool still goes through the
     /// scheduler.
     ///
-    /// 1. a first turn emitting a TypeScript program that calls `spawnSubagent({ prompt, slot })`
-    ///    then `waitForSubagents()` (composed in one program) and returns the collected summaries;
+    /// 1. a first turn emitting a TypeScript program that calls `agents.spawnSubagent({ prompt, slot })`
+    ///    then `agents.waitForSubagents()` (composed in one program) and returns the collected summaries;
     /// 2. a second program that calls `finish`, ending the session.
     ///
     /// Pairs with [`with_responses_as_code_child_script`](Self::with_responses_as_code_child_script)
@@ -1773,8 +1775,8 @@ impl MockClient {
         };
         let program = ModelResponse {
             text: Some(
-                "const child = spawnSubagent({ agent: \"subagent\", prompt: \"Write the greeting file.\" });\n\
-                 const results = waitForSubagents([child.id]);\n\
+                "const child = agents.spawnSubagent({ agent: \"subagent\", prompt: \"Write the greeting file.\" });\n\
+                 const results = agents.waitForSubagents([child.id]);\n\
                  return results.map((r) => r.summary);"
                     .to_string(),
             ),
@@ -1784,7 +1786,9 @@ impl MockClient {
             cost: None,
         };
         let finish = ModelResponse {
-            text: Some("finish(\"The subagent finished; the greeting is in place.\");".to_string()),
+            text: Some(
+                "harness.finish(\"The subagent finished; the greeting is in place.\");".to_string(),
+            ),
             tool_calls: Vec::new(),
             finish_reason: FinishReason::Stop,
             usage: usage(1000, 40),
@@ -1796,7 +1800,7 @@ impl MockClient {
     /// The **responses-as-code child** side of the code-mode delegation e2e: a program that writes
     /// [`MOCK_SUBAGENT_FILE`] (its observable work) then returns a distinctive value.
     ///
-    /// 1. a first turn emitting a TypeScript program that calls `writeFile(..)` and returns;
+    /// 1. a first turn emitting a TypeScript program that calls `fs.writeFile(..)` and returns;
     /// 2. a second program that calls `finish` with [`MOCK_SUBAGENT_RETURN`] — the summary that ends
     ///    its session and is the value its spawner collects.
     pub fn with_responses_as_code_child_script(model_id: impl Into<String>) -> Self {
@@ -1808,7 +1812,7 @@ impl MockClient {
         };
         let program = ModelResponse {
             text: Some(format!(
-                "writeFile(\"{MOCK_SUBAGENT_FILE}\", \"hello from the subagent\\n\");\n\
+                "fs.writeFile(\"{MOCK_SUBAGENT_FILE}\", \"hello from the subagent\\n\");\n\
                  return \"wrote the greeting\";"
             )),
             tool_calls: Vec::new(),
@@ -1818,7 +1822,7 @@ impl MockClient {
         };
         let finish = ModelResponse {
             text: Some(format!(
-                "finish({});",
+                "harness.finish({});",
                 serde_json::json!(MOCK_SUBAGENT_RETURN)
             )),
             tool_calls: Vec::new(),

@@ -33,6 +33,33 @@ pub trait ToolInvoker: Send {
     /// failed [`ToolOutcome`], which the membrane turns into a typed `tool-error` the program can
     /// catch.
     fn invoke(&mut self, name: &str, args: Value) -> ToolOutcome;
+
+    /// List the [documented functions](FunctionSummary) on one API object (`fs`, `project`, …),
+    /// each with a one-line summary — the directory `object.list()` returns. Only the functions this
+    /// run actually bound are listed. An unknown object is an empty list.
+    ///
+    /// This is a [documentation carve-out](crate::docs), not a tool: no capability offers it, it
+    /// dispatches nothing through [`invoke`](Self::invoke), and it is bound into every program's
+    /// scope whatever a run enables.
+    fn list_functions(&mut self, object: &str) -> Vec<FunctionSummary>;
+
+    /// The full documentation for one function by the name it is called by (`readFile`, `finish`):
+    /// its signature, its description, and the declarations of any types it refers to that have not
+    /// already been shown this session. Also injects a durable copy into the agent's context.
+    /// `None` for an unknown name, which the membrane turns into a `not-found`.
+    fn read_docs(&mut self, name: &str) -> Option<String>;
+}
+
+/// One function in an API object's directory, as [`list_functions`](ToolInvoker::list_functions)
+/// returns it: the name a program calls it by and a one-line summary. The host counterpart of the
+/// guest's `FunctionSummary` WIT record, kept free of the bindgen types so the trait has no
+/// dependency on the generated membrane.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunctionSummary {
+    /// The function name on its object — `readFile` in `fs.readFile(...)`.
+    pub name: String,
+    /// A one-line description of what the function does.
+    pub summary: String,
 }
 
 /// One tool call a program made and the loop serviced — the composed-calls record the loop feeds

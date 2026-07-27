@@ -498,6 +498,41 @@ interface session {
     finish: func(summary: string) -> result<_, tool-error>;
 }
 
+/// Documentation lookup — the second model-facing carve-out, and like `session` NOT a gg tool.
+///
+/// No capability offers it and it dispatches nothing through the tool seam. It is bound into every
+/// program's scope so a model can always discover the functions it has and read what they do,
+/// whatever a run enables. It is kept out of the tool interfaces for the same reason `session` is:
+/// so the one-to-one correspondence they hold with `ALL_TOOL_NAMES` (crates/gg/src/tools/mod.rs) is
+/// not perturbed by it.
+interface docs {
+    use types.{tool-error};
+
+    /// One function in an API object's directory: the name a program calls it by, and a one-line
+    /// summary of what it does.
+    record function-summary {
+        /// The function name on its object — `readFile` in `fs.readFile(...)`.
+        name: string,
+        /// A one-line description of what the function does.
+        summary: string,
+    }
+
+    /// List the callable functions on one API object (`fs`, `project`, `harness`, …), each with a
+    /// one-line summary. Only the functions THIS run actually bound are returned, so the directory
+    /// is never a promise the scope cannot keep. An unknown object name returns an empty list.
+    list-functions: func(object: string) -> list<function-summary>;
+
+    /// The full documentation for one function, addressed by the name it is called by (`readFile`,
+    /// `createIssue`, `finish`): its signature, its description, and the declarations of any types it
+    /// refers to that have NOT already been shown this session.
+    ///
+    /// It also INJECTS a durable copy of that documentation into the agent's context, exactly as
+    /// reading a skill pins the skill, so the model keeps it across turns without re-fetching. The
+    /// returned string is that same text, so a program may use it in the turn it asked. An unknown
+    /// name is `not-found`.
+    read-docs: func(name: string) -> result<string, tool-error>;
+}
+
 /// Delegating work to child agents.
 interface delegation {
     use types.{tool-error};
@@ -691,6 +726,7 @@ world sandbox {
     import context;
     import turns;
     import session;
+    import docs;
     import delegation;
     import feedback;
 

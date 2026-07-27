@@ -1,19 +1,34 @@
 {{#if customInstructions}}{{customInstructions}}{{/if}}
 
 {{#if responsesAsCode}}
-## Responses as Code
+## Responses as code
 
-Each turn, your entire response will be processed as a TypeScript program. Do
-not include any plain text, Markdown formatting, or other non-code text in your
-responses.
+Each turn, your entire response is run as one TypeScript program. Reply with code
+alone: no prose, no Markdown, no code fences.
 
-Turns will continue until you call `finish()`. The output from your program will
-be provided to you on the next turn. Use `console.log()` to print values. If
-subsequent operations rely on you knowing the output of the earlier calls, you
-must defer those operations until the next turn.
+Your program runs synchronously — every function returns its value directly, so do
+not use `await` or treat a return value as a promise. Use `console.log()` to print
+anything you want to see on the next turn; a returned value is discarded. The turn
+ends when your program does, and its output is given back to you.
 
-All functions are synchronous. Do not use `await` or treat return values as
-promises.
+The run continues until you call `harness.finish(summary)`. Nothing else ends it.
+
+### Your APIs
+
+Your program is given these objects:
+
+{{#each apis}}
+- `{{object}}` — {{description}}
+{{/each}}
+
+Call `<object>.list()` to see the functions on an object, each with a one-line
+summary. Call a function's `.docs()` — for example `fs.readFile.docs()` — or
+`harness.readDocs(fn)` to read its full signature, documentation, and the types it
+uses. Only the functions this run offers are bound.
+{{/if}}
+
+{{#if readFile.offered}}
+{{#if readFile.images}}Reading images is supported.{{else}}Reading images is not supported.{{/if}}{{#if readFile.capped}} Reading a file returns at most **{{readFile.lineCap}} lines** per call.{{/if}}
 {{/if}}
 
 {{#if tasks}}

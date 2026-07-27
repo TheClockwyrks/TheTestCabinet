@@ -2,6 +2,7 @@
   "generatedFrom": "packages/gg-sandbox/src",
   "session": {
     "js": "finish",
+    "object": "harness",
     "signature": "finish(summary: string): void",
     "doc": "End this run. The `summary` is gg's final word on the task: what you did, in a sentence or two. This is the ONLY thing that ends a run — prose does not, an empty reply does not. It does NOT stop your program: it returns like any other call, and whatever you write after it still runs, so call it last, from a program that has just checked with the tools that the work is really done. If your program then fails, the ending is cancelled and you get another turn.",
     "types": []
@@ -10,6 +11,7 @@
     {
       "tool": "shell",
       "js": "shell",
+      "object": "system",
       "signature": "shell(command: string, options?: { timeoutSecs?: number; }): ShellOutput",
       "doc": "Run a command with `sh -c` in the workspace directory and return its merged stdout and stderr. A non-zero exit is NOT a failure — check `exitCode` on the result; only a process that could not be launched, or one the timeout killed, throws. `timeoutSecs` defaults to 120 and is clamped to whatever is left of the run's wall-clock budget.",
       "types": [
@@ -19,6 +21,7 @@
     {
       "tool": "read_file",
       "js": "readFile",
+      "object": "fs",
       "signature": "readFile(path: string, options?: { offset?: number; limit?: number; }): FileRead",
       "doc": "Read a workspace file, returning either `{ kind: \"text\", ... }` or `{ kind: \"image\", ... }` — the format is detected from the file's bytes, never its extension, and an image's pixels are shown to you rather than handed to your program. `offset` and `limit` select a window of lines and are honoured only under a capped read policy. Throws `not-found` for a missing path and `invalid-argument` for one that escapes the workspace.",
       "types": [
@@ -28,6 +31,7 @@
     {
       "tool": "write_file",
       "js": "writeFile",
+      "object": "fs",
       "signature": "writeFile(path: string, contents: string): number",
       "doc": "Write UTF-8 text to a workspace file, creating parent directories and replacing any existing file, and return the number of bytes written. Writing is the expensive direction of the sandbox — rewriting more than a few dozen large files in one program exhausts its fuel budget, so split a large rewrite across several turns.",
       "types": []
@@ -35,6 +39,7 @@
     {
       "tool": "edit_file",
       "js": "editFile",
+      "object": "fs",
       "signature": "editFile(path: string, oldString: string, newString: string): void",
       "doc": "Replace the one exact occurrence of `oldString` in a workspace file with `newString`. Throws `not-found` when the text does not appear and `conflict` — with the number of matches — when it appears more than once; widen the surrounding context until the match is unique.",
       "types": []
@@ -42,6 +47,7 @@
     {
       "tool": "list_dir",
       "js": "listDir",
+      "object": "fs",
       "signature": "listDir(path?: string): DirEntry[]",
       "doc": "List a workspace directory, sorted by name; defaults to the workspace root. Each entry carries a bare `name` — join it with the directory you listed — and its `kind`. An empty directory is an empty array, not a failure.",
       "types": [
@@ -51,6 +57,7 @@
     {
       "tool": "read_skill",
       "js": "readSkill",
+      "object": "skills",
       "signature": "readSkill(name: string): string",
       "doc": "Read an authored skill by name and return its body with the front matter stripped; reading it also pins it permanently into your context, exactly as the native `read_skill` does. Throws `not-found` — listing the skills that do exist — when the name is unknown.",
       "types": []
@@ -58,6 +65,7 @@
     {
       "tool": "write_memory",
       "js": "writeMemory",
+      "object": "memory",
       "signature": "writeMemory(memory: { name: string; description: string; body: string; }): MemoryUsage",
       "doc": "Record a durable memory that survives context compaction, and return how much of the memory budget is now used. Throws `conflict` on a duplicate name and `limit-exceeded` when the body would breach the run's caps — revise or delete a memory rather than accruing more.",
       "types": [
@@ -67,6 +75,7 @@
     {
       "tool": "update_memory",
       "js": "updateMemory",
+      "object": "memory",
       "signature": "updateMemory(memory: { name: string; description: string; body: string; }): MemoryUsage",
       "doc": "Replace an existing memory's description and body, keyed on its `name`, and return the memory budget. Throws `not-found` when no memory has that name.",
       "types": [
@@ -76,6 +85,7 @@
     {
       "tool": "delete_memory",
       "js": "deleteMemory",
+      "object": "memory",
       "signature": "deleteMemory(name: string): MemoryUsage",
       "doc": "Evict a memory by name, freeing room in the budget, and return what is left in use. Throws `not-found` when no memory has that name.",
       "types": [
@@ -85,6 +95,7 @@
     {
       "tool": "add_task",
       "js": "addTask",
+      "object": "tasks",
       "signature": "addTask(task: { id: string; title: string; description?: string; blockedBy?: string[]; }): TaskUsage",
       "doc": "Add a task to the task DAG and return the task budget. `blockedBy` names the tasks that must finish before this one and defaults to none. Throws `conflict` on a duplicate id or on an edge that would close a cycle.",
       "types": [
@@ -94,6 +105,7 @@
     {
       "tool": "update_task",
       "js": "updateTask",
+      "object": "tasks",
       "signature": "updateTask(id: string, patch: { title?: string; description?: string | null; status?: TaskStatus; }): void",
       "doc": "Revise a task's title, description and/or status; supply at least one. An omitted `description` leaves it alone, `null` clears it, and a string replaces it. Throws `not-found` for an unknown id.",
       "types": [
@@ -103,6 +115,7 @@
     {
       "tool": "set_blocked_by",
       "js": "setBlockedBy",
+      "object": "tasks",
       "signature": "setBlockedBy(id: string, blockedBy: string[]): void",
       "doc": "Replace a task's whole blocker set; an empty array clears every blocker. Throws `not-found` for an unknown id and `conflict` when an edge would close a cycle.",
       "types": []
@@ -110,6 +123,7 @@
     {
       "tool": "complete_task",
       "js": "completeTask",
+      "object": "tasks",
       "signature": "completeTask(id: string): void",
       "doc": "Mark a task done. Tasks it was blocking become actionable once every one of their blockers is done. Throws `not-found` for an unknown id.",
       "types": []
@@ -117,6 +131,7 @@
     {
       "tool": "remove_task",
       "js": "removeTask",
+      "object": "tasks",
       "signature": "removeTask(id: string): TaskUsage",
       "doc": "Remove a task and every blocker edge pointing at it, and return the task budget. Throws `not-found` for an unknown id.",
       "types": [
@@ -126,6 +141,7 @@
     {
       "tool": "create_epic",
       "js": "createEpic",
+      "object": "project",
       "signature": "createEpic(epic: { id: string; title: string; description: string; }): BoardUsage",
       "doc": "Create an epic to group related issues, and return the board budget. Throws `conflict` on a duplicate id.",
       "types": [
@@ -135,6 +151,7 @@
     {
       "tool": "create_issue",
       "js": "createIssue",
+      "object": "project",
       "signature": "createIssue(issue: { id: string; title: string; description?: string; inScope: string; outOfScope: string; completionCriteria: string; blockedBy?: string[]; epicId?: string; }): BoardUsage",
       "doc": "Create a self-contained, dispatchable issue and return the board budget. `inScope`, `outOfScope` and `completionCriteria` are what a child agent is briefed from, so write them for a reader with no other context. `blockedBy` defaults to none; `epicId` groups the issue under an existing epic. Throws `conflict` on a duplicate id or a blocker edge that would close a cycle.",
       "types": [
@@ -144,6 +161,7 @@
     {
       "tool": "update_issue",
       "js": "updateIssue",
+      "object": "project",
       "signature": "updateIssue(id: string, patch: { title?: string; description?: string | null; inScope?: string; outOfScope?: string; completionCriteria?: string; status?: IssueStatus; epicId?: string | null; }): void",
       "doc": "Revise an issue; supply at least one field. An omitted field is left alone, `description: null` clears the description, and `epicId: null` detaches the issue from its epic. Throws `not-found` for an unknown id.",
       "types": [
@@ -153,6 +171,7 @@
     {
       "tool": "set_issue_blocked_by",
       "js": "setIssueBlockedBy",
+      "object": "project",
       "signature": "setIssueBlockedBy(id: string, blockedBy: string[]): void",
       "doc": "Replace an issue's whole blocker set; an empty array clears every blocker. Throws `not-found` for an unknown id and `conflict` when an edge would close a cycle.",
       "types": []
@@ -160,6 +179,7 @@
     {
       "tool": "complete_issue",
       "js": "completeIssue",
+      "object": "project",
       "signature": "completeIssue(id: string): CompletionReport",
       "doc": "Mark an issue done and report how it was accepted. With Code Reviews enabled this first runs a gating reviewer subagent, and possibly a fix loop, so it is the one cheap-looking call that can take minutes. Throws `not-found` for an unknown id.",
       "types": [
@@ -169,6 +189,7 @@
     {
       "tool": "remove_epic",
       "js": "removeEpic",
+      "object": "project",
       "signature": "removeEpic(id: string): BoardUsage",
       "doc": "Remove an epic, keeping its issues and ungrouping them, and return the board budget. Throws `not-found` for an unknown id.",
       "types": [
@@ -178,6 +199,7 @@
     {
       "tool": "remove_issue",
       "js": "removeIssue",
+      "object": "project",
       "signature": "removeIssue(id: string): BoardUsage",
       "doc": "Remove an issue and every blocker edge pointing at it, and return the board budget. Throws `not-found` for an unknown id.",
       "types": [
@@ -187,6 +209,7 @@
     {
       "tool": "evict_file_view",
       "js": "evictFileView",
+      "object": "context",
       "signature": "evictFileView(path?: string): ReclaimReport",
       "doc": "Drop the contents of files you have read out of your context window, freeing the tokens they occupy, and report what that reclaimed; omit `path` to drop every file view. The files on disk are untouched — this forgets what you read, not what exists.",
       "types": [
@@ -196,6 +219,7 @@
     {
       "tool": "archive_thread",
       "js": "archiveThread",
+      "object": "context",
       "signature": "archiveThread(keepRecentTurns?: number): ReclaimReport",
       "doc": "Move older thread history out of your context window, keeping the most recent turns (default 1), and report what that reclaimed. Archived history stays searchable with `searchArchive`.",
       "types": [
@@ -205,6 +229,7 @@
     {
       "tool": "search_archive",
       "js": "searchArchive",
+      "object": "context",
       "signature": "searchArchive(query: string): ArchiveSearch",
       "doc": "Search archived history for a case-insensitive substring, most recent first, up to 8 hits. Check `archiveEmpty` before reading `hits`: it distinguishes \"nothing has been archived yet\" from \"the search ran and matched nothing\", so you do not archive again believing the first archive failed.",
       "types": [
@@ -215,6 +240,7 @@
     {
       "tool": "spawn_subagent",
       "js": "spawnSubagent",
+      "object": "agents",
       "signature": "spawnSubagent(request: { agent: string; } & ({ prompt: string; } | { issueId: string; }) & { worktree?: boolean; }): SubagentHandle",
       "doc": "Delegate scoped work to a child agent and return its handle immediately — the child runs in parallel while your program continues. Name the `agent` to run it as (one of the agents you may spawn — the system prompt lists them; it selects the child's model, tools, and instructions) and brief it with exactly one of `prompt` (self-contained instructions) or `issueId` (a board issue); `worktree` runs it in an isolated git worktree merged back on clean completion. Throws `refused` at the delegation depth cap, and `invalid-argument` if `agent` is not one you may spawn.",
       "types": [
@@ -224,6 +250,7 @@
     {
       "tool": "wait_for_subagents",
       "js": "waitForSubagents",
+      "object": "agents",
       "signature": "waitForSubagents(ids?: string[]): SubagentResult[]",
       "doc": "Block until the named children have finished — or, with no argument, until every outstanding child has — and collect their results in dispatch order. The run's wall-clock budget keeps running while you wait, so wait once for many children rather than once per child. Throws `not-found` for an unknown id.",
       "types": [
@@ -234,6 +261,7 @@
     {
       "tool": "send_message",
       "js": "sendMessage",
+      "object": "agents",
       "signature": "sendMessage(agentId: string, message: string): void",
       "doc": "Deliver a message to a running child agent's inbox; it reads the message at its next turn. Throws `not-found` for an unknown agent id and `conflict` when that child has already returned.",
       "types": []
@@ -241,6 +269,7 @@
     {
       "tool": "run_workflow",
       "js": "runWorkflow",
+      "object": "agents",
       "signature": "runWorkflow(stages: { name?: string; prompt: string; items?: string[]; agent: string; worktree?: boolean; }[]): WorkflowReport",
       "doc": "Run a declared multi-stage fan-out as one unit and return the final stage's results. Each stage names the `agent` to run its children as (one of the agents you may spawn), and its `prompt` is a template in which `{{item}}` is the item being worked and `{{prior}}` is the previous stage's collected results; the first stage must supply `items`, and a later stage that omits them fans out over the previous stage's results instead. Blocks until every stage is done.",
       "types": [
@@ -250,6 +279,7 @@
     {
       "tool": "speculate",
       "js": "speculate",
+      "object": "agents",
       "signature": "speculate(request: { agent: string; } & ({ prompt: string; } | { issueId: string; }) & { attempts?: number; approaches?: string[]; }): SpeculationReport",
       "doc": "Attempt the same task K times in parallel isolated worktrees, judge the attempts, then merge the winner and discard the losers. Name the `agent` to run every attempt as (one of the agents you may spawn). `attempts` is clamped to 2–6 and defaults to 2; `approaches` are positional per-attempt hints, and attempts past the end of the list get none. Blocks until the winner is merged.",
       "types": [
@@ -261,6 +291,7 @@
     {
       "requires": "read_file",
       "js": "readTextFile",
+      "object": "fs",
       "signature": "readTextFile(path: string, options?: { offset?: number; limit?: number; }): string",
       "doc": "Read a workspace text file and return its contents directly — `readFile` without the variant narrowing, for the common case. Takes the same `offset`/`limit` window options. Throws `invalid-argument` when the path names a picture; use `readFile` to inspect those.",
       "types": []
