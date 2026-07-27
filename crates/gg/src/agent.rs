@@ -131,7 +131,7 @@ use crate::planning::PlanningRuntime;
 use crate::prompts::{
     self, ApiView, AutoloadView, BoardView, CodeCallView, CodeErrorView, CodeNotAProgramContext,
     CodeResultContext, CodeSandboxErrorContext, CodeTranspileErrorContext, FsmView, MemoriesView,
-    ReadFileView, SpawnableAgentView, SystemContext, TasksView, ToolView,
+    ReadFileView, SpawnableAgentView, SystemContext, TasksView,
 };
 use crate::replay::{GgRecorder, RecordingClient};
 use crate::sandbox::{
@@ -150,11 +150,11 @@ use crate::tools::{
     DEFAULT_ARCHIVE_KEEP_RECENT, ENTER_PLAN_MODE_TOOL, EVICT_FILE_VIEW_TOOL, READ_FILE_TOOL,
     READ_SKILL_TOOL, RUN_WORKFLOW_TOOL, ReadFileTool, ReadPolicy, ReclaimData, RuntimeSet,
     SEND_MESSAGE_TOOL, SPAWN_SUBAGENT_TOOL, SPECULATE_TOOL, SUBMIT_PLAN_TOOL, SpeculationData,
-    SubagentHandleData, SubagentResultData, TURN_LEVEL_TOOLS, Tool, ToolContext, ToolData,
-    ToolFailure, ToolOutcome, ToolRegistry, WAIT_FOR_ISSUE_TOOL, WAIT_FOR_SUBAGENTS_TOOL,
-    WorkflowData, is_board_tool, is_context_reclaim_tool, is_fsm_tool, is_memory_tool,
-    is_planning_tool, is_subagent_tool, is_task_tool, parse_archive_keep_recent, parse_evict_path,
-    plan_mode_offers, read_policy, saturating_u32, saturating_u64, unknown_disabled_tools,
+    SubagentHandleData, SubagentResultData, Tool, ToolContext, ToolData, ToolFailure, ToolOutcome,
+    ToolRegistry, WAIT_FOR_ISSUE_TOOL, WAIT_FOR_SUBAGENTS_TOOL, WorkflowData, is_board_tool,
+    is_context_reclaim_tool, is_fsm_tool, is_memory_tool, is_planning_tool, is_subagent_tool,
+    is_task_tool, parse_archive_keep_recent, parse_evict_path, plan_mode_offers, read_policy,
+    saturating_u32, saturating_u64, unknown_disabled_tools,
 };
 use crate::vision::VisionSupport;
 
@@ -6336,37 +6336,6 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
         Vec::new()
     };
 
-    // The code-mode surface, reflected out of the sandbox SDK's own emitted declarations and
-    // filtered to exactly the tools this run binds into a program's scope — so the prompt can
-    // never describe a signature the sandbox does not have, and a withheld capability contributes
-    // no signature, no helper and no type declaration.
-    let views = sandbox::prompt_views(&scope_tools(registry));
-    let signatures: BTreeMap<&str, &ToolView> = views
-        .tools
-        .iter()
-        .map(|view| (view.name.as_str(), view))
-        .collect();
-    // One view per **offered** tool, in registry order: the tool-calling arm lists every name
-    // (which is what keeps `enter_plan_mode` visible to a run with planning on), while the code arm
-    // renders signatures and skips the entries that have none — precisely the turn-level
-    // transitions, which it names separately as things a program cannot call.
-    let tools: Vec<ToolView> = registry
-        .definitions()
-        .into_iter()
-        .map(|def| {
-            let bound = signatures.get(def.name.as_str());
-            ToolView {
-                signature: bound.map(|view| view.signature.clone()).unwrap_or_default(),
-                doc: bound.map(|view| view.doc.clone()).unwrap_or_default(),
-                name: def.name,
-            }
-        })
-        .collect();
-    let turn_level_tools: Vec<String> = TURN_LEVEL_TOOLS
-        .iter()
-        .filter(|name| registry.offers(name))
-        .map(|name| (*name).to_string())
-        .collect();
     // The read cap is only worth stating when `read_file` is actually offered and actually
     // capped; an unlimited (or withheld) read contributes no prompt text. Whether the model
     // can be shown an image is stated whenever `read_file` is offered at all — a text-only
@@ -6382,7 +6351,6 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
 
     prompts::render_system(
         &SystemContext {
-            tools,
             responses_as_code,
             // The API objects the model can inspect — only under responses-as-code, where a program
             // reaches them by name; the tool-calling path puts the tools in the request instead.
@@ -6400,17 +6368,8 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
                 .filter(|text| !text.is_empty())
                 .map(str::to_string),
             spawnable_agents,
-            // How a program ends the run, shown to every code-mode run whatever it enables — the one
-            // entry here that is not a projection of the enabled set, because no capability offers it
-            // and no ablation withholds it. A tool-calling run is told `None`, and its ending rule is
-            // the untouched "stop calling tools" one.
-            session: responses_as_code.then_some(views.session),
             delegated,
             fences_are_stripped,
-            code: views.teaching,
-            types: views.types,
-            helpers: views.helpers,
-            turn_level_tools,
             read_file,
             skills: skills.prompt_entries(),
             memories: memories.offers_memories().then(|| {

@@ -34,23 +34,20 @@
 //! [`render_memories`]) are then pure **state** — a heading and the current items — rather than
 //! re-teaching the tools on every turn they are refreshed.
 //!
-//! # The one prose gg does not author
+//! # The prompt does not describe the API — the model discovers it
 //!
-//! Under [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) the prompt has to
-//! describe an **API**, and an API description written by hand is an API description that drifts.
-//! So the tool list in that section — every signature, every sentence of documentation, every type
-//! declaration, and the `finish` call that ends the run — is not written here at all: it is
-//! [reflected](crate::sandbox::prompt_views) out of the sandbox SDK's own emitted declarations, and
-//! this module only lays it out. The templates render [`ToolView`] and [`TypeView`], which are the
-//! sandbox's types re-exported, precisely so a field cannot be added to what the prompt shows
-//! without the catalogue being able to fill it.
+//! Under [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) the prompt names the
+//! [API objects](SystemContext::apis) a program has (`fs`, `project`, `harness`, …) and how to
+//! inspect them — `object.list()` and `fn.docs()` — rather than listing every signature up front.
+//! The signatures and documentation live behind the [docs carve-out](crate::docs), reflected from
+//! the SDK's own declarations, so a description the sandbox cannot back can never reach a model.
 //!
 //! # The prose gg *does* author, and why it is versioned like code
 //!
-//! Everything around that list is this stage's product surface: the reply contract (your whole reply
-//! is the program), the ending contract (only `finish` ends a session), and the four turn feedbacks
-//! that answer a program that ran, one that did not compile, one the sandbox stopped, and a reply
-//! that was never a program at all. Each sentence in those exists because a real model got the
+//! What this module renders is this stage's product surface: the reply contract (your whole reply is
+//! the program), the ending contract (only `harness.finish` ends a session), and the four turn
+//! feedbacks that answer a program that ran, one that did not compile, one the sandbox stopped, and a
+//! reply that was never a program at all. Each sentence in those exists because a real model got the
 //! contract wrong without it, so treat them as behaviour: change one only with the same care as a
 //! code change, and keep the tests that pin them.
 
@@ -58,8 +55,6 @@ use std::sync::OnceLock;
 
 use handlebars::{Handlebars, RenderError};
 use serde::Serialize;
-
-pub use crate::sandbox::{CodeTeachingView, ToolView, TypeView};
 
 /// The system prompt: the base framing plus one conditional section per enabled capability.
 const SYSTEM_TEMPLATE: &str = include_str!("../templates/system.hbs");
@@ -232,14 +227,6 @@ fn tidy(rendered: &str) -> String {
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SystemContext {
-    /// The tools offered this run, in registry order. Empty when the capability set offers none
-    /// — the template then tells the model it can only reply in text.
-    ///
-    /// The tool-calling section lists each [`name`](ToolView::name); the code section renders each
-    /// [`signature`](ToolView::signature) and [`doc`](ToolView::doc) instead, and skips an entry
-    /// that has none — which is exactly the three turn-level transitions, named separately in
-    /// [`turn_level_tools`](Self::turn_level_tools) as things a program cannot call.
-    pub tools: Vec<ToolView>,
     /// Whether the run is in [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/)
     /// mode, where the tools are described as functions a program calls rather than as tool calls.
     pub responses_as_code: bool,
@@ -261,20 +248,6 @@ pub struct SystemContext {
     /// `spawn_subagent`/`speculate`/`run_workflow` accept. Empty renders no section.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub spawnable_agents: Vec<SpawnableAgentView>,
-    /// How a program ends the session — `finish`, with the signature and sentence the
-    /// [SDK](crate::sandbox::prompt_views) itself declares for it.
-    ///
-    /// `Some` in code mode and `None` otherwise, which is what the ending section's `{{#if session}}`
-    /// gate tests. Two properties fall out of the `Option`, and both are load-bearing:
-    /// [`SystemContext::default()`] stays derivable (a bare context renders no ending section rather
-    /// than an empty bullet), and a tool-calling run — whose ending rule is the untouched "stop
-    /// calling tools" one — can never be shown a function it has no way to call.
-    ///
-    /// Unlike every other entry in this context it is **not** a projection of the run's enabled set:
-    /// no capability offers it and no ablation withholds it, so a run that enables nothing at all is
-    /// still told how to say it is done. A prompt that gated it would, for some toolset, teach a
-    /// model a protocol with no exit.
-    pub session: Option<ToolView>,
     /// Whether this agent is a **delegated** worker rather than the run's root agent — set from the
     /// agent's depth in the spawn tree.
     ///
@@ -293,37 +266,6 @@ pub struct SystemContext {
     /// which contaminates the instruction-following signal this capability exists to measure. So the
     /// armed arm states the repair honestly and calls it a repair rather than the contract.
     pub fences_are_stripped: bool,
-    /// Which of the code section's tool-specific teaching this run may write — its worked example,
-    /// and the three bullets that illustrate themselves with a named function.
-    ///
-    /// Gated for the same reason every other section is: prose that names a function the run
-    /// withheld is prose the model cannot act on. An ungated worked example is worse still, because
-    /// it is the one piece of the prompt a model copies verbatim — a `listDir` in an example shown
-    /// to a `shell`-only run is a `ReferenceError` on turn one.
-    ///
-    /// The sentence that *introduces* the example is shared by all four, because what it says —
-    /// this is one program that looks, decides, acts, checks, and ends the run only on the branch
-    /// where the work is done — is the shape every one of them has, and stating it once is what
-    /// keeps the four bodies from having to argue for themselves. It leans on the projection's
-    /// invariant that **exactly one** example flag is set
-    /// (`exactly_one_worked_example_is_chosen_and_it_only_names_bound_tools`): a context that set
-    /// none would render the framing with nothing under it.
-    pub code: CodeTeachingView,
-    /// The type declarations the code-mode signatures reference, deduplicated and in declaration
-    /// order. Only the types the **enabled** tools actually use, so a disabled capability
-    /// contributes no prompt text here either. Always includes `ToolError`, so the error contract
-    /// reaches the model as a declaration rather than as a paragraph.
-    pub types: Vec<TypeView>,
-    /// The helper functions bound alongside an enabled tool (today just `readTextFile`). They are
-    /// not gg tools in their own right, so they are listed after the tools rather than among them.
-    pub helpers: Vec<ToolView>,
-    /// The turn-level transitions this run's capabilities offer, which a program cannot use.
-    /// Empty when neither planning nor the FSM is on.
-    ///
-    /// Naming them is not pedantry: a model that has been told it has `planning` and then cannot
-    /// find `enterPlanMode` in its scope will spend turns looking for it. The section says plainly
-    /// that these change the *turn*, not a value.
-    pub turn_level_tools: Vec<String>,
     /// How much of a file one `read_file` call returns, so a capped run says so up front.
     pub read_file: ReadFileView,
     /// The available [skills](crate::skills), each with its one-line description. Empty when the

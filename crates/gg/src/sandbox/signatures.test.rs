@@ -1,9 +1,9 @@
-//! Tests for the committed signature catalogue and the prompt views projected from it.
+//! Tests for the committed signature catalogue the [docs carve-out](crate::docs) reads.
 //!
-//! What these guard is subtle but expensive to get wrong: the prompt is the *only* description of
-//! this API a model ever sees. A catalogue that has drifted from the guest does not fail loudly —
-//! it teaches a model a signature that does not exist, and every program it writes is wrong in a
-//! way it cannot diagnose.
+//! What these guard is subtle but expensive to get wrong: the catalogue is the *only* description of
+//! this API a model ever sees, served on demand through `fn.docs()`. A catalogue that has drifted
+//! from the guest does not fail loudly — it hands a model a signature that does not exist, and every
+//! program it writes against it is wrong in a way it cannot diagnose.
 
 use super::*;
 use crate::sandbox::FINISH_FUNCTION;
@@ -121,132 +121,6 @@ fn read_text_file_is_a_helper_not_a_tool() {
     );
 }
 
-/// The prompt shows only what the run offers — the property toolset ablation depends on. A run
-/// without `tasks` is not told the task functions exist, and is not shown their types either.
-#[test]
-fn prompt_views_are_filtered_by_the_enabled_set() {
-    let enabled = ["shell".to_string(), "list_dir".to_string()];
-    let views = prompt_views(&enabled);
-
-    let names: Vec<&str> = views.tools.iter().map(|view| view.name.as_str()).collect();
-    assert_eq!(names, ["shell", "list_dir"]);
-    assert!(
-        views.helpers.is_empty(),
-        "the helper's required tool is withheld, so the helper is too"
-    );
-
-    let type_names: Vec<&str> = views.types.iter().map(|view| view.name.as_str()).collect();
-    assert!(type_names.contains(&"ShellOutput"));
-    assert!(type_names.contains(&"DirEntry"));
-    assert!(
-        !type_names.contains(&"TaskUsage"),
-        "a type only a withheld tool uses must not reach the prompt: {type_names:?}"
-    );
-}
-
-/// The helper appears exactly when the tool it wraps does.
-#[test]
-fn the_helper_follows_its_required_tool() {
-    let helpers = prompt_views(&["read_file".to_string()]).helpers;
-    let names: Vec<&str> = helpers.iter().map(|view| view.name.as_str()).collect();
-    assert_eq!(names, ["readTextFile"]);
-}
-
-/// The error contract always reaches the model, even for a run whose signatures never mention it:
-/// nothing *returns* a `ToolError` — it is thrown — so nothing else would pull it in, and a model
-/// that has never seen it cannot write the `catch` the prompt tells it to write.
-#[test]
-fn the_error_contract_is_always_shown() {
-    for enabled in [Vec::new(), vec!["shell".to_string()]] {
-        let types = prompt_views(&enabled).types;
-        let names: Vec<&str> = types.iter().map(|view| view.name.as_str()).collect();
-        assert!(names.contains(&"ToolError"), "{names:?}");
-        assert!(
-            names.contains(&"ToolErrorCode"),
-            "the code vocabulary comes with it, or `e.code` is a field to guess at: {names:?}"
-        );
-    }
-}
-
-/// A view carries the declaration verbatim, so what the prompt shows is what the SDK wrote.
-#[test]
-fn a_type_view_carries_the_sdks_own_declaration() {
-    let types = prompt_views(&["list_dir".to_string()]).types;
-    let entry = types
-        .iter()
-        .find(|view| view.name == "DirEntry")
-        .expect("the type is shown");
-    assert!(
-        entry.declaration.contains("interface DirEntry"),
-        "{}",
-        entry.declaration
-    );
-}
-
-/// A tool view carries the real signature and the SDK's own words about it.
-#[test]
-fn a_tool_view_carries_the_real_signature() {
-    let tools = prompt_views(&["list_dir".to_string()]).tools;
-    assert_eq!(tools.len(), 1);
-    assert_eq!(tools[0].name, "list_dir");
-    assert_eq!(tools[0].signature, "listDir(path?: string): DirEntry[]");
-    assert!(tools[0].doc.contains("sorted by name"), "{}", tools[0].doc);
-}
-
-/// The four tool names the code section's **prose** is gated on are real names in gg's vocabulary.
-///
-/// They are written as literals here rather than derived, because what they gate is prose, and prose
-/// cannot be derived. That makes a rename in [`ALL_TOOL_NAMES`] able to turn a gate silently and
-/// permanently off — the prompt would simply stop teaching a tool the run does offer — so the
-/// literals are pinned to the vocabulary here instead.
-#[test]
-fn every_tool_the_prompt_prose_names_is_a_real_tool() {
-    for name in [LIST_DIR_TOOL, WRITE_FILE_TOOL, EDIT_FILE_TOOL, SHELL_TOOL] {
-        assert!(
-            ALL_TOOL_NAMES.contains(&name),
-            "`{name}` gates a piece of the code-mode prompt but is not a gg tool"
-        );
-    }
-}
-
-/// The worked example is chosen from the tools the run actually binds, and exactly one is chosen.
-///
-/// This is the property that stops the prompt's single most-copied artifact — its example program —
-/// from being a `ReferenceError` under a reduced toolset, which is precisely what toolset ablation
-/// sweeps.
-#[test]
-fn exactly_one_worked_example_is_chosen_and_it_only_names_bound_tools() {
-    /// Which flag a toolset must set, as a predicate over the projected teaching.
-    type Chosen = fn(&CodeTeachingView) -> bool;
-
-    let cases: [(&[&str], Chosen); 5] = [
-        (&["list_dir", "read_file", "shell"], |t| t.example_compose),
-        (&["shell", "write_file"], |t| t.example_shell),
-        (&["write_file", "read_file"], |t| t.example_write),
-        (&["add_task"], |t| t.example_pure),
-        (&[], |t| t.example_pure),
-    ];
-    for (enabled, chosen) in cases {
-        let enabled: Vec<String> = enabled.iter().map(|name| (*name).to_string()).collect();
-        let teaching = prompt_views(&enabled).teaching;
-        assert!(
-            chosen(&teaching),
-            "the wrong example was chosen for {enabled:?}: {teaching:?}"
-        );
-        let examples = [
-            teaching.example_compose,
-            teaching.example_shell,
-            teaching.example_write,
-            teaching.example_pure,
-        ];
-        assert_eq!(
-            examples.iter().filter(|shown| **shown).count(),
-            1,
-            "exactly one example is shown for {enabled:?}: {teaching:?}"
-        );
-    }
-}
-
 /// The catalogue carries the one model-facing function that is not a gg tool, with the signature the
 /// prompt renders.
 ///
@@ -291,46 +165,49 @@ fn no_gg_tool_binds_the_name_finish() {
         );
     }
 }
-
-/// The session function is offered whatever the run enables — including a run that enables **no**
-/// tools at all.
-///
-/// This is the one view that is not a projection of the enabled set, and it has to be: under
-/// responses-as-code a session ends only when a program calls `finish`, so a toolset that made the
-/// prompt omit it would leave a model in a protocol with no exit.
+/// The documentation directory the [docs carve-out](crate::docs) reads carries, for each function,
+/// the object it lives on and the gg tool that gates it — `None` for a carve-out always bound.
 #[test]
-fn the_session_function_is_offered_whatever_the_run_enables() {
-    for enabled in [Vec::new(), vec!["shell".to_string()], all_tool_names()] {
-        let views = prompt_views(&enabled);
-        assert_eq!(views.session.name, FINISH_FUNCTION, "for {enabled:?}");
-        assert!(!views.session.signature.trim().is_empty());
-        assert!(!views.session.doc.trim().is_empty());
-    }
-}
+fn catalogue_functions_carry_object_and_gate() {
+    let functions = catalogue_functions();
 
-/// Every gg tool name, as a run with the full capability set offers them.
-fn all_tool_names() -> Vec<String> {
-    sandbox_tool_names()
-        .into_iter()
-        .map(str::to_string)
-        .collect()
-}
-
-/// The three prose gates follow their tools, so a bullet never illustrates itself with a function
-/// the run withheld.
-#[test]
-fn the_prose_gates_follow_their_tools() {
-    let none = prompt_views(&[]).teaching;
+    // `finish` is always bound (no gate) and lives on `harness`.
+    let finish = functions
+        .iter()
+        .find(|function| function.name == "finish")
+        .expect("finish is documented");
+    assert_eq!(finish.object, "harness");
     assert!(
-        !none.read_file && !none.edit_file && !none.shell,
-        "{none:?}"
+        finish.gate.is_none(),
+        "finish is not gated by any capability"
     );
 
-    let all = prompt_views(&[
-        "read_file".to_string(),
-        "edit_file".to_string(),
-        "shell".to_string(),
-    ])
-    .teaching;
-    assert!(all.read_file && all.edit_file && all.shell, "{all:?}");
+    // A tool is gated by its own gg tool name and grouped under its object.
+    let read = functions
+        .iter()
+        .find(|function| function.name == "readFile")
+        .expect("readFile is documented");
+    assert_eq!(read.object, "fs");
+    assert_eq!(read.gate, Some("read_file"));
+    assert!(!read.summary.is_empty(), "every function carries a summary");
+
+    // The helper is gated by the tool it wraps, and lives on that tool's object.
+    let helper = functions
+        .iter()
+        .find(|function| function.name == "readTextFile")
+        .expect("readTextFile is documented");
+    assert_eq!(helper.object, "fs");
+    assert_eq!(helper.gate, Some("read_file"));
+}
+
+/// A type's declaration is returned verbatim, so what a doc lookup shows is what the SDK wrote — and
+/// a type the catalogue does not carry is `None` rather than a fabricated declaration.
+#[test]
+fn type_declaration_returns_the_sdks_own_declaration() {
+    assert!(
+        type_declaration("DirEntry")
+            .expect("DirEntry is declared")
+            .contains("interface DirEntry"),
+    );
+    assert!(type_declaration("NoSuchType").is_none());
 }

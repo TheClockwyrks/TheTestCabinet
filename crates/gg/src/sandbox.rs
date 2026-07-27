@@ -111,9 +111,8 @@ pub use outcome::{
 // prompt import from.
 pub use {
     invoker::FunctionSummary, invoker::PROGRAM_CALL_ID_PREFIX, limits::resolve_sandbox_limits,
-    signatures::CatalogueFunction, signatures::CodeTeachingView, signatures::ToolView,
-    signatures::TypeView, signatures::catalogue_functions, signatures::prompt_views,
-    signatures::type_declaration, transpile::UnreachableTail,
+    signatures::CatalogueFunction, signatures::catalogue_functions, signatures::type_declaration,
+    transpile::UnreachableTail,
 };
 
 use crate::tools::{TURN_LEVEL_TOOLS, ToolRegistry};

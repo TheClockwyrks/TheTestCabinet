@@ -17,33 +17,9 @@ fn bare_system() -> SystemContext {
     SystemContext::default()
 }
 
-/// A tool as the run's registry offers it and the sandbox binds it — a name, the real TypeScript
-/// signature a program calls it by, and the SDK's own sentence about it.
-fn bound(name: &str, signature: &str, doc: &str) -> ToolView {
-    ToolView {
-        name: name.to_string(),
-        signature: signature.to_string(),
-        doc: doc.to_string(),
-    }
-}
-
-/// `finish` as the committed catalogue declares it — the one function the prompt shows every
-/// code-mode run whatever it enables.
-///
-/// The signature and the sentence are the SDK's own, copied rather than paraphrased: the `never`
-/// return is what tells a model at a glance that nothing after the call runs, and a fixture that
-/// softened it would certify prompt text the sandbox does not back.
-fn session_view() -> ToolView {
-    ToolView {
-        name: "finish".to_string(),
-        signature: "finish(summary: string): void".to_string(),
-        doc: "End this run. The `summary` is gg's final word on the task: what you did, in a \
-              sentence or two."
-            .to_string(),
-    }
-}
-
-/// A context with every capability **on**, so the maximal prompt is exercised.
+/// A context with every capability **on**, so the maximal prompt is exercised. In tool-calling mode
+/// (`responses_as_code` off), so the non-code sections — the read facts, the tasks section — are the
+/// ones under test.
 fn full_system() -> SystemContext {
     SystemContext {
         apis: vec![
@@ -57,60 +33,11 @@ fn full_system() -> SystemContext {
                     .to_string(),
             },
         ],
-        tools: vec![
-            bound(
-                "read_file",
-                "readFile(path: string, options?: { offset?: number; limit?: number; }): FileRead",
-                "Read a UTF-8 text file from the workspace.",
-            ),
-            bound(
-                "list_dir",
-                "listDir(path?: string): DirEntry[]",
-                "List a workspace directory, sorted by name.",
-            ),
-            bound(
-                "write_file",
-                "writeFile(path: string, contents: string): number",
-                "Write a file.",
-            ),
-        ],
         responses_as_code: false,
         custom_instructions: None,
         spawnable_agents: Vec::new(),
-        // `session` is carried even here, where the mode is off: it is `Some` in code mode and
-        // `None` in tool-calling mode in production, and pinning the tool-calling render with it
-        // present is how `the_tool_calling_prompt_is_unchanged_by_the_code_mode_rewrite` proves the
-        // `{{else}}` arm cannot reach it.
-        session: Some(session_view()),
         delegated: false,
         fences_are_stripped: true,
-        // The maximal run binds `list_dir` + `read_file` (and `shell` is not in this fixture's
-        // toolset), so the composition example is the one it teaches.
-        code: CodeTeachingView {
-            example_compose: true,
-            read_file: true,
-            edit_file: true,
-            shell: true,
-            ..CodeTeachingView::default()
-        },
-        types: vec![
-            TypeView {
-                name: "ToolError".to_string(),
-                declaration: "class ToolError extends Error { readonly tool: string; }".to_string(),
-            },
-            TypeView {
-                name: "DirEntry".to_string(),
-                declaration: "interface DirEntry { name: string; kind: \"file\" | \"directory\" | \
-                              \"other\"; }"
-                    .to_string(),
-            },
-        ],
-        helpers: vec![bound(
-            "readTextFile",
-            "readTextFile(path: string): string",
-            "Read a workspace text file and return its contents directly.",
-        )],
-        turn_level_tools: vec!["enter_plan_mode".to_string(), "submit_plan".to_string()],
         read_file: ReadFileView {
             offered: true,
             capped: true,

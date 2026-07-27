@@ -1,24 +1,24 @@
 //! The committed signature catalogue: what the model is *told* it may call, reflected out of what
 //! the guest actually exports.
 //!
-//! The system prompt for a code turn lists a TypeScript signature and a sentence of documentation
-//! per tool. Hand-writing that list would guarantee it drifts — a renamed parameter, an options
-//! object that became positional, a tool whose behaviour changed — and a prompt that describes a
-//! signature the sandbox does not have is worse than no prompt at all, because the model has no way
-//! to discover the lie.
+//! When a model asks for a function's documentation — `fs.readFile.docs()`, serviced by the
+//! [docs carve-out](crate::docs) — gg answers with a TypeScript signature, a sentence of
+//! documentation, and the declarations of the types the signature references. Hand-writing that
+//! would guarantee it drifts — a renamed parameter, an options object that became positional, a tool
+//! whose behaviour changed — and documentation that describes a signature the sandbox does not have
+//! is worse than none, because the model has no way to discover the lie.
 //!
-//! So the list is generated from the guest SDK's own emitted `.d.ts` and its JSDoc, committed
-//! beside the component **by the same build**, and rendered from here. The prompt therefore cannot
-//! be more current than the component that implements it, which is the correct failure direction:
-//! a stale catalogue describes a sandbox that once existed, while a hand-written one describes a
-//! sandbox that never did.
+//! So the catalogue is generated from the guest SDK's own emitted `.d.ts` and its JSDoc, committed
+//! beside the component **by the same build**, and read from here through
+//! [`catalogue_functions`] and [`type_declaration`]. The documentation therefore cannot be more
+//! current than the component that implements it, which is the correct failure direction: a stale
+//! catalogue describes a sandbox that once existed, while a hand-written one describes a sandbox that
+//! never did.
 
-use std::collections::BTreeSet;
 use std::sync::OnceLock;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
-use crate::tools::READ_FILE_TOOL;
 // The whole-vocabulary partition backs [`sandbox_tool_names`], which is a drift gate rather than a
 // run-time need — so, like it, the names it is built from are only reachable under test.
 #[cfg(test)]
@@ -146,52 +146,6 @@ pub(crate) struct TypeDeclaration {
     pub declaration: String,
 }
 
-/// One offered tool (or helper) as the system prompt sees it.
-///
-/// The code-mode prompt renders the real TypeScript [`signature`](Self::signature) and the SDK's own
-/// [`doc`](Self::doc), both reflected out of the sandbox SDK's emitted declarations — so the prompt
-/// cannot describe a signature the sandbox does not have. [`name`](Self::name) is the gg tool name,
-/// which is what the traditional tool-calling arm of the prompt lists and what a study's
-/// per-tool ablation is expressed in.
-///
-/// It lives here, beside the catalogue it is projected from, and is re-exported by
-/// [`prompts`](crate::prompts) as the template's view type: one type, so a field can never be added
-/// to the prompt's view without the catalogue being able to fill it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ToolView {
-    /// The tool's name, as the model calls it on the tool-calling path (`read_file`), or the
-    /// function name for a helper, which has no tool name of its own.
-    pub name: String,
-    /// The full TypeScript signature a program calls it by. Empty for a tool the sandbox does not
-    /// bind — the three turn-level transitions — which a tool-calling run must still list by name.
-    pub signature: String,
-    /// The one-paragraph documentation the SDK carries for it. Empty for a tool the sandbox does
-    /// not bind.
-    pub doc: String,
-}
-
-/// One type declaration the code-mode signatures reference.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TypeView {
-    /// The type's name, as it appears in a signature.
-    pub name: String,
-    /// The declaration, as the SDK wrote it.
-    pub declaration: String,
-}
-
-/// The error type every tool function throws, always shown to the model.
-///
-/// It is not referenced by any *signature* — a failure is thrown, not returned — so nothing else
-/// would pull it into the prompt, and a model that is never shown it cannot write the `catch` the
-/// prompt tells it to write.
-const TOOL_ERROR_TYPE: &str = "ToolError";
-
-/// The failure vocabulary [`TOOL_ERROR_TYPE`]'s own declaration refers to. Shown with it, because a
-/// `code` field whose values are never listed is a field a model has to guess at.
-const TOOL_ERROR_CODE_TYPE: &str = "ToolErrorCode";
-
 /// The parsed catalogue.
 ///
 /// A parse failure is a corrupt committed artifact — the file is generated, committed, and asserted
@@ -223,161 +177,6 @@ pub(crate) fn sandbox_tool_names() -> Vec<&'static str> {
         .copied()
         .filter(|name| !TURN_LEVEL_TOOLS.contains(name) && !NON_SANDBOX_TOOLS.contains(name))
         .collect()
-}
-
-/// The gg tools the code section's **prose** names — its worked example, and the three bullets that
-/// illustrate an options object, a caught failure, and a non-zero exit.
-///
-/// A prompt that names a function the run withheld is worse than one that says nothing: the model's
-/// only worked example becomes a `ReferenceError` on turn one, and the property
-/// [toolset ablation](https://docs.testcabinet.ai/gg/toolset-ablation/) rests on — that a withheld
-/// capability contributes **no prompt text** — is false. So each of these is checked against the
-/// enabled set before the prose that names it is rendered.
-///
-/// `signatures.test.rs` asserts every one is a real name in [`ALL_TOOL_NAMES`], so a rename in gg's
-/// vocabulary cannot silently turn a gate permanently off.
-const LIST_DIR_TOOL: &str = "list_dir";
-const WRITE_FILE_TOOL: &str = "write_file";
-const EDIT_FILE_TOOL: &str = "edit_file";
-const SHELL_TOOL: &str = "shell";
-
-/// Everything the [system prompt](crate::prompts::SystemContext) projects out of a run's enabled
-/// tool set — the API it lists, and the teaching it is allowed to write around it.
-///
-/// One struct rather than a tuple because it is built at one call site and destructured into one
-/// context, and because a further projection should not silently re-order what the loop reads.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PromptViews {
-    /// How a program ends the run, shown to **every** code-mode run whatever it enables.
-    ///
-    /// Not a projection of the enabled set, unlike everything else here, because it is a constant of
-    /// the build rather than a capability: no toggle offers it, no ablation withholds it, and a run
-    /// with no tools at all must still be told how to say it is done. A prompt that listed it
-    /// conditionally would, for some toolset, teach a model a protocol with no exit.
-    pub session: ToolView,
-    /// The offered tools, in catalogue order.
-    pub tools: Vec<ToolView>,
-    /// The helpers whose required tool is offered.
-    pub helpers: Vec<ToolView>,
-    /// The deduplicated type declarations those signatures reference.
-    pub types: Vec<TypeView>,
-    /// Which pieces of tool-specific teaching the prompt may write.
-    pub teaching: CodeTeachingView,
-}
-
-/// Which of the code section's tool-specific teaching this run may show.
-///
-/// Exactly one `example_*` flag is set, so the section always has a worked example and the example
-/// always type-checks against the run's own scope. The remaining flags gate the three bullets that
-/// illustrate themselves with a named function.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CodeTeachingView {
-    /// Show the **whole-arc** example — list, read, decide, write, check what was written, and
-    /// `finish` on the branch where nothing is left. The best example gg has, because it is the
-    /// shape a task is actually completed in and the one a model reaches for a second turn without;
-    /// needs `list_dir`, `read_file` and `write_file`.
-    pub example_build: bool,
-    /// Show the composition example — list a directory, read each file, log a summary. The
-    /// read-only half of the arc, for a run that cannot write; needs `list_dir` and `read_file`.
-    pub example_compose: bool,
-    /// Show the `shell` example: run a command, read its output, act on the exit code.
-    pub example_shell: bool,
-    /// Show the write example: build several files in a loop.
-    pub example_write: bool,
-    /// Show the tool-free example. Always renderable, and therefore the fallback for a toolset none
-    /// of the others fit — including a run with no tools at all, where a program can still compute.
-    pub example_pure: bool,
-    /// Whether `read_file` is bound, so the "type-stripped, not type-checked" bullet may illustrate
-    /// an options object with its real signature.
-    pub read_file: bool,
-    /// Whether `edit_file` is bound, so the `ToolError` bullet may illustrate a caught failure with
-    /// the call that most often raises one.
-    pub edit_file: bool,
-    /// Whether `shell` is bound — which decides both the non-zero-exit carve-out and the sentence
-    /// telling the model where to get a clock, a random value, or the network.
-    pub shell: bool,
-}
-
-/// The prompt views for `enabled`: how the run is ended, the tools it offers, the helpers whose
-/// required tool it offers, the deduplicated type declarations those signatures reference, and the
-/// teaching those tools license.
-///
-/// Filtering by the enabled set is what makes a withheld capability contribute **no prompt text**,
-/// which is the property toolset ablation depends on: a run without `tasks` is not told the task
-/// functions exist, and is not shown `TaskUsage` either.
-///
-/// [`session`](PromptViews::session) is the one thing deliberately **not** filtered. It is not a
-/// capability and no ablation withholds it, and under responses-as-code a model that has not been
-/// told how to end the run cannot end it at all — so a run that enables nothing is still shown
-/// `finish`, and its types are declared alongside the error contract for the same reason.
-pub fn prompt_views(enabled: &[String]) -> PromptViews {
-    let catalogue = catalogue();
-    let offered: BTreeSet<&str> = enabled.iter().map(String::as_str).collect();
-
-    let tools: Vec<ToolView> = catalogue
-        .tools
-        .iter()
-        .filter(|entry| offered.contains(entry.tool.as_str()))
-        .map(|entry| ToolView {
-            name: entry.tool.clone(),
-            signature: entry.signature.clone(),
-            doc: entry.doc.clone(),
-        })
-        .collect();
-
-    let helpers: Vec<ToolView> = catalogue
-        .helpers
-        .iter()
-        .filter(|entry| offered.contains(entry.requires.as_str()))
-        .map(|entry| ToolView {
-            name: entry.js.clone(),
-            signature: entry.signature.clone(),
-            doc: entry.doc.clone(),
-        })
-        .collect();
-
-    // The error contract first, then everything the offered signatures mention, deduplicated but
-    // kept in the catalogue's declaration order so a type is never referenced before it is
-    // declared. `finish`'s types are folded in unconditionally, for the same reason `finish` itself
-    // is: it is shown to every run.
-    let mut referenced: BTreeSet<&str> = BTreeSet::new();
-    referenced.insert(TOOL_ERROR_TYPE);
-    referenced.insert(TOOL_ERROR_CODE_TYPE);
-    referenced.extend(catalogue.session.types.iter().map(String::as_str));
-    for entry in &catalogue.tools {
-        if offered.contains(entry.tool.as_str()) {
-            referenced.extend(entry.types.iter().map(String::as_str));
-        }
-    }
-    for entry in &catalogue.helpers {
-        if offered.contains(entry.requires.as_str()) {
-            referenced.extend(entry.types.iter().map(String::as_str));
-        }
-    }
-    let types: Vec<TypeView> = catalogue
-        .types
-        .iter()
-        .filter(|declaration| referenced.contains(declaration.name.as_str()))
-        .map(|declaration| TypeView {
-            name: declaration.name.clone(),
-            declaration: declaration.declaration.clone(),
-        })
-        .collect();
-
-    PromptViews {
-        session: ToolView {
-            // The function name, because there is no gg tool name to use: `finish` is the only thing
-            // a program calls it by, and the only thing the prompt can honestly call it.
-            name: catalogue.session.js.clone(),
-            signature: catalogue.session.signature.clone(),
-            doc: catalogue.session.doc.clone(),
-        },
-        tools,
-        helpers,
-        types,
-        teaching: code_teaching(&offered),
-    }
 }
 
 /// One documented function as the [docs carve-out](crate::docs) sees it: the object it lives on, the
@@ -469,31 +268,6 @@ pub fn type_declaration(name: &str) -> Option<&'static str> {
         .iter()
         .find(|declaration| declaration.name == name)
         .map(|declaration| declaration.declaration.as_str())
-}
-
-/// Which pieces of tool-specific teaching `offered` licenses.
-///
-/// The example is chosen by first match down a fixed preference order — the whole arc, then
-/// composition, then `shell`, then writing, then nothing — rather than by scoring, because the order
-/// *is* the judgement: a run that can list, read and write should be shown a program that does all
-/// of it and then ends the run, since that is the turn the capability exists to make possible, and
-/// every step down the list is the next-best thing the run can actually do.
-fn code_teaching(offered: &BTreeSet<&str>) -> CodeTeachingView {
-    let read = offered.contains(LIST_DIR_TOOL) && offered.contains(READ_FILE_TOOL);
-    let write = offered.contains(WRITE_FILE_TOOL);
-    let build = read && write;
-    let compose = read && !write;
-    let shell = offered.contains(SHELL_TOOL);
-    CodeTeachingView {
-        example_build: build,
-        example_compose: compose,
-        example_shell: !read && shell,
-        example_write: !read && !shell && write,
-        example_pure: !read && !shell && !write,
-        read_file: offered.contains(READ_FILE_TOOL),
-        edit_file: offered.contains(EDIT_FILE_TOOL),
-        shell,
-    }
 }
 
 #[cfg(test)]
