@@ -58,7 +58,7 @@ fn resolve_planner_falls_back_to_default() {
 /// The runtime delegates guidance and framing to its planner.
 #[test]
 fn runtime_delegates_to_planner() {
-    let runtime = PlanningRuntime::new(Box::new(DefaultPlanner));
+    let runtime = PlanningRuntime::new(std::sync::Arc::new(DefaultPlanner));
     assert_eq!(
         runtime.plan_mode_guidance(),
         DefaultPlanner.plan_mode_guidance()

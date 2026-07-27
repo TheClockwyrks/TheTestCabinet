@@ -6,7 +6,7 @@
 
 use super::transpile::TranspileError;
 use super::*;
-use crate::sandbox::fake::{CallLog, FakeInvoker, process_isolated};
+use crate::sandbox::fake::{CallLog, FakeToolApi, process_isolated};
 
 /// **A program that does not compile never touches the engine.** It is the only failure that costs
 /// nothing at all — no store, no instantiate, no fuel — so the fact that it short-circuits before the
@@ -14,12 +14,12 @@ use crate::sandbox::fake::{CallLog, FakeInvoker, process_isolated};
 #[test]
 fn a_transpile_error_never_touches_the_engine() {
     let log = CallLog::default();
-    let outcome = run_program(
+    let (outcome, _api) = run_program(
         "const x: = ;",
         &[],
         SandboxLimits::default(),
         None,
-        Box::new(FakeInvoker::new(&log)),
+        FakeToolApi::new(&log),
     );
 
     let error = outcome.result.expect_err("invalid TypeScript cannot run");
@@ -51,12 +51,12 @@ fn a_transpile_error_never_touches_the_engine() {
 #[test]
 fn an_unsupported_feature_is_a_transpile_error_with_guidance() {
     let log = CallLog::default();
-    let outcome = run_program(
+    let (outcome, _api) = run_program(
         "import fs from 'node:fs';\nreturn 1;",
         &[],
         SandboxLimits::default(),
         None,
-        Box::new(FakeInvoker::new(&log)),
+        FakeToolApi::new(&log),
     );
 
     let error = outcome.result.expect_err("an import cannot run");

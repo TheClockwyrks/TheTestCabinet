@@ -34,6 +34,20 @@
 
 use super::*;
 
+use std::time::Duration;
+
+use tokio::runtime::Handle;
+
+use crate::sandbox::{ToolApi, WorkflowStageInput};
+use crate::tasks::TaskStatus;
+use crate::tools::{
+    AddTaskTool, ArchiveThreadTool, CompleteIssueTool, CompleteTaskTool, CreateEpicTool,
+    CreateIssueTool, DeleteMemoryTool, EditFileTool, EvictFileViewTool, ListDirTool,
+    OwnedStructured, ReadSkillTool, RemoveEpicTool, RemoveIssueTool, RemoveTaskTool,
+    SearchArchiveTool, SetBlockedByTool, SetIssueBlockedByTool, UpdateIssueTool, UpdateMemoryTool,
+    UpdateTaskTool, WriteFileTool, WriteMemoryTool, run_command,
+};
+
 // ---------------------------------------------------------------------------
 // What one code turn asks the loop to do
 // ---------------------------------------------------------------------------
@@ -130,11 +144,11 @@ pub(super) async fn run_code_turn(
     code: &CodeSetup,
     deadline: Option<Instant>,
     turn: &CodeTurn<'_>,
-    context: &mut ContextModel,
-    skills: &mut SkillsRuntime,
-    docs: &mut DocsRuntime,
-    subagents: &mut Option<SubagentContext>,
-) -> CodeTurnOutcome {
+    context: ContextModel,
+    skills: SkillsRuntime,
+    docs: DocsRuntime,
+    subagents: Option<SubagentContext>,
+) -> (CodeTurnOutcome, Option<CodeTurnState>) {
     let emitter = turn.emitter;
     if healed.did_not_converge {
         emitter.emit(log(
@@ -166,12 +180,22 @@ pub(super) async fn run_code_turn(
     }
 
     // A reply that never became a program short-circuits here: no component, no store, no fuel.
-    // Nothing under `sandbox/` is entered at all.
+    // Nothing under `sandbox/` is entered at all. The per-turn state was never moved into a program,
+    // so it is handed straight back untouched.
     if let HealingVerdict::NotAProgram(reason) = healed.verdict {
-        return not_a_program(turn, &healed, reason);
+        let decision = not_a_program(turn, &healed, reason);
+        return (
+            decision,
+            Some(CodeTurnState {
+                context,
+                skills,
+                docs,
+                subagents,
+            }),
+        );
     }
 
-    let outcome = run_code_program(
+    let (outcome, state) = run_code_program(
         &healed.program,
         code.limits,
         deadline,
@@ -193,7 +217,10 @@ pub(super) async fn run_code_turn(
     if matches!(&outcome.result, Err(SandboxError::Transpile(_)))
         && !healing::contains_code(&healed.program)
     {
-        return not_a_program(turn, &healed, NotAProgramReason::Prose);
+        return (
+            not_a_program(turn, &healed, NotAProgramReason::Prose),
+            state,
+        );
     }
 
     // Statements the model wrote that could not run are said out loud on the operator's stream as
@@ -260,9 +287,12 @@ pub(super) async fn run_code_turn(
                 ellipsize(&completion.summary, MAX_REPORTED_SUMMARY_BYTES)
             ),
         ));
-        return CodeTurnOutcome::Finished {
-            summary: completion.summary,
-        };
+        return (
+            CodeTurnOutcome::Finished {
+                summary: completion.summary,
+            },
+            state,
+        );
     }
 
     // An ending the program declared and then lost. It is said on the operator's stream as well as
@@ -281,7 +311,7 @@ pub(super) async fn run_code_turn(
     }
 
     let notes = healed.notes();
-    match &outcome.result {
+    let decision = match &outcome.result {
         // gg's own machinery, in its two flavours. Both would fail identically on every further
         // turn, so neither is fed back and neither is ever charged to the model's error budget.
         Err(error) if error.is_artifact_defect() => CodeTurnOutcome::Fatal {
@@ -336,7 +366,8 @@ pub(super) async fn run_code_turn(
                 report,
             }
         }
-    }
+    };
+    (decision, state)
 }
 
 /// The turn a reply that was **not a program** earns: its own `CodeExecution`, the fourth feedback
@@ -646,6 +677,8 @@ pub(super) struct CodeTurn<'a> {
     pub(super) registry: &'a ToolRegistry,
     /// The workspace root and vision context every tool call is executed against.
     pub(super) tool_ctx: &'a ToolContext,
+    /// The read policy `read_file` is bound with — whether ambient reads are permitted.
+    pub(super) read_policy: ReadPolicy,
     /// The epic/issue board, for its state event and for the Code Review gate.
     pub(super) board: &'a BoardRuntime,
     /// The [project-management](crate::board) context, when the capability is on — for the
@@ -695,143 +728,45 @@ impl CodeTurn<'_> {
     }
 }
 
-/// One tool call a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program made, sent from the
-/// (blocking) sandbox thread to the async loop to be serviced. Carrying a [oneshot](oneshot::Sender)
-/// reply lets the synchronous [`ToolInvoker`] seam block for the loop's async dispatch without
-/// stalling an async worker.
-struct CodeToolRequest {
-    /// The tool the program called.
-    name: String,
-    /// The arguments the [membrane](crate::sandbox) lowered its typed call into, under the key
-    /// names the tool's own schema declares.
-    args: Value,
-    /// Where the serviced outcome is delivered back to the blocked sandbox thread.
-    reply: oneshot::Sender<ToolOutcome>,
-}
-
-/// Everything a code program asks the loop to service, sent from the (blocking) sandbox thread to
-/// the async loop. Most are tool calls; the other two are the [documentation carve-out](crate::docs)
-/// — `object.list()` and `fn.docs()` — which are not tools (no capability offers them) but still
-/// need the loop, because only it holds the run's enabled set and the agent's context.
-enum CodeRequest {
-    /// A tool call to dispatch, gated and recorded exactly as a native one.
-    Tool(CodeToolRequest),
-    /// `object.list()`: the directory of one API object's bound functions.
-    ListFunctions {
-        /// The API object whose directory is wanted (`fs`, `project`, …).
-        object: String,
-        /// Where the directory is delivered back to the blocked sandbox thread.
-        reply: oneshot::Sender<Vec<FunctionSummary>>,
-    },
-    /// `fn.docs()` / `harness.readDocs(fn)`: one function's full documentation, pinned into context.
-    ReadDocs {
-        /// The function name whose docs are wanted (`readFile`, `finish`).
-        name: String,
-        /// The documentation text, or `None` for a name this run did not bind.
-        reply: oneshot::Sender<Option<String>>,
-    },
-}
-
-/// The [`ToolInvoker`] the loop bridges a code program's tool calls through: it forwards each
-/// `(name, args)` to the async loop over a channel and blocks (on its own blocking thread) for the
-/// serviced [`ToolOutcome`].
+/// The per-turn state a code turn takes **by value** and hands back: the context window, the skills
+/// and docs runtimes, and (when delegation is on) the subagent context.
 ///
-/// Routing through the loop — rather than dispatching straight to the registry — is what lets a
-/// program's **delegation** tool still go through the [scheduler](Scheduler) and its calls still
-/// respect plan-mode read-only and FSM state gating: the loop services each request exactly as it
-/// would an ordinary tool call, streaming the same telemetry and recording the same replay entry.
-/// The two documentation calls ride the same channel so they, too, reach the agent's live context.
-struct ChannelInvoker {
-    /// The channel each request is forwarded to the loop on.
-    tx: mpsc::UnboundedSender<CodeRequest>,
+/// It is moved into the turn's [`LoopToolApi`] so a program's calls act on the live window on the
+/// blocking sandbox thread, then reclaimed from it when the sandbox returns — which is why
+/// [`run_code_program`] returns `Option<CodeTurnState>`: on the one path the state cannot come back
+/// (the blocking task **panicked** and took it with it) the option is `None`, a host fault the turn
+/// maps to [`Fatal`](CodeTurnOutcome::Fatal), after which the loop ends the session and never reads
+/// the window again.
+pub(super) struct CodeTurnState {
+    /// The agent's context window.
+    pub(super) context: ContextModel,
+    /// The skills runtime (skill library + what has been read this session).
+    pub(super) skills: SkillsRuntime,
+    /// The per-agent documentation runtime behind `object.list()` / `fn.docs()`.
+    pub(super) docs: DocsRuntime,
+    /// This agent's delegation context, when the capability is on.
+    pub(super) subagents: Option<SubagentContext>,
 }
 
-impl ToolInvoker for ChannelInvoker {
-    fn invoke(&mut self, name: &str, args: Value) -> ToolOutcome {
-        let (reply_tx, reply_rx) = oneshot::channel();
-        // Both degradation paths mean the bridge itself broke, which is an I/O-class failure of
-        // gg's own plumbing rather than anything the tool or the program did — classified so the
-        // program is thrown a typed `io-error` it can tell apart from a real tool failure.
-        if self
-            .tx
-            .send(CodeRequest::Tool(CodeToolRequest {
-                name: name.to_string(),
-                args,
-                reply: reply_tx,
-            }))
-            .is_err()
-        {
-            return ToolOutcome::failed(
-                ToolFailure::IoError,
-                "the code sandbox lost its bridge to gg's tools before the call could run.",
-            );
-        }
-        // The invoker runs on a `spawn_blocking` thread, so a blocking wait here never stalls an
-        // async worker; the loop services the request and replies.
-        reply_rx.blocking_recv().unwrap_or_else(|_| {
-            ToolOutcome::failed(
-                ToolFailure::IoError,
-                "the code sandbox's tool bridge was dropped before the call returned.",
-            )
-        })
-    }
-
-    fn list_functions(&mut self, object: &str) -> Vec<FunctionSummary> {
-        let (reply_tx, reply_rx) = oneshot::channel();
-        // A broken bridge yields an empty directory rather than an error: `object.list()` is a
-        // discovery aid, and an empty list is a truthful (if unhelpful) answer to it.
-        if self
-            .tx
-            .send(CodeRequest::ListFunctions {
-                object: object.to_string(),
-                reply: reply_tx,
-            })
-            .is_err()
-        {
-            return Vec::new();
-        }
-        reply_rx.blocking_recv().unwrap_or_default()
-    }
-
-    fn read_docs(&mut self, name: &str) -> Option<String> {
-        let (reply_tx, reply_rx) = oneshot::channel();
-        // A broken bridge yields `None`, which the membrane renders as `not-found` — the same
-        // failure the program would see for a name that does not exist.
-        if self
-            .tx
-            .send(CodeRequest::ReadDocs {
-                name: name.to_string(),
-                reply: reply_tx,
-            })
-            .is_err()
-        {
-            return None;
-        }
-        reply_rx.blocking_recv().ok().flatten()
-    }
-}
-
-/// Run a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program in the wasmtime sandbox,
-/// servicing every tool call it makes on the async loop, and return everything the program produced.
+/// Run a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program in the wasmtime sandbox and
+/// return everything the program produced, along with the [per-turn state](CodeTurnState) it acted
+/// on.
 ///
 /// The sandbox is synchronous and CPU-bound, so it runs on a
 /// [`spawn_blocking`](tokio::task::spawn_blocking) thread (the same offload the Foray/Lattice
-/// validators use). `spawn_blocking` is not an optimisation here but a requirement: the invoker
-/// blocks on `blocking_recv`, and blocking an async worker would deadlock the servicing loop below.
+/// validators use). Every call the program composes is serviced by the turn's [`LoopToolApi`], which
+/// runs **on that blocking thread** — calling the stage-1 typed tool functions directly and routing
+/// the delegation family back onto the async loop via `block_on`. That is where every must-survive
+/// loop behaviour lives now: plan-mode/FSM gating, `ToolCall`/`ToolResult` telemetry, replay
+/// capture, knowledge-state re-emission, agent-managed-context reclaim, and skill pinning — all
+/// exactly as a native tool call is serviced.
 ///
-/// Every call the program composes is forwarded over a channel and serviced **here**, on the loop,
-/// so it is gated, routed, streamed and recorded exactly as an ordinary tool-calling turn's call is:
-///
-/// * a [delegation tool](is_subagent_tool) still goes through the [scheduler](Scheduler), and
-///   plan-mode/FSM gating still applies ([`dispatch_code_tool_call`]);
-/// * each call streams its own [`ToolCall`](GgTelemetryKind::ToolCall) /
-///   [`ToolResult`](GgTelemetryKind::ToolResult) pair and is pinned for [replay](GgRecorder);
-/// * a successful memory/task/board mutation re-emits its knowledge-state event;
-/// * an [agent-managed-context](apply_context_reclaim) reclaim is performed against the live
-///   window and the outcome rewritten with what it really freed, so `evictFileView` returns the
-///   truth to the program instead of a placeholder;
-/// * a **fresh** `read_skill` pins the skill body into the context and emits the updated
-///   [`SkillsState`](GgTelemetryKind::SkillsState), exactly as [`record_tool_result`] does.
+/// The per-turn state (`context`/`skills`/`docs`/`subagents`) is **moved into** the api so a
+/// program's calls act on the live window, then reclaimed from it here and handed back to the loop.
+/// On the one path it cannot come back — the blocking task **panicked**, a host fault that took the
+/// state with it — the second element is `None`, and the turn maps that to
+/// [`Fatal`](CodeTurnOutcome::Fatal) (after which the loop ends the session and never reads the
+/// window again).
 ///
 /// One thing is deliberately **not** replicated: a `read_file` result is *not* pushed as a
 /// [`FileView`](GgContextSource::FileView) context item. A program that reads forty files should not
@@ -844,171 +779,94 @@ async fn run_code_program(
     limits: SandboxLimits,
     deadline: Option<Instant>,
     turn: &CodeTurn<'_>,
-    context: &mut ContextModel,
-    skills: &mut SkillsRuntime,
-    docs: &mut DocsRuntime,
-    subagents: &mut Option<SubagentContext>,
-) -> SandboxOutcome {
-    let emitter = turn.emitter;
-    let (tx, mut rx) = mpsc::unbounded_channel::<CodeRequest>();
+    context: ContextModel,
+    skills: SkillsRuntime,
+    docs: DocsRuntime,
+    subagents: Option<SubagentContext>,
+) -> (SandboxOutcome, Option<CodeTurnState>) {
     let program = source.to_string();
     // The tools bound into the program's scope: the run's offered toolset minus the turn-level
     // transitions. Derived from the same registry the system prompt was rendered from, so the
     // functions in scope and the signatures the model was shown are the same set.
     let enabled = scope_tools(turn.registry);
-    let mut sandbox = tokio::task::spawn_blocking(move || {
-        run_program(
-            &program,
-            &enabled,
-            limits,
-            deadline,
-            Box::new(ChannelInvoker { tx }),
-        )
-    });
-
-    // How many calls the loop itself serviced. Kept only for the panic path below, where the
-    // sandbox's own roster died with its store and this is all that is left of what happened.
-    let mut serviced: u64 = 0;
-    // Drive the sandbox to completion, servicing each tool call it makes on this (async) thread.
-    // When the sandbox finishes it drops its sender, so `rx.recv()` yields `None` — at which point
-    // the blocking task is joined for its result.
-    let joined: Result<SandboxOutcome, tokio::task::JoinError> = loop {
-        let request = tokio::select! {
-            request = rx.recv() => request,
-            joined = &mut sandbox => break joined,
-        };
-        match request {
-            Some(CodeRequest::Tool(request)) => {
-                // The synthetic call id is ordinal-keyed so it is unique **within a turn**: a
-                // program that calls one tool twice would otherwise produce two records under one
-                // id, which is wrong for anything keyed by it (the replay driver, most of all).
-                let call = ToolCall {
-                    id: format!("{PROGRAM_CALL_ID_PREFIX}{serviced}:{}", request.name),
-                    name: request.name.clone(),
-                    arguments: request.args.clone(),
-                };
-                serviced += 1;
-                emitter.emit(GgTelemetryKind::ToolCall {
-                    name: call.name.clone(),
-                    args: call.arguments.clone(),
-                });
-                let mut outcome = dispatch_code_tool_call(&call, turn, subagents).await;
-
-                // Agent-managed context: `evict_file_view`/`archive_thread` act on the live window,
-                // which the tools cannot hold — so the loop performs the reclaim here and rewrites
-                // the outcome (its prose *and* its `ToolData::Reclaim` sidecar) with what was
-                // actually freed. That rewritten outcome is what crosses back into the program, so
-                // its `ReclaimReport` reports what really happened rather than a placeholder.
-                let managed_event =
-                    if turn.amc.enabled && outcome.ok && is_context_reclaim_tool(&call.name) {
-                        apply_context_reclaim(context, &turn.amc.archive, &call, &mut outcome)
-                    } else {
-                        None
-                    };
-
-                emitter.emit(GgTelemetryKind::ToolResult {
-                    name: call.name.clone(),
-                    ok: outcome.ok,
-                    summary: outcome.summary.clone(),
-                });
-                if let Some(event) = managed_event {
-                    emitter.emit(event);
-                }
-                // Replay capture: the code-program counterpart of the loop's tool-result seam — a
-                // program-composed (host-bridged) call is pinned here, tagged with the program's
-                // spawner, after any reclaim rewrote its outcome and before it is sent back into
-                // the sandbox.
-                if let Some(recorder) = turn.replay {
-                    recorder.record_tool_result(&turn.spawner.id, &call, &outcome);
-                }
-                // A successful memory/task/board mutation changed the shared store; re-emit its
-                // state event so the console (and the summary tracker) track the live state,
-                // mirroring the tool-calling path — the pinned block itself is refreshed at the next
-                // turn boundary.
-                if outcome.ok {
-                    // Project management: pump auto-dispatch + wake issue-waiters before re-emitting
-                    // the board, so the snapshot reflects the resulting assignments (mirrors the
-                    // tool-calling loop).
-                    if is_board_tool(&call.name)
-                        && let Some(project) = turn.project
-                    {
-                        project.orch.pump_and_wake(emitter);
-                    }
-                    let state = if is_memory_tool(&call.name) {
-                        turn.memories.state_event()
-                    } else if is_task_tool(&call.name) {
-                        turn.tasks.state_event()
-                    } else if is_board_tool(&call.name) {
-                        turn.board.state_event()
-                    } else {
-                        None
-                    };
-                    if let Some(state) = state {
-                        emitter.emit(state);
-                    }
-                }
-                // A **fresh** skill read pins the skill body into the context (retained across
-                // compaction) and emits the updated skills state, exactly as the native path does.
-                // A repeat read needs nothing: the body is already pinned, and the program was
-                // handed the text either way.
-                pin_read_skill(context, skills, &call, &outcome, emitter);
-
-                let _ = request.reply.send(outcome);
-            }
-            // `object.list()`: a directory of one object's functions. No dispatch, no telemetry, no
-            // roster entry — it is discovery, not a tool call — so it is answered straight from the
-            // docs runtime, which knows the run's enabled set.
-            Some(CodeRequest::ListFunctions { object, reply }) => {
-                let _ = reply.send(docs.list(&object));
-            }
-            // `fn.docs()` / `harness.readDocs(fn)`: one function's documentation. A fresh lookup is
-            // pinned into context (retained across compaction) exactly as a read skill is, so the
-            // model keeps it across turns; a repeat lookup hands the text back and pins nothing.
-            Some(CodeRequest::ReadDocs { name, reply }) => {
-                let text = docs.read(&name).map(|read| {
-                    if read.fresh {
-                        pin_docs(context, &read.text);
-                    }
-                    read.text
-                });
-                let _ = reply.send(text);
-            }
-            None => break (&mut sandbox).await,
-        }
+    // The production `ToolApi`: the loop's own per-turn state, servicing each typed call inline. The
+    // mutable, reclaimed-after-the-turn state moves in; the rest is cloned from the turn (all
+    // Arc-backed, so cheap) or captured fresh (`Handle::current()` bridges the delegation family
+    // back onto this runtime from the blocking thread).
+    let api = LoopToolApi {
+        context,
+        skills,
+        docs,
+        subagents,
+        spawner: turn.spawner.clone(),
+        tool_ctx: turn.tool_ctx.clone(),
+        read_policy: turn.read_policy,
+        board: turn.board.clone(),
+        project: turn.project.cloned(),
+        memories_rt: turn.memories.clone(),
+        tasks_rt: turn.tasks.clone(),
+        planning: turn.planning.clone(),
+        fsm: turn.fsm.clone(),
+        amc: turn.amc.clone(),
+        emitter: turn.emitter.clone(),
+        replay: turn.replay.cloned(),
+        handle: Handle::current(),
+        fsm_active: turn.fsm_active,
+        in_plan_mode: turn.in_plan_mode,
+        code_reviews_active: turn.code_reviews_active,
+        speculative_active: turn.speculative_active,
+        serviced: 0,
     };
 
-    joined.unwrap_or_else(|join| {
-        // A panic inside the sandbox is a failure of gg's own plumbing, and it is classified as one
-        // rather than as a guest trap: the store — and with it the roster, the logs, the pictures
-        // and the fuel reading — died with the blocking task, so what the loop still knows is that
-        // `serviced` calls really happened and really streamed their telemetry. That is exactly what
-        // `tool_calls_suppressed` means: calls the turn made that the roster does not describe, so
-        // the `CodeExecution` count still agrees with the number of `ToolCall`/`ToolResult` pairs
-        // the turn emitted. Laundering this as a trap would charge gg's defect to the model's error
-        // budget and answer it with advice about writing smaller programs.
-        SandboxOutcome {
-            tool_calls: Vec::new(),
-            tool_calls_suppressed: serviced,
-            refusals: Vec::new(),
-            refusals_suppressed: 0,
-            logs: Vec::new(),
-            logs_suppressed: 0,
-            images: Vec::new(),
-            images_dropped: 0,
-            deferred_note: None,
-            returned_value: false,
-            completion: None,
-            revoked_completion: None,
-            fuel_consumed: 0,
-            // Both are observations the sandbox makes on its way through, and the task that would
-            // have made them died — so neither is known, and neither is invented.
-            unreachable: None,
-            compile_wait: None,
-            result: Err(SandboxError::Host(format!(
-                "the code sandbox task did not complete: {join}"
-            ))),
+    let sandbox =
+        tokio::task::spawn_blocking(move || run_program(&program, &enabled, limits, deadline, api));
+
+    match sandbox.await {
+        // The sandbox ran (to a result, a throw, or a ceiling): reclaim the state the api carried so
+        // the loop gets its live window, skills/docs runtimes and delegation context back.
+        Ok((outcome, api)) => {
+            let state = CodeTurnState {
+                context: api.context,
+                skills: api.skills,
+                docs: api.docs,
+                subagents: api.subagents,
+            };
+            (outcome, Some(state))
         }
-    })
+        // A panic inside the sandbox is a failure of gg's own plumbing, classified as one rather than
+        // as a guest trap: the store — and with it the roster, the logs, the pictures, the fuel
+        // reading *and the per-turn state the api owned* — died with the blocking task. Returning
+        // `None` for the state is what tells the turn this is a host fault; it maps it to `Fatal`,
+        // ends the session, and never reads the window again. Laundering this as a trap would charge
+        // gg's defect to the model's error budget and answer it with advice about smaller programs.
+        Err(join) => {
+            let outcome = SandboxOutcome {
+                tool_calls: Vec::new(),
+                // The api's own roster died with the panic, so the count of calls it had already
+                // serviced is not recoverable here; the turn is fatal regardless.
+                tool_calls_suppressed: 0,
+                refusals: Vec::new(),
+                refusals_suppressed: 0,
+                logs: Vec::new(),
+                logs_suppressed: 0,
+                images: Vec::new(),
+                images_dropped: 0,
+                deferred_note: None,
+                returned_value: false,
+                completion: None,
+                revoked_completion: None,
+                fuel_consumed: 0,
+                // Both are observations the sandbox makes on its way through, and the task that would
+                // have made them died — so neither is known, and neither is invented.
+                unreachable: None,
+                compile_wait: None,
+                result: Err(SandboxError::Host(format!(
+                    "the code sandbox task did not complete: {join}"
+                ))),
+            };
+            (outcome, None)
+        }
+    }
 }
 
 /// Pin a **fresh** `read_skill` into the context and emit the updated
@@ -1081,50 +939,614 @@ fn pin_docs(context: &mut ContextModel, text: &str) {
     );
 }
 
-/// Service one tool call a code program made — the code-mode counterpart of the tool-calling loop's
-/// per-call dispatch, so the two paths gate and route identically.
-///
-/// The call is gated by the same predicates as a native call — refused (surfacing into the program
-/// as a typed `refused` throw) when plan mode withholds it or the current FSM state does not offer
-/// it — and routed the same way: a [delegation tool](is_subagent_tool) through the
-/// [scheduler](handle_subagent_call), a [`speculate`](handle_speculate) or gated
-/// [`complete_issue`](handle_code_review) through their routines, everything else through ordinary
-/// [registry dispatch](ToolRegistry::dispatch).
-///
-/// The turn-level transitions (`advance_state`, `enter_plan_mode`, `submit_plan`) are **not**
-/// handled here at all. They change the loop's mode rather than producing a value, so the sandbox
-/// never binds them into a program's scope and the [membrane](crate::sandbox) refuses them — telling
-/// the model to do the work directly, because a code-mode run has no turn that is not a program —
-/// before a call can ever reach this seam. A refusal stated where the name is withheld is a refusal
-/// that cannot go stale.
-async fn dispatch_code_tool_call(
-    call: &ToolCall,
-    turn: &CodeTurn<'_>,
-    subagents: &mut Option<SubagentContext>,
-) -> ToolOutcome {
-    if turn.planning.offers_planning() && !plan_mode_offers(&call.name, turn.in_plan_mode) {
-        return ToolOutcome::failed(
-            ToolFailure::Refused,
-            plan_mode_refusal(&call.name, turn.in_plan_mode),
+// ---------------------------------------------------------------------------
+// The native `ToolApi`: the loop's own state, servicing each typed call inline
+// ---------------------------------------------------------------------------
+
+/// The production [`ToolApi`]: the loop's own state, servicing each typed call exactly as the
+/// tool-calling loop services a native one — plan/FSM gating, ToolCall/ToolResult telemetry, replay,
+/// agent-managed-context reclaim, skill pinning, board pump + state events — and routing the
+/// delegation family to the subagent scheduler via `block_on` (the sandbox runs on a blocking
+/// thread).
+pub(super) struct LoopToolApi {
+    // moved-in, mutable, reclaimed after the turn:
+    pub(super) context: ContextModel,
+    pub(super) skills: SkillsRuntime,
+    pub(super) docs: DocsRuntime,
+    pub(super) subagents: Option<SubagentContext>,
+    // cloned/borrowed-by-value loop state:
+    spawner: Agent,
+    tool_ctx: ToolContext,
+    read_policy: ReadPolicy,
+    board: BoardRuntime,
+    project: Option<ProjectContext>,
+    memories_rt: MemoriesRuntime,
+    tasks_rt: TasksRuntime,
+    planning: PlanningRuntime,
+    fsm: FsmRuntime,
+    amc: AmcSetup,
+    emitter: Emitter,
+    replay: Option<Arc<GgRecorder>>,
+    handle: Handle,
+    fsm_active: bool,
+    in_plan_mode: bool,
+    code_reviews_active: bool,
+    speculative_active: bool,
+    serviced: u64,
+}
+
+#[allow(dead_code)]
+impl LoopToolApi {
+    /// Gate (plan/FSM) then, if allowed, run `exec` (an ordinary typed tool call), then service the
+    /// outcome (telemetry, AMC reclaim, replay, board pump, state events, skill pin). Returns the
+    /// serviced outcome the membrane maps to a WIT result.
+    fn serviced(
+        &mut self,
+        name: &str,
+        args: Value,
+        exec: impl FnOnce(&mut Self) -> ToolOutcome,
+    ) -> ToolOutcome {
+        // The gate is evaluated first, but the `ToolCall` is streamed *before* the call runs either
+        // way — a plan/FSM refusal is a serviced call that streams its `ToolCall`/`ToolResult` pair
+        // exactly as a call that ran does, so its telemetry order matches the native path's.
+        let refused = self.gate(name);
+        let call = self.begin(name, args);
+        if let Some(refused) = refused {
+            return self.complete(call, refused, None);
+        }
+        let mut outcome = exec(self);
+        // Agent-managed context: rewrite the outcome with what the loop actually reclaimed.
+        let managed = if self.amc.enabled && outcome.ok && is_context_reclaim_tool(name) {
+            apply_context_reclaim(&mut self.context, &self.amc.archive, &call, &mut outcome)
+        } else {
+            None
+        };
+        self.complete(call, outcome, managed)
+    }
+
+    /// The plan-mode/FSM gate; `Some(refusal_outcome)` when this call is withheld this turn.
+    fn gate(&self, name: &str) -> Option<ToolOutcome> {
+        if self.planning.offers_planning() && !plan_mode_offers(name, self.in_plan_mode) {
+            return Some(ToolOutcome::failed(
+                ToolFailure::Refused,
+                plan_mode_refusal(name, self.in_plan_mode),
+            ));
+        }
+        if self.fsm_active && !self.fsm.offers(name) {
+            return Some(ToolOutcome::failed(
+                ToolFailure::Refused,
+                fsm_refusal(name, &self.fsm),
+            ));
+        }
+        None
+    }
+
+    /// Mint the synthetic call record (ordinal-keyed id, unique within the turn) and stream its
+    /// `ToolCall` — done **before** the call runs, so a delegation's child events land between this
+    /// `ToolCall` and its `ToolResult`, exactly as the native tool-calling loop orders them.
+    fn begin(&mut self, name: &str, args: Value) -> ToolCall {
+        let call = ToolCall {
+            id: format!("{PROGRAM_CALL_ID_PREFIX}{}:{name}", self.serviced),
+            name: name.to_string(),
+            arguments: args,
+        };
+        self.serviced += 1;
+        self.emitter.emit(GgTelemetryKind::ToolCall {
+            name: call.name.clone(),
+            args: call.arguments.clone(),
+        });
+        call
+    }
+
+    /// Stream the `ToolResult`, record replay, pump the board, re-emit knowledge state, and pin a
+    /// fresh skill — the per-call servicing tail shared by ordinary and delegation calls, run after
+    /// the call (or handler) has produced `outcome`. Its [`begin`](Self::begin) already streamed the
+    /// `ToolCall`.
+    fn complete(
+        &mut self,
+        call: ToolCall,
+        outcome: ToolOutcome,
+        managed: Option<GgTelemetryKind>,
+    ) -> ToolOutcome {
+        self.emitter.emit(GgTelemetryKind::ToolResult {
+            name: call.name.clone(),
+            ok: outcome.ok,
+            summary: outcome.summary.clone(),
+        });
+        if let Some(event) = managed {
+            self.emitter.emit(event);
+        }
+        if let Some(recorder) = &self.replay {
+            recorder.record_tool_result(&self.spawner.id, &call, &outcome);
+        }
+        if outcome.ok {
+            if is_board_tool(&call.name)
+                && let Some(project) = &self.project
+            {
+                project.orch.pump_and_wake(&self.emitter);
+            }
+            let state = if is_memory_tool(&call.name) {
+                self.memories_rt.state_event()
+            } else if is_task_tool(&call.name) {
+                self.tasks_rt.state_event()
+            } else if is_board_tool(&call.name) {
+                self.board.state_event()
+            } else {
+                None
+            };
+            if let Some(state) = state {
+                self.emitter.emit(state);
+            }
+        }
+        pin_read_skill(
+            &mut self.context,
+            &mut self.skills,
+            &call,
+            &outcome,
+            &self.emitter,
         );
+        outcome
     }
-    if turn.fsm_active && !turn.fsm.offers(&call.name) {
-        return ToolOutcome::failed(ToolFailure::Refused, fsm_refusal(&call.name, turn.fsm));
+
+    /// Delegation servicing: gate, stream the `ToolCall`, run the async handler on the blocking
+    /// thread via `block_on`, then service the tail. `run` gets the handle + mut subagent ctx +
+    /// spawner + emitter + call.
+    fn delegated(
+        &mut self,
+        name: &str,
+        args: Value,
+        run: impl FnOnce(&Handle, &mut SubagentContext, &Agent, &Emitter, &ToolCall) -> ToolOutcome,
+    ) -> ToolOutcome {
+        let refused = self.gate(name);
+        let call = self.begin(name, args);
+        if let Some(refused) = refused {
+            return self.complete(call, refused, None);
+        }
+        let handle = self.handle.clone();
+        let spawner = &self.spawner;
+        let emitter = &self.emitter;
+        let outcome = match self.subagents.as_mut() {
+            Some(sub) => run(&handle, sub, spawner, emitter, &call),
+            None => ToolOutcome::failed(
+                ToolFailure::Unavailable,
+                format!("`{name}` is not available: this run has no delegation runtime."),
+            ),
+        };
+        self.complete(call, outcome, None)
     }
-    // `wait_for_issue` is not bound in the responses-as-code guest (see
-    // `signatures::NON_SANDBOX_TOOLS`) — a composed program has no good shape for a blocking wait —
-    // so no interception for it is needed here; a program creates issues and lets gg auto-dispatch.
-    if let Some(sub) = subagents.as_mut() {
-        if is_subagent_tool(&call.name) {
-            return handle_subagent_call(sub, turn.spawner, turn.emitter, call).await;
+
+    /// Delegation servicing for the two handlers that also need the [board](BoardRuntime) —
+    /// [`speculate`](handle_speculate) and the gated [`complete_issue`](handle_code_review) — with an
+    /// extra `&BoardRuntime` handed to the `run` closure.
+    fn delegated_board(
+        &mut self,
+        name: &str,
+        args: Value,
+        run: impl FnOnce(
+            &Handle,
+            &mut SubagentContext,
+            &Agent,
+            &BoardRuntime,
+            &Emitter,
+            &ToolCall,
+        ) -> ToolOutcome,
+    ) -> ToolOutcome {
+        let refused = self.gate(name);
+        let call = self.begin(name, args);
+        if let Some(refused) = refused {
+            return self.complete(call, refused, None);
         }
-        if turn.speculative_active && call.name == SPECULATE_TOOL {
-            return handle_speculate(sub, turn.spawner, turn.board, turn.emitter, call).await;
+        let handle = self.handle.clone();
+        let spawner = &self.spawner;
+        let board = &self.board;
+        let emitter = &self.emitter;
+        let outcome = match self.subagents.as_mut() {
+            Some(sub) => run(&handle, sub, spawner, board, emitter, &call),
+            None => ToolOutcome::failed(
+                ToolFailure::Unavailable,
+                format!("`{name}` is not available: this run has no delegation runtime."),
+            ),
+        };
+        self.complete(call, outcome, None)
+    }
+}
+
+/// A `TaskStatus` in the spelling gg's schema declares, for the telemetry `args` value only.
+#[allow(dead_code)]
+fn task_status_word(status: TaskStatus) -> &'static str {
+    match status {
+        TaskStatus::Pending => "pending",
+        TaskStatus::InProgress => "in_progress",
+        TaskStatus::Done => "done",
+    }
+}
+
+/// An `IssueStatus` in the spelling gg's schema declares, for the telemetry `args` value only.
+#[allow(dead_code)]
+fn issue_status_word(status: IssueStatus) -> &'static str {
+    match status {
+        IssueStatus::Open => "open",
+        IssueStatus::InProgress => "in_progress",
+        IssueStatus::Done => "done",
+        IssueStatus::Failed => "failed",
+    }
+}
+
+#[allow(dead_code)]
+impl ToolApi for LoopToolApi {
+    fn shell(&mut self, command: String, timeout: Duration) -> ToolOutcome {
+        self.serviced(
+            "shell",
+            json!({ "command": command, "timeout_secs": timeout.as_secs_f64() }),
+            |api| {
+                api.handle
+                    .clone()
+                    .block_on(run_command(&command, timeout, &api.tool_ctx))
+            },
+        )
+    }
+    fn read_file(
+        &mut self,
+        path: String,
+        offset: Option<usize>,
+        limit: Option<usize>,
+    ) -> ToolOutcome {
+        self.serviced(
+            READ_FILE_TOOL,
+            json!({ "path": path, "offset": offset, "limit": limit }),
+            |api| {
+                ReadFileTool::new(api.read_policy).read(&api.tool_ctx, path.clone(), offset, limit)
+            },
+        )
+    }
+    fn write_file(&mut self, path: String, contents: String) -> ToolOutcome {
+        self.serviced(
+            "write_file",
+            json!({ "path": path, "contents": contents }),
+            |api| WriteFileTool.write(&api.tool_ctx, path.clone(), contents.clone()),
+        )
+    }
+    fn edit_file(&mut self, path: String, old_string: String, new_string: String) -> ToolOutcome {
+        self.serviced(
+            "edit_file",
+            json!({ "path": path, "old_string": old_string, "new_string": new_string }),
+            |api| {
+                EditFileTool.edit(
+                    &api.tool_ctx,
+                    path.clone(),
+                    old_string.clone(),
+                    new_string.clone(),
+                )
+            },
+        )
+    }
+    fn list_dir(&mut self, path: Option<String>) -> ToolOutcome {
+        self.serviced("list_dir", json!({ "path": path }), |api| {
+            ListDirTool.list(&api.tool_ctx, path.clone())
+        })
+    }
+    fn read_skill(&mut self, name: String) -> ToolOutcome {
+        self.serviced("read_skill", json!({ "name": name }), |api| {
+            ReadSkillTool::new(api.skills.library()).read(name.clone())
+        })
+    }
+    fn write_memory(&mut self, name: String, description: String, body: String) -> ToolOutcome {
+        self.serviced(
+            "write_memory",
+            json!({ "name": name, "description": description, "body": body }),
+            |api| {
+                WriteMemoryTool::new(api.memories_rt.store()).write(
+                    name.clone(),
+                    description.clone(),
+                    body.clone(),
+                )
+            },
+        )
+    }
+    fn update_memory(&mut self, name: String, description: String, body: String) -> ToolOutcome {
+        self.serviced(
+            "update_memory",
+            json!({ "name": name, "description": description, "body": body }),
+            |api| {
+                UpdateMemoryTool::new(api.memories_rt.store()).update(
+                    name.clone(),
+                    description.clone(),
+                    body.clone(),
+                )
+            },
+        )
+    }
+    fn delete_memory(&mut self, name: String) -> ToolOutcome {
+        self.serviced("delete_memory", json!({ "name": name }), |api| {
+            DeleteMemoryTool::new(api.memories_rt.store()).delete(name.clone())
+        })
+    }
+    fn add_task(
+        &mut self,
+        id: String,
+        title: String,
+        description: Option<String>,
+        blocked_by: Vec<String>,
+    ) -> ToolOutcome {
+        self.serviced(
+            "add_task",
+            json!({ "id": id, "title": title, "description": description, "blockedBy": blocked_by }),
+            |api| {
+                AddTaskTool::new(api.tasks_rt.store()).add(
+                    id.clone(),
+                    title.clone(),
+                    description.clone(),
+                    OwnedStructured::default(),
+                    blocked_by.clone(),
+                )
+            },
+        )
+    }
+    fn update_task(
+        &mut self,
+        id: String,
+        title: Option<String>,
+        description: Option<String>,
+        status: Option<TaskStatus>,
+    ) -> ToolOutcome {
+        // `description` follows gg's omit-to-keep sentinel: `None` (keep) is an absent key, matching
+        // the pre-inversion membrane's `insert_text_edit`.
+        let mut args = json!({ "id": id, "title": title, "status": status.map(task_status_word) });
+        if let Some(description) = &description {
+            args["description"] = json!(description);
         }
-        if turn.code_reviews_active && call.name == COMPLETE_ISSUE_TOOL && turn.board.offers_board()
-        {
-            return handle_code_review(sub, turn.spawner, turn.board, turn.emitter, call).await;
+        self.serviced("update_task", args, |api| {
+            UpdateTaskTool::new(api.tasks_rt.store()).update(
+                id.clone(),
+                title.clone(),
+                description.clone(),
+                OwnedStructured::default(),
+                status,
+            )
+        })
+    }
+    fn set_blocked_by(&mut self, id: String, blocked_by: Vec<String>) -> ToolOutcome {
+        self.serviced(
+            "set_blocked_by",
+            json!({ "id": id, "blockedBy": blocked_by }),
+            |api| {
+                SetBlockedByTool::new(api.tasks_rt.store())
+                    .set_blocked_by(id.clone(), blocked_by.clone())
+            },
+        )
+    }
+    fn complete_task(&mut self, id: String) -> ToolOutcome {
+        self.serviced("complete_task", json!({ "id": id }), |api| {
+            CompleteTaskTool::new(api.tasks_rt.store()).complete(id.clone())
+        })
+    }
+    fn remove_task(&mut self, id: String) -> ToolOutcome {
+        self.serviced("remove_task", json!({ "id": id }), |api| {
+            RemoveTaskTool::new(api.tasks_rt.store()).remove(id.clone())
+        })
+    }
+    fn create_epic(&mut self, id: String, title: String, description: String) -> ToolOutcome {
+        self.serviced(
+            "create_epic",
+            json!({ "id": id, "title": title, "description": description }),
+            |api| {
+                CreateEpicTool::new(api.board.store()).create_epic(
+                    id.clone(),
+                    title.clone(),
+                    description.clone(),
+                )
+            },
+        )
+    }
+    #[allow(clippy::too_many_arguments)]
+    fn create_issue(
+        &mut self,
+        id: String,
+        title: String,
+        description: Option<String>,
+        in_scope: String,
+        out_of_scope: String,
+        completion_criteria: String,
+        blocked_by: Vec<String>,
+        epic_id: Option<String>,
+    ) -> ToolOutcome {
+        self.serviced(
+            "create_issue",
+            json!({ "id": id, "title": title, "description": description, "inScope": in_scope, "outOfScope": out_of_scope, "completionCriteria": completion_criteria, "blockedBy": blocked_by, "epicId": epic_id }),
+            |api| {
+                CreateIssueTool::new(api.board.store()).create_issue(
+                    id.clone(),
+                    title.clone(),
+                    description.clone(),
+                    in_scope.clone(),
+                    out_of_scope.clone(),
+                    completion_criteria.clone(),
+                    blocked_by.clone(),
+                    epic_id.clone(),
+                )
+            },
+        )
+    }
+    #[allow(clippy::too_many_arguments)]
+    fn update_issue(
+        &mut self,
+        id: String,
+        title: Option<String>,
+        description: Option<String>,
+        in_scope: Option<String>,
+        out_of_scope: Option<String>,
+        completion_criteria: Option<String>,
+        status: Option<IssueStatus>,
+        epic_id: Option<String>,
+    ) -> ToolOutcome {
+        // `description` (text-edit) and `epicId` (epic-assignment) use gg's omit-to-keep sentinel:
+        // `None` means "leave it alone", spelled as an absent key — matching the membrane's former
+        // `insert_text_edit`/`insert_epic_assignment`.
+        let mut args = json!({ "id": id, "title": title, "inScope": in_scope, "outOfScope": out_of_scope, "completionCriteria": completion_criteria, "status": status.map(issue_status_word) });
+        if let Some(description) = &description {
+            args["description"] = json!(description);
+        }
+        if let Some(epic_id) = &epic_id {
+            args["epicId"] = json!(epic_id);
+        }
+        self.serviced("update_issue", args, |api| {
+            UpdateIssueTool::new(api.board.store()).update_issue(
+                id.clone(),
+                title.clone(),
+                description.clone(),
+                in_scope.clone(),
+                out_of_scope.clone(),
+                completion_criteria.clone(),
+                status,
+                epic_id.clone(),
+            )
+        })
+    }
+    fn set_issue_blocked_by(&mut self, id: String, blocked_by: Vec<String>) -> ToolOutcome {
+        self.serviced(
+            "set_issue_blocked_by",
+            json!({ "id": id, "blockedBy": blocked_by }),
+            |api| {
+                SetIssueBlockedByTool::new(api.board.store())
+                    .set_issue_blocked_by(id.clone(), blocked_by.clone())
+            },
+        )
+    }
+    fn complete_issue(&mut self, id: String) -> ToolOutcome {
+        // Code-review-gated? route to the reviewer; else the plain typed completion.
+        if self.code_reviews_active && self.board.offers_board() && self.subagents.is_some() {
+            return self.delegated_board(
+                COMPLETE_ISSUE_TOOL,
+                json!({ "id": id }),
+                |h, sub, spawner, board, emitter, call| {
+                    h.clone()
+                        .block_on(handle_code_review(sub, spawner, board, emitter, call))
+                },
+            );
+        }
+        self.serviced(COMPLETE_ISSUE_TOOL, json!({ "id": id }), |api| {
+            CompleteIssueTool::new(api.board.store()).complete_issue(id.clone())
+        })
+    }
+    fn remove_epic(&mut self, id: String) -> ToolOutcome {
+        self.serviced("remove_epic", json!({ "id": id }), |api| {
+            RemoveEpicTool::new(api.board.store()).remove_epic(id.clone())
+        })
+    }
+    fn remove_issue(&mut self, id: String) -> ToolOutcome {
+        self.serviced("remove_issue", json!({ "id": id }), |api| {
+            RemoveIssueTool::new(api.board.store()).remove_issue(id.clone())
+        })
+    }
+    fn evict_file_view(&mut self, path: Option<String>) -> ToolOutcome {
+        self.serviced("evict_file_view", json!({ "path": path }), |_api| {
+            EvictFileViewTool.evict(path.clone())
+        })
+    }
+    fn archive_thread(&mut self, keep_recent_turns: Option<u32>) -> ToolOutcome {
+        let keep = keep_recent_turns
+            .map(|k| k as usize)
+            .unwrap_or(DEFAULT_ARCHIVE_KEEP_RECENT);
+        self.serviced(
+            "archive_thread",
+            json!({ "keep_recent_turns": keep_recent_turns }),
+            move |_api| ArchiveThreadTool.archive(keep),
+        )
+    }
+    fn search_archive(&mut self, query: String) -> ToolOutcome {
+        self.serviced("search_archive", json!({ "query": query }), |api| {
+            SearchArchiveTool::new(api.amc.archive.clone()).search(query.clone())
+        })
+    }
+    fn spawn_subagent(
+        &mut self,
+        agent: String,
+        prompt: Option<String>,
+        issue_id: Option<String>,
+        worktree: bool,
+    ) -> ToolOutcome {
+        let args =
+            json!({ "agent": agent, "prompt": prompt, "issueId": issue_id, "worktree": worktree });
+        self.delegated(
+            SPAWN_SUBAGENT_TOOL,
+            args,
+            |h, sub, spawner, emitter, call| {
+                h.clone()
+                    .block_on(handle_subagent_call(sub, spawner, emitter, call))
+            },
+        )
+    }
+    fn wait_for_subagents(&mut self, ids: Option<Vec<String>>) -> ToolOutcome {
+        self.delegated(
+            WAIT_FOR_SUBAGENTS_TOOL,
+            json!({ "ids": ids }),
+            |h, sub, spawner, emitter, call| {
+                h.clone()
+                    .block_on(handle_subagent_call(sub, spawner, emitter, call))
+            },
+        )
+    }
+    fn send_message(&mut self, agent_id: String, message: String) -> ToolOutcome {
+        self.delegated(
+            SEND_MESSAGE_TOOL,
+            json!({ "agentId": agent_id, "message": message }),
+            |h, sub, spawner, emitter, call| {
+                h.clone()
+                    .block_on(handle_subagent_call(sub, spawner, emitter, call))
+            },
+        )
+    }
+    fn run_workflow(&mut self, stages: Vec<WorkflowStageInput>) -> ToolOutcome {
+        let json_stages: Vec<Value> = stages
+            .iter()
+            .map(|s| {
+                json!({ "name": s.name, "prompt": s.prompt, "items": s.items, "agent": s.agent, "worktree": s.worktree })
+            })
+            .collect();
+        self.delegated(
+            RUN_WORKFLOW_TOOL,
+            json!({ "stages": json_stages }),
+            |h, sub, spawner, emitter, call| {
+                h.clone()
+                    .block_on(handle_subagent_call(sub, spawner, emitter, call))
+            },
+        )
+    }
+    fn speculate(
+        &mut self,
+        agent: String,
+        prompt: Option<String>,
+        issue_id: Option<String>,
+        attempts: u8,
+        approaches: Vec<String>,
+    ) -> ToolOutcome {
+        let args = json!({ "agent": agent, "prompt": prompt, "issueId": issue_id, "attempts": attempts, "approaches": approaches });
+        // Route through the best-of-K routine only when speculation is actually active this run
+        // (the capability is on *and* the delegation machinery exists). Otherwise the tool is a
+        // loop-handled declaration that reached the api by mistake — answer it exactly as the native
+        // path's `registry.dispatch` → `SpeculateTool::invoke` does, with `handled_by_loop`.
+        if self.speculative_active && self.subagents.is_some() {
+            self.delegated_board(
+                SPECULATE_TOOL,
+                args,
+                |h, sub, spawner, board, emitter, call| {
+                    h.clone()
+                        .block_on(handle_speculate(sub, spawner, board, emitter, call))
+                },
+            )
+        } else {
+            self.serviced(SPECULATE_TOOL, args, |_api| handled_by_loop(SPECULATE_TOOL))
         }
     }
-    turn.registry.dispatch(call, turn.tool_ctx).await
+    fn list_functions(&mut self, object: &str) -> Vec<FunctionSummary> {
+        self.docs.list(object)
+    }
+    fn read_docs(&mut self, name: &str) -> Option<String> {
+        self.docs.read(name).map(|read| {
+            if read.fresh {
+                pin_docs(&mut self.context, &read.text);
+            }
+            read.text
+        })
+    }
 }

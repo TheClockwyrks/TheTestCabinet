@@ -1,56 +1,30 @@
-//! The seam between the typed membrane and gg's real toolset, and the records a run keeps of what
-//! crossed it.
+//! The **native API surface** the typed membrane calls, and the records a run keeps of what a
+//! program composed.
 //!
 //! Everything above this file is typed all the way to the model: a WIT function per tool, a
-//! TypeScript function per tool, typed arguments and a typed result. Everything below it is gg's
-//! existing tool dispatch, which has always taken a name and a `serde_json::Value`. This module is
-//! where the two meet — and it is the **only** place JSON exists in the design, inside the host,
-//! between a [membrane](super::membrane) function and
-//! [`ToolRegistry::dispatch`](crate::tools::ToolRegistry::dispatch). That is deliberate: it is what
-//! lets the loop's plan-mode and FSM gating, its delegation routing through the subagent scheduler,
-//! its `ToolCall`/`ToolResult` telemetry and its replay capture stay exactly as they are while the
-//! model-facing surface becomes typed functions.
+//! TypeScript function per tool, typed arguments and a typed result. [`ToolApi`] is the near side
+//! of that surface *inside* the host — **one standard, typed method per API function**, so a
+//! program's `fs.readFile(path, { limit })` reaches [`ToolApi::read_file`] with its arguments still
+//! typed, never lowered into a bag of JSON to be re-parsed. That is the whole of the inversion:
+//! responses-as-code is the richer interface, so it calls these functions directly; the JSON
+//! tool-calling path is the one that parses its arguments and calls the same standard functions
+//! ([`Tool::invoke`](crate::tools::Tool)).
+//!
+//! The production implementation (the loop's `LoopToolApi`, in [`crate::agent`]) performs each call
+//! against gg's real tools and does the loop servicing — plan-mode/FSM gating, `ToolCall`/
+//! `ToolResult` telemetry, replay capture, agent-managed-context reclaim, skill pinning, and — for
+//! the delegation family — routing through the subagent scheduler. Because it holds the agent's
+//! loop state and the sandbox runs on a blocking thread, it drives the async parts (`shell`,
+//! delegation) with a [`Handle`](tokio::runtime::Handle)`::block_on`. The in-memory `FakeToolApi`
+//! stands in for it in the sandbox's own tests.
 
-use serde_json::Value;
+use std::time::Duration;
 
+use crate::board::IssueStatus;
+use crate::tasks::TaskStatus;
 use crate::tools::ToolOutcome;
 
-/// The synchronous seam every membrane call is bridged through: the membrane hands over a gg tool
-/// name and its JSON arguments, the implementation performs the call, and the [`ToolOutcome`] comes
-/// back to be converted into that call's typed WIT result.
-///
-/// It is a trait so the sandbox is testable with an in-memory fake and free of any runtime
-/// dependency; in production it is the [loop](crate::agent)'s channel invoker, which hands the call
-/// to the async loop and blocks for the reply, so a program's delegation still goes through the
-/// scheduler and every call is still gated exactly as a native tool call is.
-///
-/// The invoker is **owned** by the [store](super::membrane::MembraneState) rather than borrowed,
-/// which is what lets the store's data be `'static` — wasmtime's requirement — with no
-/// lifetime-erasing pointer and no `unsafe` anywhere in this sandbox. `Send` is required because
-/// the box is moved onto a blocking thread by the loop.
-pub trait ToolInvoker: Send {
-    /// Perform `name(args)` and return its outcome. Never panics: a tool that cannot run reports a
-    /// failed [`ToolOutcome`], which the membrane turns into a typed `tool-error` the program can
-    /// catch.
-    fn invoke(&mut self, name: &str, args: Value) -> ToolOutcome;
-
-    /// List the [documented functions](FunctionSummary) on one API object (`fs`, `project`, …),
-    /// each with a one-line summary — the directory `object.list()` returns. Only the functions this
-    /// run actually bound are listed. An unknown object is an empty list.
-    ///
-    /// This is a [documentation carve-out](crate::docs), not a tool: no capability offers it, it
-    /// dispatches nothing through [`invoke`](Self::invoke), and it is bound into every program's
-    /// scope whatever a run enables.
-    fn list_functions(&mut self, object: &str) -> Vec<FunctionSummary>;
-
-    /// The full documentation for one function by the name it is called by (`readFile`, `finish`):
-    /// its signature, its description, and the declarations of any types it refers to that have not
-    /// already been shown this session. Also injects a durable copy into the agent's context.
-    /// `None` for an unknown name, which the membrane turns into a `not-found`.
-    fn read_docs(&mut self, name: &str) -> Option<String>;
-}
-
-/// One function in an API object's directory, as [`list_functions`](ToolInvoker::list_functions)
+/// One function in an API object's directory, as [`list_functions`](ToolApi::list_functions)
 /// returns it: the name a program calls it by and a one-line summary. The host counterpart of the
 /// guest's `FunctionSummary` WIT record, kept free of the bindgen types so the trait has no
 /// dependency on the generated membrane.
@@ -106,3 +80,102 @@ pub struct SandboxRefusal {
 /// [replay driver](crate::replay_driver) recognises this prefix to attribute a recorded
 /// `ToolResult` to the open turn's program rather than to a native tool call the model never made.
 pub const PROGRAM_CALL_ID_PREFIX: &str = "program:";
+
+/// The native, typed surface the membrane calls — one standard method per gg API function, plus the
+/// two documentation carve-outs. No method takes a serde_json::Value: a program's typed call reaches
+/// gg's tools without a round trip through JSON. `&mut self` because a call records what it composed.
+pub trait ToolApi: Send + 'static {
+    fn shell(&mut self, command: String, timeout: Duration) -> ToolOutcome;
+    fn read_file(
+        &mut self,
+        path: String,
+        offset: Option<usize>,
+        limit: Option<usize>,
+    ) -> ToolOutcome;
+    fn write_file(&mut self, path: String, contents: String) -> ToolOutcome;
+    fn edit_file(&mut self, path: String, old_string: String, new_string: String) -> ToolOutcome;
+    fn list_dir(&mut self, path: Option<String>) -> ToolOutcome;
+    fn read_skill(&mut self, name: String) -> ToolOutcome;
+    fn write_memory(&mut self, name: String, description: String, body: String) -> ToolOutcome;
+    fn update_memory(&mut self, name: String, description: String, body: String) -> ToolOutcome;
+    fn delete_memory(&mut self, name: String) -> ToolOutcome;
+    fn add_task(
+        &mut self,
+        id: String,
+        title: String,
+        description: Option<String>,
+        blocked_by: Vec<String>,
+    ) -> ToolOutcome;
+    fn update_task(
+        &mut self,
+        id: String,
+        title: Option<String>,
+        description: Option<String>,
+        status: Option<TaskStatus>,
+    ) -> ToolOutcome;
+    fn set_blocked_by(&mut self, id: String, blocked_by: Vec<String>) -> ToolOutcome;
+    fn complete_task(&mut self, id: String) -> ToolOutcome;
+    fn remove_task(&mut self, id: String) -> ToolOutcome;
+    fn create_epic(&mut self, id: String, title: String, description: String) -> ToolOutcome;
+    #[allow(clippy::too_many_arguments)]
+    fn create_issue(
+        &mut self,
+        id: String,
+        title: String,
+        description: Option<String>,
+        in_scope: String,
+        out_of_scope: String,
+        completion_criteria: String,
+        blocked_by: Vec<String>,
+        epic_id: Option<String>,
+    ) -> ToolOutcome;
+    #[allow(clippy::too_many_arguments)]
+    fn update_issue(
+        &mut self,
+        id: String,
+        title: Option<String>,
+        description: Option<String>,
+        in_scope: Option<String>,
+        out_of_scope: Option<String>,
+        completion_criteria: Option<String>,
+        status: Option<IssueStatus>,
+        epic_id: Option<String>,
+    ) -> ToolOutcome;
+    fn set_issue_blocked_by(&mut self, id: String, blocked_by: Vec<String>) -> ToolOutcome;
+    fn complete_issue(&mut self, id: String) -> ToolOutcome;
+    fn remove_epic(&mut self, id: String) -> ToolOutcome;
+    fn remove_issue(&mut self, id: String) -> ToolOutcome;
+    fn evict_file_view(&mut self, path: Option<String>) -> ToolOutcome;
+    fn archive_thread(&mut self, keep_recent_turns: Option<u32>) -> ToolOutcome;
+    fn search_archive(&mut self, query: String) -> ToolOutcome;
+    fn spawn_subagent(
+        &mut self,
+        agent: String,
+        prompt: Option<String>,
+        issue_id: Option<String>,
+        worktree: bool,
+    ) -> ToolOutcome;
+    fn wait_for_subagents(&mut self, ids: Option<Vec<String>>) -> ToolOutcome;
+    fn send_message(&mut self, agent_id: String, message: String) -> ToolOutcome;
+    fn run_workflow(&mut self, stages: Vec<WorkflowStageInput>) -> ToolOutcome;
+    fn speculate(
+        &mut self,
+        agent: String,
+        prompt: Option<String>,
+        issue_id: Option<String>,
+        attempts: u8,
+        approaches: Vec<String>,
+    ) -> ToolOutcome;
+    fn list_functions(&mut self, object: &str) -> Vec<FunctionSummary>;
+    fn read_docs(&mut self, name: &str) -> Option<String>;
+}
+
+/// One stage of a declared run_workflow, lowered from the WIT record to primitive fields.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkflowStageInput {
+    pub name: String,
+    pub prompt: String,
+    pub items: Option<Vec<String>>,
+    pub agent: String,
+    pub worktree: bool,
+}

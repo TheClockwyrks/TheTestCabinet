@@ -152,13 +152,28 @@ fn in_progress_maps_to_the_stores_underscore_spelling() {
         Some(json!("in_progress"))
     );
 
-    // Both directions of the seam: the enum's other arms are spelled identically on each side, and
-    // the issue statuses go through the same conversion.
-    assert_eq!(task_status(TaskStatus::Pending), "pending");
-    assert_eq!(task_status(TaskStatus::Done), "done");
-    assert_eq!(issue_status(IssueStatus::InProgress), "in_progress");
-    assert_eq!(issue_status(IssueStatus::Open), "open");
-    assert_eq!(issue_status(IssueStatus::Done), "done");
+    // Both directions of the seam: the membrane's WIT status enum lowers onto gg's native status
+    // enum, which the typed function takes directly (no schema word between them any more).
+    assert!(matches!(
+        task_status(TaskStatus::Pending),
+        crate::tasks::TaskStatus::Pending
+    ));
+    assert!(matches!(
+        task_status(TaskStatus::Done),
+        crate::tasks::TaskStatus::Done
+    ));
+    assert!(matches!(
+        issue_status(IssueStatus::InProgress),
+        crate::board::IssueStatus::InProgress
+    ));
+    assert!(matches!(
+        issue_status(IssueStatus::Open),
+        crate::board::IssueStatus::Open
+    ));
+    assert!(matches!(
+        issue_status(IssueStatus::Done),
+        crate::board::IssueStatus::Done
+    ));
 }
 
 /// The three-way text edit onto gg's stringly sentinel: `keep` omits the key entirely (the only way

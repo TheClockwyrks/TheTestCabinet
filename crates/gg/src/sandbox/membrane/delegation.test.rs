@@ -48,7 +48,8 @@ fn a_subagent_brief_is_exactly_one_of_prompt_or_issue() {
             "agent": ROOT_AGENT,
             "prompt": null,
             "issueId": "i1",
-            "worktree": null,
+            // The membrane resolves an absent `worktree` to `false` before the call.
+            "worktree": false,
         }))
     );
     assert_eq!(handle.id, "agent-1");
@@ -172,16 +173,20 @@ fn absent_items_and_empty_items_are_different_workflow_stages() {
         .expect("the stages were sent");
     assert_eq!(
         stages,
+        // `items` still distinguishes absent (`null`, fan out) from empty (`[]`, an error) — that is
+        // this test's point. The membrane now resolves each stage's optional `name`/`worktree` before
+        // the call: an absent name becomes `""` (still named `stage-N` by the loop) and an absent
+        // worktree becomes `false`.
         json!([
             {
                 "name": "survey",
                 "prompt": "look at {{item}}",
                 "items": ["a.ts", "b.ts"],
                 "agent": ROOT_AGENT,
-                "worktree": null,
+                "worktree": false,
             },
             {
-                "name": null,
+                "name": "",
                 "prompt": "summarise {{prior}}",
                 "items": null,
                 "agent": "subagent",
@@ -192,7 +197,7 @@ fn absent_items_and_empty_items_are_different_workflow_stages() {
                 "prompt": "never runs",
                 "items": [],
                 "agent": ROOT_AGENT,
-                "worktree": null,
+                "worktree": false,
             },
         ])
     );

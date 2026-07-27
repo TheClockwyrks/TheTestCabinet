@@ -101,7 +101,7 @@ mod outcome;
 mod signatures;
 mod transpile;
 
-pub use invoker::ToolInvoker;
+pub use invoker::{ToolApi, WorkflowStageInput};
 pub use limits::SandboxLimits;
 pub use outcome::{
     ProgramCompletion, ProgramError, ProgramErrorKind, ProgramResult, SandboxError, SandboxOutcome,
@@ -126,41 +126,50 @@ use membrane::{MembraneParts, MembraneState, Sandbox};
 /// bridged call so a program cannot outlive the run it belongs to. Synchronous and CPU-bound, so
 /// the [loop](crate::agent) runs it on `spawn_blocking`; it performs no I/O of its own — every
 /// effect goes through `invoker`.
-pub fn run_program(
+pub fn run_program<A: ToolApi>(
     program: &str,
     enabled: &[String],
     limits: SandboxLimits,
     deadline: Option<Instant>,
-    invoker: Box<dyn ToolInvoker>,
-) -> SandboxOutcome {
+    api: A,
+) -> (SandboxOutcome, A) {
     // A test may have armed one of the failures gg's own machinery would have to be broken to
-    // produce; see `force_next_program_fault`.
+    // produce; see `force_next_program_fault`. The `api` is handed straight back — this fault is a
+    // stand-in for a before-start failure, which never runs the program and never touches state.
     #[cfg(test)]
     if let Some(error) = forced_fault() {
-        return SandboxOutcome::before_start(error);
+        return (SandboxOutcome::before_start(error), api);
     }
 
     // A program that does not compile never touches the engine: no store, no instantiate, no fuel.
     let transpiled = match transpile::transpile_ts(program) {
         Ok(transpiled) => transpiled,
-        Err(error) => return SandboxOutcome::before_start(SandboxError::Transpile(error)),
+        Err(error) => {
+            return (
+                SandboxOutcome::before_start(SandboxError::Transpile(error)),
+                api,
+            );
+        }
     };
     let unreachable = transpiled.unreachable;
     let (component, compile_wait) = match engine::component() {
         Ok(component) => component,
-        Err(error) => return SandboxOutcome::before_start(error),
+        Err(error) => return (SandboxOutcome::before_start(error), api),
     };
 
     let linker = match linker() {
         Ok(linker) => linker,
-        Err(error) => return SandboxOutcome::before_start(error),
+        Err(error) => return (SandboxOutcome::before_start(error), api),
     };
-    let mut store = match bounded_store(
-        MembraneState::new(invoker, enabled, limits, deadline),
-        limits,
-    ) {
+    let mut store = match bounded_store(MembraneState::new(api, enabled, limits, deadline), limits)
+    {
         Ok(store) => store,
-        Err(error) => return SandboxOutcome::before_start(error),
+        // The api was moved into the state to build the store; reclaim it so the caller still gets
+        // its per-turn state back on this (host-fault) path.
+        Err((error, state)) => {
+            let (api, _parts) = state.api_and_parts();
+            return (SandboxOutcome::before_start(error), api);
+        }
     };
 
     let bound = match Sandbox::instantiate(&mut store, component, &linker) {
@@ -194,7 +203,7 @@ pub fn run_program(
 /// and the expensive artifact (the compiled [`Component`](wasmtime::component::Component)) is the
 /// one that is cached. Sharing a linker would buy microseconds and cost the guarantee that a run's
 /// imports are assembled from nothing but its own state.
-fn linker() -> Result<Linker<MembraneState>, SandboxError> {
+fn linker<A: ToolApi>() -> Result<Linker<MembraneState<A>>, SandboxError> {
     let mut linker = Linker::new(engine::shared_engine());
     Sandbox::add_to_linker::<_, HasSelf<_>>(&mut linker, |state| state)
         .map_err(|error| SandboxError::Engine(error.to_string()))?;
@@ -208,15 +217,19 @@ fn linker() -> Result<Linker<MembraneState>, SandboxError> {
 /// *instantiation* rather than at the first allocation a program makes, and why the limiter's
 /// denial flag is what tells those two apart. The fuel is set here for symmetry and costs nothing:
 /// instantiation itself is measured at 0 fuel, the engine initialising lazily on the first call.
-fn bounded_store(
-    state: MembraneState,
+#[allow(clippy::result_large_err)]
+fn bounded_store<A: ToolApi>(
+    state: MembraneState<A>,
     limits: SandboxLimits,
-) -> Result<Store<MembraneState>, SandboxError> {
+) -> Result<Store<MembraneState<A>>, (SandboxError, MembraneState<A>)> {
     let mut store = Store::new(engine::shared_engine(), state);
     store.limiter(|state| state.limiter());
-    store
-        .set_fuel(limits.fuel)
-        .map_err(|error| SandboxError::Engine(error.to_string()))?;
+    // `set_fuel` fails only if fuel metering is off in the engine config (it is not) — but on that
+    // impossible path the state is handed back so `run_program` can still reclaim the api it moved
+    // in, rather than dropping it inside the consumed store.
+    if let Err(error) = store.set_fuel(limits.fuel) {
+        return Err((SandboxError::Engine(error.to_string()), store.into_data()));
+    }
     Ok(store)
 }
 
@@ -279,8 +292,8 @@ pub(crate) fn component_bound_tools() -> Result<Vec<String>, SandboxError> {
     let log = fake::CallLog::default();
     // No tools are bound: the guest reports what it *can* bind, which does not depend on what this
     // particular store enables.
-    let state = MembraneState::new(Box::new(fake::FakeInvoker::new(&log)), &[], limits, None);
-    let mut store = bounded_store(state, limits)?;
+    let state = MembraneState::new(fake::FakeToolApi::new(&log), &[], limits, None);
+    let mut store = bounded_store(state, limits).map_err(|(error, _state)| error)?;
 
     let bound = Sandbox::instantiate(&mut store, component, &linker)
         .map_err(|error| engine::classify(&store, limits, &error, SandboxError::Instantiate))?;
@@ -298,31 +311,34 @@ pub(crate) fn component_bound_tools() -> Result<Vec<String>, SandboxError> {
 /// It is named `reclaim` and not `finish` because `finish` now means something specific to a reader
 /// of this crate: the one model-facing call that ends the run ([`FINISH_FUNCTION`]). Two unrelated
 /// meanings of that word inside one module is exactly the confusion this rename removes.
-fn reclaim(
-    store: Store<MembraneState>,
+fn reclaim<A: ToolApi>(
+    store: Store<MembraneState<A>>,
     limits: SandboxLimits,
     returned: Result<(), SandboxError>,
     unreachable: Option<UnreachableTail>,
     compile_wait: Option<Duration>,
-) -> SandboxOutcome {
+) -> (SandboxOutcome, A) {
     let fuel_consumed = limits.fuel.saturating_sub(store.get_fuel().unwrap_or(0));
-    let MembraneParts {
-        calls,
-        calls_suppressed,
-        refusals,
-        refusals_suppressed,
-        logs,
-        logs_suppressed,
-        images,
-        images_dropped,
-        deferred_note,
-        returned_value,
-        completion,
-        revoked_completion,
-        program_error,
-    } = store.into_data().into_parts();
+    let (
+        api,
+        MembraneParts {
+            calls,
+            calls_suppressed,
+            refusals,
+            refusals_suppressed,
+            logs,
+            logs_suppressed,
+            images,
+            images_dropped,
+            deferred_note,
+            returned_value,
+            completion,
+            revoked_completion,
+            program_error,
+        },
+    ) = store.into_data().api_and_parts();
 
-    SandboxOutcome {
+    let outcome = SandboxOutcome {
         tool_calls: calls,
         tool_calls_suppressed: calls_suppressed,
         refusals,
@@ -345,7 +361,8 @@ fn reclaim(
         result: returned.map(|()| ProgramResult {
             error: program_error,
         }),
-    }
+    };
+    (outcome, api)
 }
 
 // ---------------------------------------------------------------------------------------------

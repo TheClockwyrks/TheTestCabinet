@@ -13,14 +13,12 @@
 
 use std::time::Duration;
 
-use serde_json::json;
-
-use super::MembraneState;
 use super::test_cabinet::gg::files::{
     DirEntry, EntryKind, FileRead, Host as FilesHost, ImageRead, TextRead,
 };
 use super::test_cabinet::gg::shell::{Host as ShellHost, ShellOutput};
 use super::test_cabinet::gg::types::ToolError;
+use super::{MembraneState, ToolApi};
 use crate::tools::{DirEntryData, DirEntryKind, READ_FILE_TOOL, ToolData};
 
 /// The `shell` tool name.
@@ -58,17 +56,14 @@ const MAX_TIMEOUT_SECS: f64 = 86_400.0;
 /// as what it plainly means: the first line.
 const FIRST_LINE_OFFSET: u32 = 1;
 
-impl ShellHost for MembraneState {
+impl<A: ToolApi> ShellHost for MembraneState<A> {
     fn shell(
         &mut self,
         command: String,
         timeout_secs: Option<f64>,
     ) -> Result<ShellOutput, ToolError> {
-        let timeout = clamp_timeout(timeout_secs, self.remaining_budget());
-        let mut outcome = self.call_raw(
-            SHELL_TOOL,
-            json!({ "command": command, "timeout_secs": timeout }),
-        )?;
+        let timeout = Duration::from_secs_f64(clamp_timeout(timeout_secs, self.remaining_budget()));
+        let mut outcome = self.call_raw(SHELL_TOOL, |api| api.shell(command, timeout))?;
         let data = outcome.data.take();
         match data {
             // The process ran. Whatever it exited with, that is a completed call, and the program
@@ -89,7 +84,7 @@ impl ShellHost for MembraneState {
     }
 }
 
-impl FilesHost for MembraneState {
+impl<A: ToolApi> FilesHost for MembraneState<A> {
     fn read_file(
         &mut self,
         path: String,
@@ -98,11 +93,9 @@ impl FilesHost for MembraneState {
     ) -> Result<FileRead, ToolError> {
         // `offset` is 1-based on the far side of this call and unconstrained on the near side, so
         // the one value the two disagree about is normalised rather than argued over.
-        let offset = offset.map(|offset| offset.max(FIRST_LINE_OFFSET));
-        let outcome = self.call(
-            READ_FILE_TOOL,
-            json!({ "path": path, "offset": offset, "limit": limit }),
-        )?;
+        let offset = offset.map(|offset| offset.max(FIRST_LINE_OFFSET) as usize);
+        let limit = limit.map(|limit| limit as usize);
+        let outcome = self.call(READ_FILE_TOOL, |api| api.read_file(path, offset, limit))?;
         match outcome.data {
             // The text is MOVED out of the outcome rather than cloned: a 256 KiB read is the
             // largest thing that crosses this membrane, and it crosses once.
@@ -129,10 +122,7 @@ impl FilesHost for MembraneState {
     }
 
     fn write_file(&mut self, path: String, contents: String) -> Result<u64, ToolError> {
-        let outcome = self.call(
-            WRITE_FILE_TOOL,
-            json!({ "path": path, "contents": contents }),
-        )?;
+        let outcome = self.call(WRITE_FILE_TOOL, |api| api.write_file(path, contents))?;
         match outcome.data {
             Some(ToolData::BytesWritten(bytes)) => Ok(bytes),
             other => Err(self.missing_data(WRITE_FILE_TOOL, other.as_ref())),
@@ -147,15 +137,14 @@ impl FilesHost for MembraneState {
     ) -> Result<(), ToolError> {
         // A successful edit has nothing structured to say, which is why it declares
         // `result<_, tool-error>`: reaching here at all means the replacement landed.
-        self.call(
-            EDIT_FILE_TOOL,
-            json!({ "path": path, "old_string": old_string, "new_string": new_string }),
-        )?;
+        self.call(EDIT_FILE_TOOL, |api| {
+            api.edit_file(path, old_string, new_string)
+        })?;
         Ok(())
     }
 
     fn list_dir(&mut self, path: Option<String>) -> Result<Vec<DirEntry>, ToolError> {
-        let outcome = self.call(LIST_DIR_TOOL, json!({ "path": path }))?;
+        let outcome = self.call(LIST_DIR_TOOL, |api| api.list_dir(path))?;
         match outcome.data {
             Some(ToolData::DirEntries(entries)) => Ok(entries.into_iter().map(entry).collect()),
             other => Err(self.missing_data(LIST_DIR_TOOL, other.as_ref())),

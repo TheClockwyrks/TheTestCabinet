@@ -204,11 +204,14 @@ fn crossings() -> Vec<Crossing> {
             expected: || {
                 json!({
                     "stages": [{
-                        "name": null,
+                        // The membrane resolves a stage's optional `name`/`worktree` before the call:
+                        // an absent name becomes the empty string (the loop still names it `stage-N`)
+                        // and an absent worktree becomes `false`.
+                        "name": "",
                         "prompt": "look at {{item}}",
                         "items": ["a.ts"],
                         "agent": "subagent",
-                        "worktree": null,
+                        "worktree": false,
                     }],
                 })
             },

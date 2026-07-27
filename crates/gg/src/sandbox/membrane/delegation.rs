@@ -1,11 +1,13 @@
 //! The membrane's delegation family: spawning child agents, waiting for them, messaging them, and
 //! the two declarative fan-outs (`run_workflow`, `speculate`).
 //!
-//! These five are the reason the bridge under this membrane is a channel to the async loop rather
-//! than a direct call into the tool registry: a delegation call is serviced by the **subagent
-//! scheduler**, on the loop, with the agent tree and the parallelism cap it owns. A program's
-//! `spawnSubagent` therefore behaves exactly as a native `spawn_subagent` does, including its depth
-//! cap and its worktree isolation — the only difference is that a program can compose the results.
+//! These five are the reason the [api](super::ToolApi) behind this membrane is the loop's own
+//! `LoopToolApi` and not a self-contained tool: a delegation call is serviced by the **subagent
+//! scheduler**, which the api reaches (from the blocking sandbox thread) with a
+//! [`Handle`](tokio::runtime::Handle)`::block_on`, with the agent tree and the parallelism cap it
+//! owns. A program's `spawnSubagent` therefore behaves exactly as a native `spawn_subagent` does,
+//! including its depth cap and its worktree isolation — the only difference is that a program can
+//! compose the results.
 //!
 //! Two lowerings live here. A brief is a **variant**, so "neither a prompt nor an issue" — which
 //! today's JSON schema allows and rejects only at run time, wasting a call — cannot be expressed at
@@ -16,20 +18,19 @@
 //! # These four sidecars are produced by the loop, not by a tool
 //!
 //! `spawn_subagent`, `wait_for_subagents`, `run_workflow` and `speculate` never reach a
-//! [`Tool`](crate::tools::Tool) at all: the loop's servicing seam recognises them and routes them to
-//! the subagent scheduler, so the [`ToolData`] each of them reads back is attached **there**. Until
-//! that seam attaches it, every one of these functions reports `missing_data` — and the tests below
-//! pass regardless, because their fake invoker supplies the sidecar the real system has to. Read a
+//! [`Tool`](crate::tools::Tool) at all: the `LoopToolApi` recognises them and routes them to the
+//! subagent scheduler, so the [`ToolData`] each of them reads back is attached **there**. Until that
+//! routing attaches it, every one of these functions reports `missing_data` — and the tests below
+//! pass regardless, because their `FakeToolApi` supplies the sidecar the real system has to. Read a
 //! green suite here as "the conversion is right", never as "the producer exists".
 
-use serde_json::{Value, json};
-
-use super::MembraneState;
 use super::test_cabinet::gg::delegation::{
     AgentStatus, Host as DelegationHost, SpawnRequest, SpeculateRequest, SpeculationReport,
     SubagentBrief, SubagentHandle, SubagentResult, WorkflowReport, WorkflowStage,
 };
 use super::test_cabinet::gg::types::ToolError;
+use super::{MembraneState, ToolApi};
+use crate::sandbox::WorkflowStageInput;
 use crate::tools::{
     AgentStatusData, RUN_WORKFLOW_TOOL, SEND_MESSAGE_TOOL, SPAWN_SUBAGENT_TOOL, SPECULATE_TOOL,
     SpeculationData, SubagentHandleData, SubagentResultData, ToolData, WAIT_FOR_SUBAGENTS_TOOL,
@@ -47,18 +48,14 @@ const MIN_SPECULATION_ATTEMPTS: u8 = 2;
 /// that asks for twenty gets six rather than an argument error.
 const MAX_SPECULATION_ATTEMPTS: u8 = 6;
 
-impl DelegationHost for MembraneState {
+impl<A: ToolApi> DelegationHost for MembraneState<A> {
     fn spawn_subagent(&mut self, request: SpawnRequest) -> Result<SubagentHandle, ToolError> {
         let (prompt, issue_id) = brief(request.task);
-        let outcome = self.call(
-            SPAWN_SUBAGENT_TOOL,
-            json!({
-                "agent": request.agent,
-                "prompt": prompt,
-                "issueId": issue_id,
-                "worktree": request.worktree,
-            }),
-        )?;
+        let agent = request.agent;
+        let worktree = request.worktree.unwrap_or(false);
+        let outcome = self.call(SPAWN_SUBAGENT_TOOL, |api| {
+            api.spawn_subagent(agent, prompt, issue_id, worktree)
+        })?;
         // Every payload here is destructured field by field rather than read through dots, so a
         // field added to one fails to compile at the membrane — which is where someone has to
         // decide whether a program should be able to see it.
@@ -86,7 +83,7 @@ impl DelegationHost for MembraneState {
         // it. The deadline guard bounds whether such a call may be *started*, not how long it may
         // take — nothing in gg can cut a tool call short, on this path or the native one, and the
         // budget is what the loop stops at the next turn boundary either way.
-        let outcome = self.call(WAIT_FOR_SUBAGENTS_TOOL, json!({ "ids": ids }))?;
+        let outcome = self.call(WAIT_FOR_SUBAGENTS_TOOL, |api| api.wait_for_subagents(ids))?;
         match outcome.data {
             Some(ToolData::SubagentResults(results)) => Ok(results
                 .into_iter()
@@ -107,30 +104,26 @@ impl DelegationHost for MembraneState {
     }
 
     fn send_message(&mut self, agent_id: String, message: String) -> Result<(), ToolError> {
-        self.call(
-            SEND_MESSAGE_TOOL,
-            json!({ "agentId": agent_id, "message": message }),
-        )?;
+        self.call(SEND_MESSAGE_TOOL, |api| api.send_message(agent_id, message))?;
         Ok(())
     }
 
     fn run_workflow(&mut self, stages: Vec<WorkflowStage>) -> Result<WorkflowReport, ToolError> {
-        let stages: Vec<Value> = stages
+        // A stage's optional `name` is resolved to a string here — the loop names an empty one
+        // `stage-N` exactly as it does a missing one — and its optional `worktree` to `false`. The
+        // `items` option is preserved as it stands: `none` (fan out over the previous stage's
+        // results) and an EMPTY list (an error) are different requests.
+        let stages: Vec<WorkflowStageInput> = stages
             .into_iter()
-            .map(|stage| {
-                json!({
-                    "name": stage.name,
-                    "prompt": stage.prompt,
-                    // `none` (fan out over the previous stage's results) and an EMPTY list (an
-                    // error) are different requests, so the option is lowered as it stands: a
-                    // missing `items` becomes JSON null, an empty one becomes `[]`.
-                    "items": stage.items,
-                    "agent": stage.agent,
-                    "worktree": stage.worktree,
-                })
+            .map(|stage| WorkflowStageInput {
+                name: stage.name.unwrap_or_default(),
+                prompt: stage.prompt,
+                items: stage.items,
+                agent: stage.agent,
+                worktree: stage.worktree.unwrap_or(false),
             })
             .collect();
-        let outcome = self.call(RUN_WORKFLOW_TOOL, json!({ "stages": stages }))?;
+        let outcome = self.call(RUN_WORKFLOW_TOOL, |api| api.run_workflow(stages))?;
         match outcome.data {
             Some(ToolData::Workflow(WorkflowData {
                 workflow_id,
@@ -151,16 +144,11 @@ impl DelegationHost for MembraneState {
             .attempts
             .unwrap_or(DEFAULT_SPECULATION_ATTEMPTS)
             .clamp(MIN_SPECULATION_ATTEMPTS, MAX_SPECULATION_ATTEMPTS);
-        let outcome = self.call(
-            SPECULATE_TOOL,
-            json!({
-                "agent": request.agent,
-                "prompt": prompt,
-                "issueId": issue_id,
-                "attempts": attempts,
-                "approaches": request.approaches,
-            }),
-        )?;
+        let agent = request.agent;
+        let approaches = request.approaches;
+        let outcome = self.call(SPECULATE_TOOL, |api| {
+            api.speculate(agent, prompt, issue_id, attempts, approaches)
+        })?;
         match outcome.data {
             Some(ToolData::Speculation(SpeculationData {
                 winner_id,

@@ -15,12 +15,12 @@
 //! Nothing here touches the invoker: there is no dispatch to make, so the refusal is recorded as a
 //! refusal (never as a serviced call) and returns immediately.
 
-use super::MembraneState;
 use super::test_cabinet::gg::turns::Host as TurnsHost;
 use super::test_cabinet::gg::types::ToolError;
+use super::{MembraneState, ToolApi};
 use crate::tools::{ADVANCE_STATE_TOOL, ENTER_PLAN_MODE_TOOL, SUBMIT_PLAN_TOOL};
 
-impl TurnsHost for MembraneState {
+impl<A: ToolApi> TurnsHost for MembraneState<A> {
     fn enter_plan_mode(&mut self) -> Result<(), ToolError> {
         Err(self.refuse_turn_level(ENTER_PLAN_MODE_TOOL, "entering plan mode"))
     }

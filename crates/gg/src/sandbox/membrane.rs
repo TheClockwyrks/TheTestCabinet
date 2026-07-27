@@ -54,9 +54,7 @@
 use std::collections::{HashSet, VecDeque};
 use std::time::{Duration, Instant};
 
-use serde_json::Value;
-
-use super::invoker::{SandboxRefusal, SandboxToolCall, ToolInvoker};
+use super::invoker::{SandboxRefusal, SandboxToolCall, ToolApi};
 use super::limits::{MemoryLimiter, SandboxLimits};
 use super::{FINISH_FUNCTION, ProgramCompletion, ProgramError, ProgramErrorKind};
 use crate::model::ImageContent;
@@ -83,9 +81,10 @@ use test_cabinet::gg::types::{self, ErrorCode, ToolError};
 /// lifetime erasure and no `unsafe`, and it is reclaimed whole by
 /// [`into_parts`](Self::into_parts) on **every** exit path — including a trap — because the calls a
 /// program landed before it ran out of fuel are exactly what the model needs to see next turn.
-pub(crate) struct MembraneState {
-    /// Where a bridged call goes: the loop in production, an in-memory fake under test.
-    invoker: Box<dyn ToolInvoker>,
+pub(crate) struct MembraneState<A: ToolApi> {
+    /// The native, typed tool surface a bridged call is aimed at: the loop's own state in
+    /// production ([`LoopToolApi`](crate::agent)), an in-memory fake under test.
+    api: A,
     /// The gg tools this run offers. The guest binds only these into a program's scope, so this is
     /// a defensive backstop rather than the primary gate.
     enabled: HashSet<String>,
@@ -172,17 +171,17 @@ pub(crate) struct MembraneParts {
     pub program_error: Option<ProgramError>,
 }
 
-impl MembraneState {
-    /// The state for one program: bridged through `invoker`, offering `enabled`'s tools, bounded by
+impl<A: ToolApi> MembraneState<A> {
+    /// The state for one program: bridged through `api`, offering `enabled`'s tools, bounded by
     /// `limits`, and stopping at `deadline`.
     pub(crate) fn new(
-        invoker: Box<dyn ToolInvoker>,
+        api: A,
         enabled: &[String],
         limits: SandboxLimits,
         deadline: Option<Instant>,
     ) -> Self {
         Self {
-            invoker,
+            api,
             enabled: enabled.iter().cloned().collect(),
             limiter: MemoryLimiter::new(limits.max_memory_bytes),
             deadline,
@@ -217,9 +216,11 @@ impl MembraneState {
         self.limiter.denied()
     }
 
-    /// Everything the program accumulated, consuming the state.
-    pub(crate) fn into_parts(self) -> MembraneParts {
-        MembraneParts {
+    /// The reclaimed [tool api](ToolApi) and everything the program accumulated, consuming the
+    /// state. The api is handed back so the loop reclaims the per-turn state it moved in (the
+    /// context window, the skills/docs runtimes, the delegation context).
+    pub(crate) fn api_and_parts(self) -> (A, MembraneParts) {
+        let parts = MembraneParts {
             calls: self.calls,
             calls_suppressed: self.calls_suppressed,
             refusals: self.refusals,
@@ -233,7 +234,15 @@ impl MembraneState {
             completion: self.completion,
             revoked_completion: self.revoked_completion,
             program_error: self.program_error,
-        }
+        };
+        (self.api, parts)
+    }
+
+    /// Everything the program accumulated, discarding the reclaimed api — the shape the membrane's
+    /// own unit tests read, which never need the api back.
+    #[cfg(test)]
+    pub(crate) fn into_parts(self) -> MembraneParts {
+        self.api_and_parts().1
     }
 
     /// Take back a completion the program declared, because the program then failed.
@@ -258,9 +267,13 @@ impl MembraneState {
     /// This is what twenty-eight of the twenty-nine bound tools call. The twenty-ninth is `shell`,
     /// which needs a non-`ok` outcome as a value — see [`call_raw`](Self::call_raw). The three
     /// turn-level transitions reach neither: they are refused without a dispatch.
-    fn call(&mut self, tool: &'static str, args: Value) -> Result<ToolOutcome, ToolError> {
+    fn call(
+        &mut self,
+        tool: &'static str,
+        run: impl FnOnce(&mut A) -> ToolOutcome,
+    ) -> Result<ToolOutcome, ToolError> {
         // For every tool but `shell`, the tool's own verdict and the call's are the same thing.
-        let outcome = self.dispatch(tool, args, |outcome| outcome.ok)?;
+        let outcome = self.dispatch(tool, run, |outcome| outcome.ok)?;
         if outcome.ok {
             Ok(outcome)
         } else {
@@ -278,8 +291,12 @@ impl MembraneState {
     /// could not be launched, or the timeout killed it", and it is therefore also what the roster
     /// records: a completed process is a **successful call**, summarised as `exited 1`, not a
     /// failure carrying the command's whole output as its message.
-    fn call_raw(&mut self, tool: &'static str, args: Value) -> Result<ToolOutcome, ToolError> {
-        self.dispatch(tool, args, |outcome| {
+    fn call_raw(
+        &mut self,
+        tool: &'static str,
+        run: impl FnOnce(&mut A) -> ToolOutcome,
+    ) -> Result<ToolOutcome, ToolError> {
+        self.dispatch(tool, run, |outcome| {
             matches!(outcome.data, Some(ToolData::Shell(_)))
         })
     }
@@ -350,7 +367,7 @@ impl MembraneState {
     fn dispatch(
         &mut self,
         tool: &'static str,
-        args: Value,
+        run: impl FnOnce(&mut A) -> ToolOutcome,
         completed: fn(&ToolOutcome) -> bool,
     ) -> Result<ToolOutcome, ToolError> {
         if self.deadline_spent() {
@@ -369,7 +386,7 @@ impl MembraneState {
             ));
         }
 
-        let mut outcome = self.invoker.invoke(tool, args);
+        let mut outcome = run(&mut self.api);
         self.collect_images(&mut outcome);
         let completed = completed(&outcome);
         self.record(tool, &outcome, completed);
@@ -516,7 +533,7 @@ fn data_kind(data: &ToolData) -> &'static str {
 /// The empty trait the shared `types` interface generates. It declares no functions — it exists so
 /// that one `tool-error` crosses the whole membrane rather than one per family — but the world
 /// still requires an implementation.
-impl types::Host for MembraneState {}
+impl<A: ToolApi> types::Host for MembraneState<A> {}
 
 #[cfg(test)]
 #[path = "membrane.test.rs"]

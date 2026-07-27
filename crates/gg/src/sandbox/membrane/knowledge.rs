@@ -14,9 +14,6 @@
 //!   `clear` becomes the empty string, and `set` becomes the text. The `epic-assignment` variant is
 //!   the same idea for an issue's grouping.
 
-use serde_json::{Map, Value, json};
-
-use super::MembraneState;
 use super::test_cabinet::gg::board::{
     BoardUsage, CompletionReport, EpicAssignment, EpicInput, Host as BoardHost, IssueInput,
     IssuePatch, IssueStatus,
@@ -27,6 +24,7 @@ use super::test_cabinet::gg::tasks::{
     Host as TasksHost, TaskInput, TaskPatch, TaskStatus, TaskUsage,
 };
 use super::test_cabinet::gg::types::{TextEdit, ToolError};
+use super::{MembraneState, ToolApi};
 use crate::tools::{COMPLETE_ISSUE_TOOL, READ_SKILL_TOOL, ToolData};
 
 /// The `write_memory` tool name.
@@ -58,116 +56,152 @@ const REMOVE_EPIC_TOOL: &str = "remove_epic";
 /// The `remove_issue` tool name.
 const REMOVE_ISSUE_TOOL: &str = "remove_issue";
 
-impl SkillsHost for MembraneState {
+impl<A: ToolApi> SkillsHost for MembraneState<A> {
     fn read_skill(&mut self, name: String) -> Result<String, ToolError> {
         // A skill's body *is* its structured result — there is nothing to describe that the text
         // does not already say — so this is the one tool whose typed result is `outcome.output`
         // itself rather than a sidecar.
-        let outcome = self.call(READ_SKILL_TOOL, json!({ "name": name }))?;
+        let outcome = self.call(READ_SKILL_TOOL, |api| api.read_skill(name))?;
         Ok(outcome.output)
     }
 }
 
-impl MemoriesHost for MembraneState {
+impl<A: ToolApi> MemoriesHost for MembraneState<A> {
     fn write_memory(&mut self, memory: MemoryInput) -> Result<MemoryUsage, ToolError> {
-        let outcome = self.call(WRITE_MEMORY_TOOL, memory_args(memory))?;
+        let MemoryInput {
+            name,
+            description,
+            body,
+        } = memory;
+        let outcome = self.call(WRITE_MEMORY_TOOL, |api| {
+            api.write_memory(name, description, body)
+        })?;
         memory_usage(self, WRITE_MEMORY_TOOL, outcome.data)
     }
 
     fn update_memory(&mut self, memory: MemoryInput) -> Result<MemoryUsage, ToolError> {
-        let outcome = self.call(UPDATE_MEMORY_TOOL, memory_args(memory))?;
+        let MemoryInput {
+            name,
+            description,
+            body,
+        } = memory;
+        let outcome = self.call(UPDATE_MEMORY_TOOL, |api| {
+            api.update_memory(name, description, body)
+        })?;
         memory_usage(self, UPDATE_MEMORY_TOOL, outcome.data)
     }
 
     fn delete_memory(&mut self, name: String) -> Result<MemoryUsage, ToolError> {
-        let outcome = self.call(DELETE_MEMORY_TOOL, json!({ "name": name }))?;
+        let outcome = self.call(DELETE_MEMORY_TOOL, |api| api.delete_memory(name))?;
         memory_usage(self, DELETE_MEMORY_TOOL, outcome.data)
     }
 }
 
-impl TasksHost for MembraneState {
+impl<A: ToolApi> TasksHost for MembraneState<A> {
     fn add_task(&mut self, task: TaskInput) -> Result<TaskUsage, ToolError> {
-        let outcome = self.call(
-            ADD_TASK_TOOL,
-            json!({
-                "id": task.id,
-                "title": task.title,
-                "description": task.description,
-                "blockedBy": task.blocked_by,
-            }),
-        )?;
+        let TaskInput {
+            id,
+            title,
+            description,
+            blocked_by,
+        } = task;
+        let outcome = self.call(ADD_TASK_TOOL, |api| {
+            api.add_task(id, title, description, blocked_by)
+        })?;
         task_usage(self, ADD_TASK_TOOL, outcome.data)
     }
 
     fn update_task(&mut self, id: String, patch: TaskPatch) -> Result<(), ToolError> {
-        let mut args = Map::new();
-        args.insert("id".to_string(), json!(id));
-        args.insert("title".to_string(), json!(patch.title));
-        args.insert("status".to_string(), json!(patch.status.map(task_status)));
-        insert_text_edit(&mut args, "description", patch.description);
-        self.call(UPDATE_TASK_TOOL, Value::Object(args))?;
+        let description = text_edit(patch.description);
+        let status = patch.status.map(task_status);
+        self.call(UPDATE_TASK_TOOL, |api| {
+            api.update_task(id, patch.title, description, status)
+        })?;
         Ok(())
     }
 
     fn set_blocked_by(&mut self, id: String, blocked_by: Vec<String>) -> Result<(), ToolError> {
-        self.call(
-            SET_BLOCKED_BY_TOOL,
-            json!({ "id": id, "blockedBy": blocked_by }),
-        )?;
+        self.call(SET_BLOCKED_BY_TOOL, |api| {
+            api.set_blocked_by(id, blocked_by)
+        })?;
         Ok(())
     }
 
     fn complete_task(&mut self, id: String) -> Result<(), ToolError> {
-        self.call(COMPLETE_TASK_TOOL, json!({ "id": id }))?;
+        self.call(COMPLETE_TASK_TOOL, |api| api.complete_task(id))?;
         Ok(())
     }
 
     fn remove_task(&mut self, id: String) -> Result<TaskUsage, ToolError> {
-        let outcome = self.call(REMOVE_TASK_TOOL, json!({ "id": id }))?;
+        let outcome = self.call(REMOVE_TASK_TOOL, |api| api.remove_task(id))?;
         task_usage(self, REMOVE_TASK_TOOL, outcome.data)
     }
 }
 
-impl BoardHost for MembraneState {
+impl<A: ToolApi> BoardHost for MembraneState<A> {
     fn create_epic(&mut self, epic: EpicInput) -> Result<BoardUsage, ToolError> {
-        let outcome = self.call(
-            CREATE_EPIC_TOOL,
-            json!({ "id": epic.id, "title": epic.title, "description": epic.description }),
-        )?;
+        let EpicInput {
+            id,
+            title,
+            description,
+        } = epic;
+        let outcome = self.call(CREATE_EPIC_TOOL, |api| {
+            api.create_epic(id, title, description)
+        })?;
         board_usage(self, CREATE_EPIC_TOOL, outcome.data)
     }
 
     fn create_issue(&mut self, issue: IssueInput) -> Result<BoardUsage, ToolError> {
-        let outcome = self.call(
-            CREATE_ISSUE_TOOL,
-            json!({
-                "id": issue.id,
-                "title": issue.title,
-                "description": issue.description,
-                "inScope": issue.in_scope,
-                "outOfScope": issue.out_of_scope,
-                "completionCriteria": issue.completion_criteria,
-                "blockedBy": issue.blocked_by,
-                "epicId": issue.epic_id,
-            }),
-        )?;
+        let IssueInput {
+            id,
+            title,
+            description,
+            in_scope,
+            out_of_scope,
+            completion_criteria,
+            blocked_by,
+            epic_id,
+        } = issue;
+        let outcome = self.call(CREATE_ISSUE_TOOL, |api| {
+            api.create_issue(
+                id,
+                title,
+                description,
+                in_scope,
+                out_of_scope,
+                completion_criteria,
+                blocked_by,
+                epic_id,
+            )
+        })?;
         board_usage(self, CREATE_ISSUE_TOOL, outcome.data)
     }
 
     fn update_issue(&mut self, id: String, patch: IssuePatch) -> Result<(), ToolError> {
-        let mut args = Map::new();
-        args.insert("id".to_string(), json!(id));
-        args.insert("title".to_string(), json!(patch.title));
-        args.insert("inScope".to_string(), json!(patch.in_scope));
-        args.insert("outOfScope".to_string(), json!(patch.out_of_scope));
-        args.insert(
-            "completionCriteria".to_string(),
-            json!(patch.completion_criteria),
-        );
-        args.insert("status".to_string(), json!(patch.status.map(issue_status)));
-        insert_text_edit(&mut args, "description", patch.description);
-        insert_epic_assignment(&mut args, patch.epic);
-        self.call(UPDATE_ISSUE_TOOL, Value::Object(args))?;
+        let IssuePatch {
+            title,
+            description,
+            in_scope,
+            out_of_scope,
+            completion_criteria,
+            status,
+            epic,
+        } = patch;
+        let description = text_edit(description);
+        let status = status.map(issue_status);
+        let epic_id = epic_assignment(epic);
+        self.call(UPDATE_ISSUE_TOOL, |api| {
+            api.update_issue(
+                id,
+                title,
+                description,
+                in_scope,
+                out_of_scope,
+                completion_criteria,
+                status,
+                epic_id,
+            )
+        })?;
         Ok(())
     }
 
@@ -176,10 +210,9 @@ impl BoardHost for MembraneState {
         id: String,
         blocked_by: Vec<String>,
     ) -> Result<(), ToolError> {
-        self.call(
-            SET_ISSUE_BLOCKED_BY_TOOL,
-            json!({ "id": id, "blockedBy": blocked_by }),
-        )?;
+        self.call(SET_ISSUE_BLOCKED_BY_TOOL, |api| {
+            api.set_issue_blocked_by(id, blocked_by)
+        })?;
         Ok(())
     }
 
@@ -187,7 +220,7 @@ impl BoardHost for MembraneState {
         // With Code Reviews enabled this is the one cheap-looking call that transitively spawns a
         // reviewer (and possibly a fix loop), so the report says whether that happened — a program
         // otherwise has no way to tell a gated acceptance from a plain status change.
-        let outcome = self.call(COMPLETE_ISSUE_TOOL, json!({ "id": id }))?;
+        let outcome = self.call(COMPLETE_ISSUE_TOOL, |api| api.complete_issue(id))?;
         match outcome.data {
             Some(ToolData::Completion(completion)) => Ok(CompletionReport {
                 code_reviewed: completion.code_reviewed,
@@ -198,31 +231,22 @@ impl BoardHost for MembraneState {
     }
 
     fn remove_epic(&mut self, id: String) -> Result<BoardUsage, ToolError> {
-        let outcome = self.call(REMOVE_EPIC_TOOL, json!({ "id": id }))?;
+        let outcome = self.call(REMOVE_EPIC_TOOL, |api| api.remove_epic(id))?;
         board_usage(self, REMOVE_EPIC_TOOL, outcome.data)
     }
 
     fn remove_issue(&mut self, id: String) -> Result<BoardUsage, ToolError> {
-        let outcome = self.call(REMOVE_ISSUE_TOOL, json!({ "id": id }))?;
+        let outcome = self.call(REMOVE_ISSUE_TOOL, |api| api.remove_issue(id))?;
         board_usage(self, REMOVE_ISSUE_TOOL, outcome.data)
     }
-}
-
-/// The three fields both memory mutations take, under the key names their schemas declare.
-fn memory_args(memory: MemoryInput) -> Value {
-    json!({
-        "name": memory.name,
-        "description": memory.description,
-        "body": memory.body,
-    })
 }
 
 /// The memory budget a mutation reported, or the defect diagnostic if it reported none.
 ///
 /// It takes the state because that diagnostic also corrects the roster entry the dispatch
 /// already wrote, which until this point says the call succeeded.
-fn memory_usage(
-    state: &mut MembraneState,
+fn memory_usage<A: ToolApi>(
+    state: &mut MembraneState<A>,
     tool: &'static str,
     data: Option<ToolData>,
 ) -> Result<MemoryUsage, ToolError> {
@@ -239,8 +263,8 @@ fn memory_usage(
 
 /// The task budget a mutation reported, or the defect diagnostic if it reported none — with the
 /// same roster correction [`memory_usage`] makes.
-fn task_usage(
-    state: &mut MembraneState,
+fn task_usage<A: ToolApi>(
+    state: &mut MembraneState<A>,
     tool: &'static str,
     data: Option<ToolData>,
 ) -> Result<TaskUsage, ToolError> {
@@ -255,8 +279,8 @@ fn task_usage(
 
 /// The board budget a mutation reported, or the defect diagnostic if it reported none — with the
 /// same roster correction [`memory_usage`] makes.
-fn board_usage(
-    state: &mut MembraneState,
+fn board_usage<A: ToolApi>(
+    state: &mut MembraneState<A>,
     tool: &'static str,
     data: Option<ToolData>,
 ) -> Result<BoardUsage, ToolError> {
@@ -271,53 +295,47 @@ fn board_usage(
     }
 }
 
-/// A task status in the spelling gg's schema declares — `in_progress`, with the underscore WIT
-/// identifiers cannot carry.
-fn task_status(status: TaskStatus) -> &'static str {
+/// The membrane's [`TaskStatus`] as gg's native [task status](crate::tasks::TaskStatus) — the same
+/// value the JSON tool-calling path parses from its schema word, now handed to the typed function
+/// directly.
+fn task_status(status: TaskStatus) -> crate::tasks::TaskStatus {
     match status {
-        TaskStatus::Pending => "pending",
-        TaskStatus::InProgress => "in_progress",
-        TaskStatus::Done => "done",
+        TaskStatus::Pending => crate::tasks::TaskStatus::Pending,
+        TaskStatus::InProgress => crate::tasks::TaskStatus::InProgress,
+        TaskStatus::Done => crate::tasks::TaskStatus::Done,
     }
 }
 
-/// An issue status in the spelling gg's schema declares.
-fn issue_status(status: IssueStatus) -> &'static str {
+/// The membrane's [`IssueStatus`] as gg's native [issue status](crate::board::IssueStatus). The WIT
+/// enum carries only the three statuses a program may set; `failed` is a loop-only ending, never a
+/// value the guest names.
+fn issue_status(status: IssueStatus) -> crate::board::IssueStatus {
     match status {
-        IssueStatus::Open => "open",
-        IssueStatus::InProgress => "in_progress",
-        IssueStatus::Done => "done",
+        IssueStatus::Open => crate::board::IssueStatus::Open,
+        IssueStatus::InProgress => crate::board::IssueStatus::InProgress,
+        IssueStatus::Done => crate::board::IssueStatus::Done,
     }
 }
 
-/// Lower a three-way [`TextEdit`] onto the schema's stringly sentinel.
-///
-/// `keep` **omits the key entirely**, which is the only way gg's schemas express "leave this
-/// alone"; `clear` sends the empty string the schema documents as "empty clears it"; `set` sends
-/// the text. This is the one place the sandbox's clearer vocabulary meets the older one.
-fn insert_text_edit(args: &mut Map<String, Value>, key: &str, edit: TextEdit) {
+/// Lower a three-way [`TextEdit`] onto the `Option<String>` the typed functions take, which carries
+/// the same stringly sentinel gg's schemas do: `keep` is `None` (leave it alone), `clear` is the
+/// empty string (which clears it), `set` is the text. This is the one place the sandbox's clearer
+/// vocabulary meets the older one.
+fn text_edit(edit: TextEdit) -> Option<String> {
     match edit {
-        TextEdit::Keep => {}
-        TextEdit::Clear => {
-            args.insert(key.to_string(), Value::String(String::new()));
-        }
-        TextEdit::Set(text) => {
-            args.insert(key.to_string(), Value::String(text));
-        }
+        TextEdit::Keep => None,
+        TextEdit::Clear => Some(String::new()),
+        TextEdit::Set(text) => Some(text),
     }
 }
 
-/// Lower an [`EpicAssignment`] onto `update_issue`'s `epicId` sentinel: omit to leave the grouping
-/// alone, empty string to ungroup, an id to re-group.
-fn insert_epic_assignment(args: &mut Map<String, Value>, epic: EpicAssignment) {
+/// Lower an [`EpicAssignment`] onto `update_issue`'s `epic_id` sentinel: `None` leaves the grouping
+/// alone, the empty string ungroups, an id re-groups.
+fn epic_assignment(epic: EpicAssignment) -> Option<String> {
     match epic {
-        EpicAssignment::Keep => {}
-        EpicAssignment::Ungroup => {
-            args.insert("epicId".to_string(), Value::String(String::new()));
-        }
-        EpicAssignment::Set(id) => {
-            args.insert("epicId".to_string(), Value::String(id));
-        }
+        EpicAssignment::Keep => None,
+        EpicAssignment::Ungroup => Some(String::new()),
+        EpicAssignment::Set(id) => Some(id),
     }
 }
 

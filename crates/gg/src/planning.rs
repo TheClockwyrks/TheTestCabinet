@@ -34,6 +34,8 @@
 //! [`disabled`](PlanningRuntime::disabled) runtime, so there are no planning tools, no prompt
 //! text, no read-only mode, and no telemetry — the feature vanishes.
 
+use std::sync::Arc;
+
 use test_cabinet_core::gg::{CAPABILITY_PLANNING, GgAgentConfig};
 
 use crate::prompts;
@@ -78,13 +80,13 @@ impl Planner for DefaultPlanner {
 /// [`implementation`](test_cabinet_core::gg::GgCapabilityConfig::implementation). `None` (or an
 /// unrecognized name) selects the default [`DefaultPlanner`]; the match is the drop-in seam for
 /// alternate planning prompts/structures.
-pub fn resolve_planner(implementation: Option<&str>) -> Box<dyn Planner> {
+pub fn resolve_planner(implementation: Option<&str>) -> Arc<dyn Planner> {
     match implementation {
         // The only strategy in P3b; future planners add arms here.
-        Some("default") | None => Box::new(DefaultPlanner),
+        Some("default") | None => Arc::new(DefaultPlanner),
         // An unrecognized implementation falls back to the default rather than failing to
         // launch — a study naming a not-yet-built planner still runs.
-        Some(_) => Box::new(DefaultPlanner),
+        Some(_) => Arc::new(DefaultPlanner),
     }
 }
 
@@ -97,16 +99,17 @@ pub fn resolve_planner(implementation: Option<&str>) -> Box<dyn Planner> {
 /// [system-prompt section](crate::prompts::SystemContext::planning)), the plan-mode
 /// [guidance](Self::plan_mode_guidance) injected on entry, and the accepted-plan
 /// [framing](Self::frame_plan) used to seed the fresh implementation context.
+#[derive(Clone)]
 pub struct PlanningRuntime {
     /// Whether the planning capability is enabled for this run.
     enabled: bool,
     /// The selected planning strategy.
-    planner: Box<dyn Planner>,
+    planner: Arc<dyn Planner>,
 }
 
 impl PlanningRuntime {
     /// An enabled runtime backed by `planner`.
-    pub fn new(planner: Box<dyn Planner>) -> Self {
+    pub fn new(planner: Arc<dyn Planner>) -> Self {
         Self {
             enabled: true,
             planner,
@@ -119,7 +122,7 @@ impl PlanningRuntime {
     pub fn disabled() -> Self {
         Self {
             enabled: false,
-            planner: Box::new(DefaultPlanner),
+            planner: Arc::new(DefaultPlanner),
         }
     }
 

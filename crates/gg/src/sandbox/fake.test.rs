@@ -13,11 +13,13 @@
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use super::membrane::MembraneState;
-use super::{FunctionSummary, SandboxLimits, ToolInvoker};
+use super::{FunctionSummary, SandboxLimits, ToolApi, WorkflowStageInput};
+use crate::board::IssueStatus;
 use crate::model::ImageContent;
+use crate::tasks::TaskStatus;
 use crate::tools::{
     ArchiveHitData, ArchiveSearchData, BoardUsageData, CompletionData, DirEntryData, DirEntryKind,
     FileImageData, FileTextData, MemoryUsageData, ReclaimData, ShellData, SpeculationData,
@@ -69,6 +71,16 @@ impl CallLog {
         self.calls().into_iter().map(|call| call.name).collect()
     }
 
+    /// Record one call, in order — the recording half the typed [`FakeToolApi`] shares with the
+    /// [`FakeInvoker`].
+    #[allow(dead_code)]
+    pub(crate) fn push(&self, call: RecordedCall) {
+        self.0
+            .lock()
+            .expect("the call log is never poisoned")
+            .push(call);
+    }
+
     /// The arguments of the first call to `tool`, or `None` if it was never called.
     pub(crate) fn args(&self, tool: &str) -> Option<Value> {
         self.calls()
@@ -78,26 +90,32 @@ impl CallLog {
     }
 }
 
-/// How a [`FakeInvoker`] answers one call: named so the boxed form stays readable, and so a test
+/// How a [`FakeToolApi`] answers one call: named so the boxed form stays readable, and so a test
 /// can pass a plain function (the canned table) or a closure that fails a specific tool.
 type Responder = dyn FnMut(&str, &Value) -> ToolOutcome + Send;
 
-/// The tool bridge under test: it records every call and answers with a canned outcome.
-pub(crate) struct FakeInvoker {
+/// The typed tool double under test: the [`ToolApi`] the membrane calls after the stage-2
+/// inversion.
+///
+/// Each method builds the *same* JSON the production [`LoopToolApi`](crate::agent::LoopToolApi)
+/// records for that call, logs it, and answers with the canned outcome — so every `log.args("tool")`
+/// assertion written against the old membrane keeps holding against the typed path.
+pub(crate) struct FakeToolApi {
     /// Where calls are recorded, shared with the test that built it.
     log: CallLog,
     /// How a call is answered. Boxed so a test can substitute a failing or asserting responder.
     responder: Box<Responder>,
 }
 
-impl FakeInvoker {
-    /// An invoker answering every gg tool with a plausible, correctly typed outcome.
+#[allow(dead_code)]
+impl FakeToolApi {
+    /// An api answering every gg tool with a plausible, correctly typed outcome.
     pub(crate) fn new(log: &CallLog) -> Self {
         Self::with(log, canned_outcome)
     }
 
-    /// An invoker answering with `responder`, for the tests that need a specific failure, a
-    /// specific payload, or no payload at all.
+    /// An api answering with `responder`, for the tests that need a specific failure, a specific
+    /// payload, or no payload at all.
     pub(crate) fn with(
         log: &CallLog,
         responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
@@ -107,19 +125,221 @@ impl FakeInvoker {
             responder: Box::new(responder),
         }
     }
+
+    /// Record `name`/`args` exactly as the membrane composed them, then answer.
+    fn call(&mut self, name: &str, args: Value) -> ToolOutcome {
+        self.log.push(RecordedCall {
+            name: name.to_string(),
+            args: args.clone(),
+        });
+        (self.responder)(name, &args)
+    }
 }
 
-impl ToolInvoker for FakeInvoker {
-    fn invoke(&mut self, name: &str, args: Value) -> ToolOutcome {
-        self.log
-            .0
-            .lock()
-            .expect("the call log is never poisoned")
-            .push(RecordedCall {
-                name: name.to_string(),
-                args: args.clone(),
-            });
-        (self.responder)(name, &args)
+#[allow(dead_code)]
+impl ToolApi for FakeToolApi {
+    fn shell(&mut self, command: String, timeout: std::time::Duration) -> ToolOutcome {
+        self.call(
+            "shell",
+            json!({ "command": command, "timeout_secs": timeout.as_secs_f64() }),
+        )
+    }
+    fn read_file(
+        &mut self,
+        path: String,
+        offset: Option<usize>,
+        limit: Option<usize>,
+    ) -> ToolOutcome {
+        self.call(
+            "read_file",
+            json!({ "path": path, "offset": offset, "limit": limit }),
+        )
+    }
+    fn write_file(&mut self, path: String, contents: String) -> ToolOutcome {
+        self.call("write_file", json!({ "path": path, "contents": contents }))
+    }
+    fn edit_file(&mut self, path: String, old_string: String, new_string: String) -> ToolOutcome {
+        self.call(
+            "edit_file",
+            json!({ "path": path, "old_string": old_string, "new_string": new_string }),
+        )
+    }
+    fn list_dir(&mut self, path: Option<String>) -> ToolOutcome {
+        self.call("list_dir", json!({ "path": path }))
+    }
+    fn read_skill(&mut self, name: String) -> ToolOutcome {
+        self.call("read_skill", json!({ "name": name }))
+    }
+    fn write_memory(&mut self, name: String, description: String, body: String) -> ToolOutcome {
+        self.call(
+            "write_memory",
+            json!({ "name": name, "description": description, "body": body }),
+        )
+    }
+    fn update_memory(&mut self, name: String, description: String, body: String) -> ToolOutcome {
+        self.call(
+            "update_memory",
+            json!({ "name": name, "description": description, "body": body }),
+        )
+    }
+    fn delete_memory(&mut self, name: String) -> ToolOutcome {
+        self.call("delete_memory", json!({ "name": name }))
+    }
+    fn add_task(
+        &mut self,
+        id: String,
+        title: String,
+        description: Option<String>,
+        blocked_by: Vec<String>,
+    ) -> ToolOutcome {
+        self.call(
+            "add_task",
+            json!({ "id": id, "title": title, "description": description, "blockedBy": blocked_by }),
+        )
+    }
+    fn update_task(
+        &mut self,
+        id: String,
+        title: Option<String>,
+        description: Option<String>,
+        status: Option<TaskStatus>,
+    ) -> ToolOutcome {
+        // The `description` sentinel matches gg's schema: `keep` omits the key, `clear`/`set` include
+        // it — the same shape the pre-inversion membrane's `insert_text_edit` produced.
+        let mut args = json!({ "id": id, "title": title, "status": status.map(task_status_word) });
+        if let Some(description) = description {
+            args["description"] = json!(description);
+        }
+        self.call("update_task", args)
+    }
+    fn set_blocked_by(&mut self, id: String, blocked_by: Vec<String>) -> ToolOutcome {
+        self.call(
+            "set_blocked_by",
+            json!({ "id": id, "blockedBy": blocked_by }),
+        )
+    }
+    fn complete_task(&mut self, id: String) -> ToolOutcome {
+        self.call("complete_task", json!({ "id": id }))
+    }
+    fn remove_task(&mut self, id: String) -> ToolOutcome {
+        self.call("remove_task", json!({ "id": id }))
+    }
+    fn create_epic(&mut self, id: String, title: String, description: String) -> ToolOutcome {
+        self.call(
+            "create_epic",
+            json!({ "id": id, "title": title, "description": description }),
+        )
+    }
+    #[allow(clippy::too_many_arguments)]
+    fn create_issue(
+        &mut self,
+        id: String,
+        title: String,
+        description: Option<String>,
+        in_scope: String,
+        out_of_scope: String,
+        completion_criteria: String,
+        blocked_by: Vec<String>,
+        epic_id: Option<String>,
+    ) -> ToolOutcome {
+        self.call(
+            "create_issue",
+            json!({ "id": id, "title": title, "description": description, "inScope": in_scope, "outOfScope": out_of_scope, "completionCriteria": completion_criteria, "blockedBy": blocked_by, "epicId": epic_id }),
+        )
+    }
+    #[allow(clippy::too_many_arguments)]
+    fn update_issue(
+        &mut self,
+        id: String,
+        title: Option<String>,
+        description: Option<String>,
+        in_scope: Option<String>,
+        out_of_scope: Option<String>,
+        completion_criteria: Option<String>,
+        status: Option<IssueStatus>,
+        epic_id: Option<String>,
+    ) -> ToolOutcome {
+        // `description` (text-edit) and `epicId` (epic-assignment) use gg's omit-to-keep sentinel:
+        // a `None` here means "leave it alone", spelled as an absent key — matching the membrane's
+        // former `insert_text_edit`/`insert_epic_assignment`.
+        let mut args = json!({ "id": id, "title": title, "inScope": in_scope, "outOfScope": out_of_scope, "completionCriteria": completion_criteria, "status": status.map(issue_status_word) });
+        if let Some(description) = description {
+            args["description"] = json!(description);
+        }
+        if let Some(epic_id) = epic_id {
+            args["epicId"] = json!(epic_id);
+        }
+        self.call("update_issue", args)
+    }
+    fn set_issue_blocked_by(&mut self, id: String, blocked_by: Vec<String>) -> ToolOutcome {
+        self.call(
+            "set_issue_blocked_by",
+            json!({ "id": id, "blockedBy": blocked_by }),
+        )
+    }
+    fn complete_issue(&mut self, id: String) -> ToolOutcome {
+        self.call("complete_issue", json!({ "id": id }))
+    }
+    fn remove_epic(&mut self, id: String) -> ToolOutcome {
+        self.call("remove_epic", json!({ "id": id }))
+    }
+    fn remove_issue(&mut self, id: String) -> ToolOutcome {
+        self.call("remove_issue", json!({ "id": id }))
+    }
+    fn evict_file_view(&mut self, path: Option<String>) -> ToolOutcome {
+        self.call("evict_file_view", json!({ "path": path }))
+    }
+    fn archive_thread(&mut self, keep_recent_turns: Option<u32>) -> ToolOutcome {
+        self.call(
+            "archive_thread",
+            json!({ "keep_recent_turns": keep_recent_turns }),
+        )
+    }
+    fn search_archive(&mut self, query: String) -> ToolOutcome {
+        self.call("search_archive", json!({ "query": query }))
+    }
+    fn spawn_subagent(
+        &mut self,
+        agent: String,
+        prompt: Option<String>,
+        issue_id: Option<String>,
+        worktree: bool,
+    ) -> ToolOutcome {
+        self.call(
+            "spawn_subagent",
+            json!({ "agent": agent, "prompt": prompt, "issueId": issue_id, "worktree": worktree }),
+        )
+    }
+    fn wait_for_subagents(&mut self, ids: Option<Vec<String>>) -> ToolOutcome {
+        self.call("wait_for_subagents", json!({ "ids": ids }))
+    }
+    fn send_message(&mut self, agent_id: String, message: String) -> ToolOutcome {
+        self.call(
+            "send_message",
+            json!({ "agentId": agent_id, "message": message }),
+        )
+    }
+    fn run_workflow(&mut self, stages: Vec<WorkflowStageInput>) -> ToolOutcome {
+        let json_stages: Vec<Value> = stages
+            .iter()
+            .map(|s| {
+                json!({ "name": s.name, "prompt": s.prompt, "items": s.items, "agent": s.agent, "worktree": s.worktree })
+            })
+            .collect();
+        self.call("run_workflow", json!({ "stages": json_stages }))
+    }
+    fn speculate(
+        &mut self,
+        agent: String,
+        prompt: Option<String>,
+        issue_id: Option<String>,
+        attempts: u8,
+        approaches: Vec<String>,
+    ) -> ToolOutcome {
+        self.call(
+            "speculate",
+            json!({ "agent": agent, "prompt": prompt, "issueId": issue_id, "attempts": attempts, "approaches": approaches }),
+        )
     }
 
     /// The fake does not model the catalogue: it echoes the object so a test can assert the request
@@ -136,6 +356,25 @@ impl ToolInvoker for FakeInvoker {
     /// a `not-found`.
     fn read_docs(&mut self, name: &str) -> Option<String> {
         Some(format!("documentation for `{name}`"))
+    }
+}
+
+/// A `TaskStatus` in the spelling gg's schema declares, for the recorded telemetry `args` value.
+fn task_status_word(status: TaskStatus) -> &'static str {
+    match status {
+        TaskStatus::Pending => "pending",
+        TaskStatus::InProgress => "in_progress",
+        TaskStatus::Done => "done",
+    }
+}
+
+/// An `IssueStatus` in the spelling gg's schema declares, for the recorded telemetry `args` value.
+fn issue_status_word(status: IssueStatus) -> &'static str {
+    match status {
+        IssueStatus::Open => "open",
+        IssueStatus::InProgress => "in_progress",
+        IssueStatus::Done => "done",
+        IssueStatus::Failed => "failed",
     }
 }
 
@@ -308,9 +547,9 @@ fn read_outcome(path: &str) -> ToolOutcome {
 ///
 /// The membrane's whole surface is tested this way — no store, no component, no wasm — which is
 /// what makes covering thirty-two functions affordable.
-pub(crate) fn membrane(log: &CallLog) -> MembraneState {
+pub(crate) fn membrane(log: &CallLog) -> MembraneState<FakeToolApi> {
     MembraneState::new(
-        Box::new(FakeInvoker::new(log)),
+        FakeToolApi::new(log),
         &all_tools(),
         SandboxLimits::default(),
         None,
@@ -323,9 +562,9 @@ pub(crate) fn membrane_with(
     enabled: &[String],
     deadline: Option<Instant>,
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
-) -> MembraneState {
+) -> MembraneState<FakeToolApi> {
     MembraneState::new(
-        Box::new(FakeInvoker::with(log, responder)),
+        FakeToolApi::with(log, responder),
         enabled,
         SandboxLimits::default(),
         deadline,

@@ -39,6 +39,7 @@
 //! run's path through the machine.
 
 use std::path::Path;
+use std::sync::Arc;
 
 use test_cabinet_core::gg::{CAPABILITY_FSM, GgAgentConfig, GgCapabilitySet};
 
@@ -161,6 +162,7 @@ impl AdvanceGuard {
 
 /// One state of a built-in [`Machine`]: its name, the guidance shown while the agent is in it, the
 /// toolset it restricts, and how the agent leaves it.
+#[derive(Clone)]
 pub struct FsmState {
     /// The state's stable name (the [`state`](test_cabinet_core::gg::GgTelemetryKind::FsmState) in
     /// telemetry).
@@ -174,6 +176,7 @@ pub struct FsmState {
 }
 
 /// A built-in finite state machine: an ordered list of [states](FsmState).
+#[derive(Clone)]
 pub struct Machine {
     /// The machine's name (the [`machine`](test_cabinet_core::gg::GgTelemetryKind::FsmState) in
     /// telemetry).
@@ -190,6 +193,7 @@ pub struct Machine {
 /// the [current state](Self::current_state)'s guidance and [tool policy](Self::offers), and
 /// [advances](Self::advance) / [reverts](Self::revert_to) it as transitions fire, emitting
 /// [`FsmState`](test_cabinet_core::gg::GgTelemetryKind::FsmState) telemetry each time.
+#[derive(Clone)]
 pub struct FsmRuntime {
     /// The machine driving the run, or `None` when no FSM is active.
     machine: Option<Machine>,
@@ -198,7 +202,7 @@ pub struct FsmRuntime {
     /// The planner backing a [`PlanReset`](StateExit::PlanReset) transition (`plan-first` only) — the
     /// same [`Planner`] the [planning](crate::planning) capability uses, so the plan → implement
     /// reset is the identical flow. `None` for machines with no plan state.
-    planner: Option<Box<dyn Planner>>,
+    planner: Option<Arc<dyn Planner>>,
 }
 
 impl FsmRuntime {
@@ -243,7 +247,7 @@ impl FsmRuntime {
     }
 
     /// An enabled runtime driving `machine` from its entry state, optionally carrying a `planner`.
-    fn of(machine: Machine, planner: Option<Box<dyn Planner>>) -> Self {
+    fn of(machine: Machine, planner: Option<Arc<dyn Planner>>) -> Self {
         Self {
             machine: Some(machine),
             current: 0,

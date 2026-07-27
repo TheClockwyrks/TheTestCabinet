@@ -7,7 +7,7 @@
 //! `sandbox.test.rs` are consolidated into a handful of functions instead of one per behaviour.
 
 use super::*;
-use crate::sandbox::fake::{CallLog, FakeInvoker, process_isolated};
+use crate::sandbox::fake::{CallLog, FakeToolApi, process_isolated};
 use crate::sandbox::{SandboxLimits, run_program};
 
 /// **HR2: the component is compiled once per process, never per turn.**
@@ -72,7 +72,7 @@ fn the_component_compiles_once_per_process() {
         &[],
         SandboxLimits::default(),
         None,
-        Box::new(FakeInvoker::new(&log)),
+        FakeToolApi::new(&log),
     );
     assert_eq!(compiles(), 1, "running a program must not recompile");
 
@@ -81,7 +81,7 @@ fn the_component_compiles_once_per_process() {
         &[],
         SandboxLimits::default(),
         None,
-        Box::new(FakeInvoker::new(&log)),
+        FakeToolApi::new(&log),
     );
     assert_eq!(
         compiles(),
@@ -145,12 +145,12 @@ fn the_program_that_pays_the_compile_reports_what_it_cost() {
     }
 
     let log = CallLog::default();
-    let cold = run_program(
+    let (cold, _api) = run_program(
         "return 1;",
         &[],
         SandboxLimits::default(),
         None,
-        Box::new(FakeInvoker::new(&log)),
+        FakeToolApi::new(&log),
     );
     assert_eq!(compiles(), 1, "the first program compiled the component");
     assert!(
@@ -160,12 +160,12 @@ fn the_program_that_pays_the_compile_reports_what_it_cost() {
         cold.compile_wait
     );
 
-    let warm = run_program(
+    let (warm, _api) = run_program(
         "return 2;",
         &[],
         SandboxLimits::default(),
         None,
-        Box::new(FakeInvoker::new(&log)),
+        FakeToolApi::new(&log),
     );
     assert_eq!(compiles(), 1, "and no later program recompiles it");
     assert_eq!(

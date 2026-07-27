@@ -79,10 +79,14 @@ use crate::skills::SkillLibrary;
 use crate::tasks::TaskStore;
 use crate::vision::VisionSupport;
 
-pub use board::{COMPLETE_ISSUE_TOOL, WAIT_FOR_ISSUE_TOOL, is_board_tool};
+pub use board::{
+    COMPLETE_ISSUE_TOOL, CompleteIssueTool, CreateEpicTool, CreateIssueTool, RemoveEpicTool,
+    RemoveIssueTool, SetIssueBlockedByTool, UpdateIssueTool, WAIT_FOR_ISSUE_TOOL, is_board_tool,
+};
 pub use context::{
-    ARCHIVE_THREAD_TOOL, DEFAULT_ARCHIVE_KEEP_RECENT, EVICT_FILE_VIEW_TOOL, SEARCH_ARCHIVE_TOOL,
-    is_context_reclaim_tool, parse_archive_keep_recent, parse_evict_path,
+    ARCHIVE_THREAD_TOOL, ArchiveThreadTool, DEFAULT_ARCHIVE_KEEP_RECENT, EVICT_FILE_VIEW_TOOL,
+    EvictFileViewTool, SEARCH_ARCHIVE_TOOL, SearchArchiveTool, is_context_reclaim_tool,
+    parse_archive_keep_recent, parse_evict_path,
 };
 // Every payload shape, including the ones the LOOP produces rather than a tool (a context reclaim
 // and the four delegation results). They are declared beside the outcome they ride on, because that
@@ -95,16 +99,23 @@ pub use data::{
     ShellData, SpeculationData, SubagentHandleData, SubagentResultData, ToolData, ToolFailure,
     UsagePair, WorkflowData, saturating_u32, saturating_u64,
 };
-pub use filesystem::{READ_FILE_TOOL, ReadFileTool, ReadPolicy};
+pub use filesystem::{
+    EditFileTool, ListDirTool, READ_FILE_TOOL, ReadFileTool, ReadPolicy, WriteFileTool,
+};
 pub use fsm::{ADVANCE_STATE_TOOL, is_fsm_tool};
-pub use memories::is_memory_tool;
+pub use memories::{DeleteMemoryTool, UpdateMemoryTool, WriteMemoryTool, is_memory_tool};
 pub use planning::{ENTER_PLAN_MODE_TOOL, SUBMIT_PLAN_TOOL, is_planning_tool};
-pub use skills::READ_SKILL_TOOL;
+pub(crate) use shell::run_command;
+pub use skills::{READ_SKILL_TOOL, ReadSkillTool};
+pub(crate) use subagents::handled_by_loop;
 pub use subagents::{
     RUN_WORKFLOW_TOOL, SEND_MESSAGE_TOOL, SPAWN_SUBAGENT_TOOL, SPECULATE_TOOL,
     WAIT_FOR_SUBAGENTS_TOOL, is_subagent_tool,
 };
-pub use tasks::is_task_tool;
+pub(crate) use tasks::OwnedStructured;
+pub use tasks::{
+    AddTaskTool, CompleteTaskTool, RemoveTaskTool, SetBlockedByTool, UpdateTaskTool, is_task_tool,
+};
 
 /// Every tool name gg can offer, across **all** capabilities — the canonical vocabulary a per-tool
 /// [override](GgAgentConfig::disabled_tools) is validated against.

@@ -18,7 +18,9 @@
 //! next to the code that enforces them is the only way the numbers and the enforcement stay in step.
 
 use super::feedback;
-use super::{MembraneState, ProgramError, ProgramErrorKind, SandboxRefusal, SandboxToolCall};
+use super::{
+    MembraneState, ProgramError, ProgramErrorKind, SandboxRefusal, SandboxToolCall, ToolApi,
+};
 use crate::tools::{ToolData, ToolOutcome};
 
 /// The most log lines one program's output is kept from. A JavaScript guest can log in a loop well
@@ -74,7 +76,7 @@ pub(super) const MAX_CALL_ERROR_BYTES: usize = 512;
 /// it is not looking at the picture.
 pub(super) const IMAGE_BUDGET: u32 = 4;
 
-impl MembraneState {
+impl<A: ToolApi> MembraneState<A> {
     /// Push the ordered record of one serviced call.
     ///
     /// `completed` is whether the **call** succeeded, which is not always whether the tool reported
@@ -168,7 +170,7 @@ impl MembraneState {
     }
 }
 
-impl feedback::Host for MembraneState {
+impl<A: ToolApi> feedback::Host for MembraneState<A> {
     /// One line the program produced with `console.*`, subject to the three capture caps.
     ///
     /// The capture keeps the **tail**: once a cap is reached the *oldest* kept line is evicted to

@@ -13,7 +13,7 @@
 use serde_json::{Value, json};
 
 use super::*;
-use crate::sandbox::fake::{CallLog, FakeInvoker, all_tools, canned_outcome};
+use crate::sandbox::fake::{CallLog, FakeToolApi, all_tools, canned_outcome};
 use crate::tools::{ToolFailure, ToolOutcome};
 
 #[path = "sandbox.membrane.test.rs"]
@@ -40,12 +40,12 @@ fn run_with(
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
     let log = CallLog::default();
-    let outcome = run_program(
+    let (outcome, _api) = run_program(
         program,
         enabled,
         limits,
         None,
-        Box::new(FakeInvoker::with(&log, responder)),
+        FakeToolApi::with(&log, responder),
     );
     (outcome, log)
 }

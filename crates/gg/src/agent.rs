@@ -136,7 +136,7 @@ use crate::prompts::{
 use crate::replay::{GgRecorder, RecordingClient};
 use crate::sandbox::{
     self, FINISH_FUNCTION, FunctionSummary, PROGRAM_CALL_ID_PREFIX, ProgramResult, SandboxError,
-    SandboxLimits, SandboxOutcome, ToolInvoker, UnreachableTail, run_program, scope_tools,
+    SandboxLimits, SandboxOutcome, UnreachableTail, run_program, scope_tools,
 };
 use crate::skills::{DEFAULT_SKILLS_DIR, ReadRecord, SkillLibrary, SkillsRuntime};
 use crate::subagents::{
@@ -151,10 +151,10 @@ use crate::tools::{
     READ_SKILL_TOOL, RUN_WORKFLOW_TOOL, ReadFileTool, ReadPolicy, ReclaimData, RuntimeSet,
     SEND_MESSAGE_TOOL, SPAWN_SUBAGENT_TOOL, SPECULATE_TOOL, SUBMIT_PLAN_TOOL, SpeculationData,
     SubagentHandleData, SubagentResultData, Tool, ToolContext, ToolData, ToolFailure, ToolOutcome,
-    ToolRegistry, WAIT_FOR_ISSUE_TOOL, WAIT_FOR_SUBAGENTS_TOOL, WorkflowData, is_board_tool,
-    is_context_reclaim_tool, is_fsm_tool, is_memory_tool, is_planning_tool, is_subagent_tool,
-    is_task_tool, parse_archive_keep_recent, parse_evict_path, plan_mode_offers, read_policy,
-    saturating_u32, saturating_u64, unknown_disabled_tools,
+    ToolRegistry, WAIT_FOR_ISSUE_TOOL, WAIT_FOR_SUBAGENTS_TOOL, WorkflowData, handled_by_loop,
+    is_board_tool, is_context_reclaim_tool, is_fsm_tool, is_memory_tool, is_planning_tool,
+    is_subagent_tool, is_task_tool, parse_archive_keep_recent, parse_evict_path, plan_mode_offers,
+    read_policy, saturating_u32, saturating_u64, unknown_disabled_tools,
 };
 use crate::vision::VisionSupport;
 
@@ -286,6 +286,7 @@ const MAX_SPECULATION_ATTEMPTS: u64 = 6;
 /// resource construction in the orchestrator (rather than the struct) is the multi-agent seam: a
 /// spawn builds a child agent's context/toolset/runtimes the same way the root's are built, then
 /// drives it identically.
+#[derive(Clone)]
 pub struct Agent {
     /// The agent's stable id in the tree ([`ROOT_AGENT_ID`] for the root).
     pub id: String,
@@ -1648,6 +1649,7 @@ struct SubagentContext {
 /// [orchestrator](Orchestrator) (to auto-dispatch actionable issues after a board mutation and to
 /// suspend the agent in a `wait_for_issue`) and — when this agent was *itself* auto-dispatched to
 /// implement an issue — that issue's id.
+#[derive(Clone)]
 struct ProjectContext {
     /// The shared orchestrator whose board this agent's tools mutate and whose dispatcher its board
     /// changes drive.
@@ -5185,6 +5187,7 @@ impl Agent {
                     spawner: self,
                     registry,
                     tool_ctx,
+                    read_policy,
                     board: &board,
                     project: project.as_ref(),
                     memories: &memories,
@@ -5199,15 +5202,21 @@ impl Agent {
                     code_reviews_active,
                     speculative_active,
                 };
-                let decision = run_code_turn(
+                // The per-turn state (`context`/`skills`/`docs`/`subagents`) is handed to the code
+                // turn **by value** — it is moved into the program's `LoopToolApi` so the program's
+                // calls act on the live window on the blocking sandbox thread — and handed back on
+                // every non-fatal path. On the one path it cannot come back (the sandbox task
+                // panicked, a host fault), the turn is `Fatal` and the loop returns below without
+                // reading the window again.
+                let (decision, state) = run_code_turn(
                     healed.expect("code mode heals the reply before recording the assistant turn"),
                     &code,
                     limits.deadline,
                     &turn_ctx,
-                    &mut context,
-                    &mut skills,
-                    &mut docs,
-                    &mut subagents,
+                    context,
+                    skills,
+                    docs,
+                    subagents,
                 )
                 .await;
                 // Every code turn is recorded, including the one that finishes and the one that
@@ -5249,6 +5258,20 @@ impl Agent {
                         report,
                         ..
                     } => {
+                        // Reclaim the per-turn state the code turn carried by value. It is present
+                        // on every non-fatal path (only a panicked sandbox loses it, and that is
+                        // `Fatal`), so the loop rebinds its live window, skills/docs runtimes and
+                        // delegation context here before using them again this turn or next.
+                        let CodeTurnState {
+                            context: turn_context,
+                            skills: turn_skills,
+                            docs: turn_docs,
+                            subagents: turn_subagents,
+                        } = state.expect("a non-fatal code turn hands back its per-turn state");
+                        context = turn_context;
+                        skills = turn_skills;
+                        docs = turn_docs;
+                        subagents = turn_subagents;
                         last_report = Some(report);
                         // The turn's feedback is pushed **before** the breach return, so a stopped
                         // run's context still contains everything the turn produced. The program's
@@ -5711,6 +5734,7 @@ struct ContextSetup {
 /// The agent-managed-context configuration threaded into the [turn loop](Agent::drive): whether the
 /// capability is on and the shared thread [archive](ArchiveStore) that `archive_thread` fills
 /// and `search_archive` reads.
+#[derive(Clone)]
 struct AmcSetup {
     /// Whether the [agent-managed-context](CAPABILITY_AGENT_MANAGED_CONTEXT) capability is on.
     /// When on the loop injects the per-turn fullness signal and applies the reclaim tools;
@@ -6920,7 +6944,7 @@ fn session_ended(status: impl Into<String>) -> GgTelemetryKind {
 #[path = "agent.code.rs"]
 mod code;
 
-use code::{CodeTurn, CodeTurnOutcome, run_code_turn};
+use code::{CodeTurn, CodeTurnOutcome, CodeTurnState, run_code_turn};
 
 #[cfg(test)]
 #[path = "agent.test.rs"]

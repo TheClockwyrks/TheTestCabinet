@@ -9,6 +9,7 @@ use wasmtime::component::Component;
 use wasmtime::{Config, Engine, OptLevel, Store, Trap};
 
 use super::SandboxError;
+use super::invoker::ToolApi;
 use super::limits::SandboxLimits;
 use super::membrane::MembraneState;
 
@@ -166,8 +167,8 @@ pub(crate) fn component_bytes() -> &'static [u8] {
 /// `non_fuel` is what an unclassified failure becomes, and it differs by phase — an error from
 /// [`instantiate`](wasmtime::component::Linker) means the committed artifact and the membrane have
 /// drifted apart, while one from the call is an ordinary trap — so the caller names it.
-pub(crate) fn classify(
-    store: &Store<MembraneState>,
+pub(crate) fn classify<A: ToolApi>(
+    store: &Store<MembraneState<A>>,
     limits: SandboxLimits,
     err: &wasmtime::Error,
     non_fuel: fn(String) -> SandboxError,

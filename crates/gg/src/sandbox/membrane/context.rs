@@ -13,21 +13,19 @@
 //! right", never as "the producer exists". `search_archive` is the exception: its sidecar comes
 //! from the tool itself.
 
-use serde_json::json;
-
-use super::MembraneState;
 use super::test_cabinet::gg::context::{
     ArchiveHit, ArchiveSearch, Host as ContextHost, MessageRole, ReclaimReport,
 };
 use super::test_cabinet::gg::types::ToolError;
+use super::{MembraneState, ToolApi};
 use crate::model::Role;
 use crate::tools::{
     ARCHIVE_THREAD_TOOL, EVICT_FILE_VIEW_TOOL, ReclaimData, SEARCH_ARCHIVE_TOOL, ToolData,
 };
 
-impl ContextHost for MembraneState {
+impl<A: ToolApi> ContextHost for MembraneState<A> {
     fn evict_file_view(&mut self, path: Option<String>) -> Result<ReclaimReport, ToolError> {
-        let outcome = self.call(EVICT_FILE_VIEW_TOOL, json!({ "path": path }))?;
+        let outcome = self.call(EVICT_FILE_VIEW_TOOL, |api| api.evict_file_view(path))?;
         reclaim(self, EVICT_FILE_VIEW_TOOL, outcome.data)
     }
 
@@ -35,15 +33,14 @@ impl ContextHost for MembraneState {
         &mut self,
         keep_recent_turns: Option<u32>,
     ) -> Result<ReclaimReport, ToolError> {
-        let outcome = self.call(
-            ARCHIVE_THREAD_TOOL,
-            json!({ "keep_recent_turns": keep_recent_turns }),
-        )?;
+        let outcome = self.call(ARCHIVE_THREAD_TOOL, |api| {
+            api.archive_thread(keep_recent_turns)
+        })?;
         reclaim(self, ARCHIVE_THREAD_TOOL, outcome.data)
     }
 
     fn search_archive(&mut self, query: String) -> Result<ArchiveSearch, ToolError> {
-        let outcome = self.call(SEARCH_ARCHIVE_TOOL, json!({ "query": query }))?;
+        let outcome = self.call(SEARCH_ARCHIVE_TOOL, |api| api.search_archive(query))?;
         match outcome.data {
             Some(ToolData::ArchiveSearch(search)) => Ok(ArchiveSearch {
                 // "Nothing has been archived yet" and "the search ran and matched nothing" are
@@ -73,8 +70,8 @@ impl ContextHost for MembraneState {
 ///
 /// It takes the state because the diagnostic is not only returned to the program: it also corrects
 /// the roster entry the dispatch already wrote, which until this point says the call succeeded.
-fn reclaim(
-    state: &mut MembraneState,
+fn reclaim<A: ToolApi>(
+    state: &mut MembraneState<A>,
     tool: &'static str,
     data: Option<ToolData>,
 ) -> Result<ReclaimReport, ToolError> {
