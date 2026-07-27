@@ -161,6 +161,12 @@ fn no_code() -> CodeSetup {
     }
 }
 
+/// The default [`CompletionSetup`] — a plain-text signal and no validation, the historical
+/// tool-calling completion rule every `drive` test in this file runs under unless it says otherwise.
+fn no_completion() -> CompletionSetup {
+    CompletionSetup::resolve(&GgAgentConfig::root())
+}
+
 /// A newtype letting a [`ScriptedFactory`] hand out clones of **one** shared [`MockClient`], so a
 /// test can read its [`turns_taken`](MockClient::turns_taken) after the run.
 ///
@@ -238,6 +244,7 @@ async fn drive_root(
             false,
             false,
             code,
+            no_completion(),
             &GgAgentConfig::root(),
             None,
             None,
@@ -901,6 +908,7 @@ async fn drive_exhausts_the_turn_ceiling_when_the_model_never_stops() {
             false,
             false,
             no_code(),
+            no_completion(),
             &GgAgentConfig::root(),
             None,
             None,
@@ -955,6 +963,7 @@ async fn drive_times_out_at_a_passed_deadline() {
             false,
             false,
             no_code(),
+            no_completion(),
             &GgAgentConfig::root(),
             None,
             None,
@@ -1010,6 +1019,7 @@ async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
             false,
             false,
             no_code(),
+            no_completion(),
             &GgAgentConfig::root(),
             None,
             None,
@@ -1026,6 +1036,205 @@ async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
             .iter()
             .any(|e| matches!(&e.kind, GgTelemetryKind::Log { level, .. } if level == "error")),
         "a fatal turn must be logged at error level, not swallowed"
+    );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Completion strategies (tool-calling): the signal (plain-text vs explicit `finish`) and the
+// optional validation gate. The responses-as-code side of the same machinery lives in
+// `agent.sandbox.test.rs`.
+// ---------------------------------------------------------------------------------------------
+
+/// Resolve a [`CompletionSetup`] from a Root profile carrying an enabled `completion` capability
+/// with the given signal implementation and `validation` params.
+fn completion_setup(implementation: Option<&str>, params: serde_json::Value) -> CompletionSetup {
+    use test_cabinet_core::gg::{CAPABILITY_COMPLETION, GgCapabilityConfig};
+    let mut profile = GgAgentConfig::root();
+    profile.capabilities.push(GgCapabilityConfig {
+        id: CAPABILITY_COMPLETION.to_string(),
+        enabled: true,
+        implementation: implementation.map(str::to_string),
+        params,
+    });
+    CompletionSetup::resolve(&profile)
+}
+
+/// A model turn that calls the `finish` tool with `summary` — the explicit-call completion signal.
+fn finish_call(id: &str, summary: &str) -> ModelResponse {
+    ModelResponse {
+        text: Some("finishing".to_string()),
+        tool_calls: vec![ToolCall {
+            id: id.to_string(),
+            name: "finish".to_string(),
+            arguments: json!({ "summary": summary }),
+        }],
+        finish_reason: FinishReason::ToolCalls,
+        usage: TokenCounts::default(),
+        cost: None,
+    }
+}
+
+/// [`drive_root`] with a caller-chosen [`CompletionSetup`], so a test can drive an explicit-call or
+/// validated completion. The profile stays a bare Root — the loop reads the completion rule from the
+/// setup, not the profile.
+#[allow(clippy::too_many_arguments)]
+async fn drive_completion(
+    client: &dyn ModelClient,
+    dir: &Path,
+    registry: &ToolRegistry,
+    emitter: &Emitter,
+    limits: LimitsSetup,
+    completion: CompletionSetup,
+) -> LoopEnd {
+    let ctx = ToolContext::new(dir);
+    Agent::root()
+        .drive(
+            client,
+            "go",
+            registry,
+            &ctx,
+            emitter,
+            limits,
+            test_context_setup(),
+            no_compaction(),
+            no_amc(),
+            no_autoload(),
+            &[],
+            SkillsRuntime::disabled(),
+            MemoriesRuntime::disabled(),
+            TasksRuntime::disabled(),
+            BoardRuntime::disabled(),
+            PlanningRuntime::disabled(),
+            FsmRuntime::disabled(),
+            ReadPolicy::default(),
+            false,
+            false,
+            no_code(),
+            completion,
+            &GgAgentConfig::root(),
+            None,
+            None,
+            None,
+        )
+        .await
+}
+
+/// Under an explicit-call signal a text-only reply does NOT end the run (it is an error turn); the
+/// run ends only when the model calls `finish`, and its summary is the run's final text.
+#[tokio::test]
+async fn explicit_call_ends_on_finish_not_on_text() {
+    use test_cabinet_core::gg::COMPLETION_SIGNAL_EXPLICIT_CALL;
+    let dir = TempDir::new().unwrap();
+    let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/x").root());
+    let emitter = Emitter::with_sink(None, Box::new(CollectingSink::new()));
+
+    // Turn 1 is text-only (an error under this signal — not a completion); turn 2 calls `finish`.
+    let client = MockClient::new(
+        "mock/x",
+        vec![stop_response(), finish_call("f1", "all done")],
+    );
+    let end = drive_completion(
+        &client,
+        dir.path(),
+        &registry,
+        &emitter,
+        no_limits(5),
+        completion_setup(Some(COMPLETION_SIGNAL_EXPLICIT_CALL), json!({})),
+    )
+    .await;
+
+    assert_eq!(end.status, "completed");
+    assert_eq!(end.turns, 2, "the text-only turn did not end the run");
+    assert_eq!(end.final_text.as_deref(), Some("all done"));
+}
+
+/// Under an explicit-call signal, repeated text-only replies are counted as errors, so a
+/// consecutive-error ceiling stops the run early rather than letting it loop to its turn budget.
+#[tokio::test]
+async fn explicit_call_text_only_trips_the_error_ceiling() {
+    use test_cabinet_core::gg::COMPLETION_SIGNAL_EXPLICIT_CALL;
+    let dir = TempDir::new().unwrap();
+    let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/x").root());
+    let emitter = Emitter::with_sink(None, Box::new(CollectingSink::new()));
+
+    let mut limits = no_limits(20);
+    limits.limits.max_consecutive_errors = Some(2);
+    let client = MockClient::new(
+        "mock/x",
+        vec![stop_response(), stop_response(), stop_response()],
+    );
+    let end = drive_completion(
+        &client,
+        dir.path(),
+        &registry,
+        &emitter,
+        limits,
+        completion_setup(Some(COMPLETION_SIGNAL_EXPLICIT_CALL), json!({})),
+    )
+    .await;
+
+    assert_eq!(
+        end.status, "limit_exceeded",
+        "two text-only errors breach the ceiling"
+    );
+    assert_eq!(end.turns, 2);
+    assert_eq!(
+        client.turns_taken(),
+        2,
+        "the run stopped after two turns rather than looping to its turn budget",
+    );
+}
+
+/// A plain-text completion whose validation commands all pass ends the run.
+#[tokio::test]
+async fn plain_text_completion_passes_validation() {
+    let dir = TempDir::new().unwrap();
+    let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/x").root());
+    let emitter = Emitter::with_sink(None, Box::new(CollectingSink::new()));
+
+    let client = MockClient::new("mock/x", vec![stop_response()]);
+    let end = drive_completion(
+        &client,
+        dir.path(),
+        &registry,
+        &emitter,
+        no_limits(5),
+        completion_setup(None, json!({ "validation": ["true"] })),
+    )
+    .await;
+
+    assert_eq!(end.status, "completed");
+    assert_eq!(end.turns, 1);
+}
+
+/// A plain-text completion whose validation fails does NOT end the run: the failure is fed back and
+/// the run continues, so a run that can never satisfy validation stops on its turn ceiling instead.
+#[tokio::test]
+async fn plain_text_completion_blocked_by_failing_validation() {
+    let dir = TempDir::new().unwrap();
+    let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/x").root());
+    let emitter = Emitter::with_sink(None, Box::new(CollectingSink::new()));
+
+    let client = MockClient::new("mock/x", vec![stop_response(), stop_response()]);
+    let end = drive_completion(
+        &client,
+        dir.path(),
+        &registry,
+        &emitter,
+        no_limits(2),
+        completion_setup(None, json!({ "validation": ["false"] })),
+    )
+    .await;
+
+    assert_eq!(
+        end.status, "exhausted",
+        "failing validation never lets the run complete"
+    );
+    assert_eq!(end.turns, 2);
+    assert_eq!(
+        client.turns_taken(),
+        2,
+        "the completion was rejected and the run continued to the next turn",
     );
 }
 
@@ -1066,6 +1275,7 @@ async fn drive_ends_model_error_on_exhausted_retries() {
             false,
             false,
             no_code(),
+            no_completion(),
             &GgAgentConfig::root(),
             None,
             None,
@@ -1118,6 +1328,7 @@ async fn drive_ends_auth_error_when_the_credential_is_refused() {
             false,
             false,
             no_code(),
+            no_completion(),
             &GgAgentConfig::root(),
             None,
             None,
@@ -1386,6 +1597,9 @@ struct DisabledRuntimes {
     /// vary custom instructions or the delegation allowlist. Owned here so `PromptInputs` can
     /// borrow it.
     profile: GgAgentConfig,
+    /// The completion rule the prompt describes — the default (plain-text, ungated), since these
+    /// prompt tests do not vary it. Owned here so `PromptInputs` can borrow it.
+    completion: CompletionSetup,
 }
 
 impl DisabledRuntimes {
@@ -1402,6 +1616,7 @@ impl DisabledRuntimes {
             // the model it can see images.
             vision: VisionContext::unknown(),
             profile: GgAgentConfig::root(),
+            completion: CompletionSetup::resolve(&GgAgentConfig::root()),
         }
     }
 
@@ -1438,6 +1653,7 @@ impl DisabledRuntimes {
             profile: &self.profile,
             delegated: false,
             fences_are_stripped: true,
+            completion: &self.completion,
         }
     }
 }
@@ -1914,6 +2130,7 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
             false,
             false,
             no_code(),
+            no_completion(),
             &GgAgentConfig::root(),
             None,
             None,
@@ -2100,6 +2317,7 @@ async fn drive_enforces_memory_caps_end_to_end() {
             false,
             false,
             no_code(),
+            no_completion(),
             &GgAgentConfig::root(),
             None,
             None,
@@ -2302,6 +2520,7 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
             false,
             false,
             no_code(),
+            no_completion(),
             &GgAgentConfig::root(),
             None,
             None,
@@ -2610,6 +2829,7 @@ async fn drive_compacts_at_the_threshold_and_retains_pinned_state() {
             false,
             false,
             no_code(),
+            no_completion(),
             &GgAgentConfig::root(),
             None,
             None,
@@ -2774,6 +2994,7 @@ async fn drive_never_compacts_when_capability_off() {
             false,
             false,
             no_code(),
+            no_completion(),
             &GgAgentConfig::root(),
             None,
             None,
@@ -2875,6 +3096,7 @@ async fn drive_manages_context_end_to_end() {
             false,
             false,
             no_code(),
+            no_completion(),
             &GgAgentConfig::root(),
             None,
             None,
@@ -2988,6 +3210,7 @@ async fn drive_without_amc_offers_no_context_management() {
             false,
             false,
             no_code(),
+            no_completion(),
             &GgAgentConfig::root(),
             None,
             None,
@@ -3078,6 +3301,7 @@ async fn drive_plans_then_implements_from_a_fresh_context() {
             false,
             false,
             no_code(),
+            no_completion(),
             &GgAgentConfig::root(),
             None,
             None,
@@ -3241,6 +3465,7 @@ async fn drive_without_planning_offers_no_planning() {
             false,
             false,
             no_code(),
+            no_completion(),
             &GgAgentConfig::root(),
             None,
             None,

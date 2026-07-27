@@ -424,6 +424,52 @@ pub const CAPABILITY_REPLAY: &str = "replay";
 /// off this one constant so the paths never drift.
 pub const GG_REPLAY_ARTIFACT_PATH: &str = ".gg/replay.json";
 
+/// The stable id of the **completion** capability: how gg decides a run is finished.
+///
+/// Every run has a completion rule; this capability makes it configurable per agent rather than
+/// fixed. It is orthogonal to the execution mode — it composes with both traditional tool calling
+/// and [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) — and, when a profile does not list it at
+/// all, gg falls back to the mode's historical default (so a run that never configures completion
+/// behaves exactly as it always has): a text-only reply ends a tool-calling run, and a program that
+/// calls `finish` ends a responses-as-code run.
+///
+/// The capability has two independent knobs:
+///
+/// - Its [implementation](GgCapabilityConfig::implementation) selects the **completion signal** —
+///   how the model indicates it believes the work is done. Two are recognized:
+///   [`plain-text`](COMPLETION_SIGNAL_PLAIN_TEXT) (a reply with no tool calls means done — the
+///   historical tool-calling default) and [`explicit-call`](COMPLETION_SIGNAL_EXPLICIT_CALL) (the
+///   model must call the `finish` tool to end the run; a text-only reply is treated as an **error**
+///   fed back to the model, so a weaker model that loops emitting prose trips the run's
+///   error ceilings and stops early instead of running to its turn budget). The signal governs
+///   only the **tool-calling** path: a responses-as-code run always ends through its program's
+///   `finish` call, so the signal is inert (a plain-text signal declared on a code-mode agent is
+///   ignored, and gg says so at launch).
+///
+/// - Its [`validation`](Self) param (an array of commands, each an object with a required
+///   `command` string and an optional `cwd` — relative to gg's working directory, or absolute —
+///   and an optional `timeoutSecs`) gates completion behind an **external check**. When the model
+///   signals completion (whichever signal is in force, in either execution mode), gg runs the
+///   commands in order; the run only ends if every one exits `0`. If one fails, its output is
+///   handed back to the model and the run continues so it can fix the problem and finish again.
+///   An empty or absent `validation` leaves completion ungated.
+///
+/// gg includes a configurable completion rule **so its effect can be measured empirically** — an
+/// explicit `finish` versus an implicit stop, a validated completion versus an unchecked one — the
+/// same ablation discipline every other capability follows.
+pub const CAPABILITY_COMPLETION: &str = "completion";
+
+/// The [completion signal](CAPABILITY_COMPLETION) in which a tool-calling reply that requests **no
+/// tools** ends the run — the historical tool-calling default, and what an unconfigured run uses.
+pub const COMPLETION_SIGNAL_PLAIN_TEXT: &str = "plain-text";
+
+/// The [completion signal](CAPABILITY_COMPLETION) in which the model must call the `finish` tool to
+/// end a tool-calling run. A reply with no tool call is **not** a completion under this signal — it
+/// is an error fed back to the model, so a run that never learns to call `finish` stops on its
+/// error ceilings rather than looping to its turn budget. This is the tool-calling equivalent of
+/// the [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) `finish` contract.
+pub const COMPLETION_SIGNAL_EXPLICIT_CALL: &str = "explicit-call";
+
 /// The conventional name of the **Root agent** — the one agent every
 /// [`GgCapabilitySet`] must declare, which drives the run's top-level session. It is
 /// unremovable in the editor and is the default profile for issue dispatch, Code

@@ -240,6 +240,54 @@ async fn responses_as_code_routes_the_turn_through_the_sandbox() {
     assert_eq!(summary.code_executions, 2);
 }
 
+/// Completion **validation** gates a code-mode `finish`: a program that calls `finish` before the
+/// validation commands pass does not end the run — the failure is fed back and the run continues —
+/// and a later program that satisfies validation and finishes ends it. Proves the same completion
+/// gate the tool-calling path uses composes with responses-as-code.
+#[tokio::test]
+async fn responses_as_code_completion_is_gated_by_validation() {
+    let dir = TempDir::new().unwrap();
+    let mut set = code_set("mock/primary", json!({}));
+    // Gate completion on a file the program must create before its `finish` is accepted.
+    let mut completion = GgCapabilityConfig::enabled(test_cabinet_core::gg::CAPABILITY_COMPLETION);
+    completion.params = json!({ "validation": ["test -f ready.txt"] });
+    set.agents[0].capabilities.push(completion);
+
+    // Turn 1 finishes without creating the file (validation rejects it, the run continues); turn 2
+    // creates the file and finishes (validation passes, the run ends).
+    let script = vec![
+        code_reply("harness.finish(\"attempt one\");"),
+        code_reply("fs.writeFile(\"ready.txt\", \"x\");\nharness.finish(\"attempt two\");"),
+    ];
+    let (outcome, events) = drive_code_run(&dir, set, move |b| {
+        Box::new(MockClient::new(&b.model_id, script.clone()))
+    })
+    .await;
+
+    assert_eq!(outcome, SessionOutcome::Ran);
+    assert_eq!(
+        ended_with(&events),
+        "completed",
+        "the second finish passed validation"
+    );
+    assert!(
+        dir.path().join("ready.txt").exists(),
+        "the second program created the file validation checks for"
+    );
+    // The first `finish` was rejected: gg says so on the operator stream and the run took a second
+    // code turn rather than ending on the first.
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::Log { level, message }
+                if level == "warn" && message.contains("validation") && message.contains("rejected")
+        )),
+        "a rejected completion is announced on the stream"
+    );
+    let summary = session_summary(&events).expect("a session summary");
+    assert_eq!(summary.code_executions, 2, "both code turns ran");
+}
+
 /// The off arm is unchanged: a run **without** responses-as-code drives the ordinary tool-calling
 /// path, emits no `CodeExecution`, and records the tool-calling execution mode.
 #[tokio::test]

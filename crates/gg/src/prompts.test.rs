@@ -68,6 +68,7 @@ fn full_system() -> SystemContext {
         code_reviews: true,
         speculative: true,
         autoload_specs: Some(AutoloadView { locked: true }),
+        completion: CompletionView::default(),
     }
 }
 
@@ -183,6 +184,79 @@ fn a_full_run_renders_the_read_facts_and_tasks() {
     assert!(flat.contains("at most **250 lines**"), "{prompt}");
     assert!(prompt.contains("## Tasks"), "{prompt}");
     assert!(!prompt.contains("\n\n\n"), "prompt has a blank-line run");
+}
+
+/// The default (plain-text) completion section tells the model that a reply with no tool calls ends
+/// the run, and does not demand an explicit `finish` call.
+#[test]
+fn plain_text_completion_section_says_a_tool_free_reply_ends_the_run() {
+    let prompt = render_system(&SystemContext::default(), None);
+    let flat = flat(&prompt);
+    assert!(prompt.contains("## Finishing"), "{prompt}");
+    assert!(flat.contains("no tool calls"), "{prompt}");
+    assert!(
+        !flat.contains("does not end the run"),
+        "plain-text completion must not demand an explicit finish:\n{prompt}"
+    );
+    assert!(!prompt.contains("\n\n\n"), "blank-line run:\n{prompt}");
+}
+
+/// The explicit-call completion section requires calling `finish`, says a tool-free reply does not
+/// end the run, and lists the validation commands (each as it reads, with any `cwd`).
+#[test]
+fn explicit_call_completion_section_requires_finish_and_lists_validation() {
+    let context = SystemContext {
+        completion: CompletionView {
+            explicit_call: true,
+            finish_name: "finish".to_string(),
+            validated: true,
+            validation: vec![
+                "cargo test".to_string(),
+                "npm run build (in web)".to_string(),
+            ],
+        },
+        ..SystemContext::default()
+    };
+    let prompt = render_system(&context, None);
+    let flat = flat(&prompt);
+    assert!(flat.contains("`finish`"), "{prompt}");
+    assert!(flat.contains("does not end the run"), "{prompt}");
+    assert!(
+        flat.contains("cargo test"),
+        "lists the validation commands:\n{prompt}"
+    );
+    assert!(
+        flat.contains("npm run build (in web)"),
+        "keeps a command's cwd:\n{prompt}"
+    );
+    assert!(!prompt.contains("\n\n\n"), "blank-line run:\n{prompt}");
+}
+
+/// In responses-as-code mode the completion section lists the validation commands too — the same
+/// gate, described in the code template around `harness.finish()`.
+#[test]
+fn code_mode_completion_lists_validation_commands() {
+    let context = SystemContext {
+        responses_as_code: true,
+        // `harness` is always present in a code run — the object `finish` lives on — and the code
+        // template renders its object list, so a realistic context carries at least it.
+        apis: vec![ApiView {
+            object: "harness".to_string(),
+            description: "the run itself — end it with `finish`, and read documentation"
+                .to_string(),
+        }],
+        completion: CompletionView {
+            explicit_call: false,
+            finish_name: "finish".to_string(),
+            validated: true,
+            validation: vec!["cargo test".to_string()],
+        },
+        ..SystemContext::default()
+    };
+    let prompt = render_system(&context, None);
+    assert!(flat(&prompt).contains("cargo test"), "{prompt}");
+    assert!(prompt.contains("harness.finish()"), "{prompt}");
+    assert!(!prompt.contains("\n\n\n"), "blank-line run:\n{prompt}");
 }
 
 /// The task section carries its tool instructions and this run's ceiling.

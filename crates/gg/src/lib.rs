@@ -23,6 +23,7 @@ mod archive;
 mod board;
 mod client;
 mod compaction;
+mod completion;
 mod config;
 mod context;
 mod dag;

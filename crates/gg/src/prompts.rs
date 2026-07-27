@@ -310,6 +310,31 @@ pub struct SystemContext {
     /// reference images, and if so whether they are locked into the window. `None` renders no
     /// section — the model was told nothing about a feature it does not have.
     pub autoload_specs: Option<AutoloadView>,
+    /// How this run decides it is finished — the completion signal and any validation that gates it.
+    /// Always present: every run has a completion rule the model must be told, in either execution
+    /// mode.
+    pub completion: CompletionView,
+}
+
+/// How a run reaches completion, as the system prompt describes it: the signal the model uses to
+/// say it is done, and the [validation](test_cabinet_core::gg::CAPABILITY_COMPLETION) commands (if
+/// any) gg runs to confirm it before the run ends.
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompletionView {
+    /// Tool-calling only: whether the model must call the `finish` tool to end the run (an
+    /// explicit-call signal), rather than ending it by replying with no tool call (the plain-text
+    /// signal). The code template ignores this — a program always ends through its own `finish`.
+    pub explicit_call: bool,
+    /// The name of the finish tool/function (`finish`), so the prompt names it from one source.
+    pub finish_name: String,
+    /// Whether completion is gated behind validation commands — the flag the template branches on
+    /// before listing them.
+    pub validated: bool,
+    /// The validation commands gg runs to confirm the work before the run ends, each as it reads in
+    /// the prompt. Empty when completion is ungated.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub validation: Vec<String>,
 }
 
 /// The [autoload-specifications](test_cabinet_core::gg::CAPABILITY_AUTOLOAD_SPECS) section's state:

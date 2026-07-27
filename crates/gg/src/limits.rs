@@ -145,12 +145,15 @@ impl TurnOutcome {
 /// distinguishing kinds, because a run that alternates between five ways of failing is not
 /// healthier than one that fails the same way five times.
 ///
-/// Four of the five are [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE)
-/// shapes, and that asymmetry is real rather than an oversight: a tool-calling turn has no way to
-/// declare work that can be cut short — every requested call is dispatched and answered — so in
-/// that mode only [`ModelApi`](Self::ModelApi) can occur, and it is separately fatal on its first
-/// occurrence. The counting machinery is mode-agnostic; the error *shapes* are not, because the
-/// protocols are not.
+/// Four of the six are [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE)
+/// shapes, and that asymmetry is largely real rather than an oversight: a tool-calling turn whose
+/// requested calls are all dispatched and answered cannot declare work that is cut short. The one
+/// tool-calling error shape besides [`ModelApi`](Self::ModelApi) is
+/// [`MissingCompletion`](Self::MissingCompletion) — a turn under an
+/// [explicit-call](test_cabinet_core::gg::COMPLETION_SIGNAL_EXPLICIT_CALL) completion signal that
+/// ends without calling `finish` — which exists precisely so a model that loops emitting prose
+/// trips the run's error ceilings instead of running to its turn budget. The counting machinery is
+/// mode-agnostic; the error *shapes* are not, because the protocols are not.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TurnErrorKind {
     /// The model call itself failed, after the [client](crate::client) had already exhausted its
@@ -183,6 +186,13 @@ pub enum TurnErrorKind {
     /// mostly working and occasionally too big — is exactly what [`error_rate`](RunLimits::error_rate)
     /// expresses and a consecutive counter cannot, which is *why* it needed an exemption at all.
     SandboxLimit,
+    /// A tool-calling turn ended with no tool call under an
+    /// [explicit-call](test_cabinet_core::gg::COMPLETION_SIGNAL_EXPLICIT_CALL) completion signal,
+    /// where a text-only reply is not a completion but a failure to end the run the one way this
+    /// run allows. Counted as an error so a model that keeps replying in prose instead of calling
+    /// `finish` trips the run's [error ceilings](RunLimits) and stops early. The only tool-calling
+    /// error shape besides [`ModelApi`](Self::ModelApi).
+    MissingCompletion,
 }
 
 /// A failure of gg's own machinery, which ends the session rather than costing the model a turn.

@@ -405,6 +405,7 @@ fn only_error_outcomes_count_as_errors() {
         TurnOutcome::Error(TurnErrorKind::Transpile),
         TurnOutcome::Error(TurnErrorKind::ProgramFault),
         TurnOutcome::Error(TurnErrorKind::SandboxLimit),
+        TurnOutcome::Error(TurnErrorKind::MissingCompletion),
         TurnOutcome::Fatal(FatalFault::ArtifactDefect),
         TurnOutcome::Fatal(FatalFault::HostFault),
     ];
@@ -417,7 +418,8 @@ fn only_error_outcomes_count_as_errors() {
                 | TurnErrorKind::NotAProgram
                 | TurnErrorKind::Transpile
                 | TurnErrorKind::ProgramFault
-                | TurnErrorKind::SandboxLimit => true,
+                | TurnErrorKind::SandboxLimit
+                | TurnErrorKind::MissingCompletion => true,
             },
         };
         assert_eq!(outcome.is_error(), expected, "{outcome:?}");

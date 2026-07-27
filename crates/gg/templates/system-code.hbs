@@ -11,6 +11,18 @@ program will be provided to you on the next turn. Use `console.log()` to print
 values. If subsequent operations rely on you knowing the output of the earlier
 calls, you must defer those operations until the next turn.
 
+{{#if completion.validated}}
+Before your `harness.finish()` is accepted, gg runs the following validation
+command(s), and the run only ends if every one succeeds. If any fails, its output is
+provided to you on the next turn and the run continues so you can fix the problem and
+call `harness.finish()` again:
+
+{{#each completion.validation}}
+- `{{this}}`
+{{/each}}
+
+{{/if}}
+
 All functions are synchronous. Do not use `await` or treat return values as
 promises.
 

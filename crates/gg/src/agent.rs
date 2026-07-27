@@ -106,6 +106,7 @@ use crate::archive::ArchiveStore;
 use crate::board::{BoardCaps, BoardRuntime, IssueStatus};
 use crate::client::{ClientFactory, DefaultClientFactory, provider_for};
 use crate::compaction::{self, CompactionSetup, RetainedCounts, compact_if_needed};
+use crate::completion::{self, CompletionSetup, FINISH_TOOL};
 use crate::config::GgInvocation;
 use crate::context::{
     BpeTokenEstimator, ContextModel, Retention, TokenEstimator, code_heading, tool_output_source,
@@ -131,7 +132,8 @@ use crate::planning::PlanningRuntime;
 use crate::prompts::{
     self, ApiView, AutoloadView, BoardView, CodeCallView, CodeErrorView, CodeHeadingView,
     CodeNotAProgramContext, CodeResultContext, CodeSandboxErrorContext, CodeTranspileErrorContext,
-    FsmView, MemoriesView, ReadFileView, SpawnableAgentView, SystemContext, TasksView,
+    CompletionView, FsmView, MemoriesView, ReadFileView, SpawnableAgentView, SystemContext,
+    TasksView,
 };
 use crate::replay::{GgRecorder, RecordingClient};
 use crate::sandbox::{
@@ -1807,6 +1809,11 @@ async fn run_agent(
     // tools with agents that write programs.
     let code = orch.code_setup(&profile);
 
+    // How this agent decides it is finished — the completion signal and any validation gate — also
+    // comes from its own profile, so a run can pair, say, a validated explicit-`finish` root with
+    // plain-text workers.
+    let completion = CompletionSetup::resolve(&profile);
+
     // Announce the run's configuration once, on the root's stream, so the console shows the enabled
     // capabilities from the start; subagents inherit the same configuration and stay quiet.
     if is_root {
@@ -1822,6 +1829,7 @@ async fn run_agent(
             orch.code_reviews_active(),
             orch.speculative_active(),
             code.enabled,
+            &completion,
         );
         announce_fsm(emitter, &orch.caps, &fsm);
         // Record the run's effective toolset on the session summary — the exact set of tool names
@@ -1954,6 +1962,7 @@ async fn run_agent(
             orch.code_reviews_active(),
             orch.speculative_active(),
             code,
+            completion,
             &profile,
             subagent_context,
             project,
@@ -2097,6 +2106,7 @@ fn announce_configuration(
     code_reviews: bool,
     speculative: bool,
     responses_as_code: bool,
+    completion: &CompletionSetup,
 ) {
     if registry.is_empty() {
         emitter.emit(log(
@@ -2213,6 +2223,38 @@ fn announce_configuration(
                 ),
             ));
         }
+    }
+
+    // The completion rule this run ends on. Announced last because it is the run's *ending*, and
+    // because how the model must finish is a fact worth stating up front whatever else is enabled.
+    // The signal is only meaningful on the tool-calling path; a code-mode run always ends through
+    // its program's `finish`, so its signal is not restated here.
+    if !responses_as_code {
+        match completion.signal() {
+            completion::CompletionSignal::ExplicitCall => emitter.emit(log(
+                "info",
+                format!(
+                    "completion signal: explicit `{FINISH_TOOL}` call. The model must call the \
+                     `{FINISH_TOOL}` tool to end the run; a reply with no tool call is treated as an \
+                     error and fed back."
+                ),
+            )),
+            completion::CompletionSignal::PlainText => emitter.emit(log(
+                "info",
+                "completion signal: plain text. A reply with no tool call ends the run.",
+            )),
+        }
+    }
+    if completion.has_validation() {
+        emitter.emit(log(
+            "info",
+            format!(
+                "completion validation enabled: gg runs {} command(s) when the model signals it is \
+                 done, and only ends the run if every one exits 0 (a failure's output is fed back \
+                 and the run continues).",
+                completion.validation().len()
+            ),
+        ));
     }
 }
 
@@ -4771,6 +4813,7 @@ impl Agent {
         code_reviews: bool,
         speculative: bool,
         code: CodeSetup,
+        completion: CompletionSetup,
         profile: &GgAgentConfig,
         mut subagents: Option<SubagentContext>,
         project: Option<ProjectContext>,
@@ -4836,6 +4879,7 @@ impl Agent {
                     .as_ref()
                     .is_some_and(|project| project.assigned_issue.is_some()),
             fences_are_stripped: code.healing.enabled(HealingStrategy::StripFences),
+            completion: &completion,
         }));
         context.push_user_prompt(prompt);
 
@@ -5018,7 +5062,7 @@ impl Agent {
             let tools: Vec<ToolDefinition> = if code.enabled {
                 Vec::new()
             } else {
-                all_tools
+                let mut tools: Vec<ToolDefinition> = all_tools
                     .iter()
                     .filter(|tool| {
                         let planning_ok = !planning.offers_planning()
@@ -5026,7 +5070,15 @@ impl Agent {
                         planning_ok && fsm.offers(&tool.name)
                     })
                     .cloned()
-                    .collect()
+                    .collect();
+                // Under an explicit-call completion signal, offer the `finish` tool so the model has
+                // the one way it may end the run. Appended *after* the plan-mode/FSM filter, so it is
+                // always offered — like the code-mode `finish`, it bypasses those turn-level gates
+                // (the loop intercepts it) and can end the run from a state a machine meant to hold.
+                if completion.explicit_finish(code.enabled) {
+                    tools.push(completion::finish_tool_definition());
+                }
+                tools
             };
 
             // The context for this turn is fully assembled (every prior item is in the
@@ -5238,6 +5290,29 @@ impl Agent {
                     subagents,
                 )
                 .await;
+                // Completion validation gate: a program that called `finish` must pass this run's
+                // validation commands before the run ends. Run them *before* the turn is recorded,
+                // so a rejected completion is accounted as the `Continue` it becomes (progress, the
+                // model must fix and finish again) rather than the `Finished` the program declared.
+                // A rejected completion is turned into a `Continue` carrying the failure feedback,
+                // which the arm below reclaims the turn's state for, pushes, and loops on — the same
+                // path an ordinary error turn takes.
+                let decision = match decision {
+                    CodeTurnOutcome::Finished { summary } if completion.has_validation() => {
+                        match completion::run_validation(completion.validation(), tool_ctx, emitter)
+                            .await
+                        {
+                            None => CodeTurnOutcome::Finished { summary },
+                            Some(feedback) => CodeTurnOutcome::Continue {
+                                feedback,
+                                images: Vec::new(),
+                                error: None,
+                                report: "its completion was rejected by validation".to_string(),
+                            },
+                        }
+                    }
+                    decision => decision,
+                };
                 // Every code turn is recorded, including the one that finishes and the one that
                 // ends fatally, so the rate window is fed uniformly and the accounting cannot drift
                 // from the number of model calls made. Neither of those two ever breaches.
@@ -5345,11 +5420,70 @@ impl Agent {
                 }
             }
 
-            // The **tool-calling** mode's termination rule, untouched: a turn that requested no
-            // tools is the model saying it is done. It is reached only when the code branch above
-            // did not run, and the responses-as-code protocol has no equivalent — every reply there
-            // is a program, so there is no shape of reply that could mean "finished".
+            // The **tool-calling** mode's termination rule. It is reached only when the code branch
+            // above did not run, and the responses-as-code protocol has no equivalent — every reply
+            // there is a program, so there is no shape of reply that could mean "finished".
             if response.tool_calls.is_empty() {
+                if completion.explicit_finish(code.enabled) {
+                    // Under an explicit-call signal a text-only reply is NOT a completion — it is the
+                    // model failing to end the run the one way this run allows. Count it as an error,
+                    // so a model that loops emitting prose instead of calling `finish` trips the run's
+                    // error ceilings and stops early, and feed back how to actually finish.
+                    let breach = agent_limits.record(
+                        TurnOutcome::Error(TurnErrorKind::MissingCompletion),
+                        &self.id,
+                    );
+                    context.push(
+                        GgContextSource::ToolOutput,
+                        Retention::Ephemeral,
+                        Message::user(completion::missing_completion_feedback()),
+                    );
+                    if let Some(breach) = breach {
+                        return self.stop_on_limit(
+                            emitter,
+                            breach,
+                            turn + 1,
+                            total_tokens,
+                            total_cost,
+                            code.enabled,
+                            last_report.as_deref(),
+                            last_text,
+                        );
+                    }
+                    continue;
+                }
+
+                // A plain-text signal: the model is saying it is done. When completion is validated,
+                // run the commands first and only end the run if every one passes; a failure is fed
+                // back (as a progressed turn — the model must fix and finish again) and the run
+                // continues.
+                let rejected = if completion.has_validation() {
+                    completion::run_validation(completion.validation(), tool_ctx, emitter).await
+                } else {
+                    None
+                };
+                if let Some(feedback) = rejected {
+                    let breach = agent_limits.record(TurnOutcome::Progressed, &self.id);
+                    context.push(
+                        GgContextSource::ToolOutput,
+                        Retention::Ephemeral,
+                        Message::user(feedback),
+                    );
+                    if let Some(breach) = breach {
+                        return self.stop_on_limit(
+                            emitter,
+                            breach,
+                            turn + 1,
+                            total_tokens,
+                            total_cost,
+                            code.enabled,
+                            last_report.as_deref(),
+                            last_text,
+                        );
+                    }
+                    continue;
+                }
+
                 let _ = agent_limits.record(TurnOutcome::Finished, &self.id);
                 return LoopEnd {
                     status: STATUS_COMPLETED,
@@ -5366,6 +5500,13 @@ impl Agent {
             // results are all recorded (so the conversation stays valid before the context is reset).
             let mut submitted_plan: Option<String> = None;
 
+            // The summary of an accepted `finish` this turn, under an explicit-call completion
+            // signal. Captured during dispatch (the `finish` tool is intercepted like the other
+            // loop-driven tools) and, if set, ends the run once the turn's tool results are all
+            // recorded — so the intercepted call's result is answered and the conversation stays
+            // valid, exactly as a submitted plan defers its context reset.
+            let mut finish_summary: Option<String> = None;
+
             // Dispatch each requested tool call against the workspace and feed the result
             // back so the model can proceed on its next turn.
             for call in &response.tool_calls {
@@ -5380,71 +5521,106 @@ impl Agent {
                 // tools are intercepted here (never routed through `registry.dispatch`, whose
                 // registered validators are defensive placeholders): the loop drives the state machine
                 // / the scheduler / the agent tree, which the tools cannot reach.
-                let mut outcome =
-                    if planning.offers_planning() && !plan_mode_offers(&call.name, in_plan_mode) {
-                        ToolOutcome::failed(
-                            ToolFailure::Refused,
-                            plan_mode_refusal(&call.name, in_plan_mode),
-                        )
-                    } else if fsm_active && !fsm.offers(&call.name) {
-                        // The FSM's current state withholds this tool this turn (a read-only plan state,
-                        // or a tool that is not the state's exit) — refuse it with guidance.
-                        ToolOutcome::failed(ToolFailure::Refused, fsm_refusal(&call.name, &fsm))
-                    } else if fsm_active && is_fsm_tool(&call.name) {
-                        // Drive the state machine: check the current state's transition guard, move on
-                        // when it holds (and — for `review-gated` — run the Code Review that gates the
-                        // move), and refuse the advance otherwise so the agent cannot skip ahead. A
-                        // `plan-first` plan reset is captured here and applied after the turn's tool
-                        // results are recorded, exactly like `submit_plan`.
-                        let advance = handle_advance_state(
-                            &mut fsm,
-                            &mut context,
-                            subagents.as_mut(),
-                            self,
-                            tool_ctx,
-                            emitter,
-                            call,
-                        )
-                        .await;
-                        if let Some(plan) = advance.submit_plan {
-                            submitted_plan = Some(plan);
+                let mut outcome = if completion.explicit_finish(code.enabled)
+                    && call.name == FINISH_TOOL
+                {
+                    // Explicit completion: the model called `finish`. Intercepted here (like the
+                    // delegation tools) and *before* the plan-mode/FSM gates, so — like the
+                    // code-mode `finish` — it can end the run from a state those machines meant to
+                    // hold. When completion is validated, the commands run first: on success the
+                    // summary is captured and the run ends after this turn's results are recorded;
+                    // on failure the tool result carries the validation output back and the run
+                    // continues, so the model fixes the problem and calls `finish` again.
+                    let summary = call
+                        .arguments
+                        .get("summary")
+                        .and_then(Value::as_str)
+                        .map(str::trim)
+                        .filter(|summary| !summary.is_empty())
+                        .map(str::to_string);
+                    let rejected = if completion.has_validation() {
+                        completion::run_validation(completion.validation(), tool_ctx, emitter).await
+                    } else {
+                        None
+                    };
+                    match rejected {
+                        Some(feedback) => ToolOutcome::failed(ToolFailure::Refused, feedback),
+                        None => {
+                            // Empty string is a legitimate "accepted, no summary" — the run's
+                            // final text then falls back to the model's last natural-language
+                            // message, exactly as a plain-text completion's does.
+                            finish_summary = Some(summary.unwrap_or_default());
+                            ToolOutcome::ok(
+                                "The run will end once this turn's tool results are recorded.",
+                                "finish accepted",
+                            )
                         }
-                        advance.outcome
-                    } else if let Some(project) = project
-                        .as_ref()
-                        .filter(|_| call.name == WAIT_FOR_ISSUE_TOOL)
+                    }
+                } else if planning.offers_planning() && !plan_mode_offers(&call.name, in_plan_mode)
+                {
+                    ToolOutcome::failed(
+                        ToolFailure::Refused,
+                        plan_mode_refusal(&call.name, in_plan_mode),
+                    )
+                } else if fsm_active && !fsm.offers(&call.name) {
+                    // The FSM's current state withholds this tool this turn (a read-only plan state,
+                    // or a tool that is not the state's exit) — refuse it with guidance.
+                    ToolOutcome::failed(ToolFailure::Refused, fsm_refusal(&call.name, &fsm))
+                } else if fsm_active && is_fsm_tool(&call.name) {
+                    // Drive the state machine: check the current state's transition guard, move on
+                    // when it holds (and — for `review-gated` — run the Code Review that gates the
+                    // move), and refuse the advance otherwise so the agent cannot skip ahead. A
+                    // `plan-first` plan reset is captured here and applied after the turn's tool
+                    // results are recorded, exactly like `submit_plan`.
+                    let advance = handle_advance_state(
+                        &mut fsm,
+                        &mut context,
+                        subagents.as_mut(),
+                        self,
+                        tool_ctx,
+                        emitter,
+                        call,
+                    )
+                    .await;
+                    if let Some(plan) = advance.submit_plan {
+                        submitted_plan = Some(plan);
+                    }
+                    advance.outcome
+                } else if let Some(project) = project
+                    .as_ref()
+                    .filter(|_| call.name == WAIT_FOR_ISSUE_TOOL)
+                {
+                    // Project management: `wait_for_issue` suspends this agent until the named
+                    // board issue reaches a terminal state. Intercepted here (like the
+                    // delegation tools) because it must free this agent's scheduler slot and
+                    // block on the orchestrator's issue-wait registry, which the tool cannot
+                    // reach.
+                    handle_wait_for_issue(project, self, &board, emitter, call).await
+                } else if let Some(sub) = subagents.as_mut() {
+                    if is_subagent_tool(&call.name) {
+                        handle_subagent_call(sub, self, emitter, call).await
+                    } else if speculative_active && call.name == SPECULATE_TOOL {
+                        // Speculative execution: `speculate` is intercepted here (like the
+                        // delegation tools) so gg runs the best-of-K fan-out → judge → merge
+                        // routine against the orchestrator, scheduler, and worktree machinery,
+                        // which the tool itself cannot reach.
+                        handle_speculate(sub, self, &board, emitter, call).await
+                    } else if code_reviews_active
+                        && call.name == COMPLETE_ISSUE_TOOL
+                        && board.offers_board()
                     {
-                        // Project management: `wait_for_issue` suspends this agent until the named
-                        // board issue reaches a terminal state. Intercepted here (like the
-                        // delegation tools) because it must free this agent's scheduler slot and
-                        // block on the orchestrator's issue-wait registry, which the tool cannot
-                        // reach.
-                        handle_wait_for_issue(project, self, &board, emitter, call).await
-                    } else if let Some(sub) = subagents.as_mut() {
-                        if is_subagent_tool(&call.name) {
-                            handle_subagent_call(sub, self, emitter, call).await
-                        } else if speculative_active && call.name == SPECULATE_TOOL {
-                            // Speculative execution: `speculate` is intercepted here (like the
-                            // delegation tools) so gg runs the best-of-K fan-out → judge → merge
-                            // routine against the orchestrator, scheduler, and worktree machinery,
-                            // which the tool itself cannot reach.
-                            handle_speculate(sub, self, &board, emitter, call).await
-                        } else if code_reviews_active
-                            && call.name == COMPLETE_ISSUE_TOOL
-                            && board.offers_board()
-                        {
-                            // Code Reviews gate acceptance: `complete_issue` is intercepted here (like
-                            // the delegation tools) so that instead of marking the issue done
-                            // immediately, gg runs a Code Review — dispatching a reviewer subagent and
-                            // fix agents against the orchestrator, which the tool itself cannot reach —
-                            // and only accepts the issue once the review approves.
-                            handle_code_review(sub, self, &board, emitter, call).await
-                        } else {
-                            registry.dispatch(call, tool_ctx).await
-                        }
+                        // Code Reviews gate acceptance: `complete_issue` is intercepted here (like
+                        // the delegation tools) so that instead of marking the issue done
+                        // immediately, gg runs a Code Review — dispatching a reviewer subagent and
+                        // fix agents against the orchestrator, which the tool itself cannot reach —
+                        // and only accepts the issue once the review approves.
+                        handle_code_review(sub, self, &board, emitter, call).await
                     } else {
                         registry.dispatch(call, tool_ctx).await
-                    };
+                    }
+                } else {
+                    registry.dispatch(call, tool_ctx).await
+                };
 
                 // Agent-managed context: `evict_file_view`/`archive_thread` act on the live
                 // window, which the tools cannot hold — the tool only validated the args, so the
@@ -5568,6 +5744,24 @@ impl Agent {
                     phase: GgPlanPhase::Implementing,
                     plan: Some(plan),
                 });
+            }
+
+            // An accepted `finish` this turn (explicit-call signal): every tool result — including
+            // the `finish` call's — is now recorded, so the conversation is valid and the run may
+            // end. Recorded as a `Finished` turn (which never breaches) and returned with the
+            // summary the model passed, falling back to its last natural-language message when the
+            // summary was empty, exactly as a plain-text completion's final text does.
+            if let Some(summary) = finish_summary {
+                let _ = agent_limits.record(TurnOutcome::Finished, &self.id);
+                return LoopEnd {
+                    status: STATUS_COMPLETED,
+                    turns: turn + 1,
+                    tokens: total_tokens,
+                    cost: total_cost,
+                    slot: self.slot.clone(),
+                    final_text: (!summary.is_empty()).then_some(summary).or(last_text),
+                    limit: None,
+                };
             }
 
             // The tool-calling turn is done: every requested call was dispatched and answered, and
@@ -6357,6 +6551,10 @@ struct PromptInputs<'a> {
     /// Whether the agent this prompt is for is a **delegated** worker rather than the run's root,
     /// which decides what the ending section says `finish` ends: the run, or this worker's task.
     delegated: bool,
+    /// This agent's [completion](CompletionSetup) rule — the signal it ends the run with and any
+    /// validation gg runs to confirm the work — so the prompt can tell the model exactly how to
+    /// finish (and, under an explicit-call signal, that a text-only reply does not).
+    completion: &'a CompletionSetup,
     /// Whether [healing](crate::healing)'s fence-stripping strategy is armed, which decides how the
     /// prompt states the no-code-fence rule — as a repair gg will make and disclose, or as a syntax
     /// error the model will be handed.
@@ -6515,6 +6713,7 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
         profile,
         delegated,
         fences_are_stripped,
+        completion,
     } = inputs;
 
     // The agents this one may spawn, each with its caller-scoped description — enumerated in the
@@ -6617,6 +6816,19 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
             // On → a section telling the model the whole brief is already in its window; the
             // `locked` flag decides whether it also promises the material stays across compaction.
             autoload_specs: autoload_specs.map(|locked| AutoloadView { locked }),
+            // How this run ends, always described so the model knows how to finish: the signal
+            // (explicit `finish` call only on the tool-calling path — a program always ends through
+            // its own `finish`) and the validation, if any, that gates it.
+            completion: CompletionView {
+                explicit_call: completion.explicit_finish(responses_as_code),
+                finish_name: FINISH_TOOL.to_string(),
+                validated: completion.has_validation(),
+                validation: completion
+                    .validation()
+                    .iter()
+                    .map(|command| command.display())
+                    .collect(),
+            },
         },
         // A profile may override the whole prompt template; `None` uses the built-in one.
         profile.system_prompt_template.as_deref(),
