@@ -364,9 +364,9 @@ title = "Growth & Pellets"
 id = "grows-by-one"
 title = "Eating grows the snake by exactly one"
 description = "Eating a pellet grows the snake by exactly one cell (the tail does not retract that tick); a following normal tick keeps the length constant."
-# Automated validation: place a pellet one cell ahead, step to eat it and confirm
-# length +1, then step a normal tick and confirm length holds. See
-# validation/growth/grows-by-one.mjs.
+# Automated validation: place a pellet a short run ahead, step up to it, step the eat
+# and confirm length +1, then park the pellet and step a normal tick to confirm the
+# length holds. See validation/growth/grows-by-one.mjs.
 validation = { script = "validation/growth/grows-by-one.mjs", outputs = [
   { id = "grow", name = "The snake growing by one on an eat", kind = "video" },
 ] }
@@ -735,8 +735,10 @@ validation = { script = "validation/audio/death.mjs", outputs = [
 id = "produced-music"
 title = "Produced music bed"
 description = "The game plays a low-key looping music bed the build produced with the music tool, played via Web Audio under the round, respecting the mute toggle."
-# Automated validation: with a round already underway, arm audio and confirm a Web
-# Audio source starts (the looping bed) once armed. See validation/audio/produced-music.mjs.
+# Automated validation: press Enter on the title as a real browser gesture — the one
+# keypress that both arms audio and begins the round, the only path a player has — and
+# confirm a Web Audio source starts (the looping bed) under that round. See
+# validation/audio/produced-music.mjs.
 validation = { script = "validation/audio/produced-music.mjs", outputs = [
-  { id = "music", name = "The music bed starting once armed", kind = "video" },
+  { id = "music", name = "The music bed starting under a round", kind = "video" },
 ] }

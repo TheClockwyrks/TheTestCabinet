@@ -13,6 +13,7 @@
 // land before either eat is driven.
 
 import {
+  actAwait,
   actPlayOn,
   armAudio,
   audioCount,
@@ -46,17 +47,24 @@ export default function item() {
     async act(api) {
       // First eat: opens the combo window at x1 — no rise, so it is not the event
       // under test and is driven before the audio log is read.
-      const head1 = (await api.snapshot()).snake[0];
+      const first = await api.snapshot();
+      const head1 = first.snake[0];
       await api.call("setPellet", { col: head1.col + 1, row: head1.row });
       await api.advance(1); // 1 tick = the old step(TICK_DT)
+      // Wait for that eat to resolve before posing the second pellet. On the record
+      // pass's real clock the tick can land after the wall-clock wait returns, and
+      // re-posing the pellet then moves it out from under the pending eat — the two
+      // eats collapse into one and the clip never reaches x2. A no-op in the validate
+      // pass, where the exact step has already eaten. See `actAwait`.
+      const second = await actAwait(api, (s) => s.length > first.length);
 
       // Second eat, still inside the open window: the multiplier climbs — the
       // combo-up event this item checks.
-      const head2 = (await api.snapshot()).snake[0];
+      const head2 = second.snake[0];
       await api.call("setPellet", { col: head2.col + 1, row: head2.row });
       before = await audioCount(api);
       await api.advance(1);
-      combo = (await api.snapshot()).combo;
+      combo = (await actAwait(api, (s) => s.length > second.length)).combo;
       after = await audioCount(api);
 
       await actPlayOn(api, HOLD_TICKS);
