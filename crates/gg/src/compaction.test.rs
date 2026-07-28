@@ -1,5 +1,8 @@
-//! Tests for the compaction trigger, the swappable summarizer (including its offline mock
-//! path), and the pinned-state-retaining rewrite.
+//! Tests for the compaction trigger, the policy it is derived from, and the pinned-state-retaining
+//! rewrite every strategy converges on.
+//!
+//! The strategies themselves — how an implementation string resolves to one, what each asks the
+//! agent for, and how a handoff transcript is built — are in `compaction.strategies.test.rs`.
 
 use std::sync::Arc;
 
@@ -35,6 +38,46 @@ fn model(window_limit: u64) -> ContextModel {
 /// summarization request off-script).
 fn mock() -> MockClient {
     MockClient::new("mock/x", Vec::new())
+}
+
+/// A setup for `strategy` whose trigger is `1 - summary_headroom`, with no handoff client (so an
+/// out-of-band condensation runs on whatever client it is handed).
+pub(super) fn setup(
+    strategy: CompactionStrategy,
+    summary_headroom: f64,
+    enabled: bool,
+) -> CompactionSetup {
+    CompactionSetup {
+        enabled,
+        policy: CompactionPolicy { summary_headroom },
+        strategy,
+        summarizer: resolve_summarizer(strategy),
+        handoff_client: None,
+    }
+}
+
+/// The whole out-of-band boundary in one call — the trigger, the condensation and the rewrite —
+/// which is what `compact_if_needed` used to be before the in-loop strategies split it into the
+/// three steps the loop drives separately. Returns the event, or `None` when the trigger did not
+/// fire.
+async fn compact_if_needed(
+    context: &mut ContextModel,
+    client: &dyn ModelClient,
+    setup: &CompactionSetup,
+    retained: RetainedCounts,
+) -> Option<GgTelemetryKind> {
+    if !should_compact(context, setup) {
+        return None;
+    }
+    let (request, fallback) = condense_out_of_band(context, client, setup).await;
+    Some(apply_compaction(
+        context,
+        setup,
+        retained,
+        &request,
+        Vec::new(),
+        fallback,
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -164,48 +207,8 @@ fn working_window_only_reserves_when_compaction_is_on() {
 }
 
 // ---------------------------------------------------------------------------
-// The swappable summarizer, offline
+// The out-of-band summarizers, offline
 // ---------------------------------------------------------------------------
-
-/// The `implementation` string classifies to a strategy: `structured` selects the structured
-/// summarizer, and `model`/`default`/empty/`None` — plus any unrecognized name — fall back to
-/// the model summarizer, so a study naming a not-yet-built strategy still launches.
-#[test]
-fn strategy_name_classifies_the_implementation() {
-    assert_eq!(strategy_name(Some("structured")), "structured");
-    assert_eq!(strategy_name(Some("model")), "model");
-    assert_eq!(strategy_name(Some("default")), "model");
-    assert_eq!(strategy_name(Some("")), "model");
-    assert_eq!(strategy_name(None), "model");
-    // An unrecognized strategy falls back to the default rather than failing to launch.
-    assert_eq!(strategy_name(Some("not-a-strategy")), "model");
-}
-
-/// The resolved setup records the strategy name it selected, so a compaction event can be
-/// labelled with the summarizer that produced it.
-#[test]
-fn setup_records_the_selected_strategy() {
-    use test_cabinet_core::gg::{CAPABILITY_COMPACTION, GgCapabilityConfig, GgCapabilitySet};
-
-    let mut structured = GgCapabilitySet::minimal("mock/x");
-    structured.agents[0].capabilities.push(GgCapabilityConfig {
-        id: CAPABILITY_COMPACTION.to_string(),
-        enabled: true,
-        implementation: Some("structured".to_string()),
-        params: json!({}),
-    });
-    assert_eq!(
-        CompactionSetup::resolve(structured.root()).strategy,
-        "structured"
-    );
-
-    // An absent implementation records the default `model` strategy.
-    let mut plain = GgCapabilitySet::minimal("mock/x");
-    plain.agents[0]
-        .capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_COMPACTION));
-    assert_eq!(CompactionSetup::resolve(plain.root()).strategy, "model");
-}
 
 /// The default model summarizer is answered offline by the mock's marker path, returning
 /// the deterministic canned summary — and **without** consuming a scripted turn, so the
@@ -225,7 +228,8 @@ async fn mock_summarizer_answers_offline_without_consuming_the_script() {
             client: &client,
         })
         .await;
-    assert_eq!(summary, MOCK_COMPACTION_SUMMARY);
+    assert_eq!(summary.summary, MOCK_COMPACTION_SUMMARY);
+    assert!(summary.files.is_empty());
 
     // The next ordinary (unmarked) turn returns the *first* scripted response — proof the
     // summarization call did not advance the cursor.
@@ -239,26 +243,59 @@ async fn mock_summarizer_answers_offline_without_consuming_the_script() {
     );
 }
 
-/// The `structured` summarizer's prompt carries the marker too, so it is likewise answered
-/// offline by the mock — returning the canned summary without advancing the scripted cursor.
-/// This proves the second strategy is wired and offline-safe (its section prompt keeps the
-/// marker), even though its output is indistinguishable from the default's under the mock.
+/// Every prose strategy's prompt carries the marker, so all three are answered offline by the mock
+/// — returning the canned summary without advancing the scripted cursor. This proves each is wired
+/// and offline-safe, even though their outputs are indistinguishable under the mock.
 #[tokio::test]
-async fn structured_summarizer_answers_offline_without_consuming_the_script() {
-    let client = MockClient::with_default_script("mock/echo");
-    let summarizer = StructuredSummarizer;
-
+async fn every_prose_summarizer_answers_offline_without_consuming_the_script() {
     let history = vec![
         Message::user("build a game"),
         Message::assistant(Some("working on it".to_string()), Vec::new()),
     ];
-    let summary = summarizer
+    for strategy in [
+        CompactionStrategy::Structured,
+        CompactionStrategy::HandoffSummarization,
+    ] {
+        let client = MockClient::with_default_script("mock/echo");
+        let summary = resolve_summarizer(strategy)
+            .summarize(SummaryRequest {
+                history: &history,
+                client: &client,
+            })
+            .await;
+        assert_eq!(
+            summary.summary,
+            MOCK_COMPACTION_SUMMARY,
+            "{} is answered offline",
+            strategy.id()
+        );
+        let next = client
+            .complete(&[Message::user("go")], &[])
+            .await
+            .expect("mock completes");
+        assert_eq!(
+            next.tool_calls.first().map(|c| c.name.as_str()),
+            Some("read_skill"),
+            "{} did not consume a scripted turn",
+            strategy.id()
+        );
+    }
+}
+
+/// The handoff **compactor** is the one strategy whose out-of-band answer is a tool call, and the
+/// mock answers it with one — off-script, like the prose requests, so a handoff-compaction arm of a
+/// sweep also runs offline.
+#[tokio::test]
+async fn handoff_compactor_reads_the_mocks_compact_call() {
+    let client = MockClient::with_default_script("mock/echo");
+    let request = HandoffCompactor
         .summarize(SummaryRequest {
-            history: &history,
+            history: &[Message::user("build a game")],
             client: &client,
         })
         .await;
-    assert_eq!(summary, MOCK_COMPACTION_SUMMARY);
+    assert_eq!(request.summary, MOCK_COMPACTION_SUMMARY);
+    assert!(request.files.is_empty());
 
     let next = client
         .complete(&[Message::user("go")], &[])
@@ -277,16 +314,9 @@ async fn structured_summarizer_answers_offline_without_consuming_the_script() {
 #[tokio::test]
 async fn does_not_compact_when_disabled() {
     let client = mock();
-    let setup = CompactionSetup {
-        enabled: false,
-        // A headroom whose derived trigger (0.1) the over-full window easily clears — proving
-        // it is `enabled: false`, not the threshold, that blocks the compaction here.
-        policy: CompactionPolicy {
-            summary_headroom: 0.9,
-        },
-        strategy: "model",
-        summarizer: Box::new(ModelSummarizer),
-    };
+    // A headroom whose derived trigger (0.1) the over-full window easily clears — proving it is
+    // `enabled: false`, not the threshold, that blocks the compaction here.
+    let setup = setup(CompactionStrategy::Model, 0.9, false);
     let mut ctx = model(10);
     ctx.push_system("a system prompt that easily exceeds the tiny window budget here");
     ctx.push_assistant(Some("lots of ephemeral text ".repeat(4)), Vec::new());
@@ -299,15 +329,8 @@ async fn does_not_compact_when_disabled() {
 #[tokio::test]
 async fn does_not_compact_below_the_threshold() {
     let client = mock();
-    let setup = CompactionSetup {
-        enabled: true,
-        // Headroom 0.1 → trigger 0.9.
-        policy: CompactionPolicy {
-            summary_headroom: 0.1,
-        },
-        strategy: "model",
-        summarizer: Box::new(ModelSummarizer),
-    };
+    // Headroom 0.1 → trigger 0.9.
+    let setup = setup(CompactionStrategy::Model, 0.1, true);
     let mut ctx = model(100_000);
     ctx.push_system("short");
     ctx.push_assistant(Some("a little work".to_string()), Vec::new());
@@ -320,15 +343,8 @@ async fn does_not_compact_below_the_threshold() {
 #[tokio::test]
 async fn does_not_compact_with_no_ephemeral_history() {
     let client = mock();
-    let setup = CompactionSetup {
-        enabled: true,
-        // Headroom 0.9 → trigger 0.1.
-        policy: CompactionPolicy {
-            summary_headroom: 0.9,
-        },
-        strategy: "model",
-        summarizer: Box::new(ModelSummarizer),
-    };
+    // Headroom 0.9 → trigger 0.1.
+    let setup = setup(CompactionStrategy::Model, 0.9, true);
     // Over the threshold, but every item is pinned — there is nothing to summarize.
     let mut ctx = model(20);
     ctx.push_system("a pinned system prompt with enough text to cross the low threshold");
@@ -350,15 +366,8 @@ async fn does_not_compact_with_no_ephemeral_history() {
 #[tokio::test]
 async fn compacts_and_retains_pinned_state_verbatim() {
     let client = mock();
-    let setup = CompactionSetup {
-        enabled: true,
-        // Headroom 0.5 → trigger 0.5.
-        policy: CompactionPolicy {
-            summary_headroom: 0.5,
-        },
-        strategy: "model",
-        summarizer: Box::new(ModelSummarizer),
-    };
+    // Headroom 0.5 → trigger 0.5.
+    let setup = setup(CompactionStrategy::Model, 0.5, true);
 
     const SKILL_BODY: &str = "SKILL BODY: scaffold an index.html with a canvas and a loop.";
     const MEMORY_BODY: &str = "MEMORY BODY: the game is an arrow-key maze runner.";
@@ -521,3 +530,124 @@ async fn compacts_and_retains_pinned_state_verbatim() {
     // The summarized ephemeral content is gone from the live window.
     assert!(!contents.iter().any(|c| c.contains("ephemeral chatter")));
 }
+
+// ---------------------------------------------------------------------------
+// The rewrite: restored files
+// ---------------------------------------------------------------------------
+
+/// A `compact`-tool strategy carries files across the boundary: each named path is seeded back as a
+/// fresh, evictable file view **tagged with its path**, and — the reason they are `user` messages —
+/// no `tool`-role message is left dangling behind the assistant turn the drop removed.
+#[test]
+fn restored_files_are_seeded_as_tagged_user_file_views() {
+    let setup = setup(CompactionStrategy::SelfCompaction, 0.5, true);
+    let mut ctx = model(400);
+    ctx.push_system("SYSTEM PROMPT");
+    ctx.push_user_prompt("USER BUILD PROMPT");
+    ctx.push_assistant(Some("ephemeral chatter ".repeat(10)), Vec::new());
+
+    let event = apply_compaction(
+        &mut ctx,
+        &setup,
+        RetainedCounts::default(),
+        &CompactionRequest {
+            summary: "the recap".to_string(),
+            files: vec!["src/main.ts".to_string()],
+        },
+        vec![RestoredFile {
+            path: "src/main.ts".to_string(),
+            body: "FILE BODY: export function main() {}".to_string(),
+            images: Vec::new(),
+        }],
+        false,
+    );
+    assert!(matches!(event, GgTelemetryKind::Compaction { .. }));
+
+    let messages = ctx.messages();
+    let contents: Vec<String> = messages.iter().filter_map(|m| m.content.clone()).collect();
+    assert!(
+        contents.iter().any(|c| c.contains("FILE BODY")),
+        "the re-read file is in the restarted window"
+    );
+    assert!(
+        contents.iter().any(|c| c.contains("the recap")),
+        "the summary is in the restarted window"
+    );
+    assert!(
+        messages.iter().all(|m| m.role != crate::model::Role::Tool),
+        "a restored file view must not dangle as a tool message"
+    );
+    // Tagged with its path, so agent-managed context can evict it by name like any other view.
+    let reclaimed = ctx.evict_file_views(Some("src/main.ts"));
+    assert_eq!(reclaimed.items, 1);
+    assert_eq!(reclaimed.paths, vec!["src/main.ts".to_string()]);
+}
+
+/// The summary is the **last** thing in the restarted window, after any restored files: it is the
+/// note that tells the model where to continue, and a model reads the end of its context as the
+/// most recent thing said to it.
+#[test]
+fn the_summary_is_the_last_item_in_the_restarted_window() {
+    let setup = setup(CompactionStrategy::SelfCompaction, 0.5, true);
+    let mut ctx = model(400);
+    ctx.push_system("SYSTEM PROMPT");
+    ctx.push_assistant(Some("chatter".to_string()), Vec::new());
+    apply_compaction(
+        &mut ctx,
+        &setup,
+        RetainedCounts::default(),
+        &CompactionRequest {
+            summary: "THE RECAP".to_string(),
+            files: vec!["a.ts".to_string()],
+        },
+        vec![RestoredFile {
+            path: "a.ts".to_string(),
+            body: "FILE BODY".to_string(),
+            images: Vec::new(),
+        }],
+        false,
+    );
+    let last = ctx
+        .messages()
+        .last()
+        .and_then(|message| message.content.clone())
+        .unwrap_or_default();
+    assert!(last.contains("THE RECAP"), "got {last}");
+}
+
+/// A failed condensation is recorded as one. The fallback note is a real summary as far as the
+/// window is concerned — the compaction still happens, because the window is full either way — but
+/// the event says it fell back, so a study reads it as the failure it is rather than as a terse
+/// strategy.
+#[test]
+fn a_fallback_summary_is_flagged_on_the_event() {
+    let setup = setup(CompactionStrategy::SelfSummarization, 0.5, true);
+    let mut ctx = model(400);
+    ctx.push_system("SYSTEM PROMPT");
+    ctx.push_assistant(Some("chatter".to_string()), Vec::new());
+
+    let request = fallback_request();
+    assert!(is_fallback(&request.summary));
+    match apply_compaction(
+        &mut ctx,
+        &setup,
+        RetainedCounts::default(),
+        &request,
+        Vec::new(),
+        is_fallback(&request.summary),
+    ) {
+        GgTelemetryKind::Compaction {
+            summary_fallback,
+            strategy,
+            ..
+        } => {
+            assert!(summary_fallback);
+            assert_eq!(strategy, "self-summarization");
+        }
+        other => panic!("expected a Compaction event, got {other:?}"),
+    }
+}
+
+#[cfg(test)]
+#[path = "compaction.strategies.test.rs"]
+mod strategies;

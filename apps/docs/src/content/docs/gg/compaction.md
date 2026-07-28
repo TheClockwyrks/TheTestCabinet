@@ -21,27 +21,100 @@ Requirements:
   compaction verbatim rather than be summarized away. Compaction is the capability
   that makes "retained across compaction" mean something.
 
-## Summarization strategies
+## Compaction strategies
 
-How the dropped history is summarized is a **swappable strategy**, so a study can
-compare which one retains the most useful state without changing anything else
-about a run. The compaction capability's **Summarization strategy** field selects
-it (empty picks the default):
+*Who* condenses the thread, and *what* the restarted context is rebuilt from, is a
+**swappable strategy** — so a study can compare which one retains the most useful
+state without changing anything else about a run. The compaction capability's
+**Summarization strategy** field selects it (empty picks the default).
 
-- **Model summary** (`model`, the default) — one model call that writes a focused
-  prose recap of the thread being dropped: what the agent is building, the key
-  decisions and discoveries, files changed, what is in progress, and the next
-  step.
-- **Structured extract** (`structured`) — the same model call, but steered to emit
-  that state under fixed headings (`Building`, `Decisions`, `Files`,
-  `In progress`, `Next step`) rather than free prose — a more predictable shape to
-  compare across runs.
+Seven ship, and they divide along two axes: who does the condensing, and what the
+answer is.
 
-Both carry the pinned state forward verbatim (below); they differ only in how the
-*history* is condensed. A run naming a strategy gg doesn't recognize falls back to
-the default rather than failing to launch, so a sweep can reference a
-not-yet-built strategy without breaking. Adding a strategy is a drop-in behind the
-`Summarizer` trait in `crates/gg/src/compaction.rs`.
+### gg condenses it, out of band
+
+Performed *between* the agent's turns, by a model call the agent never sees. The
+agent's next turn simply finds a smaller window.
+
+- **Model summary** (`model`, the default) — one call on the run's own model that
+  writes a focused prose recap of the thread being dropped: what the agent is
+  building, the key decisions and discoveries, files changed, what is in progress,
+  and the next step.
+- **Structured extract** (`structured`) — the same call, steered to emit that state
+  under fixed headings (`Building`, `Decisions`, `Files`, `In progress`,
+  `Next step`) rather than free prose — a more predictable shape to compare across
+  runs.
+
+### The agent condenses its own thread
+
+Performed *by the agent*, across a turn boundary: gg appends an instruction, the
+agent's **next turn** supplies the answer, and until it does **every other tool
+call is refused** — the window is already full, so anything else only makes it
+worse. A model that never complies stops on the run's
+[error ceilings](/gg/execution-limits/) rather than looping.
+
+- **Self-summarization** (`self-summarization`) — gg asks the agent to summarize the
+  work done and the work remaining, and its next reply (plain text, no tool calls)
+  *is* the summary the thread restarts from. Under
+  [responses-as-code](/gg/responses-as-code/) that one turn is prose rather than a
+  program, and gg says so in the request.
+- **Self-compaction** (`self-compaction`) — the agent calls a **`compact` tool** with
+  a `summary` **and** a `files` list of workspace paths, which gg re-reads into the
+  restarted context as fresh file views. It is the only strategy where the model
+  chooses not just what the recap says but which material it keeps in hand. The tool
+  is offered on **every** turn of such a run (a model may compact itself whenever it
+  likes), which is also what keeps the offered tool set — and so the provider's
+  prompt cache — stable at the moment the window is fullest. In code mode it is
+  `context.compact(summary, files)`.
+- **Memory compaction** (`memory-compaction`) — there is no summary at all. gg
+  requires the agent to record its working state as [memories](/gg/memories/), which
+  are retained verbatim across the boundary, and accepts only memory calls until one
+  whole reply's calls have all succeeded. It **requires the memories capability**; a
+  run that names it without memories falls back to the default rather than stalling
+  on a gate it could never satisfy.
+
+### A separate model condenses it
+
+The two **handoff** strategies do the out-of-band job on a *different* model, named
+by the capability's **Compaction model** (`model`) param and resolved through the
+same client factory every agent's model is. The working agent is never interrupted
+and is never offered the `compact` tool.
+
+The thread is rebuilt before the handoff model sees it: the working agent's system
+prompt, skills and memories are dropped (they are retained anyway, so restating them
+only invites the summarizer to summarize state that is not being dropped), and
+**every message is converted to a `user` message under a `<label>\n----\n`
+heading** — the same headings [responses-as-code](/gg/responses-as-code/) uses, with
+an assistant turn labelled `Assistant`. That last transform is load-bearing: left as
+assistant messages, the working model's turns read to the compaction model as its
+*own* prior output, and a model summarizing what it believes it just wrote produces a
+first-person account of work it never did.
+
+- **Handoff summarization** (`handoff-summarization`) — the compaction model is given
+  no tools and answers with prose.
+- **Handoff compaction** (`handoff-compaction`) — the compaction model is given only
+  the `compact` tool, and the request *requires* the call, so it chooses the files to
+  re-read as well as the summary.
+
+A handoff whose named model cannot be resolved condenses on the agent's own model
+instead and says so in a `warn`: a misconfiguration is not a reason to stop
+compacting, and a run that stopped compacting would overflow its window a few turns
+later.
+
+### Common to all seven
+
+Every strategy carries the pinned state forward verbatim (below); they differ only in
+how the *history* is condensed. A run naming a strategy gg doesn't recognize falls
+back to the default rather than failing to launch, so a sweep can reference a
+not-yet-built strategy without breaking. Adding an out-of-band strategy is a drop-in
+behind the `Summarizer` trait in `crates/gg/src/compaction.rs`; adding an in-loop one
+is a variant of `PendingCompaction` beside it.
+
+A compaction that could not be produced — a failed model call, or an agent that
+answered the request with nothing usable — still happens: the window is full either
+way, and a run that declined to compact would simply overflow on its next turn. It
+falls back to a fixed note and is **flagged as a fallback** on the record, so a study
+reads it as the failure it is rather than as a terse strategy.
 
 Every compaction is **recorded per agent** so the strategies can be compared by
 what they actually retained. Each boundary carries the strategy that ran, the
@@ -92,6 +165,11 @@ verbatim, forming the fixed prefix of the post-compaction context window:
 - **[Tasks](/gg/tasks/)** — the active task list.
 - **[Memories](/gg/memories/)** — the same treatment as skills: the list, plus the
   contents of those in play.
+- **Locked [autoloaded specifications](/gg/autoload-specifications/)** — a spec pinned
+  into the window stays there, picture and all.
+- **The files a `compact` call named** — re-read fresh, as ordinary (evictable,
+  re-readable) file views, and placed before the summary so the recap is the last
+  thing the model reads.
 
 The [Project management](/gg/project-management/) board is likewise retained across a
 compaction boundary. [Agent-managed context](/gg/agent-managed-context/) is the

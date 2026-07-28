@@ -41,9 +41,9 @@ use tokio::runtime::Handle;
 use crate::sandbox::{ToolApi, WorkflowStageInput};
 use crate::tasks::TaskStatus;
 use crate::tools::{
-    AddTaskTool, ArchiveThreadTool, CompleteIssueTool, CompleteTaskTool, CreateEpicTool,
-    CreateIssueTool, DeleteMemoryTool, EditFileTool, EvictFileViewTool, ListDirTool,
-    OwnedStructured, ReadSkillTool, RemoveEpicTool, RemoveIssueTool, RemoveTaskTool,
+    AddTaskTool, ArchiveThreadTool, CompactTool, CompleteIssueTool, CompleteTaskTool,
+    CreateEpicTool, CreateIssueTool, DeleteMemoryTool, EditFileTool, EvictFileViewTool,
+    ListDirTool, OwnedStructured, ReadSkillTool, RemoveEpicTool, RemoveIssueTool, RemoveTaskTool,
     SearchArchiveTool, SetBlockedByTool, SetIssueBlockedByTool, UpdateIssueTool, UpdateMemoryTool,
     UpdateTaskTool, WriteFileTool, WriteMemoryTool, run_command,
 };
@@ -191,8 +191,11 @@ pub(super) async fn run_code_turn(
                 skills,
                 docs,
                 subagents,
-                // Nothing ran, so no program could have requested a wait.
+                // Nothing ran, so no program could have requested a wait, declared a compaction, or
+                // made a call against a pending one.
                 issue_waits: Vec::new(),
+                compact_requested: None,
+                compaction_calls: (0, 0),
             }),
         );
     }
@@ -716,6 +719,11 @@ pub(super) struct CodeTurn<'a> {
     pub(super) code_reviews_active: bool,
     /// Whether `speculate` is routed through the best-of-K routine this run.
     pub(super) speculative_active: bool,
+    /// The [compaction](crate::compaction) the loop is waiting for this agent to perform, when one
+    /// is in flight. While it is set the program's calls are narrowed to the one family that
+    /// satisfies it — everything else is refused, because everything else adds to a window that is
+    /// already full.
+    pub(super) pending_compaction: Option<PendingCompaction>,
 }
 
 impl CodeTurn<'_> {
@@ -760,6 +768,16 @@ pub(super) struct CodeTurnState {
     /// it requested none, or never ran a program). The loop suspends the agent on each — after the
     /// turn's feedback is recorded — before taking the next turn.
     pub(super) issue_waits: Vec<String>,
+    /// The [compaction](crate::compaction) this turn's program declared with `context.compact(…)`,
+    /// deferred to the loop exactly as an issue wait is: rewriting the window a program is running
+    /// in would pull it out from under the turn still using it. The **last** call stands, so a
+    /// program that compacts twice compacts once, from its final summary.
+    pub(super) compact_requested: Option<CompactionRequest>,
+    /// How this turn's program fared against a pending compaction: how many calls it made while one
+    /// was in flight, and how many of those failed (a refused call counts as a failure, because it
+    /// is one). A [memory compaction](crate::compaction::PendingCompaction::MemoryWrites) is
+    /// satisfied by a program that made at least one call and had none of them fail.
+    pub(super) compaction_calls: (u32, u32),
 }
 
 /// Run a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program in the wasmtime sandbox and
@@ -813,6 +831,9 @@ async fn run_code_program(
         docs,
         subagents,
         issue_waits_requested: Vec::new(),
+        compact_requested: None,
+        compaction_calls: 0,
+        compaction_failures: 0,
         spawner: turn.spawner.clone(),
         tool_ctx: turn.tool_ctx.clone(),
         read_policy: turn.read_policy,
@@ -830,6 +851,7 @@ async fn run_code_program(
         in_plan_mode: turn.in_plan_mode,
         code_reviews_active: turn.code_reviews_active,
         speculative_active: turn.speculative_active,
+        pending_compaction: turn.pending_compaction,
         serviced: 0,
     };
 
@@ -846,6 +868,8 @@ async fn run_code_program(
                 docs: api.docs,
                 subagents: api.subagents,
                 issue_waits: api.issue_waits_requested,
+                compact_requested: api.compact_requested,
+                compaction_calls: (api.compaction_calls, api.compaction_failures),
             };
             (outcome, Some(state))
         }
@@ -975,6 +999,16 @@ pub(super) struct LoopToolApi {
     /// once the program has ended — the deferral a composed program needs, since a mid-execution
     /// control-flow wait has no shape in one.
     pub(super) issue_waits_requested: Vec<String>,
+    /// The compaction this program declared with `context.compact(…)`, deferred to the loop for the
+    /// same reason an issue wait is: rewriting the window a program is running in would pull it out
+    /// from under the turn still using it. A second `compact` replaces the first.
+    pub(super) compact_requested: Option<CompactionRequest>,
+    /// How many calls this program made while a compaction was in flight.
+    pub(super) compaction_calls: u32,
+    /// How many of those failed — a refusal included, since a refusal is a call that did not run.
+    /// A [memory compaction](PendingCompaction::MemoryWrites) is satisfied by one program that made
+    /// at least one call and had none of them fail.
+    pub(super) compaction_failures: u32,
     // cloned/borrowed-by-value loop state:
     spawner: Agent,
     tool_ctx: ToolContext,
@@ -993,6 +1027,7 @@ pub(super) struct LoopToolApi {
     in_plan_mode: bool,
     code_reviews_active: bool,
     speculative_active: bool,
+    pending_compaction: Option<PendingCompaction>,
     serviced: u64,
 }
 
@@ -1025,8 +1060,27 @@ impl LoopToolApi {
         self.complete(call, outcome, managed)
     }
 
-    /// The plan-mode/FSM gate; `Some(refusal_outcome)` when this call is withheld this turn.
+    /// The compaction/plan-mode/FSM gate; `Some(refusal_outcome)` when this call is withheld this
+    /// turn.
+    ///
+    /// Compaction is checked **first**, and it is the strictest gate gg has: while one is in flight
+    /// the window is full, so every call that is not the one compaction asked for is refused
+    /// regardless of what any other gate would have allowed. `compact` itself then bypasses the
+    /// plan-mode and FSM gates outright, exactly as the native path lets it through ahead of the
+    /// same two — a machine that meant to hold the agent in a state cannot hold it in a full
+    /// window, and the run has no way forward until the window is reclaimed.
     fn gate(&self, name: &str) -> Option<ToolOutcome> {
+        if let Some(pending) = self.pending_compaction
+            && !pending.admits(name)
+        {
+            return Some(ToolOutcome::failed(
+                ToolFailure::Refused,
+                pending.refusal(name, true),
+            ));
+        }
+        if name == COMPACT_TOOL {
+            return None;
+        }
         if self.planning.offers_planning() && !plan_mode_offers(name, self.in_plan_mode) {
             return Some(ToolOutcome::failed(
                 ToolFailure::Refused,
@@ -1079,6 +1133,16 @@ impl LoopToolApi {
         }
         if let Some(recorder) = &self.replay {
             recorder.record_tool_result(&self.spawner.id, &call, &outcome);
+        }
+        // Every call made while a compaction is in flight is counted, and every one that did not
+        // succeed — a refusal included, since a refusal is a call that did not run — is counted as a
+        // failure. A memory compaction is satisfied by one program whose calls all succeeded, which
+        // is exactly the question these two answer.
+        if self.pending_compaction.is_some() {
+            self.compaction_calls += 1;
+            if !outcome.ok {
+                self.compaction_failures += 1;
+            }
         }
         if outcome.ok {
             if is_board_tool(&call.name)
@@ -1550,6 +1614,29 @@ impl ToolApi for LoopToolApi {
         self.serviced("search_archive", json!({ "query": query }), |api| {
             SearchArchiveTool::new(api.amc.archive.clone()).search(query.clone())
         })
+    }
+    fn compact(&mut self, summary: String, files: Vec<String>) -> ToolOutcome {
+        // Deferred, not performed — the same shape as `wait_for_issue`, for a stronger version of
+        // the same reason: resetting the context a program is *running in* would drop the window
+        // out from under the turn still using it. The call validates (through the one parser the
+        // native path and the handoff compactor also use), records the request, and the loop
+        // rewrites the window once the whole program has ended.
+        self.serviced(
+            COMPACT_TOOL,
+            json!({ "summary": summary, "files": files }),
+            |api| {
+                let outcome = CompactTool.compact(summary.clone(), files.clone());
+                if outcome.ok
+                    && let Ok(request) =
+                        parse_compact_request(&json!({ "summary": summary, "files": files }))
+                {
+                    // The last call stands, exactly as the last `finish` summary does: a program
+                    // that compacts on two branches compacts once, from the summary it ended with.
+                    api.compact_requested = Some(request);
+                }
+                outcome
+            },
+        )
     }
     fn spawn_subagent(
         &mut self,

@@ -65,14 +65,16 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use test_cabinet_core::gg::{
-    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_EDIT_FILE, CAPABILITY_FSM, CAPABILITY_LIST_DIR,
-    CAPABILITY_MEMORIES, CAPABILITY_PLANNING, CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_READ_FILE,
-    CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS,
-    CAPABILITY_TASKS, CAPABILITY_WORKFLOWS, CAPABILITY_WRITE_FILE, GgAgentConfig,
+    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_COMPACTION, CAPABILITY_EDIT_FILE, CAPABILITY_FSM,
+    CAPABILITY_LIST_DIR, CAPABILITY_MEMORIES, CAPABILITY_PLANNING, CAPABILITY_PROJECT_MANAGEMENT,
+    CAPABILITY_READ_FILE, CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE,
+    CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WORKFLOWS, CAPABILITY_WRITE_FILE,
+    GgAgentConfig,
 };
 
 use crate::archive::ArchiveStore;
 use crate::board::BoardStore;
+use crate::compaction::CompactionStrategy;
 use crate::memories::MemoryStore;
 use crate::model::{ImageContent, ToolCall, ToolDefinition};
 use crate::skills::SkillLibrary;
@@ -84,9 +86,9 @@ pub use board::{
     RemoveIssueTool, SetIssueBlockedByTool, UpdateIssueTool, WAIT_FOR_ISSUE_TOOL, is_board_tool,
 };
 pub use context::{
-    ARCHIVE_THREAD_TOOL, ArchiveThreadTool, DEFAULT_ARCHIVE_KEEP_RECENT, EVICT_FILE_VIEW_TOOL,
-    EvictFileViewTool, SEARCH_ARCHIVE_TOOL, SearchArchiveTool, is_context_reclaim_tool,
-    parse_archive_keep_recent, parse_evict_path,
+    ARCHIVE_THREAD_TOOL, ArchiveThreadTool, COMPACT_TOOL, CompactTool, DEFAULT_ARCHIVE_KEEP_RECENT,
+    EVICT_FILE_VIEW_TOOL, EvictFileViewTool, SEARCH_ARCHIVE_TOOL, SearchArchiveTool,
+    is_context_reclaim_tool, parse_archive_keep_recent, parse_compact_request, parse_evict_path,
 };
 // Every payload shape, including the ones the LOOP produces rather than a tool (a context reclaim
 // and the four delegation results). They are declared beside the outcome they ride on, because that
@@ -152,6 +154,7 @@ pub const ALL_TOOL_NAMES: &[&str] = &[
     "evict_file_view",
     "archive_thread",
     "search_archive",
+    COMPACT_TOOL,
     "enter_plan_mode",
     "submit_plan",
     "advance_state",
@@ -652,6 +655,25 @@ impl ToolRegistry {
             tools.push(Box::new(context::SearchArchiveTool::new(Arc::clone(
                 archive,
             ))));
+        }
+
+        // The `compact` tool is offered by the **compaction** capability, and only under the
+        // strategy that hands the compaction to the working model itself. It is offered on every
+        // turn of such a run rather than only when the window fills: the offered tool set is part
+        // of the prompt a provider caches, so introducing a tool at the moment the window is
+        // fullest would invalidate the cached prefix at the most expensive point in the run. Like
+        // the two reclaim tools it only validates here; the loop performs the rewrite.
+        if CompactionStrategy::resolve(
+            capabilities
+                .capability(CAPABILITY_COMPACTION)
+                .filter(|capability| capability.enabled)
+                .and_then(|capability| capability.implementation.as_deref()),
+            capabilities.is_enabled(CAPABILITY_MEMORIES),
+        )
+        .offers_compact_tool()
+            && capabilities.is_enabled(CAPABILITY_COMPACTION)
+        {
+            tools.push(Box::new(context::CompactTool));
         }
 
         if capabilities.is_enabled(CAPABILITY_PLANNING) {

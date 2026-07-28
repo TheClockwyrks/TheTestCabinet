@@ -6,8 +6,9 @@
 //! model keeps working without an [orchestrator](https://docs.testcabinet.ai/orchestrators/overview/)
 //! looping it. It is the capability that makes "retained across compaction" mean something:
 //! it summarizes only the *history* and carries the pinned state — read
-//! [skills](crate::skills), in-play [memories](crate::memories), and the
-//! [task list](crate::tasks) — across the boundary **verbatim**.
+//! [skills](crate::skills), in-play [memories](crate::memories), the
+//! [task list](crate::tasks), and any **locked** [autoloaded specification](crate::agent) —
+//! across the boundary **verbatim**.
 //!
 //! # The pieces
 //!
@@ -16,41 +17,62 @@
 //!   [`trigger_fullness`](CompactionPolicy::trigger_fullness) threshold — **defined as
 //!   `1 - summary_headroom`**, the point at which the working window is full and only the
 //!   reserved headroom remains, not a separately configured value — and there is ephemeral
-//!   history to reclaim, [`compact_if_needed`] fires.
+//!   history to reclaim, [`should_compact`] is true.
 //! - **The rewrite.** The pinned prefix is kept verbatim and the ephemeral history is
-//!   replaced by a single summary item via
-//!   [`ContextModel::compact_history`](crate::context::ContextModel::compact_history). The
-//!   post-compaction window is *pinned prefix + summary*, and the run continues from there.
-//! - **The reserve.** Summarizing is itself a model call over the whole thread, so enabling
-//!   compaction **shrinks the window the agent is given** by
+//!   replaced by a single summary item (plus, for the two `compact`-tool strategies, a fresh
+//!   [file view](RestoredFile) per path the model asked to keep) via [`apply_compaction`].
+//!   The post-compaction window is *pinned prefix + restored files + summary*, and the run
+//!   continues from there.
+//! - **The reserve.** Condensing the thread costs a model call over the whole thread, so
+//!   enabling compaction **shrinks the window the agent is given** by
 //!   [`summary_headroom`](CompactionPolicy::summary_headroom) (20% by default) via
-//!   [`working_window`]. The held-back slice is the room the summarization call needs to
-//!   read the transcript and emit its summary; without it a run can trip the trigger at a
-//!   point where the compaction that was meant to save it cannot fit.
-//! - **The summarizer.** Summarization is a **swappable strategy** behind the
-//!   [`Summarizer`] trait, selected by the capability's
-//!   [`implementation`](test_cabinet_core::gg::GgCapabilityConfig::implementation). The
-//!   default [`ModelSummarizer`] reuses the run's primary [`ModelClient`] with a focused prose
-//!   summarization prompt; [`StructuredSummarizer`] (`structured`) asks the same call for fixed
-//!   sections instead. A different prompt/structure is a drop-in — see [`resolve_summarizer`].
+//!   [`working_window`]. The held-back slice is the room that call needs to read the
+//!   transcript and emit its summary; without it a run can trip the trigger at a point where
+//!   the compaction that was meant to save it cannot fit.
+//! - **The strategy.** *Who* condenses the thread, and *what* the restarted context is rebuilt
+//!   from, is the capability's one experimental variable — see [`CompactionStrategy`].
+//!
+//! # Two shapes of strategy
+//!
+//! The seven strategies divide into two implementation shapes, and the division is what the rest
+//! of this module is organized around:
+//!
+//! - **Out-of-band** ([`Model`](CompactionStrategy::Model),
+//!   [`Structured`](CompactionStrategy::Structured), and the two `handoff-*` ones) are performed
+//!   *between* the agent's turns, by a call the agent never sees. They are a single `async fn`
+//!   ([`compact_out_of_band`]) the loop awaits at the turn boundary, and the agent's next turn
+//!   simply finds a smaller window.
+//! - **In-loop** ([`SelfSummarization`](CompactionStrategy::SelfSummarization),
+//!   [`SelfCompaction`](CompactionStrategy::SelfCompaction),
+//!   [`Memory`](CompactionStrategy::Memory)) are performed *by the agent itself*, so they cannot
+//!   be a function call: gg appends an instruction ([`PendingCompaction::instruction`]), the
+//!   agent's **next turn** supplies the summary (or the `compact` call, or the memory writes),
+//!   and the loop applies the rewrite when it does. That is why [`PendingCompaction`] is loop
+//!   state rather than a local: a compaction spans a turn boundary, and until it is satisfied
+//!   the loop refuses everything else the model tries to do.
 //!
 //! # Offline testability
 //!
-//! The default summarizer's model call is answered offline by the scripted
-//! [`MockClient`](crate::client::MockClient): the summarization prompt embeds
-//! [`SUMMARIZATION_MARKER`], which the mock recognizes and answers with a deterministic
-//! canned summary **without advancing its scripted turn cursor**, so a mock run can cross a
-//! real compaction boundary with no network and no desync.
+//! Every out-of-band strategy's model call is answered offline by the scripted
+//! [`MockClient`](crate::client::MockClient): its system prompt embeds
+//! [`SUMMARIZATION_MARKER`] (or, for the one that must answer with a tool call,
+//! [`COMPACT_CALL_MARKER`]), which the mock recognizes and answers deterministically **without
+//! advancing its scripted turn cursor**, so a mock run can cross a real compaction boundary
+//! with no network and no desync.
 
 use async_trait::async_trait;
 use serde_json::Value;
 use test_cabinet_core::gg::{
-    CAPABILITY_COMPACTION, GgAgentConfig, GgCapabilitySet, GgContextSource, GgRetainedState,
-    GgTelemetryKind,
+    CAPABILITY_COMPACTION, CAPABILITY_MEMORIES, COMPACTION_PARAM_MODEL,
+    COMPACTION_STRATEGY_HANDOFF_COMPACTION, COMPACTION_STRATEGY_HANDOFF_SUMMARIZATION,
+    COMPACTION_STRATEGY_MEMORY, COMPACTION_STRATEGY_MODEL, COMPACTION_STRATEGY_SELF_COMPACTION,
+    COMPACTION_STRATEGY_SELF_SUMMARIZATION, COMPACTION_STRATEGY_STRUCTURED, GgAgentConfig,
+    GgCapabilitySet, GgContextSource, GgRetainedState, GgTelemetryKind,
 };
 
-use crate::context::ContextModel;
-use crate::model::{Message, ModelClient, Role};
+use crate::context::{ContextModel, Retention, code_heading};
+use crate::model::{ImageContent, Message, ModelClient, Role};
+use crate::tools::{COMPACT_TOOL, CompactTool, Tool, parse_compact_request};
 
 /// The compaction capability param naming the
 /// [summary headroom](CompactionPolicy::summary_headroom) — a `0.0..=0.9` fraction of the
@@ -66,11 +88,16 @@ const DEFAULT_SUMMARY_HEADROOM: f64 = 0.2;
 /// value is treated as a misconfiguration and ignored.
 const MAX_SUMMARY_HEADROOM: f64 = 0.9;
 
-/// A sentinel embedded in the [summarization prompt](SUMMARY_SYSTEM_PROMPT) so the offline
+/// A sentinel embedded in every [summarization prompt](SUMMARY_SYSTEM_PROMPT) so the offline
 /// [`MockClient`](crate::client::MockClient) can recognize a compaction summary request and
 /// answer it deterministically — without consuming a scripted turn — keeping a mock run's
 /// main script in step across a compaction boundary.
 pub const SUMMARIZATION_MARKER: &str = "<<gg-compaction-summary-request>>";
+
+/// The sentinel [`HANDOFF_COMPACT_SYSTEM_PROMPT`] carries, so the offline mock recognizes the one
+/// compaction request that must be answered with a **tool call** rather than prose and replies
+/// with a canned [`compact`](COMPACT_TOOL) call — again without consuming a scripted turn.
+pub const COMPACT_CALL_MARKER: &str = "<<gg-compaction-compact-request>>";
 
 /// The system prompt the default [`ModelSummarizer`] steers the summarization call with.
 /// It carries the [`SUMMARIZATION_MARKER`] so an offline mock can detect the request.
@@ -96,6 +123,42 @@ const STRUCTURED_SUMMARY_SYSTEM_PROMPT: &str = "You are gg's context-compaction 
     memories, or task list — those are retained separately. Be concise and factual; output only \
     the sections.";
 
+/// The system prompt the [handoff summarization](CompactionStrategy::HandoffSummarization)
+/// strategy gives the **separate** compaction model.
+///
+/// It differs from [`SUMMARY_SYSTEM_PROMPT`] in the one way that matters for a handoff: it opens by
+/// telling the reader that *none of what follows is its own work*. The thread it is about to read
+/// is another model's, converted to labelled user messages ([`handoff_messages`]) precisely so it
+/// cannot mistake the working model's assistant turns for its own — and a model that believes it
+/// wrote the thread summarizes what it "did" rather than what the agent did.
+const HANDOFF_SUMMARY_SYSTEM_PROMPT: &str = "You are gg's context-compaction summarizer \
+    <<gg-compaction-summary-request>>. Everything after this message is a TRANSCRIPT OF ANOTHER \
+    AGENT'S SESSION, not your own work — each message is labelled with what it is (`Task`, \
+    `Assistant`, `Output`, `File`, …) followed by a `----` line. You did none of it. That thread \
+    is about to be dropped to reclaim context. Write a compact summary that preserves enough \
+    working state for THAT agent to continue seamlessly: what it is building, the key decisions \
+    and discoveries so far, files created or changed, what is currently in progress, and the \
+    immediate next step. Write about it in the second person (\"you have…\") — the summary is \
+    handed back to the agent whose thread this is. Be concise and factual; output only the \
+    summary.";
+
+/// The system prompt the [handoff compaction](CompactionStrategy::HandoffCompaction) strategy
+/// gives the separate compaction model — the same framing as
+/// [`HANDOFF_SUMMARY_SYSTEM_PROMPT`], but the answer is a [`compact`](COMPACT_TOOL) **call**
+/// rather than prose, so the compaction model also chooses which files are re-read into the
+/// restarted context. It carries [`COMPACT_CALL_MARKER`] rather than [`SUMMARIZATION_MARKER`]
+/// because the offline mock has to answer it with a tool call.
+const HANDOFF_COMPACT_SYSTEM_PROMPT: &str = "You are gg's context compactor \
+    <<gg-compaction-compact-request>>. Everything after this message is a TRANSCRIPT OF ANOTHER \
+    AGENT'S SESSION, not your own work — each message is labelled with what it is (`Task`, \
+    `Assistant`, `Output`, `File`, …) followed by a `----` line. You did none of it. That thread \
+    is about to be dropped to reclaim context. Call the `compact` tool exactly once with a \
+    `summary` that preserves enough working state for THAT agent to continue seamlessly (what it \
+    is building, key decisions, files changed, what is in progress, the immediate next step, \
+    written in the second person) and a `files` list naming the workspace paths whose contents it \
+    will need in hand to continue — gg re-reads those into its context. Name only files that \
+    matter; every one costs window. Answer with the tool call and nothing else.";
+
 /// The heading prepended to the summary item placed in the compacted window, so the model
 /// reads it as a recap of dropped history rather than fresh instruction.
 const SUMMARY_PREFACE: &str = "# Summary of earlier work (context was compacted)\n\n\
@@ -109,6 +172,282 @@ const FALLBACK_SUMMARY: &str = "(The earlier thread could not be summarized auto
     Your skills, memories, and task list are retained above; re-inspect the workspace as \
     needed to recover any detail you require.)";
 
+/// The "summary" a [memory compaction](CompactionStrategy::Memory) restarts the thread from.
+///
+/// That strategy deliberately produces **no prose recap**: its whole hypothesis is that the
+/// agent's own [memories](crate::memories) — which are pinned, and so cross the boundary
+/// verbatim — are a better carrier of working state than a summary written once and never
+/// revised. So the thread is restarted from a note that says exactly that, and points at the
+/// memory block above it.
+const MEMORY_COMPACTION_SUMMARY: &str = "The detailed thread up to this point was dropped to \
+    reclaim context, and you recorded the working state you need in your memories first. Your \
+    memories, skills, and task list above are unchanged and are your record of where the work \
+    stands. Continue from there.";
+
+// ---------------------------------------------------------------------------
+// The strategies
+// ---------------------------------------------------------------------------
+
+/// **Who** condenses a thread at a compaction boundary, and **what** the restarted context is
+/// rebuilt from — the compaction capability's one experimental variable, selected by its
+/// [`implementation`](test_cabinet_core::gg::GgCapabilityConfig::implementation).
+///
+/// The seven differ along two axes. *Who*: gg out of band on the run's own client, the working
+/// agent itself in its own thread, or a separate handoff model. *What*: free prose, fixed
+/// sections, a [`compact`](COMPACT_TOOL) call that also names the files to re-read, or
+/// [memories](CAPABILITY_MEMORIES) instead of a summary at all.
+///
+/// A run naming a strategy gg does not recognize resolves to [`Model`](Self::Model) rather than
+/// failing to launch, so a sweep can reference a not-yet-built one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompactionStrategy {
+    /// One out-of-band call on the run's own client for a prose recap. The default.
+    Model,
+    /// The same out-of-band call, steered to fixed headings instead of prose.
+    Structured,
+    /// The agent writes its own summary, in its own thread, when gg asks it to.
+    SelfSummarization,
+    /// The agent calls [`compact`](COMPACT_TOOL) with a summary **and** the files to re-read.
+    SelfCompaction,
+    /// A separate model writes the summary, reading the thread as labelled user messages.
+    HandoffSummarization,
+    /// A separate model answers with a [`compact`](COMPACT_TOOL) call — summary plus files.
+    HandoffCompaction,
+    /// The agent writes its working state to [memories](CAPABILITY_MEMORIES), which are pinned
+    /// and so cross the boundary verbatim; there is no prose summary.
+    Memory,
+}
+
+impl CompactionStrategy {
+    /// The strategy an [implementation](test_cabinet_core::gg::GgCapabilityConfig::implementation)
+    /// string names.
+    ///
+    /// [`Model`](Self::Model) covers `model`/`default`/empty/`None` **and** any unrecognized name,
+    /// so a study naming a not-yet-built strategy still launches. `memories_enabled` demotes
+    /// [`Memory`](Self::Memory) to the default when the run has no memories to write to — the one
+    /// strategy with a hard prerequisite, and a run that compacted by writing memories it does not
+    /// have would simply never satisfy its own gate.
+    pub fn resolve(implementation: Option<&str>, memories_enabled: bool) -> Self {
+        match implementation.map(str::trim) {
+            Some(COMPACTION_STRATEGY_STRUCTURED) => Self::Structured,
+            Some(COMPACTION_STRATEGY_SELF_SUMMARIZATION) => Self::SelfSummarization,
+            Some(COMPACTION_STRATEGY_SELF_COMPACTION) => Self::SelfCompaction,
+            Some(COMPACTION_STRATEGY_HANDOFF_SUMMARIZATION) => Self::HandoffSummarization,
+            Some(COMPACTION_STRATEGY_HANDOFF_COMPACTION) => Self::HandoffCompaction,
+            Some(COMPACTION_STRATEGY_MEMORY) if memories_enabled => Self::Memory,
+            _ => Self::Model,
+        }
+    }
+
+    /// The canonical id this strategy is configured and **recorded** under — the string on every
+    /// [`Compaction`](GgTelemetryKind::Compaction) event, which the console labels boundaries by.
+    pub fn id(self) -> &'static str {
+        match self {
+            Self::Model => COMPACTION_STRATEGY_MODEL,
+            Self::Structured => COMPACTION_STRATEGY_STRUCTURED,
+            Self::SelfSummarization => COMPACTION_STRATEGY_SELF_SUMMARIZATION,
+            Self::SelfCompaction => COMPACTION_STRATEGY_SELF_COMPACTION,
+            Self::HandoffSummarization => COMPACTION_STRATEGY_HANDOFF_SUMMARIZATION,
+            Self::HandoffCompaction => COMPACTION_STRATEGY_HANDOFF_COMPACTION,
+            Self::Memory => COMPACTION_STRATEGY_MEMORY,
+        }
+    }
+
+    /// What this strategy needs the **agent's own next turn** to produce, or `None` for an
+    /// out-of-band strategy the agent never sees. The loop holds this as
+    /// [pending state](PendingCompaction) from the turn that triggers the compaction until the
+    /// turn that satisfies it.
+    pub fn pending(self) -> Option<PendingCompaction> {
+        match self {
+            Self::SelfSummarization => Some(PendingCompaction::Summary),
+            Self::SelfCompaction => Some(PendingCompaction::CompactCall),
+            Self::Memory => Some(PendingCompaction::MemoryWrites),
+            Self::Model
+            | Self::Structured
+            | Self::HandoffSummarization
+            | Self::HandoffCompaction => None,
+        }
+    }
+
+    /// Whether the **working** agent is offered the [`compact`](COMPACT_TOOL) tool this run.
+    ///
+    /// True only for [self-compaction](Self::SelfCompaction), and true for *every* turn of such a
+    /// run — not only the turn a compaction is pending. That is deliberate: the offered tool set is
+    /// part of the prompt a provider caches, so adding a tool at the moment the window is fullest
+    /// would invalidate the whole cached prefix at the most expensive point in the run.
+    /// [Handoff compaction](Self::HandoffCompaction) uses the same tool but never offers it here —
+    /// only its separate compaction model is given it.
+    pub fn offers_compact_tool(self) -> bool {
+        matches!(self, Self::SelfCompaction)
+    }
+
+    /// Whether this strategy delegates to a **separate model** — the two `handoff-*` strategies,
+    /// the only ones that resolve a second client.
+    pub fn is_handoff(self) -> bool {
+        matches!(self, Self::HandoffSummarization | Self::HandoffCompaction)
+    }
+}
+
+/// What an in-loop compaction is waiting for the agent to do, held by the
+/// [turn loop](crate::agent) from the turn that triggers the compaction until the turn that
+/// satisfies it.
+///
+/// While it is set the loop is in a **narrowed** mode: the agent may do the one thing compaction
+/// asked for and nothing else, because everything else adds to a window that is already full. Each
+/// variant therefore carries both the instruction that opens that mode
+/// ([`instruction`](Self::instruction)) and the refusal that answers anything else
+/// ([`refusal`](Self::refusal)).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PendingCompaction {
+    /// [Self-summarization](CompactionStrategy::SelfSummarization): the next reply's text **is**
+    /// the summary. gg does not dispatch that turn's tools and does not run its program.
+    Summary,
+    /// [Self-compaction](CompactionStrategy::SelfCompaction): the agent must call
+    /// [`compact`](COMPACT_TOOL); every other call is refused until it does.
+    CompactCall,
+    /// [Memory compaction](CompactionStrategy::Memory): the agent must write its working state to
+    /// [memories](crate::memories). Only memory calls are accepted, and the compaction is applied
+    /// once a whole reply's calls have all succeeded.
+    MemoryWrites,
+}
+
+impl PendingCompaction {
+    /// Whether a call named `name` is one this pending compaction accepts.
+    ///
+    /// The narrowing is total rather than advisory, and it has to be: the window is full, so a call
+    /// that is allowed through is a call that makes the problem worse. [`Summary`](Self::Summary)
+    /// admits nothing at all, because a summarization turn is not a working turn — the loop takes
+    /// that turn whole and never dispatches from it, so this only ever answers the defensive case.
+    pub fn admits(self, name: &str) -> bool {
+        match self {
+            Self::Summary => false,
+            Self::CompactCall => name == COMPACT_TOOL,
+            Self::MemoryWrites => crate::tools::is_memory_tool(name),
+        }
+    }
+
+    /// Whether one reply's calls satisfy this pending compaction, given how many it made and how
+    /// many failed.
+    ///
+    /// Only [`MemoryWrites`](Self::MemoryWrites) is decided this way — "one reply whose calls all
+    /// succeeded", which is what makes a half-written memory state never the thing a thread is
+    /// restarted from. A refused call counts as a failure, so a reply that reached for a forbidden
+    /// tool is retried rather than accepted. The other two are satisfied by a *specific* thing
+    /// arriving (a summary, a `compact` request), not by a count.
+    pub fn satisfied_by_calls(self, calls: u32, failures: u32) -> bool {
+        matches!(self, Self::MemoryWrites) && calls > 0 && failures == 0
+    }
+
+    /// The message gg appends to the thread to open this compaction — what the model reads at the
+    /// top of the turn that must satisfy it.
+    ///
+    /// `code_mode` is the one thing that changes: under
+    /// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) every reply is a
+    /// program and every call is a function on an API object, so the instruction has to name the
+    /// call the way that run's model actually makes it — and, for
+    /// [`Summary`](Self::Summary), has to explicitly suspend the reply contract for one turn,
+    /// since prose is the one thing a code run is otherwise told never to send.
+    pub fn instruction(self, code_mode: bool) -> String {
+        match self {
+            Self::Summary if code_mode => format!(
+                "{PREAMBLE}\n\nFor this ONE turn only, do NOT write a program — gg will not run \
+                 one. Reply with plain prose: a summary of the work you have completed so far and \
+                 the work that remains. Cover what you are building, the decisions and discoveries \
+                 that matter, the files you have created or changed, what is in progress, and the \
+                 immediate next step. Everything not in your summary is lost, so write it for \
+                 yourself. Your next turn resumes the normal program protocol with your summary in \
+                 place of the dropped thread."
+            ),
+            Self::Summary => format!(
+                "{PREAMBLE}\n\nReply with a summary of the work you have completed so far and the \
+                 work that remains — plain text, no tool calls. Cover what you are building, the \
+                 decisions and discoveries that matter, the files you have created or changed, \
+                 what is in progress, and the immediate next step. Everything not in your summary \
+                 is lost, so write it for yourself. Your next turn continues the work with your \
+                 summary in place of the dropped thread."
+            ),
+            Self::CompactCall if code_mode => format!(
+                "{PREAMBLE}\n\nWrite a program that calls `context.compact(summary, files)` and \
+                 nothing else — every other call is refused until you do. `summary` is the working \
+                 state you need to continue (what you are building, the decisions that matter, the \
+                 files you changed, what is in progress, the next step); `files` names the \
+                 workspace paths whose contents you want back in your context, which gg re-reads \
+                 for you. Everything not in your summary and not in those files is lost, so choose \
+                 both for yourself."
+            ),
+            Self::CompactCall => format!(
+                "{PREAMBLE}\n\nCall the `{COMPACT_TOOL}` tool now — every other tool call is \
+                 refused until you do. `summary` is the working state you need to continue (what \
+                 you are building, the decisions that matter, the files you changed, what is in \
+                 progress, the next step); `files` names the workspace paths whose contents you \
+                 want back in your context, which gg re-reads for you. Everything not in your \
+                 summary and not in those files is lost, so choose both for yourself."
+            ),
+            Self::MemoryWrites if code_mode => format!(
+                "{PREAMBLE}\n\nWrite a program that records the working state you will need into \
+                 your memories — `memory.writeMemory` / `memory.updateMemory` / \
+                 `memory.deleteMemory` and nothing else; every other call is refused until every \
+                 call in one program has succeeded. Your memories are retained verbatim across the \
+                 drop, so they are the ONLY thing that carries your working state: what you are \
+                 building, the decisions that matter, the files you changed, what is in progress, \
+                 the next step. Anything you do not record is lost."
+            ),
+            Self::MemoryWrites => format!(
+                "{PREAMBLE}\n\nRecord the working state you will need into your memories now — \
+                 `write_memory` / `update_memory` / `delete_memory` and nothing else; every other \
+                 tool call is refused until every call in one reply has succeeded. Your memories \
+                 are retained verbatim across the drop, so they are the ONLY thing that carries \
+                 your working state: what you are building, the decisions that matter, the files \
+                 you changed, what is in progress, the next step. Anything you do not record is \
+                 lost."
+            ),
+        }
+    }
+
+    /// The refusal that answers a call this pending compaction does not accept — and the message a
+    /// reply that made *no* usable call is fed back.
+    ///
+    /// It names the call that was refused rather than only what is wanted, because a model that is
+    /// told "do X" while its Y silently fails reads the failure as gg being broken and retries Y.
+    pub fn refusal(self, refused: &str, code_mode: bool) -> String {
+        let wanted = match self {
+            Self::Summary => "reply with the summary as plain text".to_string(),
+            Self::CompactCall if code_mode => "call `context.compact(summary, files)`".to_string(),
+            Self::CompactCall => format!("call the `{COMPACT_TOOL}` tool"),
+            Self::MemoryWrites if code_mode => {
+                "record your working state with `memory.writeMemory` / `memory.updateMemory`"
+                    .to_string()
+            }
+            Self::MemoryWrites => {
+                "record your working state with `write_memory` / `update_memory`".to_string()
+            }
+        };
+        format!(
+            "`{refused}` was NOT run: your context window is full and gg is compacting it. Nothing \
+             else happens until you {wanted}. Do that now, then carry on with the work."
+        )
+    }
+
+    /// The feedback for a reply that satisfied nothing at all — no usable call under
+    /// [`CompactCall`](Self::CompactCall) / [`MemoryWrites`](Self::MemoryWrites).
+    pub fn unsatisfied(self, code_mode: bool) -> String {
+        format!(
+            "Your reply did not compact your context, and your window is still full. {}",
+            self.instruction(code_mode)
+        )
+    }
+}
+
+/// The opening sentence every [`PendingCompaction::instruction`] shares: *why* the model is being
+/// interrupted. Stated once so the six instructions cannot drift on the one fact they all assert.
+const PREAMBLE: &str = "Your context window is full. gg is about to drop the detailed thread \
+    above to reclaim it — the work you have done is NOT undone, but the record of it in this \
+    conversation is about to disappear.";
+
+// ---------------------------------------------------------------------------
+// The out-of-band summarizers
+// ---------------------------------------------------------------------------
+
 /// The inputs to one [`Summarizer::summarize`] call: the history to condense and the
 /// [client](ModelClient) a model-backed summarizer may call. A summarizer that does not use
 /// a model simply ignores [`client`](Self::client).
@@ -116,24 +455,38 @@ pub struct SummaryRequest<'a> {
     /// The messages to summarize — the build prompt (for grounding) followed by the
     /// ephemeral thread about to be dropped, in order.
     pub history: &'a [Message],
-    /// The run's primary model client, for a model-backed summarizer to call.
+    /// The client to summarize with: the run's primary model for the two out-of-band strategies,
+    /// or the resolved **compaction model** for a handoff.
     pub client: &'a dyn ModelClient,
 }
 
-/// A **swappable** summarization strategy for [compaction](https://docs.testcabinet.ai/gg/compaction/).
+/// What one out-of-band condensation produced: the summary text, whether it is the
+/// [fallback](FALLBACK_SUMMARY) note (i.e. the call failed), and the files it asked gg to re-read.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CompactionRequest {
+    /// The recap the restarted thread opens from.
+    pub summary: String,
+    /// The workspace paths whose contents are re-loaded into the restarted context. Empty for
+    /// every strategy but the two that use the [`compact`](COMPACT_TOOL) tool.
+    pub files: Vec<String>,
+}
+
+/// A **swappable** out-of-band condensation strategy for
+/// [compaction](https://docs.testcabinet.ai/gg/compaction/).
 ///
-/// Two ship today, both a single model call that differ only in the prompt they steer it
-/// with: [`ModelSummarizer`] (the default — a focused prose recap) and [`StructuredSummarizer`]
-/// (the same working state in fixed sections). The trait keeps the choice a drop-in so a study
-/// can compare strategies — a different prompt, a structured extract, a cheaper model — by
-/// [selecting an implementation](resolve_summarizer) without touching the loop. `Send + Sync`
-/// so a boxed summarizer can back the async loop.
+/// Four ship today: [`ModelSummarizer`] (the default — a focused prose recap on the run's own
+/// client), [`StructuredSummarizer`] (the same call steered to fixed sections),
+/// [`HandoffSummarizer`] (the same recap from a separate model reading the thread as labelled user
+/// messages) and [`HandoffCompactor`] (a separate model answering with a [`compact`](COMPACT_TOOL)
+/// call, so it names the files to re-read too). The trait keeps the choice a drop-in so a study can
+/// compare strategies by [selecting an implementation](CompactionStrategy::resolve) without
+/// touching the loop. `Send + Sync` so a boxed summarizer can back the async loop.
 #[async_trait]
 pub trait Summarizer: Send + Sync {
-    /// Summarize `request.history` into working-state text the agent can continue from.
-    /// Implementations must not fail the run: on trouble they return a best-effort string
+    /// Condense `request.history` into the working state the agent continues from.
+    /// Implementations must not fail the run: on trouble they return a best-effort result
     /// (see [`FALLBACK_SUMMARY`]) rather than an error.
-    async fn summarize(&self, request: SummaryRequest<'_>) -> String;
+    async fn summarize(&self, request: SummaryRequest<'_>) -> CompactionRequest;
 }
 
 /// The default [`Summarizer`]: one focused call to the run's primary [`ModelClient`] with a
@@ -145,8 +498,13 @@ pub struct ModelSummarizer;
 
 #[async_trait]
 impl Summarizer for ModelSummarizer {
-    async fn summarize(&self, request: SummaryRequest<'_>) -> String {
-        summarize_with_prompt(SUMMARY_SYSTEM_PROMPT, request).await
+    async fn summarize(&self, request: SummaryRequest<'_>) -> CompactionRequest {
+        summarize_with_prompt(
+            SUMMARY_SYSTEM_PROMPT,
+            render_history(request.history),
+            request,
+        )
+        .await
     }
 }
 
@@ -161,29 +519,114 @@ pub struct StructuredSummarizer;
 
 #[async_trait]
 impl Summarizer for StructuredSummarizer {
-    async fn summarize(&self, request: SummaryRequest<'_>) -> String {
-        summarize_with_prompt(STRUCTURED_SUMMARY_SYSTEM_PROMPT, request).await
+    async fn summarize(&self, request: SummaryRequest<'_>) -> CompactionRequest {
+        summarize_with_prompt(
+            STRUCTURED_SUMMARY_SYSTEM_PROMPT,
+            render_history(request.history),
+            request,
+        )
+        .await
     }
 }
 
-/// The single-model-call summarize shared by [`ModelSummarizer`] and [`StructuredSummarizer`]:
-/// one turn steered by `system_prompt` over the rendered history, degrading to
-/// [`FALLBACK_SUMMARY`] on an empty or errored response so compaction never aborts the run.
-async fn summarize_with_prompt(system_prompt: &str, request: SummaryRequest<'_>) -> String {
-    let messages = vec![
-        Message::system(system_prompt),
-        Message::user(render_history(request.history)),
-    ];
-    // No tools are offered for the summary turn; the summarizer wants prose, not a
-    // tool call. Usage from this call is intentionally not folded into the run totals
-    // in P2a (a clean seam for later per-role accounting).
-    match request.client.complete(&messages, &[]).await {
+/// The [`Summarizer`] selected by `handoff-summarization`: the same single prose recap as
+/// [`ModelSummarizer`], produced by a **separate** model.
+///
+/// It is a distinct type rather than a parameter because the *prompt* differs, not just the client:
+/// a model handed another agent's thread has to be told, in its system prompt, that none of it is
+/// its own work — see [`HANDOFF_SUMMARY_SYSTEM_PROMPT`]. The transcript it reads is built by
+/// [`handoff_messages`], which is what makes that claim structurally true rather than merely
+/// asserted.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct HandoffSummarizer;
+
+#[async_trait]
+impl Summarizer for HandoffSummarizer {
+    async fn summarize(&self, request: SummaryRequest<'_>) -> CompactionRequest {
+        summarize_with_prompt(
+            HANDOFF_SUMMARY_SYSTEM_PROMPT,
+            render_history(request.history),
+            request,
+        )
+        .await
+    }
+}
+
+/// The [`Summarizer`] selected by `handoff-compaction`: a **separate** model answering with a
+/// [`compact`](COMPACT_TOOL) call, so it chooses both the recap and the files gg re-reads into the
+/// restarted context.
+///
+/// It is the one strategy whose out-of-band call is offered a tool, and it requires the call rather
+/// than merely permitting it ([`ModelClient::complete_requiring`]). A reply that carries no usable
+/// call is not a failure the run should die of, so it degrades in the honest order: the model's own
+/// prose if it wrote any, then [`FALLBACK_SUMMARY`].
+#[derive(Debug, Default, Clone, Copy)]
+pub struct HandoffCompactor;
+
+#[async_trait]
+impl Summarizer for HandoffCompactor {
+    async fn summarize(&self, request: SummaryRequest<'_>) -> CompactionRequest {
+        let messages = vec![
+            Message::system(HANDOFF_COMPACT_SYSTEM_PROMPT),
+            Message::user(render_history(request.history)),
+        ];
+        let definition = CompactTool.definition();
+        let Ok(response) = request
+            .client
+            .complete_requiring(&messages, &definition)
+            .await
+        else {
+            return CompactionRequest {
+                summary: FALLBACK_SUMMARY.to_string(),
+                files: Vec::new(),
+            };
+        };
+        // The call is what was asked for; its arguments are parsed by the same parser the tool's
+        // own validation uses, so a handoff compaction and a self compaction cannot disagree about
+        // what a well-formed `compact` call is.
+        let called = response
+            .tool_calls
+            .iter()
+            .find(|call| call.name == COMPACT_TOOL)
+            .and_then(|call| parse_compact_request(&call.arguments).ok());
+        if let Some(request) = called {
+            return request;
+        }
+        // No usable call. Prose the model wrote anyway is still a summary — better than gg's
+        // fixed note — so it is preferred over the fallback, exactly as it would be if the
+        // strategy had asked for prose in the first place.
+        CompactionRequest {
+            summary: response
+                .text
+                .map(|text| text.trim().to_string())
+                .filter(|text| !text.is_empty())
+                .unwrap_or_else(|| FALLBACK_SUMMARY.to_string()),
+            files: Vec::new(),
+        }
+    }
+}
+
+/// The single-model-call summarize shared by every prose strategy: one turn steered by
+/// `system_prompt` over `transcript`, degrading to [`FALLBACK_SUMMARY`] on an empty or errored
+/// response so compaction never aborts the run.
+async fn summarize_with_prompt(
+    system_prompt: &str,
+    transcript: String,
+    request: SummaryRequest<'_>,
+) -> CompactionRequest {
+    let messages = vec![Message::system(system_prompt), Message::user(transcript)];
+    // No tools are offered for a prose summary turn; the summarizer wants prose, not a tool call.
+    let summary = match request.client.complete(&messages, &[]).await {
         Ok(response) => response
             .text
             .map(|text| text.trim().to_string())
             .filter(|text| !text.is_empty())
             .unwrap_or_else(|| FALLBACK_SUMMARY.to_string()),
         Err(_) => FALLBACK_SUMMARY.to_string(),
+    };
+    CompactionRequest {
+        summary,
+        files: Vec::new(),
     }
 }
 
@@ -214,27 +657,94 @@ fn render_history(history: &[Message]) -> String {
     out
 }
 
-/// The canonical name of the summarization strategy an
-/// [`implementation`](test_cabinet_core::gg::GgCapabilityConfig::implementation) selects — the
-/// single place the mapping lives, so [`resolve_summarizer`] and any diagnostics agree. `model`
-/// (the default) covers `model`/`default`/empty/`None` **and** any unrecognized name, so a study
-/// naming a not-yet-built strategy still launches rather than failing; `structured` is the only
-/// alternate today. Add an arm here (and in [`resolve_summarizer`]) to ship a new one.
-fn strategy_name(implementation: Option<&str>) -> &'static str {
-    match implementation {
-        Some("structured") => "structured",
-        _ => "model",
-    }
-}
-
-/// Select the [`Summarizer`] for a compaction capability's `implementation`, per
-/// [`strategy_name`]. The match is the drop-in seam for alternate strategies.
-pub fn resolve_summarizer(implementation: Option<&str>) -> Box<dyn Summarizer> {
-    match strategy_name(implementation) {
-        "structured" => Box::new(StructuredSummarizer),
+/// Select the out-of-band [`Summarizer`] for a [strategy](CompactionStrategy). The match is the
+/// drop-in seam for alternate strategies.
+///
+/// The three in-loop strategies have no summarizer — the *agent* writes their summary, in its own
+/// thread — so they resolve to the default one, which they never call.
+pub fn resolve_summarizer(strategy: CompactionStrategy) -> Box<dyn Summarizer> {
+    match strategy {
+        CompactionStrategy::Structured => Box::new(StructuredSummarizer),
+        CompactionStrategy::HandoffSummarization => Box::new(HandoffSummarizer),
+        CompactionStrategy::HandoffCompaction => Box::new(HandoffCompactor),
         _ => Box::new(ModelSummarizer),
     }
 }
+
+// ---------------------------------------------------------------------------
+// The handoff transcript
+// ---------------------------------------------------------------------------
+
+/// Rebuild an agent's live window as the transcript a **handoff** compaction model reads.
+///
+/// Four transforms, each of which the handoff strategies' contract depends on:
+///
+/// 1. **The system prompt goes.** The working agent's system prompt describes a toolset, a
+///    completion contract and a set of capabilities that have nothing to do with summarizing; the
+///    compaction model gets its own instead (supplied by the caller).
+/// 2. **Skills and memories go.** They are retained across the boundary verbatim, so restating
+///    them to the summarizer only invites it to summarize state that is not being dropped.
+/// 3. **Every message becomes a `user` message.** This is the load-bearing one. Left as `assistant`
+///    messages, the working model's turns read to the compaction model as *its own prior output* —
+///    and a model summarizing what it believes it just wrote produces a first-person account of
+///    work it never did.
+/// 4. **Every message gets a `<label>\n----\n` heading** — the same headings
+///    [responses-as-code](crate::context::code_heading) uses, so what a message *was* survives the
+///    role flattening that step 3 performs. An assistant turn is labelled `Assistant`, which is the
+///    label the handoff system prompts name.
+///
+/// The result is one `user` message per surviving item, in order, with the caller's system prompt
+/// prepended by the caller (this returns the body only).
+pub fn handoff_messages(context: &ContextModel) -> Vec<Message> {
+    context
+        .prompt_items()
+        .filter(|(source, _, _)| {
+            !matches!(
+                source,
+                GgContextSource::System | GgContextSource::Skill | GgContextSource::Memory
+            )
+        })
+        .map(|(source, message, _)| handoff_message(source, message))
+        .collect()
+}
+
+/// One item of the live window as the handoff transcript carries it: a `user` message whose body is
+/// the original content under its [`handoff_label`] heading, with any tool calls it made spelled
+/// out (they are what the agent *did*, and dropping them would leave a summarizer reading a thread
+/// of narration with no actions in it).
+///
+/// A message that already opens with its own heading — every synthesized `user` message in a
+/// [code-mode](crate::context::code_heading) run does — is left as it is rather than headed twice.
+fn handoff_message(source: GgContextSource, message: &Message) -> Message {
+    let label = handoff_label(source, message.role);
+    let mut body = message.content.clone().unwrap_or_default();
+    for call in &message.tool_calls {
+        body.push_str(&format!("\n→ called `{}`({})", call.name, call.arguments));
+    }
+    let heading = format!("{label}\n----\n");
+    if body.starts_with(&heading) {
+        return Message::user(body);
+    }
+    Message::user(format!("{heading}{body}"))
+}
+
+/// The heading one window item carries in a [handoff transcript](handoff_messages).
+///
+/// It is read off the item's [source](GgContextSource) — the same vocabulary
+/// [`code_heading`] defines, so a run that already heads its messages is not relabelled — except
+/// for an assistant turn, which has no code heading (a program is the model's own output, never
+/// gg's synthesis) and is exactly the item the flattening must label. `Assistant` is what the
+/// handoff system prompts name it.
+fn handoff_label(source: GgContextSource, role: Role) -> &'static str {
+    if role == Role::Assistant || source == GgContextSource::Assistant {
+        return "Assistant";
+    }
+    code_heading(source).unwrap_or("Message")
+}
+
+// ---------------------------------------------------------------------------
+// Policy and setup
+// ---------------------------------------------------------------------------
 
 /// The tuning of the compaction trigger, resolved from the capability's params.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -282,13 +792,13 @@ impl CompactionPolicy {
     /// The portion of a `window`-token context window the agent may actually fill, given
     /// this policy's [`summary_headroom`](Self::summary_headroom).
     ///
-    /// Summarization is itself a model call over (nearly) the whole thread: at the trigger
-    /// the summarizer must fit the transcript **and** emit a summary within the same window.
-    /// Measuring fullness against the model's full window therefore lets a run trip the
-    /// trigger at a point where the summary call cannot fit — the compaction that was meant
-    /// to save the run overflows instead. Holding a fraction back makes the reserve
-    /// explicit: the agent works against the reduced window, and what is left over is the
-    /// space the summarization round-trip runs in.
+    /// Condensing the thread is itself a model call over (nearly) the whole thread: at the trigger
+    /// that call must fit the transcript **and** emit a summary within the same window. Measuring
+    /// fullness against the model's full window therefore lets a run trip the trigger at a point
+    /// where the summary call cannot fit — the compaction that was meant to save the run overflows
+    /// instead. Holding a fraction back makes the reserve explicit: the agent works against the
+    /// reduced window, and what is left over is the space the condensation runs in. It is the same
+    /// reserve for an in-loop strategy, where the call is one of the agent's own turns.
     ///
     /// Never returns zero (a degenerate window would make every fullness ratio infinite),
     /// and never exceeds `window`.
@@ -313,40 +823,92 @@ pub fn working_window(set: &GgCapabilitySet, window: u64) -> u64 {
 }
 
 /// The compaction configuration threaded into the [turn loop](crate::agent): whether the
-/// capability is on, its [policy](CompactionPolicy), and the selected [summarizer](Summarizer).
+/// capability is on, its [policy](CompactionPolicy), the selected [strategy](CompactionStrategy),
+/// the out-of-band [summarizer](Summarizer) it resolves to, and — for a handoff — the separate
+/// model's client.
 pub struct CompactionSetup {
     /// Whether the compaction capability is enabled for this run. When `false` the loop
     /// never compacts (an ablation's off arm).
     pub enabled: bool,
     /// The resolved trigger policy.
     pub policy: CompactionPolicy,
-    /// The name of the selected strategy ([`strategy_name`]) — recorded on each compaction
-    /// event so the console can label which summarizer produced a summary.
-    pub strategy: &'static str,
-    /// The selected summarization strategy.
+    /// The selected strategy — recorded on each compaction event so the console can label which
+    /// one produced a boundary, and the thing the loop branches on.
+    pub strategy: CompactionStrategy,
+    /// The out-of-band condensation strategy. Unused by the three in-loop strategies (whose
+    /// summary the agent itself writes).
     pub summarizer: Box<dyn Summarizer>,
+    /// The **compaction model's** client, for the two [handoff](CompactionStrategy::is_handoff)
+    /// strategies. `None` for every other strategy, and also when a handoff run could not resolve
+    /// the model it named — in which case the loop condenses on the agent's own client rather than
+    /// giving up the compaction, and says so.
+    pub handoff_client: Option<Box<dyn ModelClient>>,
 }
 
 impl CompactionSetup {
-    /// Resolve the compaction setup from a run's capability set: enabled when the
+    /// Resolve the compaction setup from an agent's profile: enabled when the
     /// [compaction](CAPABILITY_COMPACTION) capability is present and on, with its policy and
-    /// summarizer read from its config. A disabled/absent capability yields a setup whose
-    /// [`enabled`](Self::enabled) is `false` (and a default policy/summarizer that is never
-    /// used).
+    /// strategy read from its config. A disabled/absent capability yields a setup whose
+    /// [`enabled`](Self::enabled) is `false` (and a default policy/strategy that is never used).
+    ///
+    /// The [handoff client](Self::handoff_client) is **not** resolved here — building a model
+    /// client needs the run's client factory, which this pure resolution does not have. The loop's
+    /// launch path fills it in ([`handoff_model_id`]).
     pub fn resolve(set: &GgAgentConfig) -> Self {
         let capability = set.capability(CAPABILITY_COMPACTION);
         let enabled = set.is_enabled(CAPABILITY_COMPACTION);
         let policy = capability
             .map(|cap| CompactionPolicy::resolve(&cap.params))
             .unwrap_or_default();
-        let implementation = capability.and_then(|cap| cap.implementation.as_deref());
+        let strategy = CompactionStrategy::resolve(
+            capability.and_then(|cap| cap.implementation.as_deref()),
+            set.is_enabled(CAPABILITY_MEMORIES),
+        );
         Self {
             enabled,
             policy,
-            strategy: strategy_name(implementation),
-            summarizer: resolve_summarizer(implementation),
+            strategy,
+            summarizer: resolve_summarizer(strategy),
+            handoff_client: None,
         }
     }
+
+    /// The client an out-of-band condensation runs on: the resolved
+    /// [compaction model](Self::handoff_client) for a handoff, else the agent's own `client`.
+    ///
+    /// The fallback is deliberate. A handoff run whose named model could not be resolved has a
+    /// misconfiguration, not a reason to stop compacting — and a run that stopped compacting would
+    /// overflow its window a few turns later, which is a far worse failure than a summary written
+    /// by the wrong model. The launch path says so in a `warn` when it happens.
+    pub fn client<'a>(&'a self, client: &'a dyn ModelClient) -> &'a dyn ModelClient {
+        match &self.handoff_client {
+            Some(handoff) => handoff.as_ref(),
+            None => client,
+        }
+    }
+}
+
+/// The model id a [handoff](CompactionStrategy::is_handoff) run condenses with — its capability's
+/// [`model`](COMPACTION_PARAM_MODEL) param — or `None` when the strategy is not a handoff or the
+/// param is absent/blank.
+pub fn handoff_model_id(set: &GgAgentConfig) -> Option<String> {
+    let capability = set
+        .capability(CAPABILITY_COMPACTION)
+        .filter(|cap| cap.enabled)?;
+    let strategy = CompactionStrategy::resolve(
+        capability.implementation.as_deref(),
+        set.is_enabled(CAPABILITY_MEMORIES),
+    );
+    if !strategy.is_handoff() {
+        return None;
+    }
+    capability
+        .params
+        .get(COMPACTION_PARAM_MODEL)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|model| !model.is_empty())
+        .map(str::to_string)
 }
 
 /// The pinned-state counts carried into a compaction so they can be reported as the
@@ -364,61 +926,92 @@ pub struct RetainedCounts {
     pub issues: u64,
 }
 
-/// Compact the context at a turn boundary **if** compaction is enabled, window fullness has
-/// reached the trigger threshold, and there is ephemeral history to reclaim. Returns the
-/// [`Compaction`](GgTelemetryKind::Compaction) telemetry to emit at the boundary, or `None`
-/// when no compaction was performed.
+// ---------------------------------------------------------------------------
+// The trigger and the rewrite
+// ---------------------------------------------------------------------------
+
+/// Whether a compaction should fire **now** — at a turn boundary, with the window fully
+/// assembled.
 ///
-/// On a fire it summarizes the [ephemeral history plus the build prompt](ContextModel::summary_source_messages)
-/// with `setup.summarizer`, then rewrites the window via
-/// [`ContextModel::compact_history`] — keeping the pinned prefix verbatim and replacing the
-/// history with the summary. The returned event carries the strategy name, the before/after
-/// token totals (the reclaim) and per-source composition, the summary text (and whether it fell
-/// back), the summary's token cost, and the [`retained`](RetainedCounts) counts.
-pub async fn compact_if_needed(
+/// Three conditions, all necessary: the capability is on; window
+/// [fullness](ContextModel::fullness) has reached the [trigger](CompactionPolicy::trigger_fullness)
+/// (an unknown window limit has no fullness denominator, so it never fires); and there is ephemeral
+/// history to reclaim — compacting with none would reclaim nothing and could loop.
+pub fn should_compact(context: &ContextModel, setup: &CompactionSetup) -> bool {
+    setup.enabled
+        && context
+            .fullness()
+            .is_some_and(|fullness| fullness >= setup.policy.trigger_fullness())
+        && context.has_ephemeral()
+}
+
+/// One file carried across a compaction boundary by name: the path the model asked for, the body gg
+/// re-read for it, and any pictures that read produced.
+///
+/// It is what makes the two [`compact`](COMPACT_TOOL)-tool strategies different in kind from the
+/// summarizing ones: the restarted context is not only *what the model said about* the work, it is
+/// the material the model chose to have in hand while continuing it.
+#[derive(Debug, Clone, Default)]
+pub struct RestoredFile {
+    /// The workspace-relative path, which also tags the restored
+    /// [file view](GgContextSource::FileView) so agent-managed context can evict it by name.
+    pub path: String,
+    /// The rendered read — the same body a `read_file` would have returned, or the error explaining
+    /// why the re-read failed (a path the model named but gg could not read is reported to it
+    /// rather than silently dropped).
+    pub body: String,
+    /// The pictures the re-read produced, when the path is a reference image.
+    pub images: Vec<ImageContent>,
+}
+
+/// Rewrite the window at a compaction boundary and produce the
+/// [`Compaction`](GgTelemetryKind::Compaction) telemetry for it — the **one** place every strategy
+/// converges, so the seven differ only in how `request` was obtained.
+///
+/// The pinned prefix is kept verbatim ([`ContextModel::clear_ephemeral`]); then the `files` the
+/// model asked to keep are re-seeded as ordinary (ephemeral, re-readable, evictable) file views;
+/// then the summary is appended last, so the last thing the model reads is the recap that tells it
+/// where to continue.
+///
+/// `fallback` marks a summary that is gg's fixed note rather than a real recap, so a study reads a
+/// failed condensation as a failure rather than as a terse strategy.
+pub fn apply_compaction(
     context: &mut ContextModel,
-    client: &dyn ModelClient,
     setup: &CompactionSetup,
     retained: RetainedCounts,
-) -> Option<GgTelemetryKind> {
-    if !setup.enabled {
-        return None;
-    }
-    // No window limit means no fullness denominator; without it the trigger cannot be
-    // evaluated, so there is nothing to do (window_limit is normally always resolved).
-    let fullness = context.fullness()?;
-    if fullness < setup.policy.trigger_fullness() {
-        return None;
-    }
-    // Compacting with no ephemeral items would reclaim nothing and could loop; only fire
-    // when there is history to summarize.
-    if !context.has_ephemeral() {
-        return None;
-    }
-
+    request: &CompactionRequest,
+    files: Vec<RestoredFile>,
+    fallback: bool,
+) -> GgTelemetryKind {
     let before_tokens = context.total_tokens();
     let before_by_source = context.usage_by_source();
-    let input = context.summary_source_messages();
-    let summary_text = setup
-        .summarizer
-        .summarize(SummaryRequest {
-            history: &input,
-            client,
-        })
-        .await;
-    // A summary equal to the fixed fallback note means the summarization call failed and
-    // degraded; recorded explicitly so a study reads it as a failure, not a real recap.
-    let summary_fallback = summary_text == FALLBACK_SUMMARY;
 
-    let summary_message = Message::user(format!("{SUMMARY_PREFACE}{summary_text}"));
-    context.compact_history(summary_message);
+    context.clear_ephemeral();
+    for file in files {
+        // Pushed as a `user` message, not a `tool` result: the assistant turn that would have
+        // requested the read was just dropped, and a `tool` message with no `tool_calls` to answer
+        // is rejected outright by an OpenAI-shaped provider. The body and any pictures are
+        // identical; only the envelope differs — the same re-framing `clear_ephemeral` performs on
+        // a pinned `tool` item, and for the same reason.
+        context.push_labeled(
+            GgContextSource::FileView,
+            Retention::Ephemeral,
+            Message::user(file.body).with_images(file.images),
+            Some(file.path),
+        );
+    }
+    context.push(
+        GgContextSource::History,
+        Retention::Ephemeral,
+        Message::user(format!("{SUMMARY_PREFACE}{}", request.summary)),
+    );
 
     let after_tokens = context.total_tokens();
     let after_by_source = context.usage_by_source();
     let summary_tokens = context.tokens_for(GgContextSource::History);
 
-    Some(GgTelemetryKind::Compaction {
-        strategy: setup.strategy.to_string(),
+    GgTelemetryKind::Compaction {
+        strategy: setup.strategy.id().to_string(),
         trigger_fullness: setup.policy.trigger_fullness(),
         before_tokens,
         after_tokens,
@@ -431,9 +1024,70 @@ pub async fn compact_if_needed(
         },
         before_by_source,
         after_by_source,
-        summary: summary_text,
-        summary_fallback,
-    })
+        summary: request.summary.clone(),
+        summary_fallback: fallback,
+    }
+}
+
+/// Condense the thread with an **out-of-band** strategy and return what the rewrite should be built
+/// from: the summary (and, for [handoff compaction](CompactionStrategy::HandoffCompaction), the
+/// files it asked gg to re-read), plus whether the call fell back to gg's fixed note.
+///
+/// The transcript depends on the strategy, and the difference is the point of the handoff ones: the
+/// two same-model strategies read the [ephemeral history plus the build
+/// prompt](ContextModel::summary_source_messages) as a rendered transcript, while a handoff reads
+/// the whole window rebuilt as [labelled user messages](handoff_messages) — no system prompt, no
+/// skills, no memories, and not one `assistant` message it could mistake for its own.
+pub async fn condense_out_of_band(
+    context: &ContextModel,
+    client: &dyn ModelClient,
+    setup: &CompactionSetup,
+) -> (CompactionRequest, bool) {
+    let history = if setup.strategy.is_handoff() {
+        handoff_messages(context)
+    } else {
+        context.summary_source_messages()
+    };
+    let request = setup
+        .summarizer
+        .summarize(SummaryRequest {
+            history: &history,
+            client: setup.client(client),
+        })
+        .await;
+    // A summary equal to the fixed fallback note means the condensation failed and degraded;
+    // recorded explicitly so a study reads it as a failure, not a real recap.
+    let fallback = request.summary == FALLBACK_SUMMARY;
+    (request, fallback)
+}
+
+/// The summary a [memory compaction](CompactionStrategy::Memory) restarts the thread from — a note
+/// pointing at the memories the agent has just written, since that strategy produces no recap of
+/// its own.
+pub fn memory_compaction_request() -> CompactionRequest {
+    CompactionRequest {
+        summary: MEMORY_COMPACTION_SUMMARY.to_string(),
+        files: Vec::new(),
+    }
+}
+
+/// The summary an in-loop strategy falls back to when the agent's own turn produced nothing usable
+/// — an empty reply where the summary should have been.
+///
+/// A compaction that has been triggered has to complete: the window is full, and a run that
+/// declined to compact because the model said nothing would simply overflow on its next turn. So
+/// this is the same fixed note a failed out-of-band call degrades to, and it is reported as a
+/// fallback for the same reason.
+pub fn fallback_request() -> CompactionRequest {
+    CompactionRequest {
+        summary: FALLBACK_SUMMARY.to_string(),
+        files: Vec::new(),
+    }
+}
+
+/// Whether `summary` is gg's [fixed fallback note](FALLBACK_SUMMARY) rather than a real recap.
+pub fn is_fallback(summary: &str) -> bool {
+    summary == FALLBACK_SUMMARY
 }
 
 #[cfg(test)]

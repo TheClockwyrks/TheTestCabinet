@@ -301,21 +301,25 @@ export const FSM_MACHINE_OPTIONS = [
 export const FSM_MACHINE_HINT =
   "None runs no state machine. tdd: write tests → implement → verify. review-gated: develop → review → accept. plan-first: plan pass → implement pass.";
 
-// The compaction summarization strategies gg resolves at run time
-// (`crates/gg/src/compaction.rs`), in editor order. Both are a single model call
-// that differ only in the prompt: the empty value is the default (a focused prose
-// recap), `structured` asks for the same state in fixed sections. An unrecognized
-// name falls back to the default rather than failing to launch, so the field stays
-// a closed picker rather than free text.
+// The compaction strategies gg resolves at run time (`crates/gg/src/compaction.rs`),
+// in editor order — grouped by who condenses the thread: gg out of band on the run's
+// own model (the first two), the working agent itself (the next two and the last),
+// or a separate handoff model. An unrecognized name falls back to the default rather
+// than failing to launch, so the field stays a closed picker rather than free text.
 export const SUMMARIZER_OPTIONS = [
   { value: "", label: "Model summary (default)" },
   { value: "structured", label: "Structured extract" },
+  { value: "self-summarization", label: "Self-summarization" },
+  { value: "self-compaction", label: "Self-compaction" },
+  { value: "handoff-summarization", label: "Handoff summarization" },
+  { value: "handoff-compaction", label: "Handoff compaction" },
+  { value: "memory-compaction", label: "Memory compaction" },
 ] as const;
 
-// What each summarization strategy does — the detail lifted off the picker's option
+// What each compaction strategy does — the detail lifted off the picker's option
 // labels into the field's help tooltip.
 export const SUMMARIZER_HINT =
-  "Model summary asks the model for a focused prose recap of the thread being dropped. Structured extract asks the same call for the state under fixed headings (what it's building, key decisions, files changed, work in progress, next step).";
+  "Model summary and Structured extract condense the thread out of band on the run's own model — prose, or the same state under fixed headings. Self-summarization asks the agent, in its own thread, to write the summary its next context is rebuilt from. Self-compaction gives the agent a `compact` tool it calls with a summary AND the files to re-read, so it chooses what survives. The two Handoff strategies do the same two jobs on a separate model (set below), which reads the thread as labelled messages and never interrupts the agent. Memory compaction requires Memories: the agent writes its working state to memories instead of a summary, and those cross the boundary verbatim.";
 
 export const CAPABILITIES: ReadonlyArray<CapSpec> = [
   // --- Models & tools ---------------------------------------------------------
@@ -460,7 +464,15 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         defaultValue: "0.2",
         hint: "Fraction of the window held back from the agent so the summarization call — which reads the whole thread and writes a summary — fits. This also defines the trigger: a compaction fires once the window is 1 − headroom full (the working window is full and only the headroom remains).",
       },
+      {
+        key: "model",
+        label: "Compaction model",
+        kind: "text",
+        placeholder: "e.g. openai/gpt-4.1-mini",
+        hint: "Only used by the two Handoff strategies: the model that condenses the thread instead of the agent. Leave blank (or name a model that will not resolve) and gg condenses on the agent's own model rather than skipping the compaction.",
+      },
     ],
+    tools: ["compact"],
   },
   {
     id: "agent-managed-context",

@@ -36,3 +36,17 @@ export function archiveThread(keepRecentTurns?: number): ReclaimReport {
 export function searchArchive(query: string): ArchiveSearch {
   return call(() => raw.searchArchive(query));
 }
+
+/**
+ * Compact your context window: gg drops the detailed thread and restarts it from `summary`, plus a
+ * fresh read of each path in `files`. Your skills, memories and task list are kept as they are.
+ * gg asks you to call this when your window is full, and refuses every other call until you do.
+ *
+ * It does NOT stop your program — like `finish`, it registers the request and returns, and gg
+ * performs the rewrite once your program has ended. Everything not in your summary and not in
+ * `files` is gone, so write the summary for your future self and name the files you will actually
+ * need in hand.
+ */
+export function compact(summary: string, files: string[] = []): void {
+  call(() => raw.compact(summary, files));
+}

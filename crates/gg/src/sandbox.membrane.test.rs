@@ -182,6 +182,11 @@ fn crossings() -> Vec<Crossing> {
             expected: || json!({ "query": "the parser" }),
         },
         Crossing {
+            tool: "compact",
+            program: "context.compact(\"scaffolded the page\", [\"src/main.ts\"]);",
+            expected: || json!({ "summary": "scaffolded the page", "files": ["src/main.ts"] }),
+        },
+        Crossing {
             tool: "spawn_subagent",
             program: "agents.spawnSubagent({ agent: \"subagent\", prompt: \"write the lexer\", worktree: true });",
             expected: || {

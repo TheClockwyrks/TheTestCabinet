@@ -700,9 +700,10 @@ impl ContextModel {
 
     /// Drop every [`Ephemeral`](Retention::Ephemeral) item, keeping the pinned prefix verbatim
     /// and re-framing any pinned `tool`-role item to a standalone `user` message — the shared
-    /// **context-reset primitive** behind both [compaction](Self::compact_history) (which then
-    /// appends a summary) and [planning](https://docs.testcabinet.ai/gg/planning/) (which then
-    /// seeds the accepted plan).
+    /// **context-reset primitive** behind both
+    /// [compaction](crate::compaction::apply_compaction) (which then seeds the files the model
+    /// asked to keep and appends the summary) and
+    /// [planning](https://docs.testcabinet.ai/gg/planning/) (which then seeds the accepted plan).
     ///
     /// The pinned prefix (the system prompt, the build prompt, read skills, in-play memories,
     /// the task list, the epic/issue board, and a submitted plan) is retained unchanged and in
@@ -740,20 +741,6 @@ impl ContextModel {
                 item.message = message;
             }
         }
-    }
-
-    /// Replace the ephemeral history with a single `summary` item, keeping every pinned
-    /// item verbatim — the core rewrite of a [compaction](https://docs.testcabinet.ai/gg/compaction/)
-    /// boundary.
-    ///
-    /// Clears the ephemeral history via [`clear_ephemeral`](Self::clear_ephemeral) (which keeps
-    /// the pinned prefix and re-frames any dangling `tool` item) and appends a single
-    /// [`History`](GgContextSource::History)-sourced, [`Ephemeral`](Retention::Ephemeral) summary
-    /// item — ephemeral so a later compaction folds it into the next summary rather than letting
-    /// summaries pile up.
-    pub fn compact_history(&mut self, summary: Message) {
-        self.clear_ephemeral();
-        self.push(GgContextSource::History, Retention::Ephemeral, summary);
     }
 
     // -----------------------------------------------------------------------

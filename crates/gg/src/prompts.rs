@@ -319,6 +319,40 @@ pub struct SystemContext {
     /// Always present: every run has a completion rule the model must be told, in either execution
     /// mode.
     pub completion: CompletionView,
+    /// What happens when this agent's context window fills, or `None` when
+    /// [compaction](crate::compaction) is off — in which case the window simply runs out and there
+    /// is nothing to describe.
+    pub compaction: Option<CompactionView>,
+}
+
+/// What a run's [compaction](crate::compaction) asks of the model, as the system prompt describes
+/// it.
+///
+/// The out-of-band strategies still render a section, short as it is: an agent whose thread silently
+/// collapses into a summary between two of its turns, with no warning that this can happen, reads
+/// the result as having lost its mind. Knowing the window has a backstop is also what makes an
+/// agent willing to keep working near a full window instead of rushing to a conclusion.
+///
+/// The three flags are mutually exclusive — a run has one strategy — and are booleans rather than a
+/// strategy name because the templates render in strict mode with no comparison helper: a name would
+/// have to be re-derived in Handlebars, which is where a prompt and the loop it describes drift.
+#[derive(Debug, Default, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompactionView {
+    /// The window-fullness percentage at which a compaction fires, so the model can pace itself.
+    pub trigger_percent: u64,
+    /// [Self-summarization](crate::compaction::CompactionStrategy::SelfSummarization): gg will ask
+    /// for a summary, and the model's plain-text reply to that one turn is what its next context is
+    /// rebuilt from.
+    pub writes_summary: bool,
+    /// [Self-compaction](crate::compaction::CompactionStrategy::SelfCompaction): the model compacts
+    /// itself with the `compact` tool, choosing both the summary and the files to keep.
+    pub calls_compact: bool,
+    /// [Memory compaction](crate::compaction::CompactionStrategy::Memory): the model records its
+    /// working state as memories, which are what cross the boundary.
+    pub writes_memories: bool,
+    /// The name of the compact tool/function, so the prompt names it from one source.
+    pub compact_name: String,
 }
 
 /// How a run reaches completion, as the system prompt describes it: the signal the model uses to

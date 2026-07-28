@@ -20,7 +20,8 @@ use super::test_cabinet::gg::types::ToolError;
 use super::{MembraneState, ToolApi};
 use crate::model::Role;
 use crate::tools::{
-    ARCHIVE_THREAD_TOOL, EVICT_FILE_VIEW_TOOL, ReclaimData, SEARCH_ARCHIVE_TOOL, ToolData,
+    ARCHIVE_THREAD_TOOL, COMPACT_TOOL, EVICT_FILE_VIEW_TOOL, ReclaimData, SEARCH_ARCHIVE_TOOL,
+    ToolData,
 };
 
 impl<A: ToolApi> ContextHost for MembraneState<A> {
@@ -37,6 +38,18 @@ impl<A: ToolApi> ContextHost for MembraneState<A> {
             api.archive_thread(keep_recent_turns)
         })?;
         reclaim(self, ARCHIVE_THREAD_TOOL, outcome.data)
+    }
+
+    /// Register a compaction and return.
+    ///
+    /// Nothing is rewritten here: like `wait_for_issue`, the call validates its arguments and
+    /// records the request, and the loop performs the rewrite once the program has ended. A context
+    /// reset performed *during* the program would pull the window out from under the turn that is
+    /// still running in it. Success carries no payload — what the compaction reclaimed is reported
+    /// to the model on its next turn, in the window it wakes up in.
+    fn compact(&mut self, summary: String, files: Vec<String>) -> Result<(), ToolError> {
+        self.call(COMPACT_TOOL, |api| api.compact(summary, files))?;
+        Ok(())
     }
 
     fn search_archive(&mut self, query: String) -> Result<ArchiveSearch, ToolError> {

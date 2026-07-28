@@ -105,7 +105,10 @@ use tokio::task::JoinHandle;
 use crate::archive::ArchiveStore;
 use crate::board::{BoardCaps, BoardRuntime, IssueStatus};
 use crate::client::{ClientFactory, DefaultClientFactory, provider_for};
-use crate::compaction::{self, CompactionSetup, RetainedCounts, compact_if_needed};
+use crate::compaction::{
+    self, CompactionRequest, CompactionSetup, CompactionStrategy, PendingCompaction, RestoredFile,
+    RetainedCounts,
+};
 use crate::completion::{self, CompletionSetup, FINISH_TOOL};
 use crate::config::GgInvocation;
 use crate::context::{
@@ -132,7 +135,7 @@ use crate::planning::PlanningRuntime;
 use crate::prompts::{
     self, ApiView, AutoloadView, BoardView, CodeCallView, CodeErrorView, CodeHeadingView,
     CodeNotAProgramContext, CodeResultContext, CodeSandboxErrorContext, CodeTimeoutContext,
-    CodeTranspileErrorContext, CompletionView, FsmView, MemoriesView, ReadFileView,
+    CodeTranspileErrorContext, CompactionView, CompletionView, FsmView, MemoriesView, ReadFileView,
     SpawnableAgentView, SystemContext, TasksView,
 };
 use crate::replay::{GgRecorder, RecordingClient};
@@ -148,15 +151,16 @@ use crate::tasks::{TasksRuntime, resolve_max_tasks, resolve_task_mode};
 use crate::telemetry::Emitter;
 use crate::tools::VisionContext;
 use crate::tools::{
-    ARCHIVE_THREAD_TOOL, AgentStatusData, COMPLETE_ISSUE_TOOL, CompletionData,
+    ARCHIVE_THREAD_TOOL, AgentStatusData, COMPACT_TOOL, COMPLETE_ISSUE_TOOL, CompletionData,
     DEFAULT_ARCHIVE_KEEP_RECENT, ENTER_PLAN_MODE_TOOL, EVICT_FILE_VIEW_TOOL, READ_FILE_TOOL,
     READ_SKILL_TOOL, RUN_WORKFLOW_TOOL, ReadFileTool, ReadPolicy, ReclaimData, RuntimeSet,
     SEND_MESSAGE_TOOL, SPAWN_SUBAGENT_TOOL, SPECULATE_TOOL, SUBMIT_PLAN_TOOL, SpeculationData,
     SubagentHandleData, SubagentResultData, Tool, ToolContext, ToolData, ToolFailure, ToolOutcome,
     ToolRegistry, WAIT_FOR_ISSUE_TOOL, WAIT_FOR_SUBAGENTS_TOOL, WorkflowData, handled_by_loop,
     is_board_tool, is_context_reclaim_tool, is_fsm_tool, is_memory_tool, is_planning_tool,
-    is_subagent_tool, is_task_tool, parse_archive_keep_recent, parse_evict_path, plan_mode_offers,
-    read_policy, saturating_u32, saturating_u64, unknown_disabled_tools,
+    is_subagent_tool, is_task_tool, parse_archive_keep_recent, parse_compact_request,
+    parse_evict_path, plan_mode_offers, read_policy, saturating_u32, saturating_u64,
+    unknown_disabled_tools,
 };
 use crate::vision::VisionSupport;
 
@@ -172,6 +176,11 @@ const PARAM_WINDOW_LIMIT: &str = "windowLimit";
 /// relative value is resolved against the run workspace; an absolute one is used as
 /// given. When absent, [`DEFAULT_SKILLS_DIR`] under the workspace is used.
 const PARAM_SKILLS_DIR: &str = "dir";
+
+/// The [slot](GgSlotBinding) name a [handoff compaction](CompactionStrategy::is_handoff)'s second
+/// client is bound under, so the tokens it spends are attributed to the compaction model rather
+/// than to the agent profile whose thread it condensed.
+const COMPACTION_SLOT: &str = "compaction";
 
 /// The [`SessionEnded`](GgTelemetryKind::SessionEnded) status for a session that ended because the
 /// **model** said it was done — a tool-calling turn that requested no tools, or, under
@@ -1862,7 +1871,35 @@ async fn run_agent(
     }
 
     let context_setup = orch.context_setup(&model_id);
-    let compaction = CompactionSetup::resolve(&profile);
+    let mut compaction = CompactionSetup::resolve(&profile);
+    // A handoff strategy condenses on a **second** model, resolved through the same factory every
+    // agent's own model is. A named model that will not resolve is a misconfiguration, not a reason
+    // to stop compacting — a run that stopped compacting would overflow its window a few turns
+    // later — so it is reported loudly and the agent's own client stands in.
+    if let Some(model) = compaction::handoff_model_id(&profile) {
+        let binding = GgSlotBinding::new(COMPACTION_SLOT, &model);
+        match orch.factory.client_for(&binding) {
+            Ok(client) => {
+                compaction.handoff_client = Some(client);
+                if is_root {
+                    emitter.emit(log(
+                        "info",
+                        format!(
+                            "compaction hands off to `{model}`; the working model's thread is \
+                             condensed by it, not by the agent."
+                        ),
+                    ));
+                }
+            }
+            Err(err) => emitter.emit(log(
+                "warn",
+                format!(
+                    "compaction names the handoff model `{model}`, which could not be resolved \
+                     ({err}); compacting on this agent's own model instead."
+                ),
+            )),
+        }
+    }
     let amc = AmcSetup {
         enabled: profile.is_enabled(CAPABILITY_AGENT_MANAGED_CONTEXT),
         archive: Arc::clone(&archive_store),
@@ -1887,7 +1924,9 @@ async fn run_agent(
         emitter.emit(log(
             "info",
             format!(
-                "compaction enabled; the thread compacts once the window reaches {:.0}% full.",
+                "compaction enabled; the thread compacts with the `{}` strategy once the window \
+                 reaches {:.0}% full.",
+                compaction.strategy.id(),
                 compaction.policy.trigger_fullness() * 100.0
             ),
         ));
@@ -4890,6 +4929,7 @@ impl Agent {
                     .is_some_and(|project| project.assigned_issue.is_some()),
             fences_are_stripped: code.healing.enabled(HealingStrategy::StripFences),
             completion: &completion,
+            compaction: &compaction,
         }));
         context.push_user_prompt(prompt);
 
@@ -4935,6 +4975,14 @@ impl Agent {
         // submitted plan has seeded the fresh implementation context. Only meaningful when planning
         // is enabled.
         let mut in_plan_mode = false;
+        // Compaction that is **in flight**: an [in-loop strategy](PendingCompaction) has asked the
+        // agent to condense its own window, and the loop is waiting for the turn that does it.
+        //
+        // It is loop state rather than a local because a compaction of this shape spans a turn
+        // boundary — gg asks on one turn and the model answers on the next — and while it is set
+        // the loop is narrowed: the agent may do the one thing compaction asked for and nothing
+        // else, since everything else adds to a window that is already full.
+        let mut pending_compaction: Option<PendingCompaction> = None;
         // This agent's error accounting against the run's ceilings. One per agent, owned outright,
         // because "consecutive" and "the last N turns" are only definable within one agent's turn
         // sequence — see [`crate::limits`].
@@ -5034,20 +5082,55 @@ impl Agent {
             // assistant tool-call message and its results. Compaction summarizes the ephemeral
             // history and keeps the pinned prefix verbatim, so the breakdown emitted just below
             // reflects the reclaimed window.
-            if let Some(event) = compact_if_needed(
-                &mut context,
-                client,
-                &compaction,
-                RetainedCounts {
+            //
+            // Which of the two shapes runs depends on the strategy. An **out-of-band** one is
+            // performed here and now, invisibly to the agent, and this turn simply proceeds against
+            // a smaller window. An **in-loop** one cannot be: the agent itself writes the summary,
+            // so gg appends the instruction, records what it is waiting for, and the turn that
+            // follows is the compaction. The `pending_compaction.is_none()` guard is what stops a
+            // still-full window from opening a second compaction on top of the one in flight.
+            if pending_compaction.is_none() && compaction::should_compact(&context, &compaction) {
+                let retained = RetainedCounts {
                     skills: skills.read_count() as u64,
                     tasks: tasks.count() as u64,
                     memories: memories.count() as u64,
                     issues: board.issue_count() as u64,
-                },
-            )
-            .await
-            {
-                emitter.emit(event);
+                };
+                match compaction.strategy.pending() {
+                    None => {
+                        let (request, fallback) =
+                            compaction::condense_out_of_band(&context, client, &compaction).await;
+                        let files = restore_compact_files(&request.files, tool_ctx, emitter).await;
+                        emitter.emit(compaction::apply_compaction(
+                            &mut context,
+                            &compaction,
+                            retained,
+                            &request,
+                            files,
+                            fallback,
+                        ));
+                    }
+                    Some(pending) => {
+                        emitter.emit(log(
+                            "info",
+                            format!(
+                                "the window reached the compaction threshold; asking the model to \
+                                 compact it with the `{}` strategy.",
+                                compaction.strategy.id()
+                            ),
+                        ));
+                        // Pushed as process-level guidance, exactly as the FSM's state guidance and
+                        // the plan-mode notice are: it is gg speaking about the run rather than
+                        // material the agent produced, and it is ephemeral, so the compaction it
+                        // opens is also what clears it.
+                        context.push(
+                            GgContextSource::System,
+                            Retention::Ephemeral,
+                            Message::user(pending.instruction(code.enabled)),
+                        );
+                        pending_compaction = Some(pending);
+                    }
+                }
             }
 
             // Agent-managed context: rebuild the pinned, system-adjacent fullness signal from the
@@ -5075,6 +5158,16 @@ impl Agent {
                 let mut tools: Vec<ToolDefinition> = all_tools
                     .iter()
                     .filter(|tool| {
+                        // `compact` is exempt from every turn-level filter, so the offered set is
+                        // byte-identical on every turn of a self-compaction run. That is the point:
+                        // the tool list is part of the prompt a provider caches, and a tool that
+                        // came and went with plan mode or an FSM state would rewrite the cached
+                        // prefix — and the turn it would appear on is the one where the window, and
+                        // so the cost of a cache miss, is at its largest. The loop intercepts the
+                        // call ahead of those same gates, so what is offered and what may run agree.
+                        if tool.name == COMPACT_TOOL {
+                            return true;
+                        }
                         let planning_ok = !planning.offers_planning()
                             || plan_mode_offers(&tool.name, in_plan_mode);
                         planning_ok && fsm.offers(&tool.name)
@@ -5267,6 +5360,64 @@ impl Agent {
                 },
             );
 
+            // A pending **self-summarization** takes this turn whole, in either execution mode: the
+            // reply *is* the summary, so no tool call is dispatched and no program is run. That is
+            // the strategy's contract rather than a shortcut — the instruction told the model this
+            // one turn is not a working turn, and dispatching whatever it sent anyway would make
+            // gg's own instruction a lie.
+            //
+            // The compaction happens even when the reply is unusable. A triggered compaction has to
+            // complete: the window is already full, so a run that declined to compact because the
+            // model said nothing would simply overflow on its next turn. An empty reply therefore
+            // degrades to gg's fixed note, recorded as a fallback so a study reads it as the
+            // failure it is.
+            if pending_compaction == Some(PendingCompaction::Summary) {
+                pending_compaction = None;
+                let request = match response.text.as_deref().map(str::trim) {
+                    Some(summary) if !summary.is_empty() => CompactionRequest {
+                        summary: summary.to_string(),
+                        files: Vec::new(),
+                    },
+                    _ => {
+                        emitter.emit(log(
+                            "warn",
+                            "the model answered the compaction request with nothing usable; the \
+                             thread is compacted from gg's fixed note instead.",
+                        ));
+                        compaction::fallback_request()
+                    }
+                };
+                apply_pending_compaction(
+                    &mut context,
+                    &compaction,
+                    RetainedCounts {
+                        skills: skills.read_count() as u64,
+                        tasks: tasks.count() as u64,
+                        memories: memories.count() as u64,
+                        issues: board.issue_count() as u64,
+                    },
+                    &request,
+                    tool_ctx,
+                    emitter,
+                )
+                .await;
+                // The turn did exactly the work it was asked for, so it counts as progress — not as
+                // an error, and not as the completion a tool-less reply would otherwise be.
+                if let Some(breach) = agent_limits.record(TurnOutcome::Progressed, &self.id) {
+                    return self.stop_on_limit(
+                        emitter,
+                        breach,
+                        turn + 1,
+                        total_tokens,
+                        total_cost,
+                        code.enabled,
+                        last_report.as_deref(),
+                        last_text,
+                    );
+                }
+                continue;
+            }
+
             // Responses-as-code turn: the model was offered no native tools, so its **whole reply**
             // is a TypeScript program. Run the healed program in the wasmtime sandbox — bridging every
             // typed call to the real toolset (and, for a delegation tool, the scheduler) — and act
@@ -5291,6 +5442,7 @@ impl Agent {
                     in_plan_mode,
                     code_reviews_active,
                     speculative_active,
+                    pending_compaction,
                 };
                 // The per-turn state (`context`/`skills`/`docs`/`subagents`) is handed to the code
                 // turn **by value** — it is moved into the program's `LoopToolApi` so the program's
@@ -5381,6 +5533,8 @@ impl Agent {
                             docs: turn_docs,
                             subagents: turn_subagents,
                             issue_waits: turn_issue_waits,
+                            compact_requested: turn_compaction,
+                            compaction_calls: (turn_compaction_calls, turn_compaction_failures),
                         } = state.expect("a non-fatal code turn hands back its per-turn state");
                         context = turn_context;
                         skills = turn_skills;
@@ -5434,9 +5588,98 @@ impl Agent {
                                 Message::user(resolved.join("\n\n")),
                             );
                         }
+                        // The deferred half of an in-loop compaction, the code-mode counterpart of
+                        // the tool-calling path's post-dispatch rewrite below. It runs **last** in
+                        // the turn, after the feedback and any issue waits are recorded, because
+                        // the rewrite drops exactly that material — the summary the model just
+                        // wrote is what supersedes it, and dropping it any earlier would mean
+                        // compacting a window that was not yet the one the turn produced.
+                        //
+                        // A `compact` the program declared is honoured whether or not gg asked for
+                        // one: under self-compaction the call is bound into every program's scope,
+                        // so a model may compact itself the moment it has finished something it can
+                        // summarize cleanly — the same freedom the tool-calling path gives it. It is
+                        // honoured even if the program then threw: unlike `finish`, whose revocation
+                        // exists because a failed program did not run the checks its summary
+                        // claimed, a summary of work already done stays true.
+                        let request = turn_compaction.or_else(|| {
+                            // A memory compaction is satisfied by one program whose calls all
+                            // succeeded; the thread then restarts from a note pointing at the
+                            // memories the model has just written, which cross the boundary
+                            // verbatim.
+                            pending_compaction.filter(|pending| {
+                                pending.satisfied_by_calls(
+                                    turn_compaction_calls,
+                                    turn_compaction_failures,
+                                )
+                            })?;
+                            Some(compaction::memory_compaction_request())
+                        });
+                        match (request, pending_compaction) {
+                            (Some(request), _) => {
+                                pending_compaction = None;
+                                apply_pending_compaction(
+                                    &mut context,
+                                    &compaction,
+                                    RetainedCounts {
+                                        skills: skills.read_count() as u64,
+                                        tasks: tasks.count() as u64,
+                                        memories: memories.count() as u64,
+                                        issues: board.issue_count() as u64,
+                                    },
+                                    &request,
+                                    tool_ctx,
+                                    emitter,
+                                )
+                                .await;
+                            }
+                            // Not satisfied: the compaction stays pending and the next program is
+                            // asked again. The instruction is re-stated rather than left to the one
+                            // the model has already ignored once, and the run's error ceilings are
+                            // what stop an agent that never complies.
+                            (None, Some(pending)) => context.push(
+                                GgContextSource::System,
+                                Retention::Ephemeral,
+                                Message::user(pending.unsatisfied(true)),
+                            ),
+                            (None, None) => {}
+                        }
                         continue;
                     }
                 }
+            }
+
+            // A reply that made no tool call while a compaction is pending is **not** a completion,
+            // whatever this run's completion signal is. It is a model that was told to compact its
+            // window and answered with prose, and a run that read that as "the work is done" would
+            // end mid-task at exactly the point where the model had lost the thread of it. Counted
+            // as an error so an agent that never complies stops on the run's error ceilings rather
+            // than looping, and answered by restating what compaction is waiting for.
+            if response.tool_calls.is_empty()
+                && let Some(pending) = pending_compaction
+            {
+                let breach = agent_limits.record(
+                    TurnOutcome::Error(TurnErrorKind::MissingCompletion),
+                    &self.id,
+                );
+                context.push(
+                    GgContextSource::System,
+                    Retention::Ephemeral,
+                    Message::user(pending.unsatisfied(false)),
+                );
+                if let Some(breach) = breach {
+                    return self.stop_on_limit(
+                        emitter,
+                        breach,
+                        turn + 1,
+                        total_tokens,
+                        total_cost,
+                        code.enabled,
+                        last_report.as_deref(),
+                        last_text,
+                    );
+                }
+                continue;
             }
 
             // The **tool-calling** mode's termination rule. It is reached only when the code branch
@@ -5526,6 +5769,16 @@ impl Agent {
             // valid, exactly as a submitted plan defers its context reset.
             let mut finish_summary: Option<String> = None;
 
+            // The compaction this turn declared with a `compact` call, deferred to after the
+            // dispatch loop for exactly the reason a submitted plan's context reset is: the turn's
+            // tool results must all be recorded first, or the rewrite would drop an assistant
+            // `tool_calls` message whose `tool` answers had not been written yet. How this turn's
+            // calls fared against a pending compaction is tallied alongside, for the memory
+            // strategy's "one reply whose calls all succeeded" gate.
+            let mut compact_request: Option<CompactionRequest> = None;
+            let mut compaction_calls = 0u32;
+            let mut compaction_failures = 0u32;
+
             // Dispatch each requested tool call against the workspace and feed the result
             // back so the model can proceed on its next turn.
             for call in &response.tool_calls {
@@ -5540,9 +5793,32 @@ impl Agent {
                 // tools are intercepted here (never routed through `registry.dispatch`, whose
                 // registered validators are defensive placeholders): the loop drives the state machine
                 // / the scheduler / the agent tree, which the tools cannot reach.
-                let mut outcome = if completion.explicit_finish(code.enabled)
-                    && call.name == FINISH_TOOL
+                let mut outcome = if let Some(pending) =
+                    pending_compaction.filter(|pending| !pending.admits(&call.name))
                 {
+                    // A compaction is in flight and this is not the call it asked for. Refused
+                    // ahead of every other gate — including `finish` — because the window is
+                    // already full: any call that ran would make the problem worse, and a run that
+                    // ended here would end from a context the model has just been told is about to
+                    // be dropped.
+                    ToolOutcome::failed(ToolFailure::Refused, pending.refusal(&call.name, false))
+                } else if call.name == COMPACT_TOOL && compaction.strategy.offers_compact_tool() {
+                    // Self-compaction: the model compacts its own window. Intercepted here — ahead
+                    // of the plan-mode and FSM gates, exactly as `finish` is — because the loop owns
+                    // the context model the tool cannot hold, and because a machine that meant to
+                    // hold the agent in a state cannot hold it in a full window. The rewrite itself
+                    // is deferred until this turn's results are all recorded.
+                    match parse_compact_request(&call.arguments) {
+                        Ok(request) => {
+                            compact_request = Some(request);
+                            ToolOutcome::ok(
+                                "Your context will be compacted once this turn's tool results are                                  recorded; your next turn opens on the summarized window.",
+                                "compact accepted",
+                            )
+                        }
+                        Err(message) => ToolOutcome::failed(ToolFailure::InvalidArgument, message),
+                    }
+                } else if completion.explicit_finish(code.enabled) && call.name == FINISH_TOOL {
                     // Explicit completion: the model called `finish`. Intercepted here (like the
                     // delegation tools) and *before* the plan-mode/FSM gates, so — like the
                     // code-mode `finish` — it can end the run from a state those machines meant to
@@ -5686,6 +5962,17 @@ impl Agent {
                     project.orch.pump_and_wake(emitter);
                 }
 
+                // Every call made while a compaction is in flight is counted, and every one that
+                // did not succeed — a refusal included, since a refusal is a call that did not run —
+                // is counted as a failure. A memory compaction is satisfied by one reply whose calls
+                // all succeeded, which is exactly the question these two answer.
+                if pending_compaction.is_some() {
+                    compaction_calls += 1;
+                    if !outcome.ok {
+                        compaction_failures += 1;
+                    }
+                }
+
                 // Planning transitions: like the agent-managed-context reclaim, the tool only
                 // validated the call — the loop owns plan mode and the context window, so it applies
                 // the effect here (after recording the tool result keeps the conversation valid).
@@ -5781,6 +6068,48 @@ impl Agent {
                     final_text: (!summary.is_empty()).then_some(summary).or(last_text),
                     limit: None,
                 };
+            }
+
+            // The deferred half of a compaction the model performed itself: every tool result —
+            // including the `compact` call's — is now recorded, so the conversation is valid and the
+            // window may be rewritten. Two things can land here: a `compact` call (whether gg asked
+            // for one or the model reached for the tool unprompted, which self-compaction allows at
+            // any time), and a memory compaction satisfied by a reply whose calls all succeeded.
+            //
+            // A pending compaction that neither satisfied stays pending, with its instruction
+            // restated so the next turn is asked in gg's words rather than left to re-read the one
+            // it has already ignored. The run's error ceilings are what stop an agent that never
+            // complies — the refusals it collects on the way are counted as the errors they are.
+            let compaction_request = compact_request.or_else(|| {
+                pending_compaction.filter(|pending| {
+                    pending.satisfied_by_calls(compaction_calls, compaction_failures)
+                })?;
+                Some(compaction::memory_compaction_request())
+            });
+            match (compaction_request, pending_compaction) {
+                (Some(request), _) => {
+                    pending_compaction = None;
+                    apply_pending_compaction(
+                        &mut context,
+                        &compaction,
+                        RetainedCounts {
+                            skills: skills.read_count() as u64,
+                            tasks: tasks.count() as u64,
+                            memories: memories.count() as u64,
+                            issues: board.issue_count() as u64,
+                        },
+                        &request,
+                        tool_ctx,
+                        emitter,
+                    )
+                    .await;
+                }
+                (None, Some(pending)) => context.push(
+                    GgContextSource::System,
+                    Retention::Ephemeral,
+                    Message::user(pending.unsatisfied(false)),
+                ),
+                (None, None) => {}
             }
 
             // The tool-calling turn is done: every requested call was dispatched and answered, and
@@ -6580,6 +6909,10 @@ struct PromptInputs<'a> {
     /// prompt states the no-code-fence rule — as a repair gg will make and disclose, or as a syntax
     /// error the model will be handed.
     fences_are_stripped: bool,
+    /// This agent's [compaction](CompactionSetup) setup, so the prompt can say what happens when the
+    /// window fills — and, under a strategy that asks the agent to compact itself, what it will be
+    /// asked to do. A disabled capability renders no section.
+    compaction: &'a CompactionSetup,
 }
 
 /// The system prompt for a run: the [system template](crate::prompts::render_system) for the run's
@@ -6735,6 +7068,7 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
         delegated,
         fences_are_stripped,
         completion,
+        compaction,
     } = inputs;
 
     // The agents this one may spawn, each with its caller-scoped description — enumerated in the
@@ -6850,6 +7184,17 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
                     .map(|command| command.display())
                     .collect(),
             },
+            // What happens when the window fills. Described even for the out-of-band strategies,
+            // which say nothing about the model's own turns: an agent whose thread silently
+            // collapses into a summary between two of its turns, never told that can happen, reads
+            // the result as having lost its mind.
+            compaction: compaction.enabled.then(|| CompactionView {
+                trigger_percent: (compaction.policy.trigger_fullness() * 100.0).round() as u64,
+                writes_summary: compaction.strategy == CompactionStrategy::SelfSummarization,
+                calls_compact: compaction.strategy.offers_compact_tool(),
+                writes_memories: compaction.strategy == CompactionStrategy::Memory,
+                compact_name: COMPACT_TOOL.to_string(),
+            }),
         },
         // A profile may override the whole prompt template; `None` uses the built-in one.
         profile.system_prompt_template.as_deref(),
@@ -6945,6 +7290,88 @@ async fn autoload_specifications(
             retention,
         );
     }
+}
+
+/// Re-read the workspace paths a [`compact`](COMPACT_TOOL) call named, so they can be seeded back
+/// into the restarted context as fresh [file views](RestoredFile).
+///
+/// The reads happen **before** the rewrite, not after, so a path gg cannot read is reported in the
+/// restored context rather than silently missing from it: a model that asked for a file and simply
+/// does not find it in its new window has no way to tell "gg dropped it" from "I misremembered the
+/// path", and will spend turns looking for a file that does not exist. So a failed read is carried
+/// across as the error itself, under the path the model named.
+///
+/// Files are read **whole** — an unlimited [`ReadPolicy`], independent of the run's own `read_file`
+/// line cap — for the same reason [`autoload_specifications`] does: the model asked for the file's
+/// contents to continue from, not for a capped first window of it. Pictures ride along, so a
+/// reference mockup carried across a boundary stays a picture.
+async fn restore_compact_files(
+    paths: &[String],
+    tool_ctx: &ToolContext,
+    emitter: &Emitter,
+) -> Vec<RestoredFile> {
+    if paths.is_empty() {
+        return Vec::new();
+    }
+    let reader = ReadFileTool::new(ReadPolicy::Unlimited);
+    let mut restored = Vec::with_capacity(paths.len());
+    for path in paths {
+        let outcome = reader.invoke(json!({ "path": path }), tool_ctx).await;
+        if !outcome.ok {
+            emitter.emit(log(
+                "warn",
+                format!(
+                    "compaction could not re-read `{path}`, which the model asked to keep: {}",
+                    outcome.output
+                ),
+            ));
+        }
+        restored.push(RestoredFile {
+            path: path.clone(),
+            body: outcome.output,
+            images: outcome.images,
+        });
+    }
+    restored
+}
+
+/// Perform a compaction the agent's own turn has just supplied the material for — the shared tail
+/// of all three [in-loop](PendingCompaction) strategies, in both execution modes.
+///
+/// It re-reads whatever files the request named, rewrites the window, emits the boundary's
+/// telemetry, and says on the operator's stream what was reclaimed. Every caller has already
+/// decided *that* a compaction happens; this is the one place it does.
+async fn apply_pending_compaction(
+    context: &mut ContextModel,
+    setup: &CompactionSetup,
+    retained: RetainedCounts,
+    request: &CompactionRequest,
+    tool_ctx: &ToolContext,
+    emitter: &Emitter,
+) {
+    let files = restore_compact_files(&request.files, tool_ctx, emitter).await;
+    let restored = files.len();
+    let event = compaction::apply_compaction(
+        context,
+        setup,
+        retained,
+        request,
+        files,
+        compaction::is_fallback(&request.summary),
+    );
+    emitter.emit(event);
+    emitter.emit(log(
+        "info",
+        format!(
+            "compacted the context window with the `{}` strategy; the thread restarts from the \
+             summary{}.",
+            setup.strategy.id(),
+            match restored {
+                0 => String::new(),
+                n => format!(" and {}", plural(n, "re-read file")),
+            }
+        ),
+    ));
 }
 
 /// Record one tool call's outcome into the context, giving the memory-curation tools and

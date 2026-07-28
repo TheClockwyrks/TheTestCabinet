@@ -301,6 +301,9 @@ impl ToolApi for FakeToolApi {
     fn search_archive(&mut self, query: String) -> ToolOutcome {
         self.call("search_archive", json!({ "query": query }))
     }
+    fn compact(&mut self, summary: String, files: Vec<String>) -> ToolOutcome {
+        self.call("compact", json!({ "summary": summary, "files": files }))
+    }
     fn spawn_subagent(
         &mut self,
         agent: String,
@@ -451,6 +454,9 @@ pub(crate) fn canned_outcome(name: &str, args: &Value) -> ToolOutcome {
                 paths: vec!["src/a.ts".to_string()],
                 detail: "dropped 2 items".to_string(),
             })),
+        // A compaction is registered, not performed: the loop rewrites the window once the program
+        // has ended, so there is nothing for a successful call to report back.
+        "compact" => ToolOutcome::ok("compacting the context window", "compact context"),
         "search_archive" => ToolOutcome::ok("1 hit", "searched").with_data(
             ToolData::ArchiveSearch(ArchiveSearchData {
                 archive_empty: false,

@@ -272,6 +272,40 @@ impl ModelClient for OpenRouterClient {
         tools: &[ToolDefinition],
     ) -> Result<ModelResponse, ModelError> {
         let body = build_request_body(&self.model_id, messages, tools, self.cache_key.as_deref());
+        self.send(body, messages).await
+    }
+
+    /// Offer `tool` and pin `tool_choice` to it, so the reply is the call rather than the model's
+    /// judgement about whether to make one — the wire form of the default's intent, which cannot
+    /// express the requirement.
+    async fn complete_requiring(
+        &self,
+        messages: &[Message],
+        tool: &ToolDefinition,
+    ) -> Result<ModelResponse, ModelError> {
+        let body = build_required_tool_request_body(
+            &self.model_id,
+            messages,
+            tool,
+            self.cache_key.as_deref(),
+        );
+        self.send(body, messages).await
+    }
+
+    fn model_id(&self) -> &str {
+        &self.model_id
+    }
+}
+
+impl OpenRouterClient {
+    /// POST one already-built request body, with this client's retry/backoff policy and its
+    /// classification of what came back — the shared transport behind both
+    /// [`complete`](ModelClient::complete) and
+    /// [`complete_requiring`](ModelClient::complete_requiring), which differ only in the body they
+    /// build. `messages` is passed for the one thing the transport reads off it: whether the
+    /// request carried pictures, which decides whether a fatal refusal is the recoverable
+    /// [vision](ModelError::VisionUnsupported) one.
+    async fn send(&self, body: Value, messages: &[Message]) -> Result<ModelResponse, ModelError> {
         let url = self.endpoint();
         let mut last_err = String::new();
         // Whether this request carries a picture at all. A provider's "no image route"
@@ -339,10 +373,6 @@ impl ModelClient for OpenRouterClient {
             attempts: self.retry.max_attempts,
             last: last_err,
         })
-    }
-
-    fn model_id(&self) -> &str {
-        &self.model_id
     }
 }
 
@@ -445,6 +475,26 @@ pub fn build_request_body(
         body["tool_choice"] = json!("auto");
     }
 
+    body
+}
+
+/// Build the request body for a turn that **must** be answered with a call to `tool`: the one tool
+/// offered, and `tool_choice` naming it rather than `"auto"`.
+///
+/// Its one caller is [handoff compaction](crate::compaction::HandoffCompactor), which has a single
+/// shot at a structured answer and no next turn in which to ask again. Pure, like
+/// [`build_request_body`], so the wire shape is unit tested without network.
+pub fn build_required_tool_request_body(
+    model_id: &str,
+    messages: &[Message],
+    tool: &ToolDefinition,
+    cache_key: Option<&str>,
+) -> Value {
+    let mut body = build_request_body(model_id, messages, std::slice::from_ref(tool), cache_key);
+    body["tool_choice"] = json!({
+        "type": "function",
+        "function": { "name": tool.name },
+    });
     body
 }
 
@@ -1944,6 +1994,24 @@ impl ModelClient for MockClient {
             });
         }
 
+        // The one compaction request whose answer is a **tool call** rather than prose (a
+        // [handoff compaction](crate::compaction::HandoffCompactor)). Answered with the same canned
+        // summary in the shape that strategy reads, and — like the prose one — off-script, so a
+        // handoff arm of a sweep crosses its boundaries offline without desyncing.
+        if is_compact_call_request(messages) {
+            return Ok(ModelResponse {
+                text: None,
+                tool_calls: vec![ToolCall {
+                    id: "call_compact".to_string(),
+                    name: crate::tools::COMPACT_TOOL.to_string(),
+                    arguments: json!({ "summary": MOCK_COMPACTION_SUMMARY, "files": [] }),
+                }],
+                finish_reason: FinishReason::ToolCalls,
+                usage: TokenCounts::default(),
+                cost: None,
+            });
+        }
+
         // A Code Review **parent** (offline e2e): message-driven so one `code-review-parent` model
         // plays all three roles the auto-dispatch model routes to the primary slot — the root that
         // files the issue, the agent gg auto-dispatches to implement it, and each fix agent the
@@ -2159,11 +2227,25 @@ impl ModelClient for MockClient {
 /// embeds in its system prompt. The mock answers these off-script so its scripted turns are
 /// never consumed by a summarization call.
 fn is_summarization_request(messages: &[Message]) -> bool {
+    carries_marker(messages, crate::compaction::SUMMARIZATION_MARKER)
+}
+
+/// Whether `messages` is the one [compaction](crate::compaction) request answered with a
+/// [`compact`](crate::tools::COMPACT_TOOL) **call** — detected by the
+/// [`COMPACT_CALL_MARKER`](crate::compaction::COMPACT_CALL_MARKER) the handoff compactor embeds in
+/// its system prompt. Answered off-script for the same reason a prose summary request is.
+fn is_compact_call_request(messages: &[Message]) -> bool {
+    carries_marker(messages, crate::compaction::COMPACT_CALL_MARKER)
+}
+
+/// Whether any of `messages` carries `marker` in its content — the shared test behind the two
+/// off-script compaction requests, so a third would be one line rather than a fourth copy.
+fn carries_marker(messages: &[Message], marker: &str) -> bool {
     messages.iter().any(|message| {
         message
             .content
             .as_deref()
-            .is_some_and(|content| content.contains(crate::compaction::SUMMARIZATION_MARKER))
+            .is_some_and(|content| content.contains(marker))
     })
 }
 

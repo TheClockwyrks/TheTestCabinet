@@ -149,11 +149,76 @@ pub const CAPABILITY_TASKS: &str = "tasks";
 /// simply never compacts. Its `summaryHeadroom` param sets the fraction of the window
 /// reserved for the summarization call — which also defines the fullness threshold that
 /// triggers a compaction (`1 - summaryHeadroom`) — and its
-/// [`implementation`](GgCapabilityConfig::implementation) selects the summarization
-/// strategy — `model` (the default: a prose recap) or `structured` (fixed sections).
+/// [`implementation`](GgCapabilityConfig::implementation) selects the **compaction
+/// strategy**: who writes the summary, and what the restarted thread is rebuilt from.
+///
+/// Seven strategies ship, and they differ along two axes — **who** condenses the thread
+/// (gg out of band, the working model itself, or a separate handoff model) and **what**
+/// the summary is (prose, a `compact` call that also re-loads files, or memories):
+///
+/// - [`model`](COMPACTION_STRATEGY_MODEL) (the default) and
+///   [`structured`](COMPACTION_STRATEGY_STRUCTURED) — one out-of-band call on the run's own
+///   client, prose or fixed sections, invisible to the agent's own thread.
+/// - [`self-summarization`](COMPACTION_STRATEGY_SELF_SUMMARIZATION) — the agent is asked, in
+///   its own thread, to write the summary its next context is rebuilt from.
+/// - [`self-compaction`](COMPACTION_STRATEGY_SELF_COMPACTION) — the agent calls a `compact`
+///   tool with a summary **and the files to re-load**, so it chooses what survives.
+/// - [`handoff-summarization`](COMPACTION_STRATEGY_HANDOFF_SUMMARIZATION) and
+///   [`handoff-compaction`](COMPACTION_STRATEGY_HANDOFF_COMPACTION) — the same two, performed
+///   by a **separate model** (the `model` param) reading the thread as labelled user
+///   messages.
+/// - [`memory-compaction`](COMPACTION_STRATEGY_MEMORY) — the agent writes its working state
+///   to [memories](CAPABILITY_MEMORIES) (which are retained verbatim) instead of a summary.
+///
+/// An unrecognized strategy falls back to the default rather than failing to launch, so a
+/// sweep can name a not-yet-built one.
 ///
 /// [compaction]: https://docs.testcabinet.ai/gg/compaction/
 pub const CAPABILITY_COMPACTION: &str = "compaction";
+
+/// The [compaction](CAPABILITY_COMPACTION) strategy that summarizes the dropped history with
+/// **one out-of-band call on the run's own model**, asking for a focused prose recap. The
+/// default: what an unconfigured compaction capability uses, and what an unrecognized
+/// strategy name falls back to.
+pub const COMPACTION_STRATEGY_MODEL: &str = "model";
+
+/// The [compaction](CAPABILITY_COMPACTION) strategy that makes the same out-of-band call as
+/// [`model`](COMPACTION_STRATEGY_MODEL) but steers it to emit the working state under fixed
+/// headings rather than as free prose.
+pub const COMPACTION_STRATEGY_STRUCTURED: &str = "structured";
+
+/// The [compaction](CAPABILITY_COMPACTION) strategy in which **the agent summarizes itself**:
+/// gg appends a user message asking for a summary of the work done and the work remaining, and
+/// rebuilds the next context from the model's own reply.
+pub const COMPACTION_STRATEGY_SELF_SUMMARIZATION: &str = "self-summarization";
+
+/// The [compaction](CAPABILITY_COMPACTION) strategy in which the agent compacts itself through
+/// a **`compact` tool** — always offered, taking a summary and the workspace paths to re-load
+/// as file views — so the model chooses not only what the recap says but which files survive
+/// the boundary. Until it calls `compact`, every other tool call is refused.
+pub const COMPACTION_STRATEGY_SELF_COMPACTION: &str = "self-compaction";
+
+/// The [compaction](CAPABILITY_COMPACTION) strategy that hands the thread to a **separate
+/// model** (named by the capability's `model` param) for the summary: the agent's own thread is
+/// untouched, and the handoff model reads it as labelled user messages with no tools.
+pub const COMPACTION_STRATEGY_HANDOFF_SUMMARIZATION: &str = "handoff-summarization";
+
+/// The [compaction](CAPABILITY_COMPACTION) strategy that hands the thread to a **separate
+/// model** which must answer with a `compact` call — summary plus the files to re-load. The
+/// working model is never offered the tool.
+pub const COMPACTION_STRATEGY_HANDOFF_COMPACTION: &str = "handoff-compaction";
+
+/// The [compaction](CAPABILITY_COMPACTION) strategy in which the agent's working state is
+/// carried across the boundary as **[memories](CAPABILITY_MEMORIES)** rather than a summary:
+/// gg requires the model to write them, accepting only memory calls until a whole reply's calls
+/// succeed. It requires the memories capability; without it the run falls back to the default.
+pub const COMPACTION_STRATEGY_MEMORY: &str = "memory-compaction";
+
+/// The [compaction](CAPABILITY_COMPACTION) capability param naming the model the two
+/// **handoff** strategies delegate to — an ordinary model id, resolved through the same client
+/// factory every agent's model is. Absent (or unresolvable) falls back to the agent's own model,
+/// so a handoff strategy always has a model to call.
+pub const COMPACTION_PARAM_MODEL: &str = "model";
 
 /// The stable id of the Phase 2 [agent-managed context] capability: the model-facing
 /// complement to [compaction](CAPABILITY_COMPACTION) that gives the agent agency over

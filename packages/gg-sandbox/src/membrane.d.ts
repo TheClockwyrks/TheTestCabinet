@@ -358,6 +358,12 @@ declare module "test-cabinet:gg/context" {
   export function archiveThread(keepRecentTurns: number | undefined): ReclaimReport;
   /** Search archived history (case-insensitive substring). */
   export function searchArchive(query: string): ArchiveSearch;
+  /**
+   * Compact the context window: gg drops the detailed thread and restarts it from `summary`, plus
+   * a fresh read of each path in `files`. Registered, not performed — the loop rewrites the window
+   * once the program has ended.
+   */
+  export function compact(summary: string, files: string[]): void;
 }
 
 /**

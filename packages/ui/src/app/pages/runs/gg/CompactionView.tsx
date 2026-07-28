@@ -27,6 +27,11 @@ import {
 const STRATEGY_LABELS: Record<string, string> = {
   model: "Model summary",
   structured: "Structured extract",
+  "self-summarization": "Self-summarization",
+  "self-compaction": "Self-compaction",
+  "handoff-summarization": "Handoff summarization",
+  "handoff-compaction": "Handoff compaction",
+  "memory-compaction": "Memory compaction",
 };
 
 function strategyLabel(strategy: string): string {

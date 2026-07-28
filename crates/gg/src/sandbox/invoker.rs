@@ -154,6 +154,12 @@ pub trait ToolApi: Send + 'static {
     fn evict_file_view(&mut self, path: Option<String>) -> ToolOutcome;
     fn archive_thread(&mut self, keep_recent_turns: Option<u32>) -> ToolOutcome;
     fn search_archive(&mut self, query: String) -> ToolOutcome;
+    /// Register a compaction of the agent's own window and return. Deferred exactly as
+    /// [`wait_for_issue`](Self::wait_for_issue) is, and for the same reason: rewriting the context
+    /// a program is running in would pull the window out from under the turn still using it, so the
+    /// call validates and records the request and the loop performs the rewrite once the program
+    /// has ended.
+    fn compact(&mut self, summary: String, files: Vec<String>) -> ToolOutcome;
     fn spawn_subagent(
         &mut self,
         agent: String,

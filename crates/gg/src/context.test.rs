@@ -342,7 +342,14 @@ fn compaction_keeps_a_locked_file_view_and_carries_its_image() {
     // Some ephemeral thread material that a compaction will drop.
     ctx.push_assistant(Some("working".to_string()), Vec::new());
 
-    ctx.compact_history(Message::user("SUMMARY"));
+    // The compaction rewrite, composed from the primitive it is built on: drop the ephemeral
+    // history, then append the summary the thread restarts from.
+    ctx.clear_ephemeral();
+    ctx.push(
+        GgContextSource::History,
+        Retention::Ephemeral,
+        Message::user("SUMMARY"),
+    );
 
     // The ephemeral assistant call that "read" it is gone, but the locked view's body stays,
     // re-framed to a user message that still carries the picture (not degraded to its caption).

@@ -1,22 +1,23 @@
-//! The **agent-managed context** tools: `evict_file_view`, `archive_thread`, and
-//! `search_archive` — how the model reclaims its own window, the complement to the automatic
-//! [compaction](crate::compaction) backstop.
+//! The **context** tools: `evict_file_view`, `archive_thread` and `search_archive` — how the model
+//! reclaims its own window, the complement to the automatic [compaction](crate::compaction)
+//! backstop — plus `compact`, how it performs that backstop *itself*.
 //!
-//! These are contributed only when the
+//! The first three are contributed only when the
 //! [`agent-managed-context`](test_cabinet_core::gg::CAPABILITY_AGENT_MANAGED_CONTEXT)
-//! capability is enabled (ablation).
+//! capability is enabled (ablation); `compact` only under the
+//! [self-compaction](crate::compaction::CompactionStrategy::SelfCompaction) compaction strategy.
 //!
-//! # Why two of these are thin
+//! # Why three of these are thin
 //!
-//! `evict_file_view` and `archive_thread` act on the **live context window**, which the loop
-//! owns and mutates in place — a tool cannot hold it. So their [`invoke`](super::Tool::invoke)
+//! `evict_file_view`, `archive_thread` and `compact` act on the **live context window**, which the
+//! loop owns and mutates in place — a tool cannot hold it. So their [`invoke`](super::Tool::invoke)
 //! only **validates arguments**; the [loop](crate::agent) performs the actual reclaim against
 //! the [`ContextModel`](crate::context::ContextModel) (removing the items, moving archived ones
-//! into the shared [`ArchiveStore`]) and rewrites the tool result
-//! with what was reclaimed. The shared argument parsers ([`parse_evict_path`],
-//! [`parse_archive_keep_recent`]) are the single source of truth both sides use. `search_archive`,
-//! by contrast, is a self-contained store-backed tool (like the memory tools): it reads the
-//! shared archive directly and needs nothing from the live window.
+//! into the shared [`ArchiveStore`], rewriting the window around a summary) and rewrites the tool
+//! result with what was reclaimed. The shared argument parsers ([`parse_evict_path`],
+//! [`parse_archive_keep_recent`], [`parse_compact_request`]) are the single source of truth both
+//! sides use. `search_archive`, by contrast, is a self-contained store-backed tool (like the memory
+//! tools): it reads the shared archive directly and needs nothing from the live window.
 
 use std::sync::{Arc, Mutex};
 
@@ -28,6 +29,7 @@ use super::{
     required_str, saturating_u32,
 };
 use crate::archive::ArchiveStore;
+use crate::compaction::CompactionRequest;
 use crate::model::ToolDefinition;
 
 /// The `evict_file_view` tool name.
@@ -36,6 +38,17 @@ pub const EVICT_FILE_VIEW_TOOL: &str = "evict_file_view";
 pub const ARCHIVE_THREAD_TOOL: &str = "archive_thread";
 /// The `search_archive` tool name.
 pub const SEARCH_ARCHIVE_TOOL: &str = "search_archive";
+/// The `compact` tool name.
+pub const COMPACT_TOOL: &str = "compact";
+
+/// The most workspace paths one [`compact`](COMPACT_TOOL) call may ask gg to re-read into the
+/// restarted context.
+///
+/// A compaction exists because the window is full, so a call that named forty files would refill it
+/// on the spot and trigger the next compaction immediately — the pathological case this bounds. The
+/// cap is generous relative to what a model actually needs in hand to continue, and the paths past
+/// it are reported to the model rather than silently dropped.
+pub const MAX_COMPACT_FILES: usize = 12;
 
 /// The default number of most-recent assistant turns `archive_thread` keeps live when the
 /// call does not specify one — keep the current turn, archive everything older.
@@ -200,6 +213,130 @@ impl ArchiveThreadTool {
     /// is the count of most-recent turns to keep live.
     pub(crate) fn archive(&self, _keep_recent_turns: usize) -> ToolOutcome {
         ToolOutcome::ok("archiving thread history", "archive thread")
+    }
+}
+
+// ---------------------------------------------------------------------------
+// compact
+// ---------------------------------------------------------------------------
+
+/// Parse a [`compact`](COMPACT_TOOL) call's arguments into the
+/// [request](CompactionRequest) a compaction is rewritten from: a required non-empty `summary` and
+/// an optional `files` array of workspace paths.
+///
+/// Shared by the tool's own validation, the [loop](crate::agent)'s application of an accepted call,
+/// and the [handoff compactor](crate::compaction::HandoffCompactor)'s reading of the separate
+/// model's answer — so what counts as a well-formed `compact` call is one definition rather than
+/// three.
+///
+/// Paths are trimmed, blanks dropped, duplicates collapsed (re-reading the same file twice would
+/// simply spend the window twice) and the list capped at [`MAX_COMPACT_FILES`]. A `files` value that
+/// is not an array of strings is a usage error rather than a silent empty list: a model that asked
+/// for files and got none back would continue believing it had them.
+pub fn parse_compact_request(args: &Value) -> Result<CompactionRequest, String> {
+    let summary = args
+        .get("summary")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|summary| !summary.is_empty())
+        .ok_or_else(|| {
+            format!(
+                "`{COMPACT_TOOL}`: `summary` must be a non-empty string — the working state you \
+                 need in order to continue after the thread is dropped."
+            )
+        })?
+        .to_string();
+
+    let files = match args.get("files") {
+        None | Some(Value::Null) => Vec::new(),
+        Some(Value::Array(entries)) => {
+            let mut paths: Vec<String> = Vec::new();
+            for entry in entries {
+                let path = entry.as_str().ok_or_else(|| {
+                    format!(
+                        "`{COMPACT_TOOL}`: every entry of `files` must be a workspace path string"
+                    )
+                })?;
+                let path = path.trim();
+                if path.is_empty() || paths.iter().any(|seen| seen == path) {
+                    continue;
+                }
+                paths.push(path.to_string());
+            }
+            paths.truncate(MAX_COMPACT_FILES);
+            paths
+        }
+        Some(_) => {
+            return Err(format!(
+                "`{COMPACT_TOOL}`: `files` must be an array of workspace path strings (omit it to \
+                 carry no files across)"
+            ));
+        }
+    };
+
+    Ok(CompactionRequest { summary, files })
+}
+
+/// Compacts the agent's own context window: replaces the thread with a summary and re-reads the
+/// named files (rewrite applied by the loop).
+pub struct CompactTool;
+
+#[async_trait]
+impl Tool for CompactTool {
+    fn name(&self) -> &str {
+        COMPACT_TOOL
+    }
+
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition::new(
+            COMPACT_TOOL,
+            "Compact your own context window: gg drops the detailed thread and restarts it from \
+             the `summary` you write, plus a fresh read of each path in `files`. Your skills, \
+             memories and task list are kept as they are. gg asks you to call this when your \
+             window is full, and refuses every other tool until you do — but everything not in \
+             your summary and not in `files` is gone, so write the summary for your future self \
+             and name the files you will actually need in hand.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "summary": {
+                        "type": "string",
+                        "description": "The working state you need to continue: what you are building, the decisions and discoveries that matter, the files you have changed, what is in progress, and the immediate next step."
+                    },
+                    "files": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": format!("Workspace-relative paths to re-read into your context after the drop, at most {MAX_COMPACT_FILES}. Omit to carry none across; you can always read a file again later.")
+                    }
+                },
+                "required": ["summary"],
+                "additionalProperties": false
+            }),
+        )
+    }
+
+    async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
+        // Validate only; the loop performs the rewrite against the live window (and re-reads the
+        // files) and replaces this result with what it actually did.
+        match parse_compact_request(&args) {
+            Ok(request) => self.compact(request.summary, request.files),
+            Err(message) => invalid_argument(message),
+        }
+    }
+}
+
+impl CompactTool {
+    /// Validate a `compact` call — the **standard, typed** API function both the JSON
+    /// [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach. It only
+    /// validates: the [loop](crate::agent) rewrites the window and replaces this outcome with what
+    /// it actually compacted.
+    pub(crate) fn compact(&self, summary: String, files: Vec<String>) -> ToolOutcome {
+        let mut args = json!({ "summary": summary });
+        args["files"] = Value::Array(files.into_iter().map(Value::String).collect());
+        match parse_compact_request(&args) {
+            Ok(_) => ToolOutcome::ok("compacting the context window", "compact context"),
+            Err(message) => invalid_argument(message),
+        }
     }
 }
 

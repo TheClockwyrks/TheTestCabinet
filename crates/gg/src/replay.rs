@@ -186,6 +186,25 @@ impl ModelClient for RecordingClient {
         Ok(response)
     }
 
+    /// Recorded exactly as an ordinary turn is, and delegated to the inner client's own
+    /// implementation rather than to the trait default — otherwise wrapping a run in replay capture
+    /// would quietly downgrade a required tool call to an offered one, and the recorded run would
+    /// not be the run that happened.
+    async fn complete_requiring(
+        &self,
+        messages: &[Message],
+        tool: &ToolDefinition,
+    ) -> Result<ModelResponse, ModelError> {
+        let response = self.inner.complete_requiring(messages, tool).await?;
+        self.recorder.record_model_io(
+            &self.agent_id,
+            messages,
+            std::slice::from_ref(tool),
+            &response,
+        );
+        Ok(response)
+    }
+
     fn model_id(&self) -> &str {
         self.inner.model_id()
     }

@@ -624,9 +624,10 @@ fn all_tool_names_matches_a_maximal_registry() {
     use crate::memories::{MemoryCaps, MemoryStore};
     use crate::tasks::TaskStore;
     use test_cabinet_core::gg::{
-        CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_FSM, CAPABILITY_MEMORIES, CAPABILITY_PLANNING,
-        CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS,
-        CAPABILITY_TASKS, CAPABILITY_WORKFLOWS, GgSubagentRef, ROOT_AGENT,
+        CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_COMPACTION, CAPABILITY_FSM,
+        CAPABILITY_MEMORIES, CAPABILITY_PLANNING, CAPABILITY_PROJECT_MANAGEMENT,
+        CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WORKFLOWS,
+        COMPACTION_STRATEGY_SELF_COMPACTION, GgSubagentRef, ROOT_AGENT,
     };
 
     let dir = TempDir::new().unwrap();
@@ -655,6 +656,14 @@ fn all_tool_names_matches_a_maximal_registry() {
         GgCapabilityConfig::enabled(CAPABILITY_WORKFLOWS),
         GgCapabilityConfig::enabled(CAPABILITY_SPECULATIVE),
     ]);
+    // `compact` is the one tool a *strategy* rather than a capability alone contributes: compaction
+    // offers it only when the working model is the one that performs the compaction.
+    capabilities.push(GgCapabilityConfig {
+        id: CAPABILITY_COMPACTION.to_string(),
+        enabled: true,
+        implementation: Some(COMPACTION_STRATEGY_SELF_COMPACTION.to_string()),
+        params: serde_json::json!({}),
+    });
     let mut set = set_with(capabilities);
     // A maximal registry offers the delegation tools too, which requires at least one agent this
     // profile may spawn.

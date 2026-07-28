@@ -13,7 +13,7 @@
  *    emitted `.d.ts` into `crates/gg/src/sandbox/signatures.json` — the catalogue gg renders the
  *    system prompt from.
  *
- * It holds **30** entries, not the 33 names in `ALL_TOOL_NAMES` (`crates/gg/src/tools/mod.rs`).
+ * It holds **31** entries, not the 34 names in `ALL_TOOL_NAMES` (`crates/gg/src/tools/mod.rs`).
  * `enter_plan_mode`, `submit_plan` and `advance_state` are absent by design: they change the loop's
  * *mode*, which is not a value a program can compose, so they are declared in the WIT, refused by
  * the host as a backstop, and never bound into a program's scope. gg asserts
@@ -103,6 +103,7 @@ export const TOOL_CATALOGUE: readonly CatalogueEntry[] = [
   { tool: "evict_file_view", js: "evictFileView", module: "context" },
   { tool: "archive_thread", js: "archiveThread", module: "context" },
   { tool: "search_archive", js: "searchArchive", module: "context" },
+  { tool: "compact", js: "compact", module: "context" },
   { tool: "spawn_subagent", js: "spawnSubagent", module: "delegation" },
   { tool: "wait_for_subagents", js: "waitForSubagents", module: "delegation" },
   { tool: "send_message", js: "sendMessage", module: "delegation" },

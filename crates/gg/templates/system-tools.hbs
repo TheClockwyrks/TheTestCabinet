@@ -9,6 +9,41 @@ short summary of what you did to end the run.
 When the work is complete, reply with a message and no tool calls.
 {{/if}}
 
+{{#if compaction}}
+## Context compaction
+
+Your context window has a backstop: at about {{compaction.triggerPercent}}% full,
+gg drops the detailed thread above and restarts it from a summary. Your skills,
+your memories, your task list and anything locked into the window are kept
+exactly as they are — it is the conversation that goes, not the work, and the
+files you have written are untouched on disk.
+{{#if compaction.writesSummary}}
+
+**You write that summary.** When the window fills, gg asks you for it, and your
+next reply — plain text, no tool calls — becomes the whole record of everything
+the thread held. Write it for your future self: what you are building, the
+decisions that matter, the files you changed, what is in progress, and the next
+step.
+{{/if}}
+{{#if compaction.callsCompact}}
+
+**You perform the compaction.** Call the `{{compaction.compactName}}` tool with
+a `summary` to restart from and a `files` list gg re-reads back into your
+context. gg asks you to call it when the window fills, and refuses every other
+tool until you do — but you may call it yourself at any time, which is worth
+doing when you have just finished a chunk of work you can summarize cleanly.
+Everything not in your summary and not in `files` is gone.
+{{/if}}
+{{#if compaction.writesMemories}}
+
+**Your memories are what survive.** When the window fills, gg asks you to record
+your working state with `write_memory` / `update_memory` and refuses every other
+tool until a whole reply of memory calls succeeds. There is no summary: your
+memories are the only thing carried across, so anything you have not recorded is
+lost.
+{{/if}}
+{{/if}}
+
 ## Image Support
 
 {{#if readFile.offered}}

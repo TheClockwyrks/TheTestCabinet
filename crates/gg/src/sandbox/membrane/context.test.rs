@@ -1,4 +1,5 @@
-//! Tests for the context family — the three tools an agent manages its own window with.
+//! Tests for the context family — the three tools an agent manages its own window with, and the
+//! `compact` that hands the whole window back to gg to rebuild.
 
 use serde_json::json;
 
@@ -33,6 +34,32 @@ fn reclaim_reports_carry_real_numbers() {
         log.args("archive_thread"),
         Some(json!({ "keep_recent_turns": 3 })),
         "the schema spells this one with underscores"
+    );
+}
+
+/// A `compact` crosses the membrane with both arguments and reports **no payload** on success.
+///
+/// The absence is the design: what a compaction reclaimed is not knowable when the call returns —
+/// the loop performs the rewrite once the program has ended — so answering with numbers here would
+/// mean inventing them. The model learns what happened by waking up in the compacted window.
+#[test]
+fn a_compaction_is_registered_with_its_summary_and_files() {
+    let log = CallLog::default();
+    let mut state = membrane(&log);
+
+    state
+        .compact(
+            "scaffolded the page; next is input handling".to_string(),
+            vec!["src/main.ts".to_string(), "index.html".to_string()],
+        )
+        .expect("the compaction is registered");
+
+    assert_eq!(
+        log.args("compact"),
+        Some(json!({
+            "summary": "scaffolded the page; next is input handling",
+            "files": ["src/main.ts", "index.html"],
+        }))
     );
 }
 

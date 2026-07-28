@@ -244,6 +244,79 @@ async fn responses_as_code_routes_the_turn_through_the_sandbox() {
 /// validation commands pass does not end the run — the failure is fed back and the run continues —
 /// and a later program that satisfies validation and finishes ends it. Proves the same completion
 /// gate the tool-calling path uses composes with responses-as-code.
+/// A program compacts its own context: `context.compact(summary, files)` reaches the loop, the
+/// window is rewritten around the summary, and the file the program named is re-read into it.
+///
+/// It also pins the half of self-compaction that only code mode has. The call is bound into every
+/// program's scope under this strategy, so a program may compact itself **unprompted** — gg does not
+/// have to have asked — and the rewrite is deferred until the program has ended, because resetting
+/// the context a program is running in would pull the window out from under the turn still using it.
+#[tokio::test]
+async fn a_program_compacts_its_own_context_window() {
+    use test_cabinet_core::gg::{CAPABILITY_COMPACTION, COMPACTION_STRATEGY_SELF_COMPACTION};
+
+    const SUMMARY: &str = "scaffolded main.ts; next is the render loop";
+    let dir = TempDir::new().unwrap();
+    let mut set = code_set("mock/primary", json!({}));
+    set.agents[0].capabilities.push(GgCapabilityConfig {
+        id: CAPABILITY_COMPACTION.to_string(),
+        enabled: true,
+        implementation: Some(COMPACTION_STRATEGY_SELF_COMPACTION.to_string()),
+        params: json!({}),
+    });
+
+    let program = format!(
+        "fs.writeFile(\"main.ts\", \"export const KEPT = 1;\");\n\
+         context.compact(\"{SUMMARY}\", [\"main.ts\"]);\n\
+         console.log(\"compaction requested\");"
+    );
+    let (outcome, events) = drive_code_run(&dir, set, move |b| {
+        scripted_programs(&b.model_id, &[program.as_str()])
+    })
+    .await;
+    assert_eq!(outcome, SessionOutcome::Ran);
+
+    let boundary = events
+        .iter()
+        .find_map(|event| match &event.kind {
+            GgTelemetryKind::Compaction {
+                strategy, summary, ..
+            } => Some((strategy.clone(), summary.clone())),
+            _ => None,
+        })
+        .expect("the program's compaction reached the loop");
+    assert_eq!(boundary.0, COMPACTION_STRATEGY_SELF_COMPACTION);
+    assert!(boundary.1.contains(SUMMARY), "got {:?}", boundary.1);
+
+    // The program ran to its end before the window was rewritten — the log line it printed *after*
+    // the call is the proof, since a compaction performed mid-program would have taken the store
+    // with it.
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(&event.kind, GgTelemetryKind::CodeExecution { ok: true, .. })),
+        "the program ran cleanly to its end"
+    );
+    // The file it asked to keep is in the restarted window.
+    let after = events
+        .iter()
+        .skip_while(|event| !matches!(event.kind, GgTelemetryKind::Compaction { .. }))
+        .find_map(|event| match &event.kind {
+            GgTelemetryKind::ContextBreakdown { by_source, .. } => Some(by_source.clone()),
+            _ => None,
+        })
+        .expect("a breakdown follows the boundary");
+    let file_views = after
+        .iter()
+        .find(|band| band.source == GgContextSource::FileView)
+        .map(|band| band.tokens)
+        .unwrap_or(0);
+    assert!(
+        file_views > 0,
+        "the re-read file is in the window: {after:?}"
+    );
+}
+
 #[tokio::test]
 async fn responses_as_code_completion_is_gated_by_validation() {
     let dir = TempDir::new().unwrap();

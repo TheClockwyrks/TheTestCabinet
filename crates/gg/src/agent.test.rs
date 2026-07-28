@@ -18,7 +18,7 @@ use crate::client::{
     MOCK_REVIEW_WORKER_FILE, MOCK_SPECULATE_ATTEMPT_PREFIX, MOCK_SUBAGENT_FILE,
     MOCK_SUBAGENT_RETURN,
 };
-use crate::compaction::CompactionSetup;
+use crate::compaction::{CompactionSetup, CompactionStrategy};
 use crate::config::GgInvocation;
 use crate::context::HeuristicTokenEstimator;
 use crate::fsm::FsmRuntime;
@@ -391,25 +391,37 @@ async fn drive_recorded_code_run(
 /// A disabled compaction setup — the `drive` tests that are not about compaction never
 /// compact (matching a run without the opt-in capability).
 fn no_compaction() -> CompactionSetup {
-    CompactionSetup {
-        enabled: false,
-        policy: crate::compaction::CompactionPolicy::default(),
-        strategy: "model",
-        summarizer: crate::compaction::resolve_summarizer(None),
-    }
+    compaction_setup(false, CompactionStrategy::Model, 1.0)
 }
 
 /// An enabled compaction setup whose trigger is `trigger_fullness` and the default
 /// (mock-backed) summarizer. The trigger is not a standalone knob — it is `1 - summaryHeadroom`
 /// — so this sets the headroom that yields the requested trigger.
 fn compaction_at(trigger_fullness: f64) -> CompactionSetup {
+    compaction_setup(true, CompactionStrategy::Model, trigger_fullness)
+}
+
+/// An enabled compaction setup running `strategy`, for the `drive` e2es that exercise one of the
+/// [in-loop](PendingCompaction) strategies end to end through the loop.
+fn compaction_with(strategy: CompactionStrategy, trigger_fullness: f64) -> CompactionSetup {
+    compaction_setup(true, strategy, trigger_fullness)
+}
+
+/// The shared constructor behind the three above: a setup with no handoff client, so an out-of-band
+/// condensation runs on the agent's own (mock) client.
+fn compaction_setup(
+    enabled: bool,
+    strategy: CompactionStrategy,
+    trigger_fullness: f64,
+) -> CompactionSetup {
     CompactionSetup {
-        enabled: true,
+        enabled,
         policy: crate::compaction::CompactionPolicy {
             summary_headroom: 1.0 - trigger_fullness,
         },
-        strategy: "model",
-        summarizer: crate::compaction::resolve_summarizer(None),
+        strategy,
+        summarizer: crate::compaction::resolve_summarizer(strategy),
+        handoff_client: None,
     }
 }
 
@@ -1502,7 +1514,7 @@ async fn locked_autoload_survives_compaction() {
     unlocked.push_system("system");
     unlocked.push_user_prompt("build");
     autoload_specifications(&mut unlocked, &provided, &ctx, false, &emitter).await;
-    unlocked.compact_history(Message::user("SUMMARY"));
+    unlocked.clear_ephemeral();
     assert!(
         !unlocked
             .messages()
@@ -1524,7 +1536,7 @@ async fn locked_autoload_survives_compaction() {
         context_has_pinned_file_view(&locked),
         "a locked spec is pinned before compaction"
     );
-    locked.compact_history(Message::user("SUMMARY"));
+    locked.clear_ephemeral();
     assert!(
         locked
             .messages()
@@ -1600,6 +1612,9 @@ struct DisabledRuntimes {
     /// The completion rule the prompt describes — the default (plain-text, ungated), since these
     /// prompt tests do not vary it. Owned here so `PromptInputs` can borrow it.
     completion: CompletionSetup,
+    /// The compaction setup the prompt describes — disabled, so these tests render no compaction
+    /// section. Owned here so `PromptInputs` can borrow it.
+    compaction: CompactionSetup,
 }
 
 impl DisabledRuntimes {
@@ -1617,6 +1632,7 @@ impl DisabledRuntimes {
             vision: VisionContext::unknown(),
             profile: GgAgentConfig::root(),
             completion: CompletionSetup::resolve(&GgAgentConfig::root()),
+            compaction: no_compaction(),
         }
     }
 
@@ -1651,6 +1667,7 @@ impl DisabledRuntimes {
             responses_as_code: false,
             autoload_specs: None,
             profile: &self.profile,
+            compaction: &self.compaction,
             delegated: false,
             fences_are_stripped: true,
             completion: &self.completion,
@@ -7756,3 +7773,13 @@ mod healing_tests;
 /// consumer of a child's work gates on the `completed` only that call produces.
 #[path = "agent.briefs.test.rs"]
 mod brief_tests;
+
+/// The three **in-loop** [compaction](crate::compaction) strategies driven through the live loop:
+/// the agent condensing its own thread across a turn boundary, and everything else being refused
+/// while it does.
+///
+/// Separate from `compaction.test.rs` (the trigger and the rewrite, with no loop behind them)
+/// because what these guard is the boundary-spanning loop state — gg asks on one turn and the model
+/// answers on the next — which only exists in [`Agent::drive`].
+#[path = "agent.compaction.test.rs"]
+mod compaction_tests;

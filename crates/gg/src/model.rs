@@ -369,6 +369,27 @@ pub trait ModelClient: Send + Sync {
         tools: &[ToolDefinition],
     ) -> Result<ModelResponse, ModelError>;
 
+    /// Run one turn that must be answered with a call to **`tool`** — the only tool offered, and
+    /// not optional.
+    ///
+    /// It exists for the one caller whose whole request is a structured answer rather than a step
+    /// in a conversation: [handoff compaction](crate::compaction::HandoffCompactor), which asks a
+    /// separate model for a summary *and* a file list in one shot and has no next turn in which to
+    /// ask again. Every other call site wants the model to decide whether to use a tool, which is
+    /// what [`complete`](Self::complete) offers.
+    ///
+    /// The default implementation simply offers the tool, so an implementation that cannot express
+    /// "required" (a scripted mock, a recording wrapper that delegates) is correct without doing
+    /// anything — and a caller must not *assume* the reply carries the call. A provider client that
+    /// can express it overrides this to say so on the wire.
+    async fn complete_requiring(
+        &self,
+        messages: &[Message],
+        tool: &ToolDefinition,
+    ) -> Result<ModelResponse, ModelError> {
+        self.complete(messages, std::slice::from_ref(tool)).await
+    }
+
     /// The concrete model id this client is bound to (for telemetry and per-slot
     /// accounting).
     fn model_id(&self) -> &str;

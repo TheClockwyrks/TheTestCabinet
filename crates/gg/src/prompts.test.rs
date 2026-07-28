@@ -69,6 +69,13 @@ fn full_system() -> SystemContext {
         speculative: true,
         autoload_specs: Some(AutoloadView { locked: true }),
         completion: CompletionView::default(),
+        compaction: Some(CompactionView {
+            trigger_percent: 80,
+            writes_summary: false,
+            calls_compact: true,
+            writes_memories: false,
+            compact_name: "compact".to_string(),
+        }),
     }
 }
 
@@ -199,6 +206,112 @@ fn plain_text_completion_section_says_a_tool_free_reply_ends_the_run() {
         "plain-text completion must not demand an explicit finish:\n{prompt}"
     );
     assert!(!prompt.contains("\n\n\n"), "blank-line run:\n{prompt}");
+}
+
+/// A run with compaction off says nothing about it: there is no backstop, and a model told about
+/// one that does not exist would pace itself against a rescue that never comes.
+#[test]
+fn no_compaction_section_when_the_capability_is_off() {
+    let prompt = render_system(&SystemContext::default(), None);
+    assert!(!prompt.contains("Context compaction"), "{prompt}");
+}
+
+/// Every compaction strategy renders the section — an agent whose thread collapses into a summary
+/// between two of its turns, never told that can happen, reads the result as having lost its mind —
+/// and each in-loop one names, in the vocabulary of its execution mode, the thing it will be asked
+/// to do.
+#[test]
+fn the_compaction_section_names_what_each_strategy_asks_for() {
+    let base = CompactionView {
+        trigger_percent: 80,
+        compact_name: "compact".to_string(),
+        ..CompactionView::default()
+    };
+    let render = |view: CompactionView, responses_as_code: bool| {
+        // `harness` is always present in a code run — the object `finish` lives on — and the code
+        // template renders its object list, so a realistic code context carries at least it.
+        let apis = if responses_as_code {
+            vec![ApiView {
+                object: "harness".to_string(),
+                description: "the run itself".to_string(),
+            }]
+        } else {
+            Vec::new()
+        };
+        flat(&render_system(
+            &SystemContext {
+                responses_as_code,
+                apis,
+                compaction: Some(view),
+                ..SystemContext::default()
+            },
+            None,
+        ))
+    };
+
+    // An out-of-band strategy names no call: nothing is asked of the model, only told to it.
+    let out_of_band = render(CompactionView { ..base.clone() }, false);
+    assert!(out_of_band.contains("80% full"), "{out_of_band}");
+    assert!(out_of_band.contains("skills"), "{out_of_band}");
+    assert!(
+        !out_of_band.contains("You write that summary"),
+        "{out_of_band}"
+    );
+
+    let self_summary = render(
+        CompactionView {
+            writes_summary: true,
+            ..base.clone()
+        },
+        false,
+    );
+    assert!(
+        self_summary.contains("You write that summary"),
+        "{self_summary}"
+    );
+
+    // Code mode has to suspend the reply contract explicitly — prose is the one thing a code run is
+    // otherwise told never to send.
+    let self_summary_code = render(
+        CompactionView {
+            writes_summary: true,
+            ..base.clone()
+        },
+        true,
+    );
+    assert!(
+        self_summary_code.contains("plain prose instead of a program"),
+        "{self_summary_code}"
+    );
+
+    let self_compact = render(
+        CompactionView {
+            calls_compact: true,
+            ..base.clone()
+        },
+        false,
+    );
+    assert!(self_compact.contains("`compact` tool"), "{self_compact}");
+    let self_compact_code = render(
+        CompactionView {
+            calls_compact: true,
+            ..base.clone()
+        },
+        true,
+    );
+    assert!(
+        self_compact_code.contains("context.compact(summary, files)"),
+        "{self_compact_code}"
+    );
+
+    let memories = render(
+        CompactionView {
+            writes_memories: true,
+            ..base
+        },
+        false,
+    );
+    assert!(memories.contains("write_memory"), "{memories}");
 }
 
 /// The explicit-call completion section names the `finish` tool as the way to end the run.

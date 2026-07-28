@@ -452,6 +452,18 @@ interface context {
     /// Search archived history (case-insensitive substring). At most 8 hits; no match is an empty
     /// `hits` list, not an error.
     search-archive: func(query: string) -> result<archive-search, tool-error>;
+
+    /// Compact the context window: gg drops the detailed thread and restarts it from `summary`,
+    /// plus a fresh read of each path in `files`. Skills, memories and the task list are kept.
+    ///
+    /// Like `wait-for-issue` it is **registered, not performed**: the call validates and returns,
+    /// the program carries on, and the loop rewrites the window once the program has ended — a
+    /// context reset has no shape inside the program whose context it resets. Calling it again
+    /// simply replaces the request.
+    ///
+    /// gg asks for this call when the window is full, and refuses every other call until it is
+    /// made; it is available at all times so the offered surface never changes mid-run.
+    compact: func(summary: string, files: list<string>) -> result<_, tool-error>;
 }
 
 /// Turn-level transitions.
