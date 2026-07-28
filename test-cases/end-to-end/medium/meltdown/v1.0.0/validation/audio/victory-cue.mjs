@@ -19,7 +19,7 @@
 // comparison below is sound either way — a build that plays nothing at all fails it,
 // because then neither window grows.
 
-import { newGame, armAudio, audioCount } from "../_helpers.mjs";
+import { newGame, armAudio, audioCount, nearlyOut } from "../_helpers.mjs";
 
 export default function item() {
   let onLeak;
@@ -30,39 +30,59 @@ export default function item() {
   return {
     id: "audio.victory-cue",
 
-    // Posed onto the final wave of a standard run.
+    // Posed onto the final wave of a standard run, and then run through unfilmed to
+    // the first departure's final approach. The whole of this scenario is units
+    // walking a floor — a first leak, the wave grinding down to its last unit, that
+    // unit's own crossing — and at Core pace that is minutes. None of it is a cue, so
+    // only the two departures are filmed.
     async arrange(api) {
       const s = await newGame(api, "containment", "medium", 100000);
       await api.call("setWave", s.waveCount);
       await api.call("setLives", 1000000);
       await api.call("startWave");
+      await api.skipUntil((s2) => s2.surge.some(nearlyOut), {
+        max: 3600,
+        poll: 12,
+      });
       await armAudio(api);
     },
 
     // Window 1 ends on the first leak of the final wave — a departure that wins
     // nothing. Window 2 opens once a single unit is left and ends at Victory: the
-    // same one departure, plus the win it completes. 3600 ticks = 60s, enough for a
-    // 30 px/s Core to cross after the wave's spawn delay.
+    // same one departure, plus the win it completes. 600 ticks = 10s covers each
+    // filmed approach; 3600 ticks = 60s stays the ceiling on the skips between them.
+    //
+    // Both counts are taken after their skip, so neither window carries any walking
+    // and the two remain comparable.
     async act(api) {
       const lives0 = (await api.snapshot()).lives;
       const leakBefore = await audioCount(api);
       const first = await api.until((s) => s.lives < lives0, {
-        max: 3600,
+        max: 600,
         poll: 6,
       });
       onLeak = (await audioCount(api)) - leakBefore;
       leaked = first.hit;
 
       // Wait for the wave to come down to its last unit, so the measured window holds
-      // exactly one departure — the one that ends the run.
-      await api.until((s) => s.waveRemaining <= 1, { max: 3600, poll: 6 });
+      // exactly one departure — the one that ends the run — and bring that unit to its
+      // own final approach before opening the window.
+      await api.skipUntil(
+        (s) =>
+          s.screen === "victory" ||
+          (s.waveRemaining <= 1 &&
+            s.surge.length > 0 &&
+            s.surge.every(nearlyOut)),
+        { max: 3600, poll: 12 },
+      );
       const winBefore = await audioCount(api);
       const end = await api.until((s) => s.screen === "victory", {
-        max: 3600,
+        max: 600,
         poll: 6,
       });
       onWin = (await audioCount(api)) - winBefore;
       won = end.hit;
+      await api.advance(120); // 2 s on the Victory screen the sting belongs to
     },
 
     async assert(api, check) {

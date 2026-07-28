@@ -34,6 +34,12 @@ export default function item() {
   return {
     id: "targeting.ground-and-air",
 
+    // Two configurations, each a unit walking or flying into an Arc's range and being
+    // hit — a few seconds apiece on a conformant build. The ceiling is what stops a
+    // build that routes its Hulk the long way round from turning that into a
+    // twenty-second clip. See CLIP_HEADROOM_MS in _helpers.
+    clipMs: 6000,
+
     // Configuration A: a ground Hulk.
     async arrange(api) {
       groundId = await poseArcAgainst(api, newGame, "hulk");

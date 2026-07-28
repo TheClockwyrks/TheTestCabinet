@@ -20,7 +20,15 @@
 // enough to still catch what matters: a build that reports `slowed` without reducing
 // `speed` at all, or that slows by some unrelated fraction.
 
-import { newGame, build, spawn, tower, unit, TICK } from "../_helpers.mjs";
+import {
+  newGame,
+  build,
+  spawn,
+  tower,
+  unit,
+  actTail,
+  TICK,
+} from "../_helpers.mjs";
 
 export default function item() {
   let rimeId;
@@ -31,6 +39,11 @@ export default function item() {
 
   return {
     id: "rime.cold-slows-most",
+
+    // The Mote is slowed within a second of walking in, and the tail below is what puts
+    // the reduced pace on screen. The ceiling stops a build that walks the Mote the long
+    // way round from turning that into a ten-second clip.
+    clipMs: 5500,
 
     // A cold Rime by the lane with a real Mote walking into its range. It has to be
     // cold, because the ceiling is what a COLD Rime slows by.
@@ -47,12 +60,18 @@ export default function item() {
     // 180 ticks = the old 3s cap. Polling every tick matters here: a Rime self-heats
     // as it fires, so the FIRST slowed instant is the one carrying the strongest slow,
     // and a coarse sweep would read a weaker slow a few shots later.
+    //
+    // The reading is taken the moment the slow lands, and then the drive runs on: a
+    // slow is only visible as a CHANGE OF PACE, so a clip that stops on the tick the
+    // Mote is first flagged `slowed` shows a Mote walking at its normal speed and
+    // nothing else. The tail is what puts the crawl on screen.
     async act(api) {
       r = await api.until(
         (s) => s.surge.some((u) => u.id === moteId && u.slowed),
         { max: 180, poll: TICK },
       );
       m = await unit(api, moteId);
+      await actTail(api, 180); // 3 s — long enough to read the slowed pace as slow
     },
 
     async assert(api, check) {

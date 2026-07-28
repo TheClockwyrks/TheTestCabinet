@@ -12,6 +12,10 @@ export default function item() {
   return {
     id: "economy.bounty",
 
+    // A hot emitter kills a Mote seconds after it walks in. The ceiling covers a build
+    // whose Mote takes the scenic route to get there.
+    clipMs: 5000,
+
     // One Arc, hot enough to kill, one Mote, and a zeroed balance — so whatever money
     // appears IS the bounty, with nothing else able to contribute.
     async arrange(api) {

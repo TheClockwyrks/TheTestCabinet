@@ -14,7 +14,7 @@
 // reaches — and leaves "is Bloom really the fourth button" to this item's clip and the
 // reviewer's eye, which is where a claim about on-screen layout belongs.
 
-import { newGame, press, TOWER_TYPES } from "../_helpers.mjs";
+import { newGame, press, TOWER_TYPES, actTail } from "../_helpers.mjs";
 
 export default function item() {
   const armed = [];
@@ -34,6 +34,11 @@ export default function item() {
         const s = await api.snapshot();
         armed.push(s.build ? s.build.type : null);
       }
+
+      // A key press and the state it leaves behind both resolve instantly, so without
+      // this the clip is a still frame of a game that never visibly does anything —
+      // three seconds of the result on screen is what makes it reviewable.
+      await actTail(api, 180);
     },
 
     async assert(api, check) {

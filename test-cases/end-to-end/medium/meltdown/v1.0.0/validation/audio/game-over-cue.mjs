@@ -15,7 +15,13 @@
 // comparison below is sound either way — a build that plays nothing at all fails it,
 // because then neither window grows.
 
-import { newGame, spawn, armAudio, audioCount } from "../_helpers.mjs";
+import {
+  newGame,
+  spawn,
+  armAudio,
+  audioCount,
+  skipToApproach,
+} from "../_helpers.mjs";
 
 export default function item() {
   let onLeak;
@@ -27,33 +33,40 @@ export default function item() {
     id: "audio.game-over-cue",
 
     // Two lives and one Mote on the floor: this leak costs a life without ending the
-    // run, which is the control for the fatal one released after it.
+    // run, which is the control for the fatal one released after it. Each Mote's walk
+    // to the exhaust is 16 s that carries neither cue, so both are run through
+    // unfilmed and each measured window opens on the arrival it is about.
     async arrange(api) {
       await newGame(api, "containment", "medium", 100000);
       await api.call("setLives", 2);
-      await spawn(api, "mote", "left");
+      const firstMote = await spawn(api, "mote", "left");
+      await skipToApproach(api, firstMote);
       await armAudio(api);
     },
 
     // Window 1: a survivable leak. Window 2: an identical leak that takes the last
-    // life and ends the run. 1800 ticks = 30s, ample for a 60 px/s Mote to cross.
+    // life and ends the run. 300 ticks = 5s, ample for the approach each skip stopped
+    // on. Both counts are taken after their skip, so the walk contributes nothing to
+    // either window and the two stay comparable.
     async act(api) {
       const leakBefore = await audioCount(api);
       const first = await api.until((s) => s.lives <= 1, {
-        max: 1800,
+        max: 300,
         poll: 6,
       });
       onLeak = (await audioCount(api)) - leakBefore;
       survived = first.hit && (await api.snapshot()).screen === "playing";
 
-      await spawn(api, "mote", "left");
+      const fatalMote = await spawn(api, "mote", "left");
+      await skipToApproach(api, fatalMote);
       const fatalBefore = await audioCount(api);
       const over = await api.until((s) => s.screen === "gameover", {
-        max: 1800,
+        max: 300,
         poll: 6,
       });
       onFatal = (await audioCount(api)) - fatalBefore;
       ended = over.hit;
+      await api.advance(120); // 2 s on the Game-over screen the sting belongs to
     },
 
     async assert(api, check) {

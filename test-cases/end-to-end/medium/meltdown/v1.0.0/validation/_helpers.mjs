@@ -184,6 +184,150 @@ export async function restartGame(
 // seconds arguments to ticks — a 10s cap is `max: 600`, the old default `FIXED`
 // chunk is `poll: TICK`, an 0.1s chunk is `poll: 6`, an 0.2s chunk is `poll: 12`.
 
+// ---- The clip tail (act) ---------------------------------------------------
+
+/**
+ * The beat an `act` runs on for AFTER the instant its verdict was decided, so the
+ * clip shows the thing happening rather than stopping on the frame before it.
+ *
+ * `api.until` returns on the first sample where its predicate holds, and `act`
+ * returning ends the record pass — Playwright finalizes the video when the context
+ * closes, so the last frame filmed is the one at the predicate's edge. For a check
+ * whose subject is an EVENT that is what a reviewer least wants to see: the sweep
+ * that waits for `hp < maxHp` cuts on the tick the shot connects, so the clip is a
+ * flyer approaching and then nothing. The verdict was right and the evidence shows
+ * everything except the moment it is evidence of.
+ *
+ * So an item that decides on an event runs on afterwards. It costs the verdict
+ * nothing — the validate pass advances instantly and has already read its outcome
+ * before the tail runs — and in the record pass it is exactly the follow-through:
+ * the impact lands, the number moves, the life is deducted, on screen, at the speed
+ * the game actually runs.
+ *
+ * 90 ticks (1.5 s) is the default because it is about the shortest beat that still
+ * reads as a beat at 60 Hz: long enough for a hit to resolve and a HUD number to be
+ * legible after it moves, short enough that adding one to every event item costs a
+ * suite run a few seconds. Pass more where what follows the event is itself the
+ * point — a payout landing after a wave clears, a countdown handing over to the next
+ * wave. The tail spends the same `clipMs` budget as everything else in `act`, so if a
+ * long approach is crowding it out, the fix is to skip the approach (see
+ * `skipToApproach` below) rather than to raise the budget.
+ *
+ * This is deliberately `advance` and not `settle`: the game should keep MOVING
+ * through the tail. `settle` is a paint pause that consumes no simulation time, and
+ * a tail made of it would film a frozen world in the validate pass and a stalled one
+ * in the record pass.
+ *
+ * WHERE IT GOES. A tail runs the real simulation, so it belongs AFTER the reads that
+ * decide the verdict and never between a pose and a read that depends on it. The
+ * distinction is easy to lose because most scenarios pose their state with control
+ * ops, which consume no time and therefore hold still; slip a tail into the middle of
+ * one and the world moves out from under it. `sealing.no-trap` is the cautionary
+ * case: its pocket is framed with one side left open, so a beat inserted between the
+ * frame going up and the placement being tried is long enough for the unit inside to
+ * walk out — after which closing that side traps nobody and is correctly allowed, and
+ * a conformant build fails an item it should pass. When in doubt, put the tail last.
+ */
+export const TAIL = 90;
+
+/** Run the sim on for a beat so the clip shows the outcome. See {@link TAIL}. */
+export async function actTail(api, ticks = TAIL) {
+  await api.advance(ticks);
+}
+
+// ---- Clip budgets ----------------------------------------------------------
+//
+// WHY SO MANY ITEMS CARRY A `clipMs` EVEN THOUGH THEY ARE SHORT.
+//
+// A budget is a CEILING on filming, not a target, and the reason to set one is not
+// the reference implementation — it is every other implementation. How long a
+// scenario takes to play out is the build's own business: unit speeds, spawn spacing,
+// and above all its pathing. A build that routes a left-vent unit up over the top of
+// the reactor and back down covers three times the distance for the same leak, and
+// every surge, economy and refund item that waits on that unit films three times as
+// long. The verdict is unaffected — those items check WHAT happened, not how long it
+// took, and a slow route is a pathing item's business, not theirs — but the clip
+// balloons, and a reviewer is handed a minute of wandering to see a two-second event.
+//
+// So each item sized its budget a little above what the scenario costs on a
+// conformant build. Past that it is padding out a defect that some other item owns,
+// and cutting there loses nothing a reviewer needed. The numbers below are per-item
+// (a Core crossing is not a Mote crossing) and each is stated at its use site with
+// what it covers.
+
+// A BUDGET IS NOT A STOPWATCH. `clipMs` is spent in SIMULATION time — `advance(n)`
+// and each `until` poll bill `n / tickHz` seconds against it — while the clip is
+// however long the record pass actually takes, and those two are not the same number.
+// Every poll also costs a snapshot round trip that the budget does not bill, so an
+// item polling one tick at a time burns 16.7 ms of budget per iteration while
+// consuming nearer 30 ms of wall clock, and its clip runs close to twice its budget.
+// A coarsely-polled item lands much nearer 1:1.
+//
+// So size a cap against what the item POLLS, not against the seconds you want to see:
+// halve it for a `poll: TICK` sweep, take it at face value for a `poll: 12` one. And
+// expect the cap to bite only on a pathological build — on a conformant one these
+// items finish well inside their budget, which is why the reference clips are shorter
+// than the numbers here suggest.
+
+/**
+ * The headroom a clip budget carries over the length the same scenario films on a
+ * conformant build: enough that ordinary variation between builds never clips a
+ * payoff, small enough that a pathological one is cut off rather than indulged.
+ */
+export const CLIP_HEADROOM_MS = 1500;
+
+// ---- Getting to the brink (arrange) ----------------------------------------
+//
+// The counterpart to the tail. Meltdown's floor is 950 logical pixels across and its
+// units walk it at 30-120 px/s, so almost every surge check spends the better part of
+// half a minute watching something cross a reactor before the moment it is about can
+// happen at all. `api.skip`/`api.skipUntil` run that approach through the real
+// simulation without filming it (see `packages/browser-driver/validation.mjs`), so an
+// item can pose its world, close the distance, and hand `act` a scenario that is
+// already at the brink. The clip then opens seconds from the payoff instead of a
+// minute before it, and the verdict is unaffected — the validate pass was always
+// instant.
+
+/**
+ * How close to its exhaust a unit has to be to count as on final approach.
+ *
+ * 120 px is a little over six tiles: about two seconds of filmed walking for a Mote,
+ * four for a Core. Enough that a reviewer sees the unit arrive under its own power
+ * rather than materialising on the edge, and short enough that the arrival is the
+ * clip rather than the epilogue of one.
+ */
+export const APPROACH_PX = 120;
+
+/**
+ * Whether `u` is on final approach to the exhaust it was assigned. A unit's exhaust is
+ * fixed at spawn (`specs/playfield.md`), and the two lie on different axes, so which
+ * coordinate to measure comes from the unit itself rather than from its vent.
+ */
+export function nearlyOut(u) {
+  return u.exhaust === "right"
+    ? u.x >= FLOOR_X1 - APPROACH_PX
+    : u.y >= FLOOR_Y1 - APPROACH_PX;
+}
+
+/**
+ * Run the real simulation, unfilmed, until the unit with `id` is on final approach to
+ * its exhaust (or has already left the floor). Returns `api.skipUntil`'s result.
+ *
+ * 3600 ticks is a 60 s ceiling: comfortably more than the ~32 s a Core — the slowest
+ * unit in the game — needs to cross the floor end to end, so no conformant build runs
+ * out of runway. Polled every 12 ticks because nothing here needs the exact instant;
+ * the sweep only has to stop somewhere on the approach.
+ */
+export async function skipToApproach(api, id, { max = 3600 } = {}) {
+  return api.skipUntil(
+    (s) => {
+      const u = s.surge.find((x) => x.id === id);
+      return !u || nearlyOut(u);
+    },
+    { max, poll: 12 },
+  );
+}
+
 // ---- Instant reads (any phase) ---------------------------------------------
 //
 // Pure `snapshot` reads. They consume no time, so they are callable from `arrange`,
@@ -504,11 +648,30 @@ export async function actUntilTripped(
 
 /**
  * ACT half of the trip-cooldown scenario: run the real sim to the trip, then keep
- * running until the emitter comes back online, and report both. A tripped tower is
- * meant to return COLD, so the caller reads `back.t.heat` as well as its online flag.
+ * running until the emitter comes back online, and report the trip, the LAST sample
+ * in which it was still offline, and the first in which it is back.
  *
- * Pair with `arrangeNearRedline`. Returns `{ tripped, back }`, each the shape
- * `actUntilTripped` returns.
+ * `lastTripped` is what carries the "returns cold" claim, and it is reported
+ * separately because it is the only reading of the cooldown that nothing else can
+ * touch. `specs/heat.md` has a tripped tower's "heat bleed[] off to 0 over the
+ * cooldown", and while it is tripped it "stops firing and deals no damage" — so at
+ * the far end of the cooldown, heat is the cooldown's own work and cannot be anything
+ * else.
+ *
+ * The reading at the moment it comes back cannot say the same. The sim is a 60 Hz
+ * fixed step and `back` is the first STEP on which the tower is online, not an
+ * instant inside it: if the build resolves the cooldown before it resolves firing,
+ * the tower comes back cold, acquires the target that was still in range, and takes
+ * one shot's self-heat — all within the step the sweep reads. Both reference builds
+ * bear this out, one landing on 0 and the other on a single shot's worth, from the
+ * same posed scenario. Which side of a step two systems fall on is not something
+ * `specs/heat.md` fixes, so `back.t.heat` cannot be asserted as 0 without failing a
+ * conformant build for its update order. Read `back` for the ONLINE flag, and read
+ * `lastTripped` for the heat.
+ *
+ * Pair with `arrangeNearRedline`. Returns `{ tripped, lastTripped, back }`, where
+ * `tripped` and `back` are the shape `actUntilTripped` returns and `lastTripped` is
+ * the tower as last seen offline (or null if it never was).
  */
 export async function actTripAndRecover(
   api,
@@ -517,8 +680,13 @@ export async function actTripAndRecover(
 ) {
   // 360 ticks = the old 6s trip cap; 420 ticks = the old 7s recovery cap.
   const tripped = await actUntilTripped(api, id, { max: tripMax });
+  let lastTripped = tripped.t && tripped.t.tripped ? tripped.t : null;
   const r = await api.until(
-    (s) => s.towers.some((t) => t.id === id && !t.tripped),
+    (s) => {
+      const t = s.towers.find((x) => x.id === id);
+      if (t && t.tripped) lastTripped = t;
+      return Boolean(t && !t.tripped);
+    },
     {
       max: backMax,
       poll: TICK,
@@ -526,6 +694,7 @@ export async function actTripAndRecover(
   );
   return {
     tripped,
+    lastTripped,
     back: {
       hit: r.hit,
       snap: r.snap,

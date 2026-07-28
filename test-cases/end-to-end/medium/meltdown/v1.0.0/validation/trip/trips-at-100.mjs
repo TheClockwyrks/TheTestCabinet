@@ -21,6 +21,11 @@ export default function item() {
   return {
     id: "trip.trips-at-100",
 
+    // A near-redline emitter needs only a few shots to cross 100, so on a conformant
+    // build this is a couple of seconds. The ceiling covers a build whose Core takes
+    // longer to walk into range. See CLIP_HEADROOM_MS in _helpers.
+    clipMs: 6000,
+
     // 92 is near the redline; the real firing carries it the rest of the way. The old
     // script's clip tail posed 85 instead, but the clip's job is to show the drive the
     // assertions made, so this films the 92 drive that decides the verdict.

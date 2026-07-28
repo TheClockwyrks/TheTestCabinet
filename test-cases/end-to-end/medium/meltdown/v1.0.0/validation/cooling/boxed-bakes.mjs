@@ -54,6 +54,11 @@ export default function item() {
   return {
     id: "cooling.boxed-bakes",
 
+    // Boxing the emitter is instant and the bake to the trip is a few seconds of real
+    // heat. Anything past this is a build whose target dawdles into range, which is a
+    // pathing item's business, not this one's. See CLIP_HEADROOM_MS in _helpers.
+    clipMs: 5000,
+
     // A boxed-in Arc with two real Cores to fire at, posed at 95 — with no open face
     // and no conduction drain, its own firing can only carry it up.
     async arrange(api) {
