@@ -79,7 +79,7 @@ previously recorded info.
 {{#if readFile.offered}}
 {{#if readFile.images}}Reading images is supported.{{else}}Reading images is not supported.{{/if}}
 
-{{#if readFile.capped}} Reading a file returns at most **{{readFile.lineCap}} lines** per call.{{/if}}
+{{#if readFile.capped}} Reading a file returns at most {{readFile.lineCap}} lines per call.{{/if}}
 {{/if}}
 
 {{#if shell.offloaded}}
