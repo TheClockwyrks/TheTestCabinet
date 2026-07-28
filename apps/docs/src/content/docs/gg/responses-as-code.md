@@ -608,8 +608,10 @@ uncaught, one the sandbox stopped at a ceiling. A failure gg reported *into* a p
 that carried on — a caught throw, a refused call, a non-zero `shell` exit, a call refused
 because the wall-clock budget is spent — is **not** one: the program handled it, which is
 the entire point of the typed surface. How many such turns a run tolerates is a matter of
-its [execution ceilings](/gg/execution-limits/), which are off unless a configuration
-arms them; by default only the turn ceiling and the wall-clock budget bound a run.
+its [execution ceilings](/gg/execution-limits/); by default a run's turn ceiling is
+unbounded (the host caps its wall-clock) and its two error ceilings — 5 consecutive
+errors, and an error rate above 0.4 over the last 50 turns — end a run that has stopped
+making progress.
 
 ## How the sandbox is built and shipped
 

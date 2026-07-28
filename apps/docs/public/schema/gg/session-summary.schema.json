@@ -301,7 +301,7 @@
     "limits": {
       "$ref": "https://docs.testcabinet.ai/schema/gg/capability-set.schema.json#/$defs/GgRunLimits",
       "default": {},
-      "description": "The [execution ceilings](GgRunLimits) that were actually **in force** for this run — the\nconfigured set with gg's own turn default filled in.\n\nRecorded rather than left to be re-derived from the [capability set](GgCapabilitySet)\nbecause a default is otherwise invisible: \"what ceiling was this run bounded by?\" must be\nanswerable for every run, including one that declared none. All-absent for a run recorded\nbefore ceilings existed."
+      "description": "The [execution ceilings](GgRunLimits) that were actually **in force** for this run — the\nconfigured set with gg's own defaults filled in (the error ceilings a run left unset, and an\nabsent `maxTurns` recorded as unbounded).\n\nRecorded rather than left to be re-derived from the [capability set](GgCapabilitySet)\nbecause a default is otherwise invisible: \"what ceiling was this run bounded by?\" must be\nanswerable for every run, including one that declared none. All-absent for a run recorded\nbefore ceilings existed."
     },
     "maxSubagentDepth": {
       "description": "The deepest [subagent depth](GgTelemetryKind::AgentSpawned) reached this run: `0` for a\nsingle-agent run (only the root, at depth 0), `1` for a run that spawned children but no\ngrandchildren, and so on — the correlate for \"how does delegation depth relate to score?\".",

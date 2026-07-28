@@ -214,11 +214,24 @@ function AgentsCard({
     () => buildAgentRows(agentForest, perAgent),
     [agentForest, perAgent],
   );
+  // The run's total turns across every agent — one per `turn_started`, summed over
+  // the per-agent partitions (each turn is stamped with exactly one agent, so the
+  // sum is the whole-run count). Reads here beside the agent overview because it is a
+  // fact about the agents taken together.
+  const totalTurns = useMemo(
+    () =>
+      [...perAgent.values()].reduce((sum, state) => sum + state.turnCount, 0),
+    [perAgent],
+  );
 
   return (
     <div className={`${styles.card} ${styles.cardFull}`}>
       <span className={styles.cardLabel}>
         Agents · {rows.length}
+        <span className={styles.agentsTurns}>
+          {" · "}
+          {totalTurns} turn{totalTurns === 1 ? "" : "s"} total
+        </span>
         {nav && rows.length > 1 && (
           <span className={styles.agentsHint}>
             {" "}

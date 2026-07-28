@@ -1241,6 +1241,13 @@ $context-palette: (
   font-variant-numeric: tabular-nums;
 }
 
+// How many turns the agent took, beside the depth on its Overview identity.
+.agentTurns {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
 // The worktree indicator: the isolated branch the agent ran in, plus its
 // reconciliation outcome once known (merged / discarded / conflict). Merged reads
 // positive, a conflict warns (the main tree was left unchanged), discarded is

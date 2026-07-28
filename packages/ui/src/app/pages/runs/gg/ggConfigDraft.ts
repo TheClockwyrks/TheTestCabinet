@@ -28,7 +28,6 @@ import {
   ALL_CAP_IDS,
   CAPABILITIES,
   DEFAULT_CAP_IDS,
-  DEFAULT_MAX_TURNS,
   FILESYSTEM_CAP_IDS,
   LEGACY_FILESYSTEM_CAP_ID,
   PRIMARY_SLOT,
@@ -96,8 +95,8 @@ export interface GgAgentDraft {
 }
 
 // The run's execution ceilings as the editor holds them: one *string* per ceiling,
-// keyed by its wire field, so the form can hold "empty" (the ceiling is off, or —
-// for the turn ceiling — left to gg's default) distinctly from `0`.
+// keyed by its wire field, so the form can hold "empty" (the ceiling is off, an error
+// ceiling left to gg's default, or an unbounded turn ceiling) distinctly from `0`.
 //
 // A total record over `keyof GgRunLimits` rather than a hand-listed interface: a
 // ceiling added to the contract is then a compile error in every function below.
@@ -130,8 +129,9 @@ export function blankRunLimits(): GgRunLimitsDraft {
 
 /**
  * A fresh configuration's ceilings, with every ceiling that has a documented default
- * (only the turn ceiling) seeded to it, so a new configuration shows gg's real
- * default rather than an empty box.
+ * (the two error ceilings) seeded to it, so a new configuration shows gg's real
+ * default rather than an empty box. The turn ceiling is left empty (unbounded), and
+ * runtime and cost are off.
  */
 export function seededRunLimits(): GgRunLimitsDraft {
   const draft = blankRunLimits();
@@ -235,9 +235,10 @@ function builtIn(
       // and then grows extra agents onto.
       agents: [blankAgentDraft(ROOT_AGENT, enabledIds, paramDefaults)],
       modelSlots: [blankPrimaryModelSlot()],
-      // No built-in arms a ceiling beyond gg's own default turn ceiling: the others
-      // are the arms of an ablation, and a shared read-only configuration that quietly
-      // capped cost or errors would change what every study measured without saying so.
+      // Every built-in seeds gg's own defaults (the two error ceilings; turns
+      // unbounded, runtime and cost off) and nothing more: the runtime and cost
+      // ceilings are the arms of an ablation, and a shared read-only configuration that
+      // quietly capped them would change what every study measured without saying so.
       limits: seededRunLimits(),
     },
   };
@@ -588,19 +589,18 @@ export function runLimitsError(limits: GgRunLimitsDraft): string | null {
 
 /**
  * The one thing about a well-formed ceiling set worth saying out loud without
- * refusing the save: a rate window that is not smaller than the turn ceiling can only
- * ever fill on the last turn an agent is allowed.
+ * refusing the save: a rate window that is not smaller than an explicit turn ceiling
+ * can only ever fill on the last turn an agent is allowed. An unbounded turn ceiling
+ * (the default — an empty field) has no last turn to pin the window to, so an explicit
+ * window always has room to fill and nothing is said.
  */
 export function runLimitsWarning(limits: GgRunLimitsDraft): string | null {
   const window = Number(limits.errorRateWindow.trim());
   if (!limits.errorRateWindow.trim() || !Number.isFinite(window)) return null;
   if (!limits.maxErrorRate.trim()) return null;
-  const declared = Number(limits.maxTurns.trim());
-  const turns =
-    limits.maxTurns.trim() && Number.isFinite(declared)
-      ? declared
-      : DEFAULT_MAX_TURNS;
-  if (window < turns) return null;
+  if (!limits.maxTurns.trim()) return null;
+  const turns = Number(limits.maxTurns.trim());
+  if (!Number.isFinite(turns) || window < turns) return null;
   return `The error-rate window (${window}) isn't smaller than the turn ceiling (${turns}), so the rate ceiling could only ever fire on the last turn an agent is allowed.`;
 }
 
@@ -728,7 +728,9 @@ function agentConfigFromDraft(agent: GgAgentDraft): GgAgentConfig {
     ...(agent.modelSource === "model-slot"
       ? { modelSlot: agent.modelSlot.trim() }
       : {}),
-    ...(agent.disabledTools.length ? { disabledTools: agent.disabledTools } : {}),
+    ...(agent.disabledTools.length
+      ? { disabledTools: agent.disabledTools }
+      : {}),
     ...(custom ? { customInstructions: custom } : {}),
     ...(template.trim() ? { systemPromptTemplate: template } : {}),
     ...(subagents.length ? { subagents } : {}),

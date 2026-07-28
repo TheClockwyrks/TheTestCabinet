@@ -1115,13 +1115,19 @@ pub struct GgModelSlot {
 /// produced it — where limits on the invocation would let a run record *which* ceiling was hit
 /// while making *what the ceiling was* unrecoverable.
 ///
-/// **Every field is disabled when unset**, except the turn ceiling, whose long-standing default
-/// (50) is preserved because a gg run has always had one. A value that cannot bound anything — a
-/// zero window, a negative rate, a rate above `1.0` — is a startup warning and is ignored, never
-/// an error, on the same terms as an unknown name in
-/// [`disabled_tools`](GgAgentConfig::disabled_tools). The run records the ceilings that were
-/// actually in force on [`GgSessionSummary::limits`], so a default is a recorded fact rather than
-/// a hidden one.
+/// **The defaults catch a stuck run without capping a productive one.** gg's host (The Test
+/// Cabinet) already enforces a wall-clock cap on every run, so a turn ceiling is redundant as the
+/// backstop it used to be and mostly just cuts a run short before it is done — which is why the
+/// turn ceiling is now **unbounded** when unset. What is armed by default instead are the two error
+/// ceilings that end a run which is *failing* rather than merely *long*: **5 consecutive errors**,
+/// and an **error rate above 0.4 over the last 50 turns**. Runtime and cost stay off when unset —
+/// the host owns the clock, and gg will not invent a spend ceiling nobody asked for. A field set to
+/// a value that cannot bound anything — a zero window, a negative rate, a rate above `1.0` — is a
+/// startup warning and is ignored, never an error, on the same terms as an unknown name in
+/// [`disabled_tools`](GgAgentConfig::disabled_tools); a **partially** declared error rate (a rate
+/// without a window, or a window without a rate) is likewise a warning and no ceiling, and does not
+/// fall back to the default. The run records the ceilings that were actually in force on
+/// [`GgSessionSummary::limits`], so a default is a recorded fact rather than a hidden one.
 ///
 /// See the [execution-limits](https://docs.testcabinet.ai/gg/execution-limits/) page for how each
 /// ceiling is accounted (per agent or run-wide) and what breaching it does to the run.
@@ -1129,9 +1135,10 @@ pub struct GgModelSlot {
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgRunLimits {
-    /// The per-agent turn ceiling. Absent means gg's own default of 50 — the one ceiling that has
-    /// a default, because a gg run has always had a turn ceiling and removing it would be a
-    /// different change. An agent that reaches it ends `exhausted`.
+    /// The per-agent turn ceiling. **Absent means unbounded** — the host already caps a run's
+    /// wall-clock, so a turn ceiling is left to the operator to set when a study wants one rather
+    /// than imposed as a backstop that mostly cuts productive runs short. An agent that reaches a
+    /// set ceiling ends `exhausted`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub max_turns: Option<u64>,
@@ -1140,7 +1147,8 @@ pub struct GgRunLimits {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub max_runtime_secs: Option<u64>,
-    /// How many **error turns in a row** end an agent. Absent means the ceiling is off.
+    /// How many **error turns in a row** end an agent. **Absent means gg's default of 5**; set it
+    /// explicitly to widen or tighten the ceiling.
     ///
     /// A turn is an error when the work it *declared* could not be carried out as declared: a
     /// model call that failed, a reply that was not a program, a program that did not compile, one
@@ -1156,6 +1164,10 @@ pub struct GgRunLimits {
     /// of ten, five errors is not a breach and six is. Needs
     /// [`error_rate_window`](Self::error_rate_window); either alone is a startup warning and no
     /// ceiling.
+    ///
+    /// When **both** this and the window are absent, gg's default arms an error rate of **0.4 over
+    /// the last 50 turns**. A partial declaration (this without the window, or the window without
+    /// this) does not fall back to the default — it warns and arms nothing.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub max_error_rate: Option<f64>,
@@ -1163,7 +1175,8 @@ pub struct GgRunLimits {
     /// measured over — and, deliberately, the minimum sample: the ceiling cannot fire until the
     /// agent has taken this many turns, so one number does both jobs. The earliest turn this
     /// ceiling can stop a run on is therefore turn `error_rate_window` — at `1` it says "stop on
-    /// any error", which is a legitimate declaration rather than an accident.
+    /// any error", which is a legitimate declaration rather than an accident. Absent (together with
+    /// [`max_error_rate`](Self::max_error_rate)) means gg's default window of **50**.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub error_rate_window: Option<u64>,
@@ -2372,7 +2385,8 @@ pub struct GgSessionSummary {
     #[serde(default)]
     pub effective_tools: Vec<String>,
     /// The [execution ceilings](GgRunLimits) that were actually **in force** for this run — the
-    /// configured set with gg's own turn default filled in.
+    /// configured set with gg's own defaults filled in (the error ceilings a run left unset, and an
+    /// absent `maxTurns` recorded as unbounded).
     ///
     /// Recorded rather than left to be re-derived from the [capability set](GgCapabilitySet)
     /// because a default is otherwise invisible: "what ceiling was this run bounded by?" must be

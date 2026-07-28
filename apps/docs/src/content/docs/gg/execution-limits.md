@@ -67,23 +67,33 @@ requested none (it ended the session), or the model call failed. That asymmetry 
 the five error shapes are code-mode shapes — is real rather than an oversight: a
 tool-calling turn has no way to declare work that can be cut short.
 
-## Every new ceiling is off unless you set it
+## The defaults catch a failing run, not a long one
 
-gg is a laboratory whose independent variable is a **recorded** configuration, so it arms
-no threshold nobody asked for. There is no inherited default for consecutive errors, for
-the error rate, or for cost; the turn ceiling keeps its long-standing default of **50**,
-because a gg run has always had one and removing it would be a different change.
+gg's host (The Test Cabinet) already enforces a wall-clock cap on every run, so a turn
+ceiling is redundant as the backstop it used to be — armed as one, it mostly cut
+productive runs short before they were done. So the **turn ceiling is unbounded when
+unset**. What gg arms by default instead are the two error ceilings that end a run whose
+model has stopped making progress:
 
-A pathological run is still bounded: it burns its turn ceiling and ends `exhausted`,
-which is better data than a guessed ceiling firing at turn five, because it does not
-conflate "the model never recovered" with "the model recovered on turn seven".
+- **`maxConsecutiveErrors` defaults to 5** — five failing turns in a row ends the agent.
+- **`maxErrorRate` defaults to 0.4 over an `errorRateWindow` of 50** — once an agent has
+  taken 50 turns, more than 40% of its recent turns being errors ends it.
 
-What makes that austerity honest rather than merely absent is the other half: **the run
-records the ceilings that were actually in force**, on the session summary, beside the
-breach if there was one — including the turn ceiling's default. "What was this run
-bounded by?" is answerable for every run, which until now it was not, even for `maxTurns`.
-The run also logs one `info` line at launch naming every armed ceiling, or
-*"no execution ceiling is armed beyond the 50-turn ceiling"* when none is.
+Runtime and cost stay **off** when unset: the host owns the clock, and gg will not invent
+a spend ceiling nobody asked for. A pathological run is therefore still bounded — it trips
+an error ceiling rather than burning turns — while a run that keeps making progress is
+bounded only by the host's clock.
+
+A ceiling you *do* set replaces its default; a **partially** declared error rate (a rate
+without a window, or a window without a rate) is a mistake, so it warns and arms nothing
+rather than filling in the missing half from the default.
+
+What makes the defaults honest rather than hidden is that **the run records the ceilings
+that were actually in force**, on the session summary, beside the breach if there was one
+— including an unset turn ceiling, recorded as unbounded (`maxTurns` absent). "What was
+this run bounded by?" is answerable for every run. The run also logs one `info` line at
+launch naming every armed ceiling, or *"no execution ceiling is armed; the run is bounded
+only by the host's clock"* when a configuration disables everything.
 
 ## The ceilings, exactly
 
@@ -206,7 +216,7 @@ Nothing about a ceiling is ever said to the **model**, in the system prompt or i
 feedback. A ceiling is not actionable — there is nothing a model can do about a cost
 budget except behave differently *because it was told there was one*, which makes its
 behaviour a function of the guardrail and confounds every measurement the capability set
-exists to make. It is also consistent with the ceiling gg has always had: the 50-turn
+exists to make. It is also consistent with how the turn ceiling has always worked: a turn
 budget has never been told to a model either.
 
 ## Configuring them
@@ -226,8 +236,10 @@ ceiling carries both the breach and the ceiling that produced it:
 
 A set that declares nothing omits the key entirely, so every stored configuration
 round-trips unchanged. In the console they are a **Run limits** fieldset above the
-capability groups in the [configuration](/gg/configurations/) editor — an empty field
-leaves that ceiling off.
+capability groups in the [configuration](/gg/configurations/) editor. A fresh
+configuration shows gg's defaults in the fields — the two error ceilings seeded, the turn
+ceiling left empty (unbounded) — so an empty error-ceiling field falls back to its
+default, while an empty `maxTurns`, `maxRuntimeSecs` or `maxCost` leaves that ceiling off.
 
 Resolution is **total**: an unset, zero, negative or nonsensical declaration becomes "the
 ceiling is off" plus a warning, never a launch error, on the same terms an unknown name in
@@ -236,22 +248,24 @@ configuration document has to stay interpretable by every arm.
 
 | Declaration | Resolves to | Warning |
 | --- | --- | --- |
-| `limits` absent | the turn default, every other ceiling off | — |
-| `maxTurns: 0` or absent | `50` | — |
+| `limits` absent | turns unbounded, the error defaults armed, runtime and cost off | — |
+| `maxTurns: 0` or absent | **unbounded** (no turn ceiling) | — |
 | `maxRuntimeSecs: 0` or absent | no budget | — |
+| `maxConsecutiveErrors` absent | `5` (the default) | — |
 | `maxConsecutiveErrors: 0` | off | it would stop a run before its first turn |
+| both error-rate halves absent | `0.4` over `50` (the default) | — |
 | a rate with no window, or a window with no rate | off | neither half means anything alone |
 | `maxErrorRate` outside `0.0..=1.0`, or not finite | off | it could never be exceeded |
 | `errorRateWindow: 0` | off | it has no turns to measure |
-| `errorRateWindow` ≥ `maxTurns` | **armed** | it can only ever fire on the run's last turn |
+| `errorRateWindow` ≥ `maxTurns` (when a turn ceiling is set) | **armed** | it can only ever fire on the run's last turn |
 | `maxCost` ≤ 0, or not finite | off | it must be greater than zero |
 | `maxTurns` / `maxRuntimeSecs` on a **capability's** params | ignored | move it to `capabilitySet.limits` |
 
 That last row is a migration guard rather than a hypothetical. Both values used to be
 read from any capability's params, and the console round-trips undeclared params
 losslessly, so a configuration saved before limits had a home may still carry
-`{"maxTurns": 8}` on some capability — which would otherwise silently become 50. gg names
-the capability and the param instead.
+`{"maxTurns": 8}` on some capability — a ceiling the operator meant to set that gg would
+otherwise ignore, running unbounded instead. gg names the capability and the param.
 
 ### A model API error is still fatal
 

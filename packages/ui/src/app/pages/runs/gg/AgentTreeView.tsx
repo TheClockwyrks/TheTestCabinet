@@ -119,9 +119,16 @@ function slotTokenTotal(usage: SlotUsage): number {
 export function AgentIdentity({
   node,
   role,
+  turns,
 }: {
   node: AgentNode;
   role?: SpeculationRole;
+  /**
+   * How many turns this agent took — one per model request/response cycle. Shown as
+   * a chip beside the depth when provided (on an agent's Overview, which knows the
+   * agent's reduced slice); omitted where only the tree node is in hand.
+   */
+  turns?: number;
 }) {
   const isRoot = node.parentId == null;
   return (
@@ -154,6 +161,11 @@ export function AgentIdentity({
         )}
         {node.depth != null && (
           <span className={styles.agentDepth}>depth {node.depth}</span>
+        )}
+        {turns != null && (
+          <span className={styles.agentTurns}>
+            {turns} turn{turns === 1 ? "" : "s"}
+          </span>
         )}
         {node.worktree && (
           <span

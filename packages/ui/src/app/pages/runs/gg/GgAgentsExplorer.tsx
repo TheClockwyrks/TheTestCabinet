@@ -731,7 +731,7 @@ function OverviewFile({
   return (
     <div className={panels.panelBody}>
       <div className={panels.overview}>
-        <AgentIdentity node={node} role={role} />
+        <AgentIdentity node={node} role={role} turns={state.turnCount} />
         <ContextUsageBar latest={state.latestContext} />
         {/* The pane-responsive grid, not the Dashboard's viewport bento: this pane
             is narrower than the window, so the widgets must stack on the pane's own

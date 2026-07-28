@@ -14,7 +14,12 @@ import {
   launchModelSlots,
   runLimitsWarning,
 } from "./ggConfigDraft";
-import { DEFAULT_MAX_TURNS, RUN_LIMIT_SPECS } from "./ggCatalog";
+import {
+  DEFAULT_ERROR_RATE_WINDOW,
+  DEFAULT_MAX_CONSECUTIVE_ERRORS,
+  DEFAULT_MAX_ERROR_RATE,
+  RUN_LIMIT_SPECS,
+} from "./ggCatalog";
 
 // One agent profile with only the fields a given assertion cares about; the rest take
 // the defaults the wire type uses. Pins a placeholder model by default so a fixture is
@@ -419,9 +424,11 @@ describe("gg capability params", () => {
 });
 
 describe("gg run limits", () => {
-  it("seeds gg's default turn ceiling into a fresh form, and no other ceiling", () => {
+  it("seeds gg's default error ceilings into a fresh form, and leaves turns unbounded", () => {
     expect(capabilitySetFromDraft(emptyDraft(), null).limits).toEqual({
-      maxTurns: DEFAULT_MAX_TURNS,
+      maxConsecutiveErrors: DEFAULT_MAX_CONSECUTIVE_ERRORS,
+      maxErrorRate: DEFAULT_MAX_ERROR_RATE,
+      errorRateWindow: DEFAULT_ERROR_RATE_WINDOW,
     });
     expect(RUN_LIMIT_SPECS.map((spec) => spec.key).sort()).toEqual(
       Object.keys(emptyDraft().limits).sort(),
@@ -450,6 +457,8 @@ describe("gg run limits", () => {
 
   it("refuses to save half an error-rate ceiling", () => {
     const draft = emptyDraft();
+    // Clear the seeded default window so only the rate is set — the half-declared case.
+    draft.limits.errorRateWindow = "";
     draft.limits.maxErrorRate = "0.5";
     expect(draftSaveError(draft)).toContain("both a rate and a window");
     draft.limits.errorRateWindow = "10";
@@ -478,10 +487,13 @@ describe("gg run limits", () => {
     expect(runLimitsWarning(draft.limits)).toBeNull();
   });
 
-  it("measures the window against gg's default when no turn ceiling is set", () => {
+  it("does not warn about the window when the turn ceiling is unbounded", () => {
+    // With no turn ceiling (the default), there is no last turn to pin the window to,
+    // so any window has room to fill and nothing is said.
     const draft = emptyDraft();
+    draft.limits.maxTurns = "";
     draft.limits.maxErrorRate = "0.5";
     draft.limits.errorRateWindow = "50";
-    expect(runLimitsWarning(draft.limits)).toContain("(50)");
+    expect(runLimitsWarning(draft.limits)).toBeNull();
   });
 });

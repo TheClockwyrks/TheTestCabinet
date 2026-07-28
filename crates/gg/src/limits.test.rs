@@ -54,11 +54,12 @@ fn rate_limits(max_rate: f64, window: usize) -> RunLimits {
     }
 }
 
-/// Ceilings with nothing armed but the turn default — the baseline every accounting test varies
-/// one field of.
+/// Ceilings with nothing armed at all — turns unbounded and every ceiling off. The baseline every
+/// accounting test varies one field of, built directly (not through the resolver, which arms gg's
+/// defaults) so a test isolates the one ceiling it is about.
 fn bare_limits() -> RunLimits {
     RunLimits {
-        max_turns: DEFAULT_MAX_TURNS,
+        max_turns: None,
         max_runtime: None,
         max_consecutive_errors: None,
         error_rate: None,
@@ -91,13 +92,24 @@ fn cost(comparable: f64, actual: f64) -> Option<Cost> {
 // ---------------------------------------------------------------------------------------------
 
 #[test]
-fn an_absent_limits_block_arms_only_the_default_turn_ceiling() {
+fn an_absent_limits_block_arms_the_error_defaults_and_leaves_turns_unbounded() {
+    // The host caps the wall-clock, so an unset turn ceiling is unbounded; what gg arms by default
+    // instead are the two error ceilings that end a run whose model has stopped making progress.
     let limits = resolve_cleanly(GgRunLimits::default());
 
-    assert_eq!(limits.max_turns, DEFAULT_MAX_TURNS);
+    assert_eq!(limits.max_turns, None, "turns are unbounded by default");
     assert_eq!(limits.max_runtime, None);
-    assert_eq!(limits.max_consecutive_errors, None);
-    assert_eq!(limits.error_rate, None);
+    assert_eq!(
+        limits.max_consecutive_errors,
+        Some(DEFAULT_MAX_CONSECUTIVE_ERRORS)
+    );
+    assert_eq!(
+        limits.error_rate,
+        Some(ErrorRateLimit {
+            max_rate: DEFAULT_MAX_ERROR_RATE,
+            window: DEFAULT_ERROR_RATE_WINDOW,
+        })
+    );
     assert_eq!(limits.max_cost, None);
 }
 
@@ -112,7 +124,7 @@ fn every_declared_ceiling_resolves_when_it_is_usable() {
         max_cost: Some(25.0),
     });
 
-    assert_eq!(limits.max_turns, 60);
+    assert_eq!(limits.max_turns, Some(60));
     assert_eq!(limits.max_runtime, Some(Duration::from_secs(5400)));
     assert_eq!(limits.max_consecutive_errors, Some(5));
     assert_eq!(
@@ -126,15 +138,15 @@ fn every_declared_ceiling_resolves_when_it_is_usable() {
 }
 
 #[test]
-fn a_zero_turn_ceiling_falls_back_to_the_default() {
-    // Zero is read as "not configured" rather than "no turns at all", exactly as it was before the
-    // ceilings had a home — and quietly, because it is not a new mistake to warn a study about.
+fn a_zero_turn_ceiling_is_unbounded() {
+    // Zero is read as "not configured" rather than "no turns at all", and not-configured is now
+    // unbounded — quietly, because it is not a new mistake to warn a study about.
     let limits = resolve_cleanly(GgRunLimits {
         max_turns: Some(0),
         ..GgRunLimits::default()
     });
 
-    assert_eq!(limits.max_turns, DEFAULT_MAX_TURNS);
+    assert_eq!(limits.max_turns, None);
 }
 
 #[test]
@@ -296,7 +308,8 @@ fn a_non_positive_cost_ceiling_is_off_and_says_so() {
 fn legacy_params_on_a_capability_are_warned_about() {
     // The migration hazard: `maxTurns` used to be read from any capability's params, and the
     // console round-trips undeclared params losslessly, so a stored configuration can still carry
-    // one. Silently resolving it to 50 is the failure this warning exists to prevent.
+    // one. Silently running unbounded when the operator meant to set a ceiling is the failure this
+    // warning exists to prevent.
     let set = GgCapabilitySet {
         agents: vec![GgAgentConfig {
             capabilities: vec![
@@ -318,8 +331,8 @@ fn legacy_params_on_a_capability_are_warned_about() {
     let limits = resolve_run_limits(&set, &mut warnings);
 
     assert_eq!(
-        limits.max_turns, DEFAULT_MAX_TURNS,
-        "the stale param configures nothing"
+        limits.max_turns, None,
+        "the stale param configures nothing, so the run is unbounded"
     );
     assert_eq!(limits.max_runtime, None);
     assert_eq!(
@@ -338,8 +351,10 @@ fn legacy_params_on_a_capability_are_warned_about() {
 #[test]
 fn resolution_never_fails_a_launch() {
     // Every unusable declaration at once, on a set that also carries both legacy params. The run
-    // still resolves to a usable, bounded configuration — an ablation sweep shares one document
-    // across arms, and an arm that cannot launch measures nothing at all.
+    // still resolves to a launchable configuration — here one with nothing armed, bounded only by
+    // the host's clock — because an ablation sweep shares one document across arms, and an arm that
+    // cannot launch measures nothing at all. (Every ceiling was declared unusable, so even the
+    // error defaults are suppressed: a half-declared rate is a mistake, not an unset field.)
     let set = GgCapabilitySet {
         agents: vec![GgAgentConfig {
             capabilities: vec![GgCapabilityConfig {
@@ -384,7 +399,7 @@ fn the_armed_summary_names_every_ceiling_in_force() {
     );
     assert_eq!(
         bare_limits().armed_summary(),
-        "no execution ceiling is armed beyond the 50-turn ceiling",
+        "no execution ceiling is armed; the run is bounded only by the host's clock",
         "an unbounded run says so rather than saying nothing"
     );
 }
@@ -502,8 +517,9 @@ fn every_error_kind_counts_towards_the_consecutive_ceiling() {
 
 #[test]
 fn an_unconfigured_consecutive_ceiling_never_breaches() {
-    // The opt-in property: an unbounded run burns its turn ceiling instead of being killed by a
-    // default nobody configured.
+    // The machinery in isolation: an `AgentLimits` with no consecutive ceiling records any number
+    // of errors without ever breaching. (The resolver arms a default, but the accounting itself
+    // must honour "off means off" when handed a bare ceiling set.)
     let breaches = record_all(bare_limits(), &[ERROR; 200]);
 
     assert!(breaches.iter().all(Option::is_none));

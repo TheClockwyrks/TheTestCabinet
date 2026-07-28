@@ -4819,7 +4819,12 @@ impl Agent {
         project: Option<ProjectContext>,
         replay: Option<Arc<GgRecorder>>,
     ) -> LoopEnd {
+        // The per-agent turn ceiling, or `None` for unbounded (the default — the host caps the
+        // wall-clock, so gg imposes no turn backstop unless a study asks for one). An unbounded run
+        // iterates to `usize::MAX`, a bound no real run reaches, so it stops only on `finish`, an
+        // error/cost ceiling, or the deadline — never by falling through the loop.
         let max_turns = limits.limits.max_turns;
+        let turn_bound = max_turns.unwrap_or(usize::MAX);
         // Code Reviews gate `complete_issue` only when the capability is on *and* this agent has the
         // delegation machinery to run a reviewer (i.e. `subagents` is `Some`); otherwise
         // `complete_issue` accepts issues directly. Computed once here since `subagents` never
@@ -4930,7 +4935,7 @@ impl Agent {
         // sequence — see [`crate::limits`].
         let mut agent_limits = AgentLimits::new(limits.limits);
 
-        for turn in 0..max_turns {
+        for turn in 0..turn_bound {
             // Stop cleanly at a turn boundary once the run's wall-clock budget is spent. Nothing is
             // in flight here, so nothing is abandoned mid-turn.
             if let Some(breach) = limits.check_deadline(&self.id, agent_limits.turns_recorded()) {
@@ -5795,11 +5800,13 @@ impl Agent {
 
         // The turn ceiling. It keeps its own long-standing terminal status, and now also records
         // the breach every other ceiling records, so "which ceiling stopped this run?" has one
-        // answer rather than one per status.
+        // answer rather than one per status. Only reached when a turn ceiling is set: an unbounded
+        // run iterates to `usize::MAX` and stops on another ceiling or `finish` long before, so this
+        // fall-through does not happen for it, and `turn_bound` is the real ceiling either way.
         let breach = GgLimitBreach {
             limit: GgLimitKind::Turns,
-            threshold: max_turns as f64,
-            observed: max_turns as f64,
+            threshold: turn_bound as f64,
+            observed: turn_bound as f64,
             turns: agent_limits.turns_recorded(),
             agent_id: self.id.clone(),
             window: None,
@@ -5807,7 +5814,7 @@ impl Agent {
         self.stop_on_limit(
             emitter,
             breach,
-            max_turns,
+            turn_bound,
             total_tokens,
             total_cost,
             code.enabled,
@@ -5949,14 +5956,14 @@ fn stopped_text(status: &str, report: Option<&str>) -> Option<String> {
 
 /// The resolved [ceilings](RunLimits) as the run **records** them on its session summary.
 ///
-/// The turn ceiling is written out even when it came from
-/// [`DEFAULT_MAX_TURNS`](crate::limits::DEFAULT_MAX_TURNS), because that is
-/// exactly what makes a default honest: "what ceiling was this run under?" has to be answerable from
-/// the record, and a default that is recorded is not a hidden one. Everything else is `None` when
-/// the ceiling is off, which is the same thing the declaration said.
+/// gg's [defaults](crate::limits) are written out exactly as they were in force — the error ceilings
+/// a run left unset, and an absent turn ceiling recorded as `None` (unbounded) — because that is
+/// what makes a default honest: "what ceiling was this run under?" has to be answerable from the
+/// record, and a default that is recorded is not a hidden one. Everything else is `None` when the
+/// ceiling is off, which is the same thing the declaration said.
 fn recorded_limits(limits: &RunLimits) -> GgRunLimits {
     GgRunLimits {
-        max_turns: Some(limits.max_turns as u64),
+        max_turns: limits.max_turns.map(|turns| turns as u64),
         max_runtime_secs: limits.max_runtime.map(|budget| budget.as_secs()),
         max_consecutive_errors: limits.max_consecutive_errors.map(u64::from),
         max_error_rate: limits.error_rate.map(|rate| rate.max_rate),

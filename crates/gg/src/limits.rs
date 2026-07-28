@@ -32,16 +32,20 @@
 //! [breach record](test_cabinet_core::gg::GgLimitBreach) and one aggregation facet for every
 //! ceiling gg has, rather than two vocabularies that drift.
 //!
-//! Every **new** ceiling is disabled when unset. gg is a laboratory whose independent variable is a
-//! *recorded* configuration, so it arms no threshold nobody asked for; a run whose model never
-//! recovers still terminates, by burning [`max_turns`](RunLimits::max_turns) and ending
-//! `exhausted`, which is better data than a guessed ceiling firing at turn five because it does not
-//! conflate "the model never recovered" with "the model recovered on turn seven". What makes that
-//! austerity honest rather than merely absent is the other half: the run records the ceilings that
-//! were actually **in force** ([`GgSessionSummary::limits`](test_cabinet_core::gg::GgSessionSummary))
+//! The defaults catch a run that is *failing* without capping one that is merely *long*. gg's host
+//! (The Test Cabinet) already enforces a wall-clock cap on every run, so the turn ceiling is no
+//! longer needed as the backstop it used to be — armed as one, it mostly cut productive runs short
+//! — and is therefore **unbounded when unset** ([`RunLimits::max_turns`] is `None`). What is armed
+//! by default instead are the two error ceilings that end a run whose model has stopped making
+//! progress: [`DEFAULT_MAX_CONSECUTIVE_ERRORS`] in a row, and an error rate above
+//! [`DEFAULT_MAX_ERROR_RATE`] over the last [`DEFAULT_ERROR_RATE_WINDOW`] turns. Runtime and cost
+//! stay off — the host owns the clock, and gg will not invent a spend ceiling nobody asked for. A
+//! run whose model never recovers therefore still terminates, on an error ceiling rather than by
+//! burning turns, while a run that keeps progressing is bounded only by the host's clock. What
+//! makes the defaults honest rather than hidden is that the run records the ceilings that were
+//! actually **in force** ([`GgSessionSummary::limits`](test_cabinet_core::gg::GgSessionSummary))
 //! beside the breach, so "what ceiling was this run under?" is answerable for every run — including
-//! for the turn ceiling's long-standing default of fifty ([`DEFAULT_MAX_TURNS`]), which until now
-//! was invisible to everything downstream.
+//! one that declared nothing and ran under the defaults.
 //!
 //! # This module decides; the loop acts
 //!
@@ -215,23 +219,36 @@ pub enum FatalFault {
 // The resolved ceilings
 // ---------------------------------------------------------------------------------------------
 
-/// The per-agent turn ceiling used when a run declares none.
+/// The consecutive-error ceiling armed when a run declares none.
 ///
-/// The one ceiling with a default, preserved because a gg run has always had a turn ceiling and
-/// removing it would be a different change from adding three new ones. It is not a hidden default:
-/// the resolved value is recorded on the run's session summary, so a run bounded by it says so.
-pub const DEFAULT_MAX_TURNS: usize = 50;
+/// One of the two error ceilings gg arms by default (see the [module docs](self)): a run whose
+/// model fails this many turns in a row has stopped making progress and is ended rather than left
+/// to run to the host's clock. It is not a hidden default — the resolved value is recorded on the
+/// run's session summary, so a run bounded by it says so.
+pub const DEFAULT_MAX_CONSECUTIVE_ERRORS: u32 = 5;
+
+/// The error rate armed when a run declares neither half of the error-rate ceiling.
+///
+/// Paired with [`DEFAULT_ERROR_RATE_WINDOW`]: a run whose recent turns are more than this fraction
+/// errors has stopped making progress. Recorded on the session summary like every other default.
+pub const DEFAULT_MAX_ERROR_RATE: f64 = 0.4;
+
+/// The lookback the default [error rate](DEFAULT_MAX_ERROR_RATE) is measured over — and, as ever,
+/// the minimum sample, so the default ceiling cannot fire before an agent's fiftieth turn.
+pub const DEFAULT_ERROR_RATE_WINDOW: usize = 50;
 
 /// The resolved [execution ceilings](test_cabinet_core::gg::GgRunLimits) one run is bounded by.
 ///
-/// Every field but the turn ceiling is `None` when the run declared nothing usable, and `None`
-/// means the ceiling is **off** — never "fall back to something sensible". `Copy`, because a
-/// resolved ceiling set is five scalars that every agent enforces identically and none of them
-/// mutates.
+/// The turn ceiling and the two error ceilings carry gg's [defaults](self) when the run declared
+/// nothing; runtime and cost are `None` when the run declared nothing usable, and `None` there
+/// means the ceiling is **off**. `Copy`, because a resolved ceiling set is five scalars that every
+/// agent enforces identically and none of them mutates.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RunLimits {
-    /// The per-agent turn ceiling. Always set; [`DEFAULT_MAX_TURNS`] when the set declares none.
-    pub max_turns: usize,
+    /// The per-agent turn ceiling, or `None` for **unbounded** — the default when the set declares
+    /// none, because the host caps a run's wall-clock and a turn ceiling armed as a backstop mostly
+    /// cuts productive runs short.
+    pub max_turns: Option<usize>,
     /// The run's wall-clock budget, when configured. Run-wide: every agent measures it against the
     /// same session-start instant, so it ends the run rather than one agent.
     pub max_runtime: Option<Duration>,
@@ -306,11 +323,16 @@ impl RunLimits {
 
     /// The one `info` line a run logs at launch, naming every ceiling actually in force.
     ///
-    /// Emitted even when nothing but the turn ceiling is armed, because "this run had no error or
-    /// cost ceiling" is exactly as much a fact about the configuration as a list of ceilings is,
-    /// and a study reading the operator log should not have to infer it from silence.
+    /// Emitted even when nothing is armed at all — a run bounded only by the host's clock is exactly
+    /// as much a fact about the configuration as a list of ceilings is, and a study reading the
+    /// operator log should not have to infer it from silence.
     pub fn armed_summary(&self) -> String {
         let mut armed = Vec::new();
+        // The turn ceiling reads first when set; when unbounded (the default) it simply contributes
+        // nothing, because the host's clock — not a turn count — is what bounds the run.
+        if let Some(max) = self.max_turns {
+            armed.push(format!("{max} turns"));
+        }
         if let Some(runtime) = self.max_runtime {
             armed.push(format!("{}s of runtime", runtime.as_secs()));
         }
@@ -328,16 +350,10 @@ impl RunLimits {
         }
 
         if armed.is_empty() {
-            return format!(
-                "no execution ceiling is armed beyond the {}-turn ceiling",
-                self.max_turns
-            );
+            return "no execution ceiling is armed; the run is bounded only by the host's clock"
+                .to_string();
         }
-        format!(
-            "execution ceilings in force: {} turns, {}",
-            self.max_turns,
-            armed.join(", ")
-        )
+        format!("execution ceilings in force: {}", armed.join(", "))
     }
 }
 
@@ -345,9 +361,9 @@ impl RunLimits {
 ///
 /// Both were read from **any** capability's params, and the console round-trips undeclared params
 /// losslessly through its advanced-JSON field, so a configuration stored in the backend database
-/// may still carry `{"maxTurns": 8}` on some capability — which this design would otherwise
-/// silently turn into fifty. Naming them here is what turns a silent behaviour change into a loud
-/// one.
+/// may still carry `{"maxTurns": 8}` on some capability — a ceiling the operator meant to set that
+/// gg no longer reads there, so the run would run unbounded instead. Naming them here is what turns
+/// a silent behaviour change into a loud one.
 const LEGACY_CAPABILITY_PARAMS: [&str; 2] = ["maxTurns", "maxRuntimeSecs"];
 
 /// Resolve the run's ceilings from [`set.limits`](GgCapabilitySet::limits), appending an
@@ -360,14 +376,16 @@ const LEGACY_CAPABILITY_PARAMS: [&str; 2] = ["maxTurns", "maxRuntimeSecs"];
 ///
 /// | Declaration | Resolves to | Warning |
 /// | --- | --- | --- |
-/// | `limits` absent | the turn default, everything else off | — |
-/// | `maxTurns: 0` or absent | [`DEFAULT_MAX_TURNS`] | — |
+/// | `limits` absent | turns unbounded, the two error ceilings at their [defaults](self), runtime and cost off | — |
+/// | `maxTurns: 0` or absent | **unbounded** (no turn ceiling) | — |
 /// | `maxRuntimeSecs: 0` or absent | no budget | — |
+/// | `maxConsecutiveErrors` absent | [`DEFAULT_MAX_CONSECUTIVE_ERRORS`] | — |
 /// | `maxConsecutiveErrors: 0` | off | it would stop a run before its first turn |
+/// | both error-rate halves absent | [`DEFAULT_MAX_ERROR_RATE`] over [`DEFAULT_ERROR_RATE_WINDOW`] | — |
 /// | a rate with no window, or a window with no rate | off | neither half means anything alone |
 /// | `maxErrorRate` outside `0.0..=1.0`, or not finite | off | it could never be exceeded |
 /// | `errorRateWindow: 0` | off | it has no turns to measure |
-/// | `errorRateWindow >= maxTurns` | **armed** | it can only ever fire on the run's last turn |
+/// | `errorRateWindow >= maxTurns` (when a turn ceiling is set) | **armed** | it can only ever fire on the run's last turn |
 /// | `maxCost` ≤ 0, or not finite | off | it must be greater than zero |
 /// | `maxTurns`/`maxRuntimeSecs` in any capability's params | ignored | move it to `capabilitySet.limits` |
 ///
@@ -376,14 +394,13 @@ const LEGACY_CAPABILITY_PARAMS: [&str; 2] = ["maxTurns", "maxRuntimeSecs"];
 pub fn resolve_run_limits(set: &GgCapabilitySet, warnings: &mut Vec<String>) -> RunLimits {
     let declared = set.limits;
 
-    // The one ceiling that always resolves to a number. Zero is read as "not configured" rather
-    // than "no turns at all", exactly as it was before ceilings had a home, and a declaration wider
-    // than this platform's `usize` falls back rather than wrapping into something small.
+    // Absent or zero is unbounded — the host caps the wall-clock, so gg imposes no turn backstop
+    // unless a study asks for one. A declaration wider than this platform's `usize` is kept as the
+    // widest ceiling it can hold (effectively unbounded either way) rather than wrapping small.
     let max_turns = declared
         .max_turns
         .filter(|&turns| turns > 0)
-        .and_then(|turns| usize::try_from(turns).ok())
-        .unwrap_or(DEFAULT_MAX_TURNS);
+        .map(|turns| usize::try_from(turns).unwrap_or(usize::MAX));
 
     let max_runtime = declared
         .max_runtime_secs
@@ -403,7 +420,8 @@ pub fn resolve_run_limits(set: &GgCapabilitySet, warnings: &mut Vec<String>) -> 
         // reach either way, and keeping the operator's intent ("effectively never") is better than
         // silently arming a small one.
         Some(max) => Some(u32::try_from(max).unwrap_or(u32::MAX)),
-        None => None,
+        // Absent arms gg's default — one of the two error ceilings that end a stuck run.
+        None => Some(DEFAULT_MAX_CONSECUTIVE_ERRORS),
     };
 
     let error_rate = resolve_error_rate(&declared, max_turns, warnings);
@@ -431,17 +449,26 @@ pub fn resolve_run_limits(set: &GgCapabilitySet, warnings: &mut Vec<String>) -> 
 /// Resolve the [error-rate ceiling](ErrorRateLimit) from its two halves, warning about every way
 /// they can fail to describe one.
 ///
-/// The halves are validated in the order a reader would: first that both are present at all, then
-/// that the rate is a fraction, then that the window has turns in it. The first failure returns —
-/// the ceiling is off either way, and a second sentence about a window that will never be consulted
-/// would only bury the one that matters.
+/// When **neither** half is declared, the ceiling arms gg's [default](self)
+/// ([`DEFAULT_MAX_ERROR_RATE`] over [`DEFAULT_ERROR_RATE_WINDOW`]) with no warning — the default is
+/// a deliberate ceiling, not an unusable declaration. A **partial** declaration (one half without
+/// the other) is not a default at all but a mistake the operator half-made, so it warns and arms
+/// nothing rather than silently filling in the missing half. The rest of the halves are validated
+/// in the order a reader would: that the rate is a fraction, then that the window has turns in it.
+/// The first failure returns — the ceiling is off either way, and a second sentence about a window
+/// that will never be consulted would only bury the one that matters.
 fn resolve_error_rate(
     declared: &GgRunLimits,
-    max_turns: usize,
+    max_turns: Option<usize>,
     warnings: &mut Vec<String>,
 ) -> Option<ErrorRateLimit> {
     let (max_rate, window) = match (declared.max_error_rate, declared.error_rate_window) {
-        (None, None) => return None,
+        (None, None) => {
+            return Some(ErrorRateLimit {
+                max_rate: DEFAULT_MAX_ERROR_RATE,
+                window: DEFAULT_ERROR_RATE_WINDOW,
+            });
+        }
         (Some(_), None) => {
             warnings.push(
                 "maxErrorRate is set but errorRateWindow is not; a rate needs a window to be \
@@ -477,7 +504,11 @@ fn resolve_error_rate(
             .push("errorRateWindow: 0 has no turns to measure; the ceiling is off.".to_string());
         return None;
     }
-    if window >= max_turns {
+    // Only warnable against a turn ceiling that exists: an unbounded run (the default) has no last
+    // turn for the window to be pinned to, so an explicit window is always given room to fill.
+    if let Some(max_turns) = max_turns
+        && window >= max_turns
+    {
         warnings.push(format!(
             "errorRateWindow ({window}) is not smaller than the turn ceiling ({max_turns}), so the \
              error-rate ceiling can only ever fire on the run's last turn."
@@ -535,14 +566,15 @@ pub struct AgentLimits {
 impl AgentLimits {
     /// A fresh accounting against `limits`, having recorded nothing.
     ///
-    /// The window is reserved up front, but never wider than the turn ceiling: an agent cannot
-    /// record more outcomes than it is allowed turns, so a window declared wider than the run can
-    /// fill — which [`resolve_run_limits`] warns about rather than rejecting — costs one bounded
-    /// allocation instead of an unbounded one.
+    /// The window is reserved up front, but never wider than the turn ceiling when one is set: an
+    /// agent cannot record more outcomes than it is allowed turns, so a window declared wider than
+    /// the run can fill — which [`resolve_run_limits`] warns about rather than rejecting — costs one
+    /// bounded allocation instead of an unbounded one. On an unbounded run the window's own size is
+    /// the bound, which is why it is a size and not a rate.
     pub fn new(limits: RunLimits) -> Self {
-        let capacity = limits
-            .error_rate
-            .map_or(0, |rate| rate.window.min(limits.max_turns));
+        let capacity = limits.error_rate.map_or(0, |rate| {
+            rate.window.min(limits.max_turns.unwrap_or(usize::MAX))
+        });
         Self {
             limits,
             consecutive: 0,

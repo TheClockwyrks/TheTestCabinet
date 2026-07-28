@@ -691,6 +691,11 @@ export interface DerivedGgState {
   feed: FeedRow[];
   // The capability set gg announced on `session_started`; null until it arrives.
   announcedCapabilitySet: GgCapabilitySet | null;
+  // How many turns this partition took — one per `turn_started` event, which gg
+  // emits once per model request/response cycle whatever the capabilities are (so it
+  // is always available). Over the whole stream it is the run's total turns; over one
+  // agent's partition it is that agent's own turn count.
+  turnCount: number;
   usage: UsageTally;
   slotUsage: SlotUsage[];
   agents: Map<string, AgentNode>;
@@ -962,6 +967,8 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
   // advance the one it opened (the last in the list).
   const speculations: SpeculationState[] = [];
   let turn = 0;
+  // One per `turn_started` — the partition's turn count (see `DerivedGgState.turnCount`).
+  let turnCount = 0;
 
   // Get the agent node for an id, creating a placeholder if the stream referenced it
   // before (or without) an `agent_spawned` — so an out-of-order status/return/merge
@@ -1001,6 +1008,12 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
         break;
       case "session_ended":
         sessionEndStatus = gg.status;
+        break;
+      case "turn_started":
+        // One model request/response cycle began. Counted here (not from `prompt`,
+        // which needs context visibility) so the turn count is exact whatever the
+        // run's capabilities.
+        turnCount += 1;
         break;
       case "usage":
         // Incremental deltas: sum them into the delta tally (the header total until
@@ -1302,6 +1315,7 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
   return {
     feed,
     announcedCapabilitySet,
+    turnCount,
     usage,
     slotUsage,
     agents,

@@ -18,7 +18,7 @@
 //! session-start sandbox warm-up; every other one calls [`Agent::drive`] directly and pays nothing.
 
 use super::*;
-use crate::limits::DEFAULT_MAX_TURNS;
+use crate::limits::DEFAULT_MAX_CONSECUTIVE_ERRORS;
 
 /// A reply that is not a program — the shape a model sends when it narrates a finished task instead
 /// of ending the run, and therefore an error turn under this protocol.
@@ -131,45 +131,54 @@ async fn a_consecutive_error_ceiling_stops_a_live_session_rather_than_only_recor
     assert_eq!(outcome, SessionOutcome::Ran);
 }
 
-/// **An unlimited run burns its turn ceiling instead.**
+/// **An unlimited run stops on the default error ceiling, not by burning turns.**
 ///
-/// The explicit proof that the three new ceilings are opt-in — the same all-error script, with no
-/// `limits` declared at all, is asked for every turn it is allowed — and that the one ceiling with a
-/// default is *recorded* rather than hidden, which is what makes that default honest.
+/// With no `limits` declared, turns are unbounded (the host caps the wall-clock) and gg arms its
+/// default error ceilings instead. A model replying prose every turn is failing, so it trips the
+/// default consecutive-error ceiling — at [`DEFAULT_MAX_CONSECUTIVE_ERRORS`] — rather than running
+/// on to some turn budget. And the recorded ceilings say the turn ceiling was unbounded, so "what
+/// ceiling was this run under?" is answerable rather than inferred.
 #[tokio::test]
-async fn an_unlimited_run_burns_its_turn_ceiling_instead() {
+async fn an_unlimited_run_stops_on_the_default_error_ceiling() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
     let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/primary").root());
-    let client = MockClient::new("mock/primary", prose_script(DEFAULT_MAX_TURNS + 5));
+    // More prose than the default ceiling allows, to prove the loop stops itself rather than merely
+    // running out of script.
+    let client = MockClient::new(
+        "mock/primary",
+        prose_script(DEFAULT_MAX_CONSECUTIVE_ERRORS as usize + 5),
+    );
 
     let end = drive_root(
         &client,
         dir.path(),
         &registry,
         &emitter,
-        // The resolved default: fifty turns, and nothing else armed.
+        // The resolved default: turns unbounded, the two error ceilings armed.
         setup_from(GgRunLimits::default()),
         code_on(),
     )
     .await;
 
-    assert_eq!(end.status, "exhausted");
-    assert_eq!(end.turns, DEFAULT_MAX_TURNS);
+    assert_eq!(end.status, "limit_exceeded");
+    assert_eq!(end.turns, DEFAULT_MAX_CONSECUTIVE_ERRORS as usize);
     assert_eq!(
         client.turns_taken(),
-        DEFAULT_MAX_TURNS,
-        "an unbounded model is asked for every turn it is allowed"
+        DEFAULT_MAX_CONSECUTIVE_ERRORS as usize,
+        "the loop really stopped on the ceiling rather than draining its script"
     );
-    let breach = end.limit.expect("the turn ceiling records a breach too");
-    assert_eq!(breach.limit, GgLimitKind::Turns);
-    assert_eq!(breach.threshold, DEFAULT_MAX_TURNS as f64);
-    // And a run bounded by the default reports the default, so "what ceiling was this run under?"
-    // is answerable rather than inferred.
+    let breach = end
+        .limit
+        .expect("the default error ceiling records a breach");
+    assert_eq!(breach.limit, GgLimitKind::ConsecutiveErrors);
+    assert_eq!(breach.threshold, f64::from(DEFAULT_MAX_CONSECUTIVE_ERRORS));
+    // And a run left unbounded records the turn ceiling as absent — an honest default, not a hidden
+    // fifty.
     assert_eq!(
         recorded_limits(&setup_from(GgRunLimits::default()).limits).max_turns,
-        Some(DEFAULT_MAX_TURNS as u64)
+        None
     );
 }
 
@@ -890,6 +899,9 @@ async fn unusable_limit_declarations_warn_on_the_root_stream_and_launch_anyway()
         "the ceilings actually in force are named too"
     );
     let summary = session_summary(&events).expect("a session summary");
-    assert_eq!(summary.limits.max_turns, Some(DEFAULT_MAX_TURNS as u64));
+    assert_eq!(
+        summary.limits.max_turns, None,
+        "an unset turn ceiling is recorded as unbounded"
+    );
     assert!(summary.limits.max_consecutive_errors.is_none());
 }

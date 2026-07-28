@@ -435,6 +435,12 @@
   color: t.$color-text-muted;
 }
 
+// The run's total turns across every agent, beside the agent count on the card label.
+.agentsTurns {
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
 .agentOverview {
   list-style: none;
   margin: 0;

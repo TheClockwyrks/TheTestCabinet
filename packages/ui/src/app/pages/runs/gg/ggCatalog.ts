@@ -779,10 +779,13 @@ export const ALL_TOOL_NAMES: ReadonlyArray<string> = Array.from(
 // `capabilityEnabled` facet space, where "is the cost ceiling enabled?" would be a
 // dimension no study wants to slice its results by.
 
-// The turn ceiling gg falls back to when a configuration declares none — the one
-// ceiling that has a default, because a gg run has always had a turn ceiling. Every
-// other ceiling is simply off when unset.
-export const DEFAULT_MAX_TURNS = 50;
+// gg's default error ceilings, armed when a configuration declares none — the two
+// that end a run whose model has stopped making progress. The turn ceiling is
+// unbounded by default (the host caps the wall-clock), and runtime and cost are off
+// when unset.
+export const DEFAULT_MAX_CONSECUTIVE_ERRORS = 5;
+export const DEFAULT_MAX_ERROR_RATE = 0.4;
+export const DEFAULT_ERROR_RATE_WINDOW = 50;
 
 // One execution ceiling's control. `key` is the wire field on
 // `GgCapabilitySet.limits`; `kind` is what makes the value legible *and* checkable
@@ -796,8 +799,9 @@ export interface RunLimitSpec {
   placeholder?: string;
   hint: string;
   // The value gg falls back to when this ceiling is unset, seeded into a fresh
-  // configuration's field. Only the turn ceiling has one (gg has always had a turn
-  // ceiling); every other ceiling is simply off when empty, so it seeds nothing.
+  // configuration's field so it shows gg's real default rather than an empty box. The
+  // two error ceilings have one; the turn ceiling is unbounded by default and runtime
+  // and cost are off when empty, so those seed nothing.
   defaultValue?: string;
 }
 
@@ -812,8 +816,8 @@ export const RUN_LIMIT_SPECS: ReadonlyArray<RunLimitSpec> = [
     key: "maxTurns",
     label: "Max turns per agent",
     kind: "count",
-    defaultValue: String(DEFAULT_MAX_TURNS),
-    hint: `gg's default is ${DEFAULT_MAX_TURNS}; clearing the field falls back to it. An agent that reaches it ends exhausted.`,
+    placeholder: "unbounded",
+    hint: "Absent means unbounded — the host caps the run's wall-clock, so gg imposes no turn backstop unless you set one. An agent that reaches a set ceiling ends exhausted.",
   },
   {
     key: "maxRuntimeSecs",
@@ -826,22 +830,25 @@ export const RUN_LIMIT_SPECS: ReadonlyArray<RunLimitSpec> = [
     key: "maxConsecutiveErrors",
     label: "Consecutive errors",
     kind: "count",
+    defaultValue: String(DEFAULT_MAX_CONSECUTIVE_ERRORS),
     placeholder: "e.g. 5",
-    hint: "How many error turns in a row end an agent. A turn is an error when the work it declared could not be carried out — a failed model call, a reply that was not a program, a program that did not compile, threw, or was stopped at a sandbox ceiling. A tool call that failed inside a program that carried on is not one.",
+    hint: `How many error turns in a row end an agent; gg's default is ${DEFAULT_MAX_CONSECUTIVE_ERRORS}. A turn is an error when the work it declared could not be carried out — a failed model call, a reply that was not a program, a program that did not compile, threw, or was stopped at a sandbox ceiling. A tool call that failed inside a program that carried on is not one.`,
   },
   {
     key: "maxErrorRate",
     label: "Error rate",
     kind: "fraction",
+    defaultValue: String(DEFAULT_MAX_ERROR_RATE),
     placeholder: "0.0 – 1.0",
-    hint: "The fraction of an agent's recent turns that may be errors, breached only strictly above this — at 0.5 over a window of ten, five errors is not a breach and six is. Needs a window; either alone is no ceiling at all.",
+    hint: `The fraction of an agent's recent turns that may be errors, breached only strictly above this — at 0.5 over a window of ten, five errors is not a breach and six is. Needs a window; either alone is no ceiling at all. gg's default is ${DEFAULT_MAX_ERROR_RATE} over ${DEFAULT_ERROR_RATE_WINDOW} turns.`,
   },
   {
     key: "errorRateWindow",
     label: "Error-rate window (turns)",
     kind: "count",
-    placeholder: "e.g. 10",
-    hint: "How many of an agent's most recent turns the rate is measured over, and also the minimum sample: the ceiling cannot fire until the agent has taken this many turns, so a run can never be killed by its first bad turn.",
+    defaultValue: String(DEFAULT_ERROR_RATE_WINDOW),
+    placeholder: "e.g. 50",
+    hint: `How many of an agent's most recent turns the rate is measured over, and also the minimum sample: the ceiling cannot fire until the agent has taken this many turns, so a run can never be killed by its first bad turn. gg's default is ${DEFAULT_ERROR_RATE_WINDOW}.`,
   },
   {
     key: "maxCost",

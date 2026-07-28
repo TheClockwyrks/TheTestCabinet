@@ -120,14 +120,14 @@ fn test_context_setup_with_window(window_limit: u64) -> ContextSetup {
 /// none of the three configurable [ceilings](crate::limits::RunLimits), and its own unshared
 /// [spend](crate::limits::RunSpend).
 ///
-/// This is what every test in this file that is *not* about a ceiling wants, and stating it that way
-/// is the point: a run declares no error or cost ceiling unless it asks for one, so the default
-/// shape of a driven loop here is the default shape of a real run. The ceilings themselves are
-/// driven in `agent.limits.test.rs`.
+/// This is what every test in this file that is *not* about a ceiling wants: a plainly turn-bounded
+/// loop with no error or cost ceiling to complicate it. It builds [`RunLimits`] directly rather than
+/// through the resolver, so it is deliberately free of the error ceilings a real run arms by default
+/// — those are driven, through the resolver, in `agent.limits.test.rs`.
 fn no_limits(max_turns: usize) -> LimitsSetup {
     LimitsSetup {
         limits: RunLimits {
-            max_turns,
+            max_turns: Some(max_turns),
             max_runtime: None,
             max_consecutive_errors: None,
             error_rate: None,
