@@ -177,6 +177,11 @@ export function AgentIdentity({
           {node.depth != null && (
             <span className={styles.agentDepth}>depth {node.depth}</span>
           )}
+          {node.depth != null && turns != null && (
+            <span className={styles.agentMetaSep} aria-hidden="true">
+              ·
+            </span>
+          )}
           {turns != null && (
             <span className={styles.agentTurns}>
               {turns} turn{turns === 1 ? "" : "s"}

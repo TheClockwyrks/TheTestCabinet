@@ -1221,6 +1221,13 @@ $context-palette: (
   font-variant-numeric: tabular-nums;
 }
 
+// A dot between two adjacent meta figures (depth · turns), so they read as one
+// grouped pair rather than two loose chips.
+.agentMetaSep {
+  color: t.$color-text-muted;
+  user-select: none;
+}
+
 // How many turns the agent took, beside the depth on its Overview identity.
 .agentTurns {
   font-size: t.$font-sm;
