@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { RunRecord, RunSubject } from "@test-cabinet/run-record";
+import type { Comparison } from "@test-cabinet/run-record/comparison";
 import type { HarnessEvent, ProgressCallback } from "@test-cabinet/ui/client";
 import { readTextWithProgress } from "@test-cabinet/ui/client";
 import {
@@ -17,6 +18,7 @@ import {
   reviews as publishedReviews,
   testCases as catalogTestCases,
   models as catalogModels,
+  comparisons as publishedComparisons,
   proofMediaUrls as publishedProofMediaUrls,
   assetMediaUrls as publishedAssetMediaUrls,
   validationMediaUrls as publishedValidationMediaUrls,
@@ -271,6 +273,13 @@ export function useStaticGallery(): GalleryDataInput {
     // run has actually used, so run-less curated entries don't show here.
     models,
     modelsStatus: "ready",
+    // The published harness comparisons, baked into the snapshot at build time and
+    // rendered read-only (no backend to create/run/publish — those affordances gate
+    // on `canExecute`, which is false here). A single comparison is resolved by id
+    // for the detail view.
+    comparisons: publishedComparisons as Comparison[],
+    readComparison: (id: string) =>
+      (publishedComparisons as Comparison[]).find((c) => c.id === id) ?? null,
     canExecute: false,
     // The public gallery has no backend to ask for a Grafana URL, and its readers
     // have no access to one — the observability stack is VPN-only. Always null, so

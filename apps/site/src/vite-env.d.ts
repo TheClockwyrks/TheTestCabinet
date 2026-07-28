@@ -8,6 +8,7 @@ declare module "virtual:tcab-snapshot" {
   import type { StoredReview } from "@test-cabinet/ui/client";
   import type { TestCaseSummary } from "@test-cabinet/ui/app";
   import type { Model } from "@test-cabinet/ui/client";
+  import type { Comparison } from "@test-cabinet/run-record/comparison";
 
   /**
    * The flat summary index (`runs.json`), newest first — the bounded run-summary
@@ -26,6 +27,8 @@ declare module "virtual:tcab-snapshot" {
   export const testCases: TestCaseSummary[];
   /** The composed model catalog (wire `Model` shape); mapped via `toModelSummary`. */
   export const models: Model[];
+  /** The published harness comparisons, each the full read model (rendered read-only). */
+  export const comparisons: Comparison[];
   /**
    * Resolved proof-of-implementation media URLs, keyed by run id then by served
    * file name (`<proof-id>.<ext>`).

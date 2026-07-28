@@ -183,6 +183,17 @@ export function eventDetail(e: HarnessEvent): string {
       return e.message ?? "";
     case "gg":
       return ggEventDetail(e.event);
+    case "usage": {
+      // A per-turn token-usage slice (a diagnostic event, not workspace activity);
+      // summarize it as the turn's total across the four normalized classes.
+      const t = e.tokens;
+      const total =
+        (t.uncachedInput ?? 0) +
+        (t.cachedInput ?? 0) +
+        (t.output ?? 0) +
+        (t.reasoning ?? 0);
+      return `${total.toLocaleString()} tokens`;
+    }
     default:
       return JSON.stringify(e.raw ?? e);
   }

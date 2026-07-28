@@ -41,12 +41,22 @@ interface SnapshotIndex {
   // Optional so a snapshot published before the model catalog existed still loads
   // (the site then renders an empty Models section).
   modelsKey?: string;
+  // Where the published harness comparisons live (`<prefix>/comparisons.json`).
+  // Optional so a snapshot published before comparisons existed still loads (the
+  // site then has none).
+  comparisonsKey?: string;
 }
 
 interface SnapshotModelsFile {
   schemaVersion: number;
   // Wire `ModelOut` shape; the app maps it via `toModelSummary`.
   models: unknown[];
+}
+
+interface SnapshotComparisonsFile {
+  schemaVersion: number;
+  // Wire `Comparison` shape (`@test-cabinet/run-record/comparison`); consumed as-is.
+  comparisons: unknown[];
 }
 
 // The flat summary index (`runs.json`, the snapshot's `ln` key): the full
@@ -298,6 +308,9 @@ interface AssembledSnapshot {
   // The composed model catalog (wire `ModelOut[]`); the app maps it via
   // `toModelSummary`. Empty when the snapshot predates the model catalog.
   models: unknown[];
+  // The published harness comparisons (wire `Comparison[]`), each already the full
+  // read model the backend assembled. Empty when the snapshot has none.
+  comparisons: unknown[];
   // Resolved proof media URLs, keyed by run id then by served file name
   // (`<proof-id>.<ext>`). The app's `proofMediaUrl(runId, file)` reads this.
   proofMediaUrls: Record<string, Record<string, string>>;
@@ -481,6 +494,7 @@ const EMPTY: AssembledSnapshot = {
   reviews: {},
   testCases: [],
   models: [],
+  comparisons: [],
   proofMediaUrls: {},
   assetMediaUrls: {},
   validationMediaUrls: {},
@@ -939,6 +953,21 @@ async function loadSnapshot(
     }
   }
 
+  // The published harness comparisons. Absent from a snapshot published before
+  // they existed, in which case the site simply has none.
+  let comparisons: unknown[] = [];
+  if (index.comparisonsKey) {
+    try {
+      const comparisonsFile = await fetchJson<SnapshotComparisonsFile>(
+        joinUrl(base, index.comparisonsKey),
+      );
+      comparisons = comparisonsFile.comparisons;
+    } catch {
+      // Missing/unreadable comparisons file: render none rather than failing the
+      // whole build.
+    }
+  }
+
   return {
     // The already-fetched summary index — the bounded cards, verbatim. No extra
     // network calls.
@@ -947,6 +976,7 @@ async function loadSnapshot(
     reviews,
     testCases: collapseCases(base, caseFiles),
     models,
+    comparisons,
     proofMediaUrls,
     assetMediaUrls,
     validationMediaUrls,
@@ -963,6 +993,7 @@ function serialize(data: AssembledSnapshot): string {
     `export const reviews = ${JSON.stringify(data.reviews)};`,
     `export const testCases = ${JSON.stringify(data.testCases)};`,
     `export const models = ${JSON.stringify(data.models)};`,
+    `export const comparisons = ${JSON.stringify(data.comparisons)};`,
     `export const proofMediaUrls = ${JSON.stringify(data.proofMediaUrls)};`,
     `export const assetMediaUrls = ${JSON.stringify(data.assetMediaUrls)};`,
     `export const validationMediaUrls = ${JSON.stringify(data.validationMediaUrls)};`,

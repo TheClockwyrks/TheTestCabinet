@@ -19,6 +19,7 @@ import type {
   TournamentRecord,
 } from "@test-cabinet/run-record";
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+import type { Comparison } from "@test-cabinet/run-record/comparison";
 import {
   parseGlb,
   parseSkinnedGlb,
@@ -322,6 +323,21 @@ export interface GalleryDataInput {
   models: ModelSummary[];
   /** The model catalog's load state (see {@link CatalogStatus}). */
   modelsStatus: CatalogStatus;
+  /**
+   * The published harness comparisons this host can render **read-only**, each the
+   * full read model the backend assembled. Provided only by the static site (from
+   * the snapshot); the consoles leave it `undefined` and fetch the signed-in
+   * account's comparisons through the authed client instead (they are per-account,
+   * not public). A read-only host with none simply renders an empty list. See
+   * {@link readComparison} for a single comparison by id.
+   */
+  comparisons?: Comparison[];
+  /**
+   * Resolve one published comparison by id for a read-only host (the static site),
+   * from its snapshot data. `null` when no published comparison has that id.
+   * Omitted by the consoles, which read a comparison through the authed client.
+   */
+  readComparison?: (id: string) => Comparison | null;
   /**
    * Whether this UI can launch, monitor, review, and publish runs. False on the
    * static gallery site; true in the web and desktop consoles. Gates the
