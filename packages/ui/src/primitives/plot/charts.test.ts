@@ -1,6 +1,12 @@
 import * as Plot from "@observablehq/plot";
 import { describe, expect, it } from "vitest";
-import { barChart, distributionChart, stackedBarChart } from "./charts";
+import {
+  barChart,
+  distributionChart,
+  metricLineChart,
+  stackedAreaChart,
+  stackedBarChart,
+} from "./charts";
 import type { ChartPalette } from "./theme";
 
 // A stand-in palette; these tests assert structure, not exact colors.
@@ -134,6 +140,104 @@ describe("stackedBarChart", () => {
       }),
     );
     expect(xLabels(node)).toEqual(["70", "119"]);
+  });
+});
+
+describe("stackedAreaChart", () => {
+  const series = [
+    { name: "System", color: "#6ea8fe" },
+    { name: "Tool output", color: "#ff924c" },
+  ];
+  const points = [
+    { x: 0, series: "System", value: 100 },
+    { x: 0, series: "Tool output", value: 40 },
+    { x: 1, series: "System", value: 100 },
+    { x: 1, series: "Tool output", value: 90 },
+  ];
+
+  it("draws a band per series over the x progression", () => {
+    const node = render(stackedAreaChart(points, palette, series));
+    // One filled path per band.
+    expect(node.querySelectorAll("path").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("stays free of a tip when no point carries one", () => {
+    const node = render(stackedAreaChart(points, palette, series));
+    expect(node.querySelector('[aria-label="tip"]')).toBeNull();
+  });
+
+  const titled = points.map((p) => ({ ...p, title: `Turn ${p.x}` }));
+
+  it("wires up hover tips, and the rule marking the hovered x, when points carry titles", () => {
+    const node = render(stackedAreaChart(titled, palette, series));
+    const tip = node.querySelector('[aria-label="tip"]');
+    expect(tip).not.toBeNull();
+    // The themed tip box, so the light chart text reads against it.
+    expect(tip!.getAttribute("fill")).toBe(palette.surface);
+    expect(tip!.getAttribute("stroke")).toBe(palette.border);
+    // The pointer rule that marks which x the tip is describing.
+    expect(node.querySelector('[stroke-opacity="0.45"]')).not.toBeNull();
+  });
+
+  // A y ceiling makes Plot clip every mark, which nests each one inside a
+  // clip-path group — the tip and its rule must survive that reframing.
+  it("keeps the tip and its rule when the plot is framed to a y ceiling", () => {
+    const node = render(
+      stackedAreaChart(titled, palette, series, {
+        yTickFormat: "~s",
+        yMax: 500,
+        reference: { value: 400, label: "window limit" },
+        markers: [{ x: 1, label: "compacted" }],
+      }),
+    );
+    expect(node.querySelector('[aria-label="tip"]')).not.toBeNull();
+    expect(node.querySelector('[stroke-opacity="0.45"]')).not.toBeNull();
+  });
+});
+
+describe("metricLineChart", () => {
+  const points = [
+    { turn: 0, value: 12 },
+    { turn: 1, value: 30 },
+    { turn: 2, value: 24 },
+  ];
+
+  it("draws the line and a dot per observation", () => {
+    const node = render(metricLineChart(points, palette));
+    expect(node.querySelectorAll("circle").length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("stays free of a tip when no point carries one", () => {
+    const node = render(metricLineChart(points, palette));
+    expect(node.querySelector('[aria-label="tip"]')).toBeNull();
+  });
+
+  it("wires up hover tips, the crosshair, and the widened dot when points carry titles", () => {
+    const titled = points.map((p) => ({
+      ...p,
+      title: `Turn ${p.turn}\n${p.value} tok/s`,
+    }));
+    const node = render(
+      metricLineChart(titled, palette, { yTickFormat: "~s", color: "#8ac926" }),
+    );
+    const tip = node.querySelector('[aria-label="tip"]');
+    expect(tip).not.toBeNull();
+    expect(tip!.getAttribute("fill")).toBe(palette.surface);
+    // The crosshair rule at the pointed turn.
+    expect(node.querySelector('[stroke-opacity="0.45"]')).not.toBeNull();
+    // ...and the widened dot layer for the selected observation (it draws no
+    // circle until the pointer selects one, so its group is what to look for).
+    expect(
+      node.querySelector('[aria-label="dot"][stroke-width="1.5"]'),
+    ).not.toBeNull();
+  });
+
+  it("renders a one-point history with tips without throwing", () => {
+    expect(() =>
+      render(
+        metricLineChart([{ turn: 3, value: 1, title: "Turn 3" }], palette),
+      ),
+    ).not.toThrow();
   });
 });
 

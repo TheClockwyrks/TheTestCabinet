@@ -8,6 +8,12 @@
 // against the same run. A request with no datum for a metric (throughput when the
 // call carried no timing; reasoning share when the harness folds reasoning into
 // output) is skipped for that request rather than drawn as a misleading zero.
+//
+// Every plotted point carries a hover tooltip naming its turn and value, plus the
+// figures that value was computed from — the tokens and the latency behind a
+// throughput, the two cost figures behind a price, the numerator and denominator
+// behind a share. A single point cannot show its own arithmetic, and without it a
+// reader can see that a request was slow but not whether it was long or starved.
 
 import { useMemo } from "react";
 import {
@@ -18,17 +24,25 @@ import {
 } from "@test-cabinet/ui";
 import type { PromptTurn, TurnTiming } from "./useGgRunState";
 import { formatCost, formatPercent } from "./GgOverviewWidgets";
-import { TurnTimingGraph } from "./TurnTimingGraph";
+import { formatMs, TurnTimingGraph } from "./TurnTimingGraph";
 import styles from "./GgPanels.module.scss";
 
 const throughputFmt = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 0,
 });
 
+const tokenFmt = new Intl.NumberFormat("en-US");
+
+// A token count for a tooltip line, always spelled out — a tooltip is where a
+// reader goes for the exact figure, so this is the one place not to abbreviate.
+function tokens(n: number): string {
+  return `${tokenFmt.format(n)} token${n === 1 ? "" : "s"}`;
+}
+
 // One metric drawn on the grid: how to pull its per-request value (null to skip
 // that request), its fixed color, and how to format a value for the axis ticks and
 // the header chip.
-interface MetricDef {
+export interface MetricDef {
   key: string;
   label: string;
   // A stable, theme-legible hue (mirroring the context palette's family), so a
@@ -49,12 +63,22 @@ interface MetricDef {
   // A fixed y ceiling — the share metrics frame to 1 (100%) rather than to their
   // tallest observation. Omit to let the data size the scale.
   yMax?: number;
+  // The figures the plotted value was computed from, shown under it in the point's
+  // hover tooltip — what a single dot cannot say for itself. Called only for a
+  // request the metric has a value for, so it may assume its inputs are present.
+  detail?: (p: PromptTurn) => readonly string[];
 }
 
 // The tokens a turn generated: everything the model produced during the call
 // (output plus any separately-reported reasoning), the numerator of throughput.
 function generatedTokens(p: PromptTurn): number {
   return (p.tokens.output ?? 0) + (p.tokens.reasoning ?? 0);
+}
+
+// The tokens a turn sent: both input classes together, cached and not — the basis
+// of the request's input cost and the denominator of its cache-read share.
+function inputTokens(p: PromptTurn): number {
+  return (p.tokens.cachedInput ?? 0) + (p.tokens.uncachedInput ?? 0);
 }
 
 // Reasoning tokens as a share of all generated output over the whole run — the same
@@ -100,7 +124,7 @@ function cacheReadShare(prompts: readonly PromptTurn[]): number | null {
 }
 
 // The four per-request metrics, in grid order.
-const METRICS: readonly MetricDef[] = [
+export const METRICS: readonly MetricDef[] = [
   {
     key: "throughput",
     label: "Tokens / s",
@@ -111,6 +135,12 @@ const METRICS: readonly MetricDef[] = [
         : null,
     formatValue: (v) => `${throughputFmt.format(v)} tok/s`,
     yTickFormat: "~s",
+    // The rate's two halves: a slow request that generated a lot is a different
+    // problem from one that generated little, and the rate alone cannot tell them
+    // apart. `durationMs` is non-null for any request with a throughput.
+    detail: (p) => [
+      `${tokens(generatedTokens(p))} in ${formatMs(p.durationMs!)}`,
+    ],
   },
   {
     key: "cost",
@@ -121,6 +151,19 @@ const METRICS: readonly MetricDef[] = [
     value: (p) => p.cost?.comparable ?? p.cost?.actual ?? null,
     formatValue: formatCost,
     yTickFormat: (v) => `$${v < 1 ? v.toFixed(3) : v.toFixed(2)}`,
+    // What the price was charged for, and — when the harness reports its own exact
+    // cost and it differs from the comparable figure plotted — what was actually
+    // billed, so the point is never mistaken for the invoice.
+    detail: (p) => {
+      const lines = [
+        `${tokens(inputTokens(p))} in, ${tokens(generatedTokens(p))} out`,
+      ];
+      const { comparable, actual } = p.cost ?? {};
+      if (comparable != null && actual != null && actual !== comparable) {
+        lines.push(`the provider charged ${formatCost(actual)}`);
+      }
+      return lines;
+    },
   },
   {
     key: "cacheRead",
@@ -138,6 +181,11 @@ const METRICS: readonly MetricDef[] = [
     formatValue: formatPercent,
     yTickFormat: ".0%",
     yMax: 1,
+    // The share's numerator and denominator: 60% of a small prompt and 60% of a
+    // huge one are the same point on the line and nothing like the same request.
+    detail: (p) => [
+      `${tokenFmt.format(p.tokens.cachedInput ?? 0)} cached of ${tokens(inputTokens(p))} sent`,
+    ],
   },
   {
     key: "reasoning",
@@ -156,8 +204,28 @@ const METRICS: readonly MetricDef[] = [
     formatValue: formatPercent,
     yTickFormat: ".0%",
     yMax: 1,
+    // The share's numerator and denominator, for the same reason as cache read.
+    // `reasoning` is non-null for any request with a value here.
+    detail: (p) => [
+      `${tokenFmt.format(p.tokens.reasoning!)} reasoning of ${tokens(generatedTokens(p))} generated`,
+    ],
   },
 ];
+
+// One point's tooltip: the turn, the value plotted, and the figures behind it. The
+// turn leads because it is what ties this point to the same turn on the Context and
+// Time-per-turn graphs, which is how a reader gets from "this request was slow" to
+// why.
+export function tooltipFor(
+  metric: MetricDef,
+  prompt: PromptTurn,
+  value: number,
+): string {
+  return [
+    `Turn ${prompt.turn} — ${metric.formatValue(value)}`,
+    ...(metric.detail?.(prompt) ?? []),
+  ].join("\n");
+}
 
 export function RequestMetricsGraphs({
   prompts,
@@ -201,14 +269,15 @@ function MetricCard({
   metric: MetricDef;
   prompts: PromptTurn[];
 }) {
-  // The metric's non-null observations on the turn axis. A request with no datum is
-  // skipped, so a graph that plots N of M requests is honest about which had one.
+  // The metric's non-null observations on the turn axis, each carrying its hover
+  // tooltip. A request with no datum is skipped, so a graph that plots N of M
+  // requests is honest about which had one.
   const points = useMemo<MetricPoint[]>(() => {
     const out: MetricPoint[] = [];
     for (const p of prompts) {
       const value = metric.value(p);
       if (value != null && Number.isFinite(value))
-        out.push({ turn: p.turn, value });
+        out.push({ turn: p.turn, value, title: tooltipFor(metric, p, value) });
     }
     return out;
   }, [metric, prompts]);

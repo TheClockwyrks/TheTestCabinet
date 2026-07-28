@@ -52,7 +52,8 @@ through **two** surfaces:
   given, activity, context-window breakdown, the [message log](/gg/context-visibility/#the-message-log-the-exact-requests-de-duplicated),
   the **metric graphs** — [where each turn's time went](#where-a-turns-time-went),
   then throughput (tokens/s), cost per request, cache-read
-  share and reasoning share, each gaining one point per model call — plan, tasks,
+  share and reasoning share, each gaining one point per model call and each point
+  carrying [the figures behind it](#reading-the-metric-graphs) on hover — plan, tasks,
   knowledge) are inherently **per agent** — *whose*
   window filled, *whose* task list this is — so they cannot honestly be shown as one
   global panel. The explorer lays the run out as a **filesystem**: every agent is a
@@ -98,6 +99,27 @@ A turn that ends **abnormally** — a ceiling breached mid-turn, a model call th
 failed — still reports a timing, carrying the phases it reached with the ones it never
 entered at `0`. The accounting closes when the turn's scope does, which is also why
 such a timing lands *after* the event that ended the turn.
+
+## Reading the metric graphs
+
+Under the Time-per-turn bars, the Metrics file plots four per-request figures —
+throughput, cost per request, cache-read share, reasoning share — one point per model
+call, against the same turn axis the [context graph](/gg/context-visibility/) uses.
+A request with no datum for a metric (throughput on a call gg did not time, reasoning
+share when the harness folds reasoning into output) is **skipped** rather than drawn
+as a zero it did not report.
+
+A point is a single number, and a single number cannot show its own arithmetic.
+Hovering one therefore marks it, and names the turn it belongs to, the value plotted,
+and the figures that value came from: the tokens generated and the latency behind a
+throughput, the input and output tokens behind a price (plus what the provider
+actually charged, when that differs from the comparable figure the point plots), and
+the numerator and denominator behind a share — 60% of a small prompt and 60% of a huge
+one are the same point on the line and nothing like the same request.
+
+The turn leads every tooltip because it is what ties the point to the same turn on the
+Time-per-turn and Context graphs, which is the path from *this request was slow* to
+*why*.
 
 ## Two events every run may end on
 

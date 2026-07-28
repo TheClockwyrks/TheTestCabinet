@@ -10,6 +10,11 @@
 // recent. We draw the over-time stacked area once there are two turns to connect,
 // and always show the current per-source composition as a swatch legend (which
 // doubles as the chart's key) beneath the fullness header.
+//
+// The area reads as a shape; the figures behind it come on hover. Pointing at any
+// turn marks it with a rule and gives that turn's whole composition — the window
+// total and each band's tokens and share, with the band under the pointer marked —
+// so a reader can put numbers on a bulge without leaving the graph.
 
 import { useMemo } from "react";
 import {
@@ -31,6 +36,7 @@ import {
   type ContextSnapshot,
 } from "./useGgRunState";
 import { capabilityOn, LEGACY_FILESYSTEM_CAP_ID } from "./ggCatalog";
+import { formatPercent } from "./GgOverviewWidgets";
 import styles from "./GgPanels.module.scss";
 
 // The eleven context sources in their fixed, stable order (mirrors
@@ -153,6 +159,40 @@ function sourceTokens(
   return snapshot.bySource.find((b) => b.source === source)?.tokens ?? 0;
 }
 
+// The tooltip for one band at one turn: that whole turn's composition, with the
+// hovered source marked. A band's own height is the one thing the stack already
+// shows — what it hides is the figures behind it and how the rest of the window
+// compares — so every band at a turn carries the same breakdown, and the marker is
+// what tells the reader which band they are pointed at. The rows are the graph's
+// fixed source order, so the tip reads against the bands and the legend rather than
+// re-sorting itself under the pointer.
+export function contextTooltip(
+  snapshot: ContextSnapshot,
+  sources: readonly GgContextSource[],
+  hovered: GgContextSource,
+): string {
+  const total = snapshot.totalTokens;
+  const limit = snapshot.windowLimit;
+  // How full the window is, the signal compaction acts on — omitted when the run
+  // never reported a limit, since a share of an unknown ceiling is not a figure.
+  const fullness =
+    limit != null && limit > 0
+      ? ` (${formatPercent(total / limit)} of window)`
+      : "";
+  const rows = sources.map((source) => {
+    const tokens = sourceTokens(snapshot, source);
+    // A turn holding nothing at all has no shares to report; "NaN%" would be worse
+    // than showing none.
+    const share = total > 0 ? ` (${formatPercent(tokens / total)})` : "";
+    const mark = source === hovered ? "▸ " : "   ";
+    return `${mark}${CONTEXT_SOURCE_LABELS[source]}: ${numberFmt.format(tokens)}${share}`;
+  });
+  return [
+    `Turn ${snapshot.turn} — ${numberFmt.format(total)} tokens${fullness}`,
+    ...rows,
+  ].join("\n");
+}
+
 interface ContextFillGraphProps {
   series: ContextSnapshot[];
   latest: ContextSnapshot | null;
@@ -192,8 +232,9 @@ export function ContextFillGraph({
     [sources],
   );
 
-  // Flatten every snapshot into per-source points for the stacked area. Memoized
-  // so the chart only re-plots when a new snapshot arrives.
+  // Flatten every snapshot into per-source points for the stacked area, each carrying
+  // its turn's full breakdown for the hover tooltip. Memoized so the chart only
+  // re-plots when a new snapshot arrives.
   const points = useMemo<StackedAreaPoint[]>(
     () =>
       series.flatMap((snapshot) =>
@@ -201,6 +242,7 @@ export function ContextFillGraph({
           x: snapshot.turn,
           series: CONTEXT_SOURCE_LABELS[source],
           value: sourceTokens(snapshot, source),
+          title: contextTooltip(snapshot, sources, source),
         })),
       ),
     [series, sources],

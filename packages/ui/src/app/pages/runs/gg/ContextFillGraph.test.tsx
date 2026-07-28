@@ -8,6 +8,7 @@ import type {
 } from "@test-cabinet/run-record/gg";
 import {
   ContextFillGraph,
+  contextTooltip,
   contextYMax,
   visibleSources,
 } from "./ContextFillGraph";
@@ -125,6 +126,74 @@ describe("visibleSources", () => {
 
   it("shows every source until the capability set is known", () => {
     expect(visibleSources(null, series)).toHaveLength(SOURCE_ORDER.length);
+  });
+});
+
+describe("contextTooltip", () => {
+  const sources: GgContextSource[] = ["system", "assistant", "tool_output"];
+  const snap = snapshot(
+    12,
+    { system: 3_000, assistant: 5_000, tool_output: 12_000 },
+    100_000,
+  );
+
+  it("gives the whole turn's composition, not just the hovered band", () => {
+    const tip = contextTooltip(snap, sources, "assistant");
+    expect(tip).toContain("Turn 12 — 20,000 tokens");
+    expect(tip).toContain("System: 3,000");
+    expect(tip).toContain("Assistant: 5,000");
+    expect(tip).toContain("Tool output: 12,000");
+  });
+
+  it("reports how full the window is, the signal compaction acts on", () => {
+    expect(contextTooltip(snap, sources, "system")).toContain(
+      "(20% of window)",
+    );
+  });
+
+  it("omits the fullness when the run never reported a limit", () => {
+    // A share of an unknown ceiling is not a figure. (Built by hand: `snapshot`'s
+    // default limit applies to an explicit `undefined` too.)
+    const noLimit: ContextSnapshot = {
+      timestamp: "2026-07-24T00:00:03Z",
+      turn: 3,
+      bySource: bySource({ system: 500 }),
+      totalTokens: 500,
+    };
+    expect(contextTooltip(noLimit, ["system"], "system")).not.toContain(
+      "window",
+    );
+  });
+
+  it("marks which band the pointer is on", () => {
+    const tip = contextTooltip(snap, sources, "tool_output");
+    expect(tip).toContain("▸ Tool output");
+    expect(tip).not.toContain("▸ System");
+  });
+
+  it("reports each band's share of the turn", () => {
+    const tip = contextTooltip(snap, sources, "system");
+    expect(tip).toContain("Tool output: 12,000 (60%)");
+    expect(tip).toContain("Assistant: 5,000 (25%)");
+  });
+
+  it("keeps the graph's fixed source order rather than sorting by size", () => {
+    // The tip reads against the bands and the legend; re-sorting it under the
+    // pointer would make the same window look different turn to turn.
+    const tip = contextTooltip(snap, sources, "system");
+    const rows = tip.split("\n").slice(1);
+    expect(rows.map((r) => r.replace("▸", "").trim().split(":")[0])).toEqual([
+      "System",
+      "Assistant",
+      "Tool output",
+    ]);
+  });
+
+  it("omits shares for a turn holding nothing at all", () => {
+    const empty = snapshot(0, {}, 100_000);
+    const tip = contextTooltip(empty, ["system"], "system");
+    expect(tip).toContain("System: 0");
+    expect(tip).not.toContain("(NaN");
   });
 });
 

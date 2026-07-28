@@ -91,6 +91,15 @@ can produce: with [skills](/gg/skills/) disabled there is no Skills band to expl
 A source that holds tokens is never hidden, whatever the configuration says, so
 nothing can silently drop out of the stack.
 
+The bands give the window's **shape**; the figures come on **hover**. Pointing at any
+turn marks it with a rule and gives that turn's whole composition — the window total,
+how full the window that makes it, and every band's tokens and share, with the band
+under the pointer marked. Every band at a turn carries the same breakdown, because the
+question a reader has at a bulge is what the window held *then*, not only how tall that
+one band was; the marker is what says which band they are pointed at. The rows keep the
+graph's fixed source order rather than sorting by size, so the same window never reads
+differently from one turn to the next.
+
 ## The message log: the exact requests, de-duplicated
 
 The graph shows the window's _composition_; the **message log** shows its _contents_ —

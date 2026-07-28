@@ -301,6 +301,14 @@ export interface StackedAreaPoint {
   series: string;
   /** The magnitude stacked along y at this x. */
   value: number;
+  /**
+   * Text shown in an interactive tooltip when this point is hovered — typically
+   * the whole x position's breakdown, since a band's own height is the one thing
+   * a stacked area already shows. Newlines break the tip into lines. Omit to
+   * leave the chart without tooltips; a chart shows them only when at least one
+   * of its points carries one.
+   */
+  title?: string;
 }
 
 /** A vertical marker drawn across a stacked area at one x position — e.g. a gg
@@ -345,10 +353,14 @@ interface StackedAreaLabels {
 // run's turns). The `series` list fixes both the stacking order and each band's
 // color, so a series keeps the same hue across every x. The built-in color legend
 // is suppressed (`legend: false`) — callers pair the chart with their own
-// swatch legend keyed to the same colors. An optional `reference` draws a dashed
-// rule (e.g. the window limit) with a small label. Needs at least two x positions
-// to draw an area; a single column reads as a thin line, so callers should fall
-// back to a static breakdown until a second point arrives.
+// swatch legend keyed to the same colors. A point's `title` (when any carries one)
+// is shown in an interactive tooltip on hover, with a vertical rule marking the
+// hovered x — a band's own height is what the chart already shows, so the text a
+// caller puts there is usually the whole x position's breakdown. An optional
+// `reference` draws a dashed rule (e.g. the window limit) with a small label. It
+// needs at least two x positions to draw an area; a single column reads as a thin
+// line, so callers should fall back to a static breakdown until a second point
+// arrives.
 export function stackedAreaChart(
   data: readonly StackedAreaPoint[],
   palette: ChartPalette,
@@ -360,6 +372,7 @@ export function stackedAreaChart(
   const ref = labels.reference;
   const markers = labels.markers ?? [];
   const yMax = labels.yMax;
+  const hasTips = data.some((d) => d.title != null);
   return {
     ...basePlotOptions(palette),
     // A capped y scale only frames the plot; without clipping, a stack taller than
@@ -393,8 +406,28 @@ export function stackedAreaChart(
         stroke: palette.surface,
         strokeWidth: 0.5,
         curve: "linear",
+        ...(hasTips
+          ? { title: (d: StackedAreaPoint) => d.title, tip: tipBox(palette) }
+          : {}),
       }),
       Plot.ruleY([0], { stroke: palette.border }),
+      // The hover affordance: a vertical rule at the pointer-selected x, drawn over
+      // the bands so which turn the tip is describing is unmistakable. Same pointer
+      // and radius as the tip, so the two always agree (renders nothing until the
+      // pointer is over the plot).
+      ...(hasTips
+        ? [
+            Plot.ruleX(
+              data as StackedAreaPoint[],
+              Plot.pointerX({
+                x: "x",
+                stroke: palette.text,
+                strokeOpacity: 0.45,
+                maxRadius: POINTER_RADIUS,
+              }),
+            ),
+          ]
+        : []),
       // The window-limit reference: a dashed rule with a left-anchored caption, so
       // how close the stack is to the ceiling reads directly off the chart.
       ...(ref
@@ -678,6 +711,14 @@ export interface MetricPoint {
   turn: number;
   /** The metric's value at that turn. */
   value: number;
+  /**
+   * Text shown in an interactive tooltip when this observation's column is
+   * hovered — typically the figures the single plotted value is computed from,
+   * which the point itself cannot show. Newlines break the tip into lines. Omit
+   * to leave the chart without tooltips; a chart shows them only when at least
+   * one of its points carries one.
+   */
+  title?: string;
 }
 
 /** Labels and framing for a {@link metricLineChart}. */
@@ -701,7 +742,9 @@ export interface MetricLineLabels {
 // absent). y starts at 0 (`ruleY([0])`) so magnitudes aren't exaggerated by a floating
 // baseline. Use for a per-request metric that accrues one data point per model call
 // (throughput, cost, cache-read share, reasoning share); pair several to read a run's
-// request-level metrics side by side. Needs at least one point; a caller with none
+// request-level metrics side by side. A point's `title` (when any carries one) is
+// shown in an interactive tooltip on hover, with a crosshair rule and a widened dot
+// marking the observation it describes. Needs at least one point; a caller with none
 // should fall back to an empty state rather than draw an axis with nothing on it.
 export function metricLineChart(
   data: readonly MetricPoint[],
@@ -710,6 +753,7 @@ export function metricLineChart(
 ): PlotOptions {
   const color = labels.color ?? palette.accent;
   const yMax = labels.yMax;
+  const hasTips = data.some((d) => d.title != null);
   return {
     ...basePlotOptions(palette),
     x: {
@@ -741,7 +785,40 @@ export function metricLineChart(
         stroke: palette.surface,
         strokeWidth: 1,
         r: 3,
+        ...(hasTips
+          ? { title: (d: MetricPoint) => d.title, tip: tipBox(palette) }
+          : {}),
       }),
+      // The hover affordance: a crosshair rule at the pointer-selected turn and a
+      // widened dot on the observation itself, so the point the tip is describing is
+      // picked out of a dense line. Both use the same pointer and radius as the tip,
+      // so all three agree on which observation is selected (they render nothing
+      // until the pointer is over the plot).
+      ...(hasTips
+        ? [
+            Plot.ruleX(
+              data as MetricPoint[],
+              Plot.pointerX({
+                x: "turn",
+                stroke: palette.text,
+                strokeOpacity: 0.45,
+                maxRadius: POINTER_RADIUS,
+              }),
+            ),
+            Plot.dot(
+              data as MetricPoint[],
+              Plot.pointerX({
+                x: "turn",
+                y: "value",
+                fill: color,
+                stroke: palette.text,
+                strokeWidth: 1.5,
+                r: 5,
+                maxRadius: POINTER_RADIUS,
+              }),
+            ),
+          ]
+        : []),
     ],
   };
 }
