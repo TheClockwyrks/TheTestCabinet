@@ -21,8 +21,15 @@ export default function item() {
     // Note the intervals are the sim's own SECONDS-valued state read out of the
     // snapshot, not durations to step — they are compared as-is against the spec's
     // ~0.14s and ~0.07s, and must not be converted to ticks.
+    // `enterPlay` first is what makes the board LIVE for the still.
+    // specs/instrumentation.md is explicit that no control operation starts a run on
+    // its own and that `step` only advances live play, so a `reset` + `setLevel`
+    // alone leaves the build sitting on its title screen: the intervals below still
+    // read correctly (`setLevel` sets the level either way), but `act` would advance
+    // a frozen menu and film it, which is exactly what the still used to show.
     async arrange(api) {
       await api.reset({ seed: 1 });
+      await api.call("enterPlay");
       await api.call("setLevel", 1);
       i1 = (await api.snapshot()).wormStepInterval;
       await api.call("setLevel", 6);
@@ -31,11 +38,16 @@ export default function item() {
       i12 = (await api.snapshot()).wormStepInterval;
 
       await api.reset({ seed: 1 });
+      await api.call("enterPlay");
       await api.call("setLevel", 12);
     },
 
+    // Level 12's worm is 32 segments entering one per tile step at about 0.079 s a
+    // step, so 300 ticks (2.5 s) is what carries the whole of it onto the board —
+    // the still is meant to show the longest, fastest worm the run has, and half of
+    // it still off the edge would show neither.
     async act(api) {
-      await api.advance(120); // 120 ticks = the old 1.0s of the level-12 worm at speed
+      await api.advance(300);
       await api.settle(120); // a real pause so the wound-on worm has painted
       await api.screenshot("cadence");
     },

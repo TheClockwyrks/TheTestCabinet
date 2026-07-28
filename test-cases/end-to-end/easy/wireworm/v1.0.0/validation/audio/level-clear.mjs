@@ -8,9 +8,9 @@
 
 import {
   TICK,
+  actAudioCount,
   actFireAndResolve,
   armAudio,
-  audioCount,
   freshBoard,
   setWorm,
   tileCX,
@@ -38,7 +38,7 @@ export default function item() {
     // and this is the clip and the one event this item drives.
     async act(api) {
       startLevel = (await api.snapshot()).level;
-      before = await audioCount(api);
+      before = await actAudioCount(api);
       await actFireAndResolve(api);
       // The advance is a CONSEQUENCE of the shot, not part of resolving it: the
       // worm is cleared when the bolt lands, but the level rolls over on a later
@@ -48,7 +48,7 @@ export default function item() {
         poll: TICK,
       });
       snap = r.snap;
-      after = await audioCount(api);
+      after = await actAudioCount(api);
       // Every operand is captured; the sim runs on only so the new level's banner
       // is legible at the end of the clip.
       await api.advance(60); // 0.5s of visible aftermath

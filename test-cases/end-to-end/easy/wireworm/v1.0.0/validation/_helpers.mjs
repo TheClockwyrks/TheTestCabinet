@@ -387,6 +387,34 @@ export async function armAudio(api) {
 }
 
 /** The number of Web Audio sources the build has started so far. */
-export async function audioCount(api) {
+async function audioCount(api) {
   return (await api.audio()).length;
+}
+
+/**
+ * ACT: the number of Web Audio sources the build has started, read after a real
+ * paint pause.
+ *
+ * The pause is the whole point, and it is not optional. Scheduling a Web Audio
+ * source is not required to happen inside the call that causes the cue: a build may
+ * legitimately QUEUE the sound events its fixed-step simulation emits and play them
+ * from its render loop, which is a frame away. Nothing in specs/ui.md says
+ * otherwise, so a check that reads the probe with no wall clock between the event
+ * and the read is racing that frame — and `advance` cannot settle it, because in the
+ * validate pass `advance` is an instant `step` that produces no frame at all. Only
+ * `settle` is real time in BOTH passes (see `api.settle` in validation.mjs).
+ *
+ * So both the before and after reads go through here: the leading pause also flushes
+ * any cue queued during `arrange` into the BEFORE count, where it cannot be mistaken
+ * for the one the item drives.
+ *
+ * (That race is not hypothetical. The items whose cue follows a bolt across the
+ * board passed on the incidental latency of their `until` sweep's round trips, while
+ * `audio.fire`, `audio.life`, and `audio.game-over` — which drive their event and
+ * read straight back — reported no cue at all from a build that plays all nine
+ * perfectly for a real player.)
+ */
+export async function actAudioCount(api, { settleMs = 120 } = {}) {
+  await api.settle(settleMs);
+  return audioCount(api);
 }

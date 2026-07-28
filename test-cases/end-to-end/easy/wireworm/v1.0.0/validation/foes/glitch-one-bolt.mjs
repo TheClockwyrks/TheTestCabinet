@@ -4,11 +4,25 @@
 // A glitch above the cursor is the precondition; the kill is produced by the real
 // resolveBolt -> hitFoe path (a glitch dies on the first hit) and read back as the
 // foe's removal and the score gain.
+//
+// "No glitch on the board afterwards" is the outcome, but on its own it is not
+// evidence of a KILL: a board that never had a glitch reads the same, and so does one
+// whose foes were cleared out from under the shot. So the glitch is confirmed
+// standing before the bolt is fired, and the level is confirmed unchanged across it.
+//
+// The second guard is not hypothetical. A build whose level-clear condition is an
+// unguarded "no worm segments on the board" treats the worm-less board `enterPlay`
+// is specified to produce (specs/instrumentation.md) as a cleared level on the very
+// first tick: it wipes every foe and bolt and banks `100 * level`. Read loosely, the
+// glitch's disappearance looked like a clean one-bolt kill when nothing had been shot
+// at all.
 
 import { actFireAndResolve, foesOf, freshBoard, tileCY } from "../_helpers.mjs";
 
 export default function item() {
   let before;
+  let levelBefore;
+  let glitchesBefore;
   let snap;
 
   return {
@@ -20,11 +34,14 @@ export default function item() {
       await api.call("setCursor", 640, 688);
     },
 
-    // The bolt climbing to the glitch and killing it is the clip. The pre-shot score
-    // is read at the top of `act`, before any time is spent, so the bounty the
-    // assertion reads belongs to this kill alone.
+    // The bolt climbing to the glitch and killing it is the clip. The whole pre-shot
+    // reading is taken at the top of `act`, before any time is spent, so the bounty
+    // and the removal the assertions read belong to this kill alone.
     async act(api) {
-      before = (await api.snapshot()).score;
+      const start = await api.snapshot();
+      before = start.score;
+      levelBefore = start.level;
+      glitchesBefore = foesOf(start, "glitch").length;
       snap = await actFireAndResolve(api);
       // Both operands are captured; the sim runs on only so the kill is legible at
       // the end of the clip.
@@ -32,6 +49,12 @@ export default function item() {
     },
 
     async assert(api, check) {
+      check.expectEq("a glitch stands before the shot", glitchesBefore, 1);
+      check.expectEq(
+        "the shot resolves inside the posed level",
+        snap.level,
+        levelBefore,
+      );
       check.expectEq(
         "a single bolt kills the glitch",
         foesOf(snap, "glitch").length,

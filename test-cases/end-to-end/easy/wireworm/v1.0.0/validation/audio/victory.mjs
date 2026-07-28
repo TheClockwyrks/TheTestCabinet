@@ -8,9 +8,9 @@
 
 import {
   TICK,
+  actAudioCount,
   actFireAndResolve,
   armAudio,
-  audioCount,
   setWorm,
   tileCX,
 } from "../_helpers.mjs";
@@ -42,7 +42,7 @@ export default function item() {
     // The winning shot is the clip and the one event this item drives: the
     // reviewer watches the last segment go and the Victory screen come up.
     async act(api) {
-      before = await audioCount(api);
+      before = await actAudioCount(api);
       await actFireAndResolve(api);
       // Winning is a consequence of the shot, landing a tick or two after the bolt
       // does — the cleared worm has to be reaped before the level-clear check wins
@@ -52,7 +52,7 @@ export default function item() {
         poll: TICK,
       });
       snap = r.snap;
-      after = await audioCount(api);
+      after = await actAudioCount(api);
       // Every operand is captured; the sim runs on only so the Victory screen is
       // legible at the end of the clip.
       await api.advance(60); // 0.5s holding on the Victory screen
