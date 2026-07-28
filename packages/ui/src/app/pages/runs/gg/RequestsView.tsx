@@ -20,6 +20,7 @@ import {
   CONTEXT_SOURCE_COLORS,
   CONTEXT_SOURCE_LABELS,
 } from "./ContextFillGraph";
+import { ExpandablePre } from "./MessageOverlay";
 
 // The band a message occupies, resolved to its label and color. A request message
 // carries its `GgContextSource`; the response is an assistant reply not yet placed in a
@@ -113,7 +114,11 @@ function MessageRow({
             )}
           </p>
           {message.content != null && message.content !== "" && (
-            <pre className={panels.reqContent}>{message.content}</pre>
+            <ExpandablePre
+              content={message.content}
+              className={panels.reqContent}
+              label={`${label} ${message.role} message`}
+            />
           )}
           {message.toolCalls.length > 0 && (
             <ul className={panels.reqToolCalls}>

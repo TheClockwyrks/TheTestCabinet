@@ -23,7 +23,7 @@ const throughputFmt = new Intl.NumberFormat("en-US", {
 
 // One metric drawn on the grid: how to pull its per-request value (null to skip
 // that request), its fixed color, and how to format a value for the axis ticks and
-// the latest-value chip.
+// the header chip.
 interface MetricDef {
   key: string;
   label: string;
@@ -33,7 +33,12 @@ interface MetricDef {
   // The metric's value for one request, or null when that request has no datum for
   // it — skipped rather than plotted as a misleading zero.
   value: (p: PromptTurn) => number | null;
-  // The latest-value chip's formatting (a fraction for the percentage metrics).
+  // The header chip's value, given every request. The share metrics use this to show
+  // the run-level aggregate (matching the Overview) rather than the last request's
+  // value — a per-request share swings call to call, so the final point can read 0%
+  // on a run that was 8% overall. Omit to fall back to the latest plotted point.
+  summary?: (prompts: readonly PromptTurn[]) => number | null;
+  // The value chip's formatting (a fraction for the percentage metrics).
   formatValue: (v: number) => string;
   // d3-format spec (or function) for the y-axis ticks.
   yTickFormat: string | ((v: number) => string);
@@ -46,6 +51,48 @@ interface MetricDef {
 // (output plus any separately-reported reasoning), the numerator of throughput.
 function generatedTokens(p: PromptTurn): number {
   return (p.tokens.output ?? 0) + (p.tokens.reasoning ?? 0);
+}
+
+// Reasoning tokens as a share of all generated output over the whole run — the same
+// aggregate the agent's Overview reports (reasoning / (output + reasoning)), summed
+// across every request. Null when no request reported reasoning at all (the class is
+// folded into output), so the chip reads empty rather than a misleading 0%.
+function reasoningShare(prompts: readonly PromptTurn[]): number | null {
+  let reasoning = 0;
+  let output = 0;
+  let reported = false;
+  for (const p of prompts) {
+    if (p.tokens.reasoning != null) {
+      reasoning += p.tokens.reasoning;
+      reported = true;
+    }
+    output += p.tokens.output ?? 0;
+  }
+  if (!reported) return null;
+  const total = output + reasoning;
+  return total > 0 ? reasoning / total : null;
+}
+
+// Cached input as a share of all input over the whole run — the run-level aggregate,
+// so the chip agrees with the Overview rather than swinging with the last request.
+function cacheReadShare(prompts: readonly PromptTurn[]): number | null {
+  let cached = 0;
+  let uncached = 0;
+  let reported = false;
+  for (const p of prompts) {
+    const { cachedInput, uncachedInput } = p.tokens;
+    if (cachedInput != null) {
+      cached += cachedInput;
+      reported = true;
+    }
+    if (uncachedInput != null) {
+      uncached += uncachedInput;
+      reported = true;
+    }
+  }
+  if (!reported) return null;
+  const total = cached + uncached;
+  return total > 0 ? cached / total : null;
 }
 
 // The four per-request metrics, in grid order.
@@ -83,6 +130,7 @@ const METRICS: readonly MetricDef[] = [
       const total = (cachedInput ?? 0) + (uncachedInput ?? 0);
       return total > 0 ? (cachedInput ?? 0) / total : null;
     },
+    summary: cacheReadShare,
     formatValue: formatPercent,
     yTickFormat: ".0%",
     yMax: 1,
@@ -100,6 +148,7 @@ const METRICS: readonly MetricDef[] = [
       const total = (p.tokens.output ?? 0) + reasoning;
       return total > 0 ? reasoning / total : null;
     },
+    summary: reasoningShare,
     formatValue: formatPercent,
     yTickFormat: ".0%",
     yMax: 1,
@@ -116,10 +165,6 @@ export function RequestMetricsGraphs({ prompts }: { prompts: PromptTurn[] }) {
   }
   return (
     <div className={styles.stack}>
-      <p className={styles.caption}>
-        Per-request metrics over the run — one data point per model call, on the
-        same turn axis as the Context graph.
-      </p>
       <div className={styles.metricsGrid}>
         {METRICS.map((metric) => (
           <MetricCard key={metric.key} metric={metric} prompts={prompts} />
@@ -150,7 +195,13 @@ function MetricCard({
     return out;
   }, [metric, prompts]);
 
-  const latest = points.length ? points[points.length - 1]!.value : null;
+  // The header chip: the run-level aggregate for a share metric (so it agrees with
+  // the Overview), else the latest plotted point.
+  const chip = metric.summary
+    ? metric.summary(prompts)
+    : points.length
+      ? points[points.length - 1]!.value
+      : null;
 
   const spec = useMemo(
     () => (palette: ChartPalette) =>
@@ -166,9 +217,9 @@ function MetricCard({
     <section className={styles.metricCard}>
       <header className={styles.metricCardHead}>
         <span className={styles.metricCardLabel}>{metric.label}</span>
-        {latest != null && (
+        {chip != null && (
           <span className={styles.metricCardLatest}>
-            {metric.formatValue(latest)}
+            {metric.formatValue(chip)}
           </span>
         )}
       </header>

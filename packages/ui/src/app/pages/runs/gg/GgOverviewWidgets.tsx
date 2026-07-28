@@ -218,8 +218,15 @@ function RingLegendRow({
  */
 export function ContextUsageRing({
   latest,
+  label = "Context window",
 }: {
   latest: ContextSnapshot | null;
+  /**
+   * The gauge's caption. Defaults to "Context window" — the agent's current
+   * fullness; the Overview also renders a second ring fed the peak snapshot under
+   * a "Peak context window" label.
+   */
+  label?: string;
 }) {
   if (!latest) return null;
   const limit = latest.windowLimit ?? null;
@@ -239,14 +246,14 @@ export function ContextUsageRing({
 
   return (
     <div className={styles.ringGroup}>
-      <span className={styles.ringGroupLabel}>Context window</span>
+      <span className={styles.ringGroupLabel}>{label}</span>
       {fullness != null ? (
         <div className={styles.ringBody}>
           <svg
             className={styles.ring}
             viewBox={`0 0 ${RING_BOX} ${RING_BOX}`}
             role="meter"
-            aria-label="Context window fullness"
+            aria-label={`${label} fullness`}
             aria-valuenow={Math.round(fullness * 100)}
             aria-valuemin={0}
             aria-valuemax={100}
@@ -478,9 +485,6 @@ export function CostWidget({
             formatValue={formatCost}
             className={styles.ringSpaced}
           />
-          <p className={styles.cardNote}>
-            Split derived from catalog prices; reasoning billed as output.
-          </p>
         </>
       ) : (
         displayTotal != null && (

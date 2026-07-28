@@ -8,6 +8,7 @@ import dash from "./GgDashboard.module.scss";
 import type {
   AgentNode,
   AgentTreeNode,
+  ContextSnapshot,
   DerivedGgState,
   FeedRow,
   GgToolBreakdown,
@@ -17,7 +18,12 @@ import type {
 import { ROOT_ID, ggToolBreakdown, shortTokens } from "./useGgRunState";
 import { capabilityOn } from "./ggCatalog";
 import { soleModelId, useGgCostBreakdown } from "./ggCost";
-import { CostWidget, TokensWidget, formatPercent } from "./GgOverviewWidgets";
+import {
+  ContextUsageRing,
+  CostWidget,
+  TokensWidget,
+  formatPercent,
+} from "./GgOverviewWidgets";
 import {
   AgentIdentity,
   SpeculationPanel,
@@ -731,17 +737,31 @@ function OverviewFile({
   );
   // The agent's tool usage — the breakdown behind the Dashboard overview's chips.
   const tools = useMemo(() => ggToolBreakdown(state), [state]);
+  // The high-water context snapshot — the turn the window was fullest — for the peak
+  // gauge beside the current one. The snapshot with the most tokens carries its own
+  // window limit and fullness, so the ring reads it the same way as the latest.
+  const peakContext = useMemo<ContextSnapshot | null>(() => {
+    let peak: ContextSnapshot | null = null;
+    for (const snap of state.contextSeries) {
+      if (peak == null || snap.totalTokens > peak.totalTokens) peak = snap;
+    }
+    return peak;
+  }, [state.contextSeries]);
   return (
     <div className={panels.panelBody}>
       <div className={panels.overview}>
-        {/* The identity header folds in the agent's context-fullness ring, so status,
-            identity, and how full the window is read as one element. */}
-        <AgentIdentity
-          node={node}
-          role={role}
-          turns={state.turnCount}
-          latest={state.latestContext}
-        />
+        <AgentIdentity node={node} role={role} turns={state.turnCount} />
+        {/* The context-window gauges on their own row: how full the window is now,
+            and its peak fullness at any point in the run, side by side. */}
+        {(state.latestContext || peakContext) && (
+          <div className={panels.contextRow}>
+            <ContextUsageRing latest={state.latestContext} />
+            <ContextUsageRing
+              latest={peakContext}
+              label="Peak context window"
+            />
+          </div>
+        )}
         {/* The pane-responsive grid, not the Dashboard's viewport bento: this pane
             is narrower than the window, so the widgets must stack on the pane's own
             width. `bare` drops the widgets' card chrome — the panel already frames
@@ -802,11 +822,6 @@ function AgentToolsPanel({ breakdown }: { breakdown: GgToolBreakdown }) {
           );
         })}
       </ul>
-      <p className={panels.toolNote}>
-        {outputTokensKnown
-          ? "Calls, and each tool’s result tokens as a share of all tokens that entered this agent’s window."
-          : "Call counts only — result-token attribution wasn’t recorded for this run."}
-      </p>
     </section>
   );
 }

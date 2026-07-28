@@ -17,6 +17,7 @@ import {
   CONTEXT_SOURCE_COLORS,
   CONTEXT_SOURCE_LABELS,
 } from "./ContextFillGraph";
+import { ExpandablePre } from "./MessageOverlay";
 
 // The bands that make up "the prompt the agent was given" — its system framing and
 // the build/user prompt that set its task. Everything else in a turn's request is
@@ -121,7 +122,11 @@ function PromptMessage({
         </span>
       </div>
       {message.content != null && message.content !== "" ? (
-        <pre className={panels.reqContent}>{message.content}</pre>
+        <ExpandablePre
+          content={message.content}
+          className={panels.reqContent}
+          label={`${CONTEXT_SOURCE_LABELS[source]} ${message.role} message`}
+        />
       ) : (
         <p className={panels.reqEmptyBody}>(no text)</p>
       )}

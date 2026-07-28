@@ -1070,52 +1070,46 @@ $context-palette: (
 
 // One agent's identity card. A left rule keyed to its status (running/waiting/done/failed)
 // makes the run's shape — who is active, who is blocked — legible at a glance.
+// The identity card is borderless — the status pill carries the agent's lifecycle,
+// so a boxed card around it read as redundant chrome. A waiting agent keeps a faint
+// warm wash (the one state worth spotting at a glance); every other state is left to
+// the pill.
 .agentRow {
   display: flex;
   flex-direction: column;
   gap: t.$space-2xs;
-  padding: t.$space-xs t.$space-sm;
-  border: t.$border-hairline solid
-    color-mix(in srgb, t.$color-border 40%, transparent);
-  border-left-width: 2px;
-  border-radius: t.$radius-md;
-  background: s.$panel-bg;
+  padding: t.$space-xs 0;
 
-  &[data-status="running"] {
-    border-left-color: t.$color-accent;
-  }
-  // Blocked/waiting is the state to spot: a warm rule + faint wash lift a waiting
-  // agent out of the run of active ones.
   &[data-status="blocked"] {
-    border-left-color: t.$color-accent-2;
+    padding-inline: t.$space-sm;
+    border-radius: t.$radius-md;
     background: color-mix(in srgb, t.$color-accent-2 7%, #{s.$panel-bg});
   }
-  &[data-status="done"] {
-    border-left-color: t.$color-positive;
-  }
-  &[data-status="failed"] {
-    border-left-color: t.$color-negative;
-  }
-}
-
-// The header row of the identity card: the identity details (status pill, id, slot,
-// chips) take the left and grow, with the context-fullness ring pinned to the right;
-// the ring wraps beneath the details when the pane is too narrow to hold both.
-.agentHeadRow {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: t.$space-sm t.$space-lg;
 }
 
 .agentHead {
-  flex: 1 1 18rem;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: t.$space-xs t.$space-sm;
   min-width: 0;
+}
+
+// The agent's name + model line, beneath the status/id head row. A plain text pair
+// (name, a separator dot, then the model muted) rather than a boxed chip — it reads
+// as the card's subtitle.
+.agentNameRow {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: t.$space-xs;
+  min-width: 0;
+}
+
+.agentName {
+  font-size: t.$font-sm;
+  font-weight: 600;
+  color: t.$color-text;
 }
 
 // The status pill leads each row — a boxed, tinted chip (not a bare label) so the
@@ -1196,21 +1190,9 @@ $context-palette: (
   color: t.$color-text;
 }
 
-// The slot chip, with its resolved model appended muted — the multi-model seam
-// (which agent ran on which slot/model).
-.agentSlot {
-  display: inline-flex;
-  align-items: baseline;
-  gap: t.$space-xs;
-  font-size: t.$font-sm;
-  padding: 0 t.$space-xs;
-  border-radius: t.$radius-sm;
-  border: t.$border-hairline solid
-    color-mix(in srgb, t.$color-border 60%, transparent);
-  color: t.$color-text;
-}
-
+// The resolved model, shown muted after the agent's name on the name line.
 .agentModel {
+  font-size: t.$font-sm;
   color: t.$color-text-muted;
   font-variant-numeric: tabular-nums;
 }
@@ -1923,6 +1905,15 @@ $fsm-hue: #2dd4bf;
   gap: t.$space-lg;
 }
 
+// The Overview's context row: the agent's current context-window gauge and, beside
+// it, its peak (high-water) fullness over the run. Two equal columns that stack when
+// the pane is too narrow to hold both rings side by side.
+.contextRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: t.$space-lg;
+}
+
 // The gg activity view leads the explorer pane directly, with no panelBody padding
 // around it, so the shared feed header's top margin — sized to separate the header
 // from the fields above it on the full-page monitor and Events feeds — reads as dead
@@ -2177,6 +2168,123 @@ details[open] > summary .reqCaret {
   overflow: auto;
 }
 
+// --- Fullscreen message overlay ----------------------------------------------
+
+// The wrapper around a message `<pre>` that carries the expand affordance: it
+// positions the button over the pre's top-right corner. The button appears on hover
+// or keyboard focus so it doesn't clutter every message at rest, but stays reachable.
+.expandable {
+  position: relative;
+
+  &:hover .expandButton,
+  .expandButton:focus-visible {
+    opacity: 1;
+  }
+}
+
+.expandButton {
+  position: absolute;
+  top: t.$space-2xs;
+  right: t.$space-2xs;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline solid t.$color-border;
+  background: color-mix(in srgb, t.$color-bg 88%, transparent);
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 0.12s ease,
+    color 0.12s ease;
+
+  &:hover {
+    color: t.$color-text;
+    border-color: t.$color-accent;
+  }
+}
+
+// The fixed sheet behind the fullscreen message: a dimmed backdrop that fills the
+// viewport and centers the panel. Portalled to `document.body`, so it escapes any
+// panel overflow/stacking. A click here (outside the panel) dismisses.
+.overlayBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: t.$space-lg;
+  background: color-mix(in srgb, t.$color-bg 82%, #000);
+}
+
+.overlayPanel {
+  display: flex;
+  flex-direction: column;
+  width: min(72rem, 100%);
+  max-height: 100%;
+  border-radius: t.$radius-lg;
+  border: t.$border-hairline solid t.$color-border;
+  background: s.$panel-bg;
+  overflow: hidden;
+}
+
+.overlayHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: t.$space-md;
+  padding: t.$space-sm t.$space-md;
+  border-bottom: t.$border-hairline solid t.$color-border;
+}
+
+.overlayLabel {
+  font-size: t.$font-sm;
+  font-weight: 600;
+  color: t.$color-text-muted;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overlayClose {
+  flex-shrink: 0;
+  padding: t.$space-2xs t.$space-sm;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline solid t.$color-border;
+  background: transparent;
+  color: t.$color-text;
+  font-size: t.$font-sm;
+  cursor: pointer;
+
+  &:hover {
+    border-color: t.$color-accent;
+    color: t.$color-accent;
+  }
+}
+
+.overlayContent {
+  margin: 0;
+  flex: 1;
+  min-height: 0;
+  padding: t.$space-md;
+  background: t.$color-bg;
+  font-family: monospace;
+  font-size: t.$font-sm;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: auto;
+}
+
 .reqToolCalls {
   list-style: none;
   margin: 0;
@@ -2372,10 +2480,4 @@ details[open] > summary .reqCaret {
   font-size: t.$font-sm;
   color: t.$color-text-muted;
   font-variant-numeric: tabular-nums;
-}
-
-.toolNote {
-  margin: 0;
-  font-size: t.$font-sm;
-  color: t.$color-text-muted;
 }

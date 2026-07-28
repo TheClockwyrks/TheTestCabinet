@@ -14,7 +14,6 @@
 import type {
   AgentNode,
   AgentTreeNode,
-  ContextSnapshot,
   SlotUsage,
   SpeculationState,
   Workflow,
@@ -26,7 +25,6 @@ import type {
   GgSpeculationPhase,
 } from "@test-cabinet/run-record/gg";
 import { useFindModelOptional } from "../../../data/useModels";
-import { ContextUsageRing } from "./GgOverviewWidgets";
 import styles from "./GgPanels.module.scss";
 
 // A per-agent speculation role, derived from the speculations plus the tree: the
@@ -113,18 +111,17 @@ function slotTokenTotal(usage: SlotUsage): number {
 }
 
 // An agent's identity card, shown on its Overview file in the Agents explorer: its
-// status + id, its slot/model + depth, the brief it was dispatched with, a worktree
-// indicator when it ran in an isolated worktree, and its return summary once it
-// returned. Running / waiting / done / failed are the glanceable states, so the
-// status pill leads; the agent's context-window fullness rides on the right of the
-// same header as a ring, so how full its window is reads beside who it is rather
-// than as a separate bar below. `role` marks the chosen best-of-K winner (its losing
-// co-attempts read dimmed via `data-spec-role`).
+// status + id, its depth/turns, its agent name + model, the brief it was dispatched
+// with, a worktree indicator when it ran in an isolated worktree, and its return
+// summary once it returned. Running / waiting / done / failed are the glanceable
+// states, so the status pill leads the top row beside the agent's instance id; the
+// agent's name and the model it ran on read on their own line beneath, so who the
+// agent is and what it ran on is a distinct pair from its lifecycle. `role` marks the
+// chosen best-of-K winner (its losing co-attempts read dimmed via `data-spec-role`).
 export function AgentIdentity({
   node,
   role,
   turns,
-  latest,
 }: {
   node: AgentNode;
   role?: SpeculationRole;
@@ -134,12 +131,6 @@ export function AgentIdentity({
    * agent's reduced slice); omitted where only the tree node is in hand.
    */
   turns?: number;
-  /**
-   * The agent's most recent context-breakdown snapshot, folded into the header as a
-   * fullness ring. Null/omitted before any snapshot has arrived (the ring renders
-   * nothing) or where the caller has no context slice in hand.
-   */
-  latest?: ContextSnapshot | null;
 }) {
   const isRoot = node.parentId == null;
   return (
@@ -148,66 +139,68 @@ export function AgentIdentity({
       data-status={node.status}
       data-spec-role={role}
     >
-      <div className={styles.agentHeadRow}>
-        <div className={styles.agentHead}>
-          <span className={styles.agentStatus} data-status={node.status}>
-            <span className={styles.agentStatusDot} aria-hidden="true" />
-            {STATUS_LABELS[node.status]}
+      <div className={styles.agentHead}>
+        <span className={styles.agentStatus} data-status={node.status}>
+          <span className={styles.agentStatusDot} aria-hidden="true" />
+          {STATUS_LABELS[node.status]}
+        </span>
+        <span className={styles.agentId}>{isRoot ? "root" : node.id}</span>
+        {/* The chosen best-of-K winner: the attempt that was kept and merged. A
+            losing attempt carries no badge — it is dimmed and shows its discarded
+            worktree — so "K tried, this one won" reads at a glance. */}
+        {role === "winner" && (
+          <span className={styles.winnerBadge} title="chosen best-of-K attempt">
+            ★ winner
           </span>
-          <span className={styles.agentId}>{isRoot ? "root" : node.id}</span>
-          {/* The chosen best-of-K winner: the attempt that was kept and merged. A
-              losing attempt carries no badge — it is dimmed and shows its discarded
-              worktree — so "K tried, this one won" reads at a glance. */}
-          {role === "winner" && (
-            <span
-              className={styles.winnerBadge}
-              title="chosen best-of-K attempt"
-            >
-              ★ winner
-            </span>
-          )}
-          {node.slot && (
-            <span className={styles.agentSlot}>
-              {node.slot}
-              {node.modelId && (
-                <span className={styles.agentModel}>{node.modelId}</span>
-              )}
-            </span>
-          )}
-          {node.depth != null && (
-            <span className={styles.agentDepth}>depth {node.depth}</span>
-          )}
-          {node.depth != null && turns != null && (
-            <span className={styles.agentMetaSep} aria-hidden="true">
-              ·
-            </span>
-          )}
-          {turns != null && (
-            <span className={styles.agentTurns}>
-              {turns} turn{turns === 1 ? "" : "s"}
-            </span>
-          )}
-          {node.worktree && (
-            <span
-              className={styles.agentWorktree}
-              data-outcome={node.worktreeOutcome ?? "pending"}
-              title={
-                node.worktreeOutcome
-                  ? `worktree ${node.worktree} — ${WORKTREE_OUTCOME[node.worktreeOutcome]}`
-                  : `isolated worktree ${node.worktree}`
-              }
-            >
-              ⑃ {node.worktree}
-              {node.worktreeOutcome && (
-                <span className={styles.agentWorktreeOutcome}>
-                  {WORKTREE_OUTCOME[node.worktreeOutcome]}
-                </span>
-              )}
-            </span>
+        )}
+        {node.depth != null && (
+          <span className={styles.agentDepth}>depth {node.depth}</span>
+        )}
+        {node.depth != null && turns != null && (
+          <span className={styles.agentMetaSep} aria-hidden="true">
+            ·
+          </span>
+        )}
+        {turns != null && (
+          <span className={styles.agentTurns}>
+            {turns} turn{turns === 1 ? "" : "s"}
+          </span>
+        )}
+        {node.worktree && (
+          <span
+            className={styles.agentWorktree}
+            data-outcome={node.worktreeOutcome ?? "pending"}
+            title={
+              node.worktreeOutcome
+                ? `worktree ${node.worktree} — ${WORKTREE_OUTCOME[node.worktreeOutcome]}`
+                : `isolated worktree ${node.worktree}`
+            }
+          >
+            ⑃ {node.worktree}
+            {node.worktreeOutcome && (
+              <span className={styles.agentWorktreeOutcome}>
+                {WORKTREE_OUTCOME[node.worktreeOutcome]}
+              </span>
+            )}
+          </span>
+        )}
+      </div>
+      {/* The agent's name and the model it ran on, on their own line beneath the
+          status + instance id — a dot separates the two the way depth · turns is
+          joined above. */}
+      {node.slot && (
+        <div className={styles.agentNameRow}>
+          <span className={styles.agentName}>{node.slot}</span>
+          {node.modelId && (
+            <>
+              <span className={styles.agentMetaSep} aria-hidden="true">
+                ·
+              </span>
+              <span className={styles.agentModel}>{node.modelId}</span>
+            </>
           )}
         </div>
-        <ContextUsageRing latest={latest ?? null} />
-      </div>
+      )}
       {node.brief && (
         <p className={styles.agentBrief} title={node.brief}>
           {node.brief}
