@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 
 use super::*;
-use crate::comparison::{ComparisonArm, ComparisonConfig, ComparisonControls, VariedDimension};
+use crate::comparison::{ComparisonArm, ComparisonConfig, ComparisonControls};
 use crate::metrics::{Cost, RunMetrics, TokenCounts};
 use crate::run_record::{
     AuthMode, HarnessSlug, RunEnvironment, RunLinks, RunState, RunStatus, RunSubject, RunTooling,
@@ -143,34 +143,33 @@ fn record(r: Run) -> RunRecord {
     }
 }
 
-/// A comparison of Pi vs Kilo on Carom, model held constant.
+/// A comparison of two configurations on Carom: Pi and Kilo, each on the same model.
 fn pi_vs_kilo() -> ComparisonConfig {
     ComparisonConfig {
         controls: ComparisonControls {
             case_slug: "carom".into(),
             version: "v2.0.0".into(),
             variant: "base".into(),
-            model_id: Some("anthropic/claude-opus-4.8".into()),
-            auth_mode: AuthMode::ApiKey,
             orchestrator_slug: "one-shot".into(),
             container_build: None,
         },
-        varied: VariedDimension::Harness,
         arms: vec![
             ComparisonArm {
                 id: "pi".into(),
                 label: "Pi".into(),
                 harness_slug: Some(HarnessSlug::Pi),
+                model_id: Some("anthropic/claude-opus-4.8".into()),
                 gg_config_id: None,
-                model_id: None,
+                gg_slot_models: BTreeMap::new(),
                 run_ids: vec!["pi-1".into(), "pi-2".into(), "pi-3".into()],
             },
             ComparisonArm {
                 id: "kilo".into(),
                 label: "Kilo".into(),
                 harness_slug: Some(HarnessSlug::Kilo),
+                model_id: Some("anthropic/claude-opus-4.8".into()),
                 gg_config_id: None,
-                model_id: None,
+                gg_slot_models: BTreeMap::new(),
                 run_ids: vec!["kilo-1".into(), "kilo-2".into()],
             },
         ],
@@ -254,8 +253,10 @@ fn folds_each_arm_into_its_own_distribution_and_never_merges_them() {
 fn a_run_that_drifts_from_a_control_is_surfaced_as_a_confound() {
     let items = [item("a", 3)];
     let mut runs = BTreeMap::new();
-    // Two Pi runs; the second ran under a subscription instead of the declared
-    // API-key control.
+    // Two Pi runs of the one arm; the second ran under a subscription. Auth mode
+    // comes from the harness's own configuration rather than being declared on the
+    // comparison, so it is the *drift within the arm* that makes these two runs'
+    // costs incomparable — and that is what must surface.
     runs.insert(
         "pi-1".into(),
         record(Run {
@@ -297,6 +298,104 @@ fn a_run_that_drifts_from_a_control_is_surfaced_as_a_confound() {
         confound.values,
         vec!["apiKey".to_string(), "subscription".to_string()]
     );
+}
+
+#[test]
+fn a_harness_arm_and_a_gg_arm_are_aggregated_side_by_side() {
+    let items = [item("a", 3)];
+    let mut runs = BTreeMap::new();
+    runs.insert(
+        "pi-1".into(),
+        record(Run {
+            id: "pi-1",
+            harness: HarnessSlug::Pi,
+            model: "anthropic/claude-opus-4.8",
+            cost: 0.5,
+            tokens: 300_000,
+            tool_calls: &[("read", 4)],
+            scripts: vec![script("a", true)],
+            auth: AuthMode::ApiKey,
+        }),
+    );
+    // The gg arm's runs span two models (one per agent role), which is exactly why a
+    // gg arm declares slot models rather than a single model — and why its model is
+    // checked for drift only, not against a declaration.
+    for (id, model) in [
+        ("gg-1", "anthropic/claude-opus-4.8"),
+        ("gg-2", "anthropic/claude-opus-4.8"),
+    ] {
+        runs.insert(
+            id.to_string(),
+            record(Run {
+                id,
+                harness: HarnessSlug::Gg,
+                model,
+                cost: 0.9,
+                tokens: 835_000,
+                tool_calls: &[("read", 9)],
+                scripts: vec![script("a", true)],
+                auth: AuthMode::ApiKey,
+            }),
+        );
+    }
+
+    let mut config = pi_vs_kilo();
+    config.arms.truncate(1);
+    config.arms[0].run_ids = vec!["pi-1".into()];
+    config.arms.push(ComparisonArm {
+        id: "gg".into(),
+        label: "gg — ablation A".into(),
+        harness_slug: None,
+        model_id: None,
+        gg_config_id: Some("builtin:default".into()),
+        gg_slot_models: BTreeMap::from([(
+            "primary".to_string(),
+            "anthropic/claude-opus-4.8".to_string(),
+        )]),
+        run_ids: vec!["gg-1".into(), "gg-2".into()],
+    });
+
+    let arms = aggregate_comparison(&config, &items, &runs);
+    assert_eq!(arms.len(), 2);
+    // Each arm keeps its own runs and its own distribution — never merged.
+    assert_eq!(arms[0].n_observed, 1);
+    assert_eq!(arms[1].n_observed, 2);
+    assert!((arms[1].cost.as_ref().unwrap().median - 0.9).abs() < 1e-9);
+    // Neither arm is confounded: the harness arm's runs match its declared harness
+    // and model, and the gg arm's runs are internally consistent.
+    assert!(arms[0].confounds.is_empty());
+    assert!(arms[1].confounds.is_empty());
+}
+
+#[test]
+fn a_run_under_a_different_harness_than_the_arm_declares_is_a_confound() {
+    let items = [item("a", 3)];
+    let mut runs = BTreeMap::new();
+    runs.insert(
+        "pi-1".into(),
+        record(Run {
+            id: "pi-1",
+            harness: HarnessSlug::Opencode,
+            model: "anthropic/claude-opus-4.8",
+            cost: 0.5,
+            tokens: 100,
+            tool_calls: &[],
+            scripts: vec![script("a", true)],
+            auth: AuthMode::ApiKey,
+        }),
+    );
+
+    let mut config = pi_vs_kilo();
+    config.arms.truncate(1);
+    config.arms[0].run_ids = vec!["pi-1".into()];
+
+    let arms = aggregate_comparison(&config, &items, &runs);
+    let confound = arms[0]
+        .confounds
+        .iter()
+        .find(|c| c.variable == "harness")
+        .expect("harness confound");
+    assert_eq!(confound.values, vec!["opencode".to_string()]);
 }
 
 #[test]

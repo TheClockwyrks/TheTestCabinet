@@ -225,15 +225,15 @@ fn main() -> Result<()> {
                 gga::GgAggregateBucket, gga::GgAggregateResponse,
             ],
         },
-        // The harness-comparison (A/B) contract: the stored config (controls, varied
-        // dimension, arms) and the computed read model (per-arm distributions,
+        // The harness-comparison (A/B) contract: the stored config (controls and the
+        // per-arm configurations) and the computed read model (per-arm distributions,
         // automated-only score, diagnostics, confounds). The descriptive statistics
         // (`MetricSummary`, `PassRate`) are shared leaves the arm results embed.
         TsModule {
             file: "comparison.ts",
             decls: ts_decls![&cfg;
                 cstats::MetricSummary, cstats::PassRate,
-                cmp::VariedDimension, cmp::ScorePoint, cmp::ArmScore, cmp::ArmDiagnostics,
+                cmp::ScorePoint, cmp::ArmScore, cmp::ArmDiagnostics,
                 cmp::Confound, cmp::ComparisonControls, cmp::ComparisonArm, cmp::ComparisonConfig,
                 cmp::ComparisonArmResult, cmp::Comparison,
                 bapi::ComparisonInput,

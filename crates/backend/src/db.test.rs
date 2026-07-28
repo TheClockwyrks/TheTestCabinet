@@ -2969,10 +2969,9 @@ async fn game_jam_prior_readmes_matches_jam_harness_model_oldest_first() {
 
 /// A minimal stored comparison for the CRUD round-trip.
 fn sample_stored_comparison(id: &str) -> StoredComparison {
-    use test_cabinet_core::comparison::{
-        ComparisonArm, ComparisonConfig, ComparisonControls, VariedDimension,
-    };
-    use test_cabinet_core::run_record::AuthMode;
+    use std::collections::BTreeMap;
+
+    use test_cabinet_core::comparison::{ComparisonArm, ComparisonConfig, ComparisonControls};
     StoredComparison {
         id: id.to_string(),
         user_id: "user-1".to_string(),
@@ -2983,18 +2982,16 @@ fn sample_stored_comparison(id: &str) -> StoredComparison {
                 case_slug: "carom".to_string(),
                 version: "v2.0.0".to_string(),
                 variant: "base".to_string(),
-                model_id: Some("anthropic/claude-opus-4.8".to_string()),
-                auth_mode: AuthMode::ApiKey,
                 orchestrator_slug: "one-shot".to_string(),
                 container_build: None,
             },
-            varied: VariedDimension::Harness,
             arms: vec![ComparisonArm {
                 id: "pi".to_string(),
                 label: "Pi".to_string(),
                 harness_slug: Some(HarnessSlug::Pi),
+                model_id: Some("anthropic/claude-opus-4.8".to_string()),
                 gg_config_id: None,
-                model_id: None,
+                gg_slot_models: BTreeMap::new(),
                 run_ids: vec!["pi-1".to_string()],
             }],
             n: 3,

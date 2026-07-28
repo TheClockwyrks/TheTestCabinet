@@ -6,15 +6,14 @@ import { useGalleryData } from "../../data/galleryContext";
 import { useTestCaseName } from "../../data/useTestCaseName";
 import { routes } from "../../routes";
 import { useComparisons } from "../../data/useComparisons";
-import exec from "../runs/RunExec.module.scss";
 import styles from "./Comparisons.module.scss";
 
-// The Comparisons list body (`/other/comparisons`): the signed-in account's saved
-// harness/gg-config/model comparisons, each a card naming its case/variant, arm
-// count, `N`, and published state, linking to its detail view. Rendered inside
-// the Other section's tabbed page (Other → Comparisons), which owns the
-// surrounding chrome and the "New comparison" header action — mirroring how
-// `TournamentsList`/`GameJamsList` are the content for their own Other tabs. A
+// The Comparisons list body (`/runs/comparisons`): the signed-in account's saved
+// comparisons, each a card naming its case/variant, arm count, `N`, and published
+// state, linking to its detail view. Rendered inside the Runs section's tabbed
+// page, which owns the surrounding chrome and the "New comparison" header action
+// — mirroring how `TournamentsList`/`GameJamsList` are the content for their
+// own tabs. A
 // comparison is per-account (like a coverage plan or a gg configuration), so a
 // signed-out visitor sees a sign-in prompt in place of the list.
 export function ComparisonsList() {
@@ -51,19 +50,16 @@ export function ComparisonsList() {
     );
   }
   if (comparisons.length === 0) {
+    // No call to action here: "New comparison" sits in the page header just
+    // above, so a second button would only repeat it.
     return (
       <div className={styles.emptyState}>
         <p className={styles.empty}>
           No comparisons yet.{" "}
           {canExecute ? "Create one to run" : "A comparison runs"} the same case
-          under several harnesses (or gg configurations) and publishes the cost,
-          token, and score spread side by side.
+          under several configurations — harnesses, gg configurations, or both —
+          and publishes the cost, token, and score spread side by side.
         </p>
-        {canExecute && (
-          <Link className={exec.primary} to={routes.comparisonNew()}>
-            Create your first comparison
-          </Link>
-        )}
       </div>
     );
   }

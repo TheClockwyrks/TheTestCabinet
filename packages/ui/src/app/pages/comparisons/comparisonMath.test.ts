@@ -6,8 +6,8 @@ import type {
 import {
   appendRunIds,
   harnessArmLaunchItems,
+  isGgArm,
   medianRatio,
-  modelArmLaunchItems,
   remainingForArm,
   toolCallChartData,
   withArmRunIds,
@@ -31,18 +31,20 @@ describe("remainingForArm", () => {
   });
 });
 
-describe("harnessArmLaunchItems", () => {
-  const controls = {
-    caseSlug: "carom",
-    version: "v1.0.0",
-    variant: "base",
-    modelId: "claude-opus-4-8",
-  };
+describe("isGgArm", () => {
+  it("is true only for an arm that names a gg configuration", () => {
+    expect(isGgArm(arm({ ggConfigId: "builtin:default" }))).toBe(true);
+    expect(isGgArm(arm({ harnessSlug: "pi", modelId: "gpt-5" }))).toBe(false);
+  });
+});
 
-  it("builds exactly `count` items for the arm's harness and the controls' model", () => {
+describe("harnessArmLaunchItems", () => {
+  const controls = { caseSlug: "carom", version: "v1.0.0", variant: "base" };
+
+  it("builds exactly `count` items for the arm's own harness and model", () => {
     const items = harnessArmLaunchItems(
       controls,
-      arm({ harnessSlug: "pi" }),
+      arm({ harnessSlug: "pi", modelId: "claude-opus-4-8" }),
       3,
     );
     expect(items).toHaveLength(3);
@@ -52,13 +54,29 @@ describe("harnessArmLaunchItems", () => {
       expect(item.config.version).toBe("v1.0.0");
       expect(item.config.variant).toBe("base");
       expect(item.track.harnessSlug).toBe("pi");
+      expect(item.track.modelId).toBe("claude-opus-4-8");
     }
+  });
+
+  it("gives each arm its own model, since the model is per configuration", () => {
+    const a = harnessArmLaunchItems(
+      controls,
+      arm({ harnessSlug: "pi", modelId: "claude-opus-4-8" }),
+      1,
+    );
+    const b = harnessArmLaunchItems(
+      controls,
+      arm({ id: "arm-2", harnessSlug: "pi", modelId: "gpt-5" }),
+      1,
+    );
+    expect(a[0]!.track.modelId).toBe("claude-opus-4-8");
+    expect(b[0]!.track.modelId).toBe("gpt-5");
   });
 
   it("prefixes the model id for an OpenRouter-routed harness (kilo)", () => {
     const items = harnessArmLaunchItems(
       controls,
-      arm({ harnessSlug: "kilo" }),
+      arm({ harnessSlug: "kilo", modelId: "claude-opus-4-8" }),
       1,
     );
     expect(items[0]!.config.modelId).toBe("openrouter/claude-opus-4-8");
@@ -67,42 +85,32 @@ describe("harnessArmLaunchItems", () => {
     expect(items[0]!.track.modelId).toBe("claude-opus-4-8");
   });
 
-  it("produces nothing for a non-positive count, a harness-less arm, or a model-less control", () => {
-    expect(
-      harnessArmLaunchItems(controls, arm({ harnessSlug: "pi" }), 0),
-    ).toEqual([]);
-    expect(
-      harnessArmLaunchItems(controls, arm({ harnessSlug: undefined }), 2),
-    ).toEqual([]);
+  it("produces nothing for a non-positive count, a harness-less arm, or a model-less arm", () => {
     expect(
       harnessArmLaunchItems(
-        { ...controls, modelId: undefined },
-        arm({ harnessSlug: "pi" }),
-        2,
+        controls,
+        arm({ harnessSlug: "pi", modelId: "gpt-5" }),
+        0,
       ),
     ).toEqual([]);
-  });
-});
-
-describe("modelArmLaunchItems", () => {
-  const controls = { caseSlug: "carom", version: "v1.0.0", variant: "base" };
-
-  it("builds items under the pinned harness for the arm's own model", () => {
-    const items = modelArmLaunchItems(
-      controls,
-      "opencode",
-      arm({ modelId: "gpt-5" }),
-      2,
-    );
-    expect(items).toHaveLength(2);
-    expect(items[0]!.config.harness).toBe("opencode");
-    expect(items[0]!.config.modelId).toBe("openrouter/gpt-5");
-    expect(items[0]!.track.modelId).toBe("gpt-5");
-  });
-
-  it("produces nothing without a model on the arm", () => {
     expect(
-      modelArmLaunchItems(controls, "opencode", arm({ modelId: undefined }), 2),
+      harnessArmLaunchItems(controls, arm({ modelId: "gpt-5" }), 2),
+    ).toEqual([]);
+    expect(
+      harnessArmLaunchItems(controls, arm({ harnessSlug: "pi" }), 2),
+    ).toEqual([]);
+  });
+
+  it("produces nothing for a gg arm — those launch through gg's own endpoint", () => {
+    expect(
+      harnessArmLaunchItems(
+        controls,
+        arm({
+          ggConfigId: "builtin:default",
+          ggSlotModels: { primary: "anthropic/claude-opus-4.8" },
+        }),
+        2,
+      ),
     ).toEqual([]);
   });
 });
@@ -139,14 +147,23 @@ describe("withArmRunIds", () => {
       caseSlug: "carom",
       version: "v1.0.0",
       variant: "base",
-      modelId: "claude-opus-4-8",
-      authMode: "apiKey",
       orchestratorSlug: "one-shot",
     },
-    varied: "harness",
     arms: [
-      { id: "a", label: "pi", harnessSlug: "pi", runIds: ["r1"] },
-      { id: "b", label: "kilo", harnessSlug: "kilo", runIds: [] },
+      {
+        id: "a",
+        label: "pi",
+        harnessSlug: "pi",
+        modelId: "claude-opus-4-8",
+        runIds: ["r1"],
+      },
+      {
+        id: "b",
+        label: "gg — ablation A",
+        ggConfigId: "builtin:default",
+        ggSlotModels: { primary: "anthropic/claude-opus-4.8" },
+        runIds: [],
+      },
     ],
     n: 3,
   };

@@ -50,9 +50,10 @@ page.
    because the graphs are shared UI.
 
 2. **[Comparison experiments](/comparisons/experiments/).** A saved, named
-   experiment that fixes the controlled variables (case, version, variant, model,
-   auth mode, container build) and varies **one** dimension — the harness, or a gg
-   configuration — into _N_ runs per arm. It triggers those runs, computes an
+   experiment that fixes the test (case, version, variant, orchestrator, container
+   build) and pits two or more **configurations** against each other — a harness on
+   a model, or a gg configuration with a model per slot, freely mixed — at _N_ runs
+   per arm. It triggers those runs, computes an
    **[automated-only score](/comparisons/experiments/#automated-only-scoring)** so
    no human review is needed, and gathers each arm's outcome distribution and
    **[diagnostics](/comparisons/diagnostics/)**.

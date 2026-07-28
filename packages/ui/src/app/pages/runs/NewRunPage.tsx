@@ -26,11 +26,10 @@ import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { routes } from "../../routes";
 import { useCatalog } from "../../runtime/useCatalog";
+import { useCaseCategory } from "../../runtime/useCaseCategory";
 import { useTestCaseName } from "../../data/useTestCaseName";
-import { useTestCases } from "../../data/useTestCases";
 import {
   CATALOG_CATEGORIES,
-  categoryOf,
   type CatalogCategory,
 } from "../../data/testCaseTabs";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
@@ -126,22 +125,14 @@ export function NewRunPage() {
     variant: params.get("variant"),
   });
   const testCaseName = useTestCaseName();
-  // The richer catalog (with each case's test type / asset kind) so the type
-  // selector can bucket cases; `useCatalog` above only carries slugs + versions.
-  const { testCases: summaries } = useTestCases();
-  const summaryBySlug = useMemo(
-    () => new Map(summaries.map((s) => [s.slug, s])),
-    [summaries],
-  );
-  const slugCategory = (slug: string): CatalogCategory | null => {
-    const summary = summaryBySlug.get(slug);
-    return summary ? categoryOf(summary) : null;
-  };
-
-  // The selected test-case type, once the user has picked one. Until then it is
-  // derived from the selected case (so arriving with a case pre-selected — e.g.
-  // via a case's or jam's Run button — opens on that case's type).
-  const [category, setCategory] = useState<CatalogCategory | null>(null);
+  // The test type → test case split: the type selector over `useCatalog`'s case
+  // picker, scoping the case dropdown to the chosen type and opening on the
+  // navigated-to case's type when there is one.
+  const {
+    category: activeCategory,
+    setCategory: onCategoryChange,
+    cases: sortedCases,
+  } = useCaseCategory(sel, { navSlug });
 
   const [models, setModels] = useState<Model[]>([]);
   // The orchestrator that conducts the harness sessions — and, since it is where an
@@ -283,49 +274,6 @@ export function NewRunPage() {
     return rest > 0 ? `${head} +${rest}` : head;
   };
 
-  // The category actually in effect: the user's pick once made, otherwise the
-  // navigated-to case's category, falling back to the first tab (E2E). Note this
-  // derives from `navSlug`, not the auto-selected `sel.slug` — cold from the Runs
-  // page there is no nav case, so it defaults to E2E rather than adopting whatever
-  // category the catalog's first case happens to sit in.
-  const activeCategory: CatalogCategory =
-    category ??
-    (navSlug ? slugCategory(navSlug) : null) ??
-    CATALOG_CATEGORIES[0]!.value;
-
-  // Choose the initial type + case once the catalog metadata resolves, before the
-  // user picks. Reached from a case's (or jam's) Run button, open on that case's
-  // type. Reached cold from the Runs page, default to E2E and lead with its first
-  // case — rather than adopting the category of whatever case the catalog happens
-  // to list first.
-  const initialized = useRef(false);
-  useEffect(() => {
-    if (initialized.current || category !== null || !sel.slug) return;
-    const currentCategory = slugCategory(sel.slug);
-    // Wait until the selected case's catalog metadata has loaded to resolve it.
-    if (currentCategory === null) return;
-    initialized.current = true;
-    if (navSlug) {
-      setCategory(currentCategory);
-      return;
-    }
-    const target = CATALOG_CATEGORIES[0]!.value;
-    setCategory(target);
-    // The auto-selected first case may not be in the default category; move the
-    // selection to that category's first case so the case dropdown and the type
-    // agree.
-    if (currentCategory !== target) {
-      const first = [...sel.cases]
-        .filter((c) => slugCategory(c.slug) === target)
-        .sort((a, b) =>
-          testCaseName(a.slug).localeCompare(testCaseName(b.slug)),
-        )[0];
-      if (first) sel.setSlug(first.slug);
-    }
-    // slugCategory/testCaseName close over the catalog; re-run as it resolves.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [category, sel.slug, sel.cases, summaryBySlug, navSlug]);
-
   // Seed each row's gg configuration once gg is chosen (and the configurations have
   // loaded), so the picker opens on the launchable default instead of a blank row —
   // with that configuration's declared model defaults already filled in.
@@ -348,36 +296,6 @@ export function NewRunPage() {
         : prev,
     );
   }, [isGg, ggOptions]);
-
-  // Switching the type moves the case selection into the chosen category (unless
-  // the current case already belongs to it) so the version and variant re-resolve
-  // for a case the dropdown actually shows.
-  function onCategoryChange(next: CatalogCategory) {
-    setCategory(next);
-    if (slugCategory(sel.slug) === next) return;
-    const first = [...sel.cases]
-      .filter((c) => slugCategory(c.slug) === next)
-      .sort((a, b) =>
-        testCaseName(a.slug).localeCompare(testCaseName(b.slug)),
-      )[0];
-    if (first) sel.setSlug(first.slug);
-  }
-
-  // The catalog arrives in slug order, but the dropdown labels each option with
-  // the display name — so sort by resolved display name to keep the list
-  // alphabetical as shown (otherwise e.g. "Carom" slots in where "pong" sits).
-  // Scoped to the selected type so the list only offers cases of that category.
-  const sortedCases = useMemo(
-    () =>
-      [...sel.cases]
-        .filter((c) => slugCategory(c.slug) === activeCategory)
-        .sort((a, b) =>
-          testCaseName(a.slug).localeCompare(testCaseName(b.slug)),
-        ),
-    // slugCategory closes over summaryBySlug; list depends on it and the category.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sel.cases, testCaseName, summaryBySlug, activeCategory],
-  );
 
   // Catalog versions are oldest-first; show the dropdown newest-first.
   const versions = [

@@ -1,12 +1,13 @@
 //! The **harness comparison** (A/B) data contract and its automated-only scorer.
 //!
-//! A comparison runs the same benchmark under several harnesses (or
-//! [gg](crate::gg) configurations), holds every other variable constant, and
-//! presents the cost, token, and score data side by side so a reader can judge for
-//! themselves. This module defines the stored [`ComparisonConfig`] (its controls
-//! and arms) and the computed read model ([`Comparison`] / [`ComparisonArmResult`])
-//! that [`crate::comparison_aggregate`] fills in from an arm's runs, summarizing
-//! each with [`crate::comparison_stats`].
+//! A comparison runs the same benchmark under several **configurations** — a
+//! third-party harness on a model, or a [gg](crate::gg) capability set with a model
+//! per slot — holds the case and every other variable constant, and presents the
+//! cost, token, and score data side by side so a reader can judge for themselves.
+//! This module defines the stored [`ComparisonConfig`] (its controls and arms) and
+//! the computed read model ([`Comparison`] / [`ComparisonArmResult`]) that
+//! [`crate::comparison_aggregate`] fills in from an arm's runs, summarizing each
+//! with [`crate::comparison_stats`].
 //!
 //! Two principles are load-bearing (see `docs/comparisons/overview.md`) and are
 //! encoded here rather than left to the UI:
@@ -23,29 +24,14 @@ use serde::{Deserialize, Serialize};
 use crate::comparison_stats::{MetricSummary, PassRate};
 use crate::metrics::TokenCounts;
 use crate::review::{ReviewVerdict, Score, VerdictStatus, score_checklist};
-use crate::run_record::{AuthMode, HarnessSlug};
+use crate::run_record::HarnessSlug;
 use crate::test_case::ReviewItem;
 use crate::validation::DebugScriptResult;
 
-/// The dimension a comparison varies across its arms — the one thing that is
-/// *allowed* to differ. Everything else is a held-constant [control](ComparisonControls).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub enum VariedDimension {
-    /// One arm per harness (`pi`, `opencode`, `kilo`, …) — the normal comparison.
-    Harness,
-    /// One arm per gg [configuration](crate::gg) (capability set), so a gg config is
-    /// compared head-to-head against a third-party harness on equal footing.
-    GgConfig,
-    /// One arm per model, with the harness held constant.
-    Model,
-}
-
 /// The variables a comparison holds constant across every arm — the identifying
-/// dimensions of a [run](crate::run_record::RunSubject) minus the one being
-/// [varied](VariedDimension). Drift on any of these across an arm's runs is
-/// surfaced as a [`Confound`], never silently folded in.
+/// dimensions of a [run](crate::run_record::RunSubject) minus the
+/// [configuration](ComparisonArm) each arm names for itself. Drift on any of these
+/// across an arm's runs is surfaced as a [`Confound`], never silently folded in.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -56,16 +42,6 @@ pub struct ComparisonControls {
     pub version: String,
     /// The variant every arm runs.
     pub variant: String,
-    /// The model every arm runs, when the varied dimension is **not** the model.
-    /// `None` only for a [`VariedDimension::Model`] comparison.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub model_id: Option<String>,
-    /// The auth mode every arm runs under. Cost is only comparable when this
-    /// matches (an API-key charge and a subscription charge do not mean the same
-    /// thing), so it is a control, and the comparison uses
-    /// [`Cost::comparable`](crate::metrics::Cost::comparable) throughout.
-    pub auth_mode: AuthMode,
     /// The orchestrator every arm runs. Held constant (in practice `one-shot`, as
     /// `ralph` is retired); a stray mismatch is surfaced as a [`Confound`].
     pub orchestrator_slug: String,
@@ -76,30 +52,48 @@ pub struct ComparisonControls {
     pub container_build: Option<String>,
 }
 
-/// One arm of a comparison — a single value of the [varied dimension](VariedDimension),
-/// run `N` times. Exactly one of the three value fields is populated, matching the
-/// comparison's [`VariedDimension`].
+/// One arm of a comparison: **one configuration**, run `N` times. An arm is either
+/// a *harness* configuration — a [harness](HarnessSlug) plus the model it runs — or
+/// a *gg* configuration — a [gg](crate::gg) capability set plus a model for every
+/// [model slot](crate::gg::GgCapabilitySet::model_slots) it leaves deferred. The two
+/// shapes sit side by side in the same comparison, which is the point: a gg
+/// configuration is compared head-to-head against a third-party harness, and two gg
+/// configurations (or the same one on different models) are compared against each
+/// other, in one experiment.
+///
+/// The model is therefore **per arm**, not a global control: a comparison of "Pi on
+/// model A vs gg on model B" is a legitimate (if wider) experiment, and any variable
+/// that drifts *within* an arm's own runs is still surfaced as a [`Confound`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct ComparisonArm {
     /// A stable id for this arm, unique within the comparison.
     pub id: String,
-    /// A human label for the arm (defaults to the harness/model/config name).
+    /// A human label for the arm (defaults to the harness or configuration name).
     pub label: String,
-    /// The harness this arm runs, for a [`VariedDimension::Harness`] comparison.
+    /// The harness this arm runs, for a harness-configuration arm.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub harness_slug: Option<HarnessSlug>,
-    /// The gg [config](crate::gg) id this arm runs, for a [`VariedDimension::GgConfig`]
-    /// comparison. The published snapshot inlines the referenced capability set.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub gg_config_id: Option<String>,
-    /// The model this arm runs, for a [`VariedDimension::Model`] comparison.
+    /// The model [`harness_slug`](Self::harness_slug) runs, for a harness-configuration
+    /// arm.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub model_id: Option<String>,
+    /// The gg [configuration](crate::gg) this arm runs, for a gg-configuration arm —
+    /// the launcher's key for it (`builtin:<name>` for a shared built-in,
+    /// `saved:<id>` for one registered on the account), so a built-in is as usable
+    /// as an account's own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub gg_config_id: Option<String>,
+    /// The model bound to each deferred [model slot](crate::gg::GgModelSlot) the gg
+    /// configuration declares, keyed by slot name. A gg configuration can span
+    /// several models (one per agent role), so an arm names one per slot rather than
+    /// a single [`model_id`](Self::model_id).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub gg_slot_models: BTreeMap<String, String>,
     /// The ids of the runs launched for this arm, in launch order. Aggregation reads
     /// exactly these runs, so an arm's membership is explicit and unambiguous — the
     /// only reliable way to tell two gg arms apart (they can share a root model but
@@ -117,9 +111,7 @@ pub struct ComparisonArm {
 pub struct ComparisonConfig {
     /// The held-constant controls.
     pub controls: ComparisonControls,
-    /// The dimension the arms vary across.
-    pub varied: VariedDimension,
-    /// The arms, in display order.
+    /// The arms — one configuration each — in display order.
     pub arms: Vec<ComparisonArm>,
     /// The desired number of runs per arm. A single run of a harness says almost
     /// nothing because the spread is large, so multiple runs are mandatory; the

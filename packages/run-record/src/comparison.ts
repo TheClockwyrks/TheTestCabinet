@@ -7,7 +7,7 @@
 // JSON Schemas under `apps/docs/public/schema/` are generated from the same types
 // in the same pass.
 
-import type { AuthMode, HarnessSlug, TokenMetrics } from "./index";
+import type { HarnessSlug, TokenMetrics } from "./index";
 
 /**
  * A descriptive summary of one numeric metric (comparable cost, total tokens)
@@ -93,12 +93,6 @@ export type PassRate = {
 };
 
 /**
- * The dimension a comparison varies across its arms — the one thing that is
- * *allowed* to differ. Everything else is a held-constant [control](ComparisonControls).
- */
-export type VariedDimension = "harness" | "gg_config" | "model";
-
-/**
  * A run's automated-only score point — earned over total, restricted to the
  * machine-checkable checklist points (so a Carom run reads 68/68, not 68/70).
  */
@@ -170,9 +164,9 @@ export type Confound = {
 
 /**
  * The variables a comparison holds constant across every arm — the identifying
- * dimensions of a [run](crate::run_record::RunSubject) minus the one being
- * [varied](VariedDimension). Drift on any of these across an arm's runs is
- * surfaced as a [`Confound`], never silently folded in.
+ * dimensions of a [run](crate::run_record::RunSubject) minus the
+ * [configuration](ComparisonArm) each arm names for itself. Drift on any of these
+ * across an arm's runs is surfaced as a [`Confound`], never silently folded in.
  */
 export type ComparisonControls = {
   /**
@@ -188,18 +182,6 @@ export type ComparisonControls = {
    */
   variant: string;
   /**
-   * The model every arm runs, when the varied dimension is **not** the model.
-   * `None` only for a [`VariedDimension::Model`] comparison.
-   */
-  modelId?: string;
-  /**
-   * The auth mode every arm runs under. Cost is only comparable when this
-   * matches (an API-key charge and a subscription charge do not mean the same
-   * thing), so it is a control, and the comparison uses
-   * [`Cost::comparable`](crate::metrics::Cost::comparable) throughout.
-   */
-  authMode: AuthMode;
-  /**
    * The orchestrator every arm runs. Held constant (in practice `one-shot`, as
    * `ralph` is retired); a stray mismatch is surfaced as a [`Confound`].
    */
@@ -212,9 +194,18 @@ export type ComparisonControls = {
 };
 
 /**
- * One arm of a comparison — a single value of the [varied dimension](VariedDimension),
- * run `N` times. Exactly one of the three value fields is populated, matching the
- * comparison's [`VariedDimension`].
+ * One arm of a comparison: **one configuration**, run `N` times. An arm is either
+ * a *harness* configuration — a [harness](HarnessSlug) plus the model it runs — or
+ * a *gg* configuration — a [gg](crate::gg) capability set plus a model for every
+ * [model slot](crate::gg::GgCapabilitySet::model_slots) it leaves deferred. The two
+ * shapes sit side by side in the same comparison, which is the point: a gg
+ * configuration is compared head-to-head against a third-party harness, and two gg
+ * configurations (or the same one on different models) are compared against each
+ * other, in one experiment.
+ *
+ * The model is therefore **per arm**, not a global control: a comparison of "Pi on
+ * model A vs gg on model B" is a legitimate (if wider) experiment, and any variable
+ * that drifts *within* an arm's own runs is still surfaced as a [`Confound`].
  */
 export type ComparisonArm = {
   /**
@@ -222,22 +213,32 @@ export type ComparisonArm = {
    */
   id: string;
   /**
-   * A human label for the arm (defaults to the harness/model/config name).
+   * A human label for the arm (defaults to the harness or configuration name).
    */
   label: string;
   /**
-   * The harness this arm runs, for a [`VariedDimension::Harness`] comparison.
+   * The harness this arm runs, for a harness-configuration arm.
    */
   harnessSlug?: HarnessSlug;
   /**
-   * The gg [config](crate::gg) id this arm runs, for a [`VariedDimension::GgConfig`]
-   * comparison. The published snapshot inlines the referenced capability set.
+   * The model [`harness_slug`](Self::harness_slug) runs, for a harness-configuration
+   * arm.
+   */
+  modelId?: string;
+  /**
+   * The gg [configuration](crate::gg) this arm runs, for a gg-configuration arm —
+   * the launcher's key for it (`builtin:<name>` for a shared built-in,
+   * `saved:<id>` for one registered on the account), so a built-in is as usable
+   * as an account's own.
    */
   ggConfigId?: string;
   /**
-   * The model this arm runs, for a [`VariedDimension::Model`] comparison.
+   * The model bound to each deferred [model slot](crate::gg::GgModelSlot) the gg
+   * configuration declares, keyed by slot name. A gg configuration can span
+   * several models (one per agent role), so an arm names one per slot rather than
+   * a single [`model_id`](Self::model_id).
    */
-  modelId?: string;
+  ggSlotModels?: { [key in string]: string };
   /**
    * The ids of the runs launched for this arm, in launch order. Aggregation reads
    * exactly these runs, so an arm's membership is explicit and unambiguous — the
@@ -258,11 +259,7 @@ export type ComparisonConfig = {
    */
   controls: ComparisonControls;
   /**
-   * The dimension the arms vary across.
-   */
-  varied: VariedDimension;
-  /**
-   * The arms, in display order.
+   * The arms — one configuration each — in display order.
    */
   arms: Array<ComparisonArm>;
   /**

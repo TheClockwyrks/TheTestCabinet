@@ -20,23 +20,29 @@ export function ComparisonsIndexPage() {
 
   return (
     <PageLayout>
-      <PromptHeader
-        command="--runs/comparisons"
-        comment={
-          <>// the same benchmark under several harnesses, side by side</>
-        }
-      />
+      {/* The action sits in the title row, beside the prompt header — the same
+          shape the Runs tab gives "+ New run". Creating a comparison is
+          console-only (it is saved to an account); the read-only static site
+          renders the published list without it. */}
+      <div className={exec.runsHeader}>
+        <PromptHeader
+          command="--runs/comparisons"
+          comment={
+            <>
+              // the same benchmark under several configurations, side by side
+            </>
+          }
+        />
+        {canExecute && token && (
+          <div className={exec.headerActions}>
+            <Link className={exec.primary} to={routes.comparisonNew()}>
+              + New comparison
+            </Link>
+          </div>
+        )}
+      </div>
 
       <RunsTabs active="comparisons" />
-
-      {/* Creating a comparison is console-only (it is saved to an account); the
-          static site renders the published list read-only, so the action hides
-          there. */}
-      {canExecute && token && (
-        <Link className={exec.primary} to={routes.comparisonNew()}>
-          New comparison
-        </Link>
-      )}
 
       <ComparisonsList />
     </PageLayout>

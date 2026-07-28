@@ -30,58 +30,28 @@ interface LaunchControls {
   variant: string;
 }
 
+/** Whether an arm names a gg configuration (and so launches through gg's own
+ *  endpoint) rather than a third-party harness. */
+export function isGgArm(arm: ComparisonArm): boolean {
+  return Boolean(arm.ggConfigId);
+}
+
 /**
  * Build the launch items for a **harness** arm's still-missing runs: `count`
  * copies of the one (case, version, variant, harness, model, orchestrator) tuple
- * the comparison's controls and this arm fix. Mirrors `itemsForCells`
- * (`CoveragePlanPage`) and the new-run form's per-combination launch config —
- * the same one-shot orchestrator, since a comparison does not vary it. Returns
- * no items when the arm or the controls are missing what a harness arm needs
- * (its own `harnessSlug`, and the controls' pinned `modelId`).
+ * the comparison's controls and this arm's own configuration fix. Mirrors
+ * `itemsForCells` (`CoveragePlanPage`) and the new-run form's per-combination
+ * launch config — the same one-shot orchestrator, since a comparison does not
+ * vary it. Returns no items when the arm is missing what a harness arm needs
+ * (its harness and its model), which is exactly a gg arm — those launch through
+ * `launchGgRun`, not the batch endpoint.
  */
 export function harnessArmLaunchItems(
-  controls: LaunchControls & { modelId?: string },
+  controls: LaunchControls,
   arm: ComparisonArm,
   count: number,
 ): LaunchItem[] {
   const harness = arm.harnessSlug;
-  const modelId = controls.modelId;
-  if (!harness || !modelId || count <= 0) return [];
-  return Array.from({ length: count }, () => ({
-    config: {
-      testCase: controls.caseSlug,
-      version: controls.version,
-      variant: controls.variant,
-      harness,
-      modelId: resolveLaunchModel(harness, OPENROUTER_PROVIDER, modelId),
-      orchestrator: DEFAULT_ORCHESTRATOR_SLUG,
-      maxRuntimeOverride: null,
-    },
-    track: {
-      testCaseSlug: controls.caseSlug,
-      testCaseVersion: controls.version,
-      variant: controls.variant,
-      harnessSlug: harness,
-      modelId,
-    },
-  }));
-}
-
-/**
- * Build the launch items for a **model** arm's still-missing runs: `count`
- * copies under `harness`, held constant across every model arm. The contract's
- * `ComparisonControls` (`@test-cabinet/run-record/comparison`) has no harness
- * field of its own — only a harness-varied comparison names one per arm — so the
- * pinned harness for a model-varied comparison is collected by the create form
- * alongside the controls and passed in here explicitly rather than read off the
- * stored config.
- */
-export function modelArmLaunchItems(
-  controls: LaunchControls,
-  harness: string,
-  arm: ComparisonArm,
-  count: number,
-): LaunchItem[] {
   const modelId = arm.modelId;
   if (!harness || !modelId || count <= 0) return [];
   return Array.from({ length: count }, () => ({

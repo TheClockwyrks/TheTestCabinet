@@ -18,14 +18,15 @@ import { useTestCaseName } from "../../data/useTestCaseName";
 import { formatCompact, formatUsd } from "../../format";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
 import { launchBatch } from "../runs/launchBatch";
+import { bindModelSlots } from "../runs/gg/ggConfigDraft";
 import { useGgConfigs } from "../runs/gg/useGgConfigs";
 import { routes } from "../../routes";
 import { categoricalColor } from "./armColors";
 import {
   appendRunIds,
   harnessArmLaunchItems,
+  isGgArm,
   medianRatio,
-  modelArmLaunchItems,
   remainingForArm,
   toolCallChartData,
   withArmRunIds,
@@ -52,7 +53,9 @@ export function ComparisonDetailPage() {
   const { active: worker } = useWorkers();
   const runtime = useRunsRuntime();
   const testCaseName = useTestCaseName();
-  const { saved: ggConfigs } = useGgConfigs();
+  // Both the shared built-ins and the account's own, since an arm may name
+  // either (its `ggConfigId` is the launcher's key for one).
+  const { options: ggOptions } = useGgConfigs();
 
   const [comparison, setComparison] = useState<Comparison | null>(null);
   const [loading, setLoading] = useState(true);
@@ -95,44 +98,52 @@ export function ComparisonDetailPage() {
 
   const canTrigger = Boolean(worker && (worker.local || token));
 
-  // The harness pinned across every model arm (see ComparisonEditPage's module
-  // doc): read back off any arm, since every model arm carries the same one.
-  const pinnedHarness = useMemo(
-    () => comparison?.config.arms.find((a) => a.harnessSlug)?.harnessSlug ?? "",
-    [comparison],
-  );
-
   const triggerMissing = useCallback(async () => {
     if (!comparison || !worker || !canTrigger) return;
     setTriggering(true);
     setError(null);
     try {
       let nextConfig = comparison.config;
+      const { controls } = comparison.config;
       for (const arm of comparison.config.arms) {
         const remaining = remainingForArm(comparison.config.n, arm);
         if (remaining <= 0) continue;
 
-        if (comparison.config.varied === "gg_config") {
-          const ggConfig = ggConfigs.find((c) => c.id === arm.ggConfigId);
-          if (!ggConfig) continue;
+        // A gg arm launches through gg's own endpoint (one request per run, each
+        // isolated so one failure never aborts the rest) with the arm's slot
+        // models bound onto the configuration it names; a harness arm goes
+        // through the shared batch path. The two reconcile into the one arm's
+        // run ids.
+        if (isGgArm(arm)) {
+          const option = ggOptions.find((o) => o.key === arm.ggConfigId);
+          if (!option) {
+            setError(
+              `The gg configuration behind "${arm.label}" is no longer available, so its runs were skipped.`,
+            );
+            continue;
+          }
+          const capabilitySet = bindModelSlots(
+            option.capabilitySet,
+            arm.ggSlotModels ?? {},
+          );
           const results: { runId?: string; error?: string }[] = [];
           for (let i = 0; i < remaining; i++) {
             try {
               const ack = await worker.client.launchGgRun(
                 {
-                  testCase: comparison.config.controls.caseSlug,
-                  version: comparison.config.controls.version,
-                  variant: comparison.config.controls.variant,
-                  capabilitySet: ggConfig.capabilitySet,
+                  testCase: controls.caseSlug,
+                  version: controls.version,
+                  variant: controls.variant,
+                  capabilitySet,
                 },
                 token ?? "",
               );
               runtime.track({
-                testCaseSlug: comparison.config.controls.caseSlug,
-                testCaseVersion: comparison.config.controls.version,
-                variant: comparison.config.controls.variant,
+                testCaseSlug: controls.caseSlug,
+                testCaseVersion: controls.version,
+                variant: controls.variant,
                 harnessSlug: "gg",
-                modelId: ggConfig.name,
+                modelId: option.name,
                 runId: ack.jobId,
                 state: "queued",
               });
@@ -147,24 +158,11 @@ export function ComparisonDetailPage() {
             appendRunIds(arm.runIds, results),
           );
         } else {
-          const items =
-            comparison.config.varied === "harness"
-              ? harnessArmLaunchItems(
-                  comparison.config.controls,
-                  arm,
-                  remaining,
-                )
-              : modelArmLaunchItems(
-                  comparison.config.controls,
-                  pinnedHarness,
-                  arm,
-                  remaining,
-                );
           const launched = await launchBatch(
             worker,
             token,
             runtime.track,
-            items,
+            harnessArmLaunchItems(controls, arm, remaining),
           );
           nextConfig = withArmRunIds(
             nextConfig,
@@ -190,16 +188,7 @@ export function ComparisonDetailPage() {
     } finally {
       setTriggering(false);
     }
-  }, [
-    comparison,
-    worker,
-    canTrigger,
-    ggConfigs,
-    pinnedHarness,
-    token,
-    runtime,
-    backend,
-  ]);
+  }, [comparison, worker, canTrigger, ggOptions, token, runtime, backend]);
 
   const onPublish = useCallback(async () => {
     if (!comparison || !backend?.publishComparison || !token) return;
@@ -435,15 +424,11 @@ export function ComparisonDetailPage() {
             {controls.version}
           </span>
         </div>
-        {controls.modelId && (
-          <div className={styles.controlStat}>
-            <span className={styles.controlStatLabel}>Model</span>
-            <span className={styles.controlStatValue}>{controls.modelId}</span>
-          </div>
-        )}
         <div className={styles.controlStat}>
-          <span className={styles.controlStatLabel}>Auth mode</span>
-          <span className={styles.controlStatValue}>{controls.authMode}</span>
+          <span className={styles.controlStatLabel}>Configurations</span>
+          <span className={styles.controlStatValue}>
+            {comparison.config.arms.length}
+          </span>
         </div>
         <div className={styles.controlStat}>
           <span className={styles.controlStatLabel}>Orchestrator</span>

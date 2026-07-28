@@ -12,7 +12,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::comparison::{
     ArmDiagnostics, ArmScore, ComparisonArm, ComparisonArmResult, ComparisonConfig, Confound,
-    ScorePoint, VariedDimension, automated_only_score,
+    ScorePoint, automated_only_score,
 };
 use crate::comparison_stats::{MetricSummary, PassRate, seed_from_run_ids};
 use crate::metrics::TokenCounts;
@@ -118,7 +118,7 @@ fn aggregate_arm(
         score,
         pass_rate,
         diagnostics: diagnostics_of(&arm_runs),
-        confounds: detect_confounds(config, &arm_runs),
+        confounds: detect_confounds(config, arm, &arm_runs),
     }
 }
 
@@ -135,10 +135,21 @@ fn diagnostics_of(arm_runs: &[&RunRecord]) -> ArmDiagnostics {
     ArmDiagnostics { tokens, tool_calls }
 }
 
-/// Detect controls that slipped across an arm's runs: a held-constant variable whose
-/// observed value drifted, or differs from the comparison's declared control. The
-/// model is only a control when the comparison does **not** vary the model.
-fn detect_confounds(config: &ComparisonConfig, arm_runs: &[&RunRecord]) -> Vec<Confound> {
+/// Detect variables that slipped across an arm's runs: a variable the arm's own
+/// [configuration](ComparisonArm) fixes whose observed value drifted or differs from
+/// what the arm declared, plus the comparison-wide controls.
+///
+/// The model and the harness are per-arm — an arm *is* one configuration — so they
+/// are checked against that arm's declaration rather than a global control. The auth
+/// mode comes from the harness's own configuration and is never declared here, so it
+/// is only a confound when it drifted *within* the arm's runs (which does make the
+/// arm's costs incomparable). A gg arm declares no single model (its capability set
+/// may span one per agent role), so its model is likewise checked for drift only.
+fn detect_confounds(
+    config: &ComparisonConfig,
+    arm: &ComparisonArm,
+    arm_runs: &[&RunRecord],
+) -> Vec<Confound> {
     let controls = &config.controls;
     let mut out = Vec::new();
 
@@ -146,7 +157,7 @@ fn detect_confounds(config: &ComparisonConfig, arm_runs: &[&RunRecord]) -> Vec<C
         .iter()
         .map(|r| auth_mode_slug(r.environment.auth_mode).to_string())
         .collect();
-    if let Some(c) = confound_for("auth_mode", Some(auth_mode_slug(controls.auth_mode)), &auth) {
+    if let Some(c) = confound_for("auth_mode", None, &auth) {
         out.push(c);
     }
 
@@ -158,15 +169,29 @@ fn detect_confounds(config: &ComparisonConfig, arm_runs: &[&RunRecord]) -> Vec<C
         out.push(c);
     }
 
-    // The model is held constant only when the arms vary something else.
-    if config.varied != VariedDimension::Model {
-        let models: Vec<String> = arm_runs
-            .iter()
-            .map(|r| canonical_model_id(&r.subject.model_id, r.subject.harness_slug))
-            .collect();
-        if let Some(c) = confound_for("model", controls.model_id.as_deref(), &models) {
-            out.push(c);
-        }
+    let harnesses: Vec<String> = arm_runs
+        .iter()
+        .map(|r| r.subject.harness_slug.as_str().to_string())
+        .collect();
+    let declared_harness = arm.harness_slug.map(|h| h.as_str().to_string());
+    if let Some(c) = confound_for("harness", declared_harness.as_deref(), &harnesses) {
+        out.push(c);
+    }
+
+    // The arm's declared model, canonicalized the same way an observed one is, so a
+    // provider-prefixed declaration and the id a harness reports do not read as a
+    // mismatch. A gg arm declares none (see the doc above), leaving a drift check.
+    let declared_model = match (arm.model_id.as_deref(), arm.harness_slug) {
+        (Some(model), Some(harness)) => Some(canonical_model_id(model, harness)),
+        (Some(model), None) => Some(model.to_string()),
+        (None, _) => None,
+    };
+    let models: Vec<String> = arm_runs
+        .iter()
+        .map(|r| canonical_model_id(&r.subject.model_id, r.subject.harness_slug))
+        .collect();
+    if let Some(c) = confound_for("model", declared_model.as_deref(), &models) {
+        out.push(c);
     }
 
     out

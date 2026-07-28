@@ -1,7 +1,9 @@
 use super::*;
 
-use test_cabinet_core::comparison::{ComparisonArm, ComparisonControls, VariedDimension};
-use test_cabinet_core::run_record::{AuthMode, HarnessSlug};
+use std::collections::BTreeMap;
+
+use test_cabinet_core::comparison::{ComparisonArm, ComparisonControls};
+use test_cabinet_core::run_record::HarnessSlug;
 
 /// A minimal Pi-vs-Kilo comparison config.
 fn sample_config() -> ComparisonConfig {
@@ -10,18 +12,16 @@ fn sample_config() -> ComparisonConfig {
             case_slug: "carom".into(),
             version: "v2.0.0".into(),
             variant: "base".into(),
-            model_id: Some("anthropic/claude-opus-4.8".into()),
-            auth_mode: AuthMode::ApiKey,
             orchestrator_slug: "one-shot".into(),
             container_build: None,
         },
-        varied: VariedDimension::Harness,
         arms: vec![ComparisonArm {
             id: "pi".into(),
             label: "Pi".into(),
             harness_slug: Some(HarnessSlug::Pi),
+            model_id: Some("anthropic/claude-opus-4.8".into()),
             gg_config_id: None,
-            model_id: None,
+            gg_slot_models: BTreeMap::new(),
             run_ids: vec![],
         }],
         n: 3,
