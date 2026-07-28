@@ -162,7 +162,10 @@ clap = { version = "4", features = ["derive"] }
 # terminal is attached.
 anstyle = "1"
 anstream = "1"
-uuid = { version = "1", features = ["v4", "serde"] }
+# Collision-resistant unique identifiers. CUID2 ids are short, URL-safe strings
+# generated from entropy plus a per-process fingerprint, so `create_id()` is a
+# drop-in for the stringified UUIDs we previously used for run/job/token ids.
+cuid2 = "0.1"
 # Loads API keys (and other configuration) from a `.env` file so the CLI can be
 # driven without exporting variables into every shell. `dotenvy` is the
 # maintained fork of `dotenv`; it does not override variables already present in

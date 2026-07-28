@@ -148,7 +148,7 @@ pub async fn backfill_coverage_plans(db: &Db) -> Result<usize> {
     let mut migrated = 0usize;
     for plan in legacy {
         let coverage = crate::api::CoveragePlan {
-            id: uuid::Uuid::new_v4().to_string(),
+            id: cuid2::create_id(),
             name: "My coverage plan".to_string(),
             runs_per_cell: plan.runs_per_cell.clamp(1, 100),
             combo_group_ids: Vec::new(),

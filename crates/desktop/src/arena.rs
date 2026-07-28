@@ -356,7 +356,7 @@ pub async fn run_tournament_match(
         );
     }
 
-    let tournament_id = uuid::Uuid::new_v4().to_string();
+    let tournament_id = cuid2::create_id();
     let variant = if config.variant.trim().is_empty() {
         "base".to_string()
     } else {

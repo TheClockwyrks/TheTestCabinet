@@ -18,7 +18,6 @@ use std::thread;
 
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
-use uuid::Uuid;
 
 use crate::test_case::CheckAction;
 
@@ -74,7 +73,7 @@ pub fn capture(url: &str, actions: &[CheckAction], out: &Path) -> std::result::R
         out.file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("capture"),
-        Uuid::new_v4(),
+        cuid2::create_id(),
     ));
 
     let actions_json =

@@ -472,7 +472,7 @@ impl Db {
                         })?;
                     let edited_at = review.reviewed_at.clone();
                     review_revision::Entity::insert(review_revision::ActiveModel {
-                        id: Set(uuid::Uuid::new_v4().to_string()),
+                        id: Set(cuid2::create_id()),
                         review_id: Set(prior.id.clone()),
                         edited_at: Set(edited_at.clone()),
                         note: Set(note.to_string()),
@@ -483,11 +483,7 @@ impl Db {
                     (prior.id.clone(), prior.reviewed_at.clone(), Some(edited_at))
                 }
             }
-            None => (
-                uuid::Uuid::new_v4().to_string(),
-                review.reviewed_at.clone(),
-                None,
-            ),
+            None => (cuid2::create_id(), review.reviewed_at.clone(), None),
         };
 
         review::Entity::insert(review::ActiveModel {
@@ -2907,7 +2903,7 @@ impl Db {
             .await?;
         for entry in write.aliases {
             model_alias::Entity::insert(model_alias::ActiveModel {
-                id: Set(uuid::Uuid::new_v4().to_string()),
+                id: Set(cuid2::create_id()),
                 model_slug: Set(write.slug.clone()),
                 alias: Set(entry.alias),
                 harness_family: Set(entry.family.as_str().to_string()),

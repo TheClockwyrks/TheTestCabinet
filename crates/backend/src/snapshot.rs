@@ -1009,7 +1009,7 @@ async fn transcode_webm_to_mp4(webm: &[u8]) -> Option<Vec<u8>> {
     // ffmpeg rewrites the mp4 moov atom to the front for progressive playback
     // (`-movflags +faststart`), which needs a seekable output, so stage the clip
     // through a unique temp dir rather than stdin/stdout pipes.
-    let dir = std::env::temp_dir().join(format!("tcab-proof-{}", uuid::Uuid::new_v4()));
+    let dir = std::env::temp_dir().join(format!("tcab-proof-{}", cuid2::create_id()));
     tokio::fs::create_dir_all(&dir).await.ok()?;
     let input = dir.join("in.webm");
     let output = dir.join("out.mp4");

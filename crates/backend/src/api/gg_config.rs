@@ -147,7 +147,7 @@ pub async fn delete_config(
 
 /// A fresh opaque id for a configuration.
 fn new_id() -> String {
-    uuid::Uuid::new_v4().to_string()
+    cuid2::create_id()
 }
 
 /// The current time as an RFC 3339 `updatedAt` string.

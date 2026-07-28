@@ -1077,7 +1077,7 @@ where
         // Minted late, the harness's spans could not be correlated to the run that
         // produced them: they would land in Tempo describing tool calls and model
         // turns with no way to tie them back to anything.
-        let run_id = uuid::Uuid::new_v4().to_string();
+        let run_id = cuid2::create_id();
         tracing::Span::current().record("run.id", run_id.as_str());
 
         // Enforce the gg configuration invariant before anything is set up: a gg run

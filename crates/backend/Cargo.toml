@@ -29,7 +29,7 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
 tokio = { workspace = true }
-uuid = { workspace = true }
+cuid2 = { workspace = true }
 time = { workspace = true }
 dotenvy = { workspace = true }
 

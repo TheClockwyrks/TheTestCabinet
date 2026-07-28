@@ -41,7 +41,6 @@ use kube::{Api, Client};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::time::{Instant, sleep};
 use tracing::instrument;
-use uuid::Uuid;
 
 use test_cabinet_core::exec_stream::drain_with_idle_timeout;
 use test_cabinet_core::execution::{
@@ -107,7 +106,7 @@ pub struct KubernetesConfig {
     /// pod's live preview frames back to the driver via a `hostAlias`. `None`
     /// disables the route (previews are best-effort, so runs are unaffected).
     pub pod_ip: Option<String>,
-    /// Name prefix for run pods (the rest is a uuid).
+    /// Name prefix for run pods (the rest is a cuid2).
     pub run_pod_prefix: String,
     /// The id of the job this driver executes. Stamped onto each run pod as the
     /// `JOB_ID_LABEL` so the driver can find and delete its own sandbox pod on
@@ -557,7 +556,7 @@ mod tests;
 impl ContainerRuntime for KubernetesContainerRuntime {
     #[instrument(name = "k8s.start", skip_all, fields(image = %spec.image), err)]
     async fn start(&self, spec: &ContainerSpec) -> Result<ContainerStart> {
-        let name = format!("{}{}", self.config.run_pod_prefix, Uuid::new_v4());
+        let name = format!("{}{}", self.config.run_pod_prefix, cuid2::create_id());
         let pod = self.run_pod(&name, spec);
         self.pods()
             .create(&PostParams::default(), &pod)
@@ -728,7 +727,9 @@ impl KubernetesArtifactCollector {
 #[async_trait::async_trait]
 impl ArtifactCollector for KubernetesArtifactCollector {
     async fn collect(&self, container: &ContainerHandle) -> Result<ArtifactCollection> {
-        let dest = self.base_dir.join(format!("artifact-{}", Uuid::new_v4()));
+        let dest = self
+            .base_dir
+            .join(format!("artifact-{}", cuid2::create_id()));
         std::fs::create_dir_all(&dest).map_err(|err| Error::ArtifactCollection(err.to_string()))?;
 
         // `tar -c -C /work .` writes the working tree to stdout as a binary stream;
@@ -748,7 +749,7 @@ impl ArtifactCollector for KubernetesArtifactCollector {
         // otherwise-successful run, since the dispatcher never retries a driver Job.
         let archive_path = self
             .base_dir
-            .join(format!("artifact-{}.tar", Uuid::new_v4()));
+            .join(format!("artifact-{}.tar", cuid2::create_id()));
         for attempt in 1..=COLLECT_ATTEMPTS {
             let mut archive = tokio::fs::File::create(&archive_path)
                 .await

@@ -11,8 +11,6 @@ use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use uuid::Uuid;
-
 use crate::adversarial_validator::AdversarialValidator;
 use crate::browser::{self, ScriptOutputSpec, StaticServer};
 use crate::error::Result;
@@ -216,7 +214,9 @@ impl BuildValidator {
         // concurrent runs that share a view slug (for example the same test case
         // run against two models) would otherwise write to — and read from — the
         // same `{view}.png` path and score against each other's screenshot.
-        let captures = self.screenshot_dir.join(format!("run-{}", Uuid::new_v4()));
+        let captures = self
+            .screenshot_dir
+            .join(format!("run-{}", cuid2::create_id()));
 
         let mut results = Vec::with_capacity(test_case.checks.len());
         for check in &test_case.checks {

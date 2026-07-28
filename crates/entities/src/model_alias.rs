@@ -16,7 +16,7 @@ use sea_orm::entity::prelude::*;
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
 #[sea_orm(table_name = "model_alias")]
 pub struct Model {
-    /// Surrogate id (uuid); the primary key.
+    /// Surrogate id (an opaque string); the primary key.
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: String,
     /// The curated model this alias belongs to (`model.slug`).

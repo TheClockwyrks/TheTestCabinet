@@ -28,7 +28,6 @@ use futures_util::stream::{self, Stream, StreamExt};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use tokio::sync::broadcast::error::RecvError;
-use uuid::Uuid;
 
 use test_cabinet_core::event::HarnessEvent;
 use test_cabinet_core::preview::AssetPreview;
@@ -313,7 +312,7 @@ pub(super) fn build_new_job(body: &LaunchBody, now: &str) -> Result<crate::db::N
         .transpose()
         .map_err(|e| format!("serializing gg capability set: {e}"))?;
     Ok(crate::db::NewJob {
-        id: Uuid::new_v4().to_string(),
+        id: cuid2::create_id(),
         request_json,
         test_case_slug: body.test_case.clone(),
         test_case_version: body.version.clone(),
@@ -321,7 +320,7 @@ pub(super) fn build_new_job(body: &LaunchBody, now: &str) -> Result<crate::db::N
         harness_slug: body.harness.as_str().to_string(),
         model_id: body.model.clone(),
         gg_config_json,
-        job_token: Uuid::new_v4().to_string(),
+        job_token: cuid2::create_id(),
         // A console launch is the initial attempt; the backend re-enqueues any
         // automatic retries with an incremented `attempt`.
         attempt: 0,
@@ -705,8 +704,8 @@ async fn maybe_enqueue_retry(
         return Ok(());
     }
 
-    let retry_id = Uuid::new_v4().to_string();
-    let job_token = Uuid::new_v4().to_string();
+    let retry_id = cuid2::create_id();
+    let job_token = cuid2::create_id();
     let now = now_rfc3339()?;
     state
         .db

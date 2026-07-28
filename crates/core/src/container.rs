@@ -15,7 +15,6 @@ use tempfile::NamedTempFile;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tracing::instrument;
-use uuid::Uuid;
 
 use crate::error::{Error, Result};
 use crate::exec_stream::drain_with_idle_timeout;
@@ -547,7 +546,9 @@ impl CliArtifactCollector {
 #[async_trait::async_trait]
 impl ArtifactCollector for CliArtifactCollector {
     async fn collect(&self, container: &ContainerHandle) -> Result<ArtifactCollection> {
-        let dest = self.base_dir.join(format!("artifact-{}", Uuid::new_v4()));
+        let dest = self
+            .base_dir
+            .join(format!("artifact-{}", cuid2::create_id()));
         std::fs::create_dir_all(&dest).map_err(|err| Error::ArtifactCollection(err.to_string()))?;
         let dest_str = dest
             .to_str()

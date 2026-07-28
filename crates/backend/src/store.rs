@@ -33,7 +33,6 @@ use test_cabinet_core::test_case::{
     AudioSpec, ErratumSeverity, MaterialSpec, ParticleSpec, UiSpec, version_key,
 };
 use test_cabinet_core::{AssetKind, ModelSpec, SheetSpec, TestType, VoxelSpec};
-use uuid::Uuid;
 
 use crate::error::{BackendError, Result};
 
@@ -734,7 +733,7 @@ impl DefinitionStore {
     pub fn new_staging_dir(&self, slug: &str, version: &str) -> Result<PathBuf> {
         let dir = self
             .staging_root()
-            .join(format!("{slug}-{version}-{}", Uuid::new_v4()));
+            .join(format!("{slug}-{version}-{}", cuid2::create_id()));
         std::fs::create_dir_all(&dir)?;
         Ok(dir)
     }
@@ -763,7 +762,7 @@ impl DefinitionStore {
         // left it manifest-less.
         let retired = self
             .staging_root()
-            .join(format!("retired-{slug}-{version}-{}", Uuid::new_v4()));
+            .join(format!("retired-{slug}-{version}-{}", cuid2::create_id()));
         if let Some(parent) = retired.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -795,7 +794,7 @@ impl DefinitionStore {
         }
         let retired = self
             .staging_root()
-            .join(format!("pruned-{slug}-{version}-{}", Uuid::new_v4()));
+            .join(format!("pruned-{slug}-{version}-{}", cuid2::create_id()));
         if let Some(parent) = retired.parent() {
             std::fs::create_dir_all(parent)?;
         }

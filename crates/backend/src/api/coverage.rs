@@ -700,7 +700,7 @@ impl MatrixCtx {
 
 /// Mint a fresh opaque id for a new group or plan.
 fn new_id() -> String {
-    uuid::Uuid::new_v4().to_string()
+    cuid2::create_id()
 }
 
 /// The current time as an RFC 3339 `updatedAt` string.

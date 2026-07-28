@@ -14,7 +14,6 @@ use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
-use uuid::Uuid;
 
 use test_cabinet_core::match_play::{ControllerKind, ControllerRef};
 use test_cabinet_core::review::{DomainRating, Rating, ReviewRevision, ReviewVerdict};
@@ -125,8 +124,8 @@ pub async fn publish(
         .await
         .map_err(ApiError::from)?;
 
-    let publish_job_id = Uuid::new_v4().to_string();
-    let job_token = Uuid::new_v4().to_string();
+    let publish_job_id = cuid2::create_id();
+    let job_token = cuid2::create_id();
     let created_at = OffsetDateTime::now_utc()
         .format(&Rfc3339)
         .map_err(|e| ApiError::internal(format!("formatting created_at: {e}")))?;

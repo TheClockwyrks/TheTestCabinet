@@ -35,7 +35,7 @@ serde_json = { workspace = true }
 # own; the telemetry runtime in `run()` also relies on it.
 tokio = { workspace = true }
 # Mints the id a locally-run match/tournament is tracked and persisted under.
-uuid = { workspace = true }
+cuid2 = { workspace = true }
 # Stamps a tournament's `createdAt` timestamp (RFC 3339) when the arena runs one.
 time = { workspace = true }
 # Loads harness API keys (e.g. ANTHROPIC_API_KEY) and TCAB_* configuration from a

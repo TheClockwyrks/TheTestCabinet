@@ -180,7 +180,7 @@ impl LivePreview {
     pub async fn start(sink: Arc<dyn PreviewSink>) -> std::io::Result<Self> {
         let listener = TcpListener::bind(("0.0.0.0", 0)).await?;
         let port = listener.local_addr()?.port();
-        let token = uuid::Uuid::new_v4().to_string();
+        let token = cuid2::create_id();
         let endpoint = LivePreviewEndpoint {
             endpoint: format!("{HOST_INTERNAL}:{port}"),
             token: token.clone(),
