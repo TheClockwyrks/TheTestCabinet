@@ -1433,7 +1433,7 @@ fn system_prompt_states_the_configured_read_cap() {
         read_policy: read_policy(set.root()),
         ..runtimes.inputs(&registry)
     });
-    assert!(capped.contains("at most **42 lines**"), "{capped}");
+    assert!(capped.contains("at most 42 lines"), "{capped}");
 
     // The default (unlimited) mode says nothing about a cap.
     let uncapped = system_prompt(runtimes.inputs(&registry));

@@ -201,52 +201,32 @@ fn a_full_run_renders_the_read_facts_and_tasks() {
     let prompt = render_system(&full_system(), None);
     let flat = flat(&prompt);
     assert!(prompt.contains("Reading images is supported."), "{prompt}");
-    assert!(flat.contains("at most **250 lines**"), "{prompt}");
+    assert!(flat.contains("at most 250 lines"), "{prompt}");
     assert!(prompt.contains("## Tasks"), "{prompt}");
     assert!(!prompt.contains("\n\n\n"), "prompt has a blank-line run");
 }
 
-/// An offloading run states the ceiling, the directory the full output is kept in, and that the
-/// remainder is grep-able — the three facts a model needs before it sees its first truncated build.
+/// No run describes shell offloading, whether it is in force or not.
+///
+/// The section that stated the tail, the directory the full output is kept in, and that the
+/// remainder is grep-able was trimmed from both templates (commit `97a7435c`): when offloading
+/// actually kicks in, every one of those facts travels with the truncated output itself, so
+/// stating them up front only spends window on a rule the model is told again at the moment it
+/// applies. This pins the absence in both execution modes and under both shell views.
 #[test]
-fn an_offloading_run_states_the_tail_and_where_the_rest_is() {
-    let prompt = render_system(&full_system(), None);
-    let flat = flat(&prompt);
-    assert!(prompt.contains("## Shell output"), "{prompt}");
-    for keyword in ["last 200 lines", "/tmp/gg/shell", "grep"] {
-        assert!(flat.contains(keyword), "missing `{keyword}`:\n{prompt}");
-    }
-}
-
-/// A run whose shell output comes back whole says nothing about it: there is no rule to learn, and a
-/// paragraph about a ceiling that is not in force is the kind of prompt noise ablation exists to
-/// avoid.
-#[test]
-fn an_inline_run_says_nothing_about_shell_output() {
+fn no_run_describes_shell_offloading() {
     for responses_as_code in [false, true] {
-        let context = SystemContext {
-            responses_as_code,
-            shell: ShellView::default(),
-            ..full_system()
-        };
-        let prompt = render_system(&context, None);
-        assert!(!prompt.contains("## Shell output"), "{prompt}");
-        assert!(!prompt.contains("/tmp/gg/shell"), "{prompt}");
+        for shell in [full_system().shell, ShellView::default()] {
+            let context = SystemContext {
+                responses_as_code,
+                shell,
+                ..full_system()
+            };
+            let prompt = render_system(&context, None);
+            assert!(!prompt.contains("## Shell output"), "{prompt}");
+            assert!(!prompt.contains("/tmp/gg/shell"), "{prompt}");
+        }
     }
-}
-
-/// The code-mode section is written for a *program*: it names the field that holds the tail, so the
-/// model knows the truncation happens to `output` rather than to what it prints.
-#[test]
-fn code_mode_offloading_section_names_the_output_field() {
-    let context = SystemContext {
-        responses_as_code: true,
-        ..full_system()
-    };
-    let flat = flat(&render_system(&context, None));
-    assert!(flat.contains("## Shell output"), "{flat}");
-    assert!(flat.contains("system.shell"), "{flat}");
-    assert!(flat.contains("last 200 lines"), "{flat}");
 }
 
 /// The default (plain-text) completion section tells the model that a reply with no tool calls ends
@@ -264,127 +244,75 @@ fn plain_text_completion_section_says_a_tool_free_reply_ends_the_run() {
     assert!(!prompt.contains("\n\n\n"), "blank-line run:\n{prompt}");
 }
 
-/// A run with compaction off says nothing about it: there is no backstop, and a model told about
-/// one that does not exist would pace itself against a rescue that never comes.
+/// No run describes compaction, under any strategy or execution mode.
+///
+/// The section that named the trigger, what survives the boundary, and what each in-loop strategy
+/// would ask of the model was trimmed from both templates (commit `108a3184`): compaction is gg's
+/// process, not the agent's, and the one moment the agent has a part to play — the turn gg asks for
+/// a summary, a `compact` call, or a round of memory writes — carries its own instructions. This
+/// pins the absence across every strategy, so re-adding the section is a deliberate edit rather
+/// than a silent one.
 #[test]
-fn no_compaction_section_when_the_capability_is_off() {
-    let prompt = render_system(&SystemContext::default(), None);
-    assert!(!prompt.contains("Context compaction"), "{prompt}");
-}
-
-/// Every compaction strategy renders the section — an agent whose thread collapses into a summary
-/// between two of its turns, never told that can happen, reads the result as having lost its mind —
-/// and each in-loop one names, in the vocabulary of its execution mode, the thing it will be asked
-/// to do.
-#[test]
-fn the_compaction_section_names_what_each_strategy_asks_for() {
+fn no_run_describes_compaction() {
     let base = CompactionView {
         trigger_percent: 80,
         compact_name: "compact".to_string(),
-        // The memory calls a scratchpad run names; the memory-compaction section interpolates
+        // The memory calls a scratchpad run names; the memory-compaction section interpolated
         // them, since which memory tools exist is the memory capability's decision.
         memory_create: "`write_memory`".to_string(),
         memory_revise: "`update_memory`".to_string(),
         ..CompactionView::default()
     };
-    let render = |view: CompactionView, responses_as_code: bool| {
-        // `harness` is always present in a code run — the object `finish` lives on — and the code
-        // template renders its object list, so a realistic code context carries at least it.
-        let apis = if responses_as_code {
-            vec![ApiView {
-                object: "harness".to_string(),
-                description: "the run itself".to_string(),
-            }]
-        } else {
-            Vec::new()
-        };
-        flat(&render_system(
-            &SystemContext {
-                responses_as_code,
-                apis,
-                compaction: Some(view),
-                ..SystemContext::default()
-            },
-            None,
-        ))
-    };
-
-    // An out-of-band strategy names no call: nothing is asked of the model, only told to it.
-    let out_of_band = render(CompactionView { ..base.clone() }, false);
-    assert!(out_of_band.contains("80% full"), "{out_of_band}");
-    assert!(out_of_band.contains("skills"), "{out_of_band}");
-    assert!(
-        !out_of_band.contains("You write that summary"),
-        "{out_of_band}"
-    );
-
-    let self_summary = render(
-        CompactionView {
+    let strategies = [
+        None,
+        Some(base.clone()),
+        Some(CompactionView {
             writes_summary: true,
             ..base.clone()
-        },
-        false,
-    );
-    assert!(
-        self_summary.contains("You write that summary"),
-        "{self_summary}"
-    );
-
-    // Code mode has to suspend the reply contract explicitly — prose is the one thing a code run is
-    // otherwise told never to send.
-    let self_summary_code = render(
-        CompactionView {
-            writes_summary: true,
-            ..base.clone()
-        },
-        true,
-    );
-    assert!(
-        self_summary_code.contains("plain prose instead of a program"),
-        "{self_summary_code}"
-    );
-
-    let self_compact = render(
-        CompactionView {
+        }),
+        Some(CompactionView {
             calls_compact: true,
             ..base.clone()
-        },
-        false,
-    );
-    assert!(self_compact.contains("`compact` tool"), "{self_compact}");
-    let self_compact_code = render(
-        CompactionView {
-            calls_compact: true,
-            ..base.clone()
-        },
-        true,
-    );
-    assert!(
-        self_compact_code.contains("context.compact(summary, files)"),
-        "{self_compact_code}"
-    );
-
-    let memories = render(
-        CompactionView {
+        }),
+        Some(CompactionView {
             writes_memories: true,
-            ..base.clone()
-        },
-        false,
-    );
-    assert!(memories.contains("write_memory"), "{memories}");
-
-    // The same section on a run whose memory strategy offers different calls names those instead.
-    let file_memories = render(
-        CompactionView {
-            writes_memories: true,
-            memory_create: "`create_memory`".to_string(),
-            memory_revise: "`edit_memory`".to_string(),
             ..base
-        },
-        false,
-    );
-    assert!(file_memories.contains("`create_memory`"), "{file_memories}");
-    assert!(!file_memories.contains("write_memory"), "{file_memories}");
+        }),
+    ];
+    for responses_as_code in [false, true] {
+        for compaction in strategies.clone() {
+            // `harness` is always present in a code run — the object `finish` lives on — and the
+            // code template renders its object list, so a realistic code context carries at least
+            // it.
+            let apis = if responses_as_code {
+                vec![ApiView {
+                    object: "harness".to_string(),
+                    description: "the run itself".to_string(),
+                }]
+            } else {
+                Vec::new()
+            };
+            let prompt = render_system(
+                &SystemContext {
+                    responses_as_code,
+                    apis,
+                    compaction,
+                    ..SystemContext::default()
+                },
+                None,
+            );
+            let flat = flat(&prompt);
+            for absent in [
+                "Context compaction",
+                "80% full",
+                "You write that summary",
+                "`compact` tool",
+                "context.compact(summary, files)",
+            ] {
+                assert!(!flat.contains(absent), "leaked `{absent}`:\n{prompt}");
+            }
+        }
+    }
 }
 
 /// The explicit-call completion section names the `finish` tool as the way to end the run.
@@ -585,7 +513,7 @@ fn the_read_cap_is_stated_only_when_one_is_in_force() {
         },
         ..SystemContext::default()
     };
-    assert!(flat(&render_system(&capped, None)).contains("at most **40 lines**"));
+    assert!(flat(&render_system(&capped, None)).contains("at most 40 lines"));
     let uncapped = SystemContext {
         read_file: ReadFileView {
             offered: true,
