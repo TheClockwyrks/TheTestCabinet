@@ -52,29 +52,26 @@ For example, your program's result arrives as:
 ## Memory
 
 {{#if memories.scratchpad}}
-You keep a scratchpad of durable notes. Every one of them is in front of you on
-every turn and survives compaction, so it is memory you never have to look up —
-and context you pay for continuously. Record what you would be sorry to lose:
-decisions and their reasons, facts about this codebase you had to work to learn.
+You have access to memories, which allow you to store arbitrary information for
+an unlimited period of time via individual memory files. Write memory files
+regularly to record any important information that needs to be retained and
+isn't already tracked elsewhere.
 {{/if}}
 {{#if memories.markdown}}
-Your memory is a set of markdown files with an index over them. The index — one
-line per memory, its slug and its description — is in front of you on every turn;
-the memories themselves are not, so read one when the work you are doing is the
-work it is about. Record what you would be sorry to lose: decisions and their
-reasons, facts about this codebase you had to work to learn. Write each
-description for a future you scanning that index and deciding what to open.
+You have access to memories, which are a set of markdown files with a memory
+index. The memory index allows you to see a brief description of each memory
+file so you know what memories are relevant. Write to this regularly to record
+any important information that needs to be retained and isn't already tracked
+elsewhere. Keep each memory file tightly scoped so its description provides an
+overview of the full memory contents.
 {{/if}}
 {{#if memories.keywordSearch}}
-Your memory is a set of markdown files with no index: nothing about them is in
-front of you until you go looking. Search them by keyword, then read the ones
-worth having in full. Record what you would be sorry to lose: decisions and their
-reasons, facts about this codebase you had to work to learn — and put the words
-your future self would search for into the memory itself.
+You have access to memories, which allow you to store arbitrary information for
+an unlimited period of time. Write memory notes regularly to record any
+important information that needs to be retained and isn't already tracked
+elsewhere. Search by keyword to find relevant memories, then read the to recall
+previously recorded info.
 {{/if}}
-
-Your memories are gg's, not the workspace's: they are not files on disk, and the
-`memory` object is the only way to read or change them.
 {{/if}}
 
 ## Image Support
