@@ -596,7 +596,10 @@ function FileContent({
     case "metrics":
       return (
         <div className={panels.panelBody}>
-          <RequestMetricsGraphs prompts={state.prompts} />
+          <RequestMetricsGraphs
+            prompts={state.prompts}
+            timings={state.turnTimings}
+          />
         </div>
       );
     case "compaction":

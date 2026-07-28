@@ -163,6 +163,7 @@ use crate::tools::{
     parse_compact_request, parse_evict_path, plan_mode_offers, read_policy, saturating_u32,
     saturating_u64, shell_offload, unknown_disabled_tools,
 };
+use crate::turn_timing::TurnTimer;
 use crate::vision::VisionSupport;
 
 /// The [context-window-override](CAPABILITY_CONTEXT_WINDOW_OVERRIDE) capability's param
@@ -5048,6 +5049,12 @@ impl Agent {
 
             emitter.emit(GgTelemetryKind::TurnStarted {});
 
+            // Where this turn's wall-clock goes, split into prompt assembly / model call /
+            // response handling. Held for exactly the turn's scope so it reports on every path
+            // the loop leaves by — including the abnormal ones, which are the turns worth
+            // looking at. See [`TurnTimer`] for why it emits on drop.
+            let mut turn_timer = TurnTimer::start(emitter);
+
             // Drain this agent's inbox at the turn boundary and inject any messages from its parent
             // as ephemeral user turns, so `send_message` is a live channel: the running child sees
             // the guidance on its very next turn. Drained here (before the pinned refreshes and the
@@ -5218,6 +5225,9 @@ impl Agent {
             // carries as `duration_ms`. Includes any vision-recovery retry, which is the
             // latency the turn actually paid.
             let model_call_started = Instant::now();
+            // The same boundary on the turn's phase accounting: everything before this was
+            // assembling the request, everything after handling what it returned.
+            turn_timer.model_call_started();
             let response = match complete_with_vision_recovery(
                 client,
                 &mut context,
@@ -5281,6 +5291,9 @@ impl Agent {
             // Reaching here means the call returned a response (the error arm returns), so
             // this is its latency — the denominator for the turn's generation throughput.
             let model_call_ms = model_call_started.elapsed().as_millis() as u64;
+            // Hand the phase accounting the same figure the `prompt` event carries, so the two
+            // events never disagree about how long the model took.
+            turn_timer.model_call_finished(model_call_ms);
 
             record_usage(&response, emitter);
             total_tokens = add_counts(total_tokens, response.usage);

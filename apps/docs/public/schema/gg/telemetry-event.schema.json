@@ -897,6 +897,35 @@
       "type": "object"
     },
     {
+      "description": "Where one turn's wall-clock went, split into the three phases every turn passes\nthrough: assembling the prompt, waiting on the model, and handling what came back.\n\nEmitted once per [`TurnStarted`](Self::TurnStarted), as the last event of the turn it\ndescribes — the split is only knowable once the turn is over. A turn cut short (a\nceiling breached mid-turn, a model call that failed) still reports one, with the\nphases it reached; the phases it never entered are `0`. That also means a timing for\nan aborted turn lands *after* the event that ended the turn, since the turn's\naccounting closes when the turn does.\n\nThe three figures are a partition of the turn, not three independent measurements:\n[`response_ms`](Self::TurnTiming::response_ms) is the remainder after the other two,\nso they always sum to exactly the turn's wall-clock duration and stack without a\ngap. The console renders the stream of these as a stacked bar per turn.",
+      "properties": {
+        "promptMs": {
+          "description": "Milliseconds spent assembling the request: draining the inbox, refreshing pinned\nstate, running any triggered compaction, and building the offered toolset — from\nthe turn's start to the moment the model call was dispatched.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "requestMs": {
+          "description": "Milliseconds spent on the model call itself — the same wall-clock latency the\nturn's [`Prompt`](Self::Prompt) carries as\n[`duration_ms`](Self::Prompt::duration_ms), including any vision-recovery retry.\n`0` for a turn that ended before it reached the model.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "responseMs": {
+          "description": "Milliseconds spent handling the response: dispatching and answering every tool\ncall (or running the turn's program, in responses-as-code mode), applying the\nstate transitions it asked for, and closing the turn. The remainder of the turn\nafter the other two phases, so the three sum to the turn's duration.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "type": {
+          "const": "turn_timing",
+          "type": "string"
+        }
+      },
+      "required": ["type", "promptMs", "requestMs", "responseMs"],
+      "type": "object"
+    },
+    {
       "description": "The [skills](https://docs.testcabinet.ai/gg/skills/) available to the model and\nwhich of them have been read.\n\nEmitted once at session start (with the full catalog, all unread) when the\n[skills](CAPABILITY_SKILLS) capability offers any skills, and again each time the\nmodel reads one (that skill flips to `read: true` and its body enters the context\nwindow as a [`Skill`](GgContextSource::Skill)-sourced, compaction-retained item).\nThe console renders it as the run's skill panel. A run with the capability off, or\nwith no skills to offer, emits none.",
       "properties": {
         "skills": {

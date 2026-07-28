@@ -19,6 +19,9 @@ The telemetry must let the console display:
   agents.
 - The **[context-window breakdown](/gg/context-visibility/)** over time — the
   stacked line graph.
+- **Where each turn's time went** — one `turn_timing` per turn, splitting the turn's
+  wall-clock into the three phases it passes through (see
+  [below](#where-a-turns-time-went)).
 - The **[message log](/gg/context-visibility/#the-message-log-the-exact-requests-de-duplicated)** —
   the exact request each turn sent and the reply it got, streamed as a de-duplicated pool
   of message bodies (`context_message`) plus one pointer list per turn (`prompt`), so the
@@ -47,7 +50,8 @@ through **two** surfaces:
   top-level section, **not** a file under any one agent.
 - The **Agents** explorer — everything else. The rich views (the prompt the agent was
   given, activity, context-window breakdown, the [message log](/gg/context-visibility/#the-message-log-the-exact-requests-de-duplicated),
-  the **per-request metric graphs** — throughput (tokens/s), cost per request, cache-read
+  the **metric graphs** — [where each turn's time went](#where-a-turns-time-went),
+  then throughput (tokens/s), cost per request, cache-read
   share and reasoning share, each gaining one point per model call — plan, tasks,
   knowledge) are inherently **per agent** — *whose*
   window filled, *whose* task list this is — so they cannot honestly be shown as one
@@ -66,6 +70,34 @@ through **two** surfaces:
   **tool-usage breakdown** — the itemized version of the Dashboard row's tool chips:
   every tool it called, how many times, and how much each tool's results added to its
   window.
+
+## Where a turn's time went
+
+A gg turn is not one operation but three, and they drag for entirely different
+reasons. gg therefore emits one **`turn_timing`** per turn, splitting the turn's
+wall-clock into the phase it was actually spent in:
+
+| Phase | What it covers |
+| --- | --- |
+| `promptMs` | **Prompt construction** — draining the agent's inbox, refreshing the pinned blocks, running any triggered [compaction](/gg/compaction/), resolving the offered toolset. From the turn's start to the moment the request was dispatched. |
+| `requestMs` | **Request** — the model call itself, including any vision-recovery retry. The same figure the turn's `prompt` event carries as `durationMs`, so the two never disagree. |
+| `responseMs` | **Response processing** — dispatching and answering every tool call (or running the turn's [program](/gg/responses-as-code/)), applying the state transitions the turn asked for, and closing the turn. |
+
+The three are a **partition** of the turn, not three independent stopwatches: gg
+derives the response phase as the remainder, so they always sum to exactly the turn's
+duration. That is what lets the console stack them into one bar per turn with no gap —
+each bar's height *is* the turn — on the **Time per turn** graph that heads an agent's
+Metrics file. Hovering a bar gives the turn's raw figures and each phase's share.
+
+Because a run can take hundreds of turns and fifty-odd bars is the most that stays
+comparable, the graph **windows**: a size control picks how many turns are in frame
+and a range control slides that frame over the run. The frame follows the newest turn
+until a reader moves it, so a live run keeps showing its latest work.
+
+A turn that ends **abnormally** — a ceiling breached mid-turn, a model call that
+failed — still reports a timing, carrying the phases it reached with the ones it never
+entered at `0`. The accounting closes when the turn's scope does, which is also why
+such a timing lands *after* the event that ended the turn.
 
 ## Two events every run may end on
 

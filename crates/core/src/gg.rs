@@ -2957,6 +2957,36 @@ pub enum GgTelemetryKind {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         duration_ms: Option<u64>,
     },
+    /// Where one turn's wall-clock went, split into the three phases every turn passes
+    /// through: assembling the prompt, waiting on the model, and handling what came back.
+    ///
+    /// Emitted once per [`TurnStarted`](Self::TurnStarted), as the last event of the turn it
+    /// describes — the split is only knowable once the turn is over. A turn cut short (a
+    /// ceiling breached mid-turn, a model call that failed) still reports one, with the
+    /// phases it reached; the phases it never entered are `0`. That also means a timing for
+    /// an aborted turn lands *after* the event that ended the turn, since the turn's
+    /// accounting closes when the turn does.
+    ///
+    /// The three figures are a partition of the turn, not three independent measurements:
+    /// [`response_ms`](Self::TurnTiming::response_ms) is the remainder after the other two,
+    /// so they always sum to exactly the turn's wall-clock duration and stack without a
+    /// gap. The console renders the stream of these as a stacked bar per turn.
+    TurnTiming {
+        /// Milliseconds spent assembling the request: draining the inbox, refreshing pinned
+        /// state, running any triggered compaction, and building the offered toolset — from
+        /// the turn's start to the moment the model call was dispatched.
+        prompt_ms: u64,
+        /// Milliseconds spent on the model call itself — the same wall-clock latency the
+        /// turn's [`Prompt`](Self::Prompt) carries as
+        /// [`duration_ms`](Self::Prompt::duration_ms), including any vision-recovery retry.
+        /// `0` for a turn that ended before it reached the model.
+        request_ms: u64,
+        /// Milliseconds spent handling the response: dispatching and answering every tool
+        /// call (or running the turn's program, in responses-as-code mode), applying the
+        /// state transitions it asked for, and closing the turn. The remainder of the turn
+        /// after the other two phases, so the three sum to the turn's duration.
+        response_ms: u64,
+    },
     /// The [skills](https://docs.testcabinet.ai/gg/skills/) available to the model and
     /// which of them have been read.
     ///

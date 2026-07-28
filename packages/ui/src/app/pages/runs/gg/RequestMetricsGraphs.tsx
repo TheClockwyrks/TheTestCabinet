@@ -1,5 +1,8 @@
-// The Metrics file: a grid of per-request, over-time graphs for one agent — the
-// value-per-model-call companion to the Context file's window-composition graph.
+// The Metrics file: a stack of over-time graphs for one agent — the value-per-model-call
+// companion to the Context file's window-composition graph. It opens with where each
+// turn's wall-clock went (a stacked bar per turn, see `TurnTimingGraph`), then the
+// per-request value metrics.
+//
 // Each metric accrues one data point per request (one `prompt` telemetry event),
 // plotted against the same turn axis the Context graph uses, so the two read
 // against the same run. A request with no datum for a metric (throughput when the
@@ -13,8 +16,9 @@ import {
   type ChartPalette,
   type MetricPoint,
 } from "@test-cabinet/ui";
-import type { PromptTurn } from "./useGgRunState";
+import type { PromptTurn, TurnTiming } from "./useGgRunState";
 import { formatCost, formatPercent } from "./GgOverviewWidgets";
+import { TurnTimingGraph } from "./TurnTimingGraph";
 import styles from "./GgPanels.module.scss";
 
 const throughputFmt = new Intl.NumberFormat("en-US", {
@@ -155,8 +159,18 @@ const METRICS: readonly MetricDef[] = [
   },
 ];
 
-export function RequestMetricsGraphs({ prompts }: { prompts: PromptTurn[] }) {
-  if (prompts.length === 0) {
+export function RequestMetricsGraphs({
+  prompts,
+  timings = [],
+}: {
+  prompts: PromptTurn[];
+  // Per-turn phase timings, which head the file. Unlike the metrics below them these
+  // are not per-*request*: a turn is timed whether or not it reached the model, so a
+  // run can have timings before it has a single request (and, on a stream recorded
+  // before gg timed turns, requests with no timings).
+  timings?: TurnTiming[];
+}) {
+  if (prompts.length === 0 && timings.length === 0) {
     return (
       <p className={styles.empty}>
         No requests yet — each metric gains a data point per model call.
@@ -166,6 +180,10 @@ export function RequestMetricsGraphs({ prompts }: { prompts: PromptTurn[] }) {
   return (
     <div className={styles.stack}>
       <div className={styles.metricsGrid}>
+        {/* Where the time went leads the file: it is the graph that says which of the
+            three phases a slow run is slow in, which the value-per-call metrics below
+            it cannot answer. */}
+        <TurnTimingGraph timings={timings} />
         {METRICS.map((metric) => (
           <MetricCard key={metric.key} metric={metric} prompts={prompts} />
         ))}

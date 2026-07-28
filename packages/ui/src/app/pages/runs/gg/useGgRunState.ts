@@ -265,6 +265,24 @@ export interface PromptTurn {
   durationMs: number | null;
 }
 
+// Where one turn's wall-clock went (`turn_timing`), split into the three phases every
+// turn passes through: assembling the prompt, waiting on the model, and handling the
+// response. The three are a partition of the turn — gg derives the response phase as
+// the remainder — so they sum to exactly the turn's duration and stack without a gap.
+// `turn` is the turn's own 0-based index (counted from `turn_started`), which is the
+// same axis the context graph and the request metrics plot against.
+export interface TurnTiming {
+  turn: number;
+  promptMs: number;
+  requestMs: number;
+  responseMs: number;
+}
+
+// The whole turn's wall-clock: the three phases sum to it by construction.
+export function turnTotalMs(t: TurnTiming): number {
+  return t.promptMs + t.requestMs + t.responseMs;
+}
+
 // The latest `memory_state` — the model's self-curated memories and the caps gg
 // keeps them within.
 export interface GgMemoryState {
@@ -633,6 +651,9 @@ function ggFeedRow(
     // kinds render no row.
     case "context_message":
     case "prompt":
+    // Per-turn phase timing drives the Metrics graph, not the feed — a row per turn
+    // saying where its milliseconds went would drown the feed it sits in.
+    case "turn_timing":
     case "skills_state":
     case "memory_state":
     case "tasks_state":
@@ -712,6 +733,10 @@ export interface DerivedGgState {
   // `context_message`/`prompt` events).
   messagePool: Map<string, PooledMessage>;
   prompts: PromptTurn[];
+  // Per-turn phase timings, in turn order. Unlike `prompts` these are unconditional —
+  // gg reports one per turn whatever the run's capabilities, and reports one even for a
+  // turn that ended abnormally. Empty only for a stream recorded before gg timed turns.
+  turnTimings: TurnTiming[];
   skills: GgSkillState[];
   memory: GgMemoryState | null;
   tasks: GgTaskEntry[];
@@ -947,6 +972,8 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
   // agent's partition of the stream every prompt's pointers resolve against these.
   const messagePool = new Map<string, PooledMessage>();
   const prompts: PromptTurn[] = [];
+  // One per `turn_timing` — the turn's three-phase wall-clock split (see `TurnTiming`).
+  const turnTimings: TurnTiming[] = [];
   let sawSession = false;
   let sessionEndStatus: string | null = null;
   let skills: GgSkillState[] = [];
@@ -1160,6 +1187,20 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
           durationMs: gg.durationMs ?? null,
         });
         break;
+      case "turn_timing":
+        // The turn's phase split, emitted as the last event of the turn it describes.
+        // Keyed to the turn it closes — the `turn_started` already counted — so the
+        // timings line up with the context graph's turn axis even when a turn ended
+        // before it could emit a prompt. `turnCount` is only 0 here on a malformed
+        // stream that timed a turn it never started; keep such a timing at turn 0
+        // rather than dropping the turn from the record.
+        turnTimings.push({
+          turn: Math.max(0, turnCount - 1),
+          promptMs: gg.promptMs,
+          requestMs: gg.requestMs,
+          responseMs: gg.responseMs,
+        });
+        break;
       case "skills_state":
         skills = gg.skills;
         break;
@@ -1331,6 +1372,7 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
     contextActions,
     messagePool,
     prompts,
+    turnTimings,
     skills,
     memory,
     tasks,

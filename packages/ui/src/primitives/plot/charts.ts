@@ -200,6 +200,19 @@ interface StackedAxisLabels {
   y?: string;
   yTickFormat?: string | ((value: number) => string);
   xTickRotate?: number;
+  /**
+   * The bar order along x, as the full list of group names. Pass it whenever the
+   * groups have a meaningful order that is not their sorted order — Plot sorts an
+   * ordinal domain it infers, which puts `"100"` before `"70"` and silently
+   * scrambles a numeric progression. Omit for genuinely unordered categories.
+   */
+  xDomain?: readonly string[];
+  /**
+   * Which groups get a labeled tick. Use it when there are more bars than the axis
+   * has room to name (e.g. every fifth turn), so the labels stay legible instead of
+   * overlapping into a smear. Omit to label every bar.
+   */
+  xTicks?: readonly string[];
 }
 
 // A stacked vertical bar chart: one bar per group, split into fixed, colored
@@ -227,7 +240,13 @@ export function stackedBarChart(
           ),
         }
       : {}),
-    x: { label: null, type: "band", tickRotate: labels.xTickRotate },
+    x: {
+      label: null,
+      type: "band",
+      tickRotate: labels.xTickRotate,
+      ...(labels.xDomain ? { domain: labels.xDomain as string[] } : {}),
+      ...(labels.xTicks ? { ticks: labels.xTicks as string[] } : {}),
+    },
     y: { label: labels.y ?? null, grid: true, tickFormat: labels.yTickFormat },
     color: {
       legend: true,

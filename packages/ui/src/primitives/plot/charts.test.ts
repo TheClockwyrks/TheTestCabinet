@@ -103,6 +103,38 @@ describe("stackedBarChart", () => {
     // The hover-highlight overlay for the pointed segment is present too.
     expect(node.querySelector('[fill-opacity="0.18"]')).not.toBeNull();
   });
+
+  // Groups that are numbers-as-strings must not be sorted as strings: without a
+  // stated domain Plot orders "100" before "70" and scrambles the progression.
+  const numeric = [
+    { group: "70", series: "Great", value: 1 },
+    { group: "100", series: "Great", value: 1 },
+    { group: "119", series: "Great", value: 1 },
+  ];
+
+  const xLabels = (node: Element) =>
+    [...node.querySelectorAll('[aria-label="x-axis tick label"] text')].map(
+      (t) => t.textContent,
+    );
+
+  it("keeps the bar order it is given rather than sorting the groups", () => {
+    const node = render(
+      stackedBarChart(numeric, palette, series, {
+        xDomain: ["70", "100", "119"],
+      }),
+    );
+    expect(xLabels(node)).toEqual(["70", "100", "119"]);
+  });
+
+  it("labels only the requested groups, for an axis with more bars than room", () => {
+    const node = render(
+      stackedBarChart(numeric, palette, series, {
+        xDomain: ["70", "100", "119"],
+        xTicks: ["70", "119"],
+      }),
+    );
+    expect(xLabels(node)).toEqual(["70", "119"]);
+  });
 });
 
 describe("distributionChart", () => {

@@ -1506,6 +1506,29 @@ export type GgTelemetryKind =
       durationMs?: number;
     }
   | {
+      type: "turn_timing";
+      /**
+       * Milliseconds spent assembling the request: draining the inbox, refreshing pinned
+       * state, running any triggered compaction, and building the offered toolset — from
+       * the turn's start to the moment the model call was dispatched.
+       */
+      promptMs: number;
+      /**
+       * Milliseconds spent on the model call itself — the same wall-clock latency the
+       * turn's [`Prompt`](Self::Prompt) carries as
+       * [`duration_ms`](Self::Prompt::duration_ms), including any vision-recovery retry.
+       * `0` for a turn that ended before it reached the model.
+       */
+      requestMs: number;
+      /**
+       * Milliseconds spent handling the response: dispatching and answering every tool
+       * call (or running the turn's program, in responses-as-code mode), applying the
+       * state transitions it asked for, and closing the turn. The remainder of the turn
+       * after the other two phases, so the three sum to the turn's duration.
+       */
+      responseMs: number;
+    }
+  | {
       type: "skills_state";
       /**
        * One entry per available skill, in the order the catalog lists them.
@@ -2141,6 +2164,29 @@ export type GgTelemetryEvent = {
        * or synthesized response).
        */
       durationMs?: number;
+    }
+  | {
+      type: "turn_timing";
+      /**
+       * Milliseconds spent assembling the request: draining the inbox, refreshing pinned
+       * state, running any triggered compaction, and building the offered toolset — from
+       * the turn's start to the moment the model call was dispatched.
+       */
+      promptMs: number;
+      /**
+       * Milliseconds spent on the model call itself — the same wall-clock latency the
+       * turn's [`Prompt`](Self::Prompt) carries as
+       * [`duration_ms`](Self::Prompt::duration_ms), including any vision-recovery retry.
+       * `0` for a turn that ended before it reached the model.
+       */
+      requestMs: number;
+      /**
+       * Milliseconds spent handling the response: dispatching and answering every tool
+       * call (or running the turn's program, in responses-as-code mode), applying the
+       * state transitions it asked for, and closing the turn. The remainder of the turn
+       * after the other two phases, so the three sum to the turn's duration.
+       */
+      responseMs: number;
     }
   | {
       type: "skills_state";

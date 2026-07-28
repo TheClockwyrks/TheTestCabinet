@@ -1698,6 +1698,86 @@ $fsm-hue: #2dd4bf;
   font-variant-numeric: tabular-nums;
 }
 
+// The frame controls above a windowed graph (the per-turn timing bars): how many
+// entries are in frame, and where that frame sits over the run. Laid out as one row
+// with the slider taking the slack, so the two step buttons stay flanking it at any
+// pane width.
+.rangeControls {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.rangeLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-xs;
+  white-space: nowrap;
+}
+
+.rangeSelect {
+  padding: t.$space-2xs t.$space-xs;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline solid t.$color-border;
+  background: t.$color-bg;
+  color: t.$color-text;
+  font-size: t.$font-sm;
+  font-family: inherit;
+  cursor: pointer;
+
+  &:hover {
+    border-color: t.$color-accent;
+  }
+}
+
+// The frame's position over the run. Takes the row's slack so dragging is precise
+// even on a long run, where one pixel is several turns.
+.rangeSlider {
+  flex: 1 1 auto;
+  min-width: 4rem;
+  accent-color: t.$color-accent;
+  cursor: pointer;
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.5;
+  }
+}
+
+// Step the frame a whole page earlier/later. Disabled (rather than hidden) at either
+// end, so the control row does not reflow as the reader moves through the run.
+.rangeStep {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  flex: 0 0 auto;
+  padding: 0;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline solid t.$color-border;
+  background: t.$color-bg;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    color 0.12s ease,
+    border-color 0.12s ease;
+
+  &:hover:not(:disabled) {
+    color: t.$color-text;
+    border-color: t.$color-accent;
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.4;
+  }
+}
+
 // A per-card empty state, shown when a metric has no data points yet (or the run
 // never recorded what it needs — e.g. throughput without call timing).
 .metricEmpty {
