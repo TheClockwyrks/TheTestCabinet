@@ -25,7 +25,7 @@ import {
   classifySpeculationRoles,
   type SpeculationRole,
 } from "./AgentTreeView";
-import { ContextFillGraph, ContextUsageBar } from "./ContextFillGraph";
+import { ContextFillGraph } from "./ContextFillGraph";
 import { PromptView } from "./PromptView";
 import { RequestsView } from "./RequestsView";
 import { RequestMetricsGraphs } from "./RequestMetricsGraphs";
@@ -664,7 +664,10 @@ function ActivityFeed({ feed, live }: { feed: FeedRow[]; live: boolean }) {
   return (
     <>
       {live && (
-        <div className={runExec.feedHeader}>
+        // The gg activity view leads the explorer pane directly, so drop the shared
+        // feed header's top margin here (scoped via `panels.activityHeader`) — it is
+        // meant to space the header from fields above it on the full-page feeds.
+        <div className={cx(runExec.feedHeader, panels.activityHeader)}>
           <span className={runExec.sectionLabel}>gg activity</span>
           <button
             type="button"
@@ -731,14 +734,21 @@ function OverviewFile({
   return (
     <div className={panels.panelBody}>
       <div className={panels.overview}>
-        <AgentIdentity node={node} role={role} turns={state.turnCount} />
-        <ContextUsageBar latest={state.latestContext} />
+        {/* The identity header folds in the agent's context-fullness ring, so status,
+            identity, and how full the window is read as one element. */}
+        <AgentIdentity
+          node={node}
+          role={role}
+          turns={state.turnCount}
+          latest={state.latestContext}
+        />
         {/* The pane-responsive grid, not the Dashboard's viewport bento: this pane
             is narrower than the window, so the widgets must stack on the pane's own
-            width. */}
+            width. `bare` drops the widgets' card chrome — the panel already frames
+            them, so a bordered card would read as a widget-in-a-widget. */}
         <div className={dash.overviewCards}>
-          <TokensWidget usage={state.usage} />
-          <CostWidget usage={state.usage} breakdown={costBreakdown} />
+          <TokensWidget usage={state.usage} bare />
+          <CostWidget usage={state.usage} breakdown={costBreakdown} bare />
         </div>
         {tools.tools.length > 0 && <AgentToolsPanel breakdown={tools} />}
         {/* The run's delegation structure hangs off the main agent — it is a

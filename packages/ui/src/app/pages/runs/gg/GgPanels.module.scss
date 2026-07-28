@@ -31,56 +31,9 @@
 
 // --- Context breakdown -------------------------------------------------------
 
-// The fullness header: the total-vs-window signal compaction acts on, shown big
-// over a fill bar so how close the window is to its ceiling reads at a glance.
-.fullnessHead {
-  display: flex;
-  flex-direction: column;
-  gap: t.$space-xs;
-}
-
-.fullnessFigure {
-  display: flex;
-  align-items: baseline;
-  gap: t.$space-sm;
-  flex-wrap: wrap;
-}
-
-.fullnessPct {
-  font-size: t.$font-xl;
-  font-weight: 700;
-  color: t.$color-text;
-  font-variant-numeric: tabular-nums;
-  line-height: 1;
-}
-
-.fullnessTokens {
-  font-size: t.$font-sm;
-  color: t.$color-text-muted;
-  font-variant-numeric: tabular-nums;
-}
-
-.fullnessBar {
-  height: 0.5rem;
-  border-radius: 9999px;
-  background: color-mix(in srgb, t.$color-border 45%, transparent);
-  overflow: hidden;
-}
-
-.fullnessBarFill {
-  height: 100%;
-  border-radius: inherit;
-  background: t.$color-accent;
-  transition: width 200ms ease;
-
-  // Warm as the window approaches its ceiling — the trigger region for compaction.
-  &[data-level="mid"] {
-    background: t.$color-accent;
-  }
-  &[data-level="high"] {
-    background: t.$color-accent-2;
-  }
-}
+// The window's fullness — the signal compaction acts on — now reads on the agent's
+// Overview as a ring folded into the identity header (see `ContextUsageRing` in
+// GgOverviewWidgets), so this panel keeps only the composition story below.
 
 .sourceList {
   list-style: none;
@@ -1145,7 +1098,19 @@ $context-palette: (
   }
 }
 
+// The header row of the identity card: the identity details (status pill, id, slot,
+// chips) take the left and grow, with the context-fullness ring pinned to the right;
+// the ring wraps beneath the details when the pane is too narrow to hold both.
+.agentHeadRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: t.$space-sm t.$space-lg;
+}
+
 .agentHead {
+  flex: 1 1 18rem;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -1153,35 +1118,50 @@ $context-palette: (
   min-width: 0;
 }
 
-// The status chip leads each row. A dot carries the color; running pulses so an
-// active agent reads as live, waiting is warm and distinct, done/failed take the
-// positive/negative cue.
+// The status pill leads each row — a boxed, tinted chip (not a bare label) so the
+// agent's lifecycle reads as a deliberate, glanceable element. Its dot carries the
+// color too; running pulses so an active agent reads as live, waiting is warm and
+// distinct, done/failed take the positive/negative cue.
 .agentStatus {
   display: inline-flex;
   align-items: center;
   gap: t.$space-xs;
-  font-size: 0.72rem;
+  padding: t.$space-2xs t.$space-sm;
+  border-radius: t.$radius-md;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 60%, transparent);
+  background: color-mix(in srgb, t.$color-text-muted 6%, transparent);
+  font-size: t.$font-sm;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: t.$color-text-muted;
 
   &[data-status="running"] {
     color: t.$color-accent;
+    border-color: color-mix(in srgb, t.$color-accent 45%, transparent);
+    background: color-mix(in srgb, t.$color-accent 10%, transparent);
   }
   &[data-status="blocked"] {
     color: t.$color-accent-2;
+    border-color: color-mix(in srgb, t.$color-accent-2 45%, transparent);
+    background: color-mix(in srgb, t.$color-accent-2 10%, transparent);
   }
   &[data-status="done"] {
     color: t.$color-positive;
+    border-color: color-mix(in srgb, t.$color-positive 45%, transparent);
+    background: color-mix(in srgb, t.$color-positive 10%, transparent);
   }
   &[data-status="failed"] {
     color: t.$color-negative;
+    border-color: color-mix(in srgb, t.$color-negative 45%, transparent);
+    background: color-mix(in srgb, t.$color-negative 10%, transparent);
   }
 }
 
 .agentStatusDot {
-  width: 0.5rem;
-  height: 0.5rem;
+  width: 0.6rem;
+  height: 0.6rem;
   border-radius: 9999px;
   background: currentColor;
 
@@ -1689,13 +1669,14 @@ $fsm-hue: #2dd4bf;
 
 // --- Per-request metric graphs ----------------------------------------------
 
-// The Metrics file's grid of over-time graphs: one card per per-request metric
-// (throughput, cost, cache-read share, reasoning share), wrapping to a single
-// column when the pane is narrow. Sits beside the Context graph as the
-// request-level, value-over-time companion to the window's composition.
+// The Metrics file's stack of over-time graphs: one card per per-request metric
+// (throughput, cost, cache-read share, reasoning share), each given the pane's full
+// width so a graph has the room to read rather than being halved into a grid. Sits
+// beside the Context graph as the request-level, value-over-time companion to the
+// window's composition.
 .metricsGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  grid-template-columns: 1fr;
   gap: t.$space-lg;
 }
 
@@ -1933,6 +1914,17 @@ $fsm-hue: #2dd4bf;
   display: flex;
   flex-direction: column;
   gap: t.$space-lg;
+}
+
+// The gg activity view leads the explorer pane directly, with no panelBody padding
+// around it, so the shared feed header's top margin — sized to separate the header
+// from the fields above it on the full-page monitor and Events feeds — reads as dead
+// space at the pane's top edge here. Zero it for the gg activity header alone, layered
+// over `runExec.feedHeader` so every other feed that header serves keeps its spacing.
+// (The class is doubled purely to outweigh the shared rule regardless of stylesheet
+// order.)
+.activityHeader.activityHeader {
+  margin-top: 0;
 }
 
 // --- Requests view (the de-duplicated message log) ---------------------------

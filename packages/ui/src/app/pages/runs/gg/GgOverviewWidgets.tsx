@@ -10,7 +10,7 @@
 // the total cost, its per-class split, and an input-vs-output cost ring; the split
 // is derived from catalog prices (see ggCost.ts), since gg records only a total.
 
-import type { UsageTally } from "./useGgRunState";
+import type { ContextSnapshot, UsageTally } from "./useGgRunState";
 import type { GgCostBreakdown } from "./ggCost";
 import styles from "./GgDashboard.module.scss";
 
@@ -28,6 +28,14 @@ export function formatPercent(fraction: number): string {
   if (pct === 0) return "0%";
   if (pct < 1) return "<1%";
   return `${Math.round(pct)}%`;
+}
+
+// The container class for a Tokens/Cost card: the bordered `.card` tile, or the
+// chrome-less `.cardBare` when the host already frames the content, with any
+// host-supplied grid class appended.
+function cardClass(bare: boolean, className?: string): string {
+  const base = (bare ? styles.cardBare : styles.card) ?? "";
+  return className ? `${base} ${className}` : base;
 }
 
 // SVG geometry for a two-segment ring: a 120-unit box with a 46-unit radius leaves
@@ -199,6 +207,120 @@ function RingLegendRow({
 }
 
 /**
+ * The context-fullness gauge for an agent's Overview: how full its window is — the
+ * signal compaction acts on — as a ring, so it reads in the same visual language as
+ * the Tokens and Cost widgets' composition rings rather than as a lone linear bar.
+ * A single-value gauge (used vs the window limit), not a two-segment split, so it
+ * keeps the `meter` role that a fullness read-out warrants; its primary arc is the
+ * used share and its center the fullness percent, with the raw used/free figures in
+ * the legend. When the run reported no window limit there is no fraction to plot, so
+ * it falls back to the raw total. Renders nothing until a breakdown snapshot arrives.
+ */
+export function ContextUsageRing({
+  latest,
+}: {
+  latest: ContextSnapshot | null;
+}) {
+  if (!latest) return null;
+  const limit = latest.windowLimit ?? null;
+  // The reported fullness, or total/limit when only the raw figures are present.
+  const fullness =
+    latest.fullness != null
+      ? latest.fullness
+      : limit
+        ? latest.totalTokens / limit
+        : null;
+  const used = latest.totalTokens;
+  const free = limit != null ? Math.max(limit - used, 0) : null;
+  // The arc never overdraws past a full circle even if a snapshot reports >100%.
+  const shownFraction =
+    fullness != null ? Math.min(Math.max(fullness, 0), 1) : 0;
+  const usedDash = shownFraction * RING_CIRC;
+
+  return (
+    <div className={styles.ringGroup}>
+      <span className={styles.ringGroupLabel}>Context window</span>
+      {fullness != null ? (
+        <div className={styles.ringBody}>
+          <svg
+            className={styles.ring}
+            viewBox={`0 0 ${RING_BOX} ${RING_BOX}`}
+            role="meter"
+            aria-label="Context window fullness"
+            aria-valuenow={Math.round(fullness * 100)}
+            aria-valuemin={0}
+            aria-valuemax={100}
+          >
+            <circle
+              className={styles.ringTrack}
+              cx={RING_CENTER}
+              cy={RING_CENTER}
+              r={RING_RADIUS}
+              strokeWidth={RING_STROKE}
+            />
+            {usedDash > 0 && (
+              <circle
+                className={styles.ringArcPrimary}
+                cx={RING_CENTER}
+                cy={RING_CENTER}
+                r={RING_RADIUS}
+                strokeWidth={RING_STROKE}
+                strokeDasharray={`${usedDash} ${RING_CIRC - usedDash}`}
+                strokeDashoffset={0}
+                transform={`rotate(-90 ${RING_CENTER} ${RING_CENTER})`}
+              />
+            )}
+            <text
+              className={styles.ringCenterValue}
+              x={RING_CENTER}
+              y={RING_CENTER}
+              textAnchor="middle"
+              dominantBaseline="central"
+            >
+              {formatPercent(fullness)}
+            </text>
+            <text
+              className={styles.ringCenterLabel}
+              x={RING_CENTER}
+              y={RING_CENTER + 18}
+              textAnchor="middle"
+              dominantBaseline="central"
+            >
+              full
+            </text>
+          </svg>
+          <ul className={styles.ringLegend}>
+            <li className={styles.legendItem}>
+              <span className={styles.legendSwatchPrimary} />
+              <span className={styles.legendLabel}>used</span>
+              <span className={styles.legendValue}>
+                {formatTokens(used)} · {formatPercent(fullness)}
+              </span>
+            </li>
+            {free != null && (
+              <li className={styles.legendItem}>
+                <span className={styles.legendSwatchSecondary} />
+                <span className={styles.legendLabel}>free</span>
+                <span className={styles.legendValue}>
+                  {formatTokens(free)} · {formatPercent(1 - shownFraction)}
+                </span>
+              </li>
+            )}
+          </ul>
+        </div>
+      ) : (
+        // No window limit reported: there is no fraction to plot, so the raw total
+        // stands in for the gauge.
+        <div className={styles.ringNoLimit}>
+          <span className={styles.metricValue}>{formatTokens(used)}</span>
+          <span className={styles.metricUnit}>tokens · turn {latest.turn}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
  * The Tokens widget: the scope's input and output totals over the two composition
  * rings. Used for the whole run on the Dashboard and for one agent on its Overview.
  * `className` lets the host place the card in its grid (a bento span on the
@@ -207,15 +329,23 @@ function RingLegendRow({
 export function TokensWidget({
   usage,
   className,
+  bare = false,
 }: {
   usage: UsageTally;
   className?: string;
+  /**
+   * Drop the card's own border/padding/background so the widget sits directly in
+   * its host rather than as a boxed tile. Used on the agent Overview, whose panel
+   * already frames the content, where a bordered card reads as a widget-in-a-widget;
+   * the Dashboard's bento leaves it off so each tile keeps its card.
+   */
+  bare?: boolean;
 }) {
   const totalInput = usage.uncachedInput + usage.cachedInput;
   const totalOutput = usage.output + usage.reasoning;
 
   return (
-    <div className={className ? `${styles.card} ${className}` : styles.card}>
+    <div className={cardClass(bare, className)}>
       <span className={styles.cardLabel}>Tokens</span>
       {usage.anyTokens ? (
         <>
@@ -284,10 +414,13 @@ export function CostWidget({
   usage,
   breakdown,
   className,
+  bare = false,
 }: {
   usage: UsageTally;
   breakdown: GgCostBreakdown | null;
   className?: string;
+  /** Drop the card chrome so the widget sits directly in its host — see {@link TokensWidget}. */
+  bare?: boolean;
 }) {
   // Show the authoritative total when the run reported one; otherwise the derived
   // total is the best figure available.
@@ -303,7 +436,7 @@ export function CostWidget({
   const outputCost = breakdown ? breakdown.reasoning + breakdown.output : 0;
 
   return (
-    <div className={className ? `${styles.card} ${className}` : styles.card}>
+    <div className={cardClass(bare, className)}>
       <span className={styles.cardLabel}>Cost</span>
       <span className={styles.metricValue}>{formatCost(displayTotal)}</span>
       {usage.actual != null && usage.actual !== usage.comparable && (

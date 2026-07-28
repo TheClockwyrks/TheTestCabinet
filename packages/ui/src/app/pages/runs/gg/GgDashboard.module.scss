@@ -60,6 +60,16 @@
   min-width: 0;
 }
 
+// The chrome-less variant: the same column layout as `.card` without its border,
+// padding, or panel background, so a widget sits directly in a host that already
+// frames it (the agent Overview) rather than reading as a widget-in-a-widget.
+.cardBare {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
 // Bento spans for the twelve-column dashboard grid. A span clamps to one column
 // under the bento breakpoint (single-column track) and in the auto-fit overview
 // grid, so a widget carrying one still stacks correctly where there is no bento.
@@ -271,6 +281,16 @@
   color: t.$color-text-muted;
   font-size: t.$font-sm;
   margin: 0;
+}
+
+// The context ring's fallback when a run reported no window limit: no fraction to
+// draw, so the raw total stands in for the gauge, sized like a widget's headline
+// figure over its unit.
+.ringNoLimit {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
 }
 
 .ringLegend {
@@ -567,8 +587,8 @@
   border-radius: inherit;
   background: t.$color-accent;
 
-  // Peak context takes the same low/mid/high cue the agent Overview's fullness bar
-  // uses; the token-share meter carries no level and stays the accent.
+  // Peak context warms through a low/mid/high cue as it fills; the token-share
+  // meter carries no level and stays the accent.
   &[data-level="mid"] {
     background: t.$color-accent-2;
   }

@@ -153,15 +153,6 @@ function sourceTokens(
   return snapshot.bySource.find((b) => b.source === source)?.tokens ?? 0;
 }
 
-// The fullness fraction of a snapshot: the reported `fullness`, or total/limit
-// when only the raw figures are present. Null when there is no window limit to
-// measure against.
-function snapshotFullness(snapshot: ContextSnapshot): number | null {
-  if (snapshot.fullness != null) return snapshot.fullness;
-  if (snapshot.windowLimit) return snapshot.totalTokens / snapshot.windowLimit;
-  return null;
-}
-
 interface ContextFillGraphProps {
   series: ContextSnapshot[];
   latest: ContextSnapshot | null;
@@ -271,9 +262,10 @@ export function ContextFillGraph({
   return (
     <div className={styles.stack}>
       {/* The fullness read-out that used to head this panel now lives on the agent's
-          Overview (see {@link ContextUsageBar}) — the signal compaction acts on
-          belongs beside the agent's other whole-agent figures. This panel keeps the
-          richer story: how the window's composition moved over the run. */}
+          Overview as a ring in the identity header (see `ContextUsageRing`) — the
+          signal compaction acts on belongs beside the agent's other whole-agent
+          figures. This panel keeps the richer story: how the window's composition
+          moved over the run. */}
 
       {/* The over-time stacked area, once two turns exist to connect. */}
       {series.length >= 2 ? (
@@ -333,64 +325,6 @@ export function ContextFillGraph({
           );
         })}
       </ul>
-    </div>
-  );
-}
-
-/**
- * The context-usage read-out for an agent's Overview: how full its window is (the
- * signal compaction acts on) as a big percentage over a fill bar, with the raw
- * total / limit and current turn beneath. This is the fullness header the context
- * panel used to lead with, moved onto the Overview so the window's *composition*
- * graph and the window's *fullness* live where each reads best. Renders nothing
- * until a breakdown snapshot arrives.
- */
-export function ContextUsageBar({
-  latest,
-}: {
-  latest: ContextSnapshot | null;
-}) {
-  if (!latest) return null;
-  const fullness = snapshotFullness(latest);
-  return (
-    <div className={styles.fullnessHead}>
-      <div className={styles.fullnessFigure}>
-        {fullness != null ? (
-          <span className={styles.fullnessPct}>
-            {(fullness * 100).toFixed(0)}%
-          </span>
-        ) : (
-          <span className={styles.fullnessPct}>
-            {numberFmt.format(latest.totalTokens)}
-          </span>
-        )}
-        <span className={styles.fullnessTokens}>
-          {numberFmt.format(latest.totalTokens)}
-          {latest.windowLimit != null &&
-            ` / ${numberFmt.format(latest.windowLimit)}`}{" "}
-          tokens
-          {" · turn "}
-          {latest.turn}
-        </span>
-      </div>
-      {fullness != null && (
-        <div
-          className={styles.fullnessBar}
-          role="meter"
-          aria-valuenow={Math.round(fullness * 100)}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-label="Context window fullness"
-        >
-          <div
-            className={styles.fullnessBarFill}
-            data-level={
-              fullness >= 0.9 ? "high" : fullness >= 0.7 ? "mid" : "low"
-            }
-            style={{ width: `${Math.min(fullness, 1) * 100}%` }}
-          />
-        </div>
-      )}
     </div>
   );
 }
