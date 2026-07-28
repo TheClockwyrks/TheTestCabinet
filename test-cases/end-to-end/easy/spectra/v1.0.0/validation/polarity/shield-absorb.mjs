@@ -4,7 +4,12 @@
 // contact, costing no life. The ship's band and lives are posed; a same-band enemy
 // bullet is sent onto the ship, and the real shield resolves the contact.
 
-import { startClean, shieldBullet } from "../_helpers.mjs";
+import {
+  startClean,
+  spawnBystander,
+  dropEnemyBullet,
+  DROP_MAX_TICKS,
+} from "../_helpers.mjs";
 
 export default function item() {
   // The moment the absorb registered.
@@ -18,15 +23,22 @@ export default function item() {
     // absorb happened, and lives are posed so a loss would be visible.
     async arrange(api) {
       await startClean(api);
+      // A drone in formation keeps the wave alive while the bullet falls; nothing
+      // is read from it (see `spawnBystander`).
+      await spawnBystander(api);
       await api.call("setShipBand", "cyan");
       await api.call("setLives", 3);
       await api.call("setResonance", 0);
-      await shieldBullet(api, "cyan"); // same band as the ship
+      // Dropped from the top of the field rather than posed on the hull: the fall
+      // is what the clip shows. Posed on contact, the absorb resolved on the first
+      // tick and the rest of the clip was aftermath (see `LEAD_IN_TICKS`).
+      await dropEnemyBullet(api, "cyan"); // same band as the ship
     },
 
     async act(api) {
-      // The absorb resolves the moment the bullet reaches the ship.
-      r = await api.until((s) => s.resonance > 0, { max: 36 }); // 36 ticks = the old 0.3 s
+      // The bullet falls the length of the field and the absorb resolves when it
+      // reaches the ship.
+      r = await api.until((s) => s.resonance > 0, { max: DROP_MAX_TICKS });
 
       // Hold afterwards so the clip shows the ship still flying with its lives
       // intact — "no life was lost" needs a moment of aftermath to read.

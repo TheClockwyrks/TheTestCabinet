@@ -431,8 +431,10 @@ validation = { script = "validation/swarm/sways.mjs", outputs = [
 id = "dive-bends-fires"
 title = "A diver bends toward the player and fires"
 description = "A diving drone leaves the formation, bends its path toward the player's x as it descends, and fires while diving."
-# Automated validation: force a real dive and confirm the drone's x trends toward the
-# ship and an enemy bullet spawns during the dive. See validation/swarm/dive-bends-fires.mjs.
+# Automated validation: force a real dive with the ship parked far to one side, then
+# again with it far to the other, and confirm the dive reaches the player's x both
+# times (which a fixed track cannot) and that an enemy bullet of the diver's own band
+# spawns during the dive. See validation/swarm/dive-bends-fires.mjs.
 validation = { script = "validation/swarm/dive-bends-fires.mjs", outputs = [
   { id = "dive", name = "A diver bending toward the player and firing", kind = "video" },
 ] }
@@ -475,7 +477,10 @@ id = "flux-oscillates"
 title = "The Flux oscillates its band"
 description = "A Flux alternates its band on a telegraphed rhythm: a held window on one band, a brief shimmer settled on neither, then the other band."
 # Automated validation: spawn a Flux at a known phase and step it through a cycle,
-# confirming held-cyan → shimmer → held-magenta. See validation/drones/flux-oscillates.mjs.
+# confirming held-cyan → shimmer → held-magenta. The band is read from `effectiveBand`
+# ("what it currently reads and counts as"), since whether a build carries a Flux's
+# oscillation in its stored band or its effective one is its own choice.
+# See validation/drones/flux-oscillates.mjs.
 validation = { script = "validation/drones/flux-oscillates.mjs", outputs = [
   { id = "flux", name = "A Flux cycling through its bands", kind = "video" },
 ] }
@@ -492,8 +497,9 @@ validation = { script = "validation/drones/flux-shimmer-immune.mjs", outputs = [
 id = "prism-shell-then-core"
 title = "The Prism breaks shell then core"
 description = "A Prism is broken in two bands in order: the shell falls only to the shell's band (exposing the core), then the core falls only to the opposite band."
-# Automated validation: a mismatch leaves the shell; the shell's band breaks it; the
-# core's band then destroys the drone. See validation/drones/prism-shell-then-core.mjs.
+# Automated validation: a mismatch leaves the shell; the shell's band breaks it; that
+# same band then fails to break the exposed core; and the core's band destroys the
+# drone. See validation/drones/prism-shell-then-core.mjs.
 validation = { script = "validation/drones/prism-shell-then-core.mjs", outputs = [
   { id = "prism", name = "Breaking a Prism shell then core", kind = "video" },
 ] }
@@ -552,8 +558,11 @@ validation = { script = "validation/stages/challenge-nonfiring.mjs", outputs = [
 id = "challenge-alternating"
 title = "Challenge groups alternate bands"
 description = "A challenge stage's single-band groups alternate bands, cyan then magenta then cyan, so each group is one band and the bands take turns."
-# Automated validation: sample each group's band as it sweeps in and confirm the
-# alternation. See validation/stages/challenge-alternating.mjs.
+# Automated validation: record each drone's band as it arrives ON THE FIELD, cluster
+# the arrivals into groups, and confirm each group is one band and the groups
+# alternate. Arrival rather than first appearance in the snapshot, since a build may
+# hold the whole flyover queued off-screen above the field.
+# See validation/stages/challenge-alternating.mjs.
 validation = { script = "validation/stages/challenge-alternating.mjs", outputs = [
   { id = "alternating", name = "Alternating-band challenge groups", kind = "video" },
 ] }
@@ -606,29 +615,59 @@ validation = { script = "validation/stages/extra-life.mjs", outputs = [
 # --- Controls -----------------------------------------------------------------
 # Each control is driven with injected keyboard input through the debug API (see
 # specs/instrumentation.md) and its effect read back.
+#
+# Where `specs/controls.md` binds one control to several keys — move to the arrows
+# OR A/D, fire to Space OR Up OR W, flip to F OR either Shift, pause to Esc OR P —
+# each BINDING is its own item rather than one assertion inside a shared one. That
+# is the same "one observable behavior per item" taxonomy the rest of this
+# checklist follows: a build that wires Left but forgot A fails exactly the binding
+# it missed, and its clip shows exactly that key being held, instead of one broad
+# item averaging two or three keys together. The shared script bodies live in
+# `validation/_helpers.mjs` (`moveItem`, `fireItem`, `flipItem`, `pauseItem`), so
+# each per-binding script is only its id and its key code.
 [[review.categories]]
 id = "controls"
 title = "Controls"
 [[review.categories.items]]
-id = "move-left"
-title = "Move left"
-description = "Holding Left (or A) moves the ship left."
-validation = { script = "validation/controls/move-left.mjs", outputs = [{ id = "move", name = "The ship moving left", kind = "video" }] }
+id = "move-left-arrow"
+title = "Move left (Left arrow)"
+description = "Holding the Left arrow moves the ship left."
+validation = { script = "validation/controls/move-left-arrow.mjs", outputs = [{ id = "move", name = "The ship moving left on the Left arrow", kind = "video" }] }
 [[review.categories.items]]
-id = "move-right"
-title = "Move right"
-description = "Holding Right (or D) moves the ship right."
-validation = { script = "validation/controls/move-right.mjs", outputs = [{ id = "move", name = "The ship moving right", kind = "video" }] }
+id = "move-left-a"
+title = "Move left (A)"
+description = "Holding A moves the ship left."
+validation = { script = "validation/controls/move-left-a.mjs", outputs = [{ id = "move", name = "The ship moving left on A", kind = "video" }] }
+[[review.categories.items]]
+id = "move-right-arrow"
+title = "Move right (Right arrow)"
+description = "Holding the Right arrow moves the ship right."
+validation = { script = "validation/controls/move-right-arrow.mjs", outputs = [{ id = "move", name = "The ship moving right on the Right arrow", kind = "video" }] }
+[[review.categories.items]]
+id = "move-right-d"
+title = "Move right (D)"
+description = "Holding D moves the ship right."
+validation = { script = "validation/controls/move-right-d.mjs", outputs = [{ id = "move", name = "The ship moving right on D", kind = "video" }] }
 [[review.categories.items]]
 id = "move-clamp"
 title = "Movement clamps at the field edges"
 description = "The ship stops at the lane's edges (x 40 and 1240) and does not wrap around."
 validation = { script = "validation/controls/move-clamp.mjs", outputs = [{ id = "clamp", name = "The ship pinned at the field edge", kind = "video" }] }
 [[review.categories.items]]
-id = "fire"
-title = "Fire"
-description = "The fire key (Space, or Up / W) fires a bullet of the ship's current band."
-validation = { script = "validation/controls/fire.mjs", outputs = [{ id = "fire", name = "The ship firing", kind = "video" }] }
+id = "fire-space"
+title = "Fire (Space)"
+description = "Space fires a bullet of the ship's current band."
+validation = { script = "validation/controls/fire-space.mjs", outputs = [{ id = "fire", name = "The ship firing on Space", kind = "video" }] }
+[[review.categories.items]]
+id = "fire-up"
+title = "Fire (Up arrow)"
+description = "The Up arrow fires a bullet of the ship's current band."
+validation = { script = "validation/controls/fire-up.mjs", outputs = [{ id = "fire", name = "The ship firing on the Up arrow", kind = "video" }] }
+[[review.categories.items]]
+id = "fire-w"
+title = "Fire (W)"
+description = "W fires a bullet of the ship's current band."
+validation = { script = "validation/controls/fire-w.mjs", outputs = [{ id = "fire", name = "The ship firing on W", kind = "video" }] }
 [[review.categories.items]]
 id = "fire-cadence"
 title = "Firing has a cadence"
@@ -640,20 +679,35 @@ title = "Player bullets are capped"
 description = "No more than three of your bullets are alive at once, however long fire is held."
 validation = { script = "validation/controls/fire-cap.mjs", outputs = [{ id = "cap", name = "Player bullets capped on the field", kind = "video" }] }
 [[review.categories.items]]
-id = "flip-key"
-title = "Flip band"
-description = "The flip key (F, or either Shift) flips the ship's band."
-validation = { script = "validation/controls/flip-key.mjs", outputs = [{ id = "flip", name = "Flipping band with the key", kind = "video" }] }
+id = "flip-f"
+title = "Flip band (F)"
+description = "F flips the ship's band."
+validation = { script = "validation/controls/flip-f.mjs", outputs = [{ id = "flip", name = "Flipping band with F", kind = "video" }] }
+[[review.categories.items]]
+id = "flip-shift-left"
+title = "Flip band (Left Shift)"
+description = "Left Shift flips the ship's band."
+validation = { script = "validation/controls/flip-shift-left.mjs", outputs = [{ id = "flip", name = "Flipping band with Left Shift", kind = "video" }] }
+[[review.categories.items]]
+id = "flip-shift-right"
+title = "Flip band (Right Shift)"
+description = "Right Shift flips the ship's band."
+validation = { script = "validation/controls/flip-shift-right.mjs", outputs = [{ id = "flip", name = "Flipping band with Right Shift", kind = "video" }] }
 [[review.categories.items]]
 id = "discharge-key"
 title = "Discharge"
 description = "The discharge key (X) fires a discharge when the resonance meter is full."
 validation = { script = "validation/controls/discharge-key.mjs", outputs = [{ id = "discharge", name = "Firing a discharge with the key", kind = "video" }] }
 [[review.categories.items]]
-id = "pause"
-title = "Pause"
-description = "A pause key (Esc, or P) pauses a live wave."
-validation = { script = "validation/controls/pause.mjs", outputs = [{ id = "pause", name = "Pausing a live wave", kind = "video" }] }
+id = "pause-esc"
+title = "Pause (Esc)"
+description = "Esc pauses a live wave."
+validation = { script = "validation/controls/pause-esc.mjs", outputs = [{ id = "pause", name = "Pausing a live wave with Esc", kind = "video" }] }
+[[review.categories.items]]
+id = "pause-p"
+title = "Pause (P)"
+description = "P pauses a live wave."
+validation = { script = "validation/controls/pause-p.mjs", outputs = [{ id = "pause", name = "Pausing a live wave with P", kind = "video" }] }
 [[review.categories.items]]
 id = "no-autorepeat-flip"
 title = "A held flip acts once"
@@ -892,9 +946,12 @@ description = "The game plays fully muted, never fails to run or load if audio c
 [[review.categories.items]]
 id = "mute-toggle"
 title = "Mute toggle"
-description = "The mute key (M) toggles mute."
-# Automated validation: press the mute key and confirm the muted flag flips.
-# See validation/audio/mute-toggle.mjs.
+description = "The mute key (M) toggles mute, both on and off again."
+# Automated validation: press the mute key during a live wave and confirm the muted
+# flag goes on, then off again on a second press. Silence itself is deliberately not
+# asserted — a build that mutes by riding a gain node to zero still starts its Web
+# Audio sources, so the probe cannot tell it from an unmuted one, and the snapshot's
+# own `muted` flag is the honest signal. See validation/audio/mute-toggle.mjs.
 validation = { script = "validation/audio/mute-toggle.mjs", outputs = [
-  { id = "mute", name = "The title after toggling mute", kind = "image" },
+  { id = "mute", name = "The wave with mute toggled on", kind = "image" },
 ] }

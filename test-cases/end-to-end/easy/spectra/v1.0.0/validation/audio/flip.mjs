@@ -3,7 +3,12 @@
 // `api.audio`). The flip key is pressed once from a clean wave; the real flip
 // instantly swaps the ship's band, and the audio log must grow across it.
 
-import { startClean, armAudio, audioCount } from "../_helpers.mjs";
+import {
+  startClean,
+  armAudio,
+  actAudioCount,
+  LEAD_IN_TICKS,
+} from "../_helpers.mjs";
 
 export default function item() {
   let before;
@@ -20,11 +25,16 @@ export default function item() {
     },
 
     async act(api) {
-      before = await audioCount(api);
+      // A beat on the ship holding cyan, so the band change is something a reviewer
+      // sees happen rather than a colour that was already there when the clip
+      // opened.
+      await api.advance(LEAD_IN_TICKS);
+
+      before = await actAudioCount(api);
       await api.call("press", "KeyF");
-      after = await audioCount(api);
+      after = await actAudioCount(api);
       flipped = (await api.snapshot()).ship.band === "magenta";
-      await api.advance(30); // a short tail so the clip shows the flipped ship
+      await api.advance(90); // a tail so the clip holds on the flipped ship
     },
 
     async assert(api, check) {

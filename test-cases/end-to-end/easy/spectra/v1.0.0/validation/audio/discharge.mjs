@@ -3,7 +3,7 @@
 // (see `api.audio`). The resonance meter is filled and a real discharge fired; the
 // audio log must grow across it.
 
-import { startClean, armAudio, audioCount } from "../_helpers.mjs";
+import { startClean, armAudio, actAudioCount } from "../_helpers.mjs";
 
 export default function item() {
   let before;
@@ -22,10 +22,10 @@ export default function item() {
     },
 
     async act(api) {
-      before = await audioCount(api);
+      before = await actAudioCount(api);
       await api.call("discharge");
       // Read immediately: firing is instantaneous.
-      after = await audioCount(api);
+      after = await actAudioCount(api);
       discharged = (await api.snapshot()).discharge.active === true;
       await api.advance(60); // a short tail so the clip shows the expanding wave
     },

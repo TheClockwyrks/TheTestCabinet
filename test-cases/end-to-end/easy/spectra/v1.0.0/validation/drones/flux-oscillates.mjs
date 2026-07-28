@@ -57,8 +57,25 @@ export default function item() {
       other = findDrone(await api.snapshot(), fluxId);
     },
 
+    // The band read here is `effectiveBand`, not `band`.
+    //
+    // `specs/instrumentation.md` defines `effectiveBand` as "the band an entity
+    // currently reads and counts as", and `band` as its stored band; the two differ
+    // only under a spectral inversion, and no inversion is active in this scenario.
+    // For a Flux, though, which of the two carries the oscillation is a genuine
+    // choice a build makes: one may swap the stored `band` on every beat, another
+    // may keep the spawn band stored and report the currently held one as its
+    // effective band. Both are conformant readings of the snapshot contract, and the
+    // rule under test — that the Flux holds one band, shimmers, and emerges on the
+    // OTHER — is a statement about what it currently reads and counts as. So that is
+    // the field to assert on; reading `band` failed a build that oscillates
+    // perfectly well.
     async assert(api, check) {
-      check.expectEq("the Flux holds its first band", held.band, "cyan");
+      check.expectEq(
+        "the Flux holds its first band",
+        held.effectiveBand,
+        "cyan",
+      );
       check.expectOk(
         "it is not shimmering during the held window",
         held.shimmer === false,
@@ -69,7 +86,7 @@ export default function item() {
       );
       check.expectEq(
         "the Flux emerges holding the other band",
-        other.band,
+        other.effectiveBand,
         "magenta",
       );
       check.expectOk(

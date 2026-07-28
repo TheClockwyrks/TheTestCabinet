@@ -8,7 +8,7 @@ import {
   arrangeInversion,
   actInversion,
   armAudio,
-  audioCount,
+  actAudioCount,
 } from "../_helpers.mjs";
 
 export default function item() {
@@ -31,9 +31,9 @@ export default function item() {
     },
 
     async act(api) {
-      before = await audioCount(api);
+      before = await actAudioCount(api);
       const r = await actInversion(api);
-      after = await audioCount(api);
+      after = await actAudioCount(api);
       inverted = r.hit && r.snap.inversionActive;
       await api.advance(30); // a short tail so the clip shows the inverted field
     },
