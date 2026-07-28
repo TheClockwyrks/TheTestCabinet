@@ -2025,7 +2025,10 @@ pub(crate) fn run_summary_score(
 /// from the stored manifest — a variant that reuses a common category's id folds
 /// its items into that category). An unrecognized variant contributes only the
 /// common items.
-fn review_items_for(
+///
+/// `pub(crate)` because the comparisons API reuses it to resolve the effective
+/// items its automated-only scorer restricts to (see `crate::api::comparisons`).
+pub(crate) fn review_items_for(
     manifest: &StoredManifest,
     variant: &str,
 ) -> Vec<test_cabinet_core::ReviewItem> {

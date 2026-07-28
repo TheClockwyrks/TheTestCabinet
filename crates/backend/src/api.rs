@@ -21,6 +21,7 @@ use crate::publisher::Publisher;
 use crate::relay::Relay;
 use crate::store::DefinitionStore;
 
+mod comparisons;
 mod coverage;
 mod game_jams;
 mod gg;
@@ -36,6 +37,7 @@ mod tournaments;
 
 // Re-export the HTTP response contract types so the `contract-codegen` generator
 // can name them (the handler modules themselves stay private).
+pub use comparisons::ComparisonInput;
 pub use coverage::{
     CoverageCell, CoverageGroup, CoverageGroupInput, CoverageGroupKind, CoverageMatrix,
     CoveragePlan, CoveragePlanInput, CoveragePlanSummary, ReviewPlanCase, ReviewPlanCombo,
@@ -297,6 +299,20 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/gg/configs/{id}",
             put(gg_config::update_config).delete(gg_config::delete_config),
+        )
+        // The operator's saved harness comparisons (auth-gated; keyed to the token's
+        // account): named A/B experiments whose per-arm distributions are computed on
+        // read from the arms' runs. `/comparisons` is static and `/comparisons/{id}`
+        // its child.
+        .route(
+            "/comparisons",
+            get(comparisons::list_comparisons).post(comparisons::create_comparison),
+        )
+        .route(
+            "/comparisons/{id}",
+            get(comparisons::get_comparison)
+                .put(comparisons::update_comparison)
+                .delete(comparisons::delete_comparison),
         )
         .route("/jobs/active", get(jobs::active))
         .route("/jobs/next", post(jobs::claim))

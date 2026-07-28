@@ -24,6 +24,7 @@ use sea_orm::{
     PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, RelationTrait, Select, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
+use test_cabinet_core::comparison::ComparisonConfig;
 use test_cabinet_core::match_play::TournamentRecord;
 use test_cabinet_core::metrics::{Cost, TokenPrices};
 use test_cabinet_core::reference_lock::ReferenceBuildEntry;
@@ -33,9 +34,9 @@ use test_cabinet_core::run_record::{
 };
 use test_cabinet_core::test_case::TestType;
 use test_cabinet_entities::{
-    case_reference_build, case_reference_sheet, coverage_group, coverage_plan, gg_config,
-    harness_config, job, model, model_alias, model_price, publish_job, review, review_plan,
-    review_revision, run, run_link, snapshot_state, tournament,
+    case_reference_build, case_reference_sheet, comparison, coverage_group, coverage_plan,
+    gg_config, harness_config, job, model, model_alias, model_price, publish_job, review,
+    review_plan, review_revision, run, run_link, snapshot_state, tournament,
 };
 
 use crate::error::{BackendError, Result};
@@ -1777,6 +1778,118 @@ impl Db {
         Ok(res.rows_affected > 0)
     }
 
+    /// Every comparison the account owns, most-recently-updated first.
+    pub async fn list_comparisons(&self, user_id: &str) -> Result<Vec<StoredComparison>> {
+        comparison::Entity::find()
+            .filter(comparison::Column::UserId.eq(user_id))
+            .order_by_desc(comparison::Column::UpdatedAt)
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .map(comparison_from_row)
+            .collect()
+    }
+
+    /// One comparison by id, scoped to the owning account (`None` when the id is
+    /// unknown or belongs to someone else).
+    pub async fn get_comparison(
+        &self,
+        user_id: &str,
+        id: &str,
+    ) -> Result<Option<StoredComparison>> {
+        let Some(row) = comparison::Entity::find_by_id(id.to_string())
+            .one(&self.conn())
+            .await?
+        else {
+            return Ok(None);
+        };
+        if row.user_id != user_id {
+            return Ok(None);
+        }
+        Ok(Some(comparison_from_row(row)?))
+    }
+
+    /// Insert a new comparison (id already minted by the handler).
+    pub async fn insert_comparison(&self, user_id: &str, stored: &StoredComparison) -> Result<()> {
+        comparison::ActiveModel {
+            id: Set(stored.id.clone()),
+            user_id: Set(user_id.to_string()),
+            name: Set(stored.name.clone()),
+            description: Set(stored.description.clone()),
+            config_json: Set(serde_json::to_string(&stored.config)?),
+            published: Set(stored.published),
+            published_at: Set(stored.published_at.clone()),
+            created_at: Set(stored.created_at.clone()),
+            updated_at: Set(stored.updated_at.clone()),
+        }
+        .insert(&self.conn())
+        .await?;
+        Ok(())
+    }
+
+    /// Update a comparison's name, description, and config in place, scoped to the
+    /// owning account. Leaves `created_at` and the published state untouched.
+    /// Returns whether a row matched.
+    pub async fn update_comparison(
+        &self,
+        user_id: &str,
+        stored: &StoredComparison,
+    ) -> Result<bool> {
+        let res = comparison::Entity::update_many()
+            .col_expr(comparison::Column::Name, Expr::value(stored.name.clone()))
+            .col_expr(
+                comparison::Column::Description,
+                Expr::value(stored.description.clone()),
+            )
+            .col_expr(
+                comparison::Column::ConfigJson,
+                Expr::value(serde_json::to_string(&stored.config)?),
+            )
+            .col_expr(
+                comparison::Column::UpdatedAt,
+                Expr::value(stored.updated_at.clone()),
+            )
+            .filter(comparison::Column::Id.eq(stored.id.clone()))
+            .filter(comparison::Column::UserId.eq(user_id))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
+    }
+
+    /// Delete a comparison, scoped to the owning account. Returns whether a row was
+    /// removed. Runs launched for its arms are unaffected.
+    pub async fn delete_comparison(&self, user_id: &str, id: &str) -> Result<bool> {
+        let res = comparison::Entity::delete_many()
+            .filter(comparison::Column::Id.eq(id))
+            .filter(comparison::Column::UserId.eq(user_id))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
+    }
+
+    /// Set a comparison's published flag (and first-publish timestamp), scoped to
+    /// the owning account. The single lever for snapshot inclusion (Layer 4).
+    /// Returns whether a row matched.
+    pub async fn set_comparison_published(
+        &self,
+        user_id: &str,
+        id: &str,
+        published: bool,
+        published_at: Option<&str>,
+    ) -> Result<bool> {
+        let res = comparison::Entity::update_many()
+            .col_expr(comparison::Column::Published, Expr::value(published))
+            .col_expr(
+                comparison::Column::PublishedAt,
+                Expr::value(published_at.map(str::to_string)),
+            )
+            .filter(comparison::Column::Id.eq(id))
+            .filter(comparison::Column::UserId.eq(user_id))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
+    }
+
     /// The legacy single-per-account plans that the startup backfill has not yet
     /// copied into `coverage_plan` (`migrated = false`). Each is returned with its
     /// parsed combinations and cases so the backfill can inline them as one-off
@@ -1976,6 +2089,47 @@ fn gg_config_from_row(row: gg_config::Model) -> Result<crate::api::GgConfig> {
         name: row.name,
         description: row.description,
         capability_set: serde_json::from_str(&row.capability_set_json)?,
+        updated_at: row.updated_at,
+    })
+}
+
+/// A saved [comparison](test_cabinet_core::comparison) as stored: the row fields
+/// with `config_json` parsed back into its [`ComparisonConfig`]. The per-arm
+/// statistics are **not** stored — they are computed on read by the comparisons API
+/// from the arms' runs — so this is exactly the persisted configuration plus its
+/// identity and publish state.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StoredComparison {
+    /// The comparison's opaque id.
+    pub id: String,
+    /// The owning account's id.
+    pub user_id: String,
+    /// The operator-chosen display name.
+    pub name: String,
+    /// A one-line note on what is being compared. Empty when unset.
+    pub description: String,
+    /// The controls, varied dimension, and arms.
+    pub config: ComparisonConfig,
+    /// Whether the comparison is published to the public site.
+    pub published: bool,
+    /// RFC 3339 of when it was first published, or `None` while unpublished.
+    pub published_at: Option<String>,
+    /// RFC 3339 of when it was created.
+    pub created_at: String,
+    /// RFC 3339 of when it was last saved.
+    pub updated_at: String,
+}
+
+fn comparison_from_row(row: comparison::Model) -> Result<StoredComparison> {
+    Ok(StoredComparison {
+        id: row.id,
+        user_id: row.user_id,
+        name: row.name,
+        description: row.description,
+        config: serde_json::from_str(&row.config_json)?,
+        published: row.published,
+        published_at: row.published_at,
+        created_at: row.created_at,
         updated_at: row.updated_at,
     })
 }

@@ -363,3 +363,22 @@ export type Comparison = {
    */
   arms: Array<ComparisonArmResult>;
 };
+
+/**
+ * The create/update body for a comparison (the server assigns the id and
+ * timestamps, and owns the published state).
+ */
+export type ComparisonInput = {
+  /**
+   * The operator-chosen display name.
+   */
+  name: string;
+  /**
+   * A one-line note on what is being compared and why.
+   */
+  description: string;
+  /**
+   * The controls, varied dimension, and arms to save.
+   */
+  config: ComparisonConfig;
+};

@@ -2966,3 +2966,101 @@ async fn game_jam_prior_readmes_matches_jam_harness_model_oldest_first() {
     assert_eq!(entries[0].run_id, "older");
     assert_eq!(entries[0].finished_at, "2026-01-01T00:00:00Z");
 }
+
+/// A minimal stored comparison for the CRUD round-trip.
+fn sample_stored_comparison(id: &str) -> StoredComparison {
+    use test_cabinet_core::comparison::{
+        ComparisonArm, ComparisonConfig, ComparisonControls, VariedDimension,
+    };
+    use test_cabinet_core::run_record::AuthMode;
+    StoredComparison {
+        id: id.to_string(),
+        user_id: "user-1".to_string(),
+        name: "carom-pi-vs-kilo".to_string(),
+        description: "Pi vs Kilo".to_string(),
+        config: ComparisonConfig {
+            controls: ComparisonControls {
+                case_slug: "carom".to_string(),
+                version: "v2.0.0".to_string(),
+                variant: "base".to_string(),
+                model_id: Some("anthropic/claude-opus-4.8".to_string()),
+                auth_mode: AuthMode::ApiKey,
+                orchestrator_slug: "one-shot".to_string(),
+                container_build: None,
+            },
+            varied: VariedDimension::Harness,
+            arms: vec![ComparisonArm {
+                id: "pi".to_string(),
+                label: "Pi".to_string(),
+                harness_slug: Some(HarnessSlug::Pi),
+                gg_config_id: None,
+                model_id: None,
+                run_ids: vec!["pi-1".to_string()],
+            }],
+            n: 3,
+        },
+        published: false,
+        published_at: None,
+        created_at: "2026-07-27T00:00:00Z".to_string(),
+        updated_at: "2026-07-27T00:00:00Z".to_string(),
+    }
+}
+
+#[tokio::test]
+async fn comparison_crud_round_trips_and_scopes_to_the_owner() {
+    let db = Db::connect_in_memory().await.unwrap();
+    let stored = sample_stored_comparison("cmp-1");
+
+    // Insert, then read it back with its config intact.
+    db.insert_comparison("user-1", &stored).await.unwrap();
+    let got = db.get_comparison("user-1", "cmp-1").await.unwrap().unwrap();
+    assert_eq!(got, stored);
+
+    // Another account cannot see it.
+    assert!(
+        db.get_comparison("user-2", "cmp-1")
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    // It lists for its owner.
+    let listed = db.list_comparisons("user-1").await.unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].id, "cmp-1");
+
+    // Update changes name/description/config but leaves created_at and publish state.
+    let mut edited = stored.clone();
+    edited.name = "renamed".to_string();
+    edited.config.n = 5;
+    edited.updated_at = "2026-07-27T02:00:00Z".to_string();
+    assert!(db.update_comparison("user-1", &edited).await.unwrap());
+    let after = db.get_comparison("user-1", "cmp-1").await.unwrap().unwrap();
+    assert_eq!(after.name, "renamed");
+    assert_eq!(after.config.n, 5);
+    assert_eq!(after.created_at, "2026-07-27T00:00:00Z");
+    assert!(!after.published);
+
+    // Publishing flips the flag and stamps the timestamp.
+    assert!(
+        db.set_comparison_published("user-1", "cmp-1", true, Some("2026-07-27T03:00:00Z"))
+            .await
+            .unwrap()
+    );
+    let published = db.get_comparison("user-1", "cmp-1").await.unwrap().unwrap();
+    assert!(published.published);
+    assert_eq!(
+        published.published_at.as_deref(),
+        Some("2026-07-27T03:00:00Z")
+    );
+
+    // A non-owner cannot delete it; the owner can.
+    assert!(!db.delete_comparison("user-2", "cmp-1").await.unwrap());
+    assert!(db.delete_comparison("user-1", "cmp-1").await.unwrap());
+    assert!(
+        db.get_comparison("user-1", "cmp-1")
+            .await
+            .unwrap()
+            .is_none()
+    );
+}

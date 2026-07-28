@@ -235,6 +235,7 @@ fn main() -> Result<()> {
                 cmp::VariedDimension, cmp::ScorePoint, cmp::ArmScore, cmp::ArmDiagnostics,
                 cmp::Confound, cmp::ComparisonControls, cmp::ComparisonArm, cmp::ComparisonConfig,
                 cmp::ComparisonArmResult, cmp::Comparison,
+                bapi::ComparisonInput,
             ],
         },
         // The auth surface: accounts and the register/login request + token
