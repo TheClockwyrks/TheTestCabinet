@@ -1,55 +1,55 @@
 // Automated validation for the Lives item `game-over-at-zero`: losing the last ship ends
-// the game. One life is left and a rock is placed on the ship with no invulnerability; the
-// real collision ends the game, and the game-over screen is captured showing the final
-// score.
+// the game. A real game's ships are spent one at a time until the run is over, and the
+// game-over screen is captured showing the final score.
 //
-// Posing the last ship, the score and the rock sitting on it is instant (`arrange`); letting
-// the real collision resolve and end the run is the behavior (`act`), so the clip shows the
-// game actually ending. The pause before the capture is `api.settle` — the game-over screen has
-// to have been PAINTED for the screenshot to show it, which no amount of stepping produces.
+// The ships are actually spent rather than the count being short-circuited with
+// `setLives(0)`. Doing it by hand would make the check depend on a convention the spec never
+// picks: `specs/instrumentation.md` calls the count "ships in reserve" (so 0 leaves one still
+// flying) while `specs/gameplay.md` counts three ships in total, and against a build reading
+// it the other way `setLives(0)` can end the run with no ship ever lost — the check would pass
+// on a game that never proved the rule. Losing every ship states the rule directly: whatever
+// the count means, the loss of the last one ends the run.
 //
-// The sweep runs to 1 s x 120 Hz = 120 ticks and polls a single tick so the state read is the
-// instant the run ends, not some way past it.
+// Setting the score is the precondition (`arrange`); spending the ships is the behavior
+// (`act`), so the clip shows the game actually ending. The pause before the capture is
+// `api.settle` — the game-over screen has to have been PAINTED for the screenshot to show it,
+// which no amount of stepping produces.
 
-import { newGame, poseShip, TICK } from "../_helpers.mjs";
+import { newGame, actLoseEveryShip } from "../_helpers.mjs";
+
+const SCORE = 500;
 
 export default function item() {
-  // The state the instant the run ended, read by `assert`.
-  let snap;
+  // What spending every ship did, read by `assert`.
+  let run;
 
   return {
     id: "lives.game-over-at-zero",
 
     async arrange(api) {
       await newGame(api);
-      await api.call("setScore", 500);
-      await api.call("setLives", 1); // the last ship
-      await api.call("setInvuln", 0);
-      await poseShip(api, { x: 300, y: 300, vx: 0, vy: 0, angle: 0 });
-      await api.call("addRock", "small", { x: 300, y: 300, vx: 0, vy: 0 });
+      await api.call("setScore", SCORE);
     },
 
     async act(api) {
-      ({ snap } = await api.until((s) => s.screen !== "playing", {
-        max: 120,
-        poll: TICK,
-      }));
+      run = await actLoseEveryShip(api);
 
       await api.settle(160); // let a frame paint the game-over screen
       await api.screenshot("gameover");
     },
 
     async assert(api, check) {
+      check.expectOk("losing the last ship ends the game", run.ended);
       check.expectEq(
-        "losing the last ship ends the game",
-        snap.screen,
+        "the run reaches the game-over screen",
+        run.snap.screen,
         "gameover",
       );
-      check.expectEq("there are no ships left", snap.lives, 0);
+      check.expectLe("there are no ships left", run.snap.lives, 0);
       check.expectEq(
         "the final score is carried onto the game-over screen",
-        snap.score,
-        500,
+        run.snap.score,
+        SCORE,
       );
     },
   };

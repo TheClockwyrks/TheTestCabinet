@@ -13,8 +13,14 @@
 // Geometry: nose ~(164, 120); rock at (510, 206) is bearing ~14 deg from the nose, and its
 // center sits ~86 px off the straight-ahead line (y = 120) — far more than a Large's 46 px
 // radius, so only a homing torpedo reaches it.
+//
+// Headings are compared with `angleDelta`, never by subtracting or by taking `Math.abs` of a
+// raw angle. A heading names a direction and the case fixes no range for it, so a build
+// keeping headings in [0, 2pi) reports a torpedo drifting a hair below straight as ~6.28
+// rather than ~-0.003 — the same flight path, a whole turn of apparent error. The shortest-arc
+// reading is the same on every convention.
 
-import { newGame, poseShip, TICK } from "../_helpers.mjs";
+import { newGame, poseShip, TICK, angleDelta } from "../_helpers.mjs";
 
 export default function item() {
   // The torpedo just after launch (to confirm it left straight) and the field once it is spent.
@@ -45,11 +51,15 @@ export default function item() {
     async assert(api, check) {
       check.expectClose(
         "the torpedo leaves straight on the ship's facing",
-        launch.heading,
+        angleDelta(launch.heading, 0),
         0,
         1e-6,
       );
-      check.expectEq("the torpedo is spent on the hit", snap.torpedoes.length, 0);
+      check.expectEq(
+        "the torpedo is spent on the hit",
+        snap.torpedoes.length,
+        0,
+      );
       check.expectEq(
         "the torpedo locks onto the off-axis rock and destroys it",
         snap.rocks.filter((r) => r.size === "large").length,

@@ -8,7 +8,14 @@
 // previous sample because the wrap is a discontinuity BETWEEN two consecutive states — a coarse
 // poll would step over the seam and lose the "before". Its default budget of 400 ticks is the
 // old `maxSteps: 400`, which was already a fixed-step count, so it is the same amount of time.
-
+//
+// The body is posed a good way BACK from the edge, not on it. The record pass films `act`,
+// and a body posed on the seam has already crossed it before the recording has painted a
+// frame — the clip then shows the arrange state sitting still and nothing else. Running it in
+// from a few hundred px away, and on across the far side afterwards (`actWrapAcross`'s
+// dwell), is what makes the crossing something a reviewer can see. The verdict is untouched:
+// the `before`/`after` pair straddles the seam either way, and the validate pass steps
+// instantly.
 import { newGame, actWrapAcross, poseShip } from "../_helpers.mjs";
 
 export default function item() {
@@ -20,7 +27,7 @@ export default function item() {
 
     async arrange(api) {
       await newGame(api);
-      await poseShip(api, { x: 1275, y: 360, vx: 300, vy: 0, angle: 0 });
+      await poseShip(api, { x: 900, y: 250, vx: 300, vy: 0, angle: 0 });
     },
 
     async act(api) {
