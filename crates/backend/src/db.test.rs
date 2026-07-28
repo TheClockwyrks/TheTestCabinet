@@ -3064,3 +3064,48 @@ async fn comparison_crud_round_trips_and_scopes_to_the_owner() {
             .is_none()
     );
 }
+
+/// A completed run carrying one automated validation verdict — an auto-validated
+/// run, the kind a comparison publishes without a human review.
+fn auto_validated_record(id: &str) -> RunRecord {
+    use test_cabinet_core::validation::{AutoVerdict, DebugScriptResult};
+    let mut rec = record(id);
+    rec.validation.debug_scripts = vec![DebugScriptResult {
+        item_id: "a".to_string(),
+        sub_item_id: None,
+        title: String::new(),
+        category_title: String::new(),
+        script: "validation/a.mjs".to_string(),
+        gates: true,
+        ran: true,
+        precondition_unmet: false,
+        detail: None,
+        verdicts: vec![AutoVerdict {
+            id: "a".to_string(),
+            pass: true,
+            assertions: vec![],
+        }],
+        outputs: vec![],
+    }];
+    rec
+}
+
+#[tokio::test]
+async fn the_comparison_publish_gate_waives_review_only_for_an_auto_validated_run() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.push(&auto_validated_record("auto"), &links(), None)
+        .await
+        .unwrap();
+    db.push(&record("bare"), &links(), None).await.unwrap();
+
+    // The normal publish gate still requires a human review — even for the
+    // auto-validated run.
+    assert!(db.ensure_publishable("auto").await.is_err());
+    assert!(db.ensure_publishable("bare").await.is_err());
+
+    // The comparison publish gate waives the review requirement, but ONLY for a run
+    // that actually carries automated verdicts. A bare review-less run is still
+    // refused — there is nothing to stand in for the missing review.
+    assert!(db.ensure_publishable_comparison_run("auto").await.is_ok());
+    assert!(db.ensure_publishable_comparison_run("bare").await.is_err());
+}

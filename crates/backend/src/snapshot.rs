@@ -128,6 +128,12 @@ pub struct SnapshotBuilder {
     /// which simply omits every review's `pictureKey`.
     reviewer_pictures:
         std::collections::HashMap<String, test_cabinet_core::accounts::ReviewerPicture>,
+    /// The published harness comparisons to fold into the snapshot, each already
+    /// computed to its full read model (arms + distributions + diagnostics) by the
+    /// caller — which has the whole-experiment run set — so the builder only
+    /// serializes them. Empty by default (the dev/single-box path and the unit
+    /// tests), which emits an empty comparisons index.
+    comparisons: Vec<test_cabinet_core::comparison::Comparison>,
 }
 
 impl SnapshotBuilder {
@@ -150,7 +156,19 @@ impl SnapshotBuilder {
             reference_sheets: std::collections::HashMap::new(),
             existing_media: std::collections::HashSet::new(),
             reviewer_pictures: std::collections::HashMap::new(),
+            comparisons: Vec::new(),
         }
+    }
+
+    /// Supply the published comparisons to fold into this snapshot, each already
+    /// assembled to its full read model. Empty (the default) emits an empty
+    /// comparisons index.
+    pub fn with_comparisons(
+        mut self,
+        comparisons: Vec<test_cabinet_core::comparison::Comparison>,
+    ) -> Self {
+        self.comparisons = comparisons;
+        self
     }
 
     /// Supply the reviewers' profile pictures to export in this snapshot, keyed by
@@ -405,6 +423,42 @@ impl SnapshotBuilder {
             },
         )?);
 
+        // comparisons.json — the published harness comparisons, each a full read
+        // model (arms + distributions + diagnostics), plus a per-comparison file for
+        // a direct fetch. Like the game-jam aggregate (and unlike the live-only
+        // tournament), a comparison IS folded into the public snapshot. Each is
+        // scrubbed like every other public document. An empty list emits an empty
+        // index, which the site renders as "no comparisons yet".
+        for comparison in &self.comparisons {
+            let mut document = serde_json::to_value(ComparisonFile {
+                schema_version: SCHEMA_VERSION,
+                comparison: comparison.clone(),
+            })
+            .map_err(|e| {
+                BackendError::Snapshot(format!(
+                    "serializing published comparison {}: {e}",
+                    comparison.id
+                ))
+            })?;
+            if scrubber.scrub_json(&mut document) {
+                tracing::warn!(
+                    comparison = %comparison.id,
+                    "redacted leaked API key(s) from a published comparison document"
+                );
+            }
+            objects.push(json_object(
+                format!("{prefix}/comparisons/{}.json", comparison.id),
+                &document,
+            )?);
+        }
+        objects.push(json_object(
+            format!("{prefix}/comparisons.json"),
+            &ComparisonsIndex {
+                schema_version: SCHEMA_VERSION,
+                comparisons: self.comparisons.clone(),
+            },
+        )?);
+
         let index = json_object(
             "index.json".to_string(),
             &SnapshotIndex {
@@ -418,6 +472,8 @@ impl SnapshotBuilder {
                 runs_prefix: format!("{prefix}/runs/"),
                 cases_prefix: format!("{prefix}/cases/"),
                 models_key: format!("{prefix}/models.json"),
+                comparisons_key: format!("{prefix}/comparisons.json"),
+                comparisons_prefix: format!("{prefix}/comparisons/"),
             },
         )?;
 
@@ -1133,6 +1189,31 @@ pub struct SnapshotIndex {
     pub cases_prefix: String,
     /// Where this snapshot's model catalog lives (`<prefix>/models.json`).
     pub models_key: String,
+    /// Where this snapshot's comparisons index lives (`<prefix>/comparisons.json`).
+    pub comparisons_key: String,
+    /// The prefix each published comparison's own document lives under
+    /// (`<prefix>/comparisons/<id>.json`).
+    pub comparisons_prefix: String,
+}
+
+/// The comparisons index file (`comparisons.json`): every published harness
+/// comparison as its full read model. The public site lists and renders them from
+/// here (each also has its own `<prefix>/comparisons/<id>.json` for a direct fetch).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct ComparisonsIndex {
+    pub schema_version: u32,
+    pub comparisons: Vec<test_cabinet_core::comparison::Comparison>,
+}
+
+/// One published comparison's own document (`comparisons/<id>.json`).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct ComparisonFile {
+    pub schema_version: u32,
+    pub comparison: test_cabinet_core::comparison::Comparison,
 }
 
 /// The model catalog file (`models.json`): the composed catalog the public site

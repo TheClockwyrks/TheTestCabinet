@@ -6,6 +6,14 @@
     "casesPrefix": {
       "type": "string"
     },
+    "comparisonsKey": {
+      "description": "Where this snapshot's comparisons index lives (`<prefix>/comparisons.json`).",
+      "type": "string"
+    },
+    "comparisonsPrefix": {
+      "description": "The prefix each published comparison's own document lives under\n(`<prefix>/comparisons/<id>.json`).",
+      "type": "string"
+    },
     "generatedAt": {
       "type": "string"
     },
@@ -41,7 +49,9 @@
     "runsKey",
     "runsPrefix",
     "casesPrefix",
-    "modelsKey"
+    "modelsKey",
+    "comparisonsKey",
+    "comparisonsPrefix"
   ],
   "title": "SnapshotIndex",
   "type": "object"

@@ -18,12 +18,12 @@
 #[path = "comparisons.test.rs"]
 mod tests;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
@@ -32,7 +32,7 @@ use test_cabinet_core::comparison_aggregate::aggregate_comparison;
 use test_cabinet_core::run_record::RunRecord;
 
 use crate::auth::AuthUser;
-use crate::db::StoredComparison;
+use crate::db::{NewPublishJob, StoredComparison};
 use crate::error::ApiError;
 
 use super::AppState;
@@ -71,7 +71,11 @@ pub async fn list_comparisons(
         .map_err(ApiError::from)?;
     let mut out = Vec::with_capacity(stored.len());
     for row in stored {
-        out.push(assemble(&state, row).await?);
+        out.push(
+            assemble_comparison(state.db.as_ref(), &state.store, row)
+                .await
+                .map_err(ApiError::from)?,
+        );
     }
     Ok(Json(out))
 }
@@ -90,7 +94,11 @@ pub async fn create_comparison(
         .insert_comparison(&user.0.id, &stored)
         .await
         .map_err(ApiError::from)?;
-    Ok(Json(assemble(&state, stored).await?))
+    Ok(Json(
+        assemble_comparison(state.db.as_ref(), &state.store, stored)
+            .await
+            .map_err(ApiError::from)?,
+    ))
 }
 
 /// `GET /comparisons/{id}` — one comparison with its per-arm results computed from
@@ -108,7 +116,11 @@ pub async fn get_comparison(
     else {
         return Err(ApiError::not_found("comparison not found"));
     };
-    Ok(Json(assemble(&state, stored).await?))
+    Ok(Json(
+        assemble_comparison(state.db.as_ref(), &state.store, stored)
+            .await
+            .map_err(ApiError::from)?,
+    ))
 }
 
 /// `PUT /comparisons/{id}` — update a comparison's name, description, and config in
@@ -138,7 +150,11 @@ pub async fn update_comparison(
     if !updated {
         return Err(ApiError::not_found("comparison not found"));
     }
-    Ok(Json(assemble(&state, stored).await?))
+    Ok(Json(
+        assemble_comparison(state.db.as_ref(), &state.store, stored)
+            .await
+            .map_err(ApiError::from)?,
+    ))
 }
 
 /// `DELETE /comparisons/{id}` — delete a comparison. Runs launched for its arms are
@@ -159,13 +175,114 @@ pub async fn delete_comparison(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// One arm run that could not be published, with why — so a partially-published
+/// comparison never reads as if every run is inspectable.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkippedRun {
+    /// The run that was not enqueued for publishing.
+    pub run_id: String,
+    /// Why it was skipped (e.g. an infrastructure failure, or a review-less run with
+    /// no automated verdicts to stand in for the review).
+    pub reason: String,
+}
+
+/// The outcome of publishing a comparison: which arm runs were enqueued for
+/// publishing and which were skipped. The comparison record itself is always
+/// published (it is the aggregate); the runs behind it are best-effort.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ComparisonPublishOutcome {
+    /// The run ids enqueued for publishing (one `tcab-publisher` job each).
+    pub enqueued: Vec<String>,
+    /// The arm runs that could not be published, with the reason each.
+    pub skipped: Vec<SkippedRun>,
+}
+
+/// `POST /comparisons/{id}/publish` — publish the comparison to the public site and
+/// enqueue a publish job for each of its arm runs that is publishable. Marks the
+/// comparison published (so the next snapshot folds it in) and best-effort enqueues
+/// the runs behind it; an un-publishable run (an infrastructure failure, or a
+/// review-less run with no automated verdicts) is skipped and reported rather than
+/// failing the whole publish. 404 when the id is not the caller's.
+pub async fn publish_comparison(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<String>,
+) -> Result<Json<ComparisonPublishOutcome>, ApiError> {
+    let Some(stored) = state
+        .db
+        .get_comparison(&user.0.id, &id)
+        .await
+        .map_err(ApiError::from)?
+    else {
+        return Err(ApiError::not_found("comparison not found"));
+    };
+
+    // Every arm run, deduplicated, in arm/launch order. Each publishable one is
+    // enqueued through the ordinary publish queue (one pod/repo/deploy per run —
+    // publishing is expensive, so it is a real job, not a flag flip); an
+    // un-publishable one is recorded rather than aborting the batch.
+    let mut seen = BTreeSet::new();
+    let mut enqueued = Vec::new();
+    let mut skipped = Vec::new();
+    for arm in &stored.config.arms {
+        for run_id in &arm.run_ids {
+            if !seen.insert(run_id.clone()) {
+                continue;
+            }
+            match state.db.ensure_publishable_comparison_run(run_id).await {
+                Ok(()) => {
+                    state
+                        .db
+                        .enqueue_publish_job(NewPublishJob {
+                            id: cuid2::create_id(),
+                            run_id: run_id.clone(),
+                            job_token: cuid2::create_id(),
+                            created_at: now()?,
+                        })
+                        .await
+                        .map_err(ApiError::from)?;
+                    enqueued.push(run_id.clone());
+                }
+                Err(err) => skipped.push(SkippedRun {
+                    run_id: run_id.clone(),
+                    reason: err.to_string(),
+                }),
+            }
+        }
+    }
+
+    // Publish the comparison record itself and wake the snapshot debounce so the
+    // public snapshot rebuilds with it (each completed run publish wakes it again).
+    state
+        .db
+        .set_comparison_published(&user.0.id, &id, true, Some(&now()?))
+        .await
+        .map_err(ApiError::from)?;
+    state.publisher.queue_refresh();
+
+    Ok(Json(ComparisonPublishOutcome { enqueued, skipped }))
+}
+
 /// Assemble the read model: load every arm's runs, resolve the case's effective
 /// review items, and aggregate. A comparison whose case can no longer be resolved
 /// (removed, or an unreadable manifest) still lists — it comes back with empty arm
 /// results rather than a 500, so a stale comparison stays inspectable.
-async fn assemble(state: &AppState, stored: StoredComparison) -> Result<Comparison, ApiError> {
-    let runs = load_arm_runs(state, &stored.config).await?;
-    let arms = match state.store.read_manifest(
+///
+/// `pub(crate)` and taking the `Db` + `DefinitionStore` directly (not `AppState`) so
+/// the snapshot publisher reuses the exact same computation when it folds a published
+/// comparison into the public snapshot — the internal console and the public site
+/// therefore show identical numbers. Runs are loaded from the store regardless of
+/// their own published state, so the aggregate reflects the whole experiment even
+/// when only some of its runs are individually published for drill-down.
+pub(crate) async fn assemble_comparison(
+    db: &crate::db::Db,
+    store: &crate::store::DefinitionStore,
+    stored: StoredComparison,
+) -> crate::error::Result<Comparison> {
+    let runs = load_arm_runs(db, &stored.config).await?;
+    let arms = match store.read_manifest(
         &stored.config.controls.case_slug,
         &stored.config.controls.version,
     ) {
@@ -193,16 +310,16 @@ async fn assemble(state: &AppState, stored: StoredComparison) -> Result<Comparis
 /// Load the run records named by every arm's `run_ids` into a lookup, skipping any
 /// that are no longer stored.
 async fn load_arm_runs(
-    state: &AppState,
+    db: &crate::db::Db,
     config: &ComparisonConfig,
-) -> Result<BTreeMap<String, RunRecord>, ApiError> {
+) -> crate::error::Result<BTreeMap<String, RunRecord>> {
     let mut runs = BTreeMap::new();
     for arm in &config.arms {
         for id in &arm.run_ids {
             if runs.contains_key(id) {
                 continue;
             }
-            if let Some(stored) = state.db.get_run(id).await.map_err(ApiError::from)? {
+            if let Some(stored) = db.get_run(id).await? {
                 runs.insert(id.clone(), stored.record);
             }
         }

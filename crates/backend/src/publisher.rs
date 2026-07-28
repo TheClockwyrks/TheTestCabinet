@@ -281,6 +281,16 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
         }
     }
 
+    // The published harness comparisons, each assembled to its full read model over
+    // the whole experiment's runs (not only the published ones) with the same
+    // computation the internal `/comparisons` API uses, so the public numbers match
+    // the console's exactly.
+    let mut comparisons = Vec::new();
+    for stored in inner.db.all_published_comparisons().await? {
+        comparisons
+            .push(crate::api::assemble_comparison(inner.db.as_ref(), &inner.store, stored).await?);
+    }
+
     let snapshot = SnapshotBuilder::new(runs, cases, inner.store.clone())
         .with_artifacts(inner.artifacts_url.clone(), inner.http.clone())
         .with_models(models)
@@ -288,6 +298,7 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
         .with_reference_sheets(reference_sheets)
         .with_existing_media(existing_media)
         .with_reviewer_pictures(reviewer_pictures)
+        .with_comparisons(comparisons)
         .build(generated_at)
         .await?;
     let run_count = snapshot.run_count;

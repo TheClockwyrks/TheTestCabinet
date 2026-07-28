@@ -262,6 +262,7 @@ fn main() -> Result<()> {
                 snap::CasePackageOut, snap::CaseReferenceSheetOut, snap::CaseVariantOut,
                 snap::CaseMetadata,
                 snap::ModelCatalogFile,
+                snap::ComparisonsIndex, snap::ComparisonFile,
             ],
         },
         // The backend HTTP API response envelopes (error + catalog/versions).

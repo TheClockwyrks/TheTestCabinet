@@ -566,7 +566,7 @@ impl Db {
         // The gate (infrastructure → refuse; completed needs ≥1 review;
         // catastrophic/timed-out waived) is shared with
         // [`Db::ensure_publishable`], the publish-queue's at-enqueue check.
-        gate_publishable(&txn, run_id, &run.run_state).await?;
+        gate_publishable(&txn, run_id, &run.run_state, false).await?;
 
         let newly_published = !run.published;
         // Preserve the first publish's timestamp on re-publish.
@@ -1371,6 +1371,7 @@ async fn gate_publishable<C: ConnectionTrait>(
     conn: &C,
     run_id: &str,
     run_state: &str,
+    allow_auto_validated: bool,
 ) -> Result<()> {
     if run_state == "infrastructure" {
         return Err(crate::error::BackendError::Unprocessable(format!(
@@ -1384,12 +1385,45 @@ async fn gate_publishable<C: ConnectionTrait>(
             .count(conn)
             .await?;
         if review_count == 0 {
-            return Err(crate::error::BackendError::Unprocessable(format!(
-                "run `{run_id}` has no reviews — a run needs at least one review before it can be published"
-            )));
+            // The single sanctioned waiver of the review requirement beyond the
+            // catastrophic-failure states: an auto-validated comparison run. A
+            // comparison scores each run from its automated validators (no human
+            // review), so publishing its runs — which the comparison publish path
+            // requests with `allow_auto_validated` — must not require a review that
+            // was deliberately never done. Any other publish path keeps the review
+            // requirement. A run with no automated verdicts is still refused: there is
+            // nothing to stand in for the missing review.
+            let waived = allow_auto_validated && run_has_auto_verdicts(conn, run_id).await?;
+            if !waived {
+                return Err(crate::error::BackendError::Unprocessable(format!(
+                    "run `{run_id}` has no reviews — a run needs at least one review before it can be published"
+                )));
+            }
         }
     }
     Ok(())
+}
+
+/// Whether a run carries at least one automated validation verdict — the signal
+/// that it was scored by a machine and can stand in for the human review the
+/// comparison publish path waives. Reads the run's stored record and looks for any
+/// `debug_scripts` verdict; a run whose record is missing or unparseable, or that ran
+/// no validators, has none.
+async fn run_has_auto_verdicts<C: ConnectionTrait>(conn: &C, run_id: &str) -> Result<bool> {
+    let Some(row) = run::Entity::find_by_id(run_id.to_string())
+        .one(conn)
+        .await?
+    else {
+        return Ok(false);
+    };
+    let Ok(record) = serde_json::from_str::<RunRecord>(&row.record_json) else {
+        return Ok(false);
+    };
+    Ok(record
+        .validation
+        .debug_scripts
+        .iter()
+        .any(|script| !script.verdicts.is_empty()))
 }
 
 /// Decode a `review` row into the in-memory [`StoredReview`], parsing its
@@ -1783,6 +1817,20 @@ impl Db {
         comparison::Entity::find()
             .filter(comparison::Column::UserId.eq(user_id))
             .order_by_desc(comparison::Column::UpdatedAt)
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .map(comparison_from_row)
+            .collect()
+    }
+
+    /// Every **published** comparison across all accounts, newest-published first —
+    /// the set the snapshot builder folds into the public site. Ownership is not a
+    /// filter here (unlike the per-account list): the public snapshot is global.
+    pub async fn all_published_comparisons(&self) -> Result<Vec<StoredComparison>> {
+        comparison::Entity::find()
+            .filter(comparison::Column::Published.eq(true))
+            .order_by_desc(comparison::Column::PublishedAt)
             .all(&self.conn())
             .await?
             .into_iter()
@@ -2718,7 +2766,22 @@ impl Db {
             .ok_or_else(|| {
                 crate::error::BackendError::NotFound(format!("run `{run_id}` not found"))
             })?;
-        gate_publishable(&self.conn(), run_id, &run.run_state).await
+        gate_publishable(&self.conn(), run_id, &run.run_state, false).await
+    }
+
+    /// Gate a run for publishing **as a comparison arm run**: the same checks as
+    /// [`Self::ensure_publishable`], but the review requirement is waived for a run
+    /// that carries automated validation verdicts (a comparison scores its runs by
+    /// machine, not by a human reviewer). An infrastructure failure, or a review-less
+    /// run with no automated verdicts, is still refused.
+    pub async fn ensure_publishable_comparison_run(&self, run_id: &str) -> Result<()> {
+        let run = run::Entity::find_by_id(run_id.to_string())
+            .one(&self.conn())
+            .await?
+            .ok_or_else(|| {
+                crate::error::BackendError::NotFound(format!("run `{run_id}` not found"))
+            })?;
+        gate_publishable(&self.conn(), run_id, &run.run_state, true).await
     }
 
     /// Enqueue a publish job: insert it in the `queued` state for the dispatcher to

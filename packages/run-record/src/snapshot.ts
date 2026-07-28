@@ -8,6 +8,7 @@
 // in the same pass.
 
 import type { ModelOut } from "./backend-api";
+import type { Comparison } from "./comparison";
 import type {
   AssetKind,
   AssetSheet,
@@ -36,6 +37,15 @@ export type SnapshotIndex = {
    * Where this snapshot's model catalog lives (`<prefix>/models.json`).
    */
   modelsKey: string;
+  /**
+   * Where this snapshot's comparisons index lives (`<prefix>/comparisons.json`).
+   */
+  comparisonsKey: string;
+  /**
+   * The prefix each published comparison's own document lives under
+   * (`<prefix>/comparisons/<id>.json`).
+   */
+  comparisonsPrefix: string;
 };
 
 /**
@@ -589,3 +599,18 @@ export type ModelCatalogFile = {
   schemaVersion: number;
   models: Array<ModelOut>;
 };
+
+/**
+ * The comparisons index file (`comparisons.json`): every published harness
+ * comparison as its full read model. The public site lists and renders them from
+ * here (each also has its own `<prefix>/comparisons/<id>.json` for a direct fetch).
+ */
+export type ComparisonsIndex = {
+  schemaVersion: number;
+  comparisons: Array<Comparison>;
+};
+
+/**
+ * One published comparison's own document (`comparisons/<id>.json`).
+ */
+export type ComparisonFile = { schemaVersion: number; comparison: Comparison };

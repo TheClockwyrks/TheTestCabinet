@@ -38,6 +38,9 @@ mod tournaments;
 // Re-export the HTTP response contract types so the `contract-codegen` generator
 // can name them (the handler modules themselves stay private).
 pub use comparisons::ComparisonInput;
+// Reused by the snapshot publisher so a published comparison is folded into the
+// public snapshot with the exact computation the internal `/comparisons` API uses.
+pub(crate) use comparisons::assemble_comparison;
 pub use coverage::{
     CoverageCell, CoverageGroup, CoverageGroupInput, CoverageGroupKind, CoverageMatrix,
     CoveragePlan, CoveragePlanInput, CoveragePlanSummary, ReviewPlanCase, ReviewPlanCombo,
@@ -313,6 +316,10 @@ pub fn router(state: AppState) -> Router {
             get(comparisons::get_comparison)
                 .put(comparisons::update_comparison)
                 .delete(comparisons::delete_comparison),
+        )
+        .route(
+            "/comparisons/{id}/publish",
+            post(comparisons::publish_comparison),
         )
         .route("/jobs/active", get(jobs::active))
         .route("/jobs/next", post(jobs::claim))
