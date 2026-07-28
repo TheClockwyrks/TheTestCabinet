@@ -1973,4 +1973,16 @@ export type RunRecord = {
    * before the field existed still deserialize and non-jam records stay slim.
    */
   gameJamReadme?: string | null;
+  /**
+   * How many times each tool the harness's agent invoked was called over the
+   * run, keyed by lowercased raw tool name — **including** tools recognized and
+   * consumed without emitting an event (the todo tools). Lifted from
+   * [`HarnessOutcome::tool_calls`](crate::harness::HarnessOutcome::tool_calls) so
+   * a harness comparison can diagnose tool-call behavior (a re-reading or
+   * over-shelling harness shows here) that a count derived from the event stream
+   * alone would miss. Defaulted and omitted when
+   * empty so records written before the field existed still deserialize, and a
+   * gg run — whose per-tool detail comes from its own telemetry — carries none.
+   */
+  toolCalls?: { [key in string]: number };
 };

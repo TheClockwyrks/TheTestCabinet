@@ -93,6 +93,7 @@ fn gg_record(
             detail: None,
         },
         game_jam_readme: None,
+        tool_calls: Default::default(),
     }
 }
 

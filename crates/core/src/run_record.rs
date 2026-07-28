@@ -8,6 +8,8 @@
 //! hand. Regenerate with `npm run gen:contract` after any change here. JSON is
 //! camelCase.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::gg::{GgCapabilitySet, GgSessionSummary};
@@ -579,6 +581,17 @@ pub struct RunRecord {
     /// before the field existed still deserialize and non-jam records stay slim.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub game_jam_readme: Option<String>,
+    /// How many times each tool the harness's agent invoked was called over the
+    /// run, keyed by lowercased raw tool name — **including** tools recognized and
+    /// consumed without emitting an event (the todo tools). Lifted from
+    /// [`HarnessOutcome::tool_calls`](crate::harness::HarnessOutcome::tool_calls) so
+    /// a harness comparison can diagnose tool-call behavior (a re-reading or
+    /// over-shelling harness shows here) that a count derived from the event stream
+    /// alone would miss. Defaulted and omitted when
+    /// empty so records written before the field existed still deserialize, and a
+    /// gg run — whose per-tool detail comes from its own telemetry — carries none.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub tool_calls: BTreeMap<String, u64>,
 }
 
 /// One earlier game-jam run's gameplay README, as served back to a new run of the

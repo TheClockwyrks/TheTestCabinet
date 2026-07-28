@@ -8,12 +8,15 @@
 //! so callers can observe a run live through one uniform stream regardless of
 //! which harness produced it.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
 use crate::execution::OutputStream;
+use crate::metrics::TokenCounts;
 
 /// A single normalized event emitted while a harness runs.
 ///
@@ -212,6 +215,28 @@ pub enum EventKind {
         /// A human readable description of the stage and its status.
         message: String,
     },
+    /// Per-turn token usage a harness reports partway through a run.
+    ///
+    /// Harnesses that report usage incrementally — Pi on each `message_end`,
+    /// Kilo/OpenCode on each `step_finish` — emit one of these per turn, carrying
+    /// that turn's [token counts](crate::metrics::TokenCounts) mapped onto the four
+    /// normalized classes the *same way* the run-level total is (the shared mapping
+    /// lives in [`crate::harness_registry`], so per-turn and session totals never
+    /// diverge). It is the non-gg analogue of gg's per-turn `Usage` telemetry: the
+    /// run-level total in [metrics](crate::metrics) answers "how much", while these
+    /// per-turn slices answer "on what", so a comparison can attribute spend across
+    /// a run. Emitted only by harnesses that report per-turn *deltas*; a harness
+    /// that reports only a cumulative running total emits none (a cumulative
+    /// snapshot is not a per-turn figure).
+    Usage {
+        /// This turn's token counts, by normalized class.
+        tokens: TokenCounts,
+        /// The harness-reported cost (USD) for this turn, when it reports one per
+        /// turn. Most harnesses report cost only as a session total (or not at
+        /// all), so this is usually absent.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        cost: Option<f64>,
+    },
     /// A first-party **gg** telemetry event, carried through the normalized event
     /// stream verbatim.
     ///
@@ -409,6 +434,17 @@ pub struct EventParser {
     /// The session working directory used to resolve relative paths to absolute
     /// ones, captured from a harness's session/init event. Unset until seen.
     workspace: Option<String>,
+    /// How many times each tool was invoked, keyed by lowercased raw tool name,
+    /// accumulated across the whole stream. Counts **every** invocation the model
+    /// made — including tools that are recognized and deliberately consumed
+    /// (the todo tools, which emit no semantic event) — so a cost diagnostic sees
+    /// them; a Read/Write/Command count derived from the event stream alone would
+    /// miss the consumed ones (Kilo calls `todowrite` dozens of times a run). Not
+    /// part of the [event stream](HarnessEvent) — it is surfaced separately on the
+    /// run outcome. Populated for the tool-name harnesses (Kilo, OpenCode, Cline,
+    /// Pi, Goose, Claude); item-based Codex, whose every tool maps to a semantic
+    /// event with no consumed todos, is represented by those events instead.
+    tool_calls: BTreeMap<String, u64>,
 }
 
 impl EventParser {
@@ -421,6 +457,36 @@ impl EventParser {
             pending_tools: Vec::new(),
             goose_pending: None,
             workspace: None,
+            tool_calls: BTreeMap::new(),
+        }
+    }
+
+    /// Record one invocation of `name`, for the tool-call tally. Names are
+    /// lowercased so a harness that varies casing (`TodoWrite` vs `todowrite`)
+    /// counts as one tool. Emits no event — the tally is surfaced separately from
+    /// the [event stream](HarnessEvent).
+    fn count_tool(&mut self, name: &str) {
+        *self
+            .tool_calls
+            .entry(name.to_ascii_lowercase())
+            .or_insert(0) += 1;
+    }
+
+    /// Take the accumulated per-tool invocation counts, leaving the tally empty.
+    /// Called once when a session's stream is drained, to surface the tally on the
+    /// run outcome.
+    pub(crate) fn take_tool_calls(&mut self) -> BTreeMap<String, u64> {
+        std::mem::take(&mut self.tool_calls)
+    }
+
+    /// Build a per-turn [`EventKind::Usage`] event from a harness event `value`
+    /// that carries this turn's usage, or nothing when the event reports no usage.
+    /// Reuses the harness's session usage mapping (via [`crate::harness_registry`])
+    /// so a per-turn slice and the run-level total are computed identically.
+    fn per_turn_usage(&self, value: &Value) -> Vec<HarnessEvent> {
+        match crate::harness_registry::per_turn_usage(self.format, value) {
+            Some((tokens, cost)) => vec![self.event(EventKind::Usage { tokens, cost })],
+            None => Vec::new(),
         }
     }
 
@@ -635,12 +701,20 @@ impl EventParser {
             {
                 // Text and reasoning are both joined and emitted above.
                 "text" | "thinking" | "redacted_thinking" => {}
-                "tool_use" => match ClaudeToolUse::from_block(block, workspace.as_deref()) {
-                    // A recognized tool: record it and wait for its result.
-                    Some(tool_use) => self.claude_tool_uses.push(tool_use),
-                    // An unrecognized or malformed tool use is surfaced verbatim.
-                    None => events.push(self.event(EventKind::Unknown { raw: block.clone() })),
-                },
+                "tool_use" => {
+                    // Count every tool use by its raw name — including Claude's
+                    // consumed `TodoWrite` and any tool with no semantic mapping —
+                    // before pairing it with its later result.
+                    if let Some(name) = block.get("name").and_then(Value::as_str) {
+                        self.count_tool(name);
+                    }
+                    match ClaudeToolUse::from_block(block, workspace.as_deref()) {
+                        // A recognized tool: record it and wait for its result.
+                        Some(tool_use) => self.claude_tool_uses.push(tool_use),
+                        // An unrecognized or malformed tool use is surfaced verbatim.
+                        None => events.push(self.event(EventKind::Unknown { raw: block.clone() })),
+                    }
+                }
                 _ => events.push(self.event(EventKind::Unknown { raw: block.clone() })),
             }
         }
@@ -859,6 +933,10 @@ impl EventParser {
         let id = inner.get("toolCallId").and_then(Value::as_str);
         let name = inner.get("toolName").and_then(Value::as_str);
         if let (Some(id), Some(name)) = (id, name) {
+            // Count the invocation at its start; the matching content_end resolves
+            // it without re-counting (a start that is missed is counted in
+            // `complete_cline_tool`'s unmatched branch instead).
+            self.count_tool(name);
             self.pending_tools.push(PendingTool {
                 id: id.to_string(),
                 name: name.to_string(),
@@ -879,6 +957,9 @@ impl EventParser {
                 .iter()
                 .any(|tool| Some(tool.id.as_str()) == id);
         if unmatched && let Some(name) = inner.get("toolName").and_then(Value::as_str) {
+            // The start was never recorded, so it was not counted there; count it
+            // here so a call whose start we missed still appears in the tally.
+            self.count_tool(name);
             let input = inner.get("input").cloned().unwrap_or(Value::Null);
             let workspace = self.workspace.clone();
             return match classify_cline_tool(name, &input, success, workspace.as_deref()) {
@@ -1025,7 +1106,13 @@ impl EventParser {
                 "toolRequest" => {
                     self.flush_goose(&mut events);
                     match goose_tool_request(block) {
-                        Some(tool) => self.pending_tools.push(tool),
+                        Some(tool) => {
+                            // Count at the request (the response carries no name),
+                            // so each Goose tool call is tallied exactly once —
+                            // including Goose's consumed `todo` extension.
+                            self.count_tool(&tool.name);
+                            self.pending_tools.push(tool);
+                        }
                         None => events.push(self.event(EventKind::Unknown { raw: block.clone() })),
                     }
                 }
@@ -1114,8 +1201,13 @@ impl EventParser {
             .and_then(Value::as_str)
             .unwrap_or_default()
         {
-            // Step boundaries carry usage, consumed elsewhere.
-            "step_start" | "step_finish" => Vec::new(),
+            // The step start is a boundary marker with no activity. The step
+            // finish carries this step's per-turn usage: the run-level total is
+            // still summed separately (`harness_registry::parse_usage`), but the
+            // per-turn slice is surfaced as a usage event so a comparison can
+            // attribute spend across the run.
+            "step_start" => Vec::new(),
+            "step_finish" => self.per_turn_usage(&value),
             // Reasoning is model thinking; surface its text as a reasoning event
             // when the event carries any, otherwise consume it.
             "reasoning" => match dig(&value, &[&["part", "text"], &["text"], &["reasoning"]])
@@ -1155,6 +1247,11 @@ impl EventParser {
                 .unwrap_or(Value::Null);
                 let success = step_tool_success(&value);
                 let workspace = self.workspace.clone();
+                // Count every tool invocation, including a recognized-but-consumed
+                // one (a todo tool classifies to no event), before it is classified.
+                if let Some(name) = name {
+                    self.count_tool(name);
+                }
                 match name.and_then(|name| classify(name, &input, success, workspace.as_deref())) {
                     // A recognized tool maps to zero or more events; an empty
                     // result is a tool that was deliberately consumed (such as a
@@ -1200,7 +1297,13 @@ impl EventParser {
             | "message_start"
             | "message_update"
             | "tool_execution_update" => Vec::new(),
-            "message_end" => self.parse_pi_message(&value),
+            // The completed assistant message carries this turn's per-turn usage
+            // (under `message.usage`) alongside its text; emit both.
+            "message_end" => {
+                let mut events = self.parse_pi_message(&value);
+                events.extend(self.per_turn_usage(&value));
+                events
+            }
             "tool_execution_start" => {
                 self.record_pi_tool(&value);
                 Vec::new()
@@ -1217,6 +1320,9 @@ impl EventParser {
         let id = value.get("toolCallId").and_then(Value::as_str);
         let name = lookup_str(value, &["toolName", "tool_name", "tool", "name"]);
         if let (Some(id), Some(name)) = (id, name) {
+            // Count the invocation at its start (the end event carries no name), so
+            // the tally sees each Pi tool call exactly once.
+            self.count_tool(name);
             let input = dig(
                 value,
                 &[&["args"], &["input"], &["arguments"], &["toolInput"]],

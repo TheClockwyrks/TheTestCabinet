@@ -80,6 +80,7 @@ fn sample_record() -> RunRecord {
             detail: None,
         },
         game_jam_readme: None,
+        tool_calls: Default::default(),
     }
 }
 

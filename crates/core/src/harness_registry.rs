@@ -263,6 +263,7 @@ impl AgentHarness for CliHarness {
             output,
             raw_output,
             translated_events,
+            tool_calls,
         } = run_streamed_translation(
             runtime,
             container,
@@ -308,6 +309,7 @@ impl AgentHarness for CliHarness {
             translated_events,
             // A third-party harness emits no gg session summary.
             gg_summary: None,
+            tool_calls,
         })
     }
 }
@@ -435,6 +437,9 @@ pub(crate) struct Streamed {
     pub raw_output: Vec<RawOutputLine>,
     /// Every translated event, in the order produced.
     pub translated_events: Vec<HarnessEvent>,
+    /// Per-tool invocation counts accumulated while translating the stream (see
+    /// [`crate::event::EventParser`]), including consumed todo tools.
+    pub tool_calls: std::collections::BTreeMap<String, u64>,
 }
 
 /// Run `command` inside the container, translating each output line into
@@ -467,11 +472,13 @@ pub(crate) async fn run_streamed_translation(
         .await?;
     let raw_output = std::mem::take(&mut translator.raw);
     let translated_events = std::mem::take(&mut translator.recorded);
+    let tool_calls = translator.parser.take_tool_calls();
     drop(translator);
     Ok(Streamed {
         output,
         raw_output,
         translated_events,
+        tool_calls,
     })
 }
 
@@ -1069,6 +1076,61 @@ fn parse_usage(output: &ExecOutput, shape: UsageShape) -> Usage {
     Usage {
         tokens: shape.finalize(raw),
     }
+}
+
+/// The usage mapping for a harness output format, so a per-turn usage slice is
+/// mapped onto the normalized token classes the same way the session total is.
+/// `Generic` (Antigravity, gg) reports no usage. This keeps the per-turn
+/// [`EventKind::Usage`](crate::event::EventKind::Usage) and the run-level total
+/// (see [`parse_usage`]) reading from one source of truth — the harness's
+/// [`AdapterSpec::usage`] — rather than two mappings that could drift apart.
+fn usage_shape_for_format(format: EventFormat) -> UsageShape {
+    let slug = match format {
+        EventFormat::Claude => HarnessSlug::Claude,
+        EventFormat::Codex => HarnessSlug::Codex,
+        EventFormat::Cline => HarnessSlug::Cline,
+        EventFormat::Goose => HarnessSlug::Goose,
+        EventFormat::Kilo => HarnessSlug::Kilo,
+        EventFormat::Opencode => HarnessSlug::Opencode,
+        EventFormat::Pi => HarnessSlug::Pi,
+        EventFormat::Generic => return UsageShape::NONE,
+    };
+    adapter_spec(slug).usage
+}
+
+/// Extract one turn's token counts (and per-turn cost, when reported) from a
+/// single harness event `value` that carries usage, mapped onto the normalized
+/// classes with the same [`UsageShape`] the session total uses. Returns `None`
+/// when the event reports no usage, so an empty usage event is never emitted.
+///
+/// The [event parser](crate::event::EventParser) calls this to turn a per-turn
+/// usage record (Pi's `message_end`, Kilo/OpenCode's `step_finish`) into an
+/// [`EventKind::Usage`](crate::event::EventKind::Usage). The parser is already
+/// positioned on the usage-carrying event, so — unlike [`parse_usage`] — no
+/// `usage_events` line filtering is applied here.
+pub(crate) fn per_turn_usage(
+    format: EventFormat,
+    value: &Value,
+) -> Option<(TokenCounts, Option<f64>)> {
+    let shape = usage_shape_for_format(format);
+    // Confine the token search to the usage sub-object when the shape names one
+    // (Kilo/OpenCode nest per-step tokens under `part.tokens`), exactly as
+    // `parse_usage` does per line.
+    let scope = if shape.usage_path.is_empty() {
+        value
+    } else {
+        dig(value, shape.usage_path)?
+    };
+    let raw = extract_tokens(scope, shape);
+    if raw.total_input() == 0 && raw.total_output() == 0 {
+        return None;
+    }
+    let cost = if shape.cost.is_empty() {
+        None
+    } else {
+        shape.cost.iter().find_map(|key| find_f64(value, key))
+    };
+    Some((shape.finalize(raw), cost))
 }
 
 /// Parse the harness's self-reported run cost (USD) out of its command output.

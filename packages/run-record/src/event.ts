@@ -8,6 +8,7 @@
 // in the same pass.
 
 import type { GgTelemetryEvent } from "./gg";
+import type { TokenMetrics } from "./index";
 
 /**
  * The subagent orchestration states a harness can report.
@@ -217,6 +218,19 @@ export type EventKind =
        * A human readable description of the stage and its status.
        */
       message: string;
+    }
+  | {
+      type: "usage";
+      /**
+       * This turn's token counts, by normalized class.
+       */
+      tokens: TokenMetrics;
+      /**
+       * The harness-reported cost (USD) for this turn, when it reports one per
+       * turn. Most harnesses report cost only as a session total (or not at
+       * all), so this is usually absent.
+       */
+      cost?: number;
     }
   | {
       type: "gg";
@@ -434,6 +448,19 @@ export type HarnessEvent = {
        * A human readable description of the stage and its status.
        */
       message: string;
+    }
+  | {
+      type: "usage";
+      /**
+       * This turn's token counts, by normalized class.
+       */
+      tokens: TokenMetrics;
+      /**
+       * The harness-reported cost (USD) for this turn, when it reports one per
+       * turn. Most harnesses report cost only as a session total (or not at
+       * all), so this is usually absent.
+       */
+      cost?: number;
     }
   | {
       type: "gg";

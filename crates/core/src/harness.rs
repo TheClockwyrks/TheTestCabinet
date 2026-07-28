@@ -507,6 +507,16 @@ pub struct HarnessOutcome {
     /// gg run that ended before emitting one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gg_summary: Option<crate::gg::GgSessionSummary>,
+    /// How many times each tool was invoked over the session, keyed by lowercased
+    /// raw tool name — **including** tools that are recognized and consumed without
+    /// emitting an event (the todo tools). Accumulated by the
+    /// [event parser](crate::event::EventParser) as the stream is translated, and
+    /// recorded onto the run so a comparison can diagnose tool-call behavior that a
+    /// count derived from the event stream alone would miss. Empty for a gg run
+    /// (whose per-tool detail comes from its own telemetry) and for any harness
+    /// with no tool activity.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub tool_calls: std::collections::BTreeMap<String, u64>,
 }
 
 /// Reports whether a harness's CLI was installed and can be invoked.

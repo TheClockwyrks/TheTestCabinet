@@ -67,6 +67,7 @@ fn stored_run(id: &str, published_at: &str) -> StoredRun {
                 detail: None,
             },
             game_jam_readme: None,
+            tool_calls: Default::default(),
         },
         reviews: vec![StoredReview {
             reviewer: crate::db::Reviewer {

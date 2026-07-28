@@ -1840,6 +1840,15 @@
       "$ref": "#/$defs/RunSubject",
       "description": "What was run."
     },
+    "toolCalls": {
+      "additionalProperties": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "description": "How many times each tool the harness's agent invoked was called over the\nrun, keyed by lowercased raw tool name — **including** tools recognized and\nconsumed without emitting an event (the todo tools). Lifted from\n[`HarnessOutcome::tool_calls`](crate::harness::HarnessOutcome::tool_calls) so\na harness comparison can diagnose tool-call behavior (a re-reading or\nover-shelling harness shows here) that a count derived from the event stream\nalone would miss. Defaulted and omitted when\nempty so records written before the field existed still deserialize, and a\ngg run — whose per-tool detail comes from its own telemetry — carries none.",
+      "type": "object"
+    },
     "tooling": {
       "$ref": "#/$defs/RunTooling",
       "description": "Provenance for the Test Cabinet build that orchestrated the run."

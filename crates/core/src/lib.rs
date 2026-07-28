@@ -1301,6 +1301,9 @@ where
             // already built and asked for something distinct. `None` for every other
             // type, and for a jam run that shipped no README.
             game_jam_readme: read_game_jam_readme(test_case.test_type, &artifacts.repo_path),
+            // The per-tool invocation tally the parser accumulated over the run,
+            // including consumed todo tools, for comparison diagnostics.
+            tool_calls: outcome.tool_calls.clone(),
         };
 
         self.write_record(&record, &artifacts)?;
@@ -1502,6 +1505,9 @@ fn build_failed_record(
         },
         // A run that failed before producing a tree has no README to capture.
         game_jam_readme: None,
+        // A run that failed before (or without) a translated session recorded no
+        // tool activity.
+        tool_calls: std::collections::BTreeMap::new(),
     }
 }
 

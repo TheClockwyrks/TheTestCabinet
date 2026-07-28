@@ -420,6 +420,10 @@ pub(crate) async fn run_gg(
         // before it ended, lifted onto the run record so aggregate queries need not
         // re-parse the event stream. `None` if the run ended before emitting one.
         gg_summary,
+        // gg accounts its own per-tool activity through its telemetry (see
+        // `ggToolBreakdown`), not the third-party event parser, so the parser-side
+        // tally is empty for a gg run.
+        tool_calls: std::collections::BTreeMap::new(),
     })
 }
 

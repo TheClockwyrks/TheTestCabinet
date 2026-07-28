@@ -620,6 +620,9 @@ pub(crate) async fn drive_orchestrator(
         translated_events: streamed.translated_events,
         // A third-party harness session emits no gg session summary.
         gg_summary: None,
+        // The tool-call tally is accumulated across the whole (possibly
+        // multi-session) runner stream by the one parser that translated it.
+        tool_calls: streamed.tool_calls,
     })
 }
 

@@ -1,5 +1,7 @@
 //! Tests proving the run record serializes to the camelCase JSON contract.
 
+use std::collections::BTreeMap;
+
 use serde_json::{Value, json};
 
 use super::*;
@@ -93,6 +95,7 @@ fn sample_record() -> RunRecord {
             detail: None,
         },
         game_jam_readme: None,
+        tool_calls: BTreeMap::new(),
     }
 }
 
@@ -167,6 +170,24 @@ fn round_trips_through_json() {
     let json = serde_json::to_string(&record).expect("serialize");
     let parsed: RunRecord = serde_json::from_str(&json).expect("deserialize");
     assert_eq!(record, parsed);
+}
+
+#[test]
+fn tool_calls_round_trip_and_default_empty_for_older_records() {
+    // A populated tally serializes under `toolCalls` and round-trips.
+    let mut record = sample_record();
+    record.tool_calls = BTreeMap::from([("todowrite".to_string(), 53), ("read".to_string(), 12)]);
+    let value = serde_json::to_value(&record).expect("serialize");
+    assert_eq!(value["toolCalls"]["todowrite"], 53);
+    let parsed: RunRecord = serde_json::from_value(value).expect("deserialize");
+    assert_eq!(parsed.tool_calls, record.tool_calls);
+
+    // An empty tally is omitted from the wire, and a record written before the
+    // field existed still deserializes to an empty map.
+    let empty = serde_json::to_value(sample_record()).expect("serialize");
+    assert!(empty.get("toolCalls").is_none());
+    let parsed: RunRecord = serde_json::from_value(empty).expect("deserialize");
+    assert!(parsed.tool_calls.is_empty());
 }
 
 #[test]
