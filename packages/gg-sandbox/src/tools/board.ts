@@ -48,8 +48,11 @@ export function createEpic(epic: { id: string; title: string; description: strin
 /**
  * Create a self-contained, dispatchable issue and return the board budget. `inScope`, `outOfScope`
  * and `completionCriteria` are what a child agent is briefed from, so write them for a reader with
- * no other context. `blockedBy` defaults to none; `epicId` groups the issue under an existing epic.
- * Throws `conflict` on a duplicate id or a blocker edge that would close a cycle.
+ * no other context. `agent` names the agent gg dispatches the issue to and must be one you may
+ * spawn; `reviewers` names the agents that must approve the work, from that same set, and is
+ * required when this run's reviewers feature is on. `blockedBy` defaults to none; `epicId` groups
+ * the issue under an existing epic. Throws `invalid-argument` when `agent` or a reviewer is not
+ * yours to assign, and `conflict` on a duplicate id or a blocker edge that would close a cycle.
  */
 export function createIssue(issue: {
   id: string;
@@ -60,6 +63,8 @@ export function createIssue(issue: {
   completionCriteria: string;
   blockedBy?: string[];
   epicId?: string;
+  agent: string;
+  reviewers?: string[];
 }): BoardUsage {
   return call(() =>
     raw.createIssue({
@@ -71,6 +76,8 @@ export function createIssue(issue: {
       completionCriteria: issue.completionCriteria,
       blockedBy: list("createIssue", "blockedBy", issue.blockedBy),
       epicId: issue.epicId,
+      agent: issue.agent,
+      reviewers: list("createIssue", "reviewers", issue.reviewers),
     }),
   );
 }

@@ -20,6 +20,8 @@ fn issue(id: &str, status: GgIssueStatus) -> GgBoardIssue {
         status,
         blocked_by: Vec::new(),
         epic_id: None,
+        agent: String::new(),
+        reviewers: Vec::new(),
         assigned_agent_id: None,
         retries: 0,
     }

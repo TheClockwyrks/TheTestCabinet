@@ -669,6 +669,22 @@ export type GgBoardIssue = {
    */
   epicId?: string;
   /**
+   * The [agent profile](GgAgentConfig) the issue was **assigned to** when it was created —
+   * the profile gg dispatches it under. It is named on `create_issue` (not configured on the
+   * capability), and must be one the creating agent may
+   * [spawn](GgAgentConfig::subagents). Empty only on a board recorded before issues carried
+   * an assignee, which dispatches under the [Root](ROOT_AGENT).
+   */
+  agent: string;
+  /**
+   * The [agent profiles](GgAgentConfig) named as this issue's **reviewers** when it was
+   * created, drawn from the same [spawnable set](GgAgentConfig::subagents) as its
+   * [`agent`](Self::agent). Non-empty exactly when the capability's `reviewers` feature was
+   * on for the creating agent; a [Code Review](CAPABILITY_CODE_REVIEWS) of the issue is run
+   * by these profiles, each of which must approve.
+   */
+  reviewers?: Array<string>;
+  /**
    * The id of the agent gg [dispatched](https://docs.testcabinet.ai/gg/project-management/)
    * to implement this issue, when one is assigned (its status is then
    * [`InProgress`](GgIssueStatus::InProgress)) — the link the console follows from the issue

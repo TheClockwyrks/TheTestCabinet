@@ -2861,12 +2861,17 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
 // Epics & issues: ablation, and the board built through the loop
 // ---------------------------------------------------------------------------
 
-/// `minimal`, plus the (opt-in) project-management capability enabled.
+/// `minimal`, plus the (opt-in) project-management capability enabled. The Root lists itself as a
+/// subagent because an issue is filed *assigned* to a profile from that list.
 fn minimal_with_epics_issues(model: &str) -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal(model);
     set.agents[0]
         .capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT));
+    set.agents[0].subagents.push(GgSubagentRef {
+        agent: ROOT_AGENT.to_string(),
+        description: String::new(),
+    });
     set
 }
 
@@ -4070,6 +4075,46 @@ fn validate_agents_enforces_the_profile_invariants() {
         ..GgCapabilitySet::default()
     };
     assert!(validate_agents(&dangling).unwrap_err().contains("ghost"));
+}
+
+/// An agent that may **file issues** must have someone to assign them to: an issue names its
+/// assignee from the filer's own spawnable set, so a project-management agent with an empty
+/// allowlist could never write a valid `create_issue` call. Withholding the tool — read-only board
+/// access — is the supported way to have one, and it is accepted.
+#[test]
+fn an_issue_filer_needs_someone_to_assign_to() {
+    let board_agent = |disabled: &[&str], subagents: Vec<GgSubagentRef>| {
+        let mut root = GgAgentConfig {
+            model_id: "mock/a".to_string(),
+            disabled_tools: disabled.iter().map(|t| t.to_string()).collect(),
+            subagents,
+            ..GgAgentConfig::root()
+        };
+        root.capabilities
+            .push(GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT));
+        GgCapabilitySet {
+            agents: vec![root],
+            ..GgCapabilitySet::default()
+        }
+    };
+
+    let err = validate_agents(&board_agent(&[], Vec::new())).unwrap_err();
+    assert!(err.contains("no subagents"), "unexpected reason: {err}");
+
+    // Read-only board access (no `create_issue`) is fine with no subagents at all.
+    assert!(validate_agents(&board_agent(&["create_issue"], Vec::new())).is_ok());
+
+    // And so is an issue filer that can spawn something.
+    assert!(
+        validate_agents(&board_agent(
+            &[],
+            vec![GgSubagentRef {
+                agent: ROOT_AGENT.to_string(),
+                description: String::new(),
+            }],
+        ))
+        .is_ok()
+    );
 }
 
 /// Per-slot accounting keys on `(slot, model)`: usage on the same slot/model accumulates, a
@@ -5616,6 +5661,7 @@ fn code_review_primary_producer(
                         "outOfScope": "Unrelated changes.",
                         "completionCriteria": "The widget is fully implemented.",
                         "epicId": "e1",
+                        "agent": ROOT_AGENT,
                     }),
                 ),
                 stop_response(),
@@ -5716,6 +5762,10 @@ fn last_issue_status(
 
 /// A project-management capability set (a global board with auto-dispatch), optionally with a
 /// `maxRetries` override.
+///
+/// An issue names the profile it is dispatched under, drawn from the filer's own spawnable set, so
+/// the Root lists **itself** — the smallest configuration that can both file an issue and have one
+/// worked. (A set that let an agent file issues with nobody to assign them to is refused at launch.)
 fn project_set(max_retries: Option<u64>) -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal("mock/primary");
     let mut cap = GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT);
@@ -5723,10 +5773,14 @@ fn project_set(max_retries: Option<u64>) -> GgCapabilitySet {
         cap.params = json!({ "maxRetries": retries });
     }
     set.agents[0].capabilities.push(cap);
+    set.agents[0].subagents.push(GgSubagentRef {
+        agent: ROOT_AGENT.to_string(),
+        description: String::new(),
+    });
     set
 }
 
-/// A well-formed `create_issue` call for `id`.
+/// A well-formed `create_issue` call for `id`, assigned to the Root.
 fn create_issue_call(id: &str) -> ModelResponse {
     tool_call_response(
         "issue",
@@ -5737,6 +5791,7 @@ fn create_issue_call(id: &str) -> ModelResponse {
             "inScope": "Implement the widget.",
             "outOfScope": "Nothing else.",
             "completionCriteria": "The widget works.",
+            "agent": ROOT_AGENT,
         }),
     )
 }
@@ -5927,7 +5982,7 @@ async fn a_code_program_waits_for_an_issue_after_it_ends() {
                 code_reply(
                     "project.createIssue({ id: \"feat-1\", title: \"Add the widget\", \
                      inScope: \"Implement the widget.\", outOfScope: \"Nothing else.\", \
-                     completionCriteria: \"The widget works.\" });\n\
+                     completionCriteria: \"The widget works.\", agent: \"Root\" });\n\
                      project.waitForIssue(\"feat-1\");",
                 ),
                 code_reply(FINISHING_PROGRAM),
@@ -6122,6 +6177,99 @@ async fn completing_an_issue_triggers_a_code_review_and_accepts_on_approval() {
     ));
 }
 
+/// **An issue's own reviewers run its Code Review, and every one of them must approve.** With the
+/// reviewers feature on, `create_issue` names the profiles that will review the work; the review
+/// then dispatches each of them for a round instead of the run-level `reviewerAgent`, and the issue
+/// is accepted only when the last of them approves.
+#[tokio::test]
+async fn an_issues_own_reviewers_review_it_and_all_must_approve() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-cr-reviewers".to_string()), Box::new(sink.clone()));
+
+    // Two reviewer profiles beside the run-level `reviewer`, all spawnable by the Root, and the
+    // reviewers feature on so the issue has to name who reviews it. The run-level `reviewerAgent`
+    // still points at `reviewer`: the issue's own list is what must win.
+    let mut set = code_review_set(&["reviewer", "critic", "auditor"]);
+    for cap in &mut set.agents[0].capabilities {
+        if cap.id == CAPABILITY_PROJECT_MANAGEMENT {
+            cap.params = json!({ "reviewers": true });
+        }
+    }
+    let inv = invocation(dir.path(), set);
+
+    let primary_counter = Arc::new(AtomicUsize::new(0));
+    let factory = ScriptedFactory::new()
+        .slot(ROOT_AGENT, move |b| {
+            let n = primary_counter.fetch_add(1, Ordering::SeqCst);
+            let responses = if n == 0 {
+                vec![
+                    tool_call_response(
+                        "issue",
+                        "create_issue",
+                        json!({
+                            "id": REVIEW_ISSUE_ID,
+                            "title": "Add the widget",
+                            "inScope": "Implement the widget.",
+                            "outOfScope": "Unrelated changes.",
+                            "completionCriteria": "The widget is fully implemented.",
+                            "agent": ROOT_AGENT,
+                            "reviewers": ["critic", "auditor"],
+                        }),
+                    ),
+                    stop_response(),
+                ]
+            } else {
+                vec![
+                    tool_call_response(
+                        "write",
+                        "write_file",
+                        json!({ "path": format!("work-{n}.txt"), "contents": "work\n" }),
+                    ),
+                    tool_call_response(
+                        "complete",
+                        "complete_issue",
+                        json!({ "id": REVIEW_ISSUE_ID }),
+                    ),
+                    stop_response(),
+                ]
+            };
+            Box::new(MockClient::new(&b.model_id, responses))
+        })
+        .slot("critic", |b| {
+            Box::new(reviewer_verdict_mock(&b.model_id, true))
+        })
+        .slot("auditor", |b| {
+            Box::new(reviewer_verdict_mock(&b.model_id, true))
+        });
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran
+    );
+
+    let events = sink.events();
+    let spawns = agent_spawns(&events);
+    // Both declared reviewers ran, and the run-level `reviewer` profile — which the issue did not
+    // name — did not.
+    for slot in ["critic", "auditor"] {
+        assert!(
+            spawns.iter().any(|(_, _, s, _, _)| s == slot),
+            "the issue's `{slot}` reviewer was dispatched"
+        );
+    }
+    assert!(
+        !spawns.iter().any(|(_, _, s, _, _)| s == "reviewer"),
+        "the run-level reviewerAgent is not used when the issue names its own reviewers"
+    );
+    // Both approved, so the issue was accepted after one round with no fix agent.
+    assert_eq!(
+        last_issue_status(&events, REVIEW_ISSUE_ID),
+        Some(GgIssueStatus::Done),
+        "the issue is accepted once every declared reviewer approves"
+    );
+}
+
 /// The fix → re-review loop has **no cycle limit**: it runs as many rounds as the reviewer keeps
 /// requesting changes and terminates only on approval. Scripted with approve-after-3: three
 /// changes-requested rounds, three fix agents, then approval accepts the issue.
@@ -6213,6 +6361,11 @@ async fn code_review_off_completes_the_issue_directly() {
     set.agents[0]
         .capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT));
+    // An issue is filed assigned to a profile the filer may spawn, so the Root lists itself.
+    set.agents[0].subagents.push(GgSubagentRef {
+        agent: ROOT_AGENT.to_string(),
+        description: String::new(),
+    });
     let inv = invocation(dir.path(), set);
 
     // The root files an issue (which auto-dispatches an agent to implement it); that dispatched
@@ -6237,6 +6390,7 @@ async fn code_review_off_completes_the_issue_directly() {
                         "inScope": "Implement the widget.",
                         "outOfScope": "Unrelated changes.",
                         "completionCriteria": "The widget is fully implemented.",
+                        "agent": ROOT_AGENT,
                     }),
                 ),
                 stop_response(),
@@ -6313,6 +6467,11 @@ fn code_review_e2e_set() -> GgCapabilitySet {
     root.capabilities.push(GgCapabilityConfig {
         params: json!({ "reviewerAgent": "reviewer" }),
         ..GgCapabilityConfig::enabled(CAPABILITY_CODE_REVIEWS)
+    });
+    // The scripted issue is filed assigned to the Root, which therefore has to list itself.
+    root.subagents.push(GgSubagentRef {
+        agent: ROOT_AGENT.to_string(),
+        description: String::new(),
     });
     let reviewer = GgAgentConfig {
         name: "reviewer".to_string(),

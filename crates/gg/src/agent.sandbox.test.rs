@@ -1392,8 +1392,8 @@ async fn a_code_mode_reviewer_verdict_parses() {
                         "project.createEpic({{ id: \"e1\", title: \"Build\", description: \"the build\" \
                          }});\nproject.createIssue({{ id: \"{REVIEW_ISSUE_ID}\", title: \"Add the widget\", \
                          inScope: \"Implement the widget.\", outOfScope: \"Unrelated changes.\", \
-                         completionCriteria: \"The widget is fully implemented.\", epicId: \"e1\" \
-                         }});"
+                         completionCriteria: \"The widget is fully implemented.\", epicId: \"e1\", \
+                         agent: \"{ROOT_AGENT}\" }});"
                     )),
                     code_reply(FINISHING_PROGRAM),
                 ]

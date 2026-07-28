@@ -18,12 +18,43 @@ fn add_epic(store: &mut BoardStore, id: &str) {
         .expect("create epic");
 }
 
+/// The agent profile the board tests assign every issue to. The store only requires an assignee to
+/// be *named* — whether the filing agent may assign to it is the tool's check, not the store's — so
+/// one stand-in name serves every case here.
+const ASSIGNEE: &str = "worker";
+
+/// A [`NewIssue`] from the fields the store tests vary, assigned to [`ASSIGNEE`] with no reviewers.
+#[allow(clippy::too_many_arguments)]
+fn new_issue<'a>(
+    id: &'a str,
+    title: &'a str,
+    description: Option<&'a str>,
+    in_scope: &'a str,
+    out_of_scope: &'a str,
+    completion_criteria: &'a str,
+    blocked_by: &'a [String],
+    epic_id: Option<&'a str>,
+) -> NewIssue<'a> {
+    NewIssue {
+        id,
+        title,
+        description,
+        in_scope,
+        out_of_scope,
+        completion_criteria,
+        blocked_by,
+        epic_id,
+        agent: ASSIGNEE,
+        reviewers: &[],
+    }
+}
+
 /// Create a minimal-but-complete issue (all required structured fields present), with the given
 /// blockers and no epic.
 fn add_issue(store: &mut BoardStore, id: &str, blocked_by: &[&str]) {
     let blockers: Vec<String> = blocked_by.iter().map(|s| s.to_string()).collect();
     store
-        .create_issue(
+        .create_issue(new_issue(
             id,
             id,
             None,
@@ -32,7 +63,7 @@ fn add_issue(store: &mut BoardStore, id: &str, blocked_by: &[&str]) {
             "done when x",
             &blockers,
             None,
-        )
+        ))
         .expect("create issue");
 }
 
@@ -84,7 +115,7 @@ fn create_issue_captures_every_structured_section() {
     let mut store = store();
     add_epic(&mut store, "core");
     store
-        .create_issue(
+        .create_issue(new_issue(
             "render",
             "Render loop",
             Some("draws the frame"),
@@ -93,7 +124,7 @@ fn create_issue_captures_every_structured_section() {
             "the player and goal are visible at 60fps",
             &[],
             Some("core"),
-        )
+        ))
         .unwrap();
     let issue = &store.issues()[0];
     assert_eq!(issue.title(), "Render loop");
@@ -106,6 +137,54 @@ fn create_issue_captures_every_structured_section() {
     );
     assert_eq!(issue.status(), IssueStatus::Open);
     assert_eq!(issue.epic_id(), Some("core"));
+    assert_eq!(issue.agent(), ASSIGNEE);
+    assert!(issue.reviewers().is_empty());
+}
+
+#[test]
+fn create_issue_records_its_assignee_and_deduplicated_reviewers() {
+    let mut store = store();
+    store
+        .create_issue(NewIssue {
+            agent: "implementer",
+            reviewers: &[
+                "critic".to_string(),
+                // A trimmed duplicate is one reviewer, not two.
+                " critic ".to_string(),
+                "auditor".to_string(),
+            ],
+            ..new_issue("render", "Render", None, "in", "out", "done", &[], None)
+        })
+        .unwrap();
+    let issue = &store.issues()[0];
+    assert_eq!(issue.agent(), "implementer");
+    assert_eq!(
+        issue.reviewers(),
+        ["critic".to_string(), "auditor".to_string()]
+    );
+    assert_eq!(store.issue_agent("render"), Some("implementer"));
+    assert_eq!(store.issue_reviewers("render").unwrap().len(), 2);
+}
+
+#[test]
+fn create_issue_requires_an_assignee_and_refuses_a_blank_reviewer() {
+    let mut store = store();
+    // An issue with nobody to dispatch it to is refused — the assignee is what auto-dispatch runs.
+    assert_eq!(
+        store.create_issue(NewIssue {
+            agent: "  ",
+            ..new_issue("i", "t", None, "in", "out", "done", &[], None)
+        }),
+        Err(BoardError::EmptyField("agent"))
+    );
+    assert_eq!(
+        store.create_issue(NewIssue {
+            reviewers: &[String::new()],
+            ..new_issue("i", "t", None, "in", "out", "done", &[], None)
+        }),
+        Err(BoardError::EmptyField("reviewers"))
+    );
+    assert_eq!(store.issue_count(), 0, "no partial issue was stored");
 }
 
 #[test]
@@ -113,19 +192,19 @@ fn create_issue_requires_the_dispatch_fields() {
     let mut store = store();
     // Missing title / inScope / outOfScope / completionCriteria are each refused, by name.
     assert_eq!(
-        store.create_issue("i", "  ", None, "in", "out", "done", &[], None),
+        store.create_issue(new_issue("i", "  ", None, "in", "out", "done", &[], None)),
         Err(BoardError::EmptyField("title"))
     );
     assert_eq!(
-        store.create_issue("i", "t", None, "  ", "out", "done", &[], None),
+        store.create_issue(new_issue("i", "t", None, "  ", "out", "done", &[], None)),
         Err(BoardError::EmptyField("inScope"))
     );
     assert_eq!(
-        store.create_issue("i", "t", None, "in", "  ", "done", &[], None),
+        store.create_issue(new_issue("i", "t", None, "in", "  ", "done", &[], None)),
         Err(BoardError::EmptyField("outOfScope"))
     );
     assert_eq!(
-        store.create_issue("i", "t", None, "in", "out", "  ", &[], None),
+        store.create_issue(new_issue("i", "t", None, "in", "out", "  ", &[], None)),
         Err(BoardError::EmptyField("completionCriteria"))
     );
     assert_eq!(store.issue_count(), 0, "no partial issue was stored");
@@ -136,11 +215,29 @@ fn create_issue_rejects_a_duplicate_and_an_unknown_epic() {
     let mut store = store();
     add_issue(&mut store, "a", &[]);
     assert_eq!(
-        store.create_issue("a", "again", None, "in", "out", "done", &[], None),
+        store.create_issue(new_issue(
+            "a",
+            "again",
+            None,
+            "in",
+            "out",
+            "done",
+            &[],
+            None
+        )),
         Err(BoardError::DuplicateIssue("a".to_string()))
     );
     assert_eq!(
-        store.create_issue("b", "t", None, "in", "out", "done", &[], Some("ghost")),
+        store.create_issue(new_issue(
+            "b",
+            "t",
+            None,
+            "in",
+            "out",
+            "done",
+            &[],
+            Some("ghost")
+        )),
         Err(BoardError::UnknownEpic("ghost".to_string()))
     );
     assert_eq!(issue_ids(&store), vec!["a"]);
@@ -312,7 +409,16 @@ fn remove_epic_ungroups_its_issues() {
     let mut store = store();
     add_epic(&mut store, "core");
     store
-        .create_issue("a", "a", None, "in", "out", "done", &[], Some("core"))
+        .create_issue(new_issue(
+            "a",
+            "a",
+            None,
+            "in",
+            "out",
+            "done",
+            &[],
+            Some("core"),
+        ))
         .unwrap();
     store.remove_epic("core").unwrap();
     assert_eq!(store.epic_count(), 0);
@@ -345,7 +451,7 @@ fn count_caps_are_enforced_per_kind() {
     );
     add_issue(&mut store, "i1", &[]);
     assert_eq!(
-        store.create_issue("i2", "t", None, "in", "out", "done", &[], None),
+        store.create_issue(new_issue("i2", "t", None, "in", "out", "done", &[], None)),
         Err(BoardError::CountCap {
             kind: "issue",
             cap: 1
@@ -362,7 +468,7 @@ fn state_event_reports_the_whole_board() {
     let mut store = store();
     add_epic(&mut store, "core");
     store
-        .create_issue(
+        .create_issue(new_issue(
             "render",
             "Render",
             None,
@@ -371,10 +477,10 @@ fn state_event_reports_the_whole_board() {
             "visible",
             &[],
             Some("core"),
-        )
+        ))
         .unwrap();
     store
-        .create_issue(
+        .create_issue(new_issue(
             "input",
             "Input",
             None,
@@ -383,7 +489,7 @@ fn state_event_reports_the_whole_board() {
             "moves",
             &["render".to_string()],
             None,
-        )
+        ))
         .unwrap();
     match store.state_event() {
         GgTelemetryKind::BoardState { epics, issues } => {
@@ -467,7 +573,7 @@ fn enabled_runtime_offers_caps_and_state() {
         .store()
         .lock()
         .unwrap()
-        .create_issue("a", "a", None, "in", "out", "done", &[], None)
+        .create_issue(new_issue("a", "a", None, "in", "out", "done", &[], None))
         .unwrap();
     assert_eq!(runtime.issue_count(), 1);
     assert!(runtime.context_block().is_some());

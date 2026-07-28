@@ -222,6 +222,8 @@ impl<A: ToolApi> BoardHost for MembraneState<A> {
             completion_criteria,
             blocked_by,
             epic_id,
+            agent,
+            reviewers,
         } = issue;
         let outcome = self.call(CREATE_ISSUE_TOOL, |api| {
             api.create_issue(
@@ -233,6 +235,8 @@ impl<A: ToolApi> BoardHost for MembraneState<A> {
                 completion_criteria,
                 blocked_by,
                 epic_id,
+                agent,
+                reviewers,
             )
         })?;
         board_usage(self, CREATE_ISSUE_TOOL, outcome.data)

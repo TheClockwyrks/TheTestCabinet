@@ -698,6 +698,10 @@ pub(super) struct CodeTurn<'a> {
     pub(super) shell_offload: &'a OffloadPolicy,
     /// The epic/issue board, for its state event and for the Code Review gate.
     pub(super) board: &'a BoardRuntime,
+    /// This agent's own rules on filing an issue — who it may assign one to, and whether it must
+    /// name reviewers. The native path carries these on the registry's `create_issue`; a code turn
+    /// rebuilds that tool per call, so it is handed them here.
+    pub(super) issue_policy: &'a IssuePolicy,
     /// The [project-management](crate::board) context, when the capability is on — for the
     /// auto-dispatch pump after a board mutation and for `wait_for_issue`. `None` when off.
     pub(super) project: Option<&'a ProjectContext>,
@@ -843,6 +847,7 @@ async fn run_code_program(
         read_policy: turn.read_policy,
         shell_offload: turn.shell_offload.clone(),
         board: turn.board.clone(),
+        issue_policy: turn.issue_policy.clone(),
         project: turn.project.cloned(),
         memories_rt: turn.memories.clone(),
         tasks_rt: turn.tasks.clone(),
@@ -1020,6 +1025,9 @@ pub(super) struct LoopToolApi {
     read_policy: ReadPolicy,
     shell_offload: OffloadPolicy,
     board: BoardRuntime,
+    /// The filing rules this agent's `create_issue` calls are checked against — see
+    /// [`CodeTurn::issue_policy`].
+    issue_policy: IssuePolicy,
     project: Option<ProjectContext>,
     memories_rt: MemoriesRuntime,
     tasks_rt: TasksRuntime,
@@ -1553,12 +1561,14 @@ impl ToolApi for LoopToolApi {
         completion_criteria: String,
         blocked_by: Vec<String>,
         epic_id: Option<String>,
+        agent: String,
+        reviewers: Vec<String>,
     ) -> ToolOutcome {
         self.serviced(
             "create_issue",
-            json!({ "id": id, "title": title, "description": description, "inScope": in_scope, "outOfScope": out_of_scope, "completionCriteria": completion_criteria, "blockedBy": blocked_by, "epicId": epic_id }),
+            json!({ "id": id, "title": title, "description": description, "inScope": in_scope, "outOfScope": out_of_scope, "completionCriteria": completion_criteria, "blockedBy": blocked_by, "epicId": epic_id, "agent": agent, "reviewers": reviewers }),
             |api| {
-                CreateIssueTool::new(api.board.store()).create_issue(
+                CreateIssueTool::new(api.board.store(), api.issue_policy.clone()).create_issue(
                     id.clone(),
                     title.clone(),
                     description.clone(),
@@ -1567,6 +1577,8 @@ impl ToolApi for LoopToolApi {
                     completion_criteria.clone(),
                     blocked_by.clone(),
                     epic_id.clone(),
+                    agent.clone(),
+                    reviewers.clone(),
                 )
             },
         )

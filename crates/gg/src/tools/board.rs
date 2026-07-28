@@ -24,7 +24,9 @@ use super::{
     ArgumentError, BoardUsageData, CompletionData, Tool, ToolContext, ToolData, ToolFailure,
     ToolOutcome, invalid_argument, optional_str, required_str, saturating_u32,
 };
-use crate::board::{BoardChange, BoardError, BoardStore, IssueStatus, IssueUpdate};
+use crate::board::{
+    BoardChange, BoardError, BoardStore, IssuePolicy, IssueStatus, IssueUpdate, NewIssue,
+};
 use crate::model::ToolDefinition;
 
 /// The `create_epic` tool name.
@@ -105,19 +107,21 @@ fn failure_for(err: &BoardError) -> ToolFailure {
     }
 }
 
-/// A list-of-issue-ids argument. When `required`, an absent key is an error; otherwise it yields
-/// an empty list. Every entry must be a string.
-fn id_array(
+/// A list-of-names argument, `noun` naming what one entry is (`"issue id"`, `"agent name"`) so a
+/// refusal reads as the field's own contract. When `required`, an absent key is an error;
+/// otherwise it yields an empty list. Every entry must be a string.
+fn name_array(
     args: &Value,
     field: &str,
     tool: &str,
+    noun: &str,
     required: bool,
 ) -> Result<Vec<String>, ArgumentError> {
     match args.get(field) {
         None | Some(Value::Null) => {
             if required {
                 Err(ArgumentError(format!(
-                    "`{tool}`: missing required argument `{field}` (a list of issue ids; pass \
+                    "`{tool}`: missing required argument `{field}` (a list of {noun}s; pass \
                      `[]` to clear)"
                 )))
             } else {
@@ -129,12 +133,12 @@ fn id_array(
             .map(|item| match item {
                 Value::String(id) => Ok(id.clone()),
                 _ => Err(ArgumentError(format!(
-                    "`{tool}`: every entry in `{field}` must be an issue id string"
+                    "`{tool}`: every entry in `{field}` must be a {noun} string"
                 ))),
             })
             .collect(),
         Some(_) => Err(ArgumentError(format!(
-            "`{tool}`: argument `{field}` must be an array of issue ids"
+            "`{tool}`: argument `{field}` must be an array of {noun}s"
         ))),
     }
 }
@@ -226,15 +230,50 @@ impl CreateEpicTool {
 // create_issue
 // ---------------------------------------------------------------------------
 
-/// Creates a structured, dispatchable issue.
+/// Creates a structured, dispatchable issue, assigned to one of the filing agent's own
+/// [assignable profiles](IssuePolicy).
 pub struct CreateIssueTool {
     store: Arc<Mutex<BoardStore>>,
+    /// The filing agent's own rules: who it may assign to, and whether reviewers are demanded.
+    /// Per agent, so it is bound onto the tool rather than read off the shared store.
+    policy: IssuePolicy,
 }
 
 impl CreateIssueTool {
-    /// A tool creating issues in `store`.
-    pub fn new(store: Arc<Mutex<BoardStore>>) -> Self {
-        Self { store }
+    /// A tool creating issues in `store` under the filing agent's `policy`.
+    pub fn new(store: Arc<Mutex<BoardStore>>, policy: IssuePolicy) -> Self {
+        Self { store, policy }
+    }
+
+    /// The `agent`/`reviewers` half of the tool's description — the profiles this agent may
+    /// assign to, and whether naming reviewers is required or refused.
+    fn assignment_guidance(&self) -> String {
+        let assignable = self.policy.assignable_list();
+        let reviewers = if self.policy.require_reviewers {
+            " You must also name one or more `reviewers` from that same list; each of them has to \
+             approve the work before the issue can be accepted."
+        } else {
+            ""
+        };
+        format!(
+            " Name in `agent` the agent gg should dispatch this issue to; you may assign to: \
+             {assignable}.{reviewers}"
+        )
+    }
+
+    /// Refuse a profile this agent may not assign work to, naming the ones it may.
+    fn check_assignable(&self, field: &str, name: &str) -> Option<ToolOutcome> {
+        if self.policy.allows(name.trim()) {
+            return None;
+        }
+        Some(ToolOutcome::failed(
+            ToolFailure::InvalidArgument,
+            format!(
+                "create_issue: `{field}` names `{name}`, which is not an agent you may assign \
+                 work to. You may assign to: {}.",
+                self.policy.assignable_list()
+            ),
+        ))
     }
 }
 
@@ -245,14 +284,29 @@ impl Tool for CreateIssueTool {
     }
 
     fn definition(&self) -> ToolDefinition {
+        let mut required = vec![
+            "id",
+            "title",
+            "inScope",
+            "outOfScope",
+            "completionCriteria",
+            "agent",
+        ];
+        if self.policy.require_reviewers {
+            required.push("reviewers");
+        }
         ToolDefinition::new(
             CREATE_ISSUE_TOOL,
-            "Create an issue — a heavyweight, self-contained unit of work. Provide a unique \
-             `id`, a `title`, and the structured sections that make it safe to hand off: \
-             `inScope` (what this issue is responsible for), `outOfScope` (what it is not), and \
-             `completionCriteria` (how it will be judged done). Optionally add a `description` \
-             overview, a `blockedBy` list of issue ids that must finish first (a cycle is \
-             refused — issues form a DAG), and an `epicId` to group it under an epic.",
+            format!(
+                "Create an issue — a heavyweight, self-contained unit of work. Provide a unique \
+                 `id`, a `title`, and the structured sections that make it safe to hand off: \
+                 `inScope` (what this issue is responsible for), `outOfScope` (what it is not), \
+                 and `completionCriteria` (how it will be judged done). Optionally add a \
+                 `description` overview, a `blockedBy` list of issue ids that must finish first \
+                 (a cycle is refused — issues form a DAG), and an `epicId` to group it under an \
+                 epic.{}",
+                self.assignment_guidance()
+            ),
             json!({
                 "type": "object",
                 "properties": {
@@ -282,9 +336,19 @@ impl Tool for CreateIssueTool {
                     "epicId": {
                         "type": "string",
                         "description": "Optional id of the epic to group this issue under."
+                    },
+                    "agent": {
+                        "type": "string",
+                        "enum": self.policy.assignable,
+                        "description": "The agent to dispatch this issue to."
+                    },
+                    "reviewers": {
+                        "type": "array",
+                        "items": { "type": "string", "enum": self.policy.assignable },
+                        "description": "The agents that must approve this issue's work."
                     }
                 },
-                "required": ["id", "title", "inScope", "outOfScope", "completionCriteria"],
+                "required": required,
                 "additionalProperties": false
             }),
         )
@@ -312,6 +376,10 @@ impl Tool for CreateIssueTool {
             Ok(v) => v,
             Err(error) => return error.into(),
         };
+        let agent = match required_str(&args, "agent", CREATE_ISSUE_TOOL) {
+            Ok(v) => v,
+            Err(error) => return error.into(),
+        };
         let description = match optional_str(&args, "description", CREATE_ISSUE_TOOL) {
             Ok(v) => v,
             Err(error) => return error.into(),
@@ -320,7 +388,13 @@ impl Tool for CreateIssueTool {
             Ok(v) => v,
             Err(error) => return error.into(),
         };
-        let blocked_by = match id_array(&args, "blockedBy", CREATE_ISSUE_TOOL, false) {
+        let blocked_by = match name_array(&args, "blockedBy", CREATE_ISSUE_TOOL, "issue id", false)
+        {
+            Ok(v) => v,
+            Err(error) => return error.into(),
+        };
+        let reviewers = match name_array(&args, "reviewers", CREATE_ISSUE_TOOL, "agent name", false)
+        {
             Ok(v) => v,
             Err(error) => return error.into(),
         };
@@ -333,6 +407,8 @@ impl Tool for CreateIssueTool {
             completion_criteria,
             blocked_by,
             epic_id,
+            agent,
+            reviewers,
         )
     }
 }
@@ -340,6 +416,10 @@ impl Tool for CreateIssueTool {
 impl CreateIssueTool {
     /// Create an issue — the **standard, typed** `create_issue` API function both the JSON
     /// [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach.
+    ///
+    /// The assignment rules are enforced here, before the store is touched: `agent` and every
+    /// reviewer must be a profile this agent may [assign to](IssuePolicy::allows), and a
+    /// [reviewers-required](IssuePolicy::require_reviewers) agent must name at least one.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn create_issue(
         &self,
@@ -351,20 +431,45 @@ impl CreateIssueTool {
         completion_criteria: String,
         blocked_by: Vec<String>,
         epic_id: Option<String>,
+        agent: String,
+        reviewers: Vec<String>,
     ) -> ToolOutcome {
+        if let Some(refusal) = self.check_assignable("agent", &agent) {
+            return refusal;
+        }
+        if self.policy.require_reviewers && reviewers.iter().all(|r| r.trim().is_empty()) {
+            return ToolOutcome::failed(
+                ToolFailure::InvalidArgument,
+                format!(
+                    "create_issue: this run requires every issue to name at least one reviewer in \
+                     `reviewers`. You may assign to: {}.",
+                    self.policy.assignable_list()
+                ),
+            );
+        }
+        for reviewer in &reviewers {
+            if let Some(refusal) = self.check_assignable("reviewers", reviewer) {
+                return refusal;
+            }
+        }
         let mut store = self.store.lock().expect("board store lock");
-        match store.create_issue(
-            &id,
-            &title,
-            description.as_deref(),
-            &in_scope,
-            &out_of_scope,
-            &completion_criteria,
-            &blocked_by,
-            epic_id.as_deref(),
-        ) {
+        match store.create_issue(NewIssue {
+            id: &id,
+            title: &title,
+            description: description.as_deref(),
+            in_scope: &in_scope,
+            out_of_scope: &out_of_scope,
+            completion_criteria: &completion_criteria,
+            blocked_by: &blocked_by,
+            epic_id: epic_id.as_deref(),
+            agent: &agent,
+            reviewers: &reviewers,
+        }) {
             Ok(BoardChange::IssueCreated) => ToolOutcome::ok(
-                format!("Created issue `{id}`. {}", usage_note(&store)),
+                format!(
+                    "Created issue `{id}`, assigned to `{agent}`. {}",
+                    usage_note(&store)
+                ),
                 format!("created issue `{id}`"),
             )
             .with_data(usage_data(&store)),
@@ -581,7 +686,13 @@ impl Tool for SetIssueBlockedByTool {
             Ok(v) => v,
             Err(error) => return error.into(),
         };
-        let blocked_by = match id_array(&args, "blockedBy", SET_ISSUE_BLOCKED_BY_TOOL, true) {
+        let blocked_by = match name_array(
+            &args,
+            "blockedBy",
+            SET_ISSUE_BLOCKED_BY_TOOL,
+            "issue id",
+            true,
+        ) {
             Ok(v) => v,
             Err(error) => return error.into(),
         };

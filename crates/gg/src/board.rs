@@ -9,7 +9,10 @@
 //! [`Issue`] carries structured sections — a title, an optional description, and the three that
 //! make it dispatchable: **in-scope**, **out-of-scope**, and **completion criteria** — that
 //! tell the agent gg assigns it exactly what it is and is not responsible for and how it will be
-//! judged done. Related issues are grouped under an [`Epic`] for organization.
+//! judged done. It also names the [agent profile](Issue::agent) gg dispatches it under and,
+//! under the [reviewers](IssuePolicy::require_reviewers) feature, the
+//! [profiles](Issue::reviewers) that must approve it. Related issues are grouped under an
+//! [`Epic`] for organization.
 //!
 //! Any agent may build and revise the board — `create_epic`/`create_issue` to add,
 //! `update_issue` to revise an issue's fields or status, `set_issue_blocked_by` to declare the
@@ -33,7 +36,8 @@
 //! Submitting an issue **enqueues** it. gg — not the agent — dispatches the work: the
 //! [orchestrator](crate::agent) watches the board, and once every issue an [`Issue`] is blocked
 //! by is [`Done`](IssueStatus::Done), it [assigns](BoardStore::assign_issue) a freshly spawned
-//! **top-level agent** to implement it (its structured fields become that agent's brief), moving
+//! **top-level agent** to implement it (its structured fields become that agent's brief, and its
+//! [`agent`](Issue::agent) the profile that agent runs under), moving
 //! the issue to [`InProgress`](IssueStatus::InProgress). An assigned agent that finishes without
 //! completing its issue is re-dispatched up to [`max_retries`](BoardCaps::max_retries) times
 //! (default 1); once those are exhausted the issue is marked [`Failed`](IssueStatus::Failed) — a
@@ -45,6 +49,9 @@
 //! # Shapes
 //!
 //! - [`Epic`] / [`Issue`] — the board's nodes.
+//! - [`NewIssue`] — the fields [`create_issue`](BoardStore::create_issue) takes.
+//! - [`IssuePolicy`] — the **per-agent** rules on filing one: which profiles that agent may
+//!   assign an issue (or a review of it) to, and whether reviewers are required at all.
 //! - [`BoardStore`] — the mutable, invariant-enforcing, cycle-rejecting owner of the board,
 //!   shared (`Arc<Mutex>`) across the whole run — one board, held by the orchestrator and handed
 //!   to every agent's [board tools](crate::tools).
@@ -61,7 +68,10 @@ use std::fmt;
 use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
-use test_cabinet_core::gg::{GgBoardEpic, GgBoardIssue, GgIssueStatus, GgTelemetryKind};
+use test_cabinet_core::gg::{
+    CAPABILITY_PROJECT_MANAGEMENT, GgAgentConfig, GgBoardEpic, GgBoardIssue, GgIssueStatus,
+    GgTelemetryKind,
+};
 
 use crate::dag::{self, DagNode};
 use crate::model::Message;
@@ -71,9 +81,9 @@ use crate::prompts::{self, BoardBlockContext, EpicItemView, IssueItemView};
 pub const DEFAULT_MAX_EPICS: usize = 50;
 
 /// Default ceiling on the number of issues the board may hold at once. Generous — the board is
-/// the run's decomposition of a large build — but bounded so a runaway loop cannot fill the
-/// window with issues.
-pub const DEFAULT_MAX_ISSUES: usize = 200;
+/// the run's decomposition of a large build, and a long run legitimately files thousands of
+/// issues against it — but bounded so a runaway loop cannot fill the window with issues.
+pub const DEFAULT_MAX_ISSUES: usize = 2000;
 
 /// Default number of times gg re-dispatches an issue whose assigned agent finished without
 /// completing it before giving up and marking it [`Failed`](IssueStatus::Failed). One retry (so
@@ -89,6 +99,11 @@ const PARAM_MAX_ISSUES: &str = "maxIssues";
 
 /// The project-management capability param naming the [retry ceiling](BoardCaps::max_retries).
 const PARAM_MAX_RETRIES: &str = "maxRetries";
+
+/// The project-management capability param switching the **reviewers** feature on: when true,
+/// this agent cannot file an issue without naming at least one
+/// [reviewer](IssuePolicy::require_reviewers). Off by default.
+const PARAM_REVIEWERS: &str = "reviewers";
 
 /// The ceilings the [`BoardStore`] enforces, resolved from the capability's params.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -142,6 +157,61 @@ fn positive_usize(params: &Value, key: &str) -> Option<usize> {
 /// A non-negative-integer param value (zero allowed), or `None` when absent or non-integer.
 fn nonnegative_usize(params: &Value, key: &str) -> Option<usize> {
     params.get(key).and_then(Value::as_u64).map(|n| n as usize)
+}
+
+/// The **per-agent** rules on filing an issue, resolved from one agent's own configuration.
+///
+/// The board itself is run-global, but who may be *put to work by* it is not: an agent may only
+/// assign an issue — or a review of one — to a profile it could have spawned itself
+/// ([`subagents`](GgAgentConfig::subagents)), so one allowlist governs both delegation and issue
+/// assignment and no agent can conjure workers it was never given. Whether reviewers are
+/// demanded at all is the capability's [`reviewers`](PARAM_REVIEWERS) feature, likewise per
+/// agent.
+///
+/// The policy lives with the [tools](crate::tools::board), not the [store](BoardStore): the store
+/// is shared by every agent in the run, so a rule that differs per agent cannot be enforced there.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct IssuePolicy {
+    /// The profiles this agent may assign an issue or a review to — its spawnable set, in
+    /// declaration order. Empty means it may file no issue at all, which is why a configuration
+    /// that lets an agent create issues without giving it any subagents is
+    /// [refused at launch](crate::agent).
+    pub assignable: Vec<String>,
+    /// Whether `create_issue` demands at least one reviewer.
+    pub require_reviewers: bool,
+}
+
+impl IssuePolicy {
+    /// The policy for `agent`: its [spawnable set](GgAgentConfig::subagents), and whether its
+    /// project-management configuration switches the [reviewers](PARAM_REVIEWERS) feature on.
+    pub fn resolve(agent: &GgAgentConfig) -> Self {
+        Self {
+            assignable: agent.subagents.iter().map(|s| s.agent.clone()).collect(),
+            require_reviewers: agent
+                .capability(CAPABILITY_PROJECT_MANAGEMENT)
+                .and_then(|cap| cap.params.get(PARAM_REVIEWERS))
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+        }
+    }
+
+    /// Whether `name` is a profile this agent may assign work to.
+    pub fn allows(&self, name: &str) -> bool {
+        self.assignable.iter().any(|a| a == name)
+    }
+
+    /// The assignable profiles as a comma-separated, backticked list for a model-facing message,
+    /// or `"(none)"` when the agent may assign to nobody.
+    pub fn assignable_list(&self) -> String {
+        if self.assignable.is_empty() {
+            return "(none)".to_string();
+        }
+        self.assignable
+            .iter()
+            .map(|a| format!("`{a}`"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
 }
 
 /// The lifecycle status of an [`Issue`].
@@ -279,6 +349,15 @@ pub struct Issue {
     blocked_by: Vec<String>,
     /// The id of the [`Epic`] this issue is grouped under, when any.
     epic_id: Option<String>,
+    /// The [agent profile](GgAgentConfig) this issue is **assigned to** — named by whoever filed
+    /// it, from that agent's [assignable set](IssuePolicy::assignable), and the profile the
+    /// [dispatcher](crate::agent) runs it under.
+    agent: String,
+    /// The [agent profiles](GgAgentConfig) that must approve this issue's
+    /// [Code Review](crate::agent), named at creation from the same
+    /// [assignable set](IssuePolicy::assignable). Empty when the
+    /// [reviewers feature](IssuePolicy::require_reviewers) was off for the filing agent.
+    reviewers: Vec<String>,
     /// The id of the agent gg [dispatched](crate::agent) to implement this issue, set when the
     /// issue is [assigned](BoardStore::assign_issue) (moving it to
     /// [`InProgress`](IssueStatus::InProgress)) and left in place after a terminal state as the
@@ -337,6 +416,18 @@ impl Issue {
     /// The epic this issue is grouped under, if any.
     pub fn epic_id(&self) -> Option<&str> {
         self.epic_id.as_deref()
+    }
+
+    /// The [agent profile](GgAgentConfig) this issue is assigned to — what the dispatcher runs it
+    /// under.
+    pub fn agent(&self) -> &str {
+        &self.agent
+    }
+
+    /// The [agent profiles](GgAgentConfig) that must approve this issue's Code Review, or empty
+    /// when it was filed without reviewers.
+    pub fn reviewers(&self) -> &[String] {
+        &self.reviewers
     }
 
     /// The agent gg dispatched to implement this issue, if one is (or was) assigned.
@@ -512,6 +603,36 @@ impl IssueUpdate<'_> {
     }
 }
 
+/// The fields [`create_issue`](BoardStore::create_issue) takes — a named record rather than a
+/// positional list, because an issue is the one board node with ten of them.
+///
+/// [`agent`](Self::agent) and [`reviewers`](Self::reviewers) are the assignment half: who gg
+/// dispatches the issue to, and who must approve it. The rest are the issue's own content.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NewIssue<'a> {
+    /// The issue's stable id — unique across the board.
+    pub id: &'a str,
+    /// The issue's short title.
+    pub title: &'a str,
+    /// An optional longer overview.
+    pub description: Option<&'a str>,
+    /// What the issue is responsible for.
+    pub in_scope: &'a str,
+    /// What the issue is explicitly not responsible for.
+    pub out_of_scope: &'a str,
+    /// How the issue will be judged done.
+    pub completion_criteria: &'a str,
+    /// The ids of the issues that must finish first.
+    pub blocked_by: &'a [String],
+    /// The epic to group the issue under, when any.
+    pub epic_id: Option<&'a str>,
+    /// The [agent profile](Issue::agent) to dispatch the issue under.
+    pub agent: &'a str,
+    /// The [agent profiles](Issue::reviewers) that must approve it, when the filing agent's
+    /// [policy](IssuePolicy::require_reviewers) demands them.
+    pub reviewers: &'a [String],
+}
+
 /// The mutable, invariant-enforcing, cycle-rejecting owner of the model's epic/issue board.
 ///
 /// The store is the single owner of the board; the [tools](crate::tools) and the
@@ -593,28 +714,24 @@ impl BoardStore {
     }
 
     /// Create a new issue with its structured sections. Refused if a required field
-    /// (`id`/`title`/`inScope`/`outOfScope`/`completionCriteria`) is empty, an issue of that id
-    /// already exists, the board is at the issue cap, an `epic_id` names a non-existent epic, a
-    /// `blocked_by` entry is empty/self/unknown, or an edge would create a cycle. A newly
+    /// (`id`/`title`/`inScope`/`outOfScope`/`completionCriteria`/`agent`) is empty, an issue of
+    /// that id already exists, the board is at the issue cap, an `epic_id` names a non-existent
+    /// epic, a `blocked_by` entry is empty/self/unknown, or an edge would create a cycle. A newly
     /// created issue has no dependents, so its only DAG failure is referencing a non-existent
     /// blocker.
-    #[allow(clippy::too_many_arguments)]
-    pub fn create_issue(
-        &mut self,
-        id: &str,
-        title: &str,
-        description: Option<&str>,
-        in_scope: &str,
-        out_of_scope: &str,
-        completion_criteria: &str,
-        blocked_by: &[String],
-        epic_id: Option<&str>,
-    ) -> Result<BoardChange, BoardError> {
-        let id = require_field(id, "id")?;
-        let title = require_field(title, "title")?;
-        let in_scope = require_field(in_scope, "inScope")?;
-        let out_of_scope = require_field(out_of_scope, "outOfScope")?;
-        let completion_criteria = require_field(completion_criteria, "completionCriteria")?;
+    ///
+    /// The store checks that the [assignee](NewIssue::agent) and each
+    /// [reviewer](NewIssue::reviewers) is *named*; checking that they are profiles the **filing
+    /// agent** may assign to is the [tool](crate::tools::board)'s job, since the store is shared
+    /// by every agent in the run and that rule is per agent.
+    pub fn create_issue(&mut self, issue: NewIssue<'_>) -> Result<BoardChange, BoardError> {
+        let id = require_field(issue.id, "id")?;
+        let title = require_field(issue.title, "title")?;
+        let in_scope = require_field(issue.in_scope, "inScope")?;
+        let out_of_scope = require_field(issue.out_of_scope, "outOfScope")?;
+        let completion_criteria = require_field(issue.completion_criteria, "completionCriteria")?;
+        let agent = require_field(issue.agent, "agent")?;
+        let reviewers = normalize_names(issue.reviewers, "reviewers")?;
         if self.issue_position(id).is_some() {
             return Err(BoardError::DuplicateIssue(id.to_string()));
         }
@@ -624,8 +741,8 @@ impl BoardStore {
                 cap: self.caps.max_issues,
             });
         }
-        let epic_id = self.resolve_epic_grouping(epic_id)?;
-        let blockers = self.normalize_blockers(id, blocked_by)?;
+        let epic_id = self.resolve_epic_grouping(issue.epic_id)?;
+        let blockers = self.normalize_blockers(id, issue.blocked_by)?;
         if let Some(blocker) = dag::first_cycle(&self.issues, id, &blockers) {
             return Err(BoardError::Cycle {
                 issue: id.to_string(),
@@ -635,13 +752,15 @@ impl BoardStore {
         self.issues.push(Issue {
             id: id.to_string(),
             title: title.to_string(),
-            description: clean_optional(description),
+            description: clean_optional(issue.description),
             in_scope: in_scope.to_string(),
             out_of_scope: out_of_scope.to_string(),
             completion_criteria: completion_criteria.to_string(),
             status: IssueStatus::Open,
             blocked_by: blockers,
             epic_id,
+            agent: agent.to_string(),
+            reviewers,
             assigned_agent: None,
             retries: 0,
         });
@@ -950,6 +1069,8 @@ impl BoardStore {
                 status: issue.status.to_contract(),
                 blocked_by: issue.blocked_by.clone(),
                 epic_id: issue.epic_id.clone(),
+                agent: issue.agent.clone(),
+                reviewers: issue.reviewers.clone(),
                 assigned_agent_id: issue.assigned_agent.clone(),
                 retries: issue.retries,
             })
@@ -1025,7 +1146,32 @@ impl BoardStore {
             in_scope: issue.in_scope.clone(),
             out_of_scope: issue.out_of_scope.clone(),
             completion_criteria: issue.completion_criteria.clone(),
+            agent: issue.agent.clone(),
+            reviewers: (!issue.reviewers.is_empty()).then(|| {
+                issue
+                    .reviewers
+                    .iter()
+                    .map(|name| format!("`{name}`"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            }),
         }
+    }
+
+    /// The [profile](Issue::agent) the issue with id `id` is assigned to, if it exists.
+    fn issue_agent(&self, id: &str) -> Option<&str> {
+        self.issues
+            .iter()
+            .find(|issue| issue.id == id)
+            .map(Issue::agent)
+    }
+
+    /// The [reviewer profiles](Issue::reviewers) of the issue with id `id`, if it exists.
+    fn issue_reviewers(&self, id: &str) -> Option<&[String]> {
+        self.issues
+            .iter()
+            .find(|issue| issue.id == id)
+            .map(Issue::reviewers)
     }
 }
 
@@ -1049,6 +1195,22 @@ fn require_non_empty_when_present(
         Some(v) if v.trim().is_empty() => Err(BoardError::EmptyField(field)),
         _ => Ok(()),
     }
+}
+
+/// Trim, validate, and deduplicate a list of agent-profile names: every entry must be non-empty,
+/// order is preserved, and duplicates are dropped (naming one reviewer twice is one reviewer).
+fn normalize_names(raw: &[String], field: &'static str) -> Result<Vec<String>, BoardError> {
+    let mut out: Vec<String> = Vec::new();
+    for entry in raw {
+        let entry = entry.trim();
+        if entry.is_empty() {
+            return Err(BoardError::EmptyField(field));
+        }
+        if !out.iter().any(|existing| existing == entry) {
+            out.push(entry.to_string());
+        }
+    }
+    Ok(out)
 }
 
 /// Trim a supplied optional string, treating an empty (or whitespace-only) one as absent.
@@ -1152,6 +1314,36 @@ impl BoardRuntime {
             return None;
         }
         self.store.lock().expect("board store lock").issue_brief(id)
+    }
+
+    /// The [agent profile](Issue::agent) the issue with id `id` is assigned to — the profile the
+    /// [dispatcher](crate::agent) spawns it under — or `None` when the capability is off, no such
+    /// issue exists, or it carries no assignee (a board recorded before issues named one).
+    pub fn issue_agent(&self, id: &str) -> Option<String> {
+        if !self.enabled {
+            return None;
+        }
+        self.store
+            .lock()
+            .expect("board store lock")
+            .issue_agent(id)
+            .filter(|agent| !agent.is_empty())
+            .map(str::to_string)
+    }
+
+    /// The [reviewer profiles](Issue::reviewers) of the issue with id `id` — the profiles a
+    /// [Code Review](crate::agent) of it must be approved by — or an empty list when the
+    /// capability is off, no such issue exists, or it was filed without reviewers.
+    pub fn issue_reviewers(&self, id: &str) -> Vec<String> {
+        if !self.enabled {
+            return Vec::new();
+        }
+        self.store
+            .lock()
+            .expect("board store lock")
+            .issue_reviewers(id)
+            .map(<[String]>::to_vec)
+            .unwrap_or_default()
     }
 
     /// Mark the issue with id `id` [done](IssueStatus::Done), returning whether it was (an unknown

@@ -129,7 +129,7 @@ fn crossings() -> Vec<Crossing> {
             tool: "create_issue",
             program: concat!(
                 "project.createIssue({ id: \"i1\", title: \"I\", inScope: \"s\", outOfScope: \"o\", ",
-                "completionCriteria: \"c\" });",
+                "completionCriteria: \"c\", agent: \"worker\", reviewers: [\"critic\"] });",
             ),
             expected: || {
                 json!({
@@ -141,6 +141,8 @@ fn crossings() -> Vec<Crossing> {
                     "completionCriteria": "c",
                     "blockedBy": [],
                     "epicId": null,
+                    "agent": "worker",
+                    "reviewers": ["critic"],
                 })
             },
         },

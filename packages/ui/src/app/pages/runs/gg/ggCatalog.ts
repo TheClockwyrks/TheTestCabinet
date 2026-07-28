@@ -22,8 +22,9 @@ export function capabilityOn(set: GgCapabilitySet | null, id: string): boolean {
 }
 
 // The conventional name of the Root agent — the unremovable first profile that drives
-// the run's top-level session, and the default target for issue dispatch, Code Review,
-// and speculation judging. Mirrors `ROOT_AGENT` in `crates/core/src/gg.rs`.
+// the run's top-level session, and the default target for the Code Review and
+// speculation-judge helpers. (A board issue names its own agent when it is filed, so it
+// is not one of them.) Mirrors `ROOT_AGENT` in `crates/core/src/gg.rs`.
 export const ROOT_AGENT = "Root";
 
 // The conventional name of the first model slot a fresh configuration declares — the
@@ -63,7 +64,9 @@ export const CAP_GROUPS: ReadonlyArray<{
 // select → a JSON string (an empty selection omits the param entirely), text → a
 // JSON string of whatever was typed (an empty field omits the param), toggles → a
 // JSON object of `{ option: false }` for every option switched *off* (see
-// [TOGGLES_HINT]).
+// [TOGGLES_HINT]), boolean → `true` when switched on and no key at all when off (so
+// its default arm is the absent key, for the same reason `toggles` records only what
+// was switched off).
 //
 // Every param gg actually reads has a control here — there is deliberately no raw
 // JSON escape hatch in the editor, since the console knows gg's whole param schema.
@@ -77,6 +80,10 @@ export interface ParamSpec {
   // agent name, coerced to a JSON string param), so a param can point at an agent
   // profile — how the run-level "which agent runs this?" knobs (issue/reviewer/judge)
   // are configured. The list of choices is threaded in by the editor.
+  // A `boolean` param is a **feature switch**, not a value: it renders beside the
+  // per-feature tool-ablation sliders (the "Features" box) rather than in the param
+  // grid, because what it varies is what an offered tool demands rather than a
+  // number the tool reads.
   kind:
     | "fraction"
     | "number"
@@ -84,6 +91,7 @@ export interface ParamSpec {
     | "select"
     | "text"
     | "toggles"
+    | "boolean"
     | "agent";
   hint?: string;
   placeholder?: string;
@@ -281,7 +289,7 @@ export const DEFAULT_SKILLS_DIR = ".gg/skills";
 // placeholders so an operator sees what leaving a field empty means.
 export const DEFAULT_MAX_TASKS = 100;
 export const DEFAULT_MAX_EPICS = 50;
-export const DEFAULT_MAX_ISSUES = 200;
+export const DEFAULT_MAX_ISSUES = 2000;
 // How many times gg re-dispatches a failed issue before marking it `failed`
 // (`crates/gg/src/board.rs`). Surfaced as the project-management capability's
 // `maxRetries` default so an operator sees what leaving the field empty means.
@@ -706,11 +714,10 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         hint: "How many times gg re-dispatches an issue whose assigned agent finished without completing it before marking the issue failed.",
       },
       {
-        key: "issueAgent",
-        label: "Issue agent",
-        kind: "agent",
-        defaultValue: ROOT_AGENT,
-        hint: "Which agent profile gg runs a dispatched issue under. A run-level knob read off the Root agent.",
+        key: "reviewers",
+        label: "Reviewers",
+        kind: "boolean",
+        hint: "On, filing an issue requires naming one or more reviewers — from the same agents this one may spawn — and every one of them must approve the work before the issue is accepted.",
       },
     ],
     tools: [
@@ -723,16 +730,14 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
       "remove_issue",
       "wait_for_issue",
     ],
+    // The blocked-by DAG (`set_issue_blocked_by`) and `wait_for_issue` are deliberately
+    // absent: they are what makes a board a board rather than a list, so they come with
+    // the capability and are never ablated away.
     toolAblation: [
       {
-        label: "Issue dependencies",
-        tools: ["set_issue_blocked_by"],
-        hint: "Off makes the board flat — issues can't be marked blocked-by one another.",
-      },
-      {
-        label: "Await an issue",
-        tools: ["wait_for_issue"],
-        hint: "Off leaves auto-dispatch fire-and-forget — the model can enqueue an issue but not block on its dispatched agent finishing.",
+        label: "Issue creation",
+        tools: ["create_epic", "create_issue"],
+        hint: "Off gives this agent read-only access to the board — it still sees it, waits on issues, and completes the one it was assigned, but files no new work.",
       },
       {
         label: "Revise the board",

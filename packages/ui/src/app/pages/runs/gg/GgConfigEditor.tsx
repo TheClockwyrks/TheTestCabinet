@@ -586,13 +586,18 @@ export function GgConfigEditor({
                     agent.capabilities[cap.id] ?? blankCapabilityDraft();
                   const enabled = Boolean(draft.enabled);
                   const error = paramsErrors[cap.id];
-                  // Run-level "which agent runs this?" knobs (issueAgent/reviewer/
-                  // judge) are read off the Root agent, so only offer them there.
-                  const params = (cap.params ?? []).filter(
+                  // Run-level "which agent runs this?" knobs (the reviewer and judge
+                  // agents) are read off the Root agent, so only offer them there.
+                  const offered = (cap.params ?? []).filter(
                     (p) => p.kind !== "agent" || isRoot,
                   );
+                  // A boolean param is a feature switch, not a value: it renders with
+                  // the tool-ablation sliders rather than in the param grid.
+                  const params = offered.filter((p) => p.kind !== "boolean");
+                  const flags = offered.filter((p) => p.kind === "boolean");
                   const hasBody =
                     params.length ||
+                    flags.length ||
                     cap.implementationLabel ||
                     cap.toolAblation?.length ||
                     error;
@@ -808,7 +813,7 @@ export function GgConfigEditor({
                               })}
                             </div>
                           )}
-                          {cap.toolAblation?.length ? (
+                          {cap.toolAblation?.length || flags.length ? (
                             <div
                               className={gg.ablationGroup}
                               role="group"
@@ -818,7 +823,7 @@ export function GgConfigEditor({
                                 Features
                               </span>
                               <div className={gg.ablationList}>
-                                {cap.toolAblation.map((bundle) => (
+                                {(cap.toolAblation ?? []).map((bundle) => (
                                   <div
                                     key={bundle.label}
                                     className={gg.ablationItem}
@@ -841,6 +846,35 @@ export function GgConfigEditor({
                                     {bundle.hint && (
                                       <HelpTip text={bundle.hint} />
                                     )}
+                                  </div>
+                                ))}
+                                {/* A feature that changes what an offered tool
+                                    demands, rather than which tools exist: same box,
+                                    same slider, a capability param behind it. */}
+                                {flags.map((flag) => (
+                                  <div
+                                    key={flag.key}
+                                    className={gg.ablationItem}
+                                  >
+                                    <label className={gg.ablationLabel}>
+                                      <Switch
+                                        checked={
+                                          draft.params?.[flag.key] === "true"
+                                        }
+                                        disabled={readOnly}
+                                        onChange={(on) =>
+                                          setParam(
+                                            cap.id,
+                                            flag.key,
+                                            on ? "true" : "",
+                                          )
+                                        }
+                                      />
+                                      <span className={gg.ablationName}>
+                                        {flag.label}
+                                      </span>
+                                    </label>
+                                    {flag.hint && <HelpTip text={flag.hint} />}
                                   </div>
                                 ))}
                               </div>

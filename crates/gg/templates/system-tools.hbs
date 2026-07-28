@@ -89,8 +89,18 @@ Issues represent units of work to be completed. These are created using
 cause a subagent to be dispatched to handle the issue once all dependencies have
 been completed (or immediately, if it has no dependencies).
 
+Every issue names, in `agent`, the agent that will be dispatched to implement it.
+You may only assign an issue to an agent you are allowed to spawn, so choose from
+the same list of agents you would spawn a subagent from.
+
 Use `wait_for_issue` to suspend until the issue you specify has been completed.
 Use `complete_issue` to mark an issue as completed.
+
+{{#if board.reviewers}}
+Every issue must also name one or more `reviewers`, drawn from that same list of
+agents. Each of them reviews the finished work, and all of them must approve it
+before the issue can be accepted.
+{{/if}}
 
 At most {{board.maxEpics}} epics and {{board.maxIssues}} issues may be created.
 {{/if}}

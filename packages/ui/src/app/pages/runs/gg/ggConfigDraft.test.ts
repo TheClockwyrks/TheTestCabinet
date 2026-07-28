@@ -224,6 +224,27 @@ describe("gg agents", () => {
     draft.agents[0]!.name = "notroot";
     expect(draftSaveError(draft)).toContain("Root");
   });
+
+  // An issue names the agent it is dispatched to, drawn from the filer's own subagents,
+  // so a board agent that spawns nothing could never file a valid one. gg refuses such a
+  // set at launch; the editor refuses it while it can still be fixed.
+  it("refuses an issue filer with nobody to assign issues to", () => {
+    const draft = emptyDraft();
+    draft.agents[0]!.capabilities["project-management"] = {
+      enabled: true,
+      params: {},
+    };
+    expect(draftSaveError(draft)).toContain("no subagents");
+
+    // Read-only board access (no `create_issue`) needs no subagents at all.
+    draft.agents[0]!.disabledTools = ["create_epic", "create_issue"];
+    expect(draftSaveError(draft)).toBeNull();
+
+    // And so does a filer that can spawn something — a profile may list itself.
+    draft.agents[0]!.disabledTools = [];
+    draft.agents[0]!.subagents = [{ agent: "Root", description: "" }];
+    expect(draftSaveError(draft)).toBeNull();
+  });
 });
 
 // A minimal agent draft for tests that push a second agent onto an existing draft.
@@ -396,6 +417,34 @@ describe("gg capability params", () => {
       maxEpics: 20,
       maxIssues: 80,
     });
+  });
+
+  // A feature switch records only its on arm: off is the absent key, so an untouched
+  // switch leaves the capability's params exactly as they were.
+  it("round-trips the reviewers feature switch as a present-or-absent key", () => {
+    const on = draftFromCapabilitySet(
+      capSet([
+        { id: "project-management", enabled: true, params: { reviewers: true } },
+      ]),
+    );
+    expect(draftCaps(on)["project-management"]?.params?.reviewers).toBe("true");
+    expect(paramsOf(capabilitySetFromDraft(on, null), "project-management"))
+      .toHaveProperty("reviewers", true);
+
+    // A stored `false` means the same thing as no key, and re-saves as no key.
+    const off = draftFromCapabilitySet(
+      capSet([
+        {
+          id: "project-management",
+          enabled: true,
+          params: { reviewers: false },
+        },
+      ]),
+    );
+    expect(draftCaps(off)["project-management"]?.params?.reviewers).toBe("");
+    expect(
+      paramsOf(capabilitySetFromDraft(off, null), "project-management"),
+    ).not.toHaveProperty("reviewers");
   });
 
   it("round-trips a string param through its text control", () => {

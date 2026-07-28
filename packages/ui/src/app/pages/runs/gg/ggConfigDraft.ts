@@ -420,6 +420,13 @@ function agentDraftFromConfig(agent: GgAgentConfig): GgAgentDraft {
         else params[key] = decoded;
         continue;
       }
+      if (spec.kind === "boolean") {
+        // A stored `false` is the same as an absent key, so it loads as the empty
+        // (off) draft value and re-saves as no key rather than an explicit `false`.
+        if (typeof value !== "boolean") extraParams[key] = value;
+        else params[key] = value ? "true" : "";
+        continue;
+      }
       params[key] = String(value);
     }
     capabilities[cap.id] = {
@@ -515,6 +522,12 @@ export function capabilityParams(
     if (p.kind === "toggles") {
       const toggles = togglesToParam(p, raw);
       if (toggles) out[p.key] = toggles;
+      continue;
+    }
+    // A feature switch records only its *on* arm; off is the absent key (`raw` empty),
+    // which the guard above already skipped.
+    if (p.kind === "boolean") {
+      if (raw === "true") out[p.key] = true;
       continue;
     }
     const n = Number(raw);
@@ -652,11 +665,30 @@ export function referencedModelSlots(draft: GgConfigDraft): Set<string> {
 }
 
 /**
+ * The gg capability id and tool name behind the "an issue filer needs someone to
+ * assign to" rule below. Spelled once so the rule and the catalog cannot drift.
+ */
+const PROJECT_MANAGEMENT_CAP_ID = "project-management";
+const CREATE_ISSUE_TOOL = "create_issue";
+
+/**
+ * Whether `agent` can file board issues: the project-management capability is on and
+ * its issue-creation feature has not been switched off.
+ */
+function filesIssues(agent: GgAgentDraft): boolean {
+  return (
+    Boolean(agent.capabilities[PROJECT_MANAGEMENT_CAP_ID]?.enabled) &&
+    !agent.disabledTools.includes(CREATE_ISSUE_TOOL)
+  );
+}
+
+/**
  * Why a draft cannot be saved, or `null` when it is well-formed. A *saved*
  * configuration may still be waiting on its models — that is what a model slot is for
  * — so this rejects only structurally broken names, an agent deferred to a model slot
  * that was never declared, a pinned agent with no model, a subagent reference to an
- * agent that does not exist, and unparseable params.
+ * agent that does not exist, an issue filer with nobody to assign issues to, and
+ * unparseable params.
  */
 export function draftSaveError(draft: GgConfigDraft): string | null {
   const root = draft.agents[0];
@@ -687,6 +719,13 @@ export function draftSaveError(draft: GgConfigDraft): string | null {
       if (!target || !agentNames.includes(target)) {
         return `The \`${agent.name.trim()}\` agent can spawn \`${target}\`, which isn't an agent in this configuration.`;
       }
+    }
+    // An issue names the agent it is dispatched to, drawn from the filer's own
+    // subagents — so an agent that may file issues but spawns nothing could never write
+    // a valid one. gg refuses such a set at launch; refuse it here, where it can still
+    // be fixed.
+    if (filesIssues(agent) && agent.subagents.length === 0) {
+      return `The \`${agent.name.trim()}\` agent can create issues but has no subagents to assign them to. Add one, or switch its Issue creation feature off for read-only board access.`;
     }
     const failed = Object.entries(agentParamErrors(agent)).find(
       ([, error]) => error !== null,

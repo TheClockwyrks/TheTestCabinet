@@ -291,6 +291,7 @@ const EVENTS: HarnessEvent[] = [
         status: "done",
         blockedBy: [],
         epicId: "e1",
+        agent: "implementer",
         retries: 0,
       },
       {
@@ -302,6 +303,8 @@ const EVENTS: HarnessEvent[] = [
         status: "in_progress",
         blockedBy: ["i1"],
         epicId: "e1",
+        agent: "implementer",
+        reviewers: ["critic"],
         retries: 0,
       },
       {
@@ -313,6 +316,7 @@ const EVENTS: HarnessEvent[] = [
         status: "open",
         blockedBy: ["i2"],
         epicId: "e1",
+        agent: "implementer",
         retries: 0,
       },
       {
@@ -323,6 +327,7 @@ const EVENTS: HarnessEvent[] = [
         completionCriteria: "A sound plays on a move.",
         status: "open",
         blockedBy: [],
+        agent: "implementer",
         retries: 0,
       },
     ],
@@ -891,6 +896,7 @@ describe("GgRunMonitorPage", () => {
       completionCriteria: "",
       status,
       blockedBy: [] as string[],
+      agent: "implementer",
       retries: 0,
     });
     const events: HarnessEvent[] = [

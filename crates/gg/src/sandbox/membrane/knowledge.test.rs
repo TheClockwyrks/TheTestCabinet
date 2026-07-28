@@ -239,6 +239,8 @@ fn the_board_tools_round_trip_under_the_schemas_key_names() {
             completion_criteria: "every token has a test".to_string(),
             blocked_by: vec!["i0".to_string()],
             epic_id: Some("e1".to_string()),
+            agent: "implementer".to_string(),
+            reviewers: vec!["critic".to_string()],
         })
         .expect("created the issue");
     state
@@ -271,6 +273,8 @@ fn the_board_tools_round_trip_under_the_schemas_key_names() {
             "completionCriteria": "every token has a test",
             "blockedBy": ["i0"],
             "epicId": "e1",
+            "agent": "implementer",
+            "reviewers": ["critic"],
         }))
     );
     assert_eq!(

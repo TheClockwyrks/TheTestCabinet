@@ -62,7 +62,7 @@ use std::time::Duration;
 
 use serde::Deserialize;
 use serde_json::{Value, json};
-use test_cabinet_core::gg::GgSlotBinding;
+use test_cabinet_core::gg::{GgSlotBinding, ROOT_AGENT};
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
 use crate::model::{
@@ -1006,6 +1006,7 @@ impl MockClient {
                     "outOfScope": "Input handling and win detection (separate issues).",
                     "completionCriteria": "The player and goal are visible and redraw at ~60fps.",
                     "epicId": DEFAULT_MOCK_EPIC,
+                    "agent": ROOT_AGENT,
                 }),
             }],
             finish_reason: FinishReason::ToolCalls,
@@ -1033,6 +1034,7 @@ impl MockClient {
                     "completionCriteria": "Arrow keys move the player smoothly without leaving the canvas.",
                     "blockedBy": [DEFAULT_MOCK_ISSUE_RENDER],
                     "epicId": DEFAULT_MOCK_EPIC,
+                    "agent": ROOT_AGENT,
                 }),
             }],
             finish_reason: FinishReason::ToolCalls,
@@ -2079,6 +2081,7 @@ impl ModelClient for MockClient {
                             "outOfScope": "Anything unrelated to the feature.",
                             "completionCriteria": "The feature is implemented and the review fix marker is present.",
                             "epicId": "review-epic",
+                            "agent": ROOT_AGENT,
                         }),
                     ),
                     _ => code_review_stop_turn("The board is set up and the issue is enqueued."),

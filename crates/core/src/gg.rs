@@ -301,13 +301,23 @@ pub const CAPABILITY_AGENT_MANAGED_CONTEXT: &str = "agent-managed-context";
 /// the agent it dispatches to implement it. Unlike agent-scoped [tasks](CAPABILITY_TASKS),
 /// **submitting an issue enqueues it on the shared board**: once every issue it is blocked by
 /// is done, gg **automatically spawns a top-level agent and assigns it the issue** — agents no
-/// longer hand-dispatch issues to subagents. An agent may [wait on an issue] until it reaches a
+/// longer hand-dispatch issues to subagents. The [agent profile](GgAgentConfig) an issue is
+/// dispatched under is named **when the issue is created** ([`agent`](GgBoardIssue::agent)) and
+/// must be one the creating agent may [spawn](GgAgentConfig::subagents), so delegation and issue
+/// assignment are governed by one allowlist. An agent may [wait on an issue] until it reaches a
 /// terminal state, and an issue whose assigned agent cannot complete it after its
 /// `maxRetries` (default 1) retries is marked [failed](GgIssueStatus::Failed). Issues share the
 /// [tasks](CAPABILITY_TASKS) blocked-by DAG (gg rejects any edge that would introduce a cycle),
 /// and the whole board is retained across a [compaction](CAPABILITY_COMPACTION) boundary
-/// verbatim. Opt-in, like compaction and agent-managed context — an ablation's off arm simply
-/// never offers the board tools.
+/// verbatim.
+///
+/// The blocked-by DAG and `wait_for_issue` are **core** to the capability — never ablated
+/// away — but two features are optional per agent: **issue creation** (withholding
+/// `create_epic`/`create_issue` leaves an agent read-only access to the board, still able to
+/// wait on and complete issues) and **[reviewers](GgBoardIssue::reviewers)** (the `reviewers`
+/// param, which makes `create_issue` demand one or more reviewer profiles from that same
+/// spawnable set). The capability as a whole is opt-in, like compaction and agent-managed
+/// context — an ablation's off arm simply never offers the board tools.
 ///
 /// [project management]: https://docs.testcabinet.ai/gg/project-management/
 /// [wait on an issue]: https://docs.testcabinet.ai/gg/project-management/
@@ -1894,6 +1904,20 @@ pub struct GgBoardIssue {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub epic_id: Option<String>,
+    /// The [agent profile](GgAgentConfig) the issue was **assigned to** when it was created —
+    /// the profile gg dispatches it under. It is named on `create_issue` (not configured on the
+    /// capability), and must be one the creating agent may
+    /// [spawn](GgAgentConfig::subagents). Empty only on a board recorded before issues carried
+    /// an assignee, which dispatches under the [Root](ROOT_AGENT).
+    #[serde(default)]
+    pub agent: String,
+    /// The [agent profiles](GgAgentConfig) named as this issue's **reviewers** when it was
+    /// created, drawn from the same [spawnable set](GgAgentConfig::subagents) as its
+    /// [`agent`](Self::agent). Non-empty exactly when the capability's `reviewers` feature was
+    /// on for the creating agent; a [Code Review](CAPABILITY_CODE_REVIEWS) of the issue is run
+    /// by these profiles, each of which must approve.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reviewers: Vec<String>,
     /// The id of the agent gg [dispatched](https://docs.testcabinet.ai/gg/project-management/)
     /// to implement this issue, when one is assigned (its status is then
     /// [`InProgress`](GgIssueStatus::InProgress)) — the link the console follows from the issue

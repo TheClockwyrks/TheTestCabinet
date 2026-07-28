@@ -264,10 +264,12 @@ impl ToolApi for FakeToolApi {
         completion_criteria: String,
         blocked_by: Vec<String>,
         epic_id: Option<String>,
+        agent: String,
+        reviewers: Vec<String>,
     ) -> ToolOutcome {
         self.call(
             "create_issue",
-            json!({ "id": id, "title": title, "description": description, "inScope": in_scope, "outOfScope": out_of_scope, "completionCriteria": completion_criteria, "blockedBy": blocked_by, "epicId": epic_id }),
+            json!({ "id": id, "title": title, "description": description, "inScope": in_scope, "outOfScope": out_of_scope, "completionCriteria": completion_criteria, "blockedBy": blocked_by, "epicId": epic_id, "agent": agent, "reviewers": reviewers }),
         )
     }
     #[allow(clippy::too_many_arguments)]

@@ -133,6 +133,8 @@ pub trait ToolApi: Send + 'static {
         completion_criteria: String,
         blocked_by: Vec<String>,
         epic_id: Option<String>,
+        agent: String,
+        reviewers: Vec<String>,
     ) -> ToolOutcome;
     #[allow(clippy::too_many_arguments)]
     fn update_issue(

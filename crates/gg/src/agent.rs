@@ -103,7 +103,7 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 
 use crate::archive::ArchiveStore;
-use crate::board::{BoardCaps, BoardRuntime, IssueStatus};
+use crate::board::{BoardCaps, BoardRuntime, IssuePolicy, IssueStatus};
 use crate::client::{ClientFactory, DefaultClientFactory, provider_for};
 use crate::compaction::{
     self, CompactionRequest, CompactionSetup, CompactionStrategy, PendingCompaction, RestoredFile,
@@ -151,17 +151,17 @@ use crate::tasks::{TasksRuntime, resolve_max_tasks, resolve_task_mode};
 use crate::telemetry::Emitter;
 use crate::tools::VisionContext;
 use crate::tools::{
-    ARCHIVE_THREAD_TOOL, AgentStatusData, COMPACT_TOOL, COMPLETE_ISSUE_TOOL, CompletionData,
-    DEFAULT_ARCHIVE_KEEP_RECENT, ENTER_PLAN_MODE_TOOL, EVICT_FILE_VIEW_TOOL, OffloadPolicy,
-    PARAM_MAX_CHARS, PARAM_MAX_LINES, READ_FILE_TOOL, READ_SKILL_TOOL, RUN_WORKFLOW_TOOL,
-    ReadFileTool, ReadPolicy, ReclaimData, RuntimeSet, SEND_MESSAGE_TOOL, SHELL_OUTPUT_OFFLOAD,
-    SHELL_TOOL, SPAWN_SUBAGENT_TOOL, SPECULATE_TOOL, SUBMIT_PLAN_TOOL, SpeculationData,
-    SubagentHandleData, SubagentResultData, Tool, ToolContext, ToolData, ToolFailure, ToolOutcome,
-    ToolRegistry, WAIT_FOR_ISSUE_TOOL, WAIT_FOR_SUBAGENTS_TOOL, WorkflowData, handled_by_loop,
-    is_board_tool, is_context_reclaim_tool, is_fsm_tool, is_memory_tool, is_planning_tool,
-    is_subagent_tool, is_task_tool, offload_misconfigured, parse_archive_keep_recent,
-    parse_compact_request, parse_evict_path, plan_mode_offers, read_policy, saturating_u32,
-    saturating_u64, shell_offload, unknown_disabled_tools,
+    ARCHIVE_THREAD_TOOL, AgentStatusData, COMPACT_TOOL, COMPLETE_ISSUE_TOOL, CREATE_ISSUE_TOOL,
+    CompletionData, DEFAULT_ARCHIVE_KEEP_RECENT, ENTER_PLAN_MODE_TOOL, EVICT_FILE_VIEW_TOOL,
+    OffloadPolicy, PARAM_MAX_CHARS, PARAM_MAX_LINES, READ_FILE_TOOL, READ_SKILL_TOOL,
+    RUN_WORKFLOW_TOOL, ReadFileTool, ReadPolicy, ReclaimData, RuntimeSet, SEND_MESSAGE_TOOL,
+    SHELL_OUTPUT_OFFLOAD, SHELL_TOOL, SPAWN_SUBAGENT_TOOL, SPECULATE_TOOL, SUBMIT_PLAN_TOOL,
+    SpeculationData, SubagentHandleData, SubagentResultData, Tool, ToolContext, ToolData,
+    ToolFailure, ToolOutcome, ToolRegistry, WAIT_FOR_ISSUE_TOOL, WAIT_FOR_SUBAGENTS_TOOL,
+    WorkflowData, handled_by_loop, is_board_tool, is_context_reclaim_tool, is_fsm_tool,
+    is_memory_tool, is_planning_tool, is_subagent_tool, is_task_tool, offload_misconfigured,
+    parse_archive_keep_recent, parse_compact_request, parse_evict_path, plan_mode_offers,
+    read_policy, saturating_u32, saturating_u64, shell_offload, unknown_disabled_tools,
 };
 use crate::turn_timing::TurnTimer;
 use crate::vision::VisionSupport;
@@ -257,11 +257,6 @@ pub enum SessionOutcome {
 /// single-agent run has only this agent; Phase 4B gives spawned subagents generated ids
 /// beneath it.
 pub const ROOT_AGENT_ID: &str = "root";
-
-/// The [project-management](CAPABILITY_PROJECT_MANAGEMENT) capability param naming the
-/// [agent profile](GgAgentConfig) an auto-dispatched issue's agent runs under. Absent means the
-/// [Root](ROOT_AGENT).
-const PARAM_ISSUE_AGENT: &str = "issueAgent";
 
 /// The [code-reviews](CAPABILITY_CODE_REVIEWS) capability param naming the
 /// [agent profile](GgAgentConfig) a [Code Review](handle_code_review)'s reviewer runs under. Absent
@@ -411,8 +406,9 @@ fn profile_binding(set: &GgCapabilitySet, profile: &str) -> Result<GgSlotBinding
 
 /// Validate a run's [agent profiles](GgAgentConfig) before launch: the [Root](ROOT_AGENT) profile
 /// must exist and be bound to a model (the run has no model otherwise), every profile must have a
-/// non-empty name and a resolved model, no name may be declared twice, and every
-/// [subagent reference](GgAgentConfig::subagents) must name a declared profile. Returns a
+/// non-empty name and a resolved model, no name may be declared twice, every
+/// [subagent reference](GgAgentConfig::subagents) must name a declared profile, and no profile may
+/// be able to **file [issues](crate::board)** without anyone to assign them to. Returns a
 /// human-readable error on the first problem, so a misconfiguration fails loudly at launch rather
 /// than surfacing mid-run. Pure, so it is unit tested directly.
 fn validate_agents(set: &GgCapabilitySet) -> Result<(), String> {
@@ -449,6 +445,21 @@ fn validate_agents(set: &GgCapabilitySet) -> Result<(), String> {
                     agent.name, reference.agent
                 ));
             }
+        }
+        // An issue names the profile gg dispatches it under, drawn from the filer's own spawnable
+        // set — so an agent that may file issues but spawns nothing could never write a valid one.
+        // Refuse the configuration rather than offer a tool whose every call would be rejected;
+        // withholding `create_issue` (read-only board access) is the intended way to have one.
+        if agent.is_enabled(CAPABILITY_PROJECT_MANAGEMENT)
+            && !agent.is_tool_disabled(CREATE_ISSUE_TOOL)
+            && agent.subagents.is_empty()
+        {
+            return Err(format!(
+                "the `{}` agent may create issues but has no subagents to assign them to; give it \
+                 at least one subagent, or switch its issue-creation feature off for read-only \
+                 board access",
+                agent.name
+            ));
         }
     }
     if set.agent(ROOT_AGENT).is_none() {
@@ -1149,8 +1160,10 @@ impl Orchestrator {
 
     /// The name of an [agent profile](GgAgentConfig) a run-level capability points a helper agent at:
     /// the string `param` on the [Root](ROOT_AGENT)'s config for capability `cap_id`, when it names a
-    /// declared profile, else the [Root](ROOT_AGENT). These knobs (the issue, reviewer, and judge
-    /// agents) are read off the Root because they govern the run as a whole, not one agent's turn.
+    /// declared profile, else the [Root](ROOT_AGENT). These knobs (the reviewer and judge agents)
+    /// are read off the Root because they govern the run as a whole, not one agent's turn. The
+    /// [issue](crate::board) agent is deliberately **not** one of them: an issue names its own
+    /// assignee when it is filed.
     fn helper_profile(&self, cap_id: &str, param: &str) -> String {
         self.caps
             .root()
@@ -1164,10 +1177,15 @@ impl Orchestrator {
     }
 
     /// The [agent profile](GgAgentConfig) an auto-dispatched [issue](crate::board)'s agent runs
-    /// under — the [project-management](CAPABILITY_PROJECT_MANAGEMENT) capability's
-    /// [`issueAgent`](PARAM_ISSUE_AGENT) param, defaulting to the [Root](ROOT_AGENT).
-    fn issue_profile(&self) -> String {
-        self.helper_profile(CAPABILITY_PROJECT_MANAGEMENT, PARAM_ISSUE_AGENT)
+    /// under — the [assignee](crate::board::Issue::agent) named when the issue was filed. A
+    /// profile this run does not declare (or an issue from a board recorded before issues carried
+    /// an assignee) falls back to the [Root](ROOT_AGENT), so a stale reference still dispatches
+    /// rather than stalling the board.
+    fn issue_profile(&self, issue_id: &str) -> String {
+        self.board
+            .issue_agent(issue_id)
+            .filter(|name| self.caps.agent(name).is_some())
+            .unwrap_or_else(|| ROOT_AGENT.to_string())
     }
 
     /// The [agent profile](GgAgentConfig) a [speculative execution](handle_speculate)'s **judge** runs
@@ -1240,6 +1258,26 @@ impl Orchestrator {
     /// [`reviewerAgent`](PARAM_REVIEWER_AGENT) param, defaulting to the [Root](ROOT_AGENT).
     fn reviewer_slot(&self) -> String {
         self.helper_profile(CAPABILITY_CODE_REVIEWS, PARAM_REVIEWER_AGENT)
+    }
+
+    /// The [agent profiles](GgAgentConfig) a [Code Review](handle_code_review) of `issue_id` must be
+    /// approved by, in order: the [reviewers](crate::board::Issue::reviewers) the issue named when
+    /// it was filed (the [reviewers feature](crate::board::IssuePolicy::require_reviewers)), or —
+    /// when it named none — the run-level [reviewer](Self::reviewer_slot) alone. Profiles this run
+    /// does not declare are dropped, and an issue whose every reviewer was stale falls back the
+    /// same way, so a review always has someone to run it.
+    fn reviewer_slots(&self, issue_id: &str) -> Vec<String> {
+        let declared: Vec<String> = self
+            .board
+            .issue_reviewers(issue_id)
+            .into_iter()
+            .filter(|name| self.caps.agent(name).is_some())
+            .collect();
+        if declared.is_empty() {
+            vec![self.reviewer_slot()]
+        } else {
+            declared
+        }
     }
 
     /// The textual diff of the work for `issue_id` against its [review baseline](Self::issue_baseline)
@@ -1353,8 +1391,9 @@ impl Orchestrator {
         retry: u32,
         emitter: &Emitter,
     ) {
-        // Dispatched issue agents run under the configured issue agent profile (default Root).
-        let slot = self.issue_profile();
+        // Dispatched issue agents run under the profile the issue was assigned to when it was
+        // filed (falling back to Root for a stale reference).
+        let slot = self.issue_profile(&issue_id);
         let binding = match profile_binding(&self.caps, &slot) {
             Ok(binding) => binding,
             Err(err) => return self.abort_issue_dispatch(&issue_id, &slot, &err, emitter),
@@ -3124,45 +3163,55 @@ async fn handle_code_review(
             );
         }
 
-        // Dispatch a reviewer against the current diff of the work and parse its verdict. Anything
-        // other than a clean verdict aborts the review with the issue unaccepted (never accept work
-        // no reviewer approved).
+        // Dispatch each of the issue's reviewers against the current diff of the work, in turn, and
+        // parse their verdicts. Every reviewer must approve; the first that does not ends the round
+        // and its items are what the fix agent works from, so a second opinion is never spent on
+        // work already known to need changes. Anything other than a clean verdict aborts the review
+        // with the issue unaccepted (never accept work no reviewer approved).
         let diff = orch.review_diff(&issue_id);
-        let reviewer_slot = orch.reviewer_slot();
-        let review_brief = build_review_brief(
-            &brief,
-            &diff,
-            orch.profile_or_root(&reviewer_slot)
-                .is_enabled(CAPABILITY_RESPONSES_AS_CODE),
-        );
-        let verdict = match dispatch_reviewer(
-            sub,
-            spawner,
-            emitter,
-            Some(issue_id.clone()),
-            review_brief,
-            &reviewer_slot,
-        )
-        .await
-        {
-            Ok(verdict) => verdict,
-            Err(err) => {
-                emitter.emit(log(
-                    "warn",
-                    format!(
-                        "the Code Review of issue `{issue_id}` did not complete: {err}; the issue \
-                         was not accepted."
-                    ),
-                ));
-                return ToolOutcome::failed(
-                    ToolFailure::IoError,
-                    format!(
-                        "The Code Review of issue `{issue_id}` did not complete ({err}), so the \
-                         issue was NOT marked done. Its work remains for a later pass."
-                    ),
-                );
-            }
+        let mut verdict = ReviewVerdict {
+            approved: true,
+            items: Vec::new(),
         };
+        for reviewer_slot in orch.reviewer_slots(&issue_id) {
+            let review_brief = build_review_brief(
+                &brief,
+                &diff,
+                orch.profile_or_root(&reviewer_slot)
+                    .is_enabled(CAPABILITY_RESPONSES_AS_CODE),
+            );
+            verdict = match dispatch_reviewer(
+                sub,
+                spawner,
+                emitter,
+                Some(issue_id.clone()),
+                review_brief,
+                &reviewer_slot,
+            )
+            .await
+            {
+                Ok(verdict) => verdict,
+                Err(err) => {
+                    emitter.emit(log(
+                        "warn",
+                        format!(
+                            "the Code Review of issue `{issue_id}` did not complete: {err}; the \
+                             issue was not accepted."
+                        ),
+                    ));
+                    return ToolOutcome::failed(
+                        ToolFailure::IoError,
+                        format!(
+                            "The Code Review of issue `{issue_id}` did not complete ({err}), so \
+                             the issue was NOT marked done. Its work remains for a later pass."
+                        ),
+                    );
+                }
+            };
+            if !verdict.approved {
+                break;
+            }
+        }
 
         if verdict.approved {
             // Accept the issue: mark it done on the board. The loop refreshes the pinned board block
@@ -4903,6 +4952,11 @@ impl Agent {
         // the same scope-bound tool set the program's objects are, and always present (docs are not a
         // capability), so a code turn can always answer a lookup. Unused on the tool-calling path.
         let mut docs = crate::docs::DocsRuntime::new(scope_tools(registry));
+        // This agent's own rules on filing a board issue — who it may assign one to, and whether
+        // reviewers are demanded. The native `create_issue` tool carries these already (the registry
+        // built it from the same profile); a code turn rebuilds the tool per call, so it needs them
+        // too.
+        let issue_policy = IssuePolicy::resolve(profile);
 
         // Build the source-tagged context model in place of a flat transcript, seeded with
         // the two pinned items every session opens with: the system prompt (which lists any
@@ -5466,6 +5520,7 @@ impl Agent {
                     read_policy,
                     shell_offload: &shell_offload,
                     board: &board,
+                    issue_policy: &issue_policy,
                     project: project.as_ref(),
                     memories: &memories,
                     tasks: &tasks,
@@ -7284,6 +7339,7 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
                     max_epics: caps.max_epics,
                     max_issues: caps.max_issues,
                     max_retries: caps.max_retries,
+                    reviewers: IssuePolicy::resolve(profile).require_reviewers,
                 }
             }),
             planning: planning.offers_planning(),

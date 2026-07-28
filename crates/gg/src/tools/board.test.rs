@@ -7,7 +7,7 @@ use serde_json::json;
 use tempfile::TempDir;
 
 use super::*;
-use crate::board::{BoardCaps, BoardStore, IssueStatus};
+use crate::board::{BoardCaps, BoardStore, IssuePolicy, IssueStatus};
 use crate::tools::ToolFailure;
 
 /// The [`BoardUsageData`] an outcome carries, or a failure naming what it carried instead.
@@ -29,6 +29,25 @@ fn fixture() -> (Arc<Mutex<BoardStore>>, ToolContext, TempDir) {
     )
 }
 
+/// The profiles the fixture's filing agent may assign an issue (or a review of one) to.
+const ASSIGNABLE: [&str; 2] = ["implementer", "critic"];
+
+/// The filing rules the tools are built with: the two [`ASSIGNABLE`] profiles, reviewers optional.
+fn policy() -> IssuePolicy {
+    IssuePolicy {
+        assignable: ASSIGNABLE.iter().map(|a| a.to_string()).collect(),
+        require_reviewers: false,
+    }
+}
+
+/// The same, with the reviewers feature switched on.
+fn reviewers_required() -> IssuePolicy {
+    IssuePolicy {
+        require_reviewers: true,
+        ..policy()
+    }
+}
+
 /// The full argument set for a well-formed `create_issue` call.
 fn issue_args(id: &str) -> serde_json::Value {
     json!({
@@ -37,6 +56,7 @@ fn issue_args(id: &str) -> serde_json::Value {
         "inScope": "the in-scope work",
         "outOfScope": "the out-of-scope work",
         "completionCriteria": "the acceptance criteria",
+        "agent": "implementer",
     })
 }
 
@@ -54,7 +74,7 @@ async fn create_epic_and_issue_report_usage() {
 
     let mut args = issue_args("render");
     args["epicId"] = json!("core");
-    let issue = CreateIssueTool::new(Arc::clone(&store))
+    let issue = CreateIssueTool::new(Arc::clone(&store), policy())
         .invoke(args, &ctx)
         .await;
     assert!(issue.ok, "{}", issue.output);
@@ -70,7 +90,7 @@ async fn create_epic_and_issue_report_usage() {
 async fn create_issue_requires_the_structured_fields() {
     let (store, ctx, _dir) = fixture();
     // Missing completionCriteria => argument error from the tool.
-    let outcome = CreateIssueTool::new(Arc::clone(&store))
+    let outcome = CreateIssueTool::new(Arc::clone(&store), policy())
         .invoke(
             json!({ "id": "i", "title": "t", "inScope": "a", "outOfScope": "b" }),
             &ctx,
@@ -81,15 +101,86 @@ async fn create_issue_requires_the_structured_fields() {
     assert_eq!(store.lock().unwrap().issue_count(), 0);
 }
 
+/// An issue may only be assigned to a profile the filing agent could have spawned itself, so one
+/// allowlist governs both delegation and issue assignment.
+#[tokio::test]
+async fn create_issue_only_assigns_to_a_spawnable_agent() {
+    let (store, ctx, _dir) = fixture();
+    let mut args = issue_args("a");
+    args["agent"] = json!("stranger");
+    let outcome = CreateIssueTool::new(Arc::clone(&store), policy())
+        .invoke(args, &ctx)
+        .await;
+    assert_eq!(outcome.failure, Some(ToolFailure::InvalidArgument));
+    assert!(outcome.output.contains("stranger"), "{}", outcome.output);
+    // The refusal names the profiles that *are* assignable, so the next call can succeed.
+    assert!(outcome.output.contains("implementer"), "{}", outcome.output);
+    assert_eq!(store.lock().unwrap().issue_count(), 0);
+
+    // The same rule covers reviewers.
+    let mut args = issue_args("a");
+    args["reviewers"] = json!(["stranger"]);
+    let outcome = CreateIssueTool::new(Arc::clone(&store), policy())
+        .invoke(args, &ctx)
+        .await;
+    assert_eq!(outcome.failure, Some(ToolFailure::InvalidArgument));
+    assert_eq!(store.lock().unwrap().issue_count(), 0);
+
+    // An assignee is required at all: there is no run-level default to fall back on.
+    let mut args = issue_args("a");
+    args.as_object_mut().unwrap().remove("agent");
+    let outcome = CreateIssueTool::new(Arc::clone(&store), policy())
+        .invoke(args, &ctx)
+        .await;
+    assert_eq!(outcome.failure, Some(ToolFailure::InvalidArgument));
+    assert!(outcome.output.contains("agent"), "{}", outcome.output);
+}
+
+/// With the reviewers feature on, an issue cannot be filed without naming at least one — and the
+/// names it does give are recorded on the issue.
+#[tokio::test]
+async fn the_reviewers_feature_makes_reviewers_mandatory() {
+    let (store, ctx, _dir) = fixture();
+    let tool = CreateIssueTool::new(Arc::clone(&store), reviewers_required());
+
+    let bare = tool.invoke(issue_args("a"), &ctx).await;
+    assert_eq!(bare.failure, Some(ToolFailure::InvalidArgument));
+    assert!(bare.output.contains("reviewer"), "{}", bare.output);
+    assert_eq!(store.lock().unwrap().issue_count(), 0);
+    // The tool tells the model the field is required, and which agents may fill it.
+    let definition = tool.definition();
+    assert!(definition.description.contains("reviewers"));
+    assert_eq!(
+        definition.parameters["required"],
+        json!([
+            "id",
+            "title",
+            "inScope",
+            "outOfScope",
+            "completionCriteria",
+            "agent",
+            "reviewers"
+        ])
+    );
+
+    let mut args = issue_args("a");
+    args["reviewers"] = json!(["critic"]);
+    let reviewed = tool.invoke(args, &ctx).await;
+    assert!(reviewed.ok, "{}", reviewed.output);
+    let store = store.lock().unwrap();
+    assert_eq!(store.issues()[0].agent(), "implementer");
+    assert_eq!(store.issues()[0].reviewers(), ["critic".to_string()]);
+}
+
 #[tokio::test]
 async fn create_issue_with_blocked_by_records_the_edge() {
     let (store, ctx, _dir) = fixture();
-    CreateIssueTool::new(Arc::clone(&store))
+    CreateIssueTool::new(Arc::clone(&store), policy())
         .invoke(issue_args("a"), &ctx)
         .await;
     let mut args = issue_args("b");
     args["blockedBy"] = json!(["a"]);
-    let outcome = CreateIssueTool::new(Arc::clone(&store))
+    let outcome = CreateIssueTool::new(Arc::clone(&store), policy())
         .invoke(args, &ctx)
         .await;
     assert!(outcome.ok);
@@ -102,10 +193,10 @@ async fn create_issue_with_blocked_by_records_the_edge() {
 #[tokio::test]
 async fn set_issue_blocked_by_surfaces_a_cycle_as_a_tool_error_without_mutating() {
     let (store, ctx, _dir) = fixture();
-    CreateIssueTool::new(Arc::clone(&store))
+    CreateIssueTool::new(Arc::clone(&store), policy())
         .invoke(issue_args("a"), &ctx)
         .await;
-    CreateIssueTool::new(Arc::clone(&store))
+    CreateIssueTool::new(Arc::clone(&store), policy())
         .invoke(issue_args("b"), &ctx)
         .await;
 
@@ -130,7 +221,7 @@ async fn set_issue_blocked_by_surfaces_a_cycle_as_a_tool_error_without_mutating(
 #[tokio::test]
 async fn update_complete_and_remove_flow() {
     let (store, ctx, _dir) = fixture();
-    CreateIssueTool::new(Arc::clone(&store))
+    CreateIssueTool::new(Arc::clone(&store), policy())
         .invoke(issue_args("a"), &ctx)
         .await;
 
@@ -199,7 +290,7 @@ async fn the_board_populations_are_reported_by_the_tools_that_change_them() {
         }
     );
 
-    let issue = CreateIssueTool::new(Arc::clone(&store))
+    let issue = CreateIssueTool::new(Arc::clone(&store), policy())
         .invoke(issue_args("a"), &ctx)
         .await;
     assert_eq!(usage(&issue).issues, 1);
@@ -226,7 +317,7 @@ async fn the_board_populations_are_reported_by_the_tools_that_change_them() {
 #[tokio::test]
 async fn completing_an_issue_reports_whether_a_review_gated_it() {
     let (store, ctx, _dir) = fixture();
-    CreateIssueTool::new(Arc::clone(&store))
+    CreateIssueTool::new(Arc::clone(&store), policy())
         .invoke(issue_args("a"), &ctx)
         .await;
 
@@ -249,7 +340,7 @@ async fn completing_an_issue_reports_whether_a_review_gated_it() {
 #[tokio::test]
 async fn each_store_refusal_is_classified_from_its_variant() {
     let (store, ctx, _dir) = fixture();
-    let create_issue = CreateIssueTool::new(Arc::clone(&store));
+    let create_issue = CreateIssueTool::new(Arc::clone(&store), policy());
 
     create_issue.invoke(issue_args("a"), &ctx).await;
     create_issue.invoke(issue_args("b"), &ctx).await;

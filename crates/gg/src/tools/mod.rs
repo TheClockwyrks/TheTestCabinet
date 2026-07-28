@@ -73,7 +73,7 @@ use test_cabinet_core::gg::{
 };
 
 use crate::archive::ArchiveStore;
-use crate::board::BoardStore;
+use crate::board::{BoardStore, IssuePolicy};
 use crate::compaction::CompactionStrategy;
 use crate::memories::MemoryStore;
 use crate::model::{ImageContent, ToolCall, ToolDefinition};
@@ -82,8 +82,9 @@ use crate::tasks::TaskStore;
 use crate::vision::VisionSupport;
 
 pub use board::{
-    COMPLETE_ISSUE_TOOL, CompleteIssueTool, CreateEpicTool, CreateIssueTool, RemoveEpicTool,
-    RemoveIssueTool, SetIssueBlockedByTool, UpdateIssueTool, WAIT_FOR_ISSUE_TOOL, is_board_tool,
+    COMPLETE_ISSUE_TOOL, CREATE_ISSUE_TOOL, CompleteIssueTool, CreateEpicTool, CreateIssueTool,
+    RemoveEpicTool, RemoveIssueTool, SetIssueBlockedByTool, UpdateIssueTool, WAIT_FOR_ISSUE_TOOL,
+    is_board_tool,
 };
 pub use context::{
     ARCHIVE_THREAD_TOOL, ArchiveThreadTool, COMPACT_TOOL, CompactTool, DEFAULT_ARCHIVE_KEEP_RECENT,
@@ -690,7 +691,10 @@ impl ToolRegistry {
             && let Some(board) = runtimes.board
         {
             tools.push(Box::new(board::CreateEpicTool::new(Arc::clone(board))));
-            tools.push(Box::new(board::CreateIssueTool::new(Arc::clone(board))));
+            tools.push(Box::new(board::CreateIssueTool::new(
+                Arc::clone(board),
+                IssuePolicy::resolve(capabilities),
+            )));
             tools.push(Box::new(board::UpdateIssueTool::new(Arc::clone(board))));
             tools.push(Box::new(board::SetIssueBlockedByTool::new(Arc::clone(
                 board,

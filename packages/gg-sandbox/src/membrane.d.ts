@@ -305,6 +305,8 @@ declare module "test-cabinet:gg/board" {
     completionCriteria: string;
     blockedBy: string[];
     epicId: string | undefined;
+    agent: string;
+    reviewers: string[];
   }
 
   /** A revision of an issue. Every field is optional; at least one must be supplied. */

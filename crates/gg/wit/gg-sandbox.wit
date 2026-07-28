@@ -381,6 +381,11 @@ interface board {
         blocked-by: list<string>,
         /// The epic to group it under.
         epic-id: option<string>,
+        /// The agent gg dispatches this issue to. Must be one this agent may spawn.
+        agent: string,
+        /// The agents that must approve this issue's work, drawn from the same set as `agent`.
+        /// Required when the run's reviewers feature is on, and empty otherwise.
+        reviewers: list<string>,
     }
 
     /// How an issue's epic grouping changes.

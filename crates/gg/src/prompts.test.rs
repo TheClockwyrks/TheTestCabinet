@@ -69,8 +69,9 @@ fn full_system() -> SystemContext {
         tasks: Some(TasksView { max_tasks: 100 }),
         board: Some(BoardView {
             max_epics: 50,
-            max_issues: 200,
+            max_issues: 2000,
             max_retries: 1,
+            reviewers: true,
         }),
         planning: true,
         fsm: Some(FsmView {
@@ -404,8 +405,9 @@ fn the_two_modes_name_calls_in_their_own_form() {
             }],
             board: Some(BoardView {
                 max_epics: 50,
-                max_issues: 200,
+                max_issues: 2000,
                 max_retries: 1,
+                reviewers: true,
             }),
             ..SystemContext::default()
         }
@@ -1297,6 +1299,8 @@ fn the_board_block_renders_epics_issues_and_briefs() {
             in_scope: "the grid".to_string(),
             out_of_scope: "animation".to_string(),
             completion_criteria: "the grid draws".to_string(),
+            agent: "implementer".to_string(),
+            reviewers: Some("`critic`".to_string()),
         }],
     });
     assert_eq!(
@@ -1311,7 +1315,9 @@ fn the_board_block_renders_epics_issues_and_briefs() {
          \x20 - overview: canvas\n\
          \x20 - in scope: the grid\n\
          \x20 - out of scope: animation\n\
-         \x20 - done when: the grid draws"
+         \x20 - done when: the grid draws\n\
+         \x20 - assigned to: `implementer`\n\
+         \x20 - reviewers: `critic`"
     );
     assert!(!block.contains("create_issue"));
 }

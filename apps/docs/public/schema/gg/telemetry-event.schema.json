@@ -47,6 +47,11 @@
     "GgBoardIssue": {
       "description": "One [issue](https://docs.testcabinet.ai/gg/project-management/) on the board — a node of the\nblocked-by DAG reported in a [`BoardState`](GgTelemetryKind::BoardState) event.\n\nAn issue is the **heavyweight** counterpart to a [task](GgTaskEntry): rather than just a\ntitle and description it carries structured sections — [`in_scope`](Self::in_scope),\n[`out_of_scope`](Self::out_of_scope), and [`completion_criteria`](Self::completion_criteria)\n— whose explicit scope boundaries and completion criteria are what make an issue **safe to\ndispatch to a subagent** (Phase 4): they tell the subagent exactly what it is and is not\nresponsible for and how it will be judged done. Issues share the [tasks](GgTaskEntry)\nblocked-by relation — a **DAG**, so gg rejects any edge that would introduce a cycle — and\nan issue may be grouped under an [epic](GgBoardEpic) through its\n[`epic_id`](Self::epic_id). The whole board is retained across a [compaction] boundary\nverbatim, like the task list.\n\n[compaction]: https://docs.testcabinet.ai/gg/compaction/",
       "properties": {
+        "agent": {
+          "default": "",
+          "description": "The [agent profile](GgAgentConfig) the issue was **assigned to** when it was created —\nthe profile gg dispatches it under. It is named on `create_issue` (not configured on the\ncapability), and must be one the creating agent may\n[spawn](GgAgentConfig::subagents). Empty only on a board recorded before issues carried\nan assignee, which dispatches under the [Root](ROOT_AGENT).",
+          "type": "string"
+        },
         "assignedAgentId": {
           "description": "The id of the agent gg [dispatched](https://docs.testcabinet.ai/gg/project-management/)\nto implement this issue, when one is assigned (its status is then\n[`InProgress`](GgIssueStatus::InProgress)) — the link the console follows from the issue\nto that agent in the Agents explorer. `None` while the issue is\n[`Open`](GgIssueStatus::Open), and after a terminal state carries the last agent that\nworked it.",
           "type": ["string", "null"]
@@ -88,6 +93,13 @@
           "format": "uint32",
           "minimum": 0,
           "type": "integer"
+        },
+        "reviewers": {
+          "description": "The [agent profiles](GgAgentConfig) named as this issue's **reviewers** when it was\ncreated, drawn from the same [spawnable set](GgAgentConfig::subagents) as its\n[`agent`](Self::agent). Non-empty exactly when the capability's `reviewers` feature was\non for the creating agent; a [Code Review](CAPABILITY_CODE_REVIEWS) of the issue is run\nby these profiles, each of which must approve.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         },
         "status": {
           "$ref": "#/$defs/GgIssueStatus",

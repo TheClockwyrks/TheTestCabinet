@@ -17,5 +17,11 @@
   - in scope: {{inScope}}
   - out of scope: {{outOfScope}}
   - done when: {{completionCriteria}}
+{{#if agent}}
+  - assigned to: `{{agent}}`
+{{/if}}
+{{#if reviewers}}
+  - reviewers: {{reviewers}}
+{{/if}}
 {{/each}}
 {{/if}}

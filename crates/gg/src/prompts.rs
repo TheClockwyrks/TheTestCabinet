@@ -557,6 +557,8 @@ pub struct BoardView {
     pub max_issues: usize,
     /// How many times gg re-dispatches a failed issue before marking it failed.
     pub max_retries: usize,
+    /// Whether this agent must name one or more reviewers on every issue it files.
+    pub reviewers: bool,
 }
 
 /// The process driving the run, named in the prompt.
@@ -1002,6 +1004,10 @@ pub struct IssueItemView {
     pub out_of_scope: String,
     /// What makes the issue done.
     pub completion_criteria: String,
+    /// The agent profile the issue is assigned to — who gg dispatches it under.
+    pub agent: String,
+    /// The issue's reviewer profiles, pre-formatted, or `None` when it was filed without any.
+    pub reviewers: Option<String>,
 }
 
 /// Render the pinned [epic/issue board](crate::board) block.
