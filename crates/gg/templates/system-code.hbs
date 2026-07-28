@@ -82,20 +82,6 @@ previously recorded info.
 {{#if readFile.capped}} Reading a file returns at most {{readFile.lineCap}} lines per call.{{/if}}
 {{/if}}
 
-{{#if shell.offloaded}}
-## Shell output
-
-The `output` of a `system.shell(…)` result holds only the **{{shell.tail}}** of what
-the command printed. Every command's full stdout and stderr are written to a pair of
-files under `{{shell.directory}}`, and a truncated `output` ends with a note naming
-that command's two files.
-
-Nothing is lost — when you need more than the tail (an error that scrolled off the
-top, a count, a full stack trace), run another command to read or `grep` those files
-rather than re-running the original one. Printing a whole `output` with
-`console.log()` is what puts it in your context, so print the part you need.
-{{/if}}
-
 {{#if tasks}}
 ## Tasks
 
