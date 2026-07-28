@@ -82,6 +82,7 @@ impl Tool for CreateMemoryTool {
                     (caps.max_count, "memories"),
                     (caps.max_len_per_memory, "characters of contents each"),
                     (caps.max_len_index, "characters of index"),
+                    (caps.max_len_description, "characters of description each"),
                 ])
             ),
             json!({

@@ -16,10 +16,13 @@
 //! with the [loop](crate::agent)) and returns a [`ToolOutcome`]: a confirmation on success,
 //! or — when a mutation would breach a [limit](crate::memories::MemoryCaps) — an **error
 //! outcome carrying the store's revise-evict-or-delete guidance**, never a silent truncation. The
-//! loop owns the context-window consequences: after a successful mutation it refreshes the
+//! loop owns everything downstream: after a successful mutation it emits the
+//! [`MemoryRevision`](test_cabinet_core::gg::GgTelemetryKind::MemoryRevision) the store recorded
+//! and the [`MemoryState`](test_cabinet_core::gg::GgTelemetryKind::MemoryState) it is left in. The
 //! pinned [`Memory`](test_cabinet_core::gg::GgContextSource::Memory) block (the memories
-//! themselves, or the index, depending on the strategy) and re-emits the
-//! [`MemoryState`](test_cabinet_core::gg::GgTelemetryKind::MemoryState) telemetry.
+//! themselves, or the index, depending on the strategy) is *not* touched here — it is rebuilt at a
+//! [compaction](crate::compaction) boundary, since until then the model can read what it wrote in
+//! the thread.
 //!
 //! The tools are contributed to the registry only when the
 //! [`memories`](test_cabinet_core::gg::CAPABILITY_MEMORIES) capability is enabled; when it
@@ -58,10 +61,10 @@ pub const EDIT_MEMORY_TOOL: &str = "edit_memory";
 pub const SEARCH_MEMORIES_TOOL: &str = "search_memories";
 
 /// Whether `name` is one of the memory-**mutating** tools — the loop uses this to know when a
-/// successful tool call should refresh the memory block and re-emit its state.
+/// successful tool call should drain the store's revisions and re-emit its state.
 ///
-/// `read_memory` and `search_memories` are deliberately absent: they change nothing, so a refresh
-/// after one would re-send an identical block and re-emit an identical state event.
+/// `read_memory` and `search_memories` are deliberately absent: they change nothing, so there is
+/// no revision to record and the state event after one would be identical to the last.
 pub fn is_memory_tool(name: &str) -> bool {
     matches!(
         name,
@@ -161,7 +164,8 @@ fn failure_for(err: &MemoryError) -> ToolFailure {
         MemoryError::NotFound { .. } | MemoryError::EditNotFound { .. } => ToolFailure::NotFound,
         // The limits are gg-side ceilings on how much a run may keep, so a caller that is pruning
         // knows to evict rather than to rephrase.
-        MemoryError::PerMemoryCap { .. }
+        MemoryError::DescriptionCap { .. }
+        | MemoryError::PerMemoryCap { .. }
         | MemoryError::CountCap { .. }
         | MemoryError::TotalCap { .. }
         | MemoryError::IndexCap { .. } => ToolFailure::LimitExceeded,
@@ -205,6 +209,7 @@ impl Tool for WriteMemoryTool {
                     (caps.max_count, "memories"),
                     (caps.max_len_per_memory, "characters of body each"),
                     (caps.max_total_len, "characters of body in total"),
+                    (caps.max_len_description, "characters of description each"),
                 ])
             ),
             json!({

@@ -532,6 +532,9 @@ pub struct MemoriesView {
     pub max_total_len: Option<usize>,
     /// The maximum length, in characters, of the pinned index.
     pub max_len_index: Option<usize>,
+    /// The maximum length, in characters, of a memory's one-line description. Stated because a
+    /// model that finds out about this limit by being refused has already spent a call on it.
+    pub max_len_description: Option<usize>,
     /// The most memories one search reports.
     pub max_results: Option<usize>,
 }

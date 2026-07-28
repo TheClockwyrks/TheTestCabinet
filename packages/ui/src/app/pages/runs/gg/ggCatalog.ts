@@ -289,6 +289,23 @@ export const DEFAULT_MAX_RETRIES = 1;
 export const DEFAULT_MEMORY_MAX_COUNT = 8;
 export const DEFAULT_MEMORY_MAX_LEN_PER = 2000;
 export const DEFAULT_MEMORY_MAX_TOTAL_LEN = 8000;
+export const DEFAULT_MEMORY_MAX_LEN_INDEX = 16384;
+export const DEFAULT_MEMORY_MAX_RESULTS = 25;
+
+// How a run's memories are organized (`crates/gg/src/memories.rs`) — the memory
+// strategy, which decides which memory tools exist, which of the limits apply, and
+// what the context window carries. The values are gg's strategy ids; the empty value
+// is the default (`scratchpad`), which is what an unrecognized name resolves to too.
+export const MEMORY_STRATEGY_OPTIONS = [
+  { value: "", label: "Scratchpad (default)" },
+  { value: "markdown", label: "Markdown + index" },
+  { value: "keyword-search", label: "Keyword search" },
+] as const;
+
+// What each memory strategy does — the detail lifted off the picker's option labels
+// into the field's help tooltip.
+export const MEMORY_STRATEGY_HINT =
+  "Scratchpad keeps every memory's body in the context window, bounded by a count and an aggregate character budget. Markdown pins only an index of slugs and descriptions, and the model reads a memory's contents on demand; the index length is what bounds the population. Keyword search pins nothing at all — the model finds a memory with `search_memories` and reads it back. Under every strategy the memories live inside gg, never on disk.";
 
 // The two shapes the tasks list can take (`crates/gg/src/tasks.rs`): the default
 // **simple** mode is a bare title/description to-do list, while **issues** mode
@@ -551,34 +568,70 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     purpose:
       "The model's own bounded, self-curated notes, retained across a compaction boundary.",
     defaultOn: true,
+    implementationLabel: "Memory strategy",
+    implementationOptions: MEMORY_STRATEGY_OPTIONS,
+    implementationHint: MEMORY_STRATEGY_HINT,
+    // Every limit is offered under every strategy: gg ignores the ones the chosen
+    // strategy does not use rather than rejecting them, so one saved capability set
+    // can be swept across all three arms without editing its params each time. Zero
+    // means unlimited everywhere.
     params: [
       {
         key: "maxCount",
         label: "Max memories",
         kind: "number",
         defaultValue: String(DEFAULT_MEMORY_MAX_COUNT),
-        hint: "How many notes the model may keep at once.",
+        hint: "How many notes the model may keep at once. Scratchpad and keyword-search only — a markdown run is bounded by its index instead, since every memory needs a line in it. 0 for unlimited.",
       },
       {
         key: "maxLenPerMemory",
         label: "Max length each (chars)",
         kind: "number",
         defaultValue: String(DEFAULT_MEMORY_MAX_LEN_PER),
-        hint: "Character ceiling on any one note.",
+        hint: "Character ceiling on any one note's body. Defaults to 8192 under the two file-shaped strategies, whose bodies are not in the window. 0 for unlimited.",
       },
       {
         key: "maxTotalLen",
         label: "Max length total (chars)",
         kind: "number",
         defaultValue: String(DEFAULT_MEMORY_MAX_TOTAL_LEN),
-        hint: "Character ceiling across all notes together.",
+        hint: "Character ceiling across all note bodies together. Scratchpad only — it is the budget for what the window carries. 0 for unlimited.",
+      },
+      {
+        key: "maxLenIndex",
+        label: "Max index length (chars)",
+        kind: "number",
+        defaultValue: String(DEFAULT_MEMORY_MAX_LEN_INDEX),
+        hint: "Character ceiling on the pinned index. Markdown only, where it is the real budget: a create whose entry would not fit is refused, which is what bounds how many memories the run can hold. 0 for unlimited.",
+      },
+      {
+        key: "maxLenDescription",
+        label: "Max description length (chars)",
+        kind: "number",
+        placeholder: "unlimited",
+        hint: "Character ceiling on a memory's one-line description, under every strategy. Off unless set — worth setting on a markdown run, where every description is a line of the pinned index and a verbose one costs the window on every turn.",
+      },
+      {
+        key: "maxResults",
+        label: "Max search results",
+        kind: "number",
+        defaultValue: String(DEFAULT_MEMORY_MAX_RESULTS),
+        hint: "How many memories one `search_memories` call reports. Keyword-search only. 0 for unlimited.",
       },
     ],
-    tools: ["write_memory", "update_memory", "delete_memory"],
+    tools: [
+      "write_memory",
+      "update_memory",
+      "create_memory",
+      "read_memory",
+      "edit_memory",
+      "search_memories",
+      "delete_memory",
+    ],
     toolAblation: [
       {
         label: "Revise memories",
-        tools: ["update_memory", "delete_memory"],
+        tools: ["update_memory", "edit_memory", "delete_memory"],
         hint: "Off leaves memories append-only — the model can write new notes but not edit or delete one.",
       },
     ],

@@ -722,23 +722,22 @@ async fn run_drives_the_mock_end_to_end_and_writes_the_file() {
             .any(|m| m.name == DEFAULT_MOCK_MEMORY),
         "the written memory should appear in the latest MemoryState"
     );
-    let last_breakdown_memory_tokens = events
-        .iter()
-        .rev()
-        .find_map(|e| match &e.kind {
-            GgTelemetryKind::ContextBreakdown { by_source, .. } => Some(
-                by_source
-                    .iter()
-                    .find(|b| b.source == GgContextSource::Memory)
-                    .map(|b| b.tokens)
-                    .unwrap_or(0),
-            ),
-            _ => None,
-        })
-        .expect("a context breakdown was emitted");
+    // The write is also recorded as a revision — the append-only half of the record,
+    // which is what survives the memory later being deleted.
     assert!(
-        last_breakdown_memory_tokens > 0,
-        "the pinned memory body should be accounted to the Memory source"
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::MemoryRevision { name, revision, .. }
+                if name == DEFAULT_MOCK_MEMORY && *revision == 1
+        )),
+        "the write should be recorded as revision 1"
+    );
+    // Nothing is charged to the Memory band: this run never compacts, so the pinned
+    // block was never rebuilt, and the model read its own write out of the thread.
+    assert_eq!(
+        memory_band_tokens(&events),
+        0,
+        "the memory block is rebuilt at a compaction boundary, and this run has none"
     );
 
     // (g) the tasks capability fired: both tasks were added, the cycle-inducing edge was
@@ -2304,6 +2303,7 @@ async fn drive_enforces_memory_caps_end_to_end() {
         max_len_per_memory: Some(500),
         max_total_len: Some(5_000),
         max_len_index: None,
+        max_len_description: None,
         max_results: None,
     };
     let memories = MemoriesRuntime::new(crate::memories::MemoryStrategy::Scratchpad, caps);
@@ -2396,8 +2396,23 @@ async fn drive_enforces_memory_caps_end_to_end() {
         .expect("a MemoryState was emitted");
     assert_eq!(last_count, 1, "the count cap held");
 
-    // The accepted memory is pinned and accounted to the Memory source.
-    let last_memory_tokens = events
+    // The accepted memory is in the store. It is *not* yet in the window: with no
+    // compaction on this run there has been no boundary to rebuild the pinned block at,
+    // and the model has been reading its own write in the thread (see
+    // `memory_block_is_rebuilt_only_at_a_compaction_boundary`).
+    assert_eq!(memory_store.lock().unwrap().count(), 1);
+    let last_memory_tokens = memory_band_tokens(&events);
+    assert_eq!(
+        last_memory_tokens, 0,
+        "no compaction has happened, so no memory block has been pinned"
+    );
+}
+
+/// The tokens the latest `ContextBreakdown` attributes to the
+/// [`Memory`](GgContextSource::Memory) band — how much of the window the pinned memory
+/// block is costing.
+fn memory_band_tokens(events: &[GgTelemetryEvent]) -> u64 {
+    events
         .iter()
         .rev()
         .find_map(|e| match &e.kind {
@@ -2410,8 +2425,7 @@ async fn drive_enforces_memory_caps_end_to_end() {
             ),
             _ => None,
         })
-        .expect("a context breakdown was emitted");
-    assert!(last_memory_tokens > 0, "the accepted memory is pinned");
+        .expect("a context breakdown was emitted")
 }
 
 /// One `create_memory` call, as a model response.
@@ -2453,6 +2467,9 @@ async fn drive_pins_only_the_index_under_the_markdown_strategy() {
         strategy,
         crate::memories::MemoryCaps::for_strategy(strategy),
     );
+    // A second handle on the same store, kept behind so the block gg *would* pin can be
+    // read after `drive` has taken ownership of the runtime.
+    let pinned = memories.clone();
     let set = GgCapabilitySet::minimal("mock/echo");
     let library = Arc::new(SkillLibrary::empty());
     let memory_store = memories.store();
@@ -2520,11 +2537,110 @@ async fn drive_pins_only_the_index_under_the_markdown_strategy() {
         .expect("a MemoryState was emitted");
     assert_eq!(strategy_reported, "markdown");
 
-    // The index is pinned — the Memory source is accounted for — but the contents are not in it.
-    let last_memory_tokens = events
+    // What the strategy would pin is the index alone. Asserted on the block itself
+    // rather than on the window, because the loop rebuilds it at a compaction boundary
+    // and this run has none — the block's *shape* is this test's claim, and the timing
+    // of the rebuild is `memory_block_is_rebuilt_only_at_a_compaction_boundary`'s.
+    assert_eq!(
+        memory_store.lock().unwrap().index_text(),
+        "- `layout` — a note"
+    );
+    let block = pinned
+        .context_block()
+        .expect("the markdown strategy pins a block once a memory exists");
+    let rendered = block.content.clone().unwrap_or_default();
+    assert!(rendered.contains("- `layout` — a note"), "{rendered}");
+    assert!(
+        !rendered.contains("THE-CONTENTS-OF-THE-MEMORY"),
+        "the contents must stay out of the window until they are read: {rendered}"
+    );
+}
+
+/// The pinned memory block costs the window **nothing until a compaction boundary** — the
+/// prompt-cache half of gg's memory-in-the-window contract.
+///
+/// A block rebuilt every time the model curates re-sends every memory it holds in order to
+/// tell it something its own tool result already told it, and on a long run that is most of
+/// what memory costs. So while the thread is intact, the window carries no block at all.
+///
+/// The other half — that the memories *are* in the window verbatim on the far side of the
+/// boundary, which is what makes carrying nothing before it safe — is
+/// [`drive_compacts_at_the_threshold_and_retains_pinned_state`]. The two run the same
+/// script deliberately: the same run that ends with the memory pinned begins with it
+/// costing nothing.
+#[tokio::test]
+async fn the_memory_block_costs_nothing_until_the_boundary() {
+    let dir = TempDir::new().unwrap();
+    let ctx = ToolContext::new(dir.path());
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-refresh".to_string()), Box::new(sink.clone()));
+
+    let (registry, skills, memories, tasks) = compaction_runtimes(dir.path());
+    let client = MockClient::new("mock/echo", compaction_script());
+
+    let agent = Agent::root();
+    let end = agent
+        .drive(
+            &client,
+            "go",
+            &registry,
+            &ctx,
+            &emitter,
+            no_limits(10),
+            test_context_setup_with_window(4_000),
+            compaction_at(0.6),
+            no_amc(),
+            no_autoload(),
+            &[],
+            skills,
+            memories,
+            tasks,
+            BoardRuntime::disabled(),
+            PlanningRuntime::disabled(),
+            FsmRuntime::disabled(),
+            ReadPolicy::default(),
+            OffloadPolicy::default(),
+            false,
+            false,
+            no_code(),
+            no_completion(),
+            &GgAgentConfig::root(),
+            None,
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(end.status, "completed");
+
+    let events = sink.events();
+    let compaction_pos = events
         .iter()
-        .rev()
-        .find_map(|e| match &e.kind {
+        .position(|e| matches!(e.kind, GgTelemetryKind::Compaction { .. }))
+        .expect("the run crossed a compaction boundary");
+
+    // The memory was written well before the boundary — the script writes it on turn two
+    // and balloons the window on turn four — so there were turns in between that could
+    // have carried a block, and none of them did.
+    let wrote_at = events
+        .iter()
+        .position(|e| matches!(&e.kind, GgTelemetryKind::MemoryState { count, .. } if *count == 1))
+        .expect("the scripted memory was written");
+    assert!(
+        wrote_at < compaction_pos,
+        "the memory must be written before the boundary for this to prove anything"
+    );
+    let breakdowns_between = events[wrote_at..compaction_pos]
+        .iter()
+        .filter(|e| matches!(e.kind, GgTelemetryKind::ContextBreakdown { .. }))
+        .count();
+    assert!(
+        breakdowns_between > 0,
+        "there must be a turn between the write and the boundary"
+    );
+
+    let pre_boundary_peak = events[..compaction_pos]
+        .iter()
+        .filter_map(|e| match &e.kind {
             GgTelemetryKind::ContextBreakdown { by_source, .. } => Some(
                 by_source
                     .iter()
@@ -2534,12 +2650,15 @@ async fn drive_pins_only_the_index_under_the_markdown_strategy() {
             ),
             _ => None,
         })
-        .expect("a context breakdown was emitted");
-    assert!(last_memory_tokens > 0, "the index is pinned");
+        .max()
+        .unwrap_or(0);
     assert_eq!(
-        memory_store.lock().unwrap().index_text(),
-        "- `layout` — a note"
+        pre_boundary_peak, 0,
+        "no turn before the boundary pays for a memory block"
     );
+    // And after it, it does — the same assertion the retention test makes, restated here
+    // so this test reads as the whole before/after story rather than half of one.
+    assert!(memory_band_tokens(&events) > 0);
 }
 
 // ---------------------------------------------------------------------------

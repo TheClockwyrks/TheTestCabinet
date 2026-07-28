@@ -332,10 +332,17 @@
       "type": "object"
     },
     "GgMemoryCaps": {
-      "description": "The bounds gg enforces on the model's self-curated [memories] — a band of the\n[`MemoryState`](GgTelemetryKind::MemoryState) event so the console can show how close\nthe model is to each limit.\n\nBecause memories are curated by the *model itself* (unlike [skills], authored ahead of\nthe run), they must be bounded so self-curated notes cannot crowd out the working\ncontext. When a write would exceed a limit, gg rejects it and instructs the model to\nrevise or evict rather than silently truncating or dropping. Lengths are measured in\ncharacters of a memory's **body** (its `description` is a short one-liner, like a\nskill's).\n\n# Which limits apply, and what they default to\n\nEvery limit is optional — `None` is **unlimited**, which a run configures by setting the\nparam to `0` — and which ones a run resolves depends on the\n[strategy](CAPABILITY_MEMORIES) its `implementation` selected. A limit a strategy does\nnot use is always `None`:\n\n| Limit | Param | [`scratchpad`](MEMORY_STRATEGY_SCRATCHPAD) | [`markdown`](MEMORY_STRATEGY_MARKDOWN) | [`keyword-search`](MEMORY_STRATEGY_KEYWORD_SEARCH) |\n| --- | --- | --- | --- | --- |\n| [`max_count`](Self::max_count) | `maxCount` | 8 | — | unlimited |\n| [`max_len_per_memory`](Self::max_len_per_memory) | `maxLenPerMemory` | 2 000 | 8 192 | 8 192 |\n| [`max_total_len`](Self::max_total_len) | `maxTotalLen` | 8 000 | — | — |\n| [`max_len_index`](Self::max_len_index) | `maxLenIndex` | — | 16 384 | — |\n| [`max_results`](Self::max_results) | `maxResults` | — | — | 25 |\n\n[memories]: https://docs.testcabinet.ai/gg/memories/\n[skills]: https://docs.testcabinet.ai/gg/skills/",
+      "description": "The bounds gg enforces on the model's self-curated [memories] — a band of the\n[`MemoryState`](GgTelemetryKind::MemoryState) event so the console can show how close\nthe model is to each limit.\n\nBecause memories are curated by the *model itself* (unlike [skills], authored ahead of\nthe run), they must be bounded so self-curated notes cannot crowd out the working\ncontext. When a write would exceed a limit, gg rejects it and instructs the model to\nrevise or evict rather than silently truncating or dropping. Lengths are measured in\ncharacters of a memory's **body** (its `description` is a short one-liner, like a\nskill's).\n\n# Which limits apply, and what they default to\n\nEvery limit is optional — `None` is **unlimited**, which a run configures by setting the\nparam to `0` — and which ones a run resolves depends on the\n[strategy](CAPABILITY_MEMORIES) its `implementation` selected. A limit a strategy does\nnot use is always `None`:\n\n| Limit | Param | [`scratchpad`](MEMORY_STRATEGY_SCRATCHPAD) | [`markdown`](MEMORY_STRATEGY_MARKDOWN) | [`keyword-search`](MEMORY_STRATEGY_KEYWORD_SEARCH) |\n| --- | --- | --- | --- | --- |\n| [`max_count`](Self::max_count) | `maxCount` | 8 | — | unlimited |\n| [`max_len_per_memory`](Self::max_len_per_memory) | `maxLenPerMemory` | 2 000 | 8 192 | 8 192 |\n| [`max_total_len`](Self::max_total_len) | `maxTotalLen` | 8 000 | — | — |\n| [`max_len_index`](Self::max_len_index) | `maxLenIndex` | — | 16 384 | — |\n| [`max_len_description`](Self::max_len_description) | `maxLenDescription` | unlimited | unlimited | unlimited |\n| [`max_results`](Self::max_results) | `maxResults` | — | — | 25 |\n\n[memories]: https://docs.testcabinet.ai/gg/memories/\n[skills]: https://docs.testcabinet.ai/gg/skills/",
       "properties": {
         "maxCount": {
           "description": "The maximum number of memories that may exist at once; `null` is unlimited.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "maxLenDescription": {
+          "default": null,
+          "description": "The maximum length, in characters, of a memory's one-line **description** — the part\nof a memory a strategy shows up front (every line of a\n[`markdown`](MEMORY_STRATEGY_MARKDOWN) index is one), which is why a run that wants a\ntight index bounds it here rather than trusting the model to be terse. Off by default\n(`null` is unlimited) and applies under every strategy.",
           "format": "uint64",
           "minimum": 0,
           "type": ["integer", "null"]
@@ -369,6 +376,26 @@
       },
       "type": "object"
     },
+    "GgMemoryChange": {
+      "description": "What one [`MemoryRevision`](GgTelemetryKind::MemoryRevision) event records — the mutation\nthat produced this revision of a [memory](https://docs.testcabinet.ai/gg/memories/).",
+      "oneOf": [
+        {
+          "const": "written",
+          "description": "The memory was created (`write_memory` / `create_memory`).",
+          "type": "string"
+        },
+        {
+          "const": "updated",
+          "description": "The memory was revised (`update_memory` / `edit_memory`).",
+          "type": "string"
+        },
+        {
+          "const": "deleted",
+          "description": "The memory was removed (`delete_memory`).",
+          "type": "string"
+        }
+      ]
+    },
     "GgMemoryEntry": {
       "description": "The state of one model-curated [memory](https://docs.testcabinet.ai/gg/memories/) at a\npoint in a run — a band of a [`MemoryState`](GgTelemetryKind::MemoryState) event.\n\nA memory is written by the model — with `write_memory` under the\n[`scratchpad`](MEMORY_STRATEGY_SCRATCHPAD) strategy, `create_memory` under the other two\n— and its [`description`](Self::description) is what the console (and, where a strategy\nshows one, the model) sees the memory as at a glance. [`len`](Self::len) is the body's\nlength in characters — what the [caps](GgMemoryCaps) are measured against.",
       "properties": {
@@ -382,12 +409,44 @@
           "minimum": 0,
           "type": "integer"
         },
+        "lines": {
+          "default": 0,
+          "description": "The memory body's length in **lines** — the second size the console reports, because\ncharacters alone do not distinguish a dense paragraph from a long checklist. `0` on\nrecords written before line counts were reported.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
         "name": {
           "description": "The memory's stable name — the slug every memory tool addresses it by.",
           "type": "string"
         }
       },
       "required": ["name", "description", "len"],
+      "type": "object"
+    },
+    "GgMemoryPeak": {
+      "description": "The high-water marks a run's [memories](https://docs.testcabinet.ai/gg/memories/) reached\n— a band of every [`MemoryState`](GgTelemetryKind::MemoryState) event.\n\nThe live figures on a `MemoryState` say what the model holds *now*; a run that curates\naggressively can spend most of its length budget and end near empty, and the current\nfigures alone would read as a run that barely used memory at all. The peaks are what a\nstudy of how much memory a strategy actually consumed is measured against.",
+      "properties": {
+        "count": {
+          "description": "The most memories held at once.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "totalLen": {
+          "description": "The largest total body length, in characters, ever held at once.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "totalLines": {
+          "description": "The largest total body length, in lines, ever held at once.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["count", "totalLen", "totalLines"],
       "type": "object"
     },
     "GgNotAProgram": {
@@ -976,6 +1035,15 @@
           },
           "type": "array"
         },
+        "peak": {
+          "$ref": "#/$defs/GgMemoryPeak",
+          "default": {
+            "count": 0,
+            "totalLen": 0,
+            "totalLines": 0
+          },
+          "description": "The high-water marks this run's memories reached, so a set that was curated back\ndown still reports how much it once held."
+        },
         "strategy": {
           "default": "",
           "description": "The [strategy](CAPABILITY_MEMORIES) this run's memories are organized by — which\ntools the model was offered, and which of the [caps](GgMemoryCaps) apply. Empty\non records written before memories had more than one strategy.",
@@ -987,12 +1055,73 @@
           "minimum": 0,
           "type": "integer"
         },
+        "totalLines": {
+          "default": 0,
+          "description": "The total length, in lines, summed across every memory's body. `0` on records\nwritten before line counts were reported.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
         "type": {
           "const": "memory_state",
           "type": "string"
         }
       },
       "required": ["type", "memories", "count", "totalLen", "caps"],
+      "type": "object"
+    },
+    {
+      "description": "One revision of one [memory](https://docs.testcabinet.ai/gg/memories/) — the\nappend-only record of everything the model ever wrote to memory.\n\nEmitted after **every** successful memory mutation, alongside the\n[`MemoryState`](Self::MemoryState) snapshot that reports the set as it now stands. The\ntwo answer different questions: the snapshot is what the model holds, and this stream\nis what it *did* — including the memories it wrote and then deleted, which a snapshot\ncan never show, and the earlier text of a memory it revised. The console replays the\nstream into a per-memory revision history.",
+      "properties": {
+        "body": {
+          "description": "The memory's body as of this revision; empty on a deletion. The body is bounded by\n[`max_len_per_memory`](GgMemoryCaps::max_len_per_memory), so the stream carries the\ntext itself rather than a pointer the console would have to resolve.",
+          "type": "string"
+        },
+        "change": {
+          "$ref": "#/$defs/GgMemoryChange",
+          "description": "What produced this revision."
+        },
+        "description": {
+          "description": "The memory's description as of this revision; empty on a deletion, and on a\nstrategy that does not require one.",
+          "type": "string"
+        },
+        "len": {
+          "description": "The body's length in characters (`0` on a deletion).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "lines": {
+          "description": "The body's length in lines (`0` on a deletion).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "name": {
+          "description": "The memory's stable name — the slug the revisions of one memory are keyed by. A\nname that is deleted and later re-created keeps counting up from where it left\noff, because that too is part of what the model did.",
+          "type": "string"
+        },
+        "revision": {
+          "description": "This memory's revision number, counting from `1` at its first write.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "type": {
+          "const": "memory_revision",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "name",
+        "revision",
+        "change",
+        "description",
+        "body",
+        "len",
+        "lines"
+      ],
       "type": "object"
     },
     {

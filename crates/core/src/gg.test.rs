@@ -557,15 +557,24 @@ fn memory_state_serializes_entries_caps_and_totals() {
             name: "game-plan".to_string(),
             description: "the plan".to_string(),
             len: 42,
+            lines: 3,
         }],
         count: 1,
         total_len: 42,
+        total_lines: 3,
+        // The set was curated down: it once held three memories and 120 characters.
+        peak: GgMemoryPeak {
+            count: 3,
+            total_len: 120,
+            total_lines: 9,
+        },
         // A markdown run: bounded by its index and its per-memory length, and by nothing else.
         caps: GgMemoryCaps {
             max_count: None,
             max_len_per_memory: Some(8_192),
             max_total_len: None,
             max_len_index: Some(16_384),
+            max_len_description: Some(120),
             max_results: None,
         },
     };
@@ -576,10 +585,12 @@ fn memory_state_serializes_entries_caps_and_totals() {
             "type": "memory_state",
             "strategy": "markdown",
             "memories": [
-                { "name": "game-plan", "description": "the plan", "len": 42 }
+                { "name": "game-plan", "description": "the plan", "len": 42, "lines": 3 }
             ],
             "count": 1,
             "totalLen": 42,
+            "totalLines": 3,
+            "peak": { "count": 3, "totalLen": 120, "totalLines": 9 },
             // A limit a strategy does not use serializes as `null`, which is a different
             // fact from a large number and is what a console needs to skip its meter.
             "caps": {
@@ -587,8 +598,72 @@ fn memory_state_serializes_entries_caps_and_totals() {
                 "maxLenPerMemory": 8_192,
                 "maxTotalLen": null,
                 "maxLenIndex": 16_384,
+                "maxLenDescription": 120,
                 "maxResults": null,
             },
+        })
+    );
+    let back: GgTelemetryKind = serde_json::from_value(value).expect("deserialize");
+    assert_eq!(kind, back);
+}
+
+#[test]
+fn memory_state_reads_a_record_written_before_lines_and_peaks() {
+    // The three fields added after the event shipped are all `#[serde(default)]`, so an
+    // older record still loads — reporting no line counts and no peaks rather than
+    // failing to parse, which is what keeps an archived run readable.
+    let value = json!({
+        "type": "memory_state",
+        "strategy": "scratchpad",
+        "memories": [{ "name": "controls", "description": "the scheme", "len": 42 }],
+        "count": 1,
+        "totalLen": 42,
+        "caps": {
+            "maxCount": 8,
+            "maxLenPerMemory": 2_000,
+            "maxTotalLen": 8_000,
+        },
+    });
+    let kind: GgTelemetryKind = serde_json::from_value(value).expect("deserialize");
+    let GgTelemetryKind::MemoryState {
+        memories,
+        total_lines,
+        peak,
+        caps,
+        ..
+    } = kind
+    else {
+        panic!("expected a MemoryState");
+    };
+    assert_eq!(memories[0].lines, 0);
+    assert_eq!(total_lines, 0);
+    assert_eq!(peak, GgMemoryPeak::default());
+    assert_eq!(caps.max_len_description, None);
+}
+
+#[test]
+fn memory_revision_serializes_one_entry_of_the_record() {
+    let kind = GgTelemetryKind::MemoryRevision {
+        name: "game-plan".to_string(),
+        revision: 2,
+        change: GgMemoryChange::Updated,
+        description: "the plan".to_string(),
+        body: "Ship the maze first.\nThen the enemies.".to_string(),
+        len: 38,
+        lines: 2,
+    };
+    let value = serde_json::to_value(&kind).expect("serialize");
+    assert_eq!(
+        value,
+        json!({
+            "type": "memory_revision",
+            "name": "game-plan",
+            "revision": 2,
+            "change": "updated",
+            "description": "the plan",
+            "body": "Ship the maze first.\nThen the enemies.",
+            "len": 38,
+            "lines": 2,
         })
     );
     let back: GgTelemetryKind = serde_json::from_value(value).expect("deserialize");

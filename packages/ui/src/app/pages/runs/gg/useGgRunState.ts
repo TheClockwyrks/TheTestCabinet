@@ -25,6 +25,7 @@ import type {
   GgLoggedToolCall,
   GgMemoryCaps,
   GgMemoryEntry,
+  GgMemoryPeak,
   GgPlanPhase,
   GgPromptRef,
   GgRetainedState,
@@ -283,16 +284,50 @@ export function turnTotalMs(t: TurnTiming): number {
   return t.promptMs + t.requestMs + t.responseMs;
 }
 
+// One recorded revision of one memory — a `memory_revision` event, which gg emits for
+// every successful mutation. `body` is the memory's text as of that revision; a
+// deletion carries none, because what the memory said is on the revision before it.
+export interface GgMemoryRevision {
+  revision: number;
+  change: "written" | "updated" | "deleted";
+  description: string;
+  body: string;
+  len: number;
+  lines: number;
+}
+
+// Everything that ever happened to one memory, keyed by its slug: its revisions in
+// order, and where that left it. `live` is false for a memory the model wrote and
+// later deleted — which is exactly what a `memory_state` snapshot can never show, and
+// the reason the revision stream is folded alongside it.
+//
+// `description`/`len`/`lines` describe the memory's last *written* state, so a deleted
+// memory still reports what it held rather than collapsing to zero.
+export interface GgMemoryHistory {
+  name: string;
+  revisions: GgMemoryRevision[];
+  live: boolean;
+  description: string;
+  len: number;
+  lines: number;
+}
+
 // The latest `memory_state` — the model's self-curated memories, the strategy they
-// are organized by (see gg/memories), and the limits gg keeps them within. `strategy`
-// is empty on records written before memories had more than one, which the panel reads
-// as the scratchpad they all were.
+// are organized by (see gg/memories), and the limits gg keeps them within — plus the
+// `memory_revision` stream folded into a per-memory history. `strategy` is empty on
+// records written before memories had more than one, which the panel reads as the
+// scratchpad they all were; `totalLines`, `peak` and `history` are likewise absent
+// (zero / empty) on records written before gg reported them.
 export interface GgMemoryState {
   strategy: string;
   memories: GgMemoryEntry[];
   count: number;
   totalLen: number;
+  totalLines: number;
+  peak: GgMemoryPeak;
   caps: GgMemoryCaps;
+  // Every memory the agent ever held, in first-written order, live or deleted.
+  history: GgMemoryHistory[];
 }
 
 // The latest `board_state` — the live epic/issue board (see gg/epics-and-issues).
@@ -658,7 +693,10 @@ function ggFeedRow(
     // saying where its milliseconds went would drown the feed it sits in.
     case "turn_timing":
     case "skills_state":
+    // The memory panel carries both the live set and the per-memory revision
+    // history, so neither kind needs a feed row of its own.
     case "memory_state":
+    case "memory_revision":
     case "tasks_state":
     case "board_state":
     // The Phase-4 agent/usage/workflow kinds drive the agent tree, the per-slot
@@ -980,7 +1018,14 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
   let sawSession = false;
   let sessionEndStatus: string | null = null;
   let skills: GgSkillState[] = [];
-  let memory: GgMemoryState | null = null;
+  // The latest snapshot, on a const so the post-loop read narrows cleanly — a `let`
+  // assigned only inside the forEach closure is not narrowed by control flow after
+  // the loop (the same reason `fsmRef` below is shaped this way).
+  const memoryRef: { latest: GgMemoryState | null } = { latest: null };
+  // Every memory this agent ever held, in first-written order — folded from the
+  // `memory_revision` stream and stitched onto the snapshot after the pass, so a
+  // memory that was written and later deleted survives the snapshot that dropped it.
+  const memoryHistory = new Map<string, GgMemoryHistory>();
   let tasks: GgTaskEntry[] = [];
   let board: BoardState | null = null;
   let plan: PlanState | null = null;
@@ -1208,14 +1253,51 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
         skills = gg.skills;
         break;
       case "memory_state":
-        memory = {
+        // Latest snapshot wins: gg re-emits the whole set on each mutation. The
+        // history is stitched on after the pass, from the revision stream.
+        memoryRef.latest = {
           strategy: gg.strategy,
           memories: gg.memories,
           count: gg.count,
           totalLen: gg.totalLen,
+          totalLines: gg.totalLines,
+          peak: gg.peak,
           caps: gg.caps,
+          history: [],
         };
         break;
+      case "memory_revision": {
+        // Append-only: one entry per slug, in first-written order, accumulating
+        // every revision of it. A deletion clears `live` but keeps the memory (and
+        // the text of its last written revision) in the record.
+        let entry = memoryHistory.get(gg.name);
+        if (!entry) {
+          entry = {
+            name: gg.name,
+            revisions: [],
+            live: false,
+            description: "",
+            len: 0,
+            lines: 0,
+          };
+          memoryHistory.set(gg.name, entry);
+        }
+        entry.revisions.push({
+          revision: gg.revision,
+          change: gg.change,
+          description: gg.description,
+          body: gg.body,
+          len: gg.len,
+          lines: gg.lines,
+        });
+        entry.live = gg.change !== "deleted";
+        if (entry.live) {
+          entry.description = gg.description;
+          entry.len = gg.len;
+          entry.lines = gg.lines;
+        }
+        break;
+      }
       case "tasks_state":
         tasks = gg.tasks;
         break;
@@ -1356,6 +1438,14 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
       stages: [...stages.values()].sort((a, b) => a.stageIndex - b.stageIndex),
     }),
   );
+
+  // Stitch the revision stream onto the latest snapshot. Kept separate through the
+  // fold because the two have different lifetimes: a snapshot is replaced whole on
+  // every mutation, while the history only ever grows.
+  let memory = memoryRef.latest;
+  if (memory != null && memoryHistory.size > 0) {
+    memory = { ...memory, history: [...memoryHistory.values()] };
+  }
 
   return {
     feed,

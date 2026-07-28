@@ -164,8 +164,11 @@ describe("GgConfigEditPage", () => {
     // The ablation is per agent now.
     const { disabledTools } = createGgConfig.mock.calls[0]![0].capabilitySet
       .agents[0];
+    // Every way a memory is revised goes with the lever, whichever strategy the run
+    // picks — `update_memory` under the scratchpad, `edit_memory` under the two
+    // file-shaped ones, and `delete_memory` under all three.
     expect(new Set(disabledTools)).toEqual(
-      new Set(["update_memory", "delete_memory"]),
+      new Set(["update_memory", "edit_memory", "delete_memory"]),
     );
   });
 

@@ -1694,6 +1694,7 @@ pub struct GgSkillState {
 /// | [`max_len_per_memory`](Self::max_len_per_memory) | `maxLenPerMemory` | 2 000 | 8 192 | 8 192 |
 /// | [`max_total_len`](Self::max_total_len) | `maxTotalLen` | 8 000 | — | — |
 /// | [`max_len_index`](Self::max_len_index) | `maxLenIndex` | — | 16 384 | — |
+/// | [`max_len_description`](Self::max_len_description) | `maxLenDescription` | unlimited | unlimited | unlimited |
 /// | [`max_results`](Self::max_results) | `maxResults` | — | — | 25 |
 ///
 /// [memories]: https://docs.testcabinet.ai/gg/memories/
@@ -1716,6 +1717,13 @@ pub struct GgMemoryCaps {
     /// `null` for every other strategy, and when the index is unlimited.
     #[serde(default)]
     pub max_len_index: Option<u64>,
+    /// The maximum length, in characters, of a memory's one-line **description** — the part
+    /// of a memory a strategy shows up front (every line of a
+    /// [`markdown`](MEMORY_STRATEGY_MARKDOWN) index is one), which is why a run that wants a
+    /// tight index bounds it here rather than trusting the model to be terse. Off by default
+    /// (`null` is unlimited) and applies under every strategy.
+    #[serde(default)]
+    pub max_len_description: Option<u64>,
     /// The most memories one `search_memories` call reports under the
     /// [`keyword-search`](MEMORY_STRATEGY_KEYWORD_SEARCH) strategy. `null` for every other
     /// strategy — it is a page size rather than a bound on what may be stored, and is
@@ -1921,6 +1929,44 @@ pub struct GgMemoryEntry {
     pub description: String,
     /// The memory body's length in characters (what the caps bound).
     pub len: u64,
+    /// The memory body's length in **lines** — the second size the console reports, because
+    /// characters alone do not distinguish a dense paragraph from a long checklist. `0` on
+    /// records written before line counts were reported.
+    #[serde(default)]
+    pub lines: u64,
+}
+
+/// What one [`MemoryRevision`](GgTelemetryKind::MemoryRevision) event records — the mutation
+/// that produced this revision of a [memory](https://docs.testcabinet.ai/gg/memories/).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum GgMemoryChange {
+    /// The memory was created (`write_memory` / `create_memory`).
+    Written,
+    /// The memory was revised (`update_memory` / `edit_memory`).
+    Updated,
+    /// The memory was removed (`delete_memory`).
+    Deleted,
+}
+
+/// The high-water marks a run's [memories](https://docs.testcabinet.ai/gg/memories/) reached
+/// — a band of every [`MemoryState`](GgTelemetryKind::MemoryState) event.
+///
+/// The live figures on a `MemoryState` say what the model holds *now*; a run that curates
+/// aggressively can spend most of its length budget and end near empty, and the current
+/// figures alone would read as a run that barely used memory at all. The peaks are what a
+/// study of how much memory a strategy actually consumed is measured against.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgMemoryPeak {
+    /// The most memories held at once.
+    pub count: u64,
+    /// The largest total body length, in characters, ever held at once.
+    pub total_len: u64,
+    /// The largest total body length, in lines, ever held at once.
+    pub total_lines: u64,
 }
 
 /// The pinned state a [compaction] carried across the boundary verbatim — the counts
@@ -3108,8 +3154,46 @@ pub enum GgTelemetryKind {
         count: u64,
         /// The total length, in characters, summed across every memory's body.
         total_len: u64,
+        /// The total length, in lines, summed across every memory's body. `0` on records
+        /// written before line counts were reported.
+        #[serde(default)]
+        total_lines: u64,
+        /// The high-water marks this run's memories reached, so a set that was curated back
+        /// down still reports how much it once held.
+        #[serde(default)]
+        peak: GgMemoryPeak,
         /// The bounds these memories are kept within.
         caps: GgMemoryCaps,
+    },
+    /// One revision of one [memory](https://docs.testcabinet.ai/gg/memories/) — the
+    /// append-only record of everything the model ever wrote to memory.
+    ///
+    /// Emitted after **every** successful memory mutation, alongside the
+    /// [`MemoryState`](Self::MemoryState) snapshot that reports the set as it now stands. The
+    /// two answer different questions: the snapshot is what the model holds, and this stream
+    /// is what it *did* — including the memories it wrote and then deleted, which a snapshot
+    /// can never show, and the earlier text of a memory it revised. The console replays the
+    /// stream into a per-memory revision history.
+    MemoryRevision {
+        /// The memory's stable name — the slug the revisions of one memory are keyed by. A
+        /// name that is deleted and later re-created keeps counting up from where it left
+        /// off, because that too is part of what the model did.
+        name: String,
+        /// This memory's revision number, counting from `1` at its first write.
+        revision: u64,
+        /// What produced this revision.
+        change: GgMemoryChange,
+        /// The memory's description as of this revision; empty on a deletion, and on a
+        /// strategy that does not require one.
+        description: String,
+        /// The memory's body as of this revision; empty on a deletion. The body is bounded by
+        /// [`max_len_per_memory`](GgMemoryCaps::max_len_per_memory), so the stream carries the
+        /// text itself rather than a pointer the console would have to resolve.
+        body: String,
+        /// The body's length in characters (`0` on a deletion).
+        len: u64,
+        /// The body's length in lines (`0` on a deletion).
+        lines: u64,
     },
     /// The model's [task](https://docs.testcabinet.ai/gg/tasks/) list — a blocked-by DAG
     /// that is retained across a [compaction] boundary verbatim.

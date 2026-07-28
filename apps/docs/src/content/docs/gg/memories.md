@@ -96,11 +96,19 @@ every arm the same params block.
 | `maxLenPerMemory` | all three | 2 000 / 8 192 / 8 192 |
 | `maxTotalLen` | `scratchpad` | 8 000 |
 | `maxLenIndex` | `markdown` | 16 384 |
+| `maxLenDescription` | all three | unlimited |
 | `maxResults` | `keyword-search` | 25 |
 
 Lengths are in characters of a memory's **body**; a description is a short
 one-liner and is not counted against them (it is counted in the index, which is
 what `maxLenIndex` measures).
+
+`maxLenDescription` is the one exception, and the only limit that is **off by
+default**. It bounds the description itself, under every strategy — worth setting
+on a `markdown` run, where every description is a line of the pinned index and one
+verbose one-liner is a cost the window pays on every turn. An over-long
+description is refused, never truncated, and is checked before the body limits so
+a call that breaches both is told about the cheaper fix first.
 
 For example, a markdown run with a small index and no per-memory limit:
 
@@ -123,3 +131,44 @@ of them. What crosses *in the window* is what the strategy pins: every body unde
 The [`memory-compaction`](/gg/compaction/) strategy, which asks the agent to
 record its working state instead of writing a summary, asks for the calls the
 run's memory strategy actually offers.
+
+### The pinned block is rebuilt at a boundary, and only there
+
+A memory the model just wrote is already in front of it — the call it made and
+the confirmation it got back are both in the thread — so re-sending the block the
+turn after a write tells it nothing it does not already know. What it *does* cost
+is a fresh copy of every memory (or of the whole index) every time the model
+curates, which on a long run is most of what memory spends.
+
+So between boundaries gg leaves the block exactly as it is, and lets the thread
+carry the news. What the thread cannot carry is a compaction, which drops the very
+tool results the model was reading its memories out of — so gg rebuilds the block
+there, immediately before the window is rewritten. The stale copy is superseded
+into the ephemeral history the boundary is about to sweep away, and the fresh one
+crosses as part of the pinned prefix. (A plan-mode context reset clears the thread
+the same way, and gets the same treatment.)
+
+The consequence to know about is that a pinned index can lag: a memory created
+since the last compaction is stored and readable but is not listed there yet. The
+system prompt says so, so the model does not read a missing line as a lost memory.
+
+## What gg records
+
+Two things are streamed, and they answer different questions.
+
+The **`memory_state`** event is the set as it stands: every memory currently held
+with its description, character count and line count, the totals, the limits in
+force, and the run's **peaks** — the most memories, characters and lines ever held
+at once. The peaks are there because the live figures alone are misleading: a model
+that curates well spends its budget, prunes, and finishes holding almost nothing.
+
+The **`memory_revision`** event is one entry of an append-only record of what the
+model *did*: every successful mutation, in order, carrying the memory's text as of
+that revision. It is what a snapshot can never show — a memory written and later
+deleted, and the earlier wording of one that was revised. Revision numbers are per
+slug and keep counting across a delete, so a name that is discarded and re-created
+reads as the history it is. A refused mutation records nothing; it did nothing.
+
+The console folds the two together into the Memories panel: current-and-peak
+totals, a treemap of every memory ever held sized by its character count, and each
+memory — deleted ones included — expandable into its revision history.

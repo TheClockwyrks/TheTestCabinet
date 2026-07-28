@@ -207,17 +207,68 @@ const EVENTS: HarnessEvent[] = [
     type: "memory_state",
     strategy: "scratchpad",
     memories: [
-      { name: "controls", description: "Input scheme decided.", len: 120 },
+      {
+        name: "controls",
+        description: "Input scheme decided.",
+        len: 120,
+        lines: 4,
+      },
     ],
     count: 1,
     totalLen: 120,
+    totalLines: 4,
+    peak: { count: 2, totalLen: 300, totalLines: 9 },
     caps: {
       maxCount: 16,
       maxLenPerMemory: 2000,
       maxTotalLen: 16000,
       maxLenIndex: null,
+      maxLenDescription: null,
       maxResults: null,
     },
+  }),
+  // The revision stream behind that snapshot: a memory that is still held, and one
+  // the model wrote and then deleted — which the snapshot above cannot show, and
+  // which the Memories panel reports from here.
+  gg({
+    type: "memory_revision",
+    name: "controls",
+    revision: 1,
+    change: "written",
+    description: "Input scheme drafted.",
+    body: "WASD to move.",
+    len: 13,
+    lines: 1,
+  }),
+  gg({
+    type: "memory_revision",
+    name: "controls",
+    revision: 2,
+    change: "updated",
+    description: "Input scheme decided.",
+    body: "WASD to move.\nSpace to jump.\nShift to sprint.\nE to interact.",
+    len: 120,
+    lines: 4,
+  }),
+  gg({
+    type: "memory_revision",
+    name: "palette",
+    revision: 1,
+    change: "written",
+    description: "Colours picked.",
+    body: "Teal and sand.",
+    len: 14,
+    lines: 1,
+  }),
+  gg({
+    type: "memory_revision",
+    name: "palette",
+    revision: 2,
+    change: "deleted",
+    description: "",
+    body: "",
+    len: 0,
+    lines: 0,
   }),
   // Phase 3: the epic/issue board — one epic with a done → ready → blocked chain,
   // plus an ungrouped issue (no epicId), so grouping and derived readiness show.
@@ -560,7 +611,19 @@ describe("GgRunMonitorPage", () => {
     openFile("root knowledge");
     expect(screen.getByText("gg-render")).toBeInTheDocument();
     expect(screen.getByText("1 of 2 read")).toBeInTheDocument();
-    expect(screen.getByText("controls")).toBeInTheDocument();
+    // A live memory is named twice — once as a treemap tile, once as a record row.
+    expect(screen.getAllByText("controls").length).toBeGreaterThan(0);
+    // The record covers memories the snapshot cannot: `palette` was written and then
+    // deleted, so it is absent from `memory_state` and present here, marked deleted.
+    expect(screen.getAllByText("palette").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("deleted").length).toBeGreaterThan(0);
+    // Each memory's revisions are collapsed behind a count.
+    expect(screen.getAllByText("2 revisions")).toHaveLength(2);
+    // Current and peak usage are both reported, so a curated-down store still says
+    // what it once held.
+    expect(screen.getByText("Characters")).toBeInTheDocument();
+    expect(screen.getByText("peak 300")).toBeInTheDocument();
+    expect(screen.getByText("peak 9")).toBeInTheDocument();
     // The retention note says the knowledge survived the compaction verbatim.
     expect(
       screen.getByText(

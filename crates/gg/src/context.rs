@@ -381,12 +381,17 @@ impl ContextModel {
     /// nothing, when `message` is `None`), so exactly one *live* block carries that source.
     ///
     /// This is how the loop keeps such a source in sync with its backing state — notably the
-    /// [`Memory`](GgContextSource::Memory) block, which the model rewrites through
-    /// `write_memory`/`update_memory`/`delete_memory` as it works: each turn the loop rebuilds
-    /// the block from the memory store so the window always reflects the current memories (and
-    /// [compaction](https://docs.testcabinet.ai/gg/compaction/) retains them). The rebuild must
+    /// [`TaskList`](GgContextSource::TaskList) block, which the model rewrites through the task
+    /// tools as it works: each turn the loop rebuilds the block from the task store so the window
+    /// always reflects the current plan (and
+    /// [compaction](https://docs.testcabinet.ai/gg/compaction/) retains it). The rebuild must
     /// happen at a turn boundary (before this turn's assistant message and its tool results),
     /// never between an assistant tool-call message and the tool results answering it.
+    ///
+    /// The [`Memory`](GgContextSource::Memory) block goes through here too, but on a different
+    /// schedule: it is rebuilt only at a compaction boundary, because between boundaries the
+    /// model's own memory calls and their confirmations already tell it what it holds. See
+    /// [`MemoriesRuntime::context_block`](crate::memories::MemoriesRuntime::context_block).
     ///
     /// # The rendered prompt only ever grows
     ///

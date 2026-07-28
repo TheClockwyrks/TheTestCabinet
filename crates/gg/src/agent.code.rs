@@ -1157,6 +1157,12 @@ impl LoopToolApi {
                 project.orch.pump_and_wake(&self.emitter);
             }
             let state = if is_memory_tool(&call.name) {
+                // The revisions first — the append-only record of what the call did, which for
+                // a deletion is the only place it is recorded at all. A program may have made
+                // several memory calls by now; the drain hands over every one of them.
+                for revision in self.memories_rt.revision_events() {
+                    self.emitter.emit(revision);
+                }
                 self.memories_rt.state_event()
             } else if is_task_tool(&call.name) {
                 self.tasks_rt.state_event()

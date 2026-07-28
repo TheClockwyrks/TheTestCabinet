@@ -1057,6 +1057,241 @@ $context-palette: (
   word-break: break-word;
 }
 
+// --- Memories: totals, peaks, the treemap, and the revision record -----------
+
+// The now/peak figures. A row of three that wraps to two on a narrow panel — the
+// peak is the whole point of the tile, so it never wraps away from its figure.
+.memoryStats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr));
+  gap: t.$space-xs;
+}
+
+.memoryStat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: t.$space-xs t.$space-sm;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 40%, transparent);
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+}
+
+.memoryStatLabel {
+  color: t.$color-text-muted;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.72rem;
+}
+
+.memoryStatValue {
+  color: t.$color-text;
+  font-size: t.$font-lg;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.memoryStatPeak {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  font-variant-numeric: tabular-nums;
+}
+
+// The treemap of memory sizes. Area encodes characters, so the SVG scales
+// uniformly — never stretched to the panel, which would falsify the encoding.
+.treemap {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.treemapSvg {
+  width: 100%;
+  height: auto;
+  display: block;
+  overflow: visible;
+}
+
+.treemapTile {
+  stroke: color-mix(in srgb, t.$color-border 50%, transparent);
+  stroke-width: 1;
+  transition:
+    stroke 120ms ease,
+    filter 120ms ease;
+
+  // A deleted memory is a state, not another series: neutral fill (set inline) plus
+  // a dashed edge, so it is distinguishable without relying on color.
+  &[data-deleted] {
+    stroke-dasharray: 3 2;
+    stroke: color-mix(in srgb, t.$color-text-muted 55%, transparent);
+  }
+
+  &[data-active] {
+    stroke: t.$color-text;
+    stroke-width: 1.5;
+  }
+}
+
+// Labels wear text ink, never the tile's fill — the rectangle already carries the
+// identity, and colored text on a colored fill is the pair that stops being legible.
+.treemapLabel {
+  fill: t.$color-text;
+  font-size: 10px;
+  font-weight: 600;
+
+  &[data-deleted] {
+    fill: t.$color-text-muted;
+    text-decoration: line-through;
+  }
+}
+
+.treemapSubLabel {
+  fill: t.$color-text-muted;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+.treemapCaption {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  min-height: 1.2em;
+}
+
+.treemapReadout {
+  color: t.$color-text;
+  font-variant-numeric: tabular-nums;
+}
+
+.treemapLegend {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  flex-wrap: wrap;
+}
+
+// A legend key: a swatch matching the map's two states, plus its name.
+.treemapKey {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-xs;
+
+  &::before {
+    content: "";
+    width: 0.6rem;
+    height: 0.6rem;
+    border-radius: 2px;
+    border: t.$border-hairline solid
+      color-mix(in srgb, t.$color-border 60%, transparent);
+  }
+
+  &[data-live]::before {
+    background: color-mix(in srgb, t.$color-accent 55%, t.$color-surface);
+  }
+
+  &[data-deleted]::before {
+    background: color-mix(in srgb, t.$color-text-muted 22%, t.$color-surface);
+    border-style: dashed;
+    border-color: color-mix(in srgb, t.$color-text-muted 55%, transparent);
+  }
+}
+
+.treemapHint {
+  margin-left: auto;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+// A deleted memory's row is dimmed but never hidden — it is part of the record of
+// what the model did, and the reason this panel exists at all.
+.knowledgeRow[data-deleted] {
+  opacity: 0.72;
+  border-style: dashed;
+}
+
+.memoryDeletedTag {
+  margin-left: t.$space-xs;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: t.$color-text-muted;
+  font-weight: 500;
+}
+
+// The per-memory revision history, collapsed by default.
+.memoryHistory {
+  margin-top: t.$space-2xs;
+}
+
+.memoryHistorySummary {
+  cursor: pointer;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  list-style-position: outside;
+
+  &:hover {
+    color: t.$color-text;
+  }
+}
+
+.memoryRevisions {
+  list-style: none;
+  margin: t.$space-xs 0 0;
+  padding: 0 0 0 t.$space-sm;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  border-left: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 45%, transparent);
+}
+
+.memoryRevision {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.memoryRevisionHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-sm;
+}
+
+.memoryRevisionTag {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: t.$color-text-muted;
+
+  &[data-change="written"] {
+    color: t.$color-positive;
+  }
+  &[data-change="deleted"] {
+    color: t.$color-accent-2;
+  }
+}
+
+.memoryRevisionSize {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+.memoryRevisionBody {
+  margin: 0;
+  padding: t.$space-xs t.$space-sm;
+  border-radius: t.$radius-sm;
+  background: color-mix(in srgb, t.$color-border 18%, transparent);
+  font-size: t.$font-sm;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 12rem;
+  overflow: auto;
+}
+
 // --- Agents (identity card + per-slot usage + workflows + speculation) -------
 
 // A captioned block used on an agent's Overview file: the per-slot usage breakdown,

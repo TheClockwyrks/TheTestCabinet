@@ -40,7 +40,10 @@
 //! - [`MemoryCaps`] — the limits, [resolved](MemoryCaps::resolve) per strategy from the
 //!   capability's params with documented defaults.
 //! - [`MemoryStore`] — the mutable, limit-enforcing set of memories, shared (`Arc<Mutex>`) between
-//!   the loop and the memory tools.
+//!   the loop and the memory tools. It also keeps what the live set cannot show: the
+//!   [revision log](MemoryStore::drain_revisions) of every mutation (so a memory written and later
+//!   deleted is still in the record) and the [peaks](MemoryPeak) the run reached.
+//! - [`MemoryRevision`] — one entry of that log.
 //! - [`MemoriesRuntime`] — the loop's live view: whether the capability is on, the shared store,
 //!   and the derivations the loop needs (the strategy and limits the system prompt states, the
 //!   [`MemoryState`](test_cabinet_core::gg::GgTelemetryKind::MemoryState) telemetry, and the pinned
@@ -50,13 +53,14 @@
 //! [`disabled`](MemoriesRuntime::disabled) runtime, so there are no memory tools, no prompt text,
 //! no context block, and no telemetry — the feature vanishes.
 
+use std::collections::{BTreeMap, VecDeque};
 use std::fmt;
 use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
 use test_cabinet_core::gg::{
-    GgMemoryCaps, GgMemoryEntry, GgTelemetryKind, MEMORY_STRATEGY_KEYWORD_SEARCH,
-    MEMORY_STRATEGY_MARKDOWN, MEMORY_STRATEGY_SCRATCHPAD,
+    GgMemoryCaps, GgMemoryChange, GgMemoryEntry, GgMemoryPeak, GgTelemetryKind,
+    MEMORY_STRATEGY_KEYWORD_SEARCH, MEMORY_STRATEGY_MARKDOWN, MEMORY_STRATEGY_SCRATCHPAD,
 };
 
 use crate::model::Message;
@@ -105,6 +109,9 @@ const PARAM_MAX_LEN_PER_MEMORY: &str = "maxLenPerMemory";
 const PARAM_MAX_TOTAL_LEN: &str = "maxTotalLen";
 /// The memories capability param naming the [index limit](MemoryCaps::max_len_index).
 const PARAM_MAX_LEN_INDEX: &str = "maxLenIndex";
+/// The memories capability param naming the
+/// [description limit](MemoryCaps::max_len_description).
+const PARAM_MAX_LEN_DESCRIPTION: &str = "maxLenDescription";
 /// The memories capability param naming the [search page size](MemoryCaps::max_results).
 const PARAM_MAX_RESULTS: &str = "maxResults";
 
@@ -242,6 +249,12 @@ pub struct MemoryCaps {
     /// The maximum length of the [markdown](MemoryStrategy::Markdown) strategy's pinned
     /// [index](MemoryStore::index_text) (`maxLenIndex`), and `None` everywhere else.
     pub max_len_index: Option<usize>,
+    /// The maximum length of a memory's one-line description (`maxLenDescription`), under
+    /// every strategy. **Off unless a run asks for it** — the description is what an
+    /// [index](MemoryStore::index_text) line and a [search hit](MemoryHit) are mostly made of,
+    /// so a run that wants those uniformly terse bounds them here instead of hoping the model
+    /// keeps its one-liners to one line.
+    pub max_len_description: Option<usize>,
     /// The most memories one [search](MemoryStore::search) reports (`maxResults`), and `None`
     /// everywhere the strategy offers no search.
     pub max_results: Option<usize>,
@@ -262,6 +275,8 @@ impl MemoryCaps {
                 max_len_per_memory: Some(DEFAULT_MAX_LEN_PER_MEMORY),
                 max_total_len: Some(DEFAULT_MAX_TOTAL_LEN),
                 max_len_index: None,
+                // Off unless the run asks: see `max_len_description`.
+                max_len_description: None,
                 max_results: None,
             },
             MemoryStrategy::Markdown => Self {
@@ -270,6 +285,7 @@ impl MemoryCaps {
                 max_len_per_memory: Some(DEFAULT_MAX_LEN_PER_FILE),
                 max_total_len: None,
                 max_len_index: Some(DEFAULT_MAX_LEN_INDEX),
+                max_len_description: None,
                 max_results: None,
             },
             MemoryStrategy::KeywordSearch => Self {
@@ -278,6 +294,7 @@ impl MemoryCaps {
                 max_len_per_memory: Some(DEFAULT_MAX_LEN_PER_FILE),
                 max_total_len: None,
                 max_len_index: None,
+                max_len_description: None,
                 max_results: Some(DEFAULT_MAX_RESULTS),
             },
         }
@@ -312,6 +329,12 @@ impl MemoryCaps {
                 PARAM_MAX_LEN_INDEX,
                 strategy.has_index(),
             ),
+            // Every strategy has descriptions, so this one applies everywhere.
+            max_len_description: default.max_len_description.resolve_limit(
+                params,
+                PARAM_MAX_LEN_DESCRIPTION,
+                true,
+            ),
             max_results: default.max_results.resolve_limit(
                 params,
                 PARAM_MAX_RESULTS,
@@ -329,6 +352,7 @@ impl MemoryCaps {
             max_len_per_memory: as_u64(self.max_len_per_memory),
             max_total_len: as_u64(self.max_total_len),
             max_len_index: as_u64(self.max_len_index),
+            max_len_description: as_u64(self.max_len_description),
             max_results: as_u64(self.max_results),
         }
     }
@@ -369,9 +393,17 @@ pub struct Memory {
 
 impl Memory {
     /// The memory's length in characters — its **body** length, what the [limits](MemoryCaps)
-    /// bound (the short description is not counted).
+    /// bound (the short description is bounded separately, by
+    /// [`max_len_description`](MemoryCaps::max_len_description)).
     pub fn len(&self) -> usize {
         self.body.chars().count()
+    }
+
+    /// The memory's length in **lines** — the second size the console reports, because
+    /// characters alone do not distinguish a dense paragraph from a long checklist. Bodies are
+    /// stored trimmed and never empty, so this is one more than the number of newlines.
+    pub fn lines(&self) -> usize {
+        self.body.lines().count().max(1)
     }
 }
 
@@ -420,6 +452,15 @@ pub enum MemoryError {
         /// The call that creates a memory, as this store's [strategy](MemoryStrategy::calls)
         /// names it.
         create: &'static str,
+    },
+    /// The memory's description exceeds the description length limit.
+    DescriptionCap {
+        /// The offending memory's slug.
+        name: String,
+        /// The description length that was attempted.
+        len: usize,
+        /// The description limit.
+        cap: usize,
     },
     /// The memory's body exceeds the per-memory length limit.
     PerMemoryCap {
@@ -495,6 +536,12 @@ impl fmt::Display for MemoryError {
                 "no memory named `{name}` exists; check the name against the memories you hold, \
                  or use {create} to create it."
             ),
+            MemoryError::DescriptionCap { name, len, cap } => write!(
+                f,
+                "the description for memory `{name}` is {len} characters, over the \
+                 {cap}-character limit; it is a one-line summary, so say what the memory is \
+                 for and leave the detail to the body."
+            ),
             MemoryError::PerMemoryCap { name, len, cap } => write!(
                 f,
                 "memory `{name}` is {len} characters, over the per-memory limit of {cap}; \
@@ -562,11 +609,85 @@ pub enum MemoryChange {
 /// [limits](MemoryCaps) *before* it takes effect and refused with a [`MemoryError`] otherwise, so
 /// the invariants always hold. Memories are kept in slug order, for a stable telemetry, index and
 /// prompt-block ordering.
+///
+/// # What the store remembers beyond the set
+///
+/// The live set answers "what does the model hold now", which is the smaller half of the
+/// question a study of memory asks. Two things the set cannot show are kept alongside it:
+///
+/// - the **[revision log](Self::drain_revisions)** — every mutation, in order, with the text it
+///   produced, so a memory the model wrote and later deleted, and the earlier wording of one it
+///   revised, are both still in the record;
+/// - the **[peaks](Self::peak)** — the high-water count and length, so a run that curated its
+///   way back down to two short notes does not read as one that never used memory.
 #[derive(Debug, Clone)]
 pub struct MemoryStore {
     strategy: MemoryStrategy,
     caps: MemoryCaps,
     memories: Vec<Memory>,
+    /// The next revision number for each slug ever written, kept across a delete so a
+    /// re-created name continues its history rather than restarting it.
+    revisions: BTreeMap<String, u64>,
+    /// Mutations recorded but not yet emitted as telemetry, oldest first. Drained by the loop
+    /// after each memory call (or, under responses-as-code, after each program), so a store
+    /// that is never drained cannot grow without bound in a long run.
+    pending: VecDeque<MemoryRevision>,
+    /// The high-water marks, updated after every mutation.
+    peak: MemoryPeak,
+}
+
+/// One recorded mutation of one memory — an entry of the store's
+/// [revision log](MemoryStore::drain_revisions).
+///
+/// A [`Deleted`](MemoryChange::Deleted) revision carries no text: what the memory said is
+/// already in the log, on the revision before it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MemoryRevision {
+    /// The memory's slug.
+    pub name: String,
+    /// This memory's revision number, counting from `1` at its first write.
+    pub revision: u64,
+    /// What this revision did.
+    pub change: MemoryChange,
+    /// The description as of this revision; empty on a deletion.
+    pub description: String,
+    /// The body as of this revision; empty on a deletion.
+    pub body: String,
+}
+
+impl MemoryRevision {
+    /// The contract form, for the [`MemoryRevision`](GgTelemetryKind::MemoryRevision) telemetry.
+    fn to_event(&self) -> GgTelemetryKind {
+        GgTelemetryKind::MemoryRevision {
+            name: self.name.clone(),
+            revision: self.revision,
+            change: match self.change {
+                MemoryChange::Written => GgMemoryChange::Written,
+                MemoryChange::Updated => GgMemoryChange::Updated,
+                MemoryChange::Deleted => GgMemoryChange::Deleted,
+            },
+            description: self.description.clone(),
+            body: self.body.clone(),
+            len: self.body.chars().count() as u64,
+            lines: if self.body.is_empty() {
+                0
+            } else {
+                self.body.lines().count().max(1) as u64
+            },
+        }
+    }
+}
+
+/// The high-water marks a store reached — see [`MemoryStore`]'s note on why the live figures
+/// are not the whole story.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct MemoryPeak {
+    /// The most memories held at once.
+    pub count: usize,
+    /// The largest total body length, in characters, held at once.
+    pub total_len: usize,
+    /// The largest total body length, in lines, held at once.
+    pub total_lines: usize,
 }
 
 impl MemoryStore {
@@ -576,6 +697,9 @@ impl MemoryStore {
             strategy,
             caps,
             memories: Vec::new(),
+            revisions: BTreeMap::new(),
+            pending: VecDeque::new(),
+            peak: MemoryPeak::default(),
         }
     }
 
@@ -606,6 +730,29 @@ impl MemoryStore {
         self.memories.iter().map(Memory::len).sum()
     }
 
+    /// The total body length, in lines, across every memory.
+    pub fn total_lines(&self) -> usize {
+        self.memories.iter().map(Memory::lines).sum()
+    }
+
+    /// The [high-water marks](MemoryPeak) this store reached. (A read surface for the tests;
+    /// the telemetry reads the field directly.)
+    #[allow(dead_code)]
+    pub fn peak(&self) -> MemoryPeak {
+        self.peak
+    }
+
+    /// Take the [revisions](MemoryRevision) recorded since the last drain, oldest first — the
+    /// append-only record of what the model did to memory, which the loop turns into
+    /// [`MemoryRevision`](GgTelemetryKind::MemoryRevision) telemetry.
+    ///
+    /// Drained rather than accumulated because the run record is where the history lives; the
+    /// store keeps only what has not been handed over yet, so a run that writes memories for
+    /// hours does not carry every body it ever wrote in process memory as well.
+    pub fn drain_revisions(&mut self) -> Vec<GgTelemetryKind> {
+        self.pending.drain(..).map(|rev| rev.to_event()).collect()
+    }
+
     /// The memories, in slug order. (A read surface for the tests; the loop reaches the
     /// store through the runtime's derivations.)
     #[allow(dead_code)]
@@ -632,14 +779,16 @@ impl MemoryStore {
             return Err(self.duplicate(name));
         }
         let len = body.chars().count();
+        self.check_description(&name, &description)?;
         self.check_per_memory(&name, len)?;
         self.check_count()?;
         self.check_total(self.total_len() + len)?;
         self.insert(Memory {
-            name,
+            name: name.clone(),
             description,
             body,
         });
+        self.record(&name, MemoryChange::Written);
         Ok(MemoryChange::Written)
     }
 
@@ -658,15 +807,17 @@ impl MemoryStore {
             return Err(self.not_found(&name));
         };
         let len = body.chars().count();
+        self.check_description(&name, &description)?;
         self.check_per_memory(&name, len)?;
         // Swap the old body out of the total before checking the new one in.
         let total_without_old = self.total_len() - self.memories[index].len();
         self.check_total(total_without_old + len)?;
         self.memories[index] = Memory {
-            name,
+            name: name.clone(),
             description,
             body,
         };
+        self.record(&name, MemoryChange::Updated);
         Ok(MemoryChange::Updated)
     }
 
@@ -702,14 +853,16 @@ impl MemoryStore {
         if self.position(&name).is_some() {
             return Err(self.duplicate(name));
         }
+        self.check_description(&name, &description)?;
         self.check_per_memory(&name, contents.chars().count())?;
         self.check_count()?;
         self.check_index(&name, &description)?;
         self.insert(Memory {
-            name,
+            name: name.clone(),
             description,
             body: contents,
         });
+        self.record(&name, MemoryChange::Written);
         Ok(MemoryChange::Written)
     }
 
@@ -765,6 +918,7 @@ impl MemoryStore {
         let total_without_old = self.total_len() - self.memories[index].len();
         self.check_total(total_without_old + len)?;
         self.memories[index].body = edited;
+        self.record(&name, MemoryChange::Updated);
         Ok(MemoryChange::Updated)
     }
 
@@ -797,7 +951,8 @@ impl MemoryStore {
         let Some(index) = self.position(name) else {
             return Err(self.not_found(name));
         };
-        self.memories.remove(index);
+        let name = self.memories.remove(index).name;
+        self.record(&name, MemoryChange::Deleted);
         Ok(MemoryChange::Deleted)
     }
 
@@ -836,6 +991,61 @@ impl MemoryStore {
             .binary_search_by(|m| m.name.cmp(&memory.name))
             .unwrap_or_else(|at| at);
         self.memories.insert(at, memory);
+    }
+
+    /// Append `change` to the [revision log](Self::drain_revisions) and refresh the
+    /// [peaks](Self::peak).
+    ///
+    /// Called at the end of every successful mutation, once the set is already in its new
+    /// state — so the text recorded is read back from the store rather than from the caller's
+    /// arguments, and can never claim a revision the store did not actually take. A deletion
+    /// finds nothing to read back, and records the empty text that says so.
+    fn record(&mut self, name: &str, change: MemoryChange) {
+        let revision = {
+            let next = self.revisions.entry(name.to_string()).or_insert(0);
+            *next += 1;
+            *next
+        };
+        let (description, body) = match self.position(name) {
+            Some(index) => (
+                self.memories[index].description.clone(),
+                self.memories[index].body.clone(),
+            ),
+            None => (String::new(), String::new()),
+        };
+        self.pending.push_back(MemoryRevision {
+            name: name.to_string(),
+            revision,
+            change,
+            description,
+            body,
+        });
+        self.peak = MemoryPeak {
+            count: self.peak.count.max(self.memories.len()),
+            total_len: self.peak.total_len.max(self.total_len()),
+            total_lines: self.peak.total_lines.max(self.total_lines()),
+        };
+    }
+
+    /// Refuse a description whose length exceeds the description limit.
+    ///
+    /// Checked **before** the body limits so a memory that is over on both is told about the
+    /// one-liner first: shortening a description is a smaller ask than restructuring a body,
+    /// and a model that fixes it and resubmits should not then be refused again for the same
+    /// call it already had to redo.
+    fn check_description(&self, name: &str, description: &str) -> Result<(), MemoryError> {
+        let Some(cap) = self.caps.max_len_description else {
+            return Ok(());
+        };
+        let len = description.chars().count();
+        if len > cap {
+            return Err(MemoryError::DescriptionCap {
+                name: name.to_string(),
+                len,
+                cap,
+            });
+        }
+        Ok(())
     }
 
     /// Refuse a body whose length exceeds the per-memory limit.
@@ -930,6 +1140,7 @@ impl MemoryStore {
                 name: m.name.clone(),
                 description: m.description.clone(),
                 len: m.len() as u64,
+                lines: m.lines() as u64,
             })
             .collect();
         GgTelemetryKind::MemoryState {
@@ -937,6 +1148,12 @@ impl MemoryStore {
             memories,
             count: self.memories.len() as u64,
             total_len: self.total_len() as u64,
+            total_lines: self.total_lines() as u64,
+            peak: GgMemoryPeak {
+                count: self.peak.count as u64,
+                total_len: self.peak.total_len as u64,
+                total_lines: self.peak.total_lines as u64,
+            },
             caps: self.caps.to_contract(),
         }
     }
@@ -950,8 +1167,11 @@ impl MemoryStore {
     ///
     /// The block is **state only**: a heading and the notes themselves. How to curate them, and
     /// the budget they live within, is stated once in the
-    /// [system prompt](crate::prompts::SystemContext::memories) rather than re-sent every turn
-    /// the block is refreshed.
+    /// [system prompt](crate::prompts::SystemContext::memories) rather than re-sent each time
+    /// the block is rebuilt.
+    ///
+    /// The loop rebuilds it at a [compaction](crate::compaction) boundary and nowhere else —
+    /// see [`MemoriesRuntime::context_block`] for why.
     fn context_block(&self) -> Option<Message> {
         if self.memories.is_empty() {
             return None;
@@ -1110,10 +1330,42 @@ impl MemoriesRuntime {
         Some(self.store.lock().expect("memory store lock").state_event())
     }
 
+    /// The [`MemoryRevision`](GgTelemetryKind::MemoryRevision) telemetry for every mutation
+    /// since the last drain, oldest first — emitted alongside the state snapshot, and empty
+    /// when the capability is off or nothing has changed.
+    ///
+    /// One drain can yield several events: a [responses-as-code](crate::sandbox) program makes
+    /// as many memory calls as it likes before the loop next looks, and each of them is a
+    /// revision in its own right.
+    pub fn revision_events(&self) -> Vec<GgTelemetryKind> {
+        if !self.enabled {
+            return Vec::new();
+        }
+        self.store
+            .lock()
+            .expect("memory store lock")
+            .drain_revisions()
+    }
+
     /// The pinned context block for the current store, or `None` when the capability is off, the
     /// [strategy](MemoryStore::context_block) pins nothing, or there is nothing yet to show. The
     /// loop keeps this as the single [`Memory`](test_cabinet_core::gg::GgContextSource::Memory)-sourced
     /// item in the window.
+    ///
+    /// # It is refreshed at a compaction boundary, and only there
+    ///
+    /// A memory the model just wrote is already in front of it — the call it made and the
+    /// confirmation it got back are both in the thread — so re-sending the whole block the turn
+    /// after a write tells it nothing it does not know, and costs a fresh copy of every memory
+    /// (or of the whole index) each time it curates. Between boundaries the block is therefore
+    /// left exactly as it is, and the thread carries the news.
+    ///
+    /// What the thread cannot carry is a [compaction](crate::compaction), which drops the very
+    /// tool results the block was leaning on. So the loop rebuilds it there, immediately before
+    /// the window is rewritten: the stale copy is superseded into the ephemeral history the
+    /// boundary is about to sweep away, and the fresh one crosses as part of the pinned prefix.
+    /// That is the only point at which the model could otherwise lose track of what it holds,
+    /// and it is the point the retention contract is about.
     pub fn context_block(&self) -> Option<Message> {
         if !self.enabled {
             return None;
@@ -1132,3 +1384,7 @@ mod tests;
 #[cfg(test)]
 #[path = "memories.files.test.rs"]
 mod files_tests;
+
+#[cfg(test)]
+#[path = "memories.record.test.rs"]
+mod record_tests;

@@ -63,6 +63,7 @@ fn full_system() -> SystemContext {
             max_len_per_memory: Some(2_000),
             max_total_len: Some(8_000),
             max_len_index: None,
+            max_len_description: None,
             max_results: None,
         }),
         tasks: Some(TasksView { max_tasks: 100 }),

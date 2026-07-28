@@ -41,6 +41,7 @@ fn tiny_caps() -> MemoryCaps {
         max_len_per_memory: Some(10),
         max_total_len: Some(15),
         max_len_index: None,
+        max_len_description: None,
         max_results: None,
     }
 }

@@ -16,6 +16,7 @@ fn tiny_caps() -> MemoryCaps {
         max_len_per_memory: Some(10),
         max_total_len: Some(15),
         max_len_index: None,
+        max_len_description: None,
         max_results: None,
     }
 }
@@ -286,6 +287,78 @@ fn a_zero_param_disables_that_limit() {
     assert_eq!(store.count(), DEFAULT_MAX_COUNT + 4);
 }
 
+/// The description limit is **off unless a run asks for it**, and applies under every strategy —
+/// unlike the others, which each belong to one or two.
+#[test]
+fn the_description_cap_is_off_by_default_and_applies_everywhere() {
+    for strategy in [
+        MemoryStrategy::Scratchpad,
+        MemoryStrategy::Markdown,
+        MemoryStrategy::KeywordSearch,
+    ] {
+        assert_eq!(
+            MemoryCaps::for_strategy(strategy).max_len_description,
+            None,
+            "{strategy:?} must not bound descriptions unless asked to"
+        );
+        let caps = MemoryCaps::resolve(strategy, &json!({ "maxLenDescription": 40 }));
+        assert_eq!(caps.max_len_description, Some(40), "{strategy:?}");
+    }
+    // And `0` disables it, the same spelling every other limit uses.
+    let caps = MemoryCaps::resolve(MemoryStrategy::Markdown, &json!({ "maxLenDescription": 0 }));
+    assert_eq!(caps.max_len_description, None);
+}
+
+/// An over-long description is refused rather than truncated, and the refusal tells the model what
+/// a description is *for* — the point is a scannable index, so "shorten it" without saying why
+/// would just invite a description that is shorter and still a paragraph.
+#[test]
+fn the_description_cap_refuses_a_long_one_liner() {
+    let caps = MemoryCaps {
+        max_len_description: Some(20),
+        ..MemoryCaps::default()
+    };
+    let mut store = MemoryStore::new(MemoryStrategy::Scratchpad, caps);
+    let long = "a".repeat(21);
+    let err = store.write("plan", &long, "the goal").unwrap_err();
+    assert_eq!(
+        err,
+        MemoryError::DescriptionCap {
+            name: "plan".to_string(),
+            len: 21,
+            cap: 20,
+        }
+    );
+    assert!(err.to_string().contains("one-line summary"), "{err}");
+    // Nothing was stored: a refused write leaves the set exactly as it was.
+    assert_eq!(store.count(), 0);
+
+    // At the limit is fine, and so is revising to a shorter one.
+    store.write("plan", &"a".repeat(20), "the goal").unwrap();
+    assert_eq!(store.count(), 1);
+    let err = store.update("plan", &long, "the goal").unwrap_err();
+    assert!(matches!(err, MemoryError::DescriptionCap { .. }));
+    store.update("plan", "short", "the goal").unwrap();
+    assert_eq!(store.memories()[0].description(), "short");
+}
+
+/// The description cap is checked **before** the body caps, so a call that breaches both is told
+/// about the cheaper fix first — a model that shortens its one-liner and resubmits should not then
+/// be refused again for the body it had no reason to think was the problem.
+#[test]
+fn the_description_cap_is_reported_before_the_body_caps() {
+    let caps = MemoryCaps {
+        max_len_per_memory: Some(5),
+        max_len_description: Some(5),
+        ..MemoryCaps::default()
+    };
+    let mut store = MemoryStore::new(MemoryStrategy::Scratchpad, caps);
+    let err = store
+        .write("plan", &"d".repeat(50), &"b".repeat(50))
+        .unwrap_err();
+    assert!(matches!(err, MemoryError::DescriptionCap { .. }), "{err:?}");
+}
+
 /// A param a strategy does not use is ignored rather than rejected, so one sweep can hand every
 /// arm the same params block — and the limit stays `None` however the params spell it.
 #[test]
@@ -330,6 +403,7 @@ fn state_event_starts_empty_with_caps_then_reflects_writes() {
         count,
         total_len,
         caps,
+        ..
     } = runtime.state_event().unwrap()
     else {
         panic!("expected a MemoryState");

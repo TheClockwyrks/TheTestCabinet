@@ -393,6 +393,7 @@ export type GgSkillState = {
  * | [`max_len_per_memory`](Self::max_len_per_memory) | `maxLenPerMemory` | 2 000 | 8 192 | 8 192 |
  * | [`max_total_len`](Self::max_total_len) | `maxTotalLen` | 8 000 | — | — |
  * | [`max_len_index`](Self::max_len_index) | `maxLenIndex` | — | 16 384 | — |
+ * | [`max_len_description`](Self::max_len_description) | `maxLenDescription` | unlimited | unlimited | unlimited |
  * | [`max_results`](Self::max_results) | `maxResults` | — | — | 25 |
  *
  * [memories]: https://docs.testcabinet.ai/gg/memories/
@@ -420,6 +421,14 @@ export type GgMemoryCaps = {
    * `null` for every other strategy, and when the index is unlimited.
    */
   maxLenIndex: number | null;
+  /**
+   * The maximum length, in characters, of a memory's one-line **description** — the part
+   * of a memory a strategy shows up front (every line of a
+   * [`markdown`](MEMORY_STRATEGY_MARKDOWN) index is one), which is why a run that wants a
+   * tight index bounds it here rather than trusting the model to be terse. Off by default
+   * (`null` is unlimited) and applies under every strategy.
+   */
+  maxLenDescription: number | null;
   /**
    * The most memories one `search_memories` call reports under the
    * [`keyword-search`](MEMORY_STRATEGY_KEYWORD_SEARCH) strategy. `null` for every other
@@ -453,6 +462,42 @@ export type GgMemoryEntry = {
    * The memory body's length in characters (what the caps bound).
    */
   len: number;
+  /**
+   * The memory body's length in **lines** — the second size the console reports, because
+   * characters alone do not distinguish a dense paragraph from a long checklist. `0` on
+   * records written before line counts were reported.
+   */
+  lines: number;
+};
+
+/**
+ * What one [`MemoryRevision`](GgTelemetryKind::MemoryRevision) event records — the mutation
+ * that produced this revision of a [memory](https://docs.testcabinet.ai/gg/memories/).
+ */
+export type GgMemoryChange = "written" | "updated" | "deleted";
+
+/**
+ * The high-water marks a run's [memories](https://docs.testcabinet.ai/gg/memories/) reached
+ * — a band of every [`MemoryState`](GgTelemetryKind::MemoryState) event.
+ *
+ * The live figures on a `MemoryState` say what the model holds *now*; a run that curates
+ * aggressively can spend most of its length budget and end near empty, and the current
+ * figures alone would read as a run that barely used memory at all. The peaks are what a
+ * study of how much memory a strategy actually consumed is measured against.
+ */
+export type GgMemoryPeak = {
+  /**
+   * The most memories held at once.
+   */
+  count: number;
+  /**
+   * The largest total body length, in characters, ever held at once.
+   */
+  totalLen: number;
+  /**
+   * The largest total body length, in lines, ever held at once.
+   */
+  totalLines: number;
 };
 
 /**
@@ -1587,9 +1632,55 @@ export type GgTelemetryKind =
        */
       totalLen: number;
       /**
+       * The total length, in lines, summed across every memory's body. `0` on records
+       * written before line counts were reported.
+       */
+      totalLines: number;
+      /**
+       * The high-water marks this run's memories reached, so a set that was curated back
+       * down still reports how much it once held.
+       */
+      peak: GgMemoryPeak;
+      /**
        * The bounds these memories are kept within.
        */
       caps: GgMemoryCaps;
+    }
+  | {
+      type: "memory_revision";
+      /**
+       * The memory's stable name — the slug the revisions of one memory are keyed by. A
+       * name that is deleted and later re-created keeps counting up from where it left
+       * off, because that too is part of what the model did.
+       */
+      name: string;
+      /**
+       * This memory's revision number, counting from `1` at its first write.
+       */
+      revision: number;
+      /**
+       * What produced this revision.
+       */
+      change: GgMemoryChange;
+      /**
+       * The memory's description as of this revision; empty on a deletion, and on a
+       * strategy that does not require one.
+       */
+      description: string;
+      /**
+       * The memory's body as of this revision; empty on a deletion. The body is bounded by
+       * [`max_len_per_memory`](GgMemoryCaps::max_len_per_memory), so the stream carries the
+       * text itself rather than a pointer the console would have to resolve.
+       */
+      body: string;
+      /**
+       * The body's length in characters (`0` on a deletion).
+       */
+      len: number;
+      /**
+       * The body's length in lines (`0` on a deletion).
+       */
+      lines: number;
     }
   | {
       type: "tasks_state";
@@ -2253,9 +2344,55 @@ export type GgTelemetryEvent = {
        */
       totalLen: number;
       /**
+       * The total length, in lines, summed across every memory's body. `0` on records
+       * written before line counts were reported.
+       */
+      totalLines: number;
+      /**
+       * The high-water marks this run's memories reached, so a set that was curated back
+       * down still reports how much it once held.
+       */
+      peak: GgMemoryPeak;
+      /**
        * The bounds these memories are kept within.
        */
       caps: GgMemoryCaps;
+    }
+  | {
+      type: "memory_revision";
+      /**
+       * The memory's stable name — the slug the revisions of one memory are keyed by. A
+       * name that is deleted and later re-created keeps counting up from where it left
+       * off, because that too is part of what the model did.
+       */
+      name: string;
+      /**
+       * This memory's revision number, counting from `1` at its first write.
+       */
+      revision: number;
+      /**
+       * What produced this revision.
+       */
+      change: GgMemoryChange;
+      /**
+       * The memory's description as of this revision; empty on a deletion, and on a
+       * strategy that does not require one.
+       */
+      description: string;
+      /**
+       * The memory's body as of this revision; empty on a deletion. The body is bounded by
+       * [`max_len_per_memory`](GgMemoryCaps::max_len_per_memory), so the stream carries the
+       * text itself rather than a pointer the console would have to resolve.
+       */
+      body: string;
+      /**
+       * The body's length in characters (`0` on a deletion).
+       */
+      len: number;
+      /**
+       * The body's length in lines (`0` on a deletion).
+       */
+      lines: number;
     }
   | {
       type: "tasks_state";

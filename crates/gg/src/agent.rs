@@ -5068,23 +5068,19 @@ impl Agent {
                 }
             }
 
-            // Refresh the pinned memory block from the store so the window reflects the
-            // memories the model curated on previous turns (and Phase 2 compaction retains
-            // them). Rebuilt here, at the turn boundary, so it never lands between an
-            // assistant tool-call message and the tool results answering it. When memories are
-            // off, or none exist, this removes the block (a no-op when there was none).
-            if memories.offers_memories() {
-                context.replace_source(
-                    GgContextSource::Memory,
-                    Retention::Pinned,
-                    memories.context_block(),
-                );
-            }
+            // The pinned memory block is deliberately *not* refreshed here. A memory the model
+            // just wrote is already in front of it — its own call, and the confirmation that
+            // answered it — so rebuilding the block each turn re-sends the whole set (or the
+            // whole index) to say something the thread already said. It is rebuilt at a
+            // compaction boundary instead, which is the one place the thread stops carrying
+            // that news; see `MemoriesRuntime::context_block`.
 
-            // Refresh the pinned task list from the store the same way, so the window always
-            // shows the model's current plan (with what is ready vs blocked) and Phase 2
-            // compaction retains it. Also rebuilt at the turn boundary, never between an
-            // assistant tool-call message and its tool results.
+            // Refresh the pinned task list from the store, so the window always shows the
+            // model's current plan (with what is ready vs blocked) and Phase 2 compaction
+            // retains it. Rebuilt here, at the turn boundary, so it never lands between an
+            // assistant tool-call message and the tool results answering it. Unlike memories,
+            // the list is what the model steers by from turn to turn rather than a record it
+            // consults, so it is worth keeping current every turn.
             if tasks.offers_tasks() {
                 context.replace_source(
                     GgContextSource::TaskList,
@@ -5130,6 +5126,9 @@ impl Agent {
                         let (request, fallback) =
                             compaction::condense_out_of_band(&context, client, &compaction).await;
                         let files = restore_compact_files(&request.files, tool_ctx, emitter).await;
+                        // Current *before* the rewrite, so the stale copy goes out with the
+                        // history and the fresh one crosses in the pinned prefix.
+                        refresh_memory_block(&mut context, &memories);
                         emitter.emit(compaction::apply_compaction(
                             &mut context,
                             &compaction,
@@ -5425,6 +5424,7 @@ impl Agent {
                 apply_pending_compaction(
                     &mut context,
                     &compaction,
+                    &memories,
                     RetainedCounts {
                         skills: skills.read_count() as u64,
                         tasks: tasks.count() as u64,
@@ -5662,6 +5662,7 @@ impl Agent {
                                 apply_pending_compaction(
                                     &mut context,
                                     &compaction,
+                                    &memories,
                                     RetainedCounts {
                                         skills: skills.read_count() as u64,
                                         tasks: tasks.count() as u64,
@@ -6092,6 +6093,10 @@ impl Agent {
             // planning runtime.
             if let Some(plan) = submitted_plan {
                 in_plan_mode = false;
+                // The reset drops the exploration thread, which is where anything the model
+                // recorded during planning was visible; the pinned block has to be current
+                // before it goes, exactly as at a compaction boundary.
+                refresh_memory_block(&mut context, &memories);
                 context.clear_ephemeral();
                 let framed = match fsm.planner() {
                     Some(planner) => planner.frame_plan(&plan),
@@ -6148,6 +6153,7 @@ impl Agent {
                     apply_pending_compaction(
                         &mut context,
                         &compaction,
+                        &memories,
                         RetainedCounts {
                             skills: skills.read_count() as u64,
                             tasks: tasks.count() as u64,
@@ -7104,7 +7110,7 @@ fn code_heading_views(
         ),
         (
             GgContextSource::Memory,
-            "your durable memories, as they currently stand",
+            "your durable memories, as they stood when this window was last compacted",
             memories,
         ),
         (
@@ -7265,6 +7271,7 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
                     max_len_per_memory: caps.max_len_per_memory,
                     max_total_len: caps.max_total_len,
                     max_len_index: caps.max_len_index,
+                    max_len_description: caps.max_len_description,
                     max_results: caps.max_results,
                 }
             }),
@@ -7457,20 +7464,43 @@ async fn restore_compact_files(
     restored
 }
 
+/// Bring the pinned [`Memory`](GgContextSource::Memory) block up to date with the store, at a
+/// boundary that is about to drop the ephemeral history.
+///
+/// This is the **only** place the block is rebuilt. Between boundaries the model's own memory
+/// calls and their confirmations are what tell it what it holds, so re-sending the block each
+/// turn would buy nothing and cost a copy of every memory per mutation. A compaction (or a
+/// plan-mode reset) is where that stops being true: it sweeps the thread the model was reading
+/// its memories out of, so the block has to be current *before* the sweep. Called just before
+/// the rewrite for exactly that reason — the stale copy is superseded into the ephemeral history
+/// the rewrite is about to discard, and the fresh one crosses in the pinned prefix.
+fn refresh_memory_block(context: &mut ContextModel, memories: &MemoriesRuntime) {
+    if memories.offers_memories() {
+        context.replace_source(
+            GgContextSource::Memory,
+            Retention::Pinned,
+            memories.context_block(),
+        );
+    }
+}
+
 /// Perform a compaction the agent's own turn has just supplied the material for — the shared tail
 /// of all three [in-loop](PendingCompaction) strategies, in both execution modes.
 ///
-/// It re-reads whatever files the request named, rewrites the window, emits the boundary's
-/// telemetry, and says on the operator's stream what was reclaimed. Every caller has already
-/// decided *that* a compaction happens; this is the one place it does.
+/// It brings the pinned memory block up to date, re-reads whatever files the request named,
+/// rewrites the window, emits the boundary's telemetry, and says on the operator's stream what was
+/// reclaimed. Every caller has already decided *that* a compaction happens; this is the one place
+/// it does.
 async fn apply_pending_compaction(
     context: &mut ContextModel,
     setup: &CompactionSetup,
+    memories: &MemoriesRuntime,
     retained: RetainedCounts,
     request: &CompactionRequest,
     tool_ctx: &ToolContext,
     emitter: &Emitter,
 ) {
+    refresh_memory_block(context, memories);
     let files = restore_compact_files(&request.files, tool_ctx, emitter).await;
     let restored = files.len();
     let event = compaction::apply_compaction(
@@ -7500,10 +7530,11 @@ async fn apply_pending_compaction(
 /// `read_skill` their special treatment:
 ///
 /// - a successful `write_memory`/`update_memory`/`delete_memory` (the store was already
-///   mutated by the tool) re-emits the [`MemoryState`](GgTelemetryKind::MemoryState) so the
-///   console reflects the change; the pinned [`Memory`](GgContextSource::Memory) block
-///   itself is rebuilt from the store at the next turn boundary. Its confirmation is
-///   ordinary ephemeral tool output;
+///   mutated by the tool) emits the [`MemoryRevision`](GgTelemetryKind::MemoryRevision)s it
+///   produced and then the [`MemoryState`](GgTelemetryKind::MemoryState) the store is left in,
+///   so the console has both the record of what was done and the set as it now stands; the
+///   pinned [`Memory`](GgContextSource::Memory) block itself is rebuilt only at a compaction
+///   boundary ([`refresh_memory_block`]). Its confirmation is ordinary ephemeral tool output;
 /// - a successful `add_task`/`update_task`/`set_blocked_by`/`complete_task`/`remove_task`
 ///   likewise re-emits the [`TasksState`](GgTelemetryKind::TasksState); the pinned
 ///   [`TaskList`](GgContextSource::TaskList) block is rebuilt at the next turn boundary;
@@ -7529,10 +7560,15 @@ fn record_tool_result(
     emitter: &Emitter,
 ) {
     // A successful memory mutation changed the store (the tool did the mutation and cap
-    // enforcement); re-emit the state so the console tracks the curated set live. The
-    // memory context block is refreshed at the next turn boundary, not here, so it never
-    // interrupts this turn's tool results.
+    // enforcement); emit what it did and the set it left behind. The revisions come first: they
+    // are the append-only record — including of a memory that was just deleted, which the
+    // snapshot that follows can no longer show. The pinned memory block is not touched here, nor
+    // at the next turn boundary; it is rebuilt at a compaction boundary (see
+    // `refresh_memory_block`).
     if is_memory_tool(&call.name) && outcome.ok {
+        for revision in memories.revision_events() {
+            emitter.emit(revision);
+        }
         if let Some(state) = memories.state_event() {
             emitter.emit(state);
         }
