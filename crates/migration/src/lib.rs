@@ -37,6 +37,7 @@ mod m20260721_000017_create_case_reference_sheet;
 mod m20260723_000018_add_job_gg_config;
 mod m20260724_000019_create_gg_config;
 mod m20260724_000020_add_model_price_input_modalities;
+mod m20260727_000021_create_comparison;
 
 pub struct Migrator;
 
@@ -64,6 +65,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260723_000018_add_job_gg_config::Migration),
             Box::new(m20260724_000019_create_gg_config::Migration),
             Box::new(m20260724_000020_add_model_price_input_modalities::Migration),
+            Box::new(m20260727_000021_create_comparison::Migration),
         ]
     }
 }

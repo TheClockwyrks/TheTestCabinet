@@ -12,6 +12,7 @@
 
 pub mod case_reference_build;
 pub mod case_reference_sheet;
+pub mod comparison;
 pub mod coverage_group;
 pub mod coverage_plan;
 pub mod gg_config;
