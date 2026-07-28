@@ -28,6 +28,7 @@ import {
 import { ContextFillGraph, ContextUsageBar } from "./ContextFillGraph";
 import { PromptView } from "./PromptView";
 import { RequestsView } from "./RequestsView";
+import { RequestMetricsGraphs } from "./RequestMetricsGraphs";
 import { CompactionView } from "./CompactionView";
 import { PlanView } from "./PlanView";
 import { TaskDagView } from "./TaskDagView";
@@ -40,6 +41,7 @@ import {
   FolderIcon,
   FolderOpenIcon,
   KnowledgeIcon,
+  MetricsIcon,
   OverviewIcon,
   PlanIcon,
   PromptIcon,
@@ -87,6 +89,7 @@ export type AgentFileKind =
   | "activity"
   | "context"
   | "requests"
+  | "metrics"
   | "compaction"
   | "plan"
   | "tasks"
@@ -95,7 +98,9 @@ export type AgentFileKind =
 // The order files list in a folder. Prompt sits right after Overview — reading an
 // agent starts with what it *is* and then what it was *told* (for a subagent, the
 // brief its parent handed it). Requests sits beside Context — it is the itemized,
-// message-level companion to the stacked Context graph — and Compaction follows, the
+// message-level companion to the stacked Context graph — then Metrics, the
+// per-request over-time graphs (throughput, cost, cache-read and reasoning share)
+// that are the value-per-call companion to that same graph; Compaction follows, the
 // detail behind the Context graph's compaction markers.
 const FILE_ORDER: ReadonlyArray<AgentFileKind> = [
   "overview",
@@ -103,6 +108,7 @@ const FILE_ORDER: ReadonlyArray<AgentFileKind> = [
   "activity",
   "context",
   "requests",
+  "metrics",
   "compaction",
   "plan",
   "tasks",
@@ -129,6 +135,10 @@ const FILE_CAPABILITIES: Record<AgentFileKind, ReadonlyArray<string>> = {
   // The message log and the breakdown graph are context visibility, which is intrinsic —
   // every run emits both — so the file is always offered.
   requests: [],
+  // The per-request metric graphs ride on the same intrinsic `prompt` stream the
+  // Requests file does — every run makes model calls carrying tokens/cost — so the
+  // file is always offered (its own graphs show an empty state until a metric has data).
+  metrics: [],
   // The Compaction file rides on the compaction capability itself: with the backstop
   // off, a run never compacts, so the file is hidden rather than shown perpetually
   // empty. Its own record travels on the compaction event, so it needs nothing else.
@@ -144,6 +154,7 @@ const FILE_LABELS: Record<AgentFileKind, string> = {
   activity: "activity",
   context: "context",
   requests: "requests",
+  metrics: "metrics",
   compaction: "compaction",
   plan: "plan",
   tasks: "tasks",
@@ -161,6 +172,7 @@ const FILE_ICONS: Record<
   activity: ActivityIcon,
   context: ContextIcon,
   requests: RequestsIcon,
+  metrics: MetricsIcon,
   compaction: CompactionIcon,
   plan: PlanIcon,
   tasks: TasksIcon,
@@ -573,6 +585,12 @@ function FileContent({
             pool={state.messagePool}
             live={live}
           />
+        </div>
+      );
+    case "metrics":
+      return (
+        <div className={panels.panelBody}>
+          <RequestMetricsGraphs prompts={state.prompts} />
         </div>
       );
     case "compaction":

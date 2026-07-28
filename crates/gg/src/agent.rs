@@ -5086,6 +5086,11 @@ impl Agent {
             // is emitted every turn.
             emitter.emit(context.breakdown_event());
 
+            // Time the model call so the turn's generation throughput (output tokens
+            // per second) is derivable — the wall-clock latency the `prompt` event
+            // carries as `duration_ms`. Includes any vision-recovery retry, which is the
+            // latency the turn actually paid.
+            let model_call_started = Instant::now();
             let response = match complete_with_vision_recovery(
                 client,
                 &mut context,
@@ -5146,6 +5151,9 @@ impl Agent {
                     };
                 }
             };
+            // Reaching here means the call returned a response (the error arm returns), so
+            // this is its latency — the denominator for the turn's generation throughput.
+            let model_call_ms = model_call_started.elapsed().as_millis() as u64;
 
             record_usage(&response, emitter);
             total_tokens = add_counts(total_tokens, response.usage);
@@ -5237,6 +5245,7 @@ impl Agent {
                 response.usage,
                 response.cost,
                 finish_reason_token(&response.finish_reason),
+                Some(model_call_ms),
             );
 
             context.push_assistant(

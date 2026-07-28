@@ -297,7 +297,9 @@ impl Emitter {
     /// is the assistant reply the turn produced and its estimated tokens — pooled like any
     /// message (so it reappears, its id unchanged, as a request pointer next turn), or `None`
     /// when the turn produced no assistant message. `usage`/`cost`/`finish_reason` are the
-    /// turn's actual provider outcome.
+    /// turn's actual provider outcome, and `duration_ms` the model call's wall-clock
+    /// latency (the denominator for the turn's generation throughput), or `None` when the
+    /// response was not produced by a timed model call.
     ///
     /// De-duplication makes this cheap on gg's [append-only](crate::message_log) window: only
     /// the messages new *this* turn (typically just the latest assistant/tool exchange, and
@@ -309,6 +311,7 @@ impl Emitter {
         usage: TokenCounts,
         cost: Option<Cost>,
         finish_reason: String,
+        duration_ms: Option<u64>,
     ) {
         // Stream each request message's body the first time this agent sends it, and build
         // the ordered pointer list. `total_tokens` sums the per-item estimates so it agrees
@@ -345,6 +348,7 @@ impl Emitter {
             finish_reason,
             tokens: usage,
             cost,
+            duration_ms,
         });
     }
 }

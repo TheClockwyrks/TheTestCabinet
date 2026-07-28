@@ -178,6 +178,7 @@ fn log_prompt_deduplicates_across_turns() {
         TokenCounts::default(),
         None,
         "stop".to_string(),
+        None,
     );
 
     // Turn 2: the same system + prompt (repeats) + turn 1's reply now in the window as
@@ -194,6 +195,7 @@ fn log_prompt_deduplicates_across_turns() {
         TokenCounts::default(),
         None,
         "stop".to_string(),
+        None,
     );
 
     let events = sink.events();
@@ -275,6 +277,7 @@ fn log_prompt_omits_absent_response() {
         TokenCounts::default(),
         None,
         "stop".to_string(),
+        None,
     );
     let events = sink.events();
     let prompt = events

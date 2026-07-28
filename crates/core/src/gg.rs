@@ -2862,6 +2862,13 @@ pub enum GgTelemetryKind {
         /// The turn's cost, when the provider reported one.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         cost: Option<Cost>,
+        /// How long the model call took, in milliseconds — the wall-clock latency of the
+        /// request that produced this turn's [`tokens`](Self::Prompt::tokens). The
+        /// denominator for a turn's generation throughput (output tokens per second).
+        /// Absent when the turn was not produced by a timed model call (e.g. a replayed
+        /// or synthesized response).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        duration_ms: Option<u64>,
     },
     /// The [skills](https://docs.testcabinet.ai/gg/skills/) available to the model and
     /// which of them have been read.

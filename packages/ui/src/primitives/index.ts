@@ -30,12 +30,15 @@ export {
   stackedBarChart,
   stackedAreaChart,
   priceHistoryChart,
+  metricLineChart,
   type BarPoint,
   type StackedBarSegment,
   type StackedSeries,
   type StackedAreaPoint,
   type StackedAreaMarker,
   type PricePoint,
+  type MetricPoint,
+  type MetricLineLabels,
 } from "./plot/charts";
 export {
   basePlotOptions,

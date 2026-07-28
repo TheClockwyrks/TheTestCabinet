@@ -258,6 +258,11 @@ export interface PromptTurn {
   finishReason: string;
   tokens: TokenMetrics;
   cost: CostMetrics | null;
+  // The model call's wall-clock latency in milliseconds — the denominator for the
+  // turn's generation throughput (tokens/s). Null when the response was not produced
+  // by a timed model call (a replayed/synthesized turn, or a record from before this
+  // was recorded).
+  durationMs: number | null;
 }
 
 // The latest `memory_state` — the model's self-curated memories and the caps gg
@@ -1139,6 +1144,7 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
           finishReason: gg.finishReason,
           tokens: gg.tokens,
           cost: gg.cost ?? null,
+          durationMs: gg.durationMs ?? null,
         });
         break;
       case "skills_state":

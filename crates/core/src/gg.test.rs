@@ -1266,14 +1266,16 @@ fn message_log_events_round_trip() {
         finish_reason: "stop".to_string(),
         tokens: TokenCounts::default(),
         cost: None,
+        duration_ms: None,
     };
     let value = serde_json::to_value(&prompt).expect("serialize");
     assert_eq!(value["type"], json!("prompt"));
     assert_eq!(value["totalTokens"], json!(30));
     assert_eq!(value["request"][0]["source"], json!("system"));
-    // An absent response and cost are omitted from the wire, not serialized as null.
+    // An absent response, cost, and duration are omitted from the wire, not serialized as null.
     assert!(value.get("responseId").is_none());
     assert!(value.get("cost").is_none());
+    assert!(value.get("durationMs").is_none());
     let back: GgTelemetryKind = serde_json::from_value(value).expect("deserialize");
     assert_eq!(back, prompt);
 }

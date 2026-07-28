@@ -105,6 +105,17 @@ export function RequestsIcon({ className }: IconProps) {
   );
 }
 
+// Metrics — a line trending up across axes: the per-request metrics graphs
+// (throughput, cost, cache-read share, reasoning share) over the run.
+export function MetricsIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <path d="M4 4v15a1 1 0 0 0 1 1h15" />
+      <path d="M7 15l4-5 3 3 5-7" />
+    </Icon>
+  );
+}
+
 // Compaction — arrows collapsing toward a middle rule: the window summarized and
 // squeezed back down at a boundary.
 export function CompactionIcon({ className }: IconProps) {

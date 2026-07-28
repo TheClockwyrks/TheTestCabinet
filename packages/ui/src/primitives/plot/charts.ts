@@ -490,3 +490,78 @@ export function priceHistoryChart(
     ],
   };
 }
+
+/** One observation on a per-request metric line: a value at a turn index. */
+export interface MetricPoint {
+  /** The turn index (0-based) this observation belongs to — the x position, shared
+   * with the context graph's turn axis so the two read against the same run. */
+  turn: number;
+  /** The metric's value at that turn. */
+  value: number;
+}
+
+/** Labels and framing for a {@link metricLineChart}. */
+export interface MetricLineLabels {
+  /** The y-axis label (e.g. "tokens/s"). Omit for none. */
+  y?: string;
+  /** d3-format specifier (or function) for the y-axis ticks — e.g. `"~s"` for large
+   * counts, `"$~f"` for money, `"~%"` for a fraction drawn as a percent. */
+  yTickFormat?: string | ((value: number) => string);
+  /** An explicit top of the y scale, so a bounded metric (e.g. a percentage) frames
+   * to its natural ceiling rather than to the tallest observation. Omit to let the
+   * data size the scale. */
+  yMax?: number;
+  /** The line/dot color. Omit to take the theme accent. */
+  color?: string;
+}
+
+// A single-series metric-over-requests line chart: one value per turn plotted against
+// the integer turn axis as a line with a dot at each observation, so a history of one
+// or two points still reads (the dots carry it where the line is a single segment or
+// absent). y starts at 0 (`ruleY([0])`) so magnitudes aren't exaggerated by a floating
+// baseline. Use for a per-request metric that accrues one data point per model call
+// (throughput, cost, cache-read share, reasoning share); pair several to read a run's
+// request-level metrics side by side. Needs at least one point; a caller with none
+// should fall back to an empty state rather than draw an axis with nothing on it.
+export function metricLineChart(
+  data: readonly MetricPoint[],
+  palette: ChartPalette,
+  labels: MetricLineLabels = {},
+): PlotOptions {
+  const color = labels.color ?? palette.accent;
+  const yMax = labels.yMax;
+  return {
+    ...basePlotOptions(palette),
+    x: {
+      label: null,
+      // Whole-number turn ticks; a fractional tick between turns is meaningless.
+      tickFormat: (v: number) => (Number.isInteger(v) ? String(v) : ""),
+    },
+    y: {
+      label: labels.y ?? null,
+      grid: true,
+      zero: true,
+      tickFormat: labels.yTickFormat,
+      ...(yMax != null ? { domain: [0, yMax] } : {}),
+    },
+    marks: [
+      Plot.ruleY([0], { stroke: palette.border }),
+      Plot.line(data as MetricPoint[], {
+        x: "turn",
+        y: "value",
+        stroke: color,
+        strokeWidth: 2,
+      }),
+      Plot.dot(data as MetricPoint[], {
+        x: "turn",
+        y: "value",
+        fill: color,
+        // A surface-colored ring so a lone dot (a one-point history) stays legible
+        // against the plot fill.
+        stroke: palette.surface,
+        strokeWidth: 1,
+        r: 3,
+      }),
+    ],
+  };
+}

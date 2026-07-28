@@ -47,7 +47,9 @@ through **two** surfaces:
   top-level section, **not** a file under any one agent.
 - The **Agents** explorer — everything else. The rich views (the prompt the agent was
   given, activity, context-window breakdown, the [message log](/gg/context-visibility/#the-message-log-the-exact-requests-de-duplicated),
-  plan, tasks, knowledge) are inherently **per agent** — *whose*
+  the **per-request metric graphs** — throughput (tokens/s), cost per request, cache-read
+  share and reasoning share, each gaining one point per model call — plan, tasks,
+  knowledge) are inherently **per agent** — *whose*
   window filled, *whose* task list this is — so they cannot honestly be shown as one
   global panel. The explorer lays the run out as a **filesystem**: every agent is a
   folder, the things you can monitor about it are its files, and every agent an agent

@@ -1680,6 +1680,56 @@ $fsm-hue: #2dd4bf;
   color: t.$color-text-muted;
 }
 
+// --- Per-request metric graphs ----------------------------------------------
+
+// The Metrics file's grid of over-time graphs: one card per per-request metric
+// (throughput, cost, cache-read share, reasoning share), wrapping to a single
+// column when the pane is narrow. Sits beside the Context graph as the
+// request-level, value-over-time companion to the window's composition.
+.metricsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  gap: t.$space-lg;
+}
+
+.metricCard {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  min-width: 0;
+}
+
+// The card's header: the metric's name on the left, its latest value on the right,
+// so a glance reads both what the graph is and where it stands now.
+.metricCardHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-sm;
+}
+
+.metricCardLabel {
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$color-text-muted;
+}
+
+.metricCardLatest {
+  font-size: t.$font-sm;
+  color: t.$color-text;
+  font-variant-numeric: tabular-nums;
+}
+
+// A per-card empty state, shown when a metric has no data points yet (or the run
+// never recorded what it needs — e.g. throughput without call timing).
+.metricEmpty {
+  padding: t.$space-md 0;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  margin: 0;
+}
+
 // The panel body under the tab bar: fills the page (host is `PageLayout fill`)
 // and scrolls internally, like the feed.
 .panelBody {
