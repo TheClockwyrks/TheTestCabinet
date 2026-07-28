@@ -6,9 +6,9 @@
 // that raises it to critical (charge 3, specs/charge.md).
 
 import {
+  actAudioCount,
   actWormStep,
   armAudio,
-  audioCount,
   chargeAt,
   freshBoard,
   setWorm,
@@ -37,9 +37,9 @@ export default function item() {
     // event this item drives.
     async act(api) {
       chargeBefore = chargeAt(await api.snapshot(), 20, 5);
-      before = await audioCount(api);
+      before = await actAudioCount(api);
       snap = await actWormStep(api);
-      after = await audioCount(api);
+      after = await actAudioCount(api);
       // Every operand is captured; the sim runs on only so the worm diving the
       // freshly-critical node is legible at the end of the clip.
       await api.advance(120); // 1s of visible play

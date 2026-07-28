@@ -5,9 +5,9 @@
 // the real resolveBolt -> hitFoe kill the shot triggers.
 
 import {
+  actAudioCount,
   actFireAndResolve,
   armAudio,
-  audioCount,
   foesOf,
   freshBoard,
   tileCY,
@@ -33,9 +33,9 @@ export default function item() {
     // The bolt climbing to the glitch and killing it is the clip and the one
     // event this item drives.
     async act(api) {
-      before = await audioCount(api);
+      before = await actAudioCount(api);
       snap = await actFireAndResolve(api);
-      after = await audioCount(api);
+      after = await actAudioCount(api);
       // Every operand is captured; the sim runs on only so the kill is legible at
       // the end of the clip.
       await api.advance(60); // 0.5s of visible aftermath

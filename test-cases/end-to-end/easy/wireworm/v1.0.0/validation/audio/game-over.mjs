@@ -6,7 +6,7 @@
 // steps; the cue is confirmed by the Web Audio source log growing across reaching
 // the Game-over screen.
 
-import { armAudio, audioCount, freshBoard, setWorm } from "../_helpers.mjs";
+import { actAudioCount, armAudio, freshBoard, setWorm } from "../_helpers.mjs";
 
 export default function item() {
   let before;
@@ -28,10 +28,10 @@ export default function item() {
 
     // The touch that ends the run is the clip and the one event this item drives.
     async act(api) {
-      before = await audioCount(api);
+      before = await actAudioCount(api);
       await api.advance(6); // 6 ticks = 0.05s — one sim beat, enough for the touch
       snap = await api.snapshot();
-      after = await audioCount(api);
+      after = await actAudioCount(api);
       // Every operand is captured; the sim runs on only so the clip holds on the
       // Game-over screen the assertions read.
       await api.advance(60); // 0.5s holding on the Game-over screen

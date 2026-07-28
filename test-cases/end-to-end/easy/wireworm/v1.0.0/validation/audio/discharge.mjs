@@ -6,9 +6,9 @@
 // resolveBolt -> hitNode -> detonate path the shot triggers.
 
 import {
+  actAudioCount,
   actFireAndResolve,
   armAudio,
-  audioCount,
   chargeAt,
   freshBoard,
   tileCX,
@@ -37,9 +37,9 @@ export default function item() {
     // The shot and the detonation it triggers are one scenario, and this is the
     // one event this item drives.
     async act(api) {
-      before = await audioCount(api);
+      before = await actAudioCount(api);
       snap = await actFireAndResolve(api);
-      after = await audioCount(api);
+      after = await actAudioCount(api);
       // Every operand is captured; the sim runs on only so the discharge is
       // legible at the end of the clip.
       await api.advance(60); // 0.5s of visible aftermath

@@ -6,7 +6,7 @@
 // Audio source log growing across the real checkCursorHit -> loseLife the touch
 // triggers.
 
-import { armAudio, audioCount, freshBoard } from "../_helpers.mjs";
+import { actAudioCount, armAudio, freshBoard } from "../_helpers.mjs";
 
 export default function item() {
   let livesBefore;
@@ -35,10 +35,10 @@ export default function item() {
       // that carries some anyway (specs/progression.md explicitly encourages it).
       await api.until((s) => !s.cursor.invulnerable, { max: 600, poll: 6 });
       livesBefore = (await api.snapshot()).lives;
-      before = await audioCount(api);
+      before = await actAudioCount(api);
       await api.advance(6); // 6 ticks = 0.05s — one sim beat, enough for the touch
       livesAfter = (await api.snapshot()).lives;
-      after = await audioCount(api);
+      after = await actAudioCount(api);
       // Every operand is captured; the sim runs on only so the clip shows the
       // respawn that follows rather than ending on a single frame.
       await api.advance(90); // 0.75s of visible aftermath

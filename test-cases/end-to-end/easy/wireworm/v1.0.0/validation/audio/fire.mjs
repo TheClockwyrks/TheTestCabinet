@@ -5,7 +5,7 @@
 // log growing across a real fire (the debug `fire` control op, which routes
 // through the same audio.play("fire") call as a held Space, specs/ui.md).
 
-import { armAudio, audioCount, freshBoard, tileCX } from "../_helpers.mjs";
+import { actAudioCount, armAudio, freshBoard, tileCX } from "../_helpers.mjs";
 
 export default function item() {
   let boltsBefore;
@@ -26,10 +26,10 @@ export default function item() {
 
     async act(api) {
       boltsBefore = (await api.snapshot()).bolts.length;
-      before = await audioCount(api);
+      before = await actAudioCount(api);
       await api.call("fire"); // the one event this item drives
       boltsAfter = (await api.snapshot()).bolts.length;
-      after = await audioCount(api);
+      after = await actAudioCount(api);
       // Every operand is captured; the sim runs on only so the bolt is visibly
       // climbing at the end of the clip.
       await api.advance(60); // 0.5s of visible flight

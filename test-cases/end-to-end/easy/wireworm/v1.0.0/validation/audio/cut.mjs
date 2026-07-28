@@ -9,9 +9,9 @@
 // across the real hitWorm the shot triggers.
 
 import {
+  actAudioCount,
   actFireAndResolve,
   armAudio,
-  audioCount,
   freshBoard,
   setWorm,
   tileCX,
@@ -39,9 +39,9 @@ export default function item() {
     // drives.
     async act(api) {
       wormsBefore = (await api.snapshot()).worms.length;
-      before = await audioCount(api);
+      before = await actAudioCount(api);
       snap = await actFireAndResolve(api);
-      after = await audioCount(api);
+      after = await actAudioCount(api);
       // Every operand is captured; the sim runs on only so the cut is legible at
       // the end of the clip.
       await api.advance(60); // 0.5s of visible aftermath

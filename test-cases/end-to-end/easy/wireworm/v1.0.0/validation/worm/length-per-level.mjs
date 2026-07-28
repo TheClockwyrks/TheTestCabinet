@@ -25,19 +25,33 @@ export default function item() {
     // time to advance. So the whole probe lives in `arrange` — `api.reset` is
     // arrange-only anyway, and this item needs one per level. The board is then left
     // posed at the still's level for `act` to film.
+    //
+    // `enterPlay` before each `setLevel` is what makes the board LIVE.
+    // specs/instrumentation.md is explicit that no control operation starts a run on
+    // its own and that `step` only advances live play, so a `reset` + `setLevel`
+    // alone leaves the build sitting on its title screen: the segment counts below
+    // still read correctly (the worm is spawned either way), but `act` would advance
+    // a frozen menu and film it, which is exactly what the still used to show.
     async arrange(api) {
       for (const [level] of LEVELS) {
         await api.reset({ seed: 1 });
+        await api.call("enterPlay");
         await api.call("setLevel", level);
         lengths.push((await api.snapshot()).worms[0].segments.length);
       }
 
       await api.reset({ seed: 1 });
+      await api.call("enterPlay");
       await api.call("setLevel", STILL_LEVEL);
     },
 
+    // The worm enters from a side edge along row 0, one segment per tile step, so
+    // the whole of it is only on the board once it has taken as many steps as it has
+    // segments. Level 8's 24-segment worm steps about every 0.097 s, so 288 ticks
+    // (2.4 s) carries all 24 on and leaves the head well clear of the far edge —
+    // which is the entire point of the still, a worm visibly longer than level 1's.
     async act(api) {
-      await api.advance(144); // 144 ticks = the old 1.2s, letting the worm wind onto the board
+      await api.advance(288);
       await api.settle(120); // a real pause so the wound-on worm has painted
       await api.screenshot("lengths");
     },
