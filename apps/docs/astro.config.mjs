@@ -562,6 +562,24 @@ export default defineConfig({
             },
           ],
         },
+        // Harness comparisons — The Test Cabinet's A/B-testing capability: run the
+        // same benchmark under several harnesses (or gg configurations) and publish
+        // the cost/token/score data side by side. Its own section because it spans
+        // the metric graphs, a new comparison experiment, run diagnostics, the
+        // statistics that summarize them, and a publish path — none owned by a
+        // single component.
+        {
+          label: "Comparisons",
+          collapsed: true,
+          items: [
+            "comparisons/overview",
+            "comparisons/metrics-split",
+            "comparisons/experiments",
+            "comparisons/diagnostics",
+            "comparisons/statistics",
+            "comparisons/publishing",
+          ],
+        },
         // The test types The Test Cabinet evaluates models and harnesses with.
         // Each type gets an Overview (what it is, how it works), Manifests (its
         // `test-case.toml` schema), and Evaluation (how a run is scored). The
