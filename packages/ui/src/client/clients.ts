@@ -109,6 +109,25 @@ export class NotSupportedError extends Error {
   }
 }
 
+// One arm run a comparison publish could not enqueue, with why (e.g. an
+// infrastructure failure, or a review-less run with no automated verdicts to
+// stand in for the review) — so a partially-published comparison never reads as
+// if every run behind it is inspectable.
+export interface SkippedComparisonRun {
+  runId: string;
+  reason: string;
+}
+
+// The result of `BackendClient.publishComparison`: which of the comparison's
+// arm runs were enqueued for publishing (one ordinary publish job each) and
+// which were skipped. Mirrors the backend's `ComparisonPublishOutcome`
+// (`crates/backend/src/api/comparisons.rs`), which is not part of the
+// generated contract (it derives only `Serialize`, not `TS`).
+export interface ComparisonPublishOutcome {
+  enqueued: string[];
+  skipped: SkippedComparisonRun[];
+}
+
 // The backend: the canonical source of test-case definitions, container image
 // references, and published results. Every runner and reporter resolves the
 // catalog from here — never from a worker. Mirrors the backend HTTP API
@@ -324,13 +343,24 @@ export interface BackendClient {
   /** Delete a comparison (`DELETE /comparisons/{id}`). */
   deleteComparison?(id: string, token: string): Promise<void>;
   /**
-   * Publish a comparison to the public site (`POST /comparisons/{id}/publish`),
-   * returning the updated (published) comparison. See
-   * docs/comparisons/publishing.md — this enqueues the comparison record for the
-   * snapshot; publishing the runs behind it is a separate, selective batch the
-   * backend drains through the publish-job queue.
+   * Publish a comparison to the public site (`POST /comparisons/{id}/publish`,
+   * `crates/backend/src/api/comparisons.rs::publish_comparison`). Marks the
+   * comparison published (the next snapshot folds it in) and best-effort
+   * enqueues one ordinary publish job per publishable arm run — publishing a run
+   * is a real pod/repo/deploy, so this is never a bulk flag flip (see
+   * docs/comparisons/publishing.md). Resolves the outcome: which run ids were
+   * enqueued and which were skipped (with why) — a partially-published
+   * comparison must never read as if every run is inspectable. This response
+   * shape is backend-internal (hand-typed here, not part of the generated
+   * `@test-cabinet/run-record` contract, since the Rust type derives only
+   * `Serialize`) — mirrors how `PublishStreamLine` below is hand-typed for the
+   * same reason. The comparison itself is *not* returned; re-fetch (or
+   * optimistically flip `published`) to see the updated record.
    */
-  publishComparison?(id: string, token: string): Promise<Comparison>;
+  publishComparison?(
+    id: string,
+    token: string,
+  ): Promise<ComparisonPublishOutcome>;
 
   /**
    * The signed-in account's own submitted reviews, newest-first, with a numbered

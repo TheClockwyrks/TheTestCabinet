@@ -7,6 +7,7 @@ import {
   stackedBarChart,
 } from "@test-cabinet/ui";
 import type { DistributionGroup } from "@test-cabinet/ui";
+import type { ComparisonPublishOutcome } from "../../../client/clients";
 import { useAuth } from "../../../client/auth";
 import { useBackend, useWorkers } from "../../../client/context";
 import { LoadingState } from "../../components/LoadingState";
@@ -56,6 +57,8 @@ export function ComparisonDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [triggering, setTriggering] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [publishResult, setPublishResult] =
+    useState<ComparisonPublishOutcome | null>(null);
 
   useEffect(() => {
     if (!backend || !token) {
@@ -195,8 +198,14 @@ export function ComparisonDetailPage() {
     setPublishing(true);
     setError(null);
     try {
-      const updated = await backend.publishComparison(comparison.id, token);
-      setComparison(updated);
+      // The publish endpoint reports which arm runs were enqueued/skipped, not
+      // the updated comparison (publishing a run is a real pod/repo/deploy, so
+      // it is always best-effort and selective — see docs/comparisons/
+      // publishing.md). Flip `published` locally rather than guessing at a
+      // round-trip; a reload always shows the authoritative state.
+      const outcome = await backend.publishComparison(comparison.id, token);
+      setPublishResult(outcome);
+      setComparison((prev) => (prev ? { ...prev, published: true } : prev));
     } catch (e) {
       setError(String(e));
     } finally {
@@ -377,6 +386,24 @@ export function ComparisonDetailPage() {
         <p className={styles.empty}>{comparison.description}</p>
       )}
       {error && <p className={`${exec.notice} ${exec.error}`}>{error}</p>}
+      {publishResult && (
+        <p className={`${exec.notice} ${exec.warn}`}>
+          Published. {publishResult.enqueued.length} run
+          {publishResult.enqueued.length === 1 ? "" : "s"} enqueued for
+          publishing.
+          {publishResult.skipped.length > 0 && (
+            <>
+              {" "}
+              {publishResult.skipped.length} run
+              {publishResult.skipped.length === 1 ? "" : "s"} skipped:{" "}
+              {publishResult.skipped
+                .map((s) => `${s.runId} (${s.reason})`)
+                .join(", ")}
+              — this comparison is only partially published.
+            </>
+          )}
+        </p>
+      )}
       {!canTrigger && totalMissing > 0 && (
         <p className={`${exec.notice} ${exec.warn}`}>
           No worker connected — open the connections drawer (the gear in the top

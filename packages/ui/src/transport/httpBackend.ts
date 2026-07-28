@@ -10,6 +10,7 @@
 import type {
   BackendClient,
   BatchLaunchResult,
+  ComparisonPublishOutcome,
   WorkerClient,
   RunSubscription,
   NotificationSubscription,
@@ -683,11 +684,16 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       await delVoid(baseUrl, `/comparisons/${encodeURIComponent(id)}`, token);
     },
 
-    async publishComparison(id: string, token: string): Promise<Comparison> {
-      // The publish endpoint is landing separately (docs/comparisons/publishing.md);
-      // until then this simply 404s and the console surfaces that as an error,
-      // same as any other not-yet-live endpoint.
-      return postJson<Comparison>(
+    async publishComparison(
+      id: string,
+      token: string,
+    ): Promise<ComparisonPublishOutcome> {
+      // `POST /comparisons/{id}/publish` marks the comparison published and
+      // best-effort enqueues one ordinary publish job per publishable arm run,
+      // resolving which were enqueued and which were skipped (with why). It does
+      // *not* return the updated comparison (see `ComparisonPublishOutcome`'s
+      // doc in clients.ts) — the caller re-fetches or flips `published` locally.
+      return postJson<ComparisonPublishOutcome>(
         baseUrl,
         `/comparisons/${encodeURIComponent(id)}/publish`,
         {},
