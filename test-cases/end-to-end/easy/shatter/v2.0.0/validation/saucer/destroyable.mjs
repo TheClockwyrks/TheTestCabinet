@@ -5,12 +5,14 @@
 // Posing the saucer and the incoming bullet is instant (`arrange`); the bullet closing the gap
 // and the collision resolving are the behavior (`act`), so the clip is the kill itself.
 //
-// The old drive stepped 40 x 0.01 s, which is 1.2 ticks a step — not a whole tick count. What it
-// was really doing is "run until the saucer is gone, up to 0.4 s", so that is written directly:
-// 48 ticks is the same 0.4 s budget, and a single-tick poll is strictly finer than the old
-// sampling, so the instant of the kill is not overshot.
+// The shot is taken through `actShootDownSaucer`, which stands the round off far enough to be
+// seen crossing to its target and re-aims if it misses. The 50 px gap it replaces resolved
+// inside a couple of frames, so the recording — which films `act` — was over before the bullet
+// had been drawn anywhere. Re-aiming is what lets that longer run be safe: the saucer is a
+// powered craft that weaves and steers around the star (`specs/hazards.md`), so where it will
+// be when the bullet arrives is the build's business, not something this script may assume.
 
-import { newGame, SAUCER_SCORE, TICK } from "../_helpers.mjs";
+import { newGame, actShootDownSaucer, SAUCER_SCORE } from "../_helpers.mjs";
 
 export default function item() {
   // The state once the saucer is gone (or the budget is spent), read by `assert`.
@@ -23,15 +25,12 @@ export default function item() {
       await newGame(api);
       await api.call("setScore", 0);
       await api.call("spawnSaucer");
-      await api.call("setSaucer", { x: 300, y: 300, vx: 0, vy: 0 });
-      await api.call("addBullet", { x: 250, y: 300, vx: 860, vy: 0 });
+      await api.call("setSaucer", { x: 400, y: 250, vx: 0, vy: 0 }); // well clear of the star
     },
 
     async act(api) {
-      ({ snap } = await api.until((s) => s.saucer === null, {
-        max: 48,
-        poll: TICK,
-      }));
+      ({ snap } = await actShootDownSaucer(api));
+      await api.advance(72); // 0.6 s tail, so the clip carries past the kill
     },
 
     async assert(api, check) {
