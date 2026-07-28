@@ -1217,7 +1217,38 @@ export async function armAudio(api) {
   await api.userClick(4, 4);
 }
 
-/** The number of Web Audio sources the build has started so far. */
+// How long to let the page paint before reading the audio log. See `audioCount`.
+const AUDIO_SETTLE_MS = 120;
+
+/**
+ * The number of Web Audio sources the build has started so far, read after letting the
+ * page paint.
+ *
+ * THE PAUSE IS THE WHOLE POINT. Scheduling a cue and stepping the simulation are not the
+ * same act, and nothing requires them to happen together: `specs/progression.md` asks for
+ * a distinct cue on each event and says nothing about which turn of the build's own
+ * machinery starts it, while `specs/instrumentation.md`'s render-free rule governs how
+ * game STATE advances, not when its sound is handed to Web Audio. A build that raises a
+ * sound the moment its simulation decides one is due has started the source by the time
+ * `step` returns; an equally conformant build queues the events its step produced and
+ * plays them from its render loop, which cannot have run yet — the validate pass holds
+ * the manual clock and steps between driver round trips, so no frame has been painted
+ * since the event happened. Reading the log straight after the step scores the second
+ * build as silent for a cue every player hears, and does it as a RACE: it depends on
+ * whether an animation frame happened to land in the microseconds between two driver
+ * calls, so the same build fails the items that read straight back and passes the one
+ * whose cue happens to precede a long sweep, on the incidental latency of that sweep's
+ * round trips.
+ *
+ * `api.settle` is a real pause in both passes but moves no simulation (see
+ * `packages/browser-driver/validation.mjs`), so it gives the render loop its frame
+ * without letting the game reach any further event that could confuse the reading. Both
+ * ends of a cue measurement go through here, so the count either side is a settled one
+ * and the delta belongs to the event that was driven between them — settling only the
+ * second read would let a cue queued during setup drain into it and pass an item that
+ * never made its own sound.
+ */
 export async function audioCount(api) {
+  await api.settle(AUDIO_SETTLE_MS);
   return (await api.audio()).length;
 }
