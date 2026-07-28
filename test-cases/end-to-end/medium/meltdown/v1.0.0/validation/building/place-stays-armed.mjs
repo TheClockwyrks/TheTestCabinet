@@ -12,7 +12,7 @@
 // placement has diverged from the contract on the operation every other item uses to
 // lay out its floor.
 
-import { newGame, restartGame } from "../_helpers.mjs";
+import { newGame, restartGame, actTail } from "../_helpers.mjs";
 
 export default function item() {
   let s;
@@ -42,6 +42,11 @@ export default function item() {
       await restartGame(api, "containment", "medium", 100000);
       await api.call("placeTower", "arc", 14, 10, 0);
       viaShorthand = await api.snapshot();
+
+      // Placing and re-arming resolve instantly, so without this the clip never shows
+      // the armed preview it is about — four seconds holds both configurations long
+      // enough to read.
+      await actTail(api, 240);
     },
 
     async assert(api, check) {

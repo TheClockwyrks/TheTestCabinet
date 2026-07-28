@@ -12,7 +12,7 @@
 // and this floor holds exactly one tower, so a pair of fresh casualties inside one
 // step can only have come from one shot landing on both.
 
-import { newGame, build, spawn, TICK } from "../_helpers.mjs";
+import { newGame, build, spawn, actTail, TICK } from "../_helpers.mjs";
 
 export default function item() {
   let hit = false;
@@ -20,6 +20,10 @@ export default function item() {
 
   return {
     id: "bloom.splash",
+
+    // The clump walks into the Bloom's range almost immediately, so this is short by
+    // nature; the ceiling only stops a badly-routed clump from stretching it.
+    clipMs: 4000,
 
     // A Bloom beside the lane at moderate power, with a tight clump of real Motes
     // walking into its range.
@@ -53,6 +57,11 @@ export default function item() {
         { max: 300, poll: TICK },
       );
       hit = r.hit;
+      // The sweep stops on the tick the splash lands, which is the tick before its
+      // effect is legible: the two damaged Motes have had no frame to show their
+      // reduced health bars yet, and the burst itself is still being drawn. Run on so
+      // the clip carries the shot, the splash, and the pair it caught.
+      await actTail(api);
     },
 
     async assert(api, check) {

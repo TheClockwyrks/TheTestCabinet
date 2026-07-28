@@ -18,6 +18,10 @@ export default function item() {
   return {
     id: "mazing.live-repath",
 
+    // The re-path is the moment a tower drops and the route bends around it, which is a
+    // few seconds on a conformant build. See CLIP_HEADROOM_MS in _helpers.
+    clipMs: 7000,
+
     async arrange(api) {
       await newGame(api, "containment", "medium", 100000);
       await api.call("setLives", 100000);

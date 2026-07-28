@@ -5,7 +5,12 @@
 // real Drift, and confirm it keeps its cross-axis (y) coordinate as it crosses to the
 // right — ignoring the maze entirely.
 
-import { newGame, build, spawn, unit } from "../_helpers.mjs";
+import { newGame, build, spawn, unit, FLOOR_X0, TILE } from "../_helpers.mjs";
+
+// Where the filmed part of the flight begins: a couple of tiles short of the Sink
+// wall at column 25, so the clip opens with the wall ahead of the Drift and carries it
+// over and past.
+const WALL_APPROACH_X = FLOOR_X0 + 23 * TILE;
 
 export default function item() {
   let driftId;
@@ -19,6 +24,12 @@ export default function item() {
     // A wall across the ground lane — a flyer ignores it. Built from Sinks (movers
     // that never fire) so the wall proves the flyer flies over the maze without any
     // emitter shooting it out of the air along the way.
+    //
+    // What makes the line straight is that it stays straight ACROSS the wall, so the
+    // filmed part has to contain the wall. The approach to it does not: the Drift's
+    // run-up from the vent is a flyer over bare floor, which is the same picture on a
+    // build that would have turned. So the run-up is skipped and the clip opens just
+    // short of the Sinks. 1200 ticks = the old 20s cap, kept as the skip's ceiling.
     async arrange(api) {
       await newGame(api, "containment", "medium", 100000);
       await api.call("setLives", 100000);
@@ -26,14 +37,18 @@ export default function item() {
 
       driftId = await spawn(api, "drift", "left");
       start = await unit(api, driftId);
+      await api.skipUntil(
+        (s) => s.surge.some((u) => u.id === driftId && u.x > WALL_APPROACH_X),
+        { max: 1200, poll: 12 },
+      );
     },
 
-    // Fly it across the floor. 1200 ticks = the old 20s cap, polled every 6 ticks
-    // (the old 0.1s chunk) — the crossing is gradual, so a coarse sweep is enough.
+    // Fly it the rest of the way across. 600 ticks = 10s, ample for the remaining
+    // ~550 px at 80 px/s.
     async act(api) {
       r = await api.until(
         (s) => s.surge.some((u) => u.id === driftId && u.x > 900),
-        { max: 1200, poll: 6 },
+        { max: 600, poll: 6 },
       );
       end = await unit(api, driftId);
     },

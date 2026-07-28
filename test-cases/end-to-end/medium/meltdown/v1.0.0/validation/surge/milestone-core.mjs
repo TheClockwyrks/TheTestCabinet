@@ -4,7 +4,7 @@
 // (specs/surge.md, waves.md). On Medium the run is 20 waves, so the midpoint is wave
 // 10 and the finale wave 20. We jump to each, start it, and confirm a Core spawns.
 
-import { newGame, restartGame } from "../_helpers.mjs";
+import { newGame, restartGame, actTail } from "../_helpers.mjs";
 
 // Jump to `wave` and release it. `start` is the fresh-match helper to use: `newGame`
 // in arrange, and `restartGame` in act — the two milestone waves each need their own
@@ -19,8 +19,14 @@ async function poseWave(api, start, wave) {
 
 // 840 ticks = the old 14s cap, polled every 15 ticks (the old 0.25s chunk) — long
 // enough for a milestone wave to work through to its Core.
-const untilCore = (api) =>
-  api.until((s) => s.surge.some((u) => u.type === "core"), {
+//
+// This is a SKIP, not a filmed sweep. What the item claims is that the milestone wave
+// carries a Core; what precedes the Core is the rest of the wave arriving, which is
+// neither the claim nor short. Skipping it runs the same real wave and stops on the
+// same tick, unfilmed — and each half then films a beat of the Core actually on the
+// floor, which is the part worth looking at.
+const skipToCore = (api) =>
+  api.skipUntil((s) => s.surge.some((u) => u.type === "core"), {
     max: 840,
     poll: 15,
   });
@@ -32,18 +38,24 @@ export default function item() {
   return {
     id: "surge.milestone-core",
 
-    // The midpoint wave first.
+    // Two skipped waves, each held for a beat once its Core is on the floor.
+    clipMs: 5500,
+
+    // The midpoint wave first, run through to its Core unfilmed.
     async arrange(api) {
       await poseWave(api, newGame, 10);
+      mid = await skipToCore(api);
     },
 
-    // Watch the midpoint wave for its Core, then re-pose at the finale and watch that
-    // one. Both drives are filmed back to back.
+    // A beat on the midpoint Core, then the finale wave posed and skipped to its own
+    // Core and held the same way. A Core is recognisable by its bulk and its health
+    // bar, and neither is legible on the single frame it spawns in.
     async act(api) {
-      mid = await untilCore(api);
+      await actTail(api);
 
       await poseWave(api, restartGame, 20);
-      finale = await untilCore(api);
+      finale = await skipToCore(api);
+      await actTail(api);
     },
 
     async assert(api, check) {

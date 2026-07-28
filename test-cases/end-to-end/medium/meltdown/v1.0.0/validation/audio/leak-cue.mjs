@@ -4,7 +4,13 @@
 // `surge.leak-costs-life`); audio is armed, and letting it walk out an exhaust must
 // grow the audio log.
 
-import { newGame, spawn, armAudio, audioCount } from "../_helpers.mjs";
+import {
+  newGame,
+  spawn,
+  armAudio,
+  audioCount,
+  skipToApproach,
+} from "../_helpers.mjs";
 
 export default function item() {
   let before;
@@ -14,21 +20,27 @@ export default function item() {
   return {
     id: "audio.leak-cue",
 
+    // A recorded clip carries no audio track, so what this item's media can show is
+    // the EVENT the cue is supposed to accompany. That event is the Mote's ARRIVAL at
+    // an exhaust, not the 16 s walk to it, so the walk is run through unfilmed and the
+    // measured window opens on the final approach.
     async arrange(api) {
       await newGame(api, "containment", "medium", 100000);
       await api.call("setLives", 10);
-      await spawn(api, "mote", "left");
+      const moteId = await spawn(api, "mote", "left");
+      await skipToApproach(api, moteId);
       await armAudio(api);
     },
 
-    // 1800 ticks = the old 30s cap, polled every 12 ticks (the old 0.2s chunk) — the
-    // Mote's walk to the exhaust is the only thing that can drop lives.
+    // 300 ticks = 5s, ample for the stretch the skip stopped on — the Mote's walk to
+    // the exhaust is the only thing that can drop lives. The count is taken after the
+    // skip, so nothing the approach played is inside the window.
     async act(api) {
       before = await audioCount(api);
-      const r = await api.until((s) => s.lives < 10, { max: 1800, poll: 12 });
+      const r = await api.until((s) => s.lives < 10, { max: 300, poll: 6 });
       after = await audioCount(api);
       leaked = r.hit;
-      await api.advance(30); // a short tail so the clip shows the leak
+      await api.advance(60); // a short tail so the clip shows the leak
     },
 
     async assert(api, check) {

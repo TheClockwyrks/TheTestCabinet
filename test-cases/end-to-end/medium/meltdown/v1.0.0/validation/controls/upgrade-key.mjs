@@ -3,7 +3,7 @@
 // U upgrades the selected placed tower one level (specs/controls.md). We place and
 // select a tower, press U, and read its level rise.
 
-import { newGame, build, tower, press } from "../_helpers.mjs";
+import { newGame, build, tower, press, actTail } from "../_helpers.mjs";
 
 export default function item() {
   let id;
@@ -24,6 +24,11 @@ export default function item() {
       before = (await tower(api, id)).level;
       await press(api, "KeyU");
       after = (await tower(api, id)).level;
+
+      // A key press and the state it leaves behind both resolve instantly, so without
+      // this the clip is a still frame of a game that never visibly does anything —
+      // three seconds of the result on screen is what makes it reviewable.
+      await actTail(api, 180);
     },
 
     async assert(api, check) {

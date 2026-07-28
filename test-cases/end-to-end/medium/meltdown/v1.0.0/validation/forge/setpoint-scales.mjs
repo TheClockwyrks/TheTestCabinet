@@ -23,11 +23,20 @@ async function poseFed(api, start, forgeLevel) {
 
 // The old settle was 60 steps of 0.25s; 15 ticks = 0.25s, so 60 x 15 = 900 ticks of
 // warming, long enough for the heat to reach the setpoint and hold there.
-const SETTLE_STEPS = 60;
-const STEP_TICKS = 15;
+//
+// Almost all of that warming is skipped. What this item compares is where two guns
+// SETTLE, and a settled value is only legible once it has stopped moving — the climb
+// to it is fifteen seconds of a number going up, twice over, and filming both put the
+// whole comparison out of reach of any sane clip length. So each configuration is
+// warmed to just short of its plateau unfilmed and the last two seconds are recorded,
+// which is exactly the part that shows a heat holding steady at its setpoint. The
+// total warming, and so the heat read back, is unchanged.
+const SETTLE_TICKS = 900;
+const FILMED_TICKS = 120;
 
 async function settle(api) {
-  for (let i = 0; i < SETTLE_STEPS; i += 1) await api.advance(STEP_TICKS);
+  await api.skip(SETTLE_TICKS - FILMED_TICKS);
+  await api.advance(FILMED_TICKS);
 }
 
 export default function item() {
@@ -37,6 +46,13 @@ export default function item() {
 
   return {
     id: "forge.setpoint-scales",
+
+    // This is an A/B item, and an A/B item is only evidence if the clip carries BOTH
+    // halves. On the default budget the recording stopped half-way through
+    // configuration A: the clip showed a level-I Forge warming a gun and nothing else,
+    // which is a level with no reference to compare it against — exactly the reading
+    // that cannot be made from it. Skipping the warm-ups (see `settle`) brings both
+    // settled states inside the default budget, so no override is needed.
 
     // Configuration A: a level-I Forge.
     async arrange(api) {
