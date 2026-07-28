@@ -14,6 +14,17 @@ const DURING_TICKS = 18; // 18 ticks = the old 0.15 s
 // Past the far end of the lockout, so firing must have resumed.
 const PAST_TICKS = 24; // 24 ticks = the old 0.2 s
 
+// The lead-in: fire freely for a moment BEFORE the flip, so the clip reads as
+// shots → flip → silence → shots rather than opening on a lockout already under
+// way (see `LEAD_IN_TICKS`).
+const LEAD_FIRE_TICKS = 48; // 0.4 s of held fire — two or three shots at the cadence
+
+// Long enough for those lead-in shots to leave the top of the field, so the "no
+// bullet fires while the lockout stands" count cannot see one of them still in
+// flight. Waiting for the field to actually clear (rather than guessing a number of
+// ticks) keeps that true on a build whose bullets travel more slowly.
+const CLEAR_MAX_TICKS = 240;
+
 export default function item() {
   // The ship the instant it flipped, and the bullet counts during and after lockout.
   let afterFlip;
@@ -31,6 +42,16 @@ export default function item() {
     },
 
     async act(api) {
+      // Establish that firing works at all, and give the clip its lead-in.
+      await api.call("keyDown", "Space");
+      await api.advance(LEAD_FIRE_TICKS);
+      await api.call("keyUp", "Space");
+      // Let those shots clear the field before the flip, so nothing they left in
+      // flight can be counted against the lockout below.
+      await api.until((s) => friendlyBullets(s).length === 0, {
+        max: CLEAR_MAX_TICKS,
+      });
+
       await api.call("flip");
       // Read the lockout the instant the flip lands — it starts full and drains, so
       // any delay here would under-report its length.

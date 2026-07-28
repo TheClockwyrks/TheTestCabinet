@@ -6,7 +6,7 @@
 import {
   startClean,
   armAudio,
-  audioCount,
+  actAudioCount,
   friendlyBullets,
 } from "../_helpers.mjs";
 
@@ -27,11 +27,11 @@ export default function item() {
     },
 
     async act(api) {
-      before = await audioCount(api);
+      before = await actAudioCount(api);
       await api.call("keyDown", "Space");
       await api.advance(HOLD_TICKS);
       await api.call("keyUp", "Space");
-      after = await audioCount(api);
+      after = await actAudioCount(api);
       fired = friendlyBullets(await api.snapshot()).length > 0;
       await api.advance(30); // a short tail so the clip shows the shot
     },

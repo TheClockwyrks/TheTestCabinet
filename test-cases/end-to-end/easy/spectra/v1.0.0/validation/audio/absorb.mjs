@@ -8,7 +8,7 @@
 import {
   startClean,
   armAudio,
-  audioCount,
+  actAudioCount,
   shieldBullet,
 } from "../_helpers.mjs";
 
@@ -30,9 +30,9 @@ export default function item() {
     },
 
     async act(api) {
-      before = await audioCount(api);
+      before = await actAudioCount(api);
       const r = await api.until((s) => s.resonance > 0, { max: 36 }); // 36 ticks = 0.3 s
-      after = await audioCount(api);
+      after = await actAudioCount(api);
       absorbed = r.hit;
       await api.advance(30); // a short tail so the clip shows the absorbed shot
     },

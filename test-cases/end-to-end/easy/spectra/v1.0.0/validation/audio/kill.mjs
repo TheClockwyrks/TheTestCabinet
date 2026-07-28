@@ -6,7 +6,7 @@
 import {
   startClean,
   armAudio,
-  audioCount,
+  actAudioCount,
   spawnDrone,
   shootDrone,
   findDrone,
@@ -34,12 +34,12 @@ export default function item() {
     },
 
     async act(api) {
-      before = await audioCount(api);
+      before = await actAudioCount(api);
       await shootDrone(api, shardId, "cyan"); // matching band
       const r = await api.until((s) => findDrone(s, shardId) === null, {
         max: 60, // 60 ticks = 0.5 s
       });
-      after = await audioCount(api);
+      after = await actAudioCount(api);
       killed = r.hit;
       await api.advance(30); // a short tail so the clip shows the kill
     },

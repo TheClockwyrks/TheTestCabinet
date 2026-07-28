@@ -7,7 +7,7 @@
 import {
   startStageClean,
   armAudio,
-  audioCount,
+  actAudioCount,
   spawnDrone,
   shootDrone,
 } from "../_helpers.mjs";
@@ -38,12 +38,12 @@ export default function item() {
     async act(api) {
       await api.advance(12); // 12 ticks = 0.1 s: the formation registers as assembled
 
-      before = await audioCount(api);
+      before = await actAudioCount(api);
       await shootDrone(api, shardId, "cyan"); // matching band
       const r = await api.until((s) => s.screen === "stageCleared", {
         max: 240, // 240 ticks = 2 s
       });
-      after = await audioCount(api);
+      after = await actAudioCount(api);
       cleared = r.hit;
       await api.advance(30); // a short tail so the clip shows the interstitial
     },

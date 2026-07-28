@@ -18,6 +18,25 @@ import { startStageClean } from "../_helpers.mjs";
 const STEP_TICKS = 3;
 const MAX_ITERS = 960;
 
+// A perfect clear is a 24 s rake, and the thing this item is about — the score
+// jumping by the 10000 bonus — happens in the last instant of it. Filmed straight
+// through, the clip's 8 s budget ran out long before the bonus was paid, so the
+// reviewer watched volley after volley and never saw the payoff.
+//
+// So the rake is stepped INSTANTLY (`api.skip`, exact in both passes and never
+// filmed) until the stage is nearly cleared, and only the last group onward is
+// advanced in real time. The simulation is identical either way — this changes only
+// what the recording contains, never the verdict, which the validate pass decides
+// with both calls instant.
+//
+// The switch is the score: at 100 a drone (`specs/gameplay.md`), this is the point
+// where a group's worth of drones is left.
+const FILM_FROM_SCORE = 3200;
+
+// Held on the stage-cleared interstitial afterwards, so the perfect bonus is on
+// screen long enough to read.
+const CLEARED_HOLD_TICKS = 240; // 2 s
+
 export default function item() {
   // The state at the end of the clear.
   let final;
@@ -43,13 +62,19 @@ export default function item() {
           await api.call("spawnPlayerBullet", {
             x: d.x,
             y: d.y,
-            band: d.band,
+            band: d.effectiveBand ?? d.band,
             vy: -200,
           });
         }
-        await api.advance(STEP_TICKS);
+        // Same simulation either way; only the last stretch is filmed.
+        if (s.score >= FILM_FROM_SCORE) await api.advance(STEP_TICKS);
+        else await api.skip(STEP_TICKS);
       }
       final = await api.snapshot();
+
+      // Stay on the interstitial so the clip actually shows the score carrying the
+      // perfect bonus, rather than cutting on the frame the stage ends.
+      await api.advance(CLEARED_HOLD_TICKS);
     },
 
     async assert(api, check) {

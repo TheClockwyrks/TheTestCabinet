@@ -3,8 +3,27 @@
 // A player shot whose band matches the drone's current band destroys it. The
 // drone is posed (a precondition); the real collision, run forward by advancing the
 // real simulation, is what destroys it — the outcome is read back from snapshot().
+//
+// The shot is fired from the ship's lane rather than posed on the drone, so the
+// kill the assertion reads is the same kill the clip shows: the drone holds
+// formation, a bullet rises into it, and it pops. The old script posed the bullet on
+// the drone, killing it on the first tick — which cleared the wave, so the
+// "watchable restatement" that followed was filmed over the STAGE 1 CLEARED
+// interstitial and never appeared at all (see `LEAD_IN_TICKS`).
 
-import { startClean, spawnDrone, shootDrone, findDrone } from "../_helpers.mjs";
+import {
+  startClean,
+  spawnDrone,
+  spawnBystander,
+  shootUntil,
+  readsAs,
+  findDrone,
+  LEAD_IN_TICKS,
+} from "../_helpers.mjs";
+
+// Room for a shot to cross the ~280 px up to the drone (0.37 s at the specified
+// bullet speed), with slack for a build whose bullets are slower.
+const REACH_MAX_TICKS = 150;
 
 export default function item() {
   // The drone under test and the moment it was destroyed.
@@ -14,10 +33,12 @@ export default function item() {
   return {
     id: "polarity.match-destroys",
 
-    // One formation Shard on an empty field, so the drone that disappears below can
-    // only be the one that was shot.
+    // One formation Shard in the ship's column, plus a bystander off to the side so
+    // the wave is not emptied by the kill (see `spawnBystander`). The drone that
+    // disappears below is found by id, so it can only be the one that was shot.
     async arrange(api) {
       await startClean(api);
+      await spawnBystander(api);
       shardId = await spawnDrone(api, {
         kind: "shard",
         band: "cyan",
@@ -28,25 +49,20 @@ export default function item() {
     },
 
     async act(api) {
-      await shootDrone(api, shardId, "cyan"); // matching band
-      r = await api.until((s) => findDrone(s, shardId) === null, { max: 60 }); // 60 ticks = the old 0.5 s
+      // A beat on the intact drone first, so the clip opens on the scene rather
+      // than on the shot already having landed.
+      await api.advance(LEAD_IN_TICKS);
 
-      // `shootDrone` poses the bullet ON the drone, which is exact for the check but
-      // resolves in a couple of frames — nothing a reviewer can see. Restate the
-      // SAME check watchably: a fresh drone with a real bullet rising into it from
-      // the ship's lane, exactly as the old script's clip tail did, but posed with
-      // control ops (`clearField` + spawns) because `reset` in `act` would take the
-      // clock back and freeze the recording. The verdict is already decided above.
-      await api.call("clearField");
-      await spawnDrone(api, {
-        kind: "shard",
-        band: "cyan",
-        x: 640,
-        y: 300,
-        phase: "formation",
-      });
-      await api.call("spawnPlayerBullet", { x: 640, y: 540, band: "cyan" });
-      await api.advance(144); // 144 ticks = the old 1200 ms: the shot rises and pops it
+      r = await shootUntil(
+        api,
+        shardId,
+        (s) => readsAs(s, shardId), // the band it currently reads as
+        (s) => findDrone(s, shardId) === null,
+        { max: REACH_MAX_TICKS },
+      );
+
+      // Hold on the pop, so the clip ends on the burst and the wave carrying on.
+      await api.advance(72); // 0.6 s of the burst playing out
     },
 
     async assert(api, check) {
