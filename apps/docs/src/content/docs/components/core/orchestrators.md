@@ -13,8 +13,7 @@ around the harness — how many sessions to run, what each one is told, and when
 the work is done — while the harness layer still owns each individual session
 (how the harness is invoked, how its usage is parsed, how its activity is
 translated into [events](/components/core/events/)). The single-session behaviour
-is just one orchestrator (`one-shot`); a multi-session strategy is another
-(`ralph`).
+is just one orchestrator (`one-shot`); a multi-session strategy would be another.
 
 Orchestration is **harness-agnostic**: an orchestrator drives sessions the same
 way regardless of which harness is selected. It is therefore a distinct run
@@ -38,15 +37,17 @@ in-tree path, and the built-in orchestrators use exactly the same machinery as a
 custom one.
 
 The built-in orchestrators live under `orchestrators/<slug>/` in the repo and are
-catalogued under [Orchestrators](/orchestrators/overview/). Today there are two:
+catalogued under [Orchestrators](/orchestrators/overview/). Today there is one:
 
 - **`one-shot`** — a single harness session driven to completion. This is the
   default, and it reproduces the original single-session behaviour exactly.
-- **`ralph`** — the simplest multi-session strategy. The harness is told to
-  record progress to a status file and resume from it, make some progress toward
-  the goal, update the status file, and create a marker file once the whole
-  implementation is done. The orchestrator re-runs the session until that marker
-  file appears.
+
+A multi-session built-in (`ralph`, which told the harness to record progress to a
+status file, resume from it, and create a marker file when done) was shipped and
+has since been removed. Driving a *third-party* harness across sessions through
+the filesystem is superseded by [gg](/gg/overview/), The Test Cabinet's own
+harness, whose executor conducts multi-step work directly. A session loop is
+still expressible as an [external orchestrator](#external-orchestrators).
 
 ## The execution model
 
@@ -89,9 +90,9 @@ The runner script is handed everything it needs through its environment:
 | `TCAB_DEADLINE` | Epoch seconds after which the run's maximum runtime is exhausted. A multi-session runner checks this to stop **gracefully** before the hard cap. |
 | `TCAB_PARAM_<KEY>` | Each `[params]` entry from the manifest, upper-cased (for example `marker_file` becomes `TCAB_PARAM_MARKER_FILE`). |
 
-So `one-shot`'s runner is a single `tcab-session "$TCAB_PROMPT"`, and `ralph`'s is
-a loop that calls `tcab-session` with a wrapped prompt until its marker file
-exists or `TCAB_DEADLINE` is reached.
+So `one-shot`'s runner is a single `tcab-session "$TCAB_PROMPT"`; a multi-session
+runner is a loop that calls `tcab-session` with a wrapped prompt until its marker
+file exists or `TCAB_DEADLINE` is reached.
 
 ### Budget and timeouts
 
@@ -104,9 +105,9 @@ runs out. Because the runner exits normally, the produced workspace is still
 collected and [validated](/components/core/validation/); running out of budget is
 a likely-incomplete result, not a discarded one.
 
-An orchestrator's scratch files (a `ralph` status or marker file, for example)
-live under a dot-directory in the workspace so they are easy to keep out of the
-collected implementation.
+An orchestrator's scratch files (a status or marker file, for example) live under
+a dot-directory in the workspace so they are easy to keep out of the collected
+implementation.
 
 ## External orchestrators
 
@@ -127,9 +128,11 @@ the [CLI](/components/cli/overview/) (`--orchestrator`, `--orchestrator-dir`), t
 access to a submitter's local directory), and the run-execution UI — selects one,
 and the resolved slug is recorded on the run.
 
-For now, orchestrator **selection is limited to the
-[end-to-end](/testing/end-to-end/overview/) test type**. Other test types always
-run `one-shot`. End-to-end cases are where multi-session implementation is needed
-first; the other types build a single artifact in one pass. The run-execution UI
-surfaces the selector only for end-to-end runs, and the run rejects a non-default
-orchestrator for any other test type.
+A **non-default** orchestrator — in practice an external one, since `one-shot` is
+the only built-in — is **limited to the test types that build a program over a
+working session**: [end-to-end](/testing/end-to-end/overview/),
+[full-stack](/testing/full-stack/overview/), and
+[game-jam](/testing/game-jam/overview/). Those are where a multi-session
+implementation is needed; the other types build a single artifact in one pass. The
+run rejects a non-default orchestrator for any other test type, before any
+container is started.

@@ -157,7 +157,8 @@ Task-oriented walkthroughs:
 - **Orchestrators:** [`orchestrators/`](orchestrators/) — one `orchestrator.toml`
   + a runner script per built-in (`orchestrators/<slug>/`), the data-driven,
   externally-extensible strategy that decides how a run's harness sessions are
-  conducted (single-session `one-shot` vs multi-session `ralph`). See
+  conducted (today just the single-session `one-shot`; a multi-session strategy
+  can be supplied externally). See
   [`orchestrators/README.md`](orchestrators/README.md) and the contract doc
   [`components/core/orchestrators.md`](apps/docs/src/content/docs/components/core/orchestrators.md).
 - **Run-container image:** [`containers/`](containers/) — the single shared base

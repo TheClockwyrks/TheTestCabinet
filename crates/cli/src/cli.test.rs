@@ -84,8 +84,11 @@ fn run_accepts_an_orchestrator_and_auth_mode_selection() {
         "claude",
         "--model",
         "some-model-id",
+        // Any slug parses here — the flag is free-form and resolution (built-in or
+        // external) happens later, so an unknown one is rejected by the catalog,
+        // not by the parser.
         "--orchestrator",
-        "ralph",
+        "looper",
         "--auth-mode",
         "subscription",
     ])
@@ -93,7 +96,7 @@ fn run_accepts_an_orchestrator_and_auth_mode_selection() {
 
     match cli.command {
         Command::Run(args) => {
-            assert_eq!(args.orchestrator, "ralph");
+            assert_eq!(args.orchestrator, "looper");
             assert_eq!(args.auth_mode.as_deref(), Some("subscription"));
         }
         other => panic!("expected a run command, got {other:?}"),

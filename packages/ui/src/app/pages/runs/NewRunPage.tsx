@@ -9,7 +9,6 @@ import {
   BUILT_IN_ORCHESTRATORS,
   DEFAULT_ORCHESTRATOR_SLUG,
   isGgOrchestrator,
-  orchestratorsFor,
 } from "../../data/orchestrators";
 import { bindModelSlots, launchModelSlots } from "./gg/ggConfigDraft";
 import { PRIMARY_SLOT } from "./gg/ggCatalog";
@@ -137,10 +136,8 @@ export function NewRunPage() {
   const [models, setModels] = useState<Model[]>([]);
   // The orchestrator that conducts the harness sessions — and, since it is where an
   // operator says *how* a run is conducted, also where gg (The Test Cabinet's own
-  // run mode) is chosen. A non-default session strategy (`ralph`) is offered only
-  // for the program-building types; every other type submits `one-shot`. Built-in
-  // slugs only — the worker has no access to a submitter's local orchestrator
-  // directory.
+  // run mode) is chosen. Built-in slugs only — the worker has no access to a
+  // submitter's local orchestrator directory.
   const [orchestrator, setOrchestrator] = useState(DEFAULT_ORCHESTRATOR_SLUG);
   // The gg configurations this operator can launch: the shared read-only built-ins
   // plus the ones registered on their account (the account section's gg tab). Only
@@ -301,31 +298,6 @@ export function NewRunPage() {
   const versions = [
     ...(sel.cases.find((c) => c.slug === sel.slug)?.versions ?? []),
   ].reverse();
-  // Orchestrator selection is limited to the program-building test types — the
-  // end-to-end and full-stack game builds, whose multi-session harness runs can
-  // be conducted by a non-default orchestrator (e.g. ralph). Every other type
-  // always runs one-shot, so the selector is hidden and one-shot is submitted.
-  const buildsProgram =
-    sel.versionInfo?.testType === "end-to-end" ||
-    sel.versionInfo?.testType === "full-stack";
-  // The orchestrators this case may be run with: gg always, `ralph` only where a
-  // multi-session strategy applies.
-  const orchestratorOptions = orchestratorsFor(buildsProgram);
-  // Keep the picked orchestrator among the ones this case offers: switching to a
-  // type that cannot be conducted by `ralph` falls back to the default rather than
-  // leaving the select showing an option it no longer lists.
-  const orchestratorOffered = orchestratorOptions.some(
-    (o) => o.slug === orchestrator,
-  );
-  useEffect(() => {
-    if (!orchestratorOffered) setOrchestrator(DEFAULT_ORCHESTRATOR_SLUG);
-  }, [orchestratorOffered]);
-  // Whatever the picker holds, only a program-building case may carry a
-  // non-default session orchestrator — otherwise the run is one-shot no matter what
-  // was last chosen. (gg is not a session strategy, so it is unaffected; a gg run
-  // carries no orchestrator at all.)
-  const submittedOrchestrator =
-    buildsProgram || isGg ? orchestrator : DEFAULT_ORCHESTRATOR_SLUG;
   const mismatched = worker?.backendMatch === "mismatch";
   // A remote (service-driven) worker enqueues on the backend's `POST /jobs`,
   // which is gated on the launching account — so a sign-in is required before a
@@ -440,7 +412,7 @@ export function NewRunPage() {
           combo.provider,
           combo.modelId,
         ),
-        orchestrator: submittedOrchestrator,
+        orchestrator,
         maxRuntimeOverride: maxRuntime ? Number(maxRuntime) : null,
         retryCount,
       },
@@ -593,7 +565,10 @@ export function NewRunPage() {
                 ?.description
             }
           >
-            {orchestratorOptions.map((o) => (
+            {/* Every built-in session strategy (today just `one-shot`) applies to
+                every test type, and gg is orthogonal to the session strategy, so
+                the picker offers the same options whatever the case builds. */}
+            {BUILT_IN_ORCHESTRATORS.map((o) => (
               <option key={o.slug} value={o.slug} title={o.description}>
                 {o.displayName}
               </option>

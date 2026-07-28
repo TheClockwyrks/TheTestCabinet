@@ -503,7 +503,6 @@ export default defineConfig({
           items: [
             "orchestrators/overview",
             "orchestrators/one-shot",
-            "orchestrators/ralph",
           ],
         },
         // gg — The Test Cabinet's own first-party harness (v0.7.0 headline). Its

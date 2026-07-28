@@ -72,11 +72,11 @@ non-gg arms on equal footing.
 ## Orchestrator is not part of the key
 
 A run also carries an [orchestrator](/orchestrators/overview/)
-(`RunSubject.orchestratorSlug`), and one-shot versus `ralph` materially changes
-cost. It is **not** added to the split key, because **`ralph` is being retired** —
-gg subsumes what a multi-session orchestrator offered, so in practice every
-compared non-gg run is one-shot and the orchestrator axis is constant. If a
-`ralph` run appears in a case's history it simply shares its harness's bar; do not
-add an orchestrator dimension to these graphs. (A [comparison experiment](/comparisons/experiments/)
+(`RunSubject.orchestratorSlug`), and a multi-session strategy materially changes
+cost against one-shot. It is **not** added to the split key: the multi-session
+built-in (`ralph`) has been **removed** — gg subsumes what it offered — so
+`one-shot` is the only built-in and the orchestrator axis is constant across every
+compared non-gg run. A historical `ralph` run simply shares its harness's bar; do
+not add an orchestrator dimension to these graphs. (A [comparison experiment](/comparisons/experiments/)
 still records the orchestrator among its held-constant controls, so a stray
 mismatch there is surfaced as a confound rather than silently mixed in.)

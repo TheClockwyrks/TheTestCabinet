@@ -15,8 +15,8 @@ use crate::metrics::TokenCounts;
 #[test]
 fn parses_a_manifest_with_params() {
     let toml_src = r#"
-        slug = "ralph"
-        name = "Ralph"
+        slug = "looper"
+        name = "Looper"
         description = "A multi-session loop."
         runner = "runner.sh"
 
@@ -25,8 +25,8 @@ fn parses_a_manifest_with_params() {
         status_file = ".tcab/status.md"
     "#;
     let manifest: OrchestratorManifest = toml::from_str(toml_src).expect("manifest parses");
-    assert_eq!(manifest.slug, "ralph");
-    assert_eq!(manifest.name, "Ralph");
+    assert_eq!(manifest.slug, "looper");
+    assert_eq!(manifest.name, "Looper");
     assert_eq!(manifest.runner, "runner.sh");
     assert_eq!(
         manifest.params.get("marker_file").map(String::as_str),
@@ -406,7 +406,7 @@ struct ReportedUsage {
 /// A fake harness whose "session" records the prompt it received (one file per
 /// session, `prompt.<n>`) and emits a usage line, and which creates the marker
 /// file once it has run `sessions_before_marker` times — standing in for a model
-/// that signals completion per the ralph protocol.
+/// that signals completion per a multi-session orchestrator's protocol.
 struct RecordingHarness {
     /// Absolute path to a file tracking how many sessions have run.
     count_file: String,
@@ -500,12 +500,71 @@ struct DriveResult {
     session_count: u32,
 }
 
-/// Drive the built-in `slug`'s runner against a fresh temp workspace: `goal` is
-/// the base prompt, the fake harness marks itself done after
-/// `sessions_before_marker` sessions, and `deadline_epoch` is the runner's
-/// deadline. Returns what happened on disk.
+/// Which orchestrator a [`drive`] runs: a built-in by slug, or the multi-session
+/// external orchestrator written below.
+///
+/// The only built-in is the single-session `one-shot`, so multi-session
+/// behaviour — the loop, the per-session usage summing, the graceful stop at the
+/// deadline — is exercised through an external orchestrator, which is exactly how
+/// a multi-session strategy reaches this layer now.
+enum UnderTest {
+    BuiltIn(&'static str),
+    MultiSession,
+}
+
+/// The external multi-session orchestrator the drives below use: it wraps the
+/// goal in a completion protocol and re-runs sessions until the marker file it
+/// names appears or `TCAB_DEADLINE` passes, then exits cleanly so partial work is
+/// still collected.
+const MULTI_SESSION_RUNNER: &str = r#"#!/bin/sh
+set -u
+
+marker_file="$TCAB_WORKSPACE/$TCAB_PARAM_MARKER_FILE"
+mkdir -p "$(dirname "$marker_file")"
+
+protocol="Make progress toward the goal, then create $marker_file once it is
+fully done. Do not create it early.
+
+The goal:
+
+$TCAB_PROMPT"
+
+while [ ! -f "$marker_file" ]; do
+    if [ "$(date +%s)" -ge "$TCAB_DEADLINE" ]; then
+        echo "deadline reached; stopping with partial progress" >&2
+        break
+    fi
+    tcab-session "$protocol"
+done
+
+exit 0
+"#;
+
+/// The marker file the external multi-session orchestrator declares, relative to
+/// the workspace.
+const MULTI_SESSION_MARKER: &str = ".tcab/looper/done";
+
+/// Write the external multi-session orchestrator into `dir` and return a
+/// selection pointing at it.
+fn write_multi_session_orchestrator(dir: &Path) -> OrchestratorSelection {
+    std::fs::create_dir_all(dir).expect("create orchestrator dir");
+    std::fs::write(
+        dir.join("orchestrator.toml"),
+        format!(
+            "slug = \"looper\"\nname = \"Looper\"\ndescription = \"A multi-session loop.\"\nrunner = \"runner.sh\"\n\n[params]\nmarker_file = \"{MULTI_SESSION_MARKER}\"\n"
+        ),
+    )
+    .expect("write manifest");
+    std::fs::write(dir.join("runner.sh"), MULTI_SESSION_RUNNER).expect("write runner");
+    OrchestratorSelection::external(dir)
+}
+
+/// Drive an orchestrator's runner against a fresh temp workspace: `goal` is the
+/// base prompt, the fake harness marks itself done after `sessions_before_marker`
+/// sessions, and `deadline_epoch` is the runner's deadline. Returns what happened
+/// on disk.
 async fn drive(
-    slug: &str,
+    under_test: UnderTest,
     goal: &str,
     sessions_before_marker: u32,
     deadline_epoch: u64,
@@ -518,8 +577,12 @@ async fn drive(
         std::fs::create_dir_all(dir).expect("create dir");
     }
 
+    let selection = match under_test {
+        UnderTest::BuiltIn(slug) => OrchestratorSelection::builtin(slug),
+        UnderTest::MultiSession => write_multi_session_orchestrator(&root.path().join("looper")),
+    };
     let orchestrator = OrchestratorCatalog::new()
-        .resolve(&OrchestratorSelection::builtin(slug))
+        .resolve(&selection)
         .expect("orchestrator resolves");
 
     // The marker the fake harness creates is the exact path this orchestrator's
@@ -594,29 +657,25 @@ fn read_captured_prompts(capture: &Path) -> Vec<String> {
 }
 
 #[tokio::test]
-async fn ralph_loops_until_the_marker_and_wraps_the_prompt_each_session() {
+async fn a_multi_session_runner_loops_until_the_marker_and_wraps_the_prompt_each_session() {
     let goal = "Build the reference brick-breaker game.";
     // The harness signals completion (creates the marker) on its second session.
-    let result = drive(RALPH_SLUG, goal, 2, NO_DEADLINE).await;
+    let result = drive(UnderTest::MultiSession, goal, 2, NO_DEADLINE).await;
 
     // The loop ran exactly until the marker appeared: two sessions, no more.
     assert_eq!(result.session_count, 2);
     assert_eq!(result.prompts.len(), 2);
 
-    // Every session was handed the ralph protocol wrapped around the goal: the
-    // goal itself, the progress-file protocol, and the instruction to create the
-    // marker file to signal completion.
+    // Every session was handed the orchestrator's protocol wrapped around the
+    // goal: the goal itself plus the instruction to create the marker file to
+    // signal completion.
     for prompt in &result.prompts {
         assert!(
             prompt.contains(goal),
             "goal missing from session prompt: {prompt}"
         );
         assert!(
-            prompt.contains(".tcab/ralph/progress.md"),
-            "progress-file protocol missing: {prompt}"
-        );
-        assert!(
-            prompt.contains(".tcab/ralph/done"),
+            prompt.contains(MULTI_SESSION_MARKER),
             "marker-file instruction missing: {prompt}"
         );
         assert!(
@@ -640,7 +699,7 @@ async fn one_shot_runs_a_single_unwrapped_session() {
     let goal = "Draw the sprite.";
     // A threshold it never reaches: one-shot needs no marker — it is a single
     // session regardless.
-    let result = drive(ONE_SHOT_SLUG, goal, 99, NO_DEADLINE).await;
+    let result = drive(UnderTest::BuiltIn(ONE_SHOT_SLUG), goal, 99, NO_DEADLINE).await;
 
     assert_eq!(result.session_count, 1);
     // one-shot hands the goal straight through, with no protocol wrapping.
@@ -650,11 +709,11 @@ async fn one_shot_runs_a_single_unwrapped_session() {
 }
 
 #[tokio::test]
-async fn ralph_stops_at_the_deadline_before_running_a_session() {
+async fn a_multi_session_runner_stops_at_the_deadline_before_running_a_session() {
     // A deadline already in the past: the loop's first check breaks before any
     // session runs, yet the runner still exits cleanly with an empty outcome
     // (partial work — here, none — is collected, not discarded).
-    let result = drive(RALPH_SLUG, "Build it.", 2, 1).await;
+    let result = drive(UnderTest::MultiSession, "Build it.", 2, 1).await;
 
     assert_eq!(result.session_count, 0);
     assert!(result.prompts.is_empty());

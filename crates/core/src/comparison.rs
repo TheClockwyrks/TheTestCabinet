@@ -42,8 +42,8 @@ pub struct ComparisonControls {
     pub version: String,
     /// The variant every arm runs.
     pub variant: String,
-    /// The orchestrator every arm runs. Held constant (in practice `one-shot`, as
-    /// `ralph` is retired); a stray mismatch is surfaced as a [`Confound`].
+    /// The orchestrator every arm runs. Held constant (in practice `one-shot`, the
+    /// only built-in); a stray mismatch is surfaced as a [`Confound`].
     pub orchestrator_slug: String,
     /// The container/run-image build every arm runs, when pinned. `None` leaves it
     /// unconstrained.

@@ -182,8 +182,8 @@ export type ComparisonControls = {
    */
   variant: string;
   /**
-   * The orchestrator every arm runs. Held constant (in practice `one-shot`, as
-   * `ralph` is retired); a stray mismatch is surfaced as a [`Confound`].
+   * The orchestrator every arm runs. Held constant (in practice `one-shot`, the
+   * only built-in); a stray mismatch is surfaced as a [`Confound`].
    */
   orchestratorSlug: string;
   /**

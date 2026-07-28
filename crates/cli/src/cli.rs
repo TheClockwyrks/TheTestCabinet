@@ -158,10 +158,10 @@ pub struct RunArgs {
     #[arg(long, value_name = "HOURS")]
     pub max_runtime: Option<f64>,
 
-    /// Built-in orchestrator that conducts the harness sessions (for example
-    /// `one-shot` or `ralph`). Defaults to `one-shot`, a single session. Selection
-    /// is limited to end-to-end test cases; other test types always run `one-shot`.
-    /// See `tcab orchestrators`.
+    /// Built-in orchestrator that conducts the harness sessions (today only
+    /// `one-shot`, a single session — the default). Selection is limited to
+    /// end-to-end test cases; other test types always run `one-shot`. See
+    /// `tcab orchestrators`.
     #[arg(long, value_name = "SLUG", default_value = "one-shot")]
     pub orchestrator: String,
 

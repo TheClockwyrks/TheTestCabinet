@@ -143,8 +143,8 @@ gg is not really an orchestrator — it is its own executor, and the
 [orchestrator](/orchestrators/overview/) dimension does not apply to a gg run (see
 [Overview](/gg/overview/#how-gg-fits-into-the-test-cabinet)). It is offered in that
 selector because that is where an operator says _how a run is conducted_, which
-makes it the one place the choice belongs. Unlike `ralph`, gg is offered for every
-test type: it replaces the harness, not the session strategy.
+makes it the one place the choice belongs. gg is offered for every test type: it
+replaces the harness, not the session strategy.
 
 The fan-out is unchanged, and it is exactly what an ablation study wants:
 `configurations × models × run count` runs from one submission. Fixing the model

@@ -1,17 +1,14 @@
 // The orchestrators a run can select — the strategy that conducts the harness
-// sessions around the prompt (a single session, a resume loop, …). Like the
-// `harnesses` catalog, the set surfaced in the run-launch picker is a fixed,
-// code-defined list: the run-execution UI offers built-in orchestrators only (a
-// worker has no access to a submitter's local directory, so the external
-// `--orchestrator-dir` path is CLI-only). It mirrors core's built-in
-// orchestrators (`orchestrators/<slug>/`) in catalog order, leading with the
-// default, so the gallery never drifts from them.
+// sessions around the prompt. Like the `harnesses` catalog, the set surfaced in
+// the run-launch picker is a fixed, code-defined list: the run-execution UI
+// offers built-in orchestrators only (a worker has no access to a submitter's
+// local directory, so the external `--orchestrator-dir` path is CLI-only). It
+// mirrors core's built-in orchestrators (`orchestrators/<slug>/`) in catalog
+// order, leading with the default, so the gallery never drifts from them.
 //
-// A *session-conducting* orchestrator other than the default is limited to the
-// program-building test types; every other type always runs `one-shot` (see
-// docs/components/core/orchestrators.md, "Selecting an orchestrator"). The picker
-// itself is always shown, because it is also where gg — The Test Cabinet's own run
-// mode — is selected, and gg applies to every test type.
+// There is only one built-in session strategy — `one-shot`. The picker is shown
+// regardless, because it is also where gg — The Test Cabinet's own run mode — is
+// selected, and gg applies to every test type.
 
 /** One built-in orchestrator the run-launch picker can offer. */
 export interface OrchestratorSummary {
@@ -44,13 +41,6 @@ export const BUILT_IN_ORCHESTRATORS: OrchestratorSummary[] = [
     description: "A single harness session driven to completion.",
   },
   {
-    slug: "ralph",
-    displayName: "Ralph Loop",
-    description:
-      "Re-runs the harness session — recording progress to a status file and " +
-      "resuming from it — until the work is marked done.",
-  },
-  {
     slug: GG_ORCHESTRATOR_SLUG,
     displayName: "gg",
     description:
@@ -66,18 +56,4 @@ export const BUILT_IN_ORCHESTRATORS: OrchestratorSummary[] = [
  */
 export function isGgOrchestrator(slug: string): boolean {
   return slug === GG_ORCHESTRATOR_SLUG;
-}
-
-/**
- * The orchestrators offered for a case. `ralph` only conducts the multi-session
- * program builds (the end-to-end and full-stack types); every other type runs
- * one-shot. gg is offered for every type — it replaces the harness, not the
- * session strategy, so it is orthogonal to what the case builds.
- */
-export function orchestratorsFor(
-  buildsProgram: boolean,
-): OrchestratorSummary[] {
-  return BUILT_IN_ORCHESTRATORS.filter(
-    (o) => buildsProgram || o.slug !== "ralph",
-  );
 }

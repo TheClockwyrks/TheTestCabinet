@@ -24,5 +24,5 @@ harness-specific.
 
 ## Parameters
 
-None. A multi-session strategy such as [Ralph Loop](/orchestrators/ralph/)
-declares a `[params]` table; one-shot does not.
+None. A multi-session strategy typically declares a `[params]` table (the status
+and marker files its protocol names); one-shot does not.

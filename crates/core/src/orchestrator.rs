@@ -44,10 +44,6 @@ const MANIFEST_FILE: &str = "orchestrator.toml";
 /// The slug of the default, single-session orchestrator.
 pub const ONE_SHOT_SLUG: &str = "one-shot";
 
-/// The slug of the built-in [Ralph](../../../orchestrators/ralph/) multi-session
-/// orchestrator.
-pub const RALPH_SLUG: &str = "ralph";
-
 /// The token the `tcab-session` wrapper carries in place of the prompt argument.
 /// It is rendered into the wrapper as an ordinary argv element, then the quoted
 /// form is swapped for `"$1"`, so the wrapper substitutes its first argument
@@ -77,17 +73,13 @@ fn built_in(slug: &str) -> Option<BuiltIn> {
             manifest_toml: include_str!("../../../orchestrators/one-shot/orchestrator.toml"),
             runner: include_str!("../../../orchestrators/one-shot/runner.sh"),
         }),
-        RALPH_SLUG => Some(BuiltIn {
-            manifest_toml: include_str!("../../../orchestrators/ralph/orchestrator.toml"),
-            runner: include_str!("../../../orchestrators/ralph/runner.sh"),
-        }),
         _ => None,
     }
 }
 
 /// The slugs of every built-in orchestrator, for enumeration (for example by a
 /// CLI listing). Kept in step with `built_in`.
-pub const BUILT_IN_SLUGS: &[&str] = &[ONE_SHOT_SLUG, RALPH_SLUG];
+pub const BUILT_IN_SLUGS: &[&str] = &[ONE_SHOT_SLUG];
 
 /// An orchestrator's declarative manifest, authored as `orchestrator.toml`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]

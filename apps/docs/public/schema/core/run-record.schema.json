@@ -1366,7 +1366,7 @@
         },
         "orchestratorSlug": {
           "default": "one-shot",
-          "description": "The resolved slug of the orchestrator that conducted the harness sessions\n(for example `one-shot` or `ralph`). For an external `--orchestrator-dir`\nthis is the directory's own manifest slug, not the request's. Defaults to\n`one-shot` so records written before orchestrator selection existed — and\nhand-written fixtures — still deserialize. See\n[orchestrators](crate::OrchestratorCatalog).",
+          "description": "The resolved slug of the orchestrator that conducted the harness sessions\n(for example `one-shot`). For an external `--orchestrator-dir`\nthis is the directory's own manifest slug, not the request's. Defaults to\n`one-shot` so records written before orchestrator selection existed — and\nhand-written fixtures — still deserialize. See\n[orchestrators](crate::OrchestratorCatalog).",
           "type": "string"
         },
         "testCaseSlug": {

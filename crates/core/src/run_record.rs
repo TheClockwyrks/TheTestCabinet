@@ -249,7 +249,7 @@ pub struct RunSubject {
     /// The harness version, where it could be determined.
     pub harness_version: Option<String>,
     /// The resolved slug of the orchestrator that conducted the harness sessions
-    /// (for example `one-shot` or `ralph`). For an external `--orchestrator-dir`
+    /// (for example `one-shot`). For an external `--orchestrator-dir`
     /// this is the directory's own manifest slug, not the request's. Defaults to
     /// `one-shot` so records written before orchestrator selection existed — and
     /// hand-written fixtures — still deserialize. See

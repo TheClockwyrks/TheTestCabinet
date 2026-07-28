@@ -50,7 +50,7 @@ pub struct LaunchBody {
     /// Opaque model id passed to the harness.
     pub model: String,
     /// Built-in orchestrator slug that conducts the harness sessions (e.g.
-    /// `one-shot` or `ralph`). Omit for the `one-shot` default.
+    /// `one-shot`). Omit for the `one-shot` default.
     #[serde(default)]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub orchestrator: Option<String>,

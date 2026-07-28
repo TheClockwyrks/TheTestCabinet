@@ -38,8 +38,9 @@ of owning both sides drive that separation:
   [Kibana-style aggregation](/gg/result-aggregation/)).
 - **It is invoked directly, not as an orchestrated subprocess.** The
   [orchestrator](/orchestrators/overview/) layer exists to loop a _stateless
-  external harness_ across sessions (`ralph`) because such a harness cannot
-  continue past its own context window. gg continues _within_ one logical session
+  external harness_ across sessions, because such a harness cannot continue past
+  its own context window — the reason the built-in that did so (`ralph`) has been
+  removed now that gg exists. gg continues _within_ one logical session
   via [compaction](/gg/compaction/) and integrates directly with The Test Cabinet,
   so there is **no external session loop, no `tcab-session` wrapper, and no harness
   subprocess** to orchestrate. The orchestrator dimension does not apply to a gg

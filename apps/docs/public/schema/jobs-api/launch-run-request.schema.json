@@ -55,7 +55,7 @@
     },
     "orchestrator": {
       "default": null,
-      "description": "Built-in orchestrator slug that conducts the harness sessions (e.g.\n`one-shot` or `ralph`). Omit for the `one-shot` default.",
+      "description": "Built-in orchestrator slug that conducts the harness sessions (e.g.\n`one-shot`). Omit for the `one-shot` default.",
       "type": ["string", "null"]
     },
     "retryCount": {

@@ -43,7 +43,7 @@ export type LaunchBody = {
   model: string;
   /**
    * Built-in orchestrator slug that conducts the harness sessions (e.g.
-   * `one-shot` or `ralph`). Omit for the `one-shot` default.
+   * `one-shot`). Omit for the `one-shot` default.
    */
   orchestrator?: string;
   /**
