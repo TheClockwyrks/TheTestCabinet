@@ -3,24 +3,13 @@
 ## Finishing
 
 {{#if completion.explicitCall}}
-When the work is complete, call the `{{completion.finishName}}` tool with a short
-summary of what you did to end the run. **A reply with no tool call does not end the
-run** — in this run it is treated as an error. Keep working by calling tools, and end
-only by calling `{{completion.finishName}}`.
+When the work is complete, call the `{{completion.finishName}}` tool with a
+short summary of what you did to end the run.
 {{else}}
-When the work is complete, reply with a message and no tool calls; that ends the run.
-As long as you keep calling tools, the run continues.
+When the work is complete, reply with a message and no tool calls.
 {{/if}}
-{{#if completion.validated}}
 
-Before your completion is accepted, gg runs the following validation command(s), and
-the run only ends if every one succeeds. If any fails, its output is returned to you
-and the run continues so you can fix the problem and finish again:
-
-{{#each completion.validation}}
-- `{{this}}`
-{{/each}}
-{{/if}}
+## Image Support
 
 {{#if readFile.offered}}
 {{#if readFile.images}}Reading images is supported.{{else}}Reading images is not supported.{{/if}}
