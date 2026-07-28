@@ -15,6 +15,7 @@ pub mod asset_reference;
 pub mod auth;
 pub mod backend_client;
 pub mod browser;
+pub mod comparison_stats;
 pub mod container;
 pub mod error;
 pub mod event;
