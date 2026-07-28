@@ -201,41 +201,38 @@ fn plain_text_completion_section_says_a_tool_free_reply_ends_the_run() {
     assert!(!prompt.contains("\n\n\n"), "blank-line run:\n{prompt}");
 }
 
-/// The explicit-call completion section requires calling `finish`, says a tool-free reply does not
-/// end the run, and lists the validation commands (each as it reads, with any `cwd`).
+/// The explicit-call completion section names the `finish` tool as the way to end the run.
+///
+/// The validation-command listing and the "a tool-free reply does not end the run" warning were
+/// trimmed from the prompt (commit `dee15f9a`); they are re-added as the completion capability is
+/// re-validated, so this pins only what the section renders today: that explicit-call mode names
+/// its finish tool.
 #[test]
-fn explicit_call_completion_section_requires_finish_and_lists_validation() {
+fn explicit_call_completion_section_names_the_finish_tool() {
     let context = SystemContext {
         completion: CompletionView {
             explicit_call: true,
             finish_name: "finish".to_string(),
-            validated: true,
-            validation: vec![
-                "cargo test".to_string(),
-                "npm run build (in web)".to_string(),
-            ],
+            validated: false,
+            validation: Vec::new(),
         },
         ..SystemContext::default()
     };
     let prompt = render_system(&context, None);
     let flat = flat(&prompt);
-    assert!(flat.contains("`finish`"), "{prompt}");
-    assert!(flat.contains("does not end the run"), "{prompt}");
+    assert!(prompt.contains("## Finishing"), "{prompt}");
     assert!(
-        flat.contains("cargo test"),
-        "lists the validation commands:\n{prompt}"
-    );
-    assert!(
-        flat.contains("npm run build (in web)"),
-        "keeps a command's cwd:\n{prompt}"
+        flat.contains("`finish`"),
+        "explicit-call completion names the finish tool:\n{prompt}"
     );
     assert!(!prompt.contains("\n\n\n"), "blank-line run:\n{prompt}");
 }
 
-/// In responses-as-code mode the completion section lists the validation commands too — the same
-/// gate, described in the code template around `harness.finish()`.
+/// In responses-as-code mode a run ends through `harness.finish()` — the program's own ending
+/// call. (The validation-command listing that once accompanied it was trimmed in `dee15f9a` and is
+/// re-added when the completion capability is re-validated.)
 #[test]
-fn code_mode_completion_lists_validation_commands() {
+fn code_mode_completion_ends_through_harness_finish() {
     let context = SystemContext {
         responses_as_code: true,
         // `harness` is always present in a code run — the object `finish` lives on — and the code
@@ -245,16 +242,9 @@ fn code_mode_completion_lists_validation_commands() {
             description: "the run itself — end it with `finish`, and read documentation"
                 .to_string(),
         }],
-        completion: CompletionView {
-            explicit_call: false,
-            finish_name: "finish".to_string(),
-            validated: true,
-            validation: vec!["cargo test".to_string()],
-        },
         ..SystemContext::default()
     };
     let prompt = render_system(&context, None);
-    assert!(flat(&prompt).contains("cargo test"), "{prompt}");
     assert!(prompt.contains("harness.finish()"), "{prompt}");
     assert!(!prompt.contains("\n\n\n"), "blank-line run:\n{prompt}");
 }
