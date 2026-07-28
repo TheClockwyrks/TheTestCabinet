@@ -205,12 +205,19 @@ const EVENTS: HarnessEvent[] = [
   }),
   gg({
     type: "memory_state",
+    strategy: "scratchpad",
     memories: [
       { name: "controls", description: "Input scheme decided.", len: 120 },
     ],
     count: 1,
     totalLen: 120,
-    caps: { maxCount: 16, maxLenPerMemory: 2000, maxTotalLen: 16000 },
+    caps: {
+      maxCount: 16,
+      maxLenPerMemory: 2000,
+      maxTotalLen: 16000,
+      maxLenIndex: null,
+      maxResults: null,
+    },
   }),
   // Phase 3: the epic/issue board — one epic with a done → ready → blocked chain,
   // plus an ungrouped issue (no epicId), so grouping and derived readiness show.

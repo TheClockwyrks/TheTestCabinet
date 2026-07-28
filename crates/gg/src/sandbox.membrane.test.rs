@@ -67,6 +67,26 @@ fn crossings() -> Vec<Crossing> {
             expected: || json!({ "name": "layout", "description": "d2", "body": "b2" }),
         },
         Crossing {
+            tool: "create_memory",
+            program: "memory.createMemory({ name: \"layout\", description: \"d\", body: \"b\" });",
+            expected: || json!({ "name": "layout", "description": "d", "contents": "b" }),
+        },
+        Crossing {
+            tool: "read_memory",
+            program: "memory.readMemory(\"layout\");",
+            expected: || json!({ "name": "layout" }),
+        },
+        Crossing {
+            tool: "edit_memory",
+            program: "memory.editMemory({ name: \"layout\", search: \"old\", replace: \"new\" });",
+            expected: || json!({ "name": "layout", "old_string": "old", "new_string": "new" }),
+        },
+        Crossing {
+            tool: "search_memories",
+            program: "memory.searchMemories([\"cargo\", \"nextest\"]);",
+            expected: || json!({ "keywords": ["cargo", "nextest"] }),
+        },
+        Crossing {
             tool: "delete_memory",
             program: "memory.deleteMemory(\"layout\");",
             expected: || json!({ "name": "layout" }),

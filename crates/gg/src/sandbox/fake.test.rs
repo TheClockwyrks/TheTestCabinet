@@ -22,9 +22,9 @@ use crate::model::ImageContent;
 use crate::tasks::TaskStatus;
 use crate::tools::{
     ArchiveHitData, ArchiveSearchData, BoardUsageData, CompletionData, DirEntryData, DirEntryKind,
-    FileImageData, FileTextData, MemoryUsageData, ReclaimData, ShellData, SpeculationData,
-    SubagentHandleData, SubagentResultData, ToolData, ToolFailure, ToolOutcome, UsagePair,
-    WorkflowData,
+    FileImageData, FileTextData, MemoryHitData, MemoryUsageData, ReclaimData, ShellData,
+    SpeculationData, SubagentHandleData, SubagentResultData, ToolData, ToolFailure, ToolOutcome,
+    UsagePair, WorkflowData,
 };
 
 /// Whether this test has a process to itself — the guarantee the process-global compile counter in
@@ -181,6 +181,29 @@ impl ToolApi for FakeToolApi {
             "update_memory",
             json!({ "name": name, "description": description, "body": body }),
         )
+    }
+    fn create_memory(
+        &mut self,
+        name: String,
+        description: String,
+        contents: String,
+    ) -> ToolOutcome {
+        self.call(
+            "create_memory",
+            json!({ "name": name, "description": description, "contents": contents }),
+        )
+    }
+    fn read_memory(&mut self, name: String) -> ToolOutcome {
+        self.call("read_memory", json!({ "name": name }))
+    }
+    fn edit_memory(&mut self, name: String, search: String, replace: String) -> ToolOutcome {
+        self.call(
+            "edit_memory",
+            json!({ "name": name, "old_string": search, "new_string": replace }),
+        )
+    }
+    fn search_memories(&mut self, keywords: Vec<String>) -> ToolOutcome {
+        self.call("search_memories", json!({ "keywords": keywords }))
     }
     fn delete_memory(&mut self, name: String) -> ToolOutcome {
         self.call("delete_memory", json!({ "name": name }))
@@ -421,13 +444,25 @@ pub(crate) fn canned_outcome(name: &str, args: &Value) -> ToolOutcome {
             ]),
         ),
         "read_skill" => ToolOutcome::ok("the skill body", "read a skill"),
-        "write_memory" | "update_memory" | "delete_memory" => ToolOutcome::ok("noted", "memory")
-            .with_data(ToolData::MemoryUsage(MemoryUsageData {
+        "write_memory" | "update_memory" | "create_memory" | "edit_memory" | "delete_memory" => {
+            ToolOutcome::ok("noted", "memory").with_data(ToolData::MemoryUsage(MemoryUsageData {
                 count: 1,
-                max_count: 8,
+                max_count: Some(8),
                 total_chars: 12,
-                max_total_chars: 4_000,
-            })),
+                max_total_chars: Some(4_000),
+                index_chars: None,
+                max_index_chars: None,
+            }))
+        }
+        "read_memory" => ToolOutcome::ok("the memory contents", "read a memory"),
+        "search_memories" => ToolOutcome::ok("1 of 1 memories match", "searched memories")
+            .with_data(ToolData::MemoryHits(vec![MemoryHitData {
+                name: "build-commands".to_string(),
+                description: "How to build".to_string(),
+                matched: 2,
+                occurrences: 3,
+                excerpt: "…cargo nextest run --workspace…".to_string(),
+            }])),
         "add_task" | "remove_task" => ToolOutcome::ok("noted", "task")
             .with_data(ToolData::TaskUsage(UsagePair { count: 2, max: 20 })),
         "update_task" | "set_blocked_by" | "complete_task" => ToolOutcome::ok("noted", "task"),

@@ -126,7 +126,7 @@ use crate::healing::{
 use crate::limits::{
     AgentLimits, FatalFault, RunLimits, RunSpend, TurnErrorKind, TurnOutcome, resolve_run_limits,
 };
-use crate::memories::{MemoriesRuntime, MemoryCaps};
+use crate::memories::{MemoriesRuntime, MemoryCaps, MemoryStrategy};
 use crate::message_log::finish_reason_token;
 use crate::model::{
     ImageContent, Message, ModelClient, ModelError, ModelResponse, ToolCall, ToolDefinition,
@@ -2201,14 +2201,7 @@ fn announce_configuration(
         emitter.emit(state);
     }
     if let Some(state) = memories.state_event() {
-        let caps = memories.caps();
-        emitter.emit(log(
-            "info",
-            format!(
-                "memory scratchpad enabled (up to {} memories, {} chars each, {} total).",
-                caps.max_count, caps.max_len_per_memory, caps.max_total_len
-            ),
-        ));
+        emitter.emit(log("info", memories_startup_note(memories)));
         emitter.emit(state);
     }
     if let Some(state) = tasks.state_event() {
@@ -5012,6 +5005,11 @@ impl Agent {
         // because "consecutive" and "the last N turns" are only definable within one agent's turn
         // sequence — see [`crate::limits`].
         let mut agent_limits = AgentLimits::new(limits.limits);
+        // How to name a memory call to this agent: its strategy's tools, spelled for its execution
+        // mode. Resolved once, because neither the strategy nor the mode changes within a run, and
+        // both of the places that need it (a memory compaction's instruction, and the refusal that
+        // answers anything else while one is pending) must name calls the agent actually has.
+        let memory_calls = memories.strategy().calls(code.enabled);
 
         for turn in 0..turn_bound {
             // Stop cleanly at a turn boundary once the run's wall-clock budget is spent. Nothing is
@@ -5157,7 +5155,7 @@ impl Agent {
                         context.push(
                             GgContextSource::System,
                             Retention::Ephemeral,
-                            Message::user(pending.instruction(code.enabled)),
+                            Message::user(pending.instruction(code.enabled, memory_calls)),
                         );
                         pending_compaction = Some(pending);
                     }
@@ -5683,7 +5681,7 @@ impl Agent {
                             (None, Some(pending)) => context.push(
                                 GgContextSource::System,
                                 Retention::Ephemeral,
-                                Message::user(pending.unsatisfied(true)),
+                                Message::user(pending.unsatisfied(true, memory_calls)),
                             ),
                             (None, None) => {}
                         }
@@ -5708,7 +5706,7 @@ impl Agent {
                 context.push(
                     GgContextSource::System,
                     Retention::Ephemeral,
-                    Message::user(pending.unsatisfied(false)),
+                    Message::user(pending.unsatisfied(false, memory_calls)),
                 );
                 if let Some(breach) = breach {
                     return self.stop_on_limit(
@@ -5850,7 +5848,10 @@ impl Agent {
                     // already full: any call that ran would make the problem worse, and a run that
                     // ended here would end from a context the model has just been told is about to
                     // be dropped.
-                    ToolOutcome::failed(ToolFailure::Refused, pending.refusal(&call.name, false))
+                    ToolOutcome::failed(
+                        ToolFailure::Refused,
+                        pending.refusal(&call.name, false, memory_calls),
+                    )
                 } else if call.name == COMPACT_TOOL && compaction.strategy.offers_compact_tool() {
                     // Self-compaction: the model compacts its own window. Intercepted here — ahead
                     // of the plan-mode and FSM gates, exactly as `finish` is — because the loop owns
@@ -6162,7 +6163,7 @@ impl Agent {
                 (None, Some(pending)) => context.push(
                     GgContextSource::System,
                     Retention::Ephemeral,
-                    Message::user(pending.unsatisfied(false)),
+                    Message::user(pending.unsatisfied(false, memory_calls)),
                 ),
                 (None, None) => {}
             }
@@ -6715,19 +6716,50 @@ fn resolve_skills_dir(set: &GgCapabilitySet, workspace_dir: &Path) -> PathBuf {
 }
 
 /// Build the run's [`MemoriesRuntime`] from the capability set: when the
-/// [`memories`](CAPABILITY_MEMORIES) capability is enabled, an enabled runtime with an
-/// empty store bounded by the [caps resolved](MemoryCaps::resolve) from the capability's
-/// params; otherwise a [disabled](MemoriesRuntime::disabled) runtime (an ablation's off
-/// arm) that offers nothing.
+/// [`memories`](CAPABILITY_MEMORIES) capability is enabled, an enabled runtime with an empty store
+/// organized by the [strategy](MemoryStrategy::resolve) its `implementation` names and bounded by
+/// the [limits resolved](MemoryCaps::resolve) from the capability's params; otherwise a
+/// [disabled](MemoriesRuntime::disabled) runtime (an ablation's off arm) that offers nothing.
 fn resolve_memories(profile: &GgAgentConfig) -> MemoriesRuntime {
     if !profile.is_enabled(CAPABILITY_MEMORIES) {
         return MemoriesRuntime::disabled();
     }
-    let caps = profile
-        .capability(CAPABILITY_MEMORIES)
-        .map(|cap| MemoryCaps::resolve(&cap.params))
-        .unwrap_or_default();
-    MemoriesRuntime::new(caps)
+    let capability = profile.capability(CAPABILITY_MEMORIES);
+    let strategy =
+        MemoryStrategy::resolve(capability.and_then(|cap| cap.implementation.as_deref()));
+    let caps = capability
+        .map(|cap| MemoryCaps::resolve(strategy, &cap.params))
+        .unwrap_or_else(|| MemoryCaps::for_strategy(strategy));
+    MemoriesRuntime::new(strategy, caps)
+}
+
+/// The startup log line describing a run's memory configuration: which
+/// [strategy](MemoryStrategy) it runs, and the limits that are actually in force.
+///
+/// A disabled limit is left out rather than logged as `0`, for the same reason the model is not
+/// told about it: someone reading a run's log to see what an arm was configured with should see
+/// the limits that could refuse a write, not a list of every limit gg knows how to enforce.
+fn memories_startup_note(memories: &MemoriesRuntime) -> String {
+    let caps = memories.caps();
+    let shape = match memories.strategy() {
+        MemoryStrategy::Scratchpad => "memory scratchpad enabled (every memory stays in context)",
+        MemoryStrategy::Markdown => "markdown memories enabled (a pinned index over files)",
+        MemoryStrategy::KeywordSearch => "keyword-search memories enabled (no index)",
+    };
+    let limits: Vec<String> = [
+        caps.max_count.map(|n| format!("{n} memories")),
+        caps.max_len_per_memory.map(|n| format!("{n} chars each")),
+        caps.max_total_len.map(|n| format!("{n} chars total")),
+        caps.max_len_index.map(|n| format!("{n} chars of index")),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    if limits.is_empty() {
+        format!("{shape}; unlimited.")
+    } else {
+        format!("{shape}, up to {}.", limits.join(", "))
+    }
 }
 
 /// Build the run's [`TasksRuntime`] from the capability set: when the
@@ -7219,12 +7251,21 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
             read_file,
             shell,
             skills: skills.prompt_entries(),
+            // The strategy decides what the section says: what memory *is* on this run differs
+            // enough between the three (all of it in the window, an index over it, or nothing
+            // until you search) that they are three paragraphs rather than one with holes.
             memories: memories.offers_memories().then(|| {
                 let caps = memories.caps();
+                let strategy = memories.strategy();
                 MemoriesView {
+                    scratchpad: strategy == MemoryStrategy::Scratchpad,
+                    markdown: strategy == MemoryStrategy::Markdown,
+                    keyword_search: strategy == MemoryStrategy::KeywordSearch,
                     max_count: caps.max_count,
                     max_len_per_memory: caps.max_len_per_memory,
                     max_total_len: caps.max_total_len,
+                    max_len_index: caps.max_len_index,
+                    max_results: caps.max_results,
                 }
             }),
             tasks: tasks.offers_tasks().then(|| TasksView {
@@ -7264,12 +7305,17 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
             // which say nothing about the model's own turns: an agent whose thread silently
             // collapses into a summary between two of its turns, never told that can happen, reads
             // the result as having lost its mind.
-            compaction: compaction.enabled.then(|| CompactionView {
-                trigger_percent: (compaction.policy.trigger_fullness() * 100.0).round() as u64,
-                writes_summary: compaction.strategy == CompactionStrategy::SelfSummarization,
-                calls_compact: compaction.strategy.offers_compact_tool(),
-                writes_memories: compaction.strategy == CompactionStrategy::Memory,
-                compact_name: COMPACT_TOOL.to_string(),
+            compaction: compaction.enabled.then(|| {
+                let calls = memories.strategy().calls(responses_as_code);
+                CompactionView {
+                    trigger_percent: (compaction.policy.trigger_fullness() * 100.0).round() as u64,
+                    writes_summary: compaction.strategy == CompactionStrategy::SelfSummarization,
+                    calls_compact: compaction.strategy.offers_compact_tool(),
+                    writes_memories: compaction.strategy == CompactionStrategy::Memory,
+                    compact_name: COMPACT_TOOL.to_string(),
+                    memory_create: calls.create.to_string(),
+                    memory_revise: calls.revise.to_string(),
+                }
             }),
         },
         // A profile may override the whole prompt template; `None` uses the built-in one.

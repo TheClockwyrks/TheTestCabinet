@@ -174,22 +174,58 @@ declare module "test-cabinet:gg/memories" {
     body: string;
   }
 
-  /** How much of the memory budget is used. */
+  /** How much of the memory budget is used. Every maximum is absent when nothing bounds it. */
   export interface MemoryUsage {
     /** Memories currently held. */
     count: number;
     /** The most memories this run allows. */
-    maxCount: number;
+    maxCount: number | undefined;
     /** Characters of body currently held, across all memories. */
     totalChars: number;
     /** The most characters of body this run allows. */
-    maxTotalChars: number;
+    maxTotalChars: number | undefined;
+    /** Characters the pinned index occupies. */
+    indexChars: number | undefined;
+    /** The most characters the index may occupy. */
+    maxIndexChars: number | undefined;
+  }
+
+  /** A revision to a memory: replace the one exact occurrence of `search` with `replace`. */
+  export interface MemoryEdit {
+    /** The memory's slug. */
+    name: string;
+    /** The exact text to replace, which must occur exactly once. */
+    search: string;
+    /** What to put in its place; empty cuts the text out. */
+    replace: string;
+  }
+
+  /** One memory a search matched. */
+  export interface MemoryHit {
+    /** The memory's slug. */
+    name: string;
+    /** Its description, or empty. */
+    description: string;
+    /** How many distinct keywords it matched. */
+    matched: number;
+    /** How many times those keywords occur in it. */
+    occurrences: number;
+    /** A short window around its first match. */
+    excerpt: string;
   }
 
   /** Record a new durable memory. */
   export function writeMemory(memory: MemoryInput): MemoryUsage;
   /** Replace an existing memory's description and body. */
   export function updateMemory(memory: MemoryInput): MemoryUsage;
+  /** Record a new memory file, kept out of the context window until read. */
+  export function createMemory(memory: MemoryInput): MemoryUsage;
+  /** Read one memory's contents back, by slug. */
+  export function readMemory(name: string): string;
+  /** Revise a memory in place. */
+  export function editMemory(edit: MemoryEdit): MemoryUsage;
+  /** Find the memories mentioning any of `keywords`, best first. */
+  export function searchMemories(keywords: string[]): MemoryHit[];
   /** Evict a memory by name. */
   export function deleteMemory(name: string): MemoryUsage;
 }

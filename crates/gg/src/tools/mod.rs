@@ -97,15 +97,18 @@ pub use context::{
 // result.
 pub use data::{
     AgentStatusData, ArchiveHitData, ArchiveSearchData, BoardUsageData, CompletionData,
-    DirEntryData, DirEntryKind, FileImageData, FileTextData, MemoryUsageData, ReclaimData,
-    ShellData, SpeculationData, SubagentHandleData, SubagentResultData, ToolData, ToolFailure,
-    UsagePair, WorkflowData, saturating_u32, saturating_u64,
+    DirEntryData, DirEntryKind, FileImageData, FileTextData, MemoryHitData, MemoryUsageData,
+    ReclaimData, ShellData, SpeculationData, SubagentHandleData, SubagentResultData, ToolData,
+    ToolFailure, UsagePair, WorkflowData, saturating_u32, saturating_u64,
 };
 pub use filesystem::{
     EditFileTool, ListDirTool, READ_FILE_TOOL, ReadFileTool, ReadPolicy, WriteFileTool,
 };
 pub use fsm::{ADVANCE_STATE_TOOL, is_fsm_tool};
-pub use memories::{DeleteMemoryTool, UpdateMemoryTool, WriteMemoryTool, is_memory_tool};
+pub use memories::{
+    CreateMemoryTool, DeleteMemoryTool, EditMemoryTool, ReadMemoryTool, SearchMemoriesTool,
+    UpdateMemoryTool, WriteMemoryTool, is_memory_tool,
+};
 pub use planning::{ENTER_PLAN_MODE_TOOL, SUBMIT_PLAN_TOOL, is_planning_tool};
 pub(crate) use shell::run_command;
 pub use shell::{
@@ -141,6 +144,10 @@ pub const ALL_TOOL_NAMES: &[&str] = &[
     "read_skill",
     "write_memory",
     "update_memory",
+    "create_memory",
+    "read_memory",
+    "edit_memory",
+    "search_memories",
     "delete_memory",
     "add_task",
     "update_task",
@@ -632,18 +639,41 @@ impl ToolRegistry {
             ))));
         }
 
+        // Which memory tools a run offers is the **memory strategy**'s decision, and the store
+        // itself is asked rather than the capability re-read: the store was built from that
+        // strategy, so there is one place a run's strategy is resolved and no way for the toolset
+        // to disagree with the store it mutates. Every strategy offers `delete_memory`; the rest
+        // of the set is disjoint, so a model is never shown two ways to write the same memory.
         if capabilities.is_enabled(CAPABILITY_MEMORIES)
             && let Some(memories) = runtimes.memories
         {
-            tools.push(Box::new(memories::WriteMemoryTool::new(Arc::clone(
-                memories,
-            ))));
-            tools.push(Box::new(memories::UpdateMemoryTool::new(Arc::clone(
-                memories,
-            ))));
+            let strategy = memories.lock().expect("memory store lock").strategy();
+            if strategy.is_file_shaped() {
+                tools.push(Box::new(memories::CreateMemoryTool::new(Arc::clone(
+                    memories,
+                ))));
+                tools.push(Box::new(memories::ReadMemoryTool::new(Arc::clone(
+                    memories,
+                ))));
+                tools.push(Box::new(memories::EditMemoryTool::new(Arc::clone(
+                    memories,
+                ))));
+            } else {
+                tools.push(Box::new(memories::WriteMemoryTool::new(Arc::clone(
+                    memories,
+                ))));
+                tools.push(Box::new(memories::UpdateMemoryTool::new(Arc::clone(
+                    memories,
+                ))));
+            }
             tools.push(Box::new(memories::DeleteMemoryTool::new(Arc::clone(
                 memories,
             ))));
+            if strategy.has_search() {
+                tools.push(Box::new(memories::SearchMemoriesTool::new(Arc::clone(
+                    memories,
+                ))));
+            }
         }
 
         if capabilities.is_enabled(CAPABILITY_TASKS)
@@ -864,6 +894,41 @@ fn required_str(args: &Value, field: &str, tool: &str) -> Result<String, Argumen
         Some(Value::String(value)) => Ok(value.clone()),
         Some(_) => Err(ArgumentError(format!(
             "`{tool}`: argument `{field}` must be a string"
+        ))),
+        None => Err(ArgumentError(format!(
+            "`{tool}`: missing required argument `{field}`"
+        ))),
+    }
+}
+
+/// Extract an optional string field: absent (or JSON `null`) yields `None`; a non-string is an
+/// [`ArgumentError`]. The spelling for an argument a tool may legitimately be called without — a
+/// description a strategy does not require, a replacement that is deliberately empty.
+fn optional_str(args: &Value, field: &str, tool: &str) -> Result<Option<String>, ArgumentError> {
+    match args.get(field) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(value)) => Ok(Some(value.clone())),
+        Some(_) => Err(ArgumentError(format!(
+            "`{tool}`: argument `{field}` must be a string"
+        ))),
+    }
+}
+
+/// Extract a required array-of-strings field. An absent key, a non-array, or an entry that is not
+/// a string is an [`ArgumentError`] naming the tool and field.
+fn required_str_array(args: &Value, field: &str, tool: &str) -> Result<Vec<String>, ArgumentError> {
+    match args.get(field) {
+        Some(Value::Array(items)) => items
+            .iter()
+            .map(|item| match item {
+                Value::String(value) => Ok(value.clone()),
+                _ => Err(ArgumentError(format!(
+                    "`{tool}`: every entry in `{field}` must be a string"
+                ))),
+            })
+            .collect(),
+        Some(_) => Err(ArgumentError(format!(
+            "`{tool}`: argument `{field}` must be an array of strings"
         ))),
         None => Err(ArgumentError(format!(
             "`{tool}`: missing required argument `{field}`"

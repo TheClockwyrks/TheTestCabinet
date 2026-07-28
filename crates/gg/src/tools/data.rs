@@ -119,8 +119,10 @@ pub enum ToolData {
     BytesWritten(u64),
     /// What a `list_dir` found, in the order it reported them.
     DirEntries(Vec<DirEntryData>),
-    /// How full the memory store is after a `write_memory`/`update_memory`/`delete_memory`.
+    /// How full the memory store is after any memory mutation.
     MemoryUsage(MemoryUsageData),
+    /// What a `search_memories` matched, best first — empty when nothing did.
+    MemoryHits(Vec<MemoryHitData>),
     /// How full the task list is after an `add_task`/`remove_task`.
     TaskUsage(UsagePair),
     /// How full the board is after a `create_epic`/`create_issue`/`remove_epic`/`remove_issue`.
@@ -255,21 +257,47 @@ pub struct UsagePair {
 
 /// How full the memory store is after a mutation.
 ///
-/// Memories are capped on **two** axes — how many, and how many characters of body in total — and
-/// either one can refuse the next write, so both are reported. (This is why memories do not share
-/// [`UsagePair`]: a caller told only the count would have no way to see the budget it was about to
-/// breach.)
+/// Memories are bounded on **several** axes — how many, how many characters of body in total, and
+/// (under the [markdown](crate::memories::MemoryStrategy::Markdown) strategy) how long the pinned
+/// index has grown — and any of them can refuse the next write, so all of them are reported. (This
+/// is why memories do not share [`UsagePair`]: a caller told only the count would have no way to
+/// see the budget it was about to breach.)
+///
+/// Each maximum is optional, because each is independently disableable and because a strategy
+/// applies only some of them. `None` means "no limit here", which is a different fact from a large
+/// one and is worth being able to state; a program that wants to know how much room is left asks
+/// whether there is a limit before subtracting.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MemoryUsageData {
     /// Memories currently held.
     pub count: u32,
-    /// The most memories this run allows.
-    pub max_count: u32,
+    /// The most memories this run allows, if it limits the count.
+    pub max_count: Option<u32>,
     /// Characters of body currently held, across all memories.
     pub total_chars: u32,
-    /// The most characters of body this run allows in total.
-    pub max_total_chars: u32,
+    /// The most characters of body this run allows in total, if it limits the aggregate.
+    pub max_total_chars: Option<u32>,
+    /// Characters the pinned index currently occupies, under a strategy that keeps one.
+    pub index_chars: Option<u32>,
+    /// The most characters the index may occupy, if it is limited.
+    pub max_index_chars: Option<u32>,
+}
+
+/// One memory a `search_memories` matched: what to read next, and why it ranked where it did.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryHitData {
+    /// The memory's slug — what `read_memory` takes.
+    pub name: String,
+    /// The memory's description, or empty when it was created without one.
+    pub description: String,
+    /// How many of the caller's distinct keywords this memory matched — the primary ranking.
+    pub matched: u32,
+    /// How many times those keywords occur in it — the tiebreak.
+    pub occurrences: u32,
+    /// A short window of the memory around its first match.
+    pub excerpt: String,
 }
 
 /// How full the epic/issue board is after a mutation — two independently capped populations, so

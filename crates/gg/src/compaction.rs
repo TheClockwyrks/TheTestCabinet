@@ -71,6 +71,7 @@ use test_cabinet_core::gg::{
 };
 
 use crate::context::{ContextModel, Retention, code_heading};
+use crate::memories::MemoryCalls;
 use crate::model::{ImageContent, Message, ModelClient, Role};
 use crate::tools::{COMPACT_TOOL, CompactTool, Tool, parse_compact_request};
 
@@ -347,7 +348,11 @@ impl PendingCompaction {
     /// call the way that run's model actually makes it — and, for
     /// [`Summary`](Self::Summary), has to explicitly suspend the reply contract for one turn,
     /// since prose is the one thing a code run is otherwise told never to send.
-    pub fn instruction(self, code_mode: bool) -> String {
+    ///
+    /// `calls` is how this run's [memory strategy](crate::memories::MemoryStrategy) names its own
+    /// calls, so a [`MemoryWrites`](Self::MemoryWrites) instruction asks for the tools the model
+    /// was actually offered rather than for the scratchpad's.
+    pub fn instruction(self, code_mode: bool, calls: MemoryCalls) -> String {
         match self {
             Self::Summary if code_mode => format!(
                 "{PREAMBLE}\n\nFor this ONE turn only, do NOT write a program — gg will not run \
@@ -385,21 +390,25 @@ impl PendingCompaction {
             ),
             Self::MemoryWrites if code_mode => format!(
                 "{PREAMBLE}\n\nWrite a program that records the working state you will need into \
-                 your memories — `memory.writeMemory` / `memory.updateMemory` / \
-                 `memory.deleteMemory` and nothing else; every other call is refused until every \
-                 call in one program has succeeded. Your memories are retained verbatim across the \
-                 drop, so they are the ONLY thing that carries your working state: what you are \
-                 building, the decisions that matter, the files you changed, what is in progress, \
-                 the next step. Anything you do not record is lost."
+                 your memories — {create} / {revise} / {delete} and nothing else; every other \
+                 call is refused until every call in one program has succeeded. Your memories \
+                 survive the drop, so they are the ONLY thing that carries your working state: \
+                 what you are building, the decisions that matter, the files you changed, what is \
+                 in progress, the next step. Anything you do not record is lost.",
+                create = calls.create,
+                revise = calls.revise,
+                delete = calls.delete,
             ),
             Self::MemoryWrites => format!(
                 "{PREAMBLE}\n\nRecord the working state you will need into your memories now — \
-                 `write_memory` / `update_memory` / `delete_memory` and nothing else; every other \
-                 tool call is refused until every call in one reply has succeeded. Your memories \
-                 are retained verbatim across the drop, so they are the ONLY thing that carries \
-                 your working state: what you are building, the decisions that matter, the files \
-                 you changed, what is in progress, the next step. Anything you do not record is \
-                 lost."
+                 {create} / {revise} / {delete} and nothing else; every other tool call is \
+                 refused until every call in one reply has succeeded. Your memories survive the \
+                 drop, so they are the ONLY thing that carries your working state: what you are \
+                 building, the decisions that matter, the files you changed, what is in progress, \
+                 the next step. Anything you do not record is lost.",
+                create = calls.create,
+                revise = calls.revise,
+                delete = calls.delete,
             ),
         }
     }
@@ -409,18 +418,15 @@ impl PendingCompaction {
     ///
     /// It names the call that was refused rather than only what is wanted, because a model that is
     /// told "do X" while its Y silently fails reads the failure as gg being broken and retries Y.
-    pub fn refusal(self, refused: &str, code_mode: bool) -> String {
+    pub fn refusal(self, refused: &str, code_mode: bool, calls: MemoryCalls) -> String {
         let wanted = match self {
             Self::Summary => "reply with the summary as plain text".to_string(),
             Self::CompactCall if code_mode => "call `context.compact(summary, files)`".to_string(),
             Self::CompactCall => format!("call the `{COMPACT_TOOL}` tool"),
-            Self::MemoryWrites if code_mode => {
-                "record your working state with `memory.writeMemory` / `memory.updateMemory`"
-                    .to_string()
-            }
-            Self::MemoryWrites => {
-                "record your working state with `write_memory` / `update_memory`".to_string()
-            }
+            Self::MemoryWrites => format!(
+                "record your working state with {} / {}",
+                calls.create, calls.revise
+            ),
         };
         format!(
             "`{refused}` was NOT run: your context window is full and gg is compacting it. Nothing \
@@ -430,10 +436,10 @@ impl PendingCompaction {
 
     /// The feedback for a reply that satisfied nothing at all — no usable call under
     /// [`CompactCall`](Self::CompactCall) / [`MemoryWrites`](Self::MemoryWrites).
-    pub fn unsatisfied(self, code_mode: bool) -> String {
+    pub fn unsatisfied(self, code_mode: bool, calls: MemoryCalls) -> String {
         format!(
             "Your reply did not compact your context, and your window is still full. {}",
-            self.instruction(code_mode)
+            self.instruction(code_mode, calls)
         )
     }
 }

@@ -142,7 +142,62 @@ pub const CAPABILITY_SKILLS: &str = "skills";
 /// The stable id of the Phase 1 memories capability: the same mechanism as
 /// [`CAPABILITY_SKILLS`] but curated by the model itself and bounded in count and
 /// length, so self-curated memory cannot crowd out the working context.
+///
+/// Its [`implementation`](GgCapabilityConfig::implementation) selects the **memory
+/// strategy** — how the model's notes are organized, and how much of them the window
+/// carries. Three strategies ship, and they differ in what is *always* in context:
+///
+/// - [`scratchpad`](MEMORY_STRATEGY_SCRATCHPAD) (the default) — a small, bounded set whose
+///   **bodies are all pinned in the window** and cross a [compaction](CAPABILITY_COMPACTION)
+///   boundary verbatim.
+/// - [`markdown`](MEMORY_STRATEGY_MARKDOWN) — an **index** of slugs and descriptions is
+///   pinned; the memories themselves are markdown files gg holds in memory and the model
+///   reads on demand.
+/// - [`keyword-search`](MEMORY_STRATEGY_KEYWORD_SEARCH) — **nothing** is pinned; the model
+///   finds a memory by searching for keywords and reads the ones it wants.
+///
+/// Every strategy stores memories **in gg, never on disk**, so the only way to write one is
+/// through the tools the capability offers — a model cannot forge a memory by writing a file
+/// into the workspace. An unrecognized strategy resolves to the default rather than failing
+/// to launch, so a sweep can name a not-yet-built one.
+///
+/// Which params a run's [`params`](GgCapabilityConfig::params) may carry depends on the
+/// strategy — [`GgMemoryCaps`] documents the limits each resolves and their defaults.
 pub const CAPABILITY_MEMORIES: &str = "memories";
+
+/// The [memories](CAPABILITY_MEMORIES) strategy that keeps a small, bounded set of notes
+/// whose **bodies are all pinned in the context window**, retained across a
+/// [compaction](CAPABILITY_COMPACTION) boundary verbatim: `write_memory` /`update_memory` /
+/// `delete_memory`, bounded by all three of [`max_count`](GgMemoryCaps::max_count),
+/// [`max_len_per_memory`](GgMemoryCaps::max_len_per_memory) and
+/// [`max_total_len`](GgMemoryCaps::max_total_len).
+///
+/// The default: what an unconfigured memories capability uses, and what an unrecognized
+/// strategy name falls back to.
+pub const MEMORY_STRATEGY_SCRATCHPAD: &str = "scratchpad";
+
+/// The [memories](CAPABILITY_MEMORIES) strategy that splits memory into an **index** and a
+/// set of **markdown files**, in the shape The Test Cabinet's own agent memory uses.
+///
+/// The index — one `slug` — `description` line per memory — is pinned in the window and is
+/// the only part always in context; `create_memory` adds its entry, `delete_memory` removes
+/// it, and the model reads a memory's body with `read_memory` and revises it with
+/// `edit_memory`'s search/replace. Bounded by
+/// [`max_len_index`](GgMemoryCaps::max_len_index) (a create whose index entry would not fit
+/// is refused) and [`max_len_per_memory`](GgMemoryCaps::max_len_per_memory); the number of
+/// memories is bounded only by the index that must list them.
+pub const MEMORY_STRATEGY_MARKDOWN: &str = "markdown";
+
+/// The [memories](CAPABILITY_MEMORIES) strategy that keeps markdown files with **no index at
+/// all**: nothing is pinned, and the model finds a memory by calling `search_memories` with
+/// keywords, ranked by how many of them a memory matches and how often.
+///
+/// The retrieval arm of the study — it asks whether an agent can work from memory it has to
+/// look up, rather than memory it is handed every turn. Bounded by
+/// [`max_len_per_memory`](GgMemoryCaps::max_len_per_memory) and, optionally, by
+/// [`max_count`](GgMemoryCaps::max_count); a search returns at most
+/// [`max_results`](GgMemoryCaps::max_results) memories.
+pub const MEMORY_STRATEGY_KEYWORD_SEARCH: &str = "keyword-search";
 
 /// The stable id of the Phase 1 tasks capability: the model's lightweight to-do list,
 /// a blocked-by DAG that survives compaction verbatim.
@@ -1621,10 +1676,25 @@ pub struct GgSkillState {
 ///
 /// Because memories are curated by the *model itself* (unlike [skills], authored ahead of
 /// the run), they must be bounded so self-curated notes cannot crowd out the working
-/// context. When a write would exceed a cap, gg rejects it and instructs the model to
+/// context. When a write would exceed a limit, gg rejects it and instructs the model to
 /// revise or evict rather than silently truncating or dropping. Lengths are measured in
 /// characters of a memory's **body** (its `description` is a short one-liner, like a
 /// skill's).
+///
+/// # Which limits apply, and what they default to
+///
+/// Every limit is optional — `None` is **unlimited**, which a run configures by setting the
+/// param to `0` — and which ones a run resolves depends on the
+/// [strategy](CAPABILITY_MEMORIES) its `implementation` selected. A limit a strategy does
+/// not use is always `None`:
+///
+/// | Limit | Param | [`scratchpad`](MEMORY_STRATEGY_SCRATCHPAD) | [`markdown`](MEMORY_STRATEGY_MARKDOWN) | [`keyword-search`](MEMORY_STRATEGY_KEYWORD_SEARCH) |
+/// | --- | --- | --- | --- | --- |
+/// | [`max_count`](Self::max_count) | `maxCount` | 8 | — | unlimited |
+/// | [`max_len_per_memory`](Self::max_len_per_memory) | `maxLenPerMemory` | 2 000 | 8 192 | 8 192 |
+/// | [`max_total_len`](Self::max_total_len) | `maxTotalLen` | 8 000 | — | — |
+/// | [`max_len_index`](Self::max_len_index) | `maxLenIndex` | — | 16 384 | — |
+/// | [`max_results`](Self::max_results) | `maxResults` | — | — | 25 |
 ///
 /// [memories]: https://docs.testcabinet.ai/gg/memories/
 /// [skills]: https://docs.testcabinet.ai/gg/skills/
@@ -1632,12 +1702,26 @@ pub struct GgSkillState {
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgMemoryCaps {
-    /// The maximum number of memories that may exist at once.
-    pub max_count: u64,
-    /// The maximum length, in characters, of any single memory's body.
-    pub max_len_per_memory: u64,
-    /// The maximum total length, in characters, summed across every memory's body.
-    pub max_total_len: u64,
+    /// The maximum number of memories that may exist at once; `null` is unlimited.
+    pub max_count: Option<u64>,
+    /// The maximum length, in characters, of any single memory's body; `null` is unlimited.
+    pub max_len_per_memory: Option<u64>,
+    /// The maximum total length, in characters, summed across every memory's body; `null`
+    /// is unlimited (and always `null` for a strategy that does not hold every body in the
+    /// window).
+    pub max_total_len: Option<u64>,
+    /// The maximum length, in characters, of the pinned **index** the
+    /// [`markdown`](MEMORY_STRATEGY_MARKDOWN) strategy keeps — the one limit that bounds how
+    /// many memories that strategy can hold, since every one of them must be listed there.
+    /// `null` for every other strategy, and when the index is unlimited.
+    #[serde(default)]
+    pub max_len_index: Option<u64>,
+    /// The most memories one `search_memories` call reports under the
+    /// [`keyword-search`](MEMORY_STRATEGY_KEYWORD_SEARCH) strategy. `null` for every other
+    /// strategy — it is a page size rather than a bound on what may be stored, and is
+    /// reported alongside the limits because it is resolved from the same params.
+    #[serde(default)]
+    pub max_results: Option<u64>,
 }
 
 /// The status of one [task](https://docs.testcabinet.ai/gg/tasks/) — a field of a
@@ -1821,19 +1905,19 @@ pub struct GgBoardIssue {
 /// The state of one model-curated [memory](https://docs.testcabinet.ai/gg/memories/) at a
 /// point in a run — a band of a [`MemoryState`](GgTelemetryKind::MemoryState) event.
 ///
-/// A memory is written by the model with `write_memory` (and revised with `update_memory`
-/// / removed with `delete_memory`): its [`description`](Self::description) is shown up
-/// front (so the model — and the console — can see what each memory is for at a glance),
-/// and its body is retained in the context window as a
-/// [`Memory`](GgContextSource::Memory)-sourced, compaction-retained item. [`len`](Self::len)
-/// is the body's length in characters — what the [caps](GgMemoryCaps) are measured against.
+/// A memory is written by the model — with `write_memory` under the
+/// [`scratchpad`](MEMORY_STRATEGY_SCRATCHPAD) strategy, `create_memory` under the other two
+/// — and its [`description`](Self::description) is what the console (and, where a strategy
+/// shows one, the model) sees the memory as at a glance. [`len`](Self::len) is the body's
+/// length in characters — what the [caps](GgMemoryCaps) are measured against.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgMemoryEntry {
-    /// The memory's stable name — the handle `update_memory`/`delete_memory` take.
+    /// The memory's stable name — the slug every memory tool addresses it by.
     pub name: String,
-    /// The memory's one-line description, shown up front.
+    /// The memory's one-line description. Empty when the strategy does not require one (a
+    /// [`keyword-search`](MEMORY_STRATEGY_KEYWORD_SEARCH) memory may omit it).
     pub description: String,
     /// The memory body's length in characters (what the caps bound).
     pub len: u64,
@@ -3005,11 +3089,19 @@ pub enum GgTelemetryKind {
     ///
     /// Emitted once at session start (an empty list plus the caps) when the
     /// [memories](CAPABILITY_MEMORIES) capability is enabled, and again after every
-    /// successful `write_memory`/`update_memory`/`delete_memory` so the console renders the
-    /// curated set live and shows how close each memory is to its limit. Each in-play
-    /// memory's body is a [`Memory`](GgContextSource::Memory)-sourced, compaction-retained
-    /// context item. A run with the capability off emits none.
+    /// successful memory mutation so the console renders the curated set live and shows how
+    /// close each memory is to its limit. Under the
+    /// [`scratchpad`](MEMORY_STRATEGY_SCRATCHPAD) strategy each in-play memory's body is a
+    /// [`Memory`](GgContextSource::Memory)-sourced, compaction-retained context item; under
+    /// [`markdown`](MEMORY_STRATEGY_MARKDOWN) the pinned item is the index alone, and under
+    /// [`keyword-search`](MEMORY_STRATEGY_KEYWORD_SEARCH) there is none. A run with the
+    /// capability off emits none.
     MemoryState {
+        /// The [strategy](CAPABILITY_MEMORIES) this run's memories are organized by — which
+        /// tools the model was offered, and which of the [caps](GgMemoryCaps) apply. Empty
+        /// on records written before memories had more than one strategy.
+        #[serde(default)]
+        strategy: String,
         /// One entry per memory currently held, in name order.
         memories: Vec<GgMemoryEntry>,
         /// The number of memories currently held (the length of `memories`).

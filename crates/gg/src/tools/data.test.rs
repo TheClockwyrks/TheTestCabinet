@@ -41,10 +41,19 @@ fn one_of_each() -> Vec<ToolData> {
         }]),
         ToolData::MemoryUsage(MemoryUsageData {
             count: 1,
-            max_count: 8,
+            max_count: Some(8),
             total_chars: 20,
-            max_total_chars: 4_000,
+            max_total_chars: Some(4_000),
+            index_chars: None,
+            max_index_chars: None,
         }),
+        ToolData::MemoryHits(vec![MemoryHitData {
+            name: "layout".to_string(),
+            description: "where things live".to_string(),
+            matched: 2,
+            occurrences: 3,
+            excerpt: "…src/ holds the engine…".to_string(),
+        }]),
         ToolData::TaskUsage(UsagePair { count: 2, max: 40 }),
         ToolData::BoardUsage(BoardUsageData {
             epics: 1,

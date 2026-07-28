@@ -37,11 +37,40 @@ Everything not in your summary and not in `files` is gone.
 {{#if compaction.writesMemories}}
 
 **Your memories are what survive.** When the window fills, gg asks you to record
-your working state with `write_memory` / `update_memory` and refuses every other
-tool until a whole reply of memory calls succeeds. There is no summary: your
-memories are the only thing carried across, so anything you have not recorded is
-lost.
+your working state with {{compaction.memoryCreate}} / {{compaction.memoryRevise}}
+and refuses every other tool until a whole reply of memory calls succeeds. There
+is no summary: your memories are the only thing carried across, so anything you
+have not recorded is lost.
 {{/if}}
+{{/if}}
+{{#if memories}}
+
+## Memory
+
+{{#if memories.scratchpad}}
+You keep a scratchpad of durable notes. Every one of them is in front of you on
+every turn and survives compaction, so it is memory you never have to look up —
+and context you pay for continuously. Record what you would be sorry to lose:
+decisions and their reasons, facts about this codebase you had to work to learn.
+{{/if}}
+{{#if memories.markdown}}
+Your memory is a set of markdown files with an index over them. The index — one
+line per memory, its slug and its description — is in front of you on every turn;
+the memories themselves are not, so read one when the work you are doing is the
+work it is about. Record what you would be sorry to lose: decisions and their
+reasons, facts about this codebase you had to work to learn. Write each
+description for a future you scanning that index and deciding what to open.
+{{/if}}
+{{#if memories.keywordSearch}}
+Your memory is a set of markdown files with no index: nothing about them is in
+front of you until you go looking. Search them by keyword, then read the ones
+worth having in full. Record what you would be sorry to lose: decisions and their
+reasons, facts about this codebase you had to work to learn — and put the words
+your future self would search for into the memory itself.
+{{/if}}
+
+Your memories are gg's, not the workspace's: they are not files on disk, and the
+memory tools are the only way to read or change them.
 {{/if}}
 
 ## Image Support

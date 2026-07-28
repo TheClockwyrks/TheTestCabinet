@@ -283,9 +283,12 @@ export function turnTotalMs(t: TurnTiming): number {
   return t.promptMs + t.requestMs + t.responseMs;
 }
 
-// The latest `memory_state` — the model's self-curated memories and the caps gg
-// keeps them within.
+// The latest `memory_state` — the model's self-curated memories, the strategy they
+// are organized by (see gg/memories), and the limits gg keeps them within. `strategy`
+// is empty on records written before memories had more than one, which the panel reads
+// as the scratchpad they all were.
 export interface GgMemoryState {
+  strategy: string;
   memories: GgMemoryEntry[];
   count: number;
   totalLen: number;
@@ -1206,6 +1209,7 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
         break;
       case "memory_state":
         memory = {
+          strategy: gg.strategy,
           memories: gg.memories,
           count: gg.count,
           totalLen: gg.totalLen,

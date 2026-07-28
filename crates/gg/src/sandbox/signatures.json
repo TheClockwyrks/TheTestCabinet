@@ -83,6 +83,44 @@
       ]
     },
     {
+      "tool": "create_memory",
+      "js": "createMemory",
+      "object": "memory",
+      "signature": "createMemory(memory: { name: string; description: string; body: string; }): MemoryUsage",
+      "doc": "Record a new memory whose contents are kept OUT of your context window until you read them, and return the memory budget. Give it a slug (letters, digits, `-`, `_`, `.`), a one-line description — required where the run keeps an index, since that is the memory's line in it — and the initial contents. Throws `conflict` on a duplicate slug and `limit-exceeded` when the contents, or the index entry, would breach a limit.",
+      "types": [
+        "MemoryUsage"
+      ]
+    },
+    {
+      "tool": "read_memory",
+      "js": "readMemory",
+      "object": "memory",
+      "signature": "readMemory(name: string): string",
+      "doc": "Read one memory's full contents, by slug — the only thing that brings them into your context. Throws `not-found` when no memory has that slug.",
+      "types": []
+    },
+    {
+      "tool": "edit_memory",
+      "js": "editMemory",
+      "object": "memory",
+      "signature": "editMemory(edit: { name: string; search: string; replace: string; }): MemoryUsage",
+      "doc": "Revise a memory in place by replacing the one exact occurrence of `search` with `replace`, and return the memory budget. Append by quoting the last line and replacing it with itself plus what you are adding. Throws `not-found` when the text does not appear, `conflict` when it appears more than once, `limit-exceeded` when the result would be too long, and `invalid-argument` when the edit would leave the memory empty — delete it instead.",
+      "types": [
+        "MemoryUsage"
+      ]
+    },
+    {
+      "tool": "search_memories",
+      "js": "searchMemories",
+      "object": "memory",
+      "signature": "searchMemories(keywords: string[]): MemoryHit[]",
+      "doc": "Find the memories mentioning any of `keywords`, best first: plain case-insensitive substring matching over each memory's slug, description and contents, ranked by how many of your keywords a memory mentions and then by how often. Pass several specific words rather than one sentence, then `readMemory` the hits worth having in full. Throws `invalid-argument` when every keyword is empty; a search that matches nothing is an empty array.",
+      "types": [
+        "MemoryHit"
+      ]
+    },
+    {
       "tool": "delete_memory",
       "js": "deleteMemory",
       "object": "memory",
@@ -336,7 +374,11 @@
     },
     {
       "name": "MemoryUsage",
-      "declaration": "interface MemoryUsage { count: number; maxCount: number; totalChars: number; maxTotalChars: number; }"
+      "declaration": "interface MemoryUsage { count: number; maxCount: number | undefined; totalChars: number; maxTotalChars: number | undefined; indexChars: number | undefined; maxIndexChars: number | undefined; }"
+    },
+    {
+      "name": "MemoryHit",
+      "declaration": "interface MemoryHit { name: string; description: string; matched: number; occurrences: number; excerpt: string; }"
     },
     {
       "name": "TaskStatus",

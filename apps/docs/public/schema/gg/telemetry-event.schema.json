@@ -332,35 +332,48 @@
       "type": "object"
     },
     "GgMemoryCaps": {
-      "description": "The bounds gg enforces on the model's self-curated [memories] — a band of the\n[`MemoryState`](GgTelemetryKind::MemoryState) event so the console can show how close\nthe model is to each limit.\n\nBecause memories are curated by the *model itself* (unlike [skills], authored ahead of\nthe run), they must be bounded so self-curated notes cannot crowd out the working\ncontext. When a write would exceed a cap, gg rejects it and instructs the model to\nrevise or evict rather than silently truncating or dropping. Lengths are measured in\ncharacters of a memory's **body** (its `description` is a short one-liner, like a\nskill's).\n\n[memories]: https://docs.testcabinet.ai/gg/memories/\n[skills]: https://docs.testcabinet.ai/gg/skills/",
+      "description": "The bounds gg enforces on the model's self-curated [memories] — a band of the\n[`MemoryState`](GgTelemetryKind::MemoryState) event so the console can show how close\nthe model is to each limit.\n\nBecause memories are curated by the *model itself* (unlike [skills], authored ahead of\nthe run), they must be bounded so self-curated notes cannot crowd out the working\ncontext. When a write would exceed a limit, gg rejects it and instructs the model to\nrevise or evict rather than silently truncating or dropping. Lengths are measured in\ncharacters of a memory's **body** (its `description` is a short one-liner, like a\nskill's).\n\n# Which limits apply, and what they default to\n\nEvery limit is optional — `None` is **unlimited**, which a run configures by setting the\nparam to `0` — and which ones a run resolves depends on the\n[strategy](CAPABILITY_MEMORIES) its `implementation` selected. A limit a strategy does\nnot use is always `None`:\n\n| Limit | Param | [`scratchpad`](MEMORY_STRATEGY_SCRATCHPAD) | [`markdown`](MEMORY_STRATEGY_MARKDOWN) | [`keyword-search`](MEMORY_STRATEGY_KEYWORD_SEARCH) |\n| --- | --- | --- | --- | --- |\n| [`max_count`](Self::max_count) | `maxCount` | 8 | — | unlimited |\n| [`max_len_per_memory`](Self::max_len_per_memory) | `maxLenPerMemory` | 2 000 | 8 192 | 8 192 |\n| [`max_total_len`](Self::max_total_len) | `maxTotalLen` | 8 000 | — | — |\n| [`max_len_index`](Self::max_len_index) | `maxLenIndex` | — | 16 384 | — |\n| [`max_results`](Self::max_results) | `maxResults` | — | — | 25 |\n\n[memories]: https://docs.testcabinet.ai/gg/memories/\n[skills]: https://docs.testcabinet.ai/gg/skills/",
       "properties": {
         "maxCount": {
-          "description": "The maximum number of memories that may exist at once.",
+          "description": "The maximum number of memories that may exist at once; `null` is unlimited.",
           "format": "uint64",
           "minimum": 0,
-          "type": "integer"
+          "type": ["integer", "null"]
+        },
+        "maxLenIndex": {
+          "default": null,
+          "description": "The maximum length, in characters, of the pinned **index** the\n[`markdown`](MEMORY_STRATEGY_MARKDOWN) strategy keeps — the one limit that bounds how\nmany memories that strategy can hold, since every one of them must be listed there.\n`null` for every other strategy, and when the index is unlimited.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
         },
         "maxLenPerMemory": {
-          "description": "The maximum length, in characters, of any single memory's body.",
+          "description": "The maximum length, in characters, of any single memory's body; `null` is unlimited.",
           "format": "uint64",
           "minimum": 0,
-          "type": "integer"
+          "type": ["integer", "null"]
+        },
+        "maxResults": {
+          "default": null,
+          "description": "The most memories one `search_memories` call reports under the\n[`keyword-search`](MEMORY_STRATEGY_KEYWORD_SEARCH) strategy. `null` for every other\nstrategy — it is a page size rather than a bound on what may be stored, and is\nreported alongside the limits because it is resolved from the same params.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
         },
         "maxTotalLen": {
-          "description": "The maximum total length, in characters, summed across every memory's body.",
+          "description": "The maximum total length, in characters, summed across every memory's body; `null`\nis unlimited (and always `null` for a strategy that does not hold every body in the\nwindow).",
           "format": "uint64",
           "minimum": 0,
-          "type": "integer"
+          "type": ["integer", "null"]
         }
       },
-      "required": ["maxCount", "maxLenPerMemory", "maxTotalLen"],
       "type": "object"
     },
     "GgMemoryEntry": {
-      "description": "The state of one model-curated [memory](https://docs.testcabinet.ai/gg/memories/) at a\npoint in a run — a band of a [`MemoryState`](GgTelemetryKind::MemoryState) event.\n\nA memory is written by the model with `write_memory` (and revised with `update_memory`\n/ removed with `delete_memory`): its [`description`](Self::description) is shown up\nfront (so the model — and the console — can see what each memory is for at a glance),\nand its body is retained in the context window as a\n[`Memory`](GgContextSource::Memory)-sourced, compaction-retained item. [`len`](Self::len)\nis the body's length in characters — what the [caps](GgMemoryCaps) are measured against.",
+      "description": "The state of one model-curated [memory](https://docs.testcabinet.ai/gg/memories/) at a\npoint in a run — a band of a [`MemoryState`](GgTelemetryKind::MemoryState) event.\n\nA memory is written by the model — with `write_memory` under the\n[`scratchpad`](MEMORY_STRATEGY_SCRATCHPAD) strategy, `create_memory` under the other two\n— and its [`description`](Self::description) is what the console (and, where a strategy\nshows one, the model) sees the memory as at a glance. [`len`](Self::len) is the body's\nlength in characters — what the [caps](GgMemoryCaps) are measured against.",
       "properties": {
         "description": {
-          "description": "The memory's one-line description, shown up front.",
+          "description": "The memory's one-line description. Empty when the strategy does not require one (a\n[`keyword-search`](MEMORY_STRATEGY_KEYWORD_SEARCH) memory may omit it).",
           "type": "string"
         },
         "len": {
@@ -370,7 +383,7 @@
           "type": "integer"
         },
         "name": {
-          "description": "The memory's stable name — the handle `update_memory`/`delete_memory` take.",
+          "description": "The memory's stable name — the slug every memory tool addresses it by.",
           "type": "string"
         }
       },
@@ -944,7 +957,7 @@
       "type": "object"
     },
     {
-      "description": "The model's self-curated [memories](https://docs.testcabinet.ai/gg/memories/) and\nthe [bounds](GgMemoryCaps) they are kept within.\n\nEmitted once at session start (an empty list plus the caps) when the\n[memories](CAPABILITY_MEMORIES) capability is enabled, and again after every\nsuccessful `write_memory`/`update_memory`/`delete_memory` so the console renders the\ncurated set live and shows how close each memory is to its limit. Each in-play\nmemory's body is a [`Memory`](GgContextSource::Memory)-sourced, compaction-retained\ncontext item. A run with the capability off emits none.",
+      "description": "The model's self-curated [memories](https://docs.testcabinet.ai/gg/memories/) and\nthe [bounds](GgMemoryCaps) they are kept within.\n\nEmitted once at session start (an empty list plus the caps) when the\n[memories](CAPABILITY_MEMORIES) capability is enabled, and again after every\nsuccessful memory mutation so the console renders the curated set live and shows how\nclose each memory is to its limit. Under the\n[`scratchpad`](MEMORY_STRATEGY_SCRATCHPAD) strategy each in-play memory's body is a\n[`Memory`](GgContextSource::Memory)-sourced, compaction-retained context item; under\n[`markdown`](MEMORY_STRATEGY_MARKDOWN) the pinned item is the index alone, and under\n[`keyword-search`](MEMORY_STRATEGY_KEYWORD_SEARCH) there is none. A run with the\ncapability off emits none.",
       "properties": {
         "caps": {
           "$ref": "#/$defs/GgMemoryCaps",
@@ -962,6 +975,11 @@
             "$ref": "#/$defs/GgMemoryEntry"
           },
           "type": "array"
+        },
+        "strategy": {
+          "default": "",
+          "description": "The [strategy](CAPABILITY_MEMORIES) this run's memories are organized by — which\ntools the model was offered, and which of the [caps](GgMemoryCaps) apply. Empty\non records written before memories had more than one strategy.",
+          "type": "string"
         },
         "totalLen": {
           "description": "The total length, in characters, summed across every memory's body.",

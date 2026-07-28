@@ -552,6 +552,7 @@ fn context_source_all_covers_every_variant_in_stable_order() {
 #[test]
 fn memory_state_serializes_entries_caps_and_totals() {
     let kind = GgTelemetryKind::MemoryState {
+        strategy: "markdown".to_string(),
         memories: vec![GgMemoryEntry {
             name: "game-plan".to_string(),
             description: "the plan".to_string(),
@@ -559,10 +560,13 @@ fn memory_state_serializes_entries_caps_and_totals() {
         }],
         count: 1,
         total_len: 42,
+        // A markdown run: bounded by its index and its per-memory length, and by nothing else.
         caps: GgMemoryCaps {
-            max_count: 8,
-            max_len_per_memory: 2_000,
-            max_total_len: 8_000,
+            max_count: None,
+            max_len_per_memory: Some(8_192),
+            max_total_len: None,
+            max_len_index: Some(16_384),
+            max_results: None,
         },
     };
     let value = serde_json::to_value(&kind).expect("serialize");
@@ -570,15 +574,20 @@ fn memory_state_serializes_entries_caps_and_totals() {
         value,
         json!({
             "type": "memory_state",
+            "strategy": "markdown",
             "memories": [
                 { "name": "game-plan", "description": "the plan", "len": 42 }
             ],
             "count": 1,
             "totalLen": 42,
+            // A limit a strategy does not use serializes as `null`, which is a different
+            // fact from a large number and is what a console needs to skip its meter.
             "caps": {
-                "maxCount": 8,
-                "maxLenPerMemory": 2_000,
-                "maxTotalLen": 8_000,
+                "maxCount": null,
+                "maxLenPerMemory": 8_192,
+                "maxTotalLen": null,
+                "maxLenIndex": 16_384,
+                "maxResults": null,
             },
         })
     );

@@ -567,6 +567,7 @@ fn data_kind(data: &ToolData) -> &'static str {
         ToolData::BytesWritten(_) => "bytesWritten",
         ToolData::DirEntries(_) => "dirEntries",
         ToolData::MemoryUsage(_) => "memoryUsage",
+        ToolData::MemoryHits(_) => "memoryHits",
         ToolData::TaskUsage(_) => "taskUsage",
         ToolData::BoardUsage(_) => "boardUsage",
         ToolData::Completion(_) => "completion",

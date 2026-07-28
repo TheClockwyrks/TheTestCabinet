@@ -210,6 +210,13 @@ interface skills {
 }
 
 /// Durable memories that survive context compaction.
+///
+/// A run picks ONE of three memory strategies, and only that strategy's functions are bound into a
+/// program's scope: the scratchpad's `write-memory`/`update-memory`, or the file-shaped
+/// `create-memory`/`read-memory`/`edit-memory` (plus `search-memories` where there is no index).
+/// `delete-memory` is bound under all three. The whole interface is declared here because the
+/// component is baked once, for every run there will ever be; what a given program can call is
+/// decided at instantiation.
 interface memories {
     use types.{tool-error};
 
@@ -217,30 +224,73 @@ interface memories {
     record memory-input {
         /// The unique short name the memory is addressed by.
         name: string,
-        /// A one-line description of what it holds.
+        /// A one-line description of what it holds. Required by every strategy that shows one;
+        /// optional (and reported with search results) where none does.
         description: string,
         /// The memory body.
         body: string,
     }
 
-    /// How much of the memory budget is used, so a program can check a cap instead of parsing a
+    /// How much of the memory budget is used, so a program can check a limit instead of parsing a
     /// sentence about it.
+    ///
+    /// Every maximum is an `option`: each limit is independently disableable, and a strategy
+    /// applies only some of them, so `none` says "nothing bounds this" rather than leaving a
+    /// program to read a zero as either a limit or its absence.
     record memory-usage {
         /// Memories currently held.
         count: u32,
-        /// The most memories this run allows.
-        max-count: u32,
+        /// The most memories this run allows, if it limits the count.
+        max-count: option<u32>,
         /// Characters of body currently held, across all memories.
         total-chars: u32,
-        /// The most characters of body this run allows.
-        max-total-chars: u32,
+        /// The most characters of body this run allows in total, if it limits the aggregate.
+        max-total-chars: option<u32>,
+        /// Characters the pinned index occupies, under a strategy that keeps one.
+        index-chars: option<u32>,
+        /// The most characters the index may occupy, if it is limited.
+        max-index-chars: option<u32>,
     }
 
-    /// Record a new durable memory. A duplicate name, or a body that would breach a cap, is an
+    /// A revision to a memory: replace the one exact occurrence of `search` with `replace`.
+    record memory-edit {
+        /// The memory's slug.
+        name: string,
+        /// The exact text to replace, which must occur exactly once.
+        search: string,
+        /// What to put in its place; empty cuts the text out.
+        replace: string,
+    }
+
+    /// One memory a search matched, and why it ranked where it did.
+    record memory-hit {
+        /// The memory's slug — what `read-memory` takes.
+        name: string,
+        /// Its description, or empty when it was created without one.
+        description: string,
+        /// How many distinct keywords it matched — the primary ranking.
+        matched: u32,
+        /// How many times those keywords occur in it — the tiebreak.
+        occurrences: u32,
+        /// A short window of the memory around its first match.
+        excerpt: string,
+    }
+
+    /// Record a new durable memory. A duplicate name, or a body that would breach a limit, is an
     /// error — revise or evict instead of accruing more.
     write-memory: func(memory: memory-input) -> result<memory-usage, tool-error>;
     /// Replace an existing memory's description and body.
     update-memory: func(memory: memory-input) -> result<memory-usage, tool-error>;
+    /// Record a new memory file, whose contents stay out of the context window until read.
+    create-memory: func(memory: memory-input) -> result<memory-usage, tool-error>;
+    /// Read one memory's contents back, by slug.
+    read-memory: func(name: string) -> result<string, tool-error>;
+    /// Revise a memory in place. A search that is missing or ambiguous, and an edit that would
+    /// leave the memory empty, are errors.
+    edit-memory: func(edit: memory-edit) -> result<memory-usage, tool-error>;
+    /// Find the memories mentioning any of `keywords`, best first. An empty keyword list is an
+    /// error; a list that matches nothing is an empty result.
+    search-memories: func(keywords: list<string>) -> result<list<memory-hit>, tool-error>;
     /// Evict a memory by name, freeing room for new ones.
     delete-memory: func(name: string) -> result<memory-usage, tool-error>;
 }

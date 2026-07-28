@@ -194,6 +194,55 @@ fn a_program_runs_typed_calls_in_order() {
     );
 }
 
+/// A memory search's results reach a program as **data it can rank, filter and index**, not as the
+/// sentence gg wrote for a model to read.
+///
+/// This is the whole argument for the typed sidecar, on the one family where it decides whether the
+/// capability is usable at all: the [keyword-search](crate::memories::MemoryStrategy::KeywordSearch)
+/// strategy exists so a program can look memory up, and a program that had to parse "2 keywords, 3
+/// occurrences" back out of prose would be re-implementing gg's formatter to do it. It also proves
+/// the record crosses the membrane *outward* — the crossing table checks the arguments going in.
+#[test]
+fn a_memory_search_hands_a_program_its_hits_as_data() {
+    let (outcome, log) = run(concat!(
+        "const hits = memory.searchMemories([\"cargo\", \"nextest\"]);\n",
+        "const best = hits[0];\n",
+        "console.log(JSON.stringify({\n",
+        "  found: hits.length,\n",
+        "  best: best.name,\n",
+        "  matched: best.matched,\n",
+        "  worthReading: hits.filter((h) => h.matched > 1).map((h) => h.name),\n",
+        "}));",
+    ));
+    let reported = logged_json(&outcome);
+    assert_eq!(reported["found"], json!(1));
+    assert_eq!(reported["best"], json!("build-commands"));
+    assert_eq!(reported["matched"], json!(2));
+    assert_eq!(reported["worthReading"], json!(["build-commands"]));
+    assert_eq!(log.names(), ["search_memories"]);
+
+    // And a memory read is the contents themselves, exactly as a skill's body is — a program gets
+    // the text to work with rather than a report about it.
+    let (outcome, log) = run(concat!(
+        "const body = memory.readMemory(\"build-commands\");\n",
+        "console.log(JSON.stringify({ body }));",
+    ));
+    assert_eq!(logged_json(&outcome)["body"], json!("the memory contents"));
+    assert_eq!(log.names(), ["read_memory"]);
+
+    // A budget with no ceilings comes back as absent maxima rather than as zeros a program would
+    // read as "no room left".
+    let (outcome, _) = run(concat!(
+        "const usage = memory.createMemory({ name: \"m\", description: \"d\", body: \"b\" });\n",
+        "console.log(JSON.stringify({ count: usage.count, max: usage.maxCount ?? null,",
+        " index: usage.indexChars ?? null }));",
+    ));
+    let reported = logged_json(&outcome);
+    assert_eq!(reported["count"], json!(1));
+    assert_eq!(reported["max"], json!(8));
+    assert_eq!(reported["index"], json!(null));
+}
+
 /// **Denied globals become located program errors, never traps.**
 ///
 /// The component is built with the WASI imports these builtins call disabled, so an *unshadowed*

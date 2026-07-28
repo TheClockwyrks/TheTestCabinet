@@ -1,5 +1,7 @@
-//! Tests for the `write_memory`/`update_memory`/`delete_memory` tools: the happy paths,
-//! the cap guards surfaced as tool errors, and argument validation. No network.
+//! Tests for the [scratchpad](crate::memories::MemoryStrategy::Scratchpad) tools —
+//! `write_memory`/`update_memory`/`delete_memory` — covering the happy paths, the limit guards
+//! surfaced as tool errors, and argument validation. The file-shaped tools are tested in
+//! `memories.files.test.rs`. No network.
 
 use std::sync::{Arc, Mutex};
 
@@ -7,7 +9,7 @@ use serde_json::json;
 use tempfile::TempDir;
 
 use super::*;
-use crate::memories::{MemoryCaps, MemoryStore};
+use crate::memories::{MemoryCaps, MemoryStore, MemoryStrategy};
 use crate::tools::ToolFailure;
 
 /// The [`MemoryUsageData`] an outcome carries, or a failure naming what it carried instead.
@@ -22,15 +24,24 @@ fn usage(outcome: &ToolOutcome) -> &MemoryUsageData {
 fn fixture(caps: MemoryCaps) -> (Arc<Mutex<MemoryStore>>, ToolContext, TempDir) {
     let dir = TempDir::new().unwrap();
     let ctx = ToolContext::new(dir.path());
-    (Arc::new(Mutex::new(MemoryStore::new(caps))), ctx, dir)
+    (
+        Arc::new(Mutex::new(MemoryStore::new(
+            MemoryStrategy::Scratchpad,
+            caps,
+        ))),
+        ctx,
+        dir,
+    )
 }
 
-/// Tiny caps: 2 memories, 10 chars each, 15 total.
+/// Tiny limits: 2 memories, 10 chars each, 15 total.
 fn tiny_caps() -> MemoryCaps {
     MemoryCaps {
-        max_count: 2,
-        max_len_per_memory: 10,
-        max_total_len: 15,
+        max_count: Some(2),
+        max_len_per_memory: Some(10),
+        max_total_len: Some(15),
+        max_len_index: None,
+        max_results: None,
     }
 }
 
@@ -196,9 +207,12 @@ async fn every_memory_mutation_reports_both_capped_axes() {
         usage(&saved),
         &MemoryUsageData {
             count: 1,
-            max_count: 2,
+            max_count: Some(2),
             total_chars: 3,
-            max_total_chars: 15,
+            max_total_chars: Some(15),
+            // The scratchpad keeps no index, so neither index figure is reported.
+            index_chars: None,
+            max_index_chars: None,
         }
     );
 
@@ -281,11 +295,18 @@ async fn each_store_refusal_is_classified_from_its_variant() {
     assert_eq!(missing.failure, Some(ToolFailure::InvalidArgument));
 }
 
+/// The loop refreshes the pinned block and re-emits the state after a *mutation*, so the predicate
+/// covers every strategy's mutating tools and neither of the two that only read.
 #[test]
-fn is_memory_tool_recognizes_the_three_tools() {
+fn is_memory_tool_recognizes_every_mutating_memory_tool() {
     assert!(is_memory_tool("write_memory"));
     assert!(is_memory_tool("update_memory"));
+    assert!(is_memory_tool("create_memory"));
+    assert!(is_memory_tool("edit_memory"));
     assert!(is_memory_tool("delete_memory"));
+    // Reads change nothing, so a refresh after one would re-send an identical block.
+    assert!(!is_memory_tool("read_memory"));
+    assert!(!is_memory_tool("search_memories"));
     assert!(!is_memory_tool("read_skill"));
     assert!(!is_memory_tool("write_file"));
 }

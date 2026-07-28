@@ -58,12 +58,12 @@ fn the_memory_tools_round_trip_with_both_budget_axes() {
     let usage = state.write_memory(input.clone()).expect("wrote");
     assert_eq!(
         (usage.count, usage.max_count),
-        (1, 8),
+        (1, Some(8)),
         "the count axis is reported"
     );
     assert_eq!(
         (usage.total_chars, usage.max_total_chars),
-        (12, 4_000),
+        (12, Some(4_000)),
         "the character axis is reported"
     );
 

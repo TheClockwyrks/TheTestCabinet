@@ -375,47 +375,78 @@ export type GgSkillState = {
  *
  * Because memories are curated by the *model itself* (unlike [skills], authored ahead of
  * the run), they must be bounded so self-curated notes cannot crowd out the working
- * context. When a write would exceed a cap, gg rejects it and instructs the model to
+ * context. When a write would exceed a limit, gg rejects it and instructs the model to
  * revise or evict rather than silently truncating or dropping. Lengths are measured in
  * characters of a memory's **body** (its `description` is a short one-liner, like a
  * skill's).
+ *
+ * # Which limits apply, and what they default to
+ *
+ * Every limit is optional — `None` is **unlimited**, which a run configures by setting the
+ * param to `0` — and which ones a run resolves depends on the
+ * [strategy](CAPABILITY_MEMORIES) its `implementation` selected. A limit a strategy does
+ * not use is always `None`:
+ *
+ * | Limit | Param | [`scratchpad`](MEMORY_STRATEGY_SCRATCHPAD) | [`markdown`](MEMORY_STRATEGY_MARKDOWN) | [`keyword-search`](MEMORY_STRATEGY_KEYWORD_SEARCH) |
+ * | --- | --- | --- | --- | --- |
+ * | [`max_count`](Self::max_count) | `maxCount` | 8 | — | unlimited |
+ * | [`max_len_per_memory`](Self::max_len_per_memory) | `maxLenPerMemory` | 2 000 | 8 192 | 8 192 |
+ * | [`max_total_len`](Self::max_total_len) | `maxTotalLen` | 8 000 | — | — |
+ * | [`max_len_index`](Self::max_len_index) | `maxLenIndex` | — | 16 384 | — |
+ * | [`max_results`](Self::max_results) | `maxResults` | — | — | 25 |
  *
  * [memories]: https://docs.testcabinet.ai/gg/memories/
  * [skills]: https://docs.testcabinet.ai/gg/skills/
  */
 export type GgMemoryCaps = {
   /**
-   * The maximum number of memories that may exist at once.
+   * The maximum number of memories that may exist at once; `null` is unlimited.
    */
-  maxCount: number;
+  maxCount: number | null;
   /**
-   * The maximum length, in characters, of any single memory's body.
+   * The maximum length, in characters, of any single memory's body; `null` is unlimited.
    */
-  maxLenPerMemory: number;
+  maxLenPerMemory: number | null;
   /**
-   * The maximum total length, in characters, summed across every memory's body.
+   * The maximum total length, in characters, summed across every memory's body; `null`
+   * is unlimited (and always `null` for a strategy that does not hold every body in the
+   * window).
    */
-  maxTotalLen: number;
+  maxTotalLen: number | null;
+  /**
+   * The maximum length, in characters, of the pinned **index** the
+   * [`markdown`](MEMORY_STRATEGY_MARKDOWN) strategy keeps — the one limit that bounds how
+   * many memories that strategy can hold, since every one of them must be listed there.
+   * `null` for every other strategy, and when the index is unlimited.
+   */
+  maxLenIndex: number | null;
+  /**
+   * The most memories one `search_memories` call reports under the
+   * [`keyword-search`](MEMORY_STRATEGY_KEYWORD_SEARCH) strategy. `null` for every other
+   * strategy — it is a page size rather than a bound on what may be stored, and is
+   * reported alongside the limits because it is resolved from the same params.
+   */
+  maxResults: number | null;
 };
 
 /**
  * The state of one model-curated [memory](https://docs.testcabinet.ai/gg/memories/) at a
  * point in a run — a band of a [`MemoryState`](GgTelemetryKind::MemoryState) event.
  *
- * A memory is written by the model with `write_memory` (and revised with `update_memory`
- * / removed with `delete_memory`): its [`description`](Self::description) is shown up
- * front (so the model — and the console — can see what each memory is for at a glance),
- * and its body is retained in the context window as a
- * [`Memory`](GgContextSource::Memory)-sourced, compaction-retained item. [`len`](Self::len)
- * is the body's length in characters — what the [caps](GgMemoryCaps) are measured against.
+ * A memory is written by the model — with `write_memory` under the
+ * [`scratchpad`](MEMORY_STRATEGY_SCRATCHPAD) strategy, `create_memory` under the other two
+ * — and its [`description`](Self::description) is what the console (and, where a strategy
+ * shows one, the model) sees the memory as at a glance. [`len`](Self::len) is the body's
+ * length in characters — what the [caps](GgMemoryCaps) are measured against.
  */
 export type GgMemoryEntry = {
   /**
-   * The memory's stable name — the handle `update_memory`/`delete_memory` take.
+   * The memory's stable name — the slug every memory tool addresses it by.
    */
   name: string;
   /**
-   * The memory's one-line description, shown up front.
+   * The memory's one-line description. Empty when the strategy does not require one (a
+   * [`keyword-search`](MEMORY_STRATEGY_KEYWORD_SEARCH) memory may omit it).
    */
   description: string;
   /**
@@ -1538,6 +1569,12 @@ export type GgTelemetryKind =
   | {
       type: "memory_state";
       /**
+       * The [strategy](CAPABILITY_MEMORIES) this run's memories are organized by — which
+       * tools the model was offered, and which of the [caps](GgMemoryCaps) apply. Empty
+       * on records written before memories had more than one strategy.
+       */
+      strategy: string;
+      /**
        * One entry per memory currently held, in name order.
        */
       memories: Array<GgMemoryEntry>;
@@ -2197,6 +2234,12 @@ export type GgTelemetryEvent = {
     }
   | {
       type: "memory_state";
+      /**
+       * The [strategy](CAPABILITY_MEMORIES) this run's memories are organized by — which
+       * tools the model was offered, and which of the [caps](GgMemoryCaps) apply. Empty
+       * on records written before memories had more than one strategy.
+       */
+      strategy: string;
       /**
        * One entry per memory currently held, in name order.
        */

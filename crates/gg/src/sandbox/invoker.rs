@@ -98,6 +98,11 @@ pub trait ToolApi: Send + 'static {
     fn read_skill(&mut self, name: String) -> ToolOutcome;
     fn write_memory(&mut self, name: String, description: String, body: String) -> ToolOutcome;
     fn update_memory(&mut self, name: String, description: String, body: String) -> ToolOutcome;
+    fn create_memory(&mut self, name: String, description: String, contents: String)
+    -> ToolOutcome;
+    fn read_memory(&mut self, name: String) -> ToolOutcome;
+    fn edit_memory(&mut self, name: String, search: String, replace: String) -> ToolOutcome;
+    fn search_memories(&mut self, keywords: Vec<String>) -> ToolOutcome;
     fn delete_memory(&mut self, name: String) -> ToolOutcome;
     fn add_task(
         &mut self,

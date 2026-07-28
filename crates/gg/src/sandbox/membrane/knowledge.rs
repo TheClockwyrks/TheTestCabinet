@@ -18,7 +18,9 @@ use super::test_cabinet::gg::board::{
     BoardUsage, CompletionReport, EpicAssignment, EpicInput, Host as BoardHost, IssueInput,
     IssuePatch, IssueStatus,
 };
-use super::test_cabinet::gg::memories::{Host as MemoriesHost, MemoryInput, MemoryUsage};
+use super::test_cabinet::gg::memories::{
+    Host as MemoriesHost, MemoryEdit, MemoryHit, MemoryInput, MemoryUsage,
+};
 use super::test_cabinet::gg::skills::Host as SkillsHost;
 use super::test_cabinet::gg::tasks::{
     Host as TasksHost, TaskInput, TaskPatch, TaskStatus, TaskUsage,
@@ -33,6 +35,14 @@ const WRITE_MEMORY_TOOL: &str = "write_memory";
 const UPDATE_MEMORY_TOOL: &str = "update_memory";
 /// The `delete_memory` tool name.
 const DELETE_MEMORY_TOOL: &str = "delete_memory";
+/// The `create_memory` tool name.
+const CREATE_MEMORY_TOOL: &str = "create_memory";
+/// The `read_memory` tool name.
+const READ_MEMORY_TOOL: &str = "read_memory";
+/// The `edit_memory` tool name.
+const EDIT_MEMORY_TOOL: &str = "edit_memory";
+/// The `search_memories` tool name.
+const SEARCH_MEMORIES_TOOL: &str = "search_memories";
 /// The `add_task` tool name.
 const ADD_TASK_TOOL: &str = "add_task";
 /// The `update_task` tool name.
@@ -91,6 +101,55 @@ impl<A: ToolApi> MemoriesHost for MembraneState<A> {
             api.update_memory(name, description, body)
         })?;
         memory_usage(self, UPDATE_MEMORY_TOOL, outcome.data)
+    }
+
+    fn create_memory(&mut self, memory: MemoryInput) -> Result<MemoryUsage, ToolError> {
+        let MemoryInput {
+            name,
+            description,
+            body,
+        } = memory;
+        let outcome = self.call(CREATE_MEMORY_TOOL, |api| {
+            api.create_memory(name, description, body)
+        })?;
+        memory_usage(self, CREATE_MEMORY_TOOL, outcome.data)
+    }
+
+    fn read_memory(&mut self, name: String) -> Result<String, ToolError> {
+        // Like a skill's body, a memory's contents *are* the result: there is nothing to describe
+        // that the text does not already say, so this is the second tool whose typed result is
+        // `outcome.output` itself rather than a sidecar.
+        let outcome = self.call(READ_MEMORY_TOOL, |api| api.read_memory(name))?;
+        Ok(outcome.output)
+    }
+
+    fn edit_memory(&mut self, edit: MemoryEdit) -> Result<MemoryUsage, ToolError> {
+        let MemoryEdit {
+            name,
+            search,
+            replace,
+        } = edit;
+        let outcome = self.call(EDIT_MEMORY_TOOL, |api| {
+            api.edit_memory(name, search, replace)
+        })?;
+        memory_usage(self, EDIT_MEMORY_TOOL, outcome.data)
+    }
+
+    fn search_memories(&mut self, keywords: Vec<String>) -> Result<Vec<MemoryHit>, ToolError> {
+        let outcome = self.call(SEARCH_MEMORIES_TOOL, |api| api.search_memories(keywords))?;
+        match outcome.data {
+            Some(ToolData::MemoryHits(hits)) => Ok(hits
+                .into_iter()
+                .map(|hit| MemoryHit {
+                    name: hit.name,
+                    description: hit.description,
+                    matched: hit.matched,
+                    occurrences: hit.occurrences,
+                    excerpt: hit.excerpt,
+                })
+                .collect()),
+            other => Err(self.missing_data(SEARCH_MEMORIES_TOOL, other.as_ref())),
+        }
     }
 
     fn delete_memory(&mut self, name: String) -> Result<MemoryUsage, ToolError> {
@@ -267,6 +326,8 @@ fn memory_usage<A: ToolApi>(
             max_count: usage.max_count,
             total_chars: usage.total_chars,
             max_total_chars: usage.max_total_chars,
+            index_chars: usage.index_chars,
+            max_index_chars: usage.max_index_chars,
         }),
         other => Err(state.missing_data(tool, other.as_ref())),
     }

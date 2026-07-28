@@ -376,11 +376,11 @@ fn registry_gates_read_skill_on_capability_and_a_non_empty_library() {
 fn registry_gates_memory_tools_on_capability_and_a_bound_store() {
     use std::sync::Mutex;
 
-    use crate::memories::{MemoryCaps, MemoryStore};
+    use crate::memories::MemoryStore;
     use test_cabinet_core::gg::CAPABILITY_MEMORIES;
 
     let empty = Arc::new(SkillLibrary::empty());
-    let store = Arc::new(Mutex::new(MemoryStore::new(MemoryCaps::default())));
+    let store = Arc::new(Mutex::new(MemoryStore::scratchpad()));
     let names = ["write_memory", "update_memory", "delete_memory"];
 
     // Enabled capability + a bound store => all three memory tools are offered.
@@ -677,7 +677,7 @@ fn all_tool_names_matches_a_maximal_registry() {
 
     use crate::archive::ArchiveStore;
     use crate::board::{BoardCaps, BoardStore};
-    use crate::memories::{MemoryCaps, MemoryStore};
+    use crate::memories::{MemoryCaps, MemoryStore, MemoryStrategy};
     use crate::tasks::TaskStore;
     use test_cabinet_core::gg::{
         CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_COMPACTION, CAPABILITY_FSM,
@@ -693,7 +693,6 @@ fn all_tool_names_matches_a_maximal_registry() {
     )
     .unwrap();
     let library = Arc::new(SkillLibrary::load(dir.path()));
-    let memories = Arc::new(Mutex::new(MemoryStore::new(MemoryCaps::default())));
     let tasks = Arc::new(Mutex::new(TaskStore::new(100)));
     let board = Arc::new(Mutex::new(BoardStore::new(BoardCaps::default())));
     let archive = Arc::new(Mutex::new(ArchiveStore::new()));
@@ -727,21 +726,97 @@ fn all_tool_names_matches_a_maximal_registry() {
         agent: ROOT_AGENT.to_string(),
         description: String::new(),
     });
-    let registry = ToolRegistry::from_run(
-        &set,
-        &RuntimeSet::new(&library)
-            .with_memories(&memories)
-            .with_tasks(&tasks)
-            .with_board(&board)
-            .with_archive(&archive),
-    );
+    // The memory tools are the one family a *strategy* partitions rather than a capability alone
+    // offering all of them: a run picks one strategy, and each offers a different set. So the
+    // maximal toolset is the union over the strategies — every memory tool is offered by exactly
+    // one of these registries, and none of them by none.
+    let offered: BTreeSet<String> = [
+        MemoryStrategy::Scratchpad,
+        MemoryStrategy::Markdown,
+        MemoryStrategy::KeywordSearch,
+    ]
+    .into_iter()
+    .flat_map(|strategy| {
+        let memories = Arc::new(Mutex::new(MemoryStore::new(
+            strategy,
+            MemoryCaps::for_strategy(strategy),
+        )));
+        ToolRegistry::from_run(
+            &set,
+            &RuntimeSet::new(&library)
+                .with_memories(&memories)
+                .with_tasks(&tasks)
+                .with_board(&board)
+                .with_archive(&archive),
+        )
+        .tool_names()
+    })
+    .collect();
 
-    let offered: BTreeSet<String> = registry.tool_names().into_iter().collect();
     let canonical: BTreeSet<String> = ALL_TOOL_NAMES.iter().map(|s| s.to_string()).collect();
     assert_eq!(
         offered, canonical,
         "ALL_TOOL_NAMES must list exactly the tools a maximal registry offers"
     );
+}
+
+/// Each strategy offers its own memory tools and **only** its own: a model is never shown two ways
+/// to write the same memory, and never a tool for a shape its store is not in.
+#[test]
+fn each_memory_strategy_offers_its_own_tools() {
+    use std::collections::BTreeSet;
+    use std::sync::Mutex;
+
+    use crate::memories::{MemoryCaps, MemoryStore, MemoryStrategy};
+    use test_cabinet_core::gg::CAPABILITY_MEMORIES;
+
+    let empty = Arc::new(SkillLibrary::empty());
+    let on = set_with(vec![GgCapabilityConfig::enabled(CAPABILITY_MEMORIES)]);
+
+    for (strategy, expected) in [
+        (
+            MemoryStrategy::Scratchpad,
+            vec!["write_memory", "update_memory", "delete_memory"],
+        ),
+        (
+            MemoryStrategy::Markdown,
+            vec![
+                "create_memory",
+                "read_memory",
+                "edit_memory",
+                "delete_memory",
+            ],
+        ),
+        (
+            MemoryStrategy::KeywordSearch,
+            vec![
+                "create_memory",
+                "read_memory",
+                "edit_memory",
+                "delete_memory",
+                "search_memories",
+            ],
+        ),
+    ] {
+        let store = Arc::new(Mutex::new(MemoryStore::new(
+            strategy,
+            MemoryCaps::for_strategy(strategy),
+        )));
+        let registry = ToolRegistry::from_run(&on, &RuntimeSet::new(&empty).with_memories(&store));
+        let offered: BTreeSet<String> = registry
+            .tool_names()
+            .into_iter()
+            .filter(|name| name.contains("memor"))
+            .collect();
+        assert_eq!(
+            offered,
+            expected
+                .into_iter()
+                .map(str::to_string)
+                .collect::<BTreeSet<String>>(),
+            "{strategy:?} offers exactly its own memory tools"
+        );
+    }
 }
 
 /// `ToolOutcome` constructors set `ok` and populate the summary as documented.

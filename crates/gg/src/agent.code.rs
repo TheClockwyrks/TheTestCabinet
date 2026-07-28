@@ -42,10 +42,11 @@ use crate::sandbox::{ToolApi, WorkflowStageInput};
 use crate::tasks::TaskStatus;
 use crate::tools::{
     AddTaskTool, ArchiveThreadTool, CompactTool, CompleteIssueTool, CompleteTaskTool,
-    CreateEpicTool, CreateIssueTool, DeleteMemoryTool, EditFileTool, EvictFileViewTool,
-    ListDirTool, OffloadPolicy, OwnedStructured, ReadSkillTool, RemoveEpicTool, RemoveIssueTool,
-    RemoveTaskTool, SearchArchiveTool, SetBlockedByTool, SetIssueBlockedByTool, UpdateIssueTool,
-    UpdateMemoryTool, UpdateTaskTool, WriteFileTool, WriteMemoryTool, run_command,
+    CreateEpicTool, CreateIssueTool, CreateMemoryTool, DeleteMemoryTool, EditFileTool,
+    EditMemoryTool, EvictFileViewTool, ListDirTool, OffloadPolicy, OwnedStructured, ReadMemoryTool,
+    ReadSkillTool, RemoveEpicTool, RemoveIssueTool, RemoveTaskTool, SearchArchiveTool,
+    SearchMemoriesTool, SetBlockedByTool, SetIssueBlockedByTool, UpdateIssueTool, UpdateMemoryTool,
+    UpdateTaskTool, WriteFileTool, WriteMemoryTool, run_command,
 };
 
 // ---------------------------------------------------------------------------
@@ -1080,7 +1081,7 @@ impl LoopToolApi {
         {
             return Some(ToolOutcome::failed(
                 ToolFailure::Refused,
-                pending.refusal(name, true),
+                pending.refusal(name, true, self.memories_rt.strategy().calls(true)),
             ));
         }
         if name == COMPACT_TOOL {
@@ -1411,6 +1412,47 @@ impl ToolApi for LoopToolApi {
                 )
             },
         )
+    }
+    fn create_memory(
+        &mut self,
+        name: String,
+        description: String,
+        contents: String,
+    ) -> ToolOutcome {
+        self.serviced(
+            "create_memory",
+            json!({ "name": name, "description": description, "contents": contents }),
+            |api| {
+                CreateMemoryTool::new(api.memories_rt.store()).create(
+                    name.clone(),
+                    description.clone(),
+                    contents.clone(),
+                )
+            },
+        )
+    }
+    fn read_memory(&mut self, name: String) -> ToolOutcome {
+        self.serviced("read_memory", json!({ "name": name }), |api| {
+            ReadMemoryTool::new(api.memories_rt.store()).read(name.clone())
+        })
+    }
+    fn edit_memory(&mut self, name: String, search: String, replace: String) -> ToolOutcome {
+        self.serviced(
+            "edit_memory",
+            json!({ "name": name, "old_string": search, "new_string": replace }),
+            |api| {
+                EditMemoryTool::new(api.memories_rt.store()).edit(
+                    name.clone(),
+                    search.clone(),
+                    replace.clone(),
+                )
+            },
+        )
+    }
+    fn search_memories(&mut self, keywords: Vec<String>) -> ToolOutcome {
+        self.serviced("search_memories", json!({ "keywords": keywords }), |api| {
+            SearchMemoriesTool::new(api.memories_rt.store()).search(keywords.clone())
+        })
     }
     fn delete_memory(&mut self, name: String) -> ToolOutcome {
         self.serviced("delete_memory", json!({ "name": name }), |api| {

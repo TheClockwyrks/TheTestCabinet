@@ -22,7 +22,7 @@ use serde_json::{Value, json};
 
 use super::{
     ArgumentError, BoardUsageData, CompletionData, Tool, ToolContext, ToolData, ToolFailure,
-    ToolOutcome, invalid_argument, required_str, saturating_u32,
+    ToolOutcome, invalid_argument, optional_str, required_str, saturating_u32,
 };
 use crate::board::{BoardChange, BoardError, BoardStore, IssueStatus, IssueUpdate};
 use crate::model::ToolDefinition;
@@ -102,18 +102,6 @@ fn failure_for(err: &BoardError) -> ToolFailure {
         | BoardError::SelfBlock(_)
         | BoardError::Cycle { .. } => ToolFailure::Conflict,
         BoardError::CountCap { .. } => ToolFailure::LimitExceeded,
-    }
-}
-
-/// An optional string argument: absent (or JSON `null`) yields `None`; a non-string is an
-/// [invalid-argument](ToolFailure::InvalidArgument) error.
-fn optional_str(args: &Value, field: &str, tool: &str) -> Result<Option<String>, ArgumentError> {
-    match args.get(field) {
-        None | Some(Value::Null) => Ok(None),
-        Some(Value::String(value)) => Ok(Some(value.clone())),
-        Some(_) => Err(ArgumentError(format!(
-            "`{tool}`: argument `{field}` must be a string"
-        ))),
     }
 }
 

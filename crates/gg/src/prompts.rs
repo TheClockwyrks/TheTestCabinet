@@ -80,6 +80,9 @@ const BOARD_TEMPLATE: &str = include_str!("../templates/board.hbs");
 /// The pinned [memories](crate::memories) block.
 const MEMORIES_TEMPLATE: &str = include_str!("../templates/memories.hbs");
 
+/// The pinned [memory index](crate::memories::MemoryStrategy::Markdown) block.
+const MEMORY_INDEX_TEMPLATE: &str = include_str!("../templates/memory-index.hbs");
+
 /// The [default planner](crate::planning::DefaultPlanner)'s plan-mode guidance.
 const PLAN_MODE_TEMPLATE: &str = include_str!("../templates/plan-mode.hbs");
 
@@ -144,6 +147,7 @@ const TEMPLATES: &[(&str, &str)] = &[
     ("tasks", TASKS_TEMPLATE),
     ("board", BOARD_TEMPLATE),
     ("memories", MEMORIES_TEMPLATE),
+    ("memory-index", MEMORY_INDEX_TEMPLATE),
     ("plan-mode", PLAN_MODE_TEMPLATE),
     ("plan-framing", PLAN_FRAMING_TEMPLATE),
     ("code-result", CODE_RESULT_TEMPLATE),
@@ -356,6 +360,17 @@ pub struct CompactionView {
     pub writes_memories: bool,
     /// The name of the compact tool/function, so the prompt names it from one source.
     pub compact_name: String,
+    /// The call that records a memory, and the call that revises one, as this run's
+    /// [memory strategy](crate::memories::MemoryStrategy::calls) names them in this execution
+    /// mode — backticks included, since they arrive already quoted.
+    ///
+    /// A memory compaction is the one section of the prompt that tells the model to call a *memory*
+    /// tool, and which memory tools exist is the memory capability's decision, not compaction's. So
+    /// they are interpolated rather than written into the template, which would otherwise name the
+    /// scratchpad's tools at a run that was never offered them.
+    pub memory_create: String,
+    /// The call that revises a memory. See [`memory_create`](Self::memory_create).
+    pub memory_revise: String,
 }
 
 /// How a run reaches completion, as the system prompt describes it: the signal the model uses to
@@ -488,16 +503,37 @@ pub struct SpawnableAgentView {
     pub description: String,
 }
 
-/// The memories budget the prompt states.
+/// The [memory](crate::memories) shape and budget the prompt states.
+///
+/// The three strategies are carried as booleans rather than as the strategy's id, because a
+/// template can branch on a flag but not compare a string — and each strategy's paragraph says
+/// something different enough that a shared one with holes in it would read as neither.
+///
+/// Every limit is optional, and `None` (unlimited, or not used by this strategy) renders as
+/// nothing at all rather than as the word "unlimited": a sentence about a budget that does not
+/// exist is a sentence about something the model then has to think about.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MemoriesView {
+    /// The [scratchpad](crate::memories::MemoryStrategy::Scratchpad) strategy: every memory is in
+    /// the window.
+    pub scratchpad: bool,
+    /// The [markdown](crate::memories::MemoryStrategy::Markdown) strategy: a pinned index over
+    /// files read on demand.
+    pub markdown: bool,
+    /// The [keyword-search](crate::memories::MemoryStrategy::KeywordSearch) strategy: files found
+    /// by search, nothing pinned.
+    pub keyword_search: bool,
     /// The maximum number of memories that may exist at once.
-    pub max_count: usize,
+    pub max_count: Option<usize>,
     /// The maximum body length, in characters, of any single memory.
-    pub max_len_per_memory: usize,
+    pub max_len_per_memory: Option<usize>,
     /// The maximum total body length, in characters, across every memory.
-    pub max_total_len: usize,
+    pub max_total_len: Option<usize>,
+    /// The maximum length, in characters, of the pinned index.
+    pub max_len_index: Option<usize>,
+    /// The most memories one search reports.
+    pub max_results: Option<usize>,
 }
 
 /// The task-list ceiling the prompt states.
@@ -993,6 +1029,23 @@ pub struct MemoryItemView {
 /// Render the pinned [memories](crate::memories) block.
 pub fn render_memories(context: &MemoriesBlockContext) -> String {
     render("memories", context)
+}
+
+/// The variables `memory-index.hbs` may reference: the
+/// [markdown](crate::memories::MemoryStrategy::Markdown) strategy's pinned index.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryIndexContext {
+    /// The index exactly as the store renders it — one `- \`slug\` — description` line per
+    /// memory. It arrives pre-rendered rather than as a list the template formats because the
+    /// store measures this very text against the index limit, and a template that spelled an
+    /// entry differently would be quoting the model a budget it is not being charged.
+    pub index: String,
+}
+
+/// Render the [markdown](crate::memories::MemoryStrategy::Markdown) strategy's pinned index block.
+pub fn render_memory_index(context: &MemoryIndexContext) -> String {
+    render("memory-index", context)
 }
 
 // ---------------------------------------------------------------------------

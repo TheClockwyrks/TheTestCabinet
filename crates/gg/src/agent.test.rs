@@ -2300,11 +2300,13 @@ async fn drive_enforces_memory_caps_end_to_end() {
 
     // A one-memory budget so the second write hits the count cap cheaply.
     let caps = crate::memories::MemoryCaps {
-        max_count: 1,
-        max_len_per_memory: 500,
-        max_total_len: 5_000,
+        max_count: Some(1),
+        max_len_per_memory: Some(500),
+        max_total_len: Some(5_000),
+        max_len_index: None,
+        max_results: None,
     };
-    let memories = MemoriesRuntime::new(caps);
+    let memories = MemoriesRuntime::new(crate::memories::MemoryStrategy::Scratchpad, caps);
     let set = GgCapabilitySet::minimal("mock/echo");
     let library = Arc::new(SkillLibrary::empty());
     let memory_store = memories.store();
@@ -2410,6 +2412,134 @@ async fn drive_enforces_memory_caps_end_to_end() {
         })
         .expect("a context breakdown was emitted");
     assert!(last_memory_tokens > 0, "the accepted memory is pinned");
+}
+
+/// One `create_memory` call, as a model response.
+fn create_memory_call(id: &str, name: &str, contents: &str) -> ModelResponse {
+    ModelResponse {
+        text: Some(format!("noting {name}")),
+        tool_calls: vec![ToolCall {
+            id: id.to_string(),
+            name: "create_memory".to_string(),
+            arguments: json!({
+                "name": name,
+                "description": "a note",
+                "contents": contents,
+            }),
+        }],
+        finish_reason: FinishReason::ToolCalls,
+        usage: TokenCounts::default(),
+        cost: None,
+    }
+}
+
+/// A markdown-strategy run end to end: the loop offers that strategy's tools (and not the
+/// scratchpad's), pins the **index** rather than the contents, and reports the strategy in its
+/// telemetry.
+///
+/// The pinning is the assertion that matters. The strategy's whole claim is that a run can hold
+/// more memory than it could afford to carry, which is only true if the contents stay out of the
+/// window until they are read — so a block that carried them would leave the feature indisting-
+/// uishable from the scratchpad it exists to be an alternative to.
+#[tokio::test]
+async fn drive_pins_only_the_index_under_the_markdown_strategy() {
+    let dir = TempDir::new().unwrap();
+    let ctx = ToolContext::new(dir.path());
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-markdown".to_string()), Box::new(sink.clone()));
+
+    let strategy = crate::memories::MemoryStrategy::Markdown;
+    let memories = MemoriesRuntime::new(
+        strategy,
+        crate::memories::MemoryCaps::for_strategy(strategy),
+    );
+    let set = GgCapabilitySet::minimal("mock/echo");
+    let library = Arc::new(SkillLibrary::empty());
+    let memory_store = memories.store();
+    let registry = ToolRegistry::from_run(
+        set.root(),
+        &RuntimeSet::new(&library).with_memories(&memory_store),
+    );
+    let offered = registry.tool_names();
+    assert!(offered.iter().any(|name| name == "create_memory"));
+    assert!(
+        !offered.iter().any(|name| name == "write_memory"),
+        "a markdown run is not offered the scratchpad's tools"
+    );
+
+    let client = MockClient::new(
+        "mock/echo",
+        vec![
+            create_memory_call("c1", "layout", "THE-CONTENTS-OF-THE-MEMORY"),
+            stop_response(),
+        ],
+    );
+
+    let agent = Agent::root();
+    let end = agent
+        .drive(
+            &client,
+            "go",
+            &registry,
+            &ctx,
+            &emitter,
+            no_limits(10),
+            test_context_setup(),
+            no_compaction(),
+            no_amc(),
+            no_autoload(),
+            &[],
+            SkillsRuntime::disabled(),
+            memories,
+            TasksRuntime::disabled(),
+            BoardRuntime::disabled(),
+            PlanningRuntime::disabled(),
+            FsmRuntime::disabled(),
+            ReadPolicy::default(),
+            OffloadPolicy::default(),
+            false,
+            false,
+            no_code(),
+            no_completion(),
+            &GgAgentConfig::root(),
+            None,
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(end.status, "completed");
+
+    let events = sink.events();
+    let strategy_reported = events
+        .iter()
+        .rev()
+        .find_map(|e| match &e.kind {
+            GgTelemetryKind::MemoryState { strategy, .. } => Some(strategy.clone()),
+            _ => None,
+        })
+        .expect("a MemoryState was emitted");
+    assert_eq!(strategy_reported, "markdown");
+
+    // The index is pinned — the Memory source is accounted for — but the contents are not in it.
+    let last_memory_tokens = events
+        .iter()
+        .rev()
+        .find_map(|e| match &e.kind {
+            GgTelemetryKind::ContextBreakdown { by_source, .. } => Some(
+                by_source
+                    .iter()
+                    .find(|b| b.source == GgContextSource::Memory)
+                    .map(|b| b.tokens)
+                    .unwrap_or(0),
+            ),
+            _ => None,
+        })
+        .expect("a context breakdown was emitted");
+    assert!(last_memory_tokens > 0, "the index is pinned");
+    assert_eq!(
+        memory_store.lock().unwrap().index_text(),
+        "- `layout` — a note"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -2808,7 +2938,10 @@ fn compaction_runtimes(dir: &Path) -> (ToolRegistry, SkillsRuntime, MemoriesRunt
     let library = Arc::new(SkillLibrary::load(&dir.join(".gg").join("skills")));
     assert_eq!(library.len(), 1, "the seeded skill loaded");
     let skills = SkillsRuntime::new(Arc::clone(&library));
-    let memories = MemoriesRuntime::new(crate::memories::MemoryCaps::default());
+    let memories = MemoriesRuntime::new(
+        crate::memories::MemoryStrategy::Scratchpad,
+        crate::memories::MemoryCaps::default(),
+    );
     let tasks = TasksRuntime::new(50);
     let set = GgCapabilitySet::minimal("mock/echo");
     let memory_store = memories.store();

@@ -56,9 +56,14 @@ fn full_system() -> SystemContext {
             description: "How to tune the simulation.".to_string(),
         }],
         memories: Some(MemoriesView {
-            max_count: 8,
-            max_len_per_memory: 2_000,
-            max_total_len: 8_000,
+            scratchpad: true,
+            markdown: false,
+            keyword_search: false,
+            max_count: Some(8),
+            max_len_per_memory: Some(2_000),
+            max_total_len: Some(8_000),
+            max_len_index: None,
+            max_results: None,
         }),
         tasks: Some(TasksView { max_tasks: 100 }),
         board: Some(BoardView {
@@ -80,6 +85,8 @@ fn full_system() -> SystemContext {
             calls_compact: true,
             writes_memories: false,
             compact_name: "compact".to_string(),
+            memory_create: "`write_memory`".to_string(),
+            memory_revise: "`update_memory`".to_string(),
         }),
     }
 }
@@ -273,6 +280,10 @@ fn the_compaction_section_names_what_each_strategy_asks_for() {
     let base = CompactionView {
         trigger_percent: 80,
         compact_name: "compact".to_string(),
+        // The memory calls a scratchpad run names; the memory-compaction section interpolates
+        // them, since which memory tools exist is the memory capability's decision.
+        memory_create: "`write_memory`".to_string(),
+        memory_revise: "`update_memory`".to_string(),
         ..CompactionView::default()
     };
     let render = |view: CompactionView, responses_as_code: bool| {
@@ -355,11 +366,24 @@ fn the_compaction_section_names_what_each_strategy_asks_for() {
     let memories = render(
         CompactionView {
             writes_memories: true,
-            ..base
+            ..base.clone()
         },
         false,
     );
     assert!(memories.contains("write_memory"), "{memories}");
+
+    // The same section on a run whose memory strategy offers different calls names those instead.
+    let file_memories = render(
+        CompactionView {
+            writes_memories: true,
+            memory_create: "`create_memory`".to_string(),
+            memory_revise: "`edit_memory`".to_string(),
+            ..base
+        },
+        false,
+    );
+    assert!(file_memories.contains("`create_memory`"), "{file_memories}");
+    assert!(!file_memories.contains("write_memory"), "{file_memories}");
 }
 
 /// The explicit-call completion section names the `finish` tool as the way to end the run.
