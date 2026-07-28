@@ -43,9 +43,9 @@ use crate::tasks::TaskStatus;
 use crate::tools::{
     AddTaskTool, ArchiveThreadTool, CompactTool, CompleteIssueTool, CompleteTaskTool,
     CreateEpicTool, CreateIssueTool, DeleteMemoryTool, EditFileTool, EvictFileViewTool,
-    ListDirTool, OwnedStructured, ReadSkillTool, RemoveEpicTool, RemoveIssueTool, RemoveTaskTool,
-    SearchArchiveTool, SetBlockedByTool, SetIssueBlockedByTool, UpdateIssueTool, UpdateMemoryTool,
-    UpdateTaskTool, WriteFileTool, WriteMemoryTool, run_command,
+    ListDirTool, OffloadPolicy, OwnedStructured, ReadSkillTool, RemoveEpicTool, RemoveIssueTool,
+    RemoveTaskTool, SearchArchiveTool, SetBlockedByTool, SetIssueBlockedByTool, UpdateIssueTool,
+    UpdateMemoryTool, UpdateTaskTool, WriteFileTool, WriteMemoryTool, run_command,
 };
 
 // ---------------------------------------------------------------------------
@@ -692,6 +692,9 @@ pub(super) struct CodeTurn<'a> {
     pub(super) tool_ctx: &'a ToolContext,
     /// The read policy `read_file` is bound with — whether ambient reads are permitted.
     pub(super) read_policy: ReadPolicy,
+    /// The output policy `shell` is bound with — how much of a command's output a program's
+    /// `system.shell(…)` gets back, and whether the whole of it is kept on disk.
+    pub(super) shell_offload: &'a OffloadPolicy,
     /// The epic/issue board, for its state event and for the Code Review gate.
     pub(super) board: &'a BoardRuntime,
     /// The [project-management](crate::board) context, when the capability is on — for the
@@ -837,6 +840,7 @@ async fn run_code_program(
         spawner: turn.spawner.clone(),
         tool_ctx: turn.tool_ctx.clone(),
         read_policy: turn.read_policy,
+        shell_offload: turn.shell_offload.clone(),
         board: turn.board.clone(),
         project: turn.project.cloned(),
         memories_rt: turn.memories.clone(),
@@ -1013,6 +1017,7 @@ pub(super) struct LoopToolApi {
     spawner: Agent,
     tool_ctx: ToolContext,
     read_policy: ReadPolicy,
+    shell_offload: OffloadPolicy,
     board: BoardRuntime,
     project: Option<ProjectContext>,
     memories_rt: MemoriesRuntime,
@@ -1327,9 +1332,12 @@ impl ToolApi for LoopToolApi {
             "shell",
             json!({ "command": command, "timeout_secs": timeout.as_secs_f64() }),
             |api| {
-                api.handle
-                    .clone()
-                    .block_on(run_command(&command, timeout, &api.tool_ctx))
+                api.handle.clone().block_on(run_command(
+                    &command,
+                    timeout,
+                    &api.shell_offload,
+                    &api.tool_ctx,
+                ))
             },
         )
     }

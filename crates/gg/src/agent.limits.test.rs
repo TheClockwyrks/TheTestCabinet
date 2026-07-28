@@ -905,3 +905,34 @@ async fn unusable_limit_declarations_warn_on_the_root_stream_and_launch_anyway()
     );
     assert!(summary.limits.max_consecutive_errors.is_none());
 }
+
+/// **An `offload` mode with no ceiling warns on the root stream and launches anyway.**
+///
+/// Offloading is defined by the ceiling it truncates past, so a shell capability that names the mode
+/// without naming `maxLines` or `maxChars` runs the *control* arm — full output, inline — under the
+/// treatment arm's name. That is the same silent wrong-experiment failure a stale `maxTurns` is, and
+/// it is reported on the same terms: loudly, once, before the first turn, without failing the launch.
+#[tokio::test]
+async fn an_offload_mode_without_a_ceiling_warns_and_launches_anyway() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-offload".to_string()), Box::new(sink.clone()));
+    let mut set = GgCapabilitySet::minimal("mock/echo");
+    let shell = set.agents[0]
+        .capabilities
+        .iter_mut()
+        .find(|capability| capability.id == CAPABILITY_SHELL)
+        .expect("the minimal set enables shell");
+    shell.implementation = Some(SHELL_OUTPUT_OFFLOAD.to_string());
+
+    assert_eq!(
+        run(&invocation(dir.path(), set), &emitter).await,
+        SessionOutcome::Ran
+    );
+
+    let warned = warn_messages(&sink.events()).join("\n");
+    assert!(
+        warned.contains("maxLines") && warned.contains("maxChars"),
+        "the warning names the two params that would arm it:\n{warned}"
+    );
+}

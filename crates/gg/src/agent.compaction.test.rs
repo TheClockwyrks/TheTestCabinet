@@ -51,6 +51,7 @@ async fn drive_compaction(
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
             ReadPolicy::default(),
+            OffloadPolicy::default(),
             false,
             false,
             no_code(),

@@ -294,6 +294,9 @@ pub struct SystemContext {
     pub fences_are_stripped: bool,
     /// How much of a file one `read_file` call returns, so a capped run says so up front.
     pub read_file: ReadFileView,
+    /// How much of a command's output one `shell` call returns, so an offloading run says up front
+    /// that what comes back is a tail and where the rest of it lives.
+    pub shell: ShellView,
     /// The available [skills](crate::skills), each with its one-line description. Empty when the
     /// capability is off or the library holds none.
     pub skills: Vec<SkillView>,
@@ -414,6 +417,27 @@ pub struct ReadFileView {
     /// the model text-only; a model whose modalities are unknown is described as able to
     /// see images, matching the optimistic default the tool itself takes.
     pub images: bool,
+}
+
+/// How much of a command's output one `shell` call returns — the
+/// [output policy](crate::tools::OffloadPolicy) as the prompt describes it.
+///
+/// The default policy renders **nothing**: an agent whose commands come back whole has no rule to
+/// learn. Only [offloading](crate::tools::OffloadPolicy::Offload) has something to say, and it has
+/// to be said up front — a model that discovers the ceiling from a truncated build log will assume
+/// the missing output is gone, and re-run the command with a narrower filter instead of grepping
+/// the file it was handed.
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShellView {
+    /// Whether `shell` output is offloaded this run. False when the tool is not offered, or when its
+    /// output comes back inline — in which case nothing else here is referenced by the template.
+    pub offloaded: bool,
+    /// How much of the output does come back, in the words the truncation note uses: "last 200
+    /// lines", "last 4000 characters", or both.
+    pub tail: String,
+    /// The directory the full stdout/stderr pair of every command is written to.
+    pub directory: String,
 }
 
 /// One message [heading](crate::context::code_heading) the prompt documents: the exact word that

@@ -188,6 +188,8 @@ saved, launched, and analyzed in the console is
 
 **Models & tools**
 
+- [Shell](/gg/shell/) — run commands in the run container, and the output-offloading
+  mode that keeps a chatty build out of the context window.
 - [Filesystem tools](/gg/filesystem/) — read, write, edit, and list files; one
   capability per tool, and `read_file`'s capped read modes.
 - [Toolset ablation](/gg/toolset-ablation/) — treat the offered toolset as an

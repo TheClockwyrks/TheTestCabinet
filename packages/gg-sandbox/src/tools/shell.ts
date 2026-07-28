@@ -16,6 +16,10 @@ import type { ShellOutput } from "../types.js";
  * non-zero exit is NOT a failure — check `exitCode` on the result; only a process that could not be
  * launched, or one the timeout killed, throws. `timeoutSecs` defaults to 120 and is clamped to
  * whatever is left of the run's wall-clock budget.
+ *
+ * When this run **offloads** shell output (the system prompt says so, and states the ceiling),
+ * `output` holds only the tail that fits and ends with a note naming the two files the command's
+ * full stdout and stderr were written to — grep those instead of re-running the command.
  */
 export function shell(command: string, options?: { timeoutSecs?: number }): ShellOutput {
   const o = opts<{ timeoutSecs?: number }>("shell", options);

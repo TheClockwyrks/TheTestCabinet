@@ -183,6 +183,22 @@ export const READ_MODE_HINT =
 // The line cap gg falls back to when a capped read mode names none.
 export const DEFAULT_READ_LINE_CAP = 250;
 
+// Where a `shell` command's output goes — the shell capability's implementation. The
+// values are gg's implementation ids (`crates/gg/src/tools/shell.rs`); the empty value
+// is the default (inline), which is what gg has always done. Offloading writes every
+// command's stdout and stderr to a file pair under `/tmp/gg/shell` and returns only the
+// configured tail, so a chatty build cannot spend a large slice of the window in one
+// call.
+export const SHELL_OUTPUT_OPTIONS = [
+  { value: "", label: "Inline (default)" },
+  { value: "offload", label: "Offload to files" },
+] as const;
+
+// What each output mode does — the detail lifted off the picker's option labels into
+// the field's help tooltip.
+export const SHELL_OUTPUT_HINT =
+  "Inline returns the whole output (capped at 16 KiB) and writes nothing to disk. Offload writes every command's full stdout and stderr to a file pair under /tmp/gg/shell, returns only the last N lines and/or characters, and tells the agent where to grep for the rest. Offloading needs at least one of the two ceilings below; with neither, gg warns at launch and runs inline.";
+
 // Whether the autoload-specifications capability **locks** the injected specs into the
 // window. The values are gg's implementation ids (`crates/core/src/gg.rs`); the empty
 // value is the default (not locked — ordinary, droppable file reads), and `locked` pins
@@ -330,6 +346,25 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     purpose:
       "Run shell commands in the run container — build, test, drive tooling.",
     defaultOn: true,
+    implementationLabel: "Output mode",
+    implementationOptions: SHELL_OUTPUT_OPTIONS,
+    implementationHint: SHELL_OUTPUT_HINT,
+    params: [
+      {
+        key: "maxLines",
+        label: "Max lines",
+        kind: "number",
+        placeholder: "e.g. 200",
+        hint: "Trailing lines returned inline when output is offloaded; ignored under the inline mode. Set this, Max characters, or both.",
+      },
+      {
+        key: "maxChars",
+        label: "Max characters",
+        kind: "number",
+        placeholder: "e.g. 8000",
+        hint: "Trailing characters returned inline when output is offloaded; ignored under the inline mode. With both set, the tighter one decides.",
+      },
+    ],
     tools: ["shell"],
   },
   // --- Filesystem -------------------------------------------------------------

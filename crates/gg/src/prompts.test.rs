@@ -46,6 +46,11 @@ fn full_system() -> SystemContext {
             line_cap: 250,
             images: true,
         },
+        shell: ShellView {
+            offloaded: true,
+            tail: "last 200 lines".to_string(),
+            directory: "/tmp/gg/shell".to_string(),
+        },
         skills: vec![SkillView {
             name: "physics".to_string(),
             description: "How to tune the simulation.".to_string(),
@@ -191,6 +196,49 @@ fn a_full_run_renders_the_read_facts_and_tasks() {
     assert!(flat.contains("at most **250 lines**"), "{prompt}");
     assert!(prompt.contains("## Tasks"), "{prompt}");
     assert!(!prompt.contains("\n\n\n"), "prompt has a blank-line run");
+}
+
+/// An offloading run states the ceiling, the directory the full output is kept in, and that the
+/// remainder is grep-able — the three facts a model needs before it sees its first truncated build.
+#[test]
+fn an_offloading_run_states_the_tail_and_where_the_rest_is() {
+    let prompt = render_system(&full_system(), None);
+    let flat = flat(&prompt);
+    assert!(prompt.contains("## Shell output"), "{prompt}");
+    for keyword in ["last 200 lines", "/tmp/gg/shell", "grep"] {
+        assert!(flat.contains(keyword), "missing `{keyword}`:\n{prompt}");
+    }
+}
+
+/// A run whose shell output comes back whole says nothing about it: there is no rule to learn, and a
+/// paragraph about a ceiling that is not in force is the kind of prompt noise ablation exists to
+/// avoid.
+#[test]
+fn an_inline_run_says_nothing_about_shell_output() {
+    for responses_as_code in [false, true] {
+        let context = SystemContext {
+            responses_as_code,
+            shell: ShellView::default(),
+            ..full_system()
+        };
+        let prompt = render_system(&context, None);
+        assert!(!prompt.contains("## Shell output"), "{prompt}");
+        assert!(!prompt.contains("/tmp/gg/shell"), "{prompt}");
+    }
+}
+
+/// The code-mode section is written for a *program*: it names the field that holds the tail, so the
+/// model knows the truncation happens to `output` rather than to what it prints.
+#[test]
+fn code_mode_offloading_section_names_the_output_field() {
+    let context = SystemContext {
+        responses_as_code: true,
+        ..full_system()
+    };
+    let flat = flat(&render_system(&context, None));
+    assert!(flat.contains("## Shell output"), "{flat}");
+    assert!(flat.contains("system.shell"), "{flat}");
+    assert!(flat.contains("last 200 lines"), "{flat}");
 }
 
 /// The default (plain-text) completion section tells the model that a reply with no tool calls ends

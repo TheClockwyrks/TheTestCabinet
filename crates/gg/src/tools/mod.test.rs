@@ -203,6 +203,62 @@ fn read_policy_comes_from_the_read_file_capability() {
     );
 }
 
+/// The shell capability's implementation and `maxLines`/`maxChars` params decide the
+/// [`OffloadPolicy`] the offered `shell` runs under — the configuration seam behind output
+/// offloading.
+#[test]
+fn shell_offload_comes_from_the_shell_capability() {
+    let with_mode = |implementation: &str, params| {
+        set_with(vec![GgCapabilityConfig {
+            id: CAPABILITY_SHELL.to_string(),
+            enabled: true,
+            implementation: Some(implementation.to_string()),
+            params,
+        }])
+    };
+
+    let offloaded = shell_offload(&with_mode(
+        SHELL_OUTPUT_OFFLOAD,
+        json!({ "maxLines": 120, "maxChars": 9_000 }),
+    ));
+    let limits = offloaded.limits().expect("offloading is armed");
+    assert_eq!(
+        (limits.max_lines, limits.max_chars),
+        (Some(120), Some(9_000))
+    );
+
+    // An unconfigured capability keeps the historical whole-output result.
+    assert_eq!(
+        shell_offload(&set_with(vec![GgCapabilityConfig::enabled(
+            CAPABILITY_SHELL
+        )])),
+        OffloadPolicy::Inline
+    );
+
+    // A *disabled* shell capability resolves to inline whatever it declares: offloading is a
+    // bargain (you see less, and grep back the rest) that an agent without the tool cannot keep its
+    // side of — and the policy also governs this agent's completion-validation commands.
+    let mut disabled = with_mode(SHELL_OUTPUT_OFFLOAD, json!({ "maxLines": 120 }));
+    disabled.capabilities[0].enabled = false;
+    assert_eq!(shell_offload(&disabled), OffloadPolicy::Inline);
+
+    // The policy actually reaches the offered tool: its description states the ceiling.
+    let registry = ToolRegistry::from_capabilities(&with_mode(
+        SHELL_OUTPUT_OFFLOAD,
+        json!({ "maxLines": 120 }),
+    ));
+    let definition = registry
+        .definitions()
+        .into_iter()
+        .find(|def| def.name == SHELL_TOOL)
+        .expect("shell is offered");
+    assert!(
+        definition.description.contains("last 120 lines"),
+        "{}",
+        definition.description
+    );
+}
+
 /// A capability that is *absent* from the set (not merely disabled) also contributes
 /// no tools; an empty set offers nothing.
 #[test]

@@ -30,7 +30,7 @@ use test_cabinet_core::gg::{
 use crate::model::ToolDefinition;
 use crate::sandbox::FINISH_FUNCTION;
 use crate::telemetry::Emitter;
-use crate::tools::{ToolContext, run_command};
+use crate::tools::{OffloadPolicy, ToolContext, run_command};
 
 /// The `validation` param key: an array of validation commands on the
 /// [completion](CAPABILITY_COMPLETION) capability.
@@ -241,9 +241,15 @@ pub(crate) fn finish_tool_definition() -> ToolDefinition {
 /// Commands are run **fail-fast**: the first non-zero exit stops the batch, because a later command
 /// usually depends on an earlier one (a test suite on a build) and its output would only add noise
 /// to the one the model must actually fix.
+///
+/// A validation command's output is the agent's to read — the failure is handed straight back to it
+/// — so it runs under the agent's own [output policy](OffloadPolicy). A failing test suite is
+/// exactly the kind of output that arrives by the megabyte, and under offloading the agent is shown
+/// the tail that names the failure and can grep the rest out of the file pair.
 pub(crate) async fn run_validation(
     commands: &[ValidationCommand],
     base: &ToolContext,
+    offload: &OffloadPolicy,
     emitter: &Emitter,
 ) -> Option<String> {
     let total = commands.len();
@@ -267,7 +273,7 @@ pub(crate) async fn run_validation(
             }
         };
         let ctx = ToolContext::new(cwd);
-        let outcome = run_command(&command.command, command.timeout, &ctx).await;
+        let outcome = run_command(&command.command, command.timeout, offload, &ctx).await;
         if outcome.ok {
             emitter.emit(GgTelemetryKind::Log {
                 level: "info".to_string(),

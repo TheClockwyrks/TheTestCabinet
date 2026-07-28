@@ -52,6 +52,18 @@ lost.
 {{#if readFile.capped}} Reading a file returns at most **{{readFile.lineCap}} lines** per call.{{/if}}
 {{/if}}
 
+{{#if shell.offloaded}}
+## Shell output
+
+Only the **{{shell.tail}}** of a command's output comes back to you. Every command's
+full stdout and stderr are written to a pair of files under `{{shell.directory}}`,
+and a truncated result ends with a note naming that command's two files.
+
+Nothing is lost — when you need more than the tail (an error that scrolled off the
+top, a count, a full stack trace), read or `grep` those files rather than re-running
+the command.
+{{/if}}
+
 {{#if tasks}}
 ## Tasks
 

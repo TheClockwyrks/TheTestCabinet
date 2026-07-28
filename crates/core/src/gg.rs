@@ -31,7 +31,15 @@ use crate::metrics::{Cost, TokenCounts};
 pub const PRIMARY_SLOT: &str = "primary";
 
 /// The stable id of the Phase 0 shell capability: the agent's ability to run shell
-/// commands in the run container.
+/// commands in the run container (the `shell` tool).
+///
+/// Its [implementation](GgCapabilityConfig::implementation) selects where a command's
+/// output goes — *inline* (the whole of it, byte-capped, as gg has always returned it) or
+/// *offload* ([the last `maxLines`/`maxChars` of it](https://docs.testcabinet.ai/gg/shell/),
+/// with every command's full stdout and stderr written to a file pair the agent can grep).
+/// A chatty build is one of the few things that can spend a large slice of a context window
+/// in a single call, so how much of one an agent is shown is configured rather than
+/// hardcoded.
 pub const CAPABILITY_SHELL: &str = "shell";
 
 /// The stable id of the **legacy** umbrella filesystem capability: one switch for the

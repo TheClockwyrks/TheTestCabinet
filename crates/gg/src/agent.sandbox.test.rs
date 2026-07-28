@@ -512,6 +512,52 @@ async fn a_sandbox_failure_is_a_turn_outcome_not_a_crash() {
 }
 
 // ---------------------------------------------------------------------------
+// Shell output offloading, through the program surface
+// ---------------------------------------------------------------------------
+
+/// **A program's `system.shell` is offloaded on the same terms a tool call is.**
+///
+/// The policy is applied inside `run_command`, which both execution modes reach — so this is the
+/// test that the code path actually *gets* there rather than running the chatty command straight
+/// into the program's hands. The program writes the `output` field it was handed to a workspace
+/// file, so the assertion is about what the program saw, not about what gg printed around it.
+#[tokio::test]
+async fn a_program_gets_the_offloaded_tail_and_the_paths_to_the_rest() {
+    let dir = TempDir::new().unwrap();
+    let mut set = code_set("mock/primary", json!({}));
+    let shell = set.agents[0]
+        .capabilities
+        .iter_mut()
+        .find(|capability| capability.id == CAPABILITY_SHELL)
+        .expect("the minimal set enables shell");
+    shell.implementation = Some(SHELL_OUTPUT_OFFLOAD.to_string());
+    shell.params = json!({ "maxLines": 3 });
+
+    let program = "const out = system.shell(\"for i in $(seq 1 60); do echo line-$i; done\").output;\n\
+                   fs.writeFile(\"seen.txt\", out);";
+    let (outcome, events) =
+        drive_code_run(&dir, set, move |b| one_program(&b.model_id, program)).await;
+
+    assert_eq!(outcome, SessionOutcome::Ran);
+    assert_eq!(ended_with(&events), "completed");
+    let seen = std::fs::read_to_string(dir.path().join("seen.txt")).expect("the program wrote it");
+    assert!(
+        seen.starts_with("line-58\nline-59\nline-60\n"),
+        "the program was handed the last three lines: {seen}"
+    );
+    assert!(!seen.contains("line-57"), "{seen}");
+    // ...and the note that tells it where the other fifty-seven are, so the remainder is one grep
+    // away rather than gone.
+    assert!(seen.contains("Output truncated"), "{seen}");
+    // The gg-managed directory the pair went to (`OFFLOAD_DIR`), spelled out: this run resolved
+    // its policy from a real capability set, so the path is the production one.
+    assert!(seen.contains("/tmp/gg/shell"), "{seen}");
+    for suffix in [".stdout", ".stderr"] {
+        assert!(seen.contains(suffix), "the note names both files: {seen}");
+    }
+}
+
+// ---------------------------------------------------------------------------
 // The servicing seam: telemetry, ids, delegation, context, skills, images
 // ---------------------------------------------------------------------------
 

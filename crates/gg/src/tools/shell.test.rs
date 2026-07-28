@@ -12,11 +12,13 @@ fn shell_data(outcome: &ToolOutcome) -> &ShellData {
     }
 }
 
-/// Invoke the shell tool against a fresh temp workspace.
+/// Invoke the shell tool against a fresh temp workspace, under the default (inline) output policy.
 async fn run(args: serde_json::Value) -> (ToolOutcome, TempDir) {
     let dir = TempDir::new().unwrap();
     let ctx = ToolContext::new(dir.path());
-    let outcome = ShellTool::new().invoke(args, &ctx).await;
+    let outcome = ShellTool::new(OffloadPolicy::Inline)
+        .invoke(args, &ctx)
+        .await;
     (outcome, dir)
 }
 
@@ -57,7 +59,7 @@ async fn runs_in_the_workspace_directory() {
     std::fs::write(dir.path().join("marker.txt"), "x").unwrap();
     let ctx = ToolContext::new(dir.path());
 
-    let outcome = ShellTool::new()
+    let outcome = ShellTool::new(OffloadPolicy::Inline)
         .invoke(json!({ "command": "ls" }), &ctx)
         .await;
 
@@ -185,7 +187,7 @@ async fn argument_diagnostics_are_classified_as_invalid_arguments() {
 /// The definition advertises the tool's name and required `command` parameter.
 #[test]
 fn definition_shape() {
-    let def = ShellTool::new().definition();
+    let def = ShellTool::new(OffloadPolicy::Inline).definition();
     assert_eq!(def.name, "shell");
     assert_eq!(def.parameters["required"], json!(["command"]));
     assert_eq!(

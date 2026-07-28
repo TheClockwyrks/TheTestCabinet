@@ -533,6 +533,7 @@ export default defineConfig({
               label: "Capabilities",
               collapsed: true,
               items: [
+                "gg/shell",
                 "gg/filesystem",
                 "gg/autoload-specifications",
                 "gg/compaction",

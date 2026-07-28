@@ -53,9 +53,12 @@ export type ToolErrorCode =
 export interface ShellOutput {
   /** The process's exit status; `undefined` when a signal killed it. Zero means success. */
   exitCode: number | undefined;
-  /** Merged stdout-then-stderr, tail-truncated at 16 KiB. */
+  /**
+   * Merged stdout-then-stderr, tail-truncated at 16 KiB — or, when the run offloads shell output,
+   * at the configured line/character ceiling, with a note naming the files holding the whole of it.
+   */
   output: string;
-  /** Whether the 16 KiB cap cut `output`, dropping the head and keeping the tail. */
+  /** Whether the cap cut `output`, dropping the head and keeping the tail. */
   truncated: boolean;
 }
 

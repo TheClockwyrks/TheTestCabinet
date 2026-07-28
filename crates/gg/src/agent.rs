@@ -92,11 +92,11 @@ use test_cabinet_core::gg::{
     AUTOLOAD_LOCKED_IMPL, CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_AUTOLOAD_SPECS,
     CAPABILITY_CODE_REVIEWS, CAPABILITY_CONTEXT_WINDOW_OVERRIDE, CAPABILITY_MEMORIES,
     CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_REPLAY, CAPABILITY_RESPONSES_AS_CODE,
-    CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS,
-    CAPABILITY_WORKFLOWS, CAPABILITY_WORKTREES, GgAgentConfig, GgAgentStatus, GgCandidateShape,
-    GgCapabilitySet, GgCodeReviewPhase, GgContextAction, GgContextSource, GgHealingStrategy,
-    GgLimitBreach, GgLimitKind, GgNotAProgram, GgPlanPhase, GgResponseHealing, GgRunLimits,
-    GgSlotBinding, GgSpeculationPhase, GgTelemetryKind, GgWorkflowPhase, ROOT_AGENT,
+    CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS,
+    CAPABILITY_TASKS, CAPABILITY_WORKFLOWS, CAPABILITY_WORKTREES, GgAgentConfig, GgAgentStatus,
+    GgCandidateShape, GgCapabilitySet, GgCodeReviewPhase, GgContextAction, GgContextSource,
+    GgHealingStrategy, GgLimitBreach, GgLimitKind, GgNotAProgram, GgPlanPhase, GgResponseHealing,
+    GgRunLimits, GgSlotBinding, GgSpeculationPhase, GgTelemetryKind, GgWorkflowPhase, ROOT_AGENT,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 use tokio::sync::{mpsc, oneshot};
@@ -136,7 +136,7 @@ use crate::prompts::{
     self, ApiView, AutoloadView, BoardView, CodeCallView, CodeErrorView, CodeHeadingView,
     CodeNotAProgramContext, CodeResultContext, CodeSandboxErrorContext, CodeTimeoutContext,
     CodeTranspileErrorContext, CompactionView, CompletionView, FsmView, MemoriesView, ReadFileView,
-    SpawnableAgentView, SystemContext, TasksView,
+    ShellView, SpawnableAgentView, SystemContext, TasksView,
 };
 use crate::replay::{GgRecorder, RecordingClient};
 use crate::sandbox::{
@@ -152,15 +152,16 @@ use crate::telemetry::Emitter;
 use crate::tools::VisionContext;
 use crate::tools::{
     ARCHIVE_THREAD_TOOL, AgentStatusData, COMPACT_TOOL, COMPLETE_ISSUE_TOOL, CompletionData,
-    DEFAULT_ARCHIVE_KEEP_RECENT, ENTER_PLAN_MODE_TOOL, EVICT_FILE_VIEW_TOOL, READ_FILE_TOOL,
-    READ_SKILL_TOOL, RUN_WORKFLOW_TOOL, ReadFileTool, ReadPolicy, ReclaimData, RuntimeSet,
-    SEND_MESSAGE_TOOL, SPAWN_SUBAGENT_TOOL, SPECULATE_TOOL, SUBMIT_PLAN_TOOL, SpeculationData,
+    DEFAULT_ARCHIVE_KEEP_RECENT, ENTER_PLAN_MODE_TOOL, EVICT_FILE_VIEW_TOOL, OffloadPolicy,
+    PARAM_MAX_CHARS, PARAM_MAX_LINES, READ_FILE_TOOL, READ_SKILL_TOOL, RUN_WORKFLOW_TOOL,
+    ReadFileTool, ReadPolicy, ReclaimData, RuntimeSet, SEND_MESSAGE_TOOL, SHELL_OUTPUT_OFFLOAD,
+    SHELL_TOOL, SPAWN_SUBAGENT_TOOL, SPECULATE_TOOL, SUBMIT_PLAN_TOOL, SpeculationData,
     SubagentHandleData, SubagentResultData, Tool, ToolContext, ToolData, ToolFailure, ToolOutcome,
     ToolRegistry, WAIT_FOR_ISSUE_TOOL, WAIT_FOR_SUBAGENTS_TOOL, WorkflowData, handled_by_loop,
     is_board_tool, is_context_reclaim_tool, is_fsm_tool, is_memory_tool, is_planning_tool,
-    is_subagent_tool, is_task_tool, parse_archive_keep_recent, parse_compact_request,
-    parse_evict_path, plan_mode_offers, read_policy, saturating_u32, saturating_u64,
-    unknown_disabled_tools,
+    is_subagent_tool, is_task_tool, offload_misconfigured, parse_archive_keep_recent,
+    parse_compact_request, parse_evict_path, plan_mode_offers, read_policy, saturating_u32,
+    saturating_u64, shell_offload, unknown_disabled_tools,
 };
 use crate::vision::VisionSupport;
 
@@ -978,6 +979,26 @@ impl Orchestrator {
                  each set to `true` or `false`.",
                 HealingStrategy::ALL.map(HealingStrategy::id).join(", ")
             ));
+        }
+        // A `shell` capability that asks for output offloading without naming a ceiling for it to
+        // truncate past runs the *control* arm under the treatment arm's name — the same silent
+        // wrong-experiment failure a stale ceiling is, so it is reported on the same terms.
+        for agent in &set.agents {
+            let Some(shell) = agent
+                .capability(CAPABILITY_SHELL)
+                .filter(|capability| capability.enabled)
+            else {
+                continue;
+            };
+            if offload_misconfigured(shell.implementation.as_deref(), &shell.params) {
+                warnings.push(format!(
+                    "agent `{}`: the `{CAPABILITY_SHELL}` capability's `{SHELL_OUTPUT_OFFLOAD}` \
+                     mode names neither `{PARAM_MAX_LINES}` nor `{PARAM_MAX_CHARS}`, so there is no \
+                     ceiling to offload past; command output is returned inline. Set at least one \
+                     of them.",
+                    agent.name,
+                ));
+            }
         }
         // The `assistantMessages` mode is read literally and reported on mismatch for the same reason
         // healing keys are: a typo would otherwise pick a mode the study did not ask for, silently.
@@ -2003,6 +2024,7 @@ async fn run_agent(
             planning,
             fsm,
             read_policy(&profile),
+            shell_offload(&profile),
             orch.code_reviews_active(),
             orch.speculative_active(),
             code,
@@ -4854,6 +4876,7 @@ impl Agent {
         planning: PlanningRuntime,
         mut fsm: FsmRuntime,
         read_policy: ReadPolicy,
+        shell_offload: OffloadPolicy,
         code_reviews: bool,
         speculative: bool,
         code: CodeSetup,
@@ -4908,6 +4931,7 @@ impl Agent {
             planning: &planning,
             fsm: &fsm,
             read_policy,
+            shell_offload: &shell_offload,
             vision: &tool_ctx.vision,
             code_reviews: code_reviews_active,
             speculative: speculative_active,
@@ -5429,6 +5453,7 @@ impl Agent {
                     registry,
                     tool_ctx,
                     read_policy,
+                    shell_offload: &shell_offload,
                     board: &board,
                     project: project.as_ref(),
                     memories: &memories,
@@ -5470,8 +5495,13 @@ impl Agent {
                 // path an ordinary error turn takes.
                 let decision = match decision {
                     CodeTurnOutcome::Finished { summary } if completion.has_validation() => {
-                        match completion::run_validation(completion.validation(), tool_ctx, emitter)
-                            .await
+                        match completion::run_validation(
+                            completion.validation(),
+                            tool_ctx,
+                            &shell_offload,
+                            emitter,
+                        )
+                        .await
                         {
                             None => CodeTurnOutcome::Finished { summary },
                             Some(feedback) => CodeTurnOutcome::Continue {
@@ -5720,7 +5750,13 @@ impl Agent {
                 // back (as a progressed turn — the model must fix and finish again) and the run
                 // continues.
                 let rejected = if completion.has_validation() {
-                    completion::run_validation(completion.validation(), tool_ctx, emitter).await
+                    completion::run_validation(
+                        completion.validation(),
+                        tool_ctx,
+                        &shell_offload,
+                        emitter,
+                    )
+                    .await
                 } else {
                     None
                 };
@@ -5834,7 +5870,13 @@ impl Agent {
                         .filter(|summary| !summary.is_empty())
                         .map(str::to_string);
                     let rejected = if completion.has_validation() {
-                        completion::run_validation(completion.validation(), tool_ctx, emitter).await
+                        completion::run_validation(
+                            completion.validation(),
+                            tool_ctx,
+                            &shell_offload,
+                            emitter,
+                        )
+                        .await
                     } else {
                         None
                     };
@@ -6880,6 +6922,9 @@ struct PromptInputs<'a> {
     fsm: &'a FsmRuntime,
     /// How much of a file one `read_file` call returns, so a capped run says so up front.
     read_policy: ReadPolicy,
+    /// How much of a command's output one `shell` call returns, and where the rest of it is kept, so
+    /// an offloading run tells the model where to grep before it needs to.
+    shell_offload: &'a OffloadPolicy,
     /// This agent's model and the run's vision registry, so the prompt can state whether a
     /// reference image can actually be shown to it.
     vision: &'a VisionContext,
@@ -7059,6 +7104,7 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
         planning,
         fsm,
         read_policy,
+        shell_offload,
         vision,
         code_reviews,
         speculative,
@@ -7099,6 +7145,22 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
         hard_cap: matches!(read_policy, ReadPolicy::HardCap(_)),
         line_cap: read_policy.line_cap().unwrap_or_default(),
         images: offers_read && !vision.declared_text_only(),
+    };
+
+    // What a `shell` call returns, stated only when the tool is offered *and* its output is
+    // offloaded: under the default policy there is nothing to say that the tool's own description
+    // does not already say. Under offloading there is — the model has to know that what it is
+    // reading is a tail, and that the rest of it is a `grep` away rather than gone.
+    let shell = match shell_offload
+        .limits()
+        .filter(|_| registry.offers(SHELL_TOOL))
+    {
+        Some(limits) => ShellView {
+            offloaded: true,
+            tail: limits.describe(),
+            directory: limits.dir.display().to_string(),
+        },
+        None => ShellView::default(),
     };
 
     // The message headings this run can put in front of a synthesized `user` message — only under
@@ -7142,6 +7204,7 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
             delegated,
             fences_are_stripped,
             read_file,
+            shell,
             skills: skills.prompt_entries(),
             memories: memories.offers_memories().then(|| {
                 let caps = memories.caps();

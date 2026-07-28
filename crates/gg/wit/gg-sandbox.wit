@@ -85,7 +85,9 @@ interface shell {
     record shell-output {
         /// The exit status; `none` when the process was terminated by a signal.
         exit-code: option<s32>,
-        /// Merged stdout-then-stderr, tail-truncated at gg's 16 KiB cap.
+        /// Merged stdout-then-stderr, tail-truncated at gg's 16 KiB cap — or, when the run offloads
+        /// shell output, at the configured line/character ceiling, followed by a note naming the
+        /// files holding the command's full stdout and stderr.
         output: string,
         /// Whether the cap cut `output` (the head was dropped, the tail kept).
         truncated: bool,

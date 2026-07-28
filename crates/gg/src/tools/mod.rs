@@ -108,6 +108,10 @@ pub use fsm::{ADVANCE_STATE_TOOL, is_fsm_tool};
 pub use memories::{DeleteMemoryTool, UpdateMemoryTool, WriteMemoryTool, is_memory_tool};
 pub use planning::{ENTER_PLAN_MODE_TOOL, SUBMIT_PLAN_TOOL, is_planning_tool};
 pub(crate) use shell::run_command;
+pub use shell::{
+    OffloadPolicy, PARAM_MAX_CHARS, PARAM_MAX_LINES, SHELL_OUTPUT_OFFLOAD, SHELL_TOOL,
+    offload_misconfigured,
+};
 pub use skills::{READ_SKILL_TOOL, ReadSkillTool};
 pub(crate) use subagents::handled_by_loop;
 pub use subagents::{
@@ -129,7 +133,7 @@ pub use tasks::{
 /// truth for the vocabulary; a test asserts a maximal registry offers exactly these, so a newly
 /// added or renamed tool cannot drift out of sync.
 pub const ALL_TOOL_NAMES: &[&str] = &[
-    "shell",
+    SHELL_TOOL,
     READ_FILE_TOOL,
     "write_file",
     "edit_file",
@@ -212,6 +216,29 @@ pub fn read_policy(capabilities: &GgAgentConfig) -> ReadPolicy {
     capabilities
         .capability(CAPABILITY_READ_FILE)
         .map(|cap| ReadPolicy::resolve(cap.implementation.as_deref(), &cap.params))
+        .unwrap_or_default()
+}
+
+/// The [output policy](OffloadPolicy) `shell` runs under for a capability set: the
+/// [shell](CAPABILITY_SHELL) capability's implementation and params.
+///
+/// Read only from a capability that is **enabled**, because offloading is a bargain — you see less
+/// of the output, and you get the rest back by grepping the files — and an agent without the `shell`
+/// tool cannot hold up its end. (The policy also governs the run's
+/// [completion validation](crate::completion) commands, which gg runs on the agent's behalf whether
+/// or not it offers the tool; truncating *those* for an agent that cannot grep the remainder would
+/// be a loss with no compensation.)
+///
+/// Resolved both here (to build the tool) and by the [loop](crate::agent), which states the
+/// resulting ceiling in the [system prompt](crate::prompts) — one resolution, so what the prompt
+/// promises and what the tool enforces cannot drift apart.
+pub fn shell_offload(capabilities: &GgAgentConfig) -> OffloadPolicy {
+    capabilities
+        .capability(CAPABILITY_SHELL)
+        .filter(|capability| capability.enabled)
+        .map(|capability| {
+            OffloadPolicy::resolve(capability.implementation.as_deref(), &capability.params)
+        })
         .unwrap_or_default()
 }
 
@@ -576,7 +603,9 @@ impl ToolRegistry {
         let mut tools: Vec<Box<dyn Tool>> = Vec::new();
 
         if capabilities.is_enabled(CAPABILITY_SHELL) {
-            tools.push(Box::new(shell::ShellTool::new()));
+            // Like `read_file`, `shell` reads its own capability's implementation/params to decide
+            // how much of what it produces one call returns.
+            tools.push(Box::new(shell::ShellTool::new(shell_offload(capabilities))));
         }
 
         // Each filesystem primitive is its own capability, so a study can withhold or

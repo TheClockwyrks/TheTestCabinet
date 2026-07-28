@@ -197,7 +197,11 @@ async fn run_validation_passes_when_all_commands_succeed() {
         ValidationCommand::from_value(&json!("true")).unwrap(),
         ValidationCommand::from_value(&json!({ "command": "exit 0" })).unwrap(),
     ];
-    assert!(run_validation(&commands, &ctx, &emitter()).await.is_none());
+    assert!(
+        run_validation(&commands, &ctx, &OffloadPolicy::Inline, &emitter())
+            .await
+            .is_none()
+    );
 }
 
 /// The first failing command rejects completion, and its feedback names the command and carries its
@@ -212,7 +216,7 @@ async fn run_validation_reports_first_failure() {
         // Never reached — the batch is fail-fast.
         ValidationCommand::from_value(&json!("echo unreached")).unwrap(),
     ];
-    let feedback = run_validation(&commands, &ctx, &emitter())
+    let feedback = run_validation(&commands, &ctx, &OffloadPolicy::Inline, &emitter())
         .await
         .expect("a failing command rejects the completion");
     assert!(feedback.contains("was NOT accepted"), "{feedback}");
@@ -237,7 +241,11 @@ async fn run_validation_defaults_cwd_to_workspace() {
     std::fs::write(dir.path().join("marker.txt"), "x").unwrap();
     let ctx = ToolContext::new(dir.path());
     let commands = vec![ValidationCommand::from_value(&json!("test -f marker.txt")).unwrap()];
-    assert!(run_validation(&commands, &ctx, &emitter()).await.is_none());
+    assert!(
+        run_validation(&commands, &ctx, &OffloadPolicy::Inline, &emitter())
+            .await
+            .is_none()
+    );
 }
 
 /// A relative `cwd` is resolved against gg's working directory, so the command runs in the subdir.
@@ -251,11 +259,19 @@ async fn run_validation_runs_in_declared_cwd() {
 
     // In the workspace root the marker is absent (fails); in `sub` it is present (passes).
     let at_root = vec![ValidationCommand::from_value(&json!("test -f inner.txt")).unwrap()];
-    assert!(run_validation(&at_root, &ctx, &emitter()).await.is_some());
+    assert!(
+        run_validation(&at_root, &ctx, &OffloadPolicy::Inline, &emitter())
+            .await
+            .is_some()
+    );
 
     let in_sub = vec![
         ValidationCommand::from_value(&json!({ "command": "test -f inner.txt", "cwd": "sub" }))
             .unwrap(),
     ];
-    assert!(run_validation(&in_sub, &ctx, &emitter()).await.is_none());
+    assert!(
+        run_validation(&in_sub, &ctx, &OffloadPolicy::Inline, &emitter())
+            .await
+            .is_none()
+    );
 }
