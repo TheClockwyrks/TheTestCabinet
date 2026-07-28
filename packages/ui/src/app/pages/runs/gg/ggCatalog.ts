@@ -387,11 +387,11 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
       "The agent's whole reply is a TypeScript program over the tools, run in a wasm sandbox instead of one discrete tool call at a time, ending the run by calling `finish` from inside a program.",
     params: [
       {
-        key: "fuel",
-        label: "Fuel",
+        key: "timeoutSecs",
+        label: "Execution timeout (seconds)",
         kind: "number",
-        placeholder: "e.g. 1000000",
-        hint: "Wasmtime fuel budget per program.",
+        placeholder: "e.g. 30",
+        hint: "Wall-clock ceiling on one program's guest execution — a runaway-loop guard, not a work ration, so it is far longer than any program needs. Time parked in a tool call is excluded.",
       },
       {
         key: "maxMemoryBytes",

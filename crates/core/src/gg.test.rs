@@ -693,7 +693,7 @@ fn a_code_execution_omits_finished_and_healing_when_the_turn_was_clean() {
     let kind = GgTelemetryKind::CodeExecution {
         ok: true,
         tool_calls: 3,
-        fuel_used: Some(24_000),
+        duration_ms: Some(24_000),
         error: None,
         finished: None,
         compile_wait_ms: None,
@@ -706,7 +706,7 @@ fn a_code_execution_omits_finished_and_healing_when_the_turn_was_clean() {
             "type": "code_execution",
             "ok": true,
             "toolCalls": 3,
-            "fuelUsed": 24_000,
+            "durationMs": 24_000,
         })
     );
     let back: GgTelemetryKind = serde_json::from_value(value).expect("deserialize");
@@ -714,13 +714,13 @@ fn a_code_execution_omits_finished_and_healing_when_the_turn_was_clean() {
 }
 
 /// The two turns the new members exist for: the one that ended the run, and the one whose reply
-/// was not a program at all (no fuel figure, because nothing ran).
+/// was not a program at all (no duration figure, because nothing ran).
 #[test]
 fn a_code_execution_carries_the_completion_and_the_healing_record() {
     let finished = GgTelemetryKind::CodeExecution {
         ok: true,
         tool_calls: 1,
-        fuel_used: Some(9_100),
+        duration_ms: Some(9_100),
         error: None,
         finished: Some("Built the game and wrote MANIFEST.md.".to_string()),
         compile_wait_ms: None,
@@ -739,7 +739,7 @@ fn a_code_execution_carries_the_completion_and_the_healing_record() {
             "type": "code_execution",
             "ok": true,
             "toolCalls": 1,
-            "fuelUsed": 9_100,
+            "durationMs": 9_100,
             "finished": "Built the game and wrote MANIFEST.md.",
             "healing": { "strategies": ["strip-fences", "drop-imports"] },
         })
@@ -749,13 +749,13 @@ fn a_code_execution_carries_the_completion_and_the_healing_record() {
         finished
     );
 
-    // A reply that was several candidate programs: `fuelUsed` is absent (there is nothing to
+    // A reply that was several candidate programs: `durationMs` is absent (there is nothing to
     // average into the run's efficiency), and the candidate count rides along with the shape it was
     // counted in, as the instruction-following signal itself.
     let not_a_program = GgTelemetryKind::CodeExecution {
         ok: false,
         tool_calls: 0,
-        fuel_used: None,
+        duration_ms: None,
         error: Some("Your reply contained 7 separate code blocks.".to_string()),
         finished: None,
         compile_wait_ms: None,

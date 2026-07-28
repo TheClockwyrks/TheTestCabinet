@@ -40,7 +40,7 @@ transcript as well as from the counters.
 
 Healing owns **"was this a program at all?"**; the type-strip owns **"is this program
 valid?"**. Keeping them apart is what lets a not-a-program verdict short-circuit before
-any engine work — no component, no store, no fuel — and what lets every rule on this
+any engine work — no component, no store, no timer — and what lets every rule on this
 page be a microsecond-scale unit test with no wasm behind it. The module
 (`crates/gg/src/healing.rs`) does no I/O, reads no clock, is not `async`, and imports
 nothing from the sandbox; turning a strategy off changes only what one pure function
@@ -359,7 +359,7 @@ object keyed by strategy id. **A strategy absent from the object is on.**
 
 ```jsonc
 { "id": "responses-as-code", "enabled": true,
-  "params": { "fuel": 200000000000, "maxMemoryBytes": 268435456,
+  "params": { "timeoutSecs": 30, "maxMemoryBytes": 268435456,
               "healing": { "strip-fences": false } } }
 ```
 

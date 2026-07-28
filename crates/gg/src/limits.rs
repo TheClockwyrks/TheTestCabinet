@@ -180,9 +180,9 @@ pub enum TurnErrorKind {
     /// The program ran and threw an uncaught fault, so every statement after the throw never ran
     /// and the model must re-declare the remainder.
     ProgramFault,
-    /// The [sandbox](crate::sandbox) stopped the program at a ceiling — fuel or memory, or the
-    /// guest trapped. The program ran and its landed calls stand, but the work it declared was cut
-    /// short.
+    /// The [sandbox](crate::sandbox) stopped the program at a ceiling — the execution timeout or
+    /// memory, or the guest trapped. The program ran and its landed calls stand, but the work it
+    /// declared was cut short.
     ///
     /// This **is** an error, unlike under the counter it replaces, and the change is deliberate:
     /// the declared work did not complete and the model must re-declare it. Nothing is lost by

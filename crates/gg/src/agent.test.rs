@@ -292,10 +292,10 @@ fn code_set(model_id: &str, params: serde_json::Value) -> GgCapabilitySet {
 const FINISHING_PROGRAM: &str = "harness.finish(\"done\");";
 const FINISHING_SUMMARY: &str = "done";
 
-/// A fuel ceiling high enough for the guest engine to start (its own setup floor is a few million)
-/// but far too low for a runaway loop to survive — so what trips is the program, not the shim, and
-/// the test costs milliseconds rather than the ten seconds the real default would take to burn.
-const RUNAWAY_FUEL: u64 = 10_000_000;
+/// An execution timeout short enough that a runaway loop trips it in a fraction of a second — so a
+/// test exercising the ceiling costs a tenth of a second rather than the thirty the real default
+/// would take. It is a wall-clock time in seconds, the unit the `timeoutSecs` param takes.
+const RUNAWAY_TIMEOUT_SECS: f64 = 0.1;
 
 /// A client that plays a fixed script and **records the messages it was handed**, in order.
 ///

@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use wasmtime::component::Component;
-use wasmtime::{Config, Engine, OptLevel, Store, Trap};
+use wasmtime::{Config, Engine, OptLevel, Store};
 
 use super::SandboxError;
 use super::invoker::ToolApi;
@@ -73,12 +73,61 @@ fn engine() -> &'static Engine {
     ENGINE.get_or_init(|| {
         let mut config = Config::new();
         config.wasm_component_model(true);
-        config.consume_fuel(true);
+        // Epoch interruption — not fuel — is the runaway guard: a program's execution is bounded by
+        // a wall-clock timeout rather than an instruction count. The [`ticker`] below advances the
+        // engine's epoch on a fixed cadence, each [`Store`] arms a deadline against it, and the
+        // guest traps when its own execution time (parked-in-host time excluded) outruns the
+        // ceiling. See [`limits`](super::limits) for why a timeout replaced fuel.
+        config.epoch_interruption(true);
         config.cranelift_opt_level(OptLevel::None);
         // A fixed, known-valid configuration: nothing here depends on the host, the run, or any
         // input, so a failure would be a programming error rather than a runtime condition.
-        Engine::new(&config).expect("the fixed wasmtime Config is valid")
+        let engine = Engine::new(&config).expect("the fixed wasmtime Config is valid");
+        spawn_ticker(engine.clone());
+        engine
     })
+}
+
+/// How often the [ticker](spawn_ticker) advances the engine's epoch. Each tick is the resolution of
+/// every execution timeout: a 30 s ceiling is 300 ticks, and a program is stopped within one tick of
+/// its deadline. A tenth of a second is far finer than a timeout sized in tens of seconds needs, and
+/// coarse enough that the ticker's own cost — one atomic increment — is utterly negligible.
+const EPOCH_TICK: Duration = Duration::from_millis(100);
+
+/// The number of [epoch ticks](EPOCH_TICK) that span `budget`, for
+/// [`Store::set_epoch_deadline`](wasmtime::Store::set_epoch_deadline) and the deadline callback's
+/// re-arming. Rounded up, and never zero, so a deadline is always strictly in the future; saturated
+/// at [`u64::MAX`] so a near-eternal configured timeout does not wrap into a short one.
+pub(crate) fn epoch_deadline_ticks(budget: Duration) -> u64 {
+    let ticks = budget
+        .as_millis()
+        .div_ceil(EPOCH_TICK.as_millis())
+        .try_into()
+        .unwrap_or(u64::MAX);
+    ticks.max(1)
+}
+
+/// Advance `engine`'s epoch once per [`EPOCH_TICK`], forever, on a detached daemon thread.
+///
+/// The thread is spawned exactly once, when the process-wide [`engine`] is first built, and it is
+/// never joined: a process that exits abandons it, which is correct, because gg is one process per
+/// run and the ticker is meaningful only while a program is running. [`Engine`] is a cheap `Arc`
+/// handle, so the clone the thread holds costs nothing and keeps the engine alive for as long as the
+/// process — which it would be anyway, behind its [`OnceLock`].
+///
+/// Its only job is to make time observable to the guest: epoch interruption checks the counter at
+/// the guest's loop back-edges and function entries, so a program that never yields (a `while (true)
+/// {}`) is stopped, which a wall-clock deadline the host merely *holds* could never do.
+fn spawn_ticker(engine: Engine) {
+    std::thread::Builder::new()
+        .name("gg-sandbox-epoch".into())
+        .spawn(move || {
+            loop {
+                std::thread::sleep(EPOCH_TICK);
+                engine.increment_epoch();
+            }
+        })
+        .expect("spawning the sandbox epoch ticker");
 }
 
 /// The engine every [`Store`] in this process is created against.
@@ -152,8 +201,9 @@ pub(crate) fn component_bytes() -> &'static [u8] {
 
 /// Map a wasmtime error onto the right [`SandboxError`].
 ///
-/// Fuel first — a fuel trap downcasts to [`Trap::OutOfFuel`], and a store left pinned at zero fuel
-/// is the same condition reported a different way — then the memory cap, which is read from the
+/// Timeout first — the epoch-deadline callback records it on the [membrane state](MembraneState)'s
+/// [`timed_out`](MembraneState::timed_out) flag before it traps the guest, because the trap it
+/// raises carries no distinguishing code — then the memory cap, which is read from the
 /// [limiter](super::limits::MemoryLimiter)'s denial flag rather than from a memory's size, because
 /// a component has no single named memory to measure. That flag catches both shapes a denial takes:
 /// an instantiation failure when the cap sits below the guest engine's ~10 MiB floor, and a trap
@@ -164,26 +214,26 @@ pub(crate) fn component_bytes() -> &'static [u8] {
 /// and carry on. Reading a stale denial would blame the memory cap for whatever the program
 /// eventually did wrong instead.
 ///
-/// `non_fuel` is what an unclassified failure becomes, and it differs by phase — an error from
+/// `fallback` is what an unclassified failure becomes, and it differs by phase — an error from
 /// [`instantiate`](wasmtime::component::Linker) means the committed artifact and the membrane have
 /// drifted apart, while one from the call is an ordinary trap — so the caller names it.
 pub(crate) fn classify<A: ToolApi>(
     store: &Store<MembraneState<A>>,
     limits: SandboxLimits,
     err: &wasmtime::Error,
-    non_fuel: fn(String) -> SandboxError,
+    fallback: fn(String) -> SandboxError,
 ) -> SandboxError {
-    if err.downcast_ref::<Trap>() == Some(&Trap::OutOfFuel)
-        || store.get_fuel().is_ok_and(|remaining| remaining == 0)
-    {
-        return SandboxError::OutOfFuel { limit: limits.fuel };
+    if store.data().timed_out() {
+        return SandboxError::Timeout {
+            limit: limits.timeout,
+        };
     }
     if store.data().memory_denied() {
         return SandboxError::OutOfMemory {
             limit: limits.max_memory_bytes,
         };
     }
-    non_fuel(err.to_string())
+    fallback(err.to_string())
 }
 
 #[cfg(test)]

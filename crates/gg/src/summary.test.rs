@@ -47,8 +47,8 @@ fn code_turn(healing: GgResponseHealing) -> GgTelemetryKind {
     GgTelemetryKind::CodeExecution {
         ok: healing.not_a_program.is_none(),
         tool_calls: 0,
-        // Absent exactly when there was no program to burn fuel — the rule the contract states.
-        fuel_used: healing.not_a_program.is_none().then_some(0),
+        // Absent exactly when there was no program to run at all — the rule the contract states.
+        duration_ms: healing.not_a_program.is_none().then_some(0),
         error: None,
         finished: None,
         compile_wait_ms: None,

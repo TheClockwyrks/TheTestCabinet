@@ -1,10 +1,6 @@
 {{> healing-note ran=true}}
 Your program could not be run to completion: {{error}}. This is a sandbox limit, not a tool failure
 — the work you asked for was too heavy for one program, not wrong.
-{{#if outputHeavy}}
-Writing is the expensive direction: every byte you write out of the program costs far more budget
-than a byte you read in. Write fewer or smaller files per program.
-{{/if}}
 Split the task across several smaller programs, one per turn.
 {{#if calls}}The {{calls}} tool call(s) it had already made stand.
 {{/if}}

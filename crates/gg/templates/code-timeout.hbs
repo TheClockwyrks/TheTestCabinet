@@ -1,0 +1,11 @@
+{{> healing-note ran=true}}
+Your program was stopped: {{error}}. The timeout is far longer than any program needs, so this is
+almost never about doing too much — it means part of your program did not terminate. Look for a loop
+whose condition never becomes false, a recursion with no base case, or an `await` on something that
+never settles, and bound it.
+{{#if calls}}The {{calls}} tool call(s) it had already made stand.
+{{/if}}
+{{#if finishRevoked}}
+You called `harness.finish(...)` in that program, but a program the sandbox stopped has not finished: the
+run is still going. Fix the loop, then call `harness.finish(...)` again from a program that runs to its end.
+{{/if}}

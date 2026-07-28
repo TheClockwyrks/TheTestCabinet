@@ -353,7 +353,7 @@ disk cache anywhere on the turn path.
 | --- | --- |
 | Type-strip the program (`oxc`, in process) | ~0.2 ms |
 | Compile the component — **once per process** | 658 ms (18 cores), 1.29 s (4), 2.36 s (2), 4.84 s (1) |
-| Instantiate a store from the compiled component | 24–124 µs, burning **0 fuel** |
+| Instantiate a store from the compiled component | 24–124 µs |
 | Evaluate an ordinary program (excluding its tool calls) | 0.7–3 ms |
 
 Even that single compile is kept off the critical path: when the capability is on, gg
@@ -372,40 +372,44 @@ program runs, so the guarantee is verified rather than inferred on a shared mach
 
 ## The limits
 
-A program runs under a wasmtime **fuel** ceiling and a **linear-memory** cap, both
+A program runs under a wall-clock **execution timeout** and a **linear-memory** cap, both
 per-store, which is exactly what lets the whole process share one compiled component
 while each run keeps its own ceilings.
 
 | Limit | Default | What it bounds |
 | --- | --- | --- |
-| `fuel` | 2×10¹¹ | Guest CPU for **one program** — the guest's own setup, the program, and every value crossing the membrane — re-armed for each turn. |
+| `timeoutSecs` | 30 s | Guest-CPU time for **one program** — the guest's own setup, the program, and every value crossing the membrane — re-armed for each turn. Time parked in a bridged tool call is excluded. |
 | `maxMemoryBytes` | 256 MiB | Guest linear memory. A `memory.grow` past it is denied. |
 
-The fuel figure is measured, not chosen by analogy. Against the real component, with
-the full toolset injected:
+The timeout is a **pure infinite-loop guard, not a work ration**. It exists only to stop
+a program that does not terminate, and it is set far longer than any honest program's
+execution needs, so it is never reached outside a runaway. It replaced a wasmtime *fuel*
+budget the sandbox used to meter: fuel was exact but its cost model was invisible to the
+model writing the program — lowering a string *out* of the guest cost about 300× lifting
+one in, so a program that merely wrote a few large files could exhaust a fuel ceiling that
+a runaway loop would take seconds to reach. A wall-clock timeout removes that failure mode
+by construction: writing a lot is fast, so only a program that loops forever runs long.
 
-| Workload | Fuel |
+| Workload | Guest CPU |
 | --- | --- |
-| `console.log(40 + 2);` (the guest's own floor) | 5.67 M |
-| A realistic orchestration program (list → filter → shell → write → log) | 11.1 M |
-| One bridged tool call, marginal | ≈0.86 M |
-| Reading a 256 KiB file | 13.3 M |
-| Writing a 256 KiB file | 3.83 G |
-| Rewriting twenty 64 KiB files — the heaviest *honest* program measured | 24.3 G |
-| A runaway `while (true) {}` | ≈20 G per second of CPU |
+| `console.log(40 + 2);` (the guest's own floor) | << 1 ms |
+| A realistic orchestration program (list → filter → shell → write → log) | a few ms |
+| Rewriting twenty 64 KiB files — the heaviest *honest* program measured | ≈1.8 s |
+| A runaway `while (true) {}` | runs at wall-clock speed until the timeout stops it |
+
+So the default 30 s gives even the heaviest honest program more than an order of magnitude
+of headroom while stopping a `while (true) {}` in about half a minute. 256 MiB is about 25×
+the 10.3 MiB the guest engine occupies at rest.
 
 :::note
-**The membrane is asymmetric by about 300×.** Lifting a string *into* the guest costs
-≈46 fuel per byte; lowering one *out* costs ≈14,600. Writing and logging are both on
-the expensive side, and that — not the arithmetic a program does — is what sizes the
-ceiling. A read-heavy analysis would be off by two orders of magnitude,
-which is why the prompt tells the model plainly that reading is cheap and writing is
-expensive.
+**The timeout measures the guest's *own* execution, not raw wall clock.** Time a program
+spends parked in a bridged tool call — a `shell` build that takes minutes — is excluded, so
+waiting on a build is never mistaken for a runaway. wasmtime **epoch interruption** enforces
+this: a background ticker advances the engine's epoch, the store arms a deadline against it,
+and when the deadline is reached a callback re-arms it for however much guest budget is left
+after subtracting the time spent in host calls, trapping only when the guest's own clock is
+genuinely spent.
 :::
-
-2×10¹¹ therefore gives the heaviest honest program about 8× headroom (roughly 160 files
-of that size in one program) while stopping a runaway in about 10 s of container CPU.
-256 MiB is about 25× the 10.3 MiB the guest engine occupies at rest.
 
 Three further bounds are not configurable, because each protects gg itself rather than
 rationing a run:
@@ -420,9 +424,9 @@ rationing a run:
   host function cannot trap, so one `shell("sleep 3600")` would otherwise carry the run
   past its deadline with no mechanism left to stop it.
 
-Fuel meters only the guest. A program that spends ten minutes waiting on `shell` builds
-costs single-digit millions of fuel; what bounds *that* is the run's wall-clock
-deadline, which the membrane checks **before every bridged call**. Once the budget is
+The execution timeout meters only the guest. A program that spends ten minutes waiting on
+`shell` builds is not stopped by it; what bounds *that* is the run's wall-clock deadline,
+which the membrane checks **before every bridged call**. Once the budget is
 spent, every further call is refused with a `limit-exceeded` failure saying that
 everything the program already did stands — a refusal rather than a kill, so the program
 stops cleanly and the turn still reports what it accomplished. `finish` is the one
@@ -532,7 +536,7 @@ or it will read the shorter list as evidence that its loop never ran:
 
 | What | Cap |
 | --- | --- |
-| Calls described in the roster | 500 (a program can afford ~230,000 within the fuel default) |
+| Calls described in the roster | 500 (a program can compose far more within its timeout) |
 | Refusals described | 100 |
 | Log lines | 200, 16 KiB in total, 2 KiB per line — the **last** lines, evicting from the front |
 | Failure text kept per roster entry | 512 bytes |
@@ -596,7 +600,7 @@ of code-shaped turns a run took.
 | Work deferred with `.then()` ran after the program ended | the guest's call guard | that deferred work is outside the turn and its failures are never reported |
 | A turn-level transition, or a tool this run withholds | the host's backstop | a `refused:` line in the feedback; **not** counted as a tool call |
 | The run's wall-clock budget ran out mid-program | the deadline check before each call | a `limit-exceeded` failure saying the budget is spent and prior work stands |
-| Fuel exhausted | the trap classifier | the ceiling, that this is a limit rather than a mistake, and — because it usually is — that writing is the expensive direction |
+| Execution timeout reached | the trap classifier | the ceiling, and that a timeout this long almost always means a loop or recursion that never ends — find it rather than write less |
 | Memory cap exceeded, or set below the guest's ~10 MiB floor | the memory limiter's denial flag | the configured cap, and the floor the guest engine needs before a program runs at all |
 | The committed component fails to compile or instantiate, or gg's own wasm plumbing fails | the engine, or the host | nothing — the **session ends** with a model-error status and a log naming which of the two it was, because every further turn would fail identically |
 | A configured [error ceiling](/gg/execution-limits/) was breached | the loop, at the turn boundary | the last turn's feedback, then the **session ends** `limit_exceeded` with the breach recorded |
@@ -652,16 +656,16 @@ The capability is `responses-as-code`, under **Models & tools** in the
 
 | Param | Default | Notes |
 | --- | --- | --- |
-| `fuel` | `200000000000` | The per-program guest CPU ceiling. |
+| `timeoutSecs` | `30` | The per-program guest-execution timeout, in seconds. |
 | `maxMemoryBytes` | `268435456` | The per-program linear-memory cap. |
 | `healing` | every strategy on | Which [response-healing](/gg/response-healing/#configuration) repairs are armed. |
 
 The two numeric params each fall back to their default when absent, non-numeric, or
-non-positive; a float is honoured and truncated, because `5e10` is a perfectly ordinary
-way for a sweep config to write fifty billion. Neither is clamped — a study may starve
-the sandbox on purpose to measure what that does — so what protects an operator from a
-mystifying failure is the error message, which names the configured cap and the floor
-the guest needs.
+non-positive. `timeoutSecs` is a wall-clock time, so a **fraction** is honoured — `0.5` is
+half a second, which a study measuring a very short ceiling has every reason to ask for —
+while `maxMemoryBytes` is a count and truncates a fraction towards zero. Neither is clamped
+— a study may starve the sandbox on purpose to measure what that does — so what protects an
+operator from a mystifying failure is the error message, which names the configured limit.
 
 The ceilings that bound the *run* rather than one program — turns, wall clock,
 consecutive errors, recent error rate, cost — are not params of this capability at all.

@@ -80,7 +80,7 @@ use test_cabinet::gg::types::{self, ErrorCode, ToolError};
 /// It owns its invoker (rather than borrowing one) so the store's data is `'static` with no
 /// lifetime erasure and no `unsafe`, and it is reclaimed whole by
 /// [`into_parts`](Self::into_parts) on **every** exit path — including a trap — because the calls a
-/// program landed before it ran out of fuel are exactly what the model needs to see next turn.
+/// program landed before it was stopped are exactly what the model needs to see next turn.
 pub(crate) struct MembraneState<A: ToolApi> {
     /// The native, typed tool surface a bridged call is aimed at: the loop's own state in
     /// production ([`LoopToolApi`](crate::agent)), an in-memory fake under test.
@@ -93,6 +93,20 @@ pub(crate) struct MembraneState<A: ToolApi> {
     /// The run's wall-clock budget, consulted before every bridged call. `None` for a run with no
     /// deadline at all.
     deadline: Option<Instant>,
+    /// When this program began, so [`guest_elapsed`](Self::guest_elapsed) and the store's
+    /// epoch-deadline callback can measure how long the guest has been executing.
+    program_started: Instant,
+    /// Total wall-clock time the program has spent **parked in bridged tool calls** — dispatch, the
+    /// tool's own work, a `shell` build. Excluded from the guest's execution time so that time
+    /// waiting on a host call is never charged against the [execution timeout](SandboxLimits::timeout):
+    /// a program blocked minutes on a build is not a runaway.
+    host_call_time: Duration,
+    /// Whether the [execution timeout](SandboxLimits::timeout) stopped the program — set by the
+    /// store's epoch-deadline callback when the guest's own execution outran the ceiling, and read
+    /// by [`classify`](super::engine::classify) to name the cause, exactly as
+    /// [`memory_denied`](Self::memory_denied) names an out-of-memory. A trap carries no code the
+    /// callback could set from *inside* the guest, so the host records it here instead.
+    timed_out: bool,
     /// Every serviced call, in call order, up to [`MAX_RECORDED_CALLS`](capture::MAX_RECORDED_CALLS).
     calls: Vec<SandboxToolCall>,
     /// How many calls the roster cap discarded. The turn dispatched `calls.len() + this`.
@@ -185,6 +199,9 @@ impl<A: ToolApi> MembraneState<A> {
             enabled: enabled.iter().cloned().collect(),
             limiter: MemoryLimiter::new(limits.max_memory_bytes),
             deadline,
+            program_started: Instant::now(),
+            host_call_time: Duration::ZERO,
+            timed_out: false,
             calls: Vec::new(),
             calls_suppressed: 0,
             last_recorded_call: None,
@@ -214,6 +231,34 @@ impl<A: ToolApi> MembraneState<A> {
     /// having no single named memory, cannot otherwise be asked about.
     pub(crate) fn memory_denied(&self) -> bool {
         self.limiter.denied()
+    }
+
+    /// How long the guest has been executing on its **own** account: the wall clock since the
+    /// program began, minus every stretch it spent parked in a bridged tool call. This is the
+    /// quantity the [execution timeout](SandboxLimits::timeout) bounds, and the figure a run reports
+    /// as its program's cost.
+    pub(crate) fn guest_elapsed(&self) -> Duration {
+        self.program_started
+            .elapsed()
+            .saturating_sub(self.host_call_time)
+    }
+
+    /// Record that a bridged call parked the guest for `elapsed`, so that time is excluded from
+    /// [`guest_elapsed`](Self::guest_elapsed) and never counts against the execution timeout.
+    fn charge_host_time(&mut self, elapsed: Duration) {
+        self.host_call_time = self.host_call_time.saturating_add(elapsed);
+    }
+
+    /// Whether the [execution timeout](SandboxLimits::timeout) stopped the guest — the flag the
+    /// epoch-deadline callback sets and [`classify`](super::engine::classify) reads.
+    pub(crate) fn timed_out(&self) -> bool {
+        self.timed_out
+    }
+
+    /// Record that the guest outran its execution timeout, for [`classify`](super::engine::classify)
+    /// to read after the resulting trap unwinds. Called from the store's epoch-deadline callback.
+    pub(crate) fn mark_timed_out(&mut self) {
+        self.timed_out = true;
     }
 
     /// The reclaimed [tool api](ToolApi) and everything the program accumulated, consuming the
@@ -386,7 +431,11 @@ impl<A: ToolApi> MembraneState<A> {
             ));
         }
 
+        // Time spent inside the tool is the guest parked, not the guest running, so it is excluded
+        // from the execution timeout: a program blocked on a long `shell` build is not a runaway.
+        let started = Instant::now();
         let mut outcome = run(&mut self.api);
+        self.charge_host_time(started.elapsed());
         self.collect_images(&mut outcome);
         let completed = completed(&outcome);
         self.record(tool, &outcome, completed);

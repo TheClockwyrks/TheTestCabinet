@@ -1995,7 +1995,7 @@ pub enum GgHealingStrategy {
 /// shape it sent and telling it to call `finish(summary)` if it meant to end the run, and it
 /// counts towards the run's [error ceilings](GgRunLimits) — which is what stops a model that has
 /// started answering in prose from looping forever. It still emits its own
-/// [`CodeExecution`](GgTelemetryKind::CodeExecution) (with `ok: false` and no fuel figure, because
+/// [`CodeExecution`](GgTelemetryKind::CodeExecution) (with `ok: false` and no duration, because
 /// nothing ran), so [`code_executions`](GgSessionSummary::code_executions) counts code-shaped
 /// *turns* and stays the exact denominator for every healing rate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -3310,9 +3310,9 @@ pub enum GgTelemetryKind {
     /// The individual tool calls the program made still stream as ordinary
     /// [`ToolCall`](Self::ToolCall)/[`ToolResult`](Self::ToolResult) events in the order the
     /// program composed them — this event carries the *turn* itself: whether the program returned
-    /// normally, how many tool calls it composed, the wasmtime [fuel](https://wasmtime.dev/) it
-    /// consumed (the same efficiency signal Foray/Lattice expose), and — when it did not return
-    /// normally — the fault. A run with the capability off emits none.
+    /// normally, how many tool calls it composed, how long its own execution took (the efficiency
+    /// signal that replaced the wasmtime fuel the sandbox used to meter), and — when it did not
+    /// return normally — the fault. A run with the capability off emits none.
     CodeExecution {
         /// Whether the program returned normally (`true`) or faulted, was stopped, or never
         /// existed (`false`). A failed code turn is a *turn* outcome fed back to the model, never
@@ -3326,19 +3326,22 @@ pub enum GgTelemetryKind {
         /// got that far — a turn-level transition, or a tool this run did not enable — is not one of
         /// these and never inflates the count.
         tool_calls: u64,
-        /// The wasmtime fuel the program's execution **actually consumed** — the same per-program
-        /// efficiency signal the sibling Foray/Lattice hosts expose. Reported on every path that
-        /// reached the engine, including a fault or a trap (where it is the fuel burned up to the
-        /// trap, not the ceiling); `Some(0)` when the program never reached the engine (a
-        /// type-strip failure, or a sandbox that could not be built); and **absent** when there was
-        /// no program at all — see [`healing.not_a_program`](GgResponseHealing::not_a_program) —
-        /// because a turn that ran nothing has no fuel figure to average into a run's efficiency.
+        /// How long the program's **own execution** took, in milliseconds — the wall-clock time it
+        /// spent running, excluding time parked in a bridged tool call, which is the per-program
+        /// efficiency signal that replaced the wasmtime fuel figure the sandbox used to meter.
+        /// Reported on every path that reached the engine, including a fault, a trap, or an
+        /// [execution-timeout](https://docs.testcabinet.ai/gg/responses-as-code/) stop (where it is
+        /// the time burned up to the stop, not the ceiling); `Some(0)` when the program never
+        /// reached the engine (a type-strip failure, or a sandbox that could not be built); and
+        /// **absent** when there was no program at all — see
+        /// [`healing.not_a_program`](GgResponseHealing::not_a_program) — because a turn that ran
+        /// nothing has no duration to average into a run's efficiency.
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        fuel_used: Option<u64>,
+        duration_ms: Option<u64>,
         /// The failure message, when [`ok`](Self::CodeExecution::ok) is `false` — a program fault
         /// (a syntax error the type-strip rejected, or a value the program threw), a sandbox
-        /// failure (fuel or memory exhaustion, a trap), or, for a reply that was not a program,
-        /// the sentence saying which shape it was. Absent on a clean execution.
+        /// failure (an execution timeout or memory exhaustion, a trap), or, for a reply that was not
+        /// a program, the sentence saying which shape it was. Absent on a clean execution.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         error: Option<String>,
         /// The summary the program ended the **run** with, when it called `finish` — the one

@@ -131,9 +131,9 @@ use crate::model::{
 use crate::planning::PlanningRuntime;
 use crate::prompts::{
     self, ApiView, AutoloadView, BoardView, CodeCallView, CodeErrorView, CodeHeadingView,
-    CodeNotAProgramContext, CodeResultContext, CodeSandboxErrorContext, CodeTranspileErrorContext,
-    CompletionView, FsmView, MemoriesView, ReadFileView, SpawnableAgentView, SystemContext,
-    TasksView,
+    CodeNotAProgramContext, CodeResultContext, CodeSandboxErrorContext, CodeTimeoutContext,
+    CodeTranspileErrorContext, CompletionView, FsmView, MemoriesView, ReadFileView,
+    SpawnableAgentView, SystemContext, TasksView,
 };
 use crate::replay::{GgRecorder, RecordingClient};
 use crate::sandbox::{
@@ -6047,8 +6047,8 @@ struct CodeSetup {
     /// Whether the capability is on. When off, nothing in [`crate::sandbox`] or
     /// [`crate::healing`] is reachable at all and the loop drives ordinary tool calling.
     enabled: bool,
-    /// The wasmtime fuel ceiling and linear-memory cap one program runs under, resolved from the
-    /// capability's `fuel` / `maxMemoryBytes` params with measured defaults.
+    /// The execution timeout and linear-memory cap one program runs under, resolved from the
+    /// capability's `timeoutSecs` / `maxMemoryBytes` params with their defaults.
     limits: SandboxLimits,
     /// The [healing](crate::healing) strategies armed for this run — the ablation lever that decides
     /// which malformations of a reply gg repairs before compiling it, and which it lets fail.

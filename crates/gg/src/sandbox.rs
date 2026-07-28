@@ -4,8 +4,8 @@
 //! Under the [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) capability a
 //! model writes **TypeScript**, and every gg tool is a distinct, typed function in that program's
 //! scope. This module is the host: it type-strips the program with [`transpile`], evaluates it
-//! inside a committed [interpreter component](engine) under a fuel and linear-memory ceiling, and
-//! bridges each typed call across the [membrane] to gg's real toolset.
+//! inside a committed [interpreter component](engine) under an execution-timeout and linear-memory
+//! ceiling, and bridges each typed call across the [membrane] to gg's real toolset.
 //!
 //! ## Why a componentized JavaScript guest (and not an interpreter we wrote)
 //!
@@ -34,23 +34,16 @@
 //! (0.7–3 ms). [`precompile`] moves even that one compile off the first turn's critical path.
 //! Nothing on the hot path shells out — the TypeScript type-strip is `oxc`, in-process, at ~0.2 ms.
 //!
-//! ## What a program costs
+//! ## What a program costs, and what bounds it
 //!
-//! Measured against the real component, at `OptLevel::None`, with the full toolset injected:
-//!
-//! | Workload | Fuel |
-//! | --- | --- |
-//! | `return 40 + 2;` (the guest's own floor) | 5.67 M |
-//! | a realistic orchestration program (list → filter → shell → write → return) | 11.1 M |
-//! | one bridged tool call, marginal | ≈0.86 M |
-//! | reading a 256 KiB file | 13.3 M |
-//! | writing a 256 KiB file | 3.83 G |
-//! | rewriting twenty 64 KiB files | 24.3 G |
-//! | a runaway `while (true) {}` | ≈20 G per second of CPU |
-//!
-//! The membrane is **asymmetric by ~300×**: lifting a string *into* the guest costs ≈46 fuel per
-//! byte, lowering one *out* costs ≈14,600. Writing and logging are both on the expensive side, and
-//! that — not the arithmetic a program does — is what sizes [`SandboxLimits::default`].
+//! A program is bounded by a wall-clock **execution timeout** on the guest's own CPU (the
+//! [default](limits::DEFAULT_TIMEOUT) is 30 s) and a linear-memory cap — not by a fuel count. The
+//! timeout exists only to stop a program that does not terminate: even the heaviest *honest* program
+//! measured, rewriting twenty 64 KiB files, spends about 1.8 s of guest CPU, so a 30 s ceiling is
+//! reached only by a runaway (`while (true) {}` burns the guest's clock at wall-clock speed). Time a
+//! program spends parked in a bridged tool call — a `shell` build that takes minutes — is **excluded**
+//! from the measurement, so waiting on a build is never mistaken for a loop. Why a timeout replaced
+//! the fuel the sandbox used to meter, and how the exclusion is enforced, is in [`limits`].
 //!
 //! ## What a program can say, and what it cannot
 //!
@@ -65,7 +58,7 @@
 //! ## What a run yields
 //!
 //! [`run_program`] returns a [`SandboxOutcome`] on **every** path: the tool calls the program
-//! composed, the lines it logged, the pictures it read, the fuel it burned and the completion it
+//! composed, the lines it logged, the pictures it read, the time it ran and the completion it
 //! declared are handed back even when the sandbox trapped, because those are exactly what the model
 //! needs to see next turn — and, for the completion, what the *loop* needs in order to honour an
 //! ending the program already declared. Only [`SandboxOutcome::result`] splits — a [`ProgramResult`]
@@ -90,8 +83,8 @@
 
 use std::time::{Duration, Instant};
 
-use wasmtime::Store;
 use wasmtime::component::{HasSelf, Linker};
+use wasmtime::{Store, UpdateDeadline};
 
 mod engine;
 mod invoker;
@@ -141,7 +134,7 @@ pub fn run_program<A: ToolApi>(
         return (SandboxOutcome::before_start(error), api);
     }
 
-    // A program that does not compile never touches the engine: no store, no instantiate, no fuel.
+    // A program that does not compile never touches the engine: no store, no instantiate, no timer.
     let transpiled = match transpile::transpile_ts(program) {
         Ok(transpiled) => transpiled,
         Err(error) => {
@@ -161,16 +154,7 @@ pub fn run_program<A: ToolApi>(
         Ok(linker) => linker,
         Err(error) => return (SandboxOutcome::before_start(error), api),
     };
-    let mut store = match bounded_store(MembraneState::new(api, enabled, limits, deadline), limits)
-    {
-        Ok(store) => store,
-        // The api was moved into the state to build the store; reclaim it so the caller still gets
-        // its per-turn state back on this (host-fault) path.
-        Err((error, state)) => {
-            let (api, _parts) = state.api_and_parts();
-            return (SandboxOutcome::before_start(error), api);
-        }
-    };
+    let mut store = bounded_store(MembraneState::new(api, enabled, limits, deadline), limits);
 
     let bound = match Sandbox::instantiate(&mut store, component, &linker) {
         Ok(bound) => bound,
@@ -179,7 +163,7 @@ pub fn run_program<A: ToolApi>(
             // committed artifact importing something this membrane does not provide — i.e. the
             // component and the WIT have drifted apart.
             let error = engine::classify(&store, limits, &error, SandboxError::Instantiate);
-            return reclaim(store, limits, Err(error), unreachable, compile_wait);
+            return reclaim(store, Err(error), unreachable, compile_wait);
         }
     };
 
@@ -193,7 +177,7 @@ pub fn run_program<A: ToolApi>(
     if returned.is_err() {
         store.data_mut().revoke_completion();
     }
-    reclaim(store, limits, returned, unreachable, compile_wait)
+    reclaim(store, returned, unreachable, compile_wait)
 }
 
 /// A linker carrying the whole membrane and nothing else: every one of the thirty-two typed gg tool
@@ -212,25 +196,52 @@ fn linker<A: ToolApi>() -> Result<Linker<MembraneState<A>>, SandboxError> {
 
 /// A store for one program, with both ceilings installed **before** anything is instantiated.
 ///
-/// The order is load-bearing. The limiter must be in place first because the guest engine allocates
-/// its ~10 MiB heap while it initialises — which is why a cap below that floor fails at
-/// *instantiation* rather than at the first allocation a program makes, and why the limiter's
-/// denial flag is what tells those two apart. The fuel is set here for symmetry and costs nothing:
-/// instantiation itself is measured at 0 fuel, the engine initialising lazily on the first call.
-#[allow(clippy::result_large_err)]
+/// The memory limiter must be in place first because the guest engine allocates its ~10 MiB heap
+/// while it initialises — which is why a cap below that floor fails at *instantiation* rather than
+/// at the first allocation a program makes, and why the limiter's denial flag is what tells those
+/// two apart.
+///
+/// # The execution timeout
+///
+/// The [timeout](SandboxLimits::timeout) is enforced by wasmtime **epoch interruption**: the store's
+/// epoch deadline is armed against the process-wide [ticker](engine), and the callback below decides,
+/// each time the deadline is reached, whether the guest has genuinely outrun its budget.
+///
+/// The decision is what makes the timeout bound the guest's *own* execution rather than raw wall
+/// clock. A program parked in a long `shell` build accrues real time, so its deadline is reached
+/// while it did nothing wrong — but [`guest_elapsed`](MembraneState::guest_elapsed) subtracts the
+/// time spent in bridged calls, so the callback sees the guest is under budget and re-arms the
+/// deadline for the remainder. Only a program burning the *guest's* clock — a runaway loop —
+/// eventually reaches the deadline with its guest time genuinely spent, and only then does the
+/// callback mark the state timed-out and trap. It never fails, so the store is returned directly.
 fn bounded_store<A: ToolApi>(
     state: MembraneState<A>,
     limits: SandboxLimits,
-) -> Result<Store<MembraneState<A>>, (SandboxError, MembraneState<A>)> {
+) -> Store<MembraneState<A>> {
     let mut store = Store::new(engine::shared_engine(), state);
     store.limiter(|state| state.limiter());
-    // `set_fuel` fails only if fuel metering is off in the engine config (it is not) — but on that
-    // impossible path the state is handed back so `run_program` can still reclaim the api it moved
-    // in, rather than dropping it inside the consumed store.
-    if let Err(error) = store.set_fuel(limits.fuel) {
-        return Err((SandboxError::Engine(error.to_string()), store.into_data()));
-    }
-    Ok(store)
+
+    let timeout = limits.timeout;
+    store.set_epoch_deadline(engine::epoch_deadline_ticks(timeout));
+    store.epoch_deadline_callback(move |mut ctx| {
+        let guest_elapsed = ctx.data().guest_elapsed();
+        if guest_elapsed >= timeout {
+            // The guest's own clock is spent: this is a runaway. Record it so `classify` can name
+            // the cause after the trap unwinds — the trap itself carries no distinguishing code —
+            // and trap by returning an error.
+            ctx.data_mut().mark_timed_out();
+            Err(wasmtime::Error::msg(
+                "the program's execution timeout was reached",
+            ))
+        } else {
+            // Time was spent parked in host calls, not looping. Re-arm for the guest budget that is
+            // actually left, so waiting on a build is never mistaken for a runaway.
+            Ok(UpdateDeadline::Continue(engine::epoch_deadline_ticks(
+                timeout - guest_elapsed,
+            )))
+        }
+    });
+    store
 }
 
 /// Compile the interpreter component into the process-wide cache without running anything, so the
@@ -293,7 +304,7 @@ pub(crate) fn component_bound_tools() -> Result<Vec<String>, SandboxError> {
     // No tools are bound: the guest reports what it *can* bind, which does not depend on what this
     // particular store enables.
     let state = MembraneState::new(fake::FakeToolApi::new(&log), &[], limits, None);
-    let mut store = bounded_store(state, limits).map_err(|(error, _state)| error)?;
+    let mut store = bounded_store(state, limits);
 
     let bound = Sandbox::instantiate(&mut store, component, &linker)
         .map_err(|error| engine::classify(&store, limits, &error, SandboxError::Instantiate))?;
@@ -304,7 +315,7 @@ pub(crate) fn component_bound_tools() -> Result<Vec<String>, SandboxError> {
 
 /// The single exit point: reclaim everything the program accumulated, whatever happened to it.
 ///
-/// The fuel reading has to happen before the store is consumed, and the accumulated calls, logs,
+/// The elapsed reading has to happen before the store is consumed, and the accumulated calls, logs,
 /// pictures and completion have to be reclaimed even when the run trapped — so both live here rather
 /// than at each of the three places a run can end.
 ///
@@ -313,12 +324,13 @@ pub(crate) fn component_bound_tools() -> Result<Vec<String>, SandboxError> {
 /// meanings of that word inside one module is exactly the confusion this rename removes.
 fn reclaim<A: ToolApi>(
     store: Store<MembraneState<A>>,
-    limits: SandboxLimits,
     returned: Result<(), SandboxError>,
     unreachable: Option<UnreachableTail>,
     compile_wait: Option<Duration>,
 ) -> (SandboxOutcome, A) {
-    let fuel_consumed = limits.fuel.saturating_sub(store.get_fuel().unwrap_or(0));
+    // Read the guest's own execution time before the store is consumed — the same figure the
+    // timeout is measured against, and the efficiency signal that replaces the fuel reading.
+    let elapsed = store.data().guest_elapsed();
     let (
         api,
         MembraneParts {
@@ -355,7 +367,7 @@ fn reclaim<A: ToolApi>(
         // settled before this, by `revoke_completion`.
         completion,
         revoked_completion,
-        fuel_consumed,
+        elapsed,
         unreachable,
         compile_wait,
         result: returned.map(|()| ProgramResult {

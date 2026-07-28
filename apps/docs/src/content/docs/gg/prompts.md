@@ -23,9 +23,10 @@ renders a test case's [`prompt.hbs`](/testing/end-to-end/overview/#prompt-templa
 | `plan-framing.hbs`         | How an accepted plan is framed as it seeds the fresh implementation context.                                                                                                           |
 | `code-result.hbs`          | The turn feedback for a [responses-as-code](/gg/responses-as-code/) program that ran — its call roster, its output, and anything it needs telling.                                     |
 | `code-transpile-error.hbs` | The turn feedback for a [program](/gg/responses-as-code/) that did not compile, so nothing ran.                                                                                        |
-| `code-sandbox-error.hbs`   | The turn feedback for a [program](/gg/responses-as-code/) the sandbox could not run to a result — a fuel or memory ceiling.                                                            |
+| `code-sandbox-error.hbs`   | The turn feedback for a [program](/gg/responses-as-code/) the sandbox could not run to a result — a memory ceiling or a trap.                                                          |
+| `code-timeout.hbs`         | The turn feedback for a [program](/gg/responses-as-code/) the sandbox stopped at its execution timeout — its own message, because a timeout means a program that did not terminate.    |
 | `code-not-a-program.hbs`   | The turn feedback for a reply that was not a program at all — prose, empty, comments only, or several candidate blocks.                                                                |
-| `healing-note.hbs`         | The partial at the top of all four code feedback templates, disclosing what [healing](/gg/response-healing/) repaired.                                                                 |
+| `healing-note.hbs`         | The partial at the top of all five code feedback templates, disclosing what [healing](/gg/response-healing/) repaired.                                                                 |
 
 ## The system prompt is assembled from the capability set
 

@@ -4,6 +4,8 @@
 //! involved, plus the rendering of the errors themselves. Keeping them out of `sandbox.test.rs`
 //! keeps a per-process component compile off tests that have no need of one.
 
+use std::time::Duration;
+
 use super::transpile::TranspileError;
 use super::*;
 use crate::sandbox::fake::{CallLog, FakeToolApi, process_isolated};
@@ -37,7 +39,7 @@ fn a_transpile_error_never_touches_the_engine() {
             "the component must not be compiled for a program that cannot run"
         );
     }
-    assert_eq!(outcome.fuel_consumed, 0);
+    assert_eq!(outcome.elapsed, Duration::ZERO);
     assert!(outcome.tool_calls.is_empty());
     assert!(outcome.logs.is_empty());
     assert!(
@@ -116,7 +118,7 @@ fn declared_disposition(error: &SandboxError) -> Disposition {
         SandboxError::Host(_) => Disposition::GgsFault,
         SandboxError::Compile(_) => Disposition::ArtifactDefect,
         SandboxError::Instantiate(_) => Disposition::ArtifactDefect,
-        SandboxError::OutOfFuel { .. } => Disposition::ModelsSandboxLimit,
+        SandboxError::Timeout { .. } => Disposition::ModelsSandboxLimit,
         SandboxError::OutOfMemory { .. } => Disposition::ModelsSandboxLimit,
         SandboxError::Trap(_) => Disposition::ModelsSandboxLimit,
     }
@@ -136,7 +138,9 @@ fn every_sandbox_error() -> Vec<SandboxError> {
         SandboxError::Host("the blocking task panicked".into()),
         SandboxError::Compile("not a component".into()),
         SandboxError::Instantiate("missing import".into()),
-        SandboxError::OutOfFuel { limit: 42 },
+        SandboxError::Timeout {
+            limit: Duration::from_secs(42),
+        },
         SandboxError::OutOfMemory { limit: 42 },
         SandboxError::Trap("unreachable".into()),
     ]
@@ -222,8 +226,8 @@ fn every_sandbox_error_renders_something_actionable() {
         "the program did not compile: no imports"
     );
     assert_eq!(
-        SandboxError::Engine("fuel metering unavailable".into()).to_string(),
-        "failed to prepare the wasm engine: fuel metering unavailable"
+        SandboxError::Engine("duplicate import name".into()).to_string(),
+        "failed to prepare the wasm engine: duplicate import name"
     );
     assert_eq!(
         SandboxError::Compile("not a component".into()).to_string(),
@@ -234,11 +238,11 @@ fn every_sandbox_error_renders_something_actionable() {
         "the sandbox component failed to instantiate: unknown import"
     );
     assert_eq!(
-        SandboxError::OutOfFuel {
-            limit: 200_000_000_000
+        SandboxError::Timeout {
+            limit: Duration::from_secs(30)
         }
         .to_string(),
-        "the program exhausted its fuel ceiling of 200000000000"
+        "the program ran longer than its 30s execution timeout and was stopped"
     );
     let memory = SandboxError::OutOfMemory { limit: 4_194_304 }.to_string();
     assert!(memory.contains("4194304-byte memory cap"), "{memory}");

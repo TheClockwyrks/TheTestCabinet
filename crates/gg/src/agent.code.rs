@@ -179,7 +179,7 @@ pub(super) async fn run_code_turn(
         ));
     }
 
-    // A reply that never became a program short-circuits here: no component, no store, no fuel.
+    // A reply that never became a program short-circuits here: no component, no store, no timer.
     // Nothing under `sandbox/` is entered at all. The per-turn state was never moved into a program,
     // so it is handed straight back untouched.
     if let HealingVerdict::NotAProgram(reason) = healed.verdict {
@@ -249,7 +249,7 @@ pub(super) async fn run_code_turn(
     emitter.emit(GgTelemetryKind::CodeExecution {
         ok: matches!(&outcome.result, Ok(result) if result.error.is_none()),
         tool_calls,
-        fuel_used: Some(outcome.fuel_consumed),
+        duration_ms: Some(saturating_u64(outcome.elapsed.as_millis())),
         error: match &outcome.result {
             Ok(result) => result.error.as_ref().map(|error| error.message.clone()),
             Err(error) => Some(error.to_string()),
@@ -377,7 +377,7 @@ pub(super) async fn run_code_turn(
 ///
 /// Shared by healing's own verdict and the loop's post-transpile reclassification because the two
 /// arrive at the same fact by different routes and the model must be told the same thing either
-/// way. `fuel_used` is **absent** rather than zero: a turn that ran nothing has no fuel figure to
+/// way. `duration_ms` is **absent** rather than zero: a turn that ran nothing has no duration to
 /// average into a run's efficiency, and a fabricated zero would quietly halve one.
 fn not_a_program(
     turn: &CodeTurn<'_>,
@@ -388,10 +388,10 @@ fn not_a_program(
     emitter.emit(GgTelemetryKind::CodeExecution {
         ok: false,
         tool_calls: 0,
-        fuel_used: None,
+        duration_ms: None,
         error: Some(reason.short()),
         finished: None,
-        // Absent for the same reason `fuel_used` is: nothing about this turn touched the sandbox,
+        // Absent for the same reason `duration_ms` is: nothing about this turn touched the sandbox,
         // so there is no component to have waited on.
         compile_wait_ms: None,
         healing: healing_record_with(healed, Some(reason)),
@@ -636,6 +636,8 @@ fn code_failure_feedback(
     healing: Vec<String>,
     delegated: bool,
 ) -> String {
+    let calls = outcome.tool_calls.len() + outcome.tool_calls_suppressed as usize;
+    let finish_revoked = outcome.revoked_completion.is_some();
     match error {
         SandboxError::Transpile(transpile) => {
             prompts::render_code_transpile_error(&CodeTranspileErrorContext {
@@ -644,14 +646,20 @@ fn code_failure_feedback(
                 delegated,
             })
         }
+        // A timeout is not "too much work for one program" — the ceiling is far larger than any
+        // honest program needs — it is a program that did not terminate. It gets its own message so
+        // the advice is to find the runaway loop rather than to write less.
+        SandboxError::Timeout { .. } => prompts::render_code_timeout(&CodeTimeoutContext {
+            healing,
+            error: error.to_string(),
+            finish_revoked,
+            calls,
+        }),
         _ => prompts::render_code_sandbox_error(&CodeSandboxErrorContext {
             healing,
             error: error.to_string(),
-            finish_revoked: outcome.revoked_completion.is_some(),
-            calls: outcome.tool_calls.len() + outcome.tool_calls_suppressed as usize,
-            // Only fuel exhaustion is a budgeting problem; a memory cap or a trap is not, and would
-            // be misdiagnosed by advice about how much the program wrote.
-            output_heavy: matches!(error, SandboxError::OutOfFuel { .. }),
+            finish_revoked,
+            calls,
         }),
     }
 }
@@ -842,7 +850,7 @@ async fn run_code_program(
             (outcome, Some(state))
         }
         // A panic inside the sandbox is a failure of gg's own plumbing, classified as one rather than
-        // as a guest trap: the store — and with it the roster, the logs, the pictures, the fuel
+        // as a guest trap: the store — and with it the roster, the logs, the pictures, the elapsed
         // reading *and the per-turn state the api owned* — died with the blocking task. Returning
         // `None` for the state is what tells the turn this is a host fault; it maps it to `Fatal`,
         // ends the session, and never reads the window again. Laundering this as a trap would charge
@@ -863,7 +871,7 @@ async fn run_code_program(
                 returned_value: false,
                 completion: None,
                 revoked_completion: None,
-                fuel_consumed: 0,
+                elapsed: Duration::ZERO,
                 // Both are observations the sandbox makes on its way through, and the task that would
                 // have made them died — so neither is known, and neither is invented.
                 unreachable: None,

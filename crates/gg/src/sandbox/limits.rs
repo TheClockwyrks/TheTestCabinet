@@ -1,11 +1,31 @@
-//! What one program is allowed to consume: a wasmtime **fuel** ceiling on guest CPU and a
+//! What one program is allowed to consume: a wall-clock **execution timeout** on guest CPU and a
 //! **linear-memory** cap, plus the [limiter](MemoryLimiter) that enforces the second one and
 //! remembers that it did.
 //!
 //! Both are per-[`Store`](wasmtime::Store) — never per engine — which is precisely what lets the
 //! whole process share one compiled component while each ceiling stays private. A store is built
-//! per **program**, so both are per-program budgets, re-armed every turn: a run of fifty turns is
-//! allowed fifty times the fuel, and nothing accumulates across them.
+//! per **program**, so both are per-program budgets, re-armed every turn: a run of fifty turns
+//! allows every program its own full timeout, and nothing accumulates across them.
+//!
+//! # Why a timeout, and not a fuel count
+//!
+//! The sandbox used to meter the guest with wasmtime **fuel** — a deterministic instruction
+//! budget. Fuel is exact, but its cost model is invisible to the model writing the program: lowering
+//! a string *out* of the guest cost ≈300× lifting one in, so a program that merely wrote a few large
+//! files could exhaust a fuel ceiling that a runaway loop would take seconds to reach, and the
+//! ceiling had to be sized by measuring the interpreter. That made a limit meant only to stop
+//! **infinite loops** into something an honest program could trip.
+//!
+//! The timeout removes that failure mode by construction. It is **non-deterministic** — it measures
+//! elapsed guest-CPU time rather than counting instructions — and it is set far longer than any
+//! honest program's execution (milliseconds, occasionally a second or two) needs, so it is only ever
+//! reached by a program that does not terminate. It bounds only the guest's *own* execution: time a
+//! program spends parked in a bridged tool call (a long `shell` build) is excluded, exactly as fuel
+//! excluded it, so a program waiting minutes on a build is never mistaken for a runaway. That
+//! exclusion is enforced by [`MembraneState`](super::membrane)'s epoch-deadline callback, which
+//! extends the deadline by whatever time was spent in host calls.
+
+use std::time::Duration;
 
 use serde_json::Value;
 use test_cabinet_core::gg::{CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig};
@@ -14,74 +34,59 @@ use wasmtime::ResourceLimiter;
 /// The sandbox limits one program runs under.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SandboxLimits {
-    /// The fuel ceiling for **one program**: instantiation, the shim's setup, the program itself,
-    /// and every value marshalled across the membrane. Set once before instantiation and never
-    /// refilled *within* a program, so one that would loop forever is stopped by it — and re-armed
-    /// for the next turn, because it bounds a `Store` and every turn gets a fresh one.
-    pub fuel: u64,
+    /// The wall-clock ceiling on **one program's** guest-CPU execution: the guest's setup, the
+    /// program itself, and every value marshalled across the membrane, but **not** time parked in a
+    /// bridged tool call. Armed once before the program runs and re-armed for the next turn, because
+    /// it bounds a `Store` and every turn gets a fresh one, so a program that would loop forever is
+    /// stopped by it while one that merely does a lot of honest work never approaches it.
+    pub timeout: Duration,
     /// The linear-memory cap in bytes. A `memory.grow` that would exceed it is denied — which
     /// fails the run rather than letting a runaway allocation inside the guest disturb the host.
     pub max_memory_bytes: usize,
 }
 
+/// The [default](SandboxLimits::default) execution timeout: **30 seconds** of guest CPU.
+///
+/// This is a pure infinite-loop guard, not a work ration. The heaviest *honest* program measured —
+/// reading, rewriting and writing back twenty 64 KiB files — spends about 1.8 s of guest CPU, so
+/// 30 s leaves it more than an order of magnitude of headroom while still stopping a `while (true)
+/// {}` in about half a minute. It is deliberately far longer than any single response needs, so it
+/// is never reached outside a program that does not terminate.
+pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
+
 impl Default for SandboxLimits {
-    /// Sized from measurement against the real interpreter component, not by analogy with the
-    /// interpreter this sandbox replaces.
-    ///
-    /// The guest is a full JavaScript engine and fuel is the ONLY guard on runaway guest CPU (the
-    /// tree-walking interpreter this replaces had a softer step budget doing that job). The
-    /// measured cost model is in the [module docs](super); the two numbers that set this ceiling
-    /// are:
-    ///
-    /// * the heaviest *honest* program measured — reading, rewriting and writing back twenty
-    ///   64 KiB files — costs **24.3 G** fuel and 1.8 s of CPU, because lowering a string out of
-    ///   the guest costs ≈14,600 fuel per byte against ≈46 to lift one in; and
-    /// * a runaway (`while (true) {}`) burns ≈20 G fuel per second, so the ceiling is also a
-    ///   wall-clock bound on a program that calls nothing.
-    ///
-    /// 2×10¹¹ gives the heaviest honest program ≈8× headroom (≈160 files of that size in one
-    /// program) while stopping a runaway in ≈10 s of container CPU. gg's previous default of
-    /// 2×10⁹ was sized for a different guest and is ≈0.1 s here — tight enough that an honest
-    /// program which writes anything at all would trap. Raising it is a correction, not a
-    /// preference, and
-    /// `a_write_heavy_program_uses_under_a_fifth_of_the_default_fuel` locks the headroom in.
-    ///
-    /// Fuel meters only the GUEST: a program that spends ten minutes waiting on `shell` builds
-    /// costs single-digit millions of fuel. What bounds *that* is the run's wall-clock deadline,
-    /// which the [membrane](super::membrane) consults before every bridged call.
+    /// The [default timeout](DEFAULT_TIMEOUT) and a 256 MiB linear-memory cap.
     ///
     /// 256 MiB of linear memory is ≈25× the 10.3 MiB the guest engine occupies at rest, which
     /// leaves ample room for the strings a real program builds while still denying a runaway
-    /// allocation long before it can disturb the host. It is also what the previous default
-    /// happened to be, so no configured run changes behaviour.
+    /// allocation long before it can disturb the host.
     fn default() -> Self {
         Self {
-            fuel: 200_000_000_000,
+            timeout: DEFAULT_TIMEOUT,
             max_memory_bytes: 268_435_456,
         }
     }
 }
 
 /// Resolve the [sandbox limits](SandboxLimits) from the
-/// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability's params — `fuel` and
+/// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability's params — `timeoutSecs` and
 /// `maxMemoryBytes` — each falling back to the [default](SandboxLimits::default) when the
 /// capability is absent, the param is absent, or the value is non-numeric or non-positive.
 ///
 /// The param NAMES are contract-visible (they are what the console's capability catalogue offers
 /// and what persisted run data records), so they do not change with the sandbox underneath them.
 ///
-/// There is deliberately **no clamping** of `maxMemoryBytes`: a study may starve the sandbox on
-/// purpose to measure what that does. What protects the operator from a mystifying failure is the
-/// error message, which names the configured cap and says the guest engine needs about 10 MiB of
-/// heap before a program runs at all.
+/// There is deliberately **no clamping** of either param: a study may starve the sandbox on purpose
+/// to measure what that does. What protects the operator from a mystifying failure is the error
+/// message, which names the configured limit.
 pub fn resolve_sandbox_limits(set: &GgAgentConfig) -> SandboxLimits {
     let mut limits = SandboxLimits::default();
     let Some(capability) = set.capability(CAPABILITY_RESPONSES_AS_CODE) else {
         return limits;
     };
 
-    if let Some(fuel) = positive(capability.params.get("fuel")) {
-        limits.fuel = fuel;
+    if let Some(secs) = positive_secs(capability.params.get("timeoutSecs")) {
+        limits.timeout = secs;
     }
     if let Some(bytes) = positive(capability.params.get("maxMemoryBytes")) {
         // A cap wider than this platform's address space is not a cap; saturating keeps the
@@ -94,15 +99,15 @@ pub fn resolve_sandbox_limits(set: &GgAgentConfig) -> SandboxLimits {
 /// A capability param as a positive count, or `None` when it is absent, null, non-numeric, or
 /// smaller than one.
 ///
-/// Zero is treated as "not configured" rather than as "no fuel at all": a run configured with a
+/// Zero is treated as "not configured" rather than as "no memory at all": a run configured with a
 /// ceiling of zero could not execute even the guest's own setup, so every turn would fail
 /// identically — which is never what a study meant to ask for.
 ///
-/// A **float is honoured**, truncated towards zero. `{"fuel": 5e10}` is a perfectly ordinary way
-/// for a JSON- or JavaScript-authored sweep config to write fifty billion, and JSON has no integer
-/// type to distinguish it from `50000000000` — so reading only the integer form would silently run
-/// the default arm under the configured arm's name, which is precisely the failure this module's
-/// docs open by warning about. Anything not finite, and anything under one, still falls back.
+/// A **float is honoured**, truncated towards zero. `{"maxMemoryBytes": 5e8}` is a perfectly
+/// ordinary way for a JSON- or JavaScript-authored sweep config to write half a gigabyte, and JSON
+/// has no integer type to distinguish it from `500000000` — so reading only the integer form would
+/// silently run the default arm under the configured arm's name. Anything not finite, and anything
+/// under one, still falls back.
 fn positive(param: Option<&Value>) -> Option<u64> {
     let param = param?;
     param
@@ -116,6 +121,22 @@ fn positive(param: Option<&Value>) -> Option<u64> {
                 .map(|value| value as u64)
         })
         .filter(|&value| value > 0)
+}
+
+/// A capability param as a positive **duration in seconds**, or `None` when it is absent, null,
+/// non-numeric, or not strictly positive.
+///
+/// A **fractional value is honoured** — `{"timeoutSecs": 0.5}` is half a second — because the param
+/// is a wall-clock time and a study measuring a very short ceiling has every reason to ask for one.
+/// A value so large it overflows a `Duration` saturates at the near-eternal [`Duration::MAX`], which
+/// keeps the configured intent ("effectively no timeout") rather than wrapping it into something
+/// small. Zero, a negative, and anything not finite fall back to the default.
+fn positive_secs(param: Option<&Value>) -> Option<Duration> {
+    let secs = param?.as_f64()?;
+    if !secs.is_finite() || secs <= 0.0 {
+        return None;
+    }
+    Some(Duration::try_from_secs_f64(secs).unwrap_or(Duration::MAX))
 }
 
 /// Caps guest linear-memory growth, and **remembers whether the last growth it saw was refused** so

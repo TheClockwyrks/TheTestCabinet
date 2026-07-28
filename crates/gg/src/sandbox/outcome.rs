@@ -20,8 +20,8 @@ use crate::model::ImageContent;
 
 /// Everything one program produced — its effects, its exhaust, and how it ended.
 ///
-/// The tool calls, logs, images and fuel are populated on **every** path, including a trap, for the
-/// reason the [module docs](self) open with. Only [`result`](Self::result) splits.
+/// The tool calls, logs, images and elapsed time are populated on **every** path, including a trap,
+/// for the reason the [module docs](self) open with. Only [`result`](Self::result) splits.
 #[derive(Debug)]
 pub struct SandboxOutcome {
     /// Every tool call the program made that reached the loop, in call order, up to the roster cap.
@@ -29,7 +29,7 @@ pub struct SandboxOutcome {
     ///
     /// The number of `ToolCall`/`ToolResult` telemetry pairs and replay entries the turn produced
     /// is `tool_calls.len() + tool_calls_suppressed`, **not** the vector's length: a program can
-    /// afford hundreds of thousands of calls within its fuel ceiling, and the roster is bounded
+    /// afford hundreds of thousands of calls within its execution timeout, and the roster is bounded
     /// because it is charged to the next turn's context window.
     pub tool_calls: Vec<SandboxToolCall>,
     /// How many serviced calls the roster cap discarded. They happened, and they streamed their
@@ -75,8 +75,13 @@ pub struct SandboxOutcome {
     /// The summary of a completion the program declared and then lost by failing, so the turn's
     /// feedback can say the ending was cancelled and why. `None` on every other path.
     pub revoked_completion: Option<String>,
-    /// The fuel the run consumed (`limits.fuel` minus what was left), reported even on a trap.
-    pub fuel_consumed: u64,
+    /// The wall-clock time the program's **own execution** took — the guest's setup, the program,
+    /// and every value marshalled across the membrane, but **not** time parked in a bridged tool
+    /// call, so it is the same guest-only cost the [timeout](SandboxError::Timeout) is measured
+    /// against. Reported on every path that reached the engine, including a trap or a timeout (where
+    /// it is the time burned up to the stop). The efficiency signal that replaces the fuel figure
+    /// the fuel-metered sandbox used to report.
+    pub elapsed: Duration,
     /// Top-level statements the program wrote that could not run, when it wrote any — the fact that
     /// keeps a reply whose second half never executed from being reported as an unqualified
     /// success. See [`UnreachableTail`].
@@ -115,7 +120,7 @@ impl SandboxOutcome {
             returned_value: false,
             completion: None,
             revoked_completion: None,
-            fuel_consumed: 0,
+            elapsed: Duration::ZERO,
             unreachable: None,
             compile_wait: None,
             result: Err(error),
@@ -194,11 +199,10 @@ pub enum SandboxError {
     Transpile(#[from] TranspileError),
     /// The wasm engine could not be configured or linked.
     ///
-    /// Both of its producers are unreachable in this build and are kept because the failures they
-    /// report are real ones for a *different* configuration: linking fails on a duplicate import
-    /// name, which a `bindgen!`-generated linker cannot produce, and setting fuel fails when fuel
-    /// consumption is off, which the fixed [`Config`](wasmtime::Config) turns on. So there is no
-    /// test that provokes it — only one that asserts what it says.
+    /// Its one producer is unreachable in this build and is kept because the failure it reports is a
+    /// real one for a *different* configuration: linking fails on a duplicate import name, which a
+    /// `bindgen!`-generated linker cannot produce. So there is no test that provokes it — only one
+    /// that asserts what it says.
     #[error("failed to prepare the wasm engine: {0}")]
     Engine(String),
     /// The committed interpreter component failed to compile. A defect in the artifact, never a
@@ -209,12 +213,15 @@ pub enum SandboxError {
     /// membrane does not provide, i.e. the committed artifact and the WIT have drifted apart.
     #[error("the sandbox component failed to instantiate: {0}")]
     Instantiate(String),
-    /// The program exhausted its fuel ceiling — a runaway loop, or simply too much work (most often
-    /// too much OUTPUT: writing is the expensive direction of the membrane) for one program.
-    #[error("the program exhausted its fuel ceiling of {limit}")]
-    OutOfFuel {
-        /// The ceiling that was exhausted, so the feedback can name it.
-        limit: u64,
+    /// The program ran past its execution timeout — its guest CPU exceeded the wall-clock ceiling,
+    /// which in practice means a loop or recursion that does not terminate, because the ceiling is
+    /// set far longer than any honest program's execution needs. Time parked in a bridged tool call
+    /// is excluded from the measurement, so a program waiting on a long `shell` build is never
+    /// stopped by it.
+    #[error("the program ran longer than its {limit:?} execution timeout and was stopped")]
+    Timeout {
+        /// The timeout that was reached, so the feedback can name it.
+        limit: Duration,
     },
     /// The guest's linear memory grew past the cap.
     #[error(
@@ -229,7 +236,7 @@ pub enum SandboxError {
     #[error("the sandbox trapped: {0}")]
     Trap(String),
     /// gg's own plumbing failed: the sandbox's blocking task did not complete (a panic inside it),
-    /// so the store — and with it the roster, the logs and the fuel reading — died with it.
+    /// so the store — and with it the roster, the logs and the elapsed reading — died with it.
     ///
     /// Kept apart from [`Trap`](Self::Trap) because a trap is something the *program* did and is
     /// answered with advice about writing smaller programs, while this is a defect in gg that must

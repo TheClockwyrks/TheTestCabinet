@@ -4,6 +4,8 @@
 //! measure what starving (or over-feeding) a sandbox does, and a param that is silently ignored
 //! turns an ablation into a run of the default arm under another name.
 
+use std::time::Duration;
+
 use serde_json::json;
 use test_cabinet_core::gg::{CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig, GgCapabilityConfig};
 use wasmtime::ResourceLimiter;
@@ -39,11 +41,11 @@ fn a_capability_with_no_params_resolves_to_the_defaults() {
     );
 }
 
-/// A configured `fuel` is honoured — the whole point of the param.
+/// A configured `timeoutSecs` is honoured — the whole point of the param.
 #[test]
-fn a_configured_fuel_ceiling_is_honoured() {
-    let limits = resolve_sandbox_limits(&set_with(json!({ "fuel": 1_234_567 })));
-    assert_eq!(limits.fuel, 1_234_567);
+fn a_configured_timeout_is_honoured() {
+    let limits = resolve_sandbox_limits(&set_with(json!({ "timeoutSecs": 12 })));
+    assert_eq!(limits.timeout, Duration::from_secs(12));
     assert_eq!(
         limits.max_memory_bytes,
         SandboxLimits::default().max_memory_bytes,
@@ -51,45 +53,40 @@ fn a_configured_fuel_ceiling_is_honoured() {
     );
 }
 
-/// Zero fuel is "not configured", not "no fuel": a run at zero could not execute even the guest's
-/// own setup, so every turn would fail identically — never what a study asked for.
+/// Zero seconds is "not configured", not "no time at all": a run at zero could not execute even the
+/// guest's own setup, so every turn would fail identically — never what a study asked for.
 #[test]
-fn a_zero_fuel_ceiling_falls_back_to_the_default() {
-    let limits = resolve_sandbox_limits(&set_with(json!({ "fuel": 0 })));
-    assert_eq!(limits.fuel, SandboxLimits::default().fuel);
+fn a_zero_timeout_falls_back_to_the_default() {
+    let limits = resolve_sandbox_limits(&set_with(json!({ "timeoutSecs": 0 })));
+    assert_eq!(limits.timeout, SandboxLimits::default().timeout);
 }
 
 /// A non-numeric param is a misconfiguration that must not take the run down with it.
 #[test]
-fn a_non_numeric_fuel_ceiling_falls_back_to_the_default() {
-    let limits = resolve_sandbox_limits(&set_with(json!({ "fuel": "lots" })));
-    assert_eq!(limits.fuel, SandboxLimits::default().fuel);
+fn a_non_numeric_timeout_falls_back_to_the_default() {
+    let limits = resolve_sandbox_limits(&set_with(json!({ "timeoutSecs": "ages" })));
+    assert_eq!(limits.timeout, SandboxLimits::default().timeout);
 }
 
-/// **A float is a number.** `5e10` is a perfectly ordinary way for a JSON- or JavaScript-authored
-/// sweep config to write fifty billion, and JSON has no integer type to tell it apart from
-/// `50000000000` — so reading only the integer form would run the default arm under the configured
-/// arm's name, which is the exact failure this module exists to prevent.
+/// **A fraction is a time.** The timeout is a wall-clock duration, so `0.5` is half a second — a
+/// study measuring a very short ceiling has every reason to ask for one, and it must not fall back
+/// the way a fractional *count* would.
 #[test]
-fn a_fractional_or_exponent_param_is_honoured() {
-    let limits = resolve_sandbox_limits(&set_with(json!({ "fuel": 5e10 })));
-    assert_eq!(limits.fuel, 50_000_000_000);
+fn a_fractional_timeout_is_honoured() {
+    let limits = resolve_sandbox_limits(&set_with(json!({ "timeoutSecs": 0.5 })));
+    assert_eq!(limits.timeout, Duration::from_millis(500));
 
-    // A fraction truncates rather than falling back: the intent is unambiguous.
+    // A memory fraction still truncates: it is a count, not a duration.
     let limits = resolve_sandbox_limits(&set_with(json!({ "maxMemoryBytes": 1_048_576.5 })));
     assert_eq!(limits.max_memory_bytes, 1_048_576);
 
-    // Under one is still "not configured", exactly as zero is.
-    let limits = resolve_sandbox_limits(&set_with(json!({ "fuel": 0.5 })));
-    assert_eq!(limits.fuel, SandboxLimits::default().fuel);
-
-    // And a number that is not one at all falls back rather than becoming something arbitrary.
-    for nonsense in [f64::NAN, f64::INFINITY, -1.0] {
-        let limits = resolve_sandbox_limits(&set_with(json!({ "fuel": nonsense })));
+    // Zero, a negative, and anything not finite fall back rather than becoming something arbitrary.
+    for nonsense in [0.0, f64::NAN, f64::INFINITY, -1.0] {
+        let limits = resolve_sandbox_limits(&set_with(json!({ "timeoutSecs": nonsense })));
         assert_eq!(
-            limits.fuel,
-            SandboxLimits::default().fuel,
-            "{nonsense} must not configure a ceiling"
+            limits.timeout,
+            SandboxLimits::default().timeout,
+            "{nonsense} must not configure a timeout"
         );
     }
 }
@@ -101,10 +98,10 @@ fn a_fractional_or_exponent_param_is_honoured() {
 fn a_configured_memory_cap_is_honoured_even_below_the_guest_floor() {
     let limits = resolve_sandbox_limits(&set_with(json!({ "maxMemoryBytes": 4_194_304 })));
     assert_eq!(limits.max_memory_bytes, 4_194_304);
-    assert_eq!(limits.fuel, SandboxLimits::default().fuel);
+    assert_eq!(limits.timeout, SandboxLimits::default().timeout);
 }
 
-/// Zero memory falls back for the same reason zero fuel does.
+/// Zero memory falls back for the same reason a zero timeout does.
 #[test]
 fn a_zero_memory_cap_falls_back_to_the_default() {
     let limits = resolve_sandbox_limits(&set_with(json!({ "maxMemoryBytes": 0 })));
@@ -117,17 +114,19 @@ fn a_zero_memory_cap_falls_back_to_the_default() {
 /// Both params together, which is how a sweep configures an arm.
 #[test]
 fn both_params_resolve_together() {
-    let limits = resolve_sandbox_limits(&set_with(json!({ "fuel": 42, "maxMemoryBytes": 65_536 })));
-    assert_eq!(limits.fuel, 42);
+    let limits = resolve_sandbox_limits(&set_with(
+        json!({ "timeoutSecs": 5, "maxMemoryBytes": 65_536 }),
+    ));
+    assert_eq!(limits.timeout, Duration::from_secs(5));
     assert_eq!(limits.max_memory_bytes, 65_536);
 }
 
-/// The defaults themselves, asserted as values: they are sized from measurement (see the type's
-/// own docs) and a change to either should be a deliberate edit here as well.
+/// The defaults themselves, asserted as values: the timeout is a pure infinite-loop guard (see the
+/// type's own docs) and a change to either should be a deliberate edit here as well.
 #[test]
-fn the_defaults_are_the_measured_ceilings() {
+fn the_defaults_are_the_expected_ceilings() {
     let limits = SandboxLimits::default();
-    assert_eq!(limits.fuel, 200_000_000_000);
+    assert_eq!(limits.timeout, Duration::from_secs(30));
     assert_eq!(limits.max_memory_bytes, 268_435_456);
 }
 

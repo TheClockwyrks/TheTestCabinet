@@ -679,10 +679,9 @@ fn the_feedback_says_when_a_finish_was_revoked() {
 
     let stopped = render_code_sandbox_error(&CodeSandboxErrorContext {
         healing: Vec::new(),
-        error: "the program exhausted its fuel ceiling of 200000000000".to_string(),
+        error: "the program exceeded its 268435456-byte memory cap".to_string(),
         finish_revoked: true,
         calls: 3,
-        output_heavy: true,
     });
     assert!(
         flat(&stopped)
@@ -733,42 +732,45 @@ fn the_transpile_feedback_says_nothing_ran() {
     );
 }
 
-/// A sandbox limit is framed as "too heavy", never as "wrong" — and only a *fuel* exhaustion earns
-/// the advice about which direction of the membrane is expensive.
+/// A sandbox limit is framed as "too heavy", never as "wrong" — while a **timeout** gets its own,
+/// opposite advice: the ceiling is far larger than any program needs, so a timeout means a program
+/// that did not terminate, not one that was too heavy.
 #[test]
-fn the_sandbox_feedback_separates_a_limit_from_a_mistake() {
-    let fuel = render_code_sandbox_error(&CodeSandboxErrorContext {
-        healing: Vec::new(),
-        error: "the program exhausted its fuel ceiling of 200000000000".to_string(),
-        finish_revoked: false,
-        calls: 12,
-        output_heavy: true,
-    });
-    assert!(fuel.contains("This is a sandbox limit, not a tool failure"));
-    assert!(fuel.contains("Writing is the expensive direction"));
-    assert!(fuel.contains("The 12 tool call(s) it had already made stand."));
-
+fn the_sandbox_feedback_separates_a_limit_a_timeout_and_a_mistake() {
     let memory = render_code_sandbox_error(&CodeSandboxErrorContext {
         healing: Vec::new(),
         error: "the program exceeded its 4194304-byte memory cap".to_string(),
         finish_revoked: false,
-        calls: 0,
-        output_heavy: false,
+        calls: 12,
     });
-    assert!(!memory.contains("Writing is the expensive direction"));
-    assert!(!memory.contains("already made stand"));
+    assert!(memory.contains("This is a sandbox limit, not a tool failure"));
     assert!(memory.contains("Split the task across several smaller programs, one per turn."));
-    assert_no_blank_run(&fuel);
+    assert!(memory.contains("The 12 tool call(s) it had already made stand."));
+    // A memory cap is "too heavy", not "you looped": it must not carry the timeout's runaway advice.
+    assert!(!memory.contains("did not terminate"));
+
+    let timeout = render_code_timeout(&CodeTimeoutContext {
+        healing: Vec::new(),
+        error: "the program ran longer than its 30s execution timeout and was stopped".to_string(),
+        finish_revoked: false,
+        calls: 0,
+    });
+    assert!(timeout.contains("did not terminate"));
+    assert!(timeout.contains("far longer than any program needs"));
+    // A timeout is not a "do less" problem, so it does not carry the "too heavy" framing.
+    assert!(!timeout.contains("too heavy for one program"));
+    assert!(!timeout.contains("already made stand"));
     assert_no_blank_run(&memory);
+    assert_no_blank_run(&timeout);
 }
 
-/// **What healing repaired is disclosed, on every one of the four feedback paths.**
+/// **What healing repaired is disclosed, on every one of the five feedback paths.**
 ///
 /// A repair the model is not told about teaches it nothing and corrupts the measurement: the point
 /// of the capability is to observe how well models follow a code-only contract, and a model whose
 /// fences are silently removed will keep sending them forever while the numbers say it complied.
 /// The disclosure has to reach the model whatever became of the healed reply — it happened to the
-/// *message*, not to the program — which is why all four templates carry the same partial, and why
+/// *message*, not to the program — which is why all five templates carry the same partial, and why
 /// the note bounds what gg is allowed to change rather than merely listing what it did.
 #[test]
 fn every_code_feedback_reports_what_was_healed() {
@@ -789,10 +791,15 @@ fn every_code_feedback_reports_what_was_healed() {
     });
     let sandbox = render_code_sandbox_error(&CodeSandboxErrorContext {
         healing: healing.clone(),
-        error: "the program exhausted its fuel ceiling".to_string(),
+        error: "the program exceeded its memory cap".to_string(),
         finish_revoked: false,
         calls: 3,
-        output_heavy: true,
+    });
+    let timeout = render_code_timeout(&CodeTimeoutContext {
+        healing: healing.clone(),
+        error: "the program ran longer than its 30s execution timeout and was stopped".to_string(),
+        finish_revoked: false,
+        calls: 3,
     });
     let refused = render_code_not_a_program(&CodeNotAProgramContext {
         healing,
@@ -800,7 +807,7 @@ fn every_code_feedback_reports_what_was_healed() {
         delegated: false,
     });
 
-    for rendered in [&ran, &transpile, &sandbox, &refused] {
+    for rendered in [&ran, &transpile, &sandbox, &timeout, &refused] {
         assert!(
             rendered.contains(
                 ":\n- removed the Markdown code fence you wrapped it in\n- removed 2 lines of \
@@ -843,8 +850,8 @@ fn every_code_feedback_reports_what_was_healed() {
 /// asserts both.
 ///
 /// Each feedback template passes `ran` to the partial, because *which feedback this is* is exactly
-/// what settles the question: the result and the sandbox-limit turns ran a program (the limit turn's
-/// landed calls stand, which is why it is not in the other group), while the transpile and
+/// what settles the question: the result, the sandbox-limit and the timeout turns ran a program
+/// (their landed calls stand, which is why they are not in the other group), while the transpile and
 /// not-a-program turns did not. The non-running arm also hands the model the fact it needs to read
 /// what follows: the diagnostic or verdict below it is about the **repaired** text, which is what
 /// makes a located transpile error reconcilable with a reply the model remembers writing differently.
@@ -860,10 +867,16 @@ fn the_healing_note_says_whether_the_repaired_reply_ran() {
         }),
         render_code_sandbox_error(&CodeSandboxErrorContext {
             healing: healing.clone(),
-            error: "the program exhausted its fuel ceiling".to_string(),
+            error: "the program exceeded its memory cap".to_string(),
             finish_revoked: false,
             calls: 3,
-            output_heavy: true,
+        }),
+        render_code_timeout(&CodeTimeoutContext {
+            healing: healing.clone(),
+            error: "the program ran longer than its 30s execution timeout and was stopped"
+                .to_string(),
+            finish_revoked: false,
+            calls: 3,
         }),
     ];
     let never_ran = [

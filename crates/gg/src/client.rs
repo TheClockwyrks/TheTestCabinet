@@ -1721,15 +1721,14 @@ impl MockClient {
     }
 
     /// A **responses-as-code** script whose program is a **runaway loop** (`while (true) {}`), so
-    /// the wasmtime fuel ceiling stops it — proving a sandbox failure surfaces as the turn's outcome
+    /// the execution timeout stops it — proving a sandbox failure surfaces as the turn's outcome
     /// (a `CodeExecution { ok: false }`) and the run continues cleanly rather than crashing.
     ///
-    /// 1. a first turn emitting the runaway program (the sandbox exhausts its fuel);
+    /// 1. a first turn emitting the runaway program (the sandbox times it out);
     /// 2. a second program that calls `finish`, ending the session.
     ///
-    /// Pair with a `responses-as-code` capability whose `fuel` param is set low enough to trip
-    /// quickly — but above the guest engine's own setup floor, so what trips is the loop and not
-    /// the shim.
+    /// Pair with a `responses-as-code` capability whose `timeoutSecs` param is set short enough to
+    /// trip quickly, so the test costs a fraction of a second rather than the default thirty.
     pub fn with_responses_as_code_runaway_script(model_id: impl Into<String>) -> Self {
         let usage = TokenCounts {
             uncached_input: Some(800),

@@ -4,7 +4,7 @@
 //! made, the calls that were refused, the lines it logged, and the pictures it read. Every one of
 //! them is **fed back into the model's context window on the next turn**, and every one of them is
 //! written by the program itself — a `for` loop can produce a hundred thousand of any of them well
-//! within a fuel budget sized for real work. So each is bounded here, and what a bound discarded is
+//! within an execution timeout sized for real work. So each is bounded here, and what a bound discarded is
 //! **counted** rather than silently dropped: a model whose roster was cut needs to be told so, or
 //! it will read the shorter list as evidence that its loop never ran.
 //!
@@ -24,8 +24,8 @@ use super::{
 use crate::tools::{ToolData, ToolOutcome};
 
 /// The most log lines one program's output is kept from. A JavaScript guest can log in a loop well
-/// within its fuel budget, and every kept line is charged to the agent's context window on the next
-/// turn, so the capture is bounded here rather than trusted to the program.
+/// within its execution timeout, and every kept line is charged to the agent's context window on the
+/// next turn, so the capture is bounded here rather than trusted to the program.
 ///
 /// What the cap keeps is the **tail**: see [`feedback::Host::log`] for why.
 pub(super) const MAX_LOG_LINES: usize = 200;
@@ -40,9 +40,9 @@ pub(super) const MAX_LOG_LINE_BYTES: usize = 2_048;
 
 /// The most calls one program's roster keeps.
 ///
-/// A bridged call costs ≈0.86 M fuel, so the default 2×10¹¹ ceiling affords a program roughly
-/// 230,000 of them — each of which would otherwise push two or three owned `String`s onto a vector
-/// nothing bounds, and a line onto a roster the model has to read. Five hundred is far more than a
+/// A program can compose far more calls within its execution timeout than a roster could usefully
+/// hold — each of which would otherwise push two or three owned `String`s onto a vector nothing
+/// bounds, and a line onto a roster the model has to read. Five hundred is far more than a
 /// composed program makes on purpose (listing a directory of two hundred files and reading every
 /// one is 201 calls) and small enough that the roster stays something a model can actually use.
 ///
@@ -56,7 +56,7 @@ pub(super) const MAX_RECORDED_CALLS: usize = 500;
 /// one teaches a model nothing the first did not. It also closes the one shape that turns the
 /// deadline guard into an allocation loop: once the run's budget is spent every call is refused,
 /// and a program that swallows the throws (`for (;;) { try { shell("x") } catch {} }`) would
-/// otherwise spin recording refusals until its fuel ran out.
+/// otherwise spin recording refusals until its execution timeout ran out.
 pub(super) const MAX_RECORDED_REFUSALS: usize = 100;
 
 /// The most bytes of a failure message one roster entry keeps.

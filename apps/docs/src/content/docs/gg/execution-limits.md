@@ -47,7 +47,7 @@ failures the one capability that cannot survive them.
 | the reply was **not a program** — prose, empty, comments only, native tool calls and no text, no block gg reads as a program, or several candidate blocks | nothing ran; the model is told so and told that only `finish` ends the run |
 | the program did not type-strip | nothing ran |
 | the program threw uncaught | every statement after the throw never ran, so the model must re-declare the remainder |
-| the sandbox stopped the program at a fuel or memory ceiling, or the guest trapped | the program ran and its landed calls stand, but the work it declared was cut short |
+| the sandbox stopped the program at its execution timeout or memory ceiling, or the guest trapped | the program ran and its landed calls stand, but the work it declared was cut short |
 
 **Does not count**
 
@@ -106,7 +106,7 @@ only a turn that did its job is evidence the agent recovered. The check fires as
 the count reaches the configured value.
 
 A sandbox limit stop **is** an error here, which is a change from the fixed five-failure
-guard this replaces (under which a fuel trap reset the counter). The declared work did not
+guard this replaces (under which a sandbox-limit trap reset the counter). The declared work did not
 complete and the model must re-declare it. Nothing is lost by dropping the old exemption,
 because the case it protected — a run that is mostly working and occasionally too big —
 is exactly what the error-rate ceiling expresses and a consecutive counter cannot, which

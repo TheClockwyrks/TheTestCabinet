@@ -50,17 +50,17 @@ fn healing_records(events: &[GgTelemetryEvent]) -> Vec<GgResponseHealing> {
         .collect()
 }
 
-/// Every `CodeExecution`'s `(ok, fuel_used, error)`, in order.
+/// Every `CodeExecution`'s `(ok, duration_ms, error)`, in order.
 fn executions(events: &[GgTelemetryEvent]) -> Vec<(bool, Option<u64>, Option<String>)> {
     events
         .iter()
         .filter_map(|e| match &e.kind {
             GgTelemetryKind::CodeExecution {
                 ok,
-                fuel_used,
+                duration_ms,
                 error,
                 ..
-            } => Some((*ok, *fuel_used, error.clone())),
+            } => Some((*ok, *duration_ms, error.clone())),
             _ => None,
         })
         .collect()
@@ -163,12 +163,12 @@ async fn the_healing_note_reaches_the_turn_feedback() {
         );
     }
 
-    // The fourth template: a program the sandbox stopped. Its own run, because it needs a fuel
-    // ceiling low enough to trip and that ceiling would strand the ordinary programs above.
+    // The fourth template: a program the sandbox stopped. Its own run, because it needs an execution
+    // timeout short enough to trip and that timeout would strand the ordinary programs above.
     let dir = TempDir::new().unwrap();
     let (_, _, requests) = drive_recorded_code_run(
         &dir,
-        healing_set(json!({ "fuel": RUNAWAY_FUEL })),
+        healing_set(json!({ "timeoutSecs": RUNAWAY_TIMEOUT_SECS })),
         vec![
             code_reply("```ts\nlet x = 0;\nwhile (true) {\n  x += 1;\n}\nreturn x;\n```"),
             code_reply(FINISHING_PROGRAM),
@@ -190,9 +190,9 @@ async fn the_healing_note_reaches_the_turn_feedback() {
 
 /// **A reply that is not a program never reaches the sandbox.**
 ///
-/// No component, no store, no fuel — the verdict short-circuits before anything under `sandbox/` is
-/// entered at all. The observable half is the fuel figure: it is **absent** rather than zero,
-/// because a turn that ran nothing has no fuel reading to average into a run's efficiency, and a
+/// No component, no store, no timer — the verdict short-circuits before anything under `sandbox/` is
+/// entered at all. The observable half is the duration figure: it is **absent** rather than zero,
+/// because a turn that ran nothing has no duration to average into a run's efficiency, and a
 /// fabricated zero would quietly halve one.
 #[tokio::test]
 async fn a_not_a_program_response_never_reaches_the_sandbox() {
@@ -230,11 +230,11 @@ async fn a_not_a_program_response_never_reaches_the_sandbox() {
     assert_eq!(end.status, "exhausted", "neither reply ended the session");
 
     let events = sink.events();
-    for (ok, fuel_used, error) in executions(&events) {
+    for (ok, duration_ms, error) in executions(&events) {
         assert!(!ok);
         assert!(
-            fuel_used.is_none(),
-            "nothing ran, so there is no fuel figure: {fuel_used:?}"
+            duration_ms.is_none(),
+            "nothing ran, so there is no duration figure: {duration_ms:?}"
         );
         assert!(error.is_some());
     }
@@ -288,9 +288,9 @@ async fn a_transpile_failure_over_prose_is_reported_as_not_a_program() {
         records[0].strategies.is_empty(),
         "no strategy touched it — it is a classification the loop made, not a repair"
     );
-    let (ok, fuel_used, error) = executions(&events).remove(0);
+    let (ok, duration_ms, error) = executions(&events).remove(0);
     assert!(!ok);
-    assert!(fuel_used.is_none(), "nothing ran");
+    assert!(duration_ms.is_none(), "nothing ran");
     assert!(
         error
             .as_deref()
@@ -350,10 +350,10 @@ async fn disarming_a_strategy_changes_only_what_healing_returns() {
         records[0].is_clean(),
         "nothing was repaired, and nothing is claimed: {records:?}"
     );
-    let (ok, fuel_used, error) = executions(&events).remove(0);
+    let (ok, duration_ms, error) = executions(&events).remove(0);
     assert!(!ok);
     assert_eq!(
-        fuel_used,
+        duration_ms,
         Some(0),
         "the reply reached the transpile — it just did not survive it"
     );

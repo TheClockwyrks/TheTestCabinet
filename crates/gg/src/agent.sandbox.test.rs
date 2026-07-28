@@ -128,10 +128,10 @@ fn code_executions(events: &[GgTelemetryEvent]) -> Vec<(bool, u64, Option<u64>, 
             GgTelemetryKind::CodeExecution {
                 ok,
                 tool_calls,
-                fuel_used,
+                duration_ms,
                 error,
                 ..
-            } => Some((*ok, *tool_calls, *fuel_used, error.clone())),
+            } => Some((*ok, *tool_calls, *duration_ms, error.clone())),
             _ => None,
         })
         .collect()
@@ -213,14 +213,14 @@ async fn responses_as_code_routes_the_turn_through_the_sandbox() {
     );
 
     // (b) exactly one code execution, successful, with the four composed tool calls counted
-    // (listDir + three writeFile) and the fuel it burned reported.
-    let (ok, tool_calls, fuel_used, error) =
+    // (listDir + three writeFile) and the time it ran reported.
+    let (ok, tool_calls, duration_ms, error) =
         first_code_execution(&events).expect("a CodeExecution event");
     assert!(ok, "the program ran successfully");
     assert_eq!(tool_calls, 4, "listDir + three writeFile were composed");
     assert!(
-        fuel_used.is_some_and(|fuel| fuel > 0),
-        "a successful run reports the fuel it consumed"
+        duration_ms.is_some_and(|ms| ms > 0),
+        "a successful run reports the time it took"
     );
     assert!(error.is_none(), "a clean run carries no error");
 
@@ -362,14 +362,17 @@ async fn a_native_tool_call_on_a_code_turn_is_ignored_loudly() {
 // Failures are turn outcomes, never crashes
 // ---------------------------------------------------------------------------
 
-/// A program that exhausts the fuel ceiling surfaces cleanly: the failed execution is fed back as
-/// the turn's outcome and the run continues to a clean finish rather than crashing.
+/// A program that runs past its execution timeout surfaces cleanly: the failed execution is fed back
+/// as the turn's outcome and the run continues to a clean finish rather than crashing.
 #[tokio::test]
-async fn fuel_exhaustion_surfaces_cleanly() {
+async fn timeout_surfaces_cleanly() {
     let dir = TempDir::new().unwrap();
     let (outcome, events) = drive_code_run(
         &dir,
-        code_set("mock/primary", json!({ "fuel": RUNAWAY_FUEL })),
+        code_set(
+            "mock/primary",
+            json!({ "timeoutSecs": RUNAWAY_TIMEOUT_SECS }),
+        ),
         |b| {
             Box::new(MockClient::with_responses_as_code_runaway_script(
                 &b.model_id,
@@ -380,16 +383,16 @@ async fn fuel_exhaustion_surfaces_cleanly() {
 
     // The run did not crash — it ran to a terminal session.
     assert_eq!(outcome, SessionOutcome::Ran);
-    let (ok, _tool_calls, fuel, error) =
+    let (ok, _tool_calls, duration, error) =
         first_code_execution(&events).expect("a CodeExecution event");
-    assert!(!ok, "a fuel-exhausted program is not a clean execution");
+    assert!(!ok, "a timed-out program is not a clean execution");
     assert!(
-        fuel.is_some_and(|fuel| fuel > 0),
-        "fuel is reported even on a trap"
+        duration.is_some_and(|ms| ms > 0),
+        "the time it ran is reported even on a timeout"
     );
     let error = error.expect("the sandbox failure is reported");
     assert!(
-        error.contains("fuel"),
+        error.contains("timeout"),
         "the failure names the ceiling it hit: {error}"
     );
     assert_eq!(ended_with(&events), "completed");
@@ -989,12 +992,12 @@ async fn a_reply_that_is_not_a_program_does_not_end_the_session() {
         3,
         "a turn with no program is still a code-shaped turn, and is still measured"
     );
-    for (ok, tool_calls, fuel_used, error) in &executions[..2] {
+    for (ok, tool_calls, duration_ms, error) in &executions[..2] {
         assert!(!ok, "a reply that was not a program is not a clean turn");
         assert_eq!(*tool_calls, 0);
         assert!(
-            fuel_used.is_none(),
-            "nothing ran, so there is no fuel figure to report: {fuel_used:?}"
+            duration_ms.is_none(),
+            "nothing ran, so there is no duration to report: {duration_ms:?}"
         );
         assert!(error.is_some(), "the shape is named");
     }
@@ -1160,7 +1163,7 @@ async fn a_stopped_subagent_returns_a_status_line_not_its_program_source() {
 /// ceiling of one — the tightest setting there is, so a single miscounted turn stops the run and a
 /// single missed one lets it through.
 ///
-/// A fuel trap **is** an error: the program's declared work was cut short and the model must
+/// A timeout trap **is** an error: the program's declared work was cut short and the model must
 /// re-declare it. That reverses the counter this design replaces, which exempted a trap; nothing is
 /// lost by dropping the exemption, because the case it protected is exactly what the error-*rate*
 /// ceiling expresses and a consecutive counter cannot.
@@ -1172,7 +1175,10 @@ async fn a_stopped_subagent_returns_a_status_line_not_its_program_source() {
 async fn a_sandbox_limit_counts_as_an_error_turn_but_a_handled_tool_failure_does_not() {
     // (a) the trap counts: one trapped turn breaches a ceiling of one.
     let dir = TempDir::new().unwrap();
-    let mut set = code_set("mock/primary", json!({ "fuel": RUNAWAY_FUEL }));
+    let mut set = code_set(
+        "mock/primary",
+        json!({ "timeoutSecs": RUNAWAY_TIMEOUT_SECS }),
+    );
     set.limits.max_consecutive_errors = Some(1);
     let (outcome, events, client) = drive_counted_code_run(
         &dir,

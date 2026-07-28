@@ -10,6 +10,8 @@
 //!
 //! The submodules below follow the same rule and share these helpers.
 
+use std::time::Duration;
+
 use serde_json::{Value, json};
 
 use super::*;
@@ -114,8 +116,8 @@ fn a_program_runs_typed_calls_in_order() {
     assert!(outcome.tool_calls.is_empty());
     assert!(log.calls().is_empty());
     assert!(
-        outcome.fuel_consumed > 0,
-        "evaluating a program costs fuel; a zero reading means it never ran"
+        outcome.elapsed > Duration::ZERO,
+        "evaluating a program takes time; a zero reading means it never ran"
     );
 
     // The headline: list, filter, read each, write once, log a summary. This is the program the
@@ -166,9 +168,9 @@ fn a_program_runs_typed_calls_in_order() {
         }))
     );
 
-    // The same program twice takes the same path and composes the same calls. Fuel is deliberately
-    // *not* compared: it is a measurement of work, and the engine is free to do that work slightly
-    // differently. What must be identical is everything a replay depends on.
+    // The same program twice takes the same path and composes the same calls. Elapsed time is
+    // deliberately *not* compared: it is a measurement of wall clock, and the machine is free to run
+    // slightly differently each time. What must be identical is everything a replay depends on.
     let program = concat!(
         "const entries = fs.listDir(\"src\");\n",
         "console.log(entries.filter((e) => e.kind === \"file\").map((e) => e.name).join(\", \"));",
@@ -250,33 +252,36 @@ fn the_sandbox_globals_are_denied_not_trapped() {
 /// The two ceilings stop a runaway program, and everything it did first is still reported.
 #[test]
 fn the_limits_stop_a_runaway_program() {
-    let small_fuel = SandboxLimits {
-        fuel: 100_000_000,
+    // A timeout far shorter than the default keeps the test quick; a runaway reaches any ceiling.
+    let short_timeout = SandboxLimits {
+        timeout: Duration::from_millis(100),
         ..SandboxLimits::default()
     };
 
-    // A program that calls nothing and never returns is stopped by fuel alone.
-    let (outcome, _) = run_with("while (true) {}", &all_tools(), small_fuel, canned_outcome);
+    // A program that calls nothing and never returns is stopped by the timeout alone.
+    let (outcome, _) = run_with(
+        "while (true) {}",
+        &all_tools(),
+        short_timeout,
+        canned_outcome,
+    );
     match outcome.result {
-        Err(SandboxError::OutOfFuel { limit }) => assert_eq!(limit, small_fuel.fuel),
-        other => panic!("expected a fuel exhaustion, got {other:?}"),
+        Err(SandboxError::Timeout { limit }) => assert_eq!(limit, short_timeout.timeout),
+        other => panic!("expected an execution timeout, got {other:?}"),
     }
     assert!(
-        outcome.fuel_consumed > 0,
-        "the fuel a trapped program burned is reported, not lost"
+        outcome.elapsed > Duration::ZERO,
+        "the time a stopped program spent running is reported, not lost"
     );
 
     // The calls that landed before the trap are still the model's to see: they really happened.
     let (outcome, log) = run_with(
         "fs.listDir(\"src\");\nwhile (true) {}",
         &all_tools(),
-        small_fuel,
+        short_timeout,
         canned_outcome,
     );
-    assert!(matches!(
-        outcome.result,
-        Err(SandboxError::OutOfFuel { .. })
-    ));
+    assert!(matches!(outcome.result, Err(SandboxError::Timeout { .. })));
     assert_eq!(log.names(), ["list_dir"]);
     assert_eq!(
         outcome
@@ -306,7 +311,7 @@ fn the_limits_stop_a_runaway_program() {
 
     // A running program that outgrows its cap is the other shape of the same denial. The
     // allocation has to be of DISTINCT objects: this engine's rope strings barely allocate, so
-    // repeatedly concatenating one would burn fuel instead of memory.
+    // repeatedly concatenating one would run out the clock instead of the memory cap.
     let (outcome, _) = run_with(
         concat!(
             "const held = [];\n",
@@ -326,12 +331,11 @@ fn the_limits_stop_a_runaway_program() {
         outcome.result
     );
 
-    // **And the default ceiling has real headroom over the heaviest honest program.** Writing is
-    // the expensive direction of the membrane by ~300×, so the default is sized against output
-    // volume rather than against arithmetic. This runs the workload it was sized from — read,
-    // rewrite and write back twenty 64 KiB files — and asserts a 5× margin. If the implementation
-    // ever measures materially differently, move the default so this still passes with the same
-    // margin, and update the cost table in the module docs: the rule, not the number, is the design.
+    // **And the default timeout has enormous headroom over the heaviest honest program.** The
+    // timeout is a pure infinite-loop guard, not a work ration: even the heaviest honest program —
+    // read, rewrite and write back twenty 64 KiB files — spends a fraction of a second of guest CPU,
+    // orders of magnitude under the 30 s ceiling. This runs that workload and asserts a wide margin,
+    // which is the property that keeps the timeout from ever tripping on real work.
     let (outcome, log) = run_with(
         concat!(
             "let total = 0;\n",
@@ -367,11 +371,11 @@ fn the_limits_stop_a_runaway_program() {
         "the heaviest honest program must complete within the default ceiling"
     );
     assert_eq!(log.names().len(), 40, "twenty reads and twenty writes");
-    let default_fuel = SandboxLimits::default().fuel;
+    let default_timeout = SandboxLimits::default().timeout;
     assert!(
-        outcome.fuel_consumed * 5 < default_fuel,
-        "the default ceiling has lost its headroom: the workload burned {} of {default_fuel}",
-        outcome.fuel_consumed
+        outcome.elapsed * 5 < default_timeout,
+        "the default timeout has lost its headroom: the workload ran for {:?} of {default_timeout:?}",
+        outcome.elapsed
     );
 }
 

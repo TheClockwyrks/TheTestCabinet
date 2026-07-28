@@ -95,6 +95,10 @@ const CODE_TRANSPILE_ERROR_TEMPLATE: &str = include_str!("../templates/code-tran
 /// The turn feedback for a code program the sandbox could not run to a result at all.
 const CODE_SANDBOX_ERROR_TEMPLATE: &str = include_str!("../templates/code-sandbox-error.hbs");
 
+/// The turn feedback for a code program the sandbox stopped at its execution timeout — its own
+/// message, because a timeout means a program that did not terminate, not one that was too heavy.
+const CODE_TIMEOUT_TEMPLATE: &str = include_str!("../templates/code-timeout.hbs");
+
 /// The turn feedback for a reply that was not a program at all — prose, comments, an empty message.
 ///
 /// It exists because under this protocol such a reply is a *failed turn* rather than a conclusion:
@@ -102,23 +106,23 @@ const CODE_SANDBOX_ERROR_TEMPLATE: &str = include_str!("../templates/code-sandbo
 /// to be told, in gg's own words, that saying it did nothing.
 const CODE_NOT_A_PROGRAM_TEMPLATE: &str = include_str!("../templates/code-not-a-program.hbs");
 
-/// The [healing](crate::healing) disclosure, included as a partial at the top of **all four** code
+/// The [healing](crate::healing) disclosure, included as a partial at the top of **all five** code
 /// feedback templates.
 ///
-/// One file rather than four copies because it is a *disclosure*, and a model shown two wordings of
-/// one disclosure trusts neither. It has to appear on all four because what healing did happened to
+/// One file rather than five copies because it is a *disclosure*, and a model shown two wordings of
+/// one disclosure trusts neither. It has to appear on all five because what healing did happened to
 /// the model's **message**, not to its program: a repaired reply may then run cleanly, fail to
-/// compile, trap, or turn out not to have been a program at all, and in every one of those the model
-/// is reading a diagnostic against source it did not quite send.
+/// compile, trap, time out, or turn out not to have been a program at all, and in every one of those
+/// the model is reading a diagnostic against source it did not quite send.
 ///
 /// # The `ran` parameter
 ///
 /// Each feedback template includes it as `{{> healing-note ran=…}}`, passing the one thing the
-/// partial cannot see for itself: whether the repaired reply went on to **run**. The two templates
-/// whose program ran — [the result](CODE_RESULT_TEMPLATE) and
-/// [the sandbox limit](CODE_SANDBOX_ERROR_TEMPLATE) — pass `true`; the two whose reply never
-/// executed — [the transpile failure](CODE_TRANSPILE_ERROR_TEMPLATE) and
-/// [the not-a-program verdict](CODE_NOT_A_PROGRAM_TEMPLATE) — pass `false`.
+/// partial cannot see for itself: whether the repaired reply went on to **run**. The three templates
+/// whose program ran — [the result](CODE_RESULT_TEMPLATE),
+/// [the sandbox limit](CODE_SANDBOX_ERROR_TEMPLATE) and [the timeout](CODE_TIMEOUT_TEMPLATE) — pass
+/// `true`; the two whose reply never executed — [the transpile failure](CODE_TRANSPILE_ERROR_TEMPLATE)
+/// and [the not-a-program verdict](CODE_NOT_A_PROGRAM_TEMPLATE) — pass `false`.
 ///
 /// It exists because the unconditional wording — *"gg repaired your reply before running it"* —
 /// contradicted the body of the very feedback it opened, and did so on live traffic: a reply whose
@@ -145,6 +149,7 @@ const TEMPLATES: &[(&str, &str)] = &[
     ("code-result", CODE_RESULT_TEMPLATE),
     ("code-transpile-error", CODE_TRANSPILE_ERROR_TEMPLATE),
     ("code-sandbox-error", CODE_SANDBOX_ERROR_TEMPLATE),
+    ("code-timeout", CODE_TIMEOUT_TEMPLATE),
     ("code-not-a-program", CODE_NOT_A_PROGRAM_TEMPLATE),
     ("healing-note", HEALING_NOTE_TEMPLATE),
 ];
@@ -674,10 +679,27 @@ pub struct CodeSandboxErrorContext {
     /// How many tool calls the program had already landed — they stand, and saying so is what
     /// stops a model redoing work it already did.
     pub calls: usize,
-    /// Whether the failure was the **fuel** ceiling, in which case the model is additionally told
-    /// which direction of the membrane is expensive. A memory cap or a trap is not a budgeting
-    /// problem, so it is not given budgeting advice.
-    pub output_heavy: bool,
+}
+
+/// The variables `code-timeout.hbs` may reference: the feedback for a program the sandbox stopped
+/// because it ran past its [execution timeout](crate::sandbox::SandboxError::Timeout).
+///
+/// Its own message rather than a flag on [`CodeSandboxErrorContext`] because the advice is the
+/// opposite: a memory cap or a trap says "this program was too heavy", but a timeout — whose ceiling
+/// is far larger than any honest program needs — says "this program did not terminate". The model is
+/// pointed at a runaway loop or unbounded recursion, not told to write less.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodeTimeoutContext {
+    /// What [healing](crate::healing) repaired before the program ran, one clause per repair.
+    pub healing: Vec<String>,
+    /// The timeout message, already naming the ceiling that was reached.
+    pub error: String,
+    /// Whether the program declared the run finished before the timeout stopped it, and therefore
+    /// lost that ending — carried for the same reason [`CodeSandboxErrorContext::finish_revoked`] is.
+    pub finish_revoked: bool,
+    /// How many tool calls the program had already landed — they stand.
+    pub calls: usize,
 }
 
 /// The variables `code-not-a-program.hbs` may reference: the fourth code feedback, for a turn whose
@@ -754,6 +776,18 @@ pub fn render_code_sandbox_error(context: &CodeSandboxErrorContext) -> String {
         format!(
             "Your program could not be run to completion: {}. Split the task across several \
              smaller programs, one per turn.",
+            context.error
+        )
+    })
+}
+
+/// The model-facing feedback for a program stopped by its **execution timeout**.
+pub fn render_code_timeout(context: &CodeTimeoutContext) -> String {
+    try_render("code-timeout", context).unwrap_or_else(|_| {
+        format!(
+            "Your program was stopped: {}. The timeout is far longer than any program needs, so \
+             this almost always means a loop or recursion that never ends — find it and bound it, \
+             then reply with a corrected program.",
             context.error
         )
     })

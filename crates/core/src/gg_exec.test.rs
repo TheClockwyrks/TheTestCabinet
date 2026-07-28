@@ -256,7 +256,7 @@ fn a_finished_code_execution_reaches_the_human_facing_feed() {
         GgTelemetryKind::CodeExecution {
             ok: true,
             tool_calls: 2,
-            fuel_used: Some(12_000),
+            duration_ms: Some(12_000),
             error: None,
             finished: Some("Built the game and wrote MANIFEST.md.".to_string()),
             compile_wait_ms: None,
@@ -284,7 +284,7 @@ fn a_code_execution_without_a_completion_maps_to_nothing() {
             GgTelemetryKind::CodeExecution {
                 ok: true,
                 tool_calls: 1,
-                fuel_used: Some(900),
+                duration_ms: Some(900),
                 error: None,
                 finished,
                 compile_wait_ms: None,
