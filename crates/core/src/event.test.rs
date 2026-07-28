@@ -1163,3 +1163,106 @@ fn orchestration_actions_use_their_documented_slugs() {
         json!("subagent_failed")
     );
 }
+
+// Regression tests for tool classifications that formerly leaked `unknown`
+// events, validated against real Codex/OpenCode/Cline/Kilo/Pi Carom runs.
+
+#[test]
+fn opencode_apply_patch_writes_each_file_named_in_patch_text() {
+    // OpenCode and Kilo carry the patch body in `patchText`, and a single patch
+    // can add and update several files.
+    let events = single(
+        EventFormat::Opencode,
+        r#"{"type":"tool_use","part":{"tool":"apply_patch","state":{"status":"completed","input":{"patchText":"*** Begin Patch\n*** Update File: /work/package.json\n@@\n-  \"a\": 1\n+  \"a\": 2\n*** Add File: /work/index.html\n+<!doctype html>\n*** End Patch\n"}}}}"#,
+    );
+    let paths: Vec<_> = events
+        .iter()
+        .map(|event| match &event.kind {
+            EventKind::Write {
+                path, is_success, ..
+            } => {
+                assert_eq!(*is_success, Some(true));
+                path.clone()
+            }
+            other => panic!("expected write events, got {other:?}"),
+        })
+        .collect();
+    assert_eq!(paths, ["/work/package.json", "/work/index.html"]);
+}
+
+#[test]
+fn opencode_background_process_start_is_a_command() {
+    // `action: "start"` launches a long-running process; its command line is the
+    // command. Management actions without a command are consumed, not unknown.
+    assert_eq!(
+        one(single(
+            EventFormat::Kilo,
+            r#"{"type":"tool_use","part":{"tool":"background_process","state":{"status":"completed","input":{"action":"start","command":"npx vite preview --port 4173"}}}}"#,
+        )),
+        EventKind::Command {
+            command: "npx vite preview --port 4173".to_string(),
+            working_directory: None,
+            exit_code: None,
+            is_success: Some(true),
+        }
+    );
+    assert!(
+        single(
+            EventFormat::Kilo,
+            r#"{"type":"tool_use","part":{"tool":"background_process","state":{"status":"completed","input":{"action":"status","id":"p1"}}}}"#,
+        )
+        .is_empty(),
+        "a background-process management action carries no command and is consumed"
+    );
+}
+
+#[test]
+fn opencode_task_tool_becomes_orchestration() {
+    // OpenCode's subagent-spawn `task` names its role in `subagent_type` and its
+    // session in `task_id`; an empty `task_id` leaves the id unset.
+    assert_eq!(
+        one(single(
+            EventFormat::Opencode,
+            r#"{"type":"tool_use","part":{"tool":"task","state":{"status":"completed","input":{"description":"Audit compliance","subagent_type":"explore","task_id":"ses_abc"}}}}"#,
+        )),
+        EventKind::Orchestration {
+            action: OrchestrationAction::SubagentCompleted,
+            subagent_id: Some("ses_abc".to_string()),
+            subagent_name: Some("explore".to_string()),
+            is_success: Some(true),
+        }
+    );
+}
+
+#[test]
+fn cline_search_codebase_emits_a_search_per_query() {
+    // Cline's semantic search carries a `queries` array; each pattern is a search.
+    let events = seq_last(
+        EventFormat::Cline,
+        &[
+            r#"{"type":"agent_event","event":{"type":"content_start","contentType":"tool","toolCallId":"t1","toolName":"search_codebase","input":{"queries":["carom|paddle","window\\.__carom"]}}}"#,
+            r#"{"type":"agent_event","event":{"type":"content_end","contentType":"tool","toolCallId":"t1","toolName":"search_codebase","output":{"success":true}}}"#,
+        ],
+    );
+    let queries: Vec<_> = events
+        .iter()
+        .map(|event| match &event.kind {
+            EventKind::Search {
+                query, is_success, ..
+            } => {
+                assert_eq!(*is_success, Some(true));
+                query.clone()
+            }
+            other => panic!("expected search events, got {other:?}"),
+        })
+        .collect();
+    assert_eq!(queries, ["carom|paddle", "window\\.__carom"]);
+}
+
+#[test]
+fn pi_agent_settled_is_a_consumed_lifecycle_marker() {
+    assert!(
+        single(EventFormat::Pi, r#"{"type":"agent_settled"}"#).is_empty(),
+        "agent_settled is lifecycle noise, not an unknown event"
+    );
+}

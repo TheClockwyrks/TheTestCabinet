@@ -1194,6 +1194,7 @@ impl EventParser {
             "session"
             | "agent_start"
             | "agent_end"
+            | "agent_settled"
             | "turn_start"
             | "turn_end"
             | "message_start"
@@ -2006,7 +2007,18 @@ fn patch_write_events(
             is_success,
         }];
     }
-    let patch = lookup_str(input, &["patch", "diff", "content", "input"]).unwrap_or_default();
+    let patch = lookup_str(
+        input,
+        &[
+            "patch",
+            "diff",
+            "content",
+            "input",
+            "patchText",
+            "patch_text",
+        ],
+    )
+    .unwrap_or_default();
     patch_marker_paths(patch)
         .into_iter()
         .map(|path| EventKind::Write {
@@ -2056,6 +2068,15 @@ fn classify_opencode_tool(
         "apply_patch" => non_empty(patch_write_events(input, is_success, workspace)),
         "grep" | "glob" => search_event_kind(input, is_success, workspace).map(|kind| vec![kind]),
         "bash" => bash_event_kind(input, is_success).map(|kind| vec![kind]),
+        // A background process launch is a command (`action: "start"` carries the
+        // command line); management actions (stop/status) carry no command and are
+        // recognized but produce no event rather than an unknown one.
+        "background_process" => {
+            Some(bash_event_kind(input, is_success).map_or_else(Vec::new, |kind| vec![kind]))
+        }
+        // The subagent-spawn tools (OpenCode's `task`, Kilo's `agent_manager`)
+        // map to an orchestration event when the spawned agent can be named.
+        "task" | "agent_manager" => spawn_orchestration(input, is_success),
         "skill" => skill_event_kind(input, is_success, workspace).map(|kind| vec![kind]),
         // `lsp` is a search only when it carries a query/symbol; navigation
         // operations have none and so fall through to an unknown event.
@@ -2078,24 +2099,41 @@ fn classify_kilo_tool(
     workspace: Option<&str>,
 ) -> Option<Vec<EventKind>> {
     match name.to_ascii_lowercase().as_str() {
-        "task" | "agent_manager" => kilo_orchestration(input, is_success),
         "codesearch" => search_event_kind(input, is_success, workspace).map(|kind| vec![kind]),
         _ => classify_opencode_tool(name, input, is_success, workspace),
     }
 }
 
-/// An orchestration event for a Kilo workflow tool, only when the spawned
-/// agent/session can be identified; otherwise `None` so it is surfaced verbatim.
-fn kilo_orchestration(input: &Value, is_success: Option<bool>) -> Option<Vec<EventKind>> {
+/// An orchestration event for a subagent-spawn tool (OpenCode's `task`, Kilo's
+/// `agent_manager`/`task`), only when the spawned agent/session can be
+/// identified; otherwise `None` so it is surfaced verbatim.
+fn spawn_orchestration(input: &Value, is_success: Option<bool>) -> Option<Vec<EventKind>> {
     let subagent_id = lookup_str(
         input,
-        &["sessionId", "session_id", "agentId", "agent_id", "id"],
+        &[
+            "sessionId",
+            "session_id",
+            "agentId",
+            "agent_id",
+            "task_id",
+            "taskId",
+            "id",
+        ],
     )
+    .filter(|id| !id.is_empty())
     .map(str::to_string);
     let subagent_name = lookup_str(
         input,
-        &["name", "agent", "subagent", "agentType", "description"],
+        &[
+            "name",
+            "agent",
+            "subagent",
+            "agentType",
+            "subagent_type",
+            "description",
+        ],
     )
+    .filter(|name| !name.is_empty())
     .map(str::to_string);
     if subagent_id.is_none() && subagent_name.is_none() {
         return None;
@@ -2146,9 +2184,7 @@ fn classify_cline_tool(
             write_event_kind(input, is_success, workspace).map(|kind| vec![kind])
         }
         "apply_patch" => non_empty(patch_write_events(input, is_success, workspace)),
-        "search_files" | "search_codebase" => {
-            search_event_kind(input, is_success, workspace).map(|kind| vec![kind])
-        }
+        "search_files" | "search_codebase" => cline_searches(input, is_success, workspace),
         "list_files" => Some(vec![list_event_kind(input, is_success, workspace)]),
         "skills" | "use_skill" => {
             skill_event_kind(input, is_success, workspace).map(|kind| vec![kind])
@@ -2197,6 +2233,34 @@ fn cline_reads(
         return non_empty(events);
     }
     read_event_kind(input, is_success, workspace).map(|kind| vec![kind])
+}
+
+/// Search events from a Cline search tool. `search_codebase` carries a `queries`
+/// array (one semantic-search pattern each), so it emits a search per query;
+/// `search_files` and the scalar form fall back to the shared single-query
+/// classifier.
+fn cline_searches(
+    input: &Value,
+    is_success: Option<bool>,
+    workspace: Option<&str>,
+) -> Option<Vec<EventKind>> {
+    if let Some(queries) = input.get("queries").and_then(Value::as_array) {
+        let path = lookup_str(input, &["path", "dir", "directory", "cwd", "scope"])
+            .filter(|path| !path.is_empty())
+            .map(|path| normalize_path(path, workspace));
+        let events = queries
+            .iter()
+            .filter_map(Value::as_str)
+            .filter(|query| !query.is_empty())
+            .map(|query| EventKind::Search {
+                query: query.to_string(),
+                path: path.clone(),
+                is_success,
+            })
+            .collect();
+        return non_empty(events);
+    }
+    search_event_kind(input, is_success, workspace).map(|kind| vec![kind])
 }
 
 /// The complete text of a Cline `content_end` block, from `text` or `content`,
