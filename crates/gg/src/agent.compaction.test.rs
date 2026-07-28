@@ -53,7 +53,6 @@ async fn drive_compaction(
             ReadPolicy::default(),
             OffloadPolicy::default(),
             false,
-            false,
             no_code(),
             no_completion(),
             &GgAgentConfig::root(),

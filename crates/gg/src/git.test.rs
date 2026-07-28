@@ -70,7 +70,7 @@ fn worktree_isolates_then_merges_back() {
     let committed = commit_worktree(&wt_path, "subagent work").unwrap();
     assert!(committed, "the worktree had changes to commit");
     assert_eq!(
-        merge_branch(main.path(), branch).unwrap(),
+        merge_branch(main.path(), branch, ConflictPolicy::Abort).unwrap(),
         MergeOutcome::Merged,
         "the branch merges cleanly"
     );
@@ -135,7 +135,7 @@ fn merge_conflict_is_surfaced_and_leaves_main_unchanged() {
     write(main.path(), "shared.txt", "main change\n");
     assert!(commit_worktree(main.path(), "main edit").unwrap());
 
-    match merge_branch(main.path(), branch).unwrap() {
+    match merge_branch(main.path(), branch, ConflictPolicy::Abort).unwrap() {
         MergeOutcome::Conflict(reason) => {
             assert!(!reason.is_empty(), "the conflict carries git's explanation");
         }
@@ -146,13 +146,74 @@ fn merge_conflict_is_surfaced_and_leaves_main_unchanged() {
     assert_eq!(
         read(main.path(), "shared.txt").as_deref(),
         Some("main change\n"),
-        "a conflict leaves the main tree unchanged"
+        "an aborted conflict leaves the main tree unchanged"
+    );
+    assert!(
+        !merge_in_progress(main.path()),
+        "the abort policy leaves no merge in progress"
     );
 
     remove_worktree(main.path(), &wt_path, branch).unwrap();
 }
 
 /// With git unavailable (an empty `PATH`), the helpers degrade to [`GitError::NotFound`] rather
+/// The [`Keep`](ConflictPolicy::Keep) policy leaves the conflicted merge **in** the tree so a merge
+/// agent can resolve it in place — which is only possible if git has not already unwound it — and
+/// [`abort_merge`] then restores the tree exactly as it was.
+///
+/// This is the whole reason the policy exists: an issue's branch that conflicts is not disposable
+/// (it holds accepted work), so gg hands the conflicted tree to an agent rather than dropping the
+/// work the way a losing speculation attempt is dropped.
+#[test]
+fn a_kept_conflict_stays_in_the_tree_until_it_is_resolved_or_aborted() {
+    let main = TempDir::new().unwrap();
+    let wt_root = TempDir::new().unwrap();
+    write(main.path(), "shared.txt", "base\n");
+    let baseline = ensure_baseline(main.path()).unwrap();
+
+    let wt_path = wt_root.path().join("issue-1");
+    let branch = "gg/issue-1";
+    add_worktree(main.path(), &wt_path, branch, &baseline).unwrap();
+    write(&wt_path, "shared.txt", "issue change\n");
+    assert!(commit_worktree(&wt_path, "issue edit").unwrap());
+
+    write(main.path(), "shared.txt", "main change\n");
+    assert!(commit_worktree(main.path(), "main edit").unwrap());
+
+    assert!(
+        !merge_in_progress(main.path()),
+        "nothing is in progress before the merge"
+    );
+    match merge_branch(main.path(), branch, ConflictPolicy::Keep).unwrap() {
+        MergeOutcome::Conflict(reason) => {
+            assert!(!reason.is_empty(), "the conflict carries git's explanation");
+        }
+        MergeOutcome::Merged => panic!("divergent edits to the same file must conflict"),
+    }
+    assert!(
+        merge_in_progress(main.path()),
+        "the kept conflict leaves the merge in progress for an agent to finish"
+    );
+    // The conflicted file is in the tree with markers, which is what the merge agent edits.
+    assert!(
+        read(main.path(), "shared.txt")
+            .as_deref()
+            .is_some_and(|text| text.contains("<<<<<<<")),
+        "the conflicted file carries git's markers"
+    );
+
+    abort_merge(main.path());
+    assert!(
+        !merge_in_progress(main.path()),
+        "aborting clears the in-progress merge"
+    );
+    assert_eq!(
+        read(main.path(), "shared.txt").as_deref(),
+        Some("main change\n"),
+        "aborting restores the main tree exactly as it was"
+    );
+}
+
 /// than panicking. Each nextest test runs in its own process, so mutating `PATH` here is isolated.
 #[test]
 fn git_absent_is_reported_not_panicked() {

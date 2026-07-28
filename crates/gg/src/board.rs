@@ -9,8 +9,7 @@
 //! [`Issue`] carries structured sections — a title, an optional description, and the three that
 //! make it dispatchable: **in-scope**, **out-of-scope**, and **completion criteria** — that
 //! tell the agent gg assigns it exactly what it is and is not responsible for and how it will be
-//! judged done. It also names the [agent profile](Issue::agent) gg dispatches it under and,
-//! under the [reviewers](IssuePolicy::require_reviewers) feature, the
+//! judged done. It also names the [agent profile](Issue::agent) gg dispatches it under and the
 //! [profiles](Issue::reviewers) that must approve it. Related issues are grouped under an
 //! [`Epic`] for organization.
 //!
@@ -38,20 +37,34 @@
 //! by is [`Done`](IssueStatus::Done), it [assigns](BoardStore::assign_issue) a freshly spawned
 //! **top-level agent** to implement it (its structured fields become that agent's brief, and its
 //! [`agent`](Issue::agent) the profile that agent runs under), moving
-//! the issue to [`InProgress`](IssueStatus::InProgress). An assigned agent that finishes without
+//! the issue to [`InProgress`](IssueStatus::InProgress). Because issues run concurrently, each is
+//! dispatched into its **own git worktree** — the orchestrator's half of the arrangement — so two
+//! issues cannot trample one another's files.
+//!
+//! An assigned agent that finishes without
 //! completing its issue is re-dispatched up to [`max_retries`](BoardCaps::max_retries) times
 //! (default 1); once those are exhausted the issue is marked [`Failed`](IssueStatus::Failed) — a
 //! terminal-but-not-done state that leaves its dependents blocked. The store owns the
 //! bookkeeping (each issue's [assignment](Issue::assigned_agent) and
-//! [retry count](Issue::retries)); the orchestrator owns the spawning. See
-//! [`BoardStore::actionable_unassigned_issues`].
+//! [retry count](Issue::retries)); the orchestrator owns the spawning.
+//!
+//! # Completion is a claim, acceptance is gg's
+//!
+//! `complete_issue` does **not** mark an issue done: it moves it to
+//! [`InReview`](IssueStatus::InReview), the agent's claim that the work is finished. gg then runs
+//! the issue's [reviewers](Issue::reviewers) in turn — each of which either approves or returns
+//! actionable items, which send the issue back to [`InProgress`](IssueStatus::InProgress) under its
+//! own assigned agent — and, once every reviewer approves, merges its worktree back and
+//! [accepts](BoardStore::accept_issue) it. Only then is it [`Done`](IssueStatus::Done), which is
+//! what keeps a dependent from being dispatched against work that never landed.
 //!
 //! # Shapes
 //!
 //! - [`Epic`] / [`Issue`] — the board's nodes.
 //! - [`NewIssue`] — the fields [`create_issue`](BoardStore::create_issue) takes.
 //! - [`IssuePolicy`] — the **per-agent** rules on filing one: which profiles that agent may
-//!   assign an issue (or a review of it) to, and whether reviewers are required at all.
+//!   assign an issue to, which it may name as reviewers, and whether reviewers are required at
+//!   all.
 //! - [`BoardStore`] — the mutable, invariant-enforcing, cycle-rejecting owner of the board,
 //!   shared (`Arc<Mutex>`) across the whole run — one board, held by the orchestrator and handed
 //!   to every agent's [board tools](crate::tools).
@@ -70,7 +83,7 @@ use std::sync::{Arc, Mutex};
 use serde_json::Value;
 use test_cabinet_core::gg::{
     CAPABILITY_PROJECT_MANAGEMENT, GgAgentConfig, GgBoardEpic, GgBoardIssue, GgIssueStatus,
-    GgTelemetryKind,
+    GgSubagentScope, GgTelemetryKind,
 };
 
 use crate::dag::{self, DagNode};
@@ -162,31 +175,38 @@ fn nonnegative_usize(params: &Value, key: &str) -> Option<usize> {
 /// The **per-agent** rules on filing an issue, resolved from one agent's own configuration.
 ///
 /// The board itself is run-global, but who may be *put to work by* it is not: an agent may only
-/// assign an issue — or a review of one — to a profile it could have spawned itself
-/// ([`subagents`](GgAgentConfig::subagents)), so one allowlist governs both delegation and issue
-/// assignment and no agent can conjure workers it was never given. Whether reviewers are
-/// demanded at all is the capability's [`reviewers`](PARAM_REVIEWERS) feature, likewise per
-/// agent.
+/// name a profile its own [roster](GgAgentConfig::subagents) lists **for that job** — an
+/// [implementer](GgSubagentScope::Implementer) for the issue's `agent`, a
+/// [reviewer](GgSubagentScope::Reviewer) for each of its `reviewers` — so no agent can conjure
+/// workers it was never given, and a profile trusted to write code is not automatically trusted to
+/// review it. Whether reviewers are *demanded* at all is the capability's
+/// [`reviewers`](PARAM_REVIEWERS) feature, likewise per agent.
 ///
 /// The policy lives with the [tools](crate::tools::board), not the [store](BoardStore): the store
 /// is shared by every agent in the run, so a rule that differs per agent cannot be enforced there.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct IssuePolicy {
-    /// The profiles this agent may assign an issue or a review to — its spawnable set, in
-    /// declaration order. Empty means it may file no issue at all, which is why a configuration
-    /// that lets an agent create issues without giving it any subagents is
-    /// [refused at launch](crate::agent).
-    pub assignable: Vec<String>,
+    /// The profiles this agent may assign an issue to — its roster entries carrying the
+    /// [implementer](GgSubagentScope::Implementer) scope, in declaration order. Empty means it may
+    /// file no issue at all, which is why a configuration that lets an agent create issues without
+    /// giving it any implementers is [refused at launch](crate::agent).
+    pub implementers: Vec<String>,
+    /// The profiles this agent may name as an issue's reviewers — its roster entries carrying the
+    /// [reviewer](GgSubagentScope::Reviewer) scope, in declaration order.
+    pub reviewers: Vec<String>,
     /// Whether `create_issue` demands at least one reviewer.
     pub require_reviewers: bool,
 }
 
 impl IssuePolicy {
-    /// The policy for `agent`: its [spawnable set](GgAgentConfig::subagents), and whether its
-    /// project-management configuration switches the [reviewers](PARAM_REVIEWERS) feature on.
+    /// The policy for `agent`: the [implementer](GgSubagentScope::Implementer) and
+    /// [reviewer](GgSubagentScope::Reviewer) halves of its [roster](GgAgentConfig::subagents), and
+    /// whether its project-management configuration switches the [reviewers](PARAM_REVIEWERS)
+    /// feature on.
     pub fn resolve(agent: &GgAgentConfig) -> Self {
         Self {
-            assignable: agent.subagents.iter().map(|s| s.agent.clone()).collect(),
+            implementers: names(agent, GgSubagentScope::Implementer),
+            reviewers: names(agent, GgSubagentScope::Reviewer),
             require_reviewers: agent
                 .capability(CAPABILITY_PROJECT_MANAGEMENT)
                 .and_then(|cap| cap.params.get(PARAM_REVIEWERS))
@@ -195,30 +215,66 @@ impl IssuePolicy {
         }
     }
 
-    /// Whether `name` is a profile this agent may assign work to.
-    pub fn allows(&self, name: &str) -> bool {
-        self.assignable.iter().any(|a| a == name)
+    /// Whether `name` is a profile this agent may assign an issue to.
+    pub fn allows_implementer(&self, name: &str) -> bool {
+        self.implementers.iter().any(|a| a == name)
     }
 
-    /// The assignable profiles as a comma-separated, backticked list for a model-facing message,
-    /// or `"(none)"` when the agent may assign to nobody.
-    pub fn assignable_list(&self) -> String {
-        if self.assignable.is_empty() {
-            return "(none)".to_string();
-        }
-        self.assignable
-            .iter()
-            .map(|a| format!("`{a}`"))
-            .collect::<Vec<_>>()
-            .join(", ")
+    /// Whether `name` is a profile this agent may name as an issue's reviewer.
+    pub fn allows_reviewer(&self, name: &str) -> bool {
+        self.reviewers.iter().any(|a| a == name)
     }
+
+    /// The assignable implementer profiles as a comma-separated, backticked list for a
+    /// model-facing message, or `"(none)"` when the agent may assign to nobody.
+    pub fn implementer_list(&self) -> String {
+        backticked(&self.implementers)
+    }
+
+    /// The assignable reviewer profiles as a comma-separated, backticked list for a model-facing
+    /// message, or `"(none)"` when the agent may name no reviewer.
+    pub fn reviewer_list(&self) -> String {
+        backticked(&self.reviewers)
+    }
+}
+
+/// Whether `agent`'s project-management configuration switches the [reviewers](PARAM_REVIEWERS)
+/// feature on — i.e. whether it must name at least one reviewer on every issue it files. Exposed
+/// for [launch validation](crate::agent), which refuses an agent that is required to name reviewers
+/// but has none in its roster.
+pub fn requires_reviewers(agent: &GgAgentConfig) -> bool {
+    IssuePolicy::resolve(agent).require_reviewers
+}
+
+/// The names, in declaration order, of the profiles `agent`'s roster lists in `scope`.
+fn names(agent: &GgAgentConfig, scope: GgSubagentScope) -> Vec<String> {
+    agent
+        .agents_in_scope(scope)
+        .into_iter()
+        .map(str::to_string)
+        .collect()
+}
+
+/// `names` as a comma-separated, backticked list, or `"(none)"` when empty.
+fn backticked(names: &[String]) -> String {
+    if names.is_empty() {
+        return "(none)".to_string();
+    }
+    names
+        .iter()
+        .map(|a| format!("`{a}`"))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// The lifecycle status of an [`Issue`].
 ///
 /// An issue is *actionable* only when it is not [terminal](Self::is_terminal) and every issue it
-/// is blocked by is [`Done`](Self::Done). It reaches a terminal state either by being accepted
-/// ([`Done`](Self::Done)) or by exhausting its retries ([`Failed`](Self::Failed)); a
+/// is blocked by is [`Done`](Self::Done). Its assigned agent moves it to
+/// [`InReview`](Self::InReview) by completing it, and gg then either accepts it
+/// ([`Done`](Self::Done), after every reviewer approves and its worktree merges) or sends it back to
+/// [`InProgress`](Self::InProgress) with the reviewer's items. It reaches a terminal state either by
+/// being accepted ([`Done`](Self::Done)) or by exhausting its retries ([`Failed`](Self::Failed)); a
 /// [`Failed`](Self::Failed) blocker is terminal but not done, so it leaves its dependents
 /// permanently blocked.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -227,7 +283,11 @@ pub enum IssueStatus {
     Open,
     /// An agent has been assigned and is working it.
     InProgress,
-    /// Accepted complete.
+    /// Its assigned agent called the work complete and gg is reconciling it — running the issue's
+    /// reviewers and merging its worktree. Not terminal: a review that requests changes sends the
+    /// issue back to [`InProgress`](Self::InProgress).
+    InReview,
+    /// Accepted complete, and its worktree merged back.
     Done,
     /// The assigned agent could not complete it within its retries. Terminal, but not
     /// [`Done`](Self::Done).
@@ -235,9 +295,9 @@ pub enum IssueStatus {
 }
 
 impl IssueStatus {
-    /// Parse a model-supplied status token (`"open"`, `"in_progress"`, `"done"`, `"failed"`),
-    /// tolerating a couple of natural spellings. Returns `None` for anything else so the tool can
-    /// reject it with guidance.
+    /// Parse a model-supplied status token (`"open"`, `"in_progress"`, `"in_review"`, `"done"`,
+    /// `"failed"`), tolerating a couple of natural spellings. Returns `None` for anything else so
+    /// the tool can reject it with guidance.
     pub fn parse(raw: &str) -> Option<Self> {
         match raw
             .trim()
@@ -247,6 +307,7 @@ impl IssueStatus {
         {
             "open" | "todo" | "pending" => Some(IssueStatus::Open),
             "in_progress" | "inprogress" | "doing" => Some(IssueStatus::InProgress),
+            "in_review" | "inreview" | "reviewing" => Some(IssueStatus::InReview),
             "done" | "complete" | "completed" => Some(IssueStatus::Done),
             "failed" | "failure" | "abandoned" => Some(IssueStatus::Failed),
             _ => None,
@@ -266,6 +327,7 @@ impl IssueStatus {
         match self {
             IssueStatus::Open => GgIssueStatus::Open,
             IssueStatus::InProgress => GgIssueStatus::InProgress,
+            IssueStatus::InReview => GgIssueStatus::InReview,
             IssueStatus::Done => GgIssueStatus::Done,
             IssueStatus::Failed => GgIssueStatus::Failed,
         }
@@ -276,6 +338,7 @@ impl IssueStatus {
         match self {
             IssueStatus::Open => "open",
             IssueStatus::InProgress => "in progress",
+            IssueStatus::InReview => "in review",
             IssueStatus::Done => "done",
             IssueStatus::Failed => "failed",
         }
@@ -286,6 +349,7 @@ impl IssueStatus {
         match self {
             IssueStatus::Open => "[ ]",
             IssueStatus::InProgress => "[~]",
+            IssueStatus::InReview => "[?]",
             IssueStatus::Done => "[x]",
             IssueStatus::Failed => "[!]",
         }
@@ -326,7 +390,7 @@ impl Epic {
 ///
 /// The structured [`in_scope`](Self::in_scope), [`out_of_scope`](Self::out_of_scope), and
 /// [`completion_criteria`](Self::completion_criteria) fields are what make an issue safe to
-/// hand to a subagent — they are the subagent's brief.
+/// hand to an agent — they are the assigned agent's brief.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Issue {
     /// The issue's stable id — the handle the tools and every blocked-by edge reference.
@@ -337,8 +401,8 @@ pub struct Issue {
     description: Option<String>,
     /// What the issue **is** responsible for.
     in_scope: String,
-    /// What the issue is **not** responsible for — the explicit exclusions bounding a
-    /// dispatched subagent.
+    /// What the issue is **not** responsible for — the explicit exclusions bounding the
+    /// dispatched agent's work.
     out_of_scope: String,
     /// How the issue will be judged **done** — the acceptance criteria.
     completion_criteria: String,
@@ -350,13 +414,12 @@ pub struct Issue {
     /// The id of the [`Epic`] this issue is grouped under, when any.
     epic_id: Option<String>,
     /// The [agent profile](GgAgentConfig) this issue is **assigned to** — named by whoever filed
-    /// it, from that agent's [assignable set](IssuePolicy::assignable), and the profile the
-    /// [dispatcher](crate::agent) runs it under.
+    /// it, from that agent's [implementers](IssuePolicy::implementers), and the profile the
+    /// [dispatcher](crate::agent) runs it (and each retry and review round) under.
     agent: String,
-    /// The [agent profiles](GgAgentConfig) that must approve this issue's
-    /// [Code Review](crate::agent), named at creation from the same
-    /// [assignable set](IssuePolicy::assignable). Empty when the
-    /// [reviewers feature](IssuePolicy::require_reviewers) was off for the filing agent.
+    /// The [agent profiles](GgAgentConfig) that must each approve this issue before it is
+    /// accepted, named at creation from the filing agent's
+    /// [reviewers](IssuePolicy::reviewers). Empty when it was filed without any.
     reviewers: Vec<String>,
     /// The id of the agent gg [dispatched](crate::agent) to implement this issue, set when the
     /// issue is [assigned](BoardStore::assign_issue) (moving it to
@@ -370,7 +433,7 @@ pub struct Issue {
 }
 
 // Field accessors are the issue's read surface for the tests, the console-facing derivations,
-// and the Phase 4 subagent dispatch (which reads the brief off these fields).
+// and the dispatcher (which reads the brief off these fields).
 #[allow(dead_code)]
 impl Issue {
     /// The issue's id.
@@ -424,7 +487,7 @@ impl Issue {
         &self.agent
     }
 
-    /// The [agent profiles](GgAgentConfig) that must approve this issue's Code Review, or empty
+    /// The [agent profiles](GgAgentConfig) that must each approve this issue, or empty
     /// when it was filed without reviewers.
     pub fn reviewers(&self) -> &[String] {
         &self.reviewers
@@ -842,14 +905,37 @@ impl BoardStore {
         Ok(BoardChange::BlockersSet)
     }
 
-    /// Mark an issue [`Done`](IssueStatus::Done). Refused if no issue of that id exists.
+    /// Mark an issue [`InReview`](IssueStatus::InReview) — its assigned agent has called the work
+    /// complete, and gg now reconciles it (reviewers, then the merge of its worktree). Refused if
+    /// no issue of that id exists.
+    ///
+    /// This is what `complete_issue` does: the model **declares** the work finished, and
+    /// [`accept_issue`](Self::accept_issue) is what actually accepts it once the review has
+    /// approved and the branch has landed. Keeping the two apart is what stops a dependent issue
+    /// being dispatched against work that has not merged yet.
     pub fn complete_issue(&mut self, id: &str) -> Result<BoardChange, BoardError> {
         let id = require_field(id, "id")?;
         let Some(index) = self.issue_position(id) else {
             return Err(BoardError::IssueNotFound(id.to_string()));
         };
-        self.issues[index].status = IssueStatus::Done;
+        self.issues[index].status = IssueStatus::InReview;
         Ok(BoardChange::IssueCompleted)
+    }
+
+    /// **Accept** the issue `id`: mark it [`Done`](IssueStatus::Done), unblocking its dependents.
+    /// Returns `false` (untouched) if no such issue exists or it is already terminal. Called by the
+    /// [orchestrator](crate::agent) only after every reviewer approved and the issue's worktree
+    /// merged back — never by a tool.
+    pub fn accept_issue(&mut self, id: &str) -> bool {
+        let Some(index) = self.issue_position(id) else {
+            return false;
+        };
+        let issue = &mut self.issues[index];
+        if issue.status.is_terminal() {
+            return false;
+        }
+        issue.status = IssueStatus::Done;
+        true
     }
 
     /// The caps' [retry ceiling](BoardCaps::max_retries).
@@ -900,12 +986,14 @@ impl BoardStore {
         true
     }
 
-    /// **Re-dispatch** the issue `id` to a fresh agent after a failed attempt: reassign it to
-    /// `agent_id`, move it back to [`InProgress`](IssueStatus::InProgress), and record its new
-    /// [retry count](Issue::retries). Returns `false` (untouched) if no such issue exists or it
-    /// has already reached a terminal state. Unlike [`assign_issue`](Self::assign_issue) this does
-    /// not require the issue to be [`Open`](IssueStatus::Open) — a re-dispatch follows an agent
-    /// that left it [`InProgress`](IssueStatus::InProgress).
+    /// **Re-dispatch** the issue `id` to a fresh agent — after a failed attempt, or after a review
+    /// requested changes: reassign it to `agent_id`, move it back to
+    /// [`InProgress`](IssueStatus::InProgress), and record its new [retry count](Issue::retries)
+    /// (a review round passes the count through unchanged, since rework is not a failed attempt).
+    /// Returns `false` (untouched) if no such issue exists or it has already reached a terminal
+    /// state. Unlike [`assign_issue`](Self::assign_issue) this does not require the issue to be
+    /// [`Open`](IssueStatus::Open) — a re-dispatch follows an agent that left it
+    /// [`InProgress`](IssueStatus::InProgress) or [`InReview`](IssueStatus::InReview).
     pub fn redispatch_issue(&mut self, id: &str, agent_id: &str, retries: u32) -> bool {
         let Some(index) = self.issue_position(id) else {
             return false;
@@ -1106,9 +1194,9 @@ impl BoardStore {
     }
 
     /// The dispatch **brief** for the issue with id `id` — its title, optional overview, and the
-    /// three structured sections that bound a subagent's work (in-scope, out-of-scope, completion
-    /// criteria) — or `None` when no issue of that id exists. This is the P4 subagent dispatch
-    /// seam: `spawn_subagent { issueId }` reads the brief straight off the board (a read, not a
+    /// three structured sections that bound the assigned agent's work (in-scope, out-of-scope,
+    /// completion criteria) — or `None` when no issue of that id exists. The
+    /// [dispatcher](crate::agent) reads the brief straight off the board (a read, not a
     /// reshaping), matching the [dispatch seam](self) the issue fields were designed for.
     fn issue_brief(&self, id: &str) -> Option<String> {
         let issue = self.issues.iter().find(|issue| issue.id == id)?;
@@ -1331,8 +1419,8 @@ impl BoardRuntime {
             .map(str::to_string)
     }
 
-    /// The [reviewer profiles](Issue::reviewers) of the issue with id `id` — the profiles a
-    /// [Code Review](crate::agent) of it must be approved by — or an empty list when the
+    /// The [reviewer profiles](Issue::reviewers) of the issue with id `id` — the profiles its
+    /// [review](crate::agent) must be approved by — or an empty list when the
     /// capability is off, no such issue exists, or it was filed without reviewers.
     pub fn issue_reviewers(&self, id: &str) -> Vec<String> {
         if !self.enabled {
@@ -1346,21 +1434,21 @@ impl BoardRuntime {
             .unwrap_or_default()
     }
 
-    /// Mark the issue with id `id` [done](IssueStatus::Done), returning whether it was (an unknown
-    /// id, or a disabled runtime, yields `false`). Used by the
-    /// [Code Reviews](https://docs.testcabinet.ai/gg/code-reviews/) capability to **accept** an
-    /// issue once its Code Review approves — the acceptance the `complete_issue` tool is intercepted
-    /// to gate. The loop refreshes the pinned board block and re-emits
-    /// [`BoardState`](GgTelemetryKind::BoardState) after, just as it does for the tool.
-    pub fn complete_issue(&self, id: &str) -> bool {
+    /// [Accept](BoardStore::accept_issue) the issue with id `id` — mark it
+    /// [done](IssueStatus::Done) — returning whether it was (an unknown id, an already-terminal
+    /// issue, or a disabled runtime yields `false`).
+    ///
+    /// The [orchestrator](crate::agent) calls this once every reviewer has approved and the issue's
+    /// worktree has merged back, which is the only path to `Done`: the `complete_issue` tool only
+    /// moves an issue to [`InReview`](IssueStatus::InReview).
+    pub fn accept_issue(&self, id: &str) -> bool {
         if !self.enabled {
             return false;
         }
         self.store
             .lock()
             .expect("board store lock")
-            .complete_issue(id)
-            .is_ok()
+            .accept_issue(id)
     }
 
     /// The caps' [retry ceiling](BoardCaps::max_retries) — how many times the
@@ -1396,11 +1484,27 @@ impl BoardRuntime {
         }
     }
 
-    /// Whether the issue with id `id` is [`Done`](IssueStatus::Done) — the check the
-    /// [dispatcher](crate::agent) makes to tell an accepted issue from one its assigned agent left
-    /// unfinished.
-    pub fn issue_is_done(&self, id: &str) -> bool {
-        self.issue_status(id) == Some(IssueStatus::Done)
+    /// Whether the issue with id `id` is [`InReview`](IssueStatus::InReview) — the check the
+    /// [dispatcher](crate::agent) makes to tell an agent that called its work complete from one
+    /// that ended without doing so.
+    pub fn issue_is_in_review(&self, id: &str) -> bool {
+        self.issue_status(id) == Some(IssueStatus::InReview)
+    }
+
+    /// The [retry count](Issue::retries) of the issue with id `id`, or `0` when the capability is
+    /// off or no such issue exists.
+    pub fn issue_retries(&self, id: &str) -> u32 {
+        if !self.enabled {
+            return 0;
+        }
+        self.store
+            .lock()
+            .expect("board store lock")
+            .issues()
+            .iter()
+            .find(|issue| issue.id() == id)
+            .map(Issue::retries)
+            .unwrap_or(0)
     }
 
     /// The ids of every issue that is [dispatchable right now](BoardStore::dispatchable_ids), or

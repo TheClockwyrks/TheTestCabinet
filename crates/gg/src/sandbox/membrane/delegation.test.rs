@@ -20,7 +20,6 @@ fn a_subagent_brief_is_exactly_one_of_prompt_or_issue() {
         .spawn_subagent(SpawnRequest {
             agent: "subagent".to_string(),
             task: SubagentBrief::Prompt("write the lexer".to_string()),
-            worktree: Some(true),
         })
         .expect("spawned");
     assert_eq!(
@@ -29,7 +28,6 @@ fn a_subagent_brief_is_exactly_one_of_prompt_or_issue() {
             "agent": "subagent",
             "prompt": "write the lexer",
             "issueId": null,
-            "worktree": true,
         }))
     );
 
@@ -39,7 +37,6 @@ fn a_subagent_brief_is_exactly_one_of_prompt_or_issue() {
         .spawn_subagent(SpawnRequest {
             agent: ROOT_AGENT.to_string(),
             task: SubagentBrief::Issue("i1".to_string()),
-            worktree: None,
         })
         .expect("spawned");
     assert_eq!(
@@ -48,14 +45,11 @@ fn a_subagent_brief_is_exactly_one_of_prompt_or_issue() {
             "agent": ROOT_AGENT,
             "prompt": null,
             "issueId": "i1",
-            // The membrane resolves an absent `worktree` to `false` before the call.
-            "worktree": false,
         }))
     );
     assert_eq!(handle.id, "agent-1");
     assert_eq!(handle.slot, "primary");
     assert_eq!(handle.model_id, "test/model");
-    assert!(handle.worktree_branch.is_none());
 }
 
 /// Collected results carry how each child finished as a **value**, so a program can count the ones
@@ -144,21 +138,18 @@ fn absent_items_and_empty_items_are_different_workflow_stages() {
                 prompt: "look at {{item}}".to_string(),
                 items: Some(vec!["a.ts".to_string(), "b.ts".to_string()]),
                 agent: ROOT_AGENT.to_string(),
-                worktree: None,
             },
             WorkflowStage {
                 name: None,
                 prompt: "summarise {{prior}}".to_string(),
                 items: None,
                 agent: "subagent".to_string(),
-                worktree: Some(false),
             },
             WorkflowStage {
                 name: Some("empty".to_string()),
                 prompt: "never runs".to_string(),
                 items: Some(Vec::new()),
                 agent: ROOT_AGENT.to_string(),
-                worktree: None,
             },
         ])
         .expect("ran");
@@ -174,30 +165,26 @@ fn absent_items_and_empty_items_are_different_workflow_stages() {
     assert_eq!(
         stages,
         // `items` still distinguishes absent (`null`, fan out) from empty (`[]`, an error) — that is
-        // this test's point. The membrane now resolves each stage's optional `name`/`worktree` before
+        // this test's point. The membrane now resolves each stage's optional `name` before
         // the call: an absent name becomes `""` (still named `stage-N` by the loop) and an absent
-        // worktree becomes `false`.
         json!([
             {
                 "name": "survey",
                 "prompt": "look at {{item}}",
                 "items": ["a.ts", "b.ts"],
                 "agent": ROOT_AGENT,
-                "worktree": false,
             },
             {
                 "name": "",
                 "prompt": "summarise {{prior}}",
                 "items": null,
                 "agent": "subagent",
-                "worktree": false,
             },
             {
                 "name": "empty",
                 "prompt": "never runs",
                 "items": [],
                 "agent": ROOT_AGENT,
-                "worktree": false,
             },
         ])
     );

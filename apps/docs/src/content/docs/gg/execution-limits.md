@@ -207,7 +207,7 @@ conversation for every later turn.
    exactly like an exhausted or timed-out one.
 7. **The workspace is exactly as the last completed turn left it.** gg rolls nothing back.
    The one nuance worth stating: a limit-stopped subagent's isolated
-   [worktree](/gg/worktrees/) is **discarded unmerged**, exactly as an exhausted or
+   worktree is **discarded unmerged**, exactly as an exhausted or
    timed-out one is. The run's artifact is the main tree, and a subagent cut off mid-task
    holds half-finished work that merging could turn from a working artifact into a broken
    one.

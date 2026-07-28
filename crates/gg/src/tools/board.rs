@@ -231,10 +231,11 @@ impl CreateEpicTool {
 // ---------------------------------------------------------------------------
 
 /// Creates a structured, dispatchable issue, assigned to one of the filing agent's own
-/// [assignable profiles](IssuePolicy).
+/// [implementer profiles](IssuePolicy::implementers).
 pub struct CreateIssueTool {
     store: Arc<Mutex<BoardStore>>,
-    /// The filing agent's own rules: who it may assign to, and whether reviewers are demanded.
+    /// The filing agent's own rules: who it may assign work to, who it may name as a reviewer,
+    /// and whether reviewers are demanded.
     /// Per agent, so it is bound onto the tool rather than read off the shared store.
     policy: IssuePolicy,
 }
@@ -246,32 +247,56 @@ impl CreateIssueTool {
     }
 
     /// The `agent`/`reviewers` half of the tool's description — the profiles this agent may
-    /// assign to, and whether naming reviewers is required or refused.
+    /// assign the work to, the ones it may name as reviewers, and whether naming reviewers is
+    /// required.
     fn assignment_guidance(&self) -> String {
-        let assignable = self.policy.assignable_list();
+        let implementers = self.policy.implementer_list();
+        let reviewer_list = self.policy.reviewer_list();
         let reviewers = if self.policy.require_reviewers {
-            " You must also name one or more `reviewers` from that same list; each of them has to \
-             approve the work before the issue can be accepted."
+            format!(
+                " You must also name one or more `reviewers`, drawn from: {reviewer_list}. Each of \
+                 them reviews the finished work, and all of them must approve it before the issue \
+                 is accepted."
+            )
         } else {
-            ""
+            format!(
+                " You may name one or more `reviewers`, drawn from: {reviewer_list}. Each of them \
+                 reviews the finished work, and all of them must approve it before the issue is \
+                 accepted."
+            )
         };
         format!(
             " Name in `agent` the agent gg should dispatch this issue to; you may assign to: \
-             {assignable}.{reviewers}"
+             {implementers}.{reviewers}"
         )
     }
 
-    /// Refuse a profile this agent may not assign work to, naming the ones it may.
-    fn check_assignable(&self, field: &str, name: &str) -> Option<ToolOutcome> {
-        if self.policy.allows(name.trim()) {
+    /// Refuse a profile this agent may not assign the issue to, naming the ones it may.
+    fn check_implementer(&self, name: &str) -> Option<ToolOutcome> {
+        if self.policy.allows_implementer(name.trim()) {
             return None;
         }
         Some(ToolOutcome::failed(
             ToolFailure::InvalidArgument,
             format!(
-                "create_issue: `{field}` names `{name}`, which is not an agent you may assign \
-                 work to. You may assign to: {}.",
-                self.policy.assignable_list()
+                "create_issue: `agent` names `{name}`, which is not an agent you may assign an \
+                 issue to. You may assign to: {}.",
+                self.policy.implementer_list()
+            ),
+        ))
+    }
+
+    /// Refuse a profile this agent may not name as a reviewer, naming the ones it may.
+    fn check_reviewer(&self, name: &str) -> Option<ToolOutcome> {
+        if self.policy.allows_reviewer(name.trim()) {
+            return None;
+        }
+        Some(ToolOutcome::failed(
+            ToolFailure::InvalidArgument,
+            format!(
+                "create_issue: `reviewers` names `{name}`, which is not an agent you may assign a \
+                 review to. You may name: {}.",
+                self.policy.reviewer_list()
             ),
         ))
     }
@@ -339,13 +364,14 @@ impl Tool for CreateIssueTool {
                     },
                     "agent": {
                         "type": "string",
-                        "enum": self.policy.assignable,
+                        "enum": self.policy.implementers,
                         "description": "The agent to dispatch this issue to."
                     },
                     "reviewers": {
                         "type": "array",
-                        "items": { "type": "string", "enum": self.policy.assignable },
-                        "description": "The agents that must approve this issue's work."
+                        "items": { "type": "string", "enum": self.policy.reviewers },
+                        "description": "The agents that must each approve this issue's work \
+                                        before it is accepted."
                     }
                 },
                 "required": required,
@@ -417,8 +443,9 @@ impl CreateIssueTool {
     /// Create an issue — the **standard, typed** `create_issue` API function both the JSON
     /// [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach.
     ///
-    /// The assignment rules are enforced here, before the store is touched: `agent` and every
-    /// reviewer must be a profile this agent may [assign to](IssuePolicy::allows), and a
+    /// The assignment rules are enforced here, before the store is touched: `agent` must be one of
+    /// this agent's [implementers](IssuePolicy::implementers), every reviewer one of its
+    /// [reviewers](IssuePolicy::reviewers), and a
     /// [reviewers-required](IssuePolicy::require_reviewers) agent must name at least one.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn create_issue(
@@ -434,7 +461,7 @@ impl CreateIssueTool {
         agent: String,
         reviewers: Vec<String>,
     ) -> ToolOutcome {
-        if let Some(refusal) = self.check_assignable("agent", &agent) {
+        if let Some(refusal) = self.check_implementer(&agent) {
             return refusal;
         }
         if self.policy.require_reviewers && reviewers.iter().all(|r| r.trim().is_empty()) {
@@ -442,13 +469,13 @@ impl CreateIssueTool {
                 ToolFailure::InvalidArgument,
                 format!(
                     "create_issue: this run requires every issue to name at least one reviewer in \
-                     `reviewers`. You may assign to: {}.",
-                    self.policy.assignable_list()
+                     `reviewers`. You may name: {}.",
+                    self.policy.reviewer_list()
                 ),
             );
         }
         for reviewer in &reviewers {
-            if let Some(refusal) = self.check_assignable("reviewers", reviewer) {
+            if let Some(refusal) = self.check_reviewer(reviewer) {
                 return refusal;
             }
         }
@@ -726,7 +753,7 @@ impl SetIssueBlockedByTool {
 // complete_issue
 // ---------------------------------------------------------------------------
 
-/// Marks an issue done.
+/// Records that an issue's work is finished, moving it to review.
 pub struct CompleteIssueTool {
     store: Arc<Mutex<BoardStore>>,
 }
@@ -747,12 +774,18 @@ impl Tool for CompleteIssueTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
             COMPLETE_ISSUE_TOOL,
-            "Mark an issue done by `id`. Issues blocked by it become actionable once all of \
-             their blockers are done. Fails if no issue of that id exists.",
+            "Record that an issue's work is finished, by `id`. The issue moves to `in review`: gg \
+             runs its reviewers (if it named any) and merges its work back into the main \
+             workspace, and only then is it done and its dependents unblocked. If a reviewer asks \
+             for changes, the issue is reopened and dispatched again. Fails if no issue of that id \
+             exists.",
             json!({
                 "type": "object",
                 "properties": {
-                    "id": { "type": "string", "description": "The id of the issue to mark done." }
+                    "id": {
+                        "type": "string",
+                        "description": "The id of the issue whose work is finished."
+                    }
                 },
                 "required": ["id"],
                 "additionalProperties": false
@@ -770,20 +803,41 @@ impl Tool for CompleteIssueTool {
 }
 
 impl CompleteIssueTool {
-    /// Mark an issue done — the **standard, typed** `complete_issue` API function both the JSON
-    /// [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach. (With
-    /// Code Reviews enabled the [loop](crate::agent) intercepts this instead, reporting its review.)
+    /// Record an issue's work as finished — the **standard, typed** `complete_issue` API function
+    /// both the JSON [adapter](Tool::invoke) and the
+    /// [responses-as-code membrane](crate::sandbox) reach.
+    ///
+    /// The issue moves to [`InReview`](crate::board::IssueStatus::InReview); the
+    /// [orchestrator](crate::agent) takes it from there (reviewers, then the merge of its
+    /// worktree). The outcome says which of those is coming, because "your work goes to N
+    /// reviewers now" and "your work merges now" are different things for the agent to expect.
     pub(crate) fn complete_issue(&self, id: String) -> ToolOutcome {
         let mut store = self.store.lock().expect("board store lock");
+        let reviewers = store
+            .issues()
+            .iter()
+            .find(|issue| issue.id() == id)
+            .map(|issue| issue.reviewers().len())
+            .unwrap_or(0);
         match store.complete_issue(&id) {
             Ok(BoardChange::IssueCompleted) => {
-                // The plain acceptance path: no Code Review ran, so a caller is told exactly that
-                // rather than being left to infer it from the absence of a verdict. (With Code
-                // Reviews enabled the loop intercepts this call and reports its own review.)
-                let detail = format!("Marked issue `{id}` done.");
+                let detail = if reviewers > 0 {
+                    format!(
+                        "Recorded issue `{id}` as finished. Its {reviewers} reviewer(s) will now \
+                         review the work; if any of them asks for changes the issue is reopened \
+                         and dispatched again, and once they all approve it is merged and marked \
+                         done."
+                    )
+                } else {
+                    format!(
+                        "Recorded issue `{id}` as finished. Its work will be merged back into the \
+                         main workspace and the issue marked done, unblocking anything waiting on \
+                         it."
+                    )
+                };
                 ToolOutcome::ok(detail.clone(), format!("completed issue `{id}`")).with_data(
                     ToolData::Completion(CompletionData {
-                        code_reviewed: false,
+                        reviewed: reviewers > 0,
                         detail,
                     }),
                 )

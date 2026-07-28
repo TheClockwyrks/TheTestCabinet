@@ -365,8 +365,8 @@
           "type": "string"
         },
         {
-          "const": "code_reviews",
-          "description": "[`code_reviews`](GgSessionSummary::code_reviews).",
+          "const": "issue_reviews",
+          "description": "[`issue_reviews`](GgSessionSummary::issue_reviews).",
           "type": "string"
         },
         {

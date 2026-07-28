@@ -28,13 +28,6 @@ fn built_in_machines_have_their_states_in_order() {
         "tdd is write tests → implement → verify"
     );
 
-    let review = FsmRuntime::resolve(fsm_set(MACHINE_REVIEW_GATED).root());
-    assert_eq!(
-        state_names(&review),
-        vec!["develop", "review", "accept"],
-        "review-gated is develop → review → accept"
-    );
-
     let plan = FsmRuntime::resolve(fsm_set(MACHINE_PLAN_FIRST).root());
     assert_eq!(
         state_names(&plan),
@@ -89,7 +82,6 @@ fn configured_machine_and_builtins() {
     );
 
     assert!(is_builtin_machine(MACHINE_TDD));
-    assert!(is_builtin_machine(MACHINE_REVIEW_GATED));
     assert!(is_builtin_machine(MACHINE_PLAN_FIRST));
     assert!(!is_builtin_machine("bogus"));
 }
@@ -199,10 +191,9 @@ fn tool_gating_mirrors_the_state_policy() {
     assert!(none.offers("write_file"));
 }
 
-/// `advance` walks forward one state at a time (never skipping), `revert_to` loops back (the
-/// review-gated return to `develop`), and neither runs off the ends.
+/// `advance` walks forward one state at a time, never skipping and never running off the end.
 #[test]
-fn advance_and_revert_step_through_states() {
+fn advance_steps_through_states() {
     let mut fsm = FsmRuntime::resolve(fsm_set(MACHINE_TDD).root());
     assert_eq!(fsm.current_index(), 0);
     assert_eq!(fsm.current_state().unwrap().name, "write_tests");
@@ -214,12 +205,4 @@ fn advance_and_revert_step_through_states() {
     // No skipping and no running off the end: at the last state `advance` yields nothing.
     assert_eq!(fsm.advance().map(|s| s.name), None);
     assert_eq!(fsm.current_index(), 2);
-
-    // Loop-back to an earlier state.
-    let mut review = FsmRuntime::resolve(fsm_set(MACHINE_REVIEW_GATED).root());
-    review.advance(); // develop → review
-    assert_eq!(review.current_state().unwrap().name, "review");
-    let develop = review.index_of("develop").unwrap();
-    assert_eq!(review.revert_to(develop).map(|s| s.name), Some("develop"));
-    assert_eq!(review.current_index(), 0);
 }

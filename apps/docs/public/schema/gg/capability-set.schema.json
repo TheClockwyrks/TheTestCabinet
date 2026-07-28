@@ -1,7 +1,7 @@
 {
   "$defs": {
     "GgAgentConfig": {
-      "description": "A single **agent profile** within a [`GgCapabilitySet`] — the per-agent unit that\nmakes gg's capabilities configurable independently for each agent in a run.\n\nEvery profile has a unique [`name`](Self::name) (the first is always the\n[Root](ROOT_AGENT)), its own enabled [capabilities](Self::capabilities) and per-tool\n[ablation](Self::disabled_tools), its own model (pinned via [`model_id`](Self::model_id)\nor [deferred](Self::model_slot) to a launch-time [model slot](GgModelSlot)), an optional\n[custom prompt](Self::custom_instructions) / [full template override](Self::system_prompt_template),\nand the set of other agents it may spawn as [subagents](Self::subagents).\n\nAn agent is spawned **by name**: `spawn_subagent`, `speculate`, and `run_workflow`\nall name the target agent, which must appear in the caller's [`subagents`](Self::subagents)\nallowlist. A profile may list itself, allowing recursion.",
+      "description": "A single **agent profile** within a [`GgCapabilitySet`] — the per-agent unit that\nmakes gg's capabilities configurable independently for each agent in a run.\n\nEvery profile has a unique [`name`](Self::name) (the first is always the\n[Root](ROOT_AGENT)), its own enabled [capabilities](Self::capabilities) and per-tool\n[ablation](Self::disabled_tools), its own model (pinned via [`model_id`](Self::model_id)\nor [deferred](Self::model_slot) to a launch-time [model slot](GgModelSlot)), an optional\n[custom prompt](Self::custom_instructions) / [full template override](Self::system_prompt_template),\nand the set of other agents it may spawn as [subagents](Self::subagents).\n\nAn agent is put to work **by name**: `spawn_subagent`, `speculate`, and `run_workflow`\nall name the target agent, which must appear in the caller's [roster](Self::subagents) with the\n[`subagent`](GgSubagentScope::Subagent) scope — as must an [issue](GgBoardIssue)'s implementer\n(the [`implementer`](GgSubagentScope::Implementer) scope) and its reviewers (the\n[`reviewer`](GgSubagentScope::Reviewer) scope). A profile may list itself, allowing recursion.",
       "properties": {
         "capabilities": {
           "default": [],
@@ -36,7 +36,7 @@
           "type": "string"
         },
         "subagents": {
-          "description": "The other agents this agent may spawn as subagents — the delegation allowlist.\nEach entry names a target agent (which may be this agent itself) and carries a\ncaller-scoped [description](GgSubagentRef::description) telling this agent when to\nuse that target. Empty means this agent spawns nothing.",
+          "description": "The other agents this agent may put to work — its delegation **roster**. Each entry names\na target agent (which may be this agent itself), the [scopes](GgSubagentRef::scopes) it may\nbe used in (spawnable subagent, issue implementer, issue reviewer), and a caller-scoped\n[description](GgSubagentRef::description) telling this agent when to use that target. Empty\nmeans this agent can name nobody — it neither spawns nor assigns.\n\nIndependent of the [subagents](CAPABILITY_SUBAGENTS) capability: the roster says *which*\nprofiles are namable, the capability says whether this agent may spawn at all.",
           "items": {
             "$ref": "#/$defs/GgSubagentRef"
           },
@@ -129,20 +129,48 @@
       "type": "object"
     },
     "GgSubagentRef": {
-      "description": "One entry in an [agent's](GgAgentConfig) delegation allowlist: a target agent this\nagent may spawn, plus the caller-scoped [description](Self::description) that tells\nthe spawning agent when to use it.\n\nThe description is scoped to the `(spawner, target)` pair, so the same target can\ncarry different guidance depending on which agent is allowed to spawn it.",
+      "description": "One entry in an [agent's](GgAgentConfig) delegation roster: a target agent this\nagent may put to work, the [scopes](Self::scopes) it may be used in, plus the caller-scoped\n[description](Self::description) that tells the spawning agent when to use it.\n\nThe description is scoped to the `(spawner, target)` pair, so the same target can\ncarry different guidance depending on which agent is allowed to spawn it.",
       "properties": {
         "agent": {
-          "description": "The name of the target agent this agent may spawn (may be the spawner itself).",
+          "description": "The name of the target agent this agent may put to work (may be the spawner itself).",
           "type": "string"
         },
         "description": {
           "default": "",
-          "description": "Caller-scoped guidance on when to spawn `agent`, surfaced in the spawning\nagent's `spawn_subagent` tool description. May be empty.",
+          "description": "Caller-scoped guidance on when to use `agent`, surfaced in the spawning\nagent's `spawn_subagent` tool description and in the prompt's roster. May be empty.",
           "type": "string"
+        },
+        "scopes": {
+          "default": ["subagent"],
+          "description": "**What** this agent may use `agent` for. An entry may carry several scopes — the same\nprofile is often both a reasonable implementer and a reasonable reviewer — and one that\ncarries none can be used for nothing, which is how a reference is disabled without deleting\nit. An entry stored before scopes existed deserializes as\n[`Subagent`](GgSubagentScope::Subagent) alone, which is exactly what it meant.",
+          "items": {
+            "$ref": "#/$defs/GgSubagentScope"
+          },
+          "type": "array"
         }
       },
       "required": ["agent"],
       "type": "object"
+    },
+    "GgSubagentScope": {
+      "description": "What one [roster entry](GgSubagentRef) permits its target to be used **for**.\n\nThe three roles an agent can be put to work in are governed independently, because they are\ngenuinely different jobs: a profile tuned to write code is not necessarily one you want\nreviewing it, and a cheap fan-out worker is not necessarily one you want owning a whole issue.\nScoping the roster rather than adding three parallel lists keeps one roster per agent — with\none caller-scoped [description](GgSubagentRef::description) per target — and keeps the\n[prompt](CAPABILITY_PROJECT_MANAGEMENT) able to state exactly which names each call accepts.\n\nThe roster is **independent of the [subagents](CAPABILITY_SUBAGENTS) capability**: it says which\nprofiles this agent may name, not whether it may spawn at all. An agent with no subagents\ncapability still uses its roster to assign issues and reviews.",
+      "oneOf": [
+        {
+          "const": "subagent",
+          "description": "General delegation: `spawn_subagent`, a [workflow](CAPABILITY_WORKFLOWS) stage, and a\n[speculation](CAPABILITY_SPECULATIVE)'s attempts and judge may all name this target.\nReachable only when the [subagents](CAPABILITY_SUBAGENTS) capability (or the workflow\nmachinery built on it) is on.",
+          "type": "string"
+        },
+        {
+          "const": "implementer",
+          "description": "This target may be named as an [issue](GgBoardIssue::agent)'s **implementer** — the profile\ngg dispatches to do the issue's work (and re-dispatches for each retry and review round).",
+          "type": "string"
+        },
+        {
+          "const": "reviewer",
+          "description": "This target may be named among an [issue](GgBoardIssue::reviewers)'s **reviewers** — the\nprofiles that must each approve the finished work before the issue is accepted.",
+          "type": "string"
+        }
+      ]
     }
   },
   "$id": "https://docs.testcabinet.ai/schema/gg/capability-set.schema.json",

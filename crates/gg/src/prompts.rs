@@ -273,9 +273,21 @@ pub struct SystemContext {
     /// template inserts it near the top so it frames the whole session.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub custom_instructions: Option<String>,
-    /// The agents this one may spawn as subagents, each with the caller-scoped description that
-    /// tells this agent when to use it. Enumerated in the prompt so the model knows which names
-    /// `spawn_subagent`/`speculate`/`run_workflow` accept. Empty renders no section.
+    /// Whether this agent may **spawn subagents** — the
+    /// [subagents](test_cabinet_core::gg::CAPABILITY_SUBAGENTS) capability, as the offered toolset
+    /// reflects it. This alone gates the prompt's Subagents section.
+    ///
+    /// It is deliberately **not** derived from [`spawnable_agents`](Self::spawnable_agents) being
+    /// non-empty. An agent's roster and its ability to delegate are independent: a run may give an
+    /// agent a roster purely so it can name issue implementers and reviewers, with no
+    /// `spawn_subagent` anywhere in sight, and teaching that agent to delegate would be teaching it
+    /// about a tool it does not have.
+    pub subagents: bool,
+    /// The agents this one may spawn as subagents (its roster's
+    /// [`subagent`](test_cabinet_core::gg::GgSubagentScope::Subagent) scope), each with the
+    /// caller-scoped description that tells this agent when to use it. Enumerated in the prompt so
+    /// the model knows which names `spawn_subagent`/`speculate`/`run_workflow` accept. Rendered only
+    /// when [`subagents`](Self::subagents) is on.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub spawnable_agents: Vec<SpawnableAgentView>,
     /// Whether this agent is a **delegated** worker rather than the run's root agent — set from the
@@ -285,7 +297,7 @@ pub struct SystemContext {
     /// ends *for the reader*: a root agent's summary is the run's last word, while a subagent's is
     /// the answer it hands back to whoever asked for the work. A delegated model told "this ends the
     /// run" has a strong reason not to call it — and a worker that never calls it never returns a
-    /// verdict, which is the exact failure that leaves a Code Review unaccepted and a speculation
+    /// verdict, which is the exact failure that leaves an issue unaccepted and a speculation
     /// judge without a winner.
     pub delegated: bool,
     /// Whether [healing](crate::healing)'s fence-stripping strategy is armed this run.
@@ -314,8 +326,6 @@ pub struct SystemContext {
     pub planning: bool,
     /// The [FSM](crate::fsm) driving the run, or `None` when no machine drives it.
     pub fsm: Option<FsmView>,
-    /// Whether Code Reviews gate issue acceptance this run.
-    pub code_reviews: bool,
     /// Whether speculative execution (`speculate`) is available this run.
     pub speculative: bool,
     /// Whether this agent's opening context was pre-seeded with the test case's specifications and
@@ -491,15 +501,16 @@ pub struct SkillView {
     pub description: String,
 }
 
-/// One agent this agent may spawn, as the system prompt lists it — the target's name and the
-/// caller-scoped description of when to use it.
+/// One agent this agent may put to work, as the system prompt lists it — the target's name and the
+/// caller-scoped description of when to use it. Used for all three roster
+/// [scopes](test_cabinet_core::gg::GgSubagentScope).
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SpawnableAgentView {
-    /// The target agent profile's name — a value `spawn_subagent`/`speculate`/`run_workflow`
-    /// accept for their `agent` argument.
+    /// The target agent profile's name — a value the call this list belongs to accepts for its
+    /// `agent`/`reviewers` argument.
     pub name: String,
-    /// Caller-scoped guidance on when to spawn this agent. May be empty.
+    /// Caller-scoped guidance on when to use this agent. May be empty.
     pub description: String,
 }
 
@@ -547,7 +558,7 @@ pub struct TasksView {
     pub max_tasks: usize,
 }
 
-/// The board ceilings the prompt states.
+/// The board ceilings and rosters the prompt states.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BoardView {
@@ -557,8 +568,20 @@ pub struct BoardView {
     pub max_issues: usize,
     /// How many times gg re-dispatches a failed issue before marking it failed.
     pub max_retries: usize,
-    /// Whether this agent must name one or more reviewers on every issue it files.
-    pub reviewers: bool,
+    /// Whether this agent must name one or more reviewers on every issue it files (as opposed to
+    /// naming them being optional).
+    pub reviewers_required: bool,
+    /// The agents this one may assign an issue to — its roster's
+    /// [`implementer`](test_cabinet_core::gg::GgSubagentScope::Implementer) scope.
+    ///
+    /// Listed in the project-management section rather than left to the tool schema because the two
+    /// rosters are genuinely different sets: a model told only "choose an agent" reaches for a name
+    /// it may spawn but may not assign, spends a call finding out, and learns nothing it could not
+    /// have been told up front.
+    pub issue_agents: Vec<SpawnableAgentView>,
+    /// The agents this one may name as an issue's reviewers — its roster's
+    /// [`reviewer`](test_cabinet_core::gg::GgSubagentScope::Reviewer) scope.
+    pub reviewer_agents: Vec<SpawnableAgentView>,
 }
 
 /// The process driving the run, named in the prompt.

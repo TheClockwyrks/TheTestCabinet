@@ -93,7 +93,7 @@ fn empty_tracker_finalizes_to_a_zeroed_summary() {
     assert!(!summary.ran_out_of_context);
     assert_eq!(summary.context_overflow_count, 0);
     assert_eq!(summary.final_fullness, None);
-    assert_eq!(summary.code_reviews, 0);
+    assert_eq!(summary.issue_reviews, 0);
     assert_eq!(summary.review_cycles, 0);
     assert_eq!(summary.issues_reopened, 0);
     assert_eq!(summary.speculations, 0);
@@ -217,26 +217,26 @@ fn a_breakdown_without_fullness_does_not_flag_overflow() {
     assert!(!summary.ran_out_of_context);
 }
 
-/// Code Review phases split into three figures: reviews triggered (`Requested`), verdicts
+/// Issue-review phases split into three figures: reviews triggered (`Requested`), verdicts
 /// rendered (`ChangesRequested` + `Approved`), and issues reopened (`ChangesRequested`).
 #[test]
 fn counts_code_review_phases() {
     let tracker = SessionSummaryTracker::new();
-    let phase = |p| GgTelemetryKind::CodeReview {
+    let phase = |p| GgTelemetryKind::IssueReview {
         phase: p,
         items: None,
         baseline: None,
     };
     // One review that took one fix round: requested → changes → approved.
-    tracker.observe(&phase(GgCodeReviewPhase::Requested));
-    tracker.observe(&phase(GgCodeReviewPhase::ChangesRequested));
-    tracker.observe(&phase(GgCodeReviewPhase::Approved));
+    tracker.observe(&phase(GgIssueReviewPhase::Requested));
+    tracker.observe(&phase(GgIssueReviewPhase::ChangesRequested));
+    tracker.observe(&phase(GgIssueReviewPhase::Approved));
     // A second review approved on the first pass: requested → approved.
-    tracker.observe(&phase(GgCodeReviewPhase::Requested));
-    tracker.observe(&phase(GgCodeReviewPhase::Approved));
+    tracker.observe(&phase(GgIssueReviewPhase::Requested));
+    tracker.observe(&phase(GgIssueReviewPhase::Approved));
 
     let summary = tracker.finalize("completed");
-    assert_eq!(summary.code_reviews, 2);
+    assert_eq!(summary.issue_reviews, 2);
     // Two approvals + one changes-requested = three verdicts.
     assert_eq!(summary.review_cycles, 3);
     assert_eq!(summary.issues_reopened, 1);

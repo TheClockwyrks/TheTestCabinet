@@ -214,12 +214,6 @@
       "minimum": 0,
       "type": "integer"
     },
-    "codeReviews": {
-      "description": "How many [Code Reviews](GgTelemetryKind::CodeReview) the run triggered — one per\n[`Requested`](GgCodeReviewPhase::Requested) phase (an issue whose acceptance was gated on a\nreview). `0` when the capability was off.",
-      "format": "uint64",
-      "minimum": 0,
-      "type": "integer"
-    },
     "compactions": {
       "description": "How many [compaction](GgTelemetryKind::Compaction) boundaries the run crossed. `0` when the\ncompaction capability was off or the thread never neared the window.",
       "format": "uint64",
@@ -269,6 +263,12 @@
       },
       "description": "What gg had to do to the models' responses before it could run them — the run's\n[response-healing](GgHealingSummary) rollup, folded from the same\n[`CodeExecution`](GgTelemetryKind::CodeExecution) events\n[`code_executions`](Self::code_executions) counts. All zeroes for a tool-calling run."
     },
+    "issueReviews": {
+      "description": "How many [issue reviews](GgTelemetryKind::IssueReview) the run triggered — one per\n[`Requested`](GgIssueReviewPhase::Requested) phase (an issue whose acceptance was gated on\nits reviewers). `0` when no issue named reviewers.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
     "issuesCompleted": {
       "description": "How many distinct issues the run ever drove to [`Done`](GgIssueStatus::Done) — the count of\ndistinct issue ids observed at `Done` at any point (so an issue reopened and re-completed\nstill counts once). At most [`issues_created`](Self::issues_created).",
       "format": "uint64",
@@ -282,7 +282,7 @@
       "type": "integer"
     },
     "issuesReopened": {
-      "description": "How many times a Code Review **reopened** an issue for fixes — one per\n[`ChangesRequested`](GgCodeReviewPhase::ChangesRequested) phase. `0` when every review\napproved on the first pass (or the capability was off).",
+      "description": "How many times a review **reopened** an issue for fixes — one per\n[`ChangesRequested`](GgIssueReviewPhase::ChangesRequested) phase. `0` when every review\napproved on the first pass (or no issue named reviewers).",
       "format": "uint64",
       "minimum": 0,
       "type": "integer"
@@ -314,7 +314,7 @@
       "type": "boolean"
     },
     "reviewCycles": {
-      "description": "The total number of review **verdicts** the run's reviewers rendered — every\n[`ChangesRequested`](GgCodeReviewPhase::ChangesRequested) plus every\n[`Approved`](GgCodeReviewPhase::Approved) phase — so a single Code Review that took several\nfix rounds counts each round. The correlate for \"which reviewer/planner produced fewer\nrework cycles?\".",
+      "description": "The total number of review **verdicts** the run's reviewers rendered — every\n[`ChangesRequested`](GgIssueReviewPhase::ChangesRequested) plus every\n[`Approved`](GgIssueReviewPhase::Approved) phase — so a single issue that took several\nfix rounds counts each round. The correlate for \"which reviewer/planner produced fewer\nrework cycles?\".",
       "format": "uint64",
       "minimum": 0,
       "type": "integer"
@@ -352,7 +352,7 @@
     "compactions",
     "ranOutOfContext",
     "contextOverflowCount",
-    "codeReviews",
+    "issueReviews",
     "reviewCycles",
     "issuesReopened",
     "speculations",

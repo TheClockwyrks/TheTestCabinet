@@ -334,11 +334,10 @@ impl ToolApi for FakeToolApi {
         agent: String,
         prompt: Option<String>,
         issue_id: Option<String>,
-        worktree: bool,
     ) -> ToolOutcome {
         self.call(
             "spawn_subagent",
-            json!({ "agent": agent, "prompt": prompt, "issueId": issue_id, "worktree": worktree }),
+            json!({ "agent": agent, "prompt": prompt, "issueId": issue_id }),
         )
     }
     fn wait_for_subagents(&mut self, ids: Option<Vec<String>>) -> ToolOutcome {
@@ -354,7 +353,7 @@ impl ToolApi for FakeToolApi {
         let json_stages: Vec<Value> = stages
             .iter()
             .map(|s| {
-                json!({ "name": s.name, "prompt": s.prompt, "items": s.items, "agent": s.agent, "worktree": s.worktree })
+                json!({ "name": s.name, "prompt": s.prompt, "items": s.items, "agent": s.agent })
             })
             .collect();
         self.call("run_workflow", json!({ "stages": json_stages }))
@@ -404,6 +403,7 @@ fn issue_status_word(status: IssueStatus) -> &'static str {
     match status {
         IssueStatus::Open => "open",
         IssueStatus::InProgress => "in_progress",
+        IssueStatus::InReview => "in_review",
         IssueStatus::Done => "done",
         IssueStatus::Failed => "failed",
     }
@@ -480,7 +480,7 @@ pub(crate) fn canned_outcome(name: &str, args: &Value) -> ToolOutcome {
         "wait_for_issue" => ToolOutcome::ok("wait registered", "wait registered"),
         "complete_issue" => ToolOutcome::ok("accepted", "issue done").with_data(
             ToolData::Completion(CompletionData {
-                code_reviewed: true,
+                reviewed: true,
                 detail: "the reviewer approved it".to_string(),
             }),
         ),
@@ -509,7 +509,6 @@ pub(crate) fn canned_outcome(name: &str, args: &Value) -> ToolOutcome {
                 id: "agent-1".to_string(),
                 slot: "primary".to_string(),
                 model_id: "test/model".to_string(),
-                worktree_branch: None,
             }),
         ),
         "wait_for_subagents" => {

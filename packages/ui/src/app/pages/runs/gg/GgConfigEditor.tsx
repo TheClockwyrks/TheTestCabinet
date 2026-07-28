@@ -3,6 +3,7 @@ import {
   DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE,
   DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE_CODE,
 } from "@test-cabinet/run-record/gg-system-prompt";
+import type { GgSubagentScope } from "@test-cabinet/run-record/gg";
 import type { Model } from "../../../../client/types";
 import { ModelCombobox } from "../../../components/ModelCombobox";
 import { familyOf } from "../../../data/families";
@@ -10,6 +11,7 @@ import {
   CAPABILITIES,
   CAP_GROUPS,
   RUN_LIMIT_SPECS,
+  SUBAGENT_SCOPES,
   type CapGroup,
   type RunLimitSpec,
 } from "./ggCatalog";
@@ -334,8 +336,8 @@ export function GgConfigEditor({
         </div>
 
         {/* Agents — the per-agent profiles. The first is always the Root, which
-            drives the run's top-level session and is the default for issue dispatch,
-            Code Review, and speculation judging. */}
+            drives the run's top-level session and is the default for the merge agent
+            and speculation judging. */}
         <p
           className={`${runExec.sectionLabel} ${runExec.sectionLabelBackdrop}`}
         >
@@ -434,10 +436,27 @@ export function GgConfigEditor({
     patchAgent({
       disabledTools: setToolBundle(agent.disabledTools, tools, on),
     });
-  const toggleSubagent = (target: string, on: boolean) => {
+  // A roster entry exists exactly while it carries at least one scope: turning the
+  // last one off removes it, and turning the first one on adds it. There is no
+  // separate "listed" toggle, because an entry that is listed but usable for nothing
+  // is a state with no meaning gg could act on.
+  const toggleSubagentScope = (
+    target: string,
+    scope: GgSubagentScope,
+    on: boolean,
+  ) => {
+    const entry = agent.subagents.find((s) => s.agent === target);
+    const scopes = on
+      ? [...(entry?.scopes ?? []), scope]
+      : (entry?.scopes ?? []).filter((s) => s !== scope);
     const others = agent.subagents.filter((s) => s.agent !== target);
     patchAgent({
-      subagents: on ? [...others, { agent: target, description: "" }] : others,
+      subagents: scopes.length
+        ? [
+            ...others,
+            { agent: target, description: entry?.description ?? "", scopes },
+          ]
+        : others,
     });
   };
   const setSubagentDescription = (target: string, description: string) =>
@@ -894,15 +913,19 @@ export function GgConfigEditor({
         );
       })}
 
-      {/* Subagents — which other agents this one may spawn, each with caller-scoped
-          guidance. An agent may list itself, for recursion. */}
+      {/* Roster — which other agents this one may put to work, and for what. An agent
+          may list itself, for recursion. */}
       <p className={`${runExec.sectionLabel} ${runExec.sectionLabelBackdrop}`}>
-        Subagents
+        Roster
       </p>
       <p className={`${runExec.muted} ${gg.backdropNote}`}>
-        The agents this one may spawn (with <code>spawn_subagent</code>,{" "}
-        <code>speculate</code>, or <code>run_workflow</code>). Enable a target
-        and describe when to use it — the description is what this agent sees.
+        The agents this one may put to work, and what for:{" "}
+        <strong>Subagent</strong> (spawnable with <code>spawn_subagent</code>,{" "}
+        <code>speculate</code>, or <code>run_workflow</code>),{" "}
+        <strong>Implementer</strong> (assignable as an issue&rsquo;s agent), and{" "}
+        <strong>Reviewer</strong> (namable among an issue&rsquo;s reviewers).
+        The three are independent. Describe when to use a target — the
+        description is what this agent sees.
       </p>
       <div className={gg.subagentList}>
         {value.agents.map((target) => {
@@ -910,19 +933,28 @@ export function GgConfigEditor({
           const on = Boolean(entry);
           return (
             <div key={target.name} className={gg.subagentRow}>
-              <label className={gg.ablationLabel}>
-                <Switch
-                  checked={on}
-                  disabled={readOnly}
-                  onChange={(next) => toggleSubagent(target.name, next)}
-                />
-                <span className={gg.ablationName}>
-                  {target.name}
-                  {target.name === agent.name && (
-                    <span className={gg.capId}> (self)</span>
-                  )}
-                </span>
-              </label>
+              <span className={gg.ablationName}>
+                {target.name}
+                {target.name === agent.name && (
+                  <span className={gg.capId}> (self)</span>
+                )}
+              </span>
+              {SUBAGENT_SCOPES.map((scope) => (
+                <label
+                  key={scope.value}
+                  className={gg.ablationLabel}
+                  title={scope.hint}
+                >
+                  <Switch
+                    checked={Boolean(entry?.scopes.includes(scope.value))}
+                    disabled={readOnly}
+                    onChange={(next) =>
+                      toggleSubagentScope(target.name, scope.value, next)
+                    }
+                  />
+                  <span className={gg.capId}>{scope.label}</span>
+                </label>
+              ))}
               {on && (
                 <input
                   className={`${runExec.input} ${gg.subagentDescription}`}

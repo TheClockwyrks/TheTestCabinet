@@ -59,8 +59,8 @@ pub enum GgSummaryField {
     /// [`final_fullness`](GgSessionSummary::final_fullness) — the only field that can
     /// be genuinely absent (no window limit was known), yielding `None`.
     FinalFullness,
-    /// [`code_reviews`](GgSessionSummary::code_reviews).
-    CodeReviews,
+    /// [`issue_reviews`](GgSessionSummary::issue_reviews).
+    IssueReviews,
     /// [`review_cycles`](GgSessionSummary::review_cycles).
     ReviewCycles,
     /// [`issues_reopened`](GgSessionSummary::issues_reopened).
@@ -139,7 +139,7 @@ impl GgSummaryField {
                 Some(if summary.ran_out_of_context { 1.0 } else { 0.0 })
             }
             GgSummaryField::FinalFullness => summary.final_fullness,
-            GgSummaryField::CodeReviews => Some(summary.code_reviews as f64),
+            GgSummaryField::IssueReviews => Some(summary.issue_reviews as f64),
             GgSummaryField::ReviewCycles => Some(summary.review_cycles as f64),
             GgSummaryField::IssuesReopened => Some(summary.issues_reopened as f64),
             GgSummaryField::Speculations => Some(summary.speculations as f64),

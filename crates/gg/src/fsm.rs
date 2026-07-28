@@ -27,9 +27,6 @@
 //! # The built-in machines
 //!
 //! - [`MACHINE_TDD`] — `write_tests → implement → verify`, order enforced by evidence guards.
-//! - [`MACHINE_REVIEW_GATED`] — `develop → review → accept`, where the `review` state **is a**
-//!   [Code Review](crate::agent): entering it triggers one, and `accept` is reached only on
-//!   approval, else the machine loops back to `develop` with the reviewer's items.
 //! - [`MACHINE_PLAN_FIRST`] — `plan → implement`, reusing the [planning](crate::planning)
 //!   plan→implement flow (a read-only plan pass, then a fresh-context implementation pass) as the
 //!   two states.
@@ -56,12 +53,6 @@ pub const PARAM_MACHINE: &str = "machine";
 /// jump to implementing before it has written tests.
 pub const MACHINE_TDD: &str = "tdd";
 
-/// The **review-gated** machine: `develop → review → accept`. The `review` state **is a**
-/// [Code Review](crate::agent) (composing the code-reviews capability): entering it triggers a
-/// Code Review of the work; `accept` is reached only when the review approves, else the machine
-/// loops **back to `develop`** with the reviewer's actionable items.
-pub const MACHINE_REVIEW_GATED: &str = "review-gated";
-
 /// The **plan-first** machine: `plan → implement`. It reuses the [planning](crate::planning)
 /// plan→implement flow — the `plan` state is a read-only planning pass, and advancing it performs
 /// the same fresh-context reset (via the [`Planner`]) that `submit_plan` does before the `implement`
@@ -69,7 +60,7 @@ pub const MACHINE_REVIEW_GATED: &str = "review-gated";
 pub const MACHINE_PLAN_FIRST: &str = "plan-first";
 
 /// The names of the built-in machines, for validating a configured `machine` param.
-pub const BUILTIN_MACHINES: [&str; 3] = [MACHINE_TDD, MACHINE_REVIEW_GATED, MACHINE_PLAN_FIRST];
+pub const BUILTIN_MACHINES: [&str; 2] = [MACHINE_TDD, MACHINE_PLAN_FIRST];
 
 /// The offered-toolset restriction a [state](FsmState) imposes while the agent is in it — the FSM's
 /// per-state analogue of [plan mode](crate::planning)'s read-only restriction.
@@ -92,10 +83,6 @@ pub enum StateExit {
     /// same context reset + plan framing (via the [`Planner`]) that
     /// [`submit_plan`](crate::planning) does. Reuses the planning flow. `advance_state` is the exit.
     PlanReset,
-    /// The **review** state (`review-gated`): the engine does not rest here — entering it triggers a
-    /// [Code Review](crate::agent), and the outcome moves the machine on (to `accept` on approval, or
-    /// back to `develop` with the items). No exit tool; the loop processes it on entry.
-    ReviewGate,
     /// The terminal state: the run finishes here (the agent stops when its work is done). No exit
     /// tool is offered.
     Terminal,
@@ -104,8 +91,8 @@ pub enum StateExit {
 impl StateExit {
     /// Whether a state with this exit is one the agent leaves by calling `advance_state` — i.e.
     /// whether the `advance_state` tool is offered while resting in it. [`Advance`](Self::Advance)
-    /// and [`PlanReset`](Self::PlanReset) are agent-driven; [`ReviewGate`](Self::ReviewGate) is
-    /// processed automatically on entry and [`Terminal`](Self::Terminal) has no exit.
+    /// and [`PlanReset`](Self::PlanReset) are agent-driven; [`Terminal`](Self::Terminal) has no
+    /// exit.
     pub fn is_advanceable(&self) -> bool {
         matches!(self, StateExit::Advance(_) | StateExit::PlanReset)
     }
@@ -118,8 +105,8 @@ impl StateExit {
 /// and flake-free: the machine literally checks the filesystem for the required artifacts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AdvanceGuard {
-    /// No evidence required — the agent decides the state's work is done (for example `review-gated`
-    /// leaving `develop`).
+    /// No evidence required — the agent decides the state's work is done.
+    #[allow(dead_code)]
     Unconditional,
     /// At least one **test file** must exist in the workspace — the guard that keeps `tdd` in
     /// `write_tests` until tests have actually been written, so the agent cannot implement first.
@@ -234,7 +221,6 @@ impl FsmRuntime {
             .filter(|name| !name.is_empty());
         match machine_name {
             Some(MACHINE_TDD) => Self::of(tdd_machine(), None),
-            Some(MACHINE_REVIEW_GATED) => Self::of(review_gated_machine(), None),
             Some(MACHINE_PLAN_FIRST) => {
                 // The planner backs the plan → implement reset (its `frame_plan`), so `plan-first`
                 // reuses the planning capability's flow even when that capability is off.
@@ -277,16 +263,6 @@ impl FsmRuntime {
         self.current
     }
 
-    /// The index of the first state whose name is `name`, or `None` — used to loop `review-gated`
-    /// back to `develop`.
-    pub fn index_of(&self, name: &str) -> Option<usize> {
-        self.machine
-            .as_ref()?
-            .states
-            .iter()
-            .position(|state| state.name == name)
-    }
-
     /// Advance to the next state (index `current + 1`), returning the state just entered — or `None`
     /// when there is no next state (already at the last state, or no machine). The caller emits the
     /// [`FsmState`](test_cabinet_core::gg::GgTelemetryKind::FsmState) telemetry and injects the new
@@ -298,17 +274,6 @@ impl FsmRuntime {
         }
         self.current += 1;
         self.machine.as_ref()?.states.get(self.current)
-    }
-
-    /// Move to the state at `index` (a **loop-back** — `review-gated` returning to `develop` when the
-    /// Code Review requests changes), returning the state entered. Out-of-range indices are ignored.
-    pub fn revert_to(&mut self, index: usize) -> Option<&FsmState> {
-        let len = self.machine.as_ref()?.states.len();
-        if index >= len {
-            return None;
-        }
-        self.current = index;
-        self.machine.as_ref()?.states.get(index)
     }
 
     /// Whether the tool `name` is offered this turn given the current state's [policy](ToolPolicy)
@@ -371,46 +336,6 @@ fn tdd_machine() -> Machine {
                 guidance: "# Verify with the tests\n\nRun the tests and confirm they pass against \
                     your implementation. Fix any failures until the suite is green, then give a \
                     short summary and stop. This is the final step of the process."
-                    .to_string(),
-                tool_policy: ToolPolicy::All,
-                exit: StateExit::Terminal,
-            },
-        ],
-    }
-}
-
-/// Build the [review-gated](MACHINE_REVIEW_GATED) machine: `develop → review → accept`. The `review`
-/// state is a [Code Review](crate::agent) — entering it (by advancing from `develop`) triggers one,
-/// and the loop moves the machine to `accept` only on approval, else back to `develop` with the
-/// reviewer's items.
-fn review_gated_machine() -> Machine {
-    Machine {
-        name: MACHINE_REVIEW_GATED,
-        states: vec![
-            FsmState {
-                name: "develop",
-                guidance: "# Develop the work\n\nImplement the work for this task. When you believe \
-                    it is complete and ready to be checked, call `advance_state` — this submits your \
-                    work for a **Code Review** before it can be accepted. If the review requests \
-                    changes, you will be returned here with the specific items to address; make \
-                    those changes and advance again."
-                    .to_string(),
-                tool_policy: ToolPolicy::All,
-                // Unconditional: the agent decides its work is ready. Advancing enters `review`,
-                // which the loop processes automatically (it triggers the Code Review).
-                exit: StateExit::Advance(AdvanceGuard::Unconditional),
-            },
-            FsmState {
-                name: "review",
-                guidance: "# Code Review\n\nYour work is being reviewed against the task."
-                    .to_string(),
-                tool_policy: ToolPolicy::All,
-                exit: StateExit::ReviewGate,
-            },
-            FsmState {
-                name: "accept",
-                guidance: "# Accepted\n\nThe Code Review approved your work. Give a short summary of \
-                    what you built and stop."
                     .to_string(),
                 tool_policy: ToolPolicy::All,
                 exit: StateExit::Terminal,

@@ -29,6 +29,7 @@ fn no_generated_brief_tells_a_code_mode_agent_to_stop() {
         id: "sub-1".to_string(),
         branch: "gg/spec-1".to_string(),
         path: PathBuf::from("/tmp/spec-1"),
+        base: "0".repeat(40),
         status: STATUS_COMPLETED.to_string(),
         summary: "built it".to_string(),
         diff: "+ a line".to_string(),
@@ -36,7 +37,7 @@ fn no_generated_brief_tells_a_code_mode_agent_to_stop() {
     let briefs = [
         (
             "review",
-            build_review_brief("## Issue\nMake it work.", "+ a line", true),
+            build_review_brief("## Issue\nMake it work.", "+ a line", None, true),
         ),
         (
             "fix",

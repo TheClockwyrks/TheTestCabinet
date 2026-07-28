@@ -1363,8 +1363,8 @@ async fn a_sandbox_limit_counts_as_an_error_turn_but_a_handled_tool_failure_does
 ///
 /// Every brief gg generates used to tell its agent to end by *stopping*, which this protocol
 /// abolishes — a reviewer that never calls `finish` never reaches `completed`, so gg would report it
-/// as having ended without a verdict and the issue would never be accepted. This drives the whole
-/// Code Review through the code path: the root program files the board issue (which auto-dispatches
+/// as having ended without a verdict and the issue would never be accepted. This drives a whole
+/// issue review through the code path: the root program files the board issue (which auto-dispatches
 /// an agent to implement it), the dispatched agent's program does the work and completes the issue,
 /// and the reviewer's program finishes with the verdict.
 #[tokio::test]
@@ -1372,7 +1372,7 @@ async fn a_code_mode_reviewer_verdict_parses() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-code-review".to_string()), Box::new(sink.clone()));
-    let mut set = code_review_set(&["reviewer"]);
+    let mut set = issue_review_set(&["reviewer"]);
     for agent in &mut set.agents {
         agent
             .capabilities
@@ -1393,7 +1393,7 @@ async fn a_code_mode_reviewer_verdict_parses() {
                          }});\nproject.createIssue({{ id: \"{REVIEW_ISSUE_ID}\", title: \"Add the widget\", \
                          inScope: \"Implement the widget.\", outOfScope: \"Unrelated changes.\", \
                          completionCriteria: \"The widget is fully implemented.\", epicId: \"e1\", \
-                         agent: \"{ROOT_AGENT}\" }});"
+                         agent: \"{ROOT_AGENT}\", reviewers: [\"reviewer\"] }});"
                     )),
                     code_reply(FINISHING_PROGRAM),
                 ]
@@ -1411,7 +1411,7 @@ async fn a_code_mode_reviewer_verdict_parses() {
         .slot("reviewer", |b| {
             Box::new(MockClient::new(
                 &b.model_id,
-                vec![code_reply("harness.finish(\"CODE REVIEW: APPROVED\");")],
+                vec![code_reply("harness.finish(\"REVIEW: APPROVED\");")],
             ))
         });
 
@@ -1421,16 +1421,16 @@ async fn a_code_mode_reviewer_verdict_parses() {
     );
 
     let events = sink.events();
-    let phases: Vec<GgCodeReviewPhase> = events
+    let phases: Vec<GgIssueReviewPhase> = events
         .iter()
         .filter_map(|e| match &e.kind {
-            GgTelemetryKind::CodeReview { phase, .. } => Some(*phase),
+            GgTelemetryKind::IssueReview { phase, .. } => Some(*phase),
             _ => None,
         })
         .collect();
     assert_eq!(
         phases,
-        vec![GgCodeReviewPhase::Requested, GgCodeReviewPhase::Approved],
+        vec![GgIssueReviewPhase::Requested, GgIssueReviewPhase::Approved],
         "the reviewer's `finish` summary parsed as an approval: {phases:?}"
     );
     // The reviewer was told the contract it actually runs under.
@@ -1440,7 +1440,7 @@ async fn a_code_mode_reviewer_verdict_parses() {
         .and_then(|(_, _, _, _, brief)| brief)
         .expect("a reviewer was dispatched");
     assert!(
-        review_brief.contains("harness.finish(\"CODE REVIEW: APPROVED\")"),
+        review_brief.contains("harness.finish(\"REVIEW: APPROVED\")"),
         "the code-mode brief asks for the verdict the way a program gives one: {review_brief}"
     );
     assert_eq!(ended_with(&events), "completed");
@@ -1527,48 +1527,45 @@ async fn a_code_mode_speculation_merges_the_winners_worktree() {
     assert_eq!(ended_with(&events), "completed");
 }
 
-/// **A code-mode subagent's isolated worktree is merged back.**
+/// **A code-mode issue agent's isolated worktree is merged back.**
 ///
-/// The merge gate gets its answer from the child's terminal status, and under this protocol that
-/// status comes from a `finish` call. A child that could not reach `completed` would have its work
-/// discarded silently — which is the failure this asserts is gone.
+/// An issue's work happens on a branch, and the merge gate is the issue's acceptance — which under
+/// this protocol is reached through a `complete_issue` call inside a program. An agent whose program
+/// could not reach that call would have its work discarded silently, which is the failure this
+/// asserts is gone.
 #[tokio::test]
-async fn a_code_mode_subagents_worktree_is_merged() {
+async fn a_code_mode_issue_agents_worktree_is_merged() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-code-wt".to_string()), Box::new(sink.clone()));
-    let mut set = subagent_set(2, 3, &["subagent"]);
-    set.agents[0]
-        .capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_WORKTREES));
+    let mut set = issue_review_set(&[]);
     for agent in &mut set.agents {
         agent
             .capabilities
             .push(GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE));
     }
     let inv = invocation(dir.path(), set);
-    let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, |b| {
-            Box::new(MockClient::new(
-                &b.model_id,
-                vec![
-                    code_reply(
-                        "const child = agents.spawnSubagent({ agent: \"subagent\", prompt: \
-                         \"Write the file.\", worktree: true });\nreturn agents.waitForSubagents([child.id]);",
-                    ),
-                    code_reply(FINISHING_PROGRAM),
-                ],
-            ))
-        })
-        .slot("subagent", |b| {
-            Box::new(MockClient::new(
-                &b.model_id,
-                vec![code_reply(
-                    "fs.writeFile(\"isolated.txt\", \"from the worktree\\n\");\nharness.finish(\"wrote the \
-                     file in my worktree\");",
-                )],
-            ))
-        });
+    let counter = Arc::new(AtomicUsize::new(0));
+    let factory = ScriptedFactory::new().slot(ROOT_AGENT, move |b| {
+        let n = counter.fetch_add(1, Ordering::SeqCst);
+        let programs = if n == 0 {
+            vec![
+                code_reply(&format!(
+                    "project.createIssue({{ id: \"{REVIEW_ISSUE_ID}\", title: \"Write the file\", \
+                     inScope: \"Write isolated.txt.\", outOfScope: \"Nothing else.\", \
+                     completionCriteria: \"isolated.txt exists.\", agent: \"{ROOT_AGENT}\" }});"
+                )),
+                code_reply(FINISHING_PROGRAM),
+            ]
+        } else {
+            vec![code_reply(&format!(
+                "fs.writeFile(\"isolated.txt\", \"from the worktree\\n\");\n\
+                 project.completeIssue(\"{REVIEW_ISSUE_ID}\");\n\
+                 harness.finish(\"wrote the file in my worktree\");"
+            ))]
+        };
+        Box::new(MockClient::new(&b.model_id, programs))
+    });
 
     assert_eq!(
         run_with_factory(&inv, &emitter, Arc::new(factory)).await,
@@ -1581,7 +1578,7 @@ async fn a_code_mode_subagents_worktree_is_merged() {
             &e.kind,
             GgTelemetryKind::WorktreeMerged { merged, .. } if *merged
         )),
-        "the child finished, so its worktree was merged"
+        "the issue was accepted, so its worktree was merged"
     );
     assert!(
         dir.path().join("isolated.txt").exists(),

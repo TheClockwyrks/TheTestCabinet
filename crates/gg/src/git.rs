@@ -1,19 +1,23 @@
-//! Thin **git helpers** backing the [worktrees](https://docs.testcabinet.ai/gg/worktrees/)
-//! capability — the isolated per-subagent workspace copies and their merge-back.
+//! Thin **git helpers** backing gg's isolated workspace copies and their merge-back: the
+//! per-[issue](https://docs.testcabinet.ai/gg/project-management/) worktree every dispatched issue
+//! agent works in, and the per-attempt worktrees a
+//! [speculation](https://docs.testcabinet.ai/gg/speculative-execution/) fans out.
 //!
 //! gg runs inside the run container next to the seeded workspace, so rather than reimplement
 //! git it **shells out** to the `git` binary already present in the run image. This module wraps
 //! the handful of plumbing commands the [orchestrator](crate::agent) needs:
 //!
 //! - [`ensure_baseline`] makes the workspace a git repository (if it is not one already) and
-//!   returns the **baseline commit** — the seeded workspace committed verbatim. This is both the
-//!   base every [worktree](Self) branches from and the "original commit for the run" that Phase 5
-//!   [Code Reviews](https://docs.testcabinet.ai/gg/code-reviews/) diff against;
-//! - [`add_worktree`] creates a fresh worktree on a new per-agent branch (an isolated copy of the
-//!   baseline the subagent mutates on its own);
-//! - [`commit_worktree`] stages and commits whatever the subagent produced onto its branch;
-//! - [`merge_branch`] merges that branch back into the main tree (surfacing a conflict rather than
-//!   dropping the work); and
+//!   returns the **baseline commit** — the seeded workspace committed verbatim;
+//! - [`add_worktree`] creates a fresh worktree on a new branch (an isolated copy the agents working
+//!   that issue — or that speculation attempt — mutate on their own);
+//! - [`commit_worktree`] stages and commits whatever an agent produced onto its branch;
+//! - [`diff_since`] renders the work a reviewer (or a judge) is shown;
+//! - [`merge_branch`] merges that branch back into the main tree, either **aborting** a conflict
+//!   (the speculation path, where a losing attempt is simply dropped) or **leaving it in the tree**
+//!   for the [merge agent](test_cabinet_core::gg::PROJECT_MANAGEMENT_PARAM_MERGE_AGENT) to resolve
+//!   (the issue path), with [`merge_in_progress`] and [`abort_merge`] to check on and undo that
+//!   resolution; and
 //! - [`remove_worktree`] tears the worktree and its branch down — run in **every** case (merge,
 //!   conflict, or discard), so no isolated copy is ever left behind.
 //!
@@ -76,10 +80,24 @@ impl std::error::Error for GitError {}
 pub enum MergeOutcome {
     /// The branch merged cleanly (or was already contained); the main tree now includes its work.
     Merged,
-    /// The merge could not be applied without conflict; the main tree was left **unchanged** (the
-    /// merge was aborted). Carries git's explanation so it can be surfaced to the spawner rather
-    /// than dropped. Phase 4B does not attempt resolution.
+    /// The merge could not be applied without conflict. Carries git's explanation so it can be
+    /// surfaced rather than dropped. Whether the main tree was left **unchanged** or left **in the
+    /// conflicted state** for a merge agent to resolve is the caller's choice, made through
+    /// [`ConflictPolicy`].
     Conflict(String),
+}
+
+/// What [`merge_branch`] does with a merge it could not apply cleanly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConflictPolicy {
+    /// **Abort** the merge, restoring the main tree exactly as it was. Used where the branch is
+    /// disposable — a losing speculation attempt — so a clash costs nothing but the attempt.
+    Abort,
+    /// **Leave** the conflicted merge in the working tree (`MERGE_HEAD` set, conflict markers in
+    /// the files) so the [merge agent](test_cabinet_core::gg::PROJECT_MANAGEMENT_PARAM_MERGE_AGENT)
+    /// can resolve it and commit. The caller is then responsible for finishing the merge or
+    /// [aborting](abort_merge) it — a tree left mid-merge would poison every later merge.
+    Keep,
 }
 
 /// Whether the `git` binary can be launched (`git --version` succeeds). Used to decide, once, at
@@ -125,7 +143,7 @@ fn is_repo_root(dir: &Path) -> bool {
 /// seeded workspace verbatim as the baseline (`--allow-empty`, so an empty seeded workspace still
 /// yields a baseline commit). When it is already a repo, the current `HEAD` is taken as the
 /// baseline. Either way the returned sha is the commit every [worktree](add_worktree) branches
-/// from and Phase 5 Code Reviews diff against.
+/// from.
 pub fn ensure_baseline(workspace: &Path) -> Result<String, GitError> {
     if !is_repo_root(workspace) {
         run_git(workspace, "git init", &["init", "-q"])?;
@@ -143,17 +161,16 @@ pub fn ensure_baseline(workspace: &Path) -> Result<String, GitError> {
     run_git(workspace, "git rev-parse HEAD", &["rev-parse", "HEAD"])
 }
 
-/// The current `HEAD` commit sha of the repository rooted at `dir` — the point a
-/// [Code Review](https://docs.testcabinet.ai/gg/code-reviews/) captures as an issue's **initial
-/// commit** when its work is dispatched, so a later review diffs only that issue's changes rather
-/// than the whole run. On the first dispatch this equals the [baseline](ensure_baseline); after
-/// earlier worktree merges advanced `HEAD` it is later.
+/// The current `HEAD` commit sha of the repository rooted at `dir` — the point an
+/// [issue](https://docs.testcabinet.ai/gg/project-management/)'s worktree branches from, so a later
+/// review diffs only that issue's changes rather than the whole run. On the first dispatch this
+/// equals the [baseline](ensure_baseline); after earlier issue merges advanced `HEAD` it is later.
 pub fn head_commit(dir: &Path) -> Result<String, GitError> {
     run_git(dir, "git rev-parse HEAD", &["rev-parse", "HEAD"])
 }
 
-/// The full textual diff of the working tree at `dir` against commit `base` — what a
-/// [Code Review](https://docs.testcabinet.ai/gg/code-reviews/) hands its reviewer.
+/// The full textual diff of the working tree at `dir` against commit `base` — what an issue's
+/// review hands its reviewers, and what a speculation's judge scores.
 ///
 /// Includes new, modified, and deleted files (not just tracked modifications): everything is
 /// staged (`git add -A`) so the `--cached` diff against `base` covers untracked additions too, then
@@ -171,8 +188,8 @@ pub fn diff_since(dir: &Path, base: &str) -> Result<String, GitError> {
 }
 
 /// Create a fresh worktree at `worktree_path` on a new `branch` based at commit `base`, from the
-/// repository rooted at `main`. The new worktree is an isolated checkout of `base` the subagent
-/// mutates on its own; `worktree_path` must not already exist.
+/// repository rooted at `main`. The new worktree is an isolated checkout of `base` the agents
+/// dispatched into it mutate on their own; `worktree_path` must not already exist.
 pub fn add_worktree(
     main: &Path,
     worktree_path: &Path,
@@ -188,12 +205,12 @@ pub fn add_worktree(
     .map(|_| ())
 }
 
-/// Stage and commit everything in `worktree` (the subagent's produced changes) onto its branch,
+/// Stage and commit everything in `worktree` (the agent's produced changes) onto its branch,
 /// returning whether a commit was actually made (`false` when the worktree was left unchanged, so
 /// there is nothing to merge). Uses gg's own [identity](GG_IDENTITY).
 pub fn commit_worktree(worktree: &Path, message: &str) -> Result<bool, GitError> {
     run_git(worktree, "git add", &["add", "-A"])?;
-    // Nothing staged means the subagent produced no changes: skip the commit (an empty commit would
+    // Nothing staged means the agent produced no changes: skip the commit (an empty commit would
     // merge as a no-op but muddies the history).
     let status = run_git(worktree, "git status", &["status", "--porcelain"])?;
     if status.is_empty() {
@@ -209,10 +226,16 @@ pub fn commit_worktree(worktree: &Path, message: &str) -> Result<bool, GitError>
 /// (`--no-ff`), returning whether it merged cleanly or [conflicted](MergeOutcome::Conflict).
 ///
 /// A conflict (or any merge that cannot be applied to the working tree) is **not** an error: the
-/// merge is aborted so the main tree is left exactly as it was, and the outcome carries git's
-/// explanation for the spawner. A genuinely broken invocation (git absent, bad branch name) still
-/// returns a [`GitError`].
-pub fn merge_branch(main: &Path, branch: &str) -> Result<MergeOutcome, GitError> {
+/// outcome carries git's explanation, and `policy` decides what is left behind —
+/// [`Abort`](ConflictPolicy::Abort) restores the main tree exactly as it was, while
+/// [`Keep`](ConflictPolicy::Keep) leaves the conflicted merge in place for a merge agent to
+/// resolve. A genuinely broken invocation (git absent, bad branch name) still returns a
+/// [`GitError`].
+pub fn merge_branch(
+    main: &Path,
+    branch: &str,
+    policy: ConflictPolicy,
+) -> Result<MergeOutcome, GitError> {
     let output = Command::new("git")
         .current_dir(main)
         .args(GG_IDENTITY)
@@ -222,18 +245,39 @@ pub fn merge_branch(main: &Path, branch: &str) -> Result<MergeOutcome, GitError>
     if output.status.success() {
         return Ok(MergeOutcome::Merged);
     }
-    // The merge did not apply. Abort any in-progress merge so the main tree is restored to its
-    // pre-merge state (a merge that failed *before* starting — e.g. it would overwrite local
-    // changes — has nothing to abort, so the abort's own failure is ignored). Report the conflict
-    // rather than dropping the subagent's work. `git merge` prints the conflict summary to
-    // **stdout** ("CONFLICT (content): …") and other refusals to stderr, so draw the reason from
-    // whichever is populated.
+    // The merge did not apply. `git merge` prints the conflict summary to **stdout**
+    // ("CONFLICT (content): …") and other refusals to stderr, so draw the reason from whichever is
+    // populated, then honor the policy. Under `Abort` any in-progress merge is undone so the main
+    // tree is restored to its pre-merge state (a merge that failed *before* starting — e.g. it
+    // would overwrite local changes — has nothing to abort, so that failure is ignored).
     let reason = merge_reason(&output.stdout, &output.stderr);
+    if policy == ConflictPolicy::Abort {
+        abort_merge(main);
+    }
+    Ok(MergeOutcome::Conflict(reason))
+}
+
+/// Whether the repository rooted at `main` is sitting in an **unfinished merge** (`MERGE_HEAD` is
+/// set) — how gg checks whether a merge agent actually finished the merge it was handed, rather
+/// than taking its word for it.
+pub fn merge_in_progress(main: &Path) -> bool {
+    run_git(
+        main,
+        "git rev-parse MERGE_HEAD",
+        &["rev-parse", "-q", "--verify", "MERGE_HEAD"],
+    )
+    .is_ok()
+}
+
+/// Abort an in-progress merge in `main`, restoring the working tree to its pre-merge state.
+///
+/// Best-effort and idempotent: a tree with nothing to abort simply reports failure, which is
+/// ignored — this is a cleanup path, and a run must not die because there was no merge to undo.
+pub fn abort_merge(main: &Path) {
     let _ = Command::new("git")
         .current_dir(main)
         .args(["merge", "--abort"])
         .output();
-    Ok(MergeOutcome::Conflict(reason))
 }
 
 /// Assemble a human-readable reason for a failed merge from git's `stdout` (where the conflict
@@ -264,7 +308,7 @@ fn merge_reason(stdout: &[u8], stderr: &[u8]) -> String {
 
 /// Tear down the worktree at `worktree_path` and delete its `branch`, from the repository rooted at
 /// `main`. Best-effort and idempotent: run in every case (a merged, conflicted, or discarded
-/// subagent) so no isolated copy or dangling branch is left behind. Individual failures are
+/// branch) so no isolated copy or dangling branch is left behind. Individual failures are
 /// returned but the caller typically only logs them — cleanup must not fail a run.
 pub fn remove_worktree(main: &Path, worktree_path: &Path, branch: &str) -> Result<(), GitError> {
     let path = worktree_path.to_string_lossy();

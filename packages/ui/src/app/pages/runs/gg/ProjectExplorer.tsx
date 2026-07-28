@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { GgBoardIssue, GgIssueStatus } from "@test-cabinet/run-record/gg";
-import type { BoardState, CodeReviewState } from "./useGgRunState";
+import type { BoardState, IssueReviewState } from "./useGgRunState";
 import {
   Blockers,
   REVIEW_LABELS,
@@ -48,6 +48,8 @@ function issueDotStatus(status: GgIssueStatus): string {
   switch (status) {
     case "in_progress":
       return "running";
+    case "in_review":
+      return "blocked";
     case "done":
       return "done";
     case "failed":
@@ -95,9 +97,9 @@ interface ProjectExplorerProps {
   // The run-global board (latest `board_state` across the whole stream); null when the
   // project-management capability produced no snapshot yet.
   board: BoardState | null;
-  // Per-issue Code Review lifecycle, keyed by issue id (see gg/code-reviews); empty
-  // when the code-reviews capability is off, so no review badges are shown.
-  codeReviews: Map<string, CodeReviewState>;
+  // Per-issue review lifecycle, keyed by issue id (see gg/project-management); empty
+  // when no issue named reviewers, so no review badges are shown.
+  issueReviews: Map<string, IssueReviewState>;
 }
 
 /**
@@ -105,7 +107,7 @@ interface ProjectExplorerProps {
  * epics-as-folders and epic/issue detail-as-files. Offered only when the run's
  * configuration has the project-management capability on (see {@link GgRunPanels}).
  */
-export function ProjectExplorer({ board, codeReviews }: ProjectExplorerProps) {
+export function ProjectExplorer({ board, issueReviews }: ProjectExplorerProps) {
   const groups = useMemo(() => (board ? groupBoard(board) : []), [board]);
   const byId = useMemo(
     () => new Map((board?.issues ?? []).map((i) => [i.id, i])),
@@ -190,7 +192,7 @@ export function ProjectExplorer({ board, codeReviews }: ProjectExplorerProps) {
           <IssueDetail
             issue={selectedIssue}
             byId={byId}
-            review={codeReviews.get(selectedIssue.id) ?? null}
+            review={issueReviews.get(selectedIssue.id) ?? null}
           />
         ) : selectedGroup ? (
           <EpicDetail group={selectedGroup} />
@@ -316,17 +318,24 @@ function EpicDetail({ group }: { group: EpicGroup }) {
           <p className={panels.empty}>No issues yet.</p>
         ) : (
           <div className={panels.projStatusSummary}>
-            {(["open", "in_progress", "done", "failed"] as GgIssueStatus[]).map(
-              (status) =>
-                counts[status] > 0 ? (
-                  <span
-                    key={status}
-                    className={panels.statusBadge}
-                    data-status={status}
-                  >
-                    {counts[status]} {STATUS_LABELS[status]}
-                  </span>
-                ) : null,
+            {(
+              [
+                "open",
+                "in_progress",
+                "in_review",
+                "done",
+                "failed",
+              ] as GgIssueStatus[]
+            ).map((status) =>
+              counts[status] > 0 ? (
+                <span
+                  key={status}
+                  className={panels.statusBadge}
+                  data-status={status}
+                >
+                  {counts[status]} {STATUS_LABELS[status]}
+                </span>
+              ) : null,
             )}
           </div>
         )}
@@ -336,7 +345,7 @@ function EpicDetail({ group }: { group: EpicGroup }) {
 }
 
 // One issue's detail: its readiness + status, the assigned agent (a link into the
-// Agents explorer) and retry count, its blocked-by edges, any code-review items, and
+// Agents explorer) and retry count, its blocked-by edges, any review items, and
 // its full structured brief (shown open, since the detail pane is where you read it).
 function IssueDetail({
   issue,
@@ -345,7 +354,7 @@ function IssueDetail({
 }: {
   issue: GgBoardIssue;
   byId: Map<string, GgBoardIssue>;
-  review: CodeReviewState | null;
+  review: IssueReviewState | null;
 }) {
   const nav = useGgExplorerNav();
   const { readiness, incomplete } = deriveIssue(issue, byId);
@@ -460,6 +469,7 @@ function countByStatus(issues: GgBoardIssue[]): Record<GgIssueStatus, number> {
   const counts: Record<GgIssueStatus, number> = {
     open: 0,
     in_progress: 0,
+    in_review: 0,
     done: 0,
     failed: 0,
   };

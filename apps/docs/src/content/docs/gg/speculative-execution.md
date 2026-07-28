@@ -4,21 +4,21 @@ title: "Speculative execution"
 
 Best-of-K: attempt the same piece of work several times in parallel and keep the
 best result. `speculate` names the [agent profile](/gg/configurations/#agents) to run
-the attempts under (from the caller's [allowlist](/gg/subagents/)), and gg fans out K
+the attempts under (from the caller's [roster](/gg/subagents/)), and gg fans out K
 [subagents](/gg/subagents/) of it at the same task or
 [board issue](/gg/project-management/) — optionally with different approaches — each
-in its own [worktree](/gg/worktrees/), then a **judge** — a subagent run under the
+in its own isolated git worktree, then a **judge** — a subagent run under the
 capability's **`judgeAgent`** profile (defaulting to the
-[Root agent](/gg/configurations/#agents)), or a [Code Review](/gg/code-reviews/) —
-selects the winning attempt to merge and discards the rest.
+[Root agent](/gg/configurations/#agents)) — selects the winning attempt to merge and
+discards the rest.
 
 Every primitive it needs already exists, so it is largely an [FSM](/gg/fsms/)
 (`fan-out → judge → merge/discard`) plus a merge step:
 
 - **Fan-out** over K attempts via the subagent scheduler.
 - **Isolation** so attempts do not collide — each runs in its own worktree.
-- **Judging** — a judge agent or a Code Review picks the winner against the task's
-  completion criteria.
+- **Judging** — a judge agent picks the winner against the task's completion
+  criteria.
 - **Merge/discard** — the winner is merged back into the main tree; the losers are
   thrown away.
 

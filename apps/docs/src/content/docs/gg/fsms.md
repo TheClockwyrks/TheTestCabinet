@@ -16,13 +16,12 @@ as opposed to the default `implement → write tests`. The FSM makes the *order*
 property of the process, not a matter of the model's discretion — the agent cannot
 skip to "implement" before "write tests" because the machine will not let it.
 
-FSMs compose with other capabilities: a [Code Review](/gg/code-reviews/) is
-naturally a state (`develop → review → accept`), [planning](/gg/planning/)'s "plan
-then implement from a fresh context" is itself a small FSM, and
+FSMs compose with other capabilities: [planning](/gg/planning/)'s "plan then
+implement from a fresh context" is itself a small FSM, and
 [speculative execution](/gg/speculative-execution/) is a `fan-out → judge → merge`
 machine.
 
 FSMs are **authored as part of the harness** — a built-in library shipped with gg
-(for example TDD-ordered, review-gated, and plan-first machines), not a per-study
+(for example the TDD-ordered and plan-first machines), not a per-study
 data format and not something the model defines for itself. Selecting which FSM (if
 any) drives a run is part of the [capability set](/gg/overview/#the-capability-set).

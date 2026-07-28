@@ -48,7 +48,7 @@
 //! # The mock is test infrastructure, not a launchable model
 //!
 //! [`MockClient`] exists so gg's own suite can drive the **real** binary offline —
-//! the whole spawn → wait → return path and its worktree, workflow, Code Review, FSM,
+//! the whole spawn → wait → return path and its workflow, issue-review, FSM,
 //! and speculative variants are exercised through [`mock_client_for`], not around it.
 //! It is **not** a model anyone can run a real test case on: the launch path resolves
 //! every bound model's [context window](test_cabinet_core::gg::GgInvocation::model_windows)
@@ -1392,68 +1392,6 @@ impl MockClient {
         Self::new(model_id, vec![spawn, wait, finish])
     }
 
-    /// The **worktree** variant of the [parent](Self::with_subagent_parent_script) side of the
-    /// offline [subagents](crate::subagents) e2e: identical, except the child is dispatched with
-    /// `worktree: true`, so it runs in an **isolated** copy of the workspace whose work is merged
-    /// back only when it finishes.
-    ///
-    /// 1. `spawn_subagent { prompt, slot: "subagent", worktree: true }` schedules an **isolated**
-    ///    child;
-    /// 2. `wait_for_subagents {}` blocks (freeing the parent's slot) until it returns — during
-    ///    which the child mutates its worktree, invisibly to the main tree, and on completion the
-    ///    branch is merged back;
-    /// 3. a final tool-free turn stops.
-    ///
-    /// Pairs with [`with_subagent_child_script`](Self::with_subagent_child_script) (the same child).
-    /// Selected in production by a mock `model_id` naming `worktree-parent` (see [`mock_client_for`]),
-    /// so the isolation + merge-back path is drivable **offline through the real binary** (bind the
-    /// primary slot to a `mock/…-worktree-parent` model and a second slot to a
-    /// `mock/…-subagent-child` model, with the `worktrees` capability enabled).
-    pub fn with_worktree_subagent_parent_script(model_id: impl Into<String>) -> Self {
-        let usage = |input: u64, output: u64| TokenCounts {
-            uncached_input: Some(input),
-            cached_input: None,
-            output: Some(output),
-            reasoning: None,
-        };
-        let spawn = ModelResponse {
-            text: Some(
-                "Delegating the greeting file to a subagent in an isolated worktree.".to_string(),
-            ),
-            tool_calls: vec![ToolCall {
-                id: "call_spawn".to_string(),
-                name: "spawn_subagent".to_string(),
-                arguments: json!({
-                    "prompt": "Create a file with a greeting in it.",
-                    "agent": "subagent",
-                    "worktree": true,
-                }),
-            }],
-            finish_reason: FinishReason::ToolCalls,
-            usage: usage(900, 40),
-            cost: None,
-        };
-        let wait = ModelResponse {
-            text: Some("Waiting for the isolated subagent to finish and merge back.".to_string()),
-            tool_calls: vec![ToolCall {
-                id: "call_wait".to_string(),
-                name: "wait_for_subagents".to_string(),
-                arguments: json!({}),
-            }],
-            finish_reason: FinishReason::ToolCalls,
-            usage: usage(950, 30),
-            cost: None,
-        };
-        let finish = ModelResponse {
-            text: Some("The subagent finished; its work merged into the workspace.".to_string()),
-            tool_calls: Vec::new(),
-            finish_reason: FinishReason::Stop,
-            usage: usage(1000, 50),
-            cost: None,
-        };
-        Self::new(model_id, vec![spawn, wait, finish])
-    }
-
     /// The **workflow** parent side of the offline [workflows](crate::agent) e2e: a script that
     /// runs a small **two-stage** declared workflow, then finishes.
     ///
@@ -1515,35 +1453,36 @@ impl MockClient {
         Self::new(model_id, vec![run, finish])
     }
 
-    /// The **parent** side of the offline [Code Reviews](https://docs.testcabinet.ai/gg/code-reviews/)
+    /// The **parent** side of the offline
+    /// [issue reviews](https://docs.testcabinet.ai/gg/project-management/)
     /// e2e: a **message-driven** mock (its behavior lives in [`complete`](ModelClient::complete),
-    /// keyed on a `code-review-parent` model id) so one model can play all three roles the
+    /// keyed on an `issue-review-parent` model id) so one model can play all three roles the
     /// [auto-dispatch](https://docs.testcabinet.ai/gg/project-management/) model puts the primary
     /// slot in — since the root, the agent gg auto-dispatches to implement the issue, and each fix
     /// agent the review loop dispatches all resolve the primary slot:
     ///
-    /// - **the root**: `create_epic` + `create_issue` (id [`MOCK_CODE_REVIEW_ISSUE_ID`], with scope
+    /// - **the root**: `create_epic` + `create_issue` (id [`MOCK_ISSUE_REVIEW_ISSUE_ID`], with scope
     ///   and completion criteria), then finish — submitting the issue auto-dispatches an agent to
     ///   implement it;
     /// - **the dispatched issue agent** (its brief is the issue's structured fields): do the initial
-    ///   work ([`MOCK_REVIEW_WORKER_FILE`]) then `complete_issue`, which gg intercepts into a Code
-    ///   Review — a [reviewer](Self::with_review_reviewer_script) requests one change, a fix agent
-    ///   applies it, and a re-review approves;
-    /// - **each fix agent** (its brief carries the review's requested changes): write the review fix
-    ///   marker ([`MOCK_REVIEW_FIX_FILE`]) then finish.
+    ///   work ([`MOCK_REVIEW_WORKER_FILE`]) then `complete_issue`, which sends the issue to its
+    ///   [reviewer](Self::with_review_reviewer_script) — which requests one change;
+    /// - **the same agent, re-dispatched** (its brief now carries the requested changes): write the
+    ///   review fix marker ([`MOCK_REVIEW_FIX_FILE`]), complete the issue again, and the re-review
+    ///   approves.
     ///
     /// Constructed with an empty script because it never consults one; the role is read from the
     /// brief in the messages (stable across the instance's turns) and the turn from the instance's
-    /// own cursor. Selected in production by a mock `model_id` naming `code-review-parent` (see
+    /// own cursor. Selected in production by a mock `model_id` naming `issue-review-parent` (see
     /// [`mock_client_for`]), so the review → fix → approve cycle is drivable **offline through the
-    /// real binary**: bind the primary slot to a `mock/…-code-review-parent` model and a `reviewer`
-    /// slot to a `mock/…-review-reviewer` model, with `subagents`, `project-management`,
-    /// `multi-model`, and `code-reviews` all enabled.
-    pub fn with_code_review_parent_script(model_id: impl Into<String>) -> Self {
+    /// real binary**: bind the primary slot to a `mock/…-issue-review-parent` model and a `reviewer`
+    /// slot to a `mock/…-review-reviewer` model, with `project-management` enabled and the Root's
+    /// roster naming an implementer and a reviewer.
+    pub fn with_issue_review_parent_script(model_id: impl Into<String>) -> Self {
         Self::new(model_id, Vec::new())
     }
 
-    /// The **reviewer** side of the offline Code Review e2e: a message-driven verdict (its behavior
+    /// The **reviewer** side of the offline issue-review e2e: a message-driven verdict (its behavior
     /// lives in [`complete`](ModelClient::complete), keyed on a `review-reviewer` model id, so a
     /// fresh instance per review round reads the diff it is given). Constructed with an empty script
     /// because it never consults one. Documented as a constructor for symmetry with the parent and
@@ -1552,7 +1491,7 @@ impl MockClient {
         Self::new(model_id, Vec::new())
     }
 
-    /// The **worker** side of the offline Code Review e2e: a message-driven two-turn worker (its
+    /// The **worker** side of the offline issue-review e2e: a message-driven two-turn worker (its
     /// behavior lives in [`complete`](ModelClient::complete), keyed on a `review-worker` model id) —
     /// it writes its initial work, or the review fix marker on a fix pass, then finishes. Empty
     /// script for the same reason as the reviewer; production selects it via [`mock_client_for`].
@@ -1652,7 +1591,7 @@ impl MockClient {
     /// so the whole best-of-K fan-out → judge → merge path is drivable **offline through the real
     /// binary**: bind the primary slot to a `mock/…-speculate-parent` model, an `attempt` slot to a
     /// `mock/…-speculate-attempt` model, and a `judge` slot to a `mock/…-speculate-judge` model, with
-    /// `subagents`, `multi-model`, `worktrees`, and `speculative-execution` all enabled.
+    /// `subagents` and `speculative-execution` enabled (and git available for the isolation).
     pub fn with_speculate_parent_script(model_id: impl Into<String>) -> Self {
         let usage = |input: u64, output: u64| TokenCounts {
             uncached_input: Some(input),
@@ -1933,9 +1872,14 @@ pub const MOCK_SUBAGENT_FILE: &str = "subagent-greeting.txt";
 /// returns, so a test can assert the return value reached the parent (via `AgentReturned`).
 pub const MOCK_SUBAGENT_RETURN: &str = "Subagent done: wrote the greeting file.";
 
-/// The id of the issue the [Code Review parent script](MockClient::with_code_review_parent_script)
-/// creates, dispatches, and completes — the issue its Code Review gates.
-pub const MOCK_CODE_REVIEW_ISSUE_ID: &str = "review-issue";
+/// The agent-profile name the offline issue-review parent names as its issue's reviewer — the
+/// `reviewer` roster entry a run driving this mock must declare (bound to a `mock/…-review-reviewer`
+/// model).
+pub const MOCK_REVIEWER_AGENT: &str = "reviewer";
+
+/// The id of the issue the [issue-review parent script](MockClient::with_issue_review_parent_script)
+/// creates, dispatches, and completes — the issue its reviewer gates.
+pub const MOCK_ISSUE_REVIEW_ISSUE_ID: &str = "review-issue";
 
 /// The test file the [`tdd` FSM script](MockClient::with_fsm_tdd_script) writes in its `write_tests`
 /// state — the evidence that lets the machine advance to `implement`.
@@ -1945,24 +1889,24 @@ pub const MOCK_FSM_TEST_FILE: &str = "game.test.js";
 /// `implement` state.
 pub const MOCK_FSM_IMPL_FILE: &str = "game.js";
 
-/// The file the Code Review offline **worker** writes on its initial pass (its ordinary "work").
+/// The file the issue-review offline **worker** writes on its initial pass (its ordinary "work").
 pub const MOCK_REVIEW_WORKER_FILE: &str = "review-work.txt";
 
-/// The file the Code Review offline **fixer** writes to record that the reviewer's requested change
-/// was applied — the fixer is the worker on a fix pass. Its presence in the diff flips the reviewer
-/// from CHANGES REQUESTED to APPROVED.
+/// The file the issue-review offline **fixer** writes to record that the reviewer's requested change
+/// was applied — the fixer is the issue's own agent on a re-dispatch. Its presence in the diff flips
+/// the reviewer from CHANGES REQUESTED to APPROVED.
 pub const MOCK_REVIEW_FIX_FILE: &str = "review-fix.txt";
 
-/// The sentinel content the Code Review offline fixer writes into [`MOCK_REVIEW_FIX_FILE`]; the
+/// The sentinel content the issue-review offline fixer writes into [`MOCK_REVIEW_FIX_FILE`]; the
 /// reviewer approves once it appears in the diff it is given.
 pub const MOCK_REVIEW_FIX_SENTINEL: &str = "REVIEW-FIX-APPLIED";
 
-/// The stable marker the fix-agent brief carries (`build_fix_brief`'s heading), by which the Code
-/// Review offline worker tells a fix pass from its initial pass.
-const MOCK_REVIEW_FIX_BRIEF_MARKER: &str = "Requested changes from Code Review";
+/// The stable marker a re-dispatched issue's brief carries (`build_fix_brief`'s heading), by which
+/// the issue-review offline worker tells a fix pass from its initial pass.
+const MOCK_REVIEW_FIX_BRIEF_MARKER: &str = "## Requested changes";
 
 /// The heading every auto-dispatched issue agent's brief opens with (`BoardStore::issue_brief`'s
-/// `# Issue \`<id>\`: …`), by which the offline Code Review parent mock tells a dispatched issue
+/// `# Issue \`<id>\`: …`), by which the offline issue-review parent mock tells a dispatched issue
 /// agent (or a fix agent, which carries this too) from the root that files the issue.
 const MOCK_ISSUE_BRIEF_HEADING: &str = "# Issue `";
 
@@ -2014,32 +1958,39 @@ impl ModelClient for MockClient {
             });
         }
 
-        // A Code Review **parent** (offline e2e): message-driven so one `code-review-parent` model
+        // An issue-review **parent** (offline e2e): message-driven so one `issue-review-parent` model
         // plays all three roles the auto-dispatch model routes to the primary slot — the root that
-        // files the issue, the agent gg auto-dispatches to implement it, and each fix agent the
-        // review loop dispatches. The role is read from the brief in the messages (stable across the
+        // files the issue, the agent gg auto-dispatches to implement it, and that same agent when a
+        // review sends it back. The role is read from the brief in the messages (stable across the
         // instance's turns); the turn is the instance's own cursor. A fresh instance per agent means
         // each starts from turn zero. Checked before the scripted cursor, like the reviewer/worker.
-        if self.model_id.contains("code-review-parent") {
-            // A fix agent's brief carries the review marker *and* the issue heading, so test it
-            // first; an issue agent's brief carries only the issue heading; the root's does neither.
+        if self.model_id.contains("issue-review-parent") {
+            // A re-dispatched agent's brief carries the requested-changes marker *and* the issue
+            // heading, so test it first; a first dispatch carries only the issue heading; the root's
+            // brief carries neither.
             let turn = self.cursor.fetch_add(1, Ordering::SeqCst);
             let response = if messages_contain(messages, MOCK_REVIEW_FIX_BRIEF_MARKER) {
                 match turn {
-                    0 => code_review_tool_turn(
+                    0 => issue_review_tool_turn(
                         "call_fix",
-                        "Applying the requested Code Review fix.",
+                        "Applying the requested change.",
                         "write_file",
                         json!({
                             "path": MOCK_REVIEW_FIX_FILE,
                             "contents": format!("{MOCK_REVIEW_FIX_SENTINEL}\n"),
                         }),
                     ),
-                    _ => code_review_stop_turn("The requested fix is applied."),
+                    1 => issue_review_tool_turn(
+                        "call_recomplete",
+                        "The requested change is applied; marking the issue complete again.",
+                        "complete_issue",
+                        json!({ "id": MOCK_ISSUE_REVIEW_ISSUE_ID }),
+                    ),
+                    _ => issue_review_stop_turn("The requested fix is applied."),
                 }
             } else if messages_contain(messages, MOCK_ISSUE_BRIEF_HEADING) {
                 match turn {
-                    0 => code_review_tool_turn(
+                    0 => issue_review_tool_turn(
                         "call_work",
                         "Doing the initial work for the issue.",
                         "write_file",
@@ -2048,19 +1999,19 @@ impl ModelClient for MockClient {
                             "contents": "initial work by the dispatched issue agent\n",
                         }),
                     ),
-                    1 => code_review_tool_turn(
+                    1 => issue_review_tool_turn(
                         "call_complete",
                         "The work is done; marking the issue complete.",
                         "complete_issue",
-                        json!({ "id": MOCK_CODE_REVIEW_ISSUE_ID }),
+                        json!({ "id": MOCK_ISSUE_REVIEW_ISSUE_ID }),
                     ),
-                    _ => code_review_stop_turn(
-                        "The issue passed Code Review and is accepted; the game is assembled.",
+                    _ => issue_review_stop_turn(
+                        "The issue's work is finished and recorded for review.",
                     ),
                 }
             } else {
                 match turn {
-                    0 => code_review_tool_turn(
+                    0 => issue_review_tool_turn(
                         "call_epic",
                         "Setting up the board.",
                         "create_epic",
@@ -2070,27 +2021,28 @@ impl ModelClient for MockClient {
                             "description": "The work for this session.",
                         }),
                     ),
-                    1 => code_review_tool_turn(
+                    1 => issue_review_tool_turn(
                         "call_issue",
                         "Filing the issue; gg will dispatch an agent to implement it.",
                         "create_issue",
                         json!({
-                            "id": MOCK_CODE_REVIEW_ISSUE_ID,
+                            "id": MOCK_ISSUE_REVIEW_ISSUE_ID,
                             "title": "Implement the feature",
                             "inScope": "Write the feature files.",
                             "outOfScope": "Anything unrelated to the feature.",
                             "completionCriteria": "The feature is implemented and the review fix marker is present.",
                             "epicId": "review-epic",
                             "agent": ROOT_AGENT,
+                            "reviewers": [MOCK_REVIEWER_AGENT],
                         }),
                     ),
-                    _ => code_review_stop_turn("The board is set up and the issue is enqueued."),
+                    _ => issue_review_stop_turn("The board is set up and the issue is enqueued."),
                 }
             };
             return Ok(response);
         }
 
-        // A Code Review **reviewer** (offline e2e): its verdict is driven by whether the diff in its
+        // An issue-review **reviewer** (offline e2e): its verdict is driven by whether the diff in its
         // brief already shows the fix marker. First review (no marker yet) → CHANGES REQUESTED (ask
         // for the marker); re-review after the fixer wrote it → APPROVED. Stateless: the workspace
         // (via the diff embedded in the messages) carries the state, so a fresh reviewer instance per
@@ -2098,12 +2050,11 @@ impl ModelClient for MockClient {
         if self.model_id.contains("review-reviewer") {
             let approved = messages_contain(messages, MOCK_REVIEW_FIX_SENTINEL);
             let text = if approved {
-                "The requested change is present; the work meets the criteria.\n\nCODE REVIEW: \
-                 APPROVED"
+                "The requested change is present; the work meets the criteria.\n\nREVIEW: APPROVED"
                     .to_string()
             } else {
                 format!(
-                    "The work is missing the required marker.\n\nCODE REVIEW: CHANGES REQUESTED\n\
+                    "The work is missing the required marker.\n\nREVIEW: CHANGES REQUESTED\n\
                      1. Write `{MOCK_REVIEW_FIX_FILE}` containing `{MOCK_REVIEW_FIX_SENTINEL}` to \
                      record that the review fix was applied."
                 )
@@ -2117,7 +2068,7 @@ impl ModelClient for MockClient {
             });
         }
 
-        // A Code Review **worker** (offline e2e): on its first turn it writes a file, then finishes.
+        // An issue-review **worker** (offline e2e): on its first turn it writes a file, then finishes.
         // Which file depends on whether this is a fix pass — detected by the fix-brief marker in its
         // messages: an initial dispatch writes ordinary work; a fix dispatch writes the review fix
         // marker the reviewer approves on. It manages its own turn cursor so a fresh instance per
@@ -2130,7 +2081,7 @@ impl ModelClient for MockClient {
                     (
                         MOCK_REVIEW_FIX_FILE,
                         format!("{MOCK_REVIEW_FIX_SENTINEL}\n"),
-                        "Applying the requested Code Review fix.",
+                        "Applying the requested change.",
                     )
                 } else {
                     (
@@ -2252,9 +2203,10 @@ fn carries_marker(messages: &[Message], marker: &str) -> bool {
     })
 }
 
-/// One tool-calling turn for the message-driven [Code Review parent](MockClient::with_code_review_parent_script)
+/// One tool-calling turn for the message-driven
+/// [issue-review parent](MockClient::with_issue_review_parent_script)
 /// mock: an assistant message plus a single tool call.
-fn code_review_tool_turn(
+fn issue_review_tool_turn(
     call_id: &str,
     text: &str,
     tool: &str,
@@ -2273,8 +2225,8 @@ fn code_review_tool_turn(
     }
 }
 
-/// A tool-free stop turn for the message-driven Code Review parent mock.
-fn code_review_stop_turn(text: &str) -> ModelResponse {
+/// A tool-free stop turn for the message-driven issue-review parent mock.
+fn issue_review_stop_turn(text: &str) -> ModelResponse {
     ModelResponse {
         text: Some(text.to_string()),
         tool_calls: Vec::new(),
@@ -2284,7 +2236,7 @@ fn code_review_stop_turn(text: &str) -> ModelResponse {
     }
 }
 
-/// Whether any message's content contains `needle` — how the Code Review offline mocks read the
+/// Whether any message's content contains `needle` — how the issue-review offline mocks read the
 /// state carried in their brief (the diff, for the reviewer; the fix-brief marker, for the worker)
 /// so a fresh mock instance per dispatch still behaves correctly.
 fn messages_contain(messages: &[Message], needle: &str) -> bool {
@@ -2435,13 +2387,14 @@ pub fn client_for_slot(
 ///
 /// Most ids get the [default script](MockClient::with_default_script). The `subagent-*` ids select
 /// the paired [parent](MockClient::with_subagent_parent_script) /
-/// [child](MockClient::with_subagent_child_script) delegation scripts, a `worktree-parent` id
-/// selects the [isolated-worktree parent](MockClient::with_worktree_subagent_parent_script) (which
-/// dispatches the same child with `worktree: true`), and a `workflow-parent` id selects the
+/// [child](MockClient::with_subagent_child_script) delegation scripts, and a `workflow-parent` id
+/// selects the
 /// [declared-workflow parent](MockClient::with_workflow_parent_script) (which runs a two-stage
 /// fan-out/sequencing workflow whose stages' subagents run on the `worker` slot). A
-/// `code-review-parent` id selects the [Code Review parent](MockClient::with_code_review_parent_script)
-/// (create an issue, dispatch it, then `complete_issue` to trigger a review → fix → approve cycle);
+/// `issue-review-parent` id selects the
+/// [issue-review parent](MockClient::with_issue_review_parent_script)
+/// (create an issue with a reviewer, dispatch it, then `complete_issue` to trigger a
+/// review → fix → approve cycle);
 /// its `review-worker` and `review-reviewer` counterparts are message-driven (their behavior lives
 /// in [`MockClient::complete`]). An `fsm-tdd` id selects the
 /// [TDD FSM driver](MockClient::with_fsm_tdd_script) (an agent kept in `write_tests → implement →
@@ -2449,10 +2402,10 @@ pub fn client_for_slot(
 /// [best-of-K parent](MockClient::with_speculate_parent_script) (fan out K attempts, judge, and merge
 /// the winner); its `speculate-attempt` and `speculate-judge` counterparts are message-driven (each
 /// attempt writes a distinctly-named file; the judge picks the first). So the full spawn → wait →
-/// return path — and its worktree, declared-workflow, Code Review, FSM, and speculative-execution
+/// return path — and its declared-workflow, issue-review, FSM, and speculative-execution
 /// variants — can be driven **offline through the real binary**
-/// (bind the primary slot to a `mock/…-subagent-parent`, `mock/…-worktree-parent`,
-/// `mock/…-workflow-parent`, `mock/…-code-review-parent`, or `mock/…-speculate-parent` model and the
+/// (bind the primary slot to a `mock/…-subagent-parent`,
+/// `mock/…-workflow-parent`, `mock/…-issue-review-parent`, or `mock/…-speculate-parent` model and the
 /// role slots to the corresponding `mock/…-subagent-child` / `mock/…-review-worker` /
 /// `mock/…-review-reviewer` / `mock/…-speculate-attempt` / `mock/…-speculate-judge` models) and not
 /// only the in-crate tests. The child/worker/reviewer/attempt/judge scripts never spawn, so there is
@@ -2461,12 +2414,10 @@ pub fn client_for_slot(
 fn mock_client_for(model_id: &str) -> MockClient {
     if model_id.contains("subagent-child") {
         MockClient::with_subagent_child_script(model_id)
-    } else if model_id.contains("worktree-parent") {
-        MockClient::with_worktree_subagent_parent_script(model_id)
     } else if model_id.contains("workflow-parent") {
         MockClient::with_workflow_parent_script(model_id)
-    } else if model_id.contains("code-review-parent") {
-        MockClient::with_code_review_parent_script(model_id)
+    } else if model_id.contains("issue-review-parent") {
+        MockClient::with_issue_review_parent_script(model_id)
     } else if model_id.contains("review-reviewer") {
         MockClient::with_review_reviewer_script(model_id)
     } else if model_id.contains("review-worker") {

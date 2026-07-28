@@ -177,7 +177,7 @@ impl Emitter {
     /// Derive an emitter identical to this one but scoped to board
     /// [issue](test_cabinet_core::gg::GgBoardIssue) `issue_id` — the same agent/session/sink, with
     /// the [`issue_id`](Self::issue_id) set. Used to emit an agent's
-    /// [Code Review](test_cabinet_core::gg::GgTelemetryKind::CodeReview) transitions on the stream of
+    /// [issue review](test_cabinet_core::gg::GgTelemetryKind::IssueReview) transitions on the stream of
     /// the issue under review even though the agent that emits them (the one that completed the
     /// issue) was not itself dispatched against that issue, so the issue rides on the event envelope
     /// rather than the payload.

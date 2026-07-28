@@ -752,22 +752,18 @@ async fn every_turn_records_exactly_one_outcome() {
 // Scope: a subagent's ceiling is its own
 // ---------------------------------------------------------------------------
 
-/// **A subagent's error ceiling ends that subagent, not the run** — and its isolated worktree is
-/// discarded unmerged, exactly as an exhausted or timed-out one is.
+/// **A subagent's error ceiling ends that subagent, not the run.**
 ///
 /// "Consecutive" and "the last N turns" are only definable within one agent's turn sequence, so the
 /// error ceilings are per agent; it is also substantively right, because a speculation fans out K
 /// attempts precisely so that some may fail. A stopped child hands back its status line, the run
 /// carries on, and the run's own outcome is the parent's.
 #[tokio::test]
-async fn a_subagents_error_ceiling_ends_it_alone_and_discards_its_worktree() {
+async fn a_subagents_error_ceiling_ends_it_alone() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-sub-limits".to_string()), Box::new(sink.clone()));
     let mut set = subagent_set(2, 3, &["subagent"]);
-    set.agents[0]
-        .capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_WORKTREES));
     // Both the parent and the child run programs, so responses-as-code is on for every profile.
     for agent in &mut set.agents {
         agent
@@ -787,7 +783,7 @@ async fn a_subagents_error_ceiling_ends_it_alone_and_discards_its_worktree() {
                 vec![
                     code_reply(
                         "const child = agents.spawnSubagent({ agent: \"subagent\", prompt: \
-                         \"Do the work.\", worktree: true });\nreturn agents.waitForSubagents([child.id]);",
+                         \"Do the work.\" });\nreturn agents.waitForSubagents([child.id]);",
                     ),
                     code_reply(FINISHING_PROGRAM),
                 ],
@@ -797,7 +793,7 @@ async fn a_subagents_error_ceiling_ends_it_alone_and_discards_its_worktree() {
             Box::new(MockClient::new(
                 &b.model_id,
                 vec![
-                    // The child's first turn does real work in its worktree...
+                    // The child's first turn does real work...
                     code_reply("fs.writeFile(\"child-work.txt\", \"work\\n\");\nreturn 1;"),
                     // ...and then it stops being able to write a program at all.
                     code_reply(PROSE),
@@ -830,18 +826,6 @@ async fn a_subagents_error_ceiling_ends_it_alone_and_discards_its_worktree() {
     let summary = session_summary(&events).expect("a session summary");
     assert_eq!(summary.terminal_status, "completed");
     assert!(summary.limit_hit.is_none());
-    // A child cut off mid-task holds half-finished work, so its worktree is discarded unmerged.
-    assert!(
-        !dir.path().join("child-work.txt").exists(),
-        "a limit-stopped subagent's worktree is discarded, exactly as an exhausted one is"
-    );
-    assert!(
-        events.iter().any(|e| matches!(
-            &e.kind,
-            GgTelemetryKind::WorktreeMerged { merged, .. } if !*merged
-        )),
-        "and the discard is reported"
-    );
 }
 
 // ---------------------------------------------------------------------------

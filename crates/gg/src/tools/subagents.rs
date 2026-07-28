@@ -107,17 +107,11 @@ impl Tool for SpawnSubagentTool {
                  subagent's model, tools, and instructions — and a `prompt`, a self-contained brief \
                  telling the subagent exactly what to do and what 'done' means. The agents you may \
                  spawn: {menu}. (Board issues are not dispatched this way: submitting an issue \
-                 automatically spawns an agent for it once its blockers are done.) Optionally pass \
-                 `worktree: true` to run the subagent in an isolated copy of the workspace (a git \
-                 worktree) instead of the shared tree — its file changes are invisible to you and to \
-                 sibling agents until it finishes, and are then merged back into the workspace if it \
-                 completes cleanly (a merge conflict is reported back to you, not dropped) or \
-                 discarded if it fails. Use a worktree when you run several subagents that might \
-                 touch the same files, or want a throwaway attempt; it requires the `worktrees` \
-                 capability. Returns the new subagent's id immediately — it is scheduled and runs \
-                 on its own; call `wait_for_subagents` to collect its result, or `send_message` to \
-                 guide it while it runs. Subagents that share your workspace (no worktree) should be \
-                 given non-overlapping briefs. Spawning is refused if you are already at the maximum \
+                 automatically spawns an agent for it once its blockers are done.) Returns the new \
+                 subagent's id immediately — it is scheduled and runs on its own; call \
+                 `wait_for_subagents` to collect its result, or `send_message` to guide it while it \
+                 runs. A subagent shares your workspace, so give concurrent subagents \
+                 non-overlapping briefs. Spawning is refused if you are already at the maximum \
                  delegation depth.",
                 menu = agent_menu(&self.agents),
             ),
@@ -134,13 +128,6 @@ impl Tool for SpawnSubagentTool {
                         "type": "string",
                         "description": "A self-contained brief for the subagent (what to do and \
                                         how it will be judged done)."
-                    },
-                    "worktree": {
-                        "type": "boolean",
-                        "description": "Run the subagent in an isolated git worktree (a private \
-                                        copy of the workspace) instead of the shared tree, merged \
-                                        back on clean completion. Requires the `worktrees` \
-                                        capability. Defaults to false (shares your workspace)."
                     }
                 },
                 "required": ["agent", "prompt"],
@@ -270,9 +257,7 @@ impl Tool for RunWorkflowTool {
                  omits `items` fans out over the previous stage's results (one subagent per result, \
                  each seeing its result as `{{item}}`) — or give it a single item and reference \
                  `{{prior}}` to have one subagent consolidate all of the previous stage's results. \
-                 Optionally set a stage's `worktree: true` (run each of that stage's subagents in \
-                 its own isolated git worktree, merged back on clean completion; requires the \
-                 `worktrees` capability). Use a workflow when the work has a clear map-then-reduce \
+                 Use a workflow when the work has a clear map-then-reduce \
                  or pipeline shape; use `spawn_subagent` for ad-hoc delegation.",
                 menu = agent_menu(&self.agents),
             ),
@@ -310,13 +295,6 @@ impl Tool for RunWorkflowTool {
                                     "type": "string",
                                     "description": "The name of the agent to run this stage's \
                                                     subagents as (one of the agents you may spawn)."
-                                },
-                                "worktree": {
-                                    "type": "boolean",
-                                    "description": "Run each of this stage's subagents in an \
-                                                    isolated git worktree, merged back on clean \
-                                                    completion. Requires the `worktrees` \
-                                                    capability. Defaults to false."
                                 }
                             },
                             "required": ["prompt", "agent"],
@@ -373,7 +351,7 @@ impl Tool for SpeculateTool {
                  workspace and DISCARDS the losing attempts — so when this call returns, your \
                  workspace holds exactly the winning attempt's changes. Optionally pass `approaches` \
                  (an array of hints, one per attempt, to steer the tries in different directions). \
-                 Requires the `worktrees` capability (for isolation); refused without it. Use this \
+                 Requires git in the run environment (for the isolation); refused without it. Use this \
                  for a hard or open-ended piece of work where one careful attempt may not be enough \
                  and you can afford K× the tokens for a better result; use `spawn_subagent` for \
                  ordinary single-attempt delegation. This call returns only when the winner has \

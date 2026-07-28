@@ -696,7 +696,7 @@ pub(super) struct CodeTurn<'a> {
     /// The output policy `shell` is bound with — how much of a command's output a program's
     /// `system.shell(…)` gets back, and whether the whole of it is kept on disk.
     pub(super) shell_offload: &'a OffloadPolicy,
-    /// The epic/issue board, for its state event and for the Code Review gate.
+    /// The epic/issue board, for its state event and its tools.
     pub(super) board: &'a BoardRuntime,
     /// This agent's own rules on filing an issue — who it may assign one to, and whether it must
     /// name reviewers. The native path carries these on the registry's `create_issue`; a code turn
@@ -723,8 +723,6 @@ pub(super) struct CodeTurn<'a> {
     pub(super) fsm_active: bool,
     /// Whether the agent is inside a read-only planning pass.
     pub(super) in_plan_mode: bool,
-    /// Whether Code Reviews gate `complete_issue` this run.
-    pub(super) code_reviews_active: bool,
     /// Whether `speculate` is routed through the best-of-K routine this run.
     pub(super) speculative_active: bool,
     /// The [compaction](crate::compaction) the loop is waiting for this agent to perform, when one
@@ -859,7 +857,6 @@ async fn run_code_program(
         handle: Handle::current(),
         fsm_active: turn.fsm_active,
         in_plan_mode: turn.in_plan_mode,
-        code_reviews_active: turn.code_reviews_active,
         speculative_active: turn.speculative_active,
         pending_compaction: turn.pending_compaction,
         serviced: 0,
@@ -1039,7 +1036,6 @@ pub(super) struct LoopToolApi {
     handle: Handle,
     fsm_active: bool,
     in_plan_mode: bool,
-    code_reviews_active: bool,
     speculative_active: bool,
     pending_compaction: Option<PendingCompaction>,
     serviced: u64,
@@ -1221,7 +1217,7 @@ impl LoopToolApi {
     }
 
     /// Delegation servicing for the two handlers that also need the [board](BoardRuntime) —
-    /// [`speculate`](handle_speculate) and the gated [`complete_issue`](handle_code_review) — with an
+    /// [`speculate`](handle_speculate) — with an
     /// extra `&BoardRuntime` handed to the `run` closure.
     fn delegated_board(
         &mut self,
@@ -1335,6 +1331,7 @@ fn issue_status_word(status: IssueStatus) -> &'static str {
     match status {
         IssueStatus::Open => "open",
         IssueStatus::InProgress => "in_progress",
+        IssueStatus::InReview => "in_review",
         IssueStatus::Done => "done",
         IssueStatus::Failed => "failed",
     }
@@ -1629,17 +1626,6 @@ impl ToolApi for LoopToolApi {
         )
     }
     fn complete_issue(&mut self, id: String) -> ToolOutcome {
-        // Code-review-gated? route to the reviewer; else the plain typed completion.
-        if self.code_reviews_active && self.board.offers_board() && self.subagents.is_some() {
-            return self.delegated_board(
-                COMPLETE_ISSUE_TOOL,
-                json!({ "id": id }),
-                |h, sub, spawner, board, emitter, call| {
-                    h.clone()
-                        .block_on(handle_code_review(sub, spawner, board, emitter, call))
-                },
-            );
-        }
         self.serviced(COMPLETE_ISSUE_TOOL, json!({ "id": id }), |api| {
             CompleteIssueTool::new(api.board.store()).complete_issue(id.clone())
         })
@@ -1711,10 +1697,8 @@ impl ToolApi for LoopToolApi {
         agent: String,
         prompt: Option<String>,
         issue_id: Option<String>,
-        worktree: bool,
     ) -> ToolOutcome {
-        let args =
-            json!({ "agent": agent, "prompt": prompt, "issueId": issue_id, "worktree": worktree });
+        let args = json!({ "agent": agent, "prompt": prompt, "issueId": issue_id });
         self.delegated(
             SPAWN_SUBAGENT_TOOL,
             args,
@@ -1748,7 +1732,7 @@ impl ToolApi for LoopToolApi {
         let json_stages: Vec<Value> = stages
             .iter()
             .map(|s| {
-                json!({ "name": s.name, "prompt": s.prompt, "items": s.items, "agent": s.agent, "worktree": s.worktree })
+                json!({ "name": s.name, "prompt": s.prompt, "items": s.items, "agent": s.agent })
             })
             .collect();
         self.delegated(

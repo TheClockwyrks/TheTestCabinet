@@ -288,7 +288,7 @@ impl<A: ToolApi> BoardHost for MembraneState<A> {
         let outcome = self.call(COMPLETE_ISSUE_TOOL, |api| api.complete_issue(id))?;
         match outcome.data {
             Some(ToolData::Completion(completion)) => Ok(CompletionReport {
-                code_reviewed: completion.code_reviewed,
+                reviewed: completion.reviewed,
                 detail: completion.detail,
             }),
             other => Err(self.missing_data(COMPLETE_ISSUE_TOOL, other.as_ref())),

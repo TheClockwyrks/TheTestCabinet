@@ -49,7 +49,7 @@
       "properties": {
         "agent": {
           "default": "",
-          "description": "The [agent profile](GgAgentConfig) the issue was **assigned to** when it was created —\nthe profile gg dispatches it under. It is named on `create_issue` (not configured on the\ncapability), and must be one the creating agent may\n[spawn](GgAgentConfig::subagents). Empty only on a board recorded before issues carried\nan assignee, which dispatches under the [Root](ROOT_AGENT).",
+          "description": "The [agent profile](GgAgentConfig) the issue was **assigned to** when it was created —\nthe profile gg dispatches it under, and re-dispatches for every retry and review round. It\nis named on `create_issue` (not configured on the capability), and must be one the creating\nagent lists with the [`implementer`](GgSubagentScope::Implementer) scope. Empty only on a\nboard recorded before issues carried an assignee, which dispatches under the\n[Root](ROOT_AGENT).",
           "type": "string"
         },
         "assignedAgentId": {
@@ -95,7 +95,7 @@
           "type": "integer"
         },
         "reviewers": {
-          "description": "The [agent profiles](GgAgentConfig) named as this issue's **reviewers** when it was\ncreated, drawn from the same [spawnable set](GgAgentConfig::subagents) as its\n[`agent`](Self::agent). Non-empty exactly when the capability's `reviewers` feature was\non for the creating agent; a [Code Review](CAPABILITY_CODE_REVIEWS) of the issue is run\nby these profiles, each of which must approve.",
+          "description": "The [agent profiles](GgAgentConfig) named as this issue's **reviewers** when it was\ncreated, drawn from the creating agent's roster entries carrying the\n[`reviewer`](GgSubagentScope::Reviewer) scope. When non-empty, completing the issue moves it\nto [`InReview`](GgIssueStatus::InReview) and these profiles each review the work in turn;\nevery one of them must approve before the issue is accepted.",
           "items": {
             "type": "string"
           },
@@ -132,26 +132,6 @@
         {
           "const": "bare",
           "description": "No fence anywhere: one program pasted after another, which one program's top level cannot\nbe — the second declares a name the first already declared, so the reply as sent could not\nhave executed a single statement.",
-          "type": "string"
-        }
-      ]
-    },
-    "GgCodeReviewPhase": {
-      "description": "The phase of a [Code Review](https://docs.testcabinet.ai/gg/code-reviews/) a\n[`CodeReview`](GgTelemetryKind::CodeReview) event reports — the\nrequested → (changes_requested)* → approved lifecycle that gates an\n[issue](GgBoardIssue)'s acceptance.\n\nA Code Review is [requested](Self::Requested) when the model marks an issue done (gg dispatches\na reviewer against the diff rather than accepting immediately). The reviewer then either\n[requests changes](Self::ChangesRequested) — carrying the actionable items a fix agent must\naddress, after which the work is re-reviewed — or [approves](Self::Approved), at which point the\nissue is finally accepted (marked done). Because there is **no cycle limit**, a single Code\nReview may emit many [`ChangesRequested`](Self::ChangesRequested) phases before an\n[`Approved`](Self::Approved) (or none, on a clean first pass).",
-      "oneOf": [
-        {
-          "const": "requested",
-          "description": "A Code Review was triggered (the model marked the issue done): a reviewer is dispatched\nagainst the diff instead of the issue being accepted immediately.",
-          "type": "string"
-        },
-        {
-          "const": "changes_requested",
-          "description": "The reviewer returned actionable items: the work is not yet done. gg spawns a fix agent with\nthe original brief plus these items, then re-reviews. The items ride on the event's\n[`items`](GgTelemetryKind::CodeReview) field.",
-          "type": "string"
-        },
-        {
-          "const": "approved",
-          "description": "The reviewer approved the work: the issue is accepted and marked done. This is the only\nterminal phase that accepts the issue.",
           "type": "string"
         }
       ]
@@ -283,8 +263,28 @@
         }
       ]
     },
+    "GgIssueReviewPhase": {
+      "description": "The phase of an [issue review](https://docs.testcabinet.ai/gg/project-management/) an\n[`IssueReview`](GgTelemetryKind::IssueReview) event reports — the\nrequested → (changes_requested)* → approved lifecycle that gates an\n[issue](GgBoardIssue)'s acceptance.\n\nA review is [requested](Self::Requested) when the issue's assigned agent marks it complete (gg\nruns the issue's [reviewers](GgBoardIssue::reviewers) against the diff rather than accepting\nimmediately). A reviewer then either [requests changes](Self::ChangesRequested) — carrying the\nactionable items the issue's own assigned agent is re-invoked to address, after which the work is\nre-reviewed — or [approves](Self::Approved). Once **every** reviewer approves, the issue is\nfinally accepted (marked done) and its worktree merged. Because there is **no cycle limit**, a\nsingle issue may emit many [`ChangesRequested`](Self::ChangesRequested) phases before an\n[`Approved`](Self::Approved) (or none, on a clean first pass).",
+      "oneOf": [
+        {
+          "const": "requested",
+          "description": "A review round was triggered (the assigned agent marked the issue complete): the issue's\nreviewers run against the diff instead of the issue being accepted immediately.",
+          "type": "string"
+        },
+        {
+          "const": "changes_requested",
+          "description": "A reviewer returned actionable items: the work is not yet done. gg re-invokes the issue's\nassigned agent with the original brief plus these items, then re-reviews. The items ride on\nthe event's [`items`](GgTelemetryKind::IssueReview) field.",
+          "type": "string"
+        },
+        {
+          "const": "approved",
+          "description": "Every reviewer approved the work: the issue is accepted, merged, and marked done. This is\nthe only terminal phase that accepts the issue.",
+          "type": "string"
+        }
+      ]
+    },
     "GgIssueStatus": {
-      "description": "The status of one [issue](https://docs.testcabinet.ai/gg/project-management/) on the\n[board](GgTelemetryKind::BoardState) — the heavyweight counterpart to\n[`GgTaskStatus`].\n\nAn issue moves from [`Open`](Self::Open) (enqueued, not yet dispatched) through\n[`InProgress`](Self::InProgress) (an agent has been assigned and is working it) to a\nterminal state — [`Done`](Self::Done) (accepted complete) or [`Failed`](Self::Failed) (its\nassigned agent could not complete it within the configured retries). Like a task, an issue\nis *actionable* only when all of its blockers are [`Done`](Self::Done); the console derives\nthat from the blocked-by edges and each blocker's status rather than a separate flag. A\n[`Failed`](Self::Failed) blocker is terminal but **not** done, so it leaves its dependents\npermanently blocked — surfaced on the board rather than silently unblocking them.",
+      "description": "The status of one [issue](https://docs.testcabinet.ai/gg/project-management/) on the\n[board](GgTelemetryKind::BoardState) — the heavyweight counterpart to\n[`GgTaskStatus`].\n\nAn issue moves from [`Open`](Self::Open) (enqueued, not yet dispatched) through\n[`InProgress`](Self::InProgress) (an agent has been assigned and is working it) and\n[`InReview`](Self::InReview) (its agent called it complete and gg is reconciling it) to a\nterminal state — [`Done`](Self::Done) (accepted complete) or [`Failed`](Self::Failed) (its\nassigned agent could not complete it within the configured retries). Like a task, an issue\nis *actionable* only when all of its blockers are [`Done`](Self::Done); the console derives\nthat from the blocked-by edges and each blocker's status rather than a separate flag. A\n[`Failed`](Self::Failed) blocker is terminal but **not** done, so it leaves its dependents\npermanently blocked — surfaced on the board rather than silently unblocking them.",
       "oneOf": [
         {
           "const": "open",
@@ -297,8 +297,13 @@
           "type": "string"
         },
         {
+          "const": "in_review",
+          "description": "Its assigned agent called the work complete, and gg is reconciling it: running the issue's\n[reviewers](GgBoardIssue::reviewers) (if any) and merging its worktree back. **Not**\nterminal — a review that requests changes sends the issue back to\n[`InProgress`](Self::InProgress) — and not done, so dependents stay blocked until the\nwork is actually accepted and merged.",
+          "type": "string"
+        },
+        {
           "const": "done",
-          "description": "Accepted complete — an issue's blockers must all reach this before it is actionable.",
+          "description": "Accepted complete, and its worktree merged back into the main tree — an issue's blockers\nmust all reach this before it is actionable.",
           "type": "string"
         },
         {
@@ -1331,7 +1336,7 @@
           "type": "string"
         },
         "worktree": {
-          "description": "The isolated [git worktree](https://docs.testcabinet.ai/gg/worktrees/) this agent runs\nin — its per-agent branch — when it was dispatched with `worktree: true` (requires the\n[worktrees](CAPABILITY_WORKTREES) capability). The console renders this as a worktree\nindicator on the tree node. Absent for an agent running in the shared main tree (the\nroot, and any subagent dispatched without a worktree), whose edits land directly in the\nworkspace. A worktree agent's result is later merged or discarded — observe which with\n[`WorktreeMerged`](Self::WorktreeMerged).",
+          "description": "The isolated git worktree this agent runs in — its branch — when it was dispatched into\none: an [issue](CAPABILITY_PROJECT_MANAGEMENT) agent (and the reviewers of that issue,\nwhich read the same tree) runs on the issue's branch, and each\n[speculation](CAPABILITY_SPECULATIVE) attempt runs on its own. The console renders this\nas a worktree indicator on the tree node. Absent for an agent running in the shared main\ntree (the root, an ad-hoc subagent, the merge agent), whose edits land directly in the\nworkspace. A worktree's result is later merged or discarded — observe which with\n[`WorktreeMerged`](Self::WorktreeMerged).",
           "type": ["string", "null"]
         }
       },
@@ -1403,18 +1408,18 @@
       "type": "object"
     },
     {
-      "description": "The outcome of reconciling a worktree [subagent](CAPABILITY_SUBAGENTS)'s isolated\n[worktree](https://docs.testcabinet.ai/gg/worktrees/) back into the main tree — the event\nthat makes a **merge vs discard** observable on the agent tree.\n\nEmitted (when the [worktrees](CAPABILITY_WORKTREES) capability is enabled) once, on the\n**worktree subagent's** own scoped stream as its worktree is torn down, so the agent whose\n[`branch`](Self::WorktreeMerged::branch) this is rides on the event's own\n[`agent_id`](GgTelemetryEvent::agent_id) / [`parent_agent_id`](GgTelemetryEvent::parent_agent_id).\nThe three states are distinguishable: a **clean completion** merges the branch back\n(`merged: true, conflicts: false`); a **merge conflict** leaves the main tree unchanged and\nsurfaces the clash (`merged: false, conflicts: true`) rather than dropping the work\nsilently; a **failed or discarded** child removes its worktree unmerged\n(`merged: false, conflicts: false`). The worktree and its branch are removed in every case.",
+      "description": "The outcome of reconciling an isolated worktree back into the main tree — the event that\nmakes a **merge vs discard** observable.\n\nEmitted once per worktree as it is torn down: for an accepted (or failed)\n[issue](CAPABILITY_PROJECT_MANAGEMENT), on the issue's own stream, and for a\n[speculation](CAPABILITY_SPECULATIVE)'s attempts as the winner is merged and the losers\ndiscarded. The three states are distinguishable: an **accepted** branch merges back\n(`merged: true`, with [`conflicts`](Self::WorktreeMerged::conflicts) recording whether the\n[merge agent](PROJECT_MANAGEMENT_PARAM_MERGE_AGENT) had to resolve a clash on the way); a\n**conflict the merge agent could not resolve** leaves the main tree unchanged\n(`merged: false, conflicts: true`) rather than dropping the work silently; a **failed or\ndiscarded** branch is removed unmerged (`merged: false, conflicts: false`). The worktree and\nits branch are removed in every case.",
       "properties": {
         "branch": {
-          "description": "The per-agent branch the worktree's work lived on (for example `gg/agent-3`).",
+          "description": "The branch the worktree's work lived on (for example `gg/issue-3`).",
           "type": "string"
         },
         "conflicts": {
-          "description": "Whether a merge conflict prevented the merge. When `true` the main tree was left\nunchanged and the clash is reported to the spawner rather than resolved (Phase 4B leaves\nconflict resolution to a later phase). Always `false` on a clean merge or a discard.",
+          "description": "Whether the merge hit a conflict. `true` both when the\n[merge agent](PROJECT_MANAGEMENT_PARAM_MERGE_AGENT) resolved it (`merged: true`) and\nwhen it could not (`merged: false`, main tree left unchanged), so the two are told apart\nby `merged`. Always `false` on a clean merge or a discard.",
           "type": "boolean"
         },
         "merged": {
-          "description": "Whether the branch was merged back into the main tree. `true` only on a clean merge;\n`false` for a conflict or a discard.",
+          "description": "Whether the branch was merged back into the main tree — `true` for a clean merge **and**\nfor one the merge agent resolved; `false` for an unresolved conflict or a discard.",
           "type": "boolean"
         },
         "type": {
@@ -1468,25 +1473,25 @@
       "type": "object"
     },
     {
-      "description": "A [Code Review](https://docs.testcabinet.ai/gg/code-reviews/) lifecycle transition — the\nevent that makes the review-gated acceptance of an [issue](GgBoardIssue) observable.\n\nEmitted (when the [code-reviews](CAPABILITY_CODE_REVIEWS) capability is enabled) on the agent\nthat marked the issue done: once as [`Requested`](GgCodeReviewPhase::Requested) when the\nreview is triggered, then once per [`ChangesRequested`](GgCodeReviewPhase::ChangesRequested)\nround (carrying the reviewer's actionable [`items`](Self::CodeReview::items) a fix agent then\naddresses), and finally once as [`Approved`](GgCodeReviewPhase::Approved) when the issue is\naccepted. Because there is **no cycle limit**, a single Code Review may stream many\n`ChangesRequested` events before an `Approved` (or go straight to `Approved` on a clean first\npass).\n\nWhich [issue](GgBoardIssue) the review gates rides on the event's own\n[`issue_id`](GgTelemetryEvent::issue_id) (the event is emitted on an issue-scoped stream), the\nsame way an agent's identity rides on [`agent_id`](GgTelemetryEvent::agent_id) — so the\npayload carries only the phase-specific data. The reviewer and fix agents themselves are\nordinary [subagents](CAPABILITY_SUBAGENTS): they emit the usual\n[`AgentSpawned`](Self::AgentSpawned)/[`AgentStatus`](Self::AgentStatus)/[`AgentReturned`](Self::AgentReturned)\nevents, also scoped to the issue under review. A run with the capability off emits none.",
+      "description": "An [issue review](https://docs.testcabinet.ai/gg/project-management/) lifecycle transition —\nthe event that makes the review-gated acceptance of an [issue](GgBoardIssue) observable.\n\nEmitted (when the issue named [reviewers](GgBoardIssue::reviewers)) as gg reconciles the\nissue: once as [`Requested`](GgIssueReviewPhase::Requested) when a review round starts, then\nonce per [`ChangesRequested`](GgIssueReviewPhase::ChangesRequested) round (carrying the\nreviewer's actionable [`items`](Self::IssueReview::items) the issue's assigned agent is then\nre-invoked to address), and finally once as [`Approved`](GgIssueReviewPhase::Approved) when\nevery reviewer has approved and the issue is accepted. Because there is **no cycle limit**, a\nsingle issue may stream many `ChangesRequested` events before an `Approved` (or go straight\nto `Approved` on a clean first pass).\n\nWhich [issue](GgBoardIssue) is under review rides on the event's own\n[`issue_id`](GgTelemetryEvent::issue_id) (the event is emitted on an issue-scoped stream), the\nsame way an agent's identity rides on [`agent_id`](GgTelemetryEvent::agent_id) — so the\npayload carries only the phase-specific data. The reviewer agents themselves emit the usual\n[`AgentSpawned`](Self::AgentSpawned)/[`AgentStatus`](Self::AgentStatus)/[`AgentReturned`](Self::AgentReturned)\nevents, also scoped to the issue under review. An issue filed without reviewers emits none.",
       "properties": {
         "baseline": {
-          "description": "The baseline commit the review diffed the work against — the issue's initial commit\n(captured when its work began) or, failing that, the run's baseline. Absent when no git\nbaseline could be established for the run.",
+          "description": "The baseline commit the review diffed the work against — the commit the issue's worktree\nbranched from. Absent when no git baseline could be established for the run.",
           "type": ["string", "null"]
         },
         "items": {
-          "description": "The reviewer's actionable items, on the\n[`ChangesRequested`](GgCodeReviewPhase::ChangesRequested) phase (the changes a fix agent\nmust address before re-review). Absent on [`Requested`](GgCodeReviewPhase::Requested) and\n[`Approved`](GgCodeReviewPhase::Approved).",
+          "description": "The reviewer's actionable items, on the\n[`ChangesRequested`](GgIssueReviewPhase::ChangesRequested) phase (the changes the issue's\nassigned agent must address before re-review). Absent on\n[`Requested`](GgIssueReviewPhase::Requested) and\n[`Approved`](GgIssueReviewPhase::Approved).",
           "items": {
             "type": "string"
           },
           "type": ["array", "null"]
         },
         "phase": {
-          "$ref": "#/$defs/GgCodeReviewPhase",
+          "$ref": "#/$defs/GgIssueReviewPhase",
           "description": "Which phase of the review lifecycle this transition is."
         },
         "type": {
-          "const": "code_review",
+          "const": "issue_review",
           "type": "string"
         }
       },
@@ -1494,18 +1499,18 @@
       "type": "object"
     },
     {
-      "description": "A [FSM-driven process](https://docs.testcabinet.ai/gg/fsms/) transition: the run entered a\nnew state of the built-in machine driving it — the event that lets the console show the\ncurrent state (and the ordered path through the machine).\n\nEmitted (when the [fsm](CAPABILITY_FSM) capability selects a machine) on the agent the machine\ndrives — the root — once as the run **enters the machine's first state**, and again on every\ntransition the [engine](CAPABILITY_FSM) makes: an `advance_state` the agent earns by meeting a\nstate's transition condition, an automatic move into and out of a `review` state (a\n[Code Review](Self::CodeReview) — the `review-gated` machine also streams its `CodeReview`\nevents), the plan → implement reset of `plan-first` (which also streams its\n[`Planning`](Self::Planning) events), or a machine that loops **back** to an earlier state\n(`review-gated` returns to `develop` when the Code Review requests changes). The order is a\nproperty of the machine, so this sequence of states is what proves the run was driven through\nthe process rather than freelancing. A run with no machine selected emits none.",
+      "description": "A [FSM-driven process](https://docs.testcabinet.ai/gg/fsms/) transition: the run entered a\nnew state of the built-in machine driving it — the event that lets the console show the\ncurrent state (and the ordered path through the machine).\n\nEmitted (when the [fsm](CAPABILITY_FSM) capability selects a machine) on the agent the machine\ndrives — the root — once as the run **enters the machine's first state**, and again on every\ntransition the [engine](CAPABILITY_FSM) makes: an `advance_state` the agent earns by meeting a\nstate's transition condition, or the plan → implement reset of `plan-first` (which also\nstreams its [`Planning`](Self::Planning) events). The order is a\nproperty of the machine, so this sequence of states is what proves the run was driven through\nthe process rather than freelancing. A run with no machine selected emits none.",
       "properties": {
         "machine": {
-          "description": "The built-in machine driving the run (for example `\"tdd\"`, `\"review-gated\"`, or\n`\"plan-first\"`).",
+          "description": "The built-in machine driving the run (for example `\"tdd\"` or `\"plan-first\"`).",
           "type": "string"
         },
         "state": {
-          "description": "The name of the state just entered (for example `\"write_tests\"`, `\"implement\"`,\n`\"verify\"`, `\"develop\"`, `\"review\"`, `\"accept\"`, or `\"plan\"`).",
+          "description": "The name of the state just entered (for example `\"write_tests\"`, `\"implement\"`,\n`\"verify\"`, or `\"plan\"`).",
           "type": "string"
         },
         "stateIndex": {
-          "description": "The state's zero-based index in the machine's ordered states, so the console can place it\non the machine's path (a `review-gated` loop-back repeats an earlier index).",
+          "description": "The state's zero-based index in the machine's ordered states, so the console can place it\non the machine's path.",
           "format": "uint64",
           "minimum": 0,
           "type": "integer"

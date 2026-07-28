@@ -315,18 +315,17 @@ pub struct BoardUsageData {
     pub max_issues: u32,
 }
 
-/// What accepting an issue produced.
+/// What completing an issue produced.
 ///
-/// [`code_reviewed`](Self::code_reviewed) is the load-bearing field: with Code Reviews enabled,
-/// `complete_issue` is the one cheap-looking call that transitively spawns agents and can block for
-/// a long time, and a caller has no other way to tell that apart from a plain status change.
+/// [`reviewed`](Self::reviewed) is the load-bearing field: `complete_issue` is a **claim** that the
+/// work is finished, not the acceptance itself, and whether the issue now goes to its reviewers or
+/// straight to a merge is the one thing a caller cannot infer from the status alone.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompletionData {
-    /// Whether a gating Code Review ran before the issue was accepted.
-    pub code_reviewed: bool,
-    /// The acceptance detail — the reviewer's verdict when there was one, and otherwise the plain
-    /// confirmation.
+    /// Whether the issue named reviewers, so its work will be reviewed before it is accepted.
+    pub reviewed: bool,
+    /// The completion detail — what happens to the issue next, in the same prose the model reads.
     pub detail: String,
 }
 
@@ -388,8 +387,6 @@ pub struct SubagentHandleData {
     /// The model actually bound to that slot, which is not always the one that was asked for (a
     /// slot request is honoured only when multi-model is enabled).
     pub model_id: String,
-    /// The worktree branch it runs on, when it was isolated; `None` when it shares the workspace.
-    pub worktree_branch: Option<String>,
 }
 
 /// How a child agent's loop ended.

@@ -188,7 +188,7 @@ fn main() -> Result<()> {
         TsModule {
             file: "gg.ts",
             decls: ts_decls![&cfg;
-                gg::GgAgentConfig, gg::GgSubagentRef, gg::GgModelSlot,
+                gg::GgAgentConfig, gg::GgSubagentRef, gg::GgSubagentScope, gg::GgModelSlot,
                 gg::GgCapabilityConfig, gg::GgCapabilitySet,
                 gg::GgContextSource, gg::GgContextSourceUsage,
                 gg::GgPromptRef, gg::GgLoggedToolCall, gg::GgLoggedImage,
@@ -198,7 +198,7 @@ fn main() -> Result<()> {
                 gg::GgTaskStatus, gg::GgTaskEntry,
                 gg::GgIssueStatus, gg::GgBoardEpic, gg::GgBoardIssue,
                 gg::GgRetainedState, gg::GgContextAction, gg::GgPlanPhase,
-                gg::GgAgentStatus, gg::GgWorkflowPhase, gg::GgCodeReviewPhase,
+                gg::GgAgentStatus, gg::GgWorkflowPhase, gg::GgIssueReviewPhase,
                 gg::GgSpeculationPhase,
                 gg::GgRunLimits, gg::GgLimitKind, gg::GgLimitBreach,
                 gg::GgHealingStrategy, gg::GgNotAProgram, gg::GgCandidateShape,
@@ -344,6 +344,7 @@ fn main() -> Result<()> {
             owns: &[
                 "GgAgentConfig",
                 "GgSubagentRef",
+                "GgSubagentScope",
                 "GgCapabilityConfig",
                 "GgModelSlot",
                 "GgRunLimits",
@@ -394,7 +395,7 @@ fn main() -> Result<()> {
                 "GgContextAction",
                 "GgPlanPhase",
                 "GgWorkflowPhase",
-                "GgCodeReviewPhase",
+                "GgIssueReviewPhase",
                 "GgSpeculationPhase",
                 // The per-turn healing record and its vocabulary ride on the
                 // `CodeExecution` event and appear nowhere else in the contract, so this

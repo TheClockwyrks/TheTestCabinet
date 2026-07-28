@@ -32,7 +32,9 @@ function epicEdit(value: string | null | undefined): EpicAssignment {
 }
 
 /** Lower gg's `in_progress` onto the membrane's `in-progress`; the other two arms are identical. */
-function witStatus(status: IssueStatus | undefined): IssueStatusRaw | undefined {
+function witStatus(
+  status: IssueStatus | undefined,
+): IssueStatusRaw | undefined {
   if (status === undefined) return undefined;
   return status === "in_progress" ? "in-progress" : status;
 }
@@ -41,7 +43,11 @@ function witStatus(status: IssueStatus | undefined): IssueStatusRaw | undefined 
  * Create an epic to group related issues, and return the board budget. Throws `conflict` on a
  * duplicate id.
  */
-export function createEpic(epic: { id: string; title: string; description: string }): BoardUsage {
+export function createEpic(epic: {
+  id: string;
+  title: string;
+  description: string;
+}): BoardUsage {
   return call(() => raw.createEpic(epic));
 }
 
@@ -117,13 +123,18 @@ export function updateIssue(
  * an unknown id and `conflict` when an edge would close a cycle.
  */
 export function setIssueBlockedBy(id: string, blockedBy: string[]): void {
-  call(() => raw.setIssueBlockedBy(id, list("setIssueBlockedBy", "blockedBy", blockedBy)));
+  call(() =>
+    raw.setIssueBlockedBy(
+      id,
+      list("setIssueBlockedBy", "blockedBy", blockedBy),
+    ),
+  );
 }
 
 /**
- * Mark an issue done and report how it was accepted. With Code Reviews enabled this first runs a
- * gating reviewer subagent, and possibly a fix loop, so it is the one cheap-looking call that can
- * take minutes. Throws `not-found` for an unknown id.
+ * Record that an issue's work is finished, and report what happens to it next. This does not mark
+ * the issue done on its own: it moves to `in review`, its reviewers (if any) run, and its work is
+ * merged into the main workspace before it is accepted. Throws `not-found` for an unknown id.
  */
 export function completeIssue(id: string): CompletionReport {
   return call(() => raw.completeIssue(id));

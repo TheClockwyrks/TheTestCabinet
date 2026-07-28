@@ -9,6 +9,7 @@ import type {
   GgCapabilitySet,
   GgHealingStrategy,
   GgRunLimits,
+  GgSubagentScope,
 } from "@test-cabinet/run-record/gg";
 
 // Whether a run's capability set has the named capability on. Capabilities are
@@ -330,17 +331,43 @@ export const TASKS_MODE_OPTIONS = [
 export const TASKS_MODE_HINT =
   "Simple keeps a lightweight title/description to-do list. Issues requires each task to carry the structured in-scope / out-of-scope / completion-criteria sections a board issue does.";
 
+// What a roster entry may be used for, in editor order — the three
+// [scopes](GgSubagentScope) an agent's roster entry can carry. They are independent:
+// a profile trusted to implement an issue is not automatically trusted to review it,
+// and an agent may list targets it can only assign work to without being able to
+// spawn anything at all.
+export const SUBAGENT_SCOPES: ReadonlyArray<{
+  value: GgSubagentScope;
+  label: string;
+  hint: string;
+}> = [
+  {
+    value: "subagent",
+    label: "Subagent",
+    hint: "May be spawned with `spawn_subagent`, a workflow stage, or a speculation. Needs the Subagents capability to be reachable.",
+  },
+  {
+    value: "implementer",
+    label: "Implementer",
+    hint: "May be named as an issue's `agent` — the profile gg dispatches to do the work, and re-dispatches for each retry and review round.",
+  },
+  {
+    value: "reviewer",
+    label: "Reviewer",
+    hint: "May be named among an issue's `reviewers` — the profiles that must each approve the finished work before the issue is accepted.",
+  },
+];
+
 export const FSM_MACHINE_OPTIONS = [
   { value: "", label: "(none)" },
   { value: "tdd", label: "tdd" },
-  { value: "review-gated", label: "review-gated" },
   { value: "plan-first", label: "plan-first" },
 ] as const;
 
 // What each state machine does — the detail lifted off the picker's option labels
 // into the Machine field's help tooltip.
 export const FSM_MACHINE_HINT =
-  "None runs no state machine. tdd: write tests → implement → verify. review-gated: develop → review → accept. plan-first: plan pass → implement pass.";
+  "None runs no state machine. tdd: write tests → implement → verify. plan-first: plan pass → implement pass.";
 
 // The compaction strategies gg resolves at run time (`crates/gg/src/compaction.rs`),
 // in editor order — grouped by who condenses the thread: gg out of band on the run's
@@ -714,10 +741,17 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         hint: "How many times gg re-dispatches an issue whose assigned agent finished without completing it before marking the issue failed.",
       },
       {
+        key: "mergeAgent",
+        label: "Merge agent",
+        kind: "agent",
+        defaultValue: ROOT_AGENT,
+        hint: "Required. Every issue works in its own git worktree, merged back when it is accepted; when that merge conflicts with work another issue landed first, this agent is dispatched into the workspace to resolve it and finish the merge. It must have the Shell capability.",
+      },
+      {
         key: "reviewers",
-        label: "Reviewers",
+        label: "Reviewers required",
         kind: "boolean",
-        hint: "On, filing an issue requires naming one or more reviewers — from the same agents this one may spawn — and every one of them must approve the work before the issue is accepted.",
+        hint: "On, filing an issue requires naming one or more reviewers — from the agents this one lists with the Reviewer scope. Either way, every reviewer an issue names must approve the work before the issue is accepted and merged.",
       },
     ],
     tools: [
@@ -788,13 +822,6 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     ],
   },
   {
-    id: "worktrees",
-    name: "Worktrees",
-    group: "Delegation",
-    purpose:
-      "Run a subagent in an isolated git worktree, merged back or discarded deliberately — makes speculation safe.",
-  },
-  {
     id: "workflows",
     name: "Workflows",
     group: "Delegation",
@@ -803,22 +830,6 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     tools: ["run_workflow"],
   },
   // --- Process & quality ------------------------------------------------------
-  {
-    id: "code-reviews",
-    name: "Code Reviews",
-    group: "Process & quality",
-    purpose:
-      "Gate an issue's acceptance on a reviewer subagent that approves or returns actionable fix items.",
-    params: [
-      {
-        key: "reviewerAgent",
-        label: "Reviewer agent",
-        kind: "agent",
-        defaultValue: ROOT_AGENT,
-        hint: "Which agent profile runs the Code Review. A run-level knob read off the Root agent.",
-      },
-    ],
-  },
   {
     id: "fsm",
     name: "FSM-driven process",

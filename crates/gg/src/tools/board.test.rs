@@ -29,13 +29,18 @@ fn fixture() -> (Arc<Mutex<BoardStore>>, ToolContext, TempDir) {
     )
 }
 
-/// The profiles the fixture's filing agent may assign an issue (or a review of one) to.
-const ASSIGNABLE: [&str; 2] = ["implementer", "critic"];
+/// The profile the fixture's filing agent may assign an issue to.
+const IMPLEMENTER: &str = "implementer";
 
-/// The filing rules the tools are built with: the two [`ASSIGNABLE`] profiles, reviewers optional.
+/// The profile it may name as a reviewer. Deliberately disjoint from [`IMPLEMENTER`]: the two
+/// scopes are governed independently, and a fixture that reused one name could not tell them apart.
+const REVIEWER: &str = "critic";
+
+/// The filing rules the tools are built with: one implementer, one reviewer, reviewers optional.
 fn policy() -> IssuePolicy {
     IssuePolicy {
-        assignable: ASSIGNABLE.iter().map(|a| a.to_string()).collect(),
+        implementers: vec![IMPLEMENTER.to_string()],
+        reviewers: vec![REVIEWER.to_string()],
         require_reviewers: false,
     }
 }
@@ -243,7 +248,8 @@ async fn update_complete_and_remove_flow() {
     assert!(completed.ok);
     assert_eq!(
         store.lock().unwrap().issues()[0].status(),
-        IssueStatus::Done
+        IssueStatus::InReview,
+        "the tool records the work as finished; acceptance is the orchestrator's"
     );
 
     let removed = RemoveIssueTool::new(Arc::clone(&store))
@@ -311,7 +317,7 @@ async fn the_board_populations_are_reported_by_the_tools_that_change_them() {
     assert_eq!(usage(&removed_epic).epics, 0);
 }
 
-/// Accepting an issue reports whether a Code Review gated it. On this path — the store's own,
+/// Completing an issue reports whether reviewers will gate it. On this path — the store's own,
 /// with no reviewer in the loop — it did not, and a caller is told so rather than left to infer it
 /// from the absence of a verdict.
 #[tokio::test]
@@ -328,12 +334,16 @@ async fn completing_an_issue_reports_whether_a_review_gated_it() {
     assert_eq!(
         completed.data,
         Some(ToolData::Completion(CompletionData {
-            code_reviewed: false,
-            detail: "Marked issue `a` done.".to_string(),
+            reviewed: false,
+            detail: completed.output.clone(),
         })),
         "the detail is the same text the model is shown"
     );
-    assert_eq!(completed.output, "Marked issue `a` done.");
+    assert!(
+        completed.output.contains("Recorded issue `a` as finished"),
+        "completing records the work as finished rather than accepting it: {}",
+        completed.output
+    );
 }
 
 /// Each way the store can refuse is classified from its own error variant.

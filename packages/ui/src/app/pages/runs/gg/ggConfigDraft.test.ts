@@ -154,7 +154,13 @@ describe("gg agents", () => {
       agents: [
         agent({
           modelSlot: "primary",
-          subagents: [{ agent: "reviewer", description: "for hard reviews" }],
+          subagents: [
+            {
+              agent: "reviewer",
+              description: "for hard reviews",
+              scopes: ["subagent"],
+            },
+          ],
         }),
         agent({ name: "reviewer", modelId: "openai/o-fixed" }),
       ],
@@ -165,7 +171,11 @@ describe("gg agents", () => {
     );
     expect(back.agents.map((a) => a.name)).toEqual(["Root", "reviewer"]);
     expect(back.agents[0]!.subagents).toEqual([
-      { agent: "reviewer", description: "for hard reviews" },
+      {
+        agent: "reviewer",
+        description: "for hard reviews",
+        scopes: ["subagent"],
+      },
     ]);
   });
 
@@ -175,7 +185,8 @@ describe("gg agents", () => {
         agent({
           modelSlot: "primary",
           customInstructions: "Prefer TDD.",
-          systemPromptTemplate: "You are a custom agent. {{customInstructions}}",
+          systemPromptTemplate:
+            "You are a custom agent. {{customInstructions}}",
         }),
       ],
       modelSlots: [{ name: "primary" }],
@@ -198,7 +209,8 @@ describe("gg agents", () => {
       capabilitySetFromDraft(draft, null).agents[0]!.systemPromptTemplate,
     ).toBeUndefined();
     // A non-empty override is preserved.
-    draft.agents[0]!.systemPromptTemplate = DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE + "\nextra";
+    draft.agents[0]!.systemPromptTemplate =
+      DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE + "\nextra";
     expect(
       capabilitySetFromDraft(draft, null).agents[0]!.systemPromptTemplate,
     ).toContain("extra");
@@ -215,9 +227,13 @@ describe("gg agents", () => {
     draft.agents[1]!.name = "reviewer";
 
     // A subagent pointing at an agent that does not exist.
-    draft.agents[0]!.subagents = [{ agent: "ghost", description: "" }];
+    draft.agents[0]!.subagents = [
+      { agent: "ghost", description: "", scopes: ["subagent"] },
+    ];
     expect(draftSaveError(draft)).toContain("ghost");
-    draft.agents[0]!.subagents = [{ agent: "reviewer", description: "" }];
+    draft.agents[0]!.subagents = [
+      { agent: "reviewer", description: "", scopes: ["subagent"] },
+    ];
     expect(draftSaveError(draft)).toBeNull();
 
     // The first agent must be the Root.
@@ -225,24 +241,34 @@ describe("gg agents", () => {
     expect(draftSaveError(draft)).toContain("Root");
   });
 
-  // An issue names the agent it is dispatched to, drawn from the filer's own subagents,
-  // so a board agent that spawns nothing could never file a valid one. gg refuses such a
-  // set at launch; the editor refuses it while it can still be fixed.
-  it("refuses an issue filer with nobody to assign issues to", () => {
+  // An issue names the agent it is dispatched to, drawn from the filer's own
+  // *implementers*, so a board agent whose roster lists none could never file a valid
+  // one. gg refuses such a set at launch; the editor refuses it while it can still be
+  // fixed.
+  it("refuses an issue filer with no implementer to assign issues to", () => {
     const draft = emptyDraft();
     draft.agents[0]!.capabilities["project-management"] = {
       enabled: true,
       params: {},
     };
-    expect(draftSaveError(draft)).toContain("no subagents");
+    expect(draftSaveError(draft)).toContain("no implementer");
 
-    // Read-only board access (no `create_issue`) needs no subagents at all.
+    // A spawnable-only roster entry is not an implementer, so it does not satisfy it.
+    draft.agents[0]!.subagents = [
+      { agent: "Root", description: "", scopes: ["subagent"] },
+    ];
+    expect(draftSaveError(draft)).toContain("no implementer");
+
+    // Read-only board access (no `create_issue`) needs no roster at all.
+    draft.agents[0]!.subagents = [];
     draft.agents[0]!.disabledTools = ["create_epic", "create_issue"];
     expect(draftSaveError(draft)).toBeNull();
 
-    // And so does a filer that can spawn something — a profile may list itself.
+    // And so does a filer with an implementer — a profile may list itself.
     draft.agents[0]!.disabledTools = [];
-    draft.agents[0]!.subagents = [{ agent: "Root", description: "" }];
+    draft.agents[0]!.subagents = [
+      { agent: "Root", description: "", scopes: ["implementer"] },
+    ];
     expect(draftSaveError(draft)).toBeNull();
   });
 });
@@ -424,12 +450,17 @@ describe("gg capability params", () => {
   it("round-trips the reviewers feature switch as a present-or-absent key", () => {
     const on = draftFromCapabilitySet(
       capSet([
-        { id: "project-management", enabled: true, params: { reviewers: true } },
+        {
+          id: "project-management",
+          enabled: true,
+          params: { reviewers: true },
+        },
       ]),
     );
     expect(draftCaps(on)["project-management"]?.params?.reviewers).toBe("true");
-    expect(paramsOf(capabilitySetFromDraft(on, null), "project-management"))
-      .toHaveProperty("reviewers", true);
+    expect(
+      paramsOf(capabilitySetFromDraft(on, null), "project-management"),
+    ).toHaveProperty("reviewers", true);
 
     // A stored `false` means the same thing as no key, and re-saves as no key.
     const off = draftFromCapabilitySet(

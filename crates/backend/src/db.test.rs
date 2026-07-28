@@ -93,7 +93,7 @@ fn gg_record(id: &str) -> RunRecord {
         ran_out_of_context: false,
         context_overflow_count: 0,
         final_fullness: Some(0.61),
-        code_reviews: 1,
+        issue_reviews: 1,
         review_cycles: 2,
         issues_reopened: 1,
         speculations: 0,
@@ -149,7 +149,7 @@ async fn a_gg_runs_session_summary_round_trips_through_get_run() {
     );
     let summary = stored.record.subject.gg_summary.unwrap();
     assert_eq!(summary.agents_spawned, 3);
-    assert_eq!(summary.code_reviews, 1);
+    assert_eq!(summary.issue_reviews, 1);
     assert_eq!(summary.issues_reopened, 1);
     assert_eq!(summary.slot_costs.len(), 1);
     assert_eq!(summary.slot_costs[0].tokens.output, Some(240));

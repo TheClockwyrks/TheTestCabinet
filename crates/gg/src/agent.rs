@@ -82,7 +82,9 @@
 //! failure, and exits `0`.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::future::Future;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -90,20 +92,21 @@ use std::time::Instant;
 use serde_json::{Value, json};
 use test_cabinet_core::gg::{
     AUTOLOAD_LOCKED_IMPL, CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_AUTOLOAD_SPECS,
-    CAPABILITY_CODE_REVIEWS, CAPABILITY_CONTEXT_WINDOW_OVERRIDE, CAPABILITY_MEMORIES,
-    CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_REPLAY, CAPABILITY_RESPONSES_AS_CODE,
-    CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS,
-    CAPABILITY_TASKS, CAPABILITY_WORKFLOWS, CAPABILITY_WORKTREES, GgAgentConfig, GgAgentStatus,
-    GgCandidateShape, GgCapabilitySet, GgCodeReviewPhase, GgContextAction, GgContextSource,
-    GgHealingStrategy, GgLimitBreach, GgLimitKind, GgNotAProgram, GgPlanPhase, GgResponseHealing,
-    GgRunLimits, GgSlotBinding, GgSpeculationPhase, GgTelemetryKind, GgWorkflowPhase, ROOT_AGENT,
+    CAPABILITY_CONTEXT_WINDOW_OVERRIDE, CAPABILITY_MEMORIES, CAPABILITY_PROJECT_MANAGEMENT,
+    CAPABILITY_REPLAY, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL, CAPABILITY_SKILLS,
+    CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WORKFLOWS,
+    GgAgentConfig, GgAgentStatus, GgCandidateShape, GgCapabilitySet, GgContextAction,
+    GgContextSource, GgHealingStrategy, GgIssueReviewPhase, GgLimitBreach, GgLimitKind,
+    GgNotAProgram, GgPlanPhase, GgResponseHealing, GgRunLimits, GgSlotBinding, GgSpeculationPhase,
+    GgSubagentScope, GgTelemetryKind, GgWorkflowPhase, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT,
+    ROOT_AGENT,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 
 use crate::archive::ArchiveStore;
-use crate::board::{BoardCaps, BoardRuntime, IssuePolicy, IssueStatus};
+use crate::board::{self, BoardCaps, BoardRuntime, IssuePolicy, IssueStatus};
 use crate::client::{ClientFactory, DefaultClientFactory, provider_for};
 use crate::compaction::{
     self, CompactionRequest, CompactionSetup, CompactionStrategy, PendingCompaction, RestoredFile,
@@ -115,9 +118,7 @@ use crate::context::{
     BpeTokenEstimator, ContextModel, Retention, TokenEstimator, code_heading, tool_output_source,
 };
 use crate::docs::DocsRuntime;
-use crate::fsm::{
-    FsmRuntime, MACHINE_REVIEW_GATED, StateExit, ToolPolicy, configured_machine, is_builtin_machine,
-};
+use crate::fsm::{FsmRuntime, StateExit, ToolPolicy, configured_machine, is_builtin_machine};
 use crate::git;
 use crate::healing::{
     self, AssistantMessageMode, CandidateShape, Healed, HealingConfig, HealingStrategy,
@@ -152,16 +153,16 @@ use crate::telemetry::Emitter;
 use crate::tools::VisionContext;
 use crate::tools::{
     ARCHIVE_THREAD_TOOL, AgentStatusData, COMPACT_TOOL, COMPLETE_ISSUE_TOOL, CREATE_ISSUE_TOOL,
-    CompletionData, DEFAULT_ARCHIVE_KEEP_RECENT, ENTER_PLAN_MODE_TOOL, EVICT_FILE_VIEW_TOOL,
-    OffloadPolicy, PARAM_MAX_CHARS, PARAM_MAX_LINES, READ_FILE_TOOL, READ_SKILL_TOOL,
-    RUN_WORKFLOW_TOOL, ReadFileTool, ReadPolicy, ReclaimData, RuntimeSet, SEND_MESSAGE_TOOL,
-    SHELL_OUTPUT_OFFLOAD, SHELL_TOOL, SPAWN_SUBAGENT_TOOL, SPECULATE_TOOL, SUBMIT_PLAN_TOOL,
-    SpeculationData, SubagentHandleData, SubagentResultData, Tool, ToolContext, ToolData,
-    ToolFailure, ToolOutcome, ToolRegistry, WAIT_FOR_ISSUE_TOOL, WAIT_FOR_SUBAGENTS_TOOL,
-    WorkflowData, handled_by_loop, is_board_tool, is_context_reclaim_tool, is_fsm_tool,
-    is_memory_tool, is_planning_tool, is_subagent_tool, is_task_tool, offload_misconfigured,
-    parse_archive_keep_recent, parse_compact_request, parse_evict_path, plan_mode_offers,
-    read_policy, saturating_u32, saturating_u64, shell_offload, unknown_disabled_tools,
+    DEFAULT_ARCHIVE_KEEP_RECENT, ENTER_PLAN_MODE_TOOL, EVICT_FILE_VIEW_TOOL, OffloadPolicy,
+    PARAM_MAX_CHARS, PARAM_MAX_LINES, READ_FILE_TOOL, READ_SKILL_TOOL, RUN_WORKFLOW_TOOL,
+    ReadFileTool, ReadPolicy, ReclaimData, RuntimeSet, SEND_MESSAGE_TOOL, SHELL_OUTPUT_OFFLOAD,
+    SHELL_TOOL, SPAWN_SUBAGENT_TOOL, SPECULATE_TOOL, SUBMIT_PLAN_TOOL, SpeculationData,
+    SubagentHandleData, SubagentResultData, Tool, ToolContext, ToolData, ToolFailure, ToolOutcome,
+    ToolRegistry, WAIT_FOR_ISSUE_TOOL, WAIT_FOR_SUBAGENTS_TOOL, WorkflowData, handled_by_loop,
+    is_board_tool, is_context_reclaim_tool, is_fsm_tool, is_memory_tool, is_planning_tool,
+    is_subagent_tool, is_task_tool, offload_misconfigured, parse_archive_keep_recent,
+    parse_compact_request, parse_evict_path, plan_mode_offers, read_policy, saturating_u32,
+    saturating_u64, shell_offload, unknown_disabled_tools,
 };
 use crate::turn_timing::TurnTimer;
 use crate::vision::VisionSupport;
@@ -189,9 +190,9 @@ const COMPACTION_SLOT: &str = "compaction";
 /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE), a program that called
 /// [`finish`](FINISH_FUNCTION).
 ///
-/// Named rather than spelled out at each of its sites because it is also what the worktree merge
-/// gate, the Code Review verdict and the speculation candidate filter test a child agent against:
-/// one string with five readers is one string that must not be typed six times.
+/// Named rather than spelled out at each of its sites because it is also what the issue-review
+/// verdict and the speculation candidate filter test a child agent against: one string with several
+/// readers is one string that must not be typed once per reader.
 const STATUS_COMPLETED: &str = "completed";
 
 /// The [`SessionEnded`](GgTelemetryKind::SessionEnded) status for an agent that took every turn its
@@ -257,11 +258,6 @@ pub enum SessionOutcome {
 /// single-agent run has only this agent; Phase 4B gives spawned subagents generated ids
 /// beneath it.
 pub const ROOT_AGENT_ID: &str = "root";
-
-/// The [code-reviews](CAPABILITY_CODE_REVIEWS) capability param naming the
-/// [agent profile](GgAgentConfig) a [Code Review](handle_code_review)'s reviewer runs under. Absent
-/// means the [Root](ROOT_AGENT).
-const PARAM_REVIEWER_AGENT: &str = "reviewerAgent";
 
 /// The [speculative-execution](CAPABILITY_SPECULATIVE) capability param naming the
 /// [agent profile](GgAgentConfig) a [speculation](handle_speculate)'s judge runs under. Absent
@@ -407,8 +403,10 @@ fn profile_binding(set: &GgCapabilitySet, profile: &str) -> Result<GgSlotBinding
 /// Validate a run's [agent profiles](GgAgentConfig) before launch: the [Root](ROOT_AGENT) profile
 /// must exist and be bound to a model (the run has no model otherwise), every profile must have a
 /// non-empty name and a resolved model, no name may be declared twice, every
-/// [subagent reference](GgAgentConfig::subagents) must name a declared profile, and no profile may
-/// be able to **file [issues](crate::board)** without anyone to assign them to. Returns a
+/// [roster reference](GgAgentConfig::subagents) must name a declared profile, no profile may
+/// be able to **file [issues](crate::board)** without anyone to assign them to, and a run with
+/// [project management](CAPABILITY_PROJECT_MANAGEMENT) on must name a shell-capable
+/// [merge agent](PROJECT_MANAGEMENT_PARAM_MERGE_AGENT). Returns a
 /// human-readable error on the first problem, so a misconfiguration fails loudly at launch rather
 /// than surfacing mid-run. Pure, so it is unit tested directly.
 fn validate_agents(set: &GgCapabilitySet) -> Result<(), String> {
@@ -441,25 +439,40 @@ fn validate_agents(set: &GgCapabilitySet) -> Result<(), String> {
         for reference in &agent.subagents {
             if set.agent(&reference.agent).is_none() {
                 return Err(format!(
-                    "the `{}` agent may spawn `{}`, which is not a declared agent profile",
+                    "the `{}` agent lists `{}` in its roster, which is not a declared agent profile",
                     agent.name, reference.agent
                 ));
             }
         }
-        // An issue names the profile gg dispatches it under, drawn from the filer's own spawnable
-        // set — so an agent that may file issues but spawns nothing could never write a valid one.
-        // Refuse the configuration rather than offer a tool whose every call would be rejected;
-        // withholding `create_issue` (read-only board access) is the intended way to have one.
+        // An issue names the profile gg dispatches it under, drawn from the filer's own
+        // *implementers* — so an agent that may file issues but lists none could never write a
+        // valid one. Refuse the configuration rather than offer a tool whose every call would be
+        // rejected; withholding `create_issue` (read-only board access) is the intended way to
+        // have one. The same argument applies to an agent that must name reviewers but has none.
         if agent.is_enabled(CAPABILITY_PROJECT_MANAGEMENT)
             && !agent.is_tool_disabled(CREATE_ISSUE_TOOL)
-            && agent.subagents.is_empty()
         {
-            return Err(format!(
-                "the `{}` agent may create issues but has no subagents to assign them to; give it \
-                 at least one subagent, or switch its issue-creation feature off for read-only \
-                 board access",
-                agent.name
-            ));
+            if agent
+                .agents_in_scope(GgSubagentScope::Implementer)
+                .is_empty()
+            {
+                return Err(format!(
+                    "the `{}` agent may create issues but its roster lists no `implementer` to \
+                     assign them to; give one of its agents the implementer scope, or switch its \
+                     issue-creation feature off for read-only board access",
+                    agent.name
+                ));
+            }
+            if board::requires_reviewers(agent)
+                && agent.agents_in_scope(GgSubagentScope::Reviewer).is_empty()
+            {
+                return Err(format!(
+                    "the `{}` agent must name reviewers on every issue but its roster lists no \
+                     `reviewer`; give one of its agents the reviewer scope, or switch the \
+                     `reviewers` requirement off",
+                    agent.name
+                ));
+            }
         }
     }
     if set.agent(ROOT_AGENT).is_none() {
@@ -467,7 +480,64 @@ fn validate_agents(set: &GgCapabilitySet) -> Result<(), String> {
             "no `{ROOT_AGENT}` agent profile is declared; there is no model to run"
         ));
     }
+    validate_merge_agent(set)?;
     Ok(())
+}
+
+/// Validate the [merge agent](PROJECT_MANAGEMENT_PARAM_MERGE_AGENT) a
+/// [project-management](CAPABILITY_PROJECT_MANAGEMENT) run must name.
+///
+/// Every issue works in its own worktree, so an accepted issue's branch has to be merged back — and
+/// with issues running concurrently a conflicting merge is an ordinary event. gg therefore refuses
+/// to launch a board without somebody to hand that conflict to. The named profile must be declared,
+/// and must have the [shell](CAPABILITY_SHELL) capability: resolving a merge means running `git`,
+/// which an agent without a shell cannot do.
+fn validate_merge_agent(set: &GgCapabilitySet) -> Result<(), String> {
+    if !set
+        .agents
+        .iter()
+        .any(|agent| agent.is_enabled(CAPABILITY_PROJECT_MANAGEMENT))
+    {
+        return Ok(());
+    }
+    let named = merge_agent_name(set);
+    let Some(name) = named else {
+        return Err(format!(
+            "project management is enabled but no merge agent is named; set the \
+             `{PROJECT_MANAGEMENT_PARAM_MERGE_AGENT}` param of the \
+             `{CAPABILITY_PROJECT_MANAGEMENT}` capability to an agent that can resolve a merge \
+             conflict when an accepted issue's work does not apply cleanly"
+        ));
+    };
+    let Some(profile) = set.agent(&name) else {
+        return Err(format!(
+            "the `{PROJECT_MANAGEMENT_PARAM_MERGE_AGENT}` names `{name}`, which is not a declared \
+             agent profile"
+        ));
+    };
+    if !profile.is_enabled(CAPABILITY_SHELL) {
+        return Err(format!(
+            "the merge agent `{name}` does not have the `{CAPABILITY_SHELL}` capability; resolving \
+             a merge conflict means running `git` in the workspace, so a merge agent must have a \
+             shell"
+        ));
+    }
+    Ok(())
+}
+
+/// The [merge agent](PROJECT_MANAGEMENT_PARAM_MERGE_AGENT) `set` names, from the first profile that
+/// configures one — the board is run-global, so its merge agent is too, and reading the first
+/// declaration keeps a set that names it on a non-Root profile working rather than silently
+/// ignored.
+fn merge_agent_name(set: &GgCapabilitySet) -> Option<String> {
+    set.agents
+        .iter()
+        .filter_map(|agent| agent.capability(CAPABILITY_PROJECT_MANAGEMENT))
+        .filter_map(|cap| cap.params.get(PROJECT_MANAGEMENT_PARAM_MERGE_AGENT))
+        .filter_map(Value::as_str)
+        .map(str::trim)
+        .find(|name| !name.is_empty())
+        .map(str::to_string)
 }
 
 /// Run one gg session for `invocation`, emitting telemetry throughout, and report
@@ -561,10 +631,10 @@ pub(crate) async fn run_with_factory(
         }
     };
 
-    // Resolve worktree isolation before building the orchestrator: when the worktrees capability is
-    // on, make the workspace a git repo and commit its baseline (the commit Phase 5 Code Reviews
-    // diff against), reporting any git-absent/failure loudly on the root's stream so a `worktree:
-    // true` spawn is refused with a clear message rather than crashing.
+    // Resolve worktree isolation before building the orchestrator: when the run can produce a
+    // worktree (a board issue's, or a speculation attempt's), make the workspace a git repo and
+    // commit its baseline, reporting any git-absent/failure loudly on the root's stream so a later
+    // issue that has to fall back to the shared tree does so with a reason on the record.
     let worktrees = resolve_worktrees(set, &invocation.workspace_dir, &root_emitter);
 
     // Build the orchestrator: the shared, cross-task state every agent (the root and each
@@ -789,17 +859,15 @@ fn write_replay_record(recorder: &GgRecorder, invocation: &GgInvocation, emitter
     }
 }
 
-/// The dispatch facts recorded for one [issue](test_cabinet_core::gg::GgBoardIssue) the first time
-/// it is dispatched to a subagent, so a later [Code Review](handle_code_review) of it has an
-/// issue-level baseline and knows where to run a fix agent.
-struct IssueDispatchMeta {
-    /// The commit `HEAD` sat at when the issue's work began — its review baseline. `None` when no
-    /// git baseline was established this run (the review falls back to the run baseline, which is
-    /// then also `None`).
-    initial_commit: Option<String>,
-    /// The [slot](GgSlotBinding) the issue's work was dispatched on, so a Code Review's fix agent
-    /// re-runs the work on the same kind of model rather than defaulting to primary.
-    work_slot: String,
+/// One reviewer's verdict on one round of an [issue review](run_issue_review), kept so the **next**
+/// round's reviewers can be shown what was already asked for and whether it was addressed.
+struct ReviewRecord {
+    /// The [agent profile](GgAgentConfig) that rendered this verdict.
+    reviewer: String,
+    /// Whether it approved the work.
+    approved: bool,
+    /// The actionable items it returned, when it did not approve.
+    items: Vec<String>,
 }
 
 /// The shared, cross-task state a whole gg session is orchestrated from.
@@ -841,27 +909,22 @@ struct Orchestrator {
     /// [`subagents`](CAPABILITY_SUBAGENTS) is off) still gets the per-agent delegation context and
     /// the agent-tree telemetry (see [`delegation_enabled`](Self::delegation_enabled)).
     workflows_enabled: bool,
-    /// Whether the [worktrees](CAPABILITY_WORKTREES) capability is on (the raw toggle), gating the
-    /// `worktree` spawn option. Distinct from whether isolation is actually *usable* this run —
-    /// that is [`worktrees_root`](Self::worktrees_root)`.is_some()` — so a `worktree: true` spawn
-    /// can tell "capability off" from "capability on but git unavailable".
-    worktrees_capability: bool,
-    /// Where per-agent [worktree](Worktree) checkouts are created (a sibling of the workspace),
-    /// `Some` only when worktree isolation is usable (capability on, git present, baseline
-    /// committed, root created). `None` disables worktree dispatch even if the capability is on.
+    /// Where [worktree](Worktree) checkouts are created (a sibling of the workspace),
+    /// `Some` only when worktree isolation is usable (git present, baseline committed, root
+    /// created). `None` means issues run in the shared workspace and `speculate` is refused.
     worktrees_root: Option<PathBuf>,
-    /// The run's **baseline commit** — the seeded workspace committed at session start when the
-    /// worktrees capability made the workspace a git repo. Every [worktree](Worktree) branches from
-    /// it, and it is the "original commit for the run" Phase 5 Code Reviews diff against; recorded
-    /// here (see [`baseline_commit`](Self::baseline_commit)) so that phase can reuse it. `None` when
-    /// worktrees are off or git could not initialize a baseline.
+    /// The run's **baseline commit** — the seeded workspace committed at session start when gg made
+    /// the workspace a git repo. The first [worktree](Worktree) branches from it (later ones branch
+    /// from whatever the main tree's `HEAD` has advanced to). `None` when git could not initialize
+    /// a baseline, which is also how the rest of the orchestrator tells that isolation is off.
     baseline_commit: Option<String>,
-    /// Whether the [code-reviews](CAPABILITY_CODE_REVIEWS) capability is on — gates whether
-    /// `complete_issue` triggers a [Code Review](handle_code_review) (which needs the delegation
-    /// machinery to run a reviewer, so it only engages when [`delegation_enabled`](Self::delegation_enabled)).
-    code_reviews_enabled: bool,
+    /// The [agent profile](GgAgentConfig) gg hands a **conflicted merge** to when an accepted
+    /// [issue](crate::board)'s branch does not apply cleanly — the
+    /// [`mergeAgent`](PROJECT_MANAGEMENT_PARAM_MERGE_AGENT) the capability requires. `None` only
+    /// when project management is off (launch validation refuses a board without one).
+    merge_agent: Option<String>,
     /// Whether the [speculative-execution](CAPABILITY_SPECULATIVE) capability is on — gates the
-    /// `speculate` tool (best-of-K). Like a Code Review it needs the delegation machinery (to fan out
+    /// `speculate` tool (best-of-K). It needs the delegation machinery (to fan out
     /// the attempts and run the judge), so it only engages when
     /// [`delegation_enabled`](Self::delegation_enabled); worktree isolation is checked at call time.
     speculative_enabled: bool,
@@ -872,13 +935,20 @@ struct Orchestrator {
     /// [`code_setup`](Self::code_setup)); this field carries the Root's, used for the run-level
     /// launch log and the sandbox warm-up decision.
     code: CodeSetup,
-    /// Per-[issue](test_cabinet_core::gg::GgBoardIssue) dispatch facts a
-    /// [Code Review](handle_code_review) needs: the commit the issue's work began at (its review
-    /// baseline) and the [slot](GgSlotBinding) it was worked on (where a fix agent re-runs).
-    /// Captured on the **first** dispatch of each issue and read back when the issue is completed;
-    /// an issue never dispatched falls back to the run baseline and the primary slot. Guarded so
+    /// The isolated [worktree](Worktree) each [issue](crate::board) works in, keyed by issue id.
+    ///
+    /// Created on the issue's **first** dispatch and reused by every later agent that touches it —
+    /// a retry, a review round's re-dispatch, and its reviewers (who read the same tree) — so an
+    /// attempt builds on what the last one produced rather than starting over. Removed when the
+    /// issue reaches a terminal state, as its branch is merged back or discarded. Empty when git
+    /// isolation is unavailable, in which case issues share the main tree. Guarded so
     /// concurrently-dispatching agents can record.
-    issue_dispatch: Mutex<HashMap<String, IssueDispatchMeta>>,
+    issue_worktrees: Mutex<HashMap<String, Worktree>>,
+    /// The [review verdicts](ReviewRecord) each [issue](crate::board) has already collected, keyed
+    /// by issue id and in the order they were rendered. Every round's reviewers are shown the
+    /// history, so a second reviewer knows what a first one already asked for and a re-review can
+    /// tell whether its own earlier items were addressed.
+    issue_reviews: Mutex<HashMap<String, Vec<ReviewRecord>>>,
     /// The run's **single, global** [project-management board](crate::board) — one
     /// [`BoardRuntime`] shared by every agent (each agent's board tools mutate this same store),
     /// and the queue the [dispatcher](Self::pump_dispatch) reads. [`disabled`](BoardRuntime::disabled)
@@ -890,11 +960,19 @@ struct Orchestrator {
     /// [marked ready](Scheduler::mark_ready). Guarded so a completing agent and a fresh waiter can
     /// touch it concurrently.
     issue_waits: Mutex<HashMap<String, Vec<WaiterToken>>>,
-    /// Serializes every git operation on the shared repository (worktree add/merge/remove, and a
-    /// Code Review's baseline diff), since concurrently-finishing subagents would otherwise race on
+    /// Serializes every **synchronous** git operation on the shared repository (worktree
+    /// add/remove, a review's diff), since concurrently-finishing agents would otherwise race on
     /// `.git` and the main working tree. Held only across the synchronous git calls, never across an
-    /// await.
+    /// await — see [`merge_lock`](Self::merge_lock) for the long-running half.
     git_lock: Mutex<()>,
+    /// Serializes the **merge** of an accepted issue's branch back into the main tree.
+    ///
+    /// A merge is not one git call: it can leave the tree conflicted, dispatch the
+    /// [merge agent](Self::merge_agent), and wait for it to resolve — a span with awaits in it, and
+    /// one during which no other merge may touch the main tree (a second `git merge` on a tree with
+    /// `MERGE_HEAD` set would be refused, and a concurrent abort would throw away the resolution).
+    /// Hence an async lock, distinct from the synchronous [`git_lock`](Self::git_lock).
+    merge_lock: tokio::sync::Mutex<()>,
     /// The resolved [parallelism and depth caps](SubagentConfig).
     config: SubagentConfig,
     /// The single global [scheduler](Scheduler) coordinating every agent's running slot.
@@ -1030,10 +1108,12 @@ impl Orchestrator {
             subagents_enabled: set.is_enabled(CAPABILITY_SUBAGENTS),
             project_management_enabled: set.is_enabled(CAPABILITY_PROJECT_MANAGEMENT),
             workflows_enabled: set.is_enabled(CAPABILITY_WORKFLOWS),
-            worktrees_capability: worktrees.capability,
             worktrees_root: worktrees.root,
             baseline_commit: worktrees.baseline_commit,
-            code_reviews_enabled: set.is_enabled(CAPABILITY_CODE_REVIEWS),
+            merge_agent: set
+                .is_enabled(CAPABILITY_PROJECT_MANAGEMENT)
+                .then(|| merge_agent_name(set))
+                .flatten(),
             speculative_enabled: set.is_enabled(CAPABILITY_SPECULATIVE),
             code: CodeSetup {
                 enabled: set.root().is_enabled(CAPABILITY_RESPONSES_AS_CODE),
@@ -1041,10 +1121,12 @@ impl Orchestrator {
                 healing: healing.config,
                 assistant_messages: healing::resolve_assistant_messages(set.root()).mode,
             },
-            issue_dispatch: Mutex::new(HashMap::new()),
+            issue_worktrees: Mutex::new(HashMap::new()),
+            issue_reviews: Mutex::new(HashMap::new()),
             board: resolve_board(set),
             issue_waits: Mutex::new(HashMap::new()),
             git_lock: Mutex::new(()),
+            merge_lock: tokio::sync::Mutex::new(()),
             config: SubagentConfig::resolve(set),
             scheduler: Scheduler::new(SubagentConfig::resolve(set).max_parallel),
             accounting: Mutex::new(SlotAccounting::default()),
@@ -1122,24 +1204,17 @@ impl Orchestrator {
     }
 
     /// The run's [baseline commit](Self::baseline_commit) sha — the seeded workspace committed at
-    /// session start when the worktrees capability made the workspace a git repo — or `None` when
-    /// worktrees are off or no baseline could be committed.
-    ///
-    /// This is the "original commit for the run" that
-    /// [Code Reviews](https://docs.testcabinet.ai/gg/code-reviews/) diff against when an issue has no
-    /// recorded [initial commit](IssueDispatchMeta::initial_commit) of its own; exposed here so the
-    /// review reuses the recorded sha rather than recomputing it.
+    /// session start when gg made the workspace a git repo — or `None` when git isolation is
+    /// unavailable.
     fn baseline_commit(&self) -> Option<&str> {
         self.baseline_commit.as_deref()
     }
 
-    /// Whether [Code Reviews](handle_code_review) actually gate issue acceptance this run: the
-    /// [code-reviews](CAPABILITY_CODE_REVIEWS) capability **and** the delegation machinery a review
-    /// needs to run its reviewer/fix subagents. With the capability on but delegation off, a review
-    /// could not be dispatched, so `complete_issue` accepts issues directly (as without the
-    /// capability) rather than silently doing nothing.
-    fn code_reviews_active(&self) -> bool {
-        self.code_reviews_enabled && self.delegation_enabled()
+    /// Whether isolated [worktrees](Worktree) can actually be created this run: git was available,
+    /// a baseline was committed, and the checkout root exists. `false` degrades issues to the shared
+    /// workspace and refuses `speculate`.
+    fn worktrees_usable(&self) -> bool {
+        self.worktrees_root.is_some() && self.baseline_commit.is_some()
     }
 
     /// Whether [speculative execution](handle_speculate) can actually run this run: the
@@ -1160,10 +1235,10 @@ impl Orchestrator {
 
     /// The name of an [agent profile](GgAgentConfig) a run-level capability points a helper agent at:
     /// the string `param` on the [Root](ROOT_AGENT)'s config for capability `cap_id`, when it names a
-    /// declared profile, else the [Root](ROOT_AGENT). These knobs (the reviewer and judge agents)
-    /// are read off the Root because they govern the run as a whole, not one agent's turn. The
-    /// [issue](crate::board) agent is deliberately **not** one of them: an issue names its own
-    /// assignee when it is filed.
+    /// declared profile, else the [Root](ROOT_AGENT). This knob (the speculation judge) is
+    /// read off the Root because it governs the run as a whole, not one agent's turn. An
+    /// [issue](crate::board)'s agent and reviewers are deliberately **not** among them: an issue
+    /// names its own when it is filed.
     fn helper_profile(&self, cap_id: &str, param: &str) -> String {
         self.caps
             .root()
@@ -1207,102 +1282,147 @@ impl Orchestrator {
         }
     }
 
-    /// Record the [dispatch facts](IssueDispatchMeta) for `issue_id` the first time it is dispatched,
-    /// capturing the commit its work began at (for a later [Code Review](handle_code_review)'s
-    /// baseline) and the [agent profile](GgAgentConfig) it ran under. Only the **first** dispatch is
-    /// recorded (`or_insert`), so a later reviewer or fix agent dispatched against the same issue does
-    /// not clobber the real work baseline/profile.
-    fn record_issue_dispatch(&self, issue_id: &str, work_slot: &str) {
-        let initial_commit = if self.baseline_commit.is_some() {
-            git::head_commit(&self.workspace_dir).ok()
-        } else {
-            None
+    /// The isolated [worktree](Worktree) issue `issue_id` works in, creating it on first use.
+    ///
+    /// The branch is based at the main tree's **current `HEAD`**, not at the run baseline: an issue
+    /// only becomes actionable once every issue it is blocked by is done and merged, so branching
+    /// from `HEAD` is what lets it build on its blockers' work. Returns `None` when git isolation is
+    /// unavailable (the issue then works in the shared workspace) or the worktree could not be
+    /// created, in which case the reason is logged rather than failing the issue.
+    fn ensure_issue_worktree(&self, issue_id: &str, emitter: &Emitter) -> Option<Worktree> {
+        let mut worktrees = self.issue_worktrees.lock().expect("issue worktrees lock");
+        if let Some(existing) = worktrees.get(issue_id) {
+            return Some(existing.clone());
+        }
+        let root = self.worktrees_root.as_ref()?;
+        self.baseline_commit.as_ref()?;
+        let _guard = self.git_lock.lock().expect("git lock");
+        let base = match git::head_commit(&self.workspace_dir) {
+            Ok(sha) => sha,
+            Err(err) => {
+                emitter.emit(log(
+                    "error",
+                    format!(
+                        "could not read the workspace `HEAD` to branch issue `{issue_id}` from: \
+                         {err}; it will work directly in the shared workspace."
+                    ),
+                ));
+                return None;
+            }
         };
-        self.issue_dispatch
-            .lock()
-            .expect("issue dispatch lock")
-            .entry(issue_id.to_string())
-            .or_insert_with(|| IssueDispatchMeta {
-                initial_commit,
-                work_slot: work_slot.to_string(),
-            });
+        let slug = worktree_slug(issue_id);
+        let branch = format!("gg/issue-{slug}");
+        let path = root.join(format!("issue-{slug}"));
+        if let Err(err) = git::add_worktree(&self.workspace_dir, &path, &branch, &base) {
+            emitter.emit(log(
+                "error",
+                format!(
+                    "could not create an isolated worktree for issue `{issue_id}`: {err}; it will \
+                     work directly in the shared workspace."
+                ),
+            ));
+            return None;
+        }
+        let worktree = Worktree { branch, path, base };
+        worktrees.insert(issue_id.to_string(), worktree.clone());
+        Some(worktree)
     }
 
-    /// The baseline commit a [Code Review](handle_code_review) of `issue_id` diffs against: the
-    /// issue's recorded [initial commit](IssueDispatchMeta::initial_commit) if it was dispatched,
-    /// else the run [baseline](Self::baseline_commit). `None` when no git baseline exists at all.
-    fn issue_baseline(&self, issue_id: &str) -> Option<String> {
-        self.issue_dispatch
+    /// The isolated [worktree](Worktree) issue `issue_id` is working in, when it has one. A read —
+    /// unlike [`ensure_issue_worktree`](Self::ensure_issue_worktree) it never creates one — so a
+    /// reviewer joins the tree its issue is already in rather than making a second copy of it.
+    fn issue_worktree(&self, issue_id: &str) -> Option<Worktree> {
+        self.issue_worktrees
             .lock()
-            .expect("issue dispatch lock")
+            .expect("issue worktrees lock")
             .get(issue_id)
-            .and_then(|meta| meta.initial_commit.clone())
+            .cloned()
+    }
+
+    /// Forget issue `issue_id`'s worktree, returning it — called once the branch has been merged or
+    /// discarded, so a later read cannot hand an agent a checkout that no longer exists.
+    fn take_issue_worktree(&self, issue_id: &str) -> Option<Worktree> {
+        self.issue_worktrees
+            .lock()
+            .expect("issue worktrees lock")
+            .remove(issue_id)
+    }
+
+    /// The directory an agent working issue `issue_id` is rooted at: its
+    /// [worktree](Self::issue_worktree) when it has one, else the shared workspace.
+    fn issue_workspace(&self, issue_id: &str) -> PathBuf {
+        self.issue_worktree(issue_id)
+            .map(|wt| wt.path)
+            .unwrap_or_else(|| self.workspace_dir.clone())
+    }
+
+    /// The commit the review of `issue_id` diffs its work against: the commit its worktree branched
+    /// from, else the run [baseline](Self::baseline_commit). `None` when no git baseline exists.
+    fn issue_baseline(&self, issue_id: &str) -> Option<String> {
+        self.issue_worktree(issue_id)
+            .map(|wt| wt.base)
             .or_else(|| self.baseline_commit().map(str::to_string))
     }
 
-    /// The [agent profile](GgAgentConfig) a [Code Review](handle_code_review)'s **fix agent** for
-    /// `issue_id` runs under: the profile the issue's work was dispatched under (so the fix is done by
-    /// the same kind of agent), or the [Root](ROOT_AGENT) when the issue was never dispatched to a
-    /// subagent.
-    fn issue_work_slot(&self, issue_id: &str) -> String {
-        self.issue_dispatch
-            .lock()
-            .expect("issue dispatch lock")
-            .get(issue_id)
-            .map(|meta| meta.work_slot.clone())
-            .unwrap_or_else(|| ROOT_AGENT.to_string())
-    }
-
-    /// The [agent profile](GgAgentConfig) a [Code Review](handle_code_review)'s **reviewer** runs
-    /// under — the [code-reviews](CAPABILITY_CODE_REVIEWS) capability's
-    /// [`reviewerAgent`](PARAM_REVIEWER_AGENT) param, defaulting to the [Root](ROOT_AGENT).
-    fn reviewer_slot(&self) -> String {
-        self.helper_profile(CAPABILITY_CODE_REVIEWS, PARAM_REVIEWER_AGENT)
-    }
-
-    /// The [agent profiles](GgAgentConfig) a [Code Review](handle_code_review) of `issue_id` must be
-    /// approved by, in order: the [reviewers](crate::board::Issue::reviewers) the issue named when
-    /// it was filed (the [reviewers feature](crate::board::IssuePolicy::require_reviewers)), or —
-    /// when it named none — the run-level [reviewer](Self::reviewer_slot) alone. Profiles this run
-    /// does not declare are dropped, and an issue whose every reviewer was stale falls back the
-    /// same way, so a review always has someone to run it.
+    /// The [agent profiles](GgAgentConfig) that must approve `issue_id`, in the order they were
+    /// named when it was filed. Profiles this run does not declare are dropped; an empty result
+    /// means the issue is accepted without review.
     fn reviewer_slots(&self, issue_id: &str) -> Vec<String> {
-        let declared: Vec<String> = self
-            .board
+        self.board
             .issue_reviewers(issue_id)
             .into_iter()
             .filter(|name| self.caps.agent(name).is_some())
-            .collect();
-        if declared.is_empty() {
-            vec![self.reviewer_slot()]
-        } else {
-            declared
-        }
+            .collect()
     }
 
-    /// The textual diff of the work for `issue_id` against its [review baseline](Self::issue_baseline)
-    /// — what a [Code Review](handle_code_review) hands its reviewer. Empty when no baseline exists,
-    /// and empty (with a logged breadcrumb suppressed to keep the review resilient) when the git
-    /// diff itself fails. Serialized on the shared [git lock](Self::git_lock) since it stages the
-    /// index transiently.
+    /// The textual diff of `issue_id`'s work against its [review baseline](Self::issue_baseline) —
+    /// what its reviewers are shown. Read from the issue's own worktree (or the shared workspace
+    /// when it has none). Empty when no baseline exists, and empty when the git diff itself fails,
+    /// which keeps a review resilient rather than aborting it. Serialized on the shared
+    /// [git lock](Self::git_lock) since it stages the index transiently.
     fn review_diff(&self, issue_id: &str) -> String {
         let Some(baseline) = self.issue_baseline(issue_id) else {
             return String::new();
         };
+        let dir = self.issue_workspace(issue_id);
         let _guard = self.git_lock.lock().expect("git lock");
-        git::diff_since(&self.workspace_dir, &baseline).unwrap_or_default()
+        git::diff_since(&dir, &baseline).unwrap_or_default()
     }
 
-    /// The textual diff of the **whole run's** work against the run [baseline](Self::baseline_commit)
-    /// — what the [`review-gated`](crate::fsm) FSM's `review` state hands its reviewer (a run-level
-    /// [Code Review](handle_code_review), not scoped to a board issue). Empty when no baseline exists.
-    /// Serialized on the shared [git lock](Self::git_lock) since it stages the index transiently.
-    fn run_diff(&self) -> String {
-        let Some(baseline) = self.baseline_commit() else {
-            return String::new();
-        };
-        let _guard = self.git_lock.lock().expect("git lock");
-        git::diff_since(&self.workspace_dir, baseline).unwrap_or_default()
+    /// Append `record` to the [review history](Self::issue_reviews) of `issue_id`.
+    fn record_review(&self, issue_id: &str, record: ReviewRecord) {
+        self.issue_reviews
+            .lock()
+            .expect("issue reviews lock")
+            .entry(issue_id.to_string())
+            .or_default()
+            .push(record);
+    }
+
+    /// The [review history](Self::issue_reviews) of `issue_id` rendered for a reviewer's brief, or
+    /// `None` when nothing has been reviewed yet.
+    ///
+    /// A reviewer that cannot see what a previous round already asked for re-litigates it, and a
+    /// second reviewer in the same round has no way to know the first one approved. Handing over the
+    /// record is what makes the rounds cumulative rather than independent.
+    fn review_history(&self, issue_id: &str) -> Option<String> {
+        let reviews = self.issue_reviews.lock().expect("issue reviews lock");
+        let records = reviews.get(issue_id)?;
+        if records.is_empty() {
+            return None;
+        }
+        let mut out = String::new();
+        for record in records {
+            if record.approved {
+                out.push_str(&format!("\n- `{}` approved the work.", record.reviewer));
+                continue;
+            }
+            out.push_str(&format!("\n- `{}` requested changes:", record.reviewer));
+            for item in &record.items {
+                out.push_str(&format!("\n  - {item}"));
+            }
+        }
+        Some(out)
     }
 
     // -- Project-management auto-dispatch (crate::board) ------------------------------------------
@@ -1370,6 +1490,42 @@ impl Orchestrator {
         }
     }
 
+    /// **Reopen** issue `issue_id` after a review requested changes: dispatch it again to a fresh
+    /// agent under its own assigned profile, driven by its brief plus the reviewer's items, in the
+    /// worktree its earlier attempt already produced.
+    ///
+    /// The retry count is passed through unchanged — rework asked for by a reviewer is not a failed
+    /// attempt, and charging it against the retry budget would let a thorough reviewer fail an issue
+    /// that is progressing perfectly well.
+    fn reopen_issue_for_review(
+        self: &Arc<Self>,
+        issue_id: &str,
+        items: &[String],
+        emitter: &Emitter,
+    ) {
+        let retry = self.board.issue_retries(issue_id);
+        let agent_id = self.next_agent_id();
+        if !self.board.redispatch_issue(issue_id, &agent_id, retry) {
+            return;
+        }
+        let profile = self.issue_profile(issue_id);
+        let brief = build_fix_brief(
+            &self.issue_brief_or_fallback(issue_id),
+            items,
+            self.profile_or_root(&profile)
+                .is_enabled(CAPABILITY_RESPONSES_AS_CODE),
+        );
+        emitter.emit(log(
+            "info",
+            format!(
+                "the review of issue `{issue_id}` requested {} change(s); re-dispatching it to \
+                 agent `{agent_id}`.",
+                items.len()
+            ),
+        ));
+        self.spawn_issue_agent(agent_id, issue_id.to_string(), brief, retry, emitter);
+    }
+
     /// The issue's [brief](BoardRuntime::issue_brief), or a bare fallback if it vanished between the
     /// claim and this read (it cannot normally, since the claim just touched it).
     fn issue_brief_or_fallback(&self, issue_id: &str) -> String {
@@ -1404,11 +1560,11 @@ impl Orchestrator {
                 return self.abort_issue_dispatch(&issue_id, &slot, &err.to_string(), emitter);
             }
         };
-        // Record the issue's dispatch facts on its first dispatch (retry 0), so a later Code Review
-        // has an issue-level baseline and the profile to re-run a fix agent under.
-        if retry == 0 {
-            self.record_issue_dispatch(&issue_id, &slot);
-        }
+        // Every issue works in its own worktree, created on its first dispatch and reused by every
+        // later agent that touches it (a retry, a review round, its reviewers). Isolation that is
+        // unavailable is logged there and degrades to the shared workspace rather than failing the
+        // issue.
+        self.ensure_issue_worktree(&issue_id, emitter);
         let agent = Agent {
             id: agent_id,
             parent_id: None,
@@ -1623,7 +1779,7 @@ fn issue_wait_result(issue_id: &str, status: IssueStatus) -> ToolOutcome {
         ),
         // Only ever called with a terminal status; a non-terminal one means the issue was replaced
         // between checks, which is reported honestly rather than asserted away.
-        IssueStatus::Open | IssueStatus::InProgress => ToolOutcome::ok(
+        IssueStatus::Open | IssueStatus::InProgress | IssueStatus::InReview => ToolOutcome::ok(
             format!("Issue `{issue_id}` is {}.", status_word(status)),
             format!("issue `{issue_id}` {}", status_word(status)),
         ),
@@ -1635,6 +1791,7 @@ fn status_word(status: IssueStatus) -> &'static str {
     match status {
         IssueStatus::Open => "open",
         IssueStatus::InProgress => "in progress",
+        IssueStatus::InReview => "in review",
         IssueStatus::Done => "done",
         IssueStatus::Failed => "failed",
     }
@@ -1671,10 +1828,15 @@ enum AgentRole {
         brief: String,
         /// The board issue this subagent was dispatched against, when any (scopes its telemetry).
         issue_id: Option<String>,
-        /// The isolated [worktree](Worktree) this subagent runs in, when it was dispatched with
-        /// `worktree: true`. `Some` roots the subagent's tools in the worktree and reconciles it
-        /// (merge on clean completion, else discard) when the subagent finishes; `None` runs the
+        /// The isolated [worktree](Worktree) this subagent's tools are rooted in, when it was
+        /// dispatched into one — an issue's reviewer (which reads the tree its issue is working in)
+        /// or a [speculation](handle_speculate) attempt (which gets a fresh one). `None` runs the
         /// subagent in the shared main tree.
+        ///
+        /// The worktree is **not** reconciled here: whoever created it owns its fate — an issue's
+        /// is merged when the issue is accepted, a speculation's when its judge picks a winner —
+        /// because a reviewer and its issue share one tree, and an attempt that merged itself would
+        /// defeat best-of-K.
         worktree: Option<Worktree>,
         /// The spawner's wait condition the subagent signals on completion.
         parent_wait: Arc<ParentWait>,
@@ -1685,46 +1847,35 @@ enum AgentRole {
     },
 }
 
-/// How a finished worktree subagent's isolated branch is reconciled by [`run_agent`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum WorktreeDisposition {
-    /// The default (Phase 4B): on clean completion, commit the work onto the branch and
-    /// [merge it back](reconcile_worktree) into the main tree (or surface a conflict), then tear the
-    /// worktree down — used by ad-hoc `spawn_subagent`/workflow worktree dispatch.
-    Merge,
-    /// [Speculative execution](handle_speculate): the subagent is one of K best-of-K attempts, so
-    /// [`run_agent`] leaves its worktree **in place** without merging — the `speculate` routine judges
-    /// the attempts' work, then merges the winner's worktree and discards the losers'. Reconciling
-    /// each attempt independently would defeat best-of-K (every attempt would merge).
-    Speculative,
-}
-
-/// An isolated [git worktree](https://docs.testcabinet.ai/gg/worktrees/) a subagent runs in: its
-/// per-agent branch and checkout path.
+/// An isolated git worktree an agent runs in: its branch, its checkout path, and the commit it
+/// branched from.
 ///
-/// Created at [spawn time](make_worktree) (a `git worktree add` on a fresh branch based at the
-/// [baseline](Orchestrator::baseline_commit)) so the subagent gets a private copy of the workspace
-/// to mutate; how it is reconciled when the subagent finishes is set by its
-/// [disposition](Worktree::disposition) — [merged back](reconcile_worktree) for ad-hoc dispatch, or
-/// [left for the judge](WorktreeDisposition::Speculative) for a best-of-K attempt.
+/// Two things create one. An [issue](crate::board) gets a worktree on its first dispatch
+/// ([`ensure_issue_worktree`](Orchestrator::ensure_issue_worktree)) that every later agent touching
+/// that issue — a retry, a review round's re-dispatch, its reviewers — shares, and which is merged
+/// back into the main tree when the issue is accepted. A [speculation](handle_speculate) gives each
+/// of its K attempts its own, of which only the winner's is merged.
+///
+/// [`base`](Self::base) is kept because it is what a diff of the work is taken against: the tree's
+/// own `HEAD` moves as the agent commits, and the run baseline is too early once earlier issues have
+/// landed.
+#[derive(Debug, Clone)]
 struct Worktree {
-    /// The per-agent branch the worktree checks out (for example `gg/agent-3`).
+    /// The branch the worktree checks out (for example `gg/issue-3`).
     branch: String,
-    /// The worktree's checkout directory — the subagent's rooted workspace while it runs.
+    /// The worktree's checkout directory — the agent's rooted workspace while it runs.
     path: PathBuf,
-    /// How this worktree is reconciled when its subagent finishes.
-    disposition: WorktreeDisposition,
+    /// The commit the branch was created from — the baseline a review or judge diffs against.
+    base: String,
 }
 
 /// The resolved worktree-isolation state for a run, computed once at session start and handed to
 /// [`Orchestrator::build`].
 struct WorktreesSetup {
-    /// Whether the [worktrees](CAPABILITY_WORKTREES) capability is enabled (the raw toggle).
-    capability: bool,
     /// The committed [baseline](Orchestrator::baseline_commit) sha, when git made the workspace a
-    /// repo. `Some` even if the worktree root could not be created, so Phase 5 can still reuse it.
+    /// repo.
     baseline_commit: Option<String>,
-    /// The directory per-agent worktree checkouts are created under, `Some` only when isolation is
+    /// The directory worktree checkouts are created under, `Some` only when isolation is
     /// actually usable this run.
     root: Option<PathBuf>,
 }
@@ -1813,12 +1964,15 @@ async fn run_agent(
         AgentRole::Issue { brief, .. } => Some(brief.clone()),
         AgentRole::Root => None,
     };
-    let worktree_branch = match &role {
-        AgentRole::Sub {
-            worktree: Some(wt), ..
-        } => Some(wt.branch.clone()),
-        _ => None,
+    // The isolated worktree this agent's tools are rooted in, when it has one: an issue agent takes
+    // its issue's, a reviewer or speculation attempt is handed one at dispatch, and everything else
+    // works in the shared main tree.
+    let worktree = match &role {
+        AgentRole::Sub { worktree, .. } => worktree.clone(),
+        AgentRole::Issue { issue_id, .. } => orch.issue_worktree(issue_id),
+        AgentRole::Root => None,
     };
+    let worktree_branch = worktree.as_ref().map(|wt| wt.branch.clone());
     emitter.emit(GgTelemetryKind::AgentSpawned {
         slot: agent.slot.clone(),
         model_id: model_id.clone(),
@@ -1868,11 +2022,9 @@ async fn run_agent(
     // mutation lands in the private copy rather than the shared main tree; otherwise root them in
     // the shared workspace (the default). This is the whole of the worktree isolation at the tool
     // layer — the loop is otherwise identical.
-    let workspace_dir = match &role {
-        AgentRole::Sub {
-            worktree: Some(wt), ..
-        } => wt.path.clone(),
-        _ => orch.workspace_dir.clone(),
+    let workspace_dir = match &worktree {
+        Some(wt) => wt.path.clone(),
+        None => orch.workspace_dir.clone(),
     };
     // The tool context carries this agent's model alongside its workspace root, because
     // one tool's answer depends on it: `read_file` attaches a picture only when the model
@@ -1901,7 +2053,6 @@ async fn run_agent(
             &board,
             &planning,
             &fsm,
-            orch.code_reviews_active(),
             orch.speculative_active(),
             code.enabled,
             &completion,
@@ -2065,7 +2216,6 @@ async fn run_agent(
             fsm,
             read_policy(&profile),
             shell_offload(&profile),
-            orch.code_reviews_active(),
             orch.speculative_active(),
             code,
             completion,
@@ -2103,29 +2253,7 @@ async fn run_agent(
             // Free the slot first (like the root), so a re-dispatch or a newly-unblocked issue can
             // acquire it, then reconcile the issue against what the agent did.
             orch.scheduler.release();
-            if orch.board.issue_is_done(&issue_id) {
-                // The agent accepted its issue (via `complete_issue`, possibly Code-Review gated).
-                // Unblock any dependents and wake anyone waiting on it.
-                orch.on_issue_progress(emitter);
-            } else if (retry as usize) < orch.board.max_retries() {
-                // It finished without completing the issue and retries remain: re-dispatch it to a
-                // fresh agent. The issue stays `InProgress` (its waiters keep waiting).
-                orch.redispatch_issue(&issue_id, retry + 1, emitter);
-                orch.on_issue_progress(emitter);
-            } else {
-                // Retries exhausted: mark it failed (terminal, but not done — dependents stay
-                // blocked) and wake anyone waiting on it.
-                orch.board.fail_issue(&issue_id);
-                emitter.emit(log(
-                    "warn",
-                    format!(
-                        "issue `{issue_id}` could not be completed after {} attempt(s); marking it \
-                         failed.",
-                        retry + 1
-                    ),
-                ));
-                orch.on_issue_progress(emitter);
-            }
+            reconcile_issue(&orch, &issue_id, retry, emitter).await;
         }
         AgentRole::Sub {
             worktree,
@@ -2136,49 +2264,23 @@ async fn run_agent(
         } => {
             // The summary is the subagent's final assistant message (its return value), or a short
             // status when it produced none.
-            let mut summary = end
+            let summary = end
                 .final_text
                 .clone()
                 .unwrap_or_else(|| format!("(subagent ended: {})", end.status));
 
-            // Reconcile an isolated worktree before returning, per its disposition:
-            //
-            // - `Merge` (ad-hoc `spawn_subagent`/workflow dispatch): a cleanly completed subagent's
-            //   work is merged back into the main tree; anything else is discarded; the worktree is
-            //   torn down either way. A merge conflict (or failure) is surfaced — appended to the
-            //   return value the spawner sees and emitted as a `WorktreeMerged` outcome — never
-            //   silently dropped.
-            // - `Speculative` (a best-of-K attempt): the worktree is left **in place** and NOT merged.
-            //   The `speculate` routine that fanned this attempt out judges the K attempts' work and
-            //   then merges only the winner (discarding the rest), so merging each attempt here would
-            //   defeat best-of-K. Its lifecycle is reported by `Speculation` telemetry, not
-            //   `WorktreeMerged`.
-            if let Some(wt) = worktree {
-                match wt.disposition {
-                    WorktreeDisposition::Merge => {
-                        // A subagent's work is merged only when it finished on its own terms.
-                        // A limit-stopped child is discarded unmerged exactly as an exhausted or
-                        // timed-out one is: it holds half-finished work, and merging that can turn
-                        // a working artifact into a broken one.
-                        let succeeded = end.status == STATUS_COMPLETED;
-                        let outcome = reconcile_worktree(&orch, &agent.id, &wt, succeeded);
-                        if let Some(note) = outcome.note {
-                            summary.push_str("\n\n");
-                            summary.push_str(&note);
-                        }
-                        emitter.emit(GgTelemetryKind::WorktreeMerged {
-                            branch: wt.branch,
-                            merged: outcome.merged,
-                            conflicts: outcome.conflicts,
-                        });
-                    }
-                    WorktreeDisposition::Speculative => {
-                        // Leave the worktree and its branch untouched for the speculate routine.
-                    }
-                }
-            }
+            // A worktree this subagent ran in is deliberately left untouched: whoever created it
+            // owns its fate. A reviewer shares its issue's tree, which the issue's own reconciliation
+            // merges; a speculation attempt's tree is judged and then merged or discarded by the
+            // `speculate` routine that fanned it out. Reconciling here would merge a reviewer's read
+            // as if it were work, and would defeat best-of-K by merging every attempt.
+            let _ = &worktree;
 
-            if orch.delegation_enabled() {
+            // Gated on the run being multi-agent rather than on delegation specifically: a
+            // project-management run with no `subagents` capability still dispatches reviewers and
+            // a merge agent, and a reviewer whose verdict never appeared on the tree would be an
+            // agent the console could see start and never see answer.
+            if orch.multi_agent() {
                 emitter.emit(GgTelemetryKind::AgentReturned {
                     summary: summary.clone(),
                 });
@@ -2209,7 +2311,6 @@ fn announce_configuration(
     board: &BoardRuntime,
     planning: &PlanningRuntime,
     fsm: &FsmRuntime,
-    code_reviews: bool,
     speculative: bool,
     responses_as_code: bool,
     completion: &CompletionSetup,
@@ -2270,14 +2371,6 @@ fn announce_configuration(
             "info",
             "planning enabled; the model can enter a read-only plan mode mid-session and \
              implement from a fresh context after submitting a plan.",
-        ));
-    }
-    if code_reviews {
-        emitter.emit(log(
-            "info",
-            "code reviews enabled; marking an issue done triggers a Code Review (a reviewer \
-             agent inspects the diff against the issue's completion criteria) before the issue is \
-             accepted, and a fix agent addresses any requested changes until a review approves.",
         ));
     }
     if speculative {
@@ -2448,29 +2541,16 @@ fn spawn_subagent(sub: &mut SubagentContext, spawner: &Agent, args: &Value) -> T
         Ok(profile) => profile,
         Err(refusal) => return refusal,
     };
-    // Ad-hoc subagents carry no board issue (issues auto-dispatch to their own top-level agents).
-    let issue_id = None;
-
-    let want_worktree = args
-        .get("worktree")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-
-    let worktree = want_worktree.then_some(WorktreeDisposition::Merge);
-    match dispatch_child(sub, spawner, brief, issue_id, &profile, worktree) {
+    // Ad-hoc subagents carry no board issue (issues auto-dispatch to their own top-level agents)
+    // and share the spawner's tree — isolation belongs to issues and speculations, which own the
+    // worktree's whole lifecycle.
+    match dispatch_child(sub, spawner, brief, None, &profile, None) {
         Ok(child) => {
-            let worktree_note = match &child.worktree_branch {
-                Some(branch) => format!(
-                    " It runs in an isolated worktree (branch `{branch}`), merged back into the \
-                     main tree when it completes cleanly.",
-                ),
-                None => String::new(),
-            };
             ToolOutcome::ok(
                 format!(
                     "Spawned subagent `{id}` as agent `{slot}` (model `{model}`). It is running in \
                      parallel — call `wait_for_subagents` to collect its result, or `send_message` \
-                     to guide it while it works.{worktree_note}",
+                     to guide it while it works.",
                     id = child.id,
                     slot = child.slot,
                     model = child.model_id,
@@ -2485,7 +2565,6 @@ fn spawn_subagent(sub: &mut SubagentContext, spawner: &Agent, args: &Value) -> T
                 id: child.id,
                 slot: child.slot,
                 model_id: child.model_id,
-                worktree_branch: child.worktree_branch,
             }))
         }
         Err(err) => err.into(),
@@ -2501,12 +2580,6 @@ struct DispatchedChild {
     slot: String,
     /// The concrete model the slot resolved to.
     model_id: String,
-    /// The isolated [worktree](Worktree) branch the child runs in, when it was dispatched with one.
-    worktree_branch: Option<String>,
-    /// The isolated [worktree](Worktree) checkout path, when the child was dispatched with one — the
-    /// directory a [speculative execution](handle_speculate) reads the attempt's diff from and later
-    /// merges or discards.
-    worktree_path: Option<PathBuf>,
 }
 
 /// A delegation that could not be dispatched, carrying **both** halves of the answer: the sentence
@@ -2611,7 +2684,7 @@ fn dispatch_child(
     brief: String,
     issue_id: Option<String>,
     profile_name: &str,
-    worktree_disposition: Option<WorktreeDisposition>,
+    worktree: Option<Worktree>,
 ) -> Result<DispatchedChild, DispatchError> {
     let orch = &sub.orch;
 
@@ -2651,29 +2724,9 @@ fn dispatch_child(
     })?;
     let model_id = client.model_id().to_string();
 
-    // Record this issue's dispatch facts on its first dispatch, so a later Code Review of it has an
-    // issue-level baseline (the commit its work began at) and knows which profile to re-run a fix
-    // agent under. Only the first dispatch is kept, so a reviewer/fix agent dispatched against the
-    // same issue (which also carries its issueId) does not overwrite the real work baseline/profile.
-    if let Some(issue_id) = &issue_id {
-        orch.record_issue_dispatch(issue_id, &slot);
-    }
-
     // Build the child's identity, wiring, and role, then schedule it. The child clones the
     // spawner's `ParentWait` so it can signal completion back up.
     let child_id = orch.next_agent_id();
-
-    // Optional worktree isolation — a *dispatch property*. When requested, create a fresh git
-    // worktree on a per-agent branch (based at the run baseline); the child's tools are then rooted
-    // there and its work is reconciled when it finishes. A request without the capability (or with
-    // git unavailable) is refused with guidance rather than silently ignored, so an ablation's off
-    // arm is unambiguous.
-    let worktree = match worktree_disposition {
-        Some(disposition) => Some(make_worktree(orch, &child_id, disposition)?),
-        None => None,
-    };
-    let worktree_branch = worktree.as_ref().map(|wt| wt.branch.clone());
-    let worktree_path = worktree.as_ref().map(|wt| wt.path.clone());
 
     let (inbox_tx, inbox_rx) = mpsc::unbounded_channel();
     let (result_tx, result_rx) = oneshot::channel();
@@ -2709,143 +2762,69 @@ fn dispatch_child(
         id: child_id,
         slot,
         model_id,
-        worktree_branch,
-        worktree_path,
     })
 }
 
-/// Create an isolated [worktree](Worktree) for the child `child_id`, or a model-facing error when
+/// Create a fresh isolated [worktree](Worktree) named `name`, or a model-facing error when
 /// isolation is unavailable.
 ///
-/// A `worktree: true` dispatch is refused (rather than silently downgraded to the shared tree) when
-/// the [worktrees](CAPABILITY_WORKTREES) capability is off, or when it is on but git could not
-/// establish a baseline at startup — each with guidance to spawn without `worktree: true`. On
-/// success it runs `git worktree add` on branch `gg/<child_id>` based at the run
-/// [baseline](Orchestrator::baseline_commit), under the [worktree root](Orchestrator::worktrees_root).
-/// The git call is serialized on the shared [git lock](Orchestrator::git_lock).
-fn make_worktree(
-    orch: &Orchestrator,
-    child_id: &str,
-    disposition: WorktreeDisposition,
-) -> Result<Worktree, DispatchError> {
-    // The capability is off: the feature exists but this run does not offer it, which is exactly
-    // what `unavailable` says.
-    if !orch.worktrees_capability {
+/// Used by [speculative execution](handle_speculate), whose attempts each need their own copy of the
+/// workspace. (An [issue](crate::board)'s worktree is created by
+/// [`ensure_issue_worktree`](Orchestrator::ensure_issue_worktree) instead, which is keyed by issue
+/// rather than by agent and degrades to the shared tree rather than refusing.) The branch is based
+/// at the main tree's current `HEAD`, so an attempt starts from everything already landed. The git
+/// call is serialized on the shared [git lock](Orchestrator::git_lock).
+fn make_worktree(orch: &Orchestrator, name: &str) -> Result<Worktree, DispatchError> {
+    let Some(root) = &orch.worktrees_root else {
         return Err(DispatchError::new(
             ToolFailure::Unavailable,
-            "cannot dispatch this subagent in a worktree: the `worktrees` capability is not \
-             enabled for this run. Spawn without `worktree: true` to run in the shared workspace.",
+            "worktree isolation is unavailable this run (git could not initialize a workspace \
+             baseline at startup), so this work cannot be run in an isolated copy of the workspace.",
         ));
-    }
-    let (root, base) = match (&orch.worktrees_root, &orch.baseline_commit) {
-        (Some(root), Some(base)) => (root, base),
-        _ => {
-            return Err(DispatchError::new(
-                ToolFailure::Unavailable,
-                "cannot dispatch this subagent in a worktree: worktree isolation is unavailable \
-                 this run (git could not initialize a workspace baseline at startup). Spawn \
-                 without `worktree: true` to run in the shared workspace.",
-            ));
-        }
     };
-    let branch = format!("gg/{child_id}");
-    let path = root.join(child_id);
     let _guard = orch.git_lock.lock().expect("git lock");
-    git::add_worktree(&orch.workspace_dir, &path, &branch, base).map_err(|err| {
+    let base = git::head_commit(&orch.workspace_dir).map_err(|err| {
         DispatchError::new(
             ToolFailure::IoError,
-            format!("could not create an isolated worktree for the subagent: {err}"),
+            format!(
+                "could not read the workspace `HEAD` to branch an isolated worktree from: {err}"
+            ),
         )
     })?;
-    Ok(Worktree {
-        branch,
-        path,
-        disposition,
-    })
+    let slug = worktree_slug(name);
+    let branch = format!("gg/{slug}");
+    let path = root.join(&slug);
+    git::add_worktree(&orch.workspace_dir, &path, &branch, &base).map_err(|err| {
+        DispatchError::new(
+            ToolFailure::IoError,
+            format!("could not create an isolated worktree: {err}"),
+        )
+    })?;
+    Ok(Worktree { branch, path, base })
 }
 
-/// The outcome of [reconciling](reconcile_worktree) a finished worktree subagent's branch.
-struct WorktreeReconcile {
-    /// Whether the branch was merged back into the main tree (a clean completion).
-    merged: bool,
-    /// Whether a merge conflict prevented the merge (the main tree was left unchanged).
-    conflicts: bool,
-    /// A note to append to the subagent's return value when the merge did not cleanly apply (a
-    /// conflict, a git failure, or a cleanup hiccup), so the spawner sees it. `None` on a clean
-    /// merge or a plain discard.
-    note: Option<String>,
-}
-
-/// Reconcile a finished worktree subagent's isolated branch back into the main tree, then tear the
-/// worktree down.
+/// A filesystem- and git-safe slug for a worktree branch/directory built from `name`.
 ///
-/// **Merge policy (Phase 4B):** a subagent that completed cleanly (`succeeded`) has its work
-/// committed onto its branch and the branch merged back into the main tree with an explicit merge
-/// commit. A **merge conflict** leaves the main tree unchanged and is surfaced — appended to the
-/// return value and reported as `conflicts: true` — rather than silently dropped; resolving it is a
-/// later concern. A subagent that failed, exhausted, or timed out is **discarded** unmerged. The
-/// worktree and its branch are removed in **every** case. All git operations run under the shared
-/// [git lock](Orchestrator::git_lock) (concurrent subagents finish in parallel); the whole function
-/// is synchronous, so the guard never spans an await.
-fn reconcile_worktree(
-    orch: &Orchestrator,
-    agent_id: &str,
-    wt: &Worktree,
-    succeeded: bool,
-) -> WorktreeReconcile {
-    let _guard = orch.git_lock.lock().expect("git lock");
-    let mut merged = false;
-    let mut conflicts = false;
-    let mut note = None;
-
-    if succeeded {
-        match git::commit_worktree(&wt.path, &format!("gg subagent {agent_id}")) {
-            Ok(_committed) => match git::merge_branch(&orch.workspace_dir, &wt.branch) {
-                Ok(git::MergeOutcome::Merged) => merged = true,
-                Ok(git::MergeOutcome::Conflict(reason)) => {
-                    conflicts = true;
-                    note = Some(format!(
-                        "NOTE: your work in worktree `{}` could not be merged back — it conflicts \
-                         with concurrent changes in the main tree, which was left unchanged. Your \
-                         work remains on its branch for a later pass. ({})",
-                        wt.branch,
-                        first_line(&reason)
-                    ));
-                }
-                Err(err) => {
-                    note = Some(format!(
-                        "NOTE: merging worktree `{}` back into the main tree failed: {err}. The \
-                         main tree was left unchanged.",
-                        wt.branch
-                    ));
-                }
-            },
-            Err(err) => {
-                note = Some(format!(
-                    "NOTE: committing the work in worktree `{}` failed: {err}. It was not merged \
-                     back.",
-                    wt.branch
-                ));
+/// Issue ids are model-chosen strings, so they can carry slashes, spaces, or anything else the model
+/// felt like typing — none of which belong in a branch name or a directory. Every character outside
+/// `[A-Za-z0-9._-]` becomes `-`, and an empty result falls back to `unnamed`, so a worktree can
+/// always be created for any issue.
+fn worktree_slug(name: &str) -> String {
+    let slug: String = name
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-') {
+                ch
+            } else {
+                '-'
             }
-        }
-    }
-
-    // Tear the worktree down in every case — a merged, conflicted, or discarded subagent — so no
-    // isolated copy or dangling branch is left behind. A cleanup failure must not fail the run; it
-    // only leaves a breadcrumb in the note when there is not already a more important one.
-    if let Err(err) = git::remove_worktree(&orch.workspace_dir, &wt.path, &wt.branch)
-        && note.is_none()
-    {
-        note = Some(format!(
-            "NOTE: tearing down worktree `{}` reported: {err}",
-            wt.branch
-        ));
-    }
-
-    WorktreeReconcile {
-        merged,
-        conflicts,
-        note,
+        })
+        .collect();
+    let slug = slug.trim_matches('-').to_string();
+    if slug.is_empty() {
+        "unnamed".to_string()
+    } else {
+        slug
     }
 }
 
@@ -3059,244 +3038,464 @@ fn send_message(sub: &mut SubagentContext, args: &Value) -> ToolOutcome {
 }
 
 // ---------------------------------------------------------------------------
-// Code Reviews: gate issue acceptance on a reviewer subagent + a fix loop
+// Issue reconciliation: reviewers, the fix loop, and the merge back
 // ---------------------------------------------------------------------------
 
-/// The structured verdict a [Code Review](handle_code_review)'s reviewer returns, parsed from its
-/// final message by [`parse_review_verdict`].
+/// The structured verdict one of an [issue's](crate::board) reviewers returns, parsed from its final
+/// message by [`parse_review_verdict`].
 struct ReviewVerdict {
-    /// Whether the reviewer **approved** the work (the issue may be accepted).
+    /// Whether the reviewer **approved** the work (this reviewer is satisfied).
     approved: bool,
-    /// When not approved, the reviewer's actionable items — the changes a fix agent must address
-    /// before re-review. Always at least one item when `!approved` (a generic item is synthesized
-    /// if the reviewer listed none).
+    /// When not approved, the reviewer's actionable items — the changes the issue's assigned agent
+    /// must address before re-review. Always at least one item when `!approved` (a generic item is
+    /// synthesized if the reviewer listed none).
     items: Vec<String>,
 }
 
-/// Handle an intercepted `complete_issue` when [Code Reviews are active](Orchestrator::code_reviews_active):
-/// run a **Code Review** that gates the issue's acceptance, and return the model-facing outcome.
-///
-/// Rather than mark the issue done, gg:
-///
-/// 1. resolves the issue's brief and its [review baseline](Orchestrator::issue_baseline), and emits
-///    [`CodeReview`](GgCodeReviewPhase::Requested);
-/// 2. computes the [diff](Orchestrator::review_diff) of the work against that baseline and
-///    [dispatches a reviewer subagent](dispatch_child) — on the [`reviewer`](Orchestrator::reviewer_slot)
-///    slot — with the diff plus the issue's scope/completion criteria as its brief, then
-///    [waits](await_children) for it and [parses its verdict](parse_review_verdict);
-/// 3. on **approval**, marks the issue done ([`CodeReview`](GgCodeReviewPhase::Approved)) and returns
-///    a success outcome — the issue is accepted;
-/// 4. on **actionable items** ([`CodeReview`](GgCodeReviewPhase::ChangesRequested)), spawns a fix
-///    agent with the **original issue brief plus the items**, waits for it, and loops back to
-///    re-review — with **no cycle limit**.
-///
-/// The loop terminates on approval; it is otherwise bounded only by the run's
-/// [deadline](Orchestrator::deadline) (checked each round) and the scheduler — a reviewer that ends
-/// without a clean verdict, an undispatchable reviewer/fix agent, or an exhausted time budget aborts
-/// the review with the issue **left unaccepted** (never silently accepted). The reviewer and fix
-/// agents are ordinary subagents scoped to the issue, so they animate the agent tree normally.
-async fn handle_code_review(
-    sub: &mut SubagentContext,
-    spawner: &Agent,
-    board: &BoardRuntime,
-    emitter: &Emitter,
-    call: &ToolCall,
-) -> ToolOutcome {
-    // Clone the orchestrator Arc out so `sub` stays free to be borrowed mutably by dispatch/await.
-    let orch = Arc::clone(&sub.orch);
+/// What one round of an [issue's](crate::board) review concluded.
+enum RoundOutcome {
+    /// Every reviewer approved: the issue may be merged and accepted.
+    Approved,
+    /// A reviewer returned actionable items: the issue's assigned agent is re-invoked with them.
+    ChangesRequested(Vec<String>),
+    /// The review could not be conducted (a reviewer that would not dispatch, or one that ended
+    /// without a verdict). The issue is **not** accepted — work no reviewer approved never is.
+    Aborted(String),
+}
 
-    let issue_id = match call.arguments.get("id").and_then(Value::as_str) {
-        Some(id) if !id.trim().is_empty() => id.trim().to_string(),
-        _ => {
-            return ToolOutcome::failed(
-                ToolFailure::InvalidArgument,
-                "complete_issue needs a non-empty `id`.",
-            );
+/// Reconcile an [issue](crate::board) once the agent working it has finished — the whole of what
+/// happens between "an agent stopped" and "the board moved".
+///
+/// Three things can be true when an issue agent's loop ends, and each has its own path:
+///
+/// 1. It **claimed the work is done** (`complete_issue` moved the issue to
+///    [`InReview`](IssueStatus::InReview)). gg runs the issue's [reviewers](run_issue_review) in
+///    turn. On approval the issue's worktree is [merged back](merge_issue_worktree) and the issue is
+///    [accepted](BoardRuntime::accept_issue); on a request for changes the issue is
+///    [reopened](Orchestrator::reopen_issue_for_review) under its own assigned agent with the items,
+///    and this whole path runs again when *that* agent finishes. There is deliberately **no cycle
+///    limit** — a review that keeps finding real problems should keep finding them — so the loop is
+///    bounded by the run's own ceilings.
+/// 2. It **stopped without completing** and retries remain: the issue is re-dispatched to a fresh
+///    agent in the same worktree, so the next attempt continues rather than restarts.
+/// 3. It stopped without completing and the retries are spent: the issue is
+///    [failed](BoardRuntime::fail_issue) and its worktree discarded unmerged.
+///
+/// Every path ends by [pumping the board](Orchestrator::on_issue_progress), so dependents unblock
+/// and waiters wake exactly once the issue's real state is settled.
+async fn reconcile_issue(orch: &Arc<Orchestrator>, issue_id: &str, retry: u32, emitter: &Emitter) {
+    if orch.board.issue_is_in_review(issue_id) {
+        match run_issue_review(orch, issue_id, emitter).await {
+            RoundOutcome::Approved => {
+                accept_issue(orch, issue_id, emitter).await;
+            }
+            RoundOutcome::ChangesRequested(items) => {
+                // The issue goes back to its own assigned agent with the reviewer's items. It stays
+                // non-terminal throughout, so its waiters keep waiting and its dependents stay
+                // blocked — which is the point of `InReview` not being `Done`.
+                orch.reopen_issue_for_review(issue_id, &items, emitter);
+            }
+            RoundOutcome::Aborted(reason) => {
+                emitter.emit(log(
+                    "warn",
+                    format!(
+                        "the review of issue `{issue_id}` could not be completed ({reason}); the \
+                         issue was not accepted."
+                    ),
+                ));
+                orch.board.fail_issue(issue_id);
+                discard_issue_worktree(orch, issue_id, emitter);
+            }
         }
+    } else if (retry as usize) < orch.board.max_retries() {
+        // It finished without completing the issue and retries remain: re-dispatch it to a fresh
+        // agent. The issue stays `InProgress` (its waiters keep waiting) and keeps its worktree, so
+        // the next attempt continues from what this one produced.
+        orch.redispatch_issue(issue_id, retry + 1, emitter);
+    } else {
+        // Retries exhausted: mark it failed (terminal, but not done — dependents stay blocked),
+        // throw its unmerged work away, and wake anyone waiting on it.
+        orch.board.fail_issue(issue_id);
+        emitter.emit(log(
+            "warn",
+            format!(
+                "issue `{issue_id}` could not be completed after {} attempt(s); marking it failed.",
+                retry + 1
+            ),
+        ));
+        discard_issue_worktree(orch, issue_id, emitter);
+    }
+    orch.on_issue_progress(emitter);
+}
+
+/// Run one **review round** over `issue_id`: dispatch each of its [reviewers](Orchestrator::reviewer_slots)
+/// in turn against the current diff of its work, and report what the round concluded.
+///
+/// The reviewers run **sequentially**, and the first that does not approve ends the round — a second
+/// opinion is never spent on work already known to need changes. Each is shown the issue's brief, the
+/// diff, and the [history](Orchestrator::review_history) of every verdict rendered so far, so a
+/// re-review can tell whether its own earlier items were addressed and a later reviewer knows what an
+/// earlier one already asked for. Every verdict is recorded on the issue, whichever way it went.
+///
+/// An issue that named **no** reviewers is approved immediately — there is nobody to gate it — and
+/// emits no review telemetry, so a board run without reviewers looks exactly as it did before.
+async fn run_issue_review(
+    orch: &Arc<Orchestrator>,
+    issue_id: &str,
+    emitter: &Emitter,
+) -> RoundOutcome {
+    let reviewers = orch.reviewer_slots(issue_id);
+    if reviewers.is_empty() {
+        return RoundOutcome::Approved;
+    }
+    let Some(brief) = orch.board.issue_brief(issue_id) else {
+        return RoundOutcome::Aborted(format!("issue `{issue_id}` is no longer on the board"));
     };
-    // The original task being tackled — the issue's brief — drives both the reviewer's context and
-    // (augmented with the review items) each fix agent.
-    let brief = match board.issue_brief(&issue_id) {
-        Some(brief) => brief,
-        None => {
-            return ToolOutcome::failed(
-                ToolFailure::NotFound,
-                format!(
-                    "cannot review issue `{issue_id}`: no such issue is on your board. Create it \
-                     with `create_issue` first."
-                ),
-            );
-        }
-    };
-    let baseline = orch.issue_baseline(&issue_id);
-    // The Code Review's lifecycle events ride on the issue's own stream (the envelope `issue_id`),
-    // even though this agent (the completer) was not itself dispatched against the issue.
-    let review_emitter = emitter.with_issue(&issue_id);
-    review_emitter.emit(code_review_event(
-        GgCodeReviewPhase::Requested,
+    let baseline = orch.issue_baseline(issue_id);
+    // The review's lifecycle events ride on the issue's own stream.
+    let review_emitter = emitter.with_issue(issue_id);
+    review_emitter.emit(issue_review_event(
+        GgIssueReviewPhase::Requested,
         None,
         baseline.clone(),
     ));
 
-    loop {
-        // Termination guard: the fix→re-review loop has no cycle limit, so bound it by the run's
-        // wall-clock budget. Past the deadline the review aborts with the issue unaccepted, rather
-        // than spinning up agents that would each time out immediately.
-        if orch
-            .deadline
-            .is_some_and(|deadline| Instant::now() >= deadline)
-        {
-            emitter.emit(log(
-                "warn",
-                format!(
-                    "the Code Review of issue `{issue_id}` did not approve before the run's time \
-                     budget ran out; the issue was not accepted."
-                ),
-            ));
-            return ToolOutcome::failed(
-                ToolFailure::LimitExceeded,
-                format!(
-                    "The Code Review of issue `{issue_id}` did not reach approval before the run's \
-                     time budget ran out, so the issue was NOT marked done. Its work remains for a \
-                     later pass."
-                ),
-            );
-        }
-
-        // Dispatch each of the issue's reviewers against the current diff of the work, in turn, and
-        // parse their verdicts. Every reviewer must approve; the first that does not ends the round
-        // and its items are what the fix agent works from, so a second opinion is never spent on
-        // work already known to need changes. Anything other than a clean verdict aborts the review
-        // with the issue unaccepted (never accept work no reviewer approved).
-        let diff = orch.review_diff(&issue_id);
-        let mut verdict = ReviewVerdict {
-            approved: true,
-            items: Vec::new(),
-        };
-        for reviewer_slot in orch.reviewer_slots(&issue_id) {
-            let review_brief = build_review_brief(
-                &brief,
-                &diff,
-                orch.profile_or_root(&reviewer_slot)
-                    .is_enabled(CAPABILITY_RESPONSES_AS_CODE),
-            );
-            verdict = match dispatch_reviewer(
-                sub,
-                spawner,
-                emitter,
-                Some(issue_id.clone()),
-                review_brief,
-                &reviewer_slot,
-            )
-            .await
-            {
-                Ok(verdict) => verdict,
-                Err(err) => {
-                    emitter.emit(log(
-                        "warn",
-                        format!(
-                            "the Code Review of issue `{issue_id}` did not complete: {err}; the \
-                             issue was not accepted."
-                        ),
-                    ));
-                    return ToolOutcome::failed(
-                        ToolFailure::IoError,
-                        format!(
-                            "The Code Review of issue `{issue_id}` did not complete ({err}), so \
-                             the issue was NOT marked done. Its work remains for a later pass."
-                        ),
-                    );
-                }
-            };
-            if !verdict.approved {
-                break;
-            }
-        }
-
-        if verdict.approved {
-            // Accept the issue: mark it done on the board. The loop refreshes the pinned board block
-            // and re-emits `BoardState` after this outcome (as it does for the tool), so the
-            // acceptance is reflected in the window and the console.
-            board.complete_issue(&issue_id);
-            review_emitter.emit(code_review_event(
-                GgCodeReviewPhase::Approved,
-                None,
-                baseline.clone(),
-            ));
-            let detail = format!(
-                "The Code Review of issue `{issue_id}` approved the work; the issue is accepted \
-                 and marked done."
-            );
-            return ToolOutcome::ok(
-                detail.clone(),
-                format!("code review approved issue `{issue_id}`"),
-            )
-            // With Code Reviews on, this handler *replaces* the `complete_issue` tool's own
-            // outcome — so it also has to replace the tool's sidecar, or a
-            // [code program](crate::sandbox) would be told the acceptance produced no structured
-            // result. `code_reviewed` is the field the whole payload exists for: it is the only
-            // way a caller can tell "accepted after a review" from a plain status change.
-            .with_data(ToolData::Completion(CompletionData {
-                code_reviewed: true,
-                detail,
-            }));
-        }
-
-        // Changes requested: record the items, then spawn a fix agent with the original brief plus
-        // the items and loop back to re-review its work. No cycle limit.
-        review_emitter.emit(code_review_event(
-            GgCodeReviewPhase::ChangesRequested,
-            Some(verdict.items.clone()),
-            baseline.clone(),
-        ));
-        let work_slot = orch.issue_work_slot(&issue_id);
-        let fix_brief = build_fix_brief(
+    let diff = orch.review_diff(issue_id);
+    let history = orch.review_history(issue_id);
+    let worktree = orch.issue_worktree(issue_id);
+    for reviewer in reviewers {
+        let review_brief = build_review_brief(
             &brief,
-            &verdict.items,
-            orch.profile_or_root(&work_slot)
+            &diff,
+            history.as_deref(),
+            orch.profile_or_root(&reviewer)
                 .is_enabled(CAPABILITY_RESPONSES_AS_CODE),
         );
-        let fixer = match dispatch_child(
-            sub,
-            spawner,
-            fix_brief,
-            Some(issue_id.clone()),
-            &work_slot,
-            None,
-        ) {
-            Ok(child) => child,
-            Err(err) => {
-                emitter.emit(log(
-                    "warn",
-                    format!("could not dispatch a fix agent for issue `{issue_id}`: {err}"),
+        let returned = run_detached_agent(
+            orch,
+            &reviewer,
+            review_brief,
+            Some(issue_id.to_string()),
+            worktree.clone(),
+        )
+        .await;
+        let verdict = match returned {
+            Ok(ret) if ret.status == STATUS_COMPLETED => parse_review_verdict(&ret.summary),
+            Ok(ret) => {
+                return RoundOutcome::Aborted(format!(
+                    "the reviewer `{reviewer}` {} without a verdict",
+                    ret.status
                 ));
-                let failure = err.failure;
-                return ToolOutcome::failed(
-                    failure,
-                    format!(
-                        "The Code Review of issue `{issue_id}` requested changes, but a fix agent \
-                         could not be dispatched: {err} The issue was NOT marked done."
-                    ),
-                );
+            }
+            Err(err) => {
+                return RoundOutcome::Aborted(format!("the reviewer `{reviewer}` {err}"));
             }
         };
-        let _ = await_children(sub, emitter, std::slice::from_ref(&fixer.id)).await;
-        // Loop: re-review the fixed work.
+        orch.record_review(
+            issue_id,
+            ReviewRecord {
+                reviewer: reviewer.clone(),
+                approved: verdict.approved,
+                items: verdict.items.clone(),
+            },
+        );
+        if !verdict.approved {
+            review_emitter.emit(issue_review_event(
+                GgIssueReviewPhase::ChangesRequested,
+                Some(verdict.items.clone()),
+                baseline,
+            ));
+            return RoundOutcome::ChangesRequested(verdict.items);
+        }
+    }
+    review_emitter.emit(issue_review_event(
+        GgIssueReviewPhase::Approved,
+        None,
+        baseline,
+    ));
+    RoundOutcome::Approved
+}
+
+/// **Accept** `issue_id`: merge its worktree back into the main tree, then mark it
+/// [`Done`](IssueStatus::Done).
+///
+/// The order matters. An issue is only done once its work is actually in the workspace, because
+/// `Done` is what unblocks its dependents — and a dependent dispatched against work still sitting on
+/// an unmerged branch would be building on something that is not there. A merge that could not be
+/// completed (not even by the [merge agent](Orchestrator::merge_agent)) therefore
+/// [fails](BoardRuntime::fail_issue) the issue rather than accepting it, so the board says what is
+/// true.
+async fn accept_issue(orch: &Arc<Orchestrator>, issue_id: &str, emitter: &Emitter) {
+    if merge_issue_worktree(orch, issue_id, emitter).await {
+        orch.board.accept_issue(issue_id);
+        emitter.emit(log(
+            "info",
+            format!("issue `{issue_id}` is accepted and done."),
+        ));
+    } else {
+        orch.board.fail_issue(issue_id);
+        emitter.emit(log(
+            "error",
+            format!(
+                "issue `{issue_id}` was approved but its work could not be merged into the main \
+                 workspace; marking it failed so anything depending on it stays blocked."
+            ),
+        ));
     }
 }
 
-/// The reviewer's brief for a [Code Review](handle_code_review): the issue's own brief (its title,
-/// scope, and completion criteria) plus the diff to review and the verdict protocol the
-/// [parser](parse_review_verdict) expects. A missing/empty diff is stated plainly so the reviewer
-/// does not hallucinate changes.
+/// Merge an accepted issue's isolated branch back into the main tree, returning whether the work
+/// actually landed.
 ///
-/// `code` is whether the run is in [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) mode, and it
-/// changes the ending clause because under that protocol there is no "final message" to end: every
-/// reply is a program, and only [`finish`](FINISH_FUNCTION) ends a session. A reviewer told to
-/// stop with a verdict would never reach `completed`, [`dispatch_reviewer`] would report it as
-/// having ended without one, and the issue would never be accepted — so the brief has to teach the
-/// contract the run actually runs.
-fn build_review_brief(issue_brief: &str, diff: &str, code: bool) -> String {
+/// The whole span holds the [merge lock](Orchestrator::merge_lock), because a merge is not one git
+/// call: it commits the worktree, merges the branch, and — on a conflict — hands the conflicted tree
+/// to the [merge agent](Orchestrator::merge_agent) and waits. A second merge running against a tree
+/// with `MERGE_HEAD` set would be refused by git, and a concurrent abort would throw away the merge
+/// agent's resolution.
+///
+/// A conflict is **not** a failure by itself: with issues running concurrently it is an ordinary
+/// event, which is exactly why the capability requires a merge agent. Only a conflict that agent
+/// could not resolve leaves the merge undone, and then the merge is aborted so the main tree is
+/// restored rather than left half-merged. The worktree is torn down in every case, and the outcome
+/// is streamed as [`WorktreeMerged`](GgTelemetryKind::WorktreeMerged) on the issue's own stream.
+///
+/// An issue with **no** worktree (git isolation was unavailable) worked directly in the shared
+/// workspace, so there is nothing to merge and it lands trivially.
+async fn merge_issue_worktree(orch: &Arc<Orchestrator>, issue_id: &str, emitter: &Emitter) -> bool {
+    let Some(worktree) = orch.take_issue_worktree(issue_id) else {
+        return true;
+    };
+    let issue_emitter = emitter.with_issue(issue_id);
+    let _guard = orch.merge_lock.lock().await;
+
+    // Commit whatever the issue produced onto its branch. A worktree with no changes commits
+    // nothing, which merges as a no-op — an issue whose work was already present is still accepted.
+    if let Err(err) = git::commit_worktree(&worktree.path, &format!("gg issue {issue_id}")) {
+        emitter.emit(log(
+            "error",
+            format!("could not commit the work for issue `{issue_id}`: {err}"),
+        ));
+        remove_worktree(orch, &worktree, emitter);
+        issue_emitter.emit(GgTelemetryKind::WorktreeMerged {
+            branch: worktree.branch,
+            merged: false,
+            conflicts: false,
+        });
+        return false;
+    }
+
+    // Leave a conflict **in** the tree: the merge agent resolves it in place, which is only possible
+    // if git has not already unwound it.
+    let outcome = git::merge_branch(
+        &orch.workspace_dir,
+        &worktree.branch,
+        git::ConflictPolicy::Keep,
+    );
+    let (merged, conflicts) = match outcome {
+        Ok(git::MergeOutcome::Merged) => (true, false),
+        Ok(git::MergeOutcome::Conflict(reason)) => {
+            emitter.emit(log(
+                "warn",
+                format!(
+                    "merging issue `{issue_id}` conflicts with work already in the main \
+                     workspace: {}",
+                    first_line(&reason)
+                ),
+            ));
+            (
+                resolve_merge_conflict(orch, issue_id, &worktree, &reason, emitter).await,
+                true,
+            )
+        }
+        Err(err) => {
+            emitter.emit(log(
+                "error",
+                format!("merging issue `{issue_id}` into the main workspace failed: {err}"),
+            ));
+            (false, false)
+        }
+    };
+    // A merge that never completed must not be left half-applied: abort it so the main tree is
+    // exactly what it was, and the issue is reported as unmerged rather than silently corrupting
+    // every later merge.
+    if !merged {
+        git::abort_merge(&orch.workspace_dir);
+    }
+    remove_worktree(orch, &worktree, emitter);
+    issue_emitter.emit(GgTelemetryKind::WorktreeMerged {
+        branch: worktree.branch,
+        merged,
+        conflicts,
+    });
+    merged
+}
+
+/// Hand a conflicted merge to the run's [merge agent](Orchestrator::merge_agent) and report whether
+/// it finished the merge.
+///
+/// The agent runs in the **main tree** (that is where the conflict is) with its own shell, which is
+/// why the capability insists a merge agent has one. gg does not take its word for the outcome: the
+/// merge counts as resolved only if git agrees the merge is no longer in progress, so an agent that
+/// says "done" without committing leaves the merge unresolved.
+async fn resolve_merge_conflict(
+    orch: &Arc<Orchestrator>,
+    issue_id: &str,
+    worktree: &Worktree,
+    reason: &str,
+    emitter: &Emitter,
+) -> bool {
+    let Some(merge_agent) = orch.merge_agent.clone() else {
+        emitter.emit(log(
+            "error",
+            format!(
+                "issue `{issue_id}` conflicts with the main workspace and no merge agent is \
+                 configured to resolve it."
+            ),
+        ));
+        return false;
+    };
+    let brief = build_merge_brief(
+        issue_id,
+        &worktree.branch,
+        reason,
+        orch.profile_or_root(&merge_agent)
+            .is_enabled(CAPABILITY_RESPONSES_AS_CODE),
+    );
+    emitter.emit(log(
+        "info",
+        format!("dispatching the merge agent `{merge_agent}` to resolve issue `{issue_id}`."),
+    ));
+    // The merge agent works in the main tree — that is where the conflicted merge lives — so it is
+    // dispatched with no worktree of its own.
+    match run_detached_agent(orch, &merge_agent, brief, Some(issue_id.to_string()), None).await {
+        Ok(_) => {}
+        Err(err) => {
+            emitter.emit(log(
+                "error",
+                format!("the merge agent for issue `{issue_id}` {err}"),
+            ));
+            return false;
+        }
+    }
+    if git::merge_in_progress(&orch.workspace_dir) {
+        emitter.emit(log(
+            "error",
+            format!(
+                "the merge agent did not finish the merge of issue `{issue_id}` (the workspace is \
+                 still mid-merge); aborting it and leaving the main workspace unchanged."
+            ),
+        ));
+        return false;
+    }
+    emitter.emit(log(
+        "info",
+        format!(
+            "the merge agent resolved the conflict and completed the merge of issue `{issue_id}`."
+        ),
+    ));
+    true
+}
+
+/// Throw away `issue_id`'s worktree unmerged — what a [failed](IssueStatus::Failed) issue's
+/// half-finished work gets. A no-op for an issue that never had one.
+fn discard_issue_worktree(orch: &Arc<Orchestrator>, issue_id: &str, emitter: &Emitter) {
+    let Some(worktree) = orch.take_issue_worktree(issue_id) else {
+        return;
+    };
+    remove_worktree(orch, &worktree, emitter);
+    emitter
+        .with_issue(issue_id)
+        .emit(GgTelemetryKind::WorktreeMerged {
+            branch: worktree.branch,
+            merged: false,
+            conflicts: false,
+        });
+}
+
+/// Tear a worktree and its branch down. Best-effort: a cleanup failure leaves a breadcrumb but never
+/// fails a run, since the work it guards has already been merged or deliberately discarded.
+fn remove_worktree(orch: &Orchestrator, worktree: &Worktree, emitter: &Emitter) {
+    let _guard = orch.git_lock.lock().expect("git lock");
+    if let Err(err) = git::remove_worktree(&orch.workspace_dir, &worktree.path, &worktree.branch) {
+        emitter.emit(log(
+            "warn",
+            format!(
+                "tearing down worktree `{}` reported: {err}",
+                worktree.branch
+            ),
+        ));
+    }
+}
+
+/// Run one agent to completion **out of band** from any spawner, returning its
+/// [result](AgentReturn) — the primitive behind an issue's reviewers and the merge agent.
+///
+/// These are agents the *orchestrator* needs, not ones a model asked for: they are dispatched while
+/// no agent holds a running slot (the issue agent that triggered the reconciliation has already
+/// released its own), so this simply awaits the child's result channel rather than going through the
+/// [parent-wait](ParentWait) machinery a `wait_for_subagents` uses. That is also what makes them
+/// independent of the [subagents](CAPABILITY_SUBAGENTS) capability: a board can review and merge its
+/// issues without the run offering anyone a `spawn_subagent` tool.
+///
+/// The return type is spelled out as a boxed `Send` future rather than left to `async fn` inference
+/// because the recursion here is genuine — this dispatches an agent, whose own reconciliation may
+/// dispatch more — and the compiler cannot infer the `Send`-ness of a cycle. Naming it breaks the
+/// cycle by *asserting* the bound the `tokio::spawn` inside needs.
+fn run_detached_agent<'a>(
+    orch: &'a Arc<Orchestrator>,
+    profile: &'a str,
+    brief: String,
+    issue_id: Option<String>,
+    worktree: Option<Worktree>,
+) -> Pin<Box<dyn Future<Output = Result<AgentReturn, String>> + Send + 'a>> {
+    Box::pin(async move {
+        let binding = profile_binding(&orch.caps, profile)
+            .map_err(|err| format!("could not be dispatched: {err}"))?;
+        let client = orch.factory.client_for(&binding).map_err(|err| {
+            format!(
+                "could not be dispatched (model `{}`): {err}",
+                binding.model_id
+            )
+        })?;
+        let (result_tx, result_rx) = oneshot::channel();
+        let agent = Agent {
+            id: orch.next_agent_id(),
+            parent_id: None,
+            depth: 0,
+            slot: profile.to_string(),
+        };
+        let role = AgentRole::Sub {
+            brief,
+            issue_id,
+            worktree,
+            parent_wait: Arc::new(ParentWait::new()),
+            result: result_tx,
+            finished: Arc::new(AtomicBool::new(false)),
+        };
+        let (_inbox_tx, inbox_rx) = mpsc::unbounded_channel();
+        let orch_for_task = Arc::clone(orch);
+        let handle = tokio::spawn(async move {
+            run_agent(orch_for_task, agent, role, client, inbox_rx).await;
+        });
+        orch.tasks.lock().expect("subagent tasks lock").push(handle);
+        result_rx
+            .await
+            .map_err(|_| "produced no result".to_string())
+    })
+}
+
+/// The reviewer's brief for an [issue review](run_issue_review): the issue's own brief (its title,
+/// scope, and completion criteria), any earlier verdicts, the diff to review, and the verdict
+/// protocol the [parser](parse_review_verdict) expects. A missing/empty diff is stated plainly so the
+/// reviewer does not hallucinate changes.
+///
+/// `code` is whether the reviewer runs in [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) mode, and
+/// it changes the ending clause because under that protocol there is no "final message" to end:
+/// every reply is a program, and only [`finish`](FINISH_FUNCTION) ends a session. A reviewer told to
+/// stop with a verdict would never reach `completed`, the round would report it as having ended
+/// without one, and the issue would never be accepted — so the brief has to teach the contract the
+/// reviewer is actually held to.
+fn build_review_brief(issue_brief: &str, diff: &str, history: Option<&str>, code: bool) -> String {
     let diff_block = if diff.trim().is_empty() {
         "(No textual diff was available — no changes were detected against the baseline. Review \
          against the completion criteria and, unless the work was clearly already present, request \
@@ -3304,6 +3503,13 @@ fn build_review_brief(issue_brief: &str, diff: &str, code: bool) -> String {
             .to_string()
     } else {
         format!("```diff\n{diff}\n```")
+    };
+    let history_block = match history {
+        Some(history) => format!(
+            "\n\n## Earlier review feedback\nThis issue has been reviewed before. Check whether \
+             each point below was addressed, and do not repeat a point that has been:{history}"
+        ),
+        None => String::new(),
     };
     // The parser reads the marker out of the child's final text either way, and under code mode
     // that final text *is* the `finish` summary — so only the instruction changes, never the
@@ -3313,8 +3519,8 @@ fn build_review_brief(issue_brief: &str, diff: &str, code: bool) -> String {
          boundaries. When you are done, end your session by calling `harness.finish()` from inside a \
          program, passing exactly one verdict as its summary:\n\
          - If the work fully satisfies the completion criteria and stays in scope:\n\
-         `harness.finish(\"CODE REVIEW: APPROVED\")`\n\
-         - Otherwise:\n`harness.finish(\"CODE REVIEW: CHANGES REQUESTED\\n1. …\")`\n\
+         `harness.finish(\"REVIEW: APPROVED\")`\n\
+         - Otherwise:\n`harness.finish(\"REVIEW: CHANGES REQUESTED\\n1. …\")`\n\
          where the summary continues with a numbered list of specific, actionable items that must \
          be fixed before the work can be accepted. Be concrete: each item should say what is wrong \
          and what to change."
@@ -3322,26 +3528,27 @@ fn build_review_brief(issue_brief: &str, diff: &str, code: bool) -> String {
         "Review the diff carefully against the completion criteria and the in/out-of-scope \
          boundaries. When you are done, end your final message with exactly one verdict:\n\
          - If the work fully satisfies the completion criteria and stays in scope, write on its own \
-         line:\n`CODE REVIEW: APPROVED`\n\
-         - Otherwise, write on its own line:\n`CODE REVIEW: CHANGES REQUESTED`\n\
+         line:\n`REVIEW: APPROVED`\n\
+         - Otherwise, write on its own line:\n`REVIEW: CHANGES REQUESTED`\n\
          and then a numbered list of specific, actionable items that must be fixed before the work \
          can be accepted. Be concrete: each item should say what is wrong and what to change."
     };
     format!(
-        "You are performing a **Code Review**. Inspect the changes below against the issue's \
-         requirements and decide whether the work is complete and stays in scope.\n\n{issue_brief}\
+        "You are **reviewing** the work for an issue. Inspect the changes below against the issue's \
+         requirements and decide whether the work is complete and stays in scope. You are working in \
+         the same workspace the changes were made in, so you may read any file you need.\n\n\
+         {issue_brief}{history_block}\
          \n\n## Changes to review (diff against the baseline)\n{diff_block}\n\n## Your verdict\n\
          {verdict}"
     )
 }
 
-/// A fix agent's brief for a [Code Review](handle_code_review) round: the original issue brief plus
-/// the reviewer's actionable items. The `## Requested changes from Code Review` heading is a stable
-/// marker (a worker can detect it is on a fix pass).
+/// The brief an issue's assigned agent is re-invoked with after a review requested changes: the
+/// original issue brief plus the reviewer's actionable items. The `## Requested changes` heading is a
+/// stable marker (a worker can detect it is on a fix pass).
 ///
 /// `code` swaps the ending clause for the same reason [`build_review_brief`] does: "then stop" is
-/// not a thing a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) agent can do, and a fix agent
-/// that never reaches `completed` leaves its worktree discarded unmerged.
+/// not a thing a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) agent can do.
 fn build_fix_brief(issue_brief: &str, items: &[String], code: bool) -> String {
     let mut list = String::new();
     for (index, item) in items.iter().enumerate() {
@@ -3354,28 +3561,59 @@ fn build_fix_brief(issue_brief: &str, items: &[String], code: bool) -> String {
         );
     }
     let ending = if code {
-        "then call `harness.finish()` from inside a program with a short summary of what you changed — \
-         your changes will be re-reviewed"
+        "then call `harness.finish()` from inside a program with a short summary of what you changed"
     } else {
-        "then stop — your changes will be re-reviewed"
+        "then stop"
     };
     format!(
-        "{issue_brief}\n\n## Requested changes from Code Review\nA Code Review of the work for this \
-         issue found that it is not yet done. Address every item below (keeping the rest of the \
-         work intact), {ending}:\n{list}"
+        "{issue_brief}\n\n## Requested changes\nA review of the work for this issue found that it \
+         is not yet done. Address every item below (keeping the rest of the work intact), mark the \
+         issue complete again, and {ending} — your changes will be re-reviewed:\n{list}"
+    )
+}
+
+/// The [merge agent](Orchestrator::merge_agent)'s brief: which issue's branch conflicts, what git
+/// said, and what finishing the merge means.
+///
+/// It is deliberately concrete about the end state — a committed merge, no conflict markers left —
+/// because that is what gg [checks](resolve_merge_conflict) afterwards, and an agent that thinks
+/// "resolved" means "edited the files" would leave the workspace mid-merge.
+fn build_merge_brief(issue_id: &str, branch: &str, reason: &str, code: bool) -> String {
+    let ending = if code {
+        "call `harness.finish()` from inside a program with a short summary of how you resolved it"
+    } else {
+        "stop with a short summary of how you resolved it"
+    };
+    format!(
+        "You are resolving a **merge conflict**. The work for issue `{issue_id}` was completed on \
+         the branch `{branch}` and is being merged into the main workspace, but it conflicts with \
+         work that landed there first. Your workspace *is* the main workspace, and the merge is \
+         currently in progress in it.\n\n\
+         ## What git reported\n{reason}\n\n\
+         ## What to do\n\
+         1. Inspect the conflicts (for example with `git status` and `git diff`).\n\
+         2. Resolve every conflicted file so that **both** sides' intent survives — the work already \
+         in the main workspace and the work from `{branch}`. Never resolve a conflict by discarding \
+         one side wholesale unless the two are genuinely the same change.\n\
+         3. Make sure no conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`) remain anywhere.\n\
+         4. Stage the resolved files and **commit the merge** (`git add -A` then `git commit`), so \
+         the merge is actually finished rather than left in progress.\n\n\
+         When the merge is committed, {ending}. If you cannot resolve it, say so plainly rather than \
+         committing a broken tree — leaving the merge unfinished is a safe outcome; committing \
+         something that does not build is not."
     )
 }
 
 /// Parse a reviewer's final message into a [`ReviewVerdict`].
 ///
-/// The contract: the reviewer ends with a `CODE REVIEW:` marker whose following word is `APPROVED`
+/// The contract: the reviewer ends with a `REVIEW:` marker whose following word is `APPROVED`
 /// (approval) or `CHANGES REQUESTED` (with a list of actionable items). Parsing is deliberately
 /// lenient — the marker match is case-insensitive and the last occurrence wins — and **conservative
 /// on ambiguity**: anything that is not a clear approval is treated as changes requested, so work no
 /// reviewer clearly approved is never accepted. When changes are requested but no list items are
-/// found, a single generic item is synthesized so a fix agent always has something to act on.
+/// found, a single generic item is synthesized so the assigned agent always has something to act on.
 fn parse_review_verdict(text: &str) -> ReviewVerdict {
-    const MARKER: &str = "code review:";
+    const MARKER: &str = "review:";
     let lower = text.to_ascii_lowercase();
     if let Some(pos) = lower.rfind(MARKER) {
         let after = lower[pos + MARKER.len()..].trim_start();
@@ -3389,8 +3627,8 @@ fn parse_review_verdict(text: &str) -> ReviewVerdict {
     let mut items = collect_actionable_items(text);
     if items.is_empty() {
         items.push(
-            "The Code Review did not approve the work; revisit the completion criteria and address \
-             the reviewer's feedback."
+            "The review did not approve the work; revisit the completion criteria and address the \
+             reviewer's feedback."
                 .to_string(),
         );
     }
@@ -3432,45 +3670,17 @@ fn collect_actionable_items(text: &str) -> Vec<String> {
         .collect()
 }
 
-/// A [`CodeReview`](GgTelemetryKind::CodeReview) telemetry event for one lifecycle transition. The
+/// An [`IssueReview`](GgTelemetryKind::IssueReview) telemetry event for one lifecycle transition. The
 /// issue under review rides on the emitter's [issue scope](Emitter::with_issue), not the payload.
-fn code_review_event(
-    phase: GgCodeReviewPhase,
+fn issue_review_event(
+    phase: GgIssueReviewPhase,
     items: Option<Vec<String>>,
     baseline: Option<String>,
 ) -> GgTelemetryKind {
-    GgTelemetryKind::CodeReview {
+    GgTelemetryKind::IssueReview {
         phase,
         items,
         baseline,
-    }
-}
-
-/// Dispatch one **reviewer** subagent against `review_brief` on `reviewer_slot`, await it, and parse
-/// its [verdict](parse_review_verdict) — the reusable core of a Code Review shared by the issue-level
-/// [Code Review](handle_code_review) (P5a) and the [`review-gated`](crate::fsm) FSM's `review` state.
-///
-/// Returns the verdict, or a model-facing error when the reviewer could not be dispatched or returned
-/// without a clean verdict; the caller then leaves the work **unaccepted** (work no reviewer approved
-/// is never accepted). The reviewer is an ordinary [subagent](dispatch_child) scoped to `issue_id`
-/// (when any).
-async fn dispatch_reviewer(
-    sub: &mut SubagentContext,
-    spawner: &Agent,
-    emitter: &Emitter,
-    issue_id: Option<String>,
-    review_brief: String,
-    reviewer_slot: &str,
-) -> Result<ReviewVerdict, String> {
-    let reviewer = dispatch_child(sub, spawner, review_brief, issue_id, reviewer_slot, None)
-        .map_err(|err| format!("the reviewer could not be dispatched: {err}"))?;
-    let collected = await_children(sub, emitter, std::slice::from_ref(&reviewer.id)).await;
-    match collected.into_iter().next() {
-        Some((_, Some(ret))) if ret.status == STATUS_COMPLETED => {
-            Ok(parse_review_verdict(&ret.summary))
-        }
-        Some((_, Some(ret))) => Err(format!("the reviewer {} without a verdict", ret.status)),
-        _ => Err("the reviewer produced no result".to_string()),
     }
 }
 
@@ -3489,12 +3699,14 @@ struct SpeculationAttempt {
     /// The attempt's worktree checkout path — where its diff is read from and, if it wins, its work
     /// is committed and merged from.
     path: PathBuf,
+    /// The commit the attempt's branch was created from — what its diff is taken against.
+    base: String,
     /// How the attempt's loop ended (`"completed"`, `"model_error"`, `"timed_out"`, …). Only a
     /// cleanly `"completed"` attempt that produced changes is a candidate to win.
     status: String,
     /// The attempt's return value (its final message), shown to the judge for context.
     summary: String,
-    /// The attempt's diff against the run [baseline](Orchestrator::baseline_commit) — what the judge
+    /// The attempt's diff against the commit its branch was cut from — what the judge
     /// scores and what is merged if it wins. Empty when the attempt produced no changes.
     diff: String,
 }
@@ -3547,19 +3759,15 @@ async fn handle_speculate(
     let orch = Arc::clone(&sub.orch);
 
     // Best-of-K runs each attempt in an isolated worktree so they cannot collide; refuse clearly when
-    // worktree isolation is unavailable (capability off, or git could not establish a baseline).
-    let baseline = match (orch.baseline_commit(), &orch.worktrees_root) {
-        (Some(base), Some(_root)) => base.to_string(),
-        _ => {
-            return ToolOutcome::failed(
-                ToolFailure::Unavailable,
-                "cannot speculate: best-of-K runs each attempt in an isolated worktree, but \
-                 worktree isolation is unavailable this run (enable the `worktrees` capability, \
-                 and ensure git is available in the run environment). Do the work with a single \
-                 attempt instead.",
-            );
-        }
-    };
+    // worktree isolation is unavailable (git absent, or no baseline could be committed).
+    if !orch.worktrees_usable() {
+        return ToolOutcome::failed(
+            ToolFailure::Unavailable,
+            "cannot speculate: best-of-K runs each attempt in an isolated worktree, but worktree \
+             isolation is unavailable this run (git could not establish a workspace baseline at \
+             startup). Do the work with a single attempt instead.",
+        );
+    }
 
     // The task: a dispatched board issue (its structured brief) or a free-form prompt.
     let (base_brief, issue_id) = match call.arguments.get("issueId").and_then(Value::as_str) {
@@ -3644,34 +3852,44 @@ async fn handle_speculate(
             approaches.get(i),
             attempt_code,
         );
+        // Each attempt gets a fresh worktree of its own, left in place for judging: only the
+        // winner's is merged, so an attempt must not be able to reach another's files.
+        let worktree = match make_worktree(&orch, &format!("spec-{}-{}", spawner.id, i)) {
+            Ok(worktree) => worktree,
+            Err(err) => {
+                abort_speculation(sub, &orch, emitter, &fanned).await;
+                let failure = err.failure;
+                return ToolOutcome::failed(
+                    failure,
+                    format!(
+                        "cannot speculate: attempt {} of {attempts} could not be given an isolated \
+                         worktree: {err} The speculation was aborted and the workspace left \
+                         unchanged.",
+                        i + 1
+                    ),
+                );
+            }
+        };
+        let branch = worktree.branch.clone();
+        let path = worktree.path.clone();
+        let base = worktree.base.clone();
         match dispatch_child(
             sub,
             spawner,
             brief,
             issue_id.clone(),
             &attempt_profile,
-            Some(WorktreeDisposition::Speculative),
+            Some(worktree),
         ) {
-            Ok(child) => match (child.worktree_branch, child.worktree_path) {
-                (Some(branch), Some(path)) => fanned.push(SpeculationAttempt {
-                    id: child.id,
-                    branch,
-                    path,
-                    status: String::new(),
-                    summary: String::new(),
-                    diff: String::new(),
-                }),
-                // Isolation is required and was checked above, so every attempt gets a worktree; a
-                // child without one is only defensively possible. Wind down and abort.
-                _ => {
-                    abort_speculation(sub, &orch, emitter, &fanned).await;
-                    return ToolOutcome::failed(
-                        ToolFailure::Unavailable,
-                        "cannot speculate: an attempt could not be given an isolated worktree; the \
-                         speculation was aborted and the workspace left unchanged.",
-                    );
-                }
-            },
+            Ok(child) => fanned.push(SpeculationAttempt {
+                id: child.id,
+                branch,
+                path,
+                base,
+                status: String::new(),
+                summary: String::new(),
+                diff: String::new(),
+            }),
             Err(err) => {
                 abort_speculation(sub, &orch, emitter, &fanned).await;
                 let failure = err.failure;
@@ -3705,7 +3923,7 @@ async fn handle_speculate(
         }
         attempt.diff = {
             let _guard = orch.git_lock.lock().expect("git lock");
-            git::diff_since(&attempt.path, &baseline).unwrap_or_default()
+            git::diff_since(&attempt.path, &attempt.base).unwrap_or_default()
         };
     }
 
@@ -4044,7 +4262,11 @@ fn merge_speculation_winner(
         &format!("gg speculation winner {}", winner.id),
     )
     .map_err(|err| format!("committing the winning attempt failed: {err}"))?;
-    match git::merge_branch(&orch.workspace_dir, &winner.branch) {
+    match git::merge_branch(
+        &orch.workspace_dir,
+        &winner.branch,
+        git::ConflictPolicy::Abort,
+    ) {
         Ok(git::MergeOutcome::Merged) => Ok(()),
         Ok(git::MergeOutcome::Conflict(reason)) => Err(format!(
             "the merge conflicted with the main tree: {}",
@@ -4129,19 +4351,15 @@ impl AdvanceResult {
 ///
 /// The three exit kinds:
 /// - [`Advance`](StateExit::Advance) — evaluate the [guard](crate::fsm::AdvanceGuard) against the
-///   workspace (for `tdd`, tests/implementation must exist); on success step forward, and if the
-///   state entered is the transient [`review`](StateExit::ReviewGate) state, run its
-///   [Code Review](process_review_gate) inline;
+///   workspace (for `tdd`, tests/implementation must exist) and step forward on success;
 /// - [`PlanReset`](StateExit::PlanReset) — `plan-first`'s `plan` state: take the plan from the call's
 ///   `note`, step to `implement`, and defer the [context reset](AdvanceResult::submit_plan) (reusing
 ///   the planning flow);
-/// - [`ReviewGate`](StateExit::ReviewGate)/[`Terminal`](StateExit::Terminal) — not agent-advanced, so
-///   `advance_state` is refused (these were never offered while resting).
-async fn handle_advance_state(
+/// - [`Terminal`](StateExit::Terminal) — not agent-advanced, so `advance_state` is refused (it was
+///   never offered while resting there).
+fn handle_advance_state(
     fsm: &mut FsmRuntime,
     context: &mut ContextModel,
-    subagents: Option<&mut SubagentContext>,
-    spawner: &Agent,
     tool_ctx: &ToolContext,
     emitter: &Emitter,
     call: &ToolCall,
@@ -4173,11 +4391,6 @@ async fn handle_advance_state(
                 name,
                 fsm.current_index(),
             ));
-            // Entering the transient `review` state triggers a Code Review, which decides the next
-            // move (to `accept`, or back to `develop`). The `review` state is not rested in.
-            if matches!(new_exit, StateExit::ReviewGate) {
-                return process_review_gate(fsm, context, subagents, spawner, emitter).await;
-            }
             push_state_guidance(context, guidance, new_exit);
             AdvanceResult::just(ToolOutcome::ok(
                 format!("Advanced to the `{name}` state. Follow its guidance."),
@@ -4222,134 +4435,9 @@ async fn handle_advance_state(
                 submit_plan: Some(plan),
             }
         }
-        StateExit::ReviewGate => AdvanceResult::just(ToolOutcome::error(
-            "advance_state is not available while a Code Review is running.",
-        )),
         StateExit::Terminal => AdvanceResult::just(ToolOutcome::error(
             "advance_state: you are in the final state of the process; finish your work and stop.",
         )),
-    }
-}
-
-/// Process the transient [`review`](StateExit::ReviewGate) state of the [`review-gated`](crate::fsm)
-/// machine, just entered from `develop`: run a run-level [Code Review](dispatch_reviewer) of the
-/// work, then move the machine on — to `accept` on **approval**, or **back to `develop`** with the
-/// reviewer's items on changes. This is the composition of the Code Review capability into the FSM.
-///
-/// The reviewer is an ordinary subagent, so delegation must be available; when it is not (a
-/// misconfigured `review-gated` run, already warned at start), the review is skipped and the machine
-/// passes through to `accept` so the run can still finish.
-async fn process_review_gate(
-    fsm: &mut FsmRuntime,
-    context: &mut ContextModel,
-    subagents: Option<&mut SubagentContext>,
-    spawner: &Agent,
-    emitter: &Emitter,
-) -> AdvanceResult {
-    let Some(sub) = subagents else {
-        emitter.emit(log(
-            "warn",
-            "the `review-gated` machine reached its `review` state, but no subagents are available \
-             to run the Code Review; the work is accepted without one (enable the `subagents` \
-             capability for a real Code Review).",
-        ));
-        let (name, guidance, new_exit) = advance_owned(fsm);
-        emitter.emit(fsm_state_event(
-            fsm.machine_name(),
-            name,
-            fsm.current_index(),
-        ));
-        push_state_guidance(context, guidance, new_exit);
-        return AdvanceResult::just(ToolOutcome::ok(
-            "Advanced to `accept` (no reviewer was available to run a Code Review).",
-            "advanced to `accept`",
-        ));
-    };
-
-    let orch = Arc::clone(&sub.orch);
-    let baseline = orch.baseline_commit().map(str::to_string);
-    // The Code Review lifecycle rides on the root's (run-level) stream — a review-gated run reviews
-    // the whole run's diff, not a board issue.
-    emitter.emit(code_review_event(
-        GgCodeReviewPhase::Requested,
-        None,
-        baseline.clone(),
-    ));
-    let diff = orch.run_diff();
-    let reviewer_slot = orch.reviewer_slot();
-    let review_brief = build_review_brief(
-        &orch.prompt,
-        &diff,
-        orch.profile_or_root(&reviewer_slot)
-            .is_enabled(CAPABILITY_RESPONSES_AS_CODE),
-    );
-    let verdict = match dispatch_reviewer(sub, spawner, emitter, None, review_brief, &reviewer_slot)
-        .await
-    {
-        Ok(verdict) => verdict,
-        Err(err) => {
-            // The review could not complete: leave the machine back in `develop` so the agent can
-            // fix things and try again, rather than accepting unreviewed work.
-            emitter.emit(log(
-                "warn",
-                format!("the `review-gated` Code Review did not complete: {err}."),
-            ));
-            let develop_index = fsm.index_of("develop").unwrap_or(0);
-            let (name, _guidance, _exit) = revert_owned(fsm, develop_index);
-            emitter.emit(fsm_state_event(
-                fsm.machine_name(),
-                name,
-                fsm.current_index(),
-            ));
-            return AdvanceResult::just(ToolOutcome::error(format!(
-                "The Code Review could not complete ({err}); you are back in the `develop` state. \
-                 Address anything outstanding and call `advance_state` to try again."
-            )));
-        }
-    };
-
-    if verdict.approved {
-        emitter.emit(code_review_event(
-            GgCodeReviewPhase::Approved,
-            None,
-            baseline,
-        ));
-        let (name, guidance, new_exit) = advance_owned(fsm);
-        emitter.emit(fsm_state_event(
-            fsm.machine_name(),
-            name,
-            fsm.current_index(),
-        ));
-        push_state_guidance(context, guidance, new_exit);
-        AdvanceResult::just(ToolOutcome::ok(
-            "The Code Review approved your work; advanced to `accept`. Summarize and stop.",
-            "code review approved; advanced to `accept`",
-        ))
-    } else {
-        // Changes requested: loop back to `develop` with the reviewer's items injected as guidance.
-        emitter.emit(code_review_event(
-            GgCodeReviewPhase::ChangesRequested,
-            Some(verdict.items.clone()),
-            baseline,
-        ));
-        let develop_index = fsm.index_of("develop").unwrap_or(0);
-        let (name, _guidance, _exit) = revert_owned(fsm, develop_index);
-        emitter.emit(fsm_state_event(
-            fsm.machine_name(),
-            name,
-            fsm.current_index(),
-        ));
-        let items_guidance = build_review_items_guidance(&verdict.items);
-        context.push(
-            GgContextSource::System,
-            Retention::Pinned,
-            Message::user(items_guidance),
-        );
-        AdvanceResult::just(ToolOutcome::error(format!(
-            "The Code Review requested changes; you are back in the `develop` state (`{name}`). \
-             Address the reviewer's items (now in your guidance), then call `advance_state` to \
-             re-submit for review."
-        )))
     }
 }
 
@@ -4358,15 +4446,6 @@ async fn process_review_gate(
 /// follow. A machine already at its last state returns an empty name.
 fn advance_owned(fsm: &mut FsmRuntime) -> (&'static str, String, StateExit) {
     match fsm.advance() {
-        Some(state) => (state.name, state.guidance.clone(), state.exit),
-        None => ("", String::new(), StateExit::Terminal),
-    }
-}
-
-/// Move the machine **back** to the state at `index` (a `review-gated` loop-back to `develop`),
-/// returning the entered state's `(name, guidance, exit)` as owned/copied values.
-fn revert_owned(fsm: &mut FsmRuntime, index: usize) -> (&'static str, String, StateExit) {
-    match fsm.revert_to(index) {
         Some(state) => (state.name, state.guidance.clone(), state.exit),
         None => ("", String::new(), StateExit::Terminal),
     }
@@ -4424,34 +4503,13 @@ fn fsm_refusal(name: &str, fsm: &FsmRuntime) -> String {
     }
 }
 
-/// The guidance injected when a [`review-gated`](crate::fsm) Code Review requests changes and the
-/// machine loops back to `develop`: the reviewer's actionable items the agent must address before
-/// re-submitting.
-fn build_review_items_guidance(items: &[String]) -> String {
-    let mut list = String::new();
-    for (index, item) in items.iter().enumerate() {
-        list.push_str(&format!("\n{}. {}", index + 1, item));
-    }
-    if list.is_empty() {
-        list.push_str(
-            "\n1. The Code Review did not approve the work but listed no specific items; re-check \
-             the task and make sure every part is done.",
-        );
-    }
-    format!(
-        "# Code Review requested changes\n\nA Code Review of your work did not approve it. You are \
-         back in the `develop` state. Address every item below, then call `advance_state` to submit \
-         for re-review:{list}"
-    )
-}
-
 // ---------------------------------------------------------------------------
 // Declared workflows: fan-out + sequencing over the subagent scheduler
 // ---------------------------------------------------------------------------
 
 /// One parsed stage of a declared [workflow](run_workflow): its name, per-item brief template, the
-/// items it fans out over (or `None` to fan over the prior stage's results), and its dispatch
-/// options (slot, worktree).
+/// items it fans out over (or `None` to fan over the prior stage's results), and the agent profile
+/// its subagents run under.
 struct WorkflowStageSpec {
     /// The stage's name, for the [`WorkflowStage`](GgTelemetryKind::WorkflowStage) timeline label.
     name: String,
@@ -4462,8 +4520,6 @@ struct WorkflowStageSpec {
     items: Option<Vec<String>>,
     /// The requested [model slot](GgSlotBinding) for this stage's subagents (default primary).
     slot: String,
-    /// Whether each of this stage's subagents runs in its own isolated [worktree](Worktree).
-    worktree: bool,
 }
 
 /// Handle `run_workflow`: execute a **declared** multi-stage subagent fan-out as one unit, driving
@@ -4580,8 +4636,7 @@ async fn run_workflow(
         let mut ids = Vec::with_capacity(items.len());
         for item in &items {
             let brief = render_template(&stage.prompt, item, &prior_block);
-            let stage_worktree = stage.worktree.then_some(WorktreeDisposition::Merge);
-            match dispatch_child(sub, spawner, brief, None, &stage.slot, stage_worktree) {
+            match dispatch_child(sub, spawner, brief, None, &stage.slot, None) {
                 Ok(child) => ids.push(child.id),
                 Err(err) => {
                     // A dispatch failure aborts the workflow, but the already-dispatched agents of
@@ -4654,8 +4709,7 @@ async fn run_workflow(
 
 /// Parse `run_workflow`'s `stages` argument into [`WorkflowStageSpec`]s, or a model-facing error
 /// naming the problem. Each stage needs a non-empty `prompt`; `name` defaults to `stage-N`, `items`
-/// is optional (an array of non-empty strings), `slot` defaults to [`PRIMARY_SLOT`], and `worktree`
-/// defaults to `false`.
+/// is optional (an array of non-empty strings), and `slot` defaults to [`PRIMARY_SLOT`].
 fn parse_workflow_stages(args: &Value) -> Result<Vec<WorkflowStageSpec>, String> {
     let raw = match args.get("stages") {
         Some(Value::Array(stages)) => stages,
@@ -4728,17 +4782,11 @@ fn parse_workflow_stages(args: &Value) -> Result<Vec<WorkflowStageSpec>, String>
                 )
             })?
             .to_string();
-        let worktree = stage
-            .get("worktree")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-
         stages.push(WorkflowStageSpec {
             name,
             prompt,
             items,
             slot,
-            worktree,
         });
     }
     Ok(stages)
@@ -4821,7 +4869,7 @@ struct LoopEnd {
     /// usage/cost to the right slot in the [per-slot accounting](SlotAccounting).
     slot: String,
     /// The agent's **final word** — its [return value](AgentReturn) to its spawner, the run's last
-    /// text, and what a Code Review verdict or a speculation judge's pick is parsed out of.
+    /// text, and what an issue reviewer's verdict or a speculation judge's pick is parsed out of.
     ///
     /// It is filled by two different rules, because the two execution modes mean two different
     /// things by "final":
@@ -4920,7 +4968,6 @@ impl Agent {
         mut fsm: FsmRuntime,
         read_policy: ReadPolicy,
         shell_offload: OffloadPolicy,
-        code_reviews: bool,
         speculative: bool,
         code: CodeSetup,
         completion: CompletionSetup,
@@ -4935,11 +4982,6 @@ impl Agent {
         // error/cost ceiling, or the deadline — never by falling through the loop.
         let max_turns = limits.limits.max_turns;
         let turn_bound = max_turns.unwrap_or(usize::MAX);
-        // Code Reviews gate `complete_issue` only when the capability is on *and* this agent has the
-        // delegation machinery to run a reviewer (i.e. `subagents` is `Some`); otherwise
-        // `complete_issue` accepts issues directly. Computed once here since `subagents` never
-        // toggles over the loop.
-        let code_reviews_active = code_reviews && subagents.is_some();
         // Speculative execution (`speculate`) likewise needs the delegation machinery to fan out the
         // attempts and run the judge; with it off, the tool (if offered) falls through to a defensive
         // refusal rather than engaging.
@@ -4981,7 +5023,6 @@ impl Agent {
             read_policy,
             shell_offload: &shell_offload,
             vision: &tool_ctx.vision,
-            code_reviews: code_reviews_active,
             speculative: speculative_active,
             responses_as_code: code.enabled,
             // Whether this agent's opening context is pre-seeded with the test case's specs and
@@ -5531,7 +5572,6 @@ impl Agent {
                     replay: replay.as_ref(),
                     fsm_active,
                     in_plan_mode,
-                    code_reviews_active,
                     speculative_active,
                     pending_compaction,
                 };
@@ -5975,20 +6015,11 @@ impl Agent {
                     ToolOutcome::failed(ToolFailure::Refused, fsm_refusal(&call.name, &fsm))
                 } else if fsm_active && is_fsm_tool(&call.name) {
                     // Drive the state machine: check the current state's transition guard, move on
-                    // when it holds (and — for `review-gated` — run the Code Review that gates the
-                    // move), and refuse the advance otherwise so the agent cannot skip ahead. A
-                    // `plan-first` plan reset is captured here and applied after the turn's tool
-                    // results are recorded, exactly like `submit_plan`.
-                    let advance = handle_advance_state(
-                        &mut fsm,
-                        &mut context,
-                        subagents.as_mut(),
-                        self,
-                        tool_ctx,
-                        emitter,
-                        call,
-                    )
-                    .await;
+                    // when it holds, and refuse the advance otherwise so the agent cannot skip
+                    // ahead. A `plan-first` plan reset is captured here and applied after the turn's
+                    // tool results are recorded, exactly like `submit_plan`.
+                    let advance =
+                        handle_advance_state(&mut fsm, &mut context, tool_ctx, emitter, call);
                     if let Some(plan) = advance.submit_plan {
                         submitted_plan = Some(plan);
                     }
@@ -6012,16 +6043,6 @@ impl Agent {
                         // routine against the orchestrator, scheduler, and worktree machinery,
                         // which the tool itself cannot reach.
                         handle_speculate(sub, self, &board, emitter, call).await
-                    } else if code_reviews_active
-                        && call.name == COMPLETE_ISSUE_TOOL
-                        && board.offers_board()
-                    {
-                        // Code Reviews gate acceptance: `complete_issue` is intercepted here (like
-                        // the delegation tools) so that instead of marking the issue done
-                        // immediately, gg runs a Code Review — dispatching a reviewer subagent and
-                        // fix agents against the orchestrator, which the tool itself cannot reach —
-                        // and only accepts the issue once the review approves.
-                        handle_code_review(sub, self, &board, emitter, call).await
                     } else {
                         registry.dispatch(call, tool_ctx).await
                     }
@@ -6859,40 +6880,30 @@ fn resolve_board(set: &GgCapabilitySet) -> BoardRuntime {
 /// Resolve the run's git-backed [isolation and baseline](WorktreesSetup) at session start, reporting
 /// on `emitter`.
 ///
-/// A git **baseline** is committed whenever either the [worktrees](CAPABILITY_WORKTREES) capability
-/// (every worktree branches from it) or the [code-reviews](CAPABILITY_CODE_REVIEWS) capability (a
-/// Code Review diffs the work against it) is on. On top of that, the [worktree
-/// root](worktrees_root_for) is created **only** when worktrees is on. When neither capability wants
-/// git, isolation is inert (no baseline, no root).
+/// Isolation is wanted whenever the run can produce a worktree: the
+/// [project-management](CAPABILITY_PROJECT_MANAGEMENT) capability (every issue works in its own) or
+/// the [speculative-execution](CAPABILITY_SPECULATIVE) capability (every attempt does). When neither
+/// is on, git is left alone entirely — no baseline, no root.
 ///
 /// Any problem — git absent, a failed baseline, or an uncreatable worktree root — is logged
-/// **loudly** at error level and leaves the affected feature unusable (a later `worktree: true`
-/// spawn is refused; a Code Review runs against an empty diff) rather than crashing the run; a
-/// committed baseline is still recorded even if the worktree root could not be created, so Code
-/// Reviews can still reuse it. The [`capability`](WorktreesSetup::capability) field always reflects
-/// the **worktrees** capability specifically (it gates the `worktree` spawn option), independent of
-/// whether the baseline was committed for code-reviews.
+/// **loudly** at error level and leaves isolation unusable (issues run in the shared workspace and
+/// merge nothing; a `speculate` call is refused) rather than crashing the run.
 fn resolve_worktrees(
     set: &GgCapabilitySet,
     workspace_dir: &Path,
     emitter: &Emitter,
 ) -> WorktreesSetup {
-    let worktrees = set.is_enabled(CAPABILITY_WORKTREES);
-    // A baseline is needed for a Code Review to diff against — whether triggered by the
-    // `code-reviews` capability (per-issue) or by the `review-gated` FSM's `review` state (the whole
-    // run's diff).
-    let code_reviews = set.is_enabled(CAPABILITY_CODE_REVIEWS)
-        || configured_machine(set) == Some(MACHINE_REVIEW_GATED);
+    let issues = set.is_enabled(CAPABILITY_PROJECT_MANAGEMENT);
+    let speculative = set.is_enabled(CAPABILITY_SPECULATIVE);
     // A short, accurate description of why git is needed, for the diagnostics.
-    let reason = match (worktrees, code_reviews) {
-        (true, true) => "the `worktrees` capability is enabled and a Code Review may run",
-        (true, false) => "the `worktrees` capability is enabled",
-        (false, true) => "a Code Review may run (the `code-reviews` or `review-gated` capability)",
+    let reason = match (issues, speculative) {
+        (true, true) => "issues and speculation attempts each work in an isolated git worktree",
+        (true, false) => "every issue works in an isolated git worktree",
+        (false, true) => "every speculation attempt works in an isolated git worktree",
         (false, false) => "",
     };
-    if !worktrees && !code_reviews {
+    if !issues && !speculative {
         return WorktreesSetup {
-            capability: false,
             baseline_commit: None,
             root: None,
         };
@@ -6902,14 +6913,12 @@ fn resolve_worktrees(
         emitter.emit(log(
             "error",
             format!(
-                "{reason} but the `git` binary is not available; a workspace baseline could not be \
-                 committed, so worktree isolation is disabled (any `worktree: true` spawn is \
-                 refused) and Code Reviews run against an empty diff. (The rest of the run is \
-                 unaffected.)"
+                "{reason}, but the `git` binary is not available; worktree isolation is disabled. \
+                 Issues run directly in the shared workspace (nothing is merged, and reviews see an \
+                 empty diff) and `speculate` is refused. (The rest of the run is unaffected.)"
             ),
         ));
         return WorktreesSetup {
-            capability: worktrees,
             baseline_commit: None,
             root: None,
         };
@@ -6921,69 +6930,54 @@ fn resolve_worktrees(
             emitter.emit(log(
                 "error",
                 format!(
-                    "{reason} but git could not initialize a baseline of the workspace: {err}; \
-                     worktree isolation is disabled and Code Reviews run against an empty diff."
+                    "{reason}, but git could not initialize a baseline of the workspace: {err}; \
+                     worktree isolation is disabled for this run."
                 ),
             ));
             return WorktreesSetup {
-                capability: worktrees,
                 baseline_commit: None,
                 root: None,
             };
         }
     };
 
-    // The worktree checkout root is only needed by the worktrees capability. Code-reviews-only runs
-    // keep the baseline but need no root.
-    let root = if worktrees {
-        let root = worktrees_root_for(workspace_dir);
-        match std::fs::create_dir_all(&root) {
-            Ok(()) => Some(root),
-            Err(err) => {
-                emitter.emit(log(
-                    "error",
-                    format!(
-                        "a workspace baseline was committed, but the worktree root `{}` could not \
-                         be created: {err}; worktree isolation is disabled for this run.",
-                        root.display()
-                    ),
-                ));
-                // Keep the baseline: Code Reviews can still diff against it even though no worktree
-                // can be made.
-                None
-            }
+    let root = worktrees_root_for(workspace_dir);
+    let root = match std::fs::create_dir_all(&root) {
+        Ok(()) => Some(root),
+        Err(err) => {
+            emitter.emit(log(
+                "error",
+                format!(
+                    "a workspace baseline was committed, but the worktree root `{}` could not \
+                     be created: {err}; worktree isolation is disabled for this run.",
+                    root.display()
+                ),
+            ));
+            None
         }
-    } else {
-        None
     };
 
     emitter.emit(log(
         "info",
         format!(
-            "committed the seeded workspace as the baseline `{}`{}. {}",
+            "committed the seeded workspace as the baseline `{}`. {}",
             short_sha(&baseline),
-            if code_reviews {
-                " (Code Reviews diff issue work against it)"
+            if issues {
+                "Each issue is dispatched into its own worktree, merged back into the main tree \
+                 once it is accepted."
             } else {
-                ""
-            },
-            if worktrees {
-                "A subagent dispatched with `worktree: true` runs in an isolated copy that is \
-                 merged back into the main tree on clean completion (or discarded otherwise)."
-            } else {
-                "Marking an issue done triggers a Code Review against this baseline before it is \
-                 accepted."
+                "Each speculation attempt runs in its own worktree; only the winner is merged \
+                 back."
             },
         ),
     ));
     WorktreesSetup {
-        capability: worktrees,
         baseline_commit: Some(baseline),
         root,
     }
 }
 
-/// The directory per-agent [worktree](Worktree) checkouts are created under: a sibling of the
+/// The directory [worktree](Worktree) checkouts are created under: a sibling of the
 /// workspace named `<workspace>.gg-worktrees`, so the checkouts live **outside** the main working
 /// tree (never nested inside it, which would entangle them with the main tree's status).
 fn worktrees_root_for(workspace_dir: &Path) -> PathBuf {
@@ -7034,8 +7028,6 @@ struct PromptInputs<'a> {
     /// This agent's model and the run's vision registry, so the prompt can state whether a
     /// reference image can actually be shown to it.
     vision: &'a VisionContext,
-    /// Whether Code Reviews gate issue acceptance this run.
-    code_reviews: bool,
     /// Whether `speculate` is available this run.
     speculative: bool,
     /// Whether the run responds with programs rather than native tool calls.
@@ -7046,8 +7038,9 @@ struct PromptInputs<'a> {
     /// prompt section that tells the model the brief is already in its window.
     autoload_specs: Option<bool>,
     /// This agent's [profile](GgAgentConfig): the source of its operator custom instructions, its
-    /// optional full-template override, and the [subagents](GgAgentConfig::subagents) it may spawn
-    /// (enumerated in the prompt so the model knows who it can delegate to, and why).
+    /// optional full-template override, and its [roster](GgAgentConfig::subagents) — the agents it
+    /// may spawn, assign issues to, and name as reviewers (each enumerated in the prompt, scope by
+    /// scope, so the model knows exactly which names each call accepts and why).
     profile: &'a GgAgentConfig,
     /// Whether the agent this prompt is for is a **delegated** worker rather than the run's root,
     /// which decides what the ending section says `finish` ends: the run, or this worker's task.
@@ -7200,6 +7193,20 @@ fn code_heading_views(
         .collect()
 }
 
+/// The entries of `profile`'s [roster](GgAgentConfig::subagents) that carry `scope`, as the prompt
+/// lists them: the target's name plus the caller-scoped description of when to use it.
+fn roster(profile: &GgAgentConfig, scope: GgSubagentScope) -> Vec<SpawnableAgentView> {
+    profile
+        .subagents
+        .iter()
+        .filter(|reference| reference.has_scope(scope))
+        .map(|reference| SpawnableAgentView {
+            name: reference.agent.clone(),
+            description: reference.description.clone(),
+        })
+        .collect()
+}
+
 fn system_prompt(inputs: PromptInputs<'_>) -> String {
     let PromptInputs {
         registry,
@@ -7212,7 +7219,6 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
         read_policy,
         shell_offload,
         vision,
-        code_reviews,
         speculative,
         responses_as_code,
         autoload_specs,
@@ -7223,22 +7229,15 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
         compaction,
     } = inputs;
 
-    // The agents this one may spawn, each with its caller-scoped description — enumerated in the
-    // prompt (in both execution modes) so the model knows which names `spawn_subagent`/`speculate`/
-    // `run_workflow` accept and when to reach for each. Only meaningful when this agent has the
-    // delegation machinery; an empty allowlist renders no section.
-    let spawnable_agents: Vec<SpawnableAgentView> = if registry.offers(SPAWN_SUBAGENT_TOOL) {
-        profile
-            .subagents
-            .iter()
-            .map(|reference| SpawnableAgentView {
-                name: reference.agent.clone(),
-                description: reference.description.clone(),
-            })
-            .collect()
-    } else {
-        Vec::new()
-    };
+    // This agent's roster, split by what each entry may be used **for**. The three lists are
+    // independent of one another and of the delegation capability: an agent with no `spawn_subagent`
+    // still names implementers and reviewers on the issues it files, which is exactly why the
+    // prompt's Subagents section is gated on the *tool* being offered rather than on the roster
+    // being non-empty.
+    let spawnable_agents = roster(profile, GgSubagentScope::Subagent);
+    let issue_agents = roster(profile, GgSubagentScope::Implementer);
+    let reviewer_agents = roster(profile, GgSubagentScope::Reviewer);
+    let offers_spawn = registry.offers(SPAWN_SUBAGENT_TOOL);
 
     // The read cap is only worth stating when `read_file` is actually offered and actually
     // capped; an unlimited (or withheld) read contributes no prompt text. Whether the model
@@ -7306,6 +7305,7 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
                 .map(str::trim)
                 .filter(|text| !text.is_empty())
                 .map(str::to_string),
+            subagents: offers_spawn,
             spawnable_agents,
             delegated,
             fences_are_stripped,
@@ -7339,14 +7339,15 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
                     max_epics: caps.max_epics,
                     max_issues: caps.max_issues,
                     max_retries: caps.max_retries,
-                    reviewers: IssuePolicy::resolve(profile).require_reviewers,
+                    reviewers_required: IssuePolicy::resolve(profile).require_reviewers,
+                    issue_agents,
+                    reviewer_agents,
                 }
             }),
             planning: planning.offers_planning(),
             fsm: fsm.is_active().then(|| FsmView {
                 machine: fsm.machine_name().to_string(),
             }),
-            code_reviews,
             speculative,
             // On → a section telling the model the whole brief is already in its window; the
             // `locked` flag decides whether it also promises the material stays across compaction.

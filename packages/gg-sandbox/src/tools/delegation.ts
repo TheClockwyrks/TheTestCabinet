@@ -38,8 +38,10 @@ type BriefInput = { prompt: string } | { issueId: string };
  */
 function brief(fn: string, request: BriefInput): SubagentBrief {
   const candidate = request as { prompt?: unknown; issueId?: unknown };
-  if (typeof candidate.prompt === "string") return { tag: "prompt", val: candidate.prompt };
-  if (typeof candidate.issueId === "string") return { tag: "issue", val: candidate.issueId };
+  if (typeof candidate.prompt === "string")
+    return { tag: "prompt", val: candidate.prompt };
+  if (typeof candidate.issueId === "string")
+    return { tag: "issue", val: candidate.issueId };
   throw new ToolError(
     fn,
     "invalid-argument",
@@ -51,20 +53,17 @@ function brief(fn: string, request: BriefInput): SubagentBrief {
  * Delegate scoped work to a child agent and return its handle immediately — the child runs in
  * parallel while your program continues. Name the `agent` to run it as (one of the agents you may
  * spawn — the system prompt lists them; it selects the child's model, tools, and instructions) and
- * brief it with exactly one of `prompt` (self-contained instructions) or `issueId` (a board issue);
- * `worktree` runs it in an isolated git worktree merged back on clean completion. Throws `refused`
- * at the delegation depth cap, and `invalid-argument` if `agent` is not one you may spawn.
+ * brief it with exactly one of `prompt` (self-contained instructions) or `issueId` (a board issue).
+ * The child shares your workspace. Throws `refused` at the delegation depth cap, and
+ * `invalid-argument` if `agent` is not one you may spawn.
  */
 export function spawnSubagent(
-  request: { agent: string } & ({ prompt: string } | { issueId: string }) & {
-    worktree?: boolean;
-  },
+  request: { agent: string } & ({ prompt: string } | { issueId: string }),
 ): SubagentHandle {
   return call(() =>
     raw.spawnSubagent({
       agent: request.agent,
       task: brief("spawnSubagent", request),
-      worktree: request.worktree,
     }),
   );
 }
@@ -131,18 +130,18 @@ export function runWorkflow(
     prompt: string;
     items?: string[];
     agent: string;
-    worktree?: boolean;
   }[],
 ): WorkflowReport {
   return call(() =>
     raw.runWorkflow(
-      list<(typeof stages)[number]>("runWorkflow", "stages", stages).map((stage) => ({
-        name: stage.name,
-        prompt: stage.prompt,
-        items: stage.items,
-        agent: stage.agent,
-        worktree: stage.worktree,
-      })),
+      list<(typeof stages)[number]>("runWorkflow", "stages", stages).map(
+        (stage) => ({
+          name: stage.name,
+          prompt: stage.prompt,
+          items: stage.items,
+          agent: stage.agent,
+        }),
+      ),
     ),
   );
 }
@@ -155,9 +154,9 @@ export function runWorkflow(
  */
 export function speculate(
   request: { agent: string } & ({ prompt: string } | { issueId: string }) & {
-    attempts?: number;
-    approaches?: string[];
-  },
+      attempts?: number;
+      approaches?: string[];
+    },
 ): SpeculationReport {
   return call(() =>
     raw.speculate({

@@ -328,11 +328,11 @@ declare module "test-cabinet:gg/board" {
     maxIssues: number;
   }
 
-  /** What accepting an issue produced. */
+  /** What recording an issue's work as finished produced. */
   export interface CompletionReport {
-    /** Whether a Code Review gated the acceptance. */
-    codeReviewed: boolean;
-    /** The acceptance detail — the reviewer's verdict when there was one. */
+    /** Whether the issue named reviewers, so its work is reviewed before acceptance. */
+    reviewed: boolean;
+    /** What happens to the issue next. */
     detail: string;
   }
 
@@ -470,8 +470,6 @@ declare module "test-cabinet:gg/delegation" {
     agent: string;
     /** What the child should do. */
     task: SubagentBrief;
-    /** Run the child in an isolated git worktree, merged back on clean completion. */
-    worktree: boolean | undefined;
   }
 
   /** A spawned child. */
@@ -482,8 +480,6 @@ declare module "test-cabinet:gg/delegation" {
     slot: string;
     /** The model actually bound to that agent. */
     modelId: string;
-    /** The worktree branch it runs on, when it is isolated. */
-    worktreeBranch: string | undefined;
   }
 
   /** How a child agent finished. `limit-exceeded` is a child an execution ceiling stopped. */
@@ -515,8 +511,6 @@ declare module "test-cabinet:gg/delegation" {
     items: string[] | undefined;
     /** The agent to run this stage's children as — one of the agents you may spawn. */
     agent: string;
-    /** Run this stage's children in isolated worktrees. */
-    worktree: boolean | undefined;
   }
 
   /** What a completed workflow produced. */

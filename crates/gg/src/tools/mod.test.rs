@@ -722,10 +722,7 @@ fn all_tool_names_matches_a_maximal_registry() {
     let mut set = set_with(capabilities);
     // A maximal registry offers the delegation tools too, which requires at least one agent this
     // profile may spawn.
-    set.subagents.push(GgSubagentRef {
-        agent: ROOT_AGENT.to_string(),
-        description: String::new(),
-    });
+    set.subagents.push(GgSubagentRef::any(ROOT_AGENT));
     // The memory tools are the one family a *strategy* partitions rather than a capability alone
     // offering all of them: a run picks one strategy, and each offers a different set. So the
     // maximal toolset is the union over the strategies — every memory tool is offered by exactly

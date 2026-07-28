@@ -250,7 +250,7 @@ fn the_board_tools_round_trip_under_the_schemas_key_names() {
         .complete_issue("i1".to_string())
         .expect("completed the issue");
     assert!(
-        report.code_reviewed,
+        report.reviewed,
         "a gated acceptance must say a review ran — it is the one cheap-looking call that spawns \
          agents"
     );

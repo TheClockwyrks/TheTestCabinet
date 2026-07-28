@@ -62,7 +62,7 @@ fn one_of_each() -> Vec<ToolData> {
             max_issues: 60,
         }),
         ToolData::Completion(CompletionData {
-            code_reviewed: true,
+            reviewed: true,
             detail: "approved".to_string(),
         }),
         ToolData::Reclaim(ReclaimData {
@@ -83,7 +83,6 @@ fn one_of_each() -> Vec<ToolData> {
             id: "agent-1".to_string(),
             slot: "primary".to_string(),
             model_id: "vendor/model".to_string(),
-            worktree_branch: Some("gg/agent-1".to_string()),
         }),
         ToolData::SubagentResults(vec![SubagentResultData {
             id: "agent-1".to_string(),

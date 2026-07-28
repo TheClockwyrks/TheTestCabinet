@@ -14,17 +14,17 @@
 
 import type {
   GgBoardIssue,
-  GgCodeReviewPhase,
+  GgIssueReviewPhase,
   GgIssueStatus,
 } from "@test-cabinet/run-record/gg";
-import type { BoardState, CodeReviewState } from "./useGgRunState";
+import type { BoardState, IssueReviewState } from "./useGgRunState";
 import styles from "./GgPanels.module.scss";
 
 interface BoardViewProps {
   board: BoardState | null;
-  // Per-issue Code Review lifecycle, keyed by issue id (see gg/code-reviews); empty
-  // when the code-reviews capability is off, so no review badges are shown.
-  codeReviews: Map<string, CodeReviewState>;
+  // Per-issue review lifecycle, keyed by issue id (see gg/project-management); empty
+  // when no issue named reviewers, so no review badges are shown.
+  issueReviews: Map<string, IssueReviewState>;
 }
 
 // The derived readiness of an issue: a done issue is done and a failed one is failed
@@ -50,6 +50,7 @@ export function deriveIssue(
 export const STATUS_LABELS: Record<GgIssueStatus, string> = {
   open: "open",
   in_progress: "in progress",
+  in_review: "in review",
   done: "done",
   failed: "failed",
 };
@@ -61,11 +62,11 @@ export const READINESS_LABELS: Record<Readiness, string> = {
   failed: "failed",
 };
 
-// The Code Review badge label per phase (see gg/code-reviews): a review gates an
-// issue's acceptance, so "in review" while the reviewer inspects the diff, "changes
-// requested" while a fix agent works the actionable items, "approved" once the issue
-// may finally be accepted.
-export const REVIEW_LABELS: Record<GgCodeReviewPhase, string> = {
+// The review badge label per phase (see gg/project-management): a review gates an
+// issue's acceptance, so "in review" while the reviewers inspect the diff, "changes
+// requested" while the issue's own agent works the actionable items, "approved" once
+// the issue may finally be accepted and merged.
+export const REVIEW_LABELS: Record<GgIssueReviewPhase, string> = {
   requested: "in review",
   changes_requested: "changes requested",
   approved: "approved",
@@ -80,7 +81,7 @@ interface EpicGroup {
   issues: GgBoardIssue[];
 }
 
-export function BoardView({ board, codeReviews }: BoardViewProps) {
+export function BoardView({ board, issueReviews }: BoardViewProps) {
   if (!board || (board.epics.length === 0 && board.issues.length === 0)) {
     return (
       <p className={styles.empty}>
@@ -140,7 +141,7 @@ export function BoardView({ board, codeReviews }: BoardViewProps) {
                   key={issue.id}
                   issue={issue}
                   byId={byId}
-                  review={codeReviews.get(issue.id) ?? null}
+                  review={issueReviews.get(issue.id) ?? null}
                 />
               ))}
             </ul>
@@ -162,7 +163,7 @@ function IssueCard({
 }: {
   issue: GgBoardIssue;
   byId: Map<string, GgBoardIssue>;
-  review: CodeReviewState | null;
+  review: IssueReviewState | null;
 }) {
   const { readiness, incomplete } = deriveIssue(issue, byId);
   return (
@@ -178,8 +179,8 @@ function IssueCard({
           <span className={styles.statusBadge} data-status={issue.status}>
             {STATUS_LABELS[issue.status]}
           </span>
-          {/* The Code Review badge — shown only when a review was dispatched for
-              this issue, so a code-reviews-off run carries no badge. It makes the
+          {/* The review badge — shown only when a review was run for
+              this issue, so an issue with no reviewers carries no badge. It makes the
               acceptance gate legible: the issue is not accepted until it approves. */}
           {review && (
             <span
@@ -213,7 +214,7 @@ function IssueCard({
   );
 }
 
-// The actionable items a Code Review's `changes_requested` returned, listed under
+// The actionable items a review's `changes_requested` returned, listed under
 // the issue so the gate's remaining work is visible on the board — it is precisely
 // what a fix agent, dispatched with the original task plus these items, addresses.
 export function ReviewItems({ items }: { items: string[] }) {

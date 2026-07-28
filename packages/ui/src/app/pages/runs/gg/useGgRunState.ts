@@ -18,7 +18,7 @@ import type {
   GgBoardEpic,
   GgBoardIssue,
   GgCapabilitySet,
-  GgCodeReviewPhase,
+  GgIssueReviewPhase,
   GgContextAction,
   GgContextSourceUsage,
   GgLoggedImage,
@@ -356,29 +356,28 @@ export interface PlanState {
   implementTimestamp: string | null;
 }
 
-// --- Code Reviews (Phase 5) --------------------------------------------------
+// --- Issue reviews -----------------------------------------------------------
 
-// The Code Review lifecycle of one issue (see gg/code-reviews). A Code Review gates
-// an issue's acceptance: when work is marked done gg dispatches a reviewer against
-// the diff rather than accepting immediately, and the reviewer either requests
-// changes — carrying actionable `items` a fix agent must address — or approves, at
-// which point the issue is finally accepted (its board status flips to done). There
-// is no cycle limit, so `history` keeps the ordered phases seen; `phase` is the
-// latest, and `items` holds the actionable items from the most recent
-// `changes_requested` (what a fix agent is currently addressing), cleared on
-// approval. The reviewed issue is keyed from the event envelope's `issueId`, not the
-// payload.
-export interface CodeReviewState {
-  phase: GgCodeReviewPhase;
+// The review lifecycle of one issue (see gg/project-management). An issue's reviewers
+// gate its acceptance: when its agent records the work as finished, gg runs them
+// against the diff rather than accepting immediately, and a reviewer either requests
+// changes — carrying actionable `items` the issue's own agent is re-invoked to
+// address — or approves, at which point the issue is finally accepted (its board
+// status flips to done) and its worktree merged. There is no cycle limit, so
+// `history` keeps the ordered phases seen; `phase` is the latest, and `items` holds
+// the actionable items from the most recent `changes_requested`, cleared on approval.
+// The reviewed issue is keyed from the event envelope's `issueId`, not the payload.
+export interface IssueReviewState {
+  phase: GgIssueReviewPhase;
   items: string[];
   baseline: string | null;
-  history: GgCodeReviewPhase[];
+  history: GgIssueReviewPhase[];
 }
 
 // --- FSM-driven process (Phase 5) --------------------------------------------
 
 // The current enforced FSM state (see gg/fsms): a built-in machine (tdd,
-// review-gated, plan-first, …) drives the run through a fixed, ordered sequence the
+// plan-first, …) drives the run through a fixed, ordered sequence the
 // agent cannot skip. `machine`/`state`/`stateIndex` are the latest `fsm_state`
 // transition; `states` is the ordered machine path discovered so far (indexed by
 // `stateIndex`, so a loop-back that repeats an earlier index does not grow it), so
@@ -489,10 +488,10 @@ export interface GgRunState {
   // never entered plan mode).
   plan: PlanState | null;
 
-  // --- Code Reviews (Phase 5) ----------------------------------------------
-  // Per-issue Code Review lifecycle, keyed by issue id (from the event envelope);
-  // empty when the code-reviews capability is off (no `code_review` events).
-  codeReviews: Map<string, CodeReviewState>;
+  // --- Issue reviews -------------------------------------------------------
+  // Per-issue review lifecycle, keyed by issue id (from the event envelope);
+  // empty when no issue named reviewers (no `issue_review` events).
+  issueReviews: Map<string, IssueReviewState>;
 
   // --- FSM-driven process (Phase 5) ----------------------------------------
   // The current enforced FSM state driving the run, or null when no machine drove
@@ -707,10 +706,10 @@ function ggFeedRow(
     case "worktree_merged":
     case "slot_usage":
     case "workflow_stage":
-    // The Phase-5 Code Review kind is surfaced on the board (per-issue badge +
+    // The issue-review kind is surfaced on the board (per-issue badge +
     // actionable items) and speculation on the agent tree (winner/attempts +
     // summary), not the feed, so they render no row.
-    case "code_review":
+    case "issue_review":
     case "speculation":
       return null;
     default:
@@ -783,7 +782,7 @@ export interface DerivedGgState {
   tasks: GgTaskEntry[];
   board: BoardState | null;
   plan: PlanState | null;
-  codeReviews: Map<string, CodeReviewState>;
+  issueReviews: Map<string, IssueReviewState>;
   fsm: FsmProgress | null;
   speculations: SpeculationState[];
 }
@@ -1029,8 +1028,8 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
   let tasks: GgTaskEntry[] = [];
   let board: BoardState | null = null;
   let plan: PlanState | null = null;
-  // Per-issue Code Review lifecycle, keyed by the envelope's issueId.
-  const codeReviews = new Map<string, CodeReviewState>();
+  // Per-issue review lifecycle, keyed by the envelope's issueId.
+  const issueReviews = new Map<string, IssueReviewState>();
   // The latest FSM transition, plus the state seen at each index so the ordered
   // machine path can be reconstructed for the progress strip. Held on a const so the
   // post-loop read narrows cleanly (a `let` assigned only inside the forEach closure
@@ -1323,13 +1322,13 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
               : (plan?.implementTimestamp ?? null),
         };
         break;
-      case "code_review": {
+      case "issue_review": {
         // The reviewed issue rides on the event envelope's `issueId`, not the
         // payload; a review with no scoped issue is dropped (nothing to gate).
         const issueId = gg.issueId;
         if (issueId != null) {
-          const prior = codeReviews.get(issueId);
-          codeReviews.set(issueId, {
+          const prior = issueReviews.get(issueId);
+          issueReviews.set(issueId, {
             phase: gg.phase,
             // Actionable items arrive with `changes_requested` (what a fix agent
             // must address before re-review); keep the latest set, and clear it on
@@ -1472,7 +1471,7 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
     tasks,
     board,
     plan,
-    codeReviews,
+    issueReviews,
     fsm,
     speculations,
   };

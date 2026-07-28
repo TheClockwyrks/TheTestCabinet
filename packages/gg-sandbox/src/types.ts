@@ -164,11 +164,11 @@ export interface BoardUsage {
   maxIssues: number;
 }
 
-/** What accepting an issue produced. */
+/** What recording an issue's work as finished produced. */
 export interface CompletionReport {
-  /** Whether a Code Review gated the acceptance — when true, a reviewer subagent ran. */
-  codeReviewed: boolean;
-  /** The acceptance detail: the reviewer's verdict when there was one. */
+  /** Whether the issue named reviewers, so its work is reviewed before it is accepted. */
+  reviewed: boolean;
+  /** What happens to the issue next, in the same prose the model reads. */
   detail: string;
 }
 
@@ -214,8 +214,6 @@ export interface SubagentHandle {
   slot: string;
   /** The model actually bound to that agent. */
   modelId: string;
-  /** The worktree branch it runs on, when it is isolated. */
-  worktreeBranch: string | undefined;
 }
 
 /** How a child agent's loop ended — gg's own six words, as the native path also reports them. */

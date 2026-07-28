@@ -1043,10 +1043,13 @@ fn a_session_summary_recorded_before_healing_and_limits_still_deserializes() {
     });
     let summary: GgSessionSummary = serde_json::from_value(recorded).expect("deserialize");
 
-    // The pre-change fields still read exactly as they did.
+    // The pre-change fields still read exactly as they did — including the review count, which
+    // was recorded under its old `codeReviews` name and reads through the alias rather than
+    // silently defaulting to zero.
     assert_eq!(summary.terminal_status, "completed");
     assert_eq!(summary.code_executions, 7);
     assert_eq!(summary.effective_tools.len(), 3);
+    assert_eq!(summary.issue_reviews, 1);
     // The three new members default rather than failing the parse: a run recorded before healing
     // existed healed nothing, was bounded by no *recorded* ceiling, and breached none.
     assert_eq!(summary.healing, GgHealingSummary::default());
@@ -1073,7 +1076,7 @@ fn a_session_summary_carries_the_healing_rollup_and_the_ceiling_that_stopped_the
         "compactions": 0,
         "ranOutOfContext": false,
         "contextOverflowCount": 0,
-        "codeReviews": 0,
+        "issueReviews": 0,
         "reviewCycles": 0,
         "issuesReopened": 0,
         "speculations": 0,
@@ -1161,7 +1164,7 @@ fn the_disabled_healing_arm_serializes_as_a_present_empty_armed_set() {
         "compactions": 0,
         "ranOutOfContext": false,
         "contextOverflowCount": 0,
-        "codeReviews": 0,
+        "issueReviews": 0,
         "reviewCycles": 0,
         "issuesReopened": 0,
         "speculations": 0,
@@ -1220,7 +1223,7 @@ fn healing_records_written_before_the_shape_split_still_deserialize() {
         "compactions": 0,
         "ranOutOfContext": false,
         "contextOverflowCount": 0,
-        "codeReviews": 0,
+        "issueReviews": 0,
         "reviewCycles": 0,
         "issuesReopened": 0,
         "speculations": 0,

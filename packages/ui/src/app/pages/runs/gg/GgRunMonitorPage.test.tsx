@@ -89,7 +89,7 @@ function ggFrom(
 
 // Wrap a gg payload scoped to a board issue — the reviewed issue of a `code_review`
 // rides on the event envelope's `issueId`, not the payload — so a stream can gate an
-// issue's acceptance through its Code Review lifecycle.
+// issue's acceptance through its review lifecycle.
 function ggIssue(issueId: string, kind: GgTelemetryKind): HarnessEvent {
   return {
     type: "gg",
@@ -120,9 +120,7 @@ const ALL_CAPABILITIES = [
   "planning",
   "subagents",
   "multi-model",
-  "worktrees",
   "workflows",
-  "code-reviews",
   "fsm",
   "speculative-execution",
 ];
@@ -883,7 +881,7 @@ describe("GgRunMonitorPage", () => {
     expect(screen.getByText("tdd → implement")).toBeInTheDocument();
   });
 
-  it("surfaces Code Review status and actionable items on the Project tab", () => {
+  it("surfaces issue review status and actionable items on the Project tab", () => {
     const issue = (
       id: string,
       title: string,
@@ -909,13 +907,13 @@ describe("GgRunMonitorPage", () => {
           issue("i2", "Draw the board", "done"),
         ],
       }),
-      ggIssue("i1", { type: "code_review", phase: "requested" }),
+      ggIssue("i1", { type: "issue_review", phase: "requested" }),
       ggIssue("i1", {
-        type: "code_review",
+        type: "issue_review",
         phase: "changes_requested",
         items: ["Handle the empty-input case", "Add a unit test"],
       }),
-      ggIssue("i2", { type: "code_review", phase: "approved" }),
+      ggIssue("i2", { type: "issue_review", phase: "approved" }),
     ];
     renderMonitor(events);
     openTab("Project");

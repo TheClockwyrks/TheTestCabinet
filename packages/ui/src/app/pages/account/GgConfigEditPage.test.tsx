@@ -80,7 +80,7 @@ describe("GgConfigEditPage", () => {
     expect(screen.getByText("Models & tools")).toBeInTheDocument();
     expect(screen.getByText("Shell")).toBeInTheDocument();
     expect(screen.getByText("Filesystem")).toBeInTheDocument();
-    expect(screen.getByText("Subagents")).toBeInTheDocument();
+    expect(screen.getByText("Roster")).toBeInTheDocument();
     expect(screen.getByText("Custom instructions")).toBeInTheDocument();
     expect(screen.getByText("System Prompt")).toBeInTheDocument();
     // Multi-model is gone (each agent carries its own model).
@@ -104,10 +104,10 @@ describe("GgConfigEditPage", () => {
     renderPage();
     await screen.findByText("Agents");
     openFirstAgent();
-    // "Worktrees" lives in the Delegation group, which starts collapsed.
-    expect(screen.queryByText("Worktrees")).not.toBeInTheDocument();
+    // "Workflows" lives in the Delegation group, which starts collapsed.
+    expect(screen.queryByText("Workflows")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Delegation/i }));
-    expect(screen.getByText("Worktrees")).toBeInTheDocument();
+    expect(screen.getByText("Workflows")).toBeInTheDocument();
   });
 
   it("requires a name, then saves the capability set under it", async () => {
@@ -162,8 +162,8 @@ describe("GgConfigEditPage", () => {
     );
     await waitFor(() => expect(createGgConfig).toHaveBeenCalledTimes(1));
     // The ablation is per agent now.
-    const { disabledTools } = createGgConfig.mock.calls[0]![0].capabilitySet
-      .agents[0];
+    const { disabledTools } =
+      createGgConfig.mock.calls[0]![0].capabilitySet.agents[0];
     // Every way a memory is revised goes with the lever, whichever strategy the run
     // picks — `update_memory` under the scratchpad, `edit_memory` under the two
     // file-shaped ones, and `delete_memory` under all three.
@@ -172,7 +172,7 @@ describe("GgConfigEditPage", () => {
     );
   });
 
-  it("adds an agent and lets the Root list it as a subagent", async () => {
+  it("adds an agent and lets the Root put it on its roster", async () => {
     renderPage();
     fireEvent.change(await screen.findByPlaceholderText("e.g. no-compaction"), {
       target: { value: "delegating" },
@@ -181,13 +181,16 @@ describe("GgConfigEditPage", () => {
     // caller-scoped description.
     fireEvent.click(screen.getByRole("button", { name: /Add agent/i }));
     openFirstAgent();
-    // The subagents allowlist lists both Root (self) and the new agent-2.
-    const subToggle = screen.getByRole("checkbox", { name: /agent-2/i });
-    fireEvent.click(subToggle);
-    fireEvent.change(
-      screen.getByPlaceholderText("when to use this agent"),
-      { target: { value: "for reviews" } },
-    );
+    // The roster lists both Root (self) and the new agent-2, each with one toggle per
+    // scope. Grant agent-2 the Reviewer scope alone: the scopes are independent, so a
+    // reviewer need not also be spawnable.
+    const reviewerToggles = screen.getAllByRole("checkbox", {
+      name: /Reviewer/i,
+    });
+    fireEvent.click(reviewerToggles[reviewerToggles.length - 1]!);
+    fireEvent.change(screen.getByPlaceholderText("when to use this agent"), {
+      target: { value: "for reviews" },
+    });
 
     fireEvent.click(
       screen.getByRole("button", { name: "Create configuration" }),
@@ -199,7 +202,7 @@ describe("GgConfigEditPage", () => {
       "agent-2",
     ]);
     expect(agents[0].subagents).toEqual([
-      { agent: "agent-2", description: "for reviews" },
+      { agent: "agent-2", description: "for reviews", scopes: ["reviewer"] },
     ]);
   });
 

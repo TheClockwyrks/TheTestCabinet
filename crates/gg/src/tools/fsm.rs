@@ -2,17 +2,17 @@
 //! [FSM-driven process](crate::fsm) to move to the next state.
 //!
 //! Like the [planning tools](super::planning) it is **loop-coordinated**: its
-//! [`invoke`](Tool::invoke) only *validates* the call, because the transition (checking the current
-//! state's guard, injecting the next state's guidance, restricting the toolset, and — for the
-//! `review-gated` machine — triggering a [Code Review](crate::agent)) is a property of the live
-//! [loop](crate::agent) and its [engine](crate::fsm), which a self-contained tool cannot reach. The
+//! [`invoke`](Tool::invoke) only *validates* the call, because the transition — checking the current
+//! state's guard, injecting the next state's guidance, restricting the toolset — is a property of
+//! the live [loop](crate::agent) and its [engine](crate::fsm), which a self-contained tool cannot
+//! reach. The
 //! loop enforces the order: it **refuses** the advance while the current state's condition is unmet,
 //! so the agent cannot skip ahead.
 //!
 //! The tool is contributed to the registry only when the [`fsm`](test_cabinet_core::gg::CAPABILITY_FSM)
 //! capability is enabled; when it is off, it is not offered (ablation). It is further withheld
 //! per-turn (by the loop's toolset filter) while the current state is not one the agent advances by
-//! calling it — a terminal state, or the transient `review` state.
+//! calling it — a terminal state.
 
 use async_trait::async_trait;
 use serde_json::{Value, json};

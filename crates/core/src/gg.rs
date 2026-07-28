@@ -303,25 +303,64 @@ pub const CAPABILITY_AGENT_MANAGED_CONTEXT: &str = "agent-managed-context";
 /// is done, gg **automatically spawns a top-level agent and assigns it the issue** — agents no
 /// longer hand-dispatch issues to subagents. The [agent profile](GgAgentConfig) an issue is
 /// dispatched under is named **when the issue is created** ([`agent`](GgBoardIssue::agent)) and
-/// must be one the creating agent may [spawn](GgAgentConfig::subagents), so delegation and issue
-/// assignment are governed by one allowlist. An agent may [wait on an issue] until it reaches a
-/// terminal state, and an issue whose assigned agent cannot complete it after its
+/// must be one the creating agent lists with the
+/// [`implementer`](GgSubagentScope::Implementer) scope. An agent may [wait on an issue] until it
+/// reaches a terminal state, and an issue whose assigned agent cannot complete it after its
 /// `maxRetries` (default 1) retries is marked [failed](GgIssueStatus::Failed). Issues share the
 /// [tasks](CAPABILITY_TASKS) blocked-by DAG (gg rejects any edge that would introduce a cycle),
 /// and the whole board is retained across a [compaction](CAPABILITY_COMPACTION) boundary
 /// verbatim.
 ///
+/// # Every issue works in its own worktree
+///
+/// Issues are worked **concurrently**, so each one is isolated: gg makes the run's workspace a git
+/// repository (committing a **baseline** of the seeded workspace if it is not already one) and
+/// dispatches each issue's agent into a **fresh git worktree on its own branch**, with every
+/// file/shell tool rooted there. A retry — and each review round's fix pass — reuses that same
+/// worktree, so an attempt builds on what the last one produced. When the issue is finally accepted
+/// its branch is **merged back** into the main tree and the worktree is torn down; an issue that
+/// ends [failed](GgIssueStatus::Failed) has its worktree discarded unmerged. Because the merge can
+/// conflict with work another issue landed first, enabling the capability **requires** naming a
+/// [`mergeAgent`](PROJECT_MANAGEMENT_PARAM_MERGE_AGENT): the profile gg hands a conflicted merge to
+/// so it can resolve it and finish the merge. Every reconciliation is streamed as
+/// [`WorktreeMerged`](GgTelemetryKind::WorktreeMerged).
+///
+/// # Reviewers gate acceptance
+///
+/// An issue may name [reviewers](GgBoardIssue::reviewers) — profiles the creating agent lists with
+/// the [`reviewer`](GgSubagentScope::Reviewer) scope. When the assigned agent marks the issue
+/// complete it moves to [`InReview`](GgIssueStatus::InReview) rather than straight to done: gg runs
+/// each reviewer **in turn** against the diff of the issue's worktree, with any prior round's
+/// feedback included. A reviewer either **approves** or returns **actionable items**, in which case
+/// the issue's own assigned agent is re-invoked with the issue brief plus those items and the
+/// review runs again. Only once **every** reviewer approves is the issue actually marked
+/// [`Done`](GgIssueStatus::Done) and its worktree merged. The lifecycle is streamed as
+/// [`IssueReview`](GgTelemetryKind::IssueReview) telemetry.
+///
 /// The blocked-by DAG and `wait_for_issue` are **core** to the capability — never ablated
 /// away — but two features are optional per agent: **issue creation** (withholding
 /// `create_epic`/`create_issue` leaves an agent read-only access to the board, still able to
-/// wait on and complete issues) and **[reviewers](GgBoardIssue::reviewers)** (the `reviewers`
-/// param, which makes `create_issue` demand one or more reviewer profiles from that same
-/// spawnable set). The capability as a whole is opt-in, like compaction and agent-managed
-/// context — an ablation's off arm simply never offers the board tools.
+/// wait on and complete issues) and **required [reviewers](GgBoardIssue::reviewers)** (the
+/// `reviewers` param, which makes `create_issue` demand one or more reviewer profiles). The
+/// capability as a whole is opt-in, like compaction and agent-managed context — an ablation's off
+/// arm simply never offers the board tools.
 ///
 /// [project management]: https://docs.testcabinet.ai/gg/project-management/
 /// [wait on an issue]: https://docs.testcabinet.ai/gg/project-management/
 pub const CAPABILITY_PROJECT_MANAGEMENT: &str = "project-management";
+
+/// The [project-management](CAPABILITY_PROJECT_MANAGEMENT) capability param naming the run's
+/// **merge agent**: the [agent profile](GgAgentConfig) gg dispatches when merging an accepted
+/// issue's worktree back into the main tree hits a **conflict**, so the conflict is resolved and
+/// the merge finished rather than the issue's work being stranded on its branch.
+///
+/// It is **required** — a set that enables project management without naming a merge agent is
+/// refused at launch — because concurrent issues make a conflicting merge an ordinary event, not an
+/// edge case, and silently dropping the loser's work would make the board dishonest. The named
+/// profile must exist in the set and must have the [shell](CAPABILITY_SHELL) capability enabled:
+/// resolving a merge means running `git` in the workspace, which is not something an agent without
+/// a shell can do.
+pub const PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: &str = "mergeAgent";
 
 /// The stable id of the Phase 3 [planning] capability: a **read-only planning pass**
 /// followed by a **fresh-context implementation pass**. When enabled the model is offered
@@ -357,25 +396,6 @@ pub const CAPABILITY_PLANNING: &str = "planning";
 /// [scheduler]: https://docs.testcabinet.ai/gg/subagents/#scheduling
 pub const CAPABILITY_SUBAGENTS: &str = "subagents";
 
-/// The stable id of the Phase 4B [worktrees] capability: the ability to run a spawned
-/// [subagent](CAPABILITY_SUBAGENTS) in an **isolated git worktree** — a private copy of the
-/// workspace — instead of the shared main tree, so several agents can mutate files in parallel
-/// without trampling one another and each result is **merged back or discarded deliberately**.
-///
-/// When enabled, gg makes the run's workspace a git repository (committing a **baseline** of the
-/// seeded workspace if it is not already one — the same commit Phase 5 [Code Reviews] diff
-/// against), and a `spawn_subagent { worktree: true }` dispatches the child into a fresh worktree
-/// on its own branch with every file/shell tool rooted there. On clean completion the child's
-/// branch is merged back into the main tree (a merge conflict is surfaced, never silently
-/// dropped); on failure or discard the worktree and branch are removed unmerged. Off (its default
-/// — it is opt-in), or when `worktree` is not requested, a subagent shares the main tree (today's
-/// behavior). Worktrees are what make [speculative execution] safe to run concurrently.
-///
-/// [worktrees]: https://docs.testcabinet.ai/gg/worktrees/
-/// [Code Reviews]: https://docs.testcabinet.ai/gg/code-reviews/
-/// [speculative execution]: https://docs.testcabinet.ai/gg/speculative-execution/
-pub const CAPABILITY_WORKTREES: &str = "worktrees";
-
 /// The stable id of the Phase 4B [workflows] capability: **declared** subagent fan-outs plus
 /// sequencing — the structured, deterministic cousin of ad-hoc [subagents](CAPABILITY_SUBAGENTS).
 ///
@@ -387,42 +407,14 @@ pub const CAPABILITY_WORKTREES: &str = "worktrees";
 /// (a workflow gets no separate pool). The fanned-out agents are ordinary subagents: they appear in
 /// the [agent tree](https://docs.testcabinet.ai/gg/subagents/) with the same
 /// [`AgentSpawned`](GgTelemetryKind::AgentSpawned)/[`AgentStatus`](GgTelemetryKind::AgentStatus)/[`AgentReturned`](GgTelemetryKind::AgentReturned)
-/// telemetry, each run under a named [agent profile](GgAgentConfig) (on that profile's own model),
-/// and can each run in an isolated
-/// [worktree](CAPABILITY_WORKTREES); the workflow's own structure is streamed as
+/// telemetry, each run under a named [agent profile](GgAgentConfig) (on that profile's own model);
+/// the workflow's own structure is streamed as
 /// [`WorkflowStage`](GgTelemetryKind::WorkflowStage) stage-boundary events. Off (its default — it is
 /// opt-in), the tool vanishes. [FSM-driven processes] push declared control flow further still.
 ///
 /// [workflows]: https://docs.testcabinet.ai/gg/workflows/
 /// [FSM-driven processes]: https://docs.testcabinet.ai/gg/fsms/
 pub const CAPABILITY_WORKFLOWS: &str = "workflows";
-
-/// The stable id of the Phase 5 [Code Reviews] capability: gating an
-/// [issue](CAPABILITY_PROJECT_MANAGEMENT)'s **acceptance** on a verification pass. Always called a
-/// **Code Review** (never a bare "review") to keep it distinct from The Test Cabinet's own
-/// test-run reviews.
-///
-/// When enabled, marking an issue done with `complete_issue` no longer accepts it immediately:
-/// gg **triggers a Code Review**, dispatching a reviewer [subagent](CAPABILITY_SUBAGENTS)
-/// (running under the configured reviewer [agent profile](GgAgentConfig), defaulting to the
-/// [Root](ROOT_AGENT)) with the **diff** of the work against a baseline
-/// — the issue's initial commit captured when its work began, falling back to the run's
-/// [baseline](CAPABILITY_WORKTREES) — plus the issue's scope and completion criteria. The reviewer
-/// either **approves** (the issue is then accepted and marked done) or returns one or more
-/// **actionable items**, in which case gg spawns a fix agent given the original issue brief plus
-/// those items and then **re-reviews** — with **no cycle limit** (a fix can be re-reviewed, produce
-/// new items, and be fixed again until a review approves), bounded only by the run's
-/// max-runtime/scheduler. The lifecycle is streamed as [`CodeReview`](GgTelemetryKind::CodeReview)
-/// telemetry; the reviewer and fix agents appear in the [agent tree](CAPABILITY_SUBAGENTS) as
-/// ordinary subagents. Gating acceptance on a Code Review makes "definition of done" enforceable,
-/// and pairs with the [FSM](https://docs.testcabinet.ai/gg/fsms/) capability (a Code Review is the
-/// `review` state of a `develop → review → accept` machine) and
-/// [speculative execution](https://docs.testcabinet.ai/gg/speculative-execution/) (a Code Review is
-/// the judge). Opt-in; a Code Review needs the delegation machinery, so it engages only when
-/// [subagents](CAPABILITY_SUBAGENTS) (or [workflows](CAPABILITY_WORKFLOWS)) is also on.
-///
-/// [Code Reviews]: https://docs.testcabinet.ai/gg/code-reviews/
-pub const CAPABILITY_CODE_REVIEWS: &str = "code-reviews";
 
 /// The stable id of the Phase 5 [FSM-driven processes] capability: driving a run through a
 /// **fixed, named finite state machine** so the *order* of the work is a property of the process,
@@ -432,8 +424,7 @@ pub const CAPABILITY_CODE_REVIEWS: &str = "code-reviews";
 /// **built-in** machine the agent is *driven through* — the machines are authored as part of the
 /// harness (a shipped library), not a per-study data format and not model-defined. The capability's
 /// `machine` param selects which built-in drives the run — `"tdd"` (write tests → implement → verify
-/// with tests), `"review-gated"` (develop → review → accept, where the `review` state is a
-/// [Code Review](CAPABILITY_CODE_REVIEWS)), or `"plan-first"` (a read-only plan pass → a
+/// with tests) or `"plan-first"` (a read-only plan pass → a
 /// fresh-context implementation pass, reusing the [planning](CAPABILITY_PLANNING) plan→implement
 /// flow); an absent/unrecognized `machine` leaves no FSM driving the run. The engine keeps the agent
 /// in each state until its transition condition holds — enforced through per-state system guidance,
@@ -441,8 +432,8 @@ pub const CAPABILITY_CODE_REVIEWS: &str = "code-reviews";
 /// the machine will move to `implement`), and per-state toolset gating (the `plan` state is
 /// read-only, mirroring plan mode) — so the agent **cannot skip ahead**. Each transition is streamed
 /// as [`FsmState`](GgTelemetryKind::FsmState) telemetry. Opt-in, like the other Phase 2+
-/// capabilities; `review-gated`/`plan-first` compose with the capabilities their states reuse
-/// (a Code Review needs the delegation machinery; the plan pass reuses the planner).
+/// capabilities; `plan-first` composes with the capability its states reuse (the plan pass reuses
+/// the planner).
 ///
 /// [FSM-driven processes]: https://docs.testcabinet.ai/gg/fsms/
 pub const CAPABILITY_FSM: &str = "fsm";
@@ -453,11 +444,11 @@ pub const CAPABILITY_FSM: &str = "fsm";
 /// When enabled, the model can call `speculate` with a task (a free-form prompt or an
 /// [issue](CAPABILITY_PROJECT_MANAGEMENT)) and a count `K`: gg fans out `K`
 /// [subagents](CAPABILITY_SUBAGENTS) at the same task — under a named [agent profile](GgAgentConfig),
-/// optionally with different approach hints — **each in its own
-/// [worktree](CAPABILITY_WORKTREES)** so the attempts do not collide, driven by the same
+/// optionally with different approach hints — **each in its own isolated git worktree** so the
+/// attempts do not collide, driven by the same
 /// [scheduler](CAPABILITY_SUBAGENTS) (honoring the one global parallelism cap and the depth cap — no
-/// separate budget). Once the attempts finish, a **judge** — a dedicated judge subagent (or a
-/// [Code Review](CAPABILITY_CODE_REVIEWS)) — scores their diffs against the task's completion
+/// separate budget). Once the attempts finish, a **judge** subagent scores their diffs against the
+/// task's completion
 /// criteria and picks a winner; gg then **merges the winner's worktree back** into the main tree and
 /// **discards the losers'** branches, so the main tree ends with exactly the winning attempt applied.
 /// The lifecycle (`fan-out → judge → merge`) is streamed as
@@ -468,8 +459,8 @@ pub const CAPABILITY_FSM: &str = "fsm";
 /// against single-attempt work, it answers "does best-of-K beat one careful attempt at a fixed
 /// budget?" with data. Opt-in; it needs the delegation machinery to run the attempts and the judge
 /// (so it engages only when [subagents](CAPABILITY_SUBAGENTS) — or [workflows](CAPABILITY_WORKFLOWS)
-/// — is also on) and the [worktrees](CAPABILITY_WORKTREES) capability to isolate them (a `speculate`
-/// call is refused when worktree isolation is unavailable).
+/// — is also on) and a usable git workspace to isolate them in (a `speculate` call is refused when
+/// worktree isolation is unavailable).
 ///
 /// [speculative execution]: https://docs.testcabinet.ai/gg/speculative-execution/
 pub const CAPABILITY_SPECULATIVE: &str = "speculative-execution";
@@ -854,9 +845,11 @@ impl From<GgCapabilitySetRaw> for GgCapabilitySet {
 /// [custom prompt](Self::custom_instructions) / [full template override](Self::system_prompt_template),
 /// and the set of other agents it may spawn as [subagents](Self::subagents).
 ///
-/// An agent is spawned **by name**: `spawn_subagent`, `speculate`, and `run_workflow`
-/// all name the target agent, which must appear in the caller's [`subagents`](Self::subagents)
-/// allowlist. A profile may list itself, allowing recursion.
+/// An agent is put to work **by name**: `spawn_subagent`, `speculate`, and `run_workflow`
+/// all name the target agent, which must appear in the caller's [roster](Self::subagents) with the
+/// [`subagent`](GgSubagentScope::Subagent) scope — as must an [issue](GgBoardIssue)'s implementer
+/// (the [`implementer`](GgSubagentScope::Implementer) scope) and its reviewers (the
+/// [`reviewer`](GgSubagentScope::Reviewer) scope). A profile may list itself, allowing recursion.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -900,10 +893,14 @@ pub struct GgAgentConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub system_prompt_template: Option<String>,
-    /// The other agents this agent may spawn as subagents — the delegation allowlist.
-    /// Each entry names a target agent (which may be this agent itself) and carries a
-    /// caller-scoped [description](GgSubagentRef::description) telling this agent when to
-    /// use that target. Empty means this agent spawns nothing.
+    /// The other agents this agent may put to work — its delegation **roster**. Each entry names
+    /// a target agent (which may be this agent itself), the [scopes](GgSubagentRef::scopes) it may
+    /// be used in (spawnable subagent, issue implementer, issue reviewer), and a caller-scoped
+    /// [description](GgSubagentRef::description) telling this agent when to use that target. Empty
+    /// means this agent can name nobody — it neither spawns nor assigns.
+    ///
+    /// Independent of the [subagents](CAPABILITY_SUBAGENTS) capability: the roster says *which*
+    /// profiles are namable, the capability says whether this agent may spawn at all.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub subagents: Vec<GgSubagentRef>,
 }
@@ -996,14 +993,31 @@ impl GgAgentConfig {
         self.resolved_model_id().is_some()
     }
 
-    /// Whether this agent may spawn the agent named `target` — i.e. `target` appears in
-    /// its [`subagents`](Self::subagents) allowlist.
-    pub fn can_spawn(&self, target: &str) -> bool {
-        self.subagents.iter().any(|s| s.agent == target)
+    /// Whether this agent may use `target` in `scope` — i.e. `target` appears in its
+    /// [roster](Self::subagents) carrying that scope.
+    pub fn allows_scope(&self, target: &str, scope: GgSubagentScope) -> bool {
+        self.subagents
+            .iter()
+            .any(|s| s.agent == target && s.has_scope(scope))
     }
 
-    /// The caller-scoped description for spawning `target`, or `None` when `target` is
-    /// not in this agent's allowlist.
+    /// Whether this agent may **spawn** the agent named `target` — the
+    /// [`subagent`](GgSubagentScope::Subagent) scope.
+    pub fn can_spawn(&self, target: &str) -> bool {
+        self.allows_scope(target, GgSubagentScope::Subagent)
+    }
+
+    /// The names, in declaration order, of the agents this one may use in `scope`.
+    pub fn agents_in_scope(&self, scope: GgSubagentScope) -> Vec<&str> {
+        self.subagents
+            .iter()
+            .filter(|s| s.has_scope(scope))
+            .map(|s| s.agent.as_str())
+            .collect()
+    }
+
+    /// The caller-scoped description for using `target`, or `None` when `target` is
+    /// not in this agent's roster.
     pub fn subagent_description(&self, target: &str) -> Option<&str> {
         self.subagents
             .iter()
@@ -1012,9 +1026,9 @@ impl GgAgentConfig {
     }
 }
 
-/// One entry in an [agent's](GgAgentConfig) delegation allowlist: a target agent this
-/// agent may spawn, plus the caller-scoped [description](Self::description) that tells
-/// the spawning agent when to use it.
+/// One entry in an [agent's](GgAgentConfig) delegation roster: a target agent this
+/// agent may put to work, the [scopes](Self::scopes) it may be used in, plus the caller-scoped
+/// [description](Self::description) that tells the spawning agent when to use it.
 ///
 /// The description is scoped to the `(spawner, target)` pair, so the same target can
 /// carry different guidance depending on which agent is allowed to spawn it.
@@ -1022,12 +1036,97 @@ impl GgAgentConfig {
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgSubagentRef {
-    /// The name of the target agent this agent may spawn (may be the spawner itself).
+    /// The name of the target agent this agent may put to work (may be the spawner itself).
     pub agent: String,
-    /// Caller-scoped guidance on when to spawn `agent`, surfaced in the spawning
-    /// agent's `spawn_subagent` tool description. May be empty.
+    /// Caller-scoped guidance on when to use `agent`, surfaced in the spawning
+    /// agent's `spawn_subagent` tool description and in the prompt's roster. May be empty.
     #[serde(default)]
     pub description: String,
+    /// **What** this agent may use `agent` for. An entry may carry several scopes — the same
+    /// profile is often both a reasonable implementer and a reasonable reviewer — and one that
+    /// carries none can be used for nothing, which is how a reference is disabled without deleting
+    /// it. An entry stored before scopes existed deserializes as
+    /// [`Subagent`](GgSubagentScope::Subagent) alone, which is exactly what it meant.
+    #[serde(default = "default_subagent_scopes")]
+    pub scopes: Vec<GgSubagentScope>,
+}
+
+impl GgSubagentRef {
+    /// A roster entry naming `agent` in exactly `scopes`, with no description.
+    pub fn new(agent: impl Into<String>, scopes: &[GgSubagentScope]) -> Self {
+        Self {
+            agent: agent.into(),
+            description: String::new(),
+            scopes: scopes.to_vec(),
+        }
+    }
+
+    /// A roster entry naming `agent` in **every** scope — spawnable, assignable, and reviewable.
+    /// The permissive shape a set that draws no distinction between the three roles wants.
+    pub fn any(agent: impl Into<String>) -> Self {
+        Self::new(agent, &ALL_SUBAGENT_SCOPES)
+    }
+
+    /// Whether this entry permits its target to be used in `scope`.
+    pub fn has_scope(&self, scope: GgSubagentScope) -> bool {
+        self.scopes.contains(&scope)
+    }
+}
+
+/// Every [scope](GgSubagentScope) a [roster entry](GgSubagentRef) can carry, in declaration order —
+/// what [`GgSubagentRef::any`] grants and what an editor offers as the full set.
+pub const ALL_SUBAGENT_SCOPES: [GgSubagentScope; 3] = [
+    GgSubagentScope::Subagent,
+    GgSubagentScope::Implementer,
+    GgSubagentScope::Reviewer,
+];
+
+/// The default [scopes](GgSubagentRef::scopes) of a reference that names none: general
+/// [spawning](GgSubagentScope::Subagent), which is all a roster entry meant before scopes were
+/// introduced.
+fn default_subagent_scopes() -> Vec<GgSubagentScope> {
+    vec![GgSubagentScope::Subagent]
+}
+
+/// What one [roster entry](GgSubagentRef) permits its target to be used **for**.
+///
+/// The three roles an agent can be put to work in are governed independently, because they are
+/// genuinely different jobs: a profile tuned to write code is not necessarily one you want
+/// reviewing it, and a cheap fan-out worker is not necessarily one you want owning a whole issue.
+/// Scoping the roster rather than adding three parallel lists keeps one roster per agent — with
+/// one caller-scoped [description](GgSubagentRef::description) per target — and keeps the
+/// [prompt](CAPABILITY_PROJECT_MANAGEMENT) able to state exactly which names each call accepts.
+///
+/// The roster is **independent of the [subagents](CAPABILITY_SUBAGENTS) capability**: it says which
+/// profiles this agent may name, not whether it may spawn at all. An agent with no subagents
+/// capability still uses its roster to assign issues and reviews.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum GgSubagentScope {
+    /// General delegation: `spawn_subagent`, a [workflow](CAPABILITY_WORKFLOWS) stage, and a
+    /// [speculation](CAPABILITY_SPECULATIVE)'s attempts and judge may all name this target.
+    /// Reachable only when the [subagents](CAPABILITY_SUBAGENTS) capability (or the workflow
+    /// machinery built on it) is on.
+    Subagent,
+    /// This target may be named as an [issue](GgBoardIssue::agent)'s **implementer** — the profile
+    /// gg dispatches to do the issue's work (and re-dispatches for each retry and review round).
+    Implementer,
+    /// This target may be named among an [issue](GgBoardIssue::reviewers)'s **reviewers** — the
+    /// profiles that must each approve the finished work before the issue is accepted.
+    Reviewer,
+}
+
+impl GgSubagentScope {
+    /// The scope's stable wire id (`subagent`, `implementer`, `reviewer`) — the same string the
+    /// serde representation uses, for model-facing messages and tool schemas.
+    pub fn id(self) -> &'static str {
+        match self {
+            Self::Subagent => "subagent",
+            Self::Implementer => "implementer",
+            Self::Reviewer => "reviewer",
+        }
+    }
 }
 
 /// A single Root agent with the default capabilities — the [`Default`] and migration
@@ -1815,7 +1914,8 @@ pub struct GgTaskEntry {
 /// [`GgTaskStatus`].
 ///
 /// An issue moves from [`Open`](Self::Open) (enqueued, not yet dispatched) through
-/// [`InProgress`](Self::InProgress) (an agent has been assigned and is working it) to a
+/// [`InProgress`](Self::InProgress) (an agent has been assigned and is working it) and
+/// [`InReview`](Self::InReview) (its agent called it complete and gg is reconciling it) to a
 /// terminal state — [`Done`](Self::Done) (accepted complete) or [`Failed`](Self::Failed) (its
 /// assigned agent could not complete it within the configured retries). Like a task, an issue
 /// is *actionable* only when all of its blockers are [`Done`](Self::Done); the console derives
@@ -1830,7 +1930,14 @@ pub enum GgIssueStatus {
     Open,
     /// An agent has been assigned and is working it.
     InProgress,
-    /// Accepted complete — an issue's blockers must all reach this before it is actionable.
+    /// Its assigned agent called the work complete, and gg is reconciling it: running the issue's
+    /// [reviewers](GgBoardIssue::reviewers) (if any) and merging its worktree back. **Not**
+    /// terminal — a review that requests changes sends the issue back to
+    /// [`InProgress`](Self::InProgress) — and not done, so dependents stay blocked until the
+    /// work is actually accepted and merged.
+    InReview,
+    /// Accepted complete, and its worktree merged back into the main tree — an issue's blockers
+    /// must all reach this before it is actionable.
     Done,
     /// The assigned agent could not complete the issue within its configured retries. Terminal,
     /// but not [`Done`](Self::Done): its dependents stay blocked.
@@ -1905,17 +2012,18 @@ pub struct GgBoardIssue {
     #[cfg_attr(feature = "contract", ts(optional))]
     pub epic_id: Option<String>,
     /// The [agent profile](GgAgentConfig) the issue was **assigned to** when it was created —
-    /// the profile gg dispatches it under. It is named on `create_issue` (not configured on the
-    /// capability), and must be one the creating agent may
-    /// [spawn](GgAgentConfig::subagents). Empty only on a board recorded before issues carried
-    /// an assignee, which dispatches under the [Root](ROOT_AGENT).
+    /// the profile gg dispatches it under, and re-dispatches for every retry and review round. It
+    /// is named on `create_issue` (not configured on the capability), and must be one the creating
+    /// agent lists with the [`implementer`](GgSubagentScope::Implementer) scope. Empty only on a
+    /// board recorded before issues carried an assignee, which dispatches under the
+    /// [Root](ROOT_AGENT).
     #[serde(default)]
     pub agent: String,
     /// The [agent profiles](GgAgentConfig) named as this issue's **reviewers** when it was
-    /// created, drawn from the same [spawnable set](GgAgentConfig::subagents) as its
-    /// [`agent`](Self::agent). Non-empty exactly when the capability's `reviewers` feature was
-    /// on for the creating agent; a [Code Review](CAPABILITY_CODE_REVIEWS) of the issue is run
-    /// by these profiles, each of which must approve.
+    /// created, drawn from the creating agent's roster entries carrying the
+    /// [`reviewer`](GgSubagentScope::Reviewer) scope. When non-empty, completing the issue moves it
+    /// to [`InReview`](GgIssueStatus::InReview) and these profiles each review the work in turn;
+    /// every one of them must approve before the issue is accepted.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub reviewers: Vec<String>,
     /// The id of the agent gg [dispatched](https://docs.testcabinet.ai/gg/project-management/)
@@ -2118,31 +2226,32 @@ pub enum GgWorkflowPhase {
     Finished,
 }
 
-/// The phase of a [Code Review](https://docs.testcabinet.ai/gg/code-reviews/) a
-/// [`CodeReview`](GgTelemetryKind::CodeReview) event reports — the
+/// The phase of an [issue review](https://docs.testcabinet.ai/gg/project-management/) an
+/// [`IssueReview`](GgTelemetryKind::IssueReview) event reports — the
 /// requested → (changes_requested)* → approved lifecycle that gates an
 /// [issue](GgBoardIssue)'s acceptance.
 ///
-/// A Code Review is [requested](Self::Requested) when the model marks an issue done (gg dispatches
-/// a reviewer against the diff rather than accepting immediately). The reviewer then either
-/// [requests changes](Self::ChangesRequested) — carrying the actionable items a fix agent must
-/// address, after which the work is re-reviewed — or [approves](Self::Approved), at which point the
-/// issue is finally accepted (marked done). Because there is **no cycle limit**, a single Code
-/// Review may emit many [`ChangesRequested`](Self::ChangesRequested) phases before an
+/// A review is [requested](Self::Requested) when the issue's assigned agent marks it complete (gg
+/// runs the issue's [reviewers](GgBoardIssue::reviewers) against the diff rather than accepting
+/// immediately). A reviewer then either [requests changes](Self::ChangesRequested) — carrying the
+/// actionable items the issue's own assigned agent is re-invoked to address, after which the work is
+/// re-reviewed — or [approves](Self::Approved). Once **every** reviewer approves, the issue is
+/// finally accepted (marked done) and its worktree merged. Because there is **no cycle limit**, a
+/// single issue may emit many [`ChangesRequested`](Self::ChangesRequested) phases before an
 /// [`Approved`](Self::Approved) (or none, on a clean first pass).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub enum GgCodeReviewPhase {
-    /// A Code Review was triggered (the model marked the issue done): a reviewer is dispatched
-    /// against the diff instead of the issue being accepted immediately.
+pub enum GgIssueReviewPhase {
+    /// A review round was triggered (the assigned agent marked the issue complete): the issue's
+    /// reviewers run against the diff instead of the issue being accepted immediately.
     Requested,
-    /// The reviewer returned actionable items: the work is not yet done. gg spawns a fix agent with
-    /// the original brief plus these items, then re-reviews. The items ride on the event's
-    /// [`items`](GgTelemetryKind::CodeReview) field.
+    /// A reviewer returned actionable items: the work is not yet done. gg re-invokes the issue's
+    /// assigned agent with the original brief plus these items, then re-reviews. The items ride on
+    /// the event's [`items`](GgTelemetryKind::IssueReview) field.
     ChangesRequested,
-    /// The reviewer approved the work: the issue is accepted and marked done. This is the only
-    /// terminal phase that accepts the issue.
+    /// Every reviewer approved the work: the issue is accepted, merged, and marked done. This is
+    /// the only terminal phase that accepts the issue.
     Approved,
 }
 
@@ -2537,19 +2646,23 @@ pub struct GgSessionSummary {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub final_fullness: Option<f64>,
-    /// How many [Code Reviews](GgTelemetryKind::CodeReview) the run triggered — one per
-    /// [`Requested`](GgCodeReviewPhase::Requested) phase (an issue whose acceptance was gated on a
-    /// review). `0` when the capability was off.
-    pub code_reviews: u64,
+    /// How many [issue reviews](GgTelemetryKind::IssueReview) the run triggered — one per
+    /// [`Requested`](GgIssueReviewPhase::Requested) phase (an issue whose acceptance was gated on
+    /// its reviewers). `0` when no issue named reviewers.
+    ///
+    /// The `codeReviews` alias reads a summary recorded while this figure was called that, so a
+    /// stored run's review counts survive the rename rather than silently reading as zero.
+    #[serde(alias = "codeReviews")]
+    pub issue_reviews: u64,
     /// The total number of review **verdicts** the run's reviewers rendered — every
-    /// [`ChangesRequested`](GgCodeReviewPhase::ChangesRequested) plus every
-    /// [`Approved`](GgCodeReviewPhase::Approved) phase — so a single Code Review that took several
+    /// [`ChangesRequested`](GgIssueReviewPhase::ChangesRequested) plus every
+    /// [`Approved`](GgIssueReviewPhase::Approved) phase — so a single issue that took several
     /// fix rounds counts each round. The correlate for "which reviewer/planner produced fewer
     /// rework cycles?".
     pub review_cycles: u64,
-    /// How many times a Code Review **reopened** an issue for fixes — one per
-    /// [`ChangesRequested`](GgCodeReviewPhase::ChangesRequested) phase. `0` when every review
-    /// approved on the first pass (or the capability was off).
+    /// How many times a review **reopened** an issue for fixes — one per
+    /// [`ChangesRequested`](GgIssueReviewPhase::ChangesRequested) phase. `0` when every review
+    /// approved on the first pass (or no issue named reviewers).
     pub issues_reopened: u64,
     /// How many [speculative execution](GgTelemetryKind::Speculation) best-of-K rounds the run ran
     /// — one per [`FannedOut`](GgSpeculationPhase::FannedOut) phase. `0` when the capability was
@@ -3385,12 +3498,13 @@ pub enum GgTelemetryKind {
         /// build prompt rather than a delegated brief.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         brief: Option<String>,
-        /// The isolated [git worktree](https://docs.testcabinet.ai/gg/worktrees/) this agent runs
-        /// in — its per-agent branch — when it was dispatched with `worktree: true` (requires the
-        /// [worktrees](CAPABILITY_WORKTREES) capability). The console renders this as a worktree
-        /// indicator on the tree node. Absent for an agent running in the shared main tree (the
-        /// root, and any subagent dispatched without a worktree), whose edits land directly in the
-        /// workspace. A worktree agent's result is later merged or discarded — observe which with
+        /// The isolated git worktree this agent runs in — its branch — when it was dispatched into
+        /// one: an [issue](CAPABILITY_PROJECT_MANAGEMENT) agent (and the reviewers of that issue,
+        /// which read the same tree) runs on the issue's branch, and each
+        /// [speculation](CAPABILITY_SPECULATIVE) attempt runs on its own. The console renders this
+        /// as a worktree indicator on the tree node. Absent for an agent running in the shared main
+        /// tree (the root, an ad-hoc subagent, the merge agent), whose edits land directly in the
+        /// workspace. A worktree's result is later merged or discarded — observe which with
         /// [`WorktreeMerged`](Self::WorktreeMerged).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         worktree: Option<String>,
@@ -3451,28 +3565,29 @@ pub enum GgTelemetryKind {
         /// the loop produced no final text.
         summary: String,
     },
-    /// The outcome of reconciling a worktree [subagent](CAPABILITY_SUBAGENTS)'s isolated
-    /// [worktree](https://docs.testcabinet.ai/gg/worktrees/) back into the main tree — the event
-    /// that makes a **merge vs discard** observable on the agent tree.
+    /// The outcome of reconciling an isolated worktree back into the main tree — the event that
+    /// makes a **merge vs discard** observable.
     ///
-    /// Emitted (when the [worktrees](CAPABILITY_WORKTREES) capability is enabled) once, on the
-    /// **worktree subagent's** own scoped stream as its worktree is torn down, so the agent whose
-    /// [`branch`](Self::WorktreeMerged::branch) this is rides on the event's own
-    /// [`agent_id`](GgTelemetryEvent::agent_id) / [`parent_agent_id`](GgTelemetryEvent::parent_agent_id).
-    /// The three states are distinguishable: a **clean completion** merges the branch back
-    /// (`merged: true, conflicts: false`); a **merge conflict** leaves the main tree unchanged and
-    /// surfaces the clash (`merged: false, conflicts: true`) rather than dropping the work
-    /// silently; a **failed or discarded** child removes its worktree unmerged
-    /// (`merged: false, conflicts: false`). The worktree and its branch are removed in every case.
+    /// Emitted once per worktree as it is torn down: for an accepted (or failed)
+    /// [issue](CAPABILITY_PROJECT_MANAGEMENT), on the issue's own stream, and for a
+    /// [speculation](CAPABILITY_SPECULATIVE)'s attempts as the winner is merged and the losers
+    /// discarded. The three states are distinguishable: an **accepted** branch merges back
+    /// (`merged: true`, with [`conflicts`](Self::WorktreeMerged::conflicts) recording whether the
+    /// [merge agent](PROJECT_MANAGEMENT_PARAM_MERGE_AGENT) had to resolve a clash on the way); a
+    /// **conflict the merge agent could not resolve** leaves the main tree unchanged
+    /// (`merged: false, conflicts: true`) rather than dropping the work silently; a **failed or
+    /// discarded** branch is removed unmerged (`merged: false, conflicts: false`). The worktree and
+    /// its branch are removed in every case.
     WorktreeMerged {
-        /// The per-agent branch the worktree's work lived on (for example `gg/agent-3`).
+        /// The branch the worktree's work lived on (for example `gg/issue-3`).
         branch: String,
-        /// Whether the branch was merged back into the main tree. `true` only on a clean merge;
-        /// `false` for a conflict or a discard.
+        /// Whether the branch was merged back into the main tree — `true` for a clean merge **and**
+        /// for one the merge agent resolved; `false` for an unresolved conflict or a discard.
         merged: bool,
-        /// Whether a merge conflict prevented the merge. When `true` the main tree was left
-        /// unchanged and the clash is reported to the spawner rather than resolved (Phase 4B leaves
-        /// conflict resolution to a later phase). Always `false` on a clean merge or a discard.
+        /// Whether the merge hit a conflict. `true` both when the
+        /// [merge agent](PROJECT_MANAGEMENT_PARAM_MERGE_AGENT) resolved it (`merged: true`) and
+        /// when it could not (`merged: false`, main tree left unchanged), so the two are told apart
+        /// by `merged`. Always `false` on a clean merge or a discard.
         conflicts: bool,
     },
     /// A stage boundary of a declared [workflow](https://docs.testcabinet.ai/gg/workflows/) — the
@@ -3505,37 +3620,36 @@ pub enum GgTelemetryKind {
         /// Whether this event marks the stage's [start or finish](GgWorkflowPhase).
         phase: GgWorkflowPhase,
     },
-    /// A [Code Review](https://docs.testcabinet.ai/gg/code-reviews/) lifecycle transition — the
-    /// event that makes the review-gated acceptance of an [issue](GgBoardIssue) observable.
+    /// An [issue review](https://docs.testcabinet.ai/gg/project-management/) lifecycle transition —
+    /// the event that makes the reviewer-gated acceptance of an [issue](GgBoardIssue) observable.
     ///
-    /// Emitted (when the [code-reviews](CAPABILITY_CODE_REVIEWS) capability is enabled) on the agent
-    /// that marked the issue done: once as [`Requested`](GgCodeReviewPhase::Requested) when the
-    /// review is triggered, then once per [`ChangesRequested`](GgCodeReviewPhase::ChangesRequested)
-    /// round (carrying the reviewer's actionable [`items`](Self::CodeReview::items) a fix agent then
-    /// addresses), and finally once as [`Approved`](GgCodeReviewPhase::Approved) when the issue is
-    /// accepted. Because there is **no cycle limit**, a single Code Review may stream many
-    /// `ChangesRequested` events before an `Approved` (or go straight to `Approved` on a clean first
-    /// pass).
+    /// Emitted (when the issue named [reviewers](GgBoardIssue::reviewers)) as gg reconciles the
+    /// issue: once as [`Requested`](GgIssueReviewPhase::Requested) when a review round starts, then
+    /// once per [`ChangesRequested`](GgIssueReviewPhase::ChangesRequested) round (carrying the
+    /// reviewer's actionable [`items`](Self::IssueReview::items) the issue's assigned agent is then
+    /// re-invoked to address), and finally once as [`Approved`](GgIssueReviewPhase::Approved) when
+    /// every reviewer has approved and the issue is accepted. Because there is **no cycle limit**, a
+    /// single issue may stream many `ChangesRequested` events before an `Approved` (or go straight
+    /// to `Approved` on a clean first pass).
     ///
-    /// Which [issue](GgBoardIssue) the review gates rides on the event's own
+    /// Which [issue](GgBoardIssue) is under review rides on the event's own
     /// [`issue_id`](GgTelemetryEvent::issue_id) (the event is emitted on an issue-scoped stream), the
     /// same way an agent's identity rides on [`agent_id`](GgTelemetryEvent::agent_id) — so the
-    /// payload carries only the phase-specific data. The reviewer and fix agents themselves are
-    /// ordinary [subagents](CAPABILITY_SUBAGENTS): they emit the usual
+    /// payload carries only the phase-specific data. The reviewer agents themselves emit the usual
     /// [`AgentSpawned`](Self::AgentSpawned)/[`AgentStatus`](Self::AgentStatus)/[`AgentReturned`](Self::AgentReturned)
-    /// events, also scoped to the issue under review. A run with the capability off emits none.
-    CodeReview {
+    /// events, also scoped to the issue under review. An issue filed without reviewers emits none.
+    IssueReview {
         /// Which phase of the review lifecycle this transition is.
-        phase: GgCodeReviewPhase,
+        phase: GgIssueReviewPhase,
         /// The reviewer's actionable items, on the
-        /// [`ChangesRequested`](GgCodeReviewPhase::ChangesRequested) phase (the changes a fix agent
-        /// must address before re-review). Absent on [`Requested`](GgCodeReviewPhase::Requested) and
-        /// [`Approved`](GgCodeReviewPhase::Approved).
+        /// [`ChangesRequested`](GgIssueReviewPhase::ChangesRequested) phase (the changes the issue's
+        /// assigned agent must address before re-review). Absent on
+        /// [`Requested`](GgIssueReviewPhase::Requested) and
+        /// [`Approved`](GgIssueReviewPhase::Approved).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         items: Option<Vec<String>>,
-        /// The baseline commit the review diffed the work against — the issue's initial commit
-        /// (captured when its work began) or, failing that, the run's baseline. Absent when no git
-        /// baseline could be established for the run.
+        /// The baseline commit the review diffed the work against — the commit the issue's worktree
+        /// branched from. Absent when no git baseline could be established for the run.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         baseline: Option<String>,
     },
@@ -3546,22 +3660,18 @@ pub enum GgTelemetryKind {
     /// Emitted (when the [fsm](CAPABILITY_FSM) capability selects a machine) on the agent the machine
     /// drives — the root — once as the run **enters the machine's first state**, and again on every
     /// transition the [engine](CAPABILITY_FSM) makes: an `advance_state` the agent earns by meeting a
-    /// state's transition condition, an automatic move into and out of a `review` state (a
-    /// [Code Review](Self::CodeReview) — the `review-gated` machine also streams its `CodeReview`
-    /// events), the plan → implement reset of `plan-first` (which also streams its
-    /// [`Planning`](Self::Planning) events), or a machine that loops **back** to an earlier state
-    /// (`review-gated` returns to `develop` when the Code Review requests changes). The order is a
+    /// state's transition condition, or the plan → implement reset of `plan-first` (which also
+    /// streams its [`Planning`](Self::Planning) events). The order is a
     /// property of the machine, so this sequence of states is what proves the run was driven through
     /// the process rather than freelancing. A run with no machine selected emits none.
     FsmState {
-        /// The built-in machine driving the run (for example `"tdd"`, `"review-gated"`, or
-        /// `"plan-first"`).
+        /// The built-in machine driving the run (for example `"tdd"` or `"plan-first"`).
         machine: String,
         /// The name of the state just entered (for example `"write_tests"`, `"implement"`,
-        /// `"verify"`, `"develop"`, `"review"`, `"accept"`, or `"plan"`).
+        /// `"verify"`, or `"plan"`).
         state: String,
         /// The state's zero-based index in the machine's ordered states, so the console can place it
-        /// on the machine's path (a `review-gated` loop-back repeats an earlier index).
+        /// on the machine's path.
         state_index: u64,
     },
     /// A [speculative execution](https://docs.testcabinet.ai/gg/speculative-execution/) lifecycle

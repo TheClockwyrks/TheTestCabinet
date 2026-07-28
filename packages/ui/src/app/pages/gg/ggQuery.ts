@@ -100,7 +100,7 @@ export const SUMMARY_FIELDS: ReadonlyArray<{
   { field: "context_overflow_count", label: "Context overflows" },
   { field: "ran_out_of_context", label: "Ran out of context (rate)" },
   { field: "final_fullness", label: "Final fullness" },
-  { field: "code_reviews", label: "Code reviews" },
+  { field: "issue_reviews", label: "Issue reviews" },
   { field: "review_cycles", label: "Review cycles" },
   { field: "issues_reopened", label: "Issues reopened" },
   { field: "speculations", label: "Speculations" },

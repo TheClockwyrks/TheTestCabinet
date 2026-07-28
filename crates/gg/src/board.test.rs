@@ -375,16 +375,37 @@ fn update_issue_rejects_regrouping_under_an_unknown_epic() {
     );
 }
 
+/// `complete_issue` is the agent's **claim** that the work is finished, not the acceptance:
+/// it moves the issue to `in review`, which does **not** unblock its dependents. Only
+/// `accept_issue` — which the orchestrator calls after every reviewer approves and the issue's
+/// worktree merges — marks it done and unblocks them.
+///
+/// The split is the whole point: a dependent dispatched off an issue whose work was still sitting
+/// on an unmerged branch would be building on something that is not there.
 #[test]
-fn complete_issue_marks_done_and_unblocks_dependents() {
+fn completing_an_issue_moves_it_to_review_and_only_acceptance_unblocks_dependents() {
     let mut store = store();
     add_issue(&mut store, "a", &[]);
     add_issue(&mut store, "b", &["a"]);
     // b is not ready while a is open.
     assert!(!store.is_ready(&store.issues()[1].clone()));
+
     store.complete_issue("a").unwrap();
+    assert_eq!(store.issues()[0].status(), IssueStatus::InReview);
+    assert!(
+        !store.issues()[0].status().is_terminal(),
+        "an issue in review is not terminal — a review can send it back"
+    );
+    assert!(
+        !store.is_ready(&store.issues()[1].clone()),
+        "a dependent stays blocked while its blocker is only claimed complete"
+    );
+
+    assert!(store.accept_issue("a"));
     assert_eq!(store.issues()[0].status(), IssueStatus::Done);
     assert!(store.is_ready(&store.issues()[1].clone()));
+    // Acceptance is idempotent-safe: an already-terminal issue is left alone.
+    assert!(!store.accept_issue("a"));
     assert_eq!(
         store.complete_issue("ghost"),
         Err(BoardError::IssueNotFound("ghost".to_string()))
@@ -618,8 +639,13 @@ fn only_open_unassigned_issues_with_done_blockers_are_dispatchable() {
         "a second claim of the same issue is refused"
     );
 
-    // Completing `a` unblocks `b`, which becomes dispatchable.
+    // Completing `a` only claims it; accepting it is what unblocks `b`.
     store.complete_issue("a").unwrap();
+    assert!(
+        store.dispatchable_ids().is_empty(),
+        "a dependent is not dispatchable until its blocker is accepted"
+    );
+    assert!(store.accept_issue("a"));
     assert_eq!(store.dispatchable_ids(), vec!["b".to_string()]);
 }
 
@@ -651,9 +677,16 @@ fn redispatch_reassigns_and_records_the_retry_count() {
     assert_eq!(issue.status(), IssueStatus::InProgress);
     assert_eq!(issue.assigned_agent(), Some("agent-2"));
     assert_eq!(issue.retries(), 1);
-    // A terminal issue is never re-dispatched.
+    // An issue in review IS re-dispatchable — that is how a review round sends it back for
+    // rework, with its retry count carried through unchanged.
     store.complete_issue("a").unwrap();
-    assert!(!store.redispatch_issue("a", "agent-3", 2));
+    assert!(store.redispatch_issue("a", "agent-3", 1));
+    let issue = store.issues().iter().find(|i| i.id() == "a").unwrap();
+    assert_eq!(issue.status(), IssueStatus::InProgress);
+    assert_eq!(issue.retries(), 1, "rework does not burn the retry budget");
+    // A terminal issue is never re-dispatched.
+    assert!(store.accept_issue("a"));
+    assert!(!store.redispatch_issue("a", "agent-4", 2));
 }
 
 #[test]

@@ -172,7 +172,6 @@ pub trait ToolApi: Send + 'static {
         agent: String,
         prompt: Option<String>,
         issue_id: Option<String>,
-        worktree: bool,
     ) -> ToolOutcome;
     fn wait_for_subagents(&mut self, ids: Option<Vec<String>>) -> ToolOutcome;
     fn send_message(&mut self, agent_id: String, message: String) -> ToolOutcome;
@@ -196,5 +195,4 @@ pub struct WorkflowStageInput {
     pub prompt: String,
     pub items: Option<Vec<String>>,
     pub agent: String,
-    pub worktree: bool,
 }

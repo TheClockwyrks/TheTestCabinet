@@ -94,7 +94,7 @@ something about the run:
 - **Whose ending it is**, gated on whether the agent is a **delegated** worker rather than
   the run's root. A subagent renders this same prompt, and a model told "this ends the
   run" while it is a delegated worker has a strong reason not to call it — and a worker
-  that never calls it never returns the verdict a [code review](/gg/code-reviews/) or a
+  that never calls it never returns the verdict an [issue review](/gg/project-management/) or a
   [speculation](/gg/speculative-execution/) judge is waiting for. The same fix runs
   through the briefs gg generates for those roles: in code mode they ask for a `finish`
   call rather than for a final message.

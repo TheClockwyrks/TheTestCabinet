@@ -6,8 +6,7 @@
 //! scheduler**, which the api reaches (from the blocking sandbox thread) with a
 //! [`Handle`](tokio::runtime::Handle)`::block_on`, with the agent tree and the parallelism cap it
 //! owns. A program's `spawnSubagent` therefore behaves exactly as a native `spawn_subagent` does,
-//! including its depth cap and its worktree isolation — the only difference is that a program can
-//! compose the results.
+//! including its depth cap — the only difference is that a program can compose the results.
 //!
 //! Two lowerings live here. A brief is a **variant**, so "neither a prompt nor an issue" — which
 //! today's JSON schema allows and rejects only at run time, wasting a call — cannot be expressed at
@@ -52,25 +51,16 @@ impl<A: ToolApi> DelegationHost for MembraneState<A> {
     fn spawn_subagent(&mut self, request: SpawnRequest) -> Result<SubagentHandle, ToolError> {
         let (prompt, issue_id) = brief(request.task);
         let agent = request.agent;
-        let worktree = request.worktree.unwrap_or(false);
         let outcome = self.call(SPAWN_SUBAGENT_TOOL, |api| {
-            api.spawn_subagent(agent, prompt, issue_id, worktree)
+            api.spawn_subagent(agent, prompt, issue_id)
         })?;
         // Every payload here is destructured field by field rather than read through dots, so a
         // field added to one fails to compile at the membrane — which is where someone has to
         // decide whether a program should be able to see it.
         match outcome.data {
-            Some(ToolData::SubagentSpawned(SubagentHandleData {
-                id,
-                slot,
-                model_id,
-                worktree_branch,
-            })) => Ok(SubagentHandle {
-                id,
-                slot,
-                model_id,
-                worktree_branch,
-            }),
+            Some(ToolData::SubagentSpawned(SubagentHandleData { id, slot, model_id })) => {
+                Ok(SubagentHandle { id, slot, model_id })
+            }
             other => Err(self.missing_data(SPAWN_SUBAGENT_TOOL, other.as_ref())),
         }
     }
@@ -110,9 +100,9 @@ impl<A: ToolApi> DelegationHost for MembraneState<A> {
 
     fn run_workflow(&mut self, stages: Vec<WorkflowStage>) -> Result<WorkflowReport, ToolError> {
         // A stage's optional `name` is resolved to a string here — the loop names an empty one
-        // `stage-N` exactly as it does a missing one — and its optional `worktree` to `false`. The
-        // `items` option is preserved as it stands: `none` (fan out over the previous stage's
-        // results) and an EMPTY list (an error) are different requests.
+        // `stage-N` exactly as it does a missing one. The `items` option is preserved as it stands:
+        // `none` (fan out over the previous stage's results) and an EMPTY list (an error) are
+        // different requests.
         let stages: Vec<WorkflowStageInput> = stages
             .into_iter()
             .map(|stage| WorkflowStageInput {
@@ -120,7 +110,6 @@ impl<A: ToolApi> DelegationHost for MembraneState<A> {
                 prompt: stage.prompt,
                 items: stage.items,
                 agent: stage.agent,
-                worktree: stage.worktree.unwrap_or(false),
             })
             .collect();
         let outcome = self.call(RUN_WORKFLOW_TOOL, |api| api.run_workflow(stages))?;

@@ -13,8 +13,8 @@ use crate::board::BoardRuntime;
 use crate::client::MockClient;
 use crate::client::{
     ClientFactory, DEFAULT_MOCK_MEMORY, DEFAULT_MOCK_SKILL, DEFAULT_MOCK_TASK_MOVEMENT,
-    DEFAULT_MOCK_TASK_SCAFFOLD, MOCK_CODE_LEVEL_FILES, MOCK_CODE_REVIEW_ISSUE_ID,
-    MOCK_FSM_IMPL_FILE, MOCK_FSM_TEST_FILE, MOCK_REVIEW_FIX_FILE, MOCK_REVIEW_FIX_SENTINEL,
+    DEFAULT_MOCK_TASK_SCAFFOLD, MOCK_CODE_LEVEL_FILES, MOCK_FSM_IMPL_FILE, MOCK_FSM_TEST_FILE,
+    MOCK_ISSUE_REVIEW_ISSUE_ID, MOCK_REVIEW_FIX_FILE, MOCK_REVIEW_FIX_SENTINEL,
     MOCK_REVIEW_WORKER_FILE, MOCK_SPECULATE_ATTEMPT_PREFIX, MOCK_SUBAGENT_FILE,
     MOCK_SUBAGENT_RETURN,
 };
@@ -32,14 +32,14 @@ use crate::tasks::TasksRuntime;
 use crate::telemetry::{CollectingSink, Emitter};
 use crate::tools::{RuntimeSet, ToolContext, ToolRegistry, VisionContext};
 use test_cabinet_core::gg::{
-    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_CODE_REVIEWS, CAPABILITY_COMPACTION,
+    ALL_SUBAGENT_SCOPES, CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_COMPACTION,
     CAPABILITY_CONTEXT_WINDOW_OVERRIDE, CAPABILITY_FSM, CAPABILITY_PLANNING,
     CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_READ_FILE, CAPABILITY_REPLAY,
     CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE,
-    CAPABILITY_SUBAGENTS, CAPABILITY_WORKFLOWS, CAPABILITY_WORKTREES, GG_REPLAY_ARTIFACT_PATH,
-    GgAgentConfig, GgAgentStatus, GgCapabilityConfig, GgCapabilitySet, GgCodeReviewPhase,
-    GgContextAction, GgContextSource, GgIssueStatus, GgPlanPhase, GgReplayEntryKind,
-    GgReplayRecord, GgSessionSummary, GgSlotBinding, GgSubagentRef, GgTelemetryEvent,
+    CAPABILITY_SUBAGENTS, CAPABILITY_WORKFLOWS, GG_REPLAY_ARTIFACT_PATH, GgAgentConfig,
+    GgAgentStatus, GgCapabilityConfig, GgCapabilitySet, GgContextAction, GgContextSource,
+    GgIssueReviewPhase, GgIssueStatus, GgPlanPhase, GgReplayEntryKind, GgReplayRecord,
+    GgSessionSummary, GgSlotBinding, GgSubagentRef, GgSubagentScope, GgTelemetryEvent,
     GgTelemetryKind, GgWorkflowPhase, ROOT_AGENT,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
@@ -242,7 +242,6 @@ async fn drive_root(
             FsmRuntime::disabled(),
             ReadPolicy::default(),
             OffloadPolicy::default(),
-            false,
             false,
             code,
             no_completion(),
@@ -516,7 +515,7 @@ impl ModelClient for FailingClient {
 
 /// A [`ModelClient`] that returns a single `write_file` tool call on its first turn, then fails
 /// every subsequent turn with a fatal model error — so an agent driving it writes one file and then
-/// ends in `model_error` (a non-clean completion), for the worktree-discard e2e.
+/// ends in `model_error` (a non-clean completion).
 struct WriteThenFailClient {
     path: String,
     contents: String,
@@ -545,7 +544,7 @@ impl ModelClient for WriteThenFailClient {
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         if turn == 0 {
             Ok(ModelResponse {
-                text: Some("Writing throwaway work in my worktree.".to_string()),
+                text: Some("Writing throwaway work.".to_string()),
                 tool_calls: vec![ToolCall {
                     id: "call_child_write".to_string(),
                     name: "write_file".to_string(),
@@ -919,7 +918,6 @@ async fn drive_exhausts_the_turn_ceiling_when_the_model_never_stops() {
             ReadPolicy::default(),
             OffloadPolicy::default(),
             false,
-            false,
             no_code(),
             no_completion(),
             &GgAgentConfig::root(),
@@ -974,7 +972,6 @@ async fn drive_times_out_at_a_passed_deadline() {
             FsmRuntime::disabled(),
             ReadPolicy::default(),
             OffloadPolicy::default(),
-            false,
             false,
             no_code(),
             no_completion(),
@@ -1031,7 +1028,6 @@ async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
             FsmRuntime::disabled(),
             ReadPolicy::default(),
             OffloadPolicy::default(),
-            false,
             false,
             no_code(),
             no_completion(),
@@ -1123,7 +1119,6 @@ async fn drive_completion(
             FsmRuntime::disabled(),
             ReadPolicy::default(),
             OffloadPolicy::default(),
-            false,
             false,
             no_code(),
             completion,
@@ -1290,7 +1285,6 @@ async fn drive_ends_model_error_on_exhausted_retries() {
             ReadPolicy::default(),
             OffloadPolicy::default(),
             false,
-            false,
             no_code(),
             no_completion(),
             &GgAgentConfig::root(),
@@ -1343,7 +1337,6 @@ async fn drive_ends_auth_error_when_the_credential_is_refused() {
             FsmRuntime::disabled(),
             ReadPolicy::default(),
             OffloadPolicy::default(),
-            false,
             false,
             no_code(),
             no_completion(),
@@ -1673,7 +1666,6 @@ impl DisabledRuntimes {
             read_policy: ReadPolicy::default(),
             shell_offload: &self.shell_offload,
             vision: &self.vision,
-            code_reviews: false,
             speculative: false,
             responses_as_code: false,
             autoload_specs: None,
@@ -2157,7 +2149,6 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
             ReadPolicy::default(),
             OffloadPolicy::default(),
             false,
-            false,
             no_code(),
             no_completion(),
             &GgAgentConfig::root(),
@@ -2348,7 +2339,6 @@ async fn drive_enforces_memory_caps_end_to_end() {
             ReadPolicy::default(),
             OffloadPolicy::default(),
             false,
-            false,
             no_code(),
             no_completion(),
             &GgAgentConfig::root(),
@@ -2515,7 +2505,6 @@ async fn drive_pins_only_the_index_under_the_markdown_strategy() {
             ReadPolicy::default(),
             OffloadPolicy::default(),
             false,
-            false,
             no_code(),
             no_completion(),
             &GgAgentConfig::root(),
@@ -2600,7 +2589,6 @@ async fn the_memory_block_costs_nothing_until_the_boundary() {
             FsmRuntime::disabled(),
             ReadPolicy::default(),
             OffloadPolicy::default(),
-            false,
             false,
             no_code(),
             no_completion(),
@@ -2799,7 +2787,6 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
             ReadPolicy::default(),
             OffloadPolicy::default(),
             false,
-            false,
             no_code(),
             no_completion(),
             &GgAgentConfig::root(),
@@ -2861,17 +2848,16 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
 // Epics & issues: ablation, and the board built through the loop
 // ---------------------------------------------------------------------------
 
-/// `minimal`, plus the (opt-in) project-management capability enabled. The Root lists itself as a
-/// subagent because an issue is filed *assigned* to a profile from that list.
+/// `minimal`, plus the (opt-in) project-management capability enabled. The Root lists itself in its
+/// roster because an issue is filed *assigned* to one of its implementers, and is its own merge
+/// agent (which the capability requires).
 fn minimal_with_epics_issues(model: &str) -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal(model);
-    set.agents[0]
-        .capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT));
-    set.agents[0].subagents.push(GgSubagentRef {
-        agent: ROOT_AGENT.to_string(),
-        description: String::new(),
+    set.agents[0].capabilities.push(GgCapabilityConfig {
+        params: json!({ "mergeAgent": ROOT_AGENT }),
+        ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
     });
+    set.agents[0].subagents.push(GgSubagentRef::any(ROOT_AGENT));
     set
 }
 
@@ -3117,7 +3103,6 @@ async fn drive_compacts_at_the_threshold_and_retains_pinned_state() {
             ReadPolicy::default(),
             OffloadPolicy::default(),
             false,
-            false,
             no_code(),
             no_completion(),
             &GgAgentConfig::root(),
@@ -3283,7 +3268,6 @@ async fn drive_never_compacts_when_capability_off() {
             ReadPolicy::default(),
             OffloadPolicy::default(),
             false,
-            false,
             no_code(),
             no_completion(),
             &GgAgentConfig::root(),
@@ -3385,7 +3369,6 @@ async fn drive_manages_context_end_to_end() {
             FsmRuntime::disabled(),
             ReadPolicy::default(),
             OffloadPolicy::default(),
-            false,
             false,
             no_code(),
             no_completion(),
@@ -3501,7 +3484,6 @@ async fn drive_without_amc_offers_no_context_management() {
             ReadPolicy::default(),
             OffloadPolicy::default(),
             false,
-            false,
             no_code(),
             no_completion(),
             &GgAgentConfig::root(),
@@ -3592,7 +3574,6 @@ async fn drive_plans_then_implements_from_a_fresh_context() {
             FsmRuntime::disabled(),
             ReadPolicy::default(),
             OffloadPolicy::default(),
-            false,
             false,
             no_code(),
             no_completion(),
@@ -3757,7 +3738,6 @@ async fn drive_without_planning_offers_no_planning() {
             FsmRuntime::disabled(),
             ReadPolicy::default(),
             OffloadPolicy::default(),
-            false,
             false,
             no_code(),
             no_completion(),
@@ -4069,6 +4049,7 @@ fn validate_agents_enforces_the_profile_invariants() {
             subagents: vec![GgSubagentRef {
                 agent: "ghost".to_string(),
                 description: String::new(),
+                scopes: ALL_SUBAGENT_SCOPES.to_vec(),
             }],
             ..GgAgentConfig::root()
         }],
@@ -4078,11 +4059,12 @@ fn validate_agents_enforces_the_profile_invariants() {
 }
 
 /// An agent that may **file issues** must have someone to assign them to: an issue names its
-/// assignee from the filer's own spawnable set, so a project-management agent with an empty
-/// allowlist could never write a valid `create_issue` call. Withholding the tool — read-only board
-/// access — is the supported way to have one, and it is accepted.
+/// assignee from the filer's own **implementer** roster entries, so a project-management agent with
+/// none could never write a valid `create_issue` call. A roster entry that is only spawnable does
+/// not count — the scopes are what the check reads. Withholding the tool — read-only board access —
+/// is the supported way to have an issue-less board, and it is accepted.
 #[test]
-fn an_issue_filer_needs_someone_to_assign_to() {
+fn an_issue_filer_needs_an_implementer_to_assign_to() {
     let board_agent = |disabled: &[&str], subagents: Vec<GgSubagentRef>| {
         let mut root = GgAgentConfig {
             model_id: "mock/a".to_string(),
@@ -4090,8 +4072,10 @@ fn an_issue_filer_needs_someone_to_assign_to() {
             subagents,
             ..GgAgentConfig::root()
         };
-        root.capabilities
-            .push(GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT));
+        root.capabilities.push(GgCapabilityConfig {
+            params: json!({ "mergeAgent": ROOT_AGENT }),
+            ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
+        });
         GgCapabilitySet {
             agents: vec![root],
             ..GgCapabilitySet::default()
@@ -4099,19 +4083,24 @@ fn an_issue_filer_needs_someone_to_assign_to() {
     };
 
     let err = validate_agents(&board_agent(&[], Vec::new())).unwrap_err();
-    assert!(err.contains("no subagents"), "unexpected reason: {err}");
+    assert!(err.contains("no `implementer`"), "unexpected reason: {err}");
 
-    // Read-only board access (no `create_issue`) is fine with no subagents at all.
+    // A spawnable-only roster entry is not an implementer, so it does not satisfy the check.
+    let spawn_only = vec![GgSubagentRef::new(ROOT_AGENT, &[GgSubagentScope::Subagent])];
+    let err = validate_agents(&board_agent(&[], spawn_only.clone())).unwrap_err();
+    assert!(err.contains("no `implementer`"), "unexpected reason: {err}");
+
+    // Read-only board access (no `create_issue`) is fine with no roster at all.
     assert!(validate_agents(&board_agent(&["create_issue"], Vec::new())).is_ok());
 
-    // And so is an issue filer that can spawn something.
+    // And so is an issue filer with an implementer to assign to.
     assert!(
         validate_agents(&board_agent(
             &[],
-            vec![GgSubagentRef {
-                agent: ROOT_AGENT.to_string(),
-                description: String::new(),
-            }],
+            vec![GgSubagentRef::new(
+                ROOT_AGENT,
+                &[GgSubagentScope::Implementer]
+            )],
         ))
         .is_ok()
     );
@@ -4233,6 +4222,7 @@ fn subagent_set(max_parallel: u64, max_depth: u64, extra_agents: &[&str]) -> GgC
         .map(|name| GgSubagentRef {
             agent: name.to_string(),
             description: String::new(),
+            scopes: ALL_SUBAGENT_SCOPES.to_vec(),
         })
         .collect();
     let profile = |name: &str, model: &str| {
@@ -4297,6 +4287,7 @@ fn subagent_tools_are_gated_on_the_capability() {
     set.agents[0].subagents.push(GgSubagentRef {
         agent: ROOT_AGENT.to_string(),
         description: String::new(),
+        scopes: ALL_SUBAGENT_SCOPES.to_vec(),
     });
     let on = ToolRegistry::from_capabilities(set.root());
     for name in names {
@@ -4838,259 +4829,6 @@ async fn send_message_refuses_unknown_and_finished_targets() {
 }
 
 // ---------------------------------------------------------------------------
-// Phase 4b: worktrees — isolated per-subagent copies, merged back or discarded
-// ---------------------------------------------------------------------------
-
-/// [`subagent_set`], plus the (opt-in) worktrees capability enabled — an isolated-worktree run.
-fn worktree_subagent_set(
-    max_parallel: u64,
-    max_depth: u64,
-    extra_slots: &[&str],
-) -> GgCapabilitySet {
-    let mut set = subagent_set(max_parallel, max_depth, extra_slots);
-    set.agents[0]
-        .capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_WORKTREES));
-    set
-}
-
-/// The headline offline worktrees e2e: the worktrees capability commits a baseline, a subagent is
-/// dispatched with `worktree: true` (so it runs in an isolated copy — its `AgentSpawned` carries a
-/// worktree branch), mutates a file there, and on clean completion its branch is **merged back**
-/// into the main tree, so the file appears in the workspace and a `WorktreeMerged{merged}` outcome
-/// is emitted. The worktree checkout is torn down afterward.
-#[tokio::test]
-async fn run_spawns_a_worktree_subagent_that_isolates_then_merges_back() {
-    let dir = TempDir::new().unwrap();
-    let sink = CollectingSink::new();
-    let emitter = Emitter::with_sink(Some("run-wt".to_string()), Box::new(sink.clone()));
-    let inv = invocation(dir.path(), worktree_subagent_set(1, 3, &["subagent"]));
-    let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, |b| {
-            Box::new(MockClient::with_worktree_subagent_parent_script(
-                &b.model_id,
-            ))
-        })
-        .slot("subagent", |b| {
-            Box::new(MockClient::with_subagent_child_script(&b.model_id))
-        });
-
-    assert_eq!(
-        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
-        SessionOutcome::Ran
-    );
-
-    // The worktrees capability made the workspace a git repo with a baseline commit.
-    assert!(
-        dir.path().join(".git").exists(),
-        "the worktrees capability commits a baseline, making the workspace a repo"
-    );
-
-    let events = sink.events();
-
-    // The child ran in an isolated worktree: its AgentSpawned carries a worktree branch, and the
-    // root's does not.
-    let spawns = agent_spawns(&events);
-    assert_eq!(spawns.len(), 2, "the root and one worktree child");
-    let child_worktree = events
-        .iter()
-        .find_map(|e| match &e.kind {
-            GgTelemetryKind::AgentSpawned {
-                worktree, depth, ..
-            } if *depth == 1 => Some(worktree.clone()),
-            _ => None,
-        })
-        .expect("a depth-1 child was spawned");
-    assert_eq!(
-        child_worktree.as_deref(),
-        Some("gg/agent-0"),
-        "the worktree child announces its isolated branch"
-    );
-    let root_worktree = events
-        .iter()
-        .find_map(|e| match &e.kind {
-            GgTelemetryKind::AgentSpawned {
-                worktree, depth, ..
-            } if *depth == 0 => Some(worktree.clone()),
-            _ => None,
-        })
-        .expect("the root was spawned");
-    assert_eq!(
-        root_worktree, None,
-        "the root runs in the main tree, not a worktree"
-    );
-
-    // Merge-back: the child mutated its isolated copy, and its work now appears in the main tree.
-    assert_eq!(
-        std::fs::read_to_string(dir.path().join(MOCK_SUBAGENT_FILE)).ok(),
-        Some("hello from the subagent\n".to_string()),
-        "the worktree child's file is merged back into the main tree"
-    );
-
-    // A clean merge outcome is observable on the child's own stream.
-    let merge = events
-        .iter()
-        .find_map(|e| match &e.kind {
-            GgTelemetryKind::WorktreeMerged {
-                branch,
-                merged,
-                conflicts,
-            } => Some((e.agent_id.clone(), branch.clone(), *merged, *conflicts)),
-            _ => None,
-        })
-        .expect("a WorktreeMerged outcome was emitted");
-    assert_eq!(merge.0.as_deref(), Some("agent-0"), "on the child's stream");
-    assert_eq!(merge.1, "gg/agent-0");
-    assert!(merge.2, "the clean completion merged back");
-    assert!(!merge.3, "a clean merge has no conflicts");
-
-    // The child still returned its distinctive value to the parent.
-    assert!(
-        events.iter().any(|e| matches!(
-            &e.kind,
-            GgTelemetryKind::AgentReturned { summary } if summary.contains(MOCK_SUBAGENT_RETURN)
-        )),
-        "the worktree child still returns its value"
-    );
-
-    // The worktree checkout was torn down: the per-agent checkout under the sibling root is gone.
-    let root = worktrees_root_for(dir.path());
-    assert!(
-        !root.join("agent-0").exists(),
-        "the worktree checkout is removed after the subagent finishes"
-    );
-
-    assert!(matches!(
-        &events.last().unwrap().kind,
-        GgTelemetryKind::SessionEnded { status } if status == "completed"
-    ));
-}
-
-/// With the worktrees capability **off**, a `worktree: true` dispatch is **refused** (a tool error
-/// to the model) rather than silently downgraded: no child is spawned, nothing is written, and the
-/// run is otherwise unaffected. The ablation off arm.
-#[tokio::test]
-async fn worktree_dispatch_is_refused_without_the_capability() {
-    let dir = TempDir::new().unwrap();
-    let sink = CollectingSink::new();
-    let emitter = Emitter::with_sink(Some("run-nowt".to_string()), Box::new(sink.clone()));
-    // subagents + multi-model, but NOT worktrees.
-    let inv = invocation(dir.path(), subagent_set(4, 3, &["subagent"]));
-    let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, |b| {
-            Box::new(MockClient::with_worktree_subagent_parent_script(
-                &b.model_id,
-            ))
-        })
-        .slot("subagent", |b| {
-            Box::new(MockClient::with_subagent_child_script(&b.model_id))
-        });
-
-    assert_eq!(
-        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
-        SessionOutcome::Ran
-    );
-
-    let events = sink.events();
-
-    // The spawn was refused with guidance naming the worktrees capability.
-    assert!(
-        events.iter().any(|e| matches!(
-            &e.kind,
-            GgTelemetryKind::ToolResult { name, ok: false, summary: Some(s) }
-                if name == "spawn_subagent" && s.contains("worktrees")
-        )),
-        "a worktree dispatch without the capability is refused, naming the capability"
-    );
-
-    // No child was ever spawned (only the root's AgentSpawned), and nothing was written.
-    let spawns = agent_spawns(&events);
-    assert_eq!(
-        spawns.len(),
-        1,
-        "only the root — the worktree child was refused"
-    );
-    assert!(
-        !dir.path().join(MOCK_SUBAGENT_FILE).exists(),
-        "the refused child never ran, so it wrote nothing"
-    );
-    // No worktrees capability means no baseline repo is created.
-    assert!(
-        !dir.path().join(".git").exists(),
-        "no baseline repo without the worktrees capability"
-    );
-
-    assert!(matches!(
-        &events.last().unwrap().kind,
-        GgTelemetryKind::SessionEnded { status } if status == "completed"
-    ));
-}
-
-/// A worktree subagent that does **not** complete cleanly (here it writes work, then fails with a
-/// model error) is **discarded**: its work is not merged back into the main tree, and a
-/// `WorktreeMerged` outcome with neither merge nor conflict records the discard. The worktree is
-/// still torn down.
-#[tokio::test]
-async fn worktree_subagent_work_is_discarded_when_it_does_not_complete() {
-    let dir = TempDir::new().unwrap();
-    let sink = CollectingSink::new();
-    let emitter = Emitter::with_sink(Some("run-wt-discard".to_string()), Box::new(sink.clone()));
-    let inv = invocation(dir.path(), worktree_subagent_set(1, 3, &["subagent"]));
-
-    // The child writes a file into its worktree on turn 0, then its model turn fails — a non-clean
-    // completion (`model_error`) whose work must be discarded, not merged.
-    let child_writes_then_fails = || -> Box<dyn ModelClient> {
-        Box::new(WriteThenFailClient::new(
-            MOCK_SUBAGENT_FILE,
-            "unmerged work\n",
-        ))
-    };
-    let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, |b| {
-            Box::new(MockClient::with_worktree_subagent_parent_script(
-                &b.model_id,
-            ))
-        })
-        .slot("subagent", move |_| child_writes_then_fails());
-
-    assert_eq!(
-        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
-        SessionOutcome::Ran
-    );
-
-    let events = sink.events();
-
-    // The child's isolated work was discarded — it never reaches the main tree.
-    assert!(
-        !dir.path().join(MOCK_SUBAGENT_FILE).exists(),
-        "a non-clean worktree subagent's work is discarded, not merged"
-    );
-
-    // The discard is observable: WorktreeMerged with neither merged nor conflicts.
-    let merge = events
-        .iter()
-        .find_map(|e| match &e.kind {
-            GgTelemetryKind::WorktreeMerged {
-                merged, conflicts, ..
-            } => Some((*merged, *conflicts)),
-            _ => None,
-        })
-        .expect("a WorktreeMerged outcome was emitted for the discard");
-    assert_eq!(
-        merge,
-        (false, false),
-        "a discard neither merges nor conflicts"
-    );
-
-    // The worktree checkout was still torn down.
-    let root = worktrees_root_for(dir.path());
-    assert!(
-        !root.join("agent-0").exists(),
-        "the worktree is removed even on a discard"
-    );
-}
-
-// ---------------------------------------------------------------------------
 // Phase 4d: declared workflows — fan-out + sequencing over the same scheduler
 // ---------------------------------------------------------------------------
 
@@ -5182,6 +4920,7 @@ fn run_workflow_tool_is_gated_on_the_workflows_capability() {
     set.agents[0].subagents.push(GgSubagentRef {
         agent: ROOT_AGENT.to_string(),
         description: String::new(),
+        scopes: ALL_SUBAGENT_SCOPES.to_vec(),
     });
     let on = ToolRegistry::from_capabilities(set.root());
     assert!(
@@ -5434,181 +5173,20 @@ async fn workflow_reuses_the_global_cap_and_completes_under_cap_one() {
     ));
 }
 
-/// A workflow composes with worktrees: a stage dispatched with `worktree: true` runs each of its
-/// fanned-out subagents in its own isolated worktree, and each subagent's work is merged back into
-/// the main tree on clean completion. Proves the two Phase-4B mechanisms stack.
-#[tokio::test]
-async fn workflow_stage_runs_each_item_in_its_own_worktree() {
-    let dir = TempDir::new().unwrap();
-    let sink = CollectingSink::new();
-    let emitter = Emitter::with_sink(Some("run-wf-wt".to_string()), Box::new(sink.clone()));
-    // subagents + multi-model + workflows + worktrees, with the worker slot bound.
-    let mut set = workflow_set(2, 3, &["worker"]);
-    set.agents[0]
-        .capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_WORKTREES));
-    let inv = invocation(dir.path(), set);
-
-    // A parent that runs a one-stage workflow fanning two items, each in its own worktree.
-    let parent = || -> Box<dyn ModelClient> {
-        let run = ModelResponse {
-            text: Some("Running an isolated-worktree workflow stage.".to_string()),
-            tool_calls: vec![ToolCall {
-                id: "call_wf".to_string(),
-                name: "run_workflow".to_string(),
-                arguments: json!({
-                    "stages": [
-                        {
-                            "name": "build",
-                            "prompt": "Create the {{item}} part in isolation.",
-                            "items": ["alpha", "beta"],
-                            "agent": "worker",
-                            "worktree": true
-                        }
-                    ]
-                }),
-            }],
-            finish_reason: FinishReason::ToolCalls,
-            usage: TokenCounts::default(),
-            cost: None,
-        };
-        Box::new(MockClient::new("mock/primary", vec![run, stop_response()]))
-    };
-    let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, move |_| parent())
-        .slot("worker", counting_worker());
-
-    assert_eq!(
-        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
-        SessionOutcome::Ran
-    );
-
-    let events = sink.events();
-
-    // The worktrees capability made the workspace a repo.
-    assert!(
-        dir.path().join(".git").exists(),
-        "worktrees committed a baseline"
-    );
-
-    // Each fanned-out subagent ran in its own worktree (its AgentSpawned carries a branch) and its
-    // work merged back into the main tree.
-    let worktree_branches: Vec<String> = events
-        .iter()
-        .filter_map(|e| match &e.kind {
-            GgTelemetryKind::AgentSpawned {
-                worktree: Some(b),
-                depth,
-                ..
-            } if *depth == 1 => Some(b.clone()),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(
-        worktree_branches.len(),
-        2,
-        "both workflow subagents ran in isolated worktrees"
-    );
-
-    // Both parts merged back (each stage subagent completed cleanly).
-    for n in 0..2 {
-        assert!(
-            dir.path().join(format!("part-{n}.txt")).exists(),
-            "each worktree subagent's work merged back into the main tree"
-        );
-    }
-    let merges: Vec<bool> = events
-        .iter()
-        .filter_map(|e| match &e.kind {
-            GgTelemetryKind::WorktreeMerged { merged, .. } => Some(*merged),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(merges.len(), 2, "one merge outcome per worktree subagent");
-    assert!(
-        merges.iter().all(|m| *m),
-        "both worktree stages merged cleanly"
-    );
-
-    assert!(matches!(
-        &events.last().unwrap().kind,
-        GgTelemetryKind::SessionEnded { status } if status == "completed"
-    ));
-}
-
-/// The template renderer substitutes `{{item}}`/`{{prior}}` (tolerating inner whitespace) and
-/// leaves an unknown placeholder verbatim, so a legitimate `{{…}}` in a brief is never mangled.
-#[test]
-fn render_template_substitutes_known_placeholders_only() {
-    assert_eq!(
-        render_template("build {{item}} using {{prior}}", "X", "prior-text"),
-        "build X using prior-text"
-    );
-    assert_eq!(render_template("hi {{ item }}", "Y", ""), "hi Y");
-    assert_eq!(
-        render_template("keep {{unknown}} as is", "X", "P"),
-        "keep {{unknown}} as is"
-    );
-    assert_eq!(
-        render_template("no placeholders", "X", "P"),
-        "no placeholders"
-    );
-}
-
-/// A workflow declaration with no stages, a stage with no prompt, or a non-array `stages` is
-/// refused with a model-facing error rather than silently doing nothing.
-#[test]
-fn parse_workflow_stages_rejects_malformed_declarations() {
-    assert!(parse_workflow_stages(&json!({})).is_err(), "missing stages");
-    assert!(
-        parse_workflow_stages(&json!({ "stages": [] })).is_err(),
-        "empty stages"
-    );
-    assert!(
-        parse_workflow_stages(&json!({ "stages": [{ "items": ["a"], "agent": "Root" }] })).is_err(),
-        "a stage needs a prompt"
-    );
-    assert!(
-        parse_workflow_stages(&json!({ "stages": [{ "prompt": "do it", "items": ["a"] }] }))
-            .is_err(),
-        "a stage needs an agent to run as"
-    );
-    assert!(
-        parse_workflow_stages(&json!({ "stages": "nope" })).is_err(),
-        "stages must be an array"
-    );
-    // A well-formed declaration parses, defaulting the name and reading its agent and items.
-    let parsed = parse_workflow_stages(&json!({
-        "stages": [{ "prompt": "do {{item}}", "agent": ROOT_AGENT, "items": ["a", "b"] }]
-    }))
-    .expect("a well-formed stage parses");
-    assert_eq!(parsed.len(), 1);
-    assert_eq!(parsed[0].name, "stage-1");
-    assert_eq!(parsed[0].slot, ROOT_AGENT);
-    assert_eq!(
-        parsed[0].items.as_deref(),
-        Some(&["a".to_string(), "b".to_string()][..])
-    );
-}
-
 // ---------------------------------------------------------------------------
-// Phase 5a: Code Reviews — gate issue acceptance on a reviewer + a fix loop
+// Issue reviews: reviewers gate acceptance, and the worktree merges on approval
 // ---------------------------------------------------------------------------
 
-/// The board issue the scripted Code Review e2es create, dispatch, and complete.
+/// The board issue the scripted issue-review e2es create, dispatch, and complete.
 const REVIEW_ISSUE_ID: &str = "feat-1";
 
-/// [`subagent_set`], plus the project-management and code-reviews capabilities — a review-gated run.
-fn code_review_set(extra_slots: &[&str]) -> GgCapabilitySet {
+/// [`subagent_set`], plus the project-management capability (with the required merge agent) — a
+/// review-gated run. `extra_slots` names the profiles the scripted issue lists as its reviewers.
+fn issue_review_set(extra_slots: &[&str]) -> GgCapabilitySet {
     let mut set = subagent_set(4, 3, extra_slots);
-    set.agents[0]
-        .capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT));
-    // The reviewer runs under a dedicated `reviewer` agent (these e2es script it separately); the
-    // issue and fix agents stay on the Root.
     set.agents[0].capabilities.push(GgCapabilityConfig {
-        params: json!({ "reviewerAgent": "reviewer" }),
-        ..GgCapabilityConfig::enabled(CAPABILITY_CODE_REVIEWS)
+        params: json!({ "mergeAgent": ROOT_AGENT }),
+        ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
     });
     set
 }
@@ -5628,18 +5206,16 @@ fn tool_call_response(id: &str, name: &str, args: serde_json::Value) -> ModelRes
     }
 }
 
-/// The scripted **primary** slot for a Code Review e2e in the auto-dispatch model. Each agent that
-/// resolves the primary slot is served in dispatch order:
+/// The scripted **Root** profile for an issue-review e2e in the auto-dispatch model. Each agent that
+/// resolves the Root profile is served in dispatch order:
 ///
-/// - **agent 0 (the root)**: create one epic and one issue, then finish. Submitting the issue
-///   enqueues it, so gg auto-dispatches a top-level agent to implement it — there is no manual
-///   `spawn_subagent { issueId }` any more.
-/// - **agent 1 (that dispatched issue agent)**: write its work file, then `complete_issue` — which,
-///   with code-reviews on, triggers the gating review — then finish.
-/// - **agents 2+ (the fix agents the review loop dispatches on the issue's slot, primary)**: write a
-///   distinct work file and finish, so each fix round leaves a countable trace and the re-review's
-///   diff has new content.
-fn code_review_primary_producer(
+/// - **agent 0 (the root)**: file one epic and one issue naming `reviewer` as its reviewer, then
+///   finish. Submitting the issue enqueues it, so gg auto-dispatches a top-level agent to implement
+///   it.
+/// - **agents 1+ (that dispatched issue agent, and the same agent on every review round)**: write a
+///   distinct work file and `complete_issue`, then finish — so each round leaves a countable trace
+///   and the re-review's diff has new content.
+fn issue_review_root_producer(
     counter: Arc<AtomicUsize>,
 ) -> impl Fn(&GgSlotBinding) -> Box<dyn ModelClient> + Send + Sync + 'static {
     move |b| {
@@ -5662,11 +5238,12 @@ fn code_review_primary_producer(
                         "completionCriteria": "The widget is fully implemented.",
                         "epicId": "e1",
                         "agent": ROOT_AGENT,
+                        "reviewers": ["reviewer"],
                     }),
                 ),
                 stop_response(),
             ],
-            1 => vec![
+            _ => vec![
                 tool_call_response(
                     "write",
                     "write_file",
@@ -5679,14 +5256,6 @@ fn code_review_primary_producer(
                 ),
                 stop_response(),
             ],
-            _ => vec![
-                tool_call_response(
-                    "write",
-                    "write_file",
-                    json!({ "path": format!("work-{n}.txt"), "contents": "work\n" }),
-                ),
-                stop_response(),
-            ],
         };
         Box::new(MockClient::new(&b.model_id, responses))
     }
@@ -5696,9 +5265,9 @@ fn code_review_primary_producer(
 /// with one actionable item.
 fn reviewer_verdict_mock(model_id: &str, approved: bool) -> MockClient {
     let text = if approved {
-        "The work satisfies the completion criteria.\n\nCODE REVIEW: APPROVED".to_string()
+        "The work satisfies the completion criteria.\n\nREVIEW: APPROVED".to_string()
     } else {
-        "Not finished.\n\nCODE REVIEW: CHANGES REQUESTED\n1. Add the missing widget to the game."
+        "Not finished.\n\nREVIEW: CHANGES REQUESTED\n1. Add the missing widget to the game."
             .to_string()
     };
     MockClient::new(
@@ -5725,23 +5294,39 @@ fn approve_after_producer(
     }
 }
 
-/// Every `CodeReview` event in the stream, as `(issueId, phase, items, baseline)`. The issue id
+/// Every `IssueReview` event in the stream, as `(issueId, phase, items, baseline)`. The issue id
 /// rides on the event envelope (`issue_id`), not the payload.
 type Review = (
     Option<String>,
-    GgCodeReviewPhase,
+    GgIssueReviewPhase,
     Option<Vec<String>>,
     Option<String>,
 );
-fn code_reviews(events: &[test_cabinet_core::gg::GgTelemetryEvent]) -> Vec<Review> {
+fn issue_reviews(events: &[test_cabinet_core::gg::GgTelemetryEvent]) -> Vec<Review> {
     events
         .iter()
         .filter_map(|e| match &e.kind {
-            GgTelemetryKind::CodeReview {
+            GgTelemetryKind::IssueReview {
                 phase,
                 items,
                 baseline,
             } => Some((e.issue_id.clone(), *phase, items.clone(), baseline.clone())),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Every `WorktreeMerged` in the stream, as `(issueId, branch, merged, conflicts)`.
+type Reconcile = (Option<String>, String, bool, bool);
+fn worktree_merges(events: &[test_cabinet_core::gg::GgTelemetryEvent]) -> Vec<Reconcile> {
+    events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::WorktreeMerged {
+                branch,
+                merged,
+                conflicts,
+            } => Some((e.issue_id.clone(), branch.clone(), *merged, *conflicts)),
             _ => None,
         })
         .collect()
@@ -5769,13 +5354,15 @@ fn last_issue_status(
 fn project_set(max_retries: Option<u64>) -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal("mock/primary");
     let mut cap = GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT);
+    cap.params = json!({ "mergeAgent": ROOT_AGENT });
     if let Some(retries) = max_retries {
-        cap.params = json!({ "maxRetries": retries });
+        cap.params = json!({ "mergeAgent": ROOT_AGENT, "maxRetries": retries });
     }
     set.agents[0].capabilities.push(cap);
     set.agents[0].subagents.push(GgSubagentRef {
         agent: ROOT_AGENT.to_string(),
         description: String::new(),
+        scopes: ALL_SUBAGENT_SCOPES.to_vec(),
     });
     set
 }
@@ -6032,23 +5619,23 @@ async fn a_code_program_waits_for_an_issue_after_it_ends() {
     );
 }
 
-/// Completing an issue with the capability on triggers a **Code Review** rather than accepting the
-/// issue: a reviewer is dispatched against the baseline diff, one round requests changes (a fix
-/// agent runs with the original brief plus the items), and a re-review approves — only then is the
-/// issue marked done. Exercises the whole review → fix → approve cycle end to end.
+/// **An issue with reviewers is not accepted until they approve, and its work merges on the way.**
+/// The assigned agent marks its work complete (which moves the issue to `in review`, not `done`), a
+/// reviewer requests changes, gg re-invokes the issue's **own** agent with the items, the re-review
+/// approves, and only then is the issue merged and marked done.
 #[tokio::test]
-async fn completing_an_issue_triggers_a_code_review_and_accepts_on_approval() {
+async fn an_issues_reviewers_gate_its_acceptance_and_its_merge() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-cr".to_string()), Box::new(sink.clone()));
-    let inv = invocation(dir.path(), code_review_set(&["reviewer"]));
+    let inv = invocation(dir.path(), issue_review_set(&["reviewer"]));
 
-    let primary_counter = Arc::new(AtomicUsize::new(0));
+    let root_counter = Arc::new(AtomicUsize::new(0));
     let review_counter = Arc::new(AtomicUsize::new(0));
     let factory = ScriptedFactory::new()
         .slot(
             ROOT_AGENT,
-            code_review_primary_producer(Arc::clone(&primary_counter)),
+            issue_review_root_producer(Arc::clone(&root_counter)),
         )
         .slot(
             "reviewer",
@@ -6062,29 +5649,33 @@ async fn completing_an_issue_triggers_a_code_review_and_accepts_on_approval() {
     );
 
     let events = sink.events();
-    let reviews = code_reviews(&events);
+    let reviews = issue_reviews(&events);
 
-    // The lifecycle: requested → changes_requested (with items) → approved, all scoped to the issue.
-    let phases: Vec<GgCodeReviewPhase> = reviews.iter().map(|(_, p, _, _)| *p).collect();
+    // The lifecycle: (requested → changes_requested) then (requested → approved), all scoped to the
+    // issue. Each round emits its own `requested`, because each round is a fresh review of freshly
+    // reworked code.
+    let phases: Vec<GgIssueReviewPhase> = reviews.iter().map(|(_, p, _, _)| *p).collect();
     assert_eq!(
         phases,
         vec![
-            GgCodeReviewPhase::Requested,
-            GgCodeReviewPhase::ChangesRequested,
-            GgCodeReviewPhase::Approved,
+            GgIssueReviewPhase::Requested,
+            GgIssueReviewPhase::ChangesRequested,
+            GgIssueReviewPhase::Requested,
+            GgIssueReviewPhase::Approved,
         ],
-        "a Code Review runs requested → changes_requested → approved"
+        "each review round runs requested → (changes_requested | approved)"
     );
     assert!(
         reviews
             .iter()
             .all(|(id, _, _, _)| id.as_deref() == Some(REVIEW_ISSUE_ID)),
-        "every CodeReview event is scoped to the issue under review"
+        "every IssueReview event is scoped to the issue under review"
     );
-    // The changes-requested round carries the reviewer's actionable items.
+    // The changes-requested round carries the reviewer's actionable items and the baseline it
+    // diffed against.
     let (_, _, items, baseline) = reviews
         .iter()
-        .find(|(_, p, _, _)| *p == GgCodeReviewPhase::ChangesRequested)
+        .find(|(_, p, _, _)| *p == GgIssueReviewPhase::ChangesRequested)
         .expect("a changes_requested phase");
     assert!(
         items
@@ -6092,24 +5683,20 @@ async fn completing_an_issue_triggers_a_code_review_and_accepts_on_approval() {
             .is_some_and(|items| items.iter().any(|i| i.contains("missing widget"))),
         "the changes_requested event carries the reviewer's items"
     );
-    // The review diffed against a real git baseline (worktrees off, but code-reviews established one).
     assert!(
         baseline.is_some(),
-        "the Code Review records the baseline it diffed against"
+        "the review records the baseline it diffed against"
     );
 
-    // Not immediate acceptance: the issue was accepted only via the review's approval, and the
-    // `complete_issue` result reports the approval rather than a plain completion.
-    let complete_ok = events.iter().any(|e| {
-        matches!(
+    // `complete_issue` is a *claim*, not the acceptance: it reports what happens next, and the issue
+    // reaches `done` only through the review.
+    assert!(
+        events.iter().any(|e| matches!(
             &e.kind,
             GgTelemetryKind::ToolResult { name, ok: true, summary: Some(s) }
-                if name == "complete_issue" && s.contains("code review approved")
-        )
-    });
-    assert!(
-        complete_ok,
-        "complete_issue is gated: it succeeds only once the Code Review approves"
+                if name == "complete_issue" && s.contains("completed issue")
+        )),
+        "complete_issue records the work as finished"
     );
     assert_eq!(
         last_issue_status(&events, REVIEW_ISSUE_ID),
@@ -6117,18 +5704,17 @@ async fn completing_an_issue_triggers_a_code_review_and_accepts_on_approval() {
         "the issue is accepted (marked done) after approval"
     );
 
-    // The reviewer ran twice (round 1 + re-review) and a fix agent ran once, all as subagents.
+    // The reviewer ran twice (round 1 + re-review) and the issue's own agent ran the fix round.
     let spawns = agent_spawns(&events);
-    let reviewer_spawns = spawns
-        .iter()
-        .filter(|(_, _, slot, _, _)| slot == "reviewer");
     assert_eq!(
-        reviewer_spawns.count(),
+        spawns
+            .iter()
+            .filter(|(_, _, slot, _, _)| slot == "reviewer")
+            .count(),
         2,
         "a reviewer is dispatched for the first review and the re-review"
     );
-    // The reviewer's brief carries the diff against the baseline (the dispatched issue agent's file
-    // appears in it), so the review is genuinely of the work, diffed against the baseline.
+    // The reviewer's brief carries the diff of the work against the issue's baseline.
     assert!(
         spawns
             .iter()
@@ -6138,38 +5724,49 @@ async fn completing_an_issue_triggers_a_code_review_and_accepts_on_approval() {
                 )),
         "the reviewer is given the baseline diff of the work"
     );
-    // A fix agent ran on the issue's slot (primary) with the ORIGINAL issue brief plus the review's
-    // items. It is distinguished from the issue agent (also primary) by the review items in its brief.
+    // The rework was done by the issue's OWN assigned agent (Root), re-invoked with the original
+    // brief plus the review's items — not by a separate fix profile.
     let fix_spawns: Vec<_> = spawns
         .iter()
         .filter(|(_, _, slot, _, brief)| {
             slot == ROOT_AGENT
                 && brief
                     .as_deref()
-                    .is_some_and(|b| b.contains("Requested changes from Code Review"))
+                    .is_some_and(|b| b.contains("## Requested changes"))
         })
         .collect();
     assert_eq!(
         fix_spawns.len(),
         1,
-        "one fix agent for the one changes round"
+        "one rework round for the one changes round"
     );
     let fix_brief = fix_spawns[0].4.as_deref().unwrap();
     assert!(
         fix_brief.contains("Implement the widget."),
-        "the fix agent gets the original issue brief (its in-scope)"
+        "the re-invoked agent gets the original issue brief (its in-scope)"
     );
     assert!(
         fix_brief.contains("missing widget"),
-        "the fix agent gets the reviewer's actionable items"
+        "the re-invoked agent gets the reviewer's actionable items"
     );
 
-    // The work actually happened (the dispatched issue agent wrote work-1, the fix agent work-2).
+    // The work happened in the issue's own worktree and was merged back on acceptance — so both
+    // rounds' files are in the main workspace at the end, and the merge is reported once.
+    let merges = worktree_merges(&events);
+    assert_eq!(merges.len(), 1, "the issue's worktree is reconciled once");
+    assert_eq!(
+        (merges[0].0.as_deref(), merges[0].2, merges[0].3),
+        (Some(REVIEW_ISSUE_ID), true, false),
+        "the accepted issue's branch merges cleanly, on the issue's own stream"
+    );
     assert!(
         dir.path().join("work-1.txt").exists(),
-        "the dispatched issue agent ran"
+        "the dispatched issue agent's work merged into the main workspace"
     );
-    assert!(dir.path().join("work-2.txt").exists(), "the fix agent ran");
+    assert!(
+        dir.path().join("work-2.txt").exists(),
+        "the rework round's work merged into the main workspace"
+    );
 
     assert!(matches!(
         &events.last().unwrap().kind,
@@ -6177,31 +5774,27 @@ async fn completing_an_issue_triggers_a_code_review_and_accepts_on_approval() {
     ));
 }
 
-/// **An issue's own reviewers run its Code Review, and every one of them must approve.** With the
-/// reviewers feature on, `create_issue` names the profiles that will review the work; the review
-/// then dispatches each of them for a round instead of the run-level `reviewerAgent`, and the issue
-/// is accepted only when the last of them approves.
+/// **Every reviewer an issue names must approve, and they run in turn.** An issue naming two
+/// reviewers dispatches both; only when the last one approves is the issue accepted.
 #[tokio::test]
-async fn an_issues_own_reviewers_review_it_and_all_must_approve() {
+async fn an_issues_reviewers_all_have_to_approve() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-cr-reviewers".to_string()), Box::new(sink.clone()));
 
-    // Two reviewer profiles beside the run-level `reviewer`, all spawnable by the Root, and the
-    // reviewers feature on so the issue has to name who reviews it. The run-level `reviewerAgent`
-    // still points at `reviewer`: the issue's own list is what must win.
-    let mut set = code_review_set(&["reviewer", "critic", "auditor"]);
+    let mut set = issue_review_set(&["critic", "auditor"]);
+    // Reviewers are mandatory on this run, so an issue cannot be filed without naming them.
     for cap in &mut set.agents[0].capabilities {
         if cap.id == CAPABILITY_PROJECT_MANAGEMENT {
-            cap.params = json!({ "reviewers": true });
+            cap.params = json!({ "reviewers": true, "mergeAgent": ROOT_AGENT });
         }
     }
     let inv = invocation(dir.path(), set);
 
-    let primary_counter = Arc::new(AtomicUsize::new(0));
+    let root_counter = Arc::new(AtomicUsize::new(0));
     let factory = ScriptedFactory::new()
         .slot(ROOT_AGENT, move |b| {
-            let n = primary_counter.fetch_add(1, Ordering::SeqCst);
+            let n = root_counter.fetch_add(1, Ordering::SeqCst);
             let responses = if n == 0 {
                 vec![
                     tool_call_response(
@@ -6250,19 +5843,12 @@ async fn an_issues_own_reviewers_review_it_and_all_must_approve() {
 
     let events = sink.events();
     let spawns = agent_spawns(&events);
-    // Both declared reviewers ran, and the run-level `reviewer` profile — which the issue did not
-    // name — did not.
     for slot in ["critic", "auditor"] {
         assert!(
             spawns.iter().any(|(_, _, s, _, _)| s == slot),
             "the issue's `{slot}` reviewer was dispatched"
         );
     }
-    assert!(
-        !spawns.iter().any(|(_, _, s, _, _)| s == "reviewer"),
-        "the run-level reviewerAgent is not used when the issue names its own reviewers"
-    );
-    // Both approved, so the issue was accepted after one round with no fix agent.
     assert_eq!(
         last_issue_status(&events, REVIEW_ISSUE_ID),
         Some(GgIssueStatus::Done),
@@ -6270,22 +5856,22 @@ async fn an_issues_own_reviewers_review_it_and_all_must_approve() {
     );
 }
 
-/// The fix → re-review loop has **no cycle limit**: it runs as many rounds as the reviewer keeps
+/// The rework → re-review loop has **no cycle limit**: it runs as many rounds as the reviewer keeps
 /// requesting changes and terminates only on approval. Scripted with approve-after-3: three
-/// changes-requested rounds, three fix agents, then approval accepts the issue.
+/// changes-requested rounds, three rework rounds, then approval accepts the issue.
 #[tokio::test]
-async fn code_review_fix_loop_has_no_cycle_limit_and_terminates_on_approval() {
+async fn the_review_loop_has_no_cycle_limit_and_terminates_on_approval() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-cr-n".to_string()), Box::new(sink.clone()));
-    let inv = invocation(dir.path(), code_review_set(&["reviewer"]));
+    let inv = invocation(dir.path(), issue_review_set(&["reviewer"]));
 
-    let primary_counter = Arc::new(AtomicUsize::new(0));
+    let root_counter = Arc::new(AtomicUsize::new(0));
     let review_counter = Arc::new(AtomicUsize::new(0));
     let factory = ScriptedFactory::new()
         .slot(
             ROOT_AGENT,
-            code_review_primary_producer(Arc::clone(&primary_counter)),
+            issue_review_root_producer(Arc::clone(&root_counter)),
         )
         .slot(
             "reviewer",
@@ -6298,16 +5884,15 @@ async fn code_review_fix_loop_has_no_cycle_limit_and_terminates_on_approval() {
     );
 
     let events = sink.events();
-    let reviews = code_reviews(&events);
+    let reviews = issue_reviews(&events);
 
-    // Three changes-requested rounds before the single approval — no limit shy of it.
     let changes = reviews
         .iter()
-        .filter(|(_, p, _, _)| *p == GgCodeReviewPhase::ChangesRequested)
+        .filter(|(_, p, _, _)| *p == GgIssueReviewPhase::ChangesRequested)
         .count();
     let approvals = reviews
         .iter()
-        .filter(|(_, p, _, _)| *p == GgCodeReviewPhase::Approved)
+        .filter(|(_, p, _, _)| *p == GgIssueReviewPhase::Approved)
         .count();
     assert_eq!(
         changes, 3,
@@ -6315,7 +5900,7 @@ async fn code_review_fix_loop_has_no_cycle_limit_and_terminates_on_approval() {
     );
     assert_eq!(approvals, 1, "the loop terminates on the single approval");
 
-    // Four reviewer dispatches (three changes + the approving one) and three fix agents.
+    // Four reviewer dispatches (three changes + the approving one) and three rework rounds.
     let spawns = agent_spawns(&events);
     assert_eq!(
         spawns
@@ -6331,56 +5916,36 @@ async fn code_review_fix_loop_has_no_cycle_limit_and_terminates_on_approval() {
             .filter(|(_, _, slot, _, brief)| slot == ROOT_AGENT
                 && brief
                     .as_deref()
-                    .is_some_and(|b| b.contains("Requested changes from Code Review")))
+                    .is_some_and(|b| b.contains("## Requested changes")))
             .count(),
         3,
-        "a fix agent ran for each of the three changes rounds"
+        "the issue's own agent was re-invoked for each of the three changes rounds"
     );
 
-    // The issue is accepted only after the loop terminates on approval.
+    // Rework does NOT burn the retry budget — the issue is still accepted after three rounds, which
+    // is far past the default single retry.
     assert_eq!(
         last_issue_status(&events, REVIEW_ISSUE_ID),
         Some(GgIssueStatus::Done),
-        "the issue is accepted once the fix loop terminates on approval"
+        "the issue is accepted once the rework loop terminates on approval"
     );
 }
 
-/// With the capability **off**, `complete_issue` accepts the issue directly — no Code Review is
-/// triggered, no reviewer is dispatched, and no git baseline is established. The ablation off arm.
+/// An issue that names **no** reviewers is accepted as soon as its agent completes it — no review
+/// telemetry, no reviewer dispatched — but its worktree is still merged back, which is what makes
+/// its work visible to the issues that depend on it.
 #[tokio::test]
-async fn code_review_off_completes_the_issue_directly() {
+async fn an_issue_without_reviewers_is_accepted_and_merged_directly() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-cr-off".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), issue_review_set(&[]));
 
-    // Subagents + a board, but NOT code-reviews.
-    let mut set = GgCapabilitySet::minimal("mock/primary");
-    set.agents[0]
-        .capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS));
-    set.agents[0]
-        .capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT));
-    // An issue is filed assigned to a profile the filer may spawn, so the Root lists itself.
-    set.agents[0].subagents.push(GgSubagentRef {
-        agent: ROOT_AGENT.to_string(),
-        description: String::new(),
-    });
-    let inv = invocation(dir.path(), set);
-
-    // The root files an issue (which auto-dispatches an agent to implement it); that dispatched
-    // agent completes it directly — with code-reviews off there is no review to run. A stateful
-    // primary producer serves the root (agent 0) then the dispatched issue agent (agent 1).
     let counter = Arc::new(AtomicUsize::new(0));
     let factory = ScriptedFactory::new().slot(ROOT_AGENT, move |b| {
         let n = counter.fetch_add(1, Ordering::SeqCst);
         let responses = if n == 0 {
             vec![
-                tool_call_response(
-                    "epic",
-                    "create_epic",
-                    json!({ "id": "e1", "title": "Build", "description": "the build" }),
-                ),
                 tool_call_response(
                     "issue",
                     "create_issue",
@@ -6398,6 +5963,11 @@ async fn code_review_off_completes_the_issue_directly() {
         } else {
             vec![
                 tool_call_response(
+                    "write",
+                    "write_file",
+                    json!({ "path": "work.txt", "contents": "work\n" }),
+                ),
+                tool_call_response(
                     "complete",
                     "complete_issue",
                     json!({ "id": REVIEW_ISSUE_ID }),
@@ -6414,65 +5984,322 @@ async fn code_review_off_completes_the_issue_directly() {
     );
 
     let events = sink.events();
-
-    // No Code Review at all, and no reviewer subagent.
     assert!(
-        code_reviews(&events).is_empty(),
-        "no CodeReview telemetry when the capability is off"
+        issue_reviews(&events).is_empty(),
+        "no IssueReview telemetry when the issue named no reviewers"
     );
-    // The root plus the one auto-dispatched issue agent — no reviewer or fix subagents.
     assert_eq!(
         agent_spawns(&events).len(),
         2,
-        "the root and the one auto-dispatched issue agent run — no reviewer or fix subagents"
-    );
-    // `complete_issue` accepted the issue directly (the plain tool confirmation, not a review).
-    assert!(
-        events.iter().any(|e| matches!(
-            &e.kind,
-            GgTelemetryKind::ToolResult { name, ok: true, summary: Some(s) }
-                if name == "complete_issue" && s.contains("completed issue")
-        )),
-        "complete_issue accepts the issue directly when code-reviews is off"
+        "the root and the one auto-dispatched issue agent run — no reviewers"
     );
     assert_eq!(
         last_issue_status(&events, REVIEW_ISSUE_ID),
         Some(GgIssueStatus::Done),
-        "the issue is done immediately"
+        "the issue is accepted as soon as its agent completes it"
     );
-    // No git machinery engaged (no worktrees, no code-reviews → no baseline committed).
+    // The isolation is still real: the agent worked on a branch that was merged back.
+    let merges = worktree_merges(&events);
+    assert_eq!(merges.len(), 1);
+    assert!(merges[0].2, "the accepted issue's branch merged cleanly");
     assert!(
-        !dir.path().join(".git").exists(),
-        "no baseline is committed when neither worktrees nor code-reviews is on"
+        dir.path().join("work.txt").exists(),
+        "the merged work is in the main workspace"
+    );
+    assert!(
+        dir.path().join(".git").exists(),
+        "project management makes the workspace a git repo so issues can be isolated"
     );
 }
 
-/// The agent topology for the offline Code Review e2e (driven by the `DefaultClientFactory`
-/// `mock/demo-*` scripts). The `code-review-parent` script is message-driven and plays **three
-/// roles on the Root profile** — the root that files the issue, the agent auto-dispatched to
-/// implement it (issue agent, defaulting to Root), and each fix agent (the issue's own profile,
-/// i.e. Root). Only the reviewer is a distinct model, chosen by the `reviewerAgent` param. Root
-/// keeps the `subagents` capability so the Code Review's delegation machinery engages; its
-/// allowlist is empty because it never model-spawns (issue dispatch and the review are
-/// orchestrator-internal).
-fn code_review_e2e_set() -> GgCapabilitySet {
-    let mut root = GgAgentConfig {
-        model_id: "mock/demo-code-review-parent".to_string(),
+/// **A failed issue's work is discarded unmerged.** The dispatched agent writes something and then
+/// dies on a model error; with its retries exhausted the issue is marked `failed` and its branch is
+/// thrown away, so the main workspace never sees half-finished work — the counterpart to the
+/// merge-on-acceptance path.
+#[tokio::test]
+async fn a_failed_issues_worktree_is_discarded_unmerged() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-issue-fail".to_string()), Box::new(sink.clone()));
+    // No retries, so the first failure is terminal.
+    let mut set = issue_review_set(&[]);
+    for cap in &mut set.agents[0].capabilities {
+        if cap.id == CAPABILITY_PROJECT_MANAGEMENT {
+            cap.params = json!({ "mergeAgent": ROOT_AGENT, "maxRetries": 0 });
+        }
+    }
+    let inv = invocation(dir.path(), set);
+
+    let counter = Arc::new(AtomicUsize::new(0));
+    let factory = ScriptedFactory::new().slot(ROOT_AGENT, move |b| {
+        let n = counter.fetch_add(1, Ordering::SeqCst);
+        if n == 0 {
+            Box::new(MockClient::new(
+                &b.model_id,
+                vec![
+                    tool_call_response(
+                        "issue",
+                        "create_issue",
+                        json!({
+                            "id": REVIEW_ISSUE_ID,
+                            "title": "Add the widget",
+                            "inScope": "Implement the widget.",
+                            "outOfScope": "Nothing else.",
+                            "completionCriteria": "The widget works.",
+                            "agent": ROOT_AGENT,
+                        }),
+                    ),
+                    stop_response(),
+                ],
+            ))
+        } else {
+            Box::new(WriteThenFailClient::new("half-done.txt", "half\n"))
+        }
+    });
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran
+    );
+
+    let events = sink.events();
+    assert_eq!(
+        last_issue_status(&events, REVIEW_ISSUE_ID),
+        Some(GgIssueStatus::Failed),
+        "the issue fails once its retries are exhausted"
+    );
+    let merges = worktree_merges(&events);
+    assert_eq!(merges.len(), 1, "the failed issue's worktree is reconciled");
+    assert_eq!(
+        (merges[0].2, merges[0].3),
+        (false, false),
+        "a failed issue's branch is discarded, neither merged nor conflicted"
+    );
+    assert!(
+        !dir.path().join("half-done.txt").exists(),
+        "the half-finished work never reaches the main workspace"
+    );
+}
+
+/// **A merge conflict is handed to the merge agent, which finishes the merge.** Two issues become
+/// actionable at once, so both branch from the same commit and both create the same file with
+/// different contents: whichever merges second cannot apply cleanly. gg dispatches the configured
+/// merge agent into the main tree, it resolves and commits, and the issue is accepted with the
+/// conflict recorded on its reconciliation.
+#[tokio::test]
+async fn a_conflicting_issue_merge_is_resolved_by_the_merge_agent() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-merge".to_string()), Box::new(sink.clone()));
+
+    // The Root files both issues and implements them; `merger` is the shell-capable merge agent.
+    let mut set = issue_review_set(&["merger"]);
+    for cap in &mut set.agents[0].capabilities {
+        if cap.id == CAPABILITY_PROJECT_MANAGEMENT {
+            cap.params = json!({ "mergeAgent": "merger" });
+        }
+    }
+    let inv = invocation(dir.path(), set);
+
+    // Client minting is synchronous and in dispatch order (the board dispatches in creation order),
+    // so agent 1 owns `one` and agent 2 owns `two`.
+    let issue_ids = ["one", "two"];
+    let root_counter = Arc::new(AtomicUsize::new(0));
+    let factory = ScriptedFactory::new()
+        .slot(ROOT_AGENT, move |b| {
+            let n = root_counter.fetch_add(1, Ordering::SeqCst);
+            let responses = if n == 0 {
+                issue_ids
+                    .iter()
+                    .map(|id| {
+                        tool_call_response(
+                            id,
+                            "create_issue",
+                            json!({
+                                "id": id,
+                                "title": "Write the shared file",
+                                "inScope": "Write shared.txt.",
+                                "outOfScope": "Nothing else.",
+                                "completionCriteria": "shared.txt exists.",
+                                "agent": ROOT_AGENT,
+                            }),
+                        )
+                    })
+                    .chain(std::iter::once(stop_response()))
+                    .collect()
+            } else {
+                let id = issue_ids[(n - 1).min(issue_ids.len() - 1)];
+                vec![
+                    tool_call_response(
+                        "write",
+                        "write_file",
+                        json!({ "path": "shared.txt", "contents": format!("from issue {id}\n") }),
+                    ),
+                    tool_call_response("complete", "complete_issue", json!({ "id": id })),
+                    stop_response(),
+                ]
+            };
+            Box::new(MockClient::new(&b.model_id, responses))
+        })
+        // The merge agent resolves the conflict the only way it can be resolved here — keep the
+        // incoming side — and commits, which is what "finish the merge" means.
+        .slot("merger", |b| {
+            Box::new(MockClient::new(
+                &b.model_id,
+                vec![
+                    tool_call_response(
+                        "resolve",
+                        "shell",
+                        json!({
+                            "command": "git checkout --theirs shared.txt && git add -A && \
+                                        git -c user.name=gg -c user.email=gg@test-cabinet.local \
+                                        commit --no-edit"
+                        }),
+                    ),
+                    stop_response(),
+                ],
+            ))
+        });
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran
+    );
+
+    let events = sink.events();
+    let merges = worktree_merges(&events);
+    assert_eq!(merges.len(), 2, "both issues' branches are reconciled");
+    assert!(
+        merges.iter().all(|(_, _, merged, _)| *merged),
+        "both issues land in the main workspace, the conflicting one via the merge agent"
+    );
+    assert_eq!(
+        merges.iter().filter(|(_, _, _, c)| *c).count(),
+        1,
+        "exactly one of the two merges conflicted"
+    );
+    assert!(
+        agent_spawns(&events)
+            .iter()
+            .any(|(_, _, slot, _, _)| slot == "merger"),
+        "the merge agent was dispatched to resolve the conflict"
+    );
+    for id in issue_ids {
+        assert_eq!(
+            last_issue_status(&events, id),
+            Some(GgIssueStatus::Done),
+            "issue `{id}` is accepted once its work is in the main workspace"
+        );
+    }
+    assert!(
+        dir.path().join("shared.txt").exists(),
+        "the merged file is in the main workspace"
+    );
+}
+
+/// A run that enables project management **must** name a merge agent, and that agent must be able to
+/// run a shell — resolving a merge means running `git`. Both are launch-time refusals, so a
+/// misconfiguration is caught before any model is called.
+#[test]
+fn project_management_requires_a_shell_capable_merge_agent() {
+    let base = || {
+        let mut set = GgCapabilitySet::minimal("mock/primary");
+        set.agents[0].subagents.push(GgSubagentRef::any(ROOT_AGENT));
+        set
+    };
+
+    // No merge agent at all.
+    let mut missing = base();
+    missing.agents[0]
+        .capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT));
+    let err = validate_agents(&missing).expect_err("a board with no merge agent is refused");
+    assert!(
+        err.contains("mergeAgent"),
+        "the error names the param: {err}"
+    );
+
+    // A merge agent that is not a declared profile.
+    let mut unknown = base();
+    unknown.agents[0].capabilities.push(GgCapabilityConfig {
+        params: json!({ "mergeAgent": "nobody" }),
+        ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
+    });
+    let err = validate_agents(&unknown).expect_err("an undeclared merge agent is refused");
+    assert!(err.contains("nobody"), "the error names the profile: {err}");
+
+    // A declared merge agent without the shell capability.
+    let mut shell_less = base();
+    shell_less.agents[0].capabilities.push(GgCapabilityConfig {
+        params: json!({ "mergeAgent": "merger" }),
+        ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
+    });
+    let mut merger = GgAgentConfig {
+        name: "merger".to_string(),
+        model_id: "mock/merger".to_string(),
         ..GgAgentConfig::root()
     };
-    root.capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS));
-    root.capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT));
+    merger.capabilities.retain(|cap| cap.id != CAPABILITY_SHELL);
+    shell_less.agents.push(merger);
+    let err = validate_agents(&shell_less).expect_err("a shell-less merge agent is refused");
+    assert!(
+        err.contains("shell"),
+        "the error says why a shell is needed: {err}"
+    );
+
+    // The same set with the shell restored launches.
+    let mut ok = shell_less.clone();
+    ok.agents[1]
+        .capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_SHELL));
+    assert!(
+        validate_agents(&ok).is_ok(),
+        "a shell-capable merge agent is accepted"
+    );
+}
+
+/// An issue's `agent` must be a roster entry scoped as an **implementer**, and its `reviewers` must
+/// be scoped as **reviewers** — the two are governed independently, so a profile trusted to write
+/// code is not automatically trusted to review it.
+#[test]
+fn issue_assignment_is_governed_by_roster_scopes() {
+    let mut set = GgCapabilitySet::minimal("mock/primary");
+    set.agents[0].subagents = vec![
+        GgSubagentRef::new("builder", &[GgSubagentScope::Implementer]),
+        GgSubagentRef::new("critic", &[GgSubagentScope::Reviewer]),
+    ];
+    let policy = IssuePolicy::resolve(set.root());
+    assert!(policy.allows_implementer("builder"));
+    assert!(!policy.allows_implementer("critic"));
+    assert!(policy.allows_reviewer("critic"));
+    assert!(!policy.allows_reviewer("builder"));
+    // A subagent-only entry is namable for neither.
+    assert!(!set.root().can_spawn("builder"));
+    assert!(
+        set.root()
+            .allows_scope("builder", GgSubagentScope::Implementer)
+    );
+}
+
+/// The agent topology for the offline issue-review e2e (driven by the `DefaultClientFactory`
+/// `mock/demo-*` scripts). The `issue-review-parent` script is message-driven and plays **three
+/// roles on the Root profile** — the root that files the issue, the agent auto-dispatched to
+/// implement it, and that same agent when the review sends it back. Only the reviewer is a distinct
+/// model. The Root's roster names itself as the implementer and `reviewer` as the reviewer; the Root
+/// is also the merge agent the capability requires.
+fn issue_review_e2e_set() -> GgCapabilitySet {
+    let mut root = GgAgentConfig {
+        model_id: "mock/demo-issue-review-parent".to_string(),
+        ..GgAgentConfig::root()
+    };
     root.capabilities.push(GgCapabilityConfig {
-        params: json!({ "reviewerAgent": "reviewer" }),
-        ..GgCapabilityConfig::enabled(CAPABILITY_CODE_REVIEWS)
+        params: json!({ "mergeAgent": ROOT_AGENT }),
+        ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
     });
-    // The scripted issue is filed assigned to the Root, which therefore has to list itself.
-    root.subagents.push(GgSubagentRef {
-        agent: ROOT_AGENT.to_string(),
-        description: String::new(),
-    });
+    root.subagents = vec![
+        GgSubagentRef::new(ROOT_AGENT, &[GgSubagentScope::Implementer]),
+        GgSubagentRef::new("reviewer", &[GgSubagentScope::Reviewer]),
+    ];
     let reviewer = GgAgentConfig {
         name: "reviewer".to_string(),
         model_id: "mock/demo-review-reviewer".to_string(),
@@ -6484,25 +6311,25 @@ fn code_review_e2e_set() -> GgCapabilitySet {
     }
 }
 
-/// The full review → fix → approve cycle driven **offline through the real binary path** (the
+/// The full review → rework → approve cycle driven **offline through the real binary path** (the
 /// `DefaultClientFactory` + the `mock/…` model-id scripts), not the in-crate scripted factory: the
-/// reviewer requests the fix marker, the fixer writes it, and the re-review approves.
+/// reviewer requests the fix marker, the re-invoked agent writes it, and the re-review approves.
 #[tokio::test]
-async fn code_review_offline_e2e_through_the_default_factory() {
+async fn issue_review_offline_e2e_through_the_default_factory() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-cr-mock".to_string()), Box::new(sink.clone()));
 
-    let set = code_review_e2e_set();
-    let inv = invocation(dir.path(), set);
+    let inv = invocation(dir.path(), issue_review_e2e_set());
 
     // `run` uses the production DefaultClientFactory, which selects the mock scripts by model id.
     assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
 
-    // The worker did the initial work, then a fix agent wrote the review fix marker.
+    // The initial pass did its work, the rework pass wrote the review fix marker, and both merged
+    // back into the main workspace when the issue was accepted.
     assert!(
         dir.path().join(MOCK_REVIEW_WORKER_FILE).exists(),
-        "the initial worker did its work"
+        "the initial pass did its work"
     );
     assert_eq!(
         std::fs::read_to_string(dir.path().join(MOCK_REVIEW_FIX_FILE))
@@ -6510,27 +6337,27 @@ async fn code_review_offline_e2e_through_the_default_factory() {
             .as_deref()
             .map(str::trim),
         Some(MOCK_REVIEW_FIX_SENTINEL),
-        "the fix agent applied the reviewer's requested change"
+        "the re-invoked agent applied the reviewer's requested change"
     );
 
     let events = sink.events();
-    let reviews = code_reviews(&events);
+    let reviews = issue_reviews(&events);
     assert!(
         reviews
             .iter()
-            .any(|(_, p, _, _)| *p == GgCodeReviewPhase::ChangesRequested),
+            .any(|(_, p, _, _)| *p == GgIssueReviewPhase::ChangesRequested),
         "the first review requested changes"
     );
     assert!(
         reviews
             .iter()
-            .any(|(_, p, _, _)| *p == GgCodeReviewPhase::Approved),
+            .any(|(_, p, _, _)| *p == GgIssueReviewPhase::Approved),
         "the re-review approved"
     );
     assert_eq!(
-        last_issue_status(&events, MOCK_CODE_REVIEW_ISSUE_ID),
+        last_issue_status(&events, MOCK_ISSUE_REVIEW_ISSUE_ID),
         Some(GgIssueStatus::Done),
-        "the issue is accepted after the offline review→fix→approve cycle"
+        "the issue is accepted after the offline review→rework→approve cycle"
     );
     assert!(matches!(
         &events.last().unwrap().kind,
@@ -6620,7 +6447,7 @@ async fn run_emits_a_session_summary_immediately_before_session_ended() {
         "a fullness was reported by the default context visibility"
     );
     // No board, reviews, or speculation in a minimal run.
-    assert_eq!(summary.code_reviews, 0);
+    assert_eq!(summary.issue_reviews, 0);
     assert_eq!(summary.speculations, 0);
     assert_eq!(summary.issues_created, 0);
     assert_eq!(summary.issues_completed, 0);
@@ -6682,16 +6509,16 @@ async fn a_per_tool_override_is_reflected_in_the_recorded_effective_toolset() {
     }
 }
 
-/// A multi-agent, review-gated run's summary counts each aggregatable figure exactly as the stream
-/// carried it: every spawned agent, each Code Review phase, the board's issues, and the per-slot
+/// A multi-agent, reviewer-gated run's summary counts each aggregatable figure exactly as the stream
+/// carried it: every spawned agent, each issue-review phase, the board's issues, and the per-slot
 /// rollups — so an aggregate query can trust the recorded summary without replaying the stream.
 #[tokio::test]
-async fn session_summary_counts_match_a_code_review_run_stream() {
+async fn session_summary_counts_match_an_issue_review_run_stream() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-cr-summary".to_string()), Box::new(sink.clone()));
 
-    let set = code_review_e2e_set();
+    let set = issue_review_e2e_set();
     let inv = invocation(dir.path(), set);
 
     assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
@@ -6729,25 +6556,25 @@ async fn session_summary_counts_match_a_code_review_run_stream() {
         .unwrap();
     assert_eq!(summary.max_subagent_depth, deepest);
 
-    // Code Reviews: the three figures match the phases the stream carried.
-    let reviews = code_reviews(&events);
+    // Issue reviews: the three figures match the phases the stream carried.
+    let reviews = issue_reviews(&events);
     let requested = reviews
         .iter()
-        .filter(|(_, p, _, _)| *p == GgCodeReviewPhase::Requested)
+        .filter(|(_, p, _, _)| *p == GgIssueReviewPhase::Requested)
         .count() as u64;
     let changes = reviews
         .iter()
-        .filter(|(_, p, _, _)| *p == GgCodeReviewPhase::ChangesRequested)
+        .filter(|(_, p, _, _)| *p == GgIssueReviewPhase::ChangesRequested)
         .count() as u64;
     let approved = reviews
         .iter()
-        .filter(|(_, p, _, _)| *p == GgCodeReviewPhase::Approved)
+        .filter(|(_, p, _, _)| *p == GgIssueReviewPhase::Approved)
         .count() as u64;
-    assert_eq!(summary.code_reviews, requested);
+    assert_eq!(summary.issue_reviews, requested);
     assert_eq!(summary.review_cycles, changes + approved);
     assert_eq!(summary.issues_reopened, changes);
     // This mock does a review → changes → approve cycle, so all three are exercised.
-    assert!(summary.code_reviews >= 1);
+    assert!(summary.issue_reviews >= 1);
     assert!(summary.issues_reopened >= 1);
     assert!(summary.review_cycles >= 2);
 
@@ -6819,8 +6646,7 @@ fn parse_review_verdict_reads_the_contract() {
 // ---------------------------------------------------------------------------
 
 /// A capability set with the `fsm` capability selecting `machine`, on top of the minimal defaults,
-/// plus a binding for each named `extra_slot` (`mock/<slot>`). `review-gated` additionally needs
-/// delegation + a distinct reviewer model, so callers add `subagents`/`multi-model` themselves.
+/// plus a binding for each named `extra_slot` (`mock/<slot>`).
 fn fsm_set(machine: &str) -> GgCapabilitySet {
     fsm_set_for(machine, "mock/primary")
 }
@@ -6996,307 +6822,14 @@ async fn fsm_tdd_offline_e2e_through_the_default_factory() {
     assert!(dir.path().join(MOCK_FSM_IMPL_FILE).exists());
 }
 
-/// `review-gated` composes P5a: entering the `review` state triggers a **Code Review** of the run's
-/// work, and the machine reaches `accept` only when the review approves — else it loops **back to
-/// `develop`** with the reviewer's items. Scripted so the first review requests changes and the
-/// re-review approves.
-#[tokio::test]
-async fn fsm_review_gated_accepts_only_after_a_code_review_approves() {
-    let dir = TempDir::new().unwrap();
-    let sink = CollectingSink::new();
-    let emitter = Emitter::with_sink(Some("run-rg".to_string()), Box::new(sink.clone()));
-
-    // review-gated needs delegation (to dispatch the reviewer) and a distinct reviewer agent.
-    let mut set = fsm_set("review-gated");
-    set.agents[0]
-        .capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS));
-    // Point the Code Review at a dedicated `reviewer` agent (default would be Root).
-    set.agents[0].capabilities.push(GgCapabilityConfig {
-        params: json!({ "reviewerAgent": "reviewer" }),
-        ..GgCapabilityConfig::enabled(CAPABILITY_CODE_REVIEWS)
-    });
-    set.agents.push(GgAgentConfig {
-        name: "reviewer".to_string(),
-        model_id: "mock/reviewer".to_string(),
-        ..GgAgentConfig::root()
-    });
-    let inv = invocation(dir.path(), set);
-
-    let review_counter = Arc::new(AtomicUsize::new(0));
-    let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, |b| {
-            Box::new(MockClient::new(
-                &b.model_id,
-                vec![
-                    // develop: do the work.
-                    tool_call_response(
-                        "w1",
-                        "write_file",
-                        json!({ "path": "feature.txt", "contents": "v1\n" }),
-                    ),
-                    // advance → review (Code Review requests changes → back to develop).
-                    tool_call_response("adv1", "advance_state", json!({})),
-                    // develop again: address the change.
-                    tool_call_response(
-                        "w2",
-                        "write_file",
-                        json!({ "path": "feature.txt", "contents": "v2 (fixed)\n" }),
-                    ),
-                    // advance → review (approves) → accept.
-                    tool_call_response("adv2", "advance_state", json!({})),
-                    stop_response(),
-                ],
-            ))
-        })
-        // Approve on the 2nd review (one changes-requested round first).
-        .slot(
-            "reviewer",
-            approve_after_producer(Arc::clone(&review_counter), 1),
-        );
-
-    assert_eq!(
-        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
-        SessionOutcome::Ran
-    );
-    let events = sink.events();
-
-    // The machine's path: develop → review → (changes) back to develop → review → accept.
-    assert_eq!(
-        fsm_states(&events)
-            .iter()
-            .map(|(_, state, index)| (state.clone(), *index))
-            .collect::<Vec<_>>(),
-        vec![
-            ("develop".to_string(), 0),
-            ("review".to_string(), 1),
-            ("develop".to_string(), 0),
-            ("review".to_string(), 1),
-            ("accept".to_string(), 2),
-        ],
-        "review-gated loops back to develop on changes and only reaches accept on approval"
-    );
-
-    // It composed the Code Review capability: a review was requested each round, one requested
-    // changes, and the last approved — accept came only after approval.
-    let phases: Vec<GgCodeReviewPhase> = code_reviews(&events)
-        .iter()
-        .map(|(_, p, _, _)| *p)
-        .collect();
-    assert_eq!(
-        phases,
-        vec![
-            GgCodeReviewPhase::Requested,
-            GgCodeReviewPhase::ChangesRequested,
-            GgCodeReviewPhase::Requested,
-            GgCodeReviewPhase::Approved,
-        ],
-        "each review round is a Code Review; accept follows the approval"
-    );
-    // `accept` is reached strictly after the approval.
-    let approved_at = events
-        .iter()
-        .position(|e| {
-            matches!(
-                &e.kind,
-                GgTelemetryKind::CodeReview {
-                    phase: GgCodeReviewPhase::Approved,
-                    ..
-                }
-            )
-        })
-        .expect("an approval");
-    let accept_at = events
-        .iter()
-        .position(
-            |e| matches!(&e.kind, GgTelemetryKind::FsmState { state, .. } if state == "accept"),
-        )
-        .expect("an accept transition");
-    assert!(
-        approved_at <= accept_at,
-        "accept follows the Code Review approval"
-    );
-
-    // Two reviewer subagents ran (the changes round + the approving re-review); the reviewer saw the
-    // run's diff.
-    let spawns = agent_spawns(&events);
-    assert_eq!(
-        spawns
-            .iter()
-            .filter(|(_, _, slot, _, _)| slot == "reviewer")
-            .count(),
-        2,
-        "a reviewer ran for the initial review and the re-review"
-    );
-    assert!(matches!(
-        &events.last().unwrap().kind,
-        GgTelemetryKind::SessionEnded { status } if status == "completed"
-    ));
-}
-
-/// `plan-first` reuses the planning capability's plan → implement flow as its two states: the `plan`
-/// state is **read-only** (a mutating call is refused), advancing performs the plan → implement reset
-/// (emitting the planning telemetry), and the `implement` state has the full toolset back. The
-/// planning capability itself is off — plan-first is self-contained.
-#[tokio::test]
-async fn fsm_plan_first_reuses_the_planning_flow() {
-    let dir = TempDir::new().unwrap();
-    let sink = CollectingSink::new();
-    let emitter = Emitter::with_sink(Some("run-pf".to_string()), Box::new(sink.clone()));
-    let inv = invocation(dir.path(), fsm_set("plan-first"));
-    assert!(
-        !inv.capability_set.is_enabled(CAPABILITY_PLANNING),
-        "plan-first works without the standalone planning capability"
-    );
-
-    let factory = ScriptedFactory::new().slot(ROOT_AGENT, |b| {
-        Box::new(MockClient::new(
-            &b.model_id,
-            vec![
-                // plan state (read-only): a read is allowed.
-                tool_call_response("ls", "list_dir", json!({ "path": "." })),
-                // plan state: a mutating call is REFUSED (read-only) — premature.txt is never written.
-                tool_call_response(
-                    "bad",
-                    "write_file",
-                    json!({ "path": "premature.txt", "contents": "too soon" }),
-                ),
-                // advance with the plan → implement.
-                tool_call_response(
-                    "adv",
-                    "advance_state",
-                    json!({ "note": "1. create index.html 2. add a player 3. draw each frame" }),
-                ),
-                // implement: now allowed.
-                tool_call_response(
-                    "impl",
-                    "write_file",
-                    json!({ "path": "index.html", "contents": "<!doctype html>\n" }),
-                ),
-                stop_response(),
-            ],
-        ))
-    });
-
-    assert_eq!(
-        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
-        SessionOutcome::Ran
-    );
-    let events = sink.events();
-
-    // The two states, in order.
-    assert_eq!(
-        fsm_states(&events),
-        vec![
-            ("plan-first".to_string(), "plan".to_string(), 0),
-            ("plan-first".to_string(), "implement".to_string(), 1),
-        ],
-        "plan-first is plan → implement"
-    );
-
-    // The read-only plan state refused the mutating write (the file was never created).
-    assert!(
-        events.iter().any(|e| matches!(
-            &e.kind,
-            GgTelemetryKind::ToolResult { name, ok: false, .. } if name == "write_file"
-        )),
-        "a mutating call in the read-only plan state is refused"
-    );
-    assert!(
-        !dir.path().join("premature.txt").exists(),
-        "the refused write never touched the workspace"
-    );
-
-    // It reused the planning plan → implement flow: the planning telemetry fired.
-    let plan_phases: Vec<GgPlanPhase> = events
-        .iter()
-        .filter_map(|e| match &e.kind {
-            GgTelemetryKind::Planning { phase, .. } => Some(*phase),
-            _ => None,
-        })
-        .collect();
-    assert!(
-        plan_phases.contains(&GgPlanPhase::Submitted)
-            && plan_phases.contains(&GgPlanPhase::Implementing),
-        "the plan → implement reset reused the planning flow (submitted + implementing)"
-    );
-
-    // The implement phase wrote the real file.
-    assert!(
-        dir.path().join("index.html").exists(),
-        "the implement state wrote the game with its full toolset back"
-    );
-    assert!(matches!(
-        &events.last().unwrap().kind,
-        GgTelemetryKind::SessionEnded { status } if status == "completed"
-    ));
-}
-
-/// With no machine selected the run behaves exactly as before: no `FsmState` telemetry, no
-/// `advance_state` offered, and the default build proceeds. An `fsm` capability naming an unknown
-/// machine warns and drives nothing.
-#[tokio::test]
-async fn fsm_absent_or_unknown_machine_leaves_behavior_unchanged() {
-    // No fsm capability at all: the default mock run is untouched.
-    {
-        let dir = TempDir::new().unwrap();
-        seed_default_skill(dir.path());
-        let sink = CollectingSink::new();
-        let emitter = Emitter::with_sink(Some("run-nofsm".to_string()), Box::new(sink.clone()));
-        let inv = invocation(dir.path(), GgCapabilitySet::minimal("mock/echo"));
-        assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
-        let events = sink.events();
-        assert!(
-            fsm_states(&events).is_empty(),
-            "no machine → no FsmState telemetry"
-        );
-        assert!(
-            dir.path().join("index.html").exists(),
-            "the default build still runs unchanged"
-        );
-    }
-
-    // An fsm capability naming a machine gg does not ship: a warning, and nothing drives the run.
-    {
-        let dir = TempDir::new().unwrap();
-        let sink = CollectingSink::new();
-        let emitter = Emitter::with_sink(Some("run-bogus".to_string()), Box::new(sink.clone()));
-        // Give it a benign one-shot script so the run completes.
-        let inv = invocation(dir.path(), fsm_set("does-not-exist"));
-        let factory = ScriptedFactory::new().slot(ROOT_AGENT, |b| {
-            Box::new(MockClient::new(&b.model_id, vec![stop_response()]))
-        });
-        assert_eq!(
-            run_with_factory(&inv, &emitter, Arc::new(factory)).await,
-            SessionOutcome::Ran
-        );
-        let events = sink.events();
-        assert!(
-            fsm_states(&events).is_empty(),
-            "an unknown machine drives nothing"
-        );
-        assert!(
-            events.iter().any(|e| matches!(
-                &e.kind,
-                GgTelemetryKind::Log { level, message }
-                    if level == "warn" && message.contains("unknown machine")
-            )),
-            "an unrecognized machine is warned about, loudly"
-        );
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Phase 5c: speculative execution — best-of-K over isolated worktrees + a judge
 // ---------------------------------------------------------------------------
 
-/// [`subagent_set`] (subagents + multi-model), plus the worktrees and speculative-execution
-/// capabilities — a best-of-K run. Every attempt needs its own worktree, so worktrees is required.
+/// [`subagent_set`] (subagents + multi-model), plus the speculative-execution capability — a
+/// best-of-K run. Every attempt runs in its own worktree, which the capability sets up itself.
 fn speculative_set(extra_slots: &[&str]) -> GgCapabilitySet {
     let mut set = subagent_set(4, 3, extra_slots);
-    set.agents[0]
-        .capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_WORKTREES));
     // The judge runs under a dedicated `judge` agent (these e2es script it separately); the
     // attempts run under the `attempt` agent named in the `speculate` call.
     set.agents[0].capabilities.push(GgCapabilityConfig {
@@ -7426,7 +6959,7 @@ async fn speculate_runs_best_of_k_over_worktrees_and_merges_only_the_winner() {
 
     let events = sink.events();
 
-    // The worktrees capability committed a baseline (the repo exists).
+    // Speculation made the workspace a git repo (the baseline its attempts branch from).
     assert!(
         dir.path().join(".git").exists(),
         "best-of-K commits a baseline and runs each attempt in a worktree"
@@ -7451,10 +6984,10 @@ async fn speculate_runs_best_of_k_over_worktrees_and_merges_only_the_winner() {
     assert_eq!(
         attempt_branches,
         vec![
-            Some("gg/agent-0".to_string()),
-            Some("gg/agent-1".to_string())
+            Some("gg/spec-root-0".to_string()),
+            Some("gg/spec-root-1".to_string())
         ],
-        "each attempt ran in its own isolated worktree branch"
+        "each attempt ran in its own isolated worktree branch, named for the speculation"
     );
     let judge_spawns: Vec<_> = spawns
         .iter()
@@ -7543,14 +7076,11 @@ async fn speculate_runs_best_of_k_over_worktrees_and_merges_only_the_winner() {
 /// off, best-of-K is unavailable and the run does ordinary single-attempt work (no fan-out).
 #[test]
 fn speculate_tool_is_gated_on_the_capability() {
-    // Off (subagents + worktrees on, but not speculative): not offered.
+    // Off (subagents on, but not speculative): not offered.
     let mut off = GgCapabilitySet::minimal("mock/echo");
     off.agents[0]
         .capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS));
-    off.agents[0]
-        .capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_WORKTREES));
     assert!(
         !ToolRegistry::from_capabilities(off.root())
             .definitions()
@@ -7567,6 +7097,7 @@ fn speculate_tool_is_gated_on_the_capability() {
     on.agents[0].subagents.push(GgSubagentRef {
         agent: ROOT_AGENT.to_string(),
         description: String::new(),
+        scopes: ALL_SUBAGENT_SCOPES.to_vec(),
     });
     assert!(
         ToolRegistry::from_capabilities(on.root())
@@ -7574,68 +7105,6 @@ fn speculate_tool_is_gated_on_the_capability() {
             .iter()
             .any(|d| d.name == "speculate"),
         "`speculate` is offered when speculative-execution is on"
-    );
-}
-
-/// A `speculate` call is **refused** when worktree isolation is unavailable (the capability needs
-/// worktrees to isolate the attempts): no attempts are fanned out, no `Speculation` telemetry fires,
-/// and the workspace is untouched.
-#[tokio::test]
-async fn speculate_is_refused_without_worktrees() {
-    let dir = TempDir::new().unwrap();
-    let sink = CollectingSink::new();
-    let emitter = Emitter::with_sink(Some("run-spec-nowt".to_string()), Box::new(sink.clone()));
-
-    // subagents + multi-model + speculative, but NOT worktrees.
-    let mut set = subagent_set(4, 3, &["attempt", "judge"]);
-    set.agents[0]
-        .capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_SPECULATIVE));
-    let inv = invocation(dir.path(), set);
-
-    let factory = ScriptedFactory::new().slot(ROOT_AGENT, |b| {
-        Box::new(MockClient::new(
-            &b.model_id,
-            vec![
-                tool_call_response(
-                    "spec",
-                    "speculate",
-                    json!({ "prompt": "Do the thing.", "attempts": 2 }),
-                ),
-                stop_response(),
-            ],
-        ))
-    });
-
-    assert_eq!(
-        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
-        SessionOutcome::Ran
-    );
-
-    let events = sink.events();
-
-    // The tool was refused (a tool error to the model), not run.
-    assert!(
-        events.iter().any(|e| matches!(
-            &e.kind,
-            GgTelemetryKind::ToolResult { name, ok: false, summary: Some(s) }
-                if name == "speculate" && s.contains("worktree")
-        )),
-        "speculate is refused with a worktree message when isolation is unavailable"
-    );
-    // No fan-out, no judge, no Speculation telemetry, no attempt files.
-    assert_eq!(
-        agent_spawns(&events).len(),
-        1,
-        "only the root runs — no attempts or judge were spawned"
-    );
-    assert!(
-        speculations(&events).is_empty(),
-        "no Speculation telemetry when the call is refused"
-    );
-    assert!(
-        !dir.path().join(".git").exists(),
-        "no baseline is committed for a speculative run without worktrees"
     );
 }
 
@@ -7654,13 +7123,12 @@ async fn speculate_offline_e2e_through_the_default_factory() {
         subagents: vec![GgSubagentRef {
             agent: "attempt".to_string(),
             description: String::new(),
+            scopes: ALL_SUBAGENT_SCOPES.to_vec(),
         }],
         ..GgAgentConfig::root()
     };
     root.capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS));
-    root.capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_WORKTREES));
     // The judge runs under a dedicated `judge` agent (default would be Root).
     root.capabilities.push(GgCapabilityConfig {
         params: json!({ "judgeAgent": "judge" }),

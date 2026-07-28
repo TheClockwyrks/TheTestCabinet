@@ -428,12 +428,11 @@ interface board {
         max-issues: u32,
     }
 
-    /// What accepting an issue produced.
+    /// What recording an issue's work as finished produced.
     record completion-report {
-        /// Whether a Code Review gated the acceptance. When true this call ran a reviewer subagent
-        /// (and possibly a fix loop) and may have taken a long time.
-        code-reviewed: bool,
-        /// The acceptance detail — the reviewer's verdict when there was one.
+        /// Whether the issue named reviewers, so its work is reviewed before it is accepted.
+        reviewed: bool,
+        /// What happens to the issue next, in the same prose the model reads.
         detail: string,
     }
 
@@ -445,8 +444,9 @@ interface board {
     update-issue: func(id: string, patch: issue-patch) -> result<_, tool-error>;
     /// Replace an issue's full blocker set; an empty list clears every blocker.
     set-issue-blocked-by: func(id: string, blocked-by: list<string>) -> result<_, tool-error>;
-    /// Mark an issue done. With Code Reviews enabled this runs a gating review first and can block
-    /// for a long time — it is the one cheap-looking call that transitively spawns agents.
+    /// Record an issue's work as finished. This does NOT mark it done: it moves to `in review`,
+    /// its reviewers (if any) run, and its work is merged into the main workspace before it is
+    /// accepted. A reviewer that asks for changes reopens it.
     complete-issue: func(id: string) -> result<completion-report, tool-error>;
     /// Remove an epic. Its issues are kept and ungrouped.
     remove-epic: func(id: string) -> result<board-usage, tool-error>;
@@ -629,9 +629,6 @@ interface delegation {
         agent: string,
         /// What the child should do.
         task: subagent-brief,
-        /// Run the child in an isolated git worktree, merged back on clean completion and discarded
-        /// on failure. Requires the worktrees capability.
-        worktree: option<bool>,
     }
 
     /// A spawned child.
@@ -642,8 +639,6 @@ interface delegation {
         slot: string,
         /// The model actually bound to that agent.
         model-id: string,
-        /// The worktree branch it runs on, when it is isolated.
-        worktree-branch: option<string>,
     }
 
     /// How a child agent finished. `limit-exceeded` is a child an execution ceiling stopped —
@@ -673,8 +668,6 @@ interface delegation {
         items: option<list<string>>,
         /// The agent to run this stage's children as — one of the agents you may spawn.
         agent: string,
-        /// Run this stage's children in isolated worktrees.
-        worktree: option<bool>,
     }
 
     /// What a completed workflow produced.

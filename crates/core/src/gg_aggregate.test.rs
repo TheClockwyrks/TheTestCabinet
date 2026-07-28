@@ -18,7 +18,7 @@ fn summary() -> GgSessionSummary {
         ran_out_of_context: false,
         context_overflow_count: 0,
         final_fullness: None,
-        code_reviews: 0,
+        issue_reviews: 0,
         review_cycles: 0,
         issues_reopened: 0,
         speculations: 0,

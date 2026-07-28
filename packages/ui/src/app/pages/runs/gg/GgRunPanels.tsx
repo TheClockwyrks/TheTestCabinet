@@ -70,7 +70,7 @@ export type GgPanelState = Pick<
   | "speculations"
   | "perAgent"
   | "board"
-  | "codeReviews"
+  | "issueReviews"
 >;
 
 interface GgRunPanelsProps {
@@ -104,8 +104,14 @@ export function GgRunPanels({
   live,
   dashboard,
 }: GgRunPanelsProps) {
-  const { agentForest, workflows, speculations, perAgent, board, codeReviews } =
-    state;
+  const {
+    agentForest,
+    workflows,
+    speculations,
+    perAgent,
+    board,
+    issueReviews,
+  } = state;
 
   const hasDashboard = dashboard != null;
   const tabs = useMemo(
@@ -170,7 +176,7 @@ export function GgRunPanels({
         )}
 
         {tab === "project" && (
-          <ProjectExplorer board={board} codeReviews={codeReviews} />
+          <ProjectExplorer board={board} issueReviews={issueReviews} />
         )}
       </div>
     </GgExplorerNavContext.Provider>

@@ -192,7 +192,7 @@ scope. There is no dispatcher to name a tool through and no JSON to hand-assembl
 | `writeFile(path: string, contents: string)` | `number` (bytes written) |
 | `editFile(path: string, oldString: string, newString: string)` | `void` |
 | `listDir(path?: string)` | `DirEntry[]` |
-| `spawnSubagent(request: ({ prompt: string; } \| { issueId: string; }) & { slot?: string; worktree?: boolean; })` | `SubagentHandle` |
+| `spawnSubagent(request: { agent: string; } & ({ prompt: string; } \| { issueId: string; }))` | `SubagentHandle` |
 
 Thirty of gg's thirty-three tools are bound this way — everything except the three
 [turn-level transitions](#turn-level-transitions-are-not-composable) — plus one

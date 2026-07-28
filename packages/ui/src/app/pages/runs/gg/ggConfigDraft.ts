@@ -23,6 +23,7 @@ import type {
   GgModelSlot,
   GgRunLimits,
   GgSubagentRef,
+  GgSubagentScope,
 } from "@test-cabinet/run-record/gg";
 import {
   ALL_CAP_IDS,
@@ -72,12 +73,16 @@ export type GgAgentModelSource = "model-slot" | "model";
 export interface GgSubagentDraft {
   agent: string;
   description: string;
+  // What this agent may use the target **for**. An entry with no scopes is dropped on
+  // serialize — the editor removes a roster row by clearing its last scope rather than
+  // by a separate delete, so "listed but usable for nothing" is never a state to save.
+  scopes: GgSubagentScope[];
 }
 
 // One **agent profile** as the editor holds it: its name, its per-capability drafts
 // (keyed by capability id), its single model binding (deferred to a declared model
 // slot, or pinned here), its per-tool ablation, its custom prompt bits, and the
-// agents it may spawn as subagents.
+// agents its roster names (and what each may be used for).
 //
 // `systemPromptTemplate` is empty when this agent uses gg's built-in template; a
 // non-empty value is a full override. The editor blanks it back to `""` when it
@@ -448,6 +453,8 @@ function agentDraftFromConfig(agent: GgAgentConfig): GgAgentDraft {
     subagents: (agent.subagents ?? []).map((s) => ({
       agent: s.agent,
       description: s.description ?? "",
+      // A stored entry with no `scopes` predates them, and meant plain spawning.
+      scopes: s.scopes?.length ? [...s.scopes] : ["subagent"],
     })),
   };
 }
@@ -717,15 +724,18 @@ export function draftSaveError(draft: GgConfigDraft): string | null {
     for (const sub of agent.subagents) {
       const target = sub.agent.trim();
       if (!target || !agentNames.includes(target)) {
-        return `The \`${agent.name.trim()}\` agent can spawn \`${target}\`, which isn't an agent in this configuration.`;
+        return `The \`${agent.name.trim()}\` agent lists \`${target}\` in its roster, which isn't an agent in this configuration.`;
       }
     }
     // An issue names the agent it is dispatched to, drawn from the filer's own
-    // subagents — so an agent that may file issues but spawns nothing could never write
-    // a valid one. gg refuses such a set at launch; refuse it here, where it can still
-    // be fixed.
-    if (filesIssues(agent) && agent.subagents.length === 0) {
-      return `The \`${agent.name.trim()}\` agent can create issues but has no subagents to assign them to. Add one, or switch its Issue creation feature off for read-only board access.`;
+    // *implementers* — so an agent that may file issues but lists none could never
+    // write a valid one. gg refuses such a set at launch; refuse it here, where it can
+    // still be fixed.
+    if (
+      filesIssues(agent) &&
+      !agent.subagents.some((s) => s.scopes.includes("implementer"))
+    ) {
+      return `The \`${agent.name.trim()}\` agent can create issues but its roster lists no implementer to assign them to. Give one of its agents the Implementer scope, or switch its Issue creation feature off for read-only board access.`;
     }
     const failed = Object.entries(agentParamErrors(agent)).find(
       ([, error]) => error !== null,
@@ -756,8 +766,12 @@ function agentConfigFromDraft(agent: GgAgentDraft): GgAgentConfig {
     };
   });
   const subagents: GgSubagentRef[] = agent.subagents
-    .filter((s) => s.agent.trim())
-    .map((s) => ({ agent: s.agent.trim(), description: s.description }));
+    .filter((s) => s.agent.trim() && s.scopes.length)
+    .map((s) => ({
+      agent: s.agent.trim(),
+      description: s.description,
+      scopes: [...s.scopes],
+    }));
   const custom = agent.customInstructions.trim();
   const template = agent.systemPromptTemplate;
   return {

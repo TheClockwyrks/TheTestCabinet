@@ -27,7 +27,7 @@ export type GgSummaryField =
   | "context_overflow_count"
   | "ran_out_of_context"
   | "final_fullness"
-  | "code_reviews"
+  | "issue_reviews"
   | "review_cycles"
   | "issues_reopened"
   | "speculations"

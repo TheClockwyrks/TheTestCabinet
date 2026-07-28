@@ -75,10 +75,17 @@ control to the run-level form). Each profile carries:
   [system prompt](/gg/prompts/) — and, for full control, a complete **system-prompt
   template override** (the editor seeds it with gg's built-in template so the normal
   edit is just the custom-instructions field);
-- a **subagents allowlist** — the other profiles this agent may spawn, each with a
-  caller-scoped description telling it when to use that target. This is what governs
-  [delegation](/gg/subagents/): an agent is spawned **by name**, and only names in
-  the allowlist can be spawned (a profile may list itself, allowing recursion).
+- a **roster** — the other profiles this agent may put to work, each with a
+  caller-scoped description telling it when to use that target and one or more
+  **scopes** saying what it may be used **for**: `subagent` (spawnable with
+  `spawn_subagent`, a [workflow](/gg/workflows/) stage, or a
+  [speculation](/gg/speculative-execution/)), `implementer` (assignable as a
+  [board issue](/gg/project-management/)'s agent), and `reviewer` (namable among an
+  issue's reviewers). The three are independent — a profile trusted to write code is
+  not automatically trusted to review it, and an agent with no
+  [subagents](/gg/subagents/) capability still uses its roster to staff issues. Every
+  such call names its target **by name** and refuses one the roster does not list in
+  the right scope; a profile may list itself, allowing recursion.
 
 ## Model slots
 

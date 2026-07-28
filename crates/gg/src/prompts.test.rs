@@ -36,6 +36,7 @@ fn full_system() -> SystemContext {
         responses_as_code: false,
         code_headings: Vec::new(),
         custom_instructions: None,
+        subagents: false,
         spawnable_agents: Vec::new(),
         delegated: false,
         fences_are_stripped: true,
@@ -71,13 +72,20 @@ fn full_system() -> SystemContext {
             max_epics: 50,
             max_issues: 2000,
             max_retries: 1,
-            reviewers: true,
+            reviewers_required: true,
+            issue_agents: vec![SpawnableAgentView {
+                name: "builder".to_string(),
+                description: "implements issues".to_string(),
+            }],
+            reviewer_agents: vec![SpawnableAgentView {
+                name: "critic".to_string(),
+                description: "reviews finished work".to_string(),
+            }],
         }),
         planning: true,
         fsm: Some(FsmView {
             machine: "tdd".to_string(),
         }),
-        code_reviews: true,
         speculative: true,
         autoload_specs: Some(AutoloadView { locked: true }),
         completion: CompletionView::default(),
@@ -399,15 +407,24 @@ fn the_two_modes_name_calls_in_their_own_form() {
                 description: "the run itself".to_string(),
             }],
             tasks: Some(TasksView { max_tasks: 100 }),
+            subagents: true,
             spawnable_agents: vec![SpawnableAgentView {
-                name: "reviewer".to_string(),
-                description: "review the work".to_string(),
+                name: "helper".to_string(),
+                description: "does scoped work".to_string(),
             }],
             board: Some(BoardView {
                 max_epics: 50,
                 max_issues: 2000,
                 max_retries: 1,
-                reviewers: true,
+                reviewers_required: true,
+                issue_agents: vec![SpawnableAgentView {
+                    name: "builder".to_string(),
+                    description: "implements issues".to_string(),
+                }],
+                reviewer_agents: vec![SpawnableAgentView {
+                    name: "critic".to_string(),
+                    description: "reviews finished work".to_string(),
+                }],
             }),
             ..SystemContext::default()
         }
@@ -462,6 +479,65 @@ fn the_two_modes_name_calls_in_their_own_form() {
             "code mode leaked free-standing tool `{tool}`:\n{code}"
         );
     }
+}
+/// The **Subagents** section is gated on the agent actually having `spawn_subagent`,
+/// **not** on its roster being non-empty — and the project-management section lists the
+/// roster's implementers and reviewers separately.
+///
+/// The two are independent by design: a run may give an agent a roster purely so it can
+/// staff board issues, with no delegation anywhere in sight, and teaching that agent to
+/// spawn would be teaching it about a tool it does not have. The old prompt derived the
+/// section from the roster and so did exactly that.
+#[test]
+fn the_subagents_section_follows_the_capability_not_the_roster() {
+    let roster = |name: &str, description: &str| SpawnableAgentView {
+        name: name.to_string(),
+        description: description.to_string(),
+    };
+    // A board-only agent: implementers and reviewers on the roster, no spawn tool.
+    let board_only = SystemContext {
+        subagents: false,
+        spawnable_agents: vec![roster("helper", "does scoped work")],
+        board: Some(BoardView {
+            max_epics: 50,
+            max_issues: 2000,
+            max_retries: 1,
+            reviewers_required: false,
+            issue_agents: vec![roster("builder", "implements issues")],
+            reviewer_agents: vec![roster("critic", "reviews finished work")],
+        }),
+        ..SystemContext::default()
+    };
+    let rendered = flat(&render_system(&board_only, None));
+    assert!(
+        !rendered.contains("spawn_subagent"),
+        "an agent without the capability is never taught to spawn:\n{rendered}"
+    );
+    assert!(
+        !rendered.contains("`helper`"),
+        "and its spawnable roster is not listed either:\n{rendered}"
+    );
+    // Both issue rosters are named, so the model knows which names each call accepts.
+    for expected in [
+        "`builder`",
+        "implements issues",
+        "`critic`",
+        "reviews finished work",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "the project-management section must name {expected}:\n{rendered}"
+        );
+    }
+
+    // The same roster with the capability on adds the Subagents section, unchanged.
+    let delegating = SystemContext {
+        subagents: true,
+        ..board_only
+    };
+    let rendered = flat(&render_system(&delegating, None));
+    assert!(rendered.contains("spawn_subagent"), "{rendered}");
+    assert!(rendered.contains("`helper`"), "{rendered}");
 }
 
 /// The image line states, neutrally, whether reading images is supported — and says nothing at all
@@ -1102,7 +1178,7 @@ fn a_healed_reply_gg_refused_is_never_told_it_ran() {
 ///
 /// The system prompt is role-aware for a reason: a model reading "this ends the run" while it is a
 /// subagent has the strongest available reason not to call it, and a subagent that never calls it
-/// never returns a verdict — which leaves a Code Review unaccepted, a speculation judge without a
+/// never returns a verdict — which leaves an issue unaccepted, a speculation judge without a
 /// winner, and every worktree discarded unmerged. The per-turn feedback repeats that rule on **every
 /// turn**, far later in the context than the system prompt, so it is the louder of the two channels
 /// and has to say the same thing.

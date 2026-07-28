@@ -40,7 +40,7 @@ use std::collections::HashSet;
 use std::sync::Mutex;
 
 use test_cabinet_core::gg::{
-    GgCandidateShape, GgCodeReviewPhase, GgHealingStrategy, GgHealingSummary, GgIssueStatus,
+    GgCandidateShape, GgHealingStrategy, GgHealingSummary, GgIssueReviewPhase, GgIssueStatus,
     GgLimitBreach, GgNotAProgram, GgResponseHealing, GgRunLimits, GgSessionSummary, GgSlotCost,
     GgSpeculationPhase, GgTelemetryKind,
 };
@@ -75,12 +75,12 @@ struct SummaryState {
     /// The fullness of the most recent [`ContextBreakdown`](GgTelemetryKind::ContextBreakdown) that
     /// carried one.
     final_fullness: Option<f64>,
-    /// One per Code Review [`Requested`](GgCodeReviewPhase::Requested) phase.
-    code_reviews: u64,
-    /// One per Code Review verdict — a [`ChangesRequested`](GgCodeReviewPhase::ChangesRequested) or
-    /// an [`Approved`](GgCodeReviewPhase::Approved) phase.
+    /// One per issue-review [`Requested`](GgIssueReviewPhase::Requested) phase.
+    issue_reviews: u64,
+    /// One per issue-review verdict — a [`ChangesRequested`](GgIssueReviewPhase::ChangesRequested) or
+    /// an [`Approved`](GgIssueReviewPhase::Approved) phase.
     review_cycles: u64,
-    /// One per [`ChangesRequested`](GgCodeReviewPhase::ChangesRequested) phase (an issue reopened
+    /// One per [`ChangesRequested`](GgIssueReviewPhase::ChangesRequested) phase (an issue reopened
     /// for fixes).
     issues_reopened: u64,
     /// One per speculation [`FannedOut`](GgSpeculationPhase::FannedOut) phase (a best-of-K round).
@@ -310,13 +310,13 @@ impl SessionSummaryTracker {
                     state.context_overflow_count += 1;
                 }
             }
-            GgTelemetryKind::CodeReview { phase, .. } => match phase {
-                GgCodeReviewPhase::Requested => state.code_reviews += 1,
-                GgCodeReviewPhase::ChangesRequested => {
+            GgTelemetryKind::IssueReview { phase, .. } => match phase {
+                GgIssueReviewPhase::Requested => state.issue_reviews += 1,
+                GgIssueReviewPhase::ChangesRequested => {
                     state.review_cycles += 1;
                     state.issues_reopened += 1;
                 }
-                GgCodeReviewPhase::Approved => state.review_cycles += 1,
+                GgIssueReviewPhase::Approved => state.review_cycles += 1,
             },
             GgTelemetryKind::Speculation { phase, .. } => {
                 if matches!(phase, GgSpeculationPhase::FannedOut) {
@@ -384,7 +384,7 @@ impl SessionSummaryTracker {
             ran_out_of_context: state.context_overflow_count > 0,
             context_overflow_count: state.context_overflow_count,
             final_fullness: state.final_fullness,
-            code_reviews: state.code_reviews,
+            issue_reviews: state.issue_reviews,
             review_cycles: state.review_cycles,
             issues_reopened: state.issues_reopened,
             speculations: state.speculations,

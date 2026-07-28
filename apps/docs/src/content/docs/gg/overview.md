@@ -176,14 +176,11 @@ saved, launched, and analyzed in the console is
 - [Subagents](/gg/subagents/) — spawn, parallelize, block on, and message other
   agents.
 - [Workflows](/gg/workflows/) — declared subagent fan-out plus sequencing.
-- [Worktrees](/gg/worktrees/) — run a spawned agent in an isolated git worktree.
 - [Speculative execution](/gg/speculative-execution/) — best-of-K attempts judged
   to a winner.
 
 **Process & quality**
 
-- [Code Reviews](/gg/code-reviews/) — baseline-diff review that gates issue
-  acceptance.
 - [FSM-driven processes](/gg/fsms/) — fixed, named processes (e.g. TDD order) the
   agent is driven through.
 
