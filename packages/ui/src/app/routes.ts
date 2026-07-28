@@ -137,6 +137,10 @@ export const routes = {
   // reviewer surface the static site never links to. Static segment beside
   // `/runs/:runId`, like `/runs/new`.
   runUnreviewed: (): string => "/runs/unreviewed",
+  // The harness-comparisons list — the Runs section's "Comparisons" tab, beside
+  // "Tests". Rendered on BOTH hosts (read-only on the static site, off the
+  // snapshot); a static segment beside `/runs/:runId`, like the others.
+  runsComparisons: (): string => "/runs/comparisons",
   // Run-execution routes (consoles only; the static site never links to them).
   // `runNew` optionally carries a test case to pre-select, so the Run button on
   // a test case lands on the new-run form with that case already chosen.
@@ -221,7 +225,6 @@ export const routes = {
   other: (): string => "/other",
   otherGameJams: (): string => "/other/game-jams",
   otherTournaments: (): string => "/other/tournaments",
-  otherComparisons: (): string => "/other/comparisons",
   // A game jam's detail page and its reduced tab set (Overview / Inputs / Runs /
   // Leaderboard / Metrics — a jam has no changelog, reference, or arena). Lives at
   // its own top-level `/game-jams/:slug`, a sibling of the `/other/game-jams`
@@ -236,12 +239,11 @@ export const routes = {
     `/game-jams/${encodeURIComponent(slug)}/leaderboard`,
   gameJamMetrics: (slug: string): string =>
     `/game-jams/${encodeURIComponent(slug)}/metrics`,
-  // Harness-comparison routes (consoles only; the static site is read-only and
-  // never links here — it renders a published comparison off the snapshot
-  // instead). The list lives on the Other section's Comparisons tab
-  // (`otherComparisons`); `new` and detail/edit are their own top-level routes, a
-  // sibling of the game-jam detail routes above. `new` is a static segment so it
-  // outranks the dynamic `:id`.
+  // Harness-comparison routes. The list is the Runs section's Comparisons tab
+  // (`runsComparisons`) and a comparison's detail (`/comparisons/:id`) both render
+  // on every host (read-only on the static site). Create/edit mutate a per-account
+  // comparison, so they are console-only. `new` is a static segment so it outranks
+  // the dynamic `:id`.
   comparisonNew: (): string => "/comparisons/new",
   comparisonDetail: (id: string): string =>
     `/comparisons/${encodeURIComponent(id)}`,
@@ -319,6 +321,7 @@ export const routePatterns = {
   runs: "/runs",
   runFailures: "/runs/failures",
   runUnreviewed: "/runs/unreviewed",
+  runsComparisons: "/runs/comparisons",
   runNew: "/runs/new",
   // gg run-execution routes. The literal `/runs/gg` segment outranks the
   // `/runs/:runId` dynamic route, and `ggMonitor`'s `/runs/gg/:jobId` is a sibling
@@ -351,7 +354,6 @@ export const routePatterns = {
   other: "/other",
   otherGameJams: "/other/game-jams",
   otherTournaments: "/other/tournaments",
-  otherComparisons: "/other/comparisons",
   gameJamDetail: "/game-jams/:slug",
   gameJamInputs: "/game-jams/:slug/inputs",
   gameJamRuns: "/game-jams/:slug/runs",

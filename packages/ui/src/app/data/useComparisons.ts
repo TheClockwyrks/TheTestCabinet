@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { Comparison } from "@test-cabinet/run-record/comparison";
 import { useAuth } from "../../client/auth";
 import { useBackend } from "../../client/context";
+import { useGalleryData } from "./galleryContext";
 
 export interface ComparisonsState {
   /** The signed-in account's comparisons, each already fully aggregated by the
@@ -14,22 +15,28 @@ export interface ComparisonsState {
   reload: () => Promise<void>;
 }
 
-// The account's saved harness/gg-config/model comparisons (`GET /comparisons`),
-// mirroring `useGgConfigs`/the coverage plans list: console-only, per-account, and
-// simply empty (not an error) when signed out or the transport omits the endpoint
-// — the list page and the "Other" tab degrade to their own sign-in prompt rather
-// than surfacing a fetch error for an expected absence.
+// The comparisons this host shows. On a console (signed in) it is the account's
+// saved comparisons, fetched per-account from `GET /comparisons` (mirroring
+// `useGgConfigs`). On the read-only static site it is the published comparisons the
+// snapshot baked into the gallery ({@link GalleryDataInput.comparisons}) — public
+// and review-less, so no sign-in is involved. A console signed out has neither and
+// simply reports none (the list page shows a sign-in prompt).
 export function useComparisons(): ComparisonsState {
   const { token } = useAuth();
   const { client: backend } = useBackend();
+  const { comparisons: publishedComparisons } = useGalleryData();
   const [comparisons, setComparisons] = useState<Comparison[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async (): Promise<Comparison[]> => {
-    if (!backend?.listComparisons || !token) return [];
-    return backend.listComparisons(token);
-  }, [backend, token]);
+    // A signed-in console fetches the account's comparisons; a read-only host
+    // (static site) reads the published set from the gallery instead.
+    if (backend?.listComparisons && token) {
+      return backend.listComparisons(token);
+    }
+    return publishedComparisons ?? [];
+  }, [backend, token, publishedComparisons]);
 
   useEffect(() => {
     let active = true;

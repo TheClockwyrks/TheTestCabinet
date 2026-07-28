@@ -15,6 +15,9 @@ import { RunInputsPage } from "./[runId]/RunInputsPage";
 import { RunVerdictPage } from "./[runId]/RunVerdictPage";
 import { RunReviewPage } from "./[runId]/RunReviewPage";
 import { ggRoutes } from "./gg";
+import { ComparisonsIndexPage } from "../comparisons/ComparisonsIndexPage";
+import { ComparisonDetailPage } from "../comparisons/ComparisonDetailPage";
+import { ComparisonEditPage } from "../comparisons/ComparisonEditPage";
 
 // Routes owned by the runs section: the all-runs index list and the per-run
 // detail, whose Verdict / Play / Inputs / Proof / Metrics / Events / Metadata
@@ -31,6 +34,31 @@ export function runsRoutes(canExecute: boolean) {
   return (
     <>
       <Route path={routePatterns.runs} element={<RunsPage />} />
+      {/* The Comparisons tab (beside Tests) and a comparison's detail page render
+          on BOTH hosts — a published comparison is public, read-only off the
+          snapshot on the static site. `/runs/comparisons` is a static segment that
+          outranks `/runs/:runId`. Create/edit mutate a per-account comparison, so
+          they stay console-only below. */}
+      <Route
+        path={routePatterns.runsComparisons}
+        element={<ComparisonsIndexPage />}
+      />
+      <Route
+        path={routePatterns.comparisonDetail}
+        element={<ComparisonDetailPage />}
+      />
+      {canExecute && (
+        <Route
+          path={routePatterns.comparisonNew}
+          element={<ComparisonEditPage />}
+        />
+      )}
+      {canExecute && (
+        <Route
+          path={routePatterns.comparisonEdit}
+          element={<ComparisonEditPage />}
+        />
+      )}
       {/* The publishable-failures worklist is console-only — it lists locally
           produced failures and publishes them, which the static site cannot do.
           Its static path outranks the `/runs/:runId` dynamic route. */}

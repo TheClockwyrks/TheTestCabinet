@@ -255,7 +255,7 @@ export function ComparisonEditPage() {
         <header className={styles.detailHeader}>
           <div className={styles.detailTitleRow}>
             <BackChevron
-              to={routes.otherComparisons()}
+              to={routes.runsComparisons()}
               label="All comparisons"
             />
             <h1 className={styles.detailTitle}>
@@ -279,7 +279,7 @@ export function ComparisonEditPage() {
     <PageLayout>
       <header className={styles.detailHeader}>
         <div className={styles.detailTitleRow}>
-          <BackChevron to={routes.otherComparisons()} label="All comparisons" />
+          <BackChevron to={routes.runsComparisons()} label="All comparisons" />
           <h1 className={styles.detailTitle}>
             {editing ? name || "Comparison" : "New comparison"}
           </h1>
@@ -561,7 +561,7 @@ export function ComparisonEditPage() {
                 navigate(
                   editing && id
                     ? routes.comparisonDetail(id)
-                    : routes.otherComparisons(),
+                    : routes.runsComparisons(),
                 )
               }
             >

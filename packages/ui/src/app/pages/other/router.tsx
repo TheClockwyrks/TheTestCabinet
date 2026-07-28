@@ -7,8 +7,6 @@ import { JamInputsPage } from "../gamejams/[slug]/JamInputsPage";
 import { JamRunsPage } from "../gamejams/[slug]/JamRunsPage";
 import { JamLeaderboardPage } from "../gamejams/[slug]/JamLeaderboardPage";
 import { JamMetricsPage } from "../gamejams/[slug]/JamMetricsPage";
-import { ComparisonEditPage } from "../comparisons/ComparisonEditPage";
-import { ComparisonDetailPage } from "../comparisons/ComparisonDetailPage";
 
 // Routes owned by the "Other" section: the tabbed list page (Game Jams +
 // Tournaments), the game-jam detail with its reduced tab set, and the tournament
@@ -34,27 +32,6 @@ export function otherRoutes(canExecute: boolean) {
       <Route
         path={routePatterns.otherTournaments}
         element={<OtherPage tab="tournaments" />}
-      />
-      <Route
-        path={routePatterns.otherComparisons}
-        element={<OtherPage tab="comparisons" />}
-      />
-
-      {/* Harness-comparison create/edit and detail: their own top-level routes
-          (a sibling of the game-jam detail routes below), reached from the
-          Comparisons tab's list and its "New comparison" action. `new` (static)
-          outranks the dynamic `:id`. */}
-      <Route
-        path={routePatterns.comparisonNew}
-        element={<ComparisonEditPage />}
-      />
-      <Route
-        path={routePatterns.comparisonEdit}
-        element={<ComparisonEditPage />}
-      />
-      <Route
-        path={routePatterns.comparisonDetail}
-        element={<ComparisonDetailPage />}
       />
 
       {/* Game-jam detail: Overview / Inputs / Runs / Leaderboard / Metrics, each

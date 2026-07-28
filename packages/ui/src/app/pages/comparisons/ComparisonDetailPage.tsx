@@ -13,6 +13,7 @@ import { useBackend, useWorkers } from "../../../client/context";
 import { LoadingState } from "../../components/LoadingState";
 import { BackChevron } from "../../components/BackChevron";
 import { PageLayout } from "../../components/PageLayout";
+import { useGalleryData } from "../../data/galleryContext";
 import { useTestCaseName } from "../../data/useTestCaseName";
 import { formatCompact, formatUsd } from "../../format";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
@@ -47,6 +48,7 @@ export function ComparisonDetailPage() {
   const { id = "" } = useParams();
   const { token } = useAuth();
   const { client: backend } = useBackend();
+  const { canExecute, readComparison } = useGalleryData();
   const { active: worker } = useWorkers();
   const runtime = useRunsRuntime();
   const testCaseName = useTestCaseName();
@@ -61,29 +63,35 @@ export function ComparisonDetailPage() {
     useState<ComparisonPublishOutcome | null>(null);
 
   useEffect(() => {
-    if (!backend || !token) {
-      setLoading(false);
-      return;
+    // A signed-in console fetches the account's comparison from the backend. A
+    // read-only host (the static site) resolves the published comparison from the
+    // gallery snapshot instead — no token, no fetch.
+    if (backend?.getComparison && token) {
+      let active = true;
+      setLoading(true);
+      setError(null);
+      backend
+        .getComparison(id, token)
+        .then((c) => {
+          if (!active) return;
+          setComparison(c ?? null);
+          setLoading(false);
+        })
+        .catch((e) => {
+          if (!active) return;
+          setError(String(e));
+          setLoading(false);
+        });
+      return () => {
+        active = false;
+      };
     }
-    let active = true;
-    setLoading(true);
-    setError(null);
-    backend
-      .getComparison?.(id, token)
-      .then((c) => {
-        if (!active) return;
-        setComparison(c ?? null);
-        setLoading(false);
-      })
-      .catch((e) => {
-        if (!active) return;
-        setError(String(e));
-        setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [backend, token, id]);
+    if (readComparison) {
+      setComparison(readComparison(id));
+      setError(null);
+    }
+    setLoading(false);
+  }, [backend, token, id, readComparison]);
 
   const canTrigger = Boolean(worker && (worker.local || token));
 
@@ -224,13 +232,15 @@ export function ComparisonDetailPage() {
     [comparison],
   );
 
-  if (!token) {
+  // A console needs a signed-in account (comparisons are per-account); a read-only
+  // host (the static site) renders the published comparison with no sign-in.
+  if (canExecute && !token) {
     return (
       <PageLayout>
         <header className={styles.detailHeader}>
           <div className={styles.detailTitleRow}>
             <BackChevron
-              to={routes.otherComparisons()}
+              to={routes.runsComparisons()}
               label="All comparisons"
             />
             <h1 className={styles.detailTitle}>Comparison</h1>
@@ -257,7 +267,7 @@ export function ComparisonDetailPage() {
         <header className={styles.detailHeader}>
           <div className={styles.detailTitleRow}>
             <BackChevron
-              to={routes.otherComparisons()}
+              to={routes.runsComparisons()}
               label="All comparisons"
             />
             <h1 className={styles.detailTitle}>Comparison</h1>
@@ -344,42 +354,47 @@ export function ComparisonDetailPage() {
     <PageLayout>
       <header className={styles.detailHeader}>
         <div className={styles.detailTitleRow}>
-          <BackChevron to={routes.otherComparisons()} label="All comparisons" />
+          <BackChevron to={routes.runsComparisons()} label="All comparisons" />
           <h1 className={styles.detailTitle}>{comparison.name}</h1>
           {comparison.published && (
             <span className={styles.publishedBadge}>Published</span>
           )}
         </div>
-        <div className={styles.detailActions}>
-          {canTrigger && totalMissing > 0 && (
-            <button
-              type="button"
-              className={exec.primary}
-              disabled={triggering}
-              onClick={triggerMissing}
-            >
-              {triggering
-                ? "Triggering…"
-                : `Trigger missing runs (${totalMissing})`}
-            </button>
-          )}
-          <Link
-            className={exec.secondary}
-            to={routes.comparisonEdit(comparison.id)}
-          >
-            Edit
-          </Link>
-          {backend?.publishComparison && !comparison.published && (
-            <button
-              type="button"
+        {/* Every action here mutates a per-account comparison, so the whole bar is
+            console-only — the read-only static site (canExecute false) renders the
+            comparison without it. */}
+        {canExecute && (
+          <div className={styles.detailActions}>
+            {canTrigger && totalMissing > 0 && (
+              <button
+                type="button"
+                className={exec.primary}
+                disabled={triggering}
+                onClick={triggerMissing}
+              >
+                {triggering
+                  ? "Triggering…"
+                  : `Trigger missing runs (${totalMissing})`}
+              </button>
+            )}
+            <Link
               className={exec.secondary}
-              disabled={publishing}
-              onClick={onPublish}
+              to={routes.comparisonEdit(comparison.id)}
             >
-              {publishing ? "Publishing…" : "Publish"}
-            </button>
-          )}
-        </div>
+              Edit
+            </Link>
+            {backend?.publishComparison && !comparison.published && (
+              <button
+                type="button"
+                className={exec.secondary}
+                disabled={publishing}
+                onClick={onPublish}
+              >
+                {publishing ? "Publishing…" : "Publish"}
+              </button>
+            )}
+          </div>
+        )}
       </header>
 
       {comparison.description && (
@@ -404,7 +419,7 @@ export function ComparisonDetailPage() {
           )}
         </p>
       )}
-      {!canTrigger && totalMissing > 0 && (
+      {canExecute && !canTrigger && totalMissing > 0 && (
         <p className={`${exec.notice} ${exec.warn}`}>
           No worker connected — open the connections drawer (the gear in the top
           bar) to add a worker before triggering the {totalMissing} still-

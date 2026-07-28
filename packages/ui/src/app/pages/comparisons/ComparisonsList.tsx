@@ -2,6 +2,7 @@ import { Link } from "react-router";
 import { Panel } from "@test-cabinet/ui";
 import { useAuth } from "../../../client/auth";
 import { LoadingState } from "../../components/LoadingState";
+import { useGalleryData } from "../../data/galleryContext";
 import { useTestCaseName } from "../../data/useTestCaseName";
 import { routes } from "../../routes";
 import { useComparisons } from "../../data/useComparisons";
@@ -18,10 +19,14 @@ import styles from "./Comparisons.module.scss";
 // signed-out visitor sees a sign-in prompt in place of the list.
 export function ComparisonsList() {
   const { token } = useAuth();
+  const { canExecute } = useGalleryData();
   const { comparisons, loading, error } = useComparisons();
   const testCaseName = useTestCaseName();
 
-  if (!token) {
+  // A console (can execute) needs a signed-in account, since comparisons are saved
+  // per-account. A read-only host (the static site) renders the published set with
+  // no sign-in — so the prompt shows only on a signed-out console.
+  if (canExecute && !token) {
     return (
       <Panel>
         <p className={styles.empty}>
@@ -49,13 +54,16 @@ export function ComparisonsList() {
     return (
       <div className={styles.emptyState}>
         <p className={styles.empty}>
-          No comparisons yet. Create one to run the same case under several
-          harnesses (or gg configurations) and publish the cost, token, and
-          score spread side by side.
+          No comparisons yet.{" "}
+          {canExecute ? "Create one to run" : "A comparison runs"} the same case
+          under several harnesses (or gg configurations) and publishes the cost,
+          token, and score spread side by side.
         </p>
-        <Link className={exec.primary} to={routes.comparisonNew()}>
-          Create your first comparison
-        </Link>
+        {canExecute && (
+          <Link className={exec.primary} to={routes.comparisonNew()}>
+            Create your first comparison
+          </Link>
+        )}
       </div>
     );
   }
