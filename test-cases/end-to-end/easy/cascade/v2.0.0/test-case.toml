@@ -500,7 +500,7 @@ validation = { script = "validation/winning/detect-drag.mjs", outputs = [
 [[review.categories.items]]
 id = "detect-double-click"
 title = "Double-clicking the last card home wins"
-description = "Double-clicking the last card — on the waste or on a tableau column — sends it home and wins, and the victory cascade begins and is still running once the gesture is over. A double-click ends with the pointer released, and a click on the won screen deals a fresh game, so a build that recognizes the double-click on the second press must not let that same gesture's release count as one: doing so clears the win and skips the victory cascade entirely, even though the win itself was detected correctly."
+description = "Double-clicking the last card onto its foundation — from the waste or from a tableau column — completes all four foundations, which is detected as a win: normal play stops and the victory cascade begins and is still running once the double-click is over."
 validation = { script = "validation/winning/detect-double-click.mjs", outputs = [
   { id = "win-double-click", name = "The last card double-clicked home from the waste and from a column, each starting the cascade", kind = "video" },
 ] }
