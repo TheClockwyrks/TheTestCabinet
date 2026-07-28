@@ -16,11 +16,8 @@ When the work is complete, reply with a message and no tool calls.
 You have access to memories, which allow you to store arbitrary information for
 an unlimited period of time via individual memory files. Write memory files
 regularly to record any important information that needs to be retained and
-isn't already tracked elsewhere.
-
-The list of your memories above is rebuilt when your context is compacted, not
-on every write, so a memory you wrote or changed since the last compaction is
-stored as you left it even though the list still shows the older state.
+isn't already tracked elsewhere. Memory messages refresh periodically, not after
+each write.
 {{/if}}
 {{#if memories.markdown}}
 You have access to memories, which are a set of markdown files with a memory
@@ -28,11 +25,8 @@ index. The memory index allows you to see a brief description of each memory
 file so you know what memories are relevant. Write to this regularly to record
 any important information that needs to be retained and isn't already tracked
 elsewhere. Keep each memory file tightly scoped so its description provides an
-overview of the full memory contents.
-
-The index above is rebuilt when your context is compacted, not on every write,
-so a memory you created since the last compaction is stored and readable even
-though it is not listed there yet.
+overview of the full memory contents. The index will refresh periodically, not
+after each write.
 {{/if}}
 {{#if memories.keywordSearch}}
 You have access to memories, which allow you to store arbitrary information for
