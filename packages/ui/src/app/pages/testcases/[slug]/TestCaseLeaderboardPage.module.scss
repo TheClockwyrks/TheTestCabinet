@@ -65,6 +65,14 @@
   white-space: nowrap;
 }
 
+// The harness slug shown after the model name, so a row reads "<model> · <pi>".
+// Muted and lighter so the model stays the primary read while the harness — the
+// axis this board now splits on — is always legible beside it.
+.harness {
+  color: t.$color-text-muted;
+  font-weight: 400;
+}
+
 .num {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;

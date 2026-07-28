@@ -12,6 +12,7 @@ import {
 import { useCaseRunSummaries } from "../../../data/useRuns";
 import { useFindModel } from "../../../data/useModels";
 import { useFindReview } from "../../../data/writeups";
+import { isGgRun } from "../../../data/runLinks";
 import type { Rating } from "../../../data/ratings";
 import {
   providerColor,
@@ -161,7 +162,11 @@ export function MetricsContent({
 
   // Completed runs of this case and variant, newest first. Memoized so the chart
   // specs are stable across re-renders. Failed runs produced no metrics (their
-  // cost and tokens are zero), so charting them would skew the distribution.
+  // cost and tokens are zero), so charting them would skew the distribution. gg
+  // runs are excluded from every per-model chart on this tab: a gg run's agents
+  // may span several models, so it has no single model to plot on a per-model
+  // axis (see docs/comparisons/metrics-split). Its results live in gg's own
+  // aggregation views.
   const variantRuns = useMemo(
     () =>
       summaries
@@ -169,7 +174,8 @@ export function MetricsContent({
           (run) =>
             run.subject.testCaseSlug === testCase.slug &&
             run.subject.variant === variant.slug &&
-            run.state === "completed",
+            run.state === "completed" &&
+            !isGgRun(run.subject.harnessSlug),
         )
         .sort((a, b) => b.startedAt.localeCompare(a.startedAt)),
     [summaries, testCase.slug, variant.slug],
@@ -190,31 +196,43 @@ export function MetricsContent({
     [variantRuns, scope, testCase.latestVersion, specificVersion],
   );
 
-  // Each model's scoped runs tallied by overall rating, for the stacked ratings
-  // chart. The overall rating per run is resolved the same way the leaderboard
-  // does it (enriched summary card, else local writeup), so the two tabs agree;
-  // runs with no resolvable rating are simply left out of the tally. Models are
-  // keyed and labeled the same way as the token/cost charts so all three read as
-  // the same roster.
+  // Each `(harness, model)` pair's scoped runs tallied by overall rating, for the
+  // stacked ratings chart. The overall rating per run is resolved the same way the
+  // leaderboard does it (enriched summary card, else local writeup), so the two
+  // tabs agree; runs with no resolvable rating are simply left out of the tally.
+  // Pairs are keyed and labeled the same way as the token/cost charts (harness ·
+  // model) so all three read as the same roster and never merge two harnesses of a
+  // model into one bar.
   const ratingModels = useMemo<RatingCounts[]>(() => {
-    const byModel = new Map<string, Record<Rating, number>>();
+    interface Group {
+      modelId: string;
+      harness: string;
+      counts: Record<Rating, number>;
+    }
+    const byPair = new Map<string, Group>();
     const order: string[] = [];
     for (const run of scopedRuns) {
       const scored = resolveRunScore(run, variant, findReview, localWriteups);
       if (!scored || !scored.rating) continue;
-      const modelId = canonicalModelId(run.subject.modelId);
-      let counts = byModel.get(modelId);
-      if (!counts) {
-        counts = { flawless: 0, great: 0, passable: 0, scuffed: 0, broken: 0 };
-        byModel.set(modelId, counts);
-        order.push(modelId);
+      const harness = run.subject.harnessSlug;
+      const modelId = canonicalModelId(run.subject.modelId, harness);
+      const key = `${harness} ${modelId}`;
+      let group = byPair.get(key);
+      if (!group) {
+        group = {
+          modelId,
+          harness,
+          counts: { flawless: 0, great: 0, passable: 0, scuffed: 0, broken: 0 },
+        };
+        byPair.set(key, group);
+        order.push(key);
       }
-      counts[scored.rating] += 1;
+      group.counts[scored.rating] += 1;
     }
-    return order.map((modelId) => ({
-      label: labelForModel(modelId),
-      counts: byModel.get(modelId)!,
-    }));
+    return order.map((key) => {
+      const { modelId, harness, counts } = byPair.get(key)!;
+      return { label: `${labelForModel(modelId)} · ${harness}`, counts };
+    });
   }, [scopedRuns, variant, findReview, localWriteups, labelForModel]);
 
   return (

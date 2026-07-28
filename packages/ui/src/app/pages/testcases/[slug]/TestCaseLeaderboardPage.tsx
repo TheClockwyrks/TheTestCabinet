@@ -5,6 +5,7 @@ import { Panel, canonicalModelId } from "@test-cabinet/ui";
 import { useCaseRunSummaries } from "../../../data/useRuns";
 import { useFindReview } from "../../../data/writeups";
 import { useFindModel } from "../../../data/useModels";
+import { isGgRun } from "../../../data/runLinks";
 import { perModelBestFuel } from "../../../data/fuelRanking";
 import {
   GRADE_LEVELS,
@@ -28,12 +29,19 @@ import { useColumnVisibility } from "../../../components/useColumnVisibility";
 import { formatCompact, formatUsd, totalTokens } from "../../../format";
 import styles from "./TestCaseLeaderboardPage.module.scss";
 
-// One model's aggregate result on this case + variant, folded across ALL of its
-// scored runs (not just its single best). The score/rating extremes and the
-// cost/token means are what the configurable columns render.
+// One `(harness, model)` pair's aggregate result on this case + variant, folded
+// across ALL of that pair's scored runs (not just its single best). The
+// score/rating extremes and the cost/token means are what the configurable
+// columns render. The board splits by harness as well as model — the same model
+// under two harnesses is two rows, never one merged rank (see
+// docs/comparisons/metrics-split).
 interface Entry {
+  /** The composite `(harness, model)` key; also the React row key. */
+  rowKey: string;
   modelId: string;
   modelName: string;
+  /** The harness that produced this pair's runs, shown beside the model name. */
+  harnessSlug: string;
   /** The points available — the same across every run of this variant. */
   total: number;
   /** Max points earned across the model's runs. */
@@ -91,7 +99,10 @@ function scoreCell(value: number, total: number): ReactNode {
 // The board's rating cell adapts to the case: a game jam carries a whole-game
 // overall grade in place of a domain rating, so its badge is the grade; every
 // other case shows its rating. An entry never carries both.
-function ratingCell(rating: Rating | null, grade: GradeStatus | null): ReactNode {
+function ratingCell(
+  rating: Rating | null,
+  grade: GradeStatus | null,
+): ReactNode {
   return (
     <span>
       {grade ? (
@@ -266,9 +277,12 @@ function ReviewLeaderboard({
   // Aggregate every reviewed run of this case + variant per model, then rank the
   // models by average points.
   const entries = useMemo<Entry[]>(() => {
-    // A model's scored runs, collected before they are folded into one Entry.
+    // A single (harness, model) pair's scored runs, collected before they are
+    // folded into one Entry.
     interface Acc {
+      modelId: string;
       modelName: string;
+      harnessSlug: string;
       total: number;
       earned: number[];
       ratings: Rating[];
@@ -288,6 +302,10 @@ function ReviewLeaderboard({
       // Only a completed run can be ranked: a failed run produced no result and
       // is never reviewable, so it carries no score.
       if (run.state !== "completed") continue;
+      // gg runs are excluded from the board: a gg run's agents may span several
+      // models, so it has no single model to rank on a per-model board (see
+      // docs/comparisons/metrics-split). Its results live in gg's own views.
+      if (isGgRun(run.subject.harnessSlug)) continue;
       // The run's earned/total points and overall rating, read from whichever
       // source this host populated: a published run arrives as a summary card the
       // backend/snapshot already enriched with its aggregate score + rating (the
@@ -297,23 +315,25 @@ function ReviewLeaderboard({
       const scored = resolveRunScore(run, variant, findReview, localWriteups);
       if (!scored) continue;
       const { earned, total, rating: overall, grade: overallGrade } = scored;
+      const harnessSlug = run.subject.harnessSlug;
       // Canonicalized (harness-aware) so an `openrouter/`-prefixed or `:free`-tagged
       // run and its base form fold into one model, not two rows.
-      const modelId = canonicalModelId(
-        run.subject.modelId,
-        run.subject.harnessSlug,
-      );
+      const modelId = canonicalModelId(run.subject.modelId, harnessSlug);
+      // The board splits by harness as well as model, so the pair — not the model
+      // alone — is the fold key: the same model under two harnesses is two rows.
+      const key = `${harnessSlug} ${modelId}`;
       // Null when the run's comparable cost / token total is unknown; such runs
       // are excluded from the respective mean rather than folded in as zero.
       const cost = run.metrics.cost.comparable;
       const tokens = totalTokens(run.metrics);
 
-      let acc = accs.get(modelId);
+      let acc = accs.get(key);
       if (!acc) {
         acc = {
+          modelId,
           modelName:
-            findModel(run.subject.modelId, run.subject.harnessSlug)?.name ??
-            modelId,
+            findModel(run.subject.modelId, harnessSlug)?.name ?? modelId,
+          harnessSlug,
           total,
           earned: [],
           ratings: [],
@@ -322,7 +342,7 @@ function ReviewLeaderboard({
           tokens: [],
           latestStartedAt: run.startedAt,
         };
-        accs.set(modelId, acc);
+        accs.set(key, acc);
       }
       acc.total = total;
       acc.earned.push(earned);
@@ -336,10 +356,12 @@ function ReviewLeaderboard({
     }
 
     const result: Entry[] = [];
-    for (const [modelId, acc] of accs) {
+    for (const [rowKey, acc] of accs) {
       result.push({
-        modelId,
+        rowKey,
+        modelId: acc.modelId,
         modelName: acc.modelName,
+        harnessSlug: acc.harnessSlug,
         total: acc.total,
         highestScore: Math.max(...acc.earned),
         averageScore: mean(acc.earned) ?? 0,
@@ -416,9 +438,12 @@ function ReviewLeaderboard({
               ))}
             </div>
             {entries.map((entry, index) => (
-              <div className={styles.row} role="row" key={entry.modelId}>
+              <div className={styles.row} role="row" key={entry.rowKey}>
                 <span className={styles.rank}>{index + 1}</span>
-                <span className={styles.model}>{entry.modelName}</span>
+                <span className={styles.model}>
+                  {entry.modelName}{" "}
+                  <span className={styles.harness}>· {entry.harnessSlug}</span>
+                </span>
                 {visibleColumns.map((column) => (
                   // Each metric cell carries its column label so the board can
                   // reflow into labelled value lines on a phone (see the mobile
@@ -517,7 +542,9 @@ function PerformanceLeaderboard({
                 <span className={styles.rank}>{index + 1}</span>
                 <span className={styles.model}>{entry.modelName}</span>
                 <span className={styles.cell} data-label="Best fuel">
-                  <span className={styles.num}>{formatCompact(entry.bestFuel)}</span>
+                  <span className={styles.num}>
+                    {formatCompact(entry.bestFuel)}
+                  </span>
                 </span>
                 <span className={styles.cell} data-label="Runs">
                   <span className={styles.num}>{entry.runCount}</span>
