@@ -463,8 +463,13 @@ fn validate_agents(set: &GgCapabilitySet) -> Result<(), String> {
 pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome {
     // Production resolves every agent's client through the default factory (the
     // `TCAB_GG_FAKE_MODEL`/`mock` rules, else live OpenRouter). Tests inject a scripted factory so
-    // a parent and its subagents run distinct offline scripts.
-    run_with_factory(invocation, emitter, Arc::new(DefaultClientFactory)).await
+    // a parent and its subagents run distinct offline scripts. The factory carries the run's
+    // session id as the shared `prompt_cache_key`, so every agent's requests route to one provider
+    // backend and reuse each other's — and their own turns' — cached prompt prefix.
+    let factory = Arc::new(DefaultClientFactory::new(Some(
+        invocation.session_id.clone(),
+    )));
+    run_with_factory(invocation, emitter, factory).await
 }
 
 /// [`run`], but with an injectable [`ClientFactory`] so a test can drive the root and its

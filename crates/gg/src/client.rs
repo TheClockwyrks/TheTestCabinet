@@ -199,18 +199,26 @@ pub struct OpenRouterClient {
     model_id: String,
     api_key: String,
     retry: RetryPolicy,
+    /// The session-wide [prompt-cache key](build_request_body) sent as `prompt_cache_key` — the
+    /// run's session id, the same value on every agent's client. It steers the whole run's
+    /// requests to one provider backend, so an agent's successive turns reuse the prefix the last
+    /// turn cached and sibling agents that open on the same prefix reuse each other's. `None`
+    /// leaves the key off the wire (the field is simply absent).
+    cache_key: Option<String>,
 }
 
 impl OpenRouterClient {
     /// Construct a client from its parts. `base_url` is the API root (no trailing
     /// `/chat/completions`); pass an injected `http` and a test `base_url` to exercise
-    /// it offline.
+    /// it offline. `cache_key` is the stable [`prompt_cache_key`](build_request_body) this
+    /// client stamps on every request; `None` sends none.
     pub fn new(
         base_url: impl Into<String>,
         http: reqwest::Client,
         model_id: impl Into<String>,
         api_key: impl Into<String>,
         retry: RetryPolicy,
+        cache_key: Option<String>,
     ) -> Self {
         Self {
             http,
@@ -218,13 +226,24 @@ impl OpenRouterClient {
             model_id: model_id.into(),
             api_key: api_key.into(),
             retry,
+            cache_key,
         }
     }
 
     /// Build a live client for `binding`, reading `OPENROUTER_API_KEY` from the
     /// environment. Returns [`ModelError::MissingApiKey`] when the credential is
     /// absent or empty.
-    pub fn from_binding(binding: &GgSlotBinding) -> Result<Self, ModelError> {
+    ///
+    /// `cache_key` is the session-wide [`prompt_cache_key`](build_request_body) stamped on every
+    /// request — the whole run's session id, shared by the root and every subagent. Sharing it is
+    /// deliberate: agents that open on the same prefix (same calling convention, the same
+    /// autoloaded specs) then route to the same provider backend and reuse one another's cached
+    /// prefix, and an agent's own successive turns stay on that backend so each turn reads the
+    /// prefix the last one cached. `None` sends no key.
+    pub fn from_binding(
+        binding: &GgSlotBinding,
+        cache_key: Option<&str>,
+    ) -> Result<Self, ModelError> {
         let api_key = std::env::var(API_KEY_ENV)
             .ok()
             .filter(|k| !k.trim().is_empty())
@@ -235,6 +254,7 @@ impl OpenRouterClient {
             binding.model_id.clone(),
             api_key,
             RetryPolicy::default(),
+            cache_key.map(str::to_string),
         ))
     }
 
@@ -251,7 +271,7 @@ impl ModelClient for OpenRouterClient {
         messages: &[Message],
         tools: &[ToolDefinition],
     ) -> Result<ModelResponse, ModelError> {
-        let body = build_request_body(&self.model_id, messages, tools);
+        let body = build_request_body(&self.model_id, messages, tools, self.cache_key.as_deref());
         let url = self.endpoint();
         let mut last_err = String::new();
         // Whether this request carries a picture at all. A provider's "no image route"
@@ -383,13 +403,29 @@ fn truncate(body: &str) -> String {
 /// Build the OpenAI-compatible request body for a turn. Pure and injectable — the
 /// client serializes exactly this. `tool_choice` is set to `"auto"` only when tools
 /// are offered; `usage: { include: true }` asks OpenRouter to return cost.
-pub fn build_request_body(model_id: &str, messages: &[Message], tools: &[ToolDefinition]) -> Value {
+///
+/// When `cache_key` is `Some` (and non-empty) it is sent as `prompt_cache_key`, the
+/// caller-supplied hint a provider uses to keep a conversation's requests on one backend so
+/// each turn reuses the prefix the previous turn cached. A run's turns share one key (see
+/// [`OpenRouterClient::from_binding`]); dropping it lets two prefix-identical requests land on
+/// different backends, and the second is billed fully uncached even though nothing changed.
+/// `None` (or an empty key) omits the field entirely.
+pub fn build_request_body(
+    model_id: &str,
+    messages: &[Message],
+    tools: &[ToolDefinition],
+    cache_key: Option<&str>,
+) -> Value {
     let messages: Vec<Value> = messages.iter().map(wire_message).collect();
     let mut body = json!({
         "model": model_id,
         "messages": messages,
         "usage": { "include": true },
     });
+
+    if let Some(key) = cache_key.filter(|key| !key.is_empty()) {
+        body["prompt_cache_key"] = json!(key);
+    }
 
     if !tools.is_empty() {
         let tools: Vec<Value> = tools
@@ -2294,10 +2330,19 @@ pub fn provider_for(binding: &GgSlotBinding) -> ProviderKind {
 
 /// Build the [`ModelClient`] a slot binds to, per the [selection rule](self). Returns
 /// [`ModelError::MissingApiKey`] for a live OpenRouter binding with no credential.
-pub fn client_for_slot(binding: &GgSlotBinding) -> Result<Box<dyn ModelClient>, ModelError> {
+///
+/// `cache_key` is the session-wide [`prompt_cache_key`](build_request_body) a live client stamps
+/// on every request (the mock client ignores it). It is the run's session id, so every agent's
+/// client carries the same value — see [`OpenRouterClient::from_binding`].
+pub fn client_for_slot(
+    binding: &GgSlotBinding,
+    cache_key: Option<&str>,
+) -> Result<Box<dyn ModelClient>, ModelError> {
     match provider_for(binding) {
         ProviderKind::Mock => Ok(Box::new(mock_client_for(&binding.model_id))),
-        ProviderKind::OpenRouter => Ok(Box::new(OpenRouterClient::from_binding(binding)?)),
+        ProviderKind::OpenRouter => Ok(Box::new(OpenRouterClient::from_binding(
+            binding, cache_key,
+        )?)),
     }
 }
 
@@ -2381,11 +2426,26 @@ pub trait ClientFactory: Send + Sync {
 
 /// The production [`ClientFactory`]: resolves each binding through [`client_for_slot`], honoring
 /// the `TCAB_GG_FAKE_MODEL` / `mock` selection rules.
-pub struct DefaultClientFactory;
+///
+/// It carries the run's session-wide [`prompt_cache_key`](build_request_body) (the session id) and
+/// stamps it on every live client it builds, so all of a run's agents — the root and every
+/// subagent the factory resolves — share one key. That is what lets a subagent reuse the cached
+/// opening prefix a sibling already warmed, instead of each agent paying for it uncached.
+pub struct DefaultClientFactory {
+    cache_key: Option<String>,
+}
+
+impl DefaultClientFactory {
+    /// A factory that stamps `cache_key` (the run's session id) on every live client it builds.
+    /// `None` builds clients that send no `prompt_cache_key` (the pre-caching behavior).
+    pub fn new(cache_key: Option<String>) -> Self {
+        Self { cache_key }
+    }
+}
 
 impl ClientFactory for DefaultClientFactory {
     fn client_for(&self, binding: &GgSlotBinding) -> Result<Box<dyn ModelClient>, ModelError> {
-        client_for_slot(binding)
+        client_for_slot(binding, self.cache_key.as_deref())
     }
 }
 

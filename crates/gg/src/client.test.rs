@@ -21,7 +21,7 @@ fn build_request_body_uses_openai_tools_shape() {
         json!({ "type": "object", "properties": { "path": { "type": "string" } } }),
     )];
 
-    let body = build_request_body("anthropic/claude-opus-4-8", &messages, &tools);
+    let body = build_request_body("anthropic/claude-opus-4-8", &messages, &tools, None);
 
     assert_eq!(body["model"], json!("anthropic/claude-opus-4-8"));
     assert_eq!(body["messages"][0]["role"], json!("system"));
@@ -54,7 +54,7 @@ fn build_request_body_encodes_tool_call_arguments_as_string() {
         Message::tool_result("call_1", "wrote 13 bytes"),
     ];
 
-    let body = build_request_body("m", &messages, &[]);
+    let body = build_request_body("m", &messages, &[], None);
 
     let wire_call = &body["messages"][0]["tool_calls"][0];
     assert_eq!(wire_call["id"], json!("call_1"));
@@ -79,9 +79,27 @@ fn build_request_body_encodes_tool_call_arguments_as_string() {
 /// With no tools offered, neither `tools` nor `tool_choice` is present.
 #[test]
 fn build_request_body_omits_tools_when_none() {
-    let body = build_request_body("m", &[Message::user("hi")], &[]);
+    let body = build_request_body("m", &[Message::user("hi")], &[], None);
     assert!(body.get("tools").is_none());
     assert!(body.get("tool_choice").is_none());
+}
+
+/// A supplied cache key rides the request as `prompt_cache_key` — the hint that keeps a run's
+/// requests on one backend so each turn (and each sibling agent) reuses a warmed prefix.
+#[test]
+fn build_request_body_sends_prompt_cache_key_when_supplied() {
+    let body = build_request_body("m", &[Message::user("hi")], &[], Some("session-42"));
+    assert_eq!(body["prompt_cache_key"], json!("session-42"));
+}
+
+/// No key (or an empty one) leaves `prompt_cache_key` off the wire entirely, so a caller that
+/// has no key to offer sends exactly what gg always did.
+#[test]
+fn build_request_body_omits_prompt_cache_key_without_one() {
+    let none = build_request_body("m", &[Message::user("hi")], &[], None);
+    assert!(none.get("prompt_cache_key").is_none());
+    let empty = build_request_body("m", &[Message::user("hi")], &[], Some(""));
+    assert!(empty.get("prompt_cache_key").is_none());
 }
 
 // ---------------------------------------------------------------------------
@@ -95,7 +113,7 @@ fn build_request_body_omits_tools_when_none() {
 fn build_request_body_sends_an_attached_image_as_a_content_part() {
     let read = Message::tool_result("call_1", "`ref.png` — PNG image, 12 bytes.")
         .with_images(vec![ImageContent::new("image/png", "QUJD", 3)]);
-    let body = build_request_body("m", &[Message::user("look at ref.png"), read], &[]);
+    let body = build_request_body("m", &[Message::user("look at ref.png"), read], &[], None);
 
     let tool_msg = &body["messages"][1];
     assert_eq!(tool_msg["role"], json!("tool"));
@@ -120,7 +138,7 @@ fn build_request_body_sends_an_attached_image_as_a_content_part() {
 /// common text-only turn is byte-identical to what gg has always sent.
 #[test]
 fn build_request_body_keeps_plain_content_without_images() {
-    let body = build_request_body("m", &[Message::user("hi")], &[]);
+    let body = build_request_body("m", &[Message::user("hi")], &[], None);
     assert_eq!(body["messages"][0]["content"], json!("hi"));
 }
 
@@ -385,7 +403,7 @@ fn resolve_provider_kind_selects_mock_by_model_prefix_or_override() {
 /// `client_for_slot` builds a working mock client for a mock binding.
 #[test]
 fn client_for_slot_builds_mock_for_mock_binding() {
-    let client = client_for_slot(&binding("mock/echo")).expect("mock client");
+    let client = client_for_slot(&binding("mock/echo"), None).expect("mock client");
     assert_eq!(client.model_id(), "mock/echo");
 }
 
@@ -403,6 +421,7 @@ fn openrouter_endpoint_is_built_from_base() {
         "anthropic/claude-opus-4-8",
         "sk-test",
         RetryPolicy::default(),
+        None,
     );
     assert_eq!(client.model_id(), "anthropic/claude-opus-4-8");
     assert_eq!(
