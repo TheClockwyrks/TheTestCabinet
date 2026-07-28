@@ -1,6 +1,6 @@
 import * as Plot from "@observablehq/plot";
 import { describe, expect, it } from "vitest";
-import { barChart, stackedBarChart } from "./charts";
+import { barChart, distributionChart, stackedBarChart } from "./charts";
 import type { ChartPalette } from "./theme";
 
 // A stand-in palette; these tests assert structure, not exact colors.
@@ -102,5 +102,73 @@ describe("stackedBarChart", () => {
     expect(node.querySelector('[aria-label="tip"]')).not.toBeNull();
     // The hover-highlight overlay for the pointed segment is present too.
     expect(node.querySelector('[fill-opacity="0.18"]')).not.toBeNull();
+  });
+});
+
+describe("distributionChart", () => {
+  const groups = [
+    {
+      label: "pi",
+      color: "#22d3ee",
+      n: 3,
+      points: [{ value: 1 }, { value: 2 }, { value: 3 }],
+      median: 2,
+      mean: 2,
+      min: 1,
+      max: 3,
+      q1: 1.5,
+      q3: 2.5,
+      ciLow: 1.2,
+      ciHigh: 2.8,
+    },
+    {
+      label: "kilo",
+      color: "#f472b6",
+      n: 2,
+      points: [{ runId: "r1", value: 10 }, { value: 14 }],
+      median: 12,
+      mean: 12,
+      min: 10,
+      max: 14,
+      q1: 11,
+      q3: 13,
+      ciLow: 10.5,
+      ciHigh: 13.5,
+    },
+  ];
+
+  it("draws every raw point plus a box per arm, never merging the arms", () => {
+    const node = render(distributionChart(groups, palette));
+    // Every group's points are drawn as dots.
+    expect(node.querySelectorAll("circle").length).toBeGreaterThanOrEqual(5);
+    // Each arm's label appears (the x axis carries its identity — no legend
+    // needed, and no arm is folded into another).
+    const text = node.textContent ?? "";
+    expect(text).toContain("pi");
+    expect(text).toContain("kilo");
+  });
+
+  it("wires up hover tips on the raw points", () => {
+    const node = render(distributionChart(groups, palette));
+    expect(node.querySelector('[aria-label="tip"]')).not.toBeNull();
+  });
+
+  it("renders with a single arm (n=1) without throwing", () => {
+    const lone = [
+      {
+        label: "solo",
+        n: 1,
+        points: [{ value: 5 }],
+        median: 5,
+        mean: 5,
+        min: 5,
+        max: 5,
+        q1: 5,
+        q3: 5,
+        ciLow: 5,
+        ciHigh: 5,
+      },
+    ];
+    expect(() => render(distributionChart(lone, palette))).not.toThrow();
   });
 });

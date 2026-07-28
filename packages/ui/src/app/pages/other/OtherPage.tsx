@@ -1,23 +1,28 @@
 import { useMemo } from "react";
 import { Link, NavLink } from "react-router";
+import { useAuth } from "../../../client/auth";
 import { PageLayout } from "../../components/PageLayout";
 import { LoadingState } from "../../components/LoadingState";
 import { PromptHeader } from "../../components/PromptHeader";
 import { useTestCases } from "../../data/useTestCases";
 import { routes } from "../../routes";
 import { TournamentsList } from "../tournaments/TournamentsPage";
+import { ComparisonsList } from "../comparisons/ComparisonsList";
+import exec from "../runs/RunExec.module.scss";
 // The Other page reuses the Test Cases page's tab-bar and list-card styles so the
 // two catalog-style surfaces read identically.
 import styles from "../testcases/TestCasesPage.module.scss";
 
-// The "Other" section's two tabs, in display order. Each is its own route so the
+// The "Other" section's tabs, in display order. Each is its own route so the
 // selection is in the URL and survives a reload.
-export type OtherTab = "game-jams" | "tournaments";
+export type OtherTab = "game-jams" | "tournaments" | "comparisons";
 
-const OTHER_TABS: ReadonlyArray<{ tab: OtherTab; label: string; to: string }> = [
-  { tab: "game-jams", label: "Game Jams", to: routes.otherGameJams() },
-  { tab: "tournaments", label: "Tournaments", to: routes.otherTournaments() },
-];
+const OTHER_TABS: ReadonlyArray<{ tab: OtherTab; label: string; to: string }> =
+  [
+    { tab: "game-jams", label: "Game Jams", to: routes.otherGameJams() },
+    { tab: "tournaments", label: "Tournaments", to: routes.otherTournaments() },
+    { tab: "comparisons", label: "Comparisons", to: routes.otherComparisons() },
+  ];
 
 interface OtherPageProps {
   /** Which tab this route renders. Carried in the URL (one route per tab) so the
@@ -30,18 +35,37 @@ interface OtherPageProps {
 // their own pages) and Tournaments (the arena standings list). The tab bar mirrors
 // the Test Cases page; the bare `/other` redirects to the first tab.
 export function OtherPage({ tab }: OtherPageProps) {
+  const { token } = useAuth();
   return (
     <PageLayout>
-      <PromptHeader
-        command={tab === "game-jams" ? "--game-jams" : "--tournaments"}
-        comment={
-          tab === "game-jams" ? (
-            <>// themed jams &amp; their entries</>
-          ) : (
-            <>// adversarial standings</>
-          )
-        }
-      />
+      <div className={exec.runsHeader}>
+        <PromptHeader
+          command={
+            tab === "game-jams"
+              ? "--game-jams"
+              : tab === "tournaments"
+                ? "--tournaments"
+                : "--comparisons"
+          }
+          comment={
+            tab === "game-jams" ? (
+              <>// themed jams &amp; their entries</>
+            ) : tab === "tournaments" ? (
+              <>// adversarial standings</>
+            ) : (
+              <>// harness A/B experiments</>
+            )
+          }
+        />
+        {/* Comparisons are per-account (like a coverage plan or a gg
+            configuration), so the create action only appears once signed in —
+            signed out, the tab body itself carries the sign-in prompt. */}
+        {tab === "comparisons" && token && (
+          <Link className={exec.primary} to={routes.comparisonNew()}>
+            New comparison
+          </Link>
+        )}
+      </div>
 
       <div className={styles.controls}>
         <nav className={styles.tabs} aria-label="Other sections">
@@ -61,7 +85,13 @@ export function OtherPage({ tab }: OtherPageProps) {
         </nav>
       </div>
 
-      {tab === "game-jams" ? <GameJamsList /> : <TournamentsList />}
+      {tab === "game-jams" ? (
+        <GameJamsList />
+      ) : tab === "tournaments" ? (
+        <TournamentsList />
+      ) : (
+        <ComparisonsList />
+      )}
     </PageLayout>
   );
 }

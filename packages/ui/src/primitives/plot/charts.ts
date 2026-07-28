@@ -491,6 +491,167 @@ export function priceHistoryChart(
   };
 }
 
+/** One raw run behind a distribution box, so the chart can plot every observation
+ * — never just its summary — the way small-`n` honesty requires. Omit the whole
+ * list on a {@link DistributionGroup} when the caller only has the aggregated
+ * summary (e.g. a comparison's cost/token `MetricSummary` carries no per-run
+ * breakdown) — the box, whiskers, median, and CI still draw and `n` is still
+ * labeled, just without the individual dots overlaid. */
+export interface DistributionPoint {
+  /** The run's id, when known, shown in the point's tooltip. */
+  runId?: string;
+  value: number;
+}
+
+/**
+ * One group's (an arm's) full distribution for a {@link distributionChart}: the
+ * summary statistics a box plot draws, plus the raw points behind them when the
+ * caller has them (see {@link DistributionPoint}). Mirrors `MetricSummary`
+ * (`@test-cabinet/run-record/comparison`) field-for-field so a caller can spread
+ * an arm's summary straight in.
+ */
+export interface DistributionGroup {
+  /** The x-axis category — the arm's label. Never merges two arms into one. */
+  label: string;
+  /** This arm's identity color. Omit to fall back to the theme accent — every
+   * group should otherwise carry its own, since color here stands for identity. */
+  color?: string;
+  /** The number of runs summarized (always shown on the axis; never implied). */
+  n: number;
+  /** Empty when only the aggregated summary is available. */
+  points: readonly DistributionPoint[];
+  median: number;
+  mean: number;
+  min: number;
+  max: number;
+  q1: number;
+  q3: number;
+  /** Bootstrap confidence interval on the median. */
+  ciLow: number;
+  ciHigh: number;
+}
+
+interface DistributionLabels {
+  y?: string;
+  yTickFormat?: string | ((value: number) => string);
+  /** Formats a raw value for a point's tooltip and the box's summary tooltip. */
+  formatValue?: (value: number) => string;
+}
+
+// Pixel nudges that separate the three layers drawn at each arm's x position: the
+// bootstrap CI sits to the left of the box, the raw points to the right, so all
+// three are legible at once instead of stacking on the same vertical line.
+const CI_DX = -14;
+const POINTS_DX = 14;
+
+// A per-arm distribution chart: for each group, a box (Q1–Q3) with whiskers
+// (min–max) and a median tick, a bootstrap confidence interval on the median
+// (thin, offset left), and every raw run plotted as its own point (offset right)
+// — so the spread and the sample size are never implied. This is the chart the
+// [statistics methodology](/comparisons/statistics/) asks for: "show the raw
+// points, not just the summary." Groups keep the color they're given — an arm's
+// identity — and are placed along a band x scale in the order given (never
+// re-sorted, never merged), with the arm's label doing the identity work a
+// legend would otherwise carry (there is one color per x category already).
+export function distributionChart(
+  groups: readonly DistributionGroup[],
+  palette: ChartPalette,
+  labels: DistributionLabels = {},
+): PlotOptions {
+  const order = groups.map((g) => g.label);
+  const formatValue = labels.formatValue ?? String;
+  const colorOf = (g: DistributionGroup) => g.color ?? palette.accent;
+
+  const points = groups.flatMap((g) =>
+    g.points.map((p) => ({ label: g.label, color: colorOf(g), ...p })),
+  );
+
+  return {
+    ...basePlotOptions(palette),
+    x: { label: null, type: "band", domain: order },
+    y: {
+      label: labels.y ?? null,
+      grid: true,
+      zero: true,
+      tickFormat: labels.yTickFormat,
+    },
+    color: { type: "identity" },
+    marks: [
+      Plot.ruleY([0], { stroke: palette.border }),
+      // Whisker: the full min–max range, a thin vertical rule at the arm's x
+      // position (`ruleX`, not `ruleY` — the mark that spans a y-interval at a
+      // fixed x, rather than a horizontal line).
+      Plot.ruleX(groups as DistributionGroup[], {
+        x: "label",
+        y1: "min",
+        y2: "max",
+        stroke: colorOf,
+        strokeWidth: 1,
+        strokeOpacity: 0.7,
+      }),
+      // Box: the interquartile range, filled and outlined in the arm's color.
+      Plot.barY(groups as DistributionGroup[], {
+        x: "label",
+        y1: "q1",
+        y2: "q3",
+        fill: colorOf,
+        fillOpacity: 0.28,
+        stroke: colorOf,
+        strokeWidth: 1.5,
+        rx: 2,
+      }),
+      // Median: a short, bold tick across the box.
+      Plot.tickY(groups as DistributionGroup[], {
+        x: "label",
+        y: "median",
+        stroke: colorOf,
+        strokeWidth: 2,
+      }),
+      // Bootstrap CI on the median: a thin offset vertical rule with end ticks,
+      // distinct from the whisker (which is the raw min/max, not a confidence
+      // interval).
+      Plot.ruleX(groups as DistributionGroup[], {
+        x: "label",
+        y1: "ciLow",
+        y2: "ciHigh",
+        stroke: palette.muted,
+        strokeWidth: 2,
+        dx: CI_DX,
+      }),
+      Plot.tickY(groups as DistributionGroup[], {
+        x: "label",
+        y: "ciLow",
+        stroke: palette.muted,
+        strokeWidth: 1,
+        dx: CI_DX,
+      }),
+      Plot.tickY(groups as DistributionGroup[], {
+        x: "label",
+        y: "ciHigh",
+        stroke: palette.muted,
+        strokeWidth: 1,
+        dx: CI_DX,
+      }),
+      // Every raw run as its own point — the data a box/median only summarizes,
+      // shown plainly so a small `n` never hides behind an aggregate.
+      Plot.dot(points, {
+        x: "label",
+        y: "value",
+        fill: "color",
+        stroke: palette.surface,
+        strokeWidth: 1,
+        r: 4,
+        dx: POINTS_DX,
+        title: (d: (typeof points)[number]) =>
+          d.runId
+            ? `${d.label}\n${formatValue(d.value)}\nrun ${d.runId}`
+            : `${d.label}\n${formatValue(d.value)}`,
+        tip: tipBox(palette),
+      }),
+    ],
+  };
+}
+
 /** One observation on a per-request metric line: a value at a turn index. */
 export interface MetricPoint {
   /** The turn index (0-based) this observation belongs to — the x position, shared

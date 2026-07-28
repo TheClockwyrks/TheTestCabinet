@@ -221,6 +221,7 @@ export const routes = {
   other: (): string => "/other",
   otherGameJams: (): string => "/other/game-jams",
   otherTournaments: (): string => "/other/tournaments",
+  otherComparisons: (): string => "/other/comparisons",
   // A game jam's detail page and its reduced tab set (Overview / Inputs / Runs /
   // Leaderboard / Metrics — a jam has no changelog, reference, or arena). Lives at
   // its own top-level `/game-jams/:slug`, a sibling of the `/other/game-jams`
@@ -235,6 +236,17 @@ export const routes = {
     `/game-jams/${encodeURIComponent(slug)}/leaderboard`,
   gameJamMetrics: (slug: string): string =>
     `/game-jams/${encodeURIComponent(slug)}/metrics`,
+  // Harness-comparison routes (consoles only; the static site is read-only and
+  // never links here — it renders a published comparison off the snapshot
+  // instead). The list lives on the Other section's Comparisons tab
+  // (`otherComparisons`); `new` and detail/edit are their own top-level routes, a
+  // sibling of the game-jam detail routes above. `new` is a static segment so it
+  // outranks the dynamic `:id`.
+  comparisonNew: (): string => "/comparisons/new",
+  comparisonDetail: (id: string): string =>
+    `/comparisons/${encodeURIComponent(id)}`,
+  comparisonEdit: (id: string): string =>
+    `/comparisons/${encodeURIComponent(id)}/edit`,
   // A tournament's standings + matches (consoles only). The Tournaments list now
   // lives under Other (`/other/tournaments`), but each tournament keeps its own
   // revisitable detail route.
@@ -339,10 +351,16 @@ export const routePatterns = {
   other: "/other",
   otherGameJams: "/other/game-jams",
   otherTournaments: "/other/tournaments",
+  otherComparisons: "/other/comparisons",
   gameJamDetail: "/game-jams/:slug",
   gameJamInputs: "/game-jams/:slug/inputs",
   gameJamRuns: "/game-jams/:slug/runs",
   gameJamLeaderboard: "/game-jams/:slug/leaderboard",
   gameJamMetrics: "/game-jams/:slug/metrics",
+  // Harness-comparison routes. `new` (static) outranks the dynamic `:id`, like
+  // the account section's gg-config/coverage-plan routes above.
+  comparisonNew: "/comparisons/new",
+  comparisonDetail: "/comparisons/:id",
+  comparisonEdit: "/comparisons/:id/edit",
   tournamentDetail: "/tournaments/:id",
 } as const;

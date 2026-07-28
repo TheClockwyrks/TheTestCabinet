@@ -77,6 +77,10 @@ import type {
   CoveragePlanInput,
   CoveragePlanSummary,
 } from "@test-cabinet/run-record/coverage";
+import type {
+  Comparison,
+  ComparisonInput,
+} from "@test-cabinet/run-record/comparison";
 import {
   delJson,
   delVoid,
@@ -641,6 +645,54 @@ export function createHttpBackend(baseUrl: string): BackendClient {
 
     async deleteGgConfig(id: string, token: string): Promise<void> {
       await delVoid(baseUrl, `/gg/configs/${encodeURIComponent(id)}`, token);
+    },
+
+    async listComparisons(token: string): Promise<Comparison[]> {
+      return getJson<Comparison[]>(baseUrl, "/comparisons", token);
+    },
+
+    async getComparison(id: string, token: string): Promise<Comparison> {
+      return getJson<Comparison>(
+        baseUrl,
+        `/comparisons/${encodeURIComponent(id)}`,
+        token,
+      );
+    },
+
+    async createComparison(
+      input: ComparisonInput,
+      token: string,
+    ): Promise<Comparison> {
+      return postJson<Comparison>(baseUrl, "/comparisons", input, token);
+    },
+
+    async updateComparison(
+      id: string,
+      input: ComparisonInput,
+      token: string,
+    ): Promise<Comparison> {
+      return putJson<Comparison>(
+        baseUrl,
+        `/comparisons/${encodeURIComponent(id)}`,
+        input,
+        token,
+      );
+    },
+
+    async deleteComparison(id: string, token: string): Promise<void> {
+      await delVoid(baseUrl, `/comparisons/${encodeURIComponent(id)}`, token);
+    },
+
+    async publishComparison(id: string, token: string): Promise<Comparison> {
+      // The publish endpoint is landing separately (docs/comparisons/publishing.md);
+      // until then this simply 404s and the console surfaces that as an error,
+      // same as any other not-yet-live endpoint.
+      return postJson<Comparison>(
+        baseUrl,
+        `/comparisons/${encodeURIComponent(id)}/publish`,
+        {},
+        token,
+      );
     },
 
     async listMyReviews(

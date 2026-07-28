@@ -1,0 +1,432 @@
+@use "../../styles/tokens" as t;
+@use "../../styles/surfaces" as s;
+@use "../../styles/halo" as h;
+
+// Styling specific to the harness-comparison surfaces (list, create/edit,
+// detail). Generic form controls (fields, selects, buttons, notices) come from
+// `runs/RunExec.module.scss` (`exec`), mirroring the coverage-plan pages; this
+// module holds only what is particular to comparisons: the list cards, the arm
+// pickers, and the detail page's per-arm result panels.
+
+.empty {
+  color: t.$color-text-muted;
+  @include h.halo;
+}
+
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: t.$space-md;
+
+  .empty {
+    margin: 0;
+    max-width: 42rem;
+  }
+}
+
+// A detail page's header: a back chevron + title on the left, actions
+// (Edit/Publish/Trigger) pushed to the right edge — the same shape the coverage
+// plan and model detail pages use.
+.detailHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: t.$space-sm t.$space-md;
+  margin-bottom: t.$space-lg;
+}
+
+.detailTitleRow {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
+.detailTitle {
+  margin: 0;
+  min-width: 0;
+  font-size: t.$font-xl;
+  color: t.$color-accent;
+  text-shadow: var(--ttc-glow);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detailActions {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  flex-wrap: wrap;
+}
+
+// The controls summary strip on the detail page: the held-constant case,
+// version, variant, model, auth mode, orchestrator — read-only, so a viewer
+// never has to wonder what was fixed while reading the arm charts below.
+.controlsStrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-md t.$space-xl;
+  margin-bottom: t.$space-xl;
+  padding-bottom: t.$space-md;
+  border-bottom: t.$border-hairline solid t.$color-border;
+}
+
+.controlStat {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+.controlStatLabel {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.controlStatValue {
+  font-family: var(--ttc-font);
+  color: t.$color-text;
+}
+
+// A visible warning banner for a confound (a control that drifted across an
+// arm's runs) — deliberately loud, since a comparison whose arms aren't truly
+// comparable is worse than no comparison (docs/comparisons/experiments.md).
+.confoundBanner {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  background: color-mix(in srgb, t.$color-warning 12%, transparent);
+  border: t.$border-hairline solid t.$color-warning;
+  border-radius: t.$radius-md;
+  padding: t.$space-md t.$space-lg;
+  margin-bottom: t.$space-xl;
+  color: t.$color-text;
+}
+
+.confoundTitle {
+  color: t.$color-warning;
+  font-family: var(--ttc-font);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: t.$font-sm;
+}
+
+// The presented (never a verdict) ratio callout for a two-arm comparison —
+// "Kilo's median cost is ~6.8x Pi's" — a single plain sentence, not a badge.
+.ratioCallout {
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  padding: t.$space-md t.$space-lg;
+  margin-bottom: t.$space-xl;
+  color: t.$color-text;
+  font-family: var(--ttc-font);
+}
+
+.armSection {
+  margin-bottom: t.$space-xl;
+}
+
+.armSectionTitle {
+  color: t.$color-accent;
+  font-size: t.$font-lg;
+  margin: 0 0 t.$space-md;
+}
+
+// The per-arm result panels: one full-width card per arm, stacked, so each
+// arm's own N/spread/diagnostics reads as its own block rather than folded into
+// a shared table.
+.armPanel {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  padding: t.$space-lg;
+  margin-bottom: t.$space-lg;
+}
+
+.armPanelHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+}
+
+.armSwatch {
+  display: inline-block;
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 999px;
+  flex: none;
+}
+
+.armLabel {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  color: t.$color-text;
+  font-size: t.$font-lg;
+}
+
+.armN {
+  color: t.$color-text-muted;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+}
+
+.armGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  gap: t.$space-lg;
+}
+
+// The automated-only score: the mean fraction plus every run's own point,
+// mirroring the statistics page's "at small n the points matter more than any
+// single summary."
+.scoreRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: t.$space-sm;
+}
+
+.scoreMean {
+  font-family: var(--ttc-font);
+  font-size: t.$font-lg;
+  color: t.$color-text;
+}
+
+.scorePoint {
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  background: t.$color-bg-2;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  padding: t.$space-2xs t.$space-sm;
+}
+
+// The pass-rate meter: a filled bar for the observed rate, with a lighter band
+// overlaid across the Wilson interval so the uncertainty at small n is visible
+// rather than implied by the point estimate alone. Mirrors the coverage
+// plan's `.groupBar` track.
+.meter {
+  position: relative;
+  display: flex;
+  width: 100%;
+  max-width: 20rem;
+  height: 0.6rem;
+  background: t.$color-bg-2;
+  border-radius: t.$radius-sm;
+  overflow: hidden;
+}
+
+.meterFill {
+  display: block;
+  height: 100%;
+  background: t.$color-accent;
+}
+
+.meterInterval {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: color-mix(in srgb, t.$color-text 35%, transparent);
+}
+
+.meterRow {
+  display: flex;
+  align-items: center;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+}
+
+.meterLabel {
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  white-space: nowrap;
+}
+
+.toolCallsHint {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  margin: 0 0 t.$space-sm;
+}
+
+// Arm-picker pills (the create/edit form's harness / gg-config / model arm
+// list): a wrapping row of selectable chips, mirroring the coverage plan
+// editor's `.groupPick`.
+.armPicks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-sm;
+  margin-bottom: t.$space-md;
+}
+
+.armPick {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-xs;
+  padding: t.$space-2xs t.$space-md;
+  background: t.$color-bg-2;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: 999px;
+  color: t.$color-text;
+  font-size: t.$font-sm;
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: none;
+    border-color: t.$color-accent;
+  }
+}
+
+.armPickOn {
+  background: t.$color-accent;
+  border-color: t.$color-accent;
+  color: t.$color-bg;
+}
+
+// The added model-arm chips (a model can be added more than once is not
+// allowed, so each is just a removable pill), mirroring the coverage plan
+// editor's `.chip`.
+.chipList {
+  list-style: none;
+  margin: 0 0 t.$space-md;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-sm;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-xs;
+  padding: t.$space-2xs t.$space-sm t.$space-2xs t.$space-md;
+  background: t.$color-bg-2;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: 999px;
+  color: t.$color-text;
+  font-size: t.$font-sm;
+}
+
+.chipRemove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 t.$space-2xs;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  line-height: 1;
+  color: t.$color-text-muted;
+  background: none;
+  border: 0;
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    color: t.$color-negative;
+  }
+
+  &:focus-visible {
+    outline: none;
+  }
+}
+
+.editor {
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  padding: t.$space-lg;
+  margin-bottom: t.$space-xl;
+}
+
+.editorActions {
+  display: flex;
+  align-items: center;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+  margin-top: calc(#{t.$space-md} * 2);
+}
+
+.nameField {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  margin-bottom: t.$space-lg;
+  max-width: 32rem;
+}
+
+// A list of comparison cards (the Comparisons tab).
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+}
+
+.rowCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: t.$space-md;
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  padding: t.$space-md t.$space-lg;
+  color: inherit;
+
+  &:hover {
+    border-color: t.$color-accent;
+  }
+}
+
+.rowMain {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  min-width: 0;
+}
+
+.rowTitleLink {
+  color: t.$color-accent;
+  font-size: t.$font-lg;
+}
+
+.rowSub {
+  color: t.$color-text-muted;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+}
+
+.rowRight {
+  display: flex;
+  align-items: center;
+  gap: t.$space-md;
+  flex: none;
+}
+
+.rowStat {
+  color: t.$color-text-muted;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  white-space: nowrap;
+}
+
+.publishedBadge {
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  color: t.$color-bg;
+  background: t.$color-positive;
+  border-radius: t.$radius-sm;
+  padding: t.$space-2xs t.$space-sm;
+  white-space: nowrap;
+}

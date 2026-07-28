@@ -58,6 +58,10 @@ import type {
   CoveragePlanInput,
   CoveragePlanSummary,
 } from "@test-cabinet/run-record/coverage";
+import type {
+  Comparison,
+  ComparisonInput,
+} from "@test-cabinet/run-record/comparison";
 
 // One page of bounded run summary cards from the backend
 // (`GET /runs?fields=summary`), newest first — the lightweight projection of
@@ -297,6 +301,36 @@ export interface BackendClient {
   ): Promise<GgConfig>;
   /** Delete a configuration (`DELETE /gg/configs/{id}`). */
   deleteGgConfig?(id: string, token: string): Promise<void>;
+
+  // The operator's saved harness/gg-config/model comparisons (console-only,
+  // Bearer) — the A/B-testing capability that fixes every controlled variable and
+  // varies exactly one dimension (the harness, a gg configuration, or the model)
+  // across a set of arms (docs/comparisons/experiments.md). Per-account, like the
+  // coverage plans and gg configurations above, and optional for the same reason:
+  // the static site's read-only transport omits them (a published comparison is
+  // read there off the snapshot, never this live endpoint).
+  /** The operator's saved comparisons, each fully aggregated (`GET /comparisons`). */
+  listComparisons?(token: string): Promise<Comparison[]>;
+  /** One comparison by id, fully aggregated (`GET /comparisons/{id}`). */
+  getComparison?(id: string, token: string): Promise<Comparison>;
+  /** Create a comparison (`POST /comparisons`), returning it with its new id. */
+  createComparison?(input: ComparisonInput, token: string): Promise<Comparison>;
+  /** Update a comparison's controls/arms/`N` in place (`PUT /comparisons/{id}`). */
+  updateComparison?(
+    id: string,
+    input: ComparisonInput,
+    token: string,
+  ): Promise<Comparison>;
+  /** Delete a comparison (`DELETE /comparisons/{id}`). */
+  deleteComparison?(id: string, token: string): Promise<void>;
+  /**
+   * Publish a comparison to the public site (`POST /comparisons/{id}/publish`),
+   * returning the updated (published) comparison. See
+   * docs/comparisons/publishing.md — this enqueues the comparison record for the
+   * snapshot; publishing the runs behind it is a separate, selective batch the
+   * backend drains through the publish-job queue.
+   */
+  publishComparison?(id: string, token: string): Promise<Comparison>;
 
   /**
    * The signed-in account's own submitted reviews, newest-first, with a numbered

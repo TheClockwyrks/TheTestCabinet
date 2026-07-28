@@ -14,10 +14,7 @@ export { MetricTile } from "./MetricTile";
 export { SpecAccordion, type AccordionEntry } from "./SpecAccordion";
 export { Chart } from "./Chart";
 export { ChartWidget } from "./ChartWidget";
-export {
-  DonutChartWidget,
-  type DonutSegment,
-} from "./DonutChartWidget";
+export { DonutChartWidget, type DonutSegment } from "./DonutChartWidget";
 export { MetricChartWidget } from "./MetricChartWidget";
 export { RatingsChartWidget, type RatingCounts } from "./RatingsChartWidget";
 export {
@@ -31,6 +28,7 @@ export {
   stackedAreaChart,
   priceHistoryChart,
   metricLineChart,
+  distributionChart,
   type BarPoint,
   type StackedBarSegment,
   type StackedSeries,
@@ -39,6 +37,8 @@ export {
   type PricePoint,
   type MetricPoint,
   type MetricLineLabels,
+  type DistributionPoint,
+  type DistributionGroup,
 } from "./plot/charts";
 export {
   basePlotOptions,
