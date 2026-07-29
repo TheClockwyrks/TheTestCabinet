@@ -267,7 +267,7 @@ fn the_ending_section_always_demands_an_explicit_call() {
     let flat = flat(&prompt);
     assert!(prompt.contains("## Ending your session"), "{prompt}");
     assert!(
-        flat.contains("Nothing else ends it: a reply with no tool call is an error."),
+        flat.contains("A reply with no tool call is an error."),
         "{prompt}"
     );
     assert!(!prompt.contains("\n\n\n"), "blank-line run:\n{prompt}");
