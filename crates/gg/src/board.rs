@@ -23,6 +23,21 @@
 //! [context accounting](crate::context) attributes it to the board and
 //! [compaction](crate::compaction) carries the decomposition across the boundary verbatim.
 //!
+//! # Identifiers are gg's, and they nest
+//!
+//! An [`Epic`] is created from a **prefix** — 3–6 letters, upper-cased — and that is its id. Every
+//! [`Issue`] filed under it is **numbered by the store** from that prefix (`AUTH-1`, `AUTH-2`, …;
+//! `ISSUE-1` for an issue filed with no epic), and the agents gg dispatches for an issue are named
+//! from *its* id in turn: the *n*th [implementer](BoardStore::assign_issue) of `AUTH-1` is
+//! `AUTH-1.0i`, `AUTH-1.1i`, … and the [reviewers](BoardStore::next_review_agent_id) of one
+//! implementer's work are `AUTH-1.0i.0r`, `AUTH-1.0i.1r`, ….
+//!
+//! So one name locates a piece of work, which attempt at it, and which review of that attempt —
+//! which is what makes a fleet of concurrent agents legible in a log, a telemetry stream, and the
+//! console's tree. Letting the model choose these ids instead would give up all of that: it cannot
+//! know what the other agents sharing the board have already used, and an id it invented says
+//! nothing about where the work sits.
+//!
 //! # The shared DAG
 //!
 //! Issues use the **same acyclic blocked-by relation as tasks**: gg rejects any edge that would
@@ -85,6 +100,7 @@
 //! [`disabled`](BoardRuntime::disabled) runtime, so there are no board tools, no prompt
 //! text, no context block, no telemetry, and no auto-dispatch — the feature vanishes.
 
+use std::collections::HashMap;
 use std::fmt;
 use std::sync::{Arc, Mutex};
 
@@ -105,6 +121,19 @@ pub const DEFAULT_MAX_EPICS: usize = 50;
 /// the run's decomposition of a large build, and a long run legitimately files thousands of
 /// issues against it — but bounded so a runaway loop cannot fill the window with issues.
 pub const DEFAULT_MAX_ISSUES: usize = 2000;
+
+/// The fewest letters an [epic](Epic)'s prefix may have. Three is enough to be a mnemonic
+/// (`API`, `WEB`) and short enough that nothing shorter would be.
+pub const MIN_PREFIX_LEN: usize = 3;
+
+/// The most letters an [epic](Epic)'s prefix may have. Six keeps an issue id short enough to read
+/// inline and to carry its [agent ids](BoardStore::assign_issue) as a suffix.
+pub const MAX_PREFIX_LEN: usize = 6;
+
+/// The prefix issues filed **without** an epic are numbered under (`ISSUE-1`, `ISSUE-2`, …). Issue
+/// numbering is per prefix, so an epic that happens to be called `ISSUE` shares the sequence rather
+/// than colliding with it.
+pub const UNGROUPED_PREFIX: &str = "ISSUE";
 
 /// Default number of times gg re-dispatches an issue whose assigned agent finished without
 /// completing it before giving up and marking it [`Failed`](IssueStatus::Failed). One retry (so
@@ -365,9 +394,14 @@ impl IssueStatus {
 }
 
 /// One epic on the board: an organizational grouping of related [`Issue`]s.
+///
+/// An epic is created from a **prefix** — 3–6 letters, upper-cased — and that prefix *is* its
+/// [id](Self::id): every issue filed under the epic is numbered from it (`AUTH-1`, `AUTH-2`, …), so
+/// an issue id says which epic its work belongs to without a lookup.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Epic {
-    /// The epic's stable id — the handle an issue's `epic_id` references.
+    /// The epic's stable id — its upper-cased prefix, the handle an issue's `epic_id` references
+    /// and the stem its issue ids are numbered from.
     id: String,
     /// The epic's short title.
     title: String,
@@ -378,7 +412,7 @@ pub struct Epic {
 // Field accessors are the epic's read surface for the tests and console-facing derivations.
 #[allow(dead_code)]
 impl Epic {
-    /// The epic's id.
+    /// The epic's id — equivalently, its prefix.
     pub fn id(&self) -> &str {
         &self.id
     }
@@ -399,9 +433,16 @@ impl Epic {
 /// The structured [`in_scope`](Self::in_scope), [`out_of_scope`](Self::out_of_scope), and
 /// [`completion_criteria`](Self::completion_criteria) fields are what make an issue safe to
 /// hand to an agent — they are the assigned agent's brief.
+///
+/// Its [id](Self::id) is **gg's**, not the model's: the store numbers it under its
+/// [epic](Self::epic_id)'s prefix ([`AUTH-1`](BoardStore::create_issue)), and the ids of the agents
+/// that work it are derived from *that* ([`AUTH-1.0i`](BoardStore::assign_issue), whose reviewers
+/// are [`AUTH-1.0i.0r`](BoardStore::next_review_agent_id) …). One name therefore places a piece of
+/// work, the attempt at it, and the review of that attempt.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Issue {
-    /// The issue's stable id — the handle the tools and every blocked-by edge reference.
+    /// The issue's stable id — the handle the tools and every blocked-by edge reference. Assigned
+    /// by the store as `PREFIX-N`; never supplied by the model.
     id: String,
     /// The issue's short title.
     title: String,
@@ -438,6 +479,17 @@ pub struct Issue {
     /// without completing it. `0` until the first retry; bounded by
     /// [`max_retries`](BoardCaps::max_retries).
     retries: u32,
+    /// How many **implementer** agents the store has minted for this issue — the counter its
+    /// [agent ids](BoardStore::assign_issue) are numbered from, so the *n*th attempt (a first
+    /// dispatch, a retry, or a post-review rework pass) is `{id}.{n}i`. Counts attempts, not
+    /// retries: rework a reviewer asked for mints an agent without charging the
+    /// [retry budget](Self::retries).
+    agent_seq: u32,
+    /// How many **reviewer** agents the store has minted under the *current*
+    /// [implementer](Self::assigned_agent) — the counter
+    /// [`next_review_agent_id`](BoardStore::next_review_agent_id) numbers from. Reset whenever a new
+    /// implementer is minted, since a reviewer's id is suffixed onto that implementer's.
+    review_seq: u32,
 }
 
 // Field accessors are the issue's read surface for the tests, the console-facing derivations,
@@ -510,6 +562,18 @@ impl Issue {
     pub fn retries(&self) -> u32 {
         self.retries
     }
+
+    /// Mint the id of this issue's **next implementer** — `{id}.{n}i`, `n` counting the attempts
+    /// made at it — record it as the issue's [assignment](Self::assigned_agent), and restart the
+    /// reviewer numbering (a reviewer is named under the implementer whose work it reviews, so a new
+    /// implementer starts a new reviewer sequence).
+    fn mint_implementer(&mut self) -> String {
+        let agent_id = format!("{}.{}i", self.id, self.agent_seq);
+        self.agent_seq += 1;
+        self.review_seq = 0;
+        self.assigned_agent = Some(agent_id.clone());
+        agent_id
+    }
 }
 
 impl DagNode for Issue {
@@ -529,10 +593,10 @@ impl DagNode for Issue {
 pub enum BoardError {
     /// A required field was empty.
     EmptyField(&'static str),
-    /// `create_epic` named an epic whose id already exists.
+    /// `create_epic` was given something that is not a 3–6 letter prefix.
+    InvalidPrefix(String),
+    /// `create_epic` named an epic whose prefix is already taken.
     DuplicateEpic(String),
-    /// `create_issue` named an issue whose id already exists.
-    DuplicateIssue(String),
     /// A tool named an epic id that does not exist.
     EpicNotFound(String),
     /// A tool named an issue id that does not exist.
@@ -566,14 +630,16 @@ impl fmt::Display for BoardError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             BoardError::EmptyField(field) => write!(f, "`{field}` must not be empty."),
+            BoardError::InvalidPrefix(raw) => write!(
+                f,
+                "`prefix` must be {MIN_PREFIX_LEN} to {MAX_PREFIX_LEN} letters (a-z) and nothing \
+                 else; `{raw}` is not. It names this epic's issues (a prefix of `AUTH` numbers them \
+                 `AUTH-1`, `AUTH-2`, …), so choose a short mnemonic for what the epic covers."
+            ),
             BoardError::DuplicateEpic(id) => write!(
                 f,
-                "an epic with id `{id}` already exists; choose a different id."
-            ),
-            BoardError::DuplicateIssue(id) => write!(
-                f,
-                "an issue with id `{id}` already exists; use `update_issue` to revise it, or \
-                 choose a different id."
+                "an epic with the prefix `{id}` already exists; choose a different prefix (it is \
+                 what this epic's issues are numbered under)."
             ),
             BoardError::EpicNotFound(id) => write!(
                 f,
@@ -619,12 +685,12 @@ impl fmt::Display for BoardError {
 }
 
 /// What a successful [`BoardStore`] mutation did — the tool reports this in its confirmation.
+///
+/// The two **creations** are absent: they hand back the id the store assigned
+/// ([`create_epic`](BoardStore::create_epic), [`create_issue`](BoardStore::create_issue)) rather than
+/// a bare "it worked", because the caller cannot name what it just made otherwise.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BoardChange {
-    /// An epic was created.
-    EpicCreated,
-    /// An issue was created.
-    IssueCreated,
     /// An issue was revised.
     IssueUpdated,
     /// An issue's blocked-by set was replaced.
@@ -676,11 +742,10 @@ impl IssueUpdate<'_> {
 /// positional list, because an issue is the one board node with ten of them.
 ///
 /// [`agent`](Self::agent) and [`reviewers`](Self::reviewers) are the assignment half: who gg
-/// dispatches the issue to, and who must approve it. The rest are the issue's own content.
+/// dispatches the issue to, and who must approve it. The rest are the issue's own content. There is
+/// no `id`: the store [assigns](BoardStore::create_issue) one from the issue's epic prefix.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct NewIssue<'a> {
-    /// The issue's stable id — unique across the board.
-    pub id: &'a str,
     /// The issue's short title.
     pub title: &'a str,
     /// An optional longer overview.
@@ -715,6 +780,11 @@ pub struct BoardStore {
     caps: BoardCaps,
     epics: Vec<Epic>,
     issues: Vec<Issue>,
+    /// The next issue number to hand out per prefix. Kept as a **counter** rather than derived from
+    /// the issues on the board, so removing an issue never lets its id be handed out a second time —
+    /// an id already quoted in a log, a brief, or an agent's name must not come back meaning
+    /// something else.
+    next_number: HashMap<String, u32>,
 }
 
 impl BoardStore {
@@ -724,6 +794,7 @@ impl BoardStore {
             caps,
             epics: Vec::new(),
             issues: Vec::new(),
+            next_number: HashMap::new(),
         }
     }
 
@@ -754,19 +825,22 @@ impl BoardStore {
         &self.issues
     }
 
-    /// Create a new epic. Refused if `id`/`title`/`description` is empty, an epic of that id
-    /// already exists, or the board is at the epic cap.
+    /// Create a new epic from `prefix` — 3–6 letters, **upper-cased**, which becomes the epic's
+    /// [id](Epic::id) and the stem its issues are numbered from — returning that id.
+    ///
+    /// Refused if `prefix` is not 3–6 letters, `title`/`description` is empty, an epic already holds
+    /// that prefix, or the board is at the epic cap.
     pub fn create_epic(
         &mut self,
-        id: &str,
+        prefix: &str,
         title: &str,
         description: &str,
-    ) -> Result<BoardChange, BoardError> {
-        let id = require_field(id, "id")?;
+    ) -> Result<String, BoardError> {
+        let id = normalize_prefix(prefix)?;
         let title = require_field(title, "title")?;
         let description = require_field(description, "description")?;
-        if self.epic_position(id).is_some() {
-            return Err(BoardError::DuplicateEpic(id.to_string()));
+        if self.epic_position(&id).is_some() {
+            return Err(BoardError::DuplicateEpic(id));
         }
         if self.epics.len() >= self.caps.max_epics {
             return Err(BoardError::CountCap {
@@ -775,35 +849,37 @@ impl BoardStore {
             });
         }
         self.epics.push(Epic {
-            id: id.to_string(),
+            id: id.clone(),
             title: title.to_string(),
             description: description.to_string(),
         });
-        Ok(BoardChange::EpicCreated)
+        Ok(id)
     }
 
-    /// Create a new issue with its structured sections. Refused if a required field
-    /// (`id`/`title`/`inScope`/`outOfScope`/`completionCriteria`/`agent`) is empty, an issue of
-    /// that id already exists, the board is at the issue cap, an `epic_id` names a non-existent
-    /// epic, a `blocked_by` entry is empty/self/unknown, or an edge would create a cycle. A newly
-    /// created issue has no dependents, so its only DAG failure is referencing a non-existent
-    /// blocker.
+    /// Create a new issue with its structured sections, **assigning its id** and returning it.
+    ///
+    /// The id is the issue's [epic](NewIssue::epic_id)'s prefix and the next number under that
+    /// prefix — `AUTH-1`, `AUTH-2`, … — or the same under [`ISSUE`](UNGROUPED_PREFIX) for an issue
+    /// filed without an epic. The model does not choose it: an id it invented would say nothing
+    /// about where the work sits, and two agents filing against one shared board would collide on it.
+    ///
+    /// Refused if a required field (`title`/`inScope`/`outOfScope`/`completionCriteria`/`agent`) is
+    /// empty, the board is at the issue cap, an `epic_id` names a non-existent epic, or a
+    /// `blocked_by` entry is empty or unknown. A newly created issue has no dependents and no id the
+    /// caller could have referenced, so it cannot close a cycle or block itself: naming a
+    /// non-existent blocker is its only DAG failure.
     ///
     /// The store checks that the [assignee](NewIssue::agent) and each
     /// [reviewer](NewIssue::reviewers) is *named*; checking that they are profiles the **filing
     /// agent** may assign to is the [tool](crate::tools::board)'s job, since the store is shared
     /// by every agent in the run and that rule is per agent.
-    pub fn create_issue(&mut self, issue: NewIssue<'_>) -> Result<BoardChange, BoardError> {
-        let id = require_field(issue.id, "id")?;
+    pub fn create_issue(&mut self, issue: NewIssue<'_>) -> Result<String, BoardError> {
         let title = require_field(issue.title, "title")?;
         let in_scope = require_field(issue.in_scope, "inScope")?;
         let out_of_scope = require_field(issue.out_of_scope, "outOfScope")?;
         let completion_criteria = require_field(issue.completion_criteria, "completionCriteria")?;
         let agent = require_field(issue.agent, "agent")?;
         let reviewers = normalize_names(issue.reviewers, "reviewers")?;
-        if self.issue_position(id).is_some() {
-            return Err(BoardError::DuplicateIssue(id.to_string()));
-        }
         if self.issues.len() >= self.caps.max_issues {
             return Err(BoardError::CountCap {
                 kind: "issue",
@@ -811,15 +887,13 @@ impl BoardStore {
             });
         }
         let epic_id = self.resolve_epic_grouping(issue.epic_id)?;
-        let blockers = self.normalize_blockers(id, issue.blocked_by)?;
-        if let Some(blocker) = dag::first_cycle(&self.issues, id, &blockers) {
-            return Err(BoardError::Cycle {
-                issue: id.to_string(),
-                blocker,
-            });
-        }
+        let blockers = self.normalize_blockers("", issue.blocked_by)?;
+        // The number is handed out only once every other field has passed validation, so a refused
+        // call never burns one and leaves a hole in the epic's sequence. A newly created issue has no
+        // dependents, so there is no cycle to check for — only the blocker existence checked above.
+        let id = self.allocate_issue_id(epic_id.as_deref());
         self.issues.push(Issue {
-            id: id.to_string(),
+            id: id.clone(),
             title: title.to_string(),
             description: clean_optional(issue.description),
             in_scope: in_scope.to_string(),
@@ -832,8 +906,26 @@ impl BoardStore {
             reviewers,
             assigned_agent: None,
             retries: 0,
+            agent_seq: 0,
+            review_seq: 0,
         });
-        Ok(BoardChange::IssueCreated)
+        Ok(id)
+    }
+
+    /// Hand out the next id under `epic_id`'s prefix (or [`ISSUE`](UNGROUPED_PREFIX) when the issue
+    /// is ungrouped), advancing that prefix's counter. Skips any number a live issue already holds —
+    /// which a board built only through this method never has, and which keeps the invariant true
+    /// even so.
+    fn allocate_issue_id(&mut self, epic_id: Option<&str>) -> String {
+        let prefix = epic_id.unwrap_or(UNGROUPED_PREFIX).to_string();
+        loop {
+            let next = self.next_number.entry(prefix.clone()).or_insert(1);
+            let id = format!("{prefix}-{next}");
+            *next += 1;
+            if self.issue_position(&id).is_none() {
+                return id;
+            }
+        }
     }
 
     /// Revise an issue's fields and/or status in place. At least one field must be supplied.
@@ -973,45 +1065,63 @@ impl BoardStore {
             .collect()
     }
 
-    /// **Claim** the [`Open`](IssueStatus::Open) issue `id` for the agent `agent_id`: move it to
-    /// [`InProgress`](IssueStatus::InProgress) and record the assignment. Returns `false` — the
-    /// issue is left untouched — if no such issue exists or it is no longer open-and-unassigned
-    /// (a concurrent pump already claimed it, or it reached a terminal state). This is the atomic
-    /// step that makes dispatch race-free: the [dispatcher](crate::agent) mints an agent id, then
-    /// claims here, and only spawns when the claim succeeds.
-    pub fn assign_issue(&mut self, id: &str, agent_id: &str) -> bool {
-        let Some(index) = self.issue_position(id) else {
-            return false;
-        };
+    /// **Claim** the [`Open`](IssueStatus::Open) issue `id`: mint the agent id of its next
+    /// implementer, move the issue to [`InProgress`](IssueStatus::InProgress), record the
+    /// assignment, and return that agent id. Returns `None` — the issue left untouched, no id
+    /// minted — if no such issue exists or it is no longer open-and-unassigned (a concurrent pump
+    /// already claimed it, or it reached a terminal state).
+    ///
+    /// Minting and claiming are one step precisely because the id is **derived from the issue**
+    /// (`AUTH-1` → `AUTH-1.0i`, then `AUTH-1.1i`): a caller that minted first and lost the claim
+    /// would have consumed an attempt number the winning agent then skipped. That the two cannot be
+    /// separated is what keeps dispatch race-free *and* the numbering dense.
+    pub fn assign_issue(&mut self, id: &str) -> Option<String> {
+        let index = self.issue_position(id)?;
         let issue = &mut self.issues[index];
         if issue.status != IssueStatus::Open || issue.assigned_agent.is_some() {
-            return false;
+            return None;
         }
         issue.status = IssueStatus::InProgress;
-        issue.assigned_agent = Some(agent_id.to_string());
-        true
+        Some(issue.mint_implementer())
     }
 
     /// **Re-dispatch** the issue `id` to a fresh agent — after a failed attempt, or after a review
-    /// requested changes: reassign it to `agent_id`, move it back to
-    /// [`InProgress`](IssueStatus::InProgress), and record its new [retry count](Issue::retries)
-    /// (a review round passes the count through unchanged, since rework is not a failed attempt).
-    /// Returns `false` (untouched) if no such issue exists or it has already reached a terminal
-    /// state. Unlike [`assign_issue`](Self::assign_issue) this does not require the issue to be
-    /// [`Open`](IssueStatus::Open) — a re-dispatch follows an agent that left it
+    /// requested changes: mint the next implementer's agent id, move the issue back to
+    /// [`InProgress`](IssueStatus::InProgress), record its new [retry count](Issue::retries) (a
+    /// review round passes the count through unchanged, since rework is not a failed attempt), and
+    /// return that agent id. Returns `None` (untouched) if no such issue exists or it has already
+    /// reached a terminal state. Unlike [`assign_issue`](Self::assign_issue) this does not require
+    /// the issue to be [`Open`](IssueStatus::Open) — a re-dispatch follows an agent that left it
     /// [`InProgress`](IssueStatus::InProgress) or [`InReview`](IssueStatus::InReview).
-    pub fn redispatch_issue(&mut self, id: &str, agent_id: &str, retries: u32) -> bool {
-        let Some(index) = self.issue_position(id) else {
-            return false;
-        };
+    pub fn redispatch_issue(&mut self, id: &str, retries: u32) -> Option<String> {
+        let index = self.issue_position(id)?;
         let issue = &mut self.issues[index];
         if issue.status.is_terminal() {
-            return false;
+            return None;
         }
         issue.status = IssueStatus::InProgress;
-        issue.assigned_agent = Some(agent_id.to_string());
         issue.retries = retries;
-        true
+        Some(issue.mint_implementer())
+    }
+
+    /// Mint the agent id of the next **reviewer** of issue `id`'s current attempt — the assigned
+    /// implementer's own id with a reviewer suffix (`AUTH-1.0i` → `AUTH-1.0i.0r`, `AUTH-1.0i.1r`),
+    /// so a verdict names both the review pass and the work it was passed on. `None` when no such
+    /// issue exists.
+    ///
+    /// An issue with no implementer recorded (which a review cannot normally follow) is numbered
+    /// directly under the issue instead of under a missing agent, so a reviewer always gets a
+    /// unique, issue-scoped name.
+    pub fn next_review_agent_id(&mut self, id: &str) -> Option<String> {
+        let index = self.issue_position(id)?;
+        let issue = &mut self.issues[index];
+        let stem = issue
+            .assigned_agent
+            .clone()
+            .unwrap_or_else(|| issue.id.clone());
+        let seq = issue.review_seq;
+        issue.review_seq += 1;
+        Some(format!("{stem}.{seq}r"))
     }
 
     /// Mark the issue `id` [`Failed`](IssueStatus::Failed) — its retries are exhausted. Returns
@@ -1267,6 +1377,24 @@ impl BoardStore {
             .find(|issue| issue.id == id)
             .map(Issue::reviewers)
     }
+}
+
+/// Normalize an [epic](Epic) prefix: trim it, **upper-case** it, and require 3–6 ASCII letters and
+/// nothing else — no digits, no punctuation, no spaces, because the prefix is joined to a number with
+/// a `-` to make an issue id (and to `.0i` to make an agent's name), and anything else there makes
+/// those unparseable by eye.
+///
+/// Upper-casing rather than refusing lower case is deliberate: `auth` is unambiguously the prefix the
+/// model meant, and rejecting it would spend a turn on a formality.
+fn normalize_prefix(prefix: &str) -> Result<String, BoardError> {
+    let trimmed = prefix.trim();
+    let len = trimmed.chars().count();
+    if !(MIN_PREFIX_LEN..=MAX_PREFIX_LEN).contains(&len)
+        || !trimmed.chars().all(|c| c.is_ascii_alphabetic())
+    {
+        return Err(BoardError::InvalidPrefix(trimmed.to_string()));
+    }
+    Ok(trimmed.to_ascii_uppercase())
 }
 
 /// Trim a required field, refusing an empty (or whitespace-only) value.
@@ -1535,28 +1663,41 @@ impl BoardRuntime {
             .dispatchable_ids()
     }
 
-    /// [Claim](BoardStore::assign_issue) the issue `id` for agent `agent_id`, returning whether the
-    /// claim succeeded. `false` when the capability is off.
-    pub fn assign_issue(&self, id: &str, agent_id: &str) -> bool {
+    /// [Claim](BoardStore::assign_issue) the issue `id`, returning the id of the implementer agent
+    /// the store minted for it, or `None` when the claim was lost (or the capability is off).
+    pub fn assign_issue(&self, id: &str) -> Option<String> {
         if !self.enabled {
-            return false;
+            return None;
         }
         self.store
             .lock()
             .expect("board store lock")
-            .assign_issue(id, agent_id)
+            .assign_issue(id)
     }
 
-    /// [Re-dispatch](BoardStore::redispatch_issue) the issue `id` to `agent_id` with a new retry
-    /// count, returning whether it was applied. `false` when the capability is off.
-    pub fn redispatch_issue(&self, id: &str, agent_id: &str, retries: u32) -> bool {
+    /// [Re-dispatch](BoardStore::redispatch_issue) the issue `id` with a new retry count, returning
+    /// the id of the implementer agent the store minted for the attempt, or `None` when the issue is
+    /// terminal or gone (or the capability is off).
+    pub fn redispatch_issue(&self, id: &str, retries: u32) -> Option<String> {
         if !self.enabled {
-            return false;
+            return None;
         }
         self.store
             .lock()
             .expect("board store lock")
-            .redispatch_issue(id, agent_id, retries)
+            .redispatch_issue(id, retries)
+    }
+
+    /// Mint the [next reviewer's agent id](BoardStore::next_review_agent_id) for issue `id`, or
+    /// `None` when no such issue exists (or the capability is off).
+    pub fn next_review_agent_id(&self, id: &str) -> Option<String> {
+        if !self.enabled {
+            return None;
+        }
+        self.store
+            .lock()
+            .expect("board store lock")
+            .next_review_agent_id(id)
     }
 
     /// Mark the issue `id` [`Failed`](IssueStatus::Failed), returning whether it was applied.
@@ -1572,3 +1713,7 @@ impl BoardRuntime {
 #[cfg(test)]
 #[path = "board.test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "board.identifiers.test.rs"]
+mod identifier_tests;

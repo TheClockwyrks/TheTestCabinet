@@ -13,7 +13,7 @@ binary/generated artifacts** in the Rust crate:
 
 | Artifact | What it is |
 | --- | --- |
-| [`crates/gg/src/sandbox/gg-sandbox.component.wasm`](../../crates/gg/src/sandbox/) | The baked component, `include_bytes!`d by the host. **13,482,077 bytes** (12.9 MiB) as committed. |
+| [`crates/gg/src/sandbox/gg-sandbox.component.wasm`](../../crates/gg/src/sandbox/) | The baked component, `include_bytes!`d by the host. **13,720,745 bytes** (13.1 MiB) as committed. |
 | [`crates/gg/src/sandbox/signatures.json`](../../crates/gg/src/sandbox/) | The signature catalogue, `include_str!`d and rendered into the system prompt. |
 
 ## Layout

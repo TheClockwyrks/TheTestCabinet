@@ -8,7 +8,8 @@ scoped to one agent, the board is one thing the whole run plans against, and it 
 what turns gg from a single agent into a fleet working a backlog.
 
 - **Epics** group related issues together — organization only, no behaviour of
-  their own.
+  their own. An epic is created from a **3–6 letter prefix** (upper-cased: `auth`
+  becomes `AUTH`), and that prefix is its id.
 - **Issues** are heavier than tasks. Instead of just a title and description, an
   issue has structured sections: **title**, optional **description**, **in-scope**,
   **out-of-scope**, and **completion criteria**. The explicit scope boundaries and
@@ -16,6 +17,16 @@ what turns gg from a single agent into a fleet working a backlog.
   tell it exactly what it is and is not responsible for, and how it will be judged
   done. An issue also names the **agent** it is assigned to and, optionally, the
   **reviewers** that must approve it (both below).
+- **gg names the work, not the model.** An issue's id is **assigned**: it is its
+  epic's prefix and the next number under it — `AUTH-1`, `AUTH-2`, … (`ISSUE-1` for
+  an issue filed with no epic) — and reported back to whoever filed it. The agents
+  gg dispatches are named from *that* in turn: the *n*th agent to implement `AUTH-1`
+  is `AUTH-1.0i`, `AUTH-1.1i`, … (`i` for implementer), and the reviewers of one
+  implementer's work are `AUTH-1.0i.0r`, `AUTH-1.0i.1r` (`r` for reviewer). One name
+  therefore locates a piece of work, which attempt at it, and which review of that
+  attempt — which is what keeps a fleet of concurrent agents legible in the logs, the
+  telemetry, and the console's Agents tree. A model choosing ids could not do that:
+  it cannot know what the other agents sharing the board have already used.
 - Issues form a **blocked-by DAG** — an issue can be blocked by one or more others,
   and the relation must stay acyclic. gg rejects any edge that would introduce a
   cycle, including on submit.
@@ -142,8 +153,13 @@ moves the issue to **in_review**, and then:
 
 There is deliberately **no cycle limit** — a review that keeps finding real problems
 should keep finding them — and a review round does **not** burn the issue's retry
-budget, since rework a reviewer asked for is not a failed attempt. The lifecycle is
-streamed as `issue_review` telemetry and rendered as a per-issue badge on the board.
+budget, since rework a reviewer asked for is not a failed attempt.
+
+The lifecycle is streamed as `issue_review` telemetry, carrying **who** said what: the
+reviewer that ended a round by requesting changes (with its items) and the reviewers
+that approved during it, each as the agent id *and* the profile it ran under. The
+console's **Project** tab turns that into one `Review N` entry per round under the
+issue, so a round's feedback stays readable after the issue has moved on.
 
 An issue that names **no** reviewers is accepted as soon as its agent finishes, and
 merged just the same.
@@ -176,6 +192,10 @@ Two things about the board *are* per-agent, and each is a slider in the capabili
 Board tools: `create_epic`, `create_issue`, `update_issue`, `set_issue_blocked_by`,
 `remove_epic`, `remove_issue`, plus `wait_for_issue`. There is deliberately no
 completion tool — see [auto-dispatch](#auto-dispatch).
+
+`create_epic` takes a **`prefix`** (3–6 letters) rather than an id, and `create_issue`
+takes **no id at all**: both ids are gg's to assign, and both calls report back the id
+they were given.
 
 | Param | Default | Meaning |
 | --- | --- | --- |

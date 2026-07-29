@@ -102,18 +102,19 @@ pub const DEFAULT_MOCK_TASK_SCAFFOLD: &str = "scaffold";
 /// blocked by [`DEFAULT_MOCK_TASK_SCAFFOLD`] — the demonstrated blocked-by edge.
 pub const DEFAULT_MOCK_TASK_MOVEMENT: &str = "movement";
 
-/// The id of the epic the [default mock script](MockClient::with_default_script) creates, so an
-/// offline run with the project-management capability demonstrates the board.
-pub const DEFAULT_MOCK_EPIC: &str = "core-loop";
+/// The prefix — and so the id — of the epic the [default mock script](MockClient::with_default_script)
+/// creates, so an offline run with the project-management capability demonstrates the board.
+pub const DEFAULT_MOCK_EPIC: &str = "CORE";
 
 /// The id of the first issue the [default mock script](MockClient::with_default_script) creates
 /// (grouped under [`DEFAULT_MOCK_EPIC`]), which the second issue is blocked by (and which a
-/// later attempt tries to cyclically block on the second).
-pub const DEFAULT_MOCK_ISSUE_RENDER: &str = "render-loop";
+/// later attempt tries to cyclically block on the second). Numbered by the board, not chosen by the
+/// script.
+pub const DEFAULT_MOCK_ISSUE_RENDER: &str = "CORE-1";
 
 /// The id of the second issue the [default mock script](MockClient::with_default_script) creates,
 /// blocked by [`DEFAULT_MOCK_ISSUE_RENDER`] — the demonstrated board blocked-by edge.
-pub const DEFAULT_MOCK_ISSUE_INPUT: &str = "input-handling";
+pub const DEFAULT_MOCK_ISSUE_INPUT: &str = "CORE-2";
 
 /// The deterministic summary the [`MockClient`] returns for a
 /// [compaction](crate::compaction) summary request, so an offline run crosses a real
@@ -774,6 +775,10 @@ pub struct MockClient {
     model_id: String,
     script: Vec<ModelResponse>,
     cursor: AtomicUsize,
+    /// Whether this mock replays the [default script](Self::with_default_script), whose board turns
+    /// must not run again inside an agent the board itself dispatched. See
+    /// [`complete`](ModelClient::complete).
+    default_script: bool,
 }
 
 impl MockClient {
@@ -783,6 +788,7 @@ impl MockClient {
             model_id: model_id.into(),
             script,
             cursor: AtomicUsize::new(0),
+            default_script: false,
         }
     }
 
@@ -820,8 +826,8 @@ impl MockClient {
     ///    **cycle**, which gg refuses (the tool result comes back `ok: false`), demonstrating
     ///    the DAG's acyclicity guard;
     /// 6. `complete_task` marks the scaffold task done (so the movement task becomes ready);
-    /// 7. `create_epic` opens the [`DEFAULT_MOCK_EPIC`] epic (the project-management capability's
-    ///    grouping);
+    /// 7. `create_epic` opens the epic prefixed [`DEFAULT_MOCK_EPIC`] (the project-management
+    ///    capability's grouping);
     /// 8. `create_issue` adds the [`DEFAULT_MOCK_ISSUE_RENDER`] issue (structured scope +
     ///    completion criteria), grouped under the epic;
     /// 9. `create_issue` adds the [`DEFAULT_MOCK_ISSUE_INPUT`] issue **blocked by** the render
@@ -977,7 +983,7 @@ impl MockClient {
                 id: "call_create_epic".to_string(),
                 name: "create_epic".to_string(),
                 arguments: json!({
-                    "id": DEFAULT_MOCK_EPIC,
+                    "prefix": DEFAULT_MOCK_EPIC,
                     "title": "Core game loop",
                     "description": "Everything needed to render and drive the playable loop.",
                 }),
@@ -1000,7 +1006,6 @@ impl MockClient {
                 id: "call_create_render".to_string(),
                 name: "create_issue".to_string(),
                 arguments: json!({
-                    "id": DEFAULT_MOCK_ISSUE_RENDER,
                     "title": "Render loop on the canvas",
                     "inScope": "Clear the canvas each frame and draw the player and goal.",
                     "outOfScope": "Input handling and win detection (separate issues).",
@@ -1027,7 +1032,6 @@ impl MockClient {
                 id: "call_create_input".to_string(),
                 name: "create_issue".to_string(),
                 arguments: json!({
-                    "id": DEFAULT_MOCK_ISSUE_INPUT,
                     "title": "Arrow-key input handling",
                     "inScope": "Read arrow keys and move the player within the canvas bounds.",
                     "outOfScope": "Rendering (the render-loop issue owns drawing).",
@@ -1113,23 +1117,26 @@ impl MockClient {
                 actual: Some(0.0021),
             }),
         };
-        Self::new(
-            model_id,
-            vec![
-                read_skill_call,
-                write_memory_call,
-                add_scaffold_task,
-                add_movement_task,
-                cyclic_edge,
-                complete_scaffold_task,
-                create_epic,
-                create_render_issue,
-                create_input_issue,
-                cyclic_issue_edge,
-                write_call,
-                finish,
-            ],
-        )
+        Self {
+            default_script: true,
+            ..Self::new(
+                model_id,
+                vec![
+                    read_skill_call,
+                    write_memory_call,
+                    add_scaffold_task,
+                    add_movement_task,
+                    cyclic_edge,
+                    complete_scaffold_task,
+                    create_epic,
+                    create_render_issue,
+                    create_input_issue,
+                    cyclic_issue_edge,
+                    write_call,
+                    finish,
+                ],
+            )
+        }
     }
 
     /// A script exercising [agent-managed context](crate::tools) offline end to end:
@@ -1461,7 +1468,8 @@ impl MockClient {
     /// slot in — since the root, the agent gg auto-dispatches to implement the issue, and each fix
     /// agent the review loop dispatches all resolve the primary slot:
     ///
-    /// - **the root**: `create_epic` + `create_issue` (id [`MOCK_ISSUE_REVIEW_ISSUE_ID`], with scope
+    /// - **the root**: `create_epic` (prefix [`MOCK_ISSUE_REVIEW_PREFIX`]) + `create_issue`, which gg
+    ///   numbers `RVIEW-1` (the call carries the scope
     ///   and completion criteria), then finish — submitting the issue auto-dispatches an agent to
     ///   implement it;
     /// - **the dispatched issue agent** (its brief is the issue's structured fields): do the initial
@@ -1877,9 +1885,10 @@ pub const MOCK_SUBAGENT_RETURN: &str = "Subagent done: wrote the greeting file."
 /// model).
 pub const MOCK_REVIEWER_AGENT: &str = "reviewer";
 
-/// The id of the issue the [issue-review parent script](MockClient::with_issue_review_parent_script)
-/// creates, dispatches, and completes — the issue its reviewer gates.
-pub const MOCK_ISSUE_REVIEW_ISSUE_ID: &str = "review-issue";
+/// The prefix of the epic the [issue-review parent script](MockClient::with_issue_review_parent_script)
+/// creates — and so the stem of the one issue it files, which the board numbers `RVIEW-1`. The id
+/// itself is not a constant here because it is **gg's** to assign, not the script's to declare.
+pub const MOCK_ISSUE_REVIEW_PREFIX: &str = "RVIEW";
 
 /// The test file the [`tdd` FSM script](MockClient::with_fsm_tdd_script) writes in its `write_tests`
 /// state — the evidence that lets the machine advance to `implement`.
@@ -1958,6 +1967,24 @@ impl ModelClient for MockClient {
             });
         }
 
+        // An agent the **board dispatched**, built from the default script: it reports the issue's
+        // work done and stops, instead of replaying the script's board-authoring turns.
+        //
+        // This is not a convenience. Issue ids are gg's to assign, so re-running `create_epic` /
+        // `create_issue` inside a dispatched agent no longer collides with what the root filed — it
+        // files a *fresh* epic and two fresh issues, each of which dispatches another agent that
+        // files another copy. A script whose whole point is to demonstrate the board offline must not
+        // be the thing that recurses through it.
+        if self.default_script && messages_contain(messages, MOCK_ISSUE_BRIEF_HEADING) {
+            return Ok(ModelResponse {
+                text: Some("The work described in the issue's brief is complete.".to_string()),
+                tool_calls: Vec::new(),
+                finish_reason: FinishReason::Stop,
+                usage: TokenCounts::default(),
+                cost: None,
+            });
+        }
+
         // An issue-review **parent** (offline e2e): message-driven so one `issue-review-parent` model
         // plays all three roles the auto-dispatch model routes to the primary slot — the root that
         // files the issue, the agent gg auto-dispatches to implement it, and that same agent when a
@@ -2004,7 +2031,7 @@ impl ModelClient for MockClient {
                         "Setting up the board.",
                         "create_epic",
                         json!({
-                            "id": "review-epic",
+                            "prefix": MOCK_ISSUE_REVIEW_PREFIX,
                             "title": "The build",
                             "description": "The work for this session.",
                         }),
@@ -2014,12 +2041,11 @@ impl ModelClient for MockClient {
                         "Filing the issue; gg will dispatch an agent to implement it.",
                         "create_issue",
                         json!({
-                            "id": MOCK_ISSUE_REVIEW_ISSUE_ID,
                             "title": "Implement the feature",
                             "inScope": "Write the feature files.",
                             "outOfScope": "Anything unrelated to the feature.",
                             "completionCriteria": "The feature is implemented and the review fix marker is present.",
-                            "epicId": "review-epic",
+                            "epicId": MOCK_ISSUE_REVIEW_PREFIX,
                             "agent": ROOT_AGENT,
                             "reviewers": [MOCK_REVIEWER_AGENT],
                         }),

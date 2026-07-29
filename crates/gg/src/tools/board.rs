@@ -26,8 +26,8 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 
 use super::{
-    ArgumentError, BoardUsageData, Tool, ToolContext, ToolData, ToolFailure, ToolOutcome,
-    invalid_argument, optional_str, required_str, saturating_u32,
+    ArgumentError, BoardNodeData, BoardUsageData, Tool, ToolContext, ToolData, ToolFailure,
+    ToolOutcome, invalid_argument, optional_str, required_str, saturating_u32,
 };
 use crate::board::{
     BoardChange, BoardError, BoardStore, IssuePolicy, IssueStatus, IssueUpdate, NewIssue,
@@ -85,26 +85,40 @@ fn usage_data(store: &BoardStore) -> ToolData {
     })
 }
 
+/// The [board usage](usage_data) plus the id the store just assigned — the sidecar the two creations
+/// carry, since their caller cannot name what it filed otherwise.
+fn board_node_data(id: &str, store: &BoardStore) -> ToolData {
+    let ToolData::BoardUsage(board) = usage_data(store) else {
+        unreachable!("usage_data yields BoardUsage")
+    };
+    ToolData::BoardNode(BoardNodeData {
+        id: id.to_string(),
+        board,
+    })
+}
+
 /// Classify a [`BoardStore`] refusal, at the one place its error type is matched.
 ///
 /// The store's [`Display`](std::fmt::Display) is the model-facing guidance; this mapping is what a
 /// caller branches on, and it is derived from the variant rather than from that text.
 fn failure_for(err: &BoardError) -> ToolFailure {
     match err {
-        // The call itself was malformed: an empty field, or a revision that revises nothing.
-        BoardError::EmptyField(_) | BoardError::NoUpdateFields => ToolFailure::InvalidArgument,
+        // The call itself was malformed: an empty field, a prefix that is not one, or a revision
+        // that revises nothing.
+        BoardError::EmptyField(_) | BoardError::InvalidPrefix(_) | BoardError::NoUpdateFields => {
+            ToolFailure::InvalidArgument
+        }
         // A named epic or issue is simply not on the board — the same recovery whether it was
         // named as the subject, as a blocker, or as an `epicId`.
         BoardError::EpicNotFound(_)
         | BoardError::IssueNotFound(_)
         | BoardError::BlockerNotFound(_)
         | BoardError::UnknownEpic(_) => ToolFailure::NotFound,
-        // Well-formed, but irreconcilable with the board as it stands: a taken id, or an edge that
-        // would close a loop (a self-block being the one-node case of exactly that).
-        BoardError::DuplicateEpic(_)
-        | BoardError::DuplicateIssue(_)
-        | BoardError::SelfBlock(_)
-        | BoardError::Cycle { .. } => ToolFailure::Conflict,
+        // Well-formed, but irreconcilable with the board as it stands: a taken prefix, or an edge
+        // that would close a loop (a self-block being the one-node case of exactly that).
+        BoardError::DuplicateEpic(_) | BoardError::SelfBlock(_) | BoardError::Cycle { .. } => {
+            ToolFailure::Conflict
+        }
         BoardError::CountCap { .. } => ToolFailure::LimitExceeded,
     }
 }
@@ -170,27 +184,32 @@ impl Tool for CreateEpicTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
             CREATE_EPIC_TOOL,
-            "Create an epic to group related issues. Provide a unique `id` (a short slug you \
-             will reference from issues), a `title`, and a `description` of what the epic \
-             covers.",
+            "Create an epic to group related issues. Provide a `prefix` of 3-6 letters naming the \
+             epic (upper-cased for you — a prefix of `auth` becomes `AUTH`), a `title`, and a \
+             `description` of what the epic covers. The prefix is the epic's id, and the issues you \
+             file under it are numbered from it: `AUTH-1`, `AUTH-2`, and so on.",
             json!({
                 "type": "object",
                 "properties": {
-                    "id": { "type": "string", "description": "A short, unique id for the epic." },
+                    "prefix": {
+                        "type": "string",
+                        "description": "A 3-6 letter prefix naming the epic (upper-cased); its \
+                                        issues are numbered from it, e.g. `AUTH-1`."
+                    },
                     "title": { "type": "string", "description": "A short title for the epic." },
                     "description": {
                         "type": "string",
                         "description": "What this epic covers."
                     }
                 },
-                "required": ["id", "title", "description"],
+                "required": ["prefix", "title", "description"],
                 "additionalProperties": false
             }),
         )
     }
 
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
-        let id = match required_str(&args, "id", CREATE_EPIC_TOOL) {
+        let prefix = match required_str(&args, "prefix", CREATE_EPIC_TOOL) {
             Ok(v) => v,
             Err(error) => return error.into(),
         };
@@ -202,27 +221,33 @@ impl Tool for CreateEpicTool {
             Ok(v) => v,
             Err(error) => return error.into(),
         };
-        self.create_epic(id, title, description)
+        self.create_epic(prefix, title, description)
     }
 }
 
 impl CreateEpicTool {
     /// Create an epic — the **standard, typed** `create_epic` API function both the JSON
     /// [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach.
+    ///
+    /// The confirmation states the id the prefix resolved to (`auth` → `AUTH`) and how its issues
+    /// will be numbered, since that id is what every later call has to reference.
     pub(crate) fn create_epic(
         &self,
-        id: String,
+        prefix: String,
         title: String,
         description: String,
     ) -> ToolOutcome {
         let mut store = self.store.lock().expect("board store lock");
-        match store.create_epic(&id, &title, &description) {
-            Ok(BoardChange::EpicCreated) => ToolOutcome::ok(
-                format!("Created epic `{id}`. {}", usage_note(&store)),
+        match store.create_epic(&prefix, &title, &description) {
+            Ok(id) => ToolOutcome::ok(
+                format!(
+                    "Created epic `{id}`; its issues will be numbered `{id}-1`, `{id}-2`, and so \
+                     on. {}",
+                    usage_note(&store)
+                ),
                 format!("created epic `{id}`"),
             )
-            .with_data(usage_data(&store)),
-            Ok(_) => unreachable!("create_epic yields EpicCreated"),
+            .with_data(board_node_data(&id, &store)),
             Err(err) => ToolOutcome::failed(failure_for(&err), format!("create_epic: {err}")),
         }
     }
@@ -312,7 +337,6 @@ impl Tool for CreateIssueTool {
 
     fn definition(&self) -> ToolDefinition {
         let mut required = vec![
-            "id",
             "title",
             "inScope",
             "outOfScope",
@@ -325,19 +349,19 @@ impl Tool for CreateIssueTool {
         ToolDefinition::new(
             CREATE_ISSUE_TOOL,
             format!(
-                "Create an issue — a heavyweight, self-contained unit of work. Provide a unique \
-                 `id`, a `title`, and the structured sections that make it safe to hand off: \
-                 `inScope` (what this issue is responsible for), `outOfScope` (what it is not), \
-                 and `completionCriteria` (how it will be judged done). Optionally add a \
+                "Create an issue — a heavyweight, self-contained unit of work. Provide a `title` \
+                 and the structured sections that make it safe to hand off: `inScope` (what this \
+                 issue is responsible for), `outOfScope` (what it is not), and \
+                 `completionCriteria` (how it will be judged done). Optionally add a \
                  `description` overview, a `blockedBy` list of issue ids that must finish first \
                  (a cycle is refused — issues form a DAG), and an `epicId` to group it under an \
-                 epic.{}",
+                 epic. You do not choose the issue's id: it is assigned from its epic's prefix \
+                 (`AUTH-1`, `AUTH-2`, …) and reported back to you.{}",
                 self.assignment_guidance()
             ),
             json!({
                 "type": "object",
                 "properties": {
-                    "id": { "type": "string", "description": "A short, unique id for the issue." },
                     "title": { "type": "string", "description": "A short title for the issue." },
                     "description": {
                         "type": "string",
@@ -383,10 +407,6 @@ impl Tool for CreateIssueTool {
     }
 
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
-        let id = match required_str(&args, "id", CREATE_ISSUE_TOOL) {
-            Ok(v) => v,
-            Err(error) => return error.into(),
-        };
         let title = match required_str(&args, "title", CREATE_ISSUE_TOOL) {
             Ok(v) => v,
             Err(error) => return error.into(),
@@ -427,7 +447,6 @@ impl Tool for CreateIssueTool {
             Err(error) => return error.into(),
         };
         self.create_issue(
-            id,
             title,
             description,
             in_scope,
@@ -449,10 +468,13 @@ impl CreateIssueTool {
     /// this agent's [implementers](IssuePolicy::implementers), every reviewer one of its
     /// [reviewers](IssuePolicy::reviewers), and a
     /// [reviewers-required](IssuePolicy::require_reviewers) agent must name at least one.
+    ///
+    /// The id the store assigned is both stated in the confirmation and carried structurally on the
+    /// [`IssueCreated`](ToolData::IssueCreated) sidecar, so a program that files an issue can go on to
+    /// reference it (as a blocker, or in a `wait_for_issue`) without parsing prose.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn create_issue(
         &self,
-        id: String,
         title: String,
         description: Option<String>,
         in_scope: String,
@@ -483,7 +505,6 @@ impl CreateIssueTool {
         }
         let mut store = self.store.lock().expect("board store lock");
         match store.create_issue(NewIssue {
-            id: &id,
             title: &title,
             description: description.as_deref(),
             in_scope: &in_scope,
@@ -494,15 +515,14 @@ impl CreateIssueTool {
             agent: &agent,
             reviewers: &reviewers,
         }) {
-            Ok(BoardChange::IssueCreated) => ToolOutcome::ok(
+            Ok(id) => ToolOutcome::ok(
                 format!(
                     "Created issue `{id}`, assigned to `{agent}`. {}",
                     usage_note(&store)
                 ),
                 format!("created issue `{id}`"),
             )
-            .with_data(usage_data(&store)),
-            Ok(_) => unreachable!("create_issue yields IssueCreated"),
+            .with_data(board_node_data(&id, &store)),
             Err(err) => ToolOutcome::failed(failure_for(&err), format!("create_issue: {err}")),
         }
     }

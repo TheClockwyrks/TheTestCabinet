@@ -629,10 +629,14 @@ export type GgIssueStatus =
  * [`epic_id`](GgBoardIssue::epic_id), a [`title`](Self::title), and a
  * [`description`](Self::description). It carries no status of its own — an epic's progress is
  * read from the status of the issues grouped under it.
+ *
+ * The id is the epic's **prefix**: an epic is created from a 3–6 letter prefix, upper-cased, and
+ * every issue filed under it is numbered from it (`AUTH-1`, `AUTH-2`, …).
  */
 export type GgBoardEpic = {
   /**
-   * The epic's stable id — the handle an issue's `epicId` references.
+   * The epic's stable id — its upper-cased 3–6 letter prefix, which is both the handle an
+   * issue's `epicId` references and the stem its issue ids are numbered from.
    */
   id: string;
   /**
@@ -666,6 +670,10 @@ export type GgBoardIssue = {
   /**
    * The issue's stable id — the handle the other board tools and every `blockedBy`
    * reference use.
+   *
+   * gg assigns it: it is the [epic](GgBoardEpic)'s prefix and the next number under that prefix
+   * (`AUTH-1`, `AUTH-2`, …), so an id says at a glance which epic the work belongs to. An issue
+   * filed without an epic is numbered under `ISSUE`.
    */
   id: string;
   /**
@@ -729,6 +737,11 @@ export type GgBoardIssue = {
    * to that agent in the Agents explorer. `None` while the issue is
    * [`Open`](GgIssueStatus::Open), and after a terminal state carries the last agent that
    * worked it.
+   *
+   * The id is derived from the issue rather than minted from the run's counter: the *n*th agent
+   * dispatched to implement `AUTH-1` is `AUTH-1.0i`, `AUTH-1.1i`, … (`i` for implementer), so a
+   * retry or a post-review rework pass is legible as another attempt at the same issue. Its
+   * [reviewers](GgReviewer) are named under it in turn (`AUTH-1.0i.0r`).
    */
   assignedAgentId?: string;
   /**
@@ -848,6 +861,30 @@ export type GgWorkflowPhase = "started" | "finished";
  * [`Approved`](Self::Approved) (or none, on a clean first pass).
  */
 export type GgIssueReviewPhase = "requested" | "changes_requested" | "approved";
+
+/**
+ * One reviewer that reported a verdict on an [issue review](GgTelemetryKind::IssueReview) — the
+ * agent gg dispatched, and the profile it ran under.
+ *
+ * Both halves are carried because they answer different questions. The
+ * [`agent_id`](Self::agent_id) is the reviewer *instance* — derived from the issue and the
+ * implementer whose work it reviewed (`AUTH-1.0i.0r`), so it names the exact review pass and links
+ * to that agent's own timeline — while the [`profile`](Self::profile) is the
+ * [reviewer profile](GgBoardIssue::reviewers) the issue named, which is what says *what kind* of
+ * review it was.
+ */
+export type GgReviewer = {
+  /**
+   * The id of the agent that conducted this review — the handle its own
+   * [`AgentSpawned`](GgTelemetryKind::AgentSpawned)/[`AgentReturned`](GgTelemetryKind::AgentReturned)
+   * events carry.
+   */
+  agentId: string;
+  /**
+   * The [agent profile](GgBoardIssue::reviewers) the reviewer ran under.
+   */
+  profile: string;
+};
 
 /**
  * The phase of a [speculative execution](https://docs.testcabinet.ai/gg/speculative-execution/) a
@@ -1989,6 +2026,22 @@ export type GgTelemetryKind =
        */
       items?: Array<string>;
       /**
+       * **Who** returned the [`items`](Self::IssueReview::items), on the
+       * [`ChangesRequested`](GgIssueReviewPhase::ChangesRequested) phase — the one reviewer that
+       * ended the round. Absent on the other two phases, and on a stream recorded before reviewer
+       * identity was reported.
+       */
+      reviewer?: GgReviewer;
+      /**
+       * The reviewers that **approved** the work in this round, in the order they ran: every
+       * reviewer on an [`Approved`](GgIssueReviewPhase::Approved) phase, and the ones that
+       * approved *before* the reviewer that ended a
+       * [`ChangesRequested`](GgIssueReviewPhase::ChangesRequested) round. Absent on
+       * [`Requested`](GgIssueReviewPhase::Requested) (nobody has reported yet), and whenever
+       * nobody approved.
+       */
+      approvals?: Array<GgReviewer>;
+      /**
        * The baseline commit the review diffed the work against — the commit the issue's worktree
        * branched from. Absent when no git baseline could be established for the run.
        */
@@ -2701,6 +2754,22 @@ export type GgTelemetryEvent = {
        * [`Approved`](GgIssueReviewPhase::Approved).
        */
       items?: Array<string>;
+      /**
+       * **Who** returned the [`items`](Self::IssueReview::items), on the
+       * [`ChangesRequested`](GgIssueReviewPhase::ChangesRequested) phase — the one reviewer that
+       * ended the round. Absent on the other two phases, and on a stream recorded before reviewer
+       * identity was reported.
+       */
+      reviewer?: GgReviewer;
+      /**
+       * The reviewers that **approved** the work in this round, in the order they ran: every
+       * reviewer on an [`Approved`](GgIssueReviewPhase::Approved) phase, and the ones that
+       * approved *before* the reviewer that ended a
+       * [`ChangesRequested`](GgIssueReviewPhase::ChangesRequested) round. Absent on
+       * [`Requested`](GgIssueReviewPhase::Requested) (nobody has reported yet), and whenever
+       * nobody approved.
+       */
+      approvals?: Array<GgReviewer>;
       /**
        * The baseline commit the review diffed the work against — the commit the issue's worktree
        * branched from. Absent when no git baseline could be established for the run.

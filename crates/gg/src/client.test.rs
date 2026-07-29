@@ -541,20 +541,18 @@ async fn default_mock_script_exercises_every_capability_then_finishes() {
     assert_eq!(complete.name, "complete_task");
     assert_eq!(complete.arguments["id"], json!(DEFAULT_MOCK_TASK_SCAFFOLD));
 
-    // Turn 7 opens the epic.
+    // Turn 7 opens the epic, named by its prefix — which is the id the board gives it.
     let seventh = client.complete(&[], &[]).await.expect("turn 7");
     let create_epic = &seventh.tool_calls[0];
     assert_eq!(create_epic.name, "create_epic");
-    assert_eq!(create_epic.arguments["id"], json!(DEFAULT_MOCK_EPIC));
+    assert_eq!(create_epic.arguments["prefix"], json!(DEFAULT_MOCK_EPIC));
 
-    // Turn 8 creates the render issue (grouped under the epic, with structured scope).
+    // Turn 8 creates the render issue (grouped under the epic, with structured scope). It names no
+    // id: the board numbers it [`DEFAULT_MOCK_ISSUE_RENDER`] under the epic's prefix.
     let eighth = client.complete(&[], &[]).await.expect("turn 8");
     let create_render = &eighth.tool_calls[0];
     assert_eq!(create_render.name, "create_issue");
-    assert_eq!(
-        create_render.arguments["id"],
-        json!(DEFAULT_MOCK_ISSUE_RENDER)
-    );
+    assert_eq!(create_render.arguments.get("id"), None);
     assert_eq!(create_render.arguments["epicId"], json!(DEFAULT_MOCK_EPIC));
     assert!(create_render.arguments["inScope"].is_string());
     assert!(create_render.arguments["outOfScope"].is_string());
@@ -564,10 +562,7 @@ async fn default_mock_script_exercises_every_capability_then_finishes() {
     let ninth = client.complete(&[], &[]).await.expect("turn 9");
     let create_input = &ninth.tool_calls[0];
     assert_eq!(create_input.name, "create_issue");
-    assert_eq!(
-        create_input.arguments["id"],
-        json!(DEFAULT_MOCK_ISSUE_INPUT)
-    );
+    assert_eq!(create_input.arguments.get("id"), None);
     assert_eq!(
         create_input.arguments["blockedBy"],
         json!([DEFAULT_MOCK_ISSUE_RENDER])

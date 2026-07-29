@@ -121,11 +121,10 @@ pub trait ToolApi: Send + 'static {
     fn set_blocked_by(&mut self, id: String, blocked_by: Vec<String>) -> ToolOutcome;
     fn complete_task(&mut self, id: String) -> ToolOutcome;
     fn remove_task(&mut self, id: String) -> ToolOutcome;
-    fn create_epic(&mut self, id: String, title: String, description: String) -> ToolOutcome;
+    fn create_epic(&mut self, prefix: String, title: String, description: String) -> ToolOutcome;
     #[allow(clippy::too_many_arguments)]
     fn create_issue(
         &mut self,
-        id: String,
         title: String,
         description: Option<String>,
         in_scope: String,

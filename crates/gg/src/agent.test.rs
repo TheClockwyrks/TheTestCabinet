@@ -14,7 +14,7 @@ use crate::client::MockClient;
 use crate::client::{
     ClientFactory, DEFAULT_MOCK_MEMORY, DEFAULT_MOCK_SKILL, DEFAULT_MOCK_TASK_MOVEMENT,
     DEFAULT_MOCK_TASK_SCAFFOLD, MOCK_CODE_LEVEL_FILES, MOCK_FSM_IMPL_FILE, MOCK_FSM_TEST_FILE,
-    MOCK_ISSUE_REVIEW_ISSUE_ID, MOCK_REVIEW_FIX_FILE, MOCK_REVIEW_FIX_SENTINEL,
+    MOCK_ISSUE_REVIEW_PREFIX, MOCK_REVIEW_FIX_FILE, MOCK_REVIEW_FIX_SENTINEL,
     MOCK_REVIEW_WORKER_FILE, MOCK_SPECULATE_ATTEMPT_PREFIX, MOCK_SUBAGENT_FILE,
     MOCK_SUBAGENT_RETURN,
 };
@@ -5320,8 +5320,19 @@ async fn workflow_reuses_the_global_cap_and_completes_under_cap_one() {
 // Issue reviews: reviewers gate acceptance, and the worktree merges on approval
 // ---------------------------------------------------------------------------
 
-/// The board issue the scripted issue-review e2es create, dispatch, and complete.
-const REVIEW_ISSUE_ID: &str = "feat-1";
+/// The prefix of the epic the scripted issue-review e2es file their issue under.
+const REVIEW_EPIC_PREFIX: &str = "FEAT";
+
+/// The board issue the scripted issue-review e2es create, dispatch, and complete — **gg's** id for
+/// it, the first number under [`REVIEW_EPIC_PREFIX`].
+const REVIEW_ISSUE_ID: &str = "FEAT-1";
+
+/// The id of the *n*th agent gg dispatches to implement [`REVIEW_ISSUE_ID`] — derived from the issue,
+/// so the first attempt, the post-review rework pass, and each retry are all legible as attempts at
+/// the same work.
+fn review_implementer(attempt: usize) -> String {
+    format!("{REVIEW_ISSUE_ID}.{attempt}i")
+}
 
 /// [`subagent_set`], plus the project-management capability (with the required merge agent) — a
 /// review-gated run. `extra_slots` names the profiles the scripted issue lists as its reviewers.
@@ -5368,18 +5379,21 @@ fn issue_review_root_producer(
                 tool_call_response(
                     "epic",
                     "create_epic",
-                    json!({ "id": "e1", "title": "Build", "description": "the build" }),
+                    json!({
+                        "prefix": REVIEW_EPIC_PREFIX,
+                        "title": "Build",
+                        "description": "the build",
+                    }),
                 ),
                 tool_call_response(
                     "issue",
                     "create_issue",
                     json!({
-                        "id": REVIEW_ISSUE_ID,
                         "title": "Add the widget",
                         "inScope": "Implement the widget.",
                         "outOfScope": "Unrelated changes.",
                         "completionCriteria": "The widget is fully implemented.",
-                        "epicId": "e1",
+                        "epicId": REVIEW_EPIC_PREFIX,
                         "agent": ROOT_AGENT,
                         "reviewers": ["reviewer"],
                     }),
@@ -5433,7 +5447,8 @@ fn approve_after_producer(
 }
 
 /// Every `IssueReview` event in the stream, as `(issueId, phase, items, baseline)`. The issue id
-/// rides on the event envelope (`issue_id`), not the payload.
+/// rides on the event envelope (`issue_id`), not the payload. Who rendered each verdict is read by
+/// [`review_verdicts`] instead, so the phase assertions stay readable.
 type Review = (
     Option<String>,
     GgIssueReviewPhase,
@@ -5448,7 +5463,31 @@ fn issue_reviews(events: &[test_cabinet_core::gg::GgTelemetryEvent]) -> Vec<Revi
                 phase,
                 items,
                 baseline,
+                ..
             } => Some((e.issue_id.clone(), *phase, items.clone(), baseline.clone())),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Every `IssueReview` event as `(phase, changes-requesting reviewer, approving reviewers)`, each
+/// reviewer rendered `agentId/profile` — the attribution the console reads to say who asked for what.
+type Verdicts = (GgIssueReviewPhase, Option<String>, Vec<String>);
+fn review_verdicts(events: &[test_cabinet_core::gg::GgTelemetryEvent]) -> Vec<Verdicts> {
+    let render = |r: &test_cabinet_core::gg::GgReviewer| format!("{}/{}", r.agent_id, r.profile);
+    events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::IssueReview {
+                phase,
+                reviewer,
+                approvals,
+                ..
+            } => Some((
+                *phase,
+                reviewer.as_ref().map(render),
+                approvals.iter().flatten().map(render).collect(),
+            )),
             _ => None,
         })
         .collect()
@@ -5505,13 +5544,17 @@ fn project_set(max_retries: Option<u64>) -> GgCapabilitySet {
     set
 }
 
-/// A well-formed `create_issue` call for `id`, assigned to the Root.
-fn create_issue_call(id: &str) -> ModelResponse {
+/// The id gg assigns the single ungrouped issue the scripted board e2es file: the first number under
+/// the ungrouped prefix, since none of them groups its issue under an epic.
+const UNGROUPED_ISSUE_ID: &str = "ISSUE-1";
+
+/// A well-formed `create_issue` call assigned to the Root. It names no id — gg assigns one
+/// ([`UNGROUPED_ISSUE_ID`], the first number under the ungrouped prefix).
+fn create_issue_call() -> ModelResponse {
     tool_call_response(
         "issue",
         "create_issue",
         json!({
-            "id": id,
             "title": "Add the widget",
             "inScope": "Implement the widget.",
             "outOfScope": "Nothing else.",
@@ -5536,7 +5579,7 @@ async fn submitting_an_issue_auto_dispatches_an_agent_that_completes_it() {
         let n = counter.fetch_add(1, Ordering::SeqCst);
         let responses = if n == 0 {
             // The root files the issue and finishes — no manual dispatch.
-            vec![create_issue_call("feat-1"), stop_response()]
+            vec![create_issue_call(), stop_response()]
         } else {
             // The auto-dispatched agent finishes, which completes its assigned issue.
             vec![stop_response()]
@@ -5572,7 +5615,7 @@ async fn submitting_an_issue_auto_dispatches_an_agent_that_completes_it() {
         "the agent was handed the issue's structured brief"
     );
     assert_eq!(
-        last_issue_status(&events, "feat-1"),
+        last_issue_status(&events, UNGROUPED_ISSUE_ID),
         Some(GgIssueStatus::Done),
         "the issue is completed by its assigned agent"
     );
@@ -5596,7 +5639,7 @@ async fn an_uncompleted_issue_is_retried_then_failed() {
         if n == 0 {
             return Box::new(MockClient::new(
                 &b.model_id,
-                vec![create_issue_call("feat-1"), stop_response()],
+                vec![create_issue_call(), stop_response()],
             )) as Box<dyn ModelClient>;
         }
         // Every dispatched agent ends on a model error rather than a completion, so its issue is
@@ -5620,7 +5663,7 @@ async fn an_uncompleted_issue_is_retried_then_failed() {
         "the issue is attempted `maxRetries + 1` = 2 times"
     );
     assert_eq!(
-        last_issue_status(&events, "feat-1"),
+        last_issue_status(&events, UNGROUPED_ISSUE_ID),
         Some(GgIssueStatus::Failed),
         "the issue is marked failed once its retries are exhausted"
     );
@@ -5657,13 +5700,13 @@ fn split_project_set() -> GgCapabilitySet {
     set
 }
 
-/// A well-formed `create_issue` call for `id`, assigned to the [implementer](CODER_AGENT).
-fn create_issue_for_coder(id: &str) -> ModelResponse {
+/// A well-formed `create_issue` call assigned to the [implementer](CODER_AGENT), with no id of its
+/// own (gg assigns [`UNGROUPED_ISSUE_ID`]).
+fn create_issue_for_coder() -> ModelResponse {
     tool_call_response(
         "issue",
         "create_issue",
         json!({
-            "id": id,
             "title": "Add the widget",
             "inScope": "Implement the widget.",
             "outOfScope": "Nothing else.",
@@ -5692,7 +5735,7 @@ async fn an_implementer_without_the_board_capability_completes_its_issue() {
             // The root only files the issue, assigned to the coder.
             Box::new(MockClient::new(
                 &b.model_id,
-                vec![create_issue_for_coder("feat-1"), stop_response()],
+                vec![create_issue_for_coder(), stop_response()],
             ))
         })
         .slot(CODER_AGENT, |b| {
@@ -5736,7 +5779,7 @@ async fn an_implementer_without_the_board_capability_completes_its_issue() {
         "the coder made no board move at all"
     );
     assert_eq!(
-        last_issue_status(&events, "feat-1"),
+        last_issue_status(&events, UNGROUPED_ISSUE_ID),
         Some(GgIssueStatus::Done),
         "an implementer with no board capability still takes its issue all the way to done"
     );
@@ -5793,7 +5836,7 @@ async fn a_board_owned_by_a_non_root_profile_still_dispatches() {
         .slot("Planner", |b| {
             Box::new(MockClient::new(
                 &b.model_id,
-                vec![create_issue_for_coder("feat-1"), stop_response()],
+                vec![create_issue_for_coder(), stop_response()],
             ))
         })
         .slot(CODER_AGENT, |b| {
@@ -5812,7 +5855,7 @@ async fn a_board_owned_by_a_non_root_profile_still_dispatches() {
         "the issue the non-root board owner filed was auto-dispatched"
     );
     assert_eq!(
-        last_issue_status(&events, "feat-1"),
+        last_issue_status(&events, UNGROUPED_ISSUE_ID),
         Some(GgIssueStatus::Done),
         "and taken to done"
     );
@@ -5834,8 +5877,12 @@ async fn an_agent_can_wait_for_an_issue_until_it_completes() {
         let responses = if n == 0 {
             // The root files the issue, waits on it, then finishes.
             vec![
-                create_issue_call("feat-1"),
-                tool_call_response("wait", "wait_for_issue", json!({ "issueId": "feat-1" })),
+                create_issue_call(),
+                tool_call_response(
+                    "wait",
+                    "wait_for_issue",
+                    json!({ "issueId": UNGROUPED_ISSUE_ID }),
+                ),
                 stop_response(),
             ]
         } else {
@@ -5858,7 +5905,7 @@ async fn an_agent_can_wait_for_an_issue_until_it_completes() {
         "the root's wait_for_issue resolved and reported the issue done"
     );
     assert_eq!(
-        last_issue_status(&events, "feat-1"),
+        last_issue_status(&events, UNGROUPED_ISSUE_ID),
         Some(GgIssueStatus::Done),
     );
 }
@@ -5895,11 +5942,13 @@ async fn a_code_program_waits_for_an_issue_after_it_ends() {
             // so the turn continues — and the wait does not block here; the loop performs it once
             // the program has ended, after which the root's next program finishes.
             vec![
+                // The wait names the id `createIssue` **returned** — the program cannot invent one,
+                // which is exactly why the call hands it back.
                 code_reply(
-                    "project.createIssue({ id: \"feat-1\", title: \"Add the widget\", \
+                    "const issue = project.createIssue({ title: \"Add the widget\", \
                      inScope: \"Implement the widget.\", outOfScope: \"Nothing else.\", \
                      completionCriteria: \"The widget works.\", agent: \"Root\" });\n\
-                     project.waitForIssue(\"feat-1\");",
+                     project.waitForIssue(issue.id);",
                 ),
                 code_reply(FINISHING_PROGRAM),
             ]
@@ -5940,7 +5989,7 @@ async fn a_code_program_waits_for_an_issue_after_it_ends() {
         "the root suspended on the deferred wait after its program ended"
     );
     assert_eq!(
-        last_issue_status(&events, "feat-1"),
+        last_issue_status(&events, UNGROUPED_ISSUE_ID),
         Some(GgIssueStatus::Done),
         "the awaited issue reached a terminal Done state",
     );
@@ -6100,6 +6149,95 @@ async fn an_issues_reviewers_gate_its_acceptance_and_its_merge() {
     ));
 }
 
+/// **The agents working an issue are named after it, and every verdict says who rendered it.**
+///
+/// The same review-gated run as above, read through the *names*: the issue is `FEAT-1` (numbered
+/// under its epic's prefix, not chosen by the model), its first implementer is `FEAT-1.0i` and the
+/// post-review rework pass `FEAT-1.1i`, and each round's reviewer is named under the implementer
+/// whose work it reviewed — `FEAT-1.0i.0r`, then `FEAT-1.1i.0r`. That nesting is what makes a
+/// concurrent fleet legible: one id says which work, which attempt, and which review of it.
+#[tokio::test]
+async fn issue_agents_are_named_after_the_issue_and_verdicts_name_their_reviewer() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-cr-names".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), issue_review_set(&["reviewer"]));
+
+    let root_counter = Arc::new(AtomicUsize::new(0));
+    let review_counter = Arc::new(AtomicUsize::new(0));
+    let factory = ScriptedFactory::new()
+        .slot(
+            ROOT_AGENT,
+            issue_review_root_producer(Arc::clone(&root_counter)),
+        )
+        .slot(
+            "reviewer",
+            approve_after_producer(Arc::clone(&review_counter), 1),
+        );
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran
+    );
+
+    let events = sink.events();
+    let spawns = agent_spawns(&events);
+
+    // The two implementer passes are numbered attempts at the issue, in order.
+    let implementers: Vec<String> = spawns
+        .iter()
+        .filter(|(_, parent, slot, _, brief)| {
+            parent.is_none()
+                && slot == ROOT_AGENT
+                && brief
+                    .as_deref()
+                    .is_some_and(|b| b.contains("Add the widget"))
+        })
+        .filter_map(|(id, _, _, _, _)| id.clone())
+        .collect();
+    assert_eq!(
+        implementers,
+        vec![review_implementer(0), review_implementer(1)],
+        "each attempt at the issue is named after it"
+    );
+
+    // Each reviewer is named under the implementer whose work it reviewed.
+    let reviewers: Vec<String> = spawns
+        .iter()
+        .filter(|(_, _, slot, _, _)| slot == "reviewer")
+        .filter_map(|(id, _, _, _, _)| id.clone())
+        .collect();
+    assert_eq!(
+        reviewers,
+        vec![
+            format!("{}.0r", review_implementer(0)),
+            format!("{}.0r", review_implementer(1)),
+        ],
+        "a review is named under the attempt it reviewed, so the pairing is readable"
+    );
+
+    // And the telemetry attributes each verdict: the changes-requested round names the reviewer that
+    // ended it, and the approving round names who approved.
+    assert_eq!(
+        review_verdicts(&events),
+        vec![
+            (GgIssueReviewPhase::Requested, None, Vec::new()),
+            (
+                GgIssueReviewPhase::ChangesRequested,
+                Some(format!("{}.0r/reviewer", review_implementer(0))),
+                Vec::new(),
+            ),
+            (GgIssueReviewPhase::Requested, None, Vec::new()),
+            (
+                GgIssueReviewPhase::Approved,
+                None,
+                vec![format!("{}.0r/reviewer", review_implementer(1))],
+            ),
+        ],
+        "every verdict says which agent, under which profile, rendered it"
+    );
+}
+
 /// **Every reviewer an issue names must approve, and they run in turn.** An issue naming two
 /// reviewers dispatches both; only when the last one approves is the issue accepted.
 #[tokio::test]
@@ -6127,7 +6265,6 @@ async fn an_issues_reviewers_all_have_to_approve() {
                         "issue",
                         "create_issue",
                         json!({
-                            "id": REVIEW_ISSUE_ID,
                             "title": "Add the widget",
                             "inScope": "Implement the widget.",
                             "outOfScope": "Unrelated changes.",
@@ -6171,7 +6308,7 @@ async fn an_issues_reviewers_all_have_to_approve() {
         );
     }
     assert_eq!(
-        last_issue_status(&events, REVIEW_ISSUE_ID),
+        last_issue_status(&events, UNGROUPED_ISSUE_ID),
         Some(GgIssueStatus::Done),
         "the issue is accepted once every declared reviewer approves"
     );
@@ -6271,7 +6408,6 @@ async fn an_issue_without_reviewers_is_accepted_and_merged_directly() {
                     "issue",
                     "create_issue",
                     json!({
-                        "id": REVIEW_ISSUE_ID,
                         "title": "Add the widget",
                         "inScope": "Implement the widget.",
                         "outOfScope": "Unrelated changes.",
@@ -6310,7 +6446,7 @@ async fn an_issue_without_reviewers_is_accepted_and_merged_directly() {
         "the root and the one auto-dispatched issue agent run — no reviewers"
     );
     assert_eq!(
-        last_issue_status(&events, REVIEW_ISSUE_ID),
+        last_issue_status(&events, UNGROUPED_ISSUE_ID),
         Some(GgIssueStatus::Done),
         "the issue is accepted as soon as its agent completes it"
     );
@@ -6357,7 +6493,6 @@ async fn a_failed_issues_worktree_is_discarded_unmerged() {
                         "issue",
                         "create_issue",
                         json!({
-                            "id": REVIEW_ISSUE_ID,
                             "title": "Add the widget",
                             "inScope": "Implement the widget.",
                             "outOfScope": "Nothing else.",
@@ -6380,7 +6515,7 @@ async fn a_failed_issues_worktree_is_discarded_unmerged() {
 
     let events = sink.events();
     assert_eq!(
-        last_issue_status(&events, REVIEW_ISSUE_ID),
+        last_issue_status(&events, UNGROUPED_ISSUE_ID),
         Some(GgIssueStatus::Failed),
         "the issue fails once its retries are exhausted"
     );
@@ -6418,22 +6553,23 @@ async fn a_conflicting_issue_merge_is_resolved_by_the_merge_agent() {
     let inv = invocation(dir.path(), set);
 
     // Client minting is synchronous and in dispatch order (the board dispatches in creation order),
-    // so agent 1 owns `one` and agent 2 owns `two`.
-    let issue_ids = ["one", "two"];
+    // so agent 1 owns the first issue and agent 2 the second. Both are ungrouped, so the board
+    // numbers them `ISSUE-1` and `ISSUE-2`.
+    let issue_titles = ["one", "two"];
+    let issue_ids = ["ISSUE-1", "ISSUE-2"];
     let root_counter = Arc::new(AtomicUsize::new(0));
     let factory = ScriptedFactory::new()
         .slot(ROOT_AGENT, move |b| {
             let n = root_counter.fetch_add(1, Ordering::SeqCst);
             let responses = if n == 0 {
-                issue_ids
+                issue_titles
                     .iter()
-                    .map(|id| {
+                    .map(|title| {
                         tool_call_response(
-                            id,
+                            title,
                             "create_issue",
                             json!({
-                                "id": id,
-                                "title": "Write the shared file",
+                                "title": format!("Write the shared file ({title})"),
                                 "inScope": "Write shared.txt.",
                                 "outOfScope": "Nothing else.",
                                 "completionCriteria": "shared.txt exists.",
@@ -6670,7 +6806,7 @@ async fn issue_review_offline_e2e_through_the_default_factory() {
         "the re-review approved"
     );
     assert_eq!(
-        last_issue_status(&events, MOCK_ISSUE_REVIEW_ISSUE_ID),
+        last_issue_status(&events, &format!("{MOCK_ISSUE_REVIEW_PREFIX}-1")),
         Some(GgIssueStatus::Done),
         "the issue is accepted after the offline review→rework→approve cycle"
     );

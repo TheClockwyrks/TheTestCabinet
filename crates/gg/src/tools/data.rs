@@ -125,8 +125,12 @@ pub enum ToolData {
     MemoryHits(Vec<MemoryHitData>),
     /// How full the task list is after an `add_task`/`remove_task`.
     TaskUsage(UsagePair),
-    /// How full the board is after a `create_epic`/`create_issue`/`remove_epic`/`remove_issue`.
+    /// How full the board is after a `remove_epic`/`remove_issue`.
     BoardUsage(BoardUsageData),
+    /// The id a `create_epic`/`create_issue` was assigned, with the same usage: [`BoardNodeData`].
+    /// Its own shape because these are the two board mutations whose *result* — the id — the caller
+    /// could not have known, and it needs it to reference what it just filed.
+    BoardNode(BoardNodeData),
     /// What an `evict_file_view`/`archive_thread` actually freed from the live context window.
     ///
     /// Produced by the [loop](crate::agent) rather than by the tool: the two reclaim tools only
@@ -311,6 +315,21 @@ pub struct BoardUsageData {
     pub issues: u32,
     /// The most issues this run allows.
     pub max_issues: u32,
+}
+
+/// The epic or issue a `create_epic`/`create_issue` filed: the id **gg assigned** it, and the board
+/// usage every board mutation reports.
+///
+/// The id is the point. Neither id is the model's to choose — an epic's is its prefix upper-cased, an
+/// issue's is numbered under that prefix — so a program that files one has no other way to name it
+/// afterwards, whether to group an issue under the epic, block a later issue on it, or wait for it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BoardNodeData {
+    /// The id the board assigned the new epic (`AUTH`) or issue (`AUTH-1`).
+    pub id: String,
+    /// How full the board is now.
+    pub board: BoardUsageData,
 }
 
 /// What a context reclaim actually freed from the live window.

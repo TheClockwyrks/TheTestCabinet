@@ -15,7 +15,8 @@
 //!   the same idea for an issue's grouping.
 
 use super::test_cabinet::gg::board::{
-    BoardUsage, EpicAssignment, EpicInput, Host as BoardHost, IssueInput, IssuePatch, IssueStatus,
+    BoardUsage, EpicAssignment, EpicCreated, EpicInput, Host as BoardHost, IssueCreated,
+    IssueInput, IssuePatch, IssueStatus,
 };
 use super::test_cabinet::gg::memories::{
     Host as MemoriesHost, MemoryEdit, MemoryHit, MemoryInput, MemoryUsage,
@@ -26,7 +27,7 @@ use super::test_cabinet::gg::tasks::{
 };
 use super::test_cabinet::gg::types::{TextEdit, ToolError};
 use super::{MembraneState, ToolApi};
-use crate::tools::{READ_SKILL_TOOL, ToolData};
+use crate::tools::{BoardUsageData, READ_SKILL_TOOL, ToolData};
 
 /// The `write_memory` tool name.
 const WRITE_MEMORY_TOOL: &str = "write_memory";
@@ -199,21 +200,21 @@ impl<A: ToolApi> TasksHost for MembraneState<A> {
 }
 
 impl<A: ToolApi> BoardHost for MembraneState<A> {
-    fn create_epic(&mut self, epic: EpicInput) -> Result<BoardUsage, ToolError> {
+    fn create_epic(&mut self, epic: EpicInput) -> Result<EpicCreated, ToolError> {
         let EpicInput {
-            id,
+            prefix,
             title,
             description,
         } = epic;
         let outcome = self.call(CREATE_EPIC_TOOL, |api| {
-            api.create_epic(id, title, description)
+            api.create_epic(prefix, title, description)
         })?;
-        board_usage(self, CREATE_EPIC_TOOL, outcome.data)
+        let (id, board) = board_node(self, CREATE_EPIC_TOOL, outcome.data)?;
+        Ok(EpicCreated { id, board })
     }
 
-    fn create_issue(&mut self, issue: IssueInput) -> Result<BoardUsage, ToolError> {
+    fn create_issue(&mut self, issue: IssueInput) -> Result<IssueCreated, ToolError> {
         let IssueInput {
-            id,
             title,
             description,
             in_scope,
@@ -226,7 +227,6 @@ impl<A: ToolApi> BoardHost for MembraneState<A> {
         } = issue;
         let outcome = self.call(CREATE_ISSUE_TOOL, |api| {
             api.create_issue(
-                id,
                 title,
                 description,
                 in_scope,
@@ -238,7 +238,8 @@ impl<A: ToolApi> BoardHost for MembraneState<A> {
                 reviewers,
             )
         })?;
-        board_usage(self, CREATE_ISSUE_TOOL, outcome.data)
+        let (id, board) = board_node(self, CREATE_ISSUE_TOOL, outcome.data)?;
+        Ok(IssueCreated { id, board })
     }
 
     fn update_issue(&mut self, id: String, patch: IssuePatch) -> Result<(), ToolError> {
@@ -346,13 +347,32 @@ fn board_usage<A: ToolApi>(
     data: Option<ToolData>,
 ) -> Result<BoardUsage, ToolError> {
     match data {
-        Some(ToolData::BoardUsage(usage)) => Ok(BoardUsage {
-            epics: usage.epics,
-            max_epics: usage.max_epics,
-            issues: usage.issues,
-            max_issues: usage.max_issues,
-        }),
+        Some(ToolData::BoardUsage(usage)) => Ok(usage_record(usage)),
         other => Err(state.missing_data(tool, other.as_ref())),
+    }
+}
+
+/// The id a creation assigned plus its board budget, or the defect diagnostic if it reported
+/// neither — the sidecar `create_epic`/`create_issue` carry, since gg (not the model) names what
+/// they filed.
+fn board_node<A: ToolApi>(
+    state: &mut MembraneState<A>,
+    tool: &'static str,
+    data: Option<ToolData>,
+) -> Result<(String, BoardUsage), ToolError> {
+    match data {
+        Some(ToolData::BoardNode(node)) => Ok((node.id, usage_record(node.board))),
+        other => Err(state.missing_data(tool, other.as_ref())),
+    }
+}
+
+/// gg's board-usage numbers as the membrane's record.
+fn usage_record(usage: BoardUsageData) -> BoardUsage {
+    BoardUsage {
+        epics: usage.epics,
+        max_epics: usage.max_epics,
+        issues: usage.issues,
+        max_issues: usage.max_issues,
     }
 }
 

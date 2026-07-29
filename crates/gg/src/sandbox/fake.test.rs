@@ -21,10 +21,10 @@ use crate::board::IssueStatus;
 use crate::model::ImageContent;
 use crate::tasks::TaskStatus;
 use crate::tools::{
-    ArchiveHitData, ArchiveSearchData, BoardUsageData, DirEntryData, DirEntryKind, FileImageData,
-    FileTextData, MemoryHitData, MemoryUsageData, ReclaimData, ShellData, SpeculationData,
-    SubagentHandleData, SubagentResultData, ToolData, ToolFailure, ToolOutcome, UsagePair,
-    WorkflowData,
+    ArchiveHitData, ArchiveSearchData, BoardNodeData, BoardUsageData, DirEntryData, DirEntryKind,
+    FileImageData, FileTextData, MemoryHitData, MemoryUsageData, ReclaimData, ShellData,
+    SpeculationData, SubagentHandleData, SubagentResultData, ToolData, ToolFailure, ToolOutcome,
+    UsagePair, WorkflowData,
 };
 
 /// Whether this test has a process to itself — the guarantee the process-global compile counter in
@@ -247,16 +247,15 @@ impl ToolApi for FakeToolApi {
     fn remove_task(&mut self, id: String) -> ToolOutcome {
         self.call("remove_task", json!({ "id": id }))
     }
-    fn create_epic(&mut self, id: String, title: String, description: String) -> ToolOutcome {
+    fn create_epic(&mut self, prefix: String, title: String, description: String) -> ToolOutcome {
         self.call(
             "create_epic",
-            json!({ "id": id, "title": title, "description": description }),
+            json!({ "prefix": prefix, "title": title, "description": description }),
         )
     }
     #[allow(clippy::too_many_arguments)]
     fn create_issue(
         &mut self,
-        id: String,
         title: String,
         description: Option<String>,
         in_scope: String,
@@ -269,7 +268,7 @@ impl ToolApi for FakeToolApi {
     ) -> ToolOutcome {
         self.call(
             "create_issue",
-            json!({ "id": id, "title": title, "description": description, "inScope": in_scope, "outOfScope": out_of_scope, "completionCriteria": completion_criteria, "blockedBy": blocked_by, "epicId": epic_id, "agent": agent, "reviewers": reviewers }),
+            json!({ "title": title, "description": description, "inScope": in_scope, "outOfScope": out_of_scope, "completionCriteria": completion_criteria, "blockedBy": blocked_by, "epicId": epic_id, "agent": agent, "reviewers": reviewers }),
         )
     }
     #[allow(clippy::too_many_arguments)]
@@ -465,13 +464,22 @@ pub(crate) fn canned_outcome(name: &str, args: &Value) -> ToolOutcome {
         "add_task" | "remove_task" => ToolOutcome::ok("noted", "task")
             .with_data(ToolData::TaskUsage(UsagePair { count: 2, max: 20 })),
         "update_task" | "set_blocked_by" | "complete_task" => ToolOutcome::ok("noted", "task"),
-        "create_epic" | "create_issue" | "remove_epic" | "remove_issue" => {
-            ToolOutcome::ok("noted", "board").with_data(ToolData::BoardUsage(BoardUsageData {
-                epics: 1,
-                max_epics: 4,
-                issues: 3,
-                max_issues: 20,
+        // The two creations report the id gg assigned as well as the budget; the removals report
+        // the budget alone.
+        "create_epic" => {
+            ToolOutcome::ok("noted", "board").with_data(ToolData::BoardNode(BoardNodeData {
+                id: "EPIC".to_string(),
+                board: fake_board_usage(),
             }))
+        }
+        "create_issue" => {
+            ToolOutcome::ok("noted", "board").with_data(ToolData::BoardNode(BoardNodeData {
+                id: "EPIC-1".to_string(),
+                board: fake_board_usage(),
+            }))
+        }
+        "remove_epic" | "remove_issue" => {
+            ToolOutcome::ok("noted", "board").with_data(ToolData::BoardUsage(fake_board_usage()))
         }
         "update_issue" | "set_issue_blocked_by" => ToolOutcome::ok("noted", "board"),
         "wait_for_issue" => ToolOutcome::ok("wait registered", "wait registered"),
@@ -606,6 +614,16 @@ pub(crate) fn membrane_with(
         SandboxLimits::default(),
         deadline,
     )
+}
+
+/// The board budget the fake reports on every board mutation.
+fn fake_board_usage() -> BoardUsageData {
+    BoardUsageData {
+        epics: 1,
+        max_epics: 4,
+        issues: 3,
+        max_issues: 20,
+    }
 }
 
 /// The tool names a fully-capable run binds into a program's scope.

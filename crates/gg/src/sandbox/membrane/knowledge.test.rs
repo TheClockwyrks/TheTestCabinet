@@ -217,37 +217,44 @@ fn the_board_tools_round_trip_under_the_schemas_key_names() {
     let log = CallLog::default();
     let mut state = membrane(&log);
 
-    let usage = state
+    let epic = state
         .create_epic(EpicInput {
-            id: "e1".to_string(),
+            prefix: "prs".to_string(),
             title: "the parser".to_string(),
             description: "everything about parsing".to_string(),
         })
         .expect("created the epic");
+    // A creation hands back the id gg assigned as well as the budget.
+    assert_eq!(epic.id, "EPIC");
     assert_eq!(
-        (usage.epics, usage.max_epics, usage.issues, usage.max_issues),
+        (
+            epic.board.epics,
+            epic.board.max_epics,
+            epic.board.issues,
+            epic.board.max_issues
+        ),
         (1, 4, 3, 20)
     );
 
-    state
+    let issue = state
         .create_issue(IssueInput {
-            id: "i1".to_string(),
             title: "the lexer".to_string(),
             description: None,
             in_scope: "tokens".to_string(),
             out_of_scope: "the AST".to_string(),
             completion_criteria: "every token has a test".to_string(),
             blocked_by: vec!["i0".to_string()],
-            epic_id: Some("e1".to_string()),
+            epic_id: Some("EPIC".to_string()),
             agent: "implementer".to_string(),
             reviewers: vec!["critic".to_string()],
         })
         .expect("created the issue");
+    assert_eq!(issue.id, "EPIC-1");
     state
         .set_issue_blocked_by("i1".to_string(), vec!["i0".to_string()])
         .expect("set the blockers");
     state
-        .remove_epic("e1".to_string())
+        .remove_epic("EPIC".to_string())
         .expect("removed the epic");
     state
         .remove_issue("i1".to_string())
@@ -256,14 +263,13 @@ fn the_board_tools_round_trip_under_the_schemas_key_names() {
     assert_eq!(
         log.args("create_issue"),
         Some(json!({
-            "id": "i1",
             "title": "the lexer",
             "description": null,
             "inScope": "tokens",
             "outOfScope": "the AST",
             "completionCriteria": "every token has a test",
             "blockedBy": ["i0"],
-            "epicId": "e1",
+            "epicId": "EPIC",
             "agent": "implementer",
             "reviewers": ["critic"],
         }))

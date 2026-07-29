@@ -592,8 +592,10 @@ $context-palette: (
   }
 }
 
-// The status badge (open / in progress / done), orthogonal to the derived
-// readiness chip: open reads muted, in-progress accent, done positive.
+// The badge an issue shows — the ONE badge, since its state folds its status together
+// with whether its blockers are clear (see `IssueViews`). Not-yet-started reads muted
+// (blocked warm, since a blocker is the reason it cannot start), work in flight reads
+// accent, an accepted issue positive, and a failed one negative.
 .statusBadge {
   flex: 0 0 auto;
   font-size: 0.72rem;
@@ -604,15 +606,20 @@ $context-palette: (
   border: t.$border-hairline solid t.$color-border;
   color: t.$color-text-muted;
 
-  &[data-status="in_progress"] {
+  &[data-issue-state="blocked"] {
+    color: t.$color-accent-2;
+    border-color: t.$color-accent-2;
+  }
+  &[data-issue-state="in_progress"],
+  &[data-issue-state="in_review"] {
     color: t.$color-accent;
     border-color: t.$color-accent;
   }
-  &[data-status="done"] {
+  &[data-issue-state="approved"] {
     color: t.$color-positive;
     border-color: t.$color-positive;
   }
-  &[data-status="failed"] {
+  &[data-issue-state="failed"] {
     color: t.$color-negative;
     border-color: t.$color-negative;
   }
@@ -632,12 +639,11 @@ $context-palette: (
   word-break: break-word;
 }
 
-// The Code Review badge on an issue (see gg/code-reviews). A Code Review gates an
-// issue's acceptance, so the badge shows where the review stands — in review while a
-// reviewer inspects the diff (accent), changes-requested (warm) while a fix agent
-// works the actionable items, approved (positive) once the issue may finally be
-// accepted. Shown only when the code-reviews capability emitted a review, so a
-// review-off board carries no badges.
+// The badge on one review round of an issue (see gg/project-management). A round gates
+// the issue's acceptance, so the badge shows what it concluded — in review while its
+// reviewers inspect the diff (accent), changes-requested (warm) while the issue's own
+// agent works the actionable items, approved (positive) once the issue may finally be
+// accepted. An issue that named no reviewers has no rounds, so it carries no badge.
 .reviewBadge {
   flex: 0 0 auto;
   font-size: 0.72rem;
@@ -658,9 +664,9 @@ $context-palette: (
   }
 }
 
-// The actionable items a Code Review's `changes_requested` returned — what a fix
-// agent must address before re-review. A warm rule ties them to the changes-
-// requested badge so the gate's remaining work reads as one thing on the board.
+// The actionable items a review round's `changes_requested` returned — what the issue's
+// own agent must address before re-review. A warm rule ties them to the changes-
+// requested badge so the gate's remaining work reads as one thing.
 .reviewItems {
   display: flex;
   flex-direction: column;

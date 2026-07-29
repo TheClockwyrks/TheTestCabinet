@@ -1967,11 +1967,15 @@ pub enum GgIssueStatus {
 /// [`epic_id`](GgBoardIssue::epic_id), a [`title`](Self::title), and a
 /// [`description`](Self::description). It carries no status of its own — an epic's progress is
 /// read from the status of the issues grouped under it.
+///
+/// The id is the epic's **prefix**: an epic is created from a 3–6 letter prefix, upper-cased, and
+/// every issue filed under it is numbered from it (`AUTH-1`, `AUTH-2`, …).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgBoardEpic {
-    /// The epic's stable id — the handle an issue's `epicId` references.
+    /// The epic's stable id — its upper-cased 3–6 letter prefix, which is both the handle an
+    /// issue's `epicId` references and the stem its issue ids are numbered from.
     pub id: String,
     /// The epic's short title.
     pub title: String,
@@ -2000,6 +2004,10 @@ pub struct GgBoardEpic {
 pub struct GgBoardIssue {
     /// The issue's stable id — the handle the other board tools and every `blockedBy`
     /// reference use.
+    ///
+    /// gg assigns it: it is the [epic](GgBoardEpic)'s prefix and the next number under that prefix
+    /// (`AUTH-1`, `AUTH-2`, …), so an id says at a glance which epic the work belongs to. An issue
+    /// filed without an epic is numbered under `ISSUE`.
     pub id: String,
     /// The issue's short title.
     pub title: String,
@@ -2047,6 +2055,11 @@ pub struct GgBoardIssue {
     /// to that agent in the Agents explorer. `None` while the issue is
     /// [`Open`](GgIssueStatus::Open), and after a terminal state carries the last agent that
     /// worked it.
+    ///
+    /// The id is derived from the issue rather than minted from the run's counter: the *n*th agent
+    /// dispatched to implement `AUTH-1` is `AUTH-1.0i`, `AUTH-1.1i`, … (`i` for implementer), so a
+    /// retry or a post-review rework pass is legible as another attempt at the same issue. Its
+    /// [reviewers](GgReviewer) are named under it in turn (`AUTH-1.0i.0r`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub assigned_agent_id: Option<String>,
@@ -2268,6 +2281,27 @@ pub enum GgIssueReviewPhase {
     /// Every reviewer approved the work: the issue is accepted, merged, and marked done. This is
     /// the only terminal phase that accepts the issue.
     Approved,
+}
+
+/// One reviewer that reported a verdict on an [issue review](GgTelemetryKind::IssueReview) — the
+/// agent gg dispatched, and the profile it ran under.
+///
+/// Both halves are carried because they answer different questions. The
+/// [`agent_id`](Self::agent_id) is the reviewer *instance* — derived from the issue and the
+/// implementer whose work it reviewed (`AUTH-1.0i.0r`), so it names the exact review pass and links
+/// to that agent's own timeline — while the [`profile`](Self::profile) is the
+/// [reviewer profile](GgBoardIssue::reviewers) the issue named, which is what says *what kind* of
+/// review it was.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgReviewer {
+    /// The id of the agent that conducted this review — the handle its own
+    /// [`AgentSpawned`](GgTelemetryKind::AgentSpawned)/[`AgentReturned`](GgTelemetryKind::AgentReturned)
+    /// events carry.
+    pub agent_id: String,
+    /// The [agent profile](GgBoardIssue::reviewers) the reviewer ran under.
+    pub profile: String,
 }
 
 /// The phase of a [speculative execution](https://docs.testcabinet.ai/gg/speculative-execution/) a
@@ -3664,6 +3698,21 @@ pub enum GgTelemetryKind {
         /// [`Approved`](GgIssueReviewPhase::Approved).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         items: Option<Vec<String>>,
+        /// **Who** returned the [`items`](Self::IssueReview::items), on the
+        /// [`ChangesRequested`](GgIssueReviewPhase::ChangesRequested) phase — the one reviewer that
+        /// ended the round. Absent on the other two phases, and on a stream recorded before reviewer
+        /// identity was reported.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reviewer: Option<GgReviewer>,
+        /// The reviewers that **approved** the work in this round, in the order they ran: every
+        /// reviewer on an [`Approved`](GgIssueReviewPhase::Approved) phase, and the ones that
+        /// approved *before* the reviewer that ended a
+        /// [`ChangesRequested`](GgIssueReviewPhase::ChangesRequested) round. Absent on
+        /// [`Requested`](GgIssueReviewPhase::Requested) (nobody has reported yet), and whenever
+        /// nobody approved.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "contract", ts(optional))]
+        approvals: Option<Vec<GgReviewer>>,
         /// The baseline commit the review diffed the work against — the commit the issue's worktree
         /// branched from. Absent when no git baseline could be established for the run.
         #[serde(default, skip_serializing_if = "Option::is_none")]

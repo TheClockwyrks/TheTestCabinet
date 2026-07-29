@@ -15,7 +15,12 @@ import * as raw from "test-cabinet:gg/board";
 import type { EpicAssignment, IssueStatusRaw } from "test-cabinet:gg/board";
 import type { TextEdit } from "test-cabinet:gg/types";
 import { call, list } from "../errors.js";
-import type { BoardUsage, IssueStatus } from "../types.js";
+import type {
+  BoardUsage,
+  EpicCreated,
+  IssueCreated,
+  IssueStatus,
+} from "../types.js";
 
 /** Lower the `undefined` / `null` / string sentinel onto the membrane's three-way text edit. */
 function textEdit(value: string | null | undefined): TextEdit {
@@ -40,28 +45,33 @@ function witStatus(
 }
 
 /**
- * Create an epic to group related issues, and return the board budget. Throws `conflict` on a
- * duplicate id.
+ * Create an epic to group related issues. `prefix` is 3-6 letters naming the epic; it is upper-cased
+ * and becomes the epic's id, which is also what its issues are numbered from — a prefix of `auth`
+ * gives issues `AUTH-1`, `AUTH-2`, and so on. Returns that id and the board budget. Throws
+ * `invalid-argument` when the prefix is not 3-6 letters, and `conflict` when another epic already
+ * holds it.
  */
 export function createEpic(epic: {
-  id: string;
+  prefix: string;
   title: string;
   description: string;
-}): BoardUsage {
+}): EpicCreated {
   return call(() => raw.createEpic(epic));
 }
 
 /**
- * Create a self-contained, dispatchable issue and return the board budget. `inScope`, `outOfScope`
- * and `completionCriteria` are what a child agent is briefed from, so write them for a reader with
- * no other context. `agent` names the agent gg dispatches the issue to and must be one you may
- * spawn; `reviewers` names the agents that must approve the work, from that same set, and is
- * required when this run's reviewers feature is on. `blockedBy` defaults to none; `epicId` groups
- * the issue under an existing epic. Throws `invalid-argument` when `agent` or a reviewer is not
- * yours to assign, and `conflict` on a duplicate id or a blocker edge that would close a cycle.
+ * Create a self-contained, dispatchable issue. Returns the id the board **assigned** it — numbered
+ * under its epic's prefix (`AUTH-1`, `AUTH-2`, …), or under `ISSUE` when it has no epic — together
+ * with the board budget; you do not choose the id, so keep the returned one to block a later issue
+ * on this one or to wait for it. `inScope`, `outOfScope` and `completionCriteria` are what a child
+ * agent is briefed from, so write them for a reader with no other context. `agent` names the agent
+ * gg dispatches the issue to and must be one you may spawn; `reviewers` names the agents that must
+ * approve the work, from that same set, and is required when this run's reviewers feature is on.
+ * `blockedBy` defaults to none; `epicId` groups the issue under an existing epic. Throws
+ * `invalid-argument` when `agent` or a reviewer is not yours to assign, and `conflict` on a blocker
+ * edge that would close a cycle.
  */
 export function createIssue(issue: {
-  id: string;
   title: string;
   description?: string;
   inScope: string;
@@ -71,10 +81,9 @@ export function createIssue(issue: {
   epicId?: string;
   agent: string;
   reviewers?: string[];
-}): BoardUsage {
+}): IssueCreated {
   return call(() =>
     raw.createIssue({
-      id: issue.id,
       title: issue.title,
       description: issue.description,
       inScope: issue.inScope,

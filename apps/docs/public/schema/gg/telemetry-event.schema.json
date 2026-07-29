@@ -26,14 +26,14 @@
       ]
     },
     "GgBoardEpic": {
-      "description": "One [epic](https://docs.testcabinet.ai/gg/project-management/) on the board — a grouping of\nrelated [issues](GgBoardIssue) reported in a [`BoardState`](GgTelemetryKind::BoardState)\nevent.\n\nAn epic is organizational: it has a stable [`id`](Self::id) issues reference through their\n[`epic_id`](GgBoardIssue::epic_id), a [`title`](Self::title), and a\n[`description`](Self::description). It carries no status of its own — an epic's progress is\nread from the status of the issues grouped under it.",
+      "description": "One [epic](https://docs.testcabinet.ai/gg/project-management/) on the board — a grouping of\nrelated [issues](GgBoardIssue) reported in a [`BoardState`](GgTelemetryKind::BoardState)\nevent.\n\nAn epic is organizational: it has a stable [`id`](Self::id) issues reference through their\n[`epic_id`](GgBoardIssue::epic_id), a [`title`](Self::title), and a\n[`description`](Self::description). It carries no status of its own — an epic's progress is\nread from the status of the issues grouped under it.\n\nThe id is the epic's **prefix**: an epic is created from a 3–6 letter prefix, upper-cased, and\nevery issue filed under it is numbered from it (`AUTH-1`, `AUTH-2`, …).",
       "properties": {
         "description": {
           "description": "A longer description of what the epic covers.",
           "type": "string"
         },
         "id": {
-          "description": "The epic's stable id — the handle an issue's `epicId` references.",
+          "description": "The epic's stable id — its upper-cased 3–6 letter prefix, which is both the handle an\nissue's `epicId` references and the stem its issue ids are numbered from.",
           "type": "string"
         },
         "title": {
@@ -53,7 +53,7 @@
           "type": "string"
         },
         "assignedAgentId": {
-          "description": "The id of the agent gg [dispatched](https://docs.testcabinet.ai/gg/project-management/)\nto implement this issue, when one is assigned (its status is then\n[`InProgress`](GgIssueStatus::InProgress)) — the link the console follows from the issue\nto that agent in the Agents explorer. `None` while the issue is\n[`Open`](GgIssueStatus::Open), and after a terminal state carries the last agent that\nworked it.",
+          "description": "The id of the agent gg [dispatched](https://docs.testcabinet.ai/gg/project-management/)\nto implement this issue, when one is assigned (its status is then\n[`InProgress`](GgIssueStatus::InProgress)) — the link the console follows from the issue\nto that agent in the Agents explorer. `None` while the issue is\n[`Open`](GgIssueStatus::Open), and after a terminal state carries the last agent that\nworked it.\n\nThe id is derived from the issue rather than minted from the run's counter: the *n*th agent\ndispatched to implement `AUTH-1` is `AUTH-1.0i`, `AUTH-1.1i`, … (`i` for implementer), so a\nretry or a post-review rework pass is legible as another attempt at the same issue. Its\n[reviewers](GgReviewer) are named under it in turn (`AUTH-1.0i.0r`).",
           "type": ["string", "null"]
         },
         "blockedBy": {
@@ -76,7 +76,7 @@
           "type": ["string", "null"]
         },
         "id": {
-          "description": "The issue's stable id — the handle the other board tools and every `blockedBy`\nreference use.",
+          "description": "The issue's stable id — the handle the other board tools and every `blockedBy`\nreference use.\n\ngg assigns it: it is the [epic](GgBoardEpic)'s prefix and the next number under that prefix\n(`AUTH-1`, `AUTH-2`, …), so an id says at a glance which epic the work belongs to. An issue\nfiled without an epic is numbered under `ISSUE`.",
           "type": "string"
         },
         "inScope": {
@@ -610,6 +610,21 @@
         }
       },
       "required": ["skills", "tasks", "memories", "issues"],
+      "type": "object"
+    },
+    "GgReviewer": {
+      "description": "One reviewer that reported a verdict on an [issue review](GgTelemetryKind::IssueReview) — the\nagent gg dispatched, and the profile it ran under.\n\nBoth halves are carried because they answer different questions. The\n[`agent_id`](Self::agent_id) is the reviewer *instance* — derived from the issue and the\nimplementer whose work it reviewed (`AUTH-1.0i.0r`), so it names the exact review pass and links\nto that agent's own timeline — while the [`profile`](Self::profile) is the\n[reviewer profile](GgBoardIssue::reviewers) the issue named, which is what says *what kind* of\nreview it was.",
+      "properties": {
+        "agentId": {
+          "description": "The id of the agent that conducted this review — the handle its own\n[`AgentSpawned`](GgTelemetryKind::AgentSpawned)/[`AgentReturned`](GgTelemetryKind::AgentReturned)\nevents carry.",
+          "type": "string"
+        },
+        "profile": {
+          "description": "The [agent profile](GgBoardIssue::reviewers) the reviewer ran under.",
+          "type": "string"
+        }
+      },
+      "required": ["agentId", "profile"],
       "type": "object"
     },
     "GgSkillState": {
@@ -1475,6 +1490,13 @@
     {
       "description": "An [issue review](https://docs.testcabinet.ai/gg/project-management/) lifecycle transition —\nthe event that makes the reviewer-gated acceptance of an [issue](GgBoardIssue) observable.\n\nEmitted (when the issue named [reviewers](GgBoardIssue::reviewers)) as gg reconciles the\nissue: once as [`Requested`](GgIssueReviewPhase::Requested) when a review round starts, then\nonce per [`ChangesRequested`](GgIssueReviewPhase::ChangesRequested) round (carrying the\nreviewer's actionable [`items`](Self::IssueReview::items) the issue's assigned agent is then\nre-invoked to address), and finally once as [`Approved`](GgIssueReviewPhase::Approved) when\nevery reviewer has approved and the issue is accepted. Because there is **no cycle limit**, a\nsingle issue may stream many `ChangesRequested` events before an `Approved` (or go straight\nto `Approved` on a clean first pass).\n\nWhich [issue](GgBoardIssue) is under review rides on the event's own\n[`issue_id`](GgTelemetryEvent::issue_id) (the event is emitted on an issue-scoped stream), the\nsame way an agent's identity rides on [`agent_id`](GgTelemetryEvent::agent_id) — so the\npayload carries only the phase-specific data. The reviewer agents themselves emit the usual\n[`AgentSpawned`](Self::AgentSpawned)/[`AgentStatus`](Self::AgentStatus)/[`AgentReturned`](Self::AgentReturned)\nevents, also scoped to the issue under review. An issue filed without reviewers emits none.",
       "properties": {
+        "approvals": {
+          "description": "The reviewers that **approved** the work in this round, in the order they ran: every\nreviewer on an [`Approved`](GgIssueReviewPhase::Approved) phase, and the ones that\napproved *before* the reviewer that ended a\n[`ChangesRequested`](GgIssueReviewPhase::ChangesRequested) round. Absent on\n[`Requested`](GgIssueReviewPhase::Requested) (nobody has reported yet), and whenever\nnobody approved.",
+          "items": {
+            "$ref": "#/$defs/GgReviewer"
+          },
+          "type": ["array", "null"]
+        },
         "baseline": {
           "description": "The baseline commit the review diffed the work against — the commit the issue's worktree\nbranched from. Absent when no git baseline could be established for the run.",
           "type": ["string", "null"]
@@ -1489,6 +1511,17 @@
         "phase": {
           "$ref": "#/$defs/GgIssueReviewPhase",
           "description": "Which phase of the review lifecycle this transition is."
+        },
+        "reviewer": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GgReviewer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "**Who** returned the [`items`](Self::IssueReview::items), on the\n[`ChangesRequested`](GgIssueReviewPhase::ChangesRequested) phase — the one reviewer that\nended the round. Absent on the other two phases, and on a stream recorded before reviewer\nidentity was reported."
         },
         "type": {
           "const": "issue_review",

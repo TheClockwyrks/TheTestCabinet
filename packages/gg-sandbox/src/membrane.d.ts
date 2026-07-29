@@ -288,16 +288,16 @@ declare module "test-cabinet:gg/board" {
   /** How an issue's epic grouping changes: leave it, detach it, or set it. */
   export type EpicAssignment = { tag: "keep" } | { tag: "ungroup" } | { tag: "set"; val: string };
 
-  /** An epic to create. */
+  /** An epic to create. `prefix` is 3-6 letters; upper-cased it becomes the epic's id. */
   export interface EpicInput {
-    id: string;
+    prefix: string;
     title: string;
     description: string;
   }
 
-  /** An issue to create — a heavyweight, self-contained, dispatchable unit of work. */
+  /** An issue to create — a heavyweight, self-contained, dispatchable unit of work. The board
+   * assigns its id. */
   export interface IssueInput {
-    id: string;
     title: string;
     description: string | undefined;
     inScope: string;
@@ -328,10 +328,22 @@ declare module "test-cabinet:gg/board" {
     maxIssues: number;
   }
 
-  /** Create an epic to group related issues. */
-  export function createEpic(epic: EpicInput): BoardUsage;
-  /** Create a self-contained, dispatchable issue. */
-  export function createIssue(issue: IssueInput): BoardUsage;
+  /** An epic the board just created: the id its prefix resolved to, plus the board budget. */
+  export interface EpicCreated {
+    id: string;
+    board: BoardUsage;
+  }
+
+  /** An issue the board just created: the id it assigned, plus the board budget. */
+  export interface IssueCreated {
+    id: string;
+    board: BoardUsage;
+  }
+
+  /** Create an epic to group related issues, returning the id its prefix resolved to. */
+  export function createEpic(epic: EpicInput): EpicCreated;
+  /** Create a self-contained, dispatchable issue, returning the id the board assigned it. */
+  export function createIssue(issue: IssueInput): IssueCreated;
   /** Revise an issue. */
   export function updateIssue(id: string, patch: IssuePatch): void;
   /** Replace an issue's full blocker set. */

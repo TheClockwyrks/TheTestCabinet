@@ -97,8 +97,9 @@ use test_cabinet_core::gg::{
     CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WORKFLOWS,
     GgAgentConfig, GgAgentStatus, GgCandidateShape, GgCapabilitySet, GgContextAction,
     GgContextSource, GgHealingStrategy, GgIssueReviewPhase, GgLimitBreach, GgLimitKind,
-    GgNotAProgram, GgPlanPhase, GgResponseHealing, GgRunLimits, GgSlotBinding, GgSpeculationPhase,
-    GgSubagentScope, GgTelemetryKind, GgWorkflowPhase, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT,
+    GgNotAProgram, GgPlanPhase, GgResponseHealing, GgReviewer, GgRunLimits, GgSlotBinding,
+    GgSpeculationPhase, GgSubagentScope, GgTelemetryKind, GgWorkflowPhase,
+    PROJECT_MANAGEMENT_PARAM_MERGE_AGENT,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 use tokio::sync::{mpsc, oneshot};
@@ -1461,14 +1462,15 @@ impl Orchestrator {
     }
 
     /// Spawn a **top-level agent** for every issue that is [dispatchable now](BoardRuntime::dispatchable_ids).
-    /// Each dispatch mints a fresh agent id, atomically [claims](BoardRuntime::assign_issue) the
-    /// issue for it (so two concurrent pumps cannot both take one — a lost claim just wastes the
-    /// minted id), and spawns the agent with the issue's brief. The agents are top-level (no parent,
-    /// depth 0), so they surface as their own roots in the Agents tree.
+    /// Each dispatch atomically [claims](BoardRuntime::assign_issue) an issue and takes back the
+    /// **agent id the board minted for it** — named after the issue and the attempt (`AUTH-1.0i`) —
+    /// then spawns that agent with the issue's brief. Two concurrent pumps cannot both take one issue:
+    /// the loser's claim simply returns `None`, and because the id is minted *by* the claim it never
+    /// burns an attempt number either. The agents are top-level (no parent, depth 0), so they surface
+    /// as their own roots in the Agents tree.
     fn pump_dispatch(self: &Arc<Self>, emitter: &Emitter) {
         for issue_id in self.board.dispatchable_ids() {
-            let agent_id = self.next_agent_id();
-            if self.board.assign_issue(&issue_id, &agent_id) {
+            if let Some(agent_id) = self.board.assign_issue(&issue_id) {
                 let brief = self.issue_brief_or_fallback(&issue_id);
                 emitter.emit(log(
                     "info",
@@ -1482,8 +1484,7 @@ impl Orchestrator {
     /// **Re-dispatch** issue `issue_id` to a fresh top-level agent after a failed attempt, recording
     /// its new `retry` count. A no-op if the board no longer accepts it (already terminal).
     fn redispatch_issue(self: &Arc<Self>, issue_id: &str, retry: u32, emitter: &Emitter) {
-        let agent_id = self.next_agent_id();
-        if self.board.redispatch_issue(issue_id, &agent_id, retry) {
+        if let Some(agent_id) = self.board.redispatch_issue(issue_id, retry) {
             let brief = self.issue_brief_or_fallback(issue_id);
             emitter.emit(log(
                 "info",
@@ -1510,10 +1511,9 @@ impl Orchestrator {
         emitter: &Emitter,
     ) {
         let retry = self.board.issue_retries(issue_id);
-        let agent_id = self.next_agent_id();
-        if !self.board.redispatch_issue(issue_id, &agent_id, retry) {
+        let Some(agent_id) = self.board.redispatch_issue(issue_id, retry) else {
             return;
-        }
+        };
         let profile = self.issue_profile(issue_id);
         let brief = build_fix_brief(
             &self.issue_brief_or_fallback(issue_id),
@@ -3181,23 +3181,39 @@ async fn run_issue_review(
     review_emitter.emit(issue_review_event(
         GgIssueReviewPhase::Requested,
         None,
+        None,
+        Vec::new(),
         baseline.clone(),
     ));
 
     let diff = orch.review_diff(issue_id);
     let history = orch.review_history(issue_id);
     let worktree = orch.issue_worktree(issue_id);
-    for reviewer in reviewers {
+    // Who has approved so far *this round*, in the order they ran: reported on whichever event ends
+    // the round, so a verdict is attributable to an agent rather than to "the review".
+    let mut approvals: Vec<GgReviewer> = Vec::new();
+    for profile in reviewers {
+        // Each reviewer is named under the implementer whose work it is reviewing (`AUTH-1.0i.0r`),
+        // so the agent id says which attempt was reviewed and in what order.
+        let agent_id = orch
+            .board
+            .next_review_agent_id(issue_id)
+            .unwrap_or_else(|| orch.next_agent_id());
+        let reviewer = GgReviewer {
+            agent_id: agent_id.clone(),
+            profile: profile.clone(),
+        };
         let review_brief = build_review_brief(
             &brief,
             &diff,
             history.as_deref(),
-            orch.profile_or_root(&reviewer)
+            orch.profile_or_root(&profile)
                 .is_enabled(CAPABILITY_RESPONSES_AS_CODE),
         );
         let returned = run_detached_agent(
             orch,
-            &reviewer,
+            agent_id,
+            &profile,
             review_brief,
             Some(issue_id.to_string()),
             worktree.clone(),
@@ -3207,18 +3223,18 @@ async fn run_issue_review(
             Ok(ret) if ret.status == STATUS_COMPLETED => parse_review_verdict(&ret.summary),
             Ok(ret) => {
                 return RoundOutcome::Aborted(format!(
-                    "the reviewer `{reviewer}` {} without a verdict",
+                    "the reviewer `{profile}` {} without a verdict",
                     ret.status
                 ));
             }
             Err(err) => {
-                return RoundOutcome::Aborted(format!("the reviewer `{reviewer}` {err}"));
+                return RoundOutcome::Aborted(format!("the reviewer `{profile}` {err}"));
             }
         };
         orch.record_review(
             issue_id,
             ReviewRecord {
-                reviewer: reviewer.clone(),
+                reviewer: profile.clone(),
                 approved: verdict.approved,
                 items: verdict.items.clone(),
             },
@@ -3227,14 +3243,19 @@ async fn run_issue_review(
             review_emitter.emit(issue_review_event(
                 GgIssueReviewPhase::ChangesRequested,
                 Some(verdict.items.clone()),
+                Some(reviewer),
+                approvals,
                 baseline,
             ));
             return RoundOutcome::ChangesRequested(verdict.items);
         }
+        approvals.push(reviewer);
     }
     review_emitter.emit(issue_review_event(
         GgIssueReviewPhase::Approved,
         None,
+        None,
+        approvals,
         baseline,
     ));
     RoundOutcome::Approved
@@ -3391,7 +3412,16 @@ async fn resolve_merge_conflict(
     ));
     // The merge agent works in the main tree — that is where the conflicted merge lives — so it is
     // dispatched with no worktree of its own.
-    match run_detached_agent(orch, &merge_agent, brief, Some(issue_id.to_string()), None).await {
+    match run_detached_agent(
+        orch,
+        orch.next_agent_id(),
+        &merge_agent,
+        brief,
+        Some(issue_id.to_string()),
+        None,
+    )
+    .await
+    {
         Ok(_) => {}
         Err(err) => {
             emitter.emit(log(
@@ -3454,6 +3484,10 @@ fn remove_worktree(orch: &Orchestrator, worktree: &Worktree, emitter: &Emitter) 
 /// Run one agent to completion **out of band** from any spawner, returning its
 /// [result](AgentReturn) — the primitive behind an issue's reviewers and the merge agent.
 ///
+/// The caller supplies `agent_id` rather than the id being minted here, because the two callers name
+/// their agents differently: a reviewer is named after the issue and the implementer whose work it
+/// reviews (`AUTH-1.0i.0r`), while a merge agent is an ordinary `agent-N` from the run's counter.
+///
 /// These are agents the *orchestrator* needs, not ones a model asked for: they are dispatched while
 /// no agent holds a running slot (the issue agent that triggered the reconciliation has already
 /// released its own), so this simply awaits the child's result channel rather than going through the
@@ -3467,6 +3501,7 @@ fn remove_worktree(orch: &Orchestrator, worktree: &Worktree, emitter: &Emitter) 
 /// cycle by *asserting* the bound the `tokio::spawn` inside needs.
 fn run_detached_agent<'a>(
     orch: &'a Arc<Orchestrator>,
+    agent_id: String,
     profile: &'a str,
     brief: String,
     issue_id: Option<String>,
@@ -3483,7 +3518,7 @@ fn run_detached_agent<'a>(
         })?;
         let (result_tx, result_rx) = oneshot::channel();
         let agent = Agent {
-            id: orch.next_agent_id(),
+            id: agent_id,
             parent_id: None,
             depth: 0,
             slot: profile.to_string(),
@@ -3696,14 +3731,24 @@ fn collect_actionable_items(text: &str) -> Vec<String> {
 
 /// An [`IssueReview`](GgTelemetryKind::IssueReview) telemetry event for one lifecycle transition. The
 /// issue under review rides on the emitter's [issue scope](Emitter::with_issue), not the payload.
+///
+/// `reviewer` is the one that ended a round by asking for changes, and `approvals` the ones that
+/// approved during it — so the console can say *who* said what rather than only that a review
+/// happened.
 fn issue_review_event(
     phase: GgIssueReviewPhase,
     items: Option<Vec<String>>,
+    reviewer: Option<GgReviewer>,
+    approvals: Vec<GgReviewer>,
     baseline: Option<String>,
 ) -> GgTelemetryKind {
     GgTelemetryKind::IssueReview {
         phase,
         items,
+        reviewer,
+        // A round nobody has approved in carries no list, rather than an empty one — the same
+        // absent-means-nothing-to-say the items field uses.
+        approvals: (!approvals.is_empty()).then_some(approvals),
         baseline,
     }
 }

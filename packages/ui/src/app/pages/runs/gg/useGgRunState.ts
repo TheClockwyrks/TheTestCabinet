@@ -29,6 +29,7 @@ import type {
   GgPlanPhase,
   GgPromptRef,
   GgRetainedState,
+  GgReviewer,
   GgSkillState,
   GgSpeculationPhase,
   GgTaskEntry,
@@ -372,6 +373,28 @@ export interface IssueReviewState {
   items: string[];
   baseline: string | null;
   history: GgIssueReviewPhase[];
+  // Every review round the issue has been through, oldest first — a `requested` opens
+  // one and the `changes_requested`/`approved` that follows closes it. Kept as rounds
+  // rather than only the latest phase because a round's feedback stays worth reading
+  // after the issue has moved on: it says what was asked for, by whom, and whether the
+  // next round found it fixed.
+  rounds: IssueReviewRound[];
+}
+
+// One round of an issue's review: the reviewers gg ran against one attempt's diff, and
+// what they concluded. `pending` while the round is still running (a `requested` with no
+// verdict yet), `changes_requested` when a reviewer ended it with actionable items, and
+// `approved` when every reviewer approved. Each reviewer is the agent gg dispatched plus
+// the profile it ran under — the agent id is derived from the issue and the attempt
+// (`AUTH-1.0i.0r`), so it names this exact review pass.
+export interface IssueReviewRound {
+  phase: GgIssueReviewPhase;
+  // Who ended the round by requesting changes, when one did.
+  reviewer: GgReviewer | null;
+  // The actionable items that reviewer returned.
+  items: string[];
+  // Who approved during the round, in the order they ran.
+  approvals: GgReviewer[];
 }
 
 // --- FSM-driven process (Phase 5) --------------------------------------------
@@ -512,6 +535,39 @@ export interface GgRunState {
   // set, and is null only before the session starts (or on a stream recorded before gg
   // announced it, where the completed record still supplies it).
   capabilitySet: GgCapabilitySet | null;
+}
+
+// --- Issue review rounds -----------------------------------------------------
+
+// Fold one `issue_review` event into an issue's ordered rounds.
+//
+// The events are a lifecycle with no round id of their own: a `requested` opens a round
+// and the `changes_requested`/`approved` that follows closes the one it opened. So this
+// appends on `requested` and amends the open round otherwise — and, for a stream whose
+// opening event was lost (or one recorded before rounds were tracked), amends a synthetic
+// round rather than dropping the verdict.
+function withReviewRound(
+  rounds: IssueReviewRound[],
+  gg: Extract<GgTelemetryEvent, { type: "issue_review" }>,
+): IssueReviewRound[] {
+  if (gg.phase === "requested") {
+    return [
+      ...rounds,
+      { phase: "requested", reviewer: null, items: [], approvals: [] },
+    ];
+  }
+  const closed: IssueReviewRound = {
+    phase: gg.phase,
+    reviewer: gg.reviewer ?? null,
+    items: gg.phase === "changes_requested" ? (gg.items ?? []) : [],
+    approvals: gg.approvals ?? [],
+  };
+  // Amend the round this verdict closes: the last one still open, else start one.
+  const last = rounds.length - 1;
+  if (last >= 0 && rounds[last]!.phase === "requested") {
+    return [...rounds.slice(0, last), closed];
+  }
+  return [...rounds, closed];
 }
 
 // --- Feed row formatting -----------------------------------------------------
@@ -1341,6 +1397,7 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
                   : (prior?.items ?? []),
             baseline: gg.baseline ?? prior?.baseline ?? null,
             history: prior ? [...prior.history, gg.phase] : [gg.phase],
+            rounds: withReviewRound(prior?.rounds ?? [], gg),
           });
         }
         break;

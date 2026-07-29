@@ -10,11 +10,22 @@ use super::*;
 use crate::board::{BoardCaps, BoardStore, IssuePolicy, IssueStatus};
 use crate::tools::ToolFailure;
 
-/// The [`BoardUsageData`] an outcome carries, or a failure naming what it carried instead.
+/// The [`BoardUsageData`] an outcome carries, whether on its own (a removal) or beside the id a
+/// creation assigned — or a failure naming what it carried instead.
 fn usage(outcome: &ToolOutcome) -> &BoardUsageData {
     match outcome.data.as_ref() {
         Some(ToolData::BoardUsage(data)) => data,
+        Some(ToolData::BoardNode(node)) => &node.board,
         other => panic!("expected board usage, got {other:?}"),
+    }
+}
+
+/// The id a creation reported on its [`BoardNode`](ToolData::BoardNode) sidecar — the one thing its
+/// caller could not have known.
+fn assigned_id(outcome: &ToolOutcome) -> &str {
+    match outcome.data.as_ref() {
+        Some(ToolData::BoardNode(node)) => &node.id,
+        other => panic!("expected an assigned id, got {other:?}"),
     }
 }
 
@@ -53,11 +64,11 @@ fn reviewers_required() -> IssuePolicy {
     }
 }
 
-/// The full argument set for a well-formed `create_issue` call.
-fn issue_args(id: &str) -> serde_json::Value {
+/// The full argument set for a well-formed `create_issue` call titled `title`. There is no id: the
+/// board assigns one (`ISSUE-1`, `ISSUE-2`, … for these ungrouped issues).
+fn issue_args(title: &str) -> serde_json::Value {
     json!({
-        "id": id,
-        "title": format!("Issue {id}"),
+        "title": format!("Issue {title}"),
         "inScope": "the in-scope work",
         "outOfScope": "the out-of-scope work",
         "completionCriteria": "the acceptance criteria",
@@ -65,30 +76,75 @@ fn issue_args(id: &str) -> serde_json::Value {
     })
 }
 
+/// The full argument set for a well-formed `create_epic` call.
+fn epic_args(prefix: &str) -> serde_json::Value {
+    json!({ "prefix": prefix, "title": "Core", "description": "the loop" })
+}
+
 #[tokio::test]
 async fn create_epic_and_issue_report_usage() {
     let (store, ctx, _dir) = fixture();
     let epic = CreateEpicTool::new(Arc::clone(&store))
-        .invoke(
-            json!({ "id": "core", "title": "Core", "description": "the loop" }),
-            &ctx,
-        )
+        // A lower-case prefix is upper-cased rather than refused.
+        .invoke(epic_args("core"), &ctx)
         .await;
     assert!(epic.ok);
-    assert!(epic.output.contains("Created epic `core`"));
+    assert_eq!(assigned_id(&epic), "CORE");
+    assert!(
+        epic.output.contains("Created epic `CORE`"),
+        "{}",
+        epic.output
+    );
+    assert!(
+        epic.output.contains("`CORE-1`"),
+        "the confirmation says how its issues will be numbered: {}",
+        epic.output
+    );
 
     let mut args = issue_args("render");
-    args["epicId"] = json!("core");
+    args["epicId"] = json!("CORE");
     let issue = CreateIssueTool::new(Arc::clone(&store), policy())
         .invoke(args, &ctx)
         .await;
     assert!(issue.ok, "{}", issue.output);
-    assert!(issue.output.contains("Created issue `render`"));
+    // The id the board assigned is both stated and carried structurally, since the model did not
+    // choose it and needs it to reference the issue later.
+    assert_eq!(assigned_id(&issue), "CORE-1");
+    assert!(
+        issue.output.contains("Created issue `CORE-1`"),
+        "{}",
+        issue.output
+    );
 
     let store = store.lock().unwrap();
     assert_eq!(store.epic_count(), 1);
     assert_eq!(store.issue_count(), 1);
-    assert_eq!(store.issues()[0].epic_id(), Some("core"));
+    assert_eq!(store.issues()[0].epic_id(), Some("CORE"));
+}
+
+/// A prefix that is not 3-6 letters is refused as an argument error, and the refusal teaches the
+/// rule — including what the prefix is *for*, so the retry is a considered one.
+#[tokio::test]
+async fn create_epic_requires_a_three_to_six_letter_prefix() {
+    let (store, ctx, _dir) = fixture();
+    let tool = CreateEpicTool::new(Arc::clone(&store));
+    for bad in ["ab", "toolongprefix", "au7h", "two words", "core-x", ""] {
+        let outcome = tool.invoke(epic_args(bad), &ctx).await;
+        assert_eq!(
+            outcome.failure,
+            Some(ToolFailure::InvalidArgument),
+            "`{bad}` is not a prefix: {}",
+            outcome.output
+        );
+    }
+    assert!(
+        tool.invoke(epic_args("xy"), &ctx)
+            .await
+            .output
+            .contains("AUTH-1"),
+        "the refusal shows what a prefix is for"
+    );
+    assert_eq!(store.lock().unwrap().epic_count(), 0);
 }
 
 #[tokio::test]
@@ -97,7 +153,7 @@ async fn create_issue_requires_the_structured_fields() {
     // Missing completionCriteria => argument error from the tool.
     let outcome = CreateIssueTool::new(Arc::clone(&store), policy())
         .invoke(
-            json!({ "id": "i", "title": "t", "inScope": "a", "outOfScope": "b" }),
+            json!({ "title": "t", "inScope": "a", "outOfScope": "b" }),
             &ctx,
         )
         .await;
@@ -158,7 +214,6 @@ async fn the_reviewers_feature_makes_reviewers_mandatory() {
     assert_eq!(
         definition.parameters["required"],
         json!([
-            "id",
             "title",
             "inScope",
             "outOfScope",
@@ -180,40 +235,35 @@ async fn the_reviewers_feature_makes_reviewers_mandatory() {
 #[tokio::test]
 async fn create_issue_with_blocked_by_records_the_edge() {
     let (store, ctx, _dir) = fixture();
-    CreateIssueTool::new(Arc::clone(&store), policy())
+    let first = CreateIssueTool::new(Arc::clone(&store), policy())
         .invoke(issue_args("a"), &ctx)
         .await;
+    let blocker = assigned_id(&first).to_string();
     let mut args = issue_args("b");
-    args["blockedBy"] = json!(["a"]);
+    args["blockedBy"] = json!([blocker]);
     let outcome = CreateIssueTool::new(Arc::clone(&store), policy())
         .invoke(args, &ctx)
         .await;
-    assert!(outcome.ok);
-    assert_eq!(
-        store.lock().unwrap().issues()[1].blocked_by(),
-        &["a".to_string()]
-    );
+    assert!(outcome.ok, "{}", outcome.output);
+    assert_eq!(store.lock().unwrap().issues()[1].blocked_by(), &[blocker]);
 }
 
 #[tokio::test]
 async fn set_issue_blocked_by_surfaces_a_cycle_as_a_tool_error_without_mutating() {
     let (store, ctx, _dir) = fixture();
-    CreateIssueTool::new(Arc::clone(&store), policy())
-        .invoke(issue_args("a"), &ctx)
-        .await;
-    CreateIssueTool::new(Arc::clone(&store), policy())
-        .invoke(issue_args("b"), &ctx)
-        .await;
+    let create = CreateIssueTool::new(Arc::clone(&store), policy());
+    let a = assigned_id(&create.invoke(issue_args("a"), &ctx).await).to_string();
+    let b = assigned_id(&create.invoke(issue_args("b"), &ctx).await).to_string();
 
     // b blocked by a is fine.
     let ok = SetIssueBlockedByTool::new(Arc::clone(&store))
-        .invoke(json!({ "id": "b", "blockedBy": ["a"] }), &ctx)
+        .invoke(json!({ "id": b, "blockedBy": [a] }), &ctx)
         .await;
     assert!(ok.ok);
 
     // a blocked by b would close a 2-cycle: refused, with guidance, nothing changes.
     let cyclic = SetIssueBlockedByTool::new(Arc::clone(&store))
-        .invoke(json!({ "id": "a", "blockedBy": ["b"] }), &ctx)
+        .invoke(json!({ "id": a, "blockedBy": [b] }), &ctx)
         .await;
     assert!(!cyclic.ok);
     assert!(cyclic.output.contains("cycle"), "{}", cyclic.output);
@@ -226,13 +276,14 @@ async fn set_issue_blocked_by_surfaces_a_cycle_as_a_tool_error_without_mutating(
 #[tokio::test]
 async fn update_complete_and_remove_flow() {
     let (store, ctx, _dir) = fixture();
-    CreateIssueTool::new(Arc::clone(&store), policy())
+    let filed = CreateIssueTool::new(Arc::clone(&store), policy())
         .invoke(issue_args("a"), &ctx)
         .await;
+    let id = assigned_id(&filed).to_string();
 
     let updated = UpdateIssueTool::new(Arc::clone(&store))
         .invoke(
-            json!({ "id": "a", "status": "in_progress", "title": "Renamed" }),
+            json!({ "id": id, "status": "in_progress", "title": "Renamed" }),
             &ctx,
         )
         .await;
@@ -243,7 +294,7 @@ async fn update_complete_and_remove_flow() {
     );
 
     let removed = RemoveIssueTool::new(Arc::clone(&store))
-        .invoke(json!({ "id": "a" }), &ctx)
+        .invoke(json!({ "id": id }), &ctx)
         .await;
     assert!(removed.ok);
     assert_eq!(store.lock().unwrap().issue_count(), 0);
@@ -271,10 +322,7 @@ async fn the_board_populations_are_reported_by_the_tools_that_change_them() {
     let caps = BoardCaps::default();
 
     let epic = CreateEpicTool::new(Arc::clone(&store))
-        .invoke(
-            json!({ "id": "core", "title": "Core", "description": "the loop" }),
-            &ctx,
-        )
+        .invoke(epic_args("core"), &ctx)
         .await;
     assert_eq!(
         usage(&epic),
@@ -290,19 +338,20 @@ async fn the_board_populations_are_reported_by_the_tools_that_change_them() {
         .invoke(issue_args("a"), &ctx)
         .await;
     assert_eq!(usage(&issue).issues, 1);
+    let id = assigned_id(&issue).to_string();
 
     let revised = UpdateIssueTool::new(Arc::clone(&store))
-        .invoke(json!({ "id": "a", "title": "Renamed" }), &ctx)
+        .invoke(json!({ "id": id, "title": "Renamed" }), &ctx)
         .await;
     assert_eq!(revised.data, None);
 
     let removed_issue = RemoveIssueTool::new(Arc::clone(&store))
-        .invoke(json!({ "id": "a" }), &ctx)
+        .invoke(json!({ "id": id }), &ctx)
         .await;
     assert_eq!(usage(&removed_issue).issues, 0);
 
     let removed_epic = RemoveEpicTool::new(Arc::clone(&store))
-        .invoke(json!({ "id": "core" }), &ctx)
+        .invoke(json!({ "id": "CORE" }), &ctx)
         .await;
     assert_eq!(usage(&removed_epic).epics, 0);
 }
@@ -313,15 +362,13 @@ async fn each_store_refusal_is_classified_from_its_variant() {
     let (store, ctx, _dir) = fixture();
     let create_issue = CreateIssueTool::new(Arc::clone(&store), policy());
 
-    create_issue.invoke(issue_args("a"), &ctx).await;
-    create_issue.invoke(issue_args("b"), &ctx).await;
+    let a = assigned_id(&create_issue.invoke(issue_args("a"), &ctx).await).to_string();
+    let b = assigned_id(&create_issue.invoke(issue_args("b"), &ctx).await).to_string();
 
-    // Taken ids and cycle-closing edges are conflicts with the board as it stands.
-    let duplicate = create_issue.invoke(issue_args("a"), &ctx).await;
-    assert_eq!(duplicate.failure, Some(ToolFailure::Conflict));
-
+    // A taken prefix and a cycle-closing edge are conflicts with the board as it stands. (There is
+    // no duplicate *issue*: the board assigns those ids, so a caller cannot collide on one.)
     let duplicate_epic = {
-        let epic = json!({ "id": "core", "title": "Core", "description": "d" });
+        let epic = epic_args("core");
         CreateEpicTool::new(Arc::clone(&store))
             .invoke(epic.clone(), &ctx)
             .await;
@@ -332,10 +379,10 @@ async fn each_store_refusal_is_classified_from_its_variant() {
     assert_eq!(duplicate_epic.failure, Some(ToolFailure::Conflict));
 
     SetIssueBlockedByTool::new(Arc::clone(&store))
-        .invoke(json!({ "id": "b", "blockedBy": ["a"] }), &ctx)
+        .invoke(json!({ "id": b, "blockedBy": [a.clone()] }), &ctx)
         .await;
     let cycle = SetIssueBlockedByTool::new(Arc::clone(&store))
-        .invoke(json!({ "id": "a", "blockedBy": ["b"] }), &ctx)
+        .invoke(json!({ "id": a.clone(), "blockedBy": [b] }), &ctx)
         .await;
     assert_eq!(cycle.failure, Some(ToolFailure::Conflict));
 
@@ -351,28 +398,32 @@ async fn each_store_refusal_is_classified_from_its_variant() {
     assert_eq!(unknown_epic.failure, Some(ToolFailure::NotFound));
 
     let unknown_grouping = UpdateIssueTool::new(Arc::clone(&store))
-        .invoke(json!({ "id": "a", "epicId": "ghost" }), &ctx)
+        .invoke(json!({ "id": a.clone(), "epicId": "GHOST" }), &ctx)
         .await;
     assert_eq!(unknown_grouping.failure, Some(ToolFailure::NotFound));
 
     let unknown_blocker = SetIssueBlockedByTool::new(Arc::clone(&store))
-        .invoke(json!({ "id": "a", "blockedBy": ["ghost"] }), &ctx)
+        .invoke(json!({ "id": a.clone(), "blockedBy": ["ghost"] }), &ctx)
         .await;
     assert_eq!(unknown_blocker.failure, Some(ToolFailure::NotFound));
 
-    // And everything the caller got wrong about the call itself is one class.
+    // And everything the caller got wrong about the call itself is one class — including a `prefix`
+    // that is not one.
     for outcome in [
         create_issue
-            .invoke(json!({ "id": "c", "title": "t", "inScope": "a" }), &ctx)
+            .invoke(json!({ "title": "t", "inScope": "a" }), &ctx)
+            .await,
+        CreateEpicTool::new(Arc::clone(&store))
+            .invoke(epic_args("nope!"), &ctx)
             .await,
         UpdateIssueTool::new(Arc::clone(&store))
-            .invoke(json!({ "id": "a", "status": "nope" }), &ctx)
+            .invoke(json!({ "id": a.clone(), "status": "nope" }), &ctx)
             .await,
         UpdateIssueTool::new(Arc::clone(&store))
-            .invoke(json!({ "id": "a" }), &ctx)
+            .invoke(json!({ "id": a }), &ctx)
             .await,
         SetIssueBlockedByTool::new(Arc::clone(&store))
-            .invoke(json!({ "id": "a", "blockedBy": "b" }), &ctx)
+            .invoke(json!({ "id": "ISSUE-1", "blockedBy": "b" }), &ctx)
             .await,
     ] {
         assert_eq!(

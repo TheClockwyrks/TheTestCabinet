@@ -225,6 +225,8 @@ fn counts_code_review_phases() {
     let phase = |p| GgTelemetryKind::IssueReview {
         phase: p,
         items: None,
+        reviewer: None,
+        approvals: None,
         baseline: None,
     };
     // One review that took one fix round: requested → changes → approved.

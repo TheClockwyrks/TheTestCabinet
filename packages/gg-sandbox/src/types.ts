@@ -164,6 +164,24 @@ export interface BoardUsage {
   maxIssues: number;
 }
 
+/** An epic that was just created: the id its prefix resolved to, and the board budget. */
+export interface EpicCreated {
+  /** The epic's id — the prefix you gave, upper-cased (`auth` → `AUTH`). Group issues under it
+   * with this, and its issues are numbered from it (`AUTH-1`). */
+  id: string;
+  /** How much of the board budget is used. */
+  board: BoardUsage;
+}
+
+/** An issue that was just created: the id the board assigned it, and the board budget. */
+export interface IssueCreated {
+  /** The id the board assigned (`AUTH-1`) — you do not choose it. Use it to block later issues on
+   * this one, or to wait for it. */
+  id: string;
+  /** How much of the board budget is used. */
+  board: BoardUsage;
+}
+
 /** What a context reclaim actually freed from the live context window. */
 export interface ReclaimReport {
   /** Context items dropped from the live window. */

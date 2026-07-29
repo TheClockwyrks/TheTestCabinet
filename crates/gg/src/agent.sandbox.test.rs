@@ -1389,11 +1389,12 @@ async fn a_code_mode_reviewer_verdict_parses() {
             let programs = if n == 0 {
                 vec![
                     code_reply(&format!(
-                        "project.createEpic({{ id: \"e1\", title: \"Build\", description: \"the build\" \
-                         }});\nproject.createIssue({{ id: \"{REVIEW_ISSUE_ID}\", title: \"Add the widget\", \
+                        "const epic = project.createEpic({{ prefix: \"{REVIEW_EPIC_PREFIX}\", \
+                         title: \"Build\", description: \"the build\" }});\n\
+                         project.createIssue({{ title: \"Add the widget\", \
                          inScope: \"Implement the widget.\", outOfScope: \"Unrelated changes.\", \
-                         completionCriteria: \"The widget is fully implemented.\", epicId: \"e1\", \
-                         agent: \"{ROOT_AGENT}\", reviewers: [\"reviewer\"] }});"
+                         completionCriteria: \"The widget is fully implemented.\", \
+                         epicId: epic.id, agent: \"{ROOT_AGENT}\", reviewers: [\"reviewer\"] }});"
                     )),
                     code_reply(FINISHING_PROGRAM),
                 ]
@@ -1548,7 +1549,7 @@ async fn a_code_mode_issue_agents_worktree_is_merged() {
         let programs = if n == 0 {
             vec![
                 code_reply(&format!(
-                    "project.createIssue({{ id: \"{REVIEW_ISSUE_ID}\", title: \"Write the file\", \
+                    "project.createIssue({{ title: \"Write the file\", \
                      inScope: \"Write isolated.txt.\", outOfScope: \"Nothing else.\", \
                      completionCriteria: \"isolated.txt exists.\", agent: \"{ROOT_AGENT}\" }});"
                 )),

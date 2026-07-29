@@ -596,20 +596,24 @@ describe("GgRunMonitorPage", () => {
   it("renders the run-global epic/issue board on the Project tab", () => {
     renderMonitor();
     openTab("Project");
-    // The board is a filesystem of epics-as-folders whose files are an epic summary
-    // and each issue under it — the epic titles, the ungrouped bucket, and every
-    // issue title read in the sidebar. ("Rendering" reads twice: the epic folder and
-    // the epic summary the default landing selects.)
+    // The board is a filesystem of epics-as-folders holding issues-as-folders — the
+    // epic titles, the ungrouped bucket, and every issue named `id: title` read in the
+    // sidebar. ("Rendering" reads twice: the epic folder and the epic Overview the
+    // default landing selects.)
     expect(screen.getAllByText("Rendering").length).toBeGreaterThan(0);
     expect(screen.getByText("Ungrouped")).toBeInTheDocument();
-    expect(screen.getByText("Add win overlay")).toBeInTheDocument();
-    expect(screen.getByText("Wire audio")).toBeInTheDocument();
-    // Selecting a blocked issue shows its detail: its status, its blocked-by edge,
-    // its readiness, and its retries count.
-    openFile("issue Add win overlay");
-    expect(screen.getByText("blocked")).toBeInTheDocument();
+    expect(screen.getByText("i3: Add win overlay")).toBeInTheDocument();
+    expect(screen.getByText("i4: Wire audio")).toBeInTheDocument();
+    // Selecting a blocked issue's Overview shows its detail: its ONE state badge (which
+    // folds its status together with its unmet blocker), its retries, and its brief.
+    openFile("i3 overview");
+    expect(screen.getByText("Blocked")).toBeInTheDocument();
     expect(screen.getByText("Retries")).toBeInTheDocument();
     expect(screen.getByText("Show a win banner.")).toBeInTheDocument();
+    // And only that badge: the separate status/readiness chips the header used to carry
+    // said the same thing twice.
+    expect(screen.queryByText("open")).not.toBeInTheDocument();
+    expect(screen.queryByText("blocked")).not.toBeInTheDocument();
   });
 
   it("indents the files under an epic folder, like the Agents tree", () => {
@@ -623,10 +627,13 @@ describe("GgRunMonitorPage", () => {
       .getAllByRole("button")
       .find((el) => el.getAttribute("aria-expanded") === "true");
     expect(folder).toBeDefined();
-    const issue = screen.getByRole("button", { name: "issue Add win overlay" });
+    const issue = screen.getByRole("button", { name: "issue i3" });
+    const overview = screen.getByRole("button", { name: "i3 overview" });
     const padding = (el: HTMLElement) => parseFloat(el.style.paddingLeft);
     expect(padding(folder!)).toBeGreaterThan(0);
     expect(padding(issue)).toBeGreaterThan(padding(folder!));
+    // An issue is a folder of its own, so its Overview nests one level deeper again.
+    expect(padding(overview)).toBeGreaterThan(padding(issue));
   });
 
   it("renders the plan on an agent's plan file", () => {
@@ -1011,21 +1018,32 @@ describe("GgRunMonitorPage", () => {
       ggIssue("i1", {
         type: "issue_review",
         phase: "changes_requested",
+        reviewer: { agentId: "i1.0i.0r", profile: "critic" },
         items: ["Handle the empty-input case", "Add a unit test"],
       }),
-      ggIssue("i2", { type: "issue_review", phase: "approved" }),
+      ggIssue("i2", { type: "issue_review", phase: "requested" }),
+      ggIssue("i2", {
+        type: "issue_review",
+        phase: "approved",
+        approvals: [{ agentId: "i2.0i.0r", profile: "critic" }],
+      }),
     ];
     renderMonitor(events);
     openTab("Project");
-    // The first issue's detail carries its changes-requested review and the actionable
-    // items a fix agent must address before re-review.
-    openFile("issue Set up the canvas");
-    expect(screen.getByText("changes requested")).toBeInTheDocument();
+    // Each review round is its own entry under the issue, so its feedback stays readable
+    // after the issue has moved on — and the round says WHO ended it.
+    openFile("i1 review 1");
+    expect(screen.getByText("Changes Requested")).toBeInTheDocument();
+    expect(screen.getByText("Changes requested by")).toBeInTheDocument();
+    expect(screen.getByText("i1.0i.0r")).toBeInTheDocument();
     expect(screen.getByText("Handle the empty-input case")).toBeInTheDocument();
     expect(screen.getByText("Add a unit test")).toBeInTheDocument();
-    // The second issue's review approved, gating its acceptance.
-    openFile("issue Draw the board");
-    expect(screen.getByText("approved")).toBeInTheDocument();
+    // The second issue's round approved, which is what let it be accepted — and it names
+    // the agents that approved.
+    openFile("i2 review 1");
+    expect(screen.getByText("Approved")).toBeInTheDocument();
+    expect(screen.getByText("Approved by")).toBeInTheDocument();
+    expect(screen.getByText("i2.0i.0r")).toBeInTheDocument();
   });
 
   it("marks the chosen winner of a best-of-K speculation in the tree and summary", () => {

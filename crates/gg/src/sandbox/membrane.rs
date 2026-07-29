@@ -570,6 +570,7 @@ fn data_kind(data: &ToolData) -> &'static str {
         ToolData::MemoryHits(_) => "memoryHits",
         ToolData::TaskUsage(_) => "taskUsage",
         ToolData::BoardUsage(_) => "boardUsage",
+        ToolData::BoardNode(_) => "boardNode",
         ToolData::Reclaim(_) => "reclaim",
         ToolData::ArchiveSearch(_) => "archiveSearch",
         ToolData::SubagentSpawned(_) => "subagentSpawned",

@@ -96,10 +96,10 @@ pub use context::{
 // from here by the [sandbox membrane](crate::sandbox), which turns each one into a typed WIT
 // result.
 pub use data::{
-    AgentStatusData, ArchiveHitData, ArchiveSearchData, BoardUsageData, DirEntryData, DirEntryKind,
-    FileImageData, FileTextData, MemoryHitData, MemoryUsageData, ReclaimData, ShellData,
-    SpeculationData, SubagentHandleData, SubagentResultData, ToolData, ToolFailure, UsagePair,
-    WorkflowData, saturating_u32, saturating_u64,
+    AgentStatusData, ArchiveHitData, ArchiveSearchData, BoardNodeData, BoardUsageData,
+    DirEntryData, DirEntryKind, FileImageData, FileTextData, MemoryHitData, MemoryUsageData,
+    ReclaimData, ShellData, SpeculationData, SubagentHandleData, SubagentResultData, ToolData,
+    ToolFailure, UsagePair, WorkflowData, saturating_u32, saturating_u64,
 };
 pub use filesystem::{
     EditFileTool, ListDirTool, READ_FILE_TOOL, ReadFileTool, ReadPolicy, WriteFileTool,

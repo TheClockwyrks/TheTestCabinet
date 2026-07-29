@@ -355,18 +355,18 @@ interface board {
 
     /// An epic to create.
     record epic-input {
-        /// The unique short id issues reference it by.
-        id: string,
+        /// A 3-6 letter prefix naming the epic. Upper-cased, it becomes the epic's id and the stem
+        /// its issues are numbered from (`AUTH` → `AUTH-1`, `AUTH-2`, …).
+        prefix: string,
         /// The epic title.
         title: string,
         /// What the epic covers.
         description: string,
     }
 
-    /// An issue to create — a heavyweight, self-contained, dispatchable unit of work.
+    /// An issue to create — a heavyweight, self-contained, dispatchable unit of work. It has no id:
+    /// the board assigns one from the epic's prefix and reports it back.
     record issue-input {
-        /// The unique short id.
-        id: string,
         /// The issue title.
         title: string,
         /// An optional overview.
@@ -428,10 +428,28 @@ interface board {
         max-issues: u32,
     }
 
-    /// Create an epic to group related issues.
-    create-epic: func(epic: epic-input) -> result<board-usage, tool-error>;
-    /// Create a self-contained, dispatchable issue.
-    create-issue: func(issue: issue-input) -> result<board-usage, tool-error>;
+    /// An epic the board just created: the id its prefix resolved to, and how full the board now is.
+    record epic-created {
+        /// The epic's id — its upper-cased prefix (`auth` → `AUTH`), which its issues are numbered
+        /// from and which they reference as their `epic-id`.
+        id: string,
+        /// How much of the board budget is used.
+        board: board-usage,
+    }
+
+    /// An issue the board just created: the id it assigned, and how full the board now is.
+    record issue-created {
+        /// The id the board assigned the issue (`AUTH-1`) — the handle every later reference uses.
+        id: string,
+        /// How much of the board budget is used.
+        board: board-usage,
+    }
+
+    /// Create an epic to group related issues, returning the id (the upper-cased prefix) it was
+    /// given.
+    create-epic: func(epic: epic-input) -> result<epic-created, tool-error>;
+    /// Create a self-contained, dispatchable issue, returning the id the board assigned it.
+    create-issue: func(issue: issue-input) -> result<issue-created, tool-error>;
     /// Revise an issue.
     update-issue: func(id: string, patch: issue-patch) -> result<_, tool-error>;
     /// Replace an issue's full blocker set; an empty list clears every blocker.

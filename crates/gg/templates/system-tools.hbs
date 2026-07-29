@@ -82,10 +82,14 @@ You have access to a shared project board that you and other agents may use.
 This board is shared across the entire run.
 
 Use epics to group related issues. Epics are used exclusively for organizational
-purposes and can be created using `create_epic`.
+purposes and can be created using `create_epic`, which takes a `prefix` of 3-6
+letters naming the epic. The prefix is upper-cased and becomes the epic's id.
 
 Issues represent units of work to be completed. These are created using
-`create_issue` and may have dependencies configured. Submitting an issue will
+`create_issue`, which does not take an id: the board assigns one from the epic's
+prefix and reports it back to you, so an epic with the prefix `AUTH` holds
+`AUTH-1`, `AUTH-2`, and so on. Keep the id you are given — it is how you refer to
+the issue afterwards. Issues may have dependencies configured. Submitting an issue will
 cause an agent to be dispatched to handle the issue once all dependencies have
 been completed (or immediately, if it has no dependencies). Each issue is worked
 in its own isolated copy of the workspace, which is merged back once the issue

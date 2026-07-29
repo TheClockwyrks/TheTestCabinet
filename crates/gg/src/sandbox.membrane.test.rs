@@ -122,18 +122,17 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "create_epic",
-            program: "project.createEpic({ id: \"e1\", title: \"E\", description: \"D\" });",
-            expected: || json!({ "id": "e1", "title": "E", "description": "D" }),
+            program: "project.createEpic({ prefix: \"epc\", title: \"E\", description: \"D\" });",
+            expected: || json!({ "prefix": "epc", "title": "E", "description": "D" }),
         },
         Crossing {
             tool: "create_issue",
             program: concat!(
-                "project.createIssue({ id: \"i1\", title: \"I\", inScope: \"s\", outOfScope: \"o\", ",
+                "project.createIssue({ title: \"I\", inScope: \"s\", outOfScope: \"o\", ",
                 "completionCriteria: \"c\", agent: \"worker\", reviewers: [\"critic\"] });",
             ),
             expected: || {
                 json!({
-                    "id": "i1",
                     "title": "I",
                     "description": null,
                     "inScope": "s",

@@ -1534,13 +1534,13 @@ impl ToolApi for LoopToolApi {
             RemoveTaskTool::new(api.tasks_rt.store()).remove(id.clone())
         })
     }
-    fn create_epic(&mut self, id: String, title: String, description: String) -> ToolOutcome {
+    fn create_epic(&mut self, prefix: String, title: String, description: String) -> ToolOutcome {
         self.serviced(
             "create_epic",
-            json!({ "id": id, "title": title, "description": description }),
+            json!({ "prefix": prefix, "title": title, "description": description }),
             |api| {
                 CreateEpicTool::new(api.board.store()).create_epic(
-                    id.clone(),
+                    prefix.clone(),
                     title.clone(),
                     description.clone(),
                 )
@@ -1550,7 +1550,6 @@ impl ToolApi for LoopToolApi {
     #[allow(clippy::too_many_arguments)]
     fn create_issue(
         &mut self,
-        id: String,
         title: String,
         description: Option<String>,
         in_scope: String,
@@ -1563,10 +1562,9 @@ impl ToolApi for LoopToolApi {
     ) -> ToolOutcome {
         self.serviced(
             "create_issue",
-            json!({ "id": id, "title": title, "description": description, "inScope": in_scope, "outOfScope": out_of_scope, "completionCriteria": completion_criteria, "blockedBy": blocked_by, "epicId": epic_id, "agent": agent, "reviewers": reviewers }),
+            json!({ "title": title, "description": description, "inScope": in_scope, "outOfScope": out_of_scope, "completionCriteria": completion_criteria, "blockedBy": blocked_by, "epicId": epic_id, "agent": agent, "reviewers": reviewers }),
             |api| {
                 CreateIssueTool::new(api.board.store(), api.issue_policy.clone()).create_issue(
-                    id.clone(),
                     title.clone(),
                     description.clone(),
                     in_scope.clone(),
