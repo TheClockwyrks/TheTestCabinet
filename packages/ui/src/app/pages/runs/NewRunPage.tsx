@@ -27,6 +27,7 @@ import { routes } from "../../routes";
 import { useCatalog } from "../../runtime/useCatalog";
 import { useCaseCategory } from "../../runtime/useCaseCategory";
 import { useTestCaseName } from "../../data/useTestCaseName";
+import { GG_HARNESS_SLUG } from "../../data/runLinks";
 import {
   CATALOG_CATEGORIES,
   type CatalogCategory,
@@ -351,15 +352,20 @@ export function NewRunPage() {
         continue;
       }
       try {
+        // The set that actually runs: every deferred agent bound to the model its
+        // slot collected. Its root (`agents[0]`) carries the run's representative
+        // model — the same one the backend lifts into the job's launch identity —
+        // so what is tracked below matches what a reload re-seeds from `/jobs/active`.
+        const capabilitySet = bindModelSlots(
+          option.capabilitySet,
+          combo.slotModels,
+        );
         const ack = await worker!.client.launchGgRun(
           {
             testCase: sel.slug,
             version: sel.version,
             variant: sel.variant,
-            capabilitySet: bindModelSlots(
-              option.capabilitySet,
-              combo.slotModels,
-            ),
+            capabilitySet,
             // Omit the override entirely when blank so the case's default runtime
             // applies (the field is optional, not nullable).
             ...(maxRuntime ? { maxRuntimeSeconds: Number(maxRuntime) } : {}),
@@ -367,6 +373,24 @@ export function NewRunPage() {
           },
           token ?? "",
         );
+        // Register the enqueued run with the runs runtime exactly as `launchBatch`
+        // does for a harness run: gg has no batch endpoint, so it does not travel
+        // through that shared path and has to track its own. Without this a gg run
+        // is missing from the Runs page's in-progress list for its whole life —
+        // and, since the reconcile backstop only polls while something is tracked,
+        // nothing recovers it until the page is reloaded and the list re-seeds from
+        // the backend's active jobs.
+        runtime.track({
+          testCaseSlug: sel.slug,
+          testCaseVersion: sel.version,
+          variant: sel.variant,
+          harnessSlug: GG_HARNESS_SLUG,
+          modelId: capabilitySet.agents?.[0]?.modelId ?? "",
+          runId: ack.jobId,
+          // Just enqueued: `queued` on the backend, advanced by the reconcile as it
+          // reports each transition.
+          state: "queued",
+        });
         // A gg run is watched on its own monitor, keyed by the enqueued job id.
         outcomes.push({
           ...base,

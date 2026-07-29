@@ -15,6 +15,7 @@ import { BackChevron } from "../../components/BackChevron";
 import { PageLayout } from "../../components/PageLayout";
 import { useGalleryData } from "../../data/galleryContext";
 import { useTestCaseName } from "../../data/useTestCaseName";
+import { GG_HARNESS_SLUG } from "../../data/runLinks";
 import { formatCompact, formatUsd } from "../../format";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
 import { launchBatch } from "../runs/launchBatch";
@@ -142,8 +143,12 @@ export function ComparisonDetailPage() {
                 testCaseSlug: controls.caseSlug,
                 testCaseVersion: controls.version,
                 variant: controls.variant,
-                harnessSlug: "gg",
-                modelId: option.name,
+                harnessSlug: GG_HARNESS_SLUG,
+                // The run's representative model is its root agent's, which is what
+                // the backend lifts into the job's launch identity — so the row
+                // reads the same before and after a reload re-seeds the in-progress
+                // list from the backend's active jobs.
+                modelId: capabilitySet.agents?.[0]?.modelId ?? "",
                 runId: ack.jobId,
                 state: "queued",
               });

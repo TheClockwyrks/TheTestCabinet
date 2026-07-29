@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   BackendProvider,
   WorkersProvider,
@@ -55,8 +55,12 @@ vi.mock("../../data/useTestCases", () => ({
 vi.mock("../../data/useTestCaseName", () => ({
   useTestCaseName: () => (slug: string) => slug,
 }));
+// The runs runtime a launch registers its enqueued run with, so the Runs page can
+// list it while it is in flight. Hoisted so the mock factory (which vitest lifts
+// above the imports) can close over the same spy the tests assert on.
+const { track } = vi.hoisted(() => ({ track: vi.fn() }));
 vi.mock("../../runtime/runsRuntime", () => ({
-  useRunsRuntime: () => ({ inProgress: [], track: () => {} }),
+  useRunsRuntime: () => ({ inProgress: [], track }),
 }));
 
 // A catalog entry for a model reachable through *two* harness families, listed
@@ -177,6 +181,10 @@ function chooseGg() {
 }
 
 describe("NewRunPage", () => {
+  beforeEach(() => {
+    track.mockClear();
+  });
+
   it("offers harnesses until gg is chosen as the orchestrator", async () => {
     renderPage();
     expect(screen.getByLabelText("Harness")).toBeInTheDocument();
@@ -230,6 +238,54 @@ describe("NewRunPage", () => {
     expect(ids).toContain("read-file");
   });
 
+  it("tracks a launched gg run so it appears in the runs list while it is in flight", async () => {
+    const launchGgRun = vi.fn().mockResolvedValue({ jobId: "job-3" });
+    renderPage(launchGgRun);
+    chooseGg();
+    await screen.findByLabelText("gg configuration");
+
+    const input = await screen.findByPlaceholderText(/^model id/);
+    fireEvent.focus(input);
+    fireEvent.click(
+      await screen.findByRole("option", { name: /GPT-5\.6 Sol/ }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Launch run" }));
+    await waitFor(() => expect(launchGgRun).toHaveBeenCalledTimes(1));
+
+    // gg has no batch endpoint, so it never travels through `launchBatch` and has
+    // to register the enqueued run itself. Its identity is the launched one — the
+    // `gg` harness and the model bound to the root agent — so the row reads the
+    // same before and after a reload re-seeds the list from the backend.
+    await waitFor(() => expect(track).toHaveBeenCalledTimes(1));
+    expect(track.mock.calls[0]![0]).toEqual({
+      runId: "job-3",
+      testCaseSlug: "carom",
+      testCaseVersion: "v1.0.0",
+      variant: "base",
+      harnessSlug: "gg",
+      modelId: "openai/gpt-5.6-sol",
+      state: "queued",
+    });
+  });
+
+  it("does not track a gg run whose launch failed", async () => {
+    const launchGgRun = vi.fn().mockRejectedValue(new Error("nope"));
+    renderPage(launchGgRun);
+    chooseGg();
+    await screen.findByLabelText("gg configuration");
+
+    const input = await screen.findByPlaceholderText(/^model id/);
+    fireEvent.focus(input);
+    fireEvent.click(
+      await screen.findByRole("option", { name: /GPT-5\.6 Sol/ }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Launch run" }));
+
+    await waitFor(() => expect(launchGgRun).toHaveBeenCalledTimes(1));
+    await screen.findByText(/nope/);
+    expect(track).not.toHaveBeenCalled();
+  });
+
   it("asks only for the configuration's declared model slots, pre-filled with their defaults", async () => {
     const launchGgRun = vi.fn().mockResolvedValue({ jobId: "job-2" });
     renderPage(launchGgRun, [SAVED_CONFIG]);
@@ -272,9 +328,9 @@ describe("NewRunPage", () => {
       { name: "reviewer", modelId: "anthropic/claude-haiku-4.5" },
       { name: "judge", modelId: "openai/o-fixed" },
     ]);
-    expect(capabilitySet.agents.every((a: { modelSlot?: string }) => !a.modelSlot)).toBe(
-      true,
-    );
+    expect(
+      capabilitySet.agents.every((a: { modelSlot?: string }) => !a.modelSlot),
+    ).toBe(true);
     expect(capabilitySet.modelSlots).toBeUndefined();
   });
 });
