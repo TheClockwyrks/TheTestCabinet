@@ -1,12 +1,17 @@
 // Per-class cost for a gg run, reconstructed from the model catalog's prices.
 //
-// gg records only a *total* cost per run (and per slot) — a single USD figure, not
-// a class-by-class split (see the run-record `CostMetrics` contract: `comparable`
-// and `actual`, nothing more). To show what the money went to — input vs cached
-// input vs reasoning vs output — and the input-vs-output cost ring, we price each
-// token class against the per-token price of the model that produced it. A gg run
-// can span several models (one per slot), so the pricing is per slot and summed,
-// not one blanket rate over the run's tokens.
+// gg records a *total* cost per accounting — a single USD figure, not a class-by-class
+// split (see the run-record `CostMetrics` contract: `comparable` and `actual`, nothing
+// more). To show what the money went to — input vs cached input vs reasoning vs output —
+// and the input-vs-output cost ring, we price each token class against the per-token
+// price of the model that produced it.
+//
+// A gg run spans several models (one per agent profile), so the pricing is per
+// (profile, model) and summed, never one blanket rate over the run's tokens. gg stamps
+// every `usage` delta with the profile and model that spent it, so that split is exact
+// and available from the run's first turn; the priced units below are those per-(slot,
+// model) tallies. Only a stream recorded before gg attributed its deltas needs the
+// fallback — the scope's aggregate tally priced at the model its agent is bound to.
 //
 // Reasoning tokens are billed at the output rate (the catalog carries no separate
 // reasoning price — see `TokenMetrics.reasoning`), so they take the output price.
@@ -15,10 +20,14 @@
 
 import { useMemo } from "react";
 import type { TokenMetrics } from "@test-cabinet/run-record";
-import type { GgCapabilitySet } from "@test-cabinet/run-record/gg";
 import { useFindModelOptional } from "../../../data/useModels";
 import type { ModelPrices } from "../../../data/models";
-import type { SlotUsage, UsageTally } from "./useGgRunState";
+import type {
+  AgentTreeNode,
+  DerivedGgState,
+  SlotUsage,
+  UsageTally,
+} from "./useGgRunState";
 
 // A run's cost broken into the four token classes, in USD. The `total` is their
 // sum — the derived total, which may differ slightly from the run's recorded
@@ -44,7 +53,7 @@ export type ModelPriceLookup = (modelId: string) => ModelPrices | null;
 
 // One priceable unit of a run's usage: a token count paired with the model that
 // produced it, so each is priced at its own model's rate before summing.
-interface PricedSlot {
+export interface PricedSlot {
   tokens: TokenMetrics;
   modelId: string;
 }
@@ -92,8 +101,8 @@ export function deriveGgCostBreakdown(
   return { ...acc, total };
 }
 
-// A tally's token classes as a `TokenMetrics`, for pricing a scope (the whole run,
-// or one agent) that has an aggregate tally but no per-slot rollup yet.
+// A tally's token classes as a `TokenMetrics`, for pricing a scope whose usage is only
+// an aggregate — a stream recorded before gg attributed its deltas.
 function tokensFromTally(usage: UsageTally): TokenMetrics {
   return {
     uncachedInput: usage.uncachedInput,
@@ -103,46 +112,67 @@ function tokensFromTally(usage: UsageTally): TokenMetrics {
   };
 }
 
-// The single model a run's usage can be attributed to when there is no per-agent
-// rollup to attribute it precisely — the sole agent's model, or the one every agent
-// shares. Null when the run binds several distinct models (then an aggregate tally
-// cannot be split by model, so no fallback breakdown is derivable) or when the set
-// is not yet known.
-export function soleModelId(set: GgCapabilitySet | null): string | null {
-  const ids = new Set(
-    (set?.agents ?? []).map((a) => a.modelId).filter((id) => id),
-  );
-  return ids.size === 1 ? [...ids][0]! : null;
+/**
+ * The priceable units of **one agent's** spend: its per-(slot, model) tallies, or — on a
+ * stream whose deltas carry no attribution — its whole tally priced at the model its
+ * agent is bound to, which for a single agent is exact.
+ */
+export function agentPricedSlots(
+  slotUsage: readonly SlotUsage[],
+  usage: UsageTally,
+  modelId: string | null,
+): PricedSlot[] {
+  if (slotUsage.length > 0) {
+    return slotUsage.map((s) => ({ tokens: s.tokens, modelId: s.modelId }));
+  }
+  if (!modelId || !usage.anyTokens) return [];
+  return [{ tokens: tokensFromTally(usage), modelId }];
 }
 
 /**
- * The cost breakdown for one scope of a gg run, priced against the loaded model
- * catalog. Prefers the per-(slot, model) rollups (`slotUsage`) — the precise,
- * multi-model-aware source — and falls back to the scope's aggregate tally priced
- * at a single model when no rollup has arrived yet (a live run before its first
- * `slot_usage`, or a subagent whose usage is only a tally). Returns null when the
- * catalog is absent (no gallery provider) or nothing could be priced.
+ * The priceable units of a **whole run's** spend.
+ *
+ * Prefers the run's own per-(slot, model) split, which gg's attributed `usage` deltas
+ * make available from the first turn. A stream recorded before that attribution existed
+ * is instead priced agent by agent — each agent's own tally at the model its
+ * `agent_spawned` bound it to — so a run spanning several models still gets a real
+ * split rather than being written off as unattributable. That per-agent pass is the
+ * partition of the run (gg stamps every event with the agent that emitted it), so it
+ * neither double-counts nor drops anyone's spend.
+ */
+export function runPricedSlots(
+  slotUsage: readonly SlotUsage[],
+  perAgent: Map<string, DerivedGgState>,
+  agentForest: readonly AgentTreeNode[],
+): PricedSlot[] {
+  if (slotUsage.length > 0) {
+    return slotUsage.map((s) => ({ tokens: s.tokens, modelId: s.modelId }));
+  }
+  const slots: PricedSlot[] = [];
+  const walk = (node: AgentTreeNode) => {
+    const state = perAgent.get(node.id);
+    if (state) {
+      slots.push(
+        ...agentPricedSlots(state.slotUsage, state.usage, node.modelId),
+      );
+    }
+    node.children.forEach(walk);
+  };
+  agentForest.forEach(walk);
+  return slots;
+}
+
+/**
+ * The cost breakdown for `slots`, priced against the loaded model catalog. Returns null
+ * when the catalog is absent (no gallery provider) or nothing could be priced.
  */
 export function useGgCostBreakdown(
-  slotUsage: readonly SlotUsage[],
-  fallbackUsage: UsageTally,
-  fallbackModelId: string | null,
+  slots: readonly PricedSlot[],
 ): GgCostBreakdown | null {
   const findModel = useFindModelOptional();
   return useMemo(() => {
     if (!findModel) return null;
     const priceOf: ModelPriceLookup = (id) => findModel(id)?.prices ?? null;
-    const slots: PricedSlot[] =
-      slotUsage.length > 0
-        ? slotUsage.map((s) => ({ tokens: s.tokens, modelId: s.modelId }))
-        : fallbackModelId && fallbackUsage.anyTokens
-          ? [
-              {
-                tokens: tokensFromTally(fallbackUsage),
-                modelId: fallbackModelId,
-              },
-            ]
-          : [];
     return deriveGgCostBreakdown(slots, priceOf);
-  }, [findModel, slotUsage, fallbackUsage, fallbackModelId]);
+  }, [findModel, slots]);
 }

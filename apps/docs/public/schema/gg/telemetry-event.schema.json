@@ -838,7 +838,7 @@
       "type": "object"
     },
     {
-      "description": "Token usage (and, when known, cost) accounted since the previous usage event.\nReuses the shared [`TokenCounts`] and [`Cost`] contract types so gg usage is\nreported in the same units as every other run.",
+      "description": "Token usage (and, when known, cost) accounted since the previous usage event,\n**attributed to the agent profile and model that spent it**.\nReuses the shared [`TokenCounts`] and [`Cost`] contract types so gg usage is\nreported in the same units as every other run.\n\nA gg run spans several models (one per [agent profile](GgAgentConfig)), so an unattributed\ndelta is unattributable: summed over a multi-model run it says what was spent but not on\nwhat, and no consumer can price it per token class or split it per model. Each delta\ntherefore names the profile and the concrete model that produced it, which makes the *live*\nper-model breakdown derivable from the delta stream alone — the\n[`SlotUsage`](Self::SlotUsage) rollups say the same thing, but only once an agent has\nfinished, which is too late for a run being watched. Summing the deltas of one\n`(slot, model_id)` key reproduces that key's rollup exactly.",
       "properties": {
         "cost": {
           "anyOf": [
@@ -850,6 +850,14 @@
             }
           ],
           "description": "The cost of this accounting, when it could be determined."
+        },
+        "modelId": {
+          "description": "The concrete model id that spent this — the model the\n[profile](Self::Usage::slot) resolved to for the agent that took the turn. Unset on\nthe same streams `slot` is.",
+          "type": ["string", "null"]
+        },
+        "slot": {
+          "description": "The [agent profile](GgAgentConfig) that spent this — the same name\n[`AgentSpawned::slot`](Self::AgentSpawned::slot) and\n[`SlotUsage::slot`](Self::SlotUsage::slot) key on. Unset only on a stream recorded\nbefore gg attributed its deltas, or on a [replay](GgReplayRecord) reconstruction,\nwhich has no live model binding to name.",
+          "type": ["string", "null"]
         },
         "tokens": {
           "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/TokenMetrics",

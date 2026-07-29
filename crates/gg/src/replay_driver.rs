@@ -597,11 +597,17 @@ fn parse<T: serde::de::DeserializeOwned>(
 /// Emit a turn's [`Usage`](GgTelemetryKind::Usage) under the same guard the real loop uses — silent
 /// when nothing was reported (usage is default and no cost), so the reconstructed stream matches the
 /// original turn for turn.
+///
+/// Unattributed: a reconstruction has no live model binding (its seam reports the synthetic
+/// [`ReplayClient::model_id`]), and naming a model the replay did not call would be a fabricated
+/// attribution on a stream whose whole point is fidelity to what was recorded.
 fn emit_usage(response: &ModelResponse, emitter: &Emitter) {
     if response.usage == TokenCounts::default() && response.cost.is_none() {
         return;
     }
     emitter.emit(GgTelemetryKind::Usage {
+        slot: None,
+        model_id: None,
         tokens: response.usage,
         cost: response.cost,
     });

@@ -45,7 +45,16 @@ through **two** surfaces:
   is more than a count: each agent reads as a row carrying its **own turn count**, the
   **peak** its context window reached, its **share of the run's tokens**, and the
   **tools it used** — and each row is a link into that agent's files in the Agents
-  explorer, so the whole-run view and the per-agent one are one click apart.
+  explorer, so the whole-run view and the per-agent one are one click apart. The
+  **cost** read-out is split **per class** (input, cached input, reasoning, output)
+  by pricing each token against the model that produced it — never at one blanket
+  rate. A run binds one model per [agent profile](/gg/configurations/), so every
+  `usage` event names the profile and model that spent it; the split, the
+  input-vs-output ring, and the **per-slot usage** tile beside them are therefore all
+  derived from the delta stream, and read the same on a run spanning five models as on
+  one spanning a single model — from the run's first turn, not once its agents finish.
+  (The end-of-agent `slot_usage` rollups carry the same figures for the durable record;
+  a consumer sums the deltas, never both.)
 - The **Project** view — the run-global [Project management](/gg/project-management/)
   board. Because the board is now shared run-wide rather than per agent, it is its own
   top-level section, **not** a file under any one agent.

@@ -80,6 +80,15 @@
   }
 }
 
+// The count of models a gg run bound *besides* the one the subject line names. It
+// sits in the muted subject colour rather than the model link's accent: it qualifies
+// the model beside it, and reading as a second link would suggest it goes somewhere.
+.extraModels {
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+  cursor: help;
+}
+
 .harnessVersion {
   color: t.$color-text-muted;
   font-variant-numeric: tabular-nums;

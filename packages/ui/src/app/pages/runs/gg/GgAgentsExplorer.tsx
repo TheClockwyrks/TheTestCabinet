@@ -18,7 +18,7 @@ import type {
 import { ROOT_ID, ggToolBreakdown, shortTokens } from "./useGgRunState";
 import { agentCapabilityOn } from "./ggCatalog";
 import { cx, fsIndent } from "./ggFsTree";
-import { soleModelId, useGgCostBreakdown } from "./ggCost";
+import { agentPricedSlots, useGgCostBreakdown } from "./ggCost";
 import {
   ContextUsageRing,
   CostWidget,
@@ -557,7 +557,6 @@ function FileContent({
           state={state}
           role={role}
           isRoot={isRoot}
-          capabilitySet={capabilitySet}
           workflows={workflows}
           speculations={speculations}
         />
@@ -727,7 +726,6 @@ function OverviewFile({
   state,
   role,
   isRoot,
-  capabilitySet,
   workflows,
   speculations,
 }: {
@@ -735,18 +733,17 @@ function OverviewFile({
   state: DerivedGgState;
   role?: SpeculationRole;
   isRoot: boolean;
-  capabilitySet: GgCapabilitySet | null;
   workflows: Workflow[];
   speculations: SpeculationState[];
 }) {
-  // Price this agent's own usage: prefer its per-slot rollups, falling back to its
-  // aggregate tally at the agent's model (the run's sole model on the root, when it
-  // carries none of its own).
-  const costBreakdown = useGgCostBreakdown(
-    state.slotUsage,
-    state.usage,
-    node.modelId ?? soleModelId(capabilitySet),
+  // Price this agent's own usage: its own per-(profile, model) tallies, summed from the
+  // attributed `usage` deltas on its own stream, falling back to its aggregate tally at
+  // the model its spawn bound it to when a stream carried no attribution.
+  const pricedSlots = useMemo(
+    () => agentPricedSlots(state.slotUsage, state.usage, node.modelId),
+    [state.slotUsage, state.usage, node.modelId],
   );
+  const costBreakdown = useGgCostBreakdown(pricedSlots);
   // The agent's tool usage — the breakdown behind the Dashboard overview's chips.
   const tools = useMemo(() => ggToolBreakdown(state), [state]);
   // The high-water context snapshot — the turn the window was fullest — for the peak

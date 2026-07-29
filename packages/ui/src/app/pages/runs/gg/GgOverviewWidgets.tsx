@@ -7,8 +7,10 @@
 // The Tokens widget shows the run's input and output totals (input = cached +
 // uncached, output = reasoning + output) and absorbs the two composition rings
 // (how much input was cached, how much output was reasoning). The Cost widget shows
-// the total cost, its per-class split, and an input-vs-output cost ring; the split
-// is derived from catalog prices (see ggCost.ts), since gg records only a total.
+// the total cost, its per-class split, and an input-vs-output cost ring; the split is
+// derived from catalog prices (see ggCost.ts), since a recorded cost is one figure per
+// accounting rather than a class-by-class breakdown. gg attributes every accounting to
+// the model that spent it, so the split holds for a run spanning any number of models.
 
 import type { ContextSnapshot, UsageTally } from "./useGgRunState";
 import type { GgCostBreakdown } from "./ggCost";
@@ -414,8 +416,9 @@ function Stat({
 /**
  * The Cost widget: the scope's total cost, its per-class split, and an input-vs-output
  * cost ring. The total is the run's authoritative `comparable` figure; the split is
- * derived from catalog prices (`breakdown`), so it is shown scaled to that total and
- * omitted entirely when no breakdown could be priced.
+ * derived from catalog prices (`breakdown`) — per (profile, model) and summed, so a run
+ * spanning several models splits exactly as a single-model one does — shown scaled to
+ * that total, and omitted only when the catalog could price none of it.
  */
 export function CostWidget({
   usage,
@@ -488,8 +491,12 @@ export function CostWidget({
         </>
       ) : (
         displayTotal != null && (
+          // The split is derived from the model catalog's per-token prices, so the one
+          // thing that can withhold it is the catalog — not the run. Say which, rather
+          // than blaming gg for an accounting it does report.
           <p className={styles.cardNote}>
-            Per-class cost isn&rsquo;t recorded by gg — only the total.
+            No per-class split: the catalog lists no prices for this run&rsquo;s
+            model(s).
           </p>
         )
       )}

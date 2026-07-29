@@ -4155,6 +4155,13 @@ async fn run_tags_events_as_root_and_emits_agent_spawned_and_slot_usage() {
         Some(summed),
         "the SlotUsage rollup equals the sum of the per-turn Usage deltas"
     );
+    // And each delta says whose spend it is, so a consumer need not wait for the rollup (or guess
+    // from the capability set) to know which model the money went to.
+    assert_eq!(
+        usage_by_slot_model(&events),
+        HashMap::from([((ROOT_AGENT.to_string(), "mock/echo".to_string()), summed)]),
+        "every usage delta is attributed to the profile and model that spent it"
+    );
 
     // The rollup is emitted after the loop (after the last TurnStarted) and before SessionEnded.
     let slot_usage_pos = events
@@ -4773,6 +4780,34 @@ async fn run_spawns_a_subagent_that_runs_under_cap_one_and_returns() {
             .iter()
             .any(|(slot, model)| slot == "subagent" && model == "mock/subagent")
     );
+
+    // ...and so do the per-turn `Usage` deltas, each naming the profile and model that spent it.
+    // This is what makes the per-model split readable **while the run is still going**: the rollups
+    // above are only streamed once an agent has ended, so a console with nothing but deltas to work
+    // from could otherwise show a multi-model run's total and nothing about where it went. Summing
+    // one key's deltas reproduces that key's rollup exactly, so the live figure and the durable one
+    // can never disagree.
+    let deltas = usage_by_slot_model(&events);
+    let rolled: HashMap<(String, String), u64> = events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::SlotUsage {
+                slot,
+                model_id,
+                tokens,
+                ..
+            } => Some((
+                (slot.clone(), model_id.clone()),
+                tokens.total().unwrap_or(0),
+            )),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        deltas, rolled,
+        "the deltas, grouped by the (slot, model) each names, reproduce the rollups exactly"
+    );
+    assert_eq!(deltas.len(), 2, "both models are separately attributed");
 
     // The session completed.
     assert!(matches!(
@@ -7001,6 +7036,33 @@ fn session_summary(events: &[GgTelemetryEvent]) -> Option<GgSessionSummary> {
         GgTelemetryKind::SessionSummary { summary } => Some((**summary).clone()),
         _ => None,
     })
+}
+
+/// The per-turn `Usage` deltas summed by the `(slot, model)` each one names — the live,
+/// delta-only reconstruction of the per-model spend a console derives while a run is still going,
+/// before any end-of-agent `SlotUsage` rollup exists.
+///
+/// Panics on an unattributed delta: a live gg run has a model binding for every turn it takes, so
+/// a delta with no `(slot, model)` would be a hole in exactly the accounting this reconstruction
+/// exists to make possible.
+fn usage_by_slot_model(events: &[GgTelemetryEvent]) -> HashMap<(String, String), u64> {
+    let mut totals: HashMap<(String, String), u64> = HashMap::new();
+    for event in events {
+        let GgTelemetryKind::Usage {
+            slot,
+            model_id,
+            tokens,
+            ..
+        } = &event.kind
+        else {
+            continue;
+        };
+        let (Some(slot), Some(model_id)) = (slot, model_id) else {
+            panic!("a usage delta named no (slot, model): {event:?}");
+        };
+        *totals.entry((slot.clone(), model_id.clone())).or_default() += tokens.total().unwrap_or(0);
+    }
+    totals
 }
 
 /// The `(slot, model)` keys of the `SlotUsage` rollups the stream carried, in emission order.

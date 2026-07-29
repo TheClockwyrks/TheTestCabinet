@@ -466,6 +466,8 @@ fn usage_telemetry_reuses_the_shared_token_and_cost_types() {
         parent_agent_id: None,
         issue_id: None,
         kind: GgTelemetryKind::Usage {
+            slot: Some("primary".to_string()),
+            model_id: Some("anthropic/claude-opus-5".to_string()),
             tokens: TokenCounts {
                 uncached_input: Some(1200),
                 cached_input: Some(300),
@@ -479,8 +481,30 @@ fn usage_telemetry_reuses_the_shared_token_and_cost_types() {
         },
     };
     let value = serde_json::to_value(&event).expect("serialize");
+    assert_eq!(value["slot"], json!("primary"));
+    assert_eq!(value["modelId"], json!("anthropic/claude-opus-5"));
     let back: GgTelemetryEvent = serde_json::from_value(value).expect("deserialize");
     assert_eq!(event, back);
+}
+
+/// A usage delta recorded before gg attributed its deltas — no `slot`/`modelId` on the wire —
+/// still reads, as an unattributed accounting rather than a parse failure.
+#[test]
+fn unattributed_usage_telemetry_still_reads() {
+    let event: GgTelemetryEvent = serde_json::from_value(json!({
+        "timestamp": "2026-07-23T00:00:00Z",
+        "type": "usage",
+        "tokens": { "uncachedInput": 1200, "output": 450 },
+    }))
+    .expect("deserialize");
+    assert!(matches!(
+        event.kind,
+        GgTelemetryKind::Usage {
+            slot: None,
+            model_id: None,
+            ..
+        }
+    ));
 }
 
 #[test]

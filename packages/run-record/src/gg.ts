@@ -1568,6 +1568,20 @@ export type GgTelemetryKind =
   | {
       type: "usage";
       /**
+       * The [agent profile](GgAgentConfig) that spent this — the same name
+       * [`AgentSpawned::slot`](Self::AgentSpawned::slot) and
+       * [`SlotUsage::slot`](Self::SlotUsage::slot) key on. Unset only on a stream recorded
+       * before gg attributed its deltas, or on a [replay](GgReplayRecord) reconstruction,
+       * which has no live model binding to name.
+       */
+      slot?: string;
+      /**
+       * The concrete model id that spent this — the model the
+       * [profile](Self::Usage::slot) resolved to for the agent that took the turn. Unset on
+       * the same streams `slot` is.
+       */
+      modelId?: string;
+      /**
        * The normalized token counts for this accounting.
        */
       tokens: TokenMetrics;
@@ -2316,6 +2330,20 @@ export type GgTelemetryEvent = {
     }
   | {
       type: "usage";
+      /**
+       * The [agent profile](GgAgentConfig) that spent this — the same name
+       * [`AgentSpawned::slot`](Self::AgentSpawned::slot) and
+       * [`SlotUsage::slot`](Self::SlotUsage::slot) key on. Unset only on a stream recorded
+       * before gg attributed its deltas, or on a [replay](GgReplayRecord) reconstruction,
+       * which has no live model binding to name.
+       */
+      slot?: string;
+      /**
+       * The concrete model id that spent this — the model the
+       * [profile](Self::Usage::slot) resolved to for the agent that took the turn. Unset on
+       * the same streams `slot` is.
+       */
+      modelId?: string;
       /**
        * The normalized token counts for this accounting.
        */

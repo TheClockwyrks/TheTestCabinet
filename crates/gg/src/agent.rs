@@ -5334,7 +5334,7 @@ impl Agent {
             // events never disagree about how long the model took.
             turn_timer.model_call_finished(model_call_ms);
 
-            record_usage(&response, emitter);
+            record_usage(&response, emitter, &self.slot, client.model_id());
             total_tokens = add_counts(total_tokens, response.usage);
             total_cost = add_cost(total_cost, response.cost);
             // The same figure, folded into the run-wide total every agent's cost ceiling reads. Fed
@@ -7724,12 +7724,21 @@ const IMAGE_STRIPPED_NOTE: &str = "[The image could not be shown: the model runn
      specification instead.]";
 
 /// Emit a [`Usage`](GgTelemetryKind::Usage) event for a turn when it reported any
-/// tokens or cost.
-fn record_usage(response: &ModelResponse, emitter: &Emitter) {
+/// tokens or cost, attributed to the `slot` (agent profile) and `model_id` that spent it.
+///
+/// The attribution is what makes a *live* multi-model run readable: a bare delta can only be
+/// summed into one figure, so a console watching a run that spans several models could show the
+/// money going out but not where — the per-model split had to wait for the end-of-agent
+/// [`SlotUsage`](GgTelemetryKind::SlotUsage) rollups. Stamping each delta with its own
+/// `(slot, model)` makes every consumer's breakdown derivable from the first turn on, and summing
+/// the deltas of one key reproduces that key's rollup exactly.
+fn record_usage(response: &ModelResponse, emitter: &Emitter, slot: &str, model_id: &str) {
     if response.usage == TokenCounts::default() && response.cost.is_none() {
         return;
     }
     emitter.emit(GgTelemetryKind::Usage {
+        slot: Some(slot.to_string()),
+        model_id: Some(model_id.to_string()),
         tokens: response.usage,
         cost: response.cost,
     });

@@ -157,6 +157,22 @@ export function RunDetailLayout({
   // can link to the model page. `routes.modelDetail` keys on the model's slug,
   // and an id with no catalog match falls back to the plain canonical id text.
   const model = findModel(subject.modelId, subject.harnessSlug);
+  // How many models *besides* the one named above the run bound. A gg run binds one
+  // model per agent profile, so `subject.modelId` — its primary — is the whole story
+  // only when every profile shares it; naming it alone would report a run that spent on
+  // five models as a single-model run. The extras read as a `+N` beside the primary
+  // (the same convention the launch summary uses), with the full list on hover, so the
+  // header stays a subject line rather than becoming a roster. Zero for every non-gg
+  // run, which binds exactly one model.
+  const otherModelIds = subject.ggCapabilitySet
+    ? [
+        ...new Set(
+          (subject.ggCapabilitySet.agents ?? [])
+            .map((a) => a.modelId)
+            .filter((id) => id && id !== subject.modelId),
+        ),
+      ]
+    : [];
   const isLocal = localIds.has(run.id);
   // The run's per-reviewer breakdown, fetched with the record — the detail layer's
   // source of truth for reviews (the console's global reviews map is no longer
@@ -273,6 +289,15 @@ export function RunDetailLayout({
               </Link>
             ) : (
               canonicalModelId(subject.modelId)
+            )}
+            {otherModelIds.length > 0 && (
+              <span
+                className={styles.extraModels}
+                title={otherModelIds.join(", ")}
+              >
+                {" "}
+                +{otherModelIds.length}
+              </span>
             )}{" "}
             &middot; test case {subject.testCaseVersion} &middot;{" "}
             <span className={styles.variant}>{subject.variant}</span> variant

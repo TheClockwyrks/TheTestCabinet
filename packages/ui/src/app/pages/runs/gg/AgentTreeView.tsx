@@ -235,9 +235,11 @@ export function AgentIdentity({
   );
 }
 
-// The per-(slot, model) usage read-out: a gg run spans several models (one per
-// slot), so cost is accounted per slot rather than as one figure. The header total
-// is the sum of these rollups, so this is the breakdown behind that number.
+// The per-(slot, model) usage read-out: a gg run spans several models (one per agent
+// profile), so cost is accounted per profile rather than as one figure. The header total
+// is the sum of these, so this is the breakdown behind that number. It fills in live —
+// each `usage` delta names the profile and model that spent it — rather than appearing
+// only once an agent has ended.
 export function SlotUsagePanel({ slotUsage }: { slotUsage: SlotUsage[] }) {
   // Resolve each slot's model id to its catalog display name (the run records the
   // slug); fall back to the id itself where the catalog is absent (a bare harness

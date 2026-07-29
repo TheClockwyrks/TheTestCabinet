@@ -468,14 +468,16 @@ export interface GgRunState {
   perAgent: Map<string, DerivedGgState>;
 
   // --- Token/cost tally ----------------------------------------------------
-  // The global running tally. When per-slot rollups are present it is derived as
-  // the sum of the latest `slotUsage` rollups (their authoritative per-slot totals),
-  // so the header total is always consistent with the per-slot breakdown; before any
-  // `slot_usage` arrives it falls back to the sum of the incremental `usage` deltas.
+  // The scope's running total: the sum of the incremental `usage` deltas, which is
+  // complete from the first turn on. (A stream that carried rollups but no deltas
+  // falls back to summing those.)
   usage: UsageTally;
-  // The per-(slot, model) usage rollups (latest wins per pair); empty when the run
-  // emitted no `slot_usage` (a single-model run may only emit the global `usage`
-  // deltas). The sum across pairs reconciles with `usage` above.
+  // The scope's spend split per (slot, model) — the breakdown behind `usage`, and the
+  // only way a run spanning several models can be priced per token class. Summed live
+  // from the per-turn `usage` deltas, each of which names the profile and model that
+  // spent it; a stream recorded before gg attributed its deltas falls back to the
+  // end-of-agent `slot_usage` rollups, which say the same thing but only once an agent
+  // has finished. Empty only before the scope has spent anything.
   slotUsage: SlotUsage[];
 
   // --- Subagent forest (Phase 4) -------------------------------------------
@@ -1003,6 +1005,39 @@ function addTokens(
   }
 }
 
+// Accumulate one attributed `usage` delta into its (slot, model) rollup, on the same
+// null-aware terms as `addTokens`: a class stays null until a delta reports it, and the
+// cost stays null until one carries a figure. Summing a key's deltas this way reproduces
+// the `slot_usage` rollup gg emits for that key once the agent ends — which is exactly
+// why the live figure and the durable one can never disagree.
+function accumulateSlotUsage(
+  into: SlotUsage,
+  tokens: TokenMetrics,
+  cost: CostMetrics | null | undefined,
+): void {
+  for (const cls of [
+    "uncachedInput",
+    "cachedInput",
+    "output",
+    "reasoning",
+  ] as const) {
+    const value = tokens[cls];
+    if (value != null) into.tokens[cls] = (into.tokens[cls] ?? 0) + value;
+  }
+  if (cost?.comparable == null && cost?.actual == null) return;
+  const current = into.cost ?? { comparable: null, actual: null };
+  into.cost = {
+    comparable:
+      cost.comparable != null
+        ? (current.comparable ?? 0) + cost.comparable
+        : current.comparable,
+    actual:
+      cost.actual != null
+        ? (current.actual ?? 0) + cost.actual
+        : current.actual,
+  };
+}
+
 // Build the delegation **forest** from the flat agent map — an array of top-level
 // trees, always led by the main "root" agent (seeded even when the stream introduced
 // no agents), each node's children in spawn order.
@@ -1045,11 +1080,15 @@ function buildAgentForest(agents: Map<string, AgentNode>): AgentTreeNode[] {
 export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
   const feed: FeedRow[] = [];
   let announcedCapabilitySet: GgCapabilitySet | null = null;
-  // The tally of the incremental `usage` deltas. It is the header total until a
-  // `slot_usage` rollup arrives, after which the header is derived from the rollups
-  // (see the reconciliation at the end of this pass).
+  // The tally of the incremental `usage` deltas — the scope's running total.
   const deltaUsage: UsageTally = { ...EMPTY_USAGE };
-  // The latest `slot_usage` rollup per (slot, model), in first-seen order.
+  // Those same deltas, split by the (slot, model) each one names — the live per-model
+  // accounting, in first-seen order. This is what makes a multi-model run priceable
+  // *while it runs*: the `slot_usage` rollups below carry the same figures but are only
+  // streamed once an agent has ended.
+  const deltaSlotUsage = new Map<string, SlotUsage>();
+  // The latest `slot_usage` rollup per (slot, model), in first-seen order — the fallback
+  // for a stream recorded before gg attributed its deltas.
   const slotUsageByKey = new Map<string, SlotUsage>();
   // The agent tree, seeded with the root so a single-agent run is a one-node tree.
   const agents = new Map<string, AgentNode>([
@@ -1153,12 +1192,34 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
         // run's capabilities.
         turnCount += 1;
         break;
-      case "usage":
-        // Incremental deltas: sum them into the delta tally (the header total until
-        // a per-slot rollup supersedes it).
+      case "usage": {
+        // Incremental deltas: sum them into the scope's running total, and — since gg
+        // stamps each delta with the profile and model that spent it — into that pair's
+        // own rollup, so the per-model split is readable from the first turn rather than
+        // only once an agent ends and streams its `slot_usage`.
         deltaUsage.count += 1;
         addTokens(deltaUsage, gg.tokens, gg.cost);
+        if (gg.slot != null && gg.modelId != null) {
+          const key = `${gg.slot} ${gg.modelId}`;
+          let entry = deltaSlotUsage.get(key);
+          if (!entry) {
+            entry = {
+              slot: gg.slot,
+              modelId: gg.modelId,
+              tokens: {
+                uncachedInput: null,
+                cachedInput: null,
+                output: null,
+                reasoning: null,
+              },
+              cost: null,
+            };
+            deltaSlotUsage.set(key, entry);
+          }
+          accumulateSlotUsage(entry, gg.tokens, gg.cost);
+        }
         break;
+      }
       case "slot_usage":
         // A cumulative rollup, NOT a delta: the latest per (slot, model) is that
         // pair's total, so overwrite (never accumulate) the pair's entry.
@@ -1473,22 +1534,29 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
     }
   }
 
-  const slotUsage = [...slotUsageByKey.values()];
+  // The per-model split, preferring the one summed from the attributed deltas: it
+  // covers the whole run from its first turn, where the `slot_usage` rollups only
+  // appear as each agent ends — and, being emitted on the root's stream, describe the
+  // *run* rather than whichever agent's partition they happen to land in. The rollups
+  // stand in only for a stream recorded before gg attributed its deltas, where they are
+  // the sole per-model figures that exist.
+  const slotUsage =
+    deltaSlotUsage.size > 0
+      ? [...deltaSlotUsage.values()]
+      : [...slotUsageByKey.values()];
 
-  // Reconcile the header total with the per-slot rollups. When any `slot_usage`
-  // arrived, the rollups are the authoritative per-slot totals — a multi-model run
-  // has no single `usage` stream to trust — so the header is their sum across the
-  // distinct (slot, model) pairs (never summed across re-emissions of one pair,
-  // which are overwrites). Before any rollup it falls back to the incremental
-  // `usage` delta tally. Both count the same underlying tokens, so the header is
-  // never the two added together (that would double-count); `count` stays the number
-  // of delta accountings for reference.
+  // The header total. The deltas are the ground truth — every turn on every agent emits
+  // one — so their tally is the total whenever any arrived. A stream that somehow
+  // carried rollups but no deltas falls back to summing the rollups across their
+  // distinct (slot, model) pairs (never across re-emissions of one pair, which are
+  // overwrites). The two count the same tokens, so the header is never both added
+  // together; `count` stays the number of delta accountings for reference.
   let usage: UsageTally;
-  if (slotUsage.length > 0) {
-    usage = { ...EMPTY_USAGE, count: deltaUsage.count };
-    for (const s of slotUsage) addTokens(usage, s.tokens, s.cost);
-  } else {
+  if (deltaUsage.count > 0 || slotUsageByKey.size === 0) {
     usage = deltaUsage;
+  } else {
+    usage = { ...EMPTY_USAGE, count: deltaUsage.count };
+    for (const s of slotUsageByKey.values()) addTokens(usage, s.tokens, s.cost);
   }
 
   // Fill in the FSM's ordered path: the states seen so far, indexed by stateIndex,
@@ -1558,6 +1626,13 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
 // partition. Non-gg rows (the orchestrator's own setup/teardown) have no agent, so
 // they belong to the root. The result always contains the root, even before any
 // agent-attributed event has arrived.
+//
+// The one event that is *not* the emitting agent's own fact is `slot_usage`: gg streams
+// the whole run's per-slot rollups on the root's stream once every agent has joined, so
+// attributing them to root would credit root with every subagent's spend — its Tokens
+// and Cost widgets, and its share of the run, would read as the entire session's. They
+// are dropped here; each agent's own spend is summed from the `usage` deltas on its own
+// stream, which name the profile and model that spent them.
 export function reduceGgEventsPerAgent(
   events: HarnessEvent[],
 ): Map<string, DerivedGgState> {
@@ -1573,6 +1648,7 @@ export function reduceGgEventsPerAgent(
   // Seed the root so a run with no agent-attributed events still yields it.
   bucket(ROOT_ID);
   for (const event of events) {
+    if (event.type === "gg" && event.event.type === "slot_usage") continue;
     const id = event.type === "gg" ? (event.event.agentId ?? ROOT_ID) : ROOT_ID;
     bucket(id).push(event);
   }

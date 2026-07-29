@@ -3115,10 +3115,32 @@ pub enum GgTelemetryKind {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         summary: Option<String>,
     },
-    /// Token usage (and, when known, cost) accounted since the previous usage event.
+    /// Token usage (and, when known, cost) accounted since the previous usage event,
+    /// **attributed to the agent profile and model that spent it**.
     /// Reuses the shared [`TokenCounts`] and [`Cost`] contract types so gg usage is
     /// reported in the same units as every other run.
+    ///
+    /// A gg run spans several models (one per [agent profile](GgAgentConfig)), so an unattributed
+    /// delta is unattributable: summed over a multi-model run it says what was spent but not on
+    /// what, and no consumer can price it per token class or split it per model. Each delta
+    /// therefore names the profile and the concrete model that produced it, which makes the *live*
+    /// per-model breakdown derivable from the delta stream alone — the
+    /// [`SlotUsage`](Self::SlotUsage) rollups say the same thing, but only once an agent has
+    /// finished, which is too late for a run being watched. Summing the deltas of one
+    /// `(slot, model_id)` key reproduces that key's rollup exactly.
     Usage {
+        /// The [agent profile](GgAgentConfig) that spent this — the same name
+        /// [`AgentSpawned::slot`](Self::AgentSpawned::slot) and
+        /// [`SlotUsage::slot`](Self::SlotUsage::slot) key on. Unset only on a stream recorded
+        /// before gg attributed its deltas, or on a [replay](GgReplayRecord) reconstruction,
+        /// which has no live model binding to name.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        slot: Option<String>,
+        /// The concrete model id that spent this — the model the
+        /// [profile](Self::Usage::slot) resolved to for the agent that took the turn. Unset on
+        /// the same streams `slot` is.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        model_id: Option<String>,
         /// The normalized token counts for this accounting.
         tokens: TokenCounts,
         /// The cost of this accounting, when it could be determined.

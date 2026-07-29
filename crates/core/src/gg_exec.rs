@@ -518,7 +518,7 @@ impl<'a> GgIngestSink<'a> {
         match &gg.kind {
             // Per-turn usage events are incremental deltas consumers sum (there is no
             // total usage event; gg reports the final total only as a log line).
-            GgTelemetryKind::Usage { tokens, cost } => {
+            GgTelemetryKind::Usage { tokens, cost, .. } => {
                 self.tokens = self.tokens.plus(*tokens);
                 if let Some(cost) = cost.and_then(|c| c.actual.or(c.comparable)) {
                     self.reported_cost = Some(self.reported_cost.unwrap_or(0.0) + cost);

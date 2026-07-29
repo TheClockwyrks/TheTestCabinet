@@ -292,18 +292,23 @@ function ReplayHeader({
 }
 
 function CapabilityLine({ set }: { set: GgCapabilitySet }) {
-  // The Root agent stands in for the run's headline config on this one-line summary.
-  const root = set.agents?.[0];
-  const enabled = (root?.capabilities ?? [])
+  const agents = set.agents ?? [];
+  // The Root agent stands in for the run's headline capabilities on this one-line
+  // summary. The models do not: a run binds one per agent profile, and naming only the
+  // root's would report a multi-model session as a single-model one. Every distinct
+  // model the run bound is listed, in profile order, de-duplicated so the common case
+  // (every profile on the same model) still reads as one name.
+  const enabled = (agents[0]?.capabilities ?? [])
     .filter((c) => c.enabled)
     .map((c) => c.id);
+  const models = [...new Set(agents.map((a) => a.modelId).filter((id) => id))];
   return (
     <div className={styles.headerRow}>
       <span className={styles.headerKey}>config</span>
       <span className={styles.headerVal}>
         {set.preset ? `preset ${set.preset} · ` : ""}
         {enabled.length ? enabled.join(", ") : "no capabilities"}
-        {root?.modelId ? ` · ${root.modelId}` : ""}
+        {models.length ? ` · ${models.join(", ")}` : ""}
       </span>
     </div>
   );

@@ -12,7 +12,7 @@ import type {
   UsageTally,
 } from "./useGgRunState";
 import { ggPeakContext, ggToolBreakdown, shortTokens } from "./useGgRunState";
-import { soleModelId, useGgCostBreakdown } from "./ggCost";
+import { runPricedSlots, useGgCostBreakdown } from "./ggCost";
 import { CostWidget, TokensWidget, formatPercent } from "./GgOverviewWidgets";
 import { SlotUsagePanel } from "./AgentTreeView";
 import { useGgExplorerNav } from "./GgExplorerNav";
@@ -94,11 +94,13 @@ export function GgDashboard({
   capabilitySet,
   children,
 }: GgDashboardProps) {
-  const costBreakdown = useGgCostBreakdown(
-    slotUsage,
-    usage,
-    soleModelId(capabilitySet),
+  // Priced per (profile, model) and summed — never at one blanket rate — so a run that
+  // spans several models gets the same per-class split a single-model run does.
+  const pricedSlots = useMemo(
+    () => runPricedSlots(slotUsage, perAgent, agentForest),
+    [slotUsage, perAgent, agentForest],
   );
+  const costBreakdown = useGgCostBreakdown(pricedSlots);
 
   // The run's total turns across every agent — one per `turn_started`, summed over the
   // per-agent partitions (each turn is stamped with exactly one agent, so the sum is
@@ -126,12 +128,13 @@ export function GgDashboard({
         <AgentsCard agentForest={agentForest} perAgent={perAgent} />
 
         {/* The per-slot usage breakdown behind the cost total: a gg run spans one
-            model per slot, so cost is accounted per slot rather than as one figure.
-            A whole-run fact across every agent, so it reads here rather than on any
-            single agent's Overview. It pairs on one row with the configuration — the
-            narrow tile (mirroring the Cost widget's width) on the left, the
-            configuration the wider tile beside it. Absent on a single-model run that
-            emitted only the global usage deltas. */}
+            model per profile, so cost is accounted per profile rather than as one
+            figure. A whole-run fact across every agent, so it reads here rather than on
+            any single agent's Overview. It pairs on one row with the configuration —
+            the narrow tile (mirroring the Cost widget's width) on the left, the
+            configuration the wider tile beside it. Summed live from the attributed
+            usage deltas, so it fills in from the run's first turn rather than waiting
+            for an agent to end; absent only before the run has spent anything. */}
         {slotUsage.length > 0 && (
           <div className={`${styles.card} ${styles.cardHalf}`}>
             <SlotUsagePanel slotUsage={slotUsage} />
