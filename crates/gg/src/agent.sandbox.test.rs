@@ -1148,7 +1148,7 @@ async fn a_reply_that_is_not_a_program_does_not_end_the_session() {
             messages.iter().any(|message| message
                 .content
                 .as_deref()
-                .is_some_and(|text| text.contains("Every turn of this run is a program"))),
+                .is_some_and(|text| text.contains("All responses must be pure TypeScript"))),
             "turn {turn} was not told what a turn is supposed to look like"
         );
     }

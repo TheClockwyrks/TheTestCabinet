@@ -40,8 +40,8 @@ as the system prompt, so they live in the same place.
 | `review-brief.hbs`  | The [reviewer](/gg/project-management/)'s brief: the issue brief, earlier verdicts, where the work is and what it touched, and the verdict protocol. |
 | `fix-brief.hbs`     | The brief an issue's own agent is re-dispatched with after a review requested changes — the issue brief plus the reviewer's numbered items.          |
 | `merge-brief.hbs`   | The merge agent's brief when an issue's branch conflicts: what git reported, and what finishing the merge means.                                     |
-| `attempt-brief.hbs` | One attempt's brief in a [speculative execution](/gg/speculative-execution/) — the shared task, that it is 1 of K, and its assigned approach if any. |
-| `judge-brief.hbs`   | The judge's brief for a [speculative execution](/gg/speculative-execution/): the task, each candidate's summary and diff, and the verdict protocol.  |
+| `attempt-brief.hbs` | One attempt's brief in a [speculative execution](/gg/speculative-execution/) — the shared task and its assigned approach if any.                     |
+| `judge-brief.hbs`   | The judge's brief for a [speculative execution](/gg/speculative-execution/): the task, each candidate's own summary, and the verdict protocol.       |
 
 ### The rest of the loop's prose
 
@@ -54,7 +54,7 @@ as the system prompt, so they live in the same place.
 | `compaction-handoff-compact.hbs`        | The system prompt the `handoff-compaction` strategy gives the separate compaction model, which answers with a `compact` call.                   |
 | `compaction-preface.hbs`                | The summary item a compacted thread is restarted from — the heading that frames it as a recap, then the summary itself.                         |
 | `compaction-fallback.hbs`               | The note used when the summarization call fails, so a failed summary never aborts the run it serves.                                            |
-| `compaction-memory-summary.hbs`         | What a `memory` compaction restarts the thread from: a pointer at the memories, which crossed the boundary verbatim, rather than a recap.       |
+| `compaction-memory-summary.hbs`         | What a `memory` compaction restarts the thread from: a bare note that a boundary was crossed, rather than a recap.                              |
 | `completion-missing.hbs`                | The feedback for a turn that ended without a `finish` call under an [explicit-call](/gg/completion/) signal.                                    |
 | `completion-validation-failure.hbs`     | The feedback for a completion a [validation command](/gg/completion/) rejected: which command failed, and its output.                           |
 | `context-pressure.hbs`                  | The per-turn [context-pressure](/gg/agent-managed-context/) signal — how full the window is, what is filling it, and how to reclaim space.      |

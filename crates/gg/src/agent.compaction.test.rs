@@ -327,8 +327,8 @@ async fn memory_compaction_lands_once_a_whole_reply_of_memory_writes_succeeds() 
     assert_eq!(boundaries.len(), 1);
     assert_eq!(boundaries[0].0, "memory-compaction");
     assert!(
-        boundaries[0].1.contains("memories"),
-        "the thread restarts from a pointer to the memories, got {:?}",
+        boundaries[0].1.contains("Session compaction completed"),
+        "the thread restarts from a bare note that a boundary was crossed, got {:?}",
         boundaries[0].1
     );
     assert!(!boundaries[0].2, "a memory compaction is not a fallback");

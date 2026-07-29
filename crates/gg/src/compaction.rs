@@ -53,7 +53,7 @@
 //! # Offline testability
 //!
 //! Every out-of-band strategy's model call is answered offline by the scripted
-//! [`MockClient`](crate::client::MockClient): its system prompt embeds
+//! [`MockClient`](crate::client::MockClient): its system prompt ends in
 //! [`SUMMARIZATION_MARKER`] (or, for the one that must answer with a tool call,
 //! [`COMPACT_CALL_MARKER`]), which the mock recognizes and answers deterministically **without
 //! advancing its scripted turn cursor**, so a mock run can cross a real compaction boundary
@@ -91,27 +91,33 @@ const DEFAULT_SUMMARY_HEADROOM: f64 = 0.2;
 /// value is treated as a misconfiguration and ignored.
 const MAX_SUMMARY_HEADROOM: f64 = 0.9;
 
-/// A sentinel embedded in the [summarization prompt](handoff_summary_system_prompt) so the offline
-/// [`MockClient`](crate::client::MockClient) can recognize a compaction summary request and
-/// answer it deterministically — without consuming a scripted turn — keeping a mock run's
+/// The line the [summarization prompt](handoff_summary_system_prompt) closes with, by which the
+/// offline [`MockClient`](crate::client::MockClient) recognizes a compaction summary request and
+/// answers it deterministically — without consuming a scripted turn — keeping a mock run's
 /// main script in step across a compaction boundary.
-pub const SUMMARIZATION_MARKER: &str = "<<gg-compaction-summary-request>>";
+///
+/// It is a phrase of the prompt rather than a sentinel spliced into it: the prompt is product
+/// text a real model reads, and a marker only a test needs has no business being in it. The one
+/// requirement is that it be the half the two handoff prompts do **not** share, since they open
+/// identically and differ only in what the answer is.
+pub const SUMMARIZATION_MARKER: &str = "Reply with the summary of the session.";
 
-/// The sentinel [`handoff_compact_system_prompt`] carries, so the offline mock recognizes the one
-/// compaction request that must be answered with a **tool call** rather than prose and replies
-/// with a canned [`compact`](COMPACT_TOOL) call — again without consuming a scripted turn.
-pub const COMPACT_CALL_MARKER: &str = "<<gg-compaction-compact-request>>";
+/// The line [`handoff_compact_system_prompt`] closes with, by which the offline mock recognizes the
+/// one compaction request that must be answered with a **tool call** rather than prose and replies
+/// with a canned [`compact`](COMPACT_TOOL) call — again without consuming a scripted turn. Carries
+/// no tool name, so it matches whatever the run calls its compact tool.
+pub const COMPACT_CALL_MARKER: &str = "tool to complete the compaction process.";
 
 /// The system prompt the [handoff summarization](CompactionStrategy::HandoffSummarization)
 /// strategy gives the **separate** compaction model, from
 /// [`compaction-handoff-summary.hbs`](crate::prompts). It carries the [`SUMMARIZATION_MARKER`] so
 /// an offline mock can detect the request.
 ///
-/// The one thing it does that an ordinary summarization prompt would not: it opens by telling the
-/// reader that *none of what follows is its own work*. The thread it is about to read is another
-/// model's, converted to labelled user messages ([`handoff_messages`]) precisely so it cannot
-/// mistake the working model's assistant turns for its own — and a model that believes it wrote
-/// the thread summarizes what it "did" rather than what the agent did.
+/// The one thing it does that an ordinary summarization prompt would not: it tells the reader that
+/// the transcript is a *session it is compacting*, not its own work. The thread it is about to read
+/// is another model's, converted to labelled user messages ([`handoff_messages`]) precisely so it
+/// cannot mistake the working model's assistant turns for its own — and a model that believes it
+/// wrote the thread summarizes what it "did" rather than what the agent did.
 fn handoff_summary_system_prompt() -> &'static str {
     static PROMPT: OnceLock<String> = OnceLock::new();
     PROMPT.get_or_init(prompts::render_compaction_handoff_summary)

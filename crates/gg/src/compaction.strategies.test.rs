@@ -257,7 +257,7 @@ fn each_instruction_names_the_call_for_its_execution_mode() {
     // thing a code run is otherwise told never to send.
     let summary_code = PendingCompaction::Summary.instruction(true, scratchpad_calls(true));
     assert!(
-        summary_code.contains("do NOT write a program"),
+        summary_code.contains("do **NOT** write a program"),
         "{summary_code}"
     );
 
@@ -374,34 +374,40 @@ fn a_code_mode_transcript_is_not_headed_twice() {
     assert_eq!(body, "Task\n----\nBUILD PROMPT");
 }
 
-/// The two handoff prompts open by telling the reader the thread is **not its own work** — the claim
-/// the flattening makes structurally true, and the one sentence that stops a first-person summary of
-/// work the compaction model never did.
+/// The two handoff prompts open by telling the reader the thread is **a session transcript it has
+/// been handed**, not its own work — the claim the flattening makes structurally true, and what
+/// stops a first-person summary of work the compaction model never did.
 #[test]
 fn the_handoff_prompts_disown_the_thread() {
     for prompt in [
         handoff_summary_system_prompt(),
         handoff_compact_system_prompt(),
     ] {
-        assert!(prompt.contains("ANOTHER AGENT'S SESSION"), "{prompt}");
-        assert!(prompt.contains("You did none of it"), "{prompt}");
+        assert!(
+            prompt.contains("compacting the session transcript attached below"),
+            "{prompt}"
+        );
+        assert!(prompt.contains("what was done previously"), "{prompt}");
     }
-    // Each carries the marker its offline mock path keys off.
+    // Each carries the marker its offline mock path keys off — and only its own.
     assert!(handoff_summary_system_prompt().contains(SUMMARIZATION_MARKER));
+    assert!(!handoff_summary_system_prompt().contains(COMPACT_CALL_MARKER));
     assert!(handoff_compact_system_prompt().contains(COMPACT_CALL_MARKER));
+    assert!(!handoff_compact_system_prompt().contains(SUMMARIZATION_MARKER));
 }
 
 // ---------------------------------------------------------------------------
 // The memory strategy's summary
 // ---------------------------------------------------------------------------
 
-/// Memory compaction restarts the thread from a note pointing at the memories rather than from a
-/// recap — its whole hypothesis is that the memories, which cross the boundary verbatim, are the
-/// better carrier. It is not a fallback, so it is not recorded as one.
+/// Memory compaction restarts the thread from a bare note that a boundary was crossed rather than
+/// from a recap — its whole hypothesis is that the memories, which cross the boundary verbatim and
+/// are still pinned above the note, are the better carrier. It re-reads no files, and it is not a
+/// fallback, so it is not recorded as one.
 #[test]
-fn memory_compaction_restarts_from_a_pointer_to_the_memories() {
+fn memory_compaction_restarts_from_a_note_that_the_thread_was_dropped() {
     let request = memory_compaction_request();
-    assert!(request.summary.contains("memories"));
+    assert!(request.summary.contains("Session compaction completed"));
     assert!(request.files.is_empty());
     assert!(!is_fallback(&request.summary));
 }

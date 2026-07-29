@@ -1589,11 +1589,15 @@ impl MockClient {
     /// The **parent** side of the offline [speculative execution](https://docs.testcabinet.ai/gg/speculative-execution/)
     /// e2e: a script that makes a best-of-K attempt at a task, then finishes.
     ///
-    /// 1. `speculate { prompt, attempts: 3, slots: ["attempt", …] }` — gg fans out three
-    ///    [attempts](Self::with_speculate_attempt_script) (each in its own worktree, on the `attempt`
-    ///    slot), a [judge](Self::with_speculate_judge_script) picks the winner, and gg merges the
-    ///    winner back while discarding the losers;
+    /// 1. `speculate { prompt, attempts: 3, approaches: […], slots: ["attempt", …] }` — gg fans out
+    ///    three [attempts](Self::with_speculate_attempt_script) (each in its own worktree, on the
+    ///    `attempt` slot), a [judge](Self::with_speculate_judge_script) picks the winner, and gg
+    ///    merges the winner back while discarding the losers;
     /// 2. a final tool-free turn stops.
+    ///
+    /// The `approaches` are what make the three attempts distinguishable: an attempt's brief is
+    /// otherwise the same text for every attempt, and the offline attempt mock reads its own number
+    /// out of the approach it was assigned (see [`MOCK_SPECULATE_ATTEMPT_MARKER`]).
     ///
     /// Selected in production by a mock `model_id` naming `speculate-parent` (see [`mock_client_for`]),
     /// so the whole best-of-K fan-out → judge → merge path is drivable **offline through the real
@@ -1619,6 +1623,11 @@ impl MockClient {
                     "prompt": "Implement the feature as well as you can.",
                     "attempts": 3,
                     "agent": "attempt",
+                    "approaches": [
+                        "Variant 1: build the whole feature in one file.",
+                        "Variant 2: split the feature across small modules.",
+                        "Variant 3: build the simplest thing that could work.",
+                    ],
                 }),
             }],
             finish_reason: FinishReason::ToolCalls,
@@ -1640,10 +1649,10 @@ impl MockClient {
 
     /// The **attempt** side of the offline [speculative execution](crate::agent) e2e: a message-driven
     /// worker (its behavior lives in [`complete`](ModelClient::complete), keyed on a `speculate-attempt`
-    /// model id) that reads its **attempt number** from its brief and writes a distinctly-named file
-    /// (`speculate-attempt-<n>.txt`) so each attempt's isolated work is countable and the winner's
-    /// merge is provable, then finishes. Empty script because it never consults one; production selects
-    /// it via [`mock_client_for`].
+    /// model id) that reads its **attempt number** off the approach its brief assigned it and writes a
+    /// distinctly-named file (`speculate-attempt-<n>.txt`) so each attempt's isolated work is countable
+    /// and the winner's merge is provable, then finishes. Empty script because it never consults one;
+    /// production selects it via [`mock_client_for`].
     pub fn with_speculate_attempt_script(model_id: impl Into<String>) -> Self {
         Self::new(model_id, Vec::new())
     }
@@ -1926,7 +1935,11 @@ pub const MOCK_SPECULATE_ATTEMPT_PREFIX: &str = "speculate-attempt-";
 
 /// The marker the offline [speculation attempt brief](crate::agent) carries (`build_attempt_brief`),
 /// by which the attempt mock reads its own attempt number.
-const MOCK_SPECULATE_ATTEMPT_MARKER: &str = "Speculative attempt ";
+///
+/// It is the head of each **approach** [`with_speculate_parent_script`](MockClient::with_speculate_parent_script)
+/// assigns, because the assigned approach is the only part of an attempt's brief that differs from
+/// its siblings' — the brief is otherwise the shared task and nothing else.
+const MOCK_SPECULATE_ATTEMPT_MARKER: &str = "Variant ";
 
 #[async_trait::async_trait]
 impl ModelClient for MockClient {
@@ -2263,8 +2276,8 @@ fn messages_contain(messages: &[Message], needle: &str) -> bool {
 }
 
 /// The attempt number an offline [speculation attempt](MockClient::with_speculate_attempt_script)
-/// reads from its brief (the `Speculative attempt <n> of <k>` line `build_attempt_brief` writes), so
-/// each parallel attempt writes a distinctly-named file. `None` when no such marker is present.
+/// reads from its brief (the `Variant <n>: …` approach the speculating parent assigned it), so each
+/// parallel attempt writes a distinctly-named file. `None` when no such marker is present.
 fn speculate_attempt_number(messages: &[Message]) -> Option<u64> {
     for message in messages {
         if let Some(content) = message.content.as_deref()

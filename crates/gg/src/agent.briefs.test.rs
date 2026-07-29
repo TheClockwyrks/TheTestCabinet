@@ -22,9 +22,12 @@ use super::*;
 /// or "end your final message" therefore costs a whole review loop or a whole speculation, silently
 /// — the child does its work, ends `exhausted`, and its worktree is discarded.
 ///
-/// All four are asserted together because the failure is uniform: each ending clause is one `if
-/// code` away from the tool-calling wording, and `build_fix_brief`'s arm is otherwise reached only
-/// when a reviewer requests changes.
+/// The briefs that *name an ending at all* are asserted together because the failure is uniform:
+/// each ending clause is one `if code` away from the tool-calling wording. The fix and attempt
+/// briefs deliberately name none — they add nothing to the task the agent was already given, and
+/// the system prompt's own "Responses as code" section is where both modes learn how a session
+/// ends — so they are only held to the negative half: whatever they say, they must not teach the
+/// ending the mode does not have.
 #[test]
 fn no_generated_brief_tells_a_code_mode_agent_to_stop() {
     let attempts = [SpeculationAttempt {
@@ -36,7 +39,7 @@ fn no_generated_brief_tells_a_code_mode_agent_to_stop() {
         summary: "built it".to_string(),
         diff: "+ a line".to_string(),
     }];
-    let briefs = [
+    let ends_a_session = [
         (
             "review",
             build_review_brief(
@@ -51,6 +54,21 @@ fn no_generated_brief_tells_a_code_mode_agent_to_stop() {
             ),
         ),
         (
+            "judge",
+            build_judge_brief("Build the thing.", &attempts, &[0], true),
+        ),
+        (
+            "merge",
+            build_merge_brief(
+                "AUTH-1",
+                "gg/issue-auth-1",
+                "both sides touched `main.rs`",
+                true,
+            ),
+        ),
+    ];
+    let silent_on_the_ending = [
+        (
             "fix",
             build_fix_brief(
                 "## Issue\nMake it work.",
@@ -62,17 +80,15 @@ fn no_generated_brief_tells_a_code_mode_agent_to_stop() {
             "attempt",
             build_attempt_brief("Build the thing.", 0, 3, None, true),
         ),
-        (
-            "judge",
-            build_judge_brief("Build the thing.", &attempts, &[0], true),
-        ),
     ];
 
-    for (name, brief) in &briefs {
+    for (name, brief) in &ends_a_session {
         assert!(
             brief.contains("finish("),
             "the {name} brief never names the one call that ends a code-mode session:\n{brief}"
         );
+    }
+    for (name, brief) in ends_a_session.iter().chain(&silent_on_the_ending) {
         for forbidden in [
             "then stop",
             "end your final message",
@@ -87,12 +103,16 @@ fn no_generated_brief_tells_a_code_mode_agent_to_stop() {
 
     // The tool-calling arm is untouched: it still teaches the ending that mode actually has, which
     // is what makes the `code` flag a switch rather than a rewrite.
-    let tool_calling = build_fix_brief(
-        "## Issue\nMake it work.",
-        &["Fix the score.".to_string()],
+    let tool_calling = build_merge_brief(
+        "AUTH-1",
+        "gg/issue-auth-1",
+        "both sides touched `main.rs`",
         false,
     );
-    assert!(tool_calling.contains("then stop"), "{tool_calling}");
+    assert!(
+        tool_calling.contains("stop with a short summary"),
+        "{tool_calling}"
+    );
     assert!(!tool_calling.contains("finish("), "{tool_calling}");
 }
 
@@ -119,7 +139,7 @@ fn the_review_brief_points_at_the_worktree_instead_of_pasting_the_diff() {
     // The map of what changed, and where to go read it.
     assert!(brief.contains("src/main.rs"), "{brief}");
     assert!(brief.contains("/work/.gg-worktrees/issue-1"), "{brief}");
-    assert!(brief.contains(&format!("git diff {baseline}")), "{brief}");
+    assert!(brief.contains(&format!("Baseline: {baseline}")), "{brief}");
     // …but no patch: nothing tells the reviewer it was given one, and no diff fence is opened.
     assert!(!brief.contains("```diff"), "{brief}");
     assert!(
@@ -128,7 +148,7 @@ fn the_review_brief_points_at_the_worktree_instead_of_pasting_the_diff() {
     );
 
     // With no baseline (a run without git isolation) the reviewer still knows where it is working,
-    // and is never told to diff against a commit that does not exist.
+    // and is never given a commit to diff against that does not exist.
     let no_baseline = build_review_brief(
         "## Issue\nMake it work.",
         ReviewChanges {
@@ -140,7 +160,7 @@ fn the_review_brief_points_at_the_worktree_instead_of_pasting_the_diff() {
         false,
     );
     assert!(no_baseline.contains("/work"), "{no_baseline}");
-    assert!(!no_baseline.contains("git diff"), "{no_baseline}");
+    assert!(!no_baseline.contains("Baseline:"), "{no_baseline}");
     assert!(
         no_baseline.contains("No changes were detected"),
         "{no_baseline}"

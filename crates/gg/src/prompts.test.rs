@@ -677,11 +677,12 @@ fn quiet_result() -> CodeResultContext {
     }
 }
 
-/// The clean-run branch: what the program logged is shown, the roster is shown, and — always — how
-/// to continue and how to finish. That closing sentence is the only place the termination rule is
-/// discoverable, so it is asserted on the plainest possible outcome.
+/// The clean-run branch: the roster of what the program called is shown, and what it logged is
+/// shown back to it verbatim. The feedback carries no standing instructions — how a session ends is
+/// the system prompt's job, and repeating it on every turn is the noise this template was stripped
+/// of — so a clean turn is exactly a report of what happened.
 #[test]
-fn the_result_feedback_shows_the_output_the_roster_and_how_to_finish() {
+fn the_result_feedback_shows_the_output_and_the_roster() {
     let rendered = render_code_result(&CodeResultContext {
         logs: vec!["a.ts, b.ts".to_string()],
         calls: vec![
@@ -702,17 +703,10 @@ fn the_result_feedback_shows_the_output_the_roster_and_how_to_finish() {
     });
     assert!(rendered.starts_with("Your program ran to completion."));
     assert!(rendered.contains("Output:\na.ts, b.ts"));
-    assert!(rendered.contains("It made 2 tool call(s):"));
-    assert!(rendered.contains("- list_dir → ok"));
+    assert!(rendered.contains("2 tool call(s) were made:"));
+    assert!(rendered.contains("- list_dir: ok"));
     // A failure the program CAUGHT is still reported, or it would be invisible.
-    assert!(rendered.contains("- edit_file → failed: `foo` appears 3 times"));
-    assert!(
-        flat(&rendered).ends_with(
-            "Continue by emitting your next program. When the work is done and you have checked \
-             it, end the run with `harness.finish(\"...\")` from inside a program — nothing else ends it."
-        ),
-        "the termination rule must close every result:\n{rendered}"
-    );
+    assert!(rendered.contains("- edit_file: failed: `foo` appears 3 times"));
     assert!(!rendered.contains("Your program stopped"));
     assert_no_blank_run(&rendered);
 }
@@ -754,7 +748,7 @@ fn the_result_feedback_locates_a_throw_and_says_the_work_stands() {
     });
     assert!(bare.starts_with("Your program stopped: boom"));
     assert!(!bare.contains("still stands"));
-    assert!(bare.contains("It made no tool calls."));
+    assert!(bare.contains("No tool calls were made."));
     assert_no_blank_run(&rendered);
     assert_no_blank_run(&bare);
 }
@@ -779,7 +773,7 @@ fn the_result_feedback_reports_what_was_dropped_refused_and_deferred() {
     assert!(rendered.contains("- refused: `enter_plan_mode` — not composable inside a program"));
     assert!(rendered.contains("(3 further refusal(s) were not listed"));
     assert!(rendered.contains("it ran after the program had already ended."));
-    assert!(rendered.contains("(2 image(s) were not attached: a program may show at most 4.)"));
+    assert!(rendered.contains("(2 image(s) were not attached: max image count reached)"));
     assert_no_blank_run(&rendered);
 }
 
@@ -804,13 +798,13 @@ fn the_result_feedback_explains_a_truncated_roster_and_a_discarded_return_value(
         silent: false,
         ..quiet_result()
     });
-    assert!(rendered.contains("It made 738 tool call(s):"));
+    assert!(rendered.contains("738 tool call(s) were made:"));
     assert!(
         rendered.contains("(737 further call(s) were made but not listed"),
         "a truncated roster must say so:\n{rendered}"
     );
     assert!(
-        rendered.contains("return values are discarded, gg never sees them"),
+        rendered.contains("Returning values does nothing"),
         "a discarded return value is named, and the model is pointed at the channel that works:\n\
          {rendered}"
     );
@@ -823,15 +817,15 @@ fn the_result_feedback_explains_a_truncated_roster_and_a_discarded_return_value(
 #[test]
 fn the_result_feedback_nudges_a_silent_program() {
     let rendered = render_code_result(&quiet_result());
-    assert!(rendered.contains("your program logged nothing, so it told you nothing"));
-    assert!(rendered.contains("It made no tool calls."));
+    assert!(rendered.contains("No output recorded."));
+    assert!(rendered.contains("No tool calls were made."));
     // ...and a program that said something is not nagged.
     let spoke = render_code_result(&CodeResultContext {
         logs: vec!["12 files".to_string()],
         silent: false,
         ..quiet_result()
     });
-    assert!(!spoke.contains("told you nothing"));
+    assert!(!spoke.contains("No output recorded."));
     assert_no_blank_run(&rendered);
     assert_no_blank_run(&spoke);
 }
@@ -854,11 +848,10 @@ fn the_feedback_says_when_a_finish_was_revoked() {
         ..quiet_result()
     });
     assert!(
-        flat(&threw).contains("a program that fails has not finished: the run is still going"),
-        "{threw}"
-    );
-    assert!(
-        flat(&threw).contains("call `harness.finish(...)` again"),
+        flat(&threw).contains(
+            "The `harness.finish()` call was suppressed because your program did not run to \
+             completion."
+        ),
         "{threw}"
     );
 
@@ -869,8 +862,7 @@ fn the_feedback_says_when_a_finish_was_revoked() {
         calls: 3,
     });
     assert!(
-        flat(&stopped)
-            .contains("a program the sandbox stopped has not finished: the run is still going"),
+        flat(&stopped).contains("The call to `harness.finish()` was suppressed due to the error."),
         "{stopped}"
     );
 
@@ -880,15 +872,14 @@ fn the_feedback_says_when_a_finish_was_revoked() {
         silent: false,
         ..quiet_result()
     });
-    assert!(!ordinary.contains("has not finished"));
+    assert!(!ordinary.contains("was suppressed"));
     assert_no_blank_run(&threw);
     assert_no_blank_run(&ordinary);
 }
 
-/// A transpile failure says the thing that distinguishes it from every other failure: **nothing
-/// ran**, so the workspace is untouched and there is nothing to re-check. It also restates the two
-/// rules a failure to compile most often means the model broke — that the *entire reply* is
-/// compiled, and that saying the task is done is not how a run ends.
+/// A transpile failure hands back the compiler's own diagnostic, then restates the rule a failure
+/// to compile most often means the model broke: the *entire reply* is compiled, so anything in it
+/// that is not TypeScript is a syntax error in the program.
 ///
 /// The diagnostic in the fixture is the shape the real pipeline produces — `line L, column C:` plus
 /// the quoted source line — and it is the real round-1 failure: a model glued prose to its closing
@@ -897,7 +888,7 @@ fn the_feedback_says_when_a_finish_was_revoked() {
 /// string the transpiler never emitted, which certified a location the model was in fact never
 /// given.
 #[test]
-fn the_transpile_feedback_says_nothing_ran() {
+fn the_transpile_feedback_reports_the_diagnostic_and_the_code_only_rule() {
     let rendered = render_code_transpile_error(&CodeTranspileErrorContext {
         healing: Vec::new(),
         error: "line 4, column 1: Expected a semicolon or an implicit semicolon after a \
@@ -907,19 +898,17 @@ fn the_transpile_feedback_says_nothing_ran() {
     });
     assert_eq!(
         rendered,
-        "Your program did not compile: line 4, column 1: Expected a semicolon or an implicit \
-         semicolon after a statement, but found none | ```Consumed fuel: 24,000 / 1,000,000 \
-         budget.\n\nRemember that gg compiles your **entire reply**: anything in it that is not \
-         TypeScript — a code fence, a\nsentence, a heading — is a syntax error in your program. \
-         And if you meant to say the task is finished,\nsaying so does not end the run: only \
-         `harness.finish(\"...\")`, called from inside a program, does.\n\nNothing ran, so nothing \
-         changed. Fix the syntax and reply with a corrected program."
+        "Your program did not compile:\n\n```\nline 4, column 1: Expected a semicolon or an \
+         implicit semicolon after a statement, but found none | ```Consumed fuel: 24,000 / \
+         1,000,000 budget.\n```\n\nYour entire response is treated as TypeScript code. Any \
+         non-TypeScript code in\nthe response will cause the compilation to fail.\n\nIf the task \
+         is complete, call `harness.finish()` with a summary to signal\ncompletion."
     );
 }
 
-/// A sandbox limit is framed as "too heavy", never as "wrong" — while a **timeout** gets its own,
-/// opposite advice: the ceiling is far larger than any program needs, so a timeout means a program
-/// that did not terminate, not one that was too heavy.
+/// A sandbox limit is framed as "too much for one program" — split it up — while a **timeout** gets
+/// its own, opposite advice: the ceiling is far larger than any program needs, so a timeout means a
+/// program that never terminated, not one that was too heavy.
 #[test]
 fn the_sandbox_feedback_separates_a_limit_a_timeout_and_a_mistake() {
     let memory = render_code_sandbox_error(&CodeSandboxErrorContext {
@@ -928,11 +917,11 @@ fn the_sandbox_feedback_separates_a_limit_a_timeout_and_a_mistake() {
         finish_revoked: false,
         calls: 12,
     });
-    assert!(memory.contains("This is a sandbox limit, not a tool failure"));
+    assert!(memory.contains("Your program could not be run to completion:"));
     assert!(memory.contains("Split the task across several smaller programs, one per turn."));
-    assert!(memory.contains("The 12 tool call(s) it had already made stand."));
+    assert!(flat(&memory).contains("The 12 tool call(s) your code made stand."));
     // A memory cap is "too heavy", not "you looped": it must not carry the timeout's runaway advice.
-    assert!(!memory.contains("did not terminate"));
+    assert!(!memory.contains("infinite loops"));
 
     let timeout = render_code_timeout(&CodeTimeoutContext {
         healing: Vec::new(),
@@ -940,11 +929,11 @@ fn the_sandbox_feedback_separates_a_limit_a_timeout_and_a_mistake() {
         finish_revoked: false,
         calls: 0,
     });
-    assert!(timeout.contains("did not terminate"));
-    assert!(timeout.contains("far longer than any program needs"));
-    // A timeout is not a "do less" problem, so it does not carry the "too heavy" framing.
-    assert!(!timeout.contains("too heavy for one program"));
-    assert!(!timeout.contains("already made stand"));
+    assert!(timeout.contains("Your code hit the execution limit:"));
+    assert!(timeout.contains("no infinite loops or unbounded recursion exists"));
+    // A timeout is not a "do less" problem, so it does not carry the "split it up" framing.
+    assert!(!timeout.contains("Split the task"));
+    assert!(!timeout.contains("made stand"));
     assert_no_blank_run(&memory);
     assert_no_blank_run(&timeout);
 }
@@ -1177,14 +1166,14 @@ fn a_healed_reply_gg_refused_is_never_told_it_ran() {
     assert_no_blank_run(&rendered);
 }
 
-/// **A delegated worker is never told that `finish` would end the run.**
+/// **No code feedback tells any agent that `finish` would end the run.**
 ///
-/// The system prompt is role-aware for a reason: a model reading "this ends the run" while it is a
-/// subagent has the strongest available reason not to call it, and a subagent that never calls it
-/// never returns a verdict — which leaves an issue unaccepted, a speculation judge without a
-/// winner, and every worktree discarded unmerged. The per-turn feedback repeats that rule on **every
-/// turn**, far later in the context than the system prompt, so it is the louder of the two channels
-/// and has to say the same thing.
+/// A model reading "this ends the run" while it is a subagent has the strongest available reason
+/// not to call it, and a subagent that never calls it never returns a verdict — which leaves an
+/// issue unaccepted, a speculation judge without a winner, and every worktree discarded unmerged.
+/// The per-turn feedback no longer restates the termination rule at all (the system prompt owns
+/// it), so the hazard is closed by silence rather than by a branch — and this test holds that
+/// silence, on the delegated reader the wrong sentence would have cost the most.
 #[test]
 fn no_code_feedback_tells_a_delegated_agent_it_would_end_the_run() {
     let ran = render_code_result(&CodeResultContext {
@@ -1209,23 +1198,18 @@ fn no_code_feedback_tells_a_delegated_agent_it_would_end_the_run() {
             !flat(rendered).contains("end the run"),
             "a delegated worker was told `finish` ends the run:\n{rendered}"
         );
-        assert!(
-            flat(rendered).contains("your session"),
-            "the feedback must name what `finish` really ends for this reader:\n{rendered}"
-        );
         assert_no_blank_run(rendered);
     }
 
-    // The root agent's wording is unchanged, and the branch is the only difference between the two.
+    // The feedback is the same text either way: nothing in it depends on who is reading it.
     let root = render_code_result(&CodeResultContext {
         logs: vec!["1".to_string()],
         silent: false,
         ..quiet_result()
     });
     assert_eq!(
-        root,
-        ran.replace("end your session with", "end the run with"),
-        "the two renders differ by more than what `finish` ends"
+        root, ran,
+        "the code result feedback must not vary with the reader"
     );
 }
 
@@ -1263,23 +1247,16 @@ fn the_not_a_program_feedback_names_the_reply_and_teaches_finish() {
         );
         assert!(
             flat(&rendered).contains(
-                "Every turn of this run is a program: gg compiles and runs your **entire reply** \
-                 as TypeScript. A reply that is not code is not a turn — it does nothing, it \
-                 changes nothing, and it counts as a failed turn."
+                "All responses must be pure TypeScript. Returning any non-code text in your \
+                 response will prevent your responses from being processed. Do not include any \
+                 Markdown formatting, explanations, etc."
             ),
             "{rendered}"
         );
         assert!(
             flat(&rendered).contains(
-                "Reply with a program. Just the code: no code fence, no explanation before or \
-                 after it, nothing but the statements you want run."
-            ),
-            "{rendered}"
-        );
-        assert!(
-            flat(&rendered).contains(
-                "If you believe the task is complete, saying so does not end the run — only \
-                 `harness.finish` does, and you call it from inside a program:"
+                "If the task is complete, call `harness.finish()` to signal that the task is \
+                 complete:"
             ),
             "{rendered}"
         );
@@ -1401,16 +1378,16 @@ fn the_board_block_renders_epics_issues_and_briefs() {
     assert!(!block.contains("create_issue"));
 }
 
-/// **An agent dispatched to implement an issue is told that finishing is how it hands the work
-/// back**, in the vocabulary of its own execution mode — and is told so whether or not it may
-/// author the board, since an implementer profile normally cannot.
+/// **An agent dispatched to implement an issue is told which issue it is working, and that the
+/// workspace it is in is that issue's own** — whether or not it may author the board, since an
+/// implementer profile normally cannot.
 ///
-/// This is the only place an implementer learns the protocol: its brief says what to *build*, and
-/// the board-authoring section it would otherwise have read this from is (rightly) not rendered for
-/// a profile with no board capability. What it must not be told is to make a board move it has no
-/// tool for — the issue is completed by the agent completing, and nothing else.
+/// Its brief says what to *build*; this section is the only thing that tells it the work belongs to
+/// an issue at all, and it is rendered for profiles whose board-authoring section is (rightly)
+/// absent. What it must not be told is to make a board move it has no tool for — the issue is
+/// completed by the agent completing, and nothing else.
 #[test]
-fn an_assigned_issue_tells_the_implementer_that_finishing_hands_the_work_back() {
+fn an_assigned_issue_names_the_issue_and_its_worktree() {
     let implementer = |responses_as_code: bool| SystemContext {
         responses_as_code,
         // The code arm lists the objects a program reaches; the tool-calling arm ignores them.
@@ -1428,28 +1405,24 @@ fn an_assigned_issue_tells_the_implementer_that_finishing_hands_the_work_back() 
 
     let tools = flat(&render_system(&implementer(false), None));
     assert!(
-        tools.contains("dispatched to implement issue `feat-1`"),
-        "the section names the issue:\n{tools}"
-    );
-    assert!(
-        tools.contains("Finishing this session is how you hand the work back"),
-        "and says that finishing is the hand-back, in tool-calling form:\n{tools}"
-    );
-    assert!(
         !tools.contains("`create_issue`"),
         "without teaching it the board tools it does not have:\n{tools}"
     );
 
     let code = flat(&render_system(&implementer(true), None));
     assert!(
-        code.contains("Calling `harness.finish()` is how you hand the work back"),
-        "code mode names the API function form:\n{code}"
-    );
-    assert!(
         !code.contains("`project.createIssue`"),
         "and still teaches no authoring API:\n{code}"
     );
     for prompt in [&tools, &code] {
+        assert!(
+            prompt.contains("You have been assigned issue `feat-1`."),
+            "the section names the issue:\n{prompt}"
+        );
+        assert!(
+            prompt.contains("Implement it in the current worktree"),
+            "and says where the work is done:\n{prompt}"
+        );
         assert!(
             !prompt.contains("completeIssue") && !prompt.contains("complete_issue"),
             "and never names a completion move that does not exist:\n{prompt}"
@@ -1491,11 +1464,12 @@ fn the_memory_block_lists_notes_verbatim() {
 #[test]
 fn the_planning_templates_render() {
     let guidance = render_plan_mode();
-    assert!(guidance.starts_with("# Plan mode (read-only)"));
+    assert!(guidance.starts_with("# Plan Mode"));
+    assert!(guidance.contains("read-only"));
     assert!(guidance.contains("submit_plan"));
 
     let framed = render_plan_framing("  Build the grid first.  ");
-    assert!(framed.starts_with("# Implementation plan"));
+    assert!(framed.starts_with("# Implementation Plan"));
     assert!(framed.ends_with("Build the grid first."));
 }
 
@@ -1510,7 +1484,8 @@ fn the_planning_templates_render() {
 /// build. The ending each brief teaches is asserted next to the loop that depends on it, in
 /// `agent.briefs.test.rs`; what is asserted here is the **stable markers** other parts of gg read
 /// back out of a brief — the issue heading and the fix heading the offline mock keys off, and the
-/// attempt line an attempt reads its own number from.
+/// approach an attempt is handed, which is the only thing that distinguishes one attempt's brief
+/// from another's.
 #[test]
 fn every_generated_brief_renders_in_both_execution_modes() {
     for code in [false, true] {
@@ -1552,9 +1527,9 @@ fn every_generated_brief_renders_in_both_execution_modes() {
         assert!(review.contains("`critic` requested changes:"), "{review}");
         assert!(review.contains("  - Fix the score."), "{review}");
         assert!(review.contains("`second` approved the work."), "{review}");
-        // The baseline is named as a runnable command, so the sha must not be wrapped away from it.
+        // The baseline sha is named whole, so a reviewer can diff against it itself.
         assert!(
-            review.contains(&format!("git diff {}", "0".repeat(40))),
+            review.contains(&format!("Baseline: {}", "0".repeat(40))),
             "{review}"
         );
 
@@ -1582,7 +1557,8 @@ fn every_generated_brief_renders_in_both_execution_modes() {
             code,
         });
         assert!(merge.contains("gg/issue-auth-1"), "{merge}");
-        assert!(merge.contains("`git add -A`"), "{merge}");
+        assert!(merge.contains("CONFLICT (content): src/main.rs"), "{merge}");
+        assert!(merge.contains("resolved and committed"), "{merge}");
 
         let attempt = render_attempt_brief(&AttemptBriefContext {
             base: "Build it.".to_string(),
@@ -1591,8 +1567,10 @@ fn every_generated_brief_renders_in_both_execution_modes() {
             approach: Some("Use a state machine.".to_string()),
             code,
         });
-        // The offline attempt mock reads its number straight off this line.
-        assert!(attempt.contains("Speculative attempt 2 of 3"), "{attempt}");
+        assert!(attempt.starts_with("Build it."), "{attempt}");
+        // The assigned approach is what makes one attempt's brief differ from another's — and what
+        // the offline attempt mock reads its own number out of.
+        assert!(attempt.contains("### Approach"), "{attempt}");
         assert!(attempt.contains("Use a state machine."), "{attempt}");
 
         let judge = render_judge_brief(&JudgeBriefContext {
@@ -1613,17 +1591,16 @@ fn every_generated_brief_renders_in_both_execution_modes() {
             code,
         });
         assert!(judge.contains("### Attempt 1"), "{judge}");
-        assert!(judge.contains("```diff\n+ a line\n```"), "{judge}");
+        assert!(judge.contains("built it"), "{judge}");
         // An attempt that produced nothing says so rather than rendering an empty section.
         assert!(judge.contains("(no summary)"), "{judge}");
-        assert!(judge.contains("(no changes)"), "{judge}");
         assert!(judge.contains("SPECULATION JUDGE: WINNER <n>"), "{judge}");
     }
 }
 
 /// The reviewer's brief degrades cleanly on a first review of a run with no git baseline: no
-/// history section, an explicit "nothing changed" note, and **no `git diff` against a commit that
-/// does not exist**.
+/// history section, an explicit "nothing changed" note, and **no baseline commit named that does
+/// not exist**.
 #[test]
 fn the_review_brief_renders_without_history_or_a_baseline() {
     let brief = render_review_brief(&ReviewBriefContext {
@@ -1638,7 +1615,7 @@ fn the_review_brief_renders_without_history_or_a_baseline() {
     });
     assert!(!brief.contains("Earlier review feedback"), "{brief}");
     assert!(brief.contains("No changes were detected"), "{brief}");
-    assert!(!brief.contains("git diff"), "{brief}");
+    assert!(!brief.contains("Baseline:"), "{brief}");
 }
 
 /// A review that requested changes without listing any still hands the fixing agent something to
@@ -1651,7 +1628,7 @@ fn the_fix_brief_synthesizes_an_item_when_the_review_listed_none() {
         code: false,
     });
     assert!(
-        flat(&brief).contains("1. The reviewer requested changes but listed no specific items"),
+        flat(&brief).contains("The reviewer requested changes but listed no specific items"),
         "{brief}"
     );
 }
@@ -1680,16 +1657,16 @@ fn the_compaction_prompts_render_for_every_requirement() {
         let summary = context(true, false, false, code_mode);
         let instruction = render_compaction_instruction(&summary);
         assert!(
-            instruction.starts_with("Your context window is full."),
+            instruction.starts_with("This session's context window is full."),
             "{instruction}"
         );
         assert!(
-            flat(&instruction).contains("the immediate next step"),
+            flat(&instruction).contains("all work yet to be completed"),
             "{instruction}"
         );
         // A code run has to be told, in so many words, that prose is expected for this one turn.
         assert_eq!(
-            instruction.contains("do NOT write a program"),
+            instruction.contains("do **NOT** write a program"),
             code_mode,
             "{instruction}"
         );
@@ -1702,7 +1679,7 @@ fn the_compaction_prompts_render_for_every_requirement() {
             "{instruction}"
         );
         assert_eq!(
-            instruction.contains("Call the `compact` tool now"),
+            instruction.contains("Call the `compact` tool."),
             !code_mode,
             "{instruction}"
         );
@@ -1719,7 +1696,7 @@ fn the_compaction_prompts_render_for_every_requirement() {
             let refusal = render_compaction_refusal(&pending);
             assert!(refusal.starts_with("`shell` was NOT run:"), "{refusal}");
             assert!(
-                flat(&refusal).ends_with("Do that now, then carry on with the work."),
+                flat(&refusal).contains("All other operations are blocked until you"),
                 "{refusal}"
             );
 
@@ -1740,20 +1717,33 @@ fn the_compaction_prompts_render_for_every_requirement() {
 /// it frames rather than replacing it.
 #[test]
 fn the_out_of_band_compaction_prompts_render() {
-    assert!(render_compaction_handoff_summary().contains("<<gg-compaction-summary-request>>"));
+    let summary = render_compaction_handoff_summary();
+    let compact = render_compaction_handoff_compact("compact");
+    for prompt in [&summary, &compact] {
+        assert!(
+            prompt.contains("You are responsible for compacting the session transcript"),
+            "{prompt}"
+        );
+    }
+    // The two differ only in what the answer is, which is also how the offline mock tells them
+    // apart — see `SUMMARIZATION_MARKER` / `COMPACT_CALL_MARKER`.
     assert!(
-        render_compaction_handoff_compact("compact").contains("<<gg-compaction-compact-request>>")
+        summary.contains("Reply with the summary of the session."),
+        "{summary}"
     );
-    assert!(render_compaction_handoff_compact("compact").contains("`compact` tool"));
+    assert!(compact.contains("`compact` tool"), "{compact}");
 
     let preface = render_compaction_preface("You were building the grid.");
-    assert!(preface.starts_with("# Summary of earlier work (context was compacted)"));
+    assert!(preface.starts_with("Session compaction completed."));
     assert!(preface.ends_with("You were building the grid."));
 
     assert!(
         render_compaction_fallback().starts_with("(The earlier thread could not be summarized")
     );
-    assert!(render_compaction_memory_summary().contains("your memories"));
+    assert!(
+        render_compaction_memory_summary().starts_with("Session compaction completed."),
+        "the memory strategy restarts the thread from a note that a boundary was crossed"
+    );
 }
 
 /// The completion feedbacks name the finish tool from one source and quote the command that
@@ -1761,7 +1751,7 @@ fn the_out_of_band_compaction_prompts_render() {
 #[test]
 fn the_completion_prompts_render() {
     let missing = render_completion_missing("finish");
-    assert!(missing.matches("`finish`").count() >= 2, "{missing}");
+    assert!(missing.contains("`finish`"), "{missing}");
 
     let failure = render_completion_validation_failure(&ValidationFailureContext {
         index: 1,
@@ -1769,7 +1759,7 @@ fn the_completion_prompts_render() {
         command: "npm test",
         output: "1 test failed",
     });
-    assert!(failure.contains("Command 1 of 2: `npm test`"), "{failure}");
+    assert!(failure.contains("Failed command: `npm test`"), "{failure}");
     assert!(failure.contains("1 test failed"), "{failure}");
 }
 
@@ -1801,16 +1791,10 @@ fn the_context_pressure_signal_renders() {
 #[test]
 fn every_built_in_fsm_state_renders_its_guidance() {
     for (state, heading) in [
-        (
-            FsmGuidance::TddWriteTests,
-            "# Test-driven development: write the tests first",
-        ),
-        (
-            FsmGuidance::TddImplement,
-            "# Implement to satisfy the tests",
-        ),
-        (FsmGuidance::TddVerify, "# Verify with the tests"),
-        (FsmGuidance::PlanFirstPlan, "# Plan first (read-only)"),
+        (FsmGuidance::TddWriteTests, "# Test Phase"),
+        (FsmGuidance::TddImplement, "# Implementation Phase"),
+        (FsmGuidance::TddVerify, "# Verification Phase"),
+        (FsmGuidance::PlanFirstPlan, "# Planning Phase"),
         (FsmGuidance::PlanFirstImplement, "# Implement your plan"),
     ] {
         let guidance = render_fsm_guidance(state);

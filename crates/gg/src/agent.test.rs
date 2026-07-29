@@ -1641,8 +1641,8 @@ fn the_board_section_follows_the_agents_own_capability() {
     );
 }
 
-/// An agent dispatched for a board issue is told, in its system prompt, that finishing is how it
-/// hands the work back — even though (as an implementer) it may not author the board.
+/// An agent dispatched for a board issue is told, in its system prompt, which issue it is working
+/// and where — even though (as an implementer) it may not author the board.
 #[test]
 fn the_assigned_issue_section_is_rendered_for_a_dispatched_agent() {
     let library = Arc::new(SkillLibrary::empty());
@@ -1654,12 +1654,12 @@ fn the_assigned_issue_section_is_rendered_for_a_dispatched_agent() {
     inputs.assigned_issue = Some("feat-7");
     let prompt = system_prompt(inputs);
     assert!(
-        prompt.contains("dispatched to implement issue `feat-7`"),
+        prompt.contains("You have been assigned issue `feat-7`."),
         "the prompt names the issue this agent is working:\n{prompt}"
     );
     assert!(
-        prompt.contains("is how you hand the work back"),
-        "and how to hand the work back:\n{prompt}"
+        prompt.contains("Implement it in the current\nworktree"),
+        "and where the work is done:\n{prompt}"
     );
 
     // The same agent, undispatched: no such section.
@@ -6115,7 +6115,7 @@ async fn an_issues_reviewers_gate_its_acceptance_and_its_merge() {
             .any(|(_, _, slot, _, brief)| slot == "reviewer"
                 && brief.as_deref().is_some_and(|b| b.contains("work-1.txt")
                     && b.contains("What changed (against the baseline)")
-                    && b.contains("review the workspace itself")
+                    && b.contains("Changes are in\nthe current workspace.")
                     && !b.contains("```diff"))),
         "the reviewer is given the change summary and sent to the worktree, not handed the patch"
     );
@@ -7466,11 +7466,12 @@ async fn speculate_runs_best_of_k_over_worktrees_and_merges_only_the_winner() {
         .collect();
     assert_eq!(judge_spawns.len(), 1, "one judge was dispatched");
 
-    // The judge was given each candidate's diff (so it judged the real work against the task).
+    // The judge was given each candidate's own account of what it built (so it judged the real work
+    // against the task).
     let judge_brief = judge_spawns[0].4.as_deref().unwrap();
     assert!(
-        judge_brief.contains("attempt-0.txt") && judge_brief.contains("attempt-1.txt"),
-        "the judge sees both attempts' diffs to compare"
+        judge_brief.contains("Attempt 0 complete.") && judge_brief.contains("Attempt 1 complete."),
+        "the judge sees both attempts' summaries to compare"
     );
     assert!(
         judge_brief.contains("Implement the widget"),

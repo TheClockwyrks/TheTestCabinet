@@ -219,7 +219,10 @@ async fn run_validation_reports_first_failure() {
     let feedback = run_validation(&commands, &ctx, &OffloadPolicy::Inline, &emitter())
         .await
         .expect("a failing command rejects the completion");
-    assert!(feedback.contains("was NOT accepted"), "{feedback}");
+    assert!(
+        feedback.contains("Completion attempt rejected"),
+        "{feedback}"
+    );
     assert!(
         feedback.contains("echo boom"),
         "names the failing command: {feedback}"

@@ -300,10 +300,10 @@ async fn a_transpile_failure_over_prose_is_reported_as_not_a_program() {
     // The feedback the model got is the one that fixes the failure: it names what a turn must look
     // like, and it names the only thing that ends the run.
     assert!(
-        requests[1].iter().any(|message| message
-            .content
-            .as_deref()
-            .is_some_and(|text| text.contains("Every turn of this run is a program")
+        requests[1]
+            .iter()
+            .any(|message| message.content.as_deref().is_some_and(|text| text
+                .contains("All responses must be pure TypeScript")
                 && text.contains("harness.finish("))),
         "the model was told what to do instead"
     );
