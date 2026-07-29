@@ -1558,63 +1558,6 @@ $context-palette: (
   margin-right: t.$space-xs;
 }
 
-// --- Per-slot usage ----------------------------------------------------------
-
-.slotList {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: t.$space-2xs;
-}
-
-// Each slot reads as a two-line row now the panel sits in a narrow tile: the slot
-// label and its cost on the first line, the model's display name and its token total
-// on the second. A two-column grid (label/name on the left, cost/tokens right-aligned
-// on the right) keeps the two lines' figures in a column.
-.slotRow {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: baseline;
-  gap: t.$space-2xs t.$space-sm;
-  font-size: t.$font-sm;
-  padding: t.$space-xs t.$space-sm;
-  border: t.$border-hairline solid
-    color-mix(in srgb, t.$color-border 40%, transparent);
-  border-radius: t.$radius-md;
-  background: s.$panel-bg;
-}
-
-.slotName {
-  color: t.$color-text;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  font-size: 0.72rem;
-}
-
-.slotModel {
-  color: t.$color-text-muted;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.slotTokens {
-  color: t.$color-text-muted;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-  white-space: nowrap;
-}
-
-.slotCost {
-  color: t.$color-text;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-
 // --- Workflow strip ----------------------------------------------------------
 
 .workflowStrip {

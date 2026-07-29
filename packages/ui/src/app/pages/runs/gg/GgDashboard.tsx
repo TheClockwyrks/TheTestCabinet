@@ -17,9 +17,13 @@ import {
   ggToolBreakdown,
   shortTokens,
 } from "./useGgRunState";
-import { runPricedSlots, useGgCostBreakdown } from "./ggCost";
+import {
+  pricedSlots,
+  runSlotUsage,
+  useGgCostBreakdown,
+  useGgSpend,
+} from "./ggCost";
 import { CostWidget, TokensWidget, formatPercent } from "./GgOverviewWidgets";
-import { SlotUsagePanel } from "./AgentTreeView";
 import { useGgExplorerNav } from "./GgExplorerNav";
 import styles from "./GgDashboard.module.scss";
 
@@ -77,7 +81,7 @@ interface GgDashboardProps {
  * It is an overview of the entire session; an agent's Overview file in the Agents
  * explorer is this same read-out narrowed to that agent (the Tokens and Cost
  * widgets are shared), minus the session-scoped cards (status, the agent overview,
- * the configuration, the per-slot usage tally).
+ * the configuration) and the whole-run spend split inside the Cost widget.
  *
  * It is the first panel on both surfaces a gg run is read through (the live
  * monitor and a finished run's gg tab), so the run-level read-out no longer
@@ -86,8 +90,15 @@ interface GgDashboardProps {
  * bento — the tiles in a row share a height but vary in width, so the token and
  * cost widgets get the room their rings and splits want while the smaller stats
  * stay narrow, and no gap opens between two same-row tiles of different content
- * heights. The per-slot usage tally — the breakdown behind the cost total — reads
- * here across all the run's models, not scoped to any one agent.
+ * heights. Cost leads the money row as the tall tile, since it carries the run's whole
+ * account of its spend — the total, the per-class split, and where that money went per
+ * slot and per model, across all the run's models rather than scoped to any one agent
+ * — with Tokens beside it and the configuration slotted in underneath.
+ *
+ * Both surfaces get the *same* layout: the one difference is the status card, which a
+ * finished run omits because the run detail page's own header already carries its state
+ * (and the turn count then takes that row alone, rather than reflowing everything below
+ * it).
  */
 export function GgDashboard({
   status,
@@ -99,13 +110,23 @@ export function GgDashboard({
   capabilitySet,
   children,
 }: GgDashboardProps) {
-  // Priced per (profile, model) and summed — never at one blanket rate — so a run that
-  // spans several models gets the same per-class split a single-model run does.
-  const pricedSlots = useMemo(
-    () => runPricedSlots(slotUsage, perAgent, agentForest),
+  // The run's spend, per (slot, model): the split gg's attributed `usage` deltas carry
+  // from the first turn, or — on a stream whose deltas carry no attribution — the same
+  // rollup reconstructed from each agent's own tally at the model it was bound to. Either
+  // way it is available *while the run runs*, rather than waiting on the end-of-agent
+  // `slot_usage` rollups.
+  const runSlots = useMemo(
+    () => runSlotUsage(slotUsage, perAgent, agentForest),
     [slotUsage, perAgent, agentForest],
   );
-  const costBreakdown = useGgCostBreakdown(pricedSlots);
+  // Priced per (profile, model) and summed — never at one blanket rate — so a run that
+  // spans several models gets the same per-class split a single-model run does.
+  const costBreakdown = useGgCostBreakdown(
+    useMemo(() => pricedSlots(runSlots), [runSlots]),
+  );
+  // And where that money went: per slot (which role spent it, and on which model) and
+  // per model (the same spend folded across the slots one model is bound to).
+  const spend = useGgSpend(runSlots);
 
   // The run's total turns across every agent — one per `turn_started`, summed over the
   // per-agent partitions (each turn is stamped with exactly one agent, so the sum is
@@ -120,33 +141,34 @@ export function GgDashboard({
   return (
     <div className={styles.dashboard}>
       <div className={styles.cards}>
+        {/* The top row: where the run is at. The live monitor pairs the status with the
+            turn count; a finished run's gg tab has its state in the page's own header,
+            so the turn count takes the whole row there rather than leaving a hole where
+            the status card would have been — the row below it is then identical on both
+            surfaces. */}
         {status && <StatusCard status={status} />}
-        <TurnsCard turns={totalTurns} agents={perAgent.size} />
-
-        <TokensWidget usage={usage} className={styles.cardWide} />
-        <CostWidget
-          usage={usage}
-          breakdown={costBreakdown}
-          className={styles.cardHalf}
+        <TurnsCard
+          turns={totalTurns}
+          agents={perAgent.size}
+          className={status ? styles.cardHalf : styles.cardFull}
         />
 
-        <AgentsCard agentForest={agentForest} perAgent={perAgent} />
-
-        {/* The per-slot usage breakdown behind the cost total: a gg run spans one
-            model per profile, so cost is accounted per profile rather than as one
-            figure. A whole-run fact across every agent, so it reads here rather than on
-            any single agent's Overview. It pairs on one row with the configuration —
-            the narrow tile (mirroring the Cost widget's width) on the left, the
-            configuration the wider tile beside it. Summed live from the attributed
-            usage deltas, so it fills in from the run's first turn rather than waiting
-            for an agent to end; absent only before the run has spent anything. */}
-        {slotUsage.length > 0 && (
-          <div className={`${styles.card} ${styles.cardHalf}`}>
-            <SlotUsagePanel slotUsage={slotUsage} />
+        {/* The money row, laid out as its own block so it reads the same whether or not
+            a status card precedes it (its two columns are fixed here rather than
+            wherever the bento's auto-placement happens to leave them). Cost leads, and
+            is the tall tile: it carries the whole account of the run's spend — the
+            total, the per-class split, the input-vs-output ring, and where the money
+            went per slot and per model. Tokens sits beside it with the configuration
+            slotted in underneath, filling the height Cost takes. */}
+        <div className={styles.spendBlock}>
+          <CostWidget usage={usage} breakdown={costBreakdown} spend={spend} />
+          <div className={styles.spendBlockSide}>
+            <TokensWidget usage={usage} />
+            {capabilitySet && <ConfigurationCard set={capabilitySet} />}
           </div>
-        )}
+        </div>
 
-        {capabilitySet && <ConfigurationCard set={capabilitySet} />}
+        <AgentsCard agentForest={agentForest} perAgent={perAgent} />
       </div>
 
       {/* The enforced FSM process, when a machine drives the run: the current state
@@ -385,10 +407,20 @@ function AgentOverviewRow({
 // The session's turn count: how many model request/response cycles the run has spent,
 // across every agent. It pairs on the top row with the status — the two facts that
 // answer "where is this run at" — so the status card gives up the full width it used
-// to take and the pair fills the row between them.
-function TurnsCard({ turns, agents }: { turns: number; agents: number }) {
+// to take and the pair fills the row between them. Where there is no status card (a
+// finished run, whose state its page header already carries) it takes the row alone.
+function TurnsCard({
+  turns,
+  agents,
+  className,
+}: {
+  turns: number;
+  agents: number;
+  /** The bento span the card takes: half the row beside a status card, the full row alone. */
+  className: string | undefined;
+}) {
   return (
-    <div className={`${styles.card} ${styles.cardHalf}`}>
+    <div className={`${styles.card} ${className}`}>
       <span className={styles.cardLabel}>Turns</span>
       <span className={styles.metricValue}>{numberFmt.format(turns)}</span>
       <span className={styles.metricUnit}>

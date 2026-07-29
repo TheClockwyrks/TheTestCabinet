@@ -1,30 +1,29 @@
 // The reusable pieces of a multi-agent gg run's read-out. gg is headless, so an
 // agent's identity (who it is, what it runs on, the worktree it works in, what it
-// returned) and the run's delegation structure (per-slot cost, declared workflows,
-// best-of-K speculations) are the only window into its shape (see gg/subagents.md,
+// returned) and the run's delegation structure (declared workflows, best-of-K
+// speculations) are the only window into its shape (see gg/subagents.md,
 // gg/multi-model.md, gg/workflows.md, gg/speculative-execution.md).
 //
 // The subagent *tree* itself is drawn by the Agents explorer's filesystem sidebar
 // (see GgAgentsExplorer), so this module no longer renders it; it exports the
 // per-agent identity row the explorer shows on an agent's Overview, the run-level
-// structure panels (per-slot usage / workflows / speculation) it shows on the
-// root's Overview, and the winner/loser classification the sidebar marks the tree
-// with.
+// structure panels (workflows / speculation) it shows on the root's Overview, and the
+// winner/loser classification the sidebar marks the tree with. Per-slot spend is not
+// here either: it is part of the Dashboard's Cost widget, which accounts the whole
+// run's money per slot and per model (see GgOverviewWidgets).
 
 import type {
   AgentNode,
   AgentTreeNode,
-  SlotUsage,
   SpeculationState,
   Workflow,
   WorkflowStage,
 } from "./useGgRunState";
-import { ROOT_ID, shortTokens } from "./useGgRunState";
+import { ROOT_ID } from "./useGgRunState";
 import type {
   GgAgentStatus,
   GgSpeculationPhase,
 } from "@test-cabinet/run-record/gg";
-import { useFindModelOptional } from "../../../data/useModels";
 import styles from "./GgPanels.module.scss";
 
 // A per-agent speculation role, derived from the speculations plus the tree: the
@@ -95,20 +94,6 @@ const WORKTREE_OUTCOME: Record<
   discarded: "discarded",
   conflict: "conflict",
 };
-
-function formatCost(n: number | null): string {
-  return n == null ? "—" : `$${n.toFixed(4)}`;
-}
-
-// Sum a slot rollup's token classes into one figure for the compact per-slot row
-// (the header carries the full per-class total; here a single number keeps the
-// panel scannable).
-function slotTokenTotal(usage: SlotUsage): number {
-  const { uncachedInput, cachedInput, output, reasoning } = usage.tokens;
-  return (
-    (uncachedInput ?? 0) + (cachedInput ?? 0) + (output ?? 0) + (reasoning ?? 0)
-  );
-}
 
 // An agent's identity card, shown on its Overview file in the Agents explorer: its
 // status + id, its depth/turns, its agent name + model, what it is waiting on while
@@ -235,47 +220,6 @@ export function AgentIdentity({
         </p>
       )}
     </div>
-  );
-}
-
-// The per-(slot, model) usage read-out: a gg run spans several models (one per agent
-// profile), so cost is accounted per profile rather than as one figure. The header total
-// is the sum of these, so this is the breakdown behind that number. It fills in live —
-// each `usage` delta names the profile and model that spent it — rather than appearing
-// only once an agent has ended.
-export function SlotUsagePanel({ slotUsage }: { slotUsage: SlotUsage[] }) {
-  // Resolve each slot's model id to its catalog display name (the run records the
-  // slug); fall back to the id itself where the catalog is absent (a bare harness
-  // context that never mounts the gallery provider) or the model is unknown.
-  const findModel = useFindModelOptional();
-  return (
-    <section className={styles.agentSection}>
-      <span className={styles.subPanelLabel}>Per-slot usage</span>
-      <ul className={styles.slotList}>
-        {slotUsage.map((usage) => {
-          const modelName = findModel?.(usage.modelId)?.name ?? usage.modelId;
-          return (
-            <li
-              key={`${usage.slot} ${usage.modelId}`}
-              className={styles.slotRow}
-            >
-              {/* First line: the slot label and its cost. */}
-              <span className={styles.slotName}>{usage.slot}</span>
-              <span className={styles.slotCost}>
-                {formatCost(usage.cost?.comparable ?? null)}
-              </span>
-              {/* Second line: the model's display name and its token total. */}
-              <span className={styles.slotModel} title={usage.modelId}>
-                {modelName}
-              </span>
-              <span className={styles.slotTokens}>
-                {shortTokens(slotTokenTotal(usage))} tok
-              </span>
-            </li>
-          );
-        })}
-      </ul>
-    </section>
   );
 }
 

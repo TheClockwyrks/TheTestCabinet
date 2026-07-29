@@ -62,12 +62,12 @@ export function ggTabsFor(
 
 // The slice of a gg run's state the panels render. Both the live monitor and the
 // finished run's gg tab reduce the same telemetry stream, so both feed this: the
-// delegation tree and its run-level structure (per-slot usage, workflows,
-// speculations) for the explorer, plus the per-agent reductions its files read.
+// delegation tree and its run-level structure (workflows, speculations) for the
+// explorer, plus the per-agent reductions its files read. (The run's per-slot spend is
+// the Dashboard's, which each host composes itself and hands in as `dashboard`.)
 export type GgPanelState = Pick<
   GgRunState,
   | "agentForest"
-  | "slotUsage"
   | "workflows"
   | "speculations"
   | "perAgent"

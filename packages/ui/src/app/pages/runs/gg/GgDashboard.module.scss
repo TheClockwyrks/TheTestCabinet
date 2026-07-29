@@ -36,6 +36,43 @@
   }
 }
 
+// The money row: the Cost widget and, beside it, Tokens with the configuration under
+// it. Its own block rather than three tiles in the bento, so the row reads identically
+// whether or not a status card precedes it — auto-placement would otherwise pack these
+// into whatever gap the row above left, and the two surfaces (live monitor, finished
+// run's gg tab) differ by exactly that card. Stacked in one column until the bento
+// engages.
+.spendBlock {
+  grid-column: span 12;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+}
+
+// The column beside Cost. Cost is the taller tile (it carries the class split, the ring,
+// and the per-slot/per-model bars), so the configuration under Tokens grows into the
+// height that leaves rather than stranding a gap at the column's foot.
+.spendBlockSide {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+  min-width: 0;
+}
+
+.spendBlockSide > :last-child {
+  flex: 1 1 auto;
+}
+
+@media (min-width: 52rem) {
+  .spendBlock {
+    display: grid;
+    // The 7/5 proportion the bento's own tiles take, with the wider share going to
+    // Cost — it is the tile carrying three breakdowns.
+    grid-template-columns: 7fr 5fr;
+    align-items: stretch;
+  }
+}
+
 // A pane-responsive grid for the same widgets where the space is narrower than the
 // viewport — the agent Overview, which sits in the explorer's content pane beside a
 // sidebar. Tracks size to the *pane*, not the window, so the Tokens and Cost
@@ -388,6 +425,84 @@
 
 .costRowAmount {
   color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+// --- Where the money went: per slot, per model --------------------------------
+
+// A spend breakdown inside the Cost widget (per slot, per model): its caption over a
+// list of bars. Captioned like a ring group, and stepped off the block above it, so the
+// widget reads as one stack of splits rather than a run-on list of rows.
+.spendGroup {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  margin-top: t.$space-sm;
+  min-width: 0;
+}
+
+.spendGroupLabel {
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$color-text-muted;
+}
+
+// A spend row: the same label/bar/figure grid as the per-class cost rows, with two
+// lines in the outer cells — the slot over the model bound to it on the left, the cost
+// over the token total on the right. The label column is wider than the class rows' to
+// hold a model's display name, and elastic so a long name shrinks the bar rather than
+// overflowing the tile.
+.spendRow {
+  display: grid;
+  grid-template-columns: minmax(4rem, 9rem) 1fr auto;
+  align-items: center;
+  gap: t.$space-sm;
+  font-size: t.$font-sm;
+}
+
+.spendRowIdentity {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.spendRowName {
+  color: t.$color-text;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.72rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spendRowModel {
+  color: t.$color-text-muted;
+  font-size: 0.7rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spendRowFigures {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  min-width: 0;
+}
+
+.spendRowAmount {
+  color: t.$color-text;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.spendRowTokens {
+  color: t.$color-text-muted;
+  font-size: 0.7rem;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }

@@ -215,9 +215,9 @@ interface GgAgentsExplorerProps {
   // The run's configuration — decides which context bands are worth listing.
   capabilitySet: GgCapabilitySet | null;
   // Run-level delegation structure, shown on the root agent's Overview: declared
-  // workflows and best-of-K speculations. (Per-slot usage is a whole-run cost fact,
-  // so it reads on the Dashboard beside the token/cost tally, not here.) Empty when
-  // the run had none.
+  // workflows and best-of-K speculations. (Per-slot spend is a whole-run cost fact,
+  // so it reads inside the Dashboard's Cost widget, not here.) Empty when the run had
+  // none.
   workflows: Workflow[];
   speculations: SpeculationState[];
   // Whether the stream is still arriving — a live activity feed auto-follows its
@@ -727,9 +727,10 @@ function ActivityFeed({ feed, live }: { feed: FeedRow[]; live: boolean }) {
 // different-looking summary — and its tool-usage breakdown (the itemized version of
 // the Dashboard row's tool chips). The run's delegation structure (workflows,
 // speculations) is a whole-run fact, so it hangs off the root agent only; a
-// session-scoped card (status, the agent overview, the configuration, the per-slot
-// usage tally) has no place on one agent, so none appears here — those read on the
-// Dashboard.
+// session-scoped card (status, the agent overview, the configuration) has no place on
+// one agent, so none appears here — those read on the Dashboard, as does the whole
+// run's spend per slot and per model (this agent is one slot on one model, so the same
+// split here would only restate its own total).
 function OverviewFile({
   node,
   state,

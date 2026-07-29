@@ -10,10 +10,16 @@
 // the total cost, its per-class split, and an input-vs-output cost ring; the split is
 // derived from catalog prices (see ggCost.ts), since a recorded cost is one figure per
 // accounting rather than a class-by-class breakdown. gg attributes every accounting to
-// the model that spent it, so the split holds for a run spanning any number of models.
+// the model that spent it, so the split holds for a run spanning any number of models —
+// and, on the whole-run Dashboard, so does the same widget's account of *where* the money
+// went: bars per slot (each naming the model bound to it) and per model.
 
-import type { ContextSnapshot, UsageTally } from "./useGgRunState";
-import type { GgCostBreakdown } from "./ggCost";
+import {
+  shortTokens,
+  type ContextSnapshot,
+  type UsageTally,
+} from "./useGgRunState";
+import type { GgCostBreakdown, GgSpendBreakdown, SpendRow } from "./ggCost";
 import styles from "./GgDashboard.module.scss";
 
 const numberFmt = new Intl.NumberFormat("en-US");
@@ -414,20 +420,35 @@ function Stat({
 }
 
 /**
- * The Cost widget: the scope's total cost, its per-class split, and an input-vs-output
- * cost ring. The total is the run's authoritative `comparable` figure; the split is
+ * The Cost widget: the scope's total cost, its per-class split, an input-vs-output cost
+ * ring, and — where the host supplies one — where the money went, per slot and per
+ * model. The total is the run's authoritative `comparable` figure; the class split is
  * derived from catalog prices (`breakdown`) — per (profile, model) and summed, so a run
  * spanning several models splits exactly as a single-model one does — shown scaled to
  * that total, and omitted only when the catalog could price none of it.
+ *
+ * The per-slot/per-model breakdowns live *inside* this widget rather than beside it:
+ * they are the same money the headline states, read by the role and by the model that
+ * spent it, so they belong under the figure they decompose. Both are drawn as the same
+ * proportional bars as the per-class split, so all three read in one visual language.
  */
 export function CostWidget({
   usage,
   breakdown,
+  spend,
   className,
   bare = false,
 }: {
   usage: UsageTally;
   breakdown: GgCostBreakdown | null;
+  /**
+   * Where the run's money went — its per-slot and per-model spend (see
+   * {@link GgSpendBreakdown}). Given on the whole-run Dashboard, whose cost is
+   * accounted across every slot and model the run touched; omitted on an agent's
+   * Overview, where the scope is one agent on one slot and the split would only
+   * restate the headline.
+   */
+  spend?: GgSpendBreakdown | null;
   className?: string;
   /** Drop the card chrome so the widget sits directly in its host — see {@link TokensWidget}. */
   bare?: boolean;
@@ -500,7 +521,106 @@ export function CostWidget({
           </p>
         )
       )}
+
+      {spend && spend.perSlot.length > 0 && (
+        <>
+          {/* Where the money went by role. Every row names the model the slot was
+              bound to: a slot is a role, and what it cost is a fact about the model
+              behind it, so reading one without the other says nothing about why it
+              cost that. */}
+          <SpendSection
+            label="Per slot"
+            rows={spend.perSlot}
+            total={displayTotal}
+          />
+          {/* And by model — offered only when it says something the per-slot split
+              does not, i.e. when some model is bound to more than one slot (a
+              shorter list than the per-slot one). With one model per slot the two
+              lists would be the same rows twice. */}
+          {spend.perModel.length < spend.perSlot.length && (
+            <SpendSection
+              label="Per model"
+              rows={spend.perModel}
+              total={displayTotal}
+            />
+          )}
+        </>
+      )}
     </div>
+  );
+}
+
+// One spend breakdown inside the Cost widget: a labeled list of proportional bars, in
+// the same visual language as the per-class split above it. `total` is the widget's
+// headline figure — the rows are scaled to it so the split always sums to the number it
+// decomposes, even where a row's cost had to be priced from the catalog.
+function SpendSection({
+  label,
+  rows,
+  total,
+}: {
+  label: string;
+  rows: readonly SpendRow[];
+  total: number | null;
+}) {
+  const rowsTotal = rows.reduce((sum, row) => sum + (row.cost ?? 0), 0);
+  const scale = total != null && rowsTotal > 0 ? total / rowsTotal : 1;
+  return (
+    <div className={styles.spendGroup}>
+      <span className={styles.spendGroupLabel}>{label}</span>
+      <ul className={styles.costRows}>
+        {rows.map((row) => (
+          <SpendRowView
+            key={row.key}
+            row={row}
+            scale={scale}
+            fraction={rowsTotal > 0 ? (row.cost ?? 0) / rowsTotal : 0}
+          />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// One slot's (or one model's) row: what it is over the model behind it, a proportional
+// bar, and its cost over its token total — so the row reads as a magnitude, a figure,
+// and a binding at once.
+function SpendRowView({
+  row,
+  scale,
+  fraction,
+}: {
+  row: SpendRow;
+  scale: number;
+  fraction: number;
+}) {
+  return (
+    <li className={styles.spendRow}>
+      <span className={styles.spendRowIdentity}>
+        <span className={styles.spendRowName}>{row.slot ?? row.modelName}</span>
+        {/* On a per-slot row the model is the binding behind the slot; on a per-model
+            row the name above already *is* the model, so the id is not restated. */}
+        {row.slot != null && (
+          <span className={styles.spendRowModel} title={row.modelId}>
+            {row.modelName}
+          </span>
+        )}
+      </span>
+      <span className={styles.costRowBar} aria-hidden="true">
+        <span
+          className={styles.costRowBarFill}
+          style={{ width: `${Math.min(Math.max(fraction, 0), 1) * 100}%` }}
+        />
+      </span>
+      <span className={styles.spendRowFigures}>
+        <span className={styles.spendRowAmount}>
+          {formatCost(row.cost == null ? null : row.cost * scale)}
+        </span>
+        <span className={styles.spendRowTokens}>
+          {shortTokens(row.tokens)} tok
+        </span>
+      </span>
+    </li>
   );
 }
 

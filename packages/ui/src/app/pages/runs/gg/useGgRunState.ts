@@ -1010,7 +1010,7 @@ function addTokens(
 // cost stays null until one carries a figure. Summing a key's deltas this way reproduces
 // the `slot_usage` rollup gg emits for that key once the agent ends — which is exactly
 // why the live figure and the durable one can never disagree.
-function accumulateSlotUsage(
+export function accumulateSlotUsage(
   into: SlotUsage,
   tokens: TokenMetrics,
   cost: CostMetrics | null | undefined,

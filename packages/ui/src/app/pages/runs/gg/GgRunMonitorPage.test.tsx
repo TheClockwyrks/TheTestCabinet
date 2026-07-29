@@ -950,14 +950,17 @@ describe("GgRunMonitorPage", () => {
     renderMonitor(events);
     // The Dashboard's agent overview lists all three agents.
     expect(screen.getByText("Agents · 3")).toBeInTheDocument();
-    // The per-slot usage breakdown is a whole-run cost fact, so it reads on the
-    // Dashboard: the reviewer slot's model, and its cost both as the Cost widget's
-    // total and in the per-slot row — so more than one node carries the figure.
+    // Where the money went is a whole-run cost fact, so it reads inside the Dashboard's
+    // Cost widget: a bar per slot naming the model bound to it, and its cost both as the
+    // widget's total and in its own row — so more than one node carries the figure.
     // ("reviewer" reads twice now — the per-slot row and the agent overview's slot
     // chip.)
-    expect(screen.getByText("Per-slot usage")).toBeInTheDocument();
+    expect(screen.getByText("Per slot")).toBeInTheDocument();
     expect(screen.getAllByText("reviewer").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("claude-haiku-4-8").length).toBeGreaterThan(0);
     expect(screen.getAllByText("$0.0021").length).toBeGreaterThan(1);
+    // One model per slot here, so a per-model split would only restate the rows above.
+    expect(screen.queryByText("Per model")).not.toBeInTheDocument();
 
     openTab("Agents");
     // The delegation tree is the directory tree: root → subagents → the two children.
@@ -987,6 +990,68 @@ describe("GgRunMonitorPage", () => {
     // The builder is still running.
     openFile("agent-1 overview");
     expect(screen.getByText("running")).toBeInTheDocument();
+  });
+
+  it("splits the running cost per slot and per model mid-run", () => {
+    // Three slots on two models, mid-run: nothing has ended, so no `slot_usage` rollup
+    // exists — the split comes from the attributed `usage` deltas alone. The same cheap
+    // model is bound to two of the slots, which is what the per-model split is for.
+    const events: HarnessEvent[] = [
+      sessionStarted(),
+      ggFrom("root", undefined, {
+        type: "usage",
+        slot: "root",
+        modelId: "vendor/big",
+        tokens: {
+          uncachedInput: 4000,
+          cachedInput: null,
+          output: 500,
+          reasoning: null,
+        },
+        cost: { comparable: 0.02, actual: 0.02 },
+      }),
+      ggFrom("agent-0", "root", {
+        type: "usage",
+        slot: "reviewer",
+        modelId: "vendor/small",
+        tokens: {
+          uncachedInput: 2000,
+          cachedInput: null,
+          output: 100,
+          reasoning: null,
+        },
+        cost: { comparable: 0.03, actual: 0.03 },
+      }),
+      ggFrom("agent-1", "root", {
+        type: "usage",
+        slot: "summarizer",
+        modelId: "vendor/small",
+        tokens: {
+          uncachedInput: 1000,
+          cachedInput: null,
+          output: 50,
+          reasoning: null,
+        },
+        cost: { comparable: 0.01, actual: 0.01 },
+      }),
+    ];
+    renderMonitor(events);
+
+    // Both splits read while the run is still going — no session_ended here.
+    expect(screen.getByText("Per slot")).toBeInTheDocument();
+    expect(screen.getByText("Per model")).toBeInTheDocument();
+    // A row per slot, each naming the model it was bound to (the catalog is absent in
+    // this bare render, so a model reads by its id).
+    expect(screen.getByText("reviewer")).toBeInTheDocument();
+    expect(screen.getByText("summarizer")).toBeInTheDocument();
+    // The small model is bound to two slots, so it reads on both of their rows and again
+    // as its own per-model row; the big model on one slot and its own row.
+    expect(screen.getAllByText("vendor/small")).toHaveLength(3);
+    expect(screen.getAllByText("vendor/big")).toHaveLength(2);
+    // The per-model row sums the two slots the small model served: 0.03 + 0.01.
+    expect(screen.getByText("$0.0400")).toBeInTheDocument();
+    // …and the headline is every slot summed.
+    expect(screen.getAllByText("$0.0600").length).toBeGreaterThan(0);
   });
 
   it("overviews the agents on the Dashboard and jumps into an agent's files", () => {

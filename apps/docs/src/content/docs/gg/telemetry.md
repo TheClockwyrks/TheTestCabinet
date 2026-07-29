@@ -34,8 +34,8 @@ record lands. A stream recorded before gg announced it simply omits the field, a
 the recorded set on the run record stands in.
 
 The console (the live monitor and a finished run's gg tab, which are the **same**
-view over the same stream — live, then rebuilt from the recording) reads a run
-through **two** surfaces:
+view over the same stream — live, then rebuilt from the recording, and laid out
+identically down to the order of the cards) reads a run through **two** surfaces:
 
 - The **Dashboard** — the whole-run read-out: status, the token/cost tally with its
   **caching** (cached vs uncached input) and **reasoning** (reasoning vs non-reasoning
@@ -46,13 +46,19 @@ through **two** surfaces:
   **peak** its context window reached, its **share of the run's tokens**, and the
   **tools it used** — and each row is a link into that agent's files in the Agents
   explorer, so the whole-run view and the per-agent one are one click apart. The
-  **cost** read-out is split **per class** (input, cached input, reasoning, output)
-  by pricing each token against the model that produced it — never at one blanket
-  rate. A run binds one model per [agent profile](/gg/configurations/), so every
-  `usage` event names the profile and model that spent it; the split, the
-  input-vs-output ring, and the **per-slot usage** tile beside them are therefore all
-  derived from the delta stream, and read the same on a run spanning five models as on
-  one spanning a single model — from the run's first turn, not once its agents finish.
+  **cost** read-out leads the row it shares with the token tally, and is the taller
+  tile — it carries the run's whole account of its spend, with the configuration
+  slotted in under the tokens beside it. That account is the total, the split **per
+  class** (input, cached input, reasoning, output) by pricing each token against the
+  model that produced it — never at one blanket rate — the input-vs-output ring, and
+  *where* the money went: bars **per slot**, each naming the model that slot was bound
+  to, and — when one model is bound to more than one slot — bars **per model**, the
+  same spend folded onto the models that did it, which a per-slot read alone cannot
+  say. A run binds one model per [agent profile](/gg/configurations/), so every
+  `usage` event names the profile and model that spent it; every one of those splits is
+  therefore derived from the delta stream, and reads the same on a run spanning five
+  models as on one spanning a single model — from the run's first turn, not once its
+  agents finish.
   (The end-of-agent `slot_usage` rollups carry the same figures for the durable record;
   a consumer sums the deltas, never both.)
 - The **Project** view — the run-global [Project management](/gg/project-management/)
