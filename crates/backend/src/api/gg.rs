@@ -32,7 +32,7 @@ use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
 
 use test_cabinet_core::LaunchBody;
-use test_cabinet_core::gg::{GgCapabilitySet, ROOT_AGENT};
+use test_cabinet_core::gg::GgCapabilitySet;
 use test_cabinet_core::gg_aggregate::{GgAggregateQuery, GgAggregateResponse};
 use test_cabinet_core::run_record::HarnessSlug;
 
@@ -73,7 +73,8 @@ pub struct GgRunRequest {
     pub variant: Option<String>,
     /// The declarative capability set configuring the run: its agent profiles (each
     /// with its own capabilities, model binding, and delegation graph) and the
-    /// run-level model slots and limits. Must bind a model to the [`ROOT_AGENT`].
+    /// run-level model slots and limits. Must bind a model to its
+    /// [root agent](GgCapabilitySet::root).
     pub capability_set: GgCapabilitySet,
     /// Optional override for the maximum harness runtime, in seconds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -97,12 +98,12 @@ impl GgRunRequest {
 
     /// Lower this gg-native request onto the canonical [`LaunchBody`] the enqueue
     /// substrate speaks: the harness fixed to [`HarnessSlug::Gg`], the capability set
-    /// carried through, and the [`ROOT_AGENT`] model lifted into
+    /// carried through, and the [root agent](GgCapabilitySet::root)'s model lifted into
     /// [`LaunchBody::model`] so a gg run still has a representative model identity for
     /// the existing per-model listings and the active-run summary.
     ///
     /// Returns the human-readable reason when the capability set does not bind a
-    /// model to the Root agent — the one gg-specific precondition the flat
+    /// model to its root agent — the one gg-specific precondition the flat
     /// [`build_new_job`](super::jobs::build_new_job) validation cannot express.
     fn into_launch_body(self) -> Result<LaunchBody, String> {
         // Every [model slot](test_cabinet_core::gg::GgModelSlot) a configuration declares
@@ -121,12 +122,23 @@ impl GgRunRequest {
                     .join(", ")
             ));
         }
-        let model = self
-            .capability_set
-            .root()
+        // The root is the *first* profile a set declares, whatever it is named — a configuration
+        // may rename it or promote another profile to it — so an empty set is what "there is no
+        // root" looks like, and the model is lifted off whichever profile is first.
+        if self.capability_set.agents.is_empty() {
+            return Err(
+                "the gg capability set declares no agent profiles; it must declare at least one"
+                    .to_string(),
+            );
+        }
+        let root = self.capability_set.root();
+        let model = root
             .resolved_model_id()
             .ok_or_else(|| {
-                format!("the gg capability set must bind a model to the `{ROOT_AGENT}` agent")
+                format!(
+                    "the gg capability set must bind a model to its root agent (`{}`)",
+                    root.name
+                )
             })?
             .to_string();
         let variant = self.resolved_variant();
@@ -156,7 +168,8 @@ impl GgRunRequest {
 ///
 /// The handler validates the request — the test-case version must be ingested (and
 /// not an experimental version the deployment has not opted into), the variant must
-/// exist, and the capability set must bind a model to the [`ROOT_AGENT`] — then
+/// exist, and the capability set must bind a model to its
+/// [root agent](GgCapabilitySet::root) — then
 /// enqueues a `queued` job carrying the gg launch body verbatim. It returns the same
 /// [`LaunchAck`] a conventional launch does, so the console watches a gg run through
 /// the existing `GET /jobs/{id}` status and `GET /jobs/{id}/live` monitor unchanged.

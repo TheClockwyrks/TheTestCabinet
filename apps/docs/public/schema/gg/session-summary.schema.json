@@ -264,7 +264,7 @@
       "description": "What gg had to do to the models' responses before it could run them — the run's\n[response-healing](GgHealingSummary) rollup, folded from the same\n[`CodeExecution`](GgTelemetryKind::CodeExecution) events\n[`code_executions`](Self::code_executions) counts. All zeroes for a tool-calling run."
     },
     "issueReviews": {
-      "description": "How many [issue reviews](GgTelemetryKind::IssueReview) the run triggered — one per\n[`Requested`](GgIssueReviewPhase::Requested) phase (an issue whose acceptance was gated on\nits reviewers). `0` when no issue named reviewers.",
+      "description": "How many [issue reviews](GgTelemetryKind::IssueReview) the run triggered — one per\n[`Requested`](GgIssueReviewPhase::Requested) phase (an issue whose acceptance was gated on\nits reviewers). `0` when no issue named reviewers.\n\nThe `codeReviews` alias reads a summary recorded while this figure was called that, so a\nstored run's review counts survive the rename rather than silently reading as zero.",
       "format": "uint64",
       "minimum": 0,
       "type": "integer"

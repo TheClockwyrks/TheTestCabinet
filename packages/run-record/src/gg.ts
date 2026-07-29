@@ -202,7 +202,7 @@ export type GgCapabilityConfig = {
  *
  * A gg run is configured by a capability set rather than a harness+model+orchestrator
  * tuple. Its capabilities are **per agent**: the set declares one or more
- * [agent profiles](GgAgentConfig) — the first is always the [Root](ROOT_AGENT) —
+ * [agent profiles](GgAgentConfig) — the first is the [root](Self::root) —
  * each with its own enabled capabilities, model binding, custom prompt, and the set
  * of other agents it may spawn as subagents. The set is expressed as data so a run's
  * exact configuration is recorded and reproducible, and so
@@ -224,10 +224,11 @@ export type GgCapabilitySet = {
   preset?: string;
   /**
    * The agent profiles this run is configured with, each with its own capabilities,
-   * model binding, and delegation graph. **The first is always the
-   * [Root agent](ROOT_AGENT)** — it drives the top-level session and is the default
-   * profile for issue dispatch and helper agents. Never empty: the migration and
-   * [`Default`] both guarantee at least a Root.
+   * model binding, and delegation graph. **The first is the [root](Self::root)** — it
+   * drives the top-level session and is the default profile for issue dispatch and
+   * helper agents — whatever it happens to be *called*: the root is a position, not a
+   * name, so a configuration may rename it or promote another profile to it. Never
+   * empty: the migration and [`Default`] both guarantee at least one profile.
    */
   agents: Array<GgAgentConfig>;
   /**
@@ -710,7 +711,7 @@ export type GgBoardIssue = {
    * is named on `create_issue` (not configured on the capability), and must be one the creating
    * agent lists with the [`implementer`](GgSubagentScope::Implementer) scope. Empty only on a
    * board recorded before issues carried an assignee, which dispatches under the
-   * [Root](ROOT_AGENT).
+   * run's [root](GgCapabilitySet::root).
    */
   agent: string;
   /**
@@ -1355,6 +1356,9 @@ export type GgSessionSummary = {
    * How many [issue reviews](GgTelemetryKind::IssueReview) the run triggered — one per
    * [`Requested`](GgIssueReviewPhase::Requested) phase (an issue whose acceptance was gated on
    * its reviewers). `0` when no issue named reviewers.
+   *
+   * The `codeReviews` alias reads a summary recorded while this figure was called that, so a
+   * stored run's review counts survive the rename rather than silently reading as zero.
    */
   issueReviews: number;
   /**

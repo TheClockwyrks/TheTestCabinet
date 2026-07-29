@@ -599,10 +599,14 @@ pub const COMPLETION_SIGNAL_PLAIN_TEXT: &str = "plain-text";
 /// the [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) `finish` contract.
 pub const COMPLETION_SIGNAL_EXPLICIT_CALL: &str = "explicit-call";
 
-/// The conventional name of the **Root agent** — the one agent every
-/// [`GgCapabilitySet`] must declare, which drives the run's top-level session. It is
-/// unremovable in the editor and is the default profile for issue dispatch, Code
-/// Review, and speculation-judge helpers.
+/// The name a fresh capability set's **root agent** is seeded with.
+///
+/// It is a starting value, not an invariant: the root is the **first**
+/// [profile](GgCapabilitySet::agents) a set declares ([`GgCapabilitySet::root`]), whatever
+/// it is called, and an operator may rename it or make another profile the root. Nothing
+/// resolves the root by this name — code that means "the root" must ask
+/// [`GgCapabilitySet::root`] (or [`GgCapabilitySet::root_name`]) for it, or a configuration
+/// whose root was renamed would fail to launch.
 pub const ROOT_AGENT: &str = "Root";
 
 /// The declarative, inspectable configuration of a gg run — its *independent
@@ -610,7 +614,7 @@ pub const ROOT_AGENT: &str = "Root";
 ///
 /// A gg run is configured by a capability set rather than a harness+model+orchestrator
 /// tuple. Its capabilities are **per agent**: the set declares one or more
-/// [agent profiles](GgAgentConfig) — the first is always the [Root](ROOT_AGENT) —
+/// [agent profiles](GgAgentConfig) — the first is the [root](Self::root) —
 /// each with its own enabled capabilities, model binding, custom prompt, and the set
 /// of other agents it may spawn as subagents. The set is expressed as data so a run's
 /// exact configuration is recorded and reproducible, and so
@@ -633,10 +637,11 @@ pub struct GgCapabilitySet {
     #[cfg_attr(feature = "contract", ts(optional))]
     pub preset: Option<String>,
     /// The agent profiles this run is configured with, each with its own capabilities,
-    /// model binding, and delegation graph. **The first is always the
-    /// [Root agent](ROOT_AGENT)** — it drives the top-level session and is the default
-    /// profile for issue dispatch and helper agents. Never empty: the migration and
-    /// [`Default`] both guarantee at least a Root.
+    /// model binding, and delegation graph. **The first is the [root](Self::root)** — it
+    /// drives the top-level session and is the default profile for issue dispatch and
+    /// helper agents — whatever it happens to be *called*: the root is a position, not a
+    /// name, so a configuration may rename it or promote another profile to it. Never
+    /// empty: the migration and [`Default`] both guarantee at least one profile.
     #[serde(default = "default_agents")]
     pub agents: Vec<GgAgentConfig>,
     /// The [launch-time model parameters](GgModelSlot) this set declares, for the
@@ -692,13 +697,23 @@ impl GgCapabilitySet {
         }
     }
 
-    /// The [Root agent](ROOT_AGENT) — the first profile, which drives the top-level
-    /// session. Guaranteed to exist (the migration and [`Default`] never yield an empty
-    /// agent list), so this returns a reference rather than an `Option`.
+    /// The **root agent** — the first profile, which drives the top-level session.
+    /// Guaranteed to exist (the migration and [`Default`] never yield an empty agent
+    /// list), so this returns a reference rather than an `Option`.
+    ///
+    /// The root is identified by **position, never by name**: it is seeded as
+    /// [`ROOT_AGENT`] but an operator may rename it, so looking one up by that name would
+    /// silently fail on a renamed configuration.
     pub fn root(&self) -> &GgAgentConfig {
         self.agents
             .first()
-            .expect("a gg capability set always has at least a Root agent")
+            .expect("a gg capability set always has at least one agent")
+    }
+
+    /// The [root agent](Self::root)'s name — what a helper knob, an issue assignee, or a
+    /// telemetry slot falls back to when it means "whichever profile drives this run".
+    pub fn root_name(&self) -> &str {
+        &self.root().name
     }
 
     /// The agent profile with the given `name`, or `None` when this set declares none.
@@ -2016,7 +2031,7 @@ pub struct GgBoardIssue {
     /// is named on `create_issue` (not configured on the capability), and must be one the creating
     /// agent lists with the [`implementer`](GgSubagentScope::Implementer) scope. Empty only on a
     /// board recorded before issues carried an assignee, which dispatches under the
-    /// [Root](ROOT_AGENT).
+    /// run's [root](GgCapabilitySet::root).
     #[serde(default)]
     pub agent: String,
     /// The [agent profiles](GgAgentConfig) named as this issue's **reviewers** when it was

@@ -35,7 +35,7 @@ store of model facts, so the window is resolved _where the catalog lives_ and
 model the capability set binds and stamps the figures onto the launch, which carry
 through the driver into gg's invocation. A run whose [agents](/gg/configurations/#agents)
 span several models carries one entry per bound model, so each agent is measured
-against its own model's window rather than the Root's. A run container never reaches
+against its own model's window rather than the root's. A run container never reaches
 back out for this.
 
 A model the catalog has not observed yet — the first run against a just-released

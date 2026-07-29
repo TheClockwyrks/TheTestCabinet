@@ -31,7 +31,7 @@ async fn drive_compaction(
     let (registry, skills, memories, tasks) = compaction_runtimes(dir.path());
     let client = MockClient::new("mock/echo", script);
 
-    let end = Agent::root()
+    let end = Agent::root(ROOT_AGENT)
         .drive(
             &client,
             "go",

@@ -99,7 +99,6 @@ use test_cabinet_core::gg::{
     GgContextSource, GgHealingStrategy, GgIssueReviewPhase, GgLimitBreach, GgLimitKind,
     GgNotAProgram, GgPlanPhase, GgResponseHealing, GgRunLimits, GgSlotBinding, GgSpeculationPhase,
     GgSubagentScope, GgTelemetryKind, GgWorkflowPhase, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT,
-    ROOT_AGENT,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 use tokio::sync::{mpsc, oneshot};
@@ -261,7 +260,7 @@ pub const ROOT_AGENT_ID: &str = "root";
 
 /// The [speculative-execution](CAPABILITY_SPECULATIVE) capability param naming the
 /// [agent profile](GgAgentConfig) a [speculation](handle_speculate)'s judge runs under. Absent
-/// means the [Root](ROOT_AGENT).
+/// means the run's [root](GgCapabilitySet::root).
 const PARAM_JUDGE_AGENT: &str = "judgeAgent";
 
 /// The default number of parallel attempts a [`speculate`](handle_speculate) call makes when it names
@@ -299,22 +298,25 @@ pub struct Agent {
     /// The agent's depth in the tree: `0` for the root, `parent.depth + 1` for a child.
     pub depth: usize,
     /// The [agent profile](GgAgentConfig) name this agent runs under — the key its
-    /// capabilities, model binding, and system prompt resolve from. The root runs under
-    /// [`ROOT_AGENT`]; a spawned child under whichever profile its spawner named. Carried
-    /// under the field name `slot` because it is what the [per-profile
-    /// accounting](SlotAccounting) and the `AgentSpawned`/`SlotUsage` telemetry key on.
+    /// capabilities, model binding, and system prompt resolve from. The root runs under the
+    /// set's [root profile](GgCapabilitySet::root), whatever it is named; a spawned child
+    /// under whichever profile its spawner named. Carried under the field name `slot`
+    /// because it is what the [per-profile accounting](SlotAccounting) and the
+    /// `AgentSpawned`/`SlotUsage` telemetry key on.
     pub slot: String,
 }
 
 impl Agent {
-    /// The **root** agent for a run: [`ROOT_AGENT_ID`], no parent, depth `0`, running under the
-    /// [Root](ROOT_AGENT) profile.
-    pub fn root() -> Self {
+    /// The **root** agent for a run: [`ROOT_AGENT_ID`], no parent, depth `0`, running under
+    /// `profile` — the set's [root profile](GgCapabilitySet::root), passed in rather than
+    /// assumed to be called [`ROOT_AGENT`] so a renamed root still resolves its own model,
+    /// capabilities, and prompt.
+    pub fn root(profile: &str) -> Self {
         Self {
             id: ROOT_AGENT_ID.to_string(),
             parent_id: None,
             depth: 0,
-            slot: ROOT_AGENT.to_string(),
+            slot: profile.to_string(),
         }
     }
 }
@@ -384,8 +386,8 @@ impl SlotAccounting {
 
 /// Build the client [binding](GgSlotBinding) for the [agent profile](GgAgentConfig) named
 /// `profile` in `set`, or an error naming what is wrong. The seam every agent resolves its client
-/// through: the root resolves the [Root](ROOT_AGENT) profile; a spawned child resolves whichever
-/// profile its spawner named.
+/// through: the root resolves the [root profile](GgCapabilitySet::root); a spawned child resolves
+/// whichever profile its spawner named.
 ///
 /// A [`GgSlotBinding`] is still the [factory](ClientFactory)'s input DTO (it keys purely on the
 /// model id); its `slot` field carries the profile name so the resolved model is attributed to the
@@ -400,9 +402,9 @@ fn profile_binding(set: &GgCapabilitySet, profile: &str) -> Result<GgSlotBinding
     Ok(GgSlotBinding::new(profile, model_id))
 }
 
-/// Validate a run's [agent profiles](GgAgentConfig) before launch: the [Root](ROOT_AGENT) profile
-/// must exist and be bound to a model (the run has no model otherwise), every profile must have a
-/// non-empty name and a resolved model, no name may be declared twice, every
+/// Validate a run's [agent profiles](GgAgentConfig) before launch: the set must declare at least
+/// one profile (its [root](GgCapabilitySet::root) — the run has no model otherwise), every profile
+/// must have a non-empty name and a resolved model, no name may be declared twice, every
 /// [roster reference](GgAgentConfig::subagents) must name a declared profile, no profile may
 /// be able to **file [issues](crate::board)** without anyone to assign them to, and a run with
 /// [project management](CAPABILITY_PROJECT_MANAGEMENT) on must name a shell-capable
@@ -410,6 +412,12 @@ fn profile_binding(set: &GgCapabilitySet, profile: &str) -> Result<GgSlotBinding
 /// human-readable error on the first problem, so a misconfiguration fails loudly at launch rather
 /// than surfacing mid-run. Pure, so it is unit tested directly.
 fn validate_agents(set: &GgCapabilitySet) -> Result<(), String> {
+    // The root is the *first* profile, whatever it is called — an operator may rename it or
+    // promote another profile to it — so what has to be true here is that there is one at all.
+    // Checked up front because everything below (and `GgCapabilitySet::root`) assumes it.
+    if set.agents.is_empty() {
+        return Err("no agent profiles are declared; there is no model to run".to_string());
+    }
     let mut seen: Vec<&str> = Vec::with_capacity(set.agents.len());
     for agent in &set.agents {
         let name = agent.name.trim();
@@ -474,11 +482,6 @@ fn validate_agents(set: &GgCapabilitySet) -> Result<(), String> {
                 ));
             }
         }
-    }
-    if set.agent(ROOT_AGENT).is_none() {
-        return Err(format!(
-            "no `{ROOT_AGENT}` agent profile is declared; there is no model to run"
-        ));
     }
     validate_merge_agent(set)?;
     Ok(())
@@ -589,13 +592,15 @@ pub(crate) async fn run_with_factory(
         capability_set: Some(set.clone()),
     });
 
-    // Launch check 1: the agent profiles must be well-formed and declare a bound `Root`.
+    // Launch check 1: the agent profiles must be well-formed, and there must be a root to run.
     if let Err(err) = validate_agents(set) {
         root_emitter.emit(log("error", err));
         root_emitter.emit(session_ended("error"));
         return SessionOutcome::LaunchFailed;
     }
-    let binding = match profile_binding(set, ROOT_AGENT) {
+    // Whatever the operator called it: the root is the first profile, not a profile named `Root`.
+    let root_profile = set.root_name().to_string();
+    let binding = match profile_binding(set, &root_profile) {
         Ok(binding) => binding,
         Err(err) => {
             root_emitter.emit(log("error", err));
@@ -622,7 +627,7 @@ pub(crate) async fn run_with_factory(
             root_emitter.emit(log(
                 "error",
                 format!(
-                    "could not resolve the `{ROOT_AGENT}` agent (model `{}`): {err}",
+                    "could not resolve the `{root_profile}` agent (model `{}`): {err}",
                     binding.model_id
                 ),
             ));
@@ -699,7 +704,7 @@ pub(crate) async fn run_with_factory(
     // Drive the root agent. Its inbox is unused (nothing spawns the root), but every agent owns
     // one for uniformity.
     let (_root_inbox_tx, root_inbox_rx) = mpsc::unbounded_channel();
-    let root_agent = Agent::root();
+    let root_agent = Agent::root(&root_profile);
     let end = run_agent(
         Arc::clone(&orch),
         root_agent,
@@ -928,11 +933,11 @@ struct Orchestrator {
     /// the attempts and run the judge), so it only engages when
     /// [`delegation_enabled`](Self::delegation_enabled); worktree isolation is checked at call time.
     speculative_enabled: bool,
-    /// The **[Root](ROOT_AGENT) agent's** code setup: whether its turns are conducted as
+    /// The **root agent's** code setup: whether its turns are conducted as
     /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE), the per-program sandbox ceilings, and the
     /// armed [healing](crate::healing) strategies. Since responses-as-code is now a **per-agent**
     /// capability, each agent's own setup is resolved from its profile at run time (see
-    /// [`code_setup`](Self::code_setup)); this field carries the Root's, used for the run-level
+    /// [`code_setup`](Self::code_setup)); this field carries the root's, used for the run-level
     /// launch log and the sandbox warm-up decision.
     code: CodeSetup,
     /// The isolated [worktree](Worktree) each [issue](crate::board) works in, keyed by issue id.
@@ -1227,16 +1232,16 @@ impl Orchestrator {
     }
 
     /// The [agent profile](GgAgentConfig) an agent named `profile` runs under: the declared profile,
-    /// or the [Root](ROOT_AGENT) when the name is not one this run declares (so a stale reference
-    /// falls back to a working profile rather than refusing).
+    /// or the [root](GgCapabilitySet::root) when the name is not one this run declares (so a stale
+    /// reference falls back to a working profile rather than refusing).
     fn profile_or_root(&self, profile: &str) -> &GgAgentConfig {
         self.caps.agent(profile).unwrap_or_else(|| self.caps.root())
     }
 
     /// The name of an [agent profile](GgAgentConfig) a run-level capability points a helper agent at:
-    /// the string `param` on the [Root](ROOT_AGENT)'s config for capability `cap_id`, when it names a
-    /// declared profile, else the [Root](ROOT_AGENT). This knob (the speculation judge) is
-    /// read off the Root because it governs the run as a whole, not one agent's turn. An
+    /// the string `param` on the [root](GgCapabilitySet::root)'s config for capability `cap_id`, when
+    /// it names a declared profile, else the root itself. This knob (the speculation judge) is
+    /// read off the root because it governs the run as a whole, not one agent's turn. An
     /// [issue](crate::board)'s agent and reviewers are deliberately **not** among them: an issue
     /// names its own when it is filed.
     fn helper_profile(&self, cap_id: &str, param: &str) -> String {
@@ -1247,25 +1252,26 @@ impl Orchestrator {
             .and_then(Value::as_str)
             .map(str::trim)
             .filter(|name| !name.is_empty() && self.caps.agent(name).is_some())
-            .unwrap_or(ROOT_AGENT)
+            .unwrap_or_else(|| self.caps.root_name())
             .to_string()
     }
 
     /// The [agent profile](GgAgentConfig) an auto-dispatched [issue](crate::board)'s agent runs
     /// under — the [assignee](crate::board::Issue::agent) named when the issue was filed. A
     /// profile this run does not declare (or an issue from a board recorded before issues carried
-    /// an assignee) falls back to the [Root](ROOT_AGENT), so a stale reference still dispatches
-    /// rather than stalling the board.
+    /// an assignee) falls back to the [root](GgCapabilitySet::root), so a stale reference still
+    /// dispatches rather than stalling the board.
     fn issue_profile(&self, issue_id: &str) -> String {
         self.board
             .issue_agent(issue_id)
             .filter(|name| self.caps.agent(name).is_some())
-            .unwrap_or_else(|| ROOT_AGENT.to_string())
+            .unwrap_or_else(|| self.caps.root_name().to_string())
     }
 
     /// The [agent profile](GgAgentConfig) a [speculative execution](handle_speculate)'s **judge** runs
     /// under — the [speculative-execution](CAPABILITY_SPECULATIVE) capability's
-    /// [`judgeAgent`](PARAM_JUDGE_AGENT) param, defaulting to the [Root](ROOT_AGENT).
+    /// [`judgeAgent`](PARAM_JUDGE_AGENT) param, defaulting to the
+    /// [root](GgCapabilitySet::root).
     fn judge_profile(&self) -> String {
         self.helper_profile(CAPABILITY_SPECULATIVE, PARAM_JUDGE_AGENT)
     }

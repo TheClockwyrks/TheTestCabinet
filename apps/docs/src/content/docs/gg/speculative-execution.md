@@ -9,7 +9,7 @@ the attempts under (from the caller's [roster](/gg/subagents/)), and gg fans out
 [board issue](/gg/project-management/) — optionally with different approaches — each
 in its own isolated git worktree, then a **judge** — a subagent run under the
 capability's **`judgeAgent`** profile (defaulting to the
-[Root agent](/gg/configurations/#agents)) — selects the winning attempt to merge and
+[root agent](/gg/configurations/#agents)) — selects the winning attempt to merge and
 discards the rest.
 
 Every primitive it needs already exists, so it is largely an [FSM](/gg/fsms/)

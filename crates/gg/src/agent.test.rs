@@ -221,7 +221,7 @@ async fn drive_root(
     code: CodeSetup,
 ) -> LoopEnd {
     let ctx = ToolContext::new(dir);
-    Agent::root()
+    Agent::root(ROOT_AGENT)
         .drive(
             client,
             "go",
@@ -895,7 +895,7 @@ async fn drive_exhausts_the_turn_ceiling_when_the_model_never_stops() {
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
 
     let never_stops = MockClient::new("mock/loop", vec![looping_response(); 5]);
-    let agent = Agent::root();
+    let agent = Agent::root(ROOT_AGENT);
     let end = agent
         .drive(
             &never_stops,
@@ -950,7 +950,7 @@ async fn drive_times_out_at_a_passed_deadline() {
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
 
     let client = MockClient::with_default_script("mock/echo");
-    let agent = Agent::root();
+    let agent = Agent::root(ROOT_AGENT);
     let end = agent
         .drive(
             &client,
@@ -1006,7 +1006,7 @@ async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
     let client = FailingClient {
         mode: FailureMode::Fatal,
     };
-    let agent = Agent::root();
+    let agent = Agent::root(ROOT_AGENT);
     let end = agent
         .drive(
             &client,
@@ -1098,7 +1098,7 @@ async fn drive_completion(
     completion: CompletionSetup,
 ) -> LoopEnd {
     let ctx = ToolContext::new(dir);
-    Agent::root()
+    Agent::root(ROOT_AGENT)
         .drive(
             client,
             "go",
@@ -1262,7 +1262,7 @@ async fn drive_ends_model_error_on_exhausted_retries() {
     let client = FailingClient {
         mode: FailureMode::Retryable,
     };
-    let agent = Agent::root();
+    let agent = Agent::root(ROOT_AGENT);
     let end = agent
         .drive(
             &client,
@@ -1315,7 +1315,7 @@ async fn drive_ends_auth_error_when_the_credential_is_refused() {
     let client = FailingClient {
         mode: FailureMode::Auth,
     };
-    let agent = Agent::root();
+    let agent = Agent::root(ROOT_AGENT);
     let end = agent
         .drive(
             &client,
@@ -2126,7 +2126,7 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
         ],
     );
 
-    let agent = Agent::root();
+    let agent = Agent::root(ROOT_AGENT);
     let end = agent
         .drive(
             &client,
@@ -2316,7 +2316,7 @@ async fn drive_enforces_memory_caps_end_to_end() {
         ],
     );
 
-    let agent = Agent::root();
+    let agent = Agent::root(ROOT_AGENT);
     let end = agent
         .drive(
             &client,
@@ -2482,7 +2482,7 @@ async fn drive_pins_only_the_index_under_the_markdown_strategy() {
         ],
     );
 
-    let agent = Agent::root();
+    let agent = Agent::root(ROOT_AGENT);
     let end = agent
         .drive(
             &client,
@@ -2567,7 +2567,7 @@ async fn the_memory_block_costs_nothing_until_the_boundary() {
     let (registry, skills, memories, tasks) = compaction_runtimes(dir.path());
     let client = MockClient::new("mock/echo", compaction_script());
 
-    let agent = Agent::root();
+    let agent = Agent::root(ROOT_AGENT);
     let end = agent
         .drive(
             &client,
@@ -2764,7 +2764,7 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
         ],
     );
 
-    let agent = Agent::root();
+    let agent = Agent::root(ROOT_AGENT);
     let end = agent
         .drive(
             &client,
@@ -3080,7 +3080,7 @@ async fn drive_compacts_at_the_threshold_and_retains_pinned_state() {
 
     // A small window and a moderate threshold, so the ballooned ephemeral turn crosses it
     // while the pinned prefix alone stays under it.
-    let agent = Agent::root();
+    let agent = Agent::root(ROOT_AGENT);
     let end = agent
         .drive(
             &client,
@@ -3245,7 +3245,7 @@ async fn drive_never_compacts_when_capability_off() {
     let (registry, skills, memories, tasks) = compaction_runtimes(dir.path());
     let client = MockClient::new("mock/echo", compaction_script());
 
-    let agent = Agent::root();
+    let agent = Agent::root(ROOT_AGENT);
     let end = agent
         .drive(
             &client,
@@ -3347,7 +3347,7 @@ async fn drive_manages_context_end_to_end() {
     );
 
     let client = MockClient::with_agent_managed_context_script("mock/echo");
-    let agent = Agent::root();
+    let agent = Agent::root(ROOT_AGENT);
     let end = agent
         .drive(
             &client,
@@ -3461,7 +3461,7 @@ async fn drive_without_amc_offers_no_context_management() {
     }
 
     let client = MockClient::with_agent_managed_context_script("mock/echo");
-    let agent = Agent::root();
+    let agent = Agent::root(ROOT_AGENT);
     let end = agent
         .drive(
             &client,
@@ -3552,7 +3552,7 @@ async fn drive_plans_then_implements_from_a_fresh_context() {
     let registry = ToolRegistry::from_run(set.root(), &RuntimeSet::new(&library));
 
     let client = MockClient::with_planning_script("mock/echo");
-    let agent = Agent::root();
+    let agent = Agent::root(ROOT_AGENT);
     let end = agent
         .drive(
             &client,
@@ -3716,7 +3716,7 @@ async fn drive_without_planning_offers_no_planning() {
     let registry = ToolRegistry::from_run(set.root(), &RuntimeSet::new(&library));
 
     let client = MockClient::with_planning_script("mock/echo");
-    let agent = Agent::root();
+    let agent = Agent::root(ROOT_AGENT);
     let end = agent
         .drive(
             &client,
@@ -3949,6 +3949,43 @@ async fn run_reports_a_refused_credential_as_a_launch_failure() {
     );
 }
 
+/// A configuration whose **root profile was renamed** runs exactly like any other: the root is the
+/// first profile a set declares, not one called [`ROOT_AGENT`], so the run resolves its model,
+/// drives it, and accounts its usage under whatever the operator called it. (Resolving the root by
+/// name instead made every renamed configuration fail at launch with "no `Root` agent profile is
+/// declared".)
+#[tokio::test]
+async fn run_drives_a_renamed_root_profile() {
+    let dir = TempDir::new().unwrap();
+    seed_default_skill(dir.path());
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-renamed".to_string()), Box::new(sink.clone()));
+    let mut set = GgCapabilitySet::minimal("mock/echo");
+    set.agents[0].name = "conductor".to_string();
+    let inv = invocation(dir.path(), set);
+
+    assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
+    assert!(dir.path().join("index.html").exists());
+
+    // The run's telemetry attributes the root's work to its own profile name, so per-profile
+    // accounting follows the rename rather than reporting a slot nothing declares.
+    let events = sink.events();
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::AgentSpawned { slot, depth, .. } if slot == "conductor" && *depth == 0
+        )),
+        "the root is announced under the renamed profile"
+    );
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::SlotUsage { slot, .. } if slot == "conductor"
+        )),
+        "usage is accounted under the renamed profile"
+    );
+}
+
 /// A launch-failure diagnostic (no primary slot bound) is still tagged as the root agent — the
 /// stream is agent-attributed from the very first event, before any model is resolved.
 #[tokio::test]
@@ -3986,19 +4023,51 @@ async fn run_tags_launch_failure_events_as_root() {
 /// slot mechanism they exercised — an agent now runs under a named profile, not a resolved slot.)
 #[test]
 fn validate_agents_enforces_the_profile_invariants() {
-    // A good set (Root bound, unique, resolved) validates.
+    // A good set (root bound, unique, resolved) validates.
     assert!(validate_agents(&GgCapabilitySet::minimal("mock/echo")).is_ok());
 
-    // No Root profile: nothing to run.
-    let no_root = GgCapabilitySet {
+    // The root is the *first* profile, not one called `Root`: a configuration whose root was
+    // renamed is a perfectly good set, and refusing it would make renaming the root unusable.
+    let renamed_root = GgCapabilitySet {
         agents: vec![GgAgentConfig {
-            name: "subagent".to_string(),
+            name: "conductor".to_string(),
             model_id: "mock/b".to_string(),
             ..GgAgentConfig::root()
         }],
         ..GgCapabilitySet::default()
     };
-    assert!(validate_agents(&no_root).unwrap_err().contains(ROOT_AGENT));
+    assert!(validate_agents(&renamed_root).is_ok());
+
+    // …and the same with the other profiles a real multi-agent configuration carries, since a
+    // renamed root is only useful alongside the agents it delegates to.
+    let renamed_root_with_roster = GgCapabilitySet {
+        agents: vec![
+            GgAgentConfig {
+                name: "conductor".to_string(),
+                model_id: "mock/a".to_string(),
+                subagents: vec![GgSubagentRef::any("reviewer")],
+                ..GgAgentConfig::root()
+            },
+            GgAgentConfig {
+                name: "reviewer".to_string(),
+                model_id: "mock/b".to_string(),
+                ..GgAgentConfig::root()
+            },
+        ],
+        ..GgCapabilitySet::default()
+    };
+    assert!(validate_agents(&renamed_root_with_roster).is_ok());
+
+    // No profiles at all: nothing to run.
+    let no_agents = GgCapabilitySet {
+        agents: Vec::new(),
+        ..GgCapabilitySet::default()
+    };
+    let err = validate_agents(&no_agents).unwrap_err();
+    assert!(
+        err.contains("no agent profiles"),
+        "unexpected reason: {err}"
+    );
 
     // An agent still deferred to a model slot never had its model supplied.
     let deferred = GgCapabilitySet {
