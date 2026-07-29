@@ -242,7 +242,7 @@ async fn update_complete_and_remove_flow() {
         IssueStatus::InProgress
     );
 
-    let completed = CompleteIssueTool::new(Arc::clone(&store))
+    let completed = CompleteIssueTool::new(Arc::clone(&store), None)
         .invoke(json!({ "id": "a" }), &ctx)
         .await;
     assert!(completed.ok);
@@ -262,7 +262,7 @@ async fn update_complete_and_remove_flow() {
 #[tokio::test]
 async fn unknown_issue_is_a_recoverable_tool_error() {
     let (store, ctx, _dir) = fixture();
-    let outcome = CompleteIssueTool::new(Arc::clone(&store))
+    let outcome = CompleteIssueTool::new(Arc::clone(&store), None)
         .invoke(json!({ "id": "ghost" }), &ctx)
         .await;
     assert!(!outcome.ok);
@@ -327,7 +327,7 @@ async fn completing_an_issue_reports_whether_a_review_gated_it() {
         .invoke(issue_args("a"), &ctx)
         .await;
 
-    let completed = CompleteIssueTool::new(Arc::clone(&store))
+    let completed = CompleteIssueTool::new(Arc::clone(&store), None)
         .invoke(json!({ "id": "a" }), &ctx)
         .await;
 
@@ -379,7 +379,7 @@ async fn each_store_refusal_is_classified_from_its_variant() {
     assert_eq!(cycle.failure, Some(ToolFailure::Conflict));
 
     // Anything named but absent — issue, epic, or blocker — is not-found.
-    let unknown_issue = CompleteIssueTool::new(Arc::clone(&store))
+    let unknown_issue = CompleteIssueTool::new(Arc::clone(&store), None)
         .invoke(json!({ "id": "ghost" }), &ctx)
         .await;
     assert_eq!(unknown_issue.failure, Some(ToolFailure::NotFound));

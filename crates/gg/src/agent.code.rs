@@ -1627,7 +1627,7 @@ impl ToolApi for LoopToolApi {
     }
     fn complete_issue(&mut self, id: String) -> ToolOutcome {
         self.serviced(COMPLETE_ISSUE_TOOL, json!({ "id": id }), |api| {
-            CompleteIssueTool::new(api.board.store()).complete_issue(id.clone())
+            CompleteIssueTool::new(api.board.store(), None).complete_issue(id.clone())
         })
     }
     fn remove_epic(&mut self, id: String) -> ToolOutcome {

@@ -121,3 +121,21 @@ reviewer approves. You may name any of the following agents as a reviewer:
 
 At most {{board.maxEpics}} epics and {{board.maxIssues}} issues may be created.
 {{/if}}
+
+{{#if assignedIssue}}
+## Your assigned issue
+
+You have been dispatched to implement issue `{{assignedIssue.id}}`, whose brief you
+have been given. You are working in an isolated copy of the workspace that belongs
+to that issue.
+
+When the work is finished, call `complete_issue` with the id `{{assignedIssue.id}}`
+before you finish. This is how you hand the work back: the issue moves to review, its
+reviewers (if it has any) look at what you did, and its work is then merged into the
+main workspace. If you finish without calling it, your work is discarded and the
+issue is attempted again from scratch — so call it even if you believe the work was
+already done before you started.
+
+If a reviewer asks for changes you will be dispatched again with their feedback;
+address it and record the issue finished again.
+{{/if}}

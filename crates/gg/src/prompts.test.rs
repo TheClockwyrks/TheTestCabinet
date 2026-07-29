@@ -82,6 +82,9 @@ fn full_system() -> SystemContext {
                 description: "reviews finished work".to_string(),
             }],
         }),
+        assigned_issue: Some(AssignedIssueView {
+            id: "feat-1".to_string(),
+        }),
         planning: true,
         fsm: Some(FsmView {
             machine: "tdd".to_string(),
@@ -1396,6 +1399,63 @@ fn the_board_block_renders_epics_issues_and_briefs() {
          \x20 - reviewers: `critic`"
     );
     assert!(!block.contains("create_issue"));
+}
+
+/// **An agent dispatched to implement an issue is told to record it finished**, in the vocabulary
+/// of its own execution mode — and is told so whether or not it may author the board, since an
+/// implementer profile normally cannot.
+///
+/// This is the only place an implementer learns the protocol: its brief says what to *build*, and
+/// the board-authoring section it would otherwise have read this from is (rightly) not rendered for
+/// a profile with no board capability. Without it, an agent that does the work perfectly still ends
+/// its session without handing anything back, and gg discards the worktree and retries the issue.
+#[test]
+fn an_assigned_issue_tells_the_implementer_to_record_it_finished() {
+    let implementer = |responses_as_code: bool| SystemContext {
+        responses_as_code,
+        // The code arm lists the objects a program reaches; the tool-calling arm ignores them.
+        apis: vec![ApiView {
+            object: "fs".to_string(),
+            description: "read, write, and edit workspace files".to_string(),
+        }],
+        // No `board`: this profile may not author the board, only work an issue on it.
+        board: None,
+        assigned_issue: Some(AssignedIssueView {
+            id: "feat-1".to_string(),
+        }),
+        ..SystemContext::default()
+    };
+
+    let tools = flat(&render_system(&implementer(false), None));
+    assert!(
+        tools.contains("dispatched to implement issue `feat-1`"),
+        "the section names the issue:\n{tools}"
+    );
+    assert!(
+        tools.contains("call `complete_issue` with the id `feat-1`"),
+        "and names the call, in tool-calling form:\n{tools}"
+    );
+    assert!(
+        !tools.contains("`create_issue`"),
+        "without teaching it the board tools it does not have:\n{tools}"
+    );
+
+    let code = flat(&render_system(&implementer(true), None));
+    assert!(
+        code.contains("`project.completeIssue(\"feat-1\")`"),
+        "code mode names the API function form:\n{code}"
+    );
+    assert!(
+        !code.contains("`project.createIssue`"),
+        "and still teaches no authoring API:\n{code}"
+    );
+
+    // An agent that was not dispatched off the board renders no such section at all.
+    let undispatched = flat(&render_system(&SystemContext::default(), None));
+    assert!(
+        !undispatched.contains("Your assigned issue"),
+        "an agent with no assignment is told nothing about one:\n{undispatched}"
+    );
 }
 
 /// The memories block lists each note verbatim under the heading — and leaves the model's own

@@ -514,6 +514,14 @@ pub struct RuntimeSet<'a> {
     pub board: Option<&'a Arc<Mutex<BoardStore>>>,
     /// The thread archive `archive_thread` fills and `search_archive` reads, when bound.
     pub archive: Option<&'a Arc<Mutex<ArchiveStore>>>,
+    /// The [board issue](crate::board) this agent was **dispatched to implement**, when it was.
+    ///
+    /// Bound only for an agent gg auto-dispatched off the board, and the reason `complete_issue`
+    /// is not gated on [`project-management`](CAPABILITY_PROJECT_MANAGEMENT) alone: authoring the
+    /// board and *working an issue on it* are different jobs, and an implementer profile is
+    /// normally configured without the authoring capability. Declaring its own work finished is
+    /// the one board move such an agent must always be able to make.
+    pub assigned_issue: Option<&'a str>,
 }
 
 impl<'a> RuntimeSet<'a> {
@@ -526,6 +534,7 @@ impl<'a> RuntimeSet<'a> {
             tasks: None,
             board: None,
             archive: None,
+            assigned_issue: None,
         }
     }
 
@@ -550,6 +559,13 @@ impl<'a> RuntimeSet<'a> {
     /// Bind the thread archive the agent-managed-context tools use.
     pub fn with_archive(mut self, archive: &'a Arc<Mutex<ArchiveStore>>) -> Self {
         self.archive = Some(archive);
+        self
+    }
+
+    /// Declare that this agent was auto-dispatched to implement the [board issue](crate::board)
+    /// `issue_id`, which is what earns it `complete_issue` whatever its own capabilities are.
+    pub fn with_assigned_issue(mut self, issue_id: &'a str) -> Self {
+        self.assigned_issue = Some(issue_id);
         self
     }
 }
@@ -687,25 +703,40 @@ impl ToolRegistry {
             tools.push(Box::new(tasks::RemoveTaskTool::new(Arc::clone(tasks))));
         }
 
-        if capabilities.is_enabled(CAPABILITY_PROJECT_MANAGEMENT)
-            && let Some(board) = runtimes.board
-        {
-            tools.push(Box::new(board::CreateEpicTool::new(Arc::clone(board))));
-            tools.push(Box::new(board::CreateIssueTool::new(
-                Arc::clone(board),
-                IssuePolicy::resolve(capabilities),
-            )));
-            tools.push(Box::new(board::UpdateIssueTool::new(Arc::clone(board))));
-            tools.push(Box::new(board::SetIssueBlockedByTool::new(Arc::clone(
-                board,
-            ))));
-            tools.push(Box::new(board::CompleteIssueTool::new(Arc::clone(board))));
-            tools.push(Box::new(board::RemoveEpicTool::new(Arc::clone(board))));
-            tools.push(Box::new(board::RemoveIssueTool::new(Arc::clone(board))));
-            // `wait_for_issue` is a declaration the loop intercepts (like the delegation tools) —
-            // it suspends the agent on the orchestrator's issue-wait registry, which a self-contained
-            // tool cannot reach — so it needs no bound store of its own.
-            tools.push(Box::new(board::WaitForIssueTool));
+        if let Some(board) = runtimes.board {
+            if capabilities.is_enabled(CAPABILITY_PROJECT_MANAGEMENT) {
+                tools.push(Box::new(board::CreateEpicTool::new(Arc::clone(board))));
+                tools.push(Box::new(board::CreateIssueTool::new(
+                    Arc::clone(board),
+                    IssuePolicy::resolve(capabilities),
+                )));
+                tools.push(Box::new(board::UpdateIssueTool::new(Arc::clone(board))));
+                tools.push(Box::new(board::SetIssueBlockedByTool::new(Arc::clone(
+                    board,
+                ))));
+                tools.push(Box::new(board::CompleteIssueTool::new(
+                    Arc::clone(board),
+                    runtimes.assigned_issue,
+                )));
+                tools.push(Box::new(board::RemoveEpicTool::new(Arc::clone(board))));
+                tools.push(Box::new(board::RemoveIssueTool::new(Arc::clone(board))));
+                // `wait_for_issue` is a declaration the loop intercepts (like the delegation
+                // tools) — it suspends the agent on the orchestrator's issue-wait registry, which
+                // a self-contained tool cannot reach — so it needs no bound store of its own.
+                tools.push(Box::new(board::WaitForIssueTool));
+            } else if let Some(issue_id) = runtimes.assigned_issue {
+                // An agent gg dispatched off the board gets `complete_issue` whether or not its
+                // profile may author the board — declaring the work it was sent to do finished is
+                // the move that moves its issue to review, and an implementer that cannot make it
+                // leaves gg no way to see the issue through: the issue is re-dispatched until its
+                // retries run out and then marked failed, however well the work went. Authoring an
+                // issue and working one are separate jobs, so an implementer profile is normally
+                // configured without `project-management` — the common case, not an edge one.
+                tools.push(Box::new(board::CompleteIssueTool::new(
+                    Arc::clone(board),
+                    Some(issue_id),
+                )));
+            }
         }
 
         if capabilities.is_enabled(CAPABILITY_AGENT_MANAGED_CONTEXT)

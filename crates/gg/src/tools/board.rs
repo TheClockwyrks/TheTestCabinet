@@ -756,12 +756,22 @@ impl SetIssueBlockedByTool {
 /// Records that an issue's work is finished, moving it to review.
 pub struct CompleteIssueTool {
     store: Arc<Mutex<BoardStore>>,
+    /// The issue the calling agent was **dispatched to implement**, when it was one. Named in the
+    /// tool's description and in its `id` argument, because an implementer that does not call this
+    /// on its own issue has its work thrown away: gg reads a loop that ended without it as an
+    /// attempt that failed. Telling it the exact id it must pass is the cheapest way to be sure it
+    /// can.
+    assigned: Option<String>,
 }
 
 impl CompleteIssueTool {
-    /// A tool completing issues in `store`.
-    pub fn new(store: Arc<Mutex<BoardStore>>) -> Self {
-        Self { store }
+    /// A tool completing issues in `store`, for an agent dispatched to implement `assigned` (or
+    /// `None` for a board-authoring agent, which completes issues by id like any other board move).
+    pub fn new(store: Arc<Mutex<BoardStore>>, assigned: Option<&str>) -> Self {
+        Self {
+            store,
+            assigned: assigned.map(str::to_string),
+        }
     }
 }
 
@@ -772,19 +782,35 @@ impl Tool for CompleteIssueTool {
     }
 
     fn definition(&self) -> ToolDefinition {
-        ToolDefinition::new(
-            COMPLETE_ISSUE_TOOL,
+        let mut description = String::from(
             "Record that an issue's work is finished, by `id`. The issue moves to `in review`: gg \
              runs its reviewers (if it named any) and merges its work back into the main \
              workspace, and only then is it done and its dependents unblocked. If a reviewer asks \
              for changes, the issue is reopened and dispatched again. Fails if no issue of that id \
              exists.",
+        );
+        if let Some(assigned) = &self.assigned {
+            description.push_str(&format!(
+                " You were dispatched to implement issue `{assigned}`: call this with that id once \
+                 its work is done. If you end your session without calling it, the work is \
+                 discarded and the issue is attempted again from scratch."
+            ));
+        }
+        ToolDefinition::new(
+            COMPLETE_ISSUE_TOOL,
+            description,
             json!({
                 "type": "object",
                 "properties": {
                     "id": {
                         "type": "string",
-                        "description": "The id of the issue whose work is finished."
+                        "description": match &self.assigned {
+                            Some(assigned) => format!(
+                                "The id of the issue whose work is finished (yours is \
+                                 `{assigned}`)."
+                            ),
+                            None => "The id of the issue whose work is finished.".to_string(),
+                        }
                     }
                 },
                 "required": ["id"],

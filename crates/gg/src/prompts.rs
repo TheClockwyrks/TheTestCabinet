@@ -320,8 +320,14 @@ pub struct SystemContext {
     pub memories: Option<MemoriesView>,
     /// The [task list](crate::tasks) ceiling, or `None` when the capability is off.
     pub tasks: Option<TasksView>,
-    /// The [epic/issue board](crate::board) ceilings, or `None` when the capability is off.
+    /// The [epic/issue board](crate::board) ceilings, or `None` when **this agent** may not author
+    /// the board (it has no project-management capability of its own, or the run has no board).
     pub board: Option<BoardView>,
+    /// The [board issue](crate::board) this agent was dispatched to implement, or `None` when it
+    /// was not dispatched off the board. Independent of [`board`](Self::board): an implementer is
+    /// normally configured without the authoring capability, so this is usually the *only* board
+    /// section such an agent is shown.
+    pub assigned_issue: Option<AssignedIssueView>,
     /// Whether the [planning](crate::planning) capability is on.
     pub planning: bool,
     /// The [FSM](crate::fsm) driving the run, or `None` when no machine drives it.
@@ -582,6 +588,20 @@ pub struct BoardView {
     /// The agents this one may name as an issue's reviewers — its roster's
     /// [`reviewer`](test_cabinet_core::gg::GgSubagentScope::Reviewer) scope.
     pub reviewer_agents: Vec<SpawnableAgentView>,
+}
+
+/// The [board issue](crate::board) an auto-dispatched agent was sent to implement, as its prompt
+/// names it.
+///
+/// The id is the whole of it, and it is here rather than left to the brief because the brief says
+/// what to build while this says how the work is *recorded*: an implementer that ends its session
+/// without recording its issue finished has its worktree discarded and its issue attempted again,
+/// however good the work was.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssignedIssueView {
+    /// The id of the issue this agent is implementing.
+    pub id: String,
 }
 
 /// The process driving the run, named in the prompt.

@@ -133,10 +133,10 @@ use crate::model::{
 };
 use crate::planning::PlanningRuntime;
 use crate::prompts::{
-    self, ApiView, AutoloadView, BoardView, CodeCallView, CodeErrorView, CodeHeadingView,
-    CodeNotAProgramContext, CodeResultContext, CodeSandboxErrorContext, CodeTimeoutContext,
-    CodeTranspileErrorContext, CompactionView, CompletionView, FsmView, MemoriesView, ReadFileView,
-    ShellView, SpawnableAgentView, SystemContext, TasksView,
+    self, ApiView, AssignedIssueView, AutoloadView, BoardView, CodeCallView, CodeErrorView,
+    CodeHeadingView, CodeNotAProgramContext, CodeResultContext, CodeSandboxErrorContext,
+    CodeTimeoutContext, CodeTranspileErrorContext, CompactionView, CompletionView, FsmView,
+    MemoriesView, ReadFileView, ShellView, SpawnableAgentView, SystemContext, TasksView,
 };
 use crate::replay::{GgRecorder, RecordingClient};
 use crate::sandbox::{
@@ -1111,12 +1111,12 @@ impl Orchestrator {
             prompt: invocation.prompt.clone(),
             provided_files: invocation.provided_files.clone(),
             subagents_enabled: set.is_enabled(CAPABILITY_SUBAGENTS),
-            project_management_enabled: set.is_enabled(CAPABILITY_PROJECT_MANAGEMENT),
+            project_management_enabled: board_owner(set).is_some(),
             workflows_enabled: set.is_enabled(CAPABILITY_WORKFLOWS),
             worktrees_root: worktrees.root,
             baseline_commit: worktrees.baseline_commit,
-            merge_agent: set
-                .is_enabled(CAPABILITY_PROJECT_MANAGEMENT)
+            merge_agent: board_owner(set)
+                .is_some()
                 .then(|| merge_agent_name(set))
                 .flatten(),
             speculative_enabled: set.is_enabled(CAPABILITY_SPECULATIVE),
@@ -2014,16 +2014,26 @@ async fn run_agent(
     let memory_store = memories.store();
     let task_store = tasks.store();
     let board_store = board.store();
+    // The issue this agent was auto-dispatched to implement, if any — the one board fact its
+    // toolset depends on beyond its profile. An implementer is normally configured *without* the
+    // board-authoring capability (it works issues, it does not file them), and it still has to be
+    // able to say its issue's work is finished, so the runtime set carries the assignment and the
+    // registry offers `complete_issue` on the strength of it.
+    let assigned_issue = match &role {
+        AgentRole::Issue { issue_id, .. } => Some(issue_id.clone()),
+        _ => None,
+    };
     // This agent's toolset, model, and prompt all come from **its own profile**, so a run can give
     // different agents different capabilities. The board store it binds is the run-global one.
-    let registry = ToolRegistry::from_run(
-        &profile,
-        &RuntimeSet::new(&library)
-            .with_memories(&memory_store)
-            .with_tasks(&task_store)
-            .with_board(&board_store)
-            .with_archive(&archive_store),
-    );
+    let mut runtimes = RuntimeSet::new(&library)
+        .with_memories(&memory_store)
+        .with_tasks(&task_store)
+        .with_board(&board_store)
+        .with_archive(&archive_store);
+    if let Some(issue_id) = &assigned_issue {
+        runtimes = runtimes.with_assigned_issue(issue_id);
+    }
+    let registry = ToolRegistry::from_run(&profile, &runtimes);
     // Root the agent's file/shell tools in its isolated worktree when it has one, so every
     // mutation lands in the private copy rather than the shared main tree; otherwise root them in
     // the shared workspace (the default). This is the whole of the worktree isolation at the tool
@@ -2171,10 +2181,7 @@ async fn run_agent(
     // result rather than ending the run. Off, the board tools were never offered.
     let project = orch.project_management_enabled.then(|| ProjectContext {
         orch: Arc::clone(&orch),
-        assigned_issue: match &role {
-            AgentRole::Issue { issue_id, .. } => Some(issue_id.clone()),
-            _ => None,
-        },
+        assigned_issue: assigned_issue.clone(),
     });
 
     let prompt = match &role {
@@ -5046,6 +5053,9 @@ impl Agent {
                 || project
                     .as_ref()
                     .is_some_and(|project| project.assigned_issue.is_some()),
+            assigned_issue: project
+                .as_ref()
+                .and_then(|project| project.assigned_issue.as_deref()),
             fences_are_stripped: code.healing.enabled(HealingStrategy::StripFences),
             completion: &completion,
             compaction: &compaction,
@@ -6867,16 +6877,31 @@ fn resolve_tasks(profile: &GgAgentConfig) -> TasksRuntime {
     TasksRuntime::with_mode(max_tasks, mode)
 }
 
-/// Build the run's [`BoardRuntime`] from the capability set: when the
-/// [`project-management`](CAPABILITY_PROJECT_MANAGEMENT) capability is enabled, an enabled runtime with
-/// an empty board bounded by the [caps resolved](BoardCaps::resolve) from the capability's
-/// params; otherwise a [disabled](BoardRuntime::disabled) runtime (an ablation's off arm) that
-/// offers nothing.
+/// The [agent profile](GgAgentConfig) whose [project-management](CAPABILITY_PROJECT_MANAGEMENT)
+/// configuration governs the run's **one shared board** — the first profile that has the capability
+/// on, or `None` when no profile does and the run therefore has no board at all.
+///
+/// Read across every profile rather than off the [root](GgCapabilitySet::root) because the board is
+/// run-global while the capability is per-agent: a set that puts project management on a dedicated
+/// planning profile (a perfectly ordinary shape — the root need not be the agent that files work)
+/// would otherwise offer that profile the board tools while the run around it had no board runtime,
+/// no auto-dispatch, and no worktrees, so every issue it filed would sit on the board forever.
+/// Mirrors how [`merge_agent_name`] reads the same capability's merge-agent param.
+fn board_owner(set: &GgCapabilitySet) -> Option<&GgAgentConfig> {
+    set.agents
+        .iter()
+        .find(|agent| agent.is_enabled(CAPABILITY_PROJECT_MANAGEMENT))
+}
+
+/// Build the run's [`BoardRuntime`] from the capability set: when some profile
+/// [owns the board](board_owner), an enabled runtime with an empty board bounded by the
+/// [caps resolved](BoardCaps::resolve) from that profile's capability params; otherwise a
+/// [disabled](BoardRuntime::disabled) runtime (an ablation's off arm) that offers nothing.
 fn resolve_board(set: &GgCapabilitySet) -> BoardRuntime {
-    if !set.is_enabled(CAPABILITY_PROJECT_MANAGEMENT) {
+    let Some(owner) = board_owner(set) else {
         return BoardRuntime::disabled();
-    }
-    let caps = set
+    };
+    let caps = owner
         .capability(CAPABILITY_PROJECT_MANAGEMENT)
         .map(|cap| BoardCaps::resolve(&cap.params))
         .unwrap_or_default();
@@ -6899,7 +6924,7 @@ fn resolve_worktrees(
     workspace_dir: &Path,
     emitter: &Emitter,
 ) -> WorktreesSetup {
-    let issues = set.is_enabled(CAPABILITY_PROJECT_MANAGEMENT);
+    let issues = board_owner(set).is_some();
     let speculative = set.is_enabled(CAPABILITY_SPECULATIVE);
     // A short, accurate description of why git is needed, for the diagnostics.
     let reason = match (issues, speculative) {
@@ -7051,6 +7076,12 @@ struct PromptInputs<'a> {
     /// Whether the agent this prompt is for is a **delegated** worker rather than the run's root,
     /// which decides what the ending section says `finish` ends: the run, or this worker's task.
     delegated: bool,
+    /// The [board issue](crate::board) this agent was dispatched to implement, when it was one.
+    /// Renders the section that names the issue and tells the agent to record its work finished —
+    /// the one thing gg needs from an implementer, and the thing it is not told anywhere else: its
+    /// brief describes the work, not the protocol, and the board-authoring section it would have
+    /// read the protocol from is (rightly) not rendered for a profile that may not author the board.
+    assigned_issue: Option<&'a str>,
     /// This agent's [completion](CompletionSetup) rule — the signal it ends the run with and any
     /// validation gg runs to confirm the work — so the prompt can tell the model exactly how to
     /// finish (and, under an explicit-call signal, that a text-only reply does not).
@@ -7230,6 +7261,7 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
         autoload_specs,
         profile,
         delegated,
+        assigned_issue,
         fences_are_stripped,
         completion,
         compaction,
@@ -7339,17 +7371,27 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
             tasks: tasks.offers_tasks().then(|| TasksView {
                 max_tasks: tasks.max_tasks(),
             }),
-            board: board.offers_board().then(|| {
-                let caps = board.caps();
-                BoardView {
-                    max_epics: caps.max_epics,
-                    max_issues: caps.max_issues,
-                    max_retries: caps.max_retries,
-                    reviewers_required: IssuePolicy::resolve(profile).require_reviewers,
-                    issue_agents,
-                    reviewer_agents,
-                }
-            }),
+            // The board-authoring section is gated on **this agent's own** capability, not on the
+            // run having a board: the board is run-global, but describing how to file and dispatch
+            // work to an agent whose profile offers none of those tools is a prompt that names
+            // tools the model does not have — which is exactly how an implementer ends up reaching
+            // for `create_issue` instead of doing the work it was sent to do.
+            board: (board.offers_board() && profile.is_enabled(CAPABILITY_PROJECT_MANAGEMENT))
+                .then(|| {
+                    let caps = board.caps();
+                    BoardView {
+                        max_epics: caps.max_epics,
+                        max_issues: caps.max_issues,
+                        max_retries: caps.max_retries,
+                        reviewers_required: IssuePolicy::resolve(profile).require_reviewers,
+                        issue_agents,
+                        reviewer_agents,
+                    }
+                }),
+            // The issue this agent was dispatched to implement, when it was one — rendered
+            // whatever its own capabilities are, since `complete_issue` is offered on the strength
+            // of the assignment rather than the board capability.
+            assigned_issue: assigned_issue.map(|id| AssignedIssueView { id: id.to_string() }),
             planning: planning.offers_planning(),
             fsm: fsm.is_active().then(|| FsmView {
                 machine: fsm.machine_name().to_string(),

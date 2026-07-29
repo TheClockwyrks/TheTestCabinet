@@ -24,7 +24,10 @@ what turns gg from a single agent into a fleet working a backlog.
   console.
 
 Any agent with permission can create epics and issues; there is one board, not one
-per agent.
+per agent. Because the board is run-global, the run **has** one as soon as *any*
+[agent profile](/gg/configurations/#agents) enables this capability — it does not have
+to be the Root. A configuration that puts project management on a dedicated planning
+profile gets a board, a dispatcher, and worktrees just the same.
 
 ## Auto-dispatch
 
@@ -96,6 +99,21 @@ issues but has **no implementer** on its roster is rejected at launch, because e
 issue it could write would be refused. Give one of its roster entries the implementer
 scope (a profile may list itself), or switch its issue-creation feature off for
 read-only board access (below).
+
+### An implementer does not need this capability
+
+Authoring the board and **working an issue on it** are different jobs, so an
+implementer profile is normally configured **without** project management — it has no
+business filing epics. gg therefore offers **`complete_issue`** to any agent it
+dispatched for an issue whatever that agent's own capabilities are, and its system
+prompt names the issue and tells it to record the work finished. Nothing else about
+the board is offered: an implementer without the capability gets that one tool and no
+board-authoring section in its prompt.
+
+This matters because an implementer that never records its issue finished has its
+worktree **discarded** and its issue re-dispatched (see the retry rule above) however
+good the work was — so the one board move an implementer must always be able to make
+is the one it is always given.
 
 ## Reviewers gate acceptance
 

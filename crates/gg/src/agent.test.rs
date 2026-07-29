@@ -1592,6 +1592,79 @@ fn system_prompt_omits_image_guidance_without_read_file() {
     assert!(!prompt.contains("Reading images"), "{prompt}");
 }
 
+/// **The board-authoring section follows the agent's own capability, not the run's board.**
+///
+/// The board is run-global, so its runtime is enabled for every agent in the run — but an agent
+/// whose profile has no project-management capability is offered none of the board tools, and
+/// telling it to `create_issue` names a tool it does not have. That is how an implementer ends up
+/// reaching for the board instead of doing the work it was dispatched for.
+#[test]
+fn the_board_section_follows_the_agents_own_capability() {
+    let library = Arc::new(SkillLibrary::empty());
+    let board_store = Arc::new(std::sync::Mutex::new(crate::board::BoardStore::new(
+        BoardCaps::default(),
+    )));
+
+    // The run has a board (some other profile owns it), but this agent may not author it.
+    let mut runtimes = DisabledRuntimes::new();
+    runtimes.board = Some(BoardRuntime::new(BoardCaps::default()));
+    let registry = ToolRegistry::from_run(
+        &runtimes.profile,
+        &RuntimeSet::new(&library).with_board(&board_store),
+    );
+    let prompt = system_prompt(runtimes.inputs(&registry));
+    assert!(
+        !prompt.contains("create_issue"),
+        "an agent with no board capability is not taught the board tools:\n{prompt}"
+    );
+
+    // The same run, for the profile that *does* own the board: the section is rendered.
+    let mut authoring = DisabledRuntimes::new();
+    authoring.board = Some(BoardRuntime::new(BoardCaps::default()));
+    authoring
+        .profile
+        .capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT));
+    let registry = ToolRegistry::from_run(
+        &authoring.profile,
+        &RuntimeSet::new(&library).with_board(&board_store),
+    );
+    let prompt = system_prompt(authoring.inputs(&registry));
+    assert!(
+        prompt.contains("create_issue"),
+        "the board's owner still reads the whole section:\n{prompt}"
+    );
+}
+
+/// An agent dispatched for a board issue is told, in its system prompt, to record the issue
+/// finished — even though (as an implementer) it may not author the board.
+#[test]
+fn the_assigned_issue_section_is_rendered_for_a_dispatched_agent() {
+    let library = Arc::new(SkillLibrary::empty());
+    let mut runtimes = DisabledRuntimes::new();
+    runtimes.board = Some(BoardRuntime::new(BoardCaps::default()));
+    let registry = ToolRegistry::from_run(&runtimes.profile, &RuntimeSet::new(&library));
+
+    let mut inputs = runtimes.inputs(&registry);
+    inputs.assigned_issue = Some("feat-7");
+    let prompt = system_prompt(inputs);
+    assert!(
+        prompt.contains("dispatched to implement issue `feat-7`"),
+        "the prompt names the issue this agent is working:\n{prompt}"
+    );
+    assert!(
+        prompt.contains("complete_issue"),
+        "and how to hand the work back:\n{prompt}"
+    );
+
+    // The same agent, undispatched: no such section.
+    let plain = system_prompt(runtimes.inputs(&registry));
+    assert!(
+        !plain.contains("Your assigned issue"),
+        "an agent with no assignment reads nothing about one:\n{plain}"
+    );
+}
+
 /// Every capability runtime, disabled — owned by the caller so a prompt test can borrow
 /// [`PromptInputs`] from it without binding six locals of its own.
 struct DisabledRuntimes {
@@ -1672,6 +1745,7 @@ impl DisabledRuntimes {
             profile: &self.profile,
             compaction: &self.compaction,
             delegated: false,
+            assigned_issue: None,
             fences_are_stripped: true,
             completion: &self.completion,
         }
@@ -5552,6 +5626,199 @@ async fn an_uncompleted_issue_is_retried_then_failed() {
         last_issue_status(&events, "feat-1"),
         Some(GgIssueStatus::Failed),
         "the issue is marked failed once its retries are exhausted"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// A board split across profiles: one agent files the work, another implements it
+// ---------------------------------------------------------------------------
+
+/// The implementer profile in the [split](split_project_set) board configuration.
+const CODER_AGENT: &str = "Coder";
+
+/// A **two-profile** project-management set — the shape a real board run has: the Root files and
+/// dispatches work and owns the board, and a separate implementer profile does the work with **no**
+/// project-management capability of its own (it authors nothing; it is authored *at*).
+///
+/// Every earlier board e2e has the Root implement its own issues, which quietly hid the whole
+/// division of labour: the Root has the board capability, so it always had the completion tool.
+fn split_project_set() -> GgCapabilitySet {
+    let mut set = GgCapabilitySet::minimal("mock/primary");
+    set.agents[0].capabilities.push(GgCapabilityConfig {
+        params: json!({ "mergeAgent": ROOT_AGENT }),
+        ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
+    });
+    set.agents[0].subagents.push(GgSubagentRef::new(
+        CODER_AGENT,
+        &[GgSubagentScope::Implementer],
+    ));
+    set.agents.push(GgAgentConfig {
+        name: CODER_AGENT.to_string(),
+        model_id: "mock/coder".to_string(),
+        ..GgAgentConfig::root()
+    });
+    set
+}
+
+/// A well-formed `create_issue` call for `id`, assigned to the [implementer](CODER_AGENT).
+fn create_issue_for_coder(id: &str) -> ModelResponse {
+    tool_call_response(
+        "issue",
+        "create_issue",
+        json!({
+            "id": id,
+            "title": "Add the widget",
+            "inScope": "Implement the widget.",
+            "outOfScope": "Nothing else.",
+            "completionCriteria": "The widget works.",
+            "agent": CODER_AGENT,
+        }),
+    )
+}
+
+/// **An implementer profile without the board capability can still complete its issue.**
+///
+/// This is the division of labour a board run is *for*: the Root files the work, a coder profile
+/// implements it, and the coder is deliberately not given `project-management` — it has no business
+/// filing epics. Gating `complete_issue` on that capability left the coder unable to record its own
+/// work finished, so every issue was re-dispatched until its retries ran out and then marked failed,
+/// however well the work went — with no failure anywhere to explain it.
+#[tokio::test]
+async fn an_implementer_without_the_board_capability_completes_its_issue() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-pm-split".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), split_project_set());
+
+    let factory = ScriptedFactory::new()
+        .slot(ROOT_AGENT, |b| {
+            // The root only files the issue, assigned to the coder.
+            Box::new(MockClient::new(
+                &b.model_id,
+                vec![create_issue_for_coder("feat-1"), stop_response()],
+            ))
+        })
+        .slot(CODER_AGENT, |b| {
+            Box::new(MockClient::new(
+                &b.model_id,
+                vec![
+                    tool_call_response("complete", "complete_issue", json!({ "id": "feat-1" })),
+                    stop_response(),
+                ],
+            ))
+        });
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran
+    );
+    let events = sink.events();
+    let dispatched: Vec<_> = agent_spawns(&events)
+        .into_iter()
+        .filter(|(id, _, _, _, _)| id.as_deref() != Some("root"))
+        .collect();
+    assert_eq!(
+        dispatched.len(),
+        1,
+        "the issue is implemented on the first attempt, not retried: {dispatched:?}"
+    );
+    assert_eq!(
+        dispatched[0].2, CODER_AGENT,
+        "the issue was dispatched under the profile it was assigned to"
+    );
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::ToolResult { name, ok, .. } if name == "complete_issue" && *ok
+        )),
+        "the coder's `complete_issue` call was dispatched, not refused as an unknown tool"
+    );
+    assert_eq!(
+        last_issue_status(&events, "feat-1"),
+        Some(GgIssueStatus::Done),
+        "an implementer with no board capability still takes its issue all the way to done"
+    );
+}
+
+/// **The board is run-global, so it exists whenever *any* profile owns it** — not only when the
+/// Root does. A set that puts project management on a dedicated planning profile would otherwise
+/// offer that profile the board tools while the run around it had no board runtime and no
+/// dispatcher, so every issue it filed would sit on the board forever.
+#[tokio::test]
+async fn a_board_owned_by_a_non_root_profile_still_dispatches() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-pm-nonroot".to_string()), Box::new(sink.clone()));
+
+    // The Root delegates; the `Planner` profile owns the board and files the work; the `Coder`
+    // profile implements it.
+    let mut set = split_project_set();
+    let board_cap = set.agents[0]
+        .capabilities
+        .pop()
+        .expect("the project-management capability just pushed");
+    let roster = std::mem::take(&mut set.agents[0].subagents);
+    set.agents[0]
+        .capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS));
+    set.agents[0]
+        .subagents
+        .push(GgSubagentRef::new("Planner", &[GgSubagentScope::Subagent]));
+    let mut planner = GgAgentConfig {
+        name: "Planner".to_string(),
+        model_id: "mock/planner".to_string(),
+        subagents: roster,
+        ..GgAgentConfig::root()
+    };
+    planner.capabilities.push(board_cap);
+    set.agents.push(planner);
+    let inv = invocation(dir.path(), set);
+
+    let factory = ScriptedFactory::new()
+        .slot(ROOT_AGENT, |b| {
+            Box::new(MockClient::new(
+                &b.model_id,
+                vec![
+                    tool_call_response(
+                        "spawn",
+                        "spawn_subagent",
+                        json!({ "agent": "Planner", "prompt": "plan the work" }),
+                    ),
+                    stop_response(),
+                ],
+            ))
+        })
+        .slot("Planner", |b| {
+            Box::new(MockClient::new(
+                &b.model_id,
+                vec![create_issue_for_coder("feat-1"), stop_response()],
+            ))
+        })
+        .slot(CODER_AGENT, |b| {
+            Box::new(MockClient::new(
+                &b.model_id,
+                vec![
+                    tool_call_response("complete", "complete_issue", json!({ "id": "feat-1" })),
+                    stop_response(),
+                ],
+            ))
+        });
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran
+    );
+    let events = sink.events();
+    assert!(
+        agent_spawns(&events)
+            .iter()
+            .any(|(_, _, slot, _, _)| slot == CODER_AGENT),
+        "the issue the non-root board owner filed was auto-dispatched"
+    );
+    assert_eq!(
+        last_issue_status(&events, "feat-1"),
+        Some(GgIssueStatus::Done),
+        "and taken to done"
     );
 }
 
