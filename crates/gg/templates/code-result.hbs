@@ -4,9 +4,8 @@ Your program stopped{{#if error.location}} at {{error.location}}{{/if}}: {{error
 {{#if calls}}Everything it did before that still stands.
 {{/if}}
 {{#if finishRevoked}}
-You called `harness.finish(...)` in that program, but a program that fails has not finished: the run is
-still going. Fix what threw, check the work, and call `harness.finish(...)` again from a program that runs
-to its end.
+The `harness.finish()` call was suppressed because your program did not run to
+completion.
 {{/if}}
 {{else}}
 Your program ran to completion.
@@ -15,21 +14,21 @@ Your program ran to completion.
 {{unreachable}}
 {{/if}}
 {{#if calls}}
-It made {{callCount}} tool call(s):
+{{callCount}} tool call(s) were made:
 {{#each calls}}
-- {{name}} → {{#if ok}}ok{{else}}failed: {{error}}{{/if}}
+- {{name}}: {{#if ok}}ok{{else}}failed: {{error}}{{/if}}
 {{/each}}
 {{#if callsSuppressed}}
-({{callsSuppressed}} further call(s) were made but not listed — a program's roster is capped.)
+({{callsSuppressed}} further call(s) were made but not listed)
 {{/if}}
 {{else}}
-It made no tool calls.
+No tool calls were made.
 {{/if}}
 {{#each refusals}}
 - refused: {{this}}
 {{/each}}
 {{#if refusalsSuppressed}}
-({{refusalsSuppressed}} further refusal(s) were not listed — a program's refusals are capped.)
+({{refusalsSuppressed}} further refusal(s) were not listed)
 {{/if}}
 {{#if logs}}
 
@@ -38,24 +37,19 @@ Output:
 {{this}}
 {{/each}}
 {{#if logsSuppressed}}
-({{logsSuppressed}} earlier line(s) were dropped — a program's output is capped, and the capture
-keeps the most recent lines.)
+({{logsSuppressed}} earlier line(s) were dropped)
 {{/if}}
 {{/if}}
 {{#if returnedValue}}
-(your program `return`ed a value — return values are discarded, gg never sees them. `console.log()`
-whatever you want to read next turn.)
+Warning: Return value detected. Returning values does nothing. Use `console.log()`
+if you want to read a value.
 {{/if}}
 {{#if silent}}
-(your program logged nothing, so it told you nothing — `console.log()` what you want to read next
-turn)
+No output recorded.
 {{/if}}
 {{#if deferred}}
 {{deferred}}
 {{/if}}
 {{#if imagesDropped}}
-({{imagesDropped}} image(s) were not attached: a program may show at most {{imageBudget}}.)
+({{imagesDropped}} image(s) were not attached: max image count reached)
 {{/if}}
-
-Continue by emitting your next program. When the work is done and you have checked it, end {{#if delegated}}your session{{else}}the run{{/if}} with
-`harness.finish("...")` from inside a program — nothing else ends it.

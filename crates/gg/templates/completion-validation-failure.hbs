@@ -1,9 +1,10 @@
-Your completion was NOT accepted: gg runs validation command(s) to confirm the work is complete
-before ending the run, and one failed.
+Completion attempt rejected. One or more validation commands failed:
 
-Command {{index}} of {{total}}: `{{command}}`
+Failed command: `{{command}}`
 
+Output:
+```
 {{output}}
+```
 
-Fix the problem and signal completion again. The run will not end until every validation
-command exits 0.
+Fix the issue(s) that caused the command to fail, then retry completion.

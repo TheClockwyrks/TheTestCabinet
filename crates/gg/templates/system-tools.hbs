@@ -37,7 +37,7 @@ previously recorded info.
 {{/if}}
 {{#if memories.maxLenDescription}}
 A memory's description must be at most {{memories.maxLenDescription}}
-characters — write it as a one-line summary; a longer one is rejected.
+characters.
 {{/if}}
 {{/if}}
 
@@ -82,64 +82,40 @@ You have access to a shared project board that you and other agents may use.
 This board is shared across the entire run.
 
 Use epics to group related issues. Epics are used exclusively for organizational
-purposes and can be created using `create_epic`, which takes a `prefix` of 3-6
-letters naming the epic. The prefix is upper-cased and becomes the epic's id.
+purposes and can be created using `create_epic`. Issues represent units of work
+to be completed and are created using `create_issue`, which returns the ID of
+the created issue. All issues are handled in isolated worktrees.
 
-Issues represent units of work to be completed. These are created using
-`create_issue`, which does not take an id: the board assigns one from the epic's
-prefix and reports it back to you, so an epic with the prefix `AUTH` holds
-`AUTH-1`, `AUTH-2`, and so on. Keep the id you are given — it is how you refer to
-the issue afterwards. Issues may have dependencies configured. Submitting an issue will
-cause an agent to be dispatched to handle the issue once all dependencies have
-been completed (or immediately, if it has no dependencies). Each issue is worked
-in its own isolated copy of the workspace, which is merged back once the issue
-is accepted.
+Issues may have dependencies configured. Submitting an issue will cause an agent
+to be dispatched to handle the issue once all dependencies have been completed
+(or immediately, if it has no dependencies). Each issue is worked in its own
+isolated copy of the workspace, which is merged back once the issue is accepted.
 
-Every issue names, in `agent`, the agent that will be dispatched to implement it.
 You may assign an issue to any of the following agents:
 
 {{#each board.issueAgents}}
 - `{{name}}`{{#if description}}: {{description}}{{/if}}
 {{/each}}
 
-Use `wait_for_issue` to suspend until the issue you specify has been completed.
-An issue is finished when the agent implementing it finishes: there is no tool
-for completing one. Its reviewers run first, and its work is merged into the
-main workspace, before the issue is accepted.
+Use `wait_for_issue` to suspend until the issue you specify has been
+completed and merged into the main worktree.
 
 {{#if board.reviewerAgents}}
 {{#if board.reviewersRequired}}
-Every issue must also name one or more `reviewers`.
+Every issue must name one or more `reviewers`.
 {{else}}
-An issue may also name one or more `reviewers`.
-{{/if}}
-Each reviewer reviews the finished work in turn and either approves it or
-returns changes to make; if any of them requests changes, the issue is reopened
-and dispatched again with that feedback. The issue is only accepted once every
-reviewer approves. You may name any of the following agents as a reviewer:
+An issue may name one or more `reviewers`.
+{{/if}} You may name any of the following agents as a reviewer:
 
 {{#each board.reviewerAgents}}
 - `{{name}}`{{#if description}}: {{description}}{{/if}}
 {{/each}}
 {{/if}}
-
-At most {{board.maxEpics}} epics and {{board.maxIssues}} issues may be created.
 {{/if}}
 
 {{#if assignedIssue}}
 ## Your assigned issue
 
-You have been dispatched to implement issue `{{assignedIssue.id}}`, whose brief you
-have been given. You are working in an isolated copy of the workspace that belongs
-to that issue.
-
-Finishing this session is how you hand the work back: do the work, then finish as
-described under "Finishing" above. The issue then moves to review, its reviewers (if
-it has any) look at what you did, and its work is merged into the main workspace. If
-your session ends any other way — you run out of turns, or stop on an error — your
-work is discarded and the issue is attempted again from scratch, so finish
-deliberately even if you believe the work was already done before you started.
-
-If a reviewer asks for changes you will be dispatched again with their feedback;
-address it and finish again.
+You have been assigned issue `{{assignedIssue.id}}`. Implement it in the current
+worktree, addressing any review feedback that was provided.
 {{/if}}

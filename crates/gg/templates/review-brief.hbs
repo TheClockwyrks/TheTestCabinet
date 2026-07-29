@@ -1,14 +1,12 @@
-You are **reviewing** the work for an issue. It was done in the very workspace you are
-running in, so **review the workspace itself** — open the files that changed and judge the
-code as it now stands against the issue's requirements. You are not given the patch: read
-what you need, in the order you need it.
+Review the work for the issue against the issue's requirements. Changes are in
+the current workspace.
 
 {{issueBrief}}
 {{#if history}}
 
 ## Earlier review feedback
-This issue has been reviewed before. Check whether each point below was addressed, and do
-not repeat a point that has been:
+This issue has been reviewed before. Check whether each point below was
+addressed, and do not repeat a point that has been:
 {{#each history}}
 {{#if approved}}
 - `{{reviewer}}` approved the work.
@@ -22,43 +20,50 @@ not repeat a point that has been:
 {{/if}}
 
 ## What changed (against the baseline)
+{{#if changes.baseline}}
+Baseline: {{changes.baseline}}
+{{/if}}
 {{#if changes.summary}}
 ```
 {{changes.summary}}
 ```
 {{else}}
-(No changes were detected against the baseline. Review against the completion criteria and,
-unless the work was clearly already present, request the missing work.)
+(No changes were detected against the baseline. Review against the completion
+criteria and, unless the work was clearly already present, request the missing
+work.)
 {{/if}}
 
-Your working directory **is** the checkout the work was done in (`{{changes.workspace}}`), so
-read the files above directly — no clone, no path prefix, and any command you run already
-runs there.
-{{#if changes.baseline}}
-If you have a shell, `git diff {{changes.baseline}} -- <path>` shows exactly what this issue
-changed in a file, and `git diff {{changes.baseline}}` the change as a whole; prefer reading a
-file over diffing it when you are judging whether the code is *right*, not merely what moved.
-{{/if}}
+Your working directory is the checkout the work was done in (`{{changes.workspace}}`).
 
 ## Your verdict
-Review the work carefully against the completion criteria and the in/out-of-scope boundaries.
+Review the work against the completion criteria and the in/out-of-scope
+boundaries.
 {{#if code}}
-When you are done, end your session by calling `harness.finish()` from inside a program,
-passing exactly one verdict as its summary:
+When you are done, end your session by calling `harness.finish()`, passing
+exactly one verdict as its summary:
 - If the work fully satisfies the completion criteria and stays in scope:
-`harness.finish("REVIEW: APPROVED")`
+```
+harness.finish("REVIEW: APPROVED")
+```
 - Otherwise:
-`harness.finish("REVIEW: CHANGES REQUESTED\n1. …")`
-where the summary continues with a numbered list of specific, actionable items that must be
-fixed before the work can be accepted. Be concrete: each item should say what is wrong and
-what to change.
+```
+harness.finish("REVIEW: CHANGES REQUESTED\n1. …")
+```
+where the summary continues with a numbered list of specific, actionable items
+that must be fixed before the work can be accepted. Be concrete: each item
+should say what is wrong and what to change.
 {{else}}
 When you are done, end your final message with exactly one verdict:
-- If the work fully satisfies the completion criteria and stays in scope, write on its own
-line:
-`REVIEW: APPROVED`
+- If the work fully satisfies the completion criteria and stays in scope, write
+on its own line:
+```
+REVIEW: APPROVED
+```
 - Otherwise, write on its own line:
-`REVIEW: CHANGES REQUESTED`
-and then a numbered list of specific, actionable items that must be fixed before the work can
-be accepted. Be concrete: each item should say what is wrong and what to change.
+```
+REVIEW: CHANGES REQUESTED
+````
+and then a numbered list of specific, actionable items that must be fixed before
+the work can be accepted. Be concrete: each item should say what is wrong and
+what to change.
 {{/if}}

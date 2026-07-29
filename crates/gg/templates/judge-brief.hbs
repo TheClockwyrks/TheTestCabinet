@@ -1,6 +1,6 @@
-You are the **judge** of a best-of-{{count}} speculative execution. {{count}} independent
-attempts each tried the SAME task below; your job is to pick the single BEST one against its
-completion criteria.
+You are judging multiple implementations of the same task. Your job is to pick
+the single best implementation by evaluating which implementation adheres most
+closely to its completion criteria.
 
 ## The task
 {{task}}
@@ -16,28 +16,24 @@ The attempt's own summary:
 (no summary)
 {{/if}}
 
-Its changes (diff against the baseline):
-{{#if diff}}
-```diff
-{{diff}}
-```
-{{else}}
-(no changes)
-{{/if}}
-{{/each}}
-
 ## Your verdict
-Compare the {{count}} attempts against the task's completion criteria — correctness,
-completeness, and quality — and pick the single best one.
+Compare the {{count}} attempts against the task's completion criteria for
+correctness, completeness, and quality, then pick the single best one.
 {{#if code}}
-End your session by calling `harness.finish()` from inside a program whose summary begins with
-exactly one line:
-`SPECULATION JUDGE: WINNER <n>`
-where <n> is the attempt number (1–{{count}}) you chose — followed by a one-sentence rationale
-for your choice.
+End your session by calling `harness.finish()` from inside a program whose
+summary begins with exactly one line:
+
+```
+SPECULATION JUDGE: WINNER <n>
+```
+
+where <n> is the attempt number (1-{{count}}) you chose, followed by a
+one-sentence rationale for your choice.
 {{else}}
 End your final message with exactly one line:
-`SPECULATION JUDGE: WINNER <n>`
-where <n> is the attempt number (1–{{count}}) you chose, followed by a one-sentence rationale
-for your choice.
+```
+SPECULATION JUDGE: WINNER <n>
+```
+where <n> is the attempt number (1-{{count}}) you chose, followed by a
+one-sentence rationale for your choice.
 {{/if}}

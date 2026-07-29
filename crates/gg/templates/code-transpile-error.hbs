@@ -1,8 +1,12 @@
 {{> healing-note ran=false}}
-Your program did not compile: {{error}}
+Your program did not compile:
 
-Remember that gg compiles your **entire reply**: anything in it that is not TypeScript — a code fence, a
-sentence, a heading — is a syntax error in your program. And if you meant to say the task is finished,
-saying so does not end {{#if delegated}}your session{{else}}the run{{/if}}: only `harness.finish("...")`, called from inside a program, does.
+```
+{{error}}
+```
 
-Nothing ran, so nothing changed. Fix the syntax and reply with a corrected program.
+Your entire response is treated as TypeScript code. Any non-TypeScript code in
+the response will cause the compilation to fail.
+
+If the task is complete, call `harness.finish()` with a summary to signal
+completion.

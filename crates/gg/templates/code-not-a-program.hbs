@@ -1,13 +1,12 @@
 {{> healing-note ran=false}}
 {{reason}}
 
-Every turn of this run is a program: gg compiles and runs your **entire reply** as TypeScript. A reply
-that is not code is not a turn — it does nothing, it changes nothing, and it counts as a failed turn.
+----
 
-Reply with a program. Just the code: no code fence, no explanation before or after it, nothing but the
-statements you want run.
+All responses must be pure TypeScript. Returning any non-code text in your
+response will prevent your responses from being processed. Do not include any
+Markdown formatting, explanations, etc.
 
-If you believe the task is complete, saying so does not end {{#if delegated}}your session{{else}}the run{{/if}} — only `harness.finish` does, and you call
-it from inside a program:
+If the task is complete, call `harness.finish()` to signal that the task is complete:
 
     harness.finish("what you did, in a sentence or two");

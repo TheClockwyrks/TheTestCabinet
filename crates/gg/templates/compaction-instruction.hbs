@@ -1,46 +1,36 @@
-Your context window is full. gg is about to drop the detailed thread above to reclaim it — the
-work you have done is NOT undone, but the record of it in this conversation is about to
-disappear.
+This session's context window is full.
 
 {{#if summary}}
 {{#if codeMode}}
-For this ONE turn only, do NOT write a program — gg will not run one. Reply with plain prose: a
-summary of the work you have completed so far and the work that remains. Cover what you are
-building, the decisions and discoveries that matter, the files you have created or changed,
-what is in progress, and the immediate next step. Everything not in your summary is lost, so
-write it for yourself. Your next turn resumes the normal program protocol with your summary in
-place of the dropped thread.
+For this one turn only, do **NOT** write a program. Reply with a plain text
+summary of what has completed. This summary needs to cover the important details
+of the current session and all work yet to be completed.
 {{else}}
-Reply with a summary of the work you have completed so far and the work that remains — plain
-text, no tool calls. Cover what you are building, the decisions and discoveries that matter,
-the files you have created or changed, what is in progress, and the immediate next step.
-Everything not in your summary is lost, so write it for yourself. Your next turn continues the
-work with your summary in place of the dropped thread.
+Reply with a plain text summary of what has completed. This summary needs to
+cover the important details of the current session and all work yet to be
+completed.
 {{/if}}
 {{/if}}
 {{#if compactCall}}
 {{#if codeMode}}
-Write a program that calls `context.compact(summary, files)` and nothing else — every other
-call is refused until you do.
+Write a program that calls `context.compact(summary, files)` and nothing else.
+All other calls are blocked until compaction is performed.
 {{else}}
-Call the `{{compactTool}}` tool now — every other tool call is refused until you do.
+Call the `{{compactTool}}` tool. All other tool calls are blocked until
+compaction is performed.
 {{/if}}
-`summary` is the working state you need to continue (what you are building, the decisions that
-matter, the files you changed, what is in progress, the next step); `files` names the workspace
-paths whose contents you want back in your context, which gg re-reads for you. Everything not
-in your summary and not in those files is lost, so choose both for yourself.
+`summary` must record the current working state, including any important details
+like what's being built, current progress, next steps, etc. `files` must be the
+key paths that will be automatically re-read once compaction is completed.
 {{/if}}
 {{#if memoryWrites}}
 {{#if codeMode}}
-Write a program that records the working state you will need into your memories —
-{{memoryCreate}} / {{memoryRevise}} / {{memoryDelete}} and nothing else; every other call is
-refused until every call in one program has succeeded.
+Write a program that records the working state into memory using {{memoryCreate}} /
+{{memoryRevise}} / {{memoryDelete}} and nothing else. All other calls are
+blocked until compaction has completed.
 {{else}}
-Record the working state you will need into your memories now — {{memoryCreate}} /
-{{memoryRevise}} / {{memoryDelete}} and nothing else; every other tool call is refused until
-every call in one reply has succeeded.
+Record the working state into memory now using {{memoryCreate}} / {{memoryRevise}} /
+{{memoryDelete}} and nothing else. All other tool calls are blocked until
+compaction has completed.
 {{/if}}
-Your memories survive the drop, so they are the ONLY thing that carries your working state:
-what you are building, the decisions that matter, the files you changed, what is in progress,
-the next step. Anything you do not record is lost.
 {{/if}}
