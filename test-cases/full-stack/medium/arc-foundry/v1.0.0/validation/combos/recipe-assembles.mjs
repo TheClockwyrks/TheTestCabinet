@@ -9,7 +9,21 @@
 
 import { assembleCombo, towerById, snap, SECOND } from "../_helpers.mjs";
 
-const CLIP_TICKS = 2 * SECOND;
+// Long enough to watch the assembled combo stand among its hardened ingredients AND take its
+// first shots at the wave the fold launched. Two seconds cut away before the Load arrived.
+const CLIP_TICKS = 4 * SECOND;
+/** Skip the launched wave's walk until one of its units is nearly in the combo's reach, so the
+ * clip opens on the tower about to work rather than on an empty corridor. Instant in both
+ * passes, so it changes no verdict. */
+async function skipToFirstContact(api, comboId) {
+  const t = towerById(await snap(api), comboId);
+  if (!t) return;
+  await api.skipUntil(
+    (s) => s.units.some((u) => Math.hypot(u.x - t.cx, u.y - t.cy) <= t.range + 40),
+    { max: 60 * SECOND, poll: 3 },
+  );
+}
+
 
 export default function item() {
   // The fold's outputs and the board it left behind, all read by `assert`.
@@ -21,7 +35,8 @@ export default function item() {
     id: "combos.recipe-assembles",
 
     async arrange(api) {
-      ({ comboId, ingredientIds } = await assembleCombo(api, "fusecluster", { seed: 1, charge: 400 }));
+      ({ comboId, ingredientIds } = await assembleCombo(api, "fusecluster", { seed: 1, charge: 400, clear: false }));
+      await skipToFirstContact(api, comboId);
     },
 
     async act(api) {

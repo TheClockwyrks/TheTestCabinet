@@ -11,7 +11,7 @@ import {
   towerAt,
   armAudio,
   audioCount,
-  AUDIO_SETTLE_MS,
+  waitForAudio,
 } from "../_helpers.mjs";
 
 export default function item() {
@@ -35,8 +35,7 @@ export default function item() {
     async act(api) {
       before = await audioCount(api);
       await api.call("combine", aId);
-      await api.settle(AUDIO_SETTLE_MS);
-      after = await audioCount(api);
+      after = await waitForAudio(api, before);
       const at = towerAt(await api.snapshot(), 6, 7);
       climbed = Boolean(at && at.kind === "component" && at.quality === 2);
     },

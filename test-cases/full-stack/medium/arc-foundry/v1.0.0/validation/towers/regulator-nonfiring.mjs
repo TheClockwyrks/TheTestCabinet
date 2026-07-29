@@ -6,10 +6,20 @@
 // NEGATIVE — that nothing happens — so the act is the half second of nothing happening, which
 // is also the only honest clip: a unit walks straight through the Regulator's range untouched.
 
-import { armTower, spawnControlled, towerById, unitById, snap, SECOND } from "../_helpers.mjs";
+import {
+  armTower,
+  spawnControlled,
+  skipToApproach,
+  towerById,
+  unitById,
+  snap,
+  SECOND,
+} from "../_helpers.mjs";
 
-// 0.5 s = 30 ticks — well past when a firing tower would have shot.
-const QUIET_TICKS = 0.5 * SECOND;
+// Three seconds — several cadences of every firing type, so a tower that was going to shoot
+// would have, several times over. It is also long enough to WATCH the Mote cross the aura and
+// walk out the far side untouched, which is the whole of what this item claims.
+const QUIET_TICKS = 3 * SECOND;
 
 export default function item() {
   // The tower and unit followed, and the board after the quiet half second.
@@ -25,6 +35,10 @@ export default function item() {
     async arrange(api) {
       towerId = await armTower(api, { type: "regulator", tier: 1 });
       [u] = await spawnControlled(api, "mote");
+      // Walk the Mote up to the edge of the aura the Regulator projects, so the quiet half
+      // second that follows is spent with a unit actually inside its reach — the only way the
+      // negative claim means anything.
+      await skipToApproach(api, towerId, u.id);
     },
 
     async act(api) {

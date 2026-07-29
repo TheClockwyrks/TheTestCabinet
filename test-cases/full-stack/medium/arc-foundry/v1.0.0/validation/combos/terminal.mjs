@@ -19,7 +19,7 @@ export default function item() {
     id: "combos.terminal",
 
     async arrange(api) {
-      ({ comboId } = await assembleCombo(api, "fusecluster", { seed: 1, charge: 400 }));
+      ({ comboId } = await assembleCombo(api, "fusecluster", { seed: 1, charge: 400, clear: false }));
     },
 
     async act(api) {

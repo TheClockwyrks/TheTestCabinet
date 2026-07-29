@@ -1,27 +1,32 @@
 // Automated validation for the Audio item `leak`: a leak alarm plays when a unit grounds
 // out at the Collector. Audio is read from the Web Audio sources the build starts (see
-// `api.audio`). A Slug is released with no towers to stop it; audio is armed, and the real
-// simulation is stepped until it reaches the Collector and Grid Integrity falls
-// (`economy.leak-integrity`'s own precondition) — the audio log must grow across the leak.
+// `api.audio`). A Slug is released with no towers to stop it, walked to the Collector's
+// doorstep, and the real simulation is then stepped until it grounds out and Grid Integrity
+// falls (`economy.leak-integrity`'s own precondition) — the audio log must grow across the leak.
+//
+// The crawl across the yard is skipped rather than filmed, for the same reason
+// `economy.leak-integrity` skips it: it runs well over a minute, which is several times the
+// recording budget, and the cue this item listens for is at the end of it. Audio is armed AFTER
+// the skip, so the arming gesture and the settle it needs are not spent walking.
 
 import {
   startBuild,
   spawnControlled,
+  skipUntilNearCollector,
   armAudio,
   audioCount,
-  AUDIO_SETTLE_MS,
+  waitForAudio,
+  TICK,
   SECOND,
 } from "../_helpers.mjs";
 
-// 150 s of game time = 9000 ticks, polled every 0.5 s = 30 ticks — the same budget
-// `economy.leak-integrity` uses for the same walk.
-const WALK_TICKS = 150 * SECOND;
-const POLL_TICKS = 0.5 * SECOND;
+const LEAK_TICKS = 30 * SECOND;
 
 export default function item() {
   let before;
   let after;
   let leaked;
+  let arrived;
   let i0;
 
   return {
@@ -31,7 +36,8 @@ export default function item() {
       await startBuild(api);
       await api.call("setIntegrity", 50);
       i0 = (await api.snapshot()).integrity;
-      await spawnControlled(api, "slug");
+      const [slug] = await spawnControlled(api, "slug");
+      arrived = await skipUntilNearCollector(api, slug.id);
       await armAudio(api);
     },
 
@@ -39,17 +45,14 @@ export default function item() {
       before = await audioCount(api);
       const r = await api.until(
         (s) => s.integrity < i0 || s.screen !== "playing",
-        {
-          max: WALK_TICKS,
-          poll: POLL_TICKS,
-        },
+        { max: LEAK_TICKS, poll: TICK },
       );
       leaked = r.hit;
-      await api.settle(AUDIO_SETTLE_MS);
-      after = await audioCount(api);
+      after = await waitForAudio(api, before);
     },
 
     async assert(api, check) {
+      check.expectOk("the Slug walked the chain to the Collector", arrived.hit);
       check.expectOk("the Slug reaches the Collector and leaks", leaked);
       check.expectGt(
         "a leak alarm plays on the leak (Web Audio sources started)",

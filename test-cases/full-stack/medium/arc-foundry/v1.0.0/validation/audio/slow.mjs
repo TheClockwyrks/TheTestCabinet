@@ -1,21 +1,31 @@
 // Automated validation for the Audio item `slow`: a slow hum plays on a Choke's shot (the
 // EM-drag cue for the unit it slows). Audio is read from the Web Audio sources the build
-// starts (see `api.audio`). A Choke is armed at the entry-adjacent spot and a Load is
-// released at the Entry, in range immediately; audio is armed, and the real simulation is
+// starts (see `api.audio`). A Choke is armed on the entry corridor and the level's own
+// Wave 1 is walked up to it; audio is armed, and the real simulation is
 // stepped until the tower's own `firing` flag reports the shot — the audio log must grow
 // across it.
+//
+// The target comes from the level's own Wave 1 rather than a separately released unit. This item
+// is about the CUE, not about which unit was shot: pinning it to a specific release made an audio
+// check depend on the debug spawner as well as on the audio, so a build with working sound but a
+// shaky `spawnUnit` failed a sound check. `armTower({ clear: false })` leaves the harvest's wave
+// walking the corridor and `skipToFirstTarget` runs it up to the tower, instantly.
 
 import {
   armTower,
-  spawnControlled,
   towerById,
   armAudio,
   audioCount,
-  AUDIO_SETTLE_MS,
+  waitForAudio,
+  skipToFirstTarget,
   TICK,
+  SECOND,
 } from "../_helpers.mjs";
 
-const FIRE_MAX_TICKS = 60; // 1 s — comfortably past a fresh tower's zero-cooldown first shot
+// Several cadences of the type under test. The old 1 s budget assumed a component fires on
+// its opening tick (a zero starting cooldown); nothing in `specs/towers.md` says whether it
+// does, and a Discharge Rig's own cadence is 2 s all by itself.
+const FIRE_MAX_TICKS = 4 * SECOND;
 
 export default function item() {
   let before;
@@ -27,8 +37,10 @@ export default function item() {
     id: "audio.slow",
 
     async arrange(api) {
-      towerId = await armTower(api, { type: "choke", tier: 1 });
-      await spawnControlled(api, "mote");
+      towerId = await armTower(api, { type: "choke", tier: 1, clear: false });
+      // Walk the harvest's own Wave 1 up to the tower before arming audio, so the cue this
+      // item listens for is the one the shot makes rather than a wave that never arrived.
+      await skipToFirstTarget(api, towerId);
       await armAudio(api);
     },
 
@@ -39,8 +51,7 @@ export default function item() {
         poll: TICK,
       });
       fired = r.hit;
-      await api.settle(AUDIO_SETTLE_MS);
-      after = await audioCount(api);
+      after = await waitForAudio(api, before);
     },
 
     async assert(api, check) {

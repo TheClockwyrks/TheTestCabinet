@@ -1,19 +1,29 @@
 // Automated validation for economy.kill-bounty: destroying a unit pays exactly its bounty in
 // Charge the instant it dies (a Mote pays 1).
 //
-// A strong entry-adjacent tower is armed and a Mote released at the Entry (in range at once);
-// the Charge is read before the kill and after — the delta is the Mote's bounty. Measured
-// inside the ~0.6 s window before the kept level's own Wave 1 begins, so no other unit dies.
+// `armTower` leaves a strong Capacitor standing on an empty floor, a Mote is released at the
+// Entry, and its walk to the edge of the tower's reach is skipped. The Charge is read before
+// the kill and after — the delta is the Mote's bounty, and with nothing else on the floor no
+// other death can contribute to it.
 //
-// Arming the tower and releasing the Mote are control ops (the arrange); waiting for the kill
-// is the behavior under test, so it is the act, and the clip is the kill itself and nothing
-// else — well inside the quiet window, so no other unit is on the floor to muddy it.
+// Releasing the Mote is a control op (the arrange); waiting for the kill is the behavior under
+// test, so it is the act, and the clip shows the Mote walk in, take the shot, and pop.
 
-import { armTower, spawnControlled, unitById, snap, TICK } from "../_helpers.mjs";
+import {
+  armTower,
+  spawnControlled,
+  skipToApproach,
+  unitById,
+  snap,
+  TICK,
+  SECOND,
+} from "../_helpers.mjs";
 
-// The old script stepped one tick at a time up to 40 times; the budget is the same 40 ticks,
-// polled every tick because the instant of the kill is what the Charge delta is read against.
-const KILL_TICKS = 40;
+// Several Capacitor cadences, so a build that opens a component on a full cooldown still gets
+// its shot away inside the budget.
+const KILL_TICKS = 4 * SECOND;
+// A beat after the kill, so the clip carries the death rather than cutting on it.
+const TAIL_TICKS = 1.5 * SECOND;
 
 export default function item() {
   // The unit `act` follows, the Charge either side of the kill, and whether it died.
@@ -26,16 +36,21 @@ export default function item() {
     id: "economy.kill-bounty",
 
     async arrange(api) {
-      await armTower(api, { type: "capacitor", tier: 3 }); // one-shots a Wave-1 Mote
-      c0 = (await snap(api)).charge;
+      const towerId = await armTower(api, { type: "capacitor", tier: 3 }); // one-shots a Mote
       const [u] = await spawnControlled(api, "mote");
       unitId = u.id;
+      await skipToApproach(api, towerId, unitId);
+      // Read the Charge AFTER the approach: the walk is real simulation, and a build that
+      // paid anything during it would otherwise land in the delta.
+      c0 = (await snap(api)).charge;
     },
 
     async act(api) {
       const r = await api.until((s) => !unitById(s, unitId), { max: KILL_TICKS, poll: TICK });
       killed = r.hit;
       c1 = (await snap(api)).charge;
+
+      await api.advance(TAIL_TICKS);
     },
 
     async assert(api, check) {
