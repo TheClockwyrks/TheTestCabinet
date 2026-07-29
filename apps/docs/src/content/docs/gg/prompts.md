@@ -28,6 +28,38 @@ renders a test case's [`prompt.hbs`](/testing/end-to-end/overview/#prompt-templa
 | `code-not-a-program.hbs`   | The turn feedback for a reply that was not a program at all — prose, empty, comments only, or several candidate blocks.                                                                |
 | `healing-note.hbs`         | The partial at the top of all five code feedback templates, disclosing what [healing](/gg/response-healing/) repaired.                                                                 |
 
+### The briefs gg dispatches with
+
+A **brief** is the whole task from its reader's point of view: it is the only thing a
+freshly spawned agent has ever been told. They are product text of exactly the same weight
+as the system prompt, so they live in the same place.
+
+| Template            | What it renders                                                                                                                                      |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `issue-brief.hbs`   | A [board issue](/gg/project-management/) as its assigned agent is given it — title, overview, in/out of scope, and what "done" means.                |
+| `review-brief.hbs`  | The [reviewer](/gg/project-management/)'s brief: the issue brief, earlier verdicts, where the work is and what it touched, and the verdict protocol. |
+| `fix-brief.hbs`     | The brief an issue's own agent is re-dispatched with after a review requested changes — the issue brief plus the reviewer's numbered items.          |
+| `merge-brief.hbs`   | The merge agent's brief when an issue's branch conflicts: what git reported, and what finishing the merge means.                                     |
+| `attempt-brief.hbs` | One attempt's brief in a [speculative execution](/gg/speculative-execution/) — the shared task, that it is 1 of K, and its assigned approach if any. |
+| `judge-brief.hbs`   | The judge's brief for a [speculative execution](/gg/speculative-execution/): the task, each candidate's summary and diff, and the verdict protocol.  |
+
+### The rest of the loop's prose
+
+| Template                                | What it renders                                                                                                                                 |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `compaction-instruction.hbs`            | The message that opens an in-loop [compaction](/gg/compaction/), one section per requirement (summary, `compact` call, memory writes) and mode. |
+| `compaction-unsatisfied.hbs`            | The feedback for a reply that satisfied the pending compaction in no way at all — the instruction again, prefaced by what went wrong.           |
+| `compaction-refusal.hbs`                | The refusal that answers a call the pending compaction does not accept, naming both what was refused and what is wanted.                        |
+| `compaction-handoff-summary.hbs`        | The system prompt the `handoff-summarization` strategy gives the separate compaction model.                                                     |
+| `compaction-handoff-compact.hbs`        | The system prompt the `handoff-compaction` strategy gives the separate compaction model, which answers with a `compact` call.                   |
+| `compaction-preface.hbs`                | The summary item a compacted thread is restarted from — the heading that frames it as a recap, then the summary itself.                         |
+| `compaction-fallback.hbs`               | The note used when the summarization call fails, so a failed summary never aborts the run it serves.                                            |
+| `compaction-memory-summary.hbs`         | What a `memory` compaction restarts the thread from: a pointer at the memories, which crossed the boundary verbatim, rather than a recap.       |
+| `completion-missing.hbs`                | The feedback for a turn that ended without a `finish` call under an [explicit-call](/gg/completion/) signal.                                    |
+| `completion-validation-failure.hbs`     | The feedback for a completion a [validation command](/gg/completion/) rejected: which command failed, and its output.                           |
+| `context-pressure.hbs`                  | The per-turn [context-pressure](/gg/agent-managed-context/) signal — how full the window is, what is filling it, and how to reclaim space.      |
+| `fsm-tdd-*.hbs`, `fsm-plan-first-*.hbs` | One file per state of the two built-in [FSM](/gg/fsms/) machines: the guidance the model reads for as long as that state drives the run.        |
+
 ## The system prompt is assembled from the capability set
 
 gg's whole premise is that capabilities are independently toggleable, and that extends

@@ -134,10 +134,12 @@ use crate::model::{
 };
 use crate::planning::PlanningRuntime;
 use crate::prompts::{
-    self, ApiView, AssignedIssueView, AutoloadView, BoardView, CodeCallView, CodeErrorView,
-    CodeHeadingView, CodeNotAProgramContext, CodeResultContext, CodeSandboxErrorContext,
-    CodeTimeoutContext, CodeTranspileErrorContext, CompactionView, CompletionView, FsmView,
-    MemoriesView, ReadFileView, ShellView, SpawnableAgentView, SystemContext, TasksView,
+    self, ApiView, AssignedIssueView, AttemptBriefContext, AutoloadView, BoardView, CodeCallView,
+    CodeErrorView, CodeHeadingView, CodeNotAProgramContext, CodeResultContext,
+    CodeSandboxErrorContext, CodeTimeoutContext, CodeTranspileErrorContext, CompactionView,
+    CompletionView, FixBriefContext, FsmView, JudgeAttemptView, JudgeBriefContext, MemoriesView,
+    MergeBriefContext, NumberedItem, ReadFileView, ReviewBriefContext, ReviewChangesView,
+    ReviewRecordView, ShellView, SpawnableAgentView, SystemContext, TasksView,
 };
 use crate::replay::{GgRecorder, RecordingClient};
 use crate::sandbox::{
@@ -1411,30 +1413,27 @@ impl Orchestrator {
             .push(record);
     }
 
-    /// The [review history](Self::issue_reviews) of `issue_id` rendered for a reviewer's brief, or
-    /// `None` when nothing has been reviewed yet.
+    /// The [review history](Self::issue_reviews) of `issue_id` as a reviewer's brief recounts it —
+    /// empty when nothing has been reviewed yet, which renders no history section.
     ///
     /// A reviewer that cannot see what a previous round already asked for re-litigates it, and a
     /// second reviewer in the same round has no way to know the first one approved. Handing over the
     /// record is what makes the rounds cumulative rather than independent.
-    fn review_history(&self, issue_id: &str) -> Option<String> {
+    fn review_history(&self, issue_id: &str) -> Vec<ReviewRecordView> {
         let reviews = self.issue_reviews.lock().expect("issue reviews lock");
-        let records = reviews.get(issue_id)?;
-        if records.is_empty() {
-            return None;
-        }
-        let mut out = String::new();
-        for record in records {
-            if record.approved {
-                out.push_str(&format!("\n- `{}` approved the work.", record.reviewer));
-                continue;
-            }
-            out.push_str(&format!("\n- `{}` requested changes:", record.reviewer));
-            for item in &record.items {
-                out.push_str(&format!("\n  - {item}"));
-            }
-        }
-        Some(out)
+        reviews
+            .get(issue_id)
+            .map(|records| {
+                records
+                    .iter()
+                    .map(|record| ReviewRecordView {
+                        reviewer: record.reviewer.clone(),
+                        approved: record.approved,
+                        items: record.items.clone(),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     // -- Project-management auto-dispatch (crate::board) ------------------------------------------
@@ -3259,7 +3258,7 @@ async fn run_issue_review(
                 workspace: &review_dir,
                 baseline: baseline.as_deref(),
             },
-            history.as_deref(),
+            history.clone(),
             orch.profile_or_root(&profile)
                 .is_enabled(CAPABILITY_RESPONSES_AS_CODE),
         );
@@ -3615,12 +3614,13 @@ struct ReviewChanges<'a> {
 /// and the verdict protocol the [parser](parse_review_verdict) expects. A change set with no files
 /// in it is stated plainly so the reviewer does not hallucinate changes.
 ///
-/// The brief carries the change *summary*, not the change. A reviewer is dispatched into the issue's
-/// own worktree — its filesystem tools and its shell are rooted there — so it can read exactly the
-/// files it cares about at exactly the depth it needs. Pasting the whole patch in instead made every
-/// review prompt carry every generated file the work touched (a regenerated lockfile alone can dwarf
-/// the code under review), spending the reviewer's window on text it did not ask for and burying the
-/// change that mattered.
+/// The prose is [`review-brief.hbs`](crate::prompts); this assembles its
+/// [context](ReviewBriefContext). The brief carries the change *summary*, not the change: a reviewer
+/// is dispatched into the issue's own worktree — its filesystem tools and its shell are rooted there
+/// — so it can read exactly the files it cares about at exactly the depth it needs. Pasting the whole
+/// patch in instead made every review prompt carry every generated file the work touched (a
+/// regenerated lockfile alone can dwarf the code under review), spending the reviewer's window on
+/// text it did not ask for and burying the change that mattered.
 ///
 /// `code` is whether the reviewer runs in [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) mode, and
 /// it changes the ending clause because under that protocol there is no "final message" to end:
@@ -3631,74 +3631,20 @@ struct ReviewChanges<'a> {
 fn build_review_brief(
     issue_brief: &str,
     changes: ReviewChanges<'_>,
-    history: Option<&str>,
+    history: Vec<ReviewRecordView>,
     code: bool,
 ) -> String {
-    let changed_block = if changes.summary.trim().is_empty() {
-        "(No changes were detected against the baseline. Review against the completion criteria \
-         and, unless the work was clearly already present, request the missing work.)"
-            .to_string()
-    } else {
-        format!("```\n{}\n```", changes.summary.trim_end())
-    };
-    // How to see the change itself. Every reviewer can read the files; one with a shell can also
-    // diff them against the commit the work branched from, which is the precise answer to "what did
-    // this issue change" — so it is offered when there is a baseline to name.
-    let inspect_block = {
-        let mut block = format!(
-            "\n\nYour working directory **is** the checkout the work was done in (`{}`), so read \
-             the files above directly — no clone, no path prefix, and any command you run already \
-             runs there.",
-            changes.workspace
-        );
-        if let Some(baseline) = changes.baseline {
-            block.push_str(&format!(
-                " If you have a shell, `git diff {baseline} -- <path>` shows exactly what this \
-                 issue changed in a file, and `git diff {baseline}` the change as a whole; prefer \
-                 reading a file over diffing it when you are judging whether the code is *right*, \
-                 not merely what moved."
-            ));
-        }
-        block
-    };
-    let history_block = match history {
-        Some(history) => format!(
-            "\n\n## Earlier review feedback\nThis issue has been reviewed before. Check whether \
-             each point below was addressed, and do not repeat a point that has been:{history}"
-        ),
-        None => String::new(),
-    };
-    // The parser reads the marker out of the child's final text either way, and under code mode
-    // that final text *is* the `finish` summary — so only the instruction changes, never the
-    // protocol the verdict is written in.
-    let verdict = if code {
-        "Review the work carefully against the completion criteria and the in/out-of-scope \
-         boundaries. When you are done, end your session by calling `harness.finish()` from inside a \
-         program, passing exactly one verdict as its summary:\n\
-         - If the work fully satisfies the completion criteria and stays in scope:\n\
-         `harness.finish(\"REVIEW: APPROVED\")`\n\
-         - Otherwise:\n`harness.finish(\"REVIEW: CHANGES REQUESTED\\n1. …\")`\n\
-         where the summary continues with a numbered list of specific, actionable items that must \
-         be fixed before the work can be accepted. Be concrete: each item should say what is wrong \
-         and what to change."
-    } else {
-        "Review the work carefully against the completion criteria and the in/out-of-scope \
-         boundaries. When you are done, end your final message with exactly one verdict:\n\
-         - If the work fully satisfies the completion criteria and stays in scope, write on its own \
-         line:\n`REVIEW: APPROVED`\n\
-         - Otherwise, write on its own line:\n`REVIEW: CHANGES REQUESTED`\n\
-         and then a numbered list of specific, actionable items that must be fixed before the work \
-         can be accepted. Be concrete: each item should say what is wrong and what to change."
-    };
-    format!(
-        "You are **reviewing** the work for an issue. It was done in the very workspace you are \
-         running in, so **review the workspace itself** — open the files that changed and judge the \
-         code as it now stands against the issue's requirements. You are not given the patch: read \
-         what you need, in the order you need it.\n\n\
-         {issue_brief}{history_block}\
-         \n\n## What changed (against the baseline)\n{changed_block}{inspect_block}\n\n\
-         ## Your verdict\n{verdict}"
-    )
+    prompts::render_review_brief(&ReviewBriefContext {
+        issue_brief: issue_brief.to_string(),
+        history,
+        changes: ReviewChangesView {
+            summary: (!changes.summary.trim().is_empty())
+                .then(|| changes.summary.trim_end().to_string()),
+            workspace: changes.workspace.to_string(),
+            baseline: changes.baseline.map(str::to_string),
+        },
+        code,
+    })
 }
 
 /// The brief an issue's assigned agent is re-invoked with after a review requested changes: the
@@ -3708,26 +3654,24 @@ fn build_review_brief(
 /// `code` swaps the ending clause for the same reason [`build_review_brief`] does: "then stop" is
 /// not a thing a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) agent can do.
 fn build_fix_brief(issue_brief: &str, items: &[String], code: bool) -> String {
-    let mut list = String::new();
-    for (index, item) in items.iter().enumerate() {
-        list.push_str(&format!("\n{}. {}", index + 1, item));
-    }
-    if list.is_empty() {
-        list.push_str(
-            "\n1. The reviewer requested changes but listed no specific items; re-check the \
-             completion criteria and make sure every part is done.",
-        );
-    }
-    let ending = if code {
-        "then call `harness.finish()` from inside a program with a short summary of what you changed"
-    } else {
-        "then stop"
-    };
-    format!(
-        "{issue_brief}\n\n## Requested changes\nA review of the work for this issue found that it \
-         is not yet done. Address every item below (keeping the rest of the work intact), mark the \
-         issue complete again, and {ending} — your changes will be re-reviewed:\n{list}"
-    )
+    prompts::render_fix_brief(&FixBriefContext {
+        issue_brief: issue_brief.to_string(),
+        items: numbered(items),
+        code,
+    })
+}
+
+/// Number `items` from one, for the prompt templates that render an ordered list (Handlebars'
+/// `@index` counts from zero and a prompt counts from one).
+fn numbered(items: &[String]) -> Vec<NumberedItem> {
+    items
+        .iter()
+        .enumerate()
+        .map(|(index, text)| NumberedItem {
+            number: index + 1,
+            text: text.clone(),
+        })
+        .collect()
 }
 
 /// The [merge agent](Orchestrator::merge_agent)'s brief: which issue's branch conflicts, what git
@@ -3737,29 +3681,12 @@ fn build_fix_brief(issue_brief: &str, items: &[String], code: bool) -> String {
 /// because that is what gg [checks](resolve_merge_conflict) afterwards, and an agent that thinks
 /// "resolved" means "edited the files" would leave the workspace mid-merge.
 fn build_merge_brief(issue_id: &str, branch: &str, reason: &str, code: bool) -> String {
-    let ending = if code {
-        "call `harness.finish()` from inside a program with a short summary of how you resolved it"
-    } else {
-        "stop with a short summary of how you resolved it"
-    };
-    format!(
-        "You are resolving a **merge conflict**. The work for issue `{issue_id}` was completed on \
-         the branch `{branch}` and is being merged into the main workspace, but it conflicts with \
-         work that landed there first. Your workspace *is* the main workspace, and the merge is \
-         currently in progress in it.\n\n\
-         ## What git reported\n{reason}\n\n\
-         ## What to do\n\
-         1. Inspect the conflicts (for example with `git status` and `git diff`).\n\
-         2. Resolve every conflicted file so that **both** sides' intent survives — the work already \
-         in the main workspace and the work from `{branch}`. Never resolve a conflict by discarding \
-         one side wholesale unless the two are genuinely the same change.\n\
-         3. Make sure no conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`) remain anywhere.\n\
-         4. Stage the resolved files and **commit the merge** (`git add -A` then `git commit`), so \
-         the merge is actually finished rather than left in progress.\n\n\
-         When the merge is committed, {ending}. If you cannot resolve it, say so plainly rather than \
-         committing a broken tree — leaving the merge unfinished is a safe outcome; committing \
-         something that does not build is not."
-    )
+    prompts::render_merge_brief(&MergeBriefContext {
+        issue_id: issue_id.to_string(),
+        branch: branch.to_string(),
+        reason: reason.to_string(),
+        code,
+    })
 }
 
 /// Parse a reviewer's final message into a [`ReviewVerdict`].
@@ -4263,28 +4190,16 @@ fn build_attempt_brief(
     approach: Option<&String>,
     code: bool,
 ) -> String {
-    let ending = if code {
-        "When you are done, call `harness.finish()` from inside a program with a short summary of what you \
-         built and why it is a strong solution"
-    } else {
-        "When you are done, stop with a short summary of what you built and why it is a strong \
-         solution"
-    };
-    let mut brief = format!(
-        "{base}\n\n## Speculative attempt {} of {k}\nYou are ONE of {k} independent attempts at this \
-         exact task, each running in its own isolated copy of the workspace (you cannot see the \
-         others, and they cannot see you). Produce your best, complete implementation of the task \
-         above. {ending} — a judge will compare all attempts and keep only the best one, discarding \
-         the rest.",
-        index + 1
-    );
-    if let Some(approach) = approach.map(String::as_str).filter(|a| !a.is_empty()) {
-        brief.push_str(&format!(
-            "\n\n### Your assigned approach\nTake this approach for your attempt (the other attempts \
-             are trying different ones): {approach}"
-        ));
-    }
-    brief
+    prompts::render_attempt_brief(&AttemptBriefContext {
+        base: base.to_string(),
+        index: index + 1,
+        count: k,
+        approach: approach
+            .map(String::as_str)
+            .filter(|approach| !approach.is_empty())
+            .map(str::to_string),
+        code,
+    })
 }
 
 /// Build the **judge**'s brief for a [speculative execution](handle_speculate): the task, each
@@ -4300,47 +4215,24 @@ fn build_judge_brief(
     candidates: &[usize],
     code: bool,
 ) -> String {
-    let n = candidates.len();
-    let mut brief = format!(
-        "You are the **judge** of a best-of-{n} speculative execution. {n} independent attempts each \
-         tried the SAME task below; your job is to pick the single BEST one against its completion \
-         criteria.\n\n## The task\n{task}\n\n## The attempts"
-    );
-    for (label, &idx) in candidates.iter().enumerate() {
-        let attempt = &attempts[idx];
-        let diff_block = if attempt.diff.trim().is_empty() {
-            "(no changes)".to_string()
-        } else {
-            format!("```diff\n{}\n```", attempt.diff)
-        };
-        let summary = if attempt.summary.trim().is_empty() {
-            "(no summary)"
-        } else {
-            attempt.summary.trim()
-        };
-        brief.push_str(&format!(
-            "\n\n### Attempt {}\nThe attempt's own summary:\n{summary}\n\nIts changes (diff against \
-             the baseline):\n{diff_block}",
-            label + 1
-        ));
-    }
-    if code {
-        brief.push_str(&format!(
-            "\n\n## Your verdict\nCompare the {n} attempts against the task's completion criteria — \
-             correctness, completeness, and quality — and pick the single best one. End your \
-             session by calling `harness.finish()` from inside a program whose summary begins with exactly \
-             one line:\n`SPECULATION JUDGE: WINNER <n>`\nwhere <n> is the attempt number (1–{n}) \
-             you chose — followed by a one-sentence rationale for your choice."
-        ));
-    } else {
-        brief.push_str(&format!(
-            "\n\n## Your verdict\nCompare the {n} attempts against the task's completion criteria — \
-             correctness, completeness, and quality — and pick the single best one. End your final \
-             message with exactly one line:\n`SPECULATION JUDGE: WINNER <n>`\nwhere <n> is the \
-             attempt number (1–{n}) you chose, followed by a one-sentence rationale for your choice."
-        ));
-    }
-    brief
+    prompts::render_judge_brief(&JudgeBriefContext {
+        task: task.to_string(),
+        attempts: candidates
+            .iter()
+            .enumerate()
+            .map(|(label, &idx)| {
+                let attempt = &attempts[idx];
+                JudgeAttemptView {
+                    number: label + 1,
+                    summary: (!attempt.summary.trim().is_empty())
+                        .then(|| attempt.summary.trim().to_string()),
+                    diff: (!attempt.diff.trim().is_empty()).then(|| attempt.diff.clone()),
+                }
+            })
+            .collect(),
+        count: candidates.len(),
+        code,
+    })
 }
 
 /// Dispatch one **judge** subagent against `judge_brief` on `judge_slot`, await it, and parse its

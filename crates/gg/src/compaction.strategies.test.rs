@@ -379,13 +379,16 @@ fn a_code_mode_transcript_is_not_headed_twice() {
 /// work the compaction model never did.
 #[test]
 fn the_handoff_prompts_disown_the_thread() {
-    for prompt in [HANDOFF_SUMMARY_SYSTEM_PROMPT, HANDOFF_COMPACT_SYSTEM_PROMPT] {
+    for prompt in [
+        handoff_summary_system_prompt(),
+        handoff_compact_system_prompt(),
+    ] {
         assert!(prompt.contains("ANOTHER AGENT'S SESSION"), "{prompt}");
         assert!(prompt.contains("You did none of it"), "{prompt}");
     }
     // Each carries the marker its offline mock path keys off.
-    assert!(HANDOFF_SUMMARY_SYSTEM_PROMPT.contains(SUMMARIZATION_MARKER));
-    assert!(HANDOFF_COMPACT_SYSTEM_PROMPT.contains(COMPACT_CALL_MARKER));
+    assert!(handoff_summary_system_prompt().contains(SUMMARIZATION_MARKER));
+    assert!(handoff_compact_system_prompt().contains(COMPACT_CALL_MARKER));
 }
 
 // ---------------------------------------------------------------------------

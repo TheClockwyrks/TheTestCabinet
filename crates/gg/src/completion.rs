@@ -28,6 +28,7 @@ use test_cabinet_core::gg::{
 };
 
 use crate::model::ToolDefinition;
+use crate::prompts::{self, ValidationFailureContext};
 use crate::sandbox::FINISH_FUNCTION;
 use crate::telemetry::Emitter;
 use crate::tools::{OffloadPolicy, ToolContext, run_command};
@@ -312,25 +313,19 @@ fn validation_failure_feedback(
     command: &ValidationCommand,
     output: &str,
 ) -> String {
-    format!(
-        "Your completion was NOT accepted: gg runs validation command(s) to confirm the work is \
-         complete before ending the run, and one failed.\n\n\
-         Command {index} of {total}: `{}`\n\n{output}\n\n\
-         Fix the problem and signal completion again. The run will not end until every validation \
-         command exits 0.",
-        command.display(),
-    )
+    prompts::render_completion_validation_failure(&ValidationFailureContext {
+        index,
+        total,
+        command: &command.display(),
+        output,
+    })
 }
 
 /// The message handed back to the model when it ends a turn without calling [`finish`](FINISH_TOOL)
 /// under an [explicit-call](CompletionSignal::ExplicitCall) signal — a text-only reply that is an
 /// error rather than a completion.
 pub(crate) fn missing_completion_feedback() -> String {
-    format!(
-        "Your reply requested no tools. In this run a message with no tool call does NOT end the \
-         run — you must call the `{FINISH_TOOL}` tool to finish. If you are done, call `{FINISH_TOOL}` \
-         with a summary of your work. Otherwise, keep working by calling tools.",
-    )
+    prompts::render_completion_missing(FINISH_TOOL)
 }
 
 #[cfg(test)]

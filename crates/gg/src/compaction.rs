@@ -59,6 +59,8 @@
 //! advancing its scripted turn cursor**, so a mock run can cross a real compaction boundary
 //! with no network and no desync.
 
+use std::sync::OnceLock;
+
 use async_trait::async_trait;
 use serde_json::Value;
 use test_cabinet_core::gg::{
@@ -72,6 +74,7 @@ use test_cabinet_core::gg::{
 use crate::context::{ContextModel, Retention, code_heading};
 use crate::memories::MemoryCalls;
 use crate::model::{ImageContent, Message, ModelClient, Role};
+use crate::prompts::{self, CompactionPromptContext};
 use crate::tools::{COMPACT_TOOL, CompactTool, Tool, parse_compact_request};
 
 /// The compaction capability param naming the
@@ -88,78 +91,65 @@ const DEFAULT_SUMMARY_HEADROOM: f64 = 0.2;
 /// value is treated as a misconfiguration and ignored.
 const MAX_SUMMARY_HEADROOM: f64 = 0.9;
 
-/// A sentinel embedded in the [summarization prompt](HANDOFF_SUMMARY_SYSTEM_PROMPT) so the offline
+/// A sentinel embedded in the [summarization prompt](handoff_summary_system_prompt) so the offline
 /// [`MockClient`](crate::client::MockClient) can recognize a compaction summary request and
 /// answer it deterministically — without consuming a scripted turn — keeping a mock run's
 /// main script in step across a compaction boundary.
 pub const SUMMARIZATION_MARKER: &str = "<<gg-compaction-summary-request>>";
 
-/// The sentinel [`HANDOFF_COMPACT_SYSTEM_PROMPT`] carries, so the offline mock recognizes the one
+/// The sentinel [`handoff_compact_system_prompt`] carries, so the offline mock recognizes the one
 /// compaction request that must be answered with a **tool call** rather than prose and replies
 /// with a canned [`compact`](COMPACT_TOOL) call — again without consuming a scripted turn.
 pub const COMPACT_CALL_MARKER: &str = "<<gg-compaction-compact-request>>";
 
 /// The system prompt the [handoff summarization](CompactionStrategy::HandoffSummarization)
-/// strategy gives the **separate** compaction model. It carries the [`SUMMARIZATION_MARKER`] so an
-/// offline mock can detect the request.
+/// strategy gives the **separate** compaction model, from
+/// [`compaction-handoff-summary.hbs`](crate::prompts). It carries the [`SUMMARIZATION_MARKER`] so
+/// an offline mock can detect the request.
 ///
 /// The one thing it does that an ordinary summarization prompt would not: it opens by telling the
 /// reader that *none of what follows is its own work*. The thread it is about to read is another
 /// model's, converted to labelled user messages ([`handoff_messages`]) precisely so it cannot
 /// mistake the working model's assistant turns for its own — and a model that believes it wrote
 /// the thread summarizes what it "did" rather than what the agent did.
-const HANDOFF_SUMMARY_SYSTEM_PROMPT: &str = "You are gg's context-compaction summarizer \
-    <<gg-compaction-summary-request>>. Everything after this message is a TRANSCRIPT OF ANOTHER \
-    AGENT'S SESSION, not your own work — each message is labelled with what it is (`Task`, \
-    `Assistant`, `Output`, `File`, …) followed by a `----` line. You did none of it. That thread \
-    is about to be dropped to reclaim context. Write a compact summary that preserves enough \
-    working state for THAT agent to continue seamlessly: what it is building, the key decisions \
-    and discoveries so far, files created or changed, what is currently in progress, and the \
-    immediate next step. Write about it in the second person (\"you have…\") — the summary is \
-    handed back to the agent whose thread this is. Be concise and factual; output only the \
-    summary.";
+fn handoff_summary_system_prompt() -> &'static str {
+    static PROMPT: OnceLock<String> = OnceLock::new();
+    PROMPT.get_or_init(prompts::render_compaction_handoff_summary)
+}
 
 /// The system prompt the [handoff compaction](CompactionStrategy::HandoffCompaction) strategy
-/// gives the separate compaction model — the same framing as
-/// [`HANDOFF_SUMMARY_SYSTEM_PROMPT`], but the answer is a [`compact`](COMPACT_TOOL) **call**
+/// gives the separate compaction model, from
+/// [`compaction-handoff-compact.hbs`](crate::prompts) — the same framing as
+/// [`handoff_summary_system_prompt`], but the answer is a [`compact`](COMPACT_TOOL) **call**
 /// rather than prose, so the compaction model also chooses which files are re-read into the
 /// restarted context. It carries [`COMPACT_CALL_MARKER`] rather than [`SUMMARIZATION_MARKER`]
 /// because the offline mock has to answer it with a tool call.
-const HANDOFF_COMPACT_SYSTEM_PROMPT: &str = "You are gg's context compactor \
-    <<gg-compaction-compact-request>>. Everything after this message is a TRANSCRIPT OF ANOTHER \
-    AGENT'S SESSION, not your own work — each message is labelled with what it is (`Task`, \
-    `Assistant`, `Output`, `File`, …) followed by a `----` line. You did none of it. That thread \
-    is about to be dropped to reclaim context. Call the `compact` tool exactly once with a \
-    `summary` that preserves enough working state for THAT agent to continue seamlessly (what it \
-    is building, key decisions, files changed, what is in progress, the immediate next step, \
-    written in the second person) and a `files` list naming the workspace paths whose contents it \
-    will need in hand to continue — gg re-reads those into its context. Name only files that \
-    matter; every one costs window. Answer with the tool call and nothing else.";
+fn handoff_compact_system_prompt() -> &'static str {
+    static PROMPT: OnceLock<String> = OnceLock::new();
+    PROMPT.get_or_init(|| prompts::render_compaction_handoff_compact(COMPACT_TOOL))
+}
 
-/// The heading prepended to the summary item placed in the compacted window, so the model
-/// reads it as a recap of dropped history rather than fresh instruction.
-const SUMMARY_PREFACE: &str = "# Summary of earlier work (context was compacted)\n\n\
-    The detailed thread up to this point was summarized to reclaim context. Your skills, \
-    memories, and task list above are unchanged. Continue from here.\n\n";
+/// The summary used when the summarization model call fails, from
+/// [`compaction-fallback.hbs`](crate::prompts). Compaction must never abort the run it serves, so a
+/// failed summary degrades to this note (the pinned state — the substance the agent needs — is
+/// retained regardless) rather than propagating the error.
+fn fallback_summary() -> &'static str {
+    static SUMMARY: OnceLock<String> = OnceLock::new();
+    SUMMARY.get_or_init(prompts::render_compaction_fallback)
+}
 
-/// The summary used when the summarization model call fails. Compaction must never abort
-/// the run it serves, so a failed summary degrades to this note (the pinned state — the
-/// substance the agent needs — is retained regardless) rather than propagating the error.
-const FALLBACK_SUMMARY: &str = "(The earlier thread could not be summarized automatically. \
-    Your skills, memories, and task list are retained above; re-inspect the workspace as \
-    needed to recover any detail you require.)";
-
-/// The "summary" a [memory compaction](CompactionStrategy::Memory) restarts the thread from.
+/// The "summary" a [memory compaction](CompactionStrategy::Memory) restarts the thread from, from
+/// [`compaction-memory-summary.hbs`](crate::prompts).
 ///
 /// That strategy deliberately produces **no prose recap**: its whole hypothesis is that the
 /// agent's own [memories](crate::memories) — which are pinned, and so cross the boundary
 /// verbatim — are a better carrier of working state than a summary written once and never
 /// revised. So the thread is restarted from a note that says exactly that, and points at the
 /// memory block above it.
-const MEMORY_COMPACTION_SUMMARY: &str = "The detailed thread up to this point was dropped to \
-    reclaim context, and you recorded the working state you need in your memories first. Your \
-    memories, skills, and task list above are unchanged and are your record of where the work \
-    stands. Continue from there.";
+fn memory_compaction_summary() -> &'static str {
+    static SUMMARY: OnceLock<String> = OnceLock::new();
+    SUMMARY.get_or_init(prompts::render_compaction_memory_summary)
+}
 
 // ---------------------------------------------------------------------------
 // The strategies
@@ -305,77 +295,11 @@ impl PendingCompaction {
     }
 
     /// The message gg appends to the thread to open this compaction — what the model reads at the
-    /// top of the turn that must satisfy it.
-    ///
-    /// `code_mode` is the one thing that changes: under
-    /// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) every reply is a
-    /// program and every call is a function on an API object, so the instruction has to name the
-    /// call the way that run's model actually makes it — and, for
-    /// [`Summary`](Self::Summary), has to explicitly suspend the reply contract for one turn,
-    /// since prose is the one thing a code run is otherwise told never to send.
-    ///
-    /// `calls` is how this run's [memory strategy](crate::memories::MemoryStrategy) names its own
-    /// calls, so a [`MemoryWrites`](Self::MemoryWrites) instruction asks for the tools the model
-    /// was actually offered rather than for the scratchpad's.
+    /// top of the turn that must satisfy it, from
+    /// [`compaction-instruction.hbs`](crate::prompts) over the
+    /// [shared context](Self::prompt_context).
     pub fn instruction(self, code_mode: bool, calls: MemoryCalls) -> String {
-        match self {
-            Self::Summary if code_mode => format!(
-                "{PREAMBLE}\n\nFor this ONE turn only, do NOT write a program — gg will not run \
-                 one. Reply with plain prose: a summary of the work you have completed so far and \
-                 the work that remains. Cover what you are building, the decisions and discoveries \
-                 that matter, the files you have created or changed, what is in progress, and the \
-                 immediate next step. Everything not in your summary is lost, so write it for \
-                 yourself. Your next turn resumes the normal program protocol with your summary in \
-                 place of the dropped thread."
-            ),
-            Self::Summary => format!(
-                "{PREAMBLE}\n\nReply with a summary of the work you have completed so far and the \
-                 work that remains — plain text, no tool calls. Cover what you are building, the \
-                 decisions and discoveries that matter, the files you have created or changed, \
-                 what is in progress, and the immediate next step. Everything not in your summary \
-                 is lost, so write it for yourself. Your next turn continues the work with your \
-                 summary in place of the dropped thread."
-            ),
-            Self::CompactCall if code_mode => format!(
-                "{PREAMBLE}\n\nWrite a program that calls `context.compact(summary, files)` and \
-                 nothing else — every other call is refused until you do. `summary` is the working \
-                 state you need to continue (what you are building, the decisions that matter, the \
-                 files you changed, what is in progress, the next step); `files` names the \
-                 workspace paths whose contents you want back in your context, which gg re-reads \
-                 for you. Everything not in your summary and not in those files is lost, so choose \
-                 both for yourself."
-            ),
-            Self::CompactCall => format!(
-                "{PREAMBLE}\n\nCall the `{COMPACT_TOOL}` tool now — every other tool call is \
-                 refused until you do. `summary` is the working state you need to continue (what \
-                 you are building, the decisions that matter, the files you changed, what is in \
-                 progress, the next step); `files` names the workspace paths whose contents you \
-                 want back in your context, which gg re-reads for you. Everything not in your \
-                 summary and not in those files is lost, so choose both for yourself."
-            ),
-            Self::MemoryWrites if code_mode => format!(
-                "{PREAMBLE}\n\nWrite a program that records the working state you will need into \
-                 your memories — {create} / {revise} / {delete} and nothing else; every other \
-                 call is refused until every call in one program has succeeded. Your memories \
-                 survive the drop, so they are the ONLY thing that carries your working state: \
-                 what you are building, the decisions that matter, the files you changed, what is \
-                 in progress, the next step. Anything you do not record is lost.",
-                create = calls.create,
-                revise = calls.revise,
-                delete = calls.delete,
-            ),
-            Self::MemoryWrites => format!(
-                "{PREAMBLE}\n\nRecord the working state you will need into your memories now — \
-                 {create} / {revise} / {delete} and nothing else; every other tool call is \
-                 refused until every call in one reply has succeeded. Your memories survive the \
-                 drop, so they are the ONLY thing that carries your working state: what you are \
-                 building, the decisions that matter, the files you changed, what is in progress, \
-                 the next step. Anything you do not record is lost.",
-                create = calls.create,
-                revise = calls.revise,
-                delete = calls.delete,
-            ),
-        }
+        prompts::render_compaction_instruction(&self.prompt_context(None, code_mode, calls))
     }
 
     /// The refusal that answers a call this pending compaction does not accept — and the message a
@@ -384,36 +308,52 @@ impl PendingCompaction {
     /// It names the call that was refused rather than only what is wanted, because a model that is
     /// told "do X" while its Y silently fails reads the failure as gg being broken and retries Y.
     pub fn refusal(self, refused: &str, code_mode: bool, calls: MemoryCalls) -> String {
-        let wanted = match self {
-            Self::Summary => "reply with the summary as plain text".to_string(),
-            Self::CompactCall if code_mode => "call `context.compact(summary, files)`".to_string(),
-            Self::CompactCall => format!("call the `{COMPACT_TOOL}` tool"),
-            Self::MemoryWrites => format!(
-                "record your working state with {} / {}",
-                calls.create, calls.revise
-            ),
-        };
-        format!(
-            "`{refused}` was NOT run: your context window is full and gg is compacting it. Nothing \
-             else happens until you {wanted}. Do that now, then carry on with the work."
-        )
+        prompts::render_compaction_refusal(&self.prompt_context(
+            Some(refused.to_string()),
+            code_mode,
+            calls,
+        ))
     }
 
     /// The feedback for a reply that satisfied nothing at all — no usable call under
     /// [`CompactCall`](Self::CompactCall) / [`MemoryWrites`](Self::MemoryWrites).
     pub fn unsatisfied(self, code_mode: bool, calls: MemoryCalls) -> String {
-        format!(
-            "Your reply did not compact your context, and your window is still full. {}",
-            self.instruction(code_mode, calls)
-        )
+        prompts::render_compaction_unsatisfied(&self.prompt_context(None, code_mode, calls))
+    }
+
+    /// The [rendering context](CompactionPromptContext) this pending compaction's three model-facing
+    /// messages share: which requirement is pending, and how this run's model names the calls that
+    /// satisfy it.
+    ///
+    /// `code_mode` is the one thing that changes the wording: under
+    /// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) every reply is a
+    /// program and every call is a function on an API object, so the instruction has to name the
+    /// call the way that run's model actually makes it — and, for [`Summary`](Self::Summary), has to
+    /// explicitly suspend the reply contract for one turn, since prose is the one thing a code run
+    /// is otherwise told never to send.
+    ///
+    /// `calls` is how this run's [memory strategy](crate::memories::MemoryStrategy) names its own
+    /// calls, so a [`MemoryWrites`](Self::MemoryWrites) instruction asks for the tools the model was
+    /// actually offered rather than for the scratchpad's.
+    fn prompt_context(
+        self,
+        refused: Option<String>,
+        code_mode: bool,
+        calls: MemoryCalls,
+    ) -> CompactionPromptContext {
+        CompactionPromptContext {
+            summary: matches!(self, Self::Summary),
+            compact_call: matches!(self, Self::CompactCall),
+            memory_writes: matches!(self, Self::MemoryWrites),
+            code_mode,
+            compact_tool: COMPACT_TOOL.to_string(),
+            memory_create: calls.create.to_string(),
+            memory_revise: calls.revise.to_string(),
+            memory_delete: calls.delete.to_string(),
+            refused,
+        }
     }
 }
-
-/// The opening sentence every [`PendingCompaction::instruction`] shares: *why* the model is being
-/// interrupted. Stated once so the six instructions cannot drift on the one fact they all assert.
-const PREAMBLE: &str = "Your context window is full. gg is about to drop the detailed thread \
-    above to reclaim it — the work you have done is NOT undone, but the record of it in this \
-    conversation is about to disappear.";
 
 // ---------------------------------------------------------------------------
 // The out-of-band summarizers
@@ -432,7 +372,7 @@ pub struct SummaryRequest<'a> {
 }
 
 /// What one out-of-band condensation produced: the summary text, whether it is the
-/// [fallback](FALLBACK_SUMMARY) note (i.e. the call failed), and the files it asked gg to re-read.
+/// [fallback](fallback_summary) note (i.e. the call failed), and the files it asked gg to re-read.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CompactionRequest {
     /// The recap the restarted thread opens from.
@@ -457,7 +397,7 @@ pub struct CompactionRequest {
 pub trait Summarizer: Send + Sync {
     /// Condense `request.history` into the working state the agent continues from.
     /// Implementations must not fail the run: on trouble they return a best-effort result
-    /// (see [`FALLBACK_SUMMARY`]) rather than an error.
+    /// (see [`fallback_summary`]) rather than an error.
     async fn summarize(&self, request: SummaryRequest<'_>) -> CompactionRequest;
 }
 
@@ -465,10 +405,10 @@ pub trait Summarizer: Send + Sync {
 /// compaction model for a prose recap of the thread being dropped.
 ///
 /// Its prompt is the whole of the strategy: a model handed another agent's thread has to be told,
-/// in its system prompt, that none of it is its own work — see [`HANDOFF_SUMMARY_SYSTEM_PROMPT`].
+/// in its system prompt, that none of it is its own work — see [`handoff_summary_system_prompt`].
 /// The transcript it reads is built by [`handoff_messages`], which is what makes that claim
 /// structurally true rather than merely asserted. Offline it is answered by the scripted mock (see
-/// the module docs), and a model or transport error degrades to [`FALLBACK_SUMMARY`] so compaction
+/// the module docs), and a model or transport error degrades to [`fallback_summary`] so compaction
 /// never aborts the run.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct HandoffSummarizer;
@@ -477,7 +417,7 @@ pub struct HandoffSummarizer;
 impl Summarizer for HandoffSummarizer {
     async fn summarize(&self, request: SummaryRequest<'_>) -> CompactionRequest {
         summarize_with_prompt(
-            HANDOFF_SUMMARY_SYSTEM_PROMPT,
+            handoff_summary_system_prompt(),
             render_history(request.history),
             request,
         )
@@ -492,7 +432,7 @@ impl Summarizer for HandoffSummarizer {
 /// It is the one strategy whose out-of-band call is offered a tool, and it requires the call rather
 /// than merely permitting it ([`ModelClient::complete_requiring`]). A reply that carries no usable
 /// call is not a failure the run should die of, so it degrades in the honest order: the model's own
-/// prose if it wrote any, then [`FALLBACK_SUMMARY`].
+/// prose if it wrote any, then [`fallback_summary`].
 #[derive(Debug, Default, Clone, Copy)]
 pub struct HandoffCompactor;
 
@@ -500,7 +440,7 @@ pub struct HandoffCompactor;
 impl Summarizer for HandoffCompactor {
     async fn summarize(&self, request: SummaryRequest<'_>) -> CompactionRequest {
         let messages = vec![
-            Message::system(HANDOFF_COMPACT_SYSTEM_PROMPT),
+            Message::system(handoff_compact_system_prompt()),
             Message::user(render_history(request.history)),
         ];
         let definition = CompactTool.definition();
@@ -510,7 +450,7 @@ impl Summarizer for HandoffCompactor {
             .await
         else {
             return CompactionRequest {
-                summary: FALLBACK_SUMMARY.to_string(),
+                summary: fallback_summary().to_string(),
                 files: Vec::new(),
             };
         };
@@ -533,14 +473,14 @@ impl Summarizer for HandoffCompactor {
                 .text
                 .map(|text| text.trim().to_string())
                 .filter(|text| !text.is_empty())
-                .unwrap_or_else(|| FALLBACK_SUMMARY.to_string()),
+                .unwrap_or_else(|| fallback_summary().to_string()),
             files: Vec::new(),
         }
     }
 }
 
 /// The single-model-call summarize behind a prose strategy: one turn steered by `system_prompt`
-/// over `transcript`, degrading to [`FALLBACK_SUMMARY`] on an empty or errored response so
+/// over `transcript`, degrading to [`fallback_summary`] on an empty or errored response so
 /// compaction never aborts the run. Kept separate from its one caller as the seam an added prose
 /// strategy plugs its own prompt into.
 async fn summarize_with_prompt(
@@ -555,8 +495,8 @@ async fn summarize_with_prompt(
             .text
             .map(|text| text.trim().to_string())
             .filter(|text| !text.is_empty())
-            .unwrap_or_else(|| FALLBACK_SUMMARY.to_string()),
-        Err(_) => FALLBACK_SUMMARY.to_string(),
+            .unwrap_or_else(|| fallback_summary().to_string()),
+        Err(_) => fallback_summary().to_string(),
     };
     CompactionRequest {
         summary,
@@ -938,7 +878,7 @@ pub fn apply_compaction(
     context.push(
         GgContextSource::History,
         Retention::Ephemeral,
-        Message::user(format!("{SUMMARY_PREFACE}{}", request.summary)),
+        Message::user(prompts::render_compaction_preface(&request.summary)),
     );
 
     let after_tokens = context.total_tokens();
@@ -974,7 +914,7 @@ pub fn apply_compaction(
 ///
 /// A strategy with no [summarizer](resolve_summarizer) is an in-loop one, which the loop condenses
 /// through the agent's own turn and never routes here; reaching this with one is a bug, so it
-/// degrades to the same [fallback](FALLBACK_SUMMARY) a failed call does rather than compacting to
+/// degrades to the same [fallback](fallback_summary) a failed call does rather than compacting to
 /// nothing.
 pub async fn condense_out_of_band(
     context: &ContextModel,
@@ -993,7 +933,7 @@ pub async fn condense_out_of_band(
         .await;
     // A summary equal to the fixed fallback note means the condensation failed and degraded;
     // recorded explicitly so a study reads it as a failure, not a real recap.
-    let fallback = request.summary == FALLBACK_SUMMARY;
+    let fallback = request.summary == fallback_summary();
     (request, fallback)
 }
 
@@ -1002,7 +942,7 @@ pub async fn condense_out_of_band(
 /// its own.
 pub fn memory_compaction_request() -> CompactionRequest {
     CompactionRequest {
-        summary: MEMORY_COMPACTION_SUMMARY.to_string(),
+        summary: memory_compaction_summary().to_string(),
         files: Vec::new(),
     }
 }
@@ -1016,14 +956,14 @@ pub fn memory_compaction_request() -> CompactionRequest {
 /// fallback for the same reason.
 pub fn fallback_request() -> CompactionRequest {
     CompactionRequest {
-        summary: FALLBACK_SUMMARY.to_string(),
+        summary: fallback_summary().to_string(),
         files: Vec::new(),
     }
 }
 
-/// Whether `summary` is gg's [fixed fallback note](FALLBACK_SUMMARY) rather than a real recap.
+/// Whether `summary` is gg's [fixed fallback note](fallback_summary) rather than a real recap.
 pub fn is_fallback(summary: &str) -> bool {
-    summary == FALLBACK_SUMMARY
+    summary == fallback_summary()
 }
 
 #[cfg(test)]

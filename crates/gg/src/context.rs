@@ -50,6 +50,7 @@ use std::sync::Arc;
 use test_cabinet_core::gg::{GgContextSource, GgContextSourceUsage, GgTelemetryKind};
 
 use crate::model::{ImageContent, Message, Role, ToolCall};
+use crate::prompts::{self, ContextPressureContext};
 
 /// A small fixed per-message token allowance approximating the role tag and message
 /// framing a provider adds around the content (chat formats wrap each message in a few
@@ -845,18 +846,12 @@ impl ContextModel {
             .map(|(source, tokens)| format!("{} {tokens}", source_label(source)))
             .collect();
 
-        let consumers = if top.is_empty() {
-            String::new()
-        } else {
-            format!(" Largest consumers (tokens): {}.", top.join(", "))
-        };
-        Some(format!(
-            "Context window: {total}/{limit} tokens ({percent}% full).{consumers} \
-             If it is getting full, reclaim space yourself: `evict_file_view` drops file \
-             contents you no longer need (you can re-read them), and `archive_thread` moves \
-             older thread history out of the window while keeping it searchable with \
-             `search_archive`.",
-        ))
+        Some(prompts::render_context_pressure(&ContextPressureContext {
+            total,
+            limit,
+            percent,
+            consumers: top,
+        }))
     }
 
     /// Evict [`FileView`](GgContextSource::FileView) items from the live window, reclaiming

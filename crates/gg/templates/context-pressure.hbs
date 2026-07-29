@@ -1,0 +1,7 @@
+Context window: {{total}}/{{limit}} tokens ({{percent}}% full).
+{{#if consumers}}
+Largest consumers (tokens): {{#each consumers}}{{this}}{{#unless @last}}, {{/unless}}{{/each}}.
+{{/if}}
+If it is getting full, reclaim space yourself: `evict_file_view` drops file contents you no
+longer need (you can re-read them), and `archive_thread` moves older thread history out of the
+window while keeping it searchable with `search_archive`.

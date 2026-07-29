@@ -1,9 +1,11 @@
 //! The **briefs gg generates for the agents it delegates to** — the reviewer, the fix agent, the
 //! speculation attempts, and the judge.
 //!
-//! A brief is model-facing product text like the system prompt, but it is built in `agent.rs` rather
-//! than rendered from a template, so it is tested here rather than beside the prompts. What it has to
-//! get right is the *ending it teaches*: each builder takes a `code` flag, and under
+//! A brief is model-facing product text like the system prompt, and its prose is a
+//! [template](crate::prompts) like the system prompt's. What is tested *here* rather than beside the
+//! templates is the property the **loop** depends on — the *ending each brief teaches*, which is the
+//! one thing a brief can get wrong that costs a whole review round or a whole speculation without
+//! failing anything. Each builder takes a `code` flag, and under
 //! [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) there is no final message to end and no
 //! stopping that is not a [`finish`](FINISH_FUNCTION) call. A brief that teaches the wrong ending
 //! fails silently — the child does the work, never reaches `completed`, and everything gated on that
@@ -44,7 +46,7 @@ fn no_generated_brief_tells_a_code_mode_agent_to_stop() {
                     workspace: "/work/.gg-worktrees/issue-1",
                     baseline: Some(&"0".repeat(40)),
                 },
-                None,
+                Vec::new(),
                 true,
             ),
         ),
@@ -110,7 +112,7 @@ fn the_review_brief_points_at_the_worktree_instead_of_pasting_the_diff() {
             workspace: "/work/.gg-worktrees/issue-1",
             baseline: Some(&baseline),
         },
-        None,
+        Vec::new(),
         false,
     );
 
@@ -134,7 +136,7 @@ fn the_review_brief_points_at_the_worktree_instead_of_pasting_the_diff() {
             workspace: "/work",
             baseline: None,
         },
-        None,
+        Vec::new(),
         false,
     );
     assert!(no_baseline.contains("/work"), "{no_baseline}");

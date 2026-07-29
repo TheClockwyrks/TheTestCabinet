@@ -1498,3 +1498,322 @@ fn the_planning_templates_render() {
     assert!(framed.starts_with("# Implementation plan"));
     assert!(framed.ends_with("Build the grid first."));
 }
+
+// ---------------------------------------------------------------------------
+// Briefs
+// ---------------------------------------------------------------------------
+
+/// One brief-rendering context per generated brief, in both execution modes.
+///
+/// Rendering is where a `.hbs` typo becomes a panic (the engine is strict), so every brief has to
+/// be rendered by *some* test or a misspelled variable reaches a dispatched agent instead of the
+/// build. The ending each brief teaches is asserted next to the loop that depends on it, in
+/// `agent.briefs.test.rs`; what is asserted here is the **stable markers** other parts of gg read
+/// back out of a brief — the issue heading and the fix heading the offline mock keys off, and the
+/// attempt line an attempt reads its own number from.
+#[test]
+fn every_generated_brief_renders_in_both_execution_modes() {
+    for code in [false, true] {
+        let issue = render_issue_brief(&IssueBriefContext {
+            id: "AUTH-1".to_string(),
+            title: "Log in".to_string(),
+            description: Some("An overview.".to_string()),
+            in_scope: "The form.".to_string(),
+            out_of_scope: "Signup.".to_string(),
+            completion_criteria: "A user can log in.".to_string(),
+        });
+        assert!(issue.starts_with("# Issue `AUTH-1`: Log in"), "{issue}");
+        assert!(
+            flat(&issue).contains("## Done when A user can log in."),
+            "{issue}"
+        );
+
+        let review = render_review_brief(&ReviewBriefContext {
+            issue_brief: issue.clone(),
+            history: vec![
+                ReviewRecordView {
+                    reviewer: "critic".to_string(),
+                    approved: false,
+                    items: vec!["Fix the score.".to_string()],
+                },
+                ReviewRecordView {
+                    reviewer: "second".to_string(),
+                    approved: true,
+                    items: Vec::new(),
+                },
+            ],
+            changes: ReviewChangesView {
+                summary: Some(" src/main.rs | 2 +-".to_string()),
+                workspace: "/work/.gg-worktrees/issue-1".to_string(),
+                baseline: Some("0".repeat(40)),
+            },
+            code,
+        });
+        assert!(review.contains("`critic` requested changes:"), "{review}");
+        assert!(review.contains("  - Fix the score."), "{review}");
+        assert!(review.contains("`second` approved the work."), "{review}");
+        // The baseline is named as a runnable command, so the sha must not be wrapped away from it.
+        assert!(
+            review.contains(&format!("git diff {}", "0".repeat(40))),
+            "{review}"
+        );
+
+        let fix = render_fix_brief(&FixBriefContext {
+            issue_brief: issue,
+            items: vec![
+                NumberedItem {
+                    number: 1,
+                    text: "Fix the score.".to_string(),
+                },
+                NumberedItem {
+                    number: 2,
+                    text: "Add a test.".to_string(),
+                },
+            ],
+            code,
+        });
+        assert!(fix.contains("## Requested changes"), "{fix}");
+        assert!(fix.contains("1. Fix the score.\n2. Add a test."), "{fix}");
+
+        let merge = render_merge_brief(&MergeBriefContext {
+            issue_id: "AUTH-1".to_string(),
+            branch: "gg/issue-auth-1".to_string(),
+            reason: "CONFLICT (content): src/main.rs".to_string(),
+            code,
+        });
+        assert!(merge.contains("gg/issue-auth-1"), "{merge}");
+        assert!(merge.contains("`git add -A`"), "{merge}");
+
+        let attempt = render_attempt_brief(&AttemptBriefContext {
+            base: "Build it.".to_string(),
+            index: 2,
+            count: 3,
+            approach: Some("Use a state machine.".to_string()),
+            code,
+        });
+        // The offline attempt mock reads its number straight off this line.
+        assert!(attempt.contains("Speculative attempt 2 of 3"), "{attempt}");
+        assert!(attempt.contains("Use a state machine."), "{attempt}");
+
+        let judge = render_judge_brief(&JudgeBriefContext {
+            task: "Build it.".to_string(),
+            attempts: vec![
+                JudgeAttemptView {
+                    number: 1,
+                    summary: Some("built it".to_string()),
+                    diff: Some("+ a line".to_string()),
+                },
+                JudgeAttemptView {
+                    number: 2,
+                    summary: None,
+                    diff: None,
+                },
+            ],
+            count: 2,
+            code,
+        });
+        assert!(judge.contains("### Attempt 1"), "{judge}");
+        assert!(judge.contains("```diff\n+ a line\n```"), "{judge}");
+        // An attempt that produced nothing says so rather than rendering an empty section.
+        assert!(judge.contains("(no summary)"), "{judge}");
+        assert!(judge.contains("(no changes)"), "{judge}");
+        assert!(judge.contains("SPECULATION JUDGE: WINNER <n>"), "{judge}");
+    }
+}
+
+/// The reviewer's brief degrades cleanly on a first review of a run with no git baseline: no
+/// history section, an explicit "nothing changed" note, and **no `git diff` against a commit that
+/// does not exist**.
+#[test]
+fn the_review_brief_renders_without_history_or_a_baseline() {
+    let brief = render_review_brief(&ReviewBriefContext {
+        issue_brief: "# Issue `AUTH-1`: Log in".to_string(),
+        history: Vec::new(),
+        changes: ReviewChangesView {
+            summary: None,
+            workspace: "/work".to_string(),
+            baseline: None,
+        },
+        code: false,
+    });
+    assert!(!brief.contains("Earlier review feedback"), "{brief}");
+    assert!(brief.contains("No changes were detected"), "{brief}");
+    assert!(!brief.contains("git diff"), "{brief}");
+}
+
+/// A review that requested changes without listing any still hands the fixing agent something to
+/// act on, rather than an empty list under a heading that promises one.
+#[test]
+fn the_fix_brief_synthesizes_an_item_when_the_review_listed_none() {
+    let brief = render_fix_brief(&FixBriefContext {
+        issue_brief: "# Issue `AUTH-1`: Log in".to_string(),
+        items: Vec::new(),
+        code: false,
+    });
+    assert!(
+        flat(&brief).contains("1. The reviewer requested changes but listed no specific items"),
+        "{brief}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Compaction, completion, context pressure, and the FSM guidance
+// ---------------------------------------------------------------------------
+
+/// Each pending compaction's three messages name the calls **that run** actually offers: the
+/// requirement decides the wording, the execution mode decides its shape, and the memory calls are
+/// interpolated from the run's memory strategy rather than written into the template.
+#[test]
+fn the_compaction_prompts_render_for_every_requirement() {
+    let context = |summary, compact_call, memory_writes, code_mode| CompactionPromptContext {
+        summary,
+        compact_call,
+        memory_writes,
+        code_mode,
+        compact_tool: "compact".to_string(),
+        memory_create: "`record_memory`".to_string(),
+        memory_revise: "`revise_memory`".to_string(),
+        memory_delete: "`delete_memory`".to_string(),
+        refused: Some("shell".to_string()),
+    };
+    for code_mode in [false, true] {
+        let summary = context(true, false, false, code_mode);
+        let instruction = render_compaction_instruction(&summary);
+        assert!(
+            instruction.starts_with("Your context window is full."),
+            "{instruction}"
+        );
+        assert!(
+            flat(&instruction).contains("the immediate next step"),
+            "{instruction}"
+        );
+        // A code run has to be told, in so many words, that prose is expected for this one turn.
+        assert_eq!(
+            instruction.contains("do NOT write a program"),
+            code_mode,
+            "{instruction}"
+        );
+
+        let compact = context(false, true, false, code_mode);
+        let instruction = render_compaction_instruction(&compact);
+        assert_eq!(
+            instruction.contains("context.compact(summary, files)"),
+            code_mode,
+            "{instruction}"
+        );
+        assert_eq!(
+            instruction.contains("Call the `compact` tool now"),
+            !code_mode,
+            "{instruction}"
+        );
+
+        let memories = context(false, false, true, code_mode);
+        let instruction = render_compaction_instruction(&memories);
+        assert!(instruction.contains("`record_memory`"), "{instruction}");
+        assert!(instruction.contains("`delete_memory`"), "{instruction}");
+        assert!(!instruction.contains("write_memory"), "{instruction}");
+
+        // The refusal names what was refused *and* what is wanted; the unsatisfied feedback is the
+        // instruction again, prefaced by what went wrong.
+        for pending in [summary, compact, memories] {
+            let refusal = render_compaction_refusal(&pending);
+            assert!(refusal.starts_with("`shell` was NOT run:"), "{refusal}");
+            assert!(
+                flat(&refusal).ends_with("Do that now, then carry on with the work."),
+                "{refusal}"
+            );
+
+            let unsatisfied = render_compaction_unsatisfied(&pending);
+            assert!(
+                unsatisfied.starts_with("Your reply did not compact your context,"),
+                "{unsatisfied}"
+            );
+            assert!(
+                unsatisfied.contains(&render_compaction_instruction(&pending)),
+                "{unsatisfied}"
+            );
+        }
+    }
+}
+
+/// The out-of-band prompts and the two fixed summaries render, and the preface carries the summary
+/// it frames rather than replacing it.
+#[test]
+fn the_out_of_band_compaction_prompts_render() {
+    assert!(render_compaction_handoff_summary().contains("<<gg-compaction-summary-request>>"));
+    assert!(
+        render_compaction_handoff_compact("compact").contains("<<gg-compaction-compact-request>>")
+    );
+    assert!(render_compaction_handoff_compact("compact").contains("`compact` tool"));
+
+    let preface = render_compaction_preface("You were building the grid.");
+    assert!(preface.starts_with("# Summary of earlier work (context was compacted)"));
+    assert!(preface.ends_with("You were building the grid."));
+
+    assert!(
+        render_compaction_fallback().starts_with("(The earlier thread could not be summarized")
+    );
+    assert!(render_compaction_memory_summary().contains("your memories"));
+}
+
+/// The completion feedbacks name the finish tool from one source and quote the command that
+/// actually failed.
+#[test]
+fn the_completion_prompts_render() {
+    let missing = render_completion_missing("finish");
+    assert!(missing.matches("`finish`").count() >= 2, "{missing}");
+
+    let failure = render_completion_validation_failure(&ValidationFailureContext {
+        index: 1,
+        total: 2,
+        command: "npm test",
+        output: "1 test failed",
+    });
+    assert!(failure.contains("Command 1 of 2: `npm test`"), "{failure}");
+    assert!(failure.contains("1 test failed"), "{failure}");
+}
+
+/// The pressure signal opens with the stable `Context window:` prefix the refresh keys off, and
+/// names its consumers only when there are any.
+#[test]
+fn the_context_pressure_signal_renders() {
+    let with_consumers = render_context_pressure(&ContextPressureContext {
+        total: 90_000,
+        limit: 100_000,
+        percent: 90,
+        consumers: vec!["history 40000".to_string(), "files 20000".to_string()],
+    });
+    assert!(with_consumers.starts_with("Context window: 90000/100000 tokens (90% full)."));
+    assert!(with_consumers.contains("Largest consumers (tokens): history 40000, files 20000."));
+
+    let bare = render_context_pressure(&ContextPressureContext {
+        total: 10,
+        limit: 100,
+        percent: 10,
+        consumers: Vec::new(),
+    });
+    assert!(bare.starts_with("Context window: 10/100 tokens (10% full)."));
+    assert!(!bare.contains("Largest consumers"));
+}
+
+/// Every built-in FSM state's guidance renders, and each opens with its own heading — the model
+/// reads it as the state it is in, not as a continuation of the prompt above it.
+#[test]
+fn every_built_in_fsm_state_renders_its_guidance() {
+    for (state, heading) in [
+        (
+            FsmGuidance::TddWriteTests,
+            "# Test-driven development: write the tests first",
+        ),
+        (
+            FsmGuidance::TddImplement,
+            "# Implement to satisfy the tests",
+        ),
+        (FsmGuidance::TddVerify, "# Verify with the tests"),
+        (FsmGuidance::PlanFirstPlan, "# Plan first (read-only)"),
+        (FsmGuidance::PlanFirstImplement, "# Implement your plan"),
+    ] {
+        let guidance = render_fsm_guidance(state);
+        assert!(guidance.starts_with(heading), "{guidance}");
+    }
+}

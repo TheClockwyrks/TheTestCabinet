@@ -2,10 +2,18 @@
 //! literals.
 //!
 //! Everything gg *says* to a model — the system prompt, the pinned context blocks that render
-//! the task list, the epic/issue board and the memories, and the planning capability's plan-mode
-//! guidance — lives in `crates/gg/templates/*.hbs` and is rendered here. The templates are
-//! [embedded](include_str!) at compile time, so gg keeps its "no external resources" property:
+//! the task list, the epic/issue board and the memories, the planning capability's plan-mode
+//! guidance, the [briefs](render_review_brief) it dispatches delegated agents with, and the
+//! [compaction](render_compaction_instruction), [completion](render_completion_missing),
+//! [context-pressure](render_context_pressure) and [FSM](render_fsm_guidance) prose the loop
+//! injects between turns — lives in `crates/gg/templates/*.hbs` and is rendered here. The templates
+//! are [embedded](include_str!) at compile time, so gg keeps its "no external resources" property:
 //! the binary carries its prompts.
+//!
+//! **A prompt does not live anywhere else.** A sentence a model reads is prose that gets tuned, and
+//! prose buried in a `format!` two thousand lines into `agent.rs` does not get tuned — it gets
+//! copied. So the rule is total: if a model reads it, it is a `.hbs` file, and the Rust beside it
+//! only assembles the [context](SystemContext) it renders against.
 //!
 //! # Why templates
 //!
@@ -50,6 +58,12 @@
 //! reply that was never a program at all. Each sentence in those exists because a real model got the
 //! contract wrong without it, so treat them as behaviour: change one only with the same care as a
 //! code change, and keep the tests that pin them.
+//!
+//! The same holds for the [briefs](render_review_brief): a brief is the *only* thing a dispatched
+//! reviewer, fixer, merge agent, attempt, or judge has ever been told, and each ends by teaching the
+//! ending that agent is actually held to — which is why every one of them takes a `code` flag rather
+//! than assuming a final message the [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/)
+//! protocol does not have.
 
 use std::sync::OnceLock;
 
@@ -137,6 +151,87 @@ const CODE_NOT_A_PROGRAM_TEMPLATE: &str = include_str!("../templates/code-not-a-
 /// the not-a-program verdict again.
 const HEALING_NOTE_TEMPLATE: &str = include_str!("../templates/healing-note.hbs");
 
+/// The dispatch brief an [issue](crate::board) is handed to the agent that implements it.
+const ISSUE_BRIEF_TEMPLATE: &str = include_str!("../templates/issue-brief.hbs");
+
+/// The brief a [reviewer](crate::agent) of an issue's work is dispatched with.
+const REVIEW_BRIEF_TEMPLATE: &str = include_str!("../templates/review-brief.hbs");
+
+/// The brief an issue's own agent is re-dispatched with after a review requested changes.
+const FIX_BRIEF_TEMPLATE: &str = include_str!("../templates/fix-brief.hbs");
+
+/// The brief the merge agent is dispatched with when an issue's branch conflicts.
+const MERGE_BRIEF_TEMPLATE: &str = include_str!("../templates/merge-brief.hbs");
+
+/// The brief one attempt of a [speculative execution](crate::agent) is dispatched with.
+const ATTEMPT_BRIEF_TEMPLATE: &str = include_str!("../templates/attempt-brief.hbs");
+
+/// The brief the judge of a [speculative execution](crate::agent) is dispatched with.
+const JUDGE_BRIEF_TEMPLATE: &str = include_str!("../templates/judge-brief.hbs");
+
+/// The instruction that opens an in-loop [compaction](crate::compaction) — the message the model
+/// reads at the top of the turn that must satisfy it. Also included as a partial by
+/// [the unsatisfied feedback](COMPACTION_UNSATISFIED_TEMPLATE), which is the same instruction
+/// prefaced by what went wrong.
+const COMPACTION_INSTRUCTION_TEMPLATE: &str =
+    include_str!("../templates/compaction-instruction.hbs");
+
+/// The feedback for a reply that satisfied a pending [compaction](crate::compaction) in no way at
+/// all.
+const COMPACTION_UNSATISFIED_TEMPLATE: &str =
+    include_str!("../templates/compaction-unsatisfied.hbs");
+
+/// The refusal that answers a call a pending [compaction](crate::compaction) does not accept.
+const COMPACTION_REFUSAL_TEMPLATE: &str = include_str!("../templates/compaction-refusal.hbs");
+
+/// The system prompt the [handoff summarization](crate::compaction::CompactionStrategy::HandoffSummarization)
+/// strategy gives the separate compaction model.
+const COMPACTION_HANDOFF_SUMMARY_TEMPLATE: &str =
+    include_str!("../templates/compaction-handoff-summary.hbs");
+
+/// The system prompt the [handoff compaction](crate::compaction::CompactionStrategy::HandoffCompaction)
+/// strategy gives the separate compaction model.
+const COMPACTION_HANDOFF_COMPACT_TEMPLATE: &str =
+    include_str!("../templates/compaction-handoff-compact.hbs");
+
+/// The summary item a compacted thread is restarted from: the heading that frames it as a recap of
+/// dropped history, then the summary itself.
+const COMPACTION_PREFACE_TEMPLATE: &str = include_str!("../templates/compaction-preface.hbs");
+
+/// The summary used when the summarization model call fails — compaction must never abort the run
+/// it serves.
+const COMPACTION_FALLBACK_TEMPLATE: &str = include_str!("../templates/compaction-fallback.hbs");
+
+/// The "summary" a [memory compaction](crate::compaction::CompactionStrategy::Memory) restarts the
+/// thread from, which points at the memories rather than recapping anything.
+const COMPACTION_MEMORY_SUMMARY_TEMPLATE: &str =
+    include_str!("../templates/compaction-memory-summary.hbs");
+
+/// The feedback for a turn that ended without a [`finish`](crate::completion) call under an
+/// explicit-call completion signal.
+const COMPLETION_MISSING_TEMPLATE: &str = include_str!("../templates/completion-missing.hbs");
+
+/// The feedback for a completion a [validation command](crate::completion) rejected.
+const COMPLETION_VALIDATION_FAILURE_TEMPLATE: &str =
+    include_str!("../templates/completion-validation-failure.hbs");
+
+/// The per-turn [context-pressure](crate::context) signal: how full the window is, what is filling
+/// it, and how the agent can reclaim space itself.
+const CONTEXT_PRESSURE_TEMPLATE: &str = include_str!("../templates/context-pressure.hbs");
+
+/// The guidance for each state of the two built-in [FSM](crate::fsm) machines — the block injected
+/// into the context while that state drives the run.
+const FSM_TDD_WRITE_TESTS_TEMPLATE: &str = include_str!("../templates/fsm-tdd-write-tests.hbs");
+/// See [`FSM_TDD_WRITE_TESTS_TEMPLATE`].
+const FSM_TDD_IMPLEMENT_TEMPLATE: &str = include_str!("../templates/fsm-tdd-implement.hbs");
+/// See [`FSM_TDD_WRITE_TESTS_TEMPLATE`].
+const FSM_TDD_VERIFY_TEMPLATE: &str = include_str!("../templates/fsm-tdd-verify.hbs");
+/// See [`FSM_TDD_WRITE_TESTS_TEMPLATE`].
+const FSM_PLAN_FIRST_PLAN_TEMPLATE: &str = include_str!("../templates/fsm-plan-first-plan.hbs");
+/// See [`FSM_TDD_WRITE_TESTS_TEMPLATE`].
+const FSM_PLAN_FIRST_IMPLEMENT_TEMPLATE: &str =
+    include_str!("../templates/fsm-plan-first-implement.hbs");
+
 /// The template names registered with the [engine], in the order they are registered. Each name
 /// is what [`render`] looks up — and, for [`HEALING_NOTE_TEMPLATE`], what the four feedback
 /// templates include as a `{{> partial}}`, since handlebars resolves a partial against the same
@@ -156,6 +251,43 @@ const TEMPLATES: &[(&str, &str)] = &[
     ("code-timeout", CODE_TIMEOUT_TEMPLATE),
     ("code-not-a-program", CODE_NOT_A_PROGRAM_TEMPLATE),
     ("healing-note", HEALING_NOTE_TEMPLATE),
+    ("issue-brief", ISSUE_BRIEF_TEMPLATE),
+    ("review-brief", REVIEW_BRIEF_TEMPLATE),
+    ("fix-brief", FIX_BRIEF_TEMPLATE),
+    ("merge-brief", MERGE_BRIEF_TEMPLATE),
+    ("attempt-brief", ATTEMPT_BRIEF_TEMPLATE),
+    ("judge-brief", JUDGE_BRIEF_TEMPLATE),
+    ("compaction-instruction", COMPACTION_INSTRUCTION_TEMPLATE),
+    ("compaction-unsatisfied", COMPACTION_UNSATISFIED_TEMPLATE),
+    ("compaction-refusal", COMPACTION_REFUSAL_TEMPLATE),
+    (
+        "compaction-handoff-summary",
+        COMPACTION_HANDOFF_SUMMARY_TEMPLATE,
+    ),
+    (
+        "compaction-handoff-compact",
+        COMPACTION_HANDOFF_COMPACT_TEMPLATE,
+    ),
+    ("compaction-preface", COMPACTION_PREFACE_TEMPLATE),
+    ("compaction-fallback", COMPACTION_FALLBACK_TEMPLATE),
+    (
+        "compaction-memory-summary",
+        COMPACTION_MEMORY_SUMMARY_TEMPLATE,
+    ),
+    ("completion-missing", COMPLETION_MISSING_TEMPLATE),
+    (
+        "completion-validation-failure",
+        COMPLETION_VALIDATION_FAILURE_TEMPLATE,
+    ),
+    ("context-pressure", CONTEXT_PRESSURE_TEMPLATE),
+    ("fsm-tdd-write-tests", FSM_TDD_WRITE_TESTS_TEMPLATE),
+    ("fsm-tdd-implement", FSM_TDD_IMPLEMENT_TEMPLATE),
+    ("fsm-tdd-verify", FSM_TDD_VERIFY_TEMPLATE),
+    ("fsm-plan-first-plan", FSM_PLAN_FIRST_PLAN_TEMPLATE),
+    (
+        "fsm-plan-first-implement",
+        FSM_PLAN_FIRST_IMPLEMENT_TEMPLATE,
+    ),
 ];
 
 /// The process-wide Handlebars engine, built once with every template registered.
@@ -1128,6 +1260,413 @@ pub fn render_plan_framing(plan: &str) -> String {
 struct PlanContext {
     /// The submitted plan, verbatim. `None` for the plan-mode guidance, which has no plan yet.
     plan: Option<String>,
+}
+
+/// The empty rendering context, for the templates that interpolate nothing and exist purely so
+/// their prose is a file an operator can edit rather than a Rust literal.
+#[derive(Debug, Serialize)]
+struct NoContext {}
+
+// ---------------------------------------------------------------------------
+// Briefs
+// ---------------------------------------------------------------------------
+//
+// The prose gg hands to an agent it *dispatches*, as opposed to the prose it hands to the agent it
+// is already talking to. A brief is the whole task from its reader's point of view — it is the only
+// thing a freshly spawned reviewer, fixer, merge agent, attempt, or judge has ever been told — so
+// it is product text of exactly the same weight as the system prompt, and lives in the same place.
+//
+// Every brief that ends in a **verdict or a summary** takes a `code` flag, because under
+// [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) there is no final message
+// to end and no stopping that is not a `finish` call. A brief that teaches the wrong ending fails
+// silently: the child does the work, never reaches `completed`, and everything gated on that status
+// discards it.
+
+/// The variables `issue-brief.hbs` may reference: one [board issue](crate::board) as its assigned
+/// agent is given it.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IssueBriefContext {
+    /// The issue's id.
+    pub id: String,
+    /// The issue's title.
+    pub title: String,
+    /// The issue's overview, when it has one.
+    pub description: Option<String>,
+    /// What the issue covers.
+    pub in_scope: String,
+    /// What the issue deliberately does not cover.
+    pub out_of_scope: String,
+    /// What makes the issue done.
+    pub completion_criteria: String,
+}
+
+/// Render an [issue](crate::board)'s dispatch brief.
+pub fn render_issue_brief(context: &IssueBriefContext) -> String {
+    render("issue-brief", context)
+}
+
+/// The variables `review-brief.hbs` may reference.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewBriefContext {
+    /// The [issue brief](render_issue_brief) of the work under review, verbatim.
+    pub issue_brief: String,
+    /// The verdicts earlier rounds already returned, oldest first. Empty on a first review, which
+    /// renders no history section — a reviewer that cannot see what a previous round asked for
+    /// re-litigates it, and one shown an empty section wonders what it is missing.
+    pub history: Vec<ReviewRecordView>,
+    /// Where the work is and what it touched.
+    pub changes: ReviewChangesView,
+    /// Whether the reviewer runs in
+    /// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) mode, which changes
+    /// how it is told to deliver its verdict.
+    pub code: bool,
+}
+
+/// One earlier round's verdict, as the reviewer's brief recounts it.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewRecordView {
+    /// The agent profile that reviewed.
+    pub reviewer: String,
+    /// Whether it approved the work.
+    pub approved: bool,
+    /// The changes it asked for, when it did not approve.
+    pub items: Vec<String>,
+}
+
+/// **Where the work under review is, and what it touched** — deliberately not the work itself.
+///
+/// A reviewer is dispatched *into* the worktree it is reviewing, so it reads the code at exactly
+/// the depth it needs. Pasting the whole patch in instead made every review prompt carry every
+/// generated file the work touched (a regenerated lockfile alone can dwarf the code under review).
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewChangesView {
+    /// The per-file summary of the change (`git diff --stat`), or `None` when nothing changed
+    /// against the baseline — stated plainly so the reviewer does not hallucinate changes.
+    pub summary: Option<String>,
+    /// The directory the reviewer's own tools are rooted at — the issue's worktree checkout.
+    pub workspace: String,
+    /// The commit the work branched from, when there is one: what a reviewer with a shell diffs
+    /// against to see the change itself.
+    pub baseline: Option<String>,
+}
+
+/// Render the brief a [reviewer](crate::agent) of an issue's work is dispatched with.
+pub fn render_review_brief(context: &ReviewBriefContext) -> String {
+    render("review-brief", context)
+}
+
+/// One item of an ordered, model-facing list, numbered by the caller because Handlebars' `@index`
+/// counts from zero and a prompt counts from one.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NumberedItem {
+    /// The item's 1-based number.
+    pub number: usize,
+    /// The item's text.
+    pub text: String,
+}
+
+/// The variables `fix-brief.hbs` may reference.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FixBriefContext {
+    /// The [issue brief](render_issue_brief) of the work being redone, verbatim.
+    pub issue_brief: String,
+    /// The reviewer's actionable items. Empty renders a generic item instead, so the assigned agent
+    /// always has something to act on.
+    pub items: Vec<NumberedItem>,
+    /// Whether the fixing agent runs in
+    /// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) mode.
+    pub code: bool,
+}
+
+/// Render the brief an issue's own agent is re-dispatched with after a review requested changes.
+/// The `## Requested changes` heading it renders is a stable marker (a worker can detect it is on a
+/// fix pass).
+pub fn render_fix_brief(context: &FixBriefContext) -> String {
+    render("fix-brief", context)
+}
+
+/// The variables `merge-brief.hbs` may reference.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MergeBriefContext {
+    /// The issue whose branch conflicts.
+    pub issue_id: String,
+    /// The branch being merged.
+    pub branch: String,
+    /// What git reported.
+    pub reason: String,
+    /// Whether the merge agent runs in
+    /// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) mode.
+    pub code: bool,
+}
+
+/// Render the [merge agent](crate::agent)'s brief.
+///
+/// It is deliberately concrete about the end state — a committed merge, no conflict markers left —
+/// because that is what gg checks afterwards, and an agent that thinks "resolved" means "edited the
+/// files" would leave the workspace mid-merge.
+pub fn render_merge_brief(context: &MergeBriefContext) -> String {
+    render("merge-brief", context)
+}
+
+/// The variables `attempt-brief.hbs` may reference.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AttemptBriefContext {
+    /// The shared task every attempt is given.
+    pub base: String,
+    /// This attempt's 1-based number.
+    pub index: usize,
+    /// How many attempts are running.
+    pub count: usize,
+    /// This attempt's assigned approach hint, when one was given.
+    pub approach: Option<String>,
+    /// Whether the attempt runs in
+    /// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) mode.
+    pub code: bool,
+}
+
+/// Render one attempt's brief for a [speculative execution](crate::agent).
+pub fn render_attempt_brief(context: &AttemptBriefContext) -> String {
+    render("attempt-brief", context)
+}
+
+/// The variables `judge-brief.hbs` may reference.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JudgeBriefContext {
+    /// The task every attempt was given.
+    pub task: String,
+    /// The candidates, renumbered 1..N — the judge never sees the attempts that were discarded, and
+    /// the caller maps its pick back to the original attempt index.
+    pub attempts: Vec<JudgeAttemptView>,
+    /// How many candidates there are.
+    pub count: usize,
+    /// Whether the judge runs in
+    /// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) mode.
+    pub code: bool,
+}
+
+/// One candidate as the judge's brief presents it.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JudgeAttemptView {
+    /// The candidate's 1-based number, as the judge names it in its verdict.
+    pub number: usize,
+    /// The attempt's own closing summary, or `None` when it gave none.
+    pub summary: Option<String>,
+    /// The attempt's diff against the baseline, or `None` when it changed nothing.
+    pub diff: Option<String>,
+}
+
+/// Render the judge's brief for a [speculative execution](crate::agent).
+pub fn render_judge_brief(context: &JudgeBriefContext) -> String {
+    render("judge-brief", context)
+}
+
+// ---------------------------------------------------------------------------
+// Compaction
+// ---------------------------------------------------------------------------
+
+/// The variables the [compaction](crate::compaction) templates may reference: which requirement is
+/// pending, how this run's model makes the calls that satisfy it, and (for the refusal) what was
+/// refused.
+///
+/// The requirement is three booleans rather than a strategy name for the same reason
+/// [`CompactionView`] carries booleans: the templates render in strict mode with no comparison
+/// helper, so a name would have to be re-derived in Handlebars — which is where a prompt and the
+/// loop it describes drift.
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompactionPromptContext {
+    /// The next reply's text **is** the summary.
+    pub summary: bool,
+    /// The agent must call [`compact`](crate::compaction).
+    pub compact_call: bool,
+    /// The agent must record its working state as [memories](crate::memories).
+    pub memory_writes: bool,
+    /// Whether the run is in [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/)
+    /// mode, so the instruction names the call the way that run's model actually makes it.
+    pub code_mode: bool,
+    /// The name of the compact tool, so the prompt names it from one source.
+    pub compact_tool: String,
+    /// The call that records a memory, as this run's
+    /// [memory strategy](crate::memories::MemoryStrategy) names it in this execution mode —
+    /// backticks included, since they arrive already quoted. Interpolated rather than written into
+    /// the template, which would otherwise name the scratchpad's tools at a run that was never
+    /// offered them.
+    pub memory_create: String,
+    /// The call that revises a memory. See [`memory_create`](Self::memory_create).
+    pub memory_revise: String,
+    /// The call that deletes a memory. See [`memory_create`](Self::memory_create).
+    pub memory_delete: String,
+    /// The call the refusal answers, named because a model told "do X" while its Y silently fails
+    /// reads the failure as gg being broken and retries Y. Only the refusal renders it.
+    pub refused: Option<String>,
+}
+
+/// Render the instruction that opens an in-loop [compaction](crate::compaction).
+pub fn render_compaction_instruction(context: &CompactionPromptContext) -> String {
+    render("compaction-instruction", context)
+}
+
+/// Render the feedback for a reply that satisfied a pending compaction in no way at all.
+pub fn render_compaction_unsatisfied(context: &CompactionPromptContext) -> String {
+    render("compaction-unsatisfied", context)
+}
+
+/// Render the refusal that answers a call a pending compaction does not accept.
+pub fn render_compaction_refusal(context: &CompactionPromptContext) -> String {
+    render("compaction-refusal", context)
+}
+
+/// Render the system prompt the
+/// [handoff summarization](crate::compaction::CompactionStrategy::HandoffSummarization) strategy
+/// gives the separate compaction model.
+pub fn render_compaction_handoff_summary() -> String {
+    render("compaction-handoff-summary", &NoContext {})
+}
+
+/// Render the system prompt the
+/// [handoff compaction](crate::compaction::CompactionStrategy::HandoffCompaction) strategy gives
+/// the separate compaction model.
+pub fn render_compaction_handoff_compact(compact_tool: &str) -> String {
+    render(
+        "compaction-handoff-compact",
+        &CompactionPromptContext {
+            compact_tool: compact_tool.to_string(),
+            ..CompactionPromptContext::default()
+        },
+    )
+}
+
+/// Render the summary item a compacted thread is restarted from: the heading that frames it as a
+/// recap of dropped history, then `summary` itself.
+pub fn render_compaction_preface(summary: &str) -> String {
+    render("compaction-preface", &SummaryContext { summary })
+}
+
+/// The variables `compaction-preface.hbs` may reference.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SummaryContext<'a> {
+    /// The summary the thread is restarted from.
+    summary: &'a str,
+}
+
+/// Render the summary used when the summarization model call fails.
+pub fn render_compaction_fallback() -> String {
+    render("compaction-fallback", &NoContext {})
+}
+
+/// Render the "summary" a [memory compaction](crate::compaction::CompactionStrategy::Memory)
+/// restarts the thread from.
+pub fn render_compaction_memory_summary() -> String {
+    render("compaction-memory-summary", &NoContext {})
+}
+
+// ---------------------------------------------------------------------------
+// Completion
+// ---------------------------------------------------------------------------
+
+/// The variables `completion-missing.hbs` may reference.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FinishToolContext<'a> {
+    /// The name of the finish tool, so the prompt names it from one source.
+    finish_tool: &'a str,
+}
+
+/// Render the feedback for a turn that ended without a [`finish`](crate::completion) call under an
+/// explicit-call completion signal — a text-only reply that is an error rather than a completion.
+pub fn render_completion_missing(finish_tool: &str) -> String {
+    render("completion-missing", &FinishToolContext { finish_tool })
+}
+
+/// The variables `completion-validation-failure.hbs` may reference.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ValidationFailureContext<'a> {
+    /// Which command failed, 1-based.
+    pub index: usize,
+    /// How many commands gate completion.
+    pub total: usize,
+    /// The command as it reads in the prompt.
+    pub command: &'a str,
+    /// What it printed.
+    pub output: &'a str,
+}
+
+/// Render the feedback for a completion a [validation command](crate::completion) rejected.
+pub fn render_completion_validation_failure(context: &ValidationFailureContext<'_>) -> String {
+    render("completion-validation-failure", context)
+}
+
+// ---------------------------------------------------------------------------
+// Context pressure
+// ---------------------------------------------------------------------------
+
+/// The variables `context-pressure.hbs` may reference: how full the window is and what is filling
+/// it.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContextPressureContext {
+    /// Tokens currently in the window.
+    pub total: u64,
+    /// The window's size.
+    pub limit: u64,
+    /// How full it is, as a percentage.
+    pub percent: u64,
+    /// The largest [sources](crate::context) in the window, pre-labelled and pre-rounded, largest
+    /// first. Empty renders no consumers clause.
+    pub consumers: Vec<String>,
+}
+
+/// Render the per-turn [context-pressure](crate::context) signal.
+pub fn render_context_pressure(context: &ContextPressureContext) -> String {
+    render("context-pressure", context)
+}
+
+// ---------------------------------------------------------------------------
+// FSM guidance
+// ---------------------------------------------------------------------------
+
+/// One state of a built-in [FSM](crate::fsm) machine, naming the template that carries its
+/// guidance.
+///
+/// The guidance is prose the model reads for the whole time that state drives the run, so it is
+/// templated like every other prompt — but it takes no variables, since a built-in machine's states
+/// are fixed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FsmGuidance {
+    /// The TDD machine's `write_tests` state.
+    TddWriteTests,
+    /// The TDD machine's `implement` state.
+    TddImplement,
+    /// The TDD machine's `verify` state.
+    TddVerify,
+    /// The plan-first machine's read-only `plan` state.
+    PlanFirstPlan,
+    /// The plan-first machine's `implement` state.
+    PlanFirstImplement,
+}
+
+/// Render one built-in [FSM](crate::fsm) state's guidance.
+pub fn render_fsm_guidance(state: FsmGuidance) -> String {
+    let name = match state {
+        FsmGuidance::TddWriteTests => "fsm-tdd-write-tests",
+        FsmGuidance::TddImplement => "fsm-tdd-implement",
+        FsmGuidance::TddVerify => "fsm-tdd-verify",
+        FsmGuidance::PlanFirstPlan => "fsm-plan-first-plan",
+        FsmGuidance::PlanFirstImplement => "fsm-plan-first-implement",
+    };
+    render(name, &NoContext {})
 }
 
 #[cfg(test)]

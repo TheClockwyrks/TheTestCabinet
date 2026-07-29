@@ -112,7 +112,7 @@ use test_cabinet_core::gg::{
 
 use crate::dag::{self, DagNode};
 use crate::model::Message;
-use crate::prompts::{self, BoardBlockContext, EpicItemView, IssueItemView};
+use crate::prompts::{self, BoardBlockContext, EpicItemView, IssueBriefContext, IssueItemView};
 
 /// Default ceiling on the number of epics the board may hold at once.
 pub const DEFAULT_MAX_EPICS: usize = 50;
@@ -1316,14 +1316,14 @@ impl BoardStore {
     /// reshaping), matching the [dispatch seam](self) the issue fields were designed for.
     fn issue_brief(&self, id: &str) -> Option<String> {
         let issue = self.issues.iter().find(|issue| issue.id == id)?;
-        let mut brief = format!("# Issue `{}`: {}", issue.id, issue.title);
-        if let Some(description) = &issue.description {
-            brief.push_str(&format!("\n\n{description}"));
-        }
-        brief.push_str(&format!("\n\n## In scope\n{}", issue.in_scope));
-        brief.push_str(&format!("\n\n## Out of scope\n{}", issue.out_of_scope));
-        brief.push_str(&format!("\n\n## Done when\n{}", issue.completion_criteria));
-        Some(brief)
+        Some(prompts::render_issue_brief(&IssueBriefContext {
+            id: issue.id.clone(),
+            title: issue.title.clone(),
+            description: issue.description.clone(),
+            in_scope: issue.in_scope.clone(),
+            out_of_scope: issue.out_of_scope.clone(),
+            completion_criteria: issue.completion_criteria.clone(),
+        }))
     }
 
     /// One issue as the pinned [context block](Self::context_block) renders it: its line (status,

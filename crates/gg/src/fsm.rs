@@ -41,6 +41,7 @@ use std::sync::Arc;
 use test_cabinet_core::gg::{CAPABILITY_FSM, GgAgentConfig, GgCapabilitySet};
 
 use crate::planning::{Planner, resolve_planner};
+use crate::prompts::{self, FsmGuidance};
 use crate::tools::{ADVANCE_STATE_TOOL, is_read_only_tool};
 
 /// The `machine` param (on the [`fsm`](CAPABILITY_FSM) capability) that names which built-in
@@ -310,33 +311,19 @@ fn tdd_machine() -> Machine {
         states: vec![
             FsmState {
                 name: "write_tests",
-                guidance: "# Test-driven development: write the tests first\n\nYou are following a \
-                    strict test-driven process. **Before writing any implementation, write the \
-                    tests** that specify the behavior you are about to build — put them in clearly \
-                    named test files (for example `*.test.*`, `*_test.*`, `*.spec.*`, or under a \
-                    `tests/` directory). When your tests are in place, call `advance_state` to move \
-                    on to implementing. You will not be allowed to advance to `implement` until at \
-                    least one test file exists."
-                    .to_string(),
+                guidance: prompts::render_fsm_guidance(FsmGuidance::TddWriteTests),
                 tool_policy: ToolPolicy::All,
                 exit: StateExit::Advance(AdvanceGuard::TestsExist),
             },
             FsmState {
                 name: "implement",
-                guidance: "# Implement to satisfy the tests\n\nYour tests are written. Now implement \
-                    the code that makes them pass — keep the tests as your specification and do not \
-                    weaken them to fit the implementation. When the implementation is in place, call \
-                    `advance_state` to move on to verifying it against the tests."
-                    .to_string(),
+                guidance: prompts::render_fsm_guidance(FsmGuidance::TddImplement),
                 tool_policy: ToolPolicy::All,
                 exit: StateExit::Advance(AdvanceGuard::ImplementationExists),
             },
             FsmState {
                 name: "verify",
-                guidance: "# Verify with the tests\n\nRun the tests and confirm they pass against \
-                    your implementation. Fix any failures until the suite is green, then give a \
-                    short summary and stop. This is the final step of the process."
-                    .to_string(),
+                guidance: prompts::render_fsm_guidance(FsmGuidance::TddVerify),
                 tool_policy: ToolPolicy::All,
                 exit: StateExit::Terminal,
             },
@@ -354,26 +341,14 @@ fn plan_first_machine() -> Machine {
         states: vec![
             FsmState {
                 name: "plan",
-                guidance: "# Plan first (read-only)\n\nYou are in a read-only planning pass: your \
-                    tools are restricted to exploration (read_file, list_dir, read_skill, \
-                    search_archive) — you cannot write, edit, or run commands yet. Understand the \
-                    workspace and think the work through, then call `advance_state` with your \
-                    implementation plan in the `note` (the files to create or change, the order of \
-                    work, and the key decisions). Advancing clears this exploration and starts you \
-                    fresh with just the original request and your plan, so make the plan \
-                    self-contained."
-                    .to_string(),
+                guidance: prompts::render_fsm_guidance(FsmGuidance::PlanFirstPlan),
                 // Read-only, mirroring plan mode: the agent can only explore while planning.
                 tool_policy: ToolPolicy::ReadOnly,
                 exit: StateExit::PlanReset,
             },
             FsmState {
                 name: "implement",
-                guidance:
-                    "# Implement your plan\n\nImplement the plan you just submitted. You have \
-                    your full toolset back and a clean window; adapt the plan if you discover it \
-                    needs to change. When the build is complete, give a short summary and stop."
-                        .to_string(),
+                guidance: prompts::render_fsm_guidance(FsmGuidance::PlanFirstImplement),
                 tool_policy: ToolPolicy::All,
                 exit: StateExit::Terminal,
             },

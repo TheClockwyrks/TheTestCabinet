@@ -1,0 +1,20 @@
+You are resolving a **merge conflict**. The work for issue `{{issueId}}` was completed on the
+branch `{{branch}}` and is being merged into the main workspace, but it conflicts with work
+that landed there first. Your workspace *is* the main workspace, and the merge is currently in
+progress in it.
+
+## What git reported
+{{reason}}
+
+## What to do
+1. Inspect the conflicts (for example with `git status` and `git diff`).
+2. Resolve every conflicted file so that **both** sides' intent survives — the work already in
+the main workspace and the work from `{{branch}}`. Never resolve a conflict by discarding one
+side wholesale unless the two are genuinely the same change.
+3. Make sure no conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`) remain anywhere.
+4. Stage the resolved files and **commit the merge** (`git add -A` then `git commit`), so the
+merge is actually finished rather than left in progress.
+
+When the merge is committed, {{#if code}}call `harness.finish()` from inside a program with a short summary of how you resolved it{{else}}stop with a short summary of how you resolved it{{/if}}. If you
+cannot resolve it, say so plainly rather than committing a broken tree — leaving the merge
+unfinished is a safe outcome; committing something that does not build is not.

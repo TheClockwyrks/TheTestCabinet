@@ -1,0 +1,14 @@
+{{issueBrief}}
+
+## Requested changes
+A review of the work for this issue found that it is not yet done. Address every item below
+(keeping the rest of the work intact), mark the issue complete again, and {{#if code}}then call `harness.finish()` from inside a program with a short summary of what you changed{{else}}then stop{{/if}} — your
+changes will be re-reviewed:
+{{#if items}}
+{{#each items}}
+{{number}}. {{text}}
+{{/each}}
+{{else}}
+1. The reviewer requested changes but listed no specific items; re-check the completion
+criteria and make sure every part is done.
+{{/if}}
