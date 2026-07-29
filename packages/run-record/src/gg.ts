@@ -1802,8 +1802,9 @@ export type GgTelemetryKind =
       type: "compaction";
       /**
        * The name of the [summarization strategy](https://docs.testcabinet.ai/gg/compaction/)
-       * that produced this summary — the capability's resolved `implementation`, `model`
-       * (the default prose recap) or `structured` (fixed sections). Recorded per boundary so
+       * that produced this summary — the capability's resolved `implementation`, e.g.
+       * `self-summarization` (the default: the agent's own prose recap) or
+       * `handoff-compaction` (a separate model's `compact` call). Recorded per boundary so
        * the console's Compaction view can compare what each strategy retained.
        */
       strategy: string;
@@ -2550,8 +2551,9 @@ export type GgTelemetryEvent = {
       type: "compaction";
       /**
        * The name of the [summarization strategy](https://docs.testcabinet.ai/gg/compaction/)
-       * that produced this summary — the capability's resolved `implementation`, `model`
-       * (the default prose recap) or `structured` (fixed sections). Recorded per boundary so
+       * that produced this summary — the capability's resolved `implementation`, e.g.
+       * `self-summarization` (the default: the agent's own prose recap) or
+       * `handoff-compaction` (a separate model's `compact` call). Recorded per boundary so
        * the console's Compaction view can compare what each strategy retained.
        */
       strategy: string;

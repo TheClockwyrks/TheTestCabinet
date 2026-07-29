@@ -391,14 +391,19 @@ async fn drive_recorded_code_run(
 /// A disabled compaction setup — the `drive` tests that are not about compaction never
 /// compact (matching a run without the opt-in capability).
 fn no_compaction() -> CompactionSetup {
-    compaction_setup(false, CompactionStrategy::Model, 1.0)
+    compaction_setup(false, CompactionStrategy::HandoffSummarization, 1.0)
 }
 
-/// An enabled compaction setup whose trigger is `trigger_fullness` and the default
-/// (mock-backed) summarizer. The trigger is not a standalone knob — it is `1 - summaryHeadroom`
-/// — so this sets the headroom that yields the requested trigger.
+/// An enabled compaction setup whose trigger is `trigger_fullness`, condensing **out of band** on
+/// the (mock-backed) summarizer — so a `drive` test that is not about an in-loop strategy crosses a
+/// boundary without the compaction taking a turn from the agent. The trigger is not a standalone
+/// knob — it is `1 - summaryHeadroom` — so this sets the headroom that yields the requested trigger.
 fn compaction_at(trigger_fullness: f64) -> CompactionSetup {
-    compaction_setup(true, CompactionStrategy::Model, trigger_fullness)
+    compaction_setup(
+        true,
+        CompactionStrategy::HandoffSummarization,
+        trigger_fullness,
+    )
 }
 
 /// An enabled compaction setup running `strategy`, for the `drive` e2es that exercise one of the

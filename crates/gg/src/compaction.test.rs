@@ -210,13 +210,15 @@ fn working_window_only_reserves_when_compaction_is_on() {
 // The out-of-band summarizers, offline
 // ---------------------------------------------------------------------------
 
-/// The default model summarizer is answered offline by the mock's marker path, returning
-/// the deterministic canned summary — and **without** consuming a scripted turn, so the
-/// mock's main script stays in step across a compaction boundary.
+/// The prose summarizer is answered offline by the mock's marker path, returning the
+/// deterministic canned summary — and **without** consuming a scripted turn, so the mock's main
+/// script stays in step across a compaction boundary. It is also what
+/// [`resolve_summarizer`] hands back for that strategy, so the wiring is covered with it.
 #[tokio::test]
-async fn mock_summarizer_answers_offline_without_consuming_the_script() {
+async fn handoff_summarizer_answers_offline_without_consuming_the_script() {
     let client = MockClient::with_default_script("mock/echo");
-    let summarizer = ModelSummarizer;
+    let summarizer = resolve_summarizer(CompactionStrategy::HandoffSummarization)
+        .expect("a handoff strategy has an out-of-band summarizer");
 
     let history = vec![
         Message::user("build a game"),
@@ -243,41 +245,29 @@ async fn mock_summarizer_answers_offline_without_consuming_the_script() {
     );
 }
 
-/// Every prose strategy's prompt carries the marker, so all three are answered offline by the mock
-/// — returning the canned summary without advancing the scripted cursor. This proves each is wired
-/// and offline-safe, even though their outputs are indistinguishable under the mock.
-#[tokio::test]
-async fn every_prose_summarizer_answers_offline_without_consuming_the_script() {
-    let history = vec![
-        Message::user("build a game"),
-        Message::assistant(Some("working on it".to_string()), Vec::new()),
-    ];
-    for strategy in [
-        CompactionStrategy::Structured,
+/// Only the two handoff strategies condense out of band, so only they resolve a summarizer; the
+/// three in-loop ones have none at all, because the agent writes their summary in its own thread.
+#[test]
+fn only_the_handoff_strategies_resolve_a_summarizer() {
+    for handoff in [
         CompactionStrategy::HandoffSummarization,
+        CompactionStrategy::HandoffCompaction,
     ] {
-        let client = MockClient::with_default_script("mock/echo");
-        let summary = resolve_summarizer(strategy)
-            .summarize(SummaryRequest {
-                history: &history,
-                client: &client,
-            })
-            .await;
-        assert_eq!(
-            summary.summary,
-            MOCK_COMPACTION_SUMMARY,
-            "{} is answered offline",
-            strategy.id()
+        assert!(
+            resolve_summarizer(handoff).is_some(),
+            "{} condenses out of band",
+            handoff.id()
         );
-        let next = client
-            .complete(&[Message::user("go")], &[])
-            .await
-            .expect("mock completes");
-        assert_eq!(
-            next.tool_calls.first().map(|c| c.name.as_str()),
-            Some("read_skill"),
-            "{} did not consume a scripted turn",
-            strategy.id()
+    }
+    for in_loop in [
+        CompactionStrategy::SelfSummarization,
+        CompactionStrategy::SelfCompaction,
+        CompactionStrategy::Memory,
+    ] {
+        assert!(
+            resolve_summarizer(in_loop).is_none(),
+            "{} is condensed by the agent itself",
+            in_loop.id()
         );
     }
 }
@@ -316,7 +306,7 @@ async fn does_not_compact_when_disabled() {
     let client = mock();
     // A headroom whose derived trigger (0.1) the over-full window easily clears — proving it is
     // `enabled: false`, not the threshold, that blocks the compaction here.
-    let setup = setup(CompactionStrategy::Model, 0.9, false);
+    let setup = setup(CompactionStrategy::HandoffSummarization, 0.9, false);
     let mut ctx = model(10);
     ctx.push_system("a system prompt that easily exceeds the tiny window budget here");
     ctx.push_assistant(Some("lots of ephemeral text ".repeat(4)), Vec::new());
@@ -330,7 +320,7 @@ async fn does_not_compact_when_disabled() {
 async fn does_not_compact_below_the_threshold() {
     let client = mock();
     // Headroom 0.1 → trigger 0.9.
-    let setup = setup(CompactionStrategy::Model, 0.1, true);
+    let setup = setup(CompactionStrategy::HandoffSummarization, 0.1, true);
     let mut ctx = model(100_000);
     ctx.push_system("short");
     ctx.push_assistant(Some("a little work".to_string()), Vec::new());
@@ -344,7 +334,7 @@ async fn does_not_compact_below_the_threshold() {
 async fn does_not_compact_with_no_ephemeral_history() {
     let client = mock();
     // Headroom 0.9 → trigger 0.1.
-    let setup = setup(CompactionStrategy::Model, 0.9, true);
+    let setup = setup(CompactionStrategy::HandoffSummarization, 0.9, true);
     // Over the threshold, but every item is pinned — there is nothing to summarize.
     let mut ctx = model(20);
     ctx.push_system("a pinned system prompt with enough text to cross the low threshold");
@@ -367,7 +357,7 @@ async fn does_not_compact_with_no_ephemeral_history() {
 async fn compacts_and_retains_pinned_state_verbatim() {
     let client = mock();
     // Headroom 0.5 → trigger 0.5.
-    let setup = setup(CompactionStrategy::Model, 0.5, true);
+    let setup = setup(CompactionStrategy::HandoffSummarization, 0.5, true);
 
     const SKILL_BODY: &str = "SKILL BODY: scaffold an index.html with a canvas and a loop.";
     const MEMORY_BODY: &str = "MEMORY BODY: the game is an arrow-key maze runner.";
@@ -448,7 +438,7 @@ async fn compacts_and_retains_pinned_state_verbatim() {
             summary,
             summary_fallback,
         } => {
-            assert_eq!(strategy, "model");
+            assert_eq!(strategy, "handoff-summarization");
             assert_eq!(trigger_fullness, 0.5);
             assert_eq!(before_tokens, before);
             assert!(after_tokens < before_tokens, "compaction reclaimed window");

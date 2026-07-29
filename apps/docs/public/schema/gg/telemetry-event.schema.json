@@ -1233,7 +1233,7 @@
           "description": "The pinned state carried across the boundary verbatim (the retention proof)."
         },
         "strategy": {
-          "description": "The name of the [summarization strategy](https://docs.testcabinet.ai/gg/compaction/)\nthat produced this summary — the capability's resolved `implementation`, `model`\n(the default prose recap) or `structured` (fixed sections). Recorded per boundary so\nthe console's Compaction view can compare what each strategy retained.",
+          "description": "The name of the [summarization strategy](https://docs.testcabinet.ai/gg/compaction/)\nthat produced this summary — the capability's resolved `implementation`, e.g.\n`self-summarization` (the default: the agent's own prose recap) or\n`handoff-compaction` (a separate model's `compact` call). Recorded per boundary so\nthe console's Compaction view can compare what each strategy retained.",
           "type": "string"
         },
         "summary": {

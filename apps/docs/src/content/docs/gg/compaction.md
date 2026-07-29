@@ -28,22 +28,8 @@ Requirements:
 state without changing anything else about a run. The compaction capability's
 **Summarization strategy** field selects it (empty picks the default).
 
-Seven ship, and they divide along two axes: who does the condensing, and what the
+Five ship, and they divide along two axes: who does the condensing, and what the
 answer is.
-
-### gg condenses it, out of band
-
-Performed *between* the agent's turns, by a model call the agent never sees. The
-agent's next turn simply finds a smaller window.
-
-- **Model summary** (`model`, the default) — one call on the run's own model that
-  writes a focused prose recap of the thread being dropped: what the agent is
-  building, the key decisions and discoveries, files changed, what is in progress,
-  and the next step.
-- **Structured extract** (`structured`) — the same call, steered to emit that state
-  under fixed headings (`Building`, `Decisions`, `Files`, `In progress`,
-  `Next step`) rather than free prose — a more predictable shape to compare across
-  runs.
 
 ### The agent condenses its own thread
 
@@ -53,9 +39,9 @@ call is refused** — the window is already full, so anything else only makes it
 worse. A model that never complies stops on the run's
 [error ceilings](/gg/execution-limits/) rather than looping.
 
-- **Self-summarization** (`self-summarization`) — gg asks the agent to summarize the
-  work done and the work remaining, and its next reply (plain text, no tool calls)
-  *is* the summary the thread restarts from. Under
+- **Self-summarization** (`self-summarization`, the default) — gg asks the agent to
+  summarize the work done and the work remaining, and its next reply (plain text, no
+  tool calls) *is* the summary the thread restarts from. Under
   [responses-as-code](/gg/responses-as-code/) that one turn is prose rather than a
   program, and gg says so in the request.
 - **Self-compaction** (`self-compaction`) — the agent calls a **`compact` tool** with
@@ -73,12 +59,13 @@ worse. A model that never complies stops on the run's
   run that names it without memories falls back to the default rather than stalling
   on a gate it could never satisfy.
 
-### A separate model condenses it
+### A separate model condenses it, out of band
 
-The two **handoff** strategies do the out-of-band job on a *different* model, named
-by the capability's **Compaction model** (`model`) param and resolved through the
-same client factory every agent's model is. The working agent is never interrupted
-and is never offered the `compact` tool.
+The two **handoff** strategies are the ones performed *between* the agent's turns, by
+a call it never sees — the working agent is never interrupted, is never offered the
+`compact` tool, and its next turn simply finds a smaller window. They condense on a
+*different* model, named by the capability's **Compaction model** (`model`) param and
+resolved through the same client factory every agent's model is.
 
 The thread is rebuilt before the handoff model sees it: the working agent's system
 prompt, skills and memories are dropped (they are retained anyway, so restating them
@@ -101,14 +88,14 @@ instead and says so in a `warn`: a misconfiguration is not a reason to stop
 compacting, and a run that stopped compacting would overflow its window a few turns
 later.
 
-### Common to all seven
+### Common to all five
 
 Every strategy carries the pinned state forward verbatim (below); they differ only in
 how the *history* is condensed. A run naming a strategy gg doesn't recognize falls
-back to the default rather than failing to launch, so a sweep can reference a
-not-yet-built strategy without breaking. Adding an out-of-band strategy is a drop-in
-behind the `Summarizer` trait in `crates/gg/src/compaction.rs`; adding an in-loop one
-is a variant of `PendingCompaction` beside it.
+back to the default (**self-summarization**) rather than failing to launch, so a sweep
+can reference a not-yet-built strategy without breaking. Adding an out-of-band
+strategy is a drop-in behind the `Summarizer` trait in `crates/gg/src/compaction.rs`;
+adding an in-loop one is a variant of `PendingCompaction` beside it.
 
 A compaction that could not be produced — a failed model call, or an agent that
 answered the request with nothing usable — still happens: the window is full either

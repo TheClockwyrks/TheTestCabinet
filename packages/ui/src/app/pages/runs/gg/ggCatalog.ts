@@ -509,14 +509,12 @@ export const FSM_MACHINE_HINT =
   "None runs no state machine. tdd: write tests → implement → verify. plan-first: plan pass → implement pass.";
 
 // The compaction strategies gg resolves at run time (`crates/gg/src/compaction.rs`),
-// in editor order — grouped by who condenses the thread: gg out of band on the run's
-// own model (the first two), the working agent itself (the next two and the last),
-// or a separate handoff model. An unrecognized name falls back to the default rather
-// than failing to launch, so the field stays a closed picker rather than free text.
+// in editor order — grouped by who condenses the thread: the working agent itself (the
+// first two and the last) or a separate handoff model, out of band. An unrecognized name
+// falls back to the default rather than failing to launch, so the field stays a closed
+// picker rather than free text.
 export const SUMMARIZER_OPTIONS = [
-  { value: "", label: "Model summary (default)" },
-  { value: "structured", label: "Structured extract" },
-  { value: "self-summarization", label: "Self-summarization" },
+  { value: "", label: "Self-summarization (default)" },
   { value: "self-compaction", label: "Self-compaction" },
   { value: "handoff-summarization", label: "Handoff summarization" },
   { value: "handoff-compaction", label: "Handoff compaction" },
@@ -534,7 +532,7 @@ export const HANDOFF_SUMMARIZERS = [
 // What each compaction strategy does — the detail lifted off the picker's option
 // labels into the field's help tooltip.
 export const SUMMARIZER_HINT =
-  "Model summary and Structured extract condense the thread out of band on the run's own model — prose, or the same state under fixed headings. Self-summarization asks the agent, in its own thread, to write the summary its next context is rebuilt from. Self-compaction gives the agent a `compact` tool it calls with a summary AND the files to re-read, so it chooses what survives. The two Handoff strategies do the same two jobs on a separate model (set below), which reads the thread as labelled messages and never interrupts the agent. Memory compaction requires Memories: the agent writes its working state to memories instead of a summary, and those cross the boundary verbatim.";
+  "Self-summarization (the default) asks the agent, in its own thread, to write the summary its next context is rebuilt from. Self-compaction gives the agent a `compact` tool it calls with a summary AND the files to re-read, so it chooses what survives. The two Handoff strategies do the same two jobs on a separate model (set below), which reads the thread as labelled messages and never interrupts the agent. Memory compaction requires Memories: the agent writes its working state to memories instead of a summary, and those cross the boundary verbatim.";
 
 export const CAPABILITIES: ReadonlyArray<CapSpec> = [
   // --- Models & tools ---------------------------------------------------------

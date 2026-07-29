@@ -688,21 +688,6 @@ impl ContextModel {
         self.items.iter().any(|item| !item.retention.is_pinned())
     }
 
-    /// The messages fed to a [summarizer](https://docs.testcabinet.ai/gg/compaction/)
-    /// before a compaction: the pinned build prompt (for grounding — what the run set out
-    /// to do) followed by every ephemeral item, in conversation order. The pinned prompt
-    /// is included for context but is **not** removed by compaction; only the ephemeral
-    /// items it accompanies here are replaced by the summary.
-    pub fn summary_source_messages(&self) -> Vec<Message> {
-        self.items
-            .iter()
-            .filter(|item| {
-                item.source == GgContextSource::UserPrompt || !item.retention.is_pinned()
-            })
-            .map(|item| item.message.clone())
-            .collect()
-    }
-
     /// Drop every [`Ephemeral`](Retention::Ephemeral) item, keeping the pinned prefix verbatim
     /// and re-framing any pinned `tool`-role item to a standalone `user` message — the shared
     /// **context-reset primitive** behind both

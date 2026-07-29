@@ -29,7 +29,7 @@ function gg(kind: GgTelemetryKind): HarnessEvent {
 function compaction(over: Partial<GgTelemetryKind> = {}): HarnessEvent {
   return gg({
     type: "compaction",
-    strategy: "structured",
+    strategy: "self-summarization",
     triggerFullness: 0.85,
     beforeTokens: 1000,
     afterTokens: 250,
@@ -59,7 +59,7 @@ describe("compaction reducer fold", () => {
     expect(state.compactions).toHaveLength(1);
     const c = state.compactions[0];
     if (!c) throw new Error("expected a compaction boundary");
-    expect(c.strategy).toBe("structured");
+    expect(c.strategy).toBe("self-summarization");
     expect(c.summary).toContain("Building: a maze game");
     expect(c.summaryFallback).toBe(false);
     expect(c.beforeBySource).toHaveLength(3);
@@ -73,7 +73,7 @@ describe("CompactionView", () => {
   it("renders each boundary's strategy, reclaim, and summary text", () => {
     const state = reduceGgEvents([compaction()]);
     render(<CompactionView compactions={state.compactions} />);
-    expect(screen.getByText("Structured extract")).toBeInTheDocument();
+    expect(screen.getByText("Self-summarization")).toBeInTheDocument();
     // 1000 -> 250 reclaims 75%.
     expect(screen.getByText(/reclaimed 75%/)).toBeInTheDocument();
     expect(screen.getByText(/Building: a maze game/)).toBeInTheDocument();

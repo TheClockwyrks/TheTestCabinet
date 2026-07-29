@@ -174,7 +174,7 @@ fn counts_compactions_and_context_overflow() {
     let tracker = SessionSummaryTracker::new();
     tracker.observe(&breakdown(0.4));
     tracker.observe(&GgTelemetryKind::Compaction {
-        strategy: "model".to_string(),
+        strategy: "self-summarization".to_string(),
         trigger_fullness: 0.8,
         before_tokens: 1000,
         after_tokens: 200,

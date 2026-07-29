@@ -25,8 +25,6 @@ import {
 // Friendly labels for the built-in strategies; an unknown id (a study naming a
 // not-yet-built strategy, which gg runs as the default) shows verbatim.
 const STRATEGY_LABELS: Record<string, string> = {
-  model: "Model summary",
-  structured: "Structured extract",
   "self-summarization": "Self-summarization",
   "self-compaction": "Self-compaction",
   "handoff-summarization": "Handoff summarization",
@@ -101,7 +99,8 @@ export function CompactionView({
     return (
       <p className={panels.empty}>
         No compactions yet. When the window nears its limit, gg summarizes the
-        thread and restarts it from the summary — each boundary is recorded here.
+        thread and restarts it from the summary — each boundary is recorded
+        here.
       </p>
     );
   }

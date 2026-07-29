@@ -215,15 +215,12 @@ pub const CAPABILITY_TASKS: &str = "tasks";
 /// [`implementation`](GgCapabilityConfig::implementation) selects the **compaction
 /// strategy**: who writes the summary, and what the restarted thread is rebuilt from.
 ///
-/// Seven strategies ship, and they differ along two axes — **who** condenses the thread
-/// (gg out of band, the working model itself, or a separate handoff model) and **what**
-/// the summary is (prose, a `compact` call that also re-loads files, or memories):
+/// Five strategies ship, and they differ along two axes — **who** condenses the thread
+/// (the working model itself, or a separate handoff model) and **what** the summary is
+/// (prose, a `compact` call that also re-loads files, or memories):
 ///
-/// - [`model`](COMPACTION_STRATEGY_MODEL) (the default) and
-///   [`structured`](COMPACTION_STRATEGY_STRUCTURED) — one out-of-band call on the run's own
-///   client, prose or fixed sections, invisible to the agent's own thread.
-/// - [`self-summarization`](COMPACTION_STRATEGY_SELF_SUMMARIZATION) — the agent is asked, in
-///   its own thread, to write the summary its next context is rebuilt from.
+/// - [`self-summarization`](COMPACTION_STRATEGY_SELF_SUMMARIZATION) (the default) — the agent
+///   is asked, in its own thread, to write the summary its next context is rebuilt from.
 /// - [`self-compaction`](COMPACTION_STRATEGY_SELF_COMPACTION) — the agent calls a `compact`
 ///   tool with a summary **and the files to re-load**, so it chooses what survives.
 /// - [`handoff-summarization`](COMPACTION_STRATEGY_HANDOFF_SUMMARIZATION) and
@@ -239,20 +236,12 @@ pub const CAPABILITY_TASKS: &str = "tasks";
 /// [compaction]: https://docs.testcabinet.ai/gg/compaction/
 pub const CAPABILITY_COMPACTION: &str = "compaction";
 
-/// The [compaction](CAPABILITY_COMPACTION) strategy that summarizes the dropped history with
-/// **one out-of-band call on the run's own model**, asking for a focused prose recap. The
-/// default: what an unconfigured compaction capability uses, and what an unrecognized
-/// strategy name falls back to.
-pub const COMPACTION_STRATEGY_MODEL: &str = "model";
-
-/// The [compaction](CAPABILITY_COMPACTION) strategy that makes the same out-of-band call as
-/// [`model`](COMPACTION_STRATEGY_MODEL) but steers it to emit the working state under fixed
-/// headings rather than as free prose.
-pub const COMPACTION_STRATEGY_STRUCTURED: &str = "structured";
-
 /// The [compaction](CAPABILITY_COMPACTION) strategy in which **the agent summarizes itself**:
 /// gg appends a user message asking for a summary of the work done and the work remaining, and
 /// rebuilds the next context from the model's own reply.
+///
+/// The default: what an unconfigured compaction capability uses, and what an unrecognized
+/// strategy name falls back to.
 pub const COMPACTION_STRATEGY_SELF_SUMMARIZATION: &str = "self-summarization";
 
 /// The [compaction](CAPABILITY_COMPACTION) strategy in which the agent compacts itself through
@@ -3434,8 +3423,9 @@ pub enum GgTelemetryKind {
     /// [compaction]: https://docs.testcabinet.ai/gg/compaction/
     Compaction {
         /// The name of the [summarization strategy](https://docs.testcabinet.ai/gg/compaction/)
-        /// that produced this summary — the capability's resolved `implementation`, `model`
-        /// (the default prose recap) or `structured` (fixed sections). Recorded per boundary so
+        /// that produced this summary — the capability's resolved `implementation`, e.g.
+        /// `self-summarization` (the default: the agent's own prose recap) or
+        /// `handoff-compaction` (a separate model's `compact` call). Recorded per boundary so
         /// the console's Compaction view can compare what each strategy retained.
         strategy: String,
         /// The fullness threshold (a `0.0..=1.0` fraction) that tripped this compaction,

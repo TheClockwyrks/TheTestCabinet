@@ -61,8 +61,6 @@ fn model(code_mode: bool) -> ContextModel {
 #[test]
 fn every_strategy_id_round_trips_and_an_unknown_one_falls_back() {
     for strategy in [
-        CompactionStrategy::Model,
-        CompactionStrategy::Structured,
         CompactionStrategy::SelfSummarization,
         CompactionStrategy::SelfCompaction,
         CompactionStrategy::HandoffSummarization,
@@ -79,7 +77,7 @@ fn every_strategy_id_round_trips_and_an_unknown_one_falls_back() {
     for unknown in [None, Some(""), Some("default"), Some("not-a-strategy")] {
         assert_eq!(
             CompactionStrategy::resolve(unknown, true),
-            CompactionStrategy::Model,
+            CompactionStrategy::SelfSummarization,
             "{unknown:?} falls back to the default"
         );
     }
@@ -96,13 +94,13 @@ fn memory_compaction_requires_memories() {
     );
     assert_eq!(
         CompactionStrategy::resolve(Some("memory-compaction"), false),
-        CompactionStrategy::Model
+        CompactionStrategy::SelfSummarization
     );
     // …and the same through a whole capability set.
     assert_eq!(
         CompactionSetup::resolve(set_with(Some("memory-compaction"), json!({}), false).root())
             .strategy,
-        CompactionStrategy::Model
+        CompactionStrategy::SelfSummarization
     );
     assert_eq!(
         CompactionSetup::resolve(set_with(Some("memory-compaction"), json!({}), true).root())
@@ -112,7 +110,7 @@ fn memory_compaction_requires_memories() {
 }
 
 /// Which strategies are in-loop (the agent condenses its own thread across a turn boundary) and
-/// which are out-of-band (gg condenses it between turns, invisibly).
+/// which are out-of-band (a separate model condenses it between turns, invisibly).
 #[test]
 fn only_the_three_in_loop_strategies_are_pending() {
     assert_eq!(
@@ -128,8 +126,6 @@ fn only_the_three_in_loop_strategies_are_pending() {
         Some(PendingCompaction::MemoryWrites)
     );
     for out_of_band in [
-        CompactionStrategy::Model,
-        CompactionStrategy::Structured,
         CompactionStrategy::HandoffSummarization,
         CompactionStrategy::HandoffCompaction,
     ] {
@@ -144,8 +140,6 @@ fn only_the_three_in_loop_strategies_are_pending() {
 fn only_self_compaction_offers_the_compact_tool_to_the_agent() {
     assert!(CompactionStrategy::SelfCompaction.offers_compact_tool());
     for other in [
-        CompactionStrategy::Model,
-        CompactionStrategy::Structured,
         CompactionStrategy::SelfSummarization,
         CompactionStrategy::HandoffSummarization,
         CompactionStrategy::HandoffCompaction,
