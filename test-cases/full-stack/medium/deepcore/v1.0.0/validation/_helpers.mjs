@@ -269,9 +269,111 @@ export function minerScreen(m, cam) {
   };
 }
 
+/**
+ * Throw unless a logical-stage point is actually ON the 1280x720 stage.
+ *
+ * `api.pixel(u, v)` CLAMPS its normalized coordinate into range (driver.mjs), so sampling a
+ * point that is off the stage does not fail — it quietly returns whatever pixel sits on the
+ * nearest EDGE. Two different off-stage points therefore read the SAME edge pixel and compare
+ * as identical, which a color check reads as "the build painted these two things the same
+ * color" when in truth neither was ever sampled. That turns a mis-framed camera into a
+ * confident, wrong verdict — and, worse, silently PASSES a check that asserts two things look
+ * alike. Failing loudly here says what actually went wrong.
+ *
+ * A conformant build never trips this: `teleport` recenters the camera on the miner
+ * (specs/instrumentation.md), so a cell a couple of tiles from the miner is always in view.
+ */
+export function assertOnStage(x, y, what) {
+  if (x >= 0 && x <= STAGE_W && y >= 0 && y <= STAGE_H) return;
+  throw new Error(
+    `${what} is off the ${STAGE_W}x${STAGE_H} stage at (${x.toFixed(1)}, ${y.toFixed(1)}) — ` +
+      `the camera is not framing it, so its rendered color cannot be read. ` +
+      `teleport(col, row) must recenter the camera on the miner (specs/instrumentation.md).`,
+  );
+}
+
+/** Whether two lists of sampled pixels are identical. */
+function samePixels(a, b) {
+  return a.every((c, i) => c.r === b[i].r && c.g === b[i].g && c.b === b[i].b);
+}
+
+/**
+ * Wait until what the build has PAINTED at `points` (logical stage coords) stops changing, so a
+ * color read is of the scene the item posed rather than of a frame from before it.
+ *
+ * This replaces the fixed `api.settle(120)` the color items used to open with. A fixed pause is a
+ * race: it is a wall-clock guess at how long this host takes to repaint, and when the guess comes
+ * up short `api.pixel` reads the PREVIOUS frame. That stale frame is usually a uniform patch of
+ * sky or of the surface camp, so every point sampled from it returns the same color and the
+ * comparison collapses to a distance of 0 — which fails a build that painted correctly, and (for
+ * a check like hazards.gas-hidden, which asserts two tiles look ALIKE) passes one that painted
+ * nothing at all. Neither is a verdict worth recording.
+ *
+ * So poll instead of guessing: settle a slice at a time and watch what is painted.
+ *
+ * Note what the early exit requires. "The reading held still for two slices" is NOT on its own
+ * evidence that the posed scene is up: a STALE frame holds perfectly still too — it is a frame,
+ * it is not being redrawn, and every read of it agrees. Stability alone therefore cannot tell a
+ * settled scene from one that has not arrived, which is exactly the case this needs to catch. So
+ * the early exit also requires having SEEN the reading change at least once: an item settles right
+ * after posing a scene somewhere new, so a repaint that lands during the wait necessarily moves
+ * these points off whatever they showed before. Having watched them move and then come to rest is
+ * evidence of the new frame; stillness from the first read is not.
+ *
+ * When the points genuinely never change — the scene was already painted before the first read —
+ * no early exit fires and the wait simply runs to `max`, which is the correct reading taken a
+ * little later than strictly necessary. That is the price of the guarantee, and it is small: a
+ * fraction of a second per sampling item, in a pass that is otherwise instant.
+ *
+ * `max` also bounds a scene that never settles: animated lava cycles through its frames forever,
+ * and reading it at the cap is right — that reading was always going to be of one arbitrary frame.
+ */
+export async function settleStable(
+  api,
+  points,
+  { slice = 60, max = 1200 } = {},
+) {
+  const read = async () => {
+    const out = [];
+    for (const p of points)
+      out.push(await api.pixel(p.x / STAGE_W, p.y / STAGE_H));
+    return out;
+  };
+  let prev = await read();
+  let stable = 0;
+  let changed = false;
+  for (let spent = 0; spent < max; spent += slice) {
+    await api.settle(slice);
+    const now = await read();
+    if (samePixels(prev, now)) {
+      stable += 1;
+    } else {
+      changed = true;
+      stable = 0;
+    }
+    prev = now;
+    if (changed && stable >= 2) return;
+  }
+}
+
+/**
+ * ACT: hold until the build has painted the given cells, then leave them ready to sample.
+ * `cells` is a list of `[col, row]`. Each cell is checked to be on stage first, so a camera that
+ * is not framing the scene fails with that as the reason instead of returning edge pixels.
+ */
+export async function settleTiles(api, cells, opts) {
+  const cam = (await api.snapshot()).camera;
+  const points = cells.map(([col, row]) => tileScreen(col, row, cam));
+  points.forEach((p, i) =>
+    assertOnStage(p.x, p.y, `tile (${cells[i][0]}, ${cells[i][1]})`),
+  );
+  await settleStable(api, points, opts);
+}
+
 /** Average the rendered color over a small 5-point cluster around a logical stage point, so a
  *  stray antialiased edge pixel cannot swing the reading. Returns { r, g, b } (0–255). */
-export async function sampleAt(api, x, y) {
+export async function sampleAt(api, x, y, what = "the sampled point") {
+  assertOnStage(x, y, what);
   const offsets = [
     [0, 0],
     [7, 0],
@@ -302,7 +404,7 @@ export function colorDistance(a, b) {
 export async function sampleTile(api, col, row) {
   const cam = (await api.snapshot()).camera;
   const s = tileScreen(col, row, cam);
-  return sampleAt(api, s.x, s.y);
+  return sampleAt(api, s.x, s.y, `tile (${col}, ${row})`);
 }
 
 /** The greatest color distance from `ref` found across a 3x3 grid of points inside a tile — so
@@ -315,7 +417,7 @@ export async function tileMaxDistFrom(api, col, row, ref) {
     for (const fy of [0.28, 0.5, 0.72]) {
       const x = col * TILE - cam.x + fx * TILE;
       const y = VIEWPORT_Y + row * TILE - cam.y + fy * TILE;
-      const c = await sampleAt(api, x, y);
+      const c = await sampleAt(api, x, y, `tile (${col}, ${row})`);
       const d = colorDistance(c, ref);
       if (d > max) max = d;
     }
@@ -369,4 +471,31 @@ export async function audioCount(api) {
  */
 export async function drainAudioQueue(api) {
   await api.settle(60);
+}
+
+/**
+ * ACT: wait for the build to start at least one NEW Web Audio source beyond `before`, polling in
+ * real time up to `max` ms, and return the count actually reached (so an item can assert on it
+ * exactly as it did on a single read).
+ *
+ * Use this rather than `drainAudioQueue` + one read for any cue that is not scheduled on the very
+ * frame its trigger lands. A single 60 ms drain silently assumes every cue is ONE source started
+ * immediately — true of a continuous looping buffer, but not of the two alarms. `specs/assets.md`
+ * specifies the core-timer alarm as an "escalating countdown BEEP", i.e. a repeating one-shot
+ * whose period shrinks as the timer runs down; a build that implements it that way — exactly as
+ * specified — starts its next source somewhere inside that period, over a second away, and a
+ * 60 ms read simply never sees it. The check then fails a conformant build for a sound that plays
+ * perfectly well. Polling to a real deadline accepts BOTH shapes: a continuous loop is caught on
+ * the first slice, a repeating beep within its period.
+ *
+ * The wait is real time in both passes, so the record pass films the alarm sounding rather than
+ * cutting away before it does.
+ */
+export async function awaitCue(api, before, { max = 3000, slice = 60 } = {}) {
+  let count = await audioCount(api);
+  for (let spent = 0; spent < max && count <= before; spent += slice) {
+    await api.settle(slice);
+    count = await audioCount(api);
+  }
+  return count;
 }

@@ -5,7 +5,7 @@
 // Core Sample (as core-run.extract-timer arranges) and step the real sim one beat so
 // `activeLoops` recomputes, reading the audio log across it.
 
-import { newRun, armAudio, audioCount, drainAudioQueue } from "../_helpers.mjs";
+import { newRun, armAudio, audioCount, awaitCue } from "../_helpers.mjs";
 
 export default function item() {
   let before;
@@ -24,13 +24,17 @@ export default function item() {
 
     async act(api) {
       before = await audioCount(api);
-      // A couple of real fixed steps so the live-play update recomputes `activeLoops` with the
-      // running-timer condition.
+      // A couple of real fixed steps so the live-play update recomputes the alarm condition with
+      // the timer running.
       await api.advance(2);
       snap = await api.snapshot();
-      await drainAudioQueue(api);
-      after = await audioCount(api);
-      await api.advance(10); // a short tail so the clip shows the countdown and the loop
+      // Wait for the alarm rather than reading once after a fixed drain. specs/assets.md specifies
+      // this cue as an "escalating countdown BEEP", so a build is free to implement it as a
+      // repeating one-shot whose period shrinks with the timer — over a second between sources at
+      // a fresh 90 s countdown. A single 60 ms read lands inside that gap and reports silence for
+      // an alarm that is sounding exactly as specified; polling to a deadline catches a continuous
+      // loop and a repeating beep alike.
+      after = await awaitCue(api, before);
     },
 
     async assert(api, check) {

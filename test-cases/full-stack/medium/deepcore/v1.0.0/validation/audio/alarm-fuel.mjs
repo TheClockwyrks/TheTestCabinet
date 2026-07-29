@@ -13,7 +13,7 @@ import {
   SPAWN_COL,
   armAudio,
   audioCount,
-  drainAudioQueue,
+  awaitCue,
 } from "../_helpers.mjs";
 
 export default function item() {
@@ -39,13 +39,14 @@ export default function item() {
 
     async act(api) {
       before = await audioCount(api);
-      // A couple of real fixed steps so the live-play update recomputes `activeLoops` with the
-      // low-fuel condition (it is not evaluated by `setFuel` itself).
+      // A couple of real fixed steps so the live-play update recomputes the warning condition (it
+      // is not evaluated by `setFuel` itself).
       await api.advance(2);
       snap = (await api.snapshot()).miner;
-      await drainAudioQueue(api);
-      after = await audioCount(api);
-      await api.advance(10); // a short tail so the clip shows the alerted gauge and the loop
+      // Wait for the alarm rather than reading once after a fixed drain: the warning may be a
+      // continuous looping source OR a repeating beep spaced over a second apart, and only a
+      // polled wait sees both. See `awaitCue`.
+      after = await awaitCue(api, before);
     },
 
     async assert(api, check) {
