@@ -173,6 +173,17 @@ Waves and the Load:
   to that wave instead of the current one. Each unit walks the real pathfinder (or
   flies, for the Filament).
 
+  A released unit is live from that moment: the next `step` moves it, fires at it,
+  and resolves its leak at the Collector, exactly as a unit of a composed wave. So
+  releasing one from the untimed build phase puts the run into a live wave — the
+  Load no longer waits, `phase` reads `"wave"` (`"finale"` for the `"overload"`
+  boss), and the floor runs — but with NO composed wave behind it: nothing else is
+  scheduled to spawn, so the released units are alone on the floor and a scenario
+  can measure them without a wave's own traffic walking through the measurement.
+  The build phase's own harvest is not consumed and no wave number is spent. This
+  is the one control op that starts the floor running, and it is what makes a
+  chosen unit runnable forward on its own.
+
 A wave otherwise begins the way normal play begins one: by committing the level's
 harvest (`keep`, `downgrade`, or a fresh-consuming `combine`).
 
@@ -228,7 +239,7 @@ feed.
   held: { active: <boolean>, col: <number>, row: <number>, legal: <boolean> } | null,
   entry: { col: <number>, row: <number> },
   collector: { col: <number>, row: <number> },
-  waypoints: [ { index: <number>, col: <number>, row: <number> } ], // ordered
+  waypoints: [ { index: <number>, col: <number>, row: <number> } ], // ordered, index 1..k
   units: [
     {
       id: <id>,
@@ -238,7 +249,7 @@ feed.
       speed: <number>,               // current speed (after any slow)
       baseSpeed: <number>,           // unmodified roster speed
       flying: <boolean>,
-      waypointIndex: <number>,       // the next waypoint it is heading to
+      waypointIndex: <number>,       // the chain node it is heading to, 1..k+1
       progress: <number>,            // scalar position along the chain
       slowFactor: <number>, slowUntil: <number>,
       burnDps: <number>, burnUntil: <number>,
@@ -288,6 +299,15 @@ feed.
   progress along the chain (the ordering the `first` target uses), and its active
   slow and burn. The Overload Dynamo reports `invincible: true`; its damage is
   tallied into `mazeRating` rather than removing HP.
+- The chain is numbered from `1`, and both fields that report a position in it use
+  that same numbering. `waypoints` is the ordered chain of the map's `k` waypoint
+  platforms, whose `index` runs `1..k` — the order number each platform is drawn with
+  on the yard (`specs/board.md`). A unit's `waypointIndex` is the chain node it is
+  currently heading to, in that same numbering: `1` while it walks from the Entry to
+  `WP1`, `k` while it walks to the last waypoint, and `k + 1` once it is past the last
+  waypoint and heading for the Collector. So it starts at `1`, never decreases, and
+  reaches `k + 1` on the final leg, whatever the map. It is not a zero-based array
+  offset, and it does not report the last waypoint the unit has already reached.
 - `qualityOdds` is the five-tier roll distribution at the current Refinement
   level, the same odds the scrap-press UI shows.
 

@@ -9,7 +9,7 @@ import {
   placeCandidate,
   armAudio,
   audioCount,
-  AUDIO_SETTLE_MS,
+  waitForAudio,
   TOWER,
 } from "../_helpers.mjs";
 
@@ -29,8 +29,7 @@ export default function item() {
     async act(api) {
       before = await audioCount(api);
       placed = await placeCandidate(api, "capacitor", 1, TOWER.col, TOWER.row);
-      await api.settle(AUDIO_SETTLE_MS);
-      after = await audioCount(api);
+      after = await waitForAudio(api, before);
     },
 
     async assert(api, check) {

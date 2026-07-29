@@ -28,9 +28,10 @@ export default function item() {
     },
 
     async assert(api, check) {
-      const { slug, cluster, slugHp0, clHp0 } = shot;
-      check.expectLt("the strongest (highest-HP) unit was hit", slug.hp, slugHp0);
-      check.expectEq("...and the weaker unit was not", cluster.hp, clHp0);
+      const { strong, weak, strongHp0, weakHp0 } = shot;
+      check.expectGt("the pose really does differ in HP", strongHp0, weakHp0);
+      check.expectLt("the strongest (highest-HP) unit was hit", strong.hp, strongHp0);
+      check.expectEq("...and the weaker unit was not", weak.hp, weakHp0);
     },
   };
 }

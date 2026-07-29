@@ -1,7 +1,7 @@
 // Automated validation for targeting.nearest: under `nearest` a firing component aims at the
 // unit closest to it in straight-line distance.
 //
-// The advanced unit has moved along the leg and is nearer the entry-adjacent tower than the
+// The advanced unit has moved along the leg and is nearer the corridor tower than the
 // fresh unit at the Entry, so under `nearest` the head must aim at the advanced (nearer) one.
 //
 // The pose is split across the seam: `arrangeHeadTargets` arms the Emitter and releases the
@@ -19,11 +19,11 @@ export default function item() {
     id: "targeting.nearest",
 
     async arrange(api) {
-      ctx = await arrangeHeadTargets(api);
+      ctx = await arrangeHeadTargets(api, "nearest");
     },
 
     async act(api) {
-      posed = await actHeadTargets(api, ctx, "nearest");
+      posed = await actHeadTargets(api, ctx);
     },
 
     async assert(api, check) {

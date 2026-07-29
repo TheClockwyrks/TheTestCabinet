@@ -7,7 +7,14 @@
 // Arming the tower and releasing the Slug are control ops (the arrange); the two seconds of
 // repeated hits is the whole behavior under test, so it is the act and is what gets filmed.
 
-import { armTower, spawnControlled, unitById, snap, SECOND } from "../_helpers.mjs";
+import {
+  armTower,
+  spawnControlled,
+  skipToApproach,
+  unitById,
+  snap,
+  SECOND,
+} from "../_helpers.mjs";
 
 export default function item() {
   // The unit `act` follows, and the Slug after the run of hits, read by `assert`.
@@ -22,6 +29,9 @@ export default function item() {
       await api.call("setTargeting", towerId, "strongest");
       const [u] = await spawnControlled(api, "slug");
       unitId = u.id;
+      // Walk the Slug up to the tower's reach first; the run of hits below is what is measured,
+      // and it cannot begin until the Slug is actually under fire.
+      await skipToApproach(api, towerId, unitId);
     },
 
     async act(api) {

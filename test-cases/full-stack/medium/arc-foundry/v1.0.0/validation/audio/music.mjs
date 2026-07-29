@@ -5,7 +5,7 @@
 // event under test — the audio log must grow once the gesture unlocks the build's
 // `AudioContext` and it starts the loop (`audio.ts`'s `resume`/`startMusic`).
 
-import { startBuild, armAudio, audioCount } from "../_helpers.mjs";
+import { startBuild, armAudio, audioCount, waitForAudio } from "../_helpers.mjs";
 
 export default function item() {
   let before;
@@ -21,7 +21,7 @@ export default function item() {
     async act(api) {
       before = await audioCount(api);
       await armAudio(api); // the first genuine gesture; settles internally for the decode
-      after = await audioCount(api);
+      after = await waitForAudio(api, before);
     },
 
     async assert(api, check) {

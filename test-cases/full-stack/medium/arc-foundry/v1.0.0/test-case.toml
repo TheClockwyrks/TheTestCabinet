@@ -316,7 +316,7 @@ validation = { script = "validation/pathing/shortest-open-route.mjs", outputs = 
 [[review.categories.items]]
 id = "never-seal-refused"
 title = "A placement that would seal a segment is refused"
-description = "The never-seal rule: a placement that would fully seal a waypoint segment is refused and changes nothing (no candidate lands, the stamp allowance is unchanged), while a legal placement elsewhere is accepted."
+description = "The never-seal rule: a placement that would fully seal a waypoint segment is refused and changes nothing (no candidate lands, the stamp allowance is unchanged), while a legal placement elsewhere is accepted. The refused rock covers no protected tile and overlaps nothing, so sealing the segment is the only thing left to refuse it for."
 validation = { script = "validation/pathing/never-seal-refused.mjs", outputs = [{ id = "refused", name = "The board after a refused seal and an accepted placement", kind = "image" }] }
 [[review.categories.items]]
 id = "no-build-on-waypoint"
@@ -376,7 +376,7 @@ validation = { script = "validation/economy/placement-free.mjs", outputs = [{ id
 [[review.categories.items]]
 id = "wave-clear-bonus"
 title = "Clearing a wave pays a small bonus"
-description = "Clearing a wave pays a small flat wave-clear bonus in Charge (8 + 2*wave = 10 on Wave 1) and nothing else — there is no interest on banked Charge."
+description = "Clearing a wave pays the flat wave-clear bonus in Charge (8 + 2*wave = 10 on Wave 1) and nothing else. It is a function of the wave number alone: the same clear pays the same whether the player is broke or sitting on a hoard, because banked Charge earns no interest."
 validation = { script = "validation/economy/wave-clear-bonus.mjs", outputs = [{ id = "hud", name = "Charge after a cleared wave", kind = "image" }] }
 [[review.categories.items]]
 id = "dismantle-no-refund"
@@ -881,7 +881,7 @@ validation = { script = "validation/audio/kill.mjs", outputs = [
 [[review.categories.items]]
 id = "settle"
 title = "Rock-settle cue"
-description = "A rock-settle thunk, produced with the audio tools, plays when a structure hardens in place — unkept rocks at wave start, and a build-phase dismantle."
+description = "A rock-settle thunk, produced with the audio tools, plays when unkept rocks harden into blockers at the harvest."
 validation = { script = "validation/audio/settle.mjs", outputs = [
   { id = "settle", name = "The hardening whose cue is checked", kind = "video" },
 ] }
