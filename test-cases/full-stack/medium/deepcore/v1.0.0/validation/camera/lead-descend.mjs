@@ -59,20 +59,26 @@ export default function item() {
     },
 
     async assert(api, check) {
-      check.expectLt(
-        "a sustained fall rides the miner toward the top",
-        fall,
-        0.45,
+      // Both readings are fractions DOWN THE MINE VIEWPORT, so "toward the top" and "toward the
+      // bottom" are only meaningful for a miner that is on screen at all — 0 is the top edge and 1
+      // the bottom. Bound each reading on BOTH sides before reading anything into it. A one-sided
+      // bound quietly accepts nonsense: a camera that never followed the miner leaves it far below
+      // the view at a fraction of 16, which is not "toward the bottom" in any sense a reviewer
+      // would recognize, yet clears a bare `> 0.55` and reports the lead as working. That is worse
+      // than a missing check, because it is a check that actively vouches for the broken case.
+      check.expectOk(
+        `a sustained fall rides the miner toward the top (${fall.toFixed(3)} down the viewport, wanted 0–0.45)`,
+        fall >= 0 && fall < 0.45,
       );
-      check.expectGt(
-        "a sustained climb rides the miner toward the bottom",
-        climb,
-        0.55,
+      check.expectOk(
+        `a sustained climb rides the miner toward the bottom (${climb.toFixed(3)} down the viewport, wanted 0.55–1)`,
+        climb > 0.55 && climb <= 1,
       );
-      check.expectGt(
-        "the lead reverses direction with travel",
-        climb - fall,
-        0.15,
+      // Bounded on both sides for the same reason: the swing between the two is a distance ACROSS
+      // the viewport, so anything over 1 is off-screen travel rather than a lead reversing.
+      check.expectOk(
+        `the lead reverses direction with travel (swing of ${(climb - fall).toFixed(3)} of the viewport, wanted 0.15–1)`,
+        climb - fall > 0.15 && climb - fall <= 1,
       );
       void TILE;
     },

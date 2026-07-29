@@ -680,7 +680,7 @@ title = "Color"
 id = "bands"
 title = "The four bands render in distinct colors"
 description = "The four band rocks (topsoil, rockbed, deepstone, coreshell) each render in a distinct, visible color, so the band a player is in reads from the world."
-validation = { script = "validation/color/bands.mjs", outputs = [{ id = "bands", name = "The four band rock colors", kind = "image" }] }
+validation = { script = "validation/color/bands.mjs", outputs = [{ id = "bands", name = "A tour of the four band rock colors", kind = "video" }] }
 [[review.categories.items]]
 id = "lava"
 title = "Lava is plainly visible"
@@ -802,7 +802,7 @@ title = "Audio & Mute"
 id = "mute-toggle"
 title = "The mute key toggles mute"
 description = "The mute control toggles the audio mute state on and off."
-validation = { script = "validation/audio/mute-toggle.mjs", outputs = [{ id = "muted", name = "The title after toggling mute", kind = "image" }] }
+validation = { script = "validation/audio/mute-toggle.mjs", outputs = [{ id = "muted", name = "The status bar after toggling mute", kind = "image" }] }
 [[review.categories.items]]
 id = "drill-loop"
 title = "The drill loop plays while cutting"
