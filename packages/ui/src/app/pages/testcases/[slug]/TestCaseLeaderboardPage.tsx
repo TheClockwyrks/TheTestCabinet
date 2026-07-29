@@ -321,7 +321,8 @@ function ReviewLeaderboard({
       const modelId = canonicalModelId(run.subject.modelId, harnessSlug);
       // The board splits by harness as well as model, so the pair — not the model
       // alone — is the fold key: the same model under two harnesses is two rows.
-      const key = `${harnessSlug} ${modelId}`;
+      // NUL separates the pair, the one character neither part can contain.
+      const key = `${harnessSlug}\u0000${modelId}`;
       // Null when the run's comparable cost / token total is unknown; such runs
       // are excluded from the respective mean rather than folded in as zero.
       const cost = run.metrics.cost.comparable;

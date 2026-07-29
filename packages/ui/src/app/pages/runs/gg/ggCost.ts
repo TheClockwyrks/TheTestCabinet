@@ -30,6 +30,7 @@ import type { ModelPrices } from "../../../data/models";
 import {
   ROOT_ID,
   accumulateSlotUsage,
+  slotUsageKey,
   type AgentTreeNode,
   type DerivedGgState,
   type SlotUsage,
@@ -174,7 +175,7 @@ export function runSlotUsage(
     tokens: TokenMetrics,
     cost: CostMetrics | null,
   ) => {
-    const key = `${slot} ${modelId}`;
+    const key = slotUsageKey(slot, modelId);
     let entry = byKey.get(key);
     if (!entry) {
       entry = {
@@ -249,7 +250,10 @@ export function useGgCostBreakdown(
  * model to several slots, so a per-slot read alone never says what one model cost).
  */
 export interface SpendRow {
-  /** A stable react key: `"<slot> <modelId>"` per slot, the model id per model. */
+  /**
+   * A stable react key: the pair's {@link slotUsageKey} per slot, the model id per model.
+   * An opaque identity, never parsed back apart.
+   */
   key: string;
   /** The slot this row accounts for; null on a per-model row. */
   slot: string | null;
@@ -321,7 +325,7 @@ export function deriveGgSpend(
           )?.total ?? null)
         : null;
     return {
-      key: `${usage.slot} ${usage.modelId}`,
+      key: slotUsageKey(usage.slot, usage.modelId),
       slot: usage.slot,
       modelId: usage.modelId,
       modelName: nameOf(usage.modelId) ?? usage.modelId,

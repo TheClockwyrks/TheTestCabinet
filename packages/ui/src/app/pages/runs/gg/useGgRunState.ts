@@ -1011,6 +1011,15 @@ function addTokens(
   }
 }
 
+// The `Map` key for one (slot, model) pair. NUL separates the two parts because it is the
+// one character neither a slot name nor a model id can contain, so no two legal pairs can
+// collide on it — a separator a part could itself carry (a space, a slash) would fold two
+// distinct pairs into one key. Every fold that rolls usage up per pair shares this, so the
+// live delta rollup, the `slot_usage` rollup, and the spend split are keyed alike.
+export function slotUsageKey(slot: string, modelId: string): string {
+  return `${slot}\u0000${modelId}`;
+}
+
 // Accumulate one attributed `usage` delta into its (slot, model) rollup, on the same
 // null-aware terms as `addTokens`: a class stays null until a delta reports it, and the
 // cost stays null until one carries a figure. Summing a key's deltas this way reproduces
@@ -1206,7 +1215,7 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
         deltaUsage.count += 1;
         addTokens(deltaUsage, gg.tokens, gg.cost);
         if (gg.slot != null && gg.modelId != null) {
-          const key = `${gg.slot} ${gg.modelId}`;
+          const key = slotUsageKey(gg.slot, gg.modelId);
           let entry = deltaSlotUsage.get(key);
           if (!entry) {
             entry = {
@@ -1229,7 +1238,7 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
       case "slot_usage":
         // A cumulative rollup, NOT a delta: the latest per (slot, model) is that
         // pair's total, so overwrite (never accumulate) the pair's entry.
-        slotUsageByKey.set(`${gg.slot}\u0000${gg.modelId}`, {
+        slotUsageByKey.set(slotUsageKey(gg.slot, gg.modelId), {
           slot: gg.slot,
           modelId: gg.modelId,
           tokens: gg.tokens,

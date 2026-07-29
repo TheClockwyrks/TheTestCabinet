@@ -216,6 +216,8 @@ export function MetricsContent({
       if (!scored || !scored.rating) continue;
       const harness = run.subject.harnessSlug;
       const modelId = canonicalModelId(run.subject.modelId, harness);
+      // The (harness, model) pair is the fold key, NUL-separated: the one character
+      // neither part can contain, so no two pairs collide.
       const key = `${harness}\u0000${modelId}`;
       let group = byPair.get(key);
       if (!group) {

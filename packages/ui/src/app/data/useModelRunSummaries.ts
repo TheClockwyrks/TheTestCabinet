@@ -53,6 +53,8 @@ export function useModelRunSummaries(
 
   // Stabilize the id list so the effect only re-runs when the actual ids change,
   // not on every render's fresh array identity.
+  // Joined on NUL — the one character a model id cannot contain, so the key round-trips
+  // back into exactly the ids that went in.
   const idsKey = useMemo(() => modelIds.join("\u0000"), [modelIds]);
 
   useEffect(() => {
