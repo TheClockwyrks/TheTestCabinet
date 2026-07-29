@@ -246,15 +246,6 @@ fn the_board_tools_round_trip_under_the_schemas_key_names() {
     state
         .set_issue_blocked_by("i1".to_string(), vec!["i0".to_string()])
         .expect("set the blockers");
-    let report = state
-        .complete_issue("i1".to_string())
-        .expect("completed the issue");
-    assert!(
-        report.reviewed,
-        "a gated acceptance must say a review ran — it is the one cheap-looking call that spawns \
-         agents"
-    );
-    assert_eq!(report.detail, "the reviewer approved it");
     state
         .remove_epic("e1".to_string())
         .expect("removed the epic");
@@ -283,7 +274,6 @@ fn the_board_tools_round_trip_under_the_schemas_key_names() {
             "create_epic",
             "create_issue",
             "set_issue_blocked_by",
-            "complete_issue",
             "remove_epic",
             "remove_issue",
         ]

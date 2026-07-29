@@ -164,14 +164,6 @@ export interface BoardUsage {
   maxIssues: number;
 }
 
-/** What recording an issue's work as finished produced. */
-export interface CompletionReport {
-  /** Whether the issue named reviewers, so its work is reviewed before it is accepted. */
-  reviewed: boolean;
-  /** What happens to the issue next, in the same prose the model reads. */
-  detail: string;
-}
-
 /** What a context reclaim actually freed from the live context window. */
 export interface ReclaimReport {
   /** Context items dropped from the live window. */

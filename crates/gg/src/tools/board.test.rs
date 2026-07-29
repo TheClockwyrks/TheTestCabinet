@@ -242,16 +242,6 @@ async fn update_complete_and_remove_flow() {
         IssueStatus::InProgress
     );
 
-    let completed = CompleteIssueTool::new(Arc::clone(&store), None)
-        .invoke(json!({ "id": "a" }), &ctx)
-        .await;
-    assert!(completed.ok);
-    assert_eq!(
-        store.lock().unwrap().issues()[0].status(),
-        IssueStatus::InReview,
-        "the tool records the work as finished; acceptance is the orchestrator's"
-    );
-
     let removed = RemoveIssueTool::new(Arc::clone(&store))
         .invoke(json!({ "id": "a" }), &ctx)
         .await;
@@ -262,8 +252,8 @@ async fn update_complete_and_remove_flow() {
 #[tokio::test]
 async fn unknown_issue_is_a_recoverable_tool_error() {
     let (store, ctx, _dir) = fixture();
-    let outcome = CompleteIssueTool::new(Arc::clone(&store), None)
-        .invoke(json!({ "id": "ghost" }), &ctx)
+    let outcome = UpdateIssueTool::new(Arc::clone(&store))
+        .invoke(json!({ "id": "ghost", "title": "Renamed" }), &ctx)
         .await;
     assert!(!outcome.ok);
     assert!(outcome.output.contains("ghost"));
@@ -317,35 +307,6 @@ async fn the_board_populations_are_reported_by_the_tools_that_change_them() {
     assert_eq!(usage(&removed_epic).epics, 0);
 }
 
-/// Completing an issue reports whether reviewers will gate it. On this path — the store's own,
-/// with no reviewer in the loop — it did not, and a caller is told so rather than left to infer it
-/// from the absence of a verdict.
-#[tokio::test]
-async fn completing_an_issue_reports_whether_a_review_gated_it() {
-    let (store, ctx, _dir) = fixture();
-    CreateIssueTool::new(Arc::clone(&store), policy())
-        .invoke(issue_args("a"), &ctx)
-        .await;
-
-    let completed = CompleteIssueTool::new(Arc::clone(&store), None)
-        .invoke(json!({ "id": "a" }), &ctx)
-        .await;
-
-    assert_eq!(
-        completed.data,
-        Some(ToolData::Completion(CompletionData {
-            reviewed: false,
-            detail: completed.output.clone(),
-        })),
-        "the detail is the same text the model is shown"
-    );
-    assert!(
-        completed.output.contains("Recorded issue `a` as finished"),
-        "completing records the work as finished rather than accepting it: {}",
-        completed.output
-    );
-}
-
 /// Each way the store can refuse is classified from its own error variant.
 #[tokio::test]
 async fn each_store_refusal_is_classified_from_its_variant() {
@@ -379,7 +340,7 @@ async fn each_store_refusal_is_classified_from_its_variant() {
     assert_eq!(cycle.failure, Some(ToolFailure::Conflict));
 
     // Anything named but absent — issue, epic, or blocker — is not-found.
-    let unknown_issue = CompleteIssueTool::new(Arc::clone(&store), None)
+    let unknown_issue = RemoveIssueTool::new(Arc::clone(&store))
         .invoke(json!({ "id": "ghost" }), &ctx)
         .await;
     assert_eq!(unknown_issue.failure, Some(ToolFailure::NotFound));
@@ -430,7 +391,6 @@ fn is_board_tool_covers_every_mutator() {
         "create_issue",
         "update_issue",
         "set_issue_blocked_by",
-        "complete_issue",
         "remove_epic",
         "remove_issue",
     ] {

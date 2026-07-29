@@ -100,7 +100,6 @@ export const TOOL_CATALOGUE: readonly CatalogueEntry[] = [
   { tool: "create_issue", js: "createIssue", module: "board" },
   { tool: "update_issue", js: "updateIssue", module: "board" },
   { tool: "set_issue_blocked_by", js: "setIssueBlockedBy", module: "board" },
-  { tool: "complete_issue", js: "completeIssue", module: "board" },
   { tool: "remove_epic", js: "removeEpic", module: "board" },
   { tool: "remove_issue", js: "removeIssue", module: "board" },
   { tool: "wait_for_issue", js: "waitForIssue", module: "board" },

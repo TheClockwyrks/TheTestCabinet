@@ -1,6 +1,11 @@
 //! The board tools: `create_epic`, `create_issue`, `update_issue`, `set_issue_blocked_by`,
-//! `complete_issue`, `remove_epic`, and `remove_issue` — how the model builds and maintains its
+//! `remove_epic`, and `remove_issue` — how the model builds and maintains its
 //! [epic/issue board](crate::board).
+//!
+//! There is no tool for *finishing* an issue: an issue is finished exactly when the agent gg
+//! dispatched to implement it finishes, under that agent's own
+//! [completion rule](crate::completion). See
+//! [the board's own docs](crate::board#completion-is-the-agents-own-and-acceptance-is-ggs).
 //!
 //! Each tool mutates the shared [`BoardStore`] (behind an `Arc<Mutex<…>>` the tool shares with
 //! the [loop](crate::agent)) and returns a [`ToolOutcome`]: a confirmation on success, or — when
@@ -21,8 +26,8 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 
 use super::{
-    ArgumentError, BoardUsageData, CompletionData, Tool, ToolContext, ToolData, ToolFailure,
-    ToolOutcome, invalid_argument, optional_str, required_str, saturating_u32,
+    ArgumentError, BoardUsageData, Tool, ToolContext, ToolData, ToolFailure, ToolOutcome,
+    invalid_argument, optional_str, required_str, saturating_u32,
 };
 use crate::board::{
     BoardChange, BoardError, BoardStore, IssuePolicy, IssueStatus, IssueUpdate, NewIssue,
@@ -37,8 +42,6 @@ pub const CREATE_ISSUE_TOOL: &str = "create_issue";
 pub const UPDATE_ISSUE_TOOL: &str = "update_issue";
 /// The `set_issue_blocked_by` tool name.
 pub const SET_ISSUE_BLOCKED_BY_TOOL: &str = "set_issue_blocked_by";
-/// The `complete_issue` tool name.
-pub const COMPLETE_ISSUE_TOOL: &str = "complete_issue";
 /// The `remove_epic` tool name.
 pub const REMOVE_EPIC_TOOL: &str = "remove_epic";
 /// The `remove_issue` tool name.
@@ -53,7 +56,6 @@ pub fn is_board_tool(name: &str) -> bool {
             | CREATE_ISSUE_TOOL
             | UPDATE_ISSUE_TOOL
             | SET_ISSUE_BLOCKED_BY_TOOL
-            | COMPLETE_ISSUE_TOOL
             | REMOVE_EPIC_TOOL
             | REMOVE_ISSUE_TOOL
     )
@@ -750,131 +752,6 @@ impl SetIssueBlockedByTool {
 }
 
 // ---------------------------------------------------------------------------
-// complete_issue
-// ---------------------------------------------------------------------------
-
-/// Records that an issue's work is finished, moving it to review.
-pub struct CompleteIssueTool {
-    store: Arc<Mutex<BoardStore>>,
-    /// The issue the calling agent was **dispatched to implement**, when it was one. Named in the
-    /// tool's description and in its `id` argument, because an implementer that does not call this
-    /// on its own issue has its work thrown away: gg reads a loop that ended without it as an
-    /// attempt that failed. Telling it the exact id it must pass is the cheapest way to be sure it
-    /// can.
-    assigned: Option<String>,
-}
-
-impl CompleteIssueTool {
-    /// A tool completing issues in `store`, for an agent dispatched to implement `assigned` (or
-    /// `None` for a board-authoring agent, which completes issues by id like any other board move).
-    pub fn new(store: Arc<Mutex<BoardStore>>, assigned: Option<&str>) -> Self {
-        Self {
-            store,
-            assigned: assigned.map(str::to_string),
-        }
-    }
-}
-
-#[async_trait]
-impl Tool for CompleteIssueTool {
-    fn name(&self) -> &str {
-        COMPLETE_ISSUE_TOOL
-    }
-
-    fn definition(&self) -> ToolDefinition {
-        let mut description = String::from(
-            "Record that an issue's work is finished, by `id`. The issue moves to `in review`: gg \
-             runs its reviewers (if it named any) and merges its work back into the main \
-             workspace, and only then is it done and its dependents unblocked. If a reviewer asks \
-             for changes, the issue is reopened and dispatched again. Fails if no issue of that id \
-             exists.",
-        );
-        if let Some(assigned) = &self.assigned {
-            description.push_str(&format!(
-                " You were dispatched to implement issue `{assigned}`: call this with that id once \
-                 its work is done. If you end your session without calling it, the work is \
-                 discarded and the issue is attempted again from scratch."
-            ));
-        }
-        ToolDefinition::new(
-            COMPLETE_ISSUE_TOOL,
-            description,
-            json!({
-                "type": "object",
-                "properties": {
-                    "id": {
-                        "type": "string",
-                        "description": match &self.assigned {
-                            Some(assigned) => format!(
-                                "The id of the issue whose work is finished (yours is \
-                                 `{assigned}`)."
-                            ),
-                            None => "The id of the issue whose work is finished.".to_string(),
-                        }
-                    }
-                },
-                "required": ["id"],
-                "additionalProperties": false
-            }),
-        )
-    }
-
-    async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
-        let id = match required_str(&args, "id", COMPLETE_ISSUE_TOOL) {
-            Ok(v) => v,
-            Err(error) => return error.into(),
-        };
-        self.complete_issue(id)
-    }
-}
-
-impl CompleteIssueTool {
-    /// Record an issue's work as finished — the **standard, typed** `complete_issue` API function
-    /// both the JSON [adapter](Tool::invoke) and the
-    /// [responses-as-code membrane](crate::sandbox) reach.
-    ///
-    /// The issue moves to [`InReview`](crate::board::IssueStatus::InReview); the
-    /// [orchestrator](crate::agent) takes it from there (reviewers, then the merge of its
-    /// worktree). The outcome says which of those is coming, because "your work goes to N
-    /// reviewers now" and "your work merges now" are different things for the agent to expect.
-    pub(crate) fn complete_issue(&self, id: String) -> ToolOutcome {
-        let mut store = self.store.lock().expect("board store lock");
-        let reviewers = store
-            .issues()
-            .iter()
-            .find(|issue| issue.id() == id)
-            .map(|issue| issue.reviewers().len())
-            .unwrap_or(0);
-        match store.complete_issue(&id) {
-            Ok(BoardChange::IssueCompleted) => {
-                let detail = if reviewers > 0 {
-                    format!(
-                        "Recorded issue `{id}` as finished. Its {reviewers} reviewer(s) will now \
-                         review the work; if any of them asks for changes the issue is reopened \
-                         and dispatched again, and once they all approve it is merged and marked \
-                         done."
-                    )
-                } else {
-                    format!(
-                        "Recorded issue `{id}` as finished. Its work will be merged back into the \
-                         main workspace and the issue marked done, unblocking anything waiting on \
-                         it."
-                    )
-                };
-                ToolOutcome::ok(detail.clone(), format!("completed issue `{id}`")).with_data(
-                    ToolData::Completion(CompletionData {
-                        reviewed: reviewers > 0,
-                        detail,
-                    }),
-                )
-            }
-            Ok(_) => unreachable!("complete_issue yields IssueCompleted"),
-            Err(err) => ToolOutcome::failed(failure_for(&err), format!("complete_issue: {err}")),
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
 // remove_epic
 // ---------------------------------------------------------------------------
 
@@ -1032,7 +909,7 @@ impl Tool for WaitForIssueTool {
              terminal state — done, or failed if its assigned agent could not complete it — then \
              resumes and tells you which. Use this to sequence your own work behind an issue you \
              depend on. You cannot wait on the issue you were assigned to implement (do the work \
-             and call `complete_issue` instead).",
+             and finish — your issue is completed when you are).",
             json!({
                 "type": "object",
                 "properties": {

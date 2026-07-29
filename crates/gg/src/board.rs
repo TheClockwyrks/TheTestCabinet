@@ -15,7 +15,8 @@
 //!
 //! Any agent may build and revise the board — `create_epic`/`create_issue` to add,
 //! `update_issue` to revise an issue's fields or status, `set_issue_blocked_by` to declare the
-//! DAG edges, `complete_issue` to mark one done, and `remove_epic`/`remove_issue` to drop one.
+//! DAG edges, and `remove_epic`/`remove_issue` to drop one. There is deliberately **no**
+//! "complete issue" move (see [below](#completion-is-the-agents-own-and-acceptance-is-ggs)).
 //! The whole board is pushed into each agent's context window as a single
 //! [`Board`](test_cabinet_core::gg::GgContextSource::Board)-sourced,
 //! [`Pinned`](crate::context::Retention::Pinned) item, so the
@@ -41,20 +42,27 @@
 //! dispatched into its **own git worktree** — the orchestrator's half of the arrangement — so two
 //! issues cannot trample one another's files.
 //!
-//! An assigned agent that finishes without
-//! completing its issue is re-dispatched up to [`max_retries`](BoardCaps::max_retries) times
+//! An assigned agent that ends **without finishing successfully** — it exhausted its turns, spent
+//! the run's wall-clock, breached an [execution ceiling](crate::limits), or failed on a model error
+//! — is re-dispatched up to [`max_retries`](BoardCaps::max_retries) times
 //! (default 1); once those are exhausted the issue is marked [`Failed`](IssueStatus::Failed) — a
 //! terminal-but-not-done state that leaves its dependents blocked. The store owns the
 //! bookkeeping (each issue's [assignment](Issue::assigned_agent) and
 //! [retry count](Issue::retries)); the orchestrator owns the spawning.
 //!
-//! # Completion is a claim, acceptance is gg's
+//! # Completion is the agent's own, and acceptance is gg's
 //!
-//! `complete_issue` does **not** mark an issue done: it moves it to
-//! [`InReview`](IssueStatus::InReview), the agent's claim that the work is finished. gg then runs
-//! the issue's [reviewers](Issue::reviewers) in turn — each of which either approves or returns
-//! actionable items, which send the issue back to [`InProgress`](IssueStatus::InProgress) under its
-//! own assigned agent — and, once every reviewer approves, merges its worktree back and
+//! An issue is finished exactly when **the agent implementing it finished** — under whatever
+//! [completion rule](crate::completion) that agent's profile configures, which is the one place a
+//! run says how an agent signals it is done. There is deliberately no separate "complete issue"
+//! tool: an agent that ended successfully has, by definition, said its work is complete, and asking
+//! it to say so a second way only adds a step it can forget and lose its work to.
+//!
+//! Finishing does not mark the issue done. gg moves it to [`InReview`](IssueStatus::InReview)
+//! ([`submit_issue_for_review`](BoardStore::submit_issue_for_review)) and runs the issue's
+//! [reviewers](Issue::reviewers) in turn — each of which either approves or returns actionable
+//! items, which send the issue back to [`InProgress`](IssueStatus::InProgress) under its own
+//! assigned agent — and, once every reviewer approves, merges its worktree back and
 //! [accepts](BoardStore::accept_issue) it. Only then is it [`Done`](IssueStatus::Done), which is
 //! what keeps a dependent from being dispatched against work that never landed.
 //!
@@ -621,8 +629,6 @@ pub enum BoardChange {
     IssueUpdated,
     /// An issue's blocked-by set was replaced.
     BlockersSet,
-    /// An issue was marked done.
-    IssueCompleted,
     /// An epic was removed.
     EpicRemoved,
     /// An issue was removed.
@@ -905,21 +911,21 @@ impl BoardStore {
         Ok(BoardChange::BlockersSet)
     }
 
-    /// Mark an issue [`InReview`](IssueStatus::InReview) — its assigned agent has called the work
-    /// complete, and gg now reconciles it (reviewers, then the merge of its worktree). Refused if
-    /// no issue of that id exists.
+    /// Move an issue to [`InReview`](IssueStatus::InReview) — its assigned agent finished
+    /// **successfully**, so gg now reconciles it (reviewers, then the merge of its worktree).
+    /// Returns whether it moved (`false` for an unknown id).
     ///
-    /// This is what `complete_issue` does: the model **declares** the work finished, and
-    /// [`accept_issue`](Self::accept_issue) is what actually accepts it once the review has
-    /// approved and the branch has landed. Keeping the two apart is what stops a dependent issue
-    /// being dispatched against work that has not merged yet.
-    pub fn complete_issue(&mut self, id: &str) -> Result<BoardChange, BoardError> {
-        let id = require_field(id, "id")?;
+    /// Called by the [orchestrator](crate::agent) alone, off the agent's own completion: there is
+    /// no tool for it, because an issue is finished exactly when the agent implementing it
+    /// finished. [`accept_issue`](Self::accept_issue) is what actually accepts it once the review
+    /// has approved and the branch has landed. Keeping the two apart is what stops a dependent
+    /// issue being dispatched against work that has not merged yet.
+    pub fn submit_issue_for_review(&mut self, id: &str) -> bool {
         let Some(index) = self.issue_position(id) else {
-            return Err(BoardError::IssueNotFound(id.to_string()));
+            return false;
         };
         self.issues[index].status = IssueStatus::InReview;
-        Ok(BoardChange::IssueCompleted)
+        true
     }
 
     /// **Accept** the issue `id`: mark it [`Done`](IssueStatus::Done), unblocking its dependents.
@@ -1439,8 +1445,8 @@ impl BoardRuntime {
     /// issue, or a disabled runtime yields `false`).
     ///
     /// The [orchestrator](crate::agent) calls this once every reviewer has approved and the issue's
-    /// worktree has merged back, which is the only path to `Done`: the `complete_issue` tool only
-    /// moves an issue to [`InReview`](IssueStatus::InReview).
+    /// worktree has merged back, which is the only path to `Done`: an agent that finished its issue
+    /// only moves it to [`InReview`](IssueStatus::InReview).
     pub fn accept_issue(&self, id: &str) -> bool {
         if !self.enabled {
             return false;
@@ -1449,6 +1455,23 @@ impl BoardRuntime {
             .lock()
             .expect("board store lock")
             .accept_issue(id)
+    }
+
+    /// Move the issue with id `id` to [`InReview`](IssueStatus::InReview) — its assigned agent
+    /// finished successfully — returning whether it moved (an unknown id, or a disabled runtime,
+    /// yields `false`).
+    ///
+    /// The [orchestrator](crate::agent) calls this from an issue agent's completion path; nothing
+    /// the model can call reaches it, because
+    /// [an issue is finished when its agent is](self#completion-is-the-agents-own-and-acceptance-is-ggs).
+    pub fn submit_issue_for_review(&self, id: &str) -> bool {
+        if !self.enabled {
+            return false;
+        }
+        self.store
+            .lock()
+            .expect("board store lock")
+            .submit_issue_for_review(id)
     }
 
     /// The caps' [retry ceiling](BoardCaps::max_retries) — how many times the
@@ -1482,13 +1505,6 @@ impl BoardRuntime {
             Some(status) => status.is_terminal(),
             None => true,
         }
-    }
-
-    /// Whether the issue with id `id` is [`InReview`](IssueStatus::InReview) — the check the
-    /// [dispatcher](crate::agent) makes to tell an agent that called its work complete from one
-    /// that ended without doing so.
-    pub fn issue_is_in_review(&self, id: &str) -> bool {
-        self.issue_status(id) == Some(IssueStatus::InReview)
     }
 
     /// The [retry count](Issue::retries) of the issue with id `id`, or `0` when the capability is

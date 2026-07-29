@@ -12,6 +12,7 @@ import {
   CAP_GROUPS,
   RUN_LIMIT_SPECS,
   SUBAGENT_SCOPES,
+  lockedImplementation,
   paramApplies,
   type CapGroup,
   type RunLimitSpec,
@@ -20,7 +21,10 @@ import {
   agentParamErrors,
   blankAgentDraft,
   blankCapabilityDraft,
+  blankCommandDraft,
   blankModelSlot,
+  commandsDraftValue,
+  commandsFromDraft,
   dropAgentReferences,
   referencedModelSlots,
   runLimitsError,
@@ -31,6 +35,7 @@ import {
   togglesOff,
   toolBundleOn,
   unusedAgentName,
+  type CommandDraft,
   type GgAgentDraft,
   type GgCapabilityDraft,
   type GgConfigDraft,
@@ -666,6 +671,13 @@ export function GgConfigEditor({
                     agent.capabilities[cap.id] ?? blankCapabilityDraft();
                   const enabled = Boolean(draft.enabled);
                   const error = paramsErrors[cap.id];
+                  // Another capability on this agent may FIX this one's implementation
+                  // (a responses-as-code agent can only finish through `finish`), in
+                  // which case the picker shows that value and cannot be changed — and
+                  // the params below are filtered against it, not against the stale
+                  // selection it overrides.
+                  const locked = lockedImplementation(cap, agent.capabilities);
+                  const implementation = locked ?? draft.implementation;
                   // Run-level "which agent runs this?" knobs (the merge and judge
                   // agents) are read off the root agent, so only offer them there — and
                   // a param the selected implementation does not read (the compaction
@@ -674,7 +686,7 @@ export function GgConfigEditor({
                   const offered = (cap.params ?? []).filter(
                     (p) =>
                       (p.kind !== "agent" || isRoot) &&
-                      paramApplies(p, draft.implementation),
+                      paramApplies(p, implementation),
                   );
                   // A boolean param is a feature switch, not a value: it renders with
                   // the tool-ablation sliders rather than in the param grid.
@@ -711,24 +723,37 @@ export function GgConfigEditor({
                                 <label className={gg.capParamField}>
                                   <FieldLabel
                                     label={cap.implementationLabel}
-                                    hint={cap.implementationHint}
+                                    hint={
+                                      locked !== null
+                                        ? cap.lockImplementation?.hint
+                                        : cap.implementationHint
+                                    }
                                   />
                                   {cap.implementationOptions ? (
+                                    // A fixed implementation stays a <select> — so it
+                                    // reads and tests as the same control — but shows
+                                    // only the value gg will use, and is disabled.
                                     <select
                                       className={runExec.select}
-                                      value={draft.implementation ?? ""}
-                                      disabled={readOnly}
+                                      value={implementation ?? ""}
+                                      disabled={readOnly || locked !== null}
                                       onChange={(e) =>
                                         updateCap(cap.id, {
                                           implementation: e.target.value,
                                         })
                                       }
                                     >
-                                      {cap.implementationOptions.map((o) => (
-                                        <option key={o.value} value={o.value}>
-                                          {o.label}
-                                        </option>
-                                      ))}
+                                      {cap.implementationOptions
+                                        .filter(
+                                          (o) =>
+                                            locked === null ||
+                                            o.value === locked,
+                                        )
+                                        .map((o) => (
+                                          <option key={o.value} value={o.value}>
+                                            {o.label}
+                                          </option>
+                                        ))}
                                     </select>
                                   ) : (
                                     <input
@@ -796,6 +821,139 @@ export function GgConfigEditor({
                                             <span>{o.label}</span>
                                           </label>
                                         ))}
+                                      </div>
+                                    </div>
+                                  );
+                                }
+                                if (p.kind === "commands") {
+                                  const rows = commandsFromDraft(
+                                    draft.params?.[p.key],
+                                  );
+                                  const setRows = (
+                                    next: ReadonlyArray<CommandDraft>,
+                                  ) =>
+                                    setParam(
+                                      cap.id,
+                                      p.key,
+                                      commandsDraftValue(next),
+                                    );
+                                  return (
+                                    <div
+                                      key={p.key}
+                                      className={`${gg.capParamField} ${gg.commandField}`}
+                                      role="group"
+                                      aria-label={p.label}
+                                    >
+                                      <FieldLabel
+                                        label={p.label}
+                                        hint={p.hint}
+                                      />
+                                      <div className={gg.commandList}>
+                                        {rows.map((row, i) => (
+                                          // Keyed by position: a row has no identity of
+                                          // its own, and reordering is not offered — the
+                                          // commands run in the order they are listed.
+                                          <div
+                                            key={i}
+                                            className={gg.commandRow}
+                                          >
+                                            <input
+                                              className={`${runExec.input} ${gg.commandLine}`}
+                                              type="text"
+                                              value={row.command}
+                                              disabled={readOnly}
+                                              aria-label={`Command ${i + 1}`}
+                                              onChange={(e) =>
+                                                setRows(
+                                                  rows.map((r, j) =>
+                                                    j === i
+                                                      ? {
+                                                          ...r,
+                                                          command:
+                                                            e.target.value,
+                                                        }
+                                                      : r,
+                                                  ),
+                                                )
+                                              }
+                                              placeholder="e.g. npm run build"
+                                              spellCheck={false}
+                                            />
+                                            <input
+                                              className={`${runExec.input} ${gg.commandCwd}`}
+                                              type="text"
+                                              value={row.cwd}
+                                              disabled={readOnly}
+                                              aria-label={`Command ${i + 1} working directory`}
+                                              onChange={(e) =>
+                                                setRows(
+                                                  rows.map((r, j) =>
+                                                    j === i
+                                                      ? {
+                                                          ...r,
+                                                          cwd: e.target.value,
+                                                        }
+                                                      : r,
+                                                  ),
+                                                )
+                                              }
+                                              placeholder="workspace root"
+                                              spellCheck={false}
+                                            />
+                                            <input
+                                              className={`${runExec.input} ${gg.commandTimeout}`}
+                                              type="number"
+                                              min={0}
+                                              value={row.timeoutSecs}
+                                              disabled={readOnly}
+                                              aria-label={`Command ${i + 1} timeout (seconds)`}
+                                              onChange={(e) =>
+                                                setRows(
+                                                  rows.map((r, j) =>
+                                                    j === i
+                                                      ? {
+                                                          ...r,
+                                                          timeoutSecs:
+                                                            e.target.value,
+                                                        }
+                                                      : r,
+                                                  ),
+                                                )
+                                              }
+                                              placeholder="timeout s"
+                                            />
+                                            {!readOnly && (
+                                              <button
+                                                type="button"
+                                                className={gg.slotRemove}
+                                                aria-label={`Remove command ${i + 1}`}
+                                                onClick={() =>
+                                                  setRows(
+                                                    rows.filter(
+                                                      (_, j) => j !== i,
+                                                    ),
+                                                  )
+                                                }
+                                              >
+                                                ✕
+                                              </button>
+                                            )}
+                                          </div>
+                                        ))}
+                                        {!readOnly && (
+                                          <button
+                                            type="button"
+                                            className={runExec.secondary}
+                                            onClick={() =>
+                                              setRows([
+                                                ...rows,
+                                                blankCommandDraft(),
+                                              ])
+                                            }
+                                          >
+                                            + Add command
+                                          </button>
+                                        )}
                                       </div>
                                     </div>
                                   );

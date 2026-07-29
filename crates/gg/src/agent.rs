@@ -151,7 +151,7 @@ use crate::tasks::{TasksRuntime, resolve_max_tasks, resolve_task_mode};
 use crate::telemetry::Emitter;
 use crate::tools::VisionContext;
 use crate::tools::{
-    ARCHIVE_THREAD_TOOL, AgentStatusData, COMPACT_TOOL, COMPLETE_ISSUE_TOOL, CREATE_ISSUE_TOOL,
+    ARCHIVE_THREAD_TOOL, AgentStatusData, COMPACT_TOOL, CREATE_ISSUE_TOOL,
     DEFAULT_ARCHIVE_KEEP_RECENT, ENTER_PLAN_MODE_TOOL, EVICT_FILE_VIEW_TOOL, OffloadPolicy,
     PARAM_MAX_CHARS, PARAM_MAX_LINES, READ_FILE_TOOL, READ_SKILL_TOOL, RUN_WORKFLOW_TOOL,
     ReadFileTool, ReadPolicy, ReclaimData, RuntimeSet, SEND_MESSAGE_TOOL, SHELL_OUTPUT_OFFLOAD,
@@ -1726,7 +1726,7 @@ async fn wait_for_issue_by_id(
             ToolFailure::InvalidArgument,
             format!(
                 "you cannot wait on issue `{issue_id}`: it is the issue you were assigned to \
-                 implement. Do the work and call `complete_issue` when it is done."
+                 implement. Do the work and finish — your issue is completed when you are."
             ),
         );
     }
@@ -1813,17 +1813,17 @@ enum AgentRole {
     /// A **top-level** agent gg auto-dispatched to implement a [board issue](crate::board): driven
     /// by the issue's structured brief, tied to its `issue_id`, and — unlike a [`Sub`](Self::Sub) —
     /// answering to no spawner (it has no parent and delivers no return value). When its loop ends
-    /// the [completion path](run_agent) checks whether it marked its issue done and, if not,
+    /// the [completion path](run_agent) sends its issue to review if it *finished*, and otherwise
     /// re-dispatches it (up to the [retry cap](crate::board::BoardCaps::max_retries)) or fails it.
     Issue {
         /// The issue's structured brief that drives the agent (its build prompt).
         brief: String,
         /// The board issue this agent was dispatched to implement (scopes its telemetry, and is
-        /// what it is expected to `complete_issue`).
+        /// what finishing successfully sends to review).
         issue_id: String,
         /// How many times this issue has already been re-dispatched — `0` on its first attempt.
         /// Compared against the [retry cap](crate::board::BoardCaps::max_retries) when the agent
-        /// finishes without completing it.
+        /// ends without finishing.
         retry: u32,
     },
     /// A spawned subagent, driven by `brief`, that on completion delivers its
@@ -1909,7 +1909,7 @@ struct ProjectContext {
     orch: Arc<Orchestrator>,
     /// The board issue this agent was dispatched to implement, when it was — so the loop frames
     /// `finish` as "return this issue's result" rather than "end the run", and knows the agent is
-    /// expected to `complete_issue`. `None` for the root and for a subagent that was not
+    /// expected to finish. `None` for the root and for a subagent that was not
     /// issue-dispatched.
     assigned_issue: Option<String>,
 }
@@ -2014,25 +2014,21 @@ async fn run_agent(
     let memory_store = memories.store();
     let task_store = tasks.store();
     let board_store = board.store();
-    // The issue this agent was auto-dispatched to implement, if any — the one board fact its
-    // toolset depends on beyond its profile. An implementer is normally configured *without* the
-    // board-authoring capability (it works issues, it does not file them), and it still has to be
-    // able to say its issue's work is finished, so the runtime set carries the assignment and the
-    // registry offers `complete_issue` on the strength of it.
+    // The issue this agent was auto-dispatched to implement, if any. It shapes the agent's *prompt*
+    // (which names the issue it is working) and its issue-wait guard, but not its toolset: an
+    // implementer hands its work back by finishing, not by making a board move, so it needs no board
+    // tool it would not otherwise have.
     let assigned_issue = match &role {
         AgentRole::Issue { issue_id, .. } => Some(issue_id.clone()),
         _ => None,
     };
     // This agent's toolset, model, and prompt all come from **its own profile**, so a run can give
     // different agents different capabilities. The board store it binds is the run-global one.
-    let mut runtimes = RuntimeSet::new(&library)
+    let runtimes = RuntimeSet::new(&library)
         .with_memories(&memory_store)
         .with_tasks(&task_store)
         .with_board(&board_store)
         .with_archive(&archive_store);
-    if let Some(issue_id) = &assigned_issue {
-        runtimes = runtimes.with_assigned_issue(issue_id);
-    }
     let registry = ToolRegistry::from_run(&profile, &runtimes);
     // Root the agent's file/shell tools in its isolated worktree when it has one, so every
     // mutation lands in the private copy rather than the shared main tree; otherwise root them in
@@ -2246,6 +2242,10 @@ async fn run_agent(
         .record(&end.slot, &model_id, end.tokens, end.cost);
 
     let failed = is_failure_status(end.status);
+    // Whether the loop ended in a *completion* — the model signalled it was done under this agent's
+    // own [completion rule](crate::completion) — rather than on a ceiling, a breached limit, or an
+    // error. It is what finishes an [issue](crate::board) this agent was dispatched to implement.
+    let completed = end.status == STATUS_COMPLETED;
     if orch.multi_agent() {
         emitter.emit(agent_status(if failed {
             GgAgentStatus::Failed
@@ -2266,7 +2266,7 @@ async fn run_agent(
             // Free the slot first (like the root), so a re-dispatch or a newly-unblocked issue can
             // acquire it, then reconcile the issue against what the agent did.
             orch.scheduler.release();
-            reconcile_issue(&orch, &issue_id, retry, emitter).await;
+            reconcile_issue(&orch, &issue_id, retry, completed, emitter).await;
         }
         AgentRole::Sub {
             worktree,
@@ -3079,25 +3079,35 @@ enum RoundOutcome {
 /// Reconcile an [issue](crate::board) once the agent working it has finished — the whole of what
 /// happens between "an agent stopped" and "the board moved".
 ///
-/// Three things can be true when an issue agent's loop ends, and each has its own path:
+/// `completed` is whether that agent's loop ended in a **completion** ([`STATUS_COMPLETED`]) rather
+/// than on a ceiling or an error. That — and nothing else — is what finishes an issue: the agent
+/// signalled completion under whatever [rule](crate::completion) its own profile configures, and
+/// there is no second, board-specific signal for it to forget. Three things can be true when an
+/// issue agent's loop ends, and each has its own path:
 ///
-/// 1. It **claimed the work is done** (`complete_issue` moved the issue to
-///    [`InReview`](IssueStatus::InReview)). gg runs the issue's [reviewers](run_issue_review) in
-///    turn. On approval the issue's worktree is [merged back](merge_issue_worktree) and the issue is
+/// 1. It **finished** the work. gg moves the issue to [`InReview`](IssueStatus::InReview) and runs
+///    its [reviewers](run_issue_review) in turn. On approval the issue's worktree is
+///    [merged back](merge_issue_worktree) and the issue is
 ///    [accepted](BoardRuntime::accept_issue); on a request for changes the issue is
 ///    [reopened](Orchestrator::reopen_issue_for_review) under its own assigned agent with the items,
 ///    and this whole path runs again when *that* agent finishes. There is deliberately **no cycle
 ///    limit** — a review that keeps finding real problems should keep finding them — so the loop is
 ///    bounded by the run's own ceilings.
-/// 2. It **stopped without completing** and retries remain: the issue is re-dispatched to a fresh
+/// 2. It **stopped without finishing** and retries remain: the issue is re-dispatched to a fresh
 ///    agent in the same worktree, so the next attempt continues rather than restarts.
-/// 3. It stopped without completing and the retries are spent: the issue is
+/// 3. It stopped without finishing and the retries are spent: the issue is
 ///    [failed](BoardRuntime::fail_issue) and its worktree discarded unmerged.
 ///
 /// Every path ends by [pumping the board](Orchestrator::on_issue_progress), so dependents unblock
 /// and waiters wake exactly once the issue's real state is settled.
-async fn reconcile_issue(orch: &Arc<Orchestrator>, issue_id: &str, retry: u32, emitter: &Emitter) {
-    if orch.board.issue_is_in_review(issue_id) {
+async fn reconcile_issue(
+    orch: &Arc<Orchestrator>,
+    issue_id: &str,
+    retry: u32,
+    completed: bool,
+    emitter: &Emitter,
+) {
+    if completed && orch.board.submit_issue_for_review(issue_id) {
         match run_issue_review(orch, issue_id, emitter).await {
             RoundOutcome::Approved => {
                 accept_issue(orch, issue_id, emitter).await;
@@ -3121,9 +3131,10 @@ async fn reconcile_issue(orch: &Arc<Orchestrator>, issue_id: &str, retry: u32, e
             }
         }
     } else if (retry as usize) < orch.board.max_retries() {
-        // It finished without completing the issue and retries remain: re-dispatch it to a fresh
-        // agent. The issue stays `InProgress` (its waiters keep waiting) and keeps its worktree, so
-        // the next attempt continues from what this one produced.
+        // It stopped without finishing — a spent ceiling, a breached limit, or a model error — and
+        // retries remain: re-dispatch it to a fresh agent. The issue stays `InProgress` (its waiters
+        // keep waiting) and keeps its worktree, so the next attempt continues from what this one
+        // produced.
         orch.redispatch_issue(issue_id, retry + 1, emitter);
     } else {
         // Retries exhausted: mark it failed (terminal, but not done — dependents stay blocked),
@@ -7389,8 +7400,8 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
                     }
                 }),
             // The issue this agent was dispatched to implement, when it was one — rendered
-            // whatever its own capabilities are, since `complete_issue` is offered on the strength
-            // of the assignment rather than the board capability.
+            // whatever its own capabilities are, since being told what it is working on has
+            // nothing to do with whether it may author the board.
             assigned_issue: assigned_issue.map(|id| AssignedIssueView { id: id.to_string() }),
             planning: planning.offers_planning(),
             fsm: fsm.is_active().then(|| FsmView {
@@ -7644,7 +7655,7 @@ async fn apply_pending_compaction(
 ///   likewise re-emits the [`TasksState`](GgTelemetryKind::TasksState); the pinned
 ///   [`TaskList`](GgContextSource::TaskList) block is rebuilt at the next turn boundary;
 /// - a successful
-///   `create_epic`/`create_issue`/`update_issue`/`set_issue_blocked_by`/`complete_issue`/`remove_epic`/`remove_issue`
+///   `create_epic`/`create_issue`/`update_issue`/`set_issue_blocked_by`/`remove_epic`/`remove_issue`
 ///   likewise re-emits the [`BoardState`](GgTelemetryKind::BoardState); the pinned
 ///   [`Board`](GgContextSource::Board) block is rebuilt at the next turn boundary;
 /// - a **fresh** skill read is pinned as a [`Skill`](GgContextSource::Skill)-sourced item

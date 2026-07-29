@@ -1636,8 +1636,8 @@ fn the_board_section_follows_the_agents_own_capability() {
     );
 }
 
-/// An agent dispatched for a board issue is told, in its system prompt, to record the issue
-/// finished — even though (as an implementer) it may not author the board.
+/// An agent dispatched for a board issue is told, in its system prompt, that finishing is how it
+/// hands the work back — even though (as an implementer) it may not author the board.
 #[test]
 fn the_assigned_issue_section_is_rendered_for_a_dispatched_agent() {
     let library = Arc::new(SkillLibrary::empty());
@@ -1653,7 +1653,7 @@ fn the_assigned_issue_section_is_rendered_for_a_dispatched_agent() {
         "the prompt names the issue this agent is working:\n{prompt}"
     );
     assert!(
-        prompt.contains("complete_issue"),
+        prompt.contains("is how you hand the work back"),
         "and how to hand the work back:\n{prompt}"
     );
 
@@ -5356,8 +5356,8 @@ fn tool_call_response(id: &str, name: &str, args: serde_json::Value) -> ModelRes
 ///   finish. Submitting the issue enqueues it, so gg auto-dispatches a top-level agent to implement
 ///   it.
 /// - **agents 1+ (that dispatched issue agent, and the same agent on every review round)**: write a
-///   distinct work file and `complete_issue`, then finish — so each round leaves a countable trace
-///   and the re-review's diff has new content.
+///   distinct work file, then finish — which is what completes the issue — so each round leaves a
+///   countable trace and the re-review's diff has new content.
 fn issue_review_root_producer(
     counter: Arc<AtomicUsize>,
 ) -> impl Fn(&GgSlotBinding) -> Box<dyn ModelClient> + Send + Sync + 'static {
@@ -5391,11 +5391,6 @@ fn issue_review_root_producer(
                     "write",
                     "write_file",
                     json!({ "path": format!("work-{n}.txt"), "contents": "work\n" }),
-                ),
-                tool_call_response(
-                    "complete",
-                    "complete_issue",
-                    json!({ "id": REVIEW_ISSUE_ID }),
                 ),
                 stop_response(),
             ],
@@ -5543,11 +5538,8 @@ async fn submitting_an_issue_auto_dispatches_an_agent_that_completes_it() {
             // The root files the issue and finishes — no manual dispatch.
             vec![create_issue_call("feat-1"), stop_response()]
         } else {
-            // The auto-dispatched agent completes its assigned issue.
-            vec![
-                tool_call_response("complete", "complete_issue", json!({ "id": "feat-1" })),
-                stop_response(),
-            ]
+            // The auto-dispatched agent finishes, which completes its assigned issue.
+            vec![stop_response()]
         };
         Box::new(MockClient::new(&b.model_id, responses))
     });
@@ -5587,8 +5579,9 @@ async fn submitting_an_issue_auto_dispatches_an_agent_that_completes_it() {
 }
 
 /// **An issue its assigned agent cannot complete is re-dispatched, then marked failed.** With the
-/// default one retry, an issue whose agents keep finishing without completing it is attempted twice
-/// and then goes to the terminal `failed` state (its dependents would stay blocked).
+/// default one retry, an issue whose agents keep ending *without finishing* — here on a fatal model
+/// error, but a spent turn ceiling or a breached limit reads the same way — is attempted twice and
+/// then goes to the terminal `failed` state (its dependents would stay blocked).
 #[tokio::test]
 async fn an_uncompleted_issue_is_retried_then_failed() {
     let dir = TempDir::new().unwrap();
@@ -5600,13 +5593,17 @@ async fn an_uncompleted_issue_is_retried_then_failed() {
     let counter = Arc::new(AtomicUsize::new(0));
     let factory = ScriptedFactory::new().slot(ROOT_AGENT, move |b| {
         let n = counter.fetch_add(1, Ordering::SeqCst);
-        let responses = if n == 0 {
-            vec![create_issue_call("feat-1"), stop_response()]
-        } else {
-            // The dispatched agent finishes without completing its issue.
-            vec![stop_response()]
-        };
-        Box::new(MockClient::new(&b.model_id, responses))
+        if n == 0 {
+            return Box::new(MockClient::new(
+                &b.model_id,
+                vec![create_issue_call("feat-1"), stop_response()],
+            )) as Box<dyn ModelClient>;
+        }
+        // Every dispatched agent ends on a model error rather than a completion, so its issue is
+        // never handed back.
+        Box::new(FailingClient {
+            mode: FailureMode::Fatal,
+        })
     });
 
     assert_eq!(
@@ -5676,13 +5673,13 @@ fn create_issue_for_coder(id: &str) -> ModelResponse {
     )
 }
 
-/// **An implementer profile without the board capability can still complete its issue.**
+/// **An implementer profile without the board capability completes its issue by finishing.**
 ///
 /// This is the division of labour a board run is *for*: the Root files the work, a coder profile
 /// implements it, and the coder is deliberately not given `project-management` — it has no business
-/// filing epics. Gating `complete_issue` on that capability left the coder unable to record its own
-/// work finished, so every issue was re-dispatched until its retries ran out and then marked failed,
-/// however well the work went — with no failure anywhere to explain it.
+/// filing epics. It needs no board move to hand the work back either: the issue is completed by its
+/// implementer completing, so a coder that does the work and finishes takes the issue to `done`
+/// without ever touching the board.
 #[tokio::test]
 async fn an_implementer_without_the_board_capability_completes_its_issue() {
     let dir = TempDir::new().unwrap();
@@ -5699,10 +5696,15 @@ async fn an_implementer_without_the_board_capability_completes_its_issue() {
             ))
         })
         .slot(CODER_AGENT, |b| {
+            // The coder does the work and simply finishes — the whole of the hand-back.
             Box::new(MockClient::new(
                 &b.model_id,
                 vec![
-                    tool_call_response("complete", "complete_issue", json!({ "id": "feat-1" })),
+                    tool_call_response(
+                        "write",
+                        "write_file",
+                        json!({ "path": "widget.txt", "contents": "the widget\n" }),
+                    ),
                     stop_response(),
                 ],
             ))
@@ -5727,11 +5729,11 @@ async fn an_implementer_without_the_board_capability_completes_its_issue() {
         "the issue was dispatched under the profile it was assigned to"
     );
     assert!(
-        events.iter().any(|e| matches!(
+        !events.iter().any(|e| matches!(
             &e.kind,
-            GgTelemetryKind::ToolResult { name, ok, .. } if name == "complete_issue" && *ok
+            GgTelemetryKind::ToolResult { name, .. } if name == "complete_issue"
         )),
-        "the coder's `complete_issue` call was dispatched, not refused as an unknown tool"
+        "the coder made no board move at all"
     );
     assert_eq!(
         last_issue_status(&events, "feat-1"),
@@ -5795,13 +5797,7 @@ async fn a_board_owned_by_a_non_root_profile_still_dispatches() {
             ))
         })
         .slot(CODER_AGENT, |b| {
-            Box::new(MockClient::new(
-                &b.model_id,
-                vec![
-                    tool_call_response("complete", "complete_issue", json!({ "id": "feat-1" })),
-                    stop_response(),
-                ],
-            ))
+            Box::new(MockClient::new(&b.model_id, vec![stop_response()]))
         });
 
     assert_eq!(
@@ -5843,10 +5839,7 @@ async fn an_agent_can_wait_for_an_issue_until_it_completes() {
                 stop_response(),
             ]
         } else {
-            vec![
-                tool_call_response("complete", "complete_issue", json!({ "id": "feat-1" })),
-                stop_response(),
-            ]
+            vec![stop_response()]
         };
         Box::new(MockClient::new(&b.model_id, responses))
     });
@@ -5911,10 +5904,8 @@ async fn a_code_program_waits_for_an_issue_after_it_ends() {
                 code_reply(FINISHING_PROGRAM),
             ]
         } else {
-            // The auto-dispatched issue agent completes the issue, then finishes.
-            vec![code_reply(
-                "project.completeIssue(\"feat-1\");\nharness.finish(\"issue done\");",
-            )]
+            // The auto-dispatched issue agent finishes, which is what completes the issue.
+            vec![code_reply("harness.finish(\"issue done\");")]
         };
         Box::new(MockClient::new(&b.model_id, responses))
     });
@@ -6024,15 +6015,14 @@ async fn an_issues_reviewers_gate_its_acceptance_and_its_merge() {
         "the review records the baseline it diffed against"
     );
 
-    // `complete_issue` is a *claim*, not the acceptance: it reports what happens next, and the issue
-    // reaches `done` only through the review.
+    // The implementer *finishing* is the claim, not the acceptance: it never makes a board move of
+    // its own, and the issue reaches `done` only through the review.
     assert!(
-        events.iter().any(|e| matches!(
+        !events.iter().any(|e| matches!(
             &e.kind,
-            GgTelemetryKind::ToolResult { name, ok: true, summary: Some(s) }
-                if name == "complete_issue" && s.contains("completed issue")
+            GgTelemetryKind::ToolResult { name, .. } if name == "complete_issue"
         )),
-        "complete_issue records the work as finished"
+        "there is no completion tool for the implementer to call"
     );
     assert_eq!(
         last_issue_status(&events, REVIEW_ISSUE_ID),
@@ -6154,11 +6144,6 @@ async fn an_issues_reviewers_all_have_to_approve() {
                         "write",
                         "write_file",
                         json!({ "path": format!("work-{n}.txt"), "contents": "work\n" }),
-                    ),
-                    tool_call_response(
-                        "complete",
-                        "complete_issue",
-                        json!({ "id": REVIEW_ISSUE_ID }),
                     ),
                     stop_response(),
                 ]
@@ -6302,11 +6287,6 @@ async fn an_issue_without_reviewers_is_accepted_and_merged_directly() {
                     "write",
                     "write_file",
                     json!({ "path": "work.txt", "contents": "work\n" }),
-                ),
-                tool_call_response(
-                    "complete",
-                    "complete_issue",
-                    json!({ "id": REVIEW_ISSUE_ID }),
                 ),
                 stop_response(),
             ]
@@ -6471,7 +6451,6 @@ async fn a_conflicting_issue_merge_is_resolved_by_the_merge_agent() {
                         "write_file",
                         json!({ "path": "shared.txt", "contents": format!("from issue {id}\n") }),
                     ),
-                    tool_call_response("complete", "complete_issue", json!({ "id": id })),
                     stop_response(),
                 ]
             };

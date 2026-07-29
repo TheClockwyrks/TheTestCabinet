@@ -82,9 +82,8 @@ use crate::tasks::TaskStore;
 use crate::vision::VisionSupport;
 
 pub use board::{
-    COMPLETE_ISSUE_TOOL, CREATE_ISSUE_TOOL, CompleteIssueTool, CreateEpicTool, CreateIssueTool,
-    RemoveEpicTool, RemoveIssueTool, SetIssueBlockedByTool, UpdateIssueTool, WAIT_FOR_ISSUE_TOOL,
-    is_board_tool,
+    CREATE_ISSUE_TOOL, CreateEpicTool, CreateIssueTool, RemoveEpicTool, RemoveIssueTool,
+    SetIssueBlockedByTool, UpdateIssueTool, WAIT_FOR_ISSUE_TOOL, is_board_tool,
 };
 pub use context::{
     ARCHIVE_THREAD_TOOL, ArchiveThreadTool, COMPACT_TOOL, CompactTool, DEFAULT_ARCHIVE_KEEP_RECENT,
@@ -97,10 +96,10 @@ pub use context::{
 // from here by the [sandbox membrane](crate::sandbox), which turns each one into a typed WIT
 // result.
 pub use data::{
-    AgentStatusData, ArchiveHitData, ArchiveSearchData, BoardUsageData, CompletionData,
-    DirEntryData, DirEntryKind, FileImageData, FileTextData, MemoryHitData, MemoryUsageData,
-    ReclaimData, ShellData, SpeculationData, SubagentHandleData, SubagentResultData, ToolData,
-    ToolFailure, UsagePair, WorkflowData, saturating_u32, saturating_u64,
+    AgentStatusData, ArchiveHitData, ArchiveSearchData, BoardUsageData, DirEntryData, DirEntryKind,
+    FileImageData, FileTextData, MemoryHitData, MemoryUsageData, ReclaimData, ShellData,
+    SpeculationData, SubagentHandleData, SubagentResultData, ToolData, ToolFailure, UsagePair,
+    WorkflowData, saturating_u32, saturating_u64,
 };
 pub use filesystem::{
     EditFileTool, ListDirTool, READ_FILE_TOOL, ReadFileTool, ReadPolicy, WriteFileTool,
@@ -159,7 +158,6 @@ pub const ALL_TOOL_NAMES: &[&str] = &[
     "create_issue",
     "update_issue",
     "set_issue_blocked_by",
-    "complete_issue",
     "remove_epic",
     "remove_issue",
     "wait_for_issue",
@@ -514,14 +512,6 @@ pub struct RuntimeSet<'a> {
     pub board: Option<&'a Arc<Mutex<BoardStore>>>,
     /// The thread archive `archive_thread` fills and `search_archive` reads, when bound.
     pub archive: Option<&'a Arc<Mutex<ArchiveStore>>>,
-    /// The [board issue](crate::board) this agent was **dispatched to implement**, when it was.
-    ///
-    /// Bound only for an agent gg auto-dispatched off the board, and the reason `complete_issue`
-    /// is not gated on [`project-management`](CAPABILITY_PROJECT_MANAGEMENT) alone: authoring the
-    /// board and *working an issue on it* are different jobs, and an implementer profile is
-    /// normally configured without the authoring capability. Declaring its own work finished is
-    /// the one board move such an agent must always be able to make.
-    pub assigned_issue: Option<&'a str>,
 }
 
 impl<'a> RuntimeSet<'a> {
@@ -534,7 +524,6 @@ impl<'a> RuntimeSet<'a> {
             tasks: None,
             board: None,
             archive: None,
-            assigned_issue: None,
         }
     }
 
@@ -559,13 +548,6 @@ impl<'a> RuntimeSet<'a> {
     /// Bind the thread archive the agent-managed-context tools use.
     pub fn with_archive(mut self, archive: &'a Arc<Mutex<ArchiveStore>>) -> Self {
         self.archive = Some(archive);
-        self
-    }
-
-    /// Declare that this agent was auto-dispatched to implement the [board issue](crate::board)
-    /// `issue_id`, which is what earns it `complete_issue` whatever its own capabilities are.
-    pub fn with_assigned_issue(mut self, issue_id: &'a str) -> Self {
-        self.assigned_issue = Some(issue_id);
         self
     }
 }
@@ -609,7 +591,7 @@ impl ToolRegistry {
     /// `add_task`/`update_task`/`set_blocked_by`/`complete_task`/`remove_task` tools when a task
     /// store is bound; the [`project-management`](CAPABILITY_PROJECT_MANAGEMENT) capability contributes
     /// the
-    /// `create_epic`/`create_issue`/`update_issue`/`set_issue_blocked_by`/`complete_issue`/`remove_epic`/`remove_issue`
+    /// `create_epic`/`create_issue`/`update_issue`/`set_issue_blocked_by`/`remove_epic`/`remove_issue`
     /// tools when a board store is bound (the model creates the memories, tasks, epics, and
     /// issues, so no pre-existing content is required); and the
     /// [`agent-managed-context`](CAPABILITY_AGENT_MANAGED_CONTEXT) capability contributes the
@@ -703,40 +685,29 @@ impl ToolRegistry {
             tools.push(Box::new(tasks::RemoveTaskTool::new(Arc::clone(tasks))));
         }
 
-        if let Some(board) = runtimes.board {
-            if capabilities.is_enabled(CAPABILITY_PROJECT_MANAGEMENT) {
-                tools.push(Box::new(board::CreateEpicTool::new(Arc::clone(board))));
-                tools.push(Box::new(board::CreateIssueTool::new(
-                    Arc::clone(board),
-                    IssuePolicy::resolve(capabilities),
-                )));
-                tools.push(Box::new(board::UpdateIssueTool::new(Arc::clone(board))));
-                tools.push(Box::new(board::SetIssueBlockedByTool::new(Arc::clone(
-                    board,
-                ))));
-                tools.push(Box::new(board::CompleteIssueTool::new(
-                    Arc::clone(board),
-                    runtimes.assigned_issue,
-                )));
-                tools.push(Box::new(board::RemoveEpicTool::new(Arc::clone(board))));
-                tools.push(Box::new(board::RemoveIssueTool::new(Arc::clone(board))));
-                // `wait_for_issue` is a declaration the loop intercepts (like the delegation
-                // tools) — it suspends the agent on the orchestrator's issue-wait registry, which
-                // a self-contained tool cannot reach — so it needs no bound store of its own.
-                tools.push(Box::new(board::WaitForIssueTool));
-            } else if let Some(issue_id) = runtimes.assigned_issue {
-                // An agent gg dispatched off the board gets `complete_issue` whether or not its
-                // profile may author the board — declaring the work it was sent to do finished is
-                // the move that moves its issue to review, and an implementer that cannot make it
-                // leaves gg no way to see the issue through: the issue is re-dispatched until its
-                // retries run out and then marked failed, however well the work went. Authoring an
-                // issue and working one are separate jobs, so an implementer profile is normally
-                // configured without `project-management` — the common case, not an edge one.
-                tools.push(Box::new(board::CompleteIssueTool::new(
-                    Arc::clone(board),
-                    Some(issue_id),
-                )));
-            }
+        // An agent gg dispatched to implement an issue needs no board tool of its own to hand its
+        // work back: the issue is finished exactly when that agent finishes, under its own
+        // [completion rule](crate::completion). So the board tools are gated on the authoring
+        // capability alone — authoring the board and working an issue on it are separate jobs, and
+        // an implementer profile is normally configured without the former.
+        if let Some(board) = runtimes.board
+            && capabilities.is_enabled(CAPABILITY_PROJECT_MANAGEMENT)
+        {
+            tools.push(Box::new(board::CreateEpicTool::new(Arc::clone(board))));
+            tools.push(Box::new(board::CreateIssueTool::new(
+                Arc::clone(board),
+                IssuePolicy::resolve(capabilities),
+            )));
+            tools.push(Box::new(board::UpdateIssueTool::new(Arc::clone(board))));
+            tools.push(Box::new(board::SetIssueBlockedByTool::new(Arc::clone(
+                board,
+            ))));
+            tools.push(Box::new(board::RemoveEpicTool::new(Arc::clone(board))));
+            tools.push(Box::new(board::RemoveIssueTool::new(Arc::clone(board))));
+            // `wait_for_issue` is a declaration the loop intercepts (like the delegation
+            // tools) — it suspends the agent on the orchestrator's issue-wait registry, which
+            // a self-contained tool cannot reach — so it needs no bound store of its own.
+            tools.push(Box::new(board::WaitForIssueTool));
         }
 
         if capabilities.is_enabled(CAPABILITY_AGENT_MANAGED_CONTEXT)

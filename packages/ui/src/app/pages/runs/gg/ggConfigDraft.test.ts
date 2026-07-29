@@ -467,6 +467,122 @@ describe("gg response-healing toggles", () => {
   });
 });
 
+// --- Completion ------------------------------------------------------------------
+
+const COMPLETION = "completion";
+
+function completionCap(s: GgCapabilitySet): GgCapabilityConfig | undefined {
+  return setCaps(s).find((cap) => cap.id === COMPLETION);
+}
+
+describe("gg completion", () => {
+  it("round-trips the completion signal", () => {
+    const configured = capSet([
+      {
+        id: COMPLETION,
+        enabled: true,
+        implementation: "explicit-call",
+        params: {},
+      },
+    ]);
+    const draft = draftFromCapabilitySet(configured);
+    expect(draftCaps(draft)[COMPLETION]?.implementation).toBe("explicit-call");
+    expect(
+      completionCap(capabilitySetFromDraft(draft, null))?.implementation,
+    ).toBe("explicit-call");
+  });
+
+  // A code-mode agent can only ever end through its program's `finish`, so gg ignores a
+  // plain-text signal on one. The editor writes the signal gg will actually use rather
+  // than the stale selection, so a stored configuration is never a lie about the run.
+  it("fixes the signal to the explicit call on a responses-as-code agent", () => {
+    const configured = capSet([
+      { id: CODE, enabled: true, params: {} },
+      {
+        id: COMPLETION,
+        enabled: true,
+        implementation: "plain-text",
+        params: {},
+      },
+    ]);
+    const draft = draftFromCapabilitySet(configured);
+    expect(
+      completionCap(capabilitySetFromDraft(draft, null))?.implementation,
+    ).toBe("explicit-call");
+
+    // Switching code mode off hands the choice back — the operator's own selection was
+    // kept in the draft throughout, so nothing was lost to the lock.
+    draft.agents[0]!.capabilities[CODE] = {
+      ...draft.agents[0]!.capabilities[CODE]!,
+      enabled: false,
+    };
+    expect(
+      completionCap(capabilitySetFromDraft(draft, null))?.implementation,
+    ).toBe("plain-text");
+  });
+
+  it("round-trips validation commands, including a bare-string shorthand", () => {
+    const configured = capSet([
+      {
+        id: COMPLETION,
+        enabled: true,
+        params: {
+          validation: [
+            "npm run build",
+            { command: "npm test", cwd: "game", timeoutSecs: 900 },
+          ],
+        },
+      },
+    ]);
+    const draft = draftFromCapabilitySet(configured);
+    expect(
+      JSON.parse(draftCaps(draft)[COMPLETION]?.params?.validation ?? "[]"),
+    ).toEqual([
+      { command: "npm run build", cwd: "", timeoutSecs: "" },
+      { command: "npm test", cwd: "game", timeoutSecs: "900" },
+    ]);
+    // The shorthand normalizes to the object form on the way out; gg reads both.
+    expect(completionCap(capabilitySetFromDraft(draft, null))?.params).toEqual({
+      validation: [
+        { command: "npm run build" },
+        { command: "npm test", cwd: "game", timeoutSecs: 900 },
+      ],
+    });
+  });
+
+  it("drops a half-typed command row rather than writing an empty gate", () => {
+    const draft = emptyDraft();
+    draft.agents[0]!.capabilities[COMPLETION] = {
+      enabled: true,
+      implementation: "",
+      params: {
+        validation: JSON.stringify([
+          { command: "  ", cwd: "game", timeoutSecs: "" },
+        ]),
+      },
+      extraParams: {},
+    };
+    expect(completionCap(capabilitySetFromDraft(draft, null))?.params).toEqual(
+      {},
+    );
+  });
+
+  it("preserves a validation entry the rows cannot represent", () => {
+    const configured = capSet([
+      {
+        id: COMPLETION,
+        enabled: true,
+        params: { validation: [{ command: "npm test", futureKnob: 3 }] },
+      },
+    ]);
+    const draft = draftFromCapabilitySet(configured);
+    expect(draftCaps(draft)[COMPLETION]?.params?.validation).toBeUndefined();
+    expect(completionCap(capabilitySetFromDraft(draft, null))?.params).toEqual({
+      validation: [{ command: "npm test", futureKnob: 3 }],
+    });
+  });
+});
+
 describe("gg capability params", () => {
   function paramsOf(s: GgCapabilitySet, id: string): Record<string, unknown> {
     return (setCaps(s).find((cap) => cap.id === id)?.params ?? {}) as Record<

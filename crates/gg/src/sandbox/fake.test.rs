@@ -21,10 +21,10 @@ use crate::board::IssueStatus;
 use crate::model::ImageContent;
 use crate::tasks::TaskStatus;
 use crate::tools::{
-    ArchiveHitData, ArchiveSearchData, BoardUsageData, CompletionData, DirEntryData, DirEntryKind,
-    FileImageData, FileTextData, MemoryHitData, MemoryUsageData, ReclaimData, ShellData,
-    SpeculationData, SubagentHandleData, SubagentResultData, ToolData, ToolFailure, ToolOutcome,
-    UsagePair, WorkflowData,
+    ArchiveHitData, ArchiveSearchData, BoardUsageData, DirEntryData, DirEntryKind, FileImageData,
+    FileTextData, MemoryHitData, MemoryUsageData, ReclaimData, ShellData, SpeculationData,
+    SubagentHandleData, SubagentResultData, ToolData, ToolFailure, ToolOutcome, UsagePair,
+    WorkflowData,
 };
 
 /// Whether this test has a process to itself — the guarantee the process-global compile counter in
@@ -302,9 +302,6 @@ impl ToolApi for FakeToolApi {
             json!({ "id": id, "blockedBy": blocked_by }),
         )
     }
-    fn complete_issue(&mut self, id: String) -> ToolOutcome {
-        self.call("complete_issue", json!({ "id": id }))
-    }
     fn remove_epic(&mut self, id: String) -> ToolOutcome {
         self.call("remove_epic", json!({ "id": id }))
     }
@@ -478,12 +475,6 @@ pub(crate) fn canned_outcome(name: &str, args: &Value) -> ToolOutcome {
         }
         "update_issue" | "set_issue_blocked_by" => ToolOutcome::ok("noted", "board"),
         "wait_for_issue" => ToolOutcome::ok("wait registered", "wait registered"),
-        "complete_issue" => ToolOutcome::ok("accepted", "issue done").with_data(
-            ToolData::Completion(CompletionData {
-                reviewed: true,
-                detail: "the reviewer approved it".to_string(),
-            }),
-        ),
         "evict_file_view" | "archive_thread" => ToolOutcome::ok("reclaimed", "reclaimed")
             .with_data(ToolData::Reclaim(ReclaimData {
                 items: 2,

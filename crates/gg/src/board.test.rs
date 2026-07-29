@@ -375,8 +375,8 @@ fn update_issue_rejects_regrouping_under_an_unknown_epic() {
     );
 }
 
-/// `complete_issue` is the agent's **claim** that the work is finished, not the acceptance:
-/// it moves the issue to `in review`, which does **not** unblock its dependents. Only
+/// An agent finishing its issue is the **claim** that the work is done, not the acceptance:
+/// gg moves the issue to `in review`, which does **not** unblock its dependents. Only
 /// `accept_issue` — which the orchestrator calls after every reviewer approves and the issue's
 /// worktree merges — marks it done and unblocks them.
 ///
@@ -390,7 +390,7 @@ fn completing_an_issue_moves_it_to_review_and_only_acceptance_unblocks_dependent
     // b is not ready while a is open.
     assert!(!store.is_ready(&store.issues()[1].clone()));
 
-    store.complete_issue("a").unwrap();
+    assert!(store.submit_issue_for_review("a"));
     assert_eq!(store.issues()[0].status(), IssueStatus::InReview);
     assert!(
         !store.issues()[0].status().is_terminal(),
@@ -406,9 +406,9 @@ fn completing_an_issue_moves_it_to_review_and_only_acceptance_unblocks_dependent
     assert!(store.is_ready(&store.issues()[1].clone()));
     // Acceptance is idempotent-safe: an already-terminal issue is left alone.
     assert!(!store.accept_issue("a"));
-    assert_eq!(
-        store.complete_issue("ghost"),
-        Err(BoardError::IssueNotFound("ghost".to_string()))
+    assert!(
+        !store.submit_issue_for_review("ghost"),
+        "an unknown id moves nothing"
     );
 }
 
@@ -640,7 +640,7 @@ fn only_open_unassigned_issues_with_done_blockers_are_dispatchable() {
     );
 
     // Completing `a` only claims it; accepting it is what unblocks `b`.
-    store.complete_issue("a").unwrap();
+    assert!(store.submit_issue_for_review("a"));
     assert!(
         store.dispatchable_ids().is_empty(),
         "a dependent is not dispatchable until its blocker is accepted"
@@ -679,7 +679,7 @@ fn redispatch_reassigns_and_records_the_retry_count() {
     assert_eq!(issue.retries(), 1);
     // An issue in review IS re-dispatchable — that is how a review round sends it back for
     // rework, with its retry count carried through unchanged.
-    store.complete_issue("a").unwrap();
+    assert!(store.submit_issue_for_review("a"));
     assert!(store.redispatch_issue("a", "agent-3", 1));
     let issue = store.issues().iter().find(|i| i.id() == "a").unwrap();
     assert_eq!(issue.status(), IssueStatus::InProgress);

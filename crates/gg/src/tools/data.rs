@@ -127,8 +127,6 @@ pub enum ToolData {
     TaskUsage(UsagePair),
     /// How full the board is after a `create_epic`/`create_issue`/`remove_epic`/`remove_issue`.
     BoardUsage(BoardUsageData),
-    /// What accepting an issue produced: [`CompletionData`], from `complete_issue`.
-    Completion(CompletionData),
     /// What an `evict_file_view`/`archive_thread` actually freed from the live context window.
     ///
     /// Produced by the [loop](crate::agent) rather than by the tool: the two reclaim tools only
@@ -313,20 +311,6 @@ pub struct BoardUsageData {
     pub issues: u32,
     /// The most issues this run allows.
     pub max_issues: u32,
-}
-
-/// What completing an issue produced.
-///
-/// [`reviewed`](Self::reviewed) is the load-bearing field: `complete_issue` is a **claim** that the
-/// work is finished, not the acceptance itself, and whether the issue now goes to its reviewers or
-/// straight to a merge is the one thing a caller cannot infer from the status alone.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CompletionData {
-    /// Whether the issue named reviewers, so its work will be reviewed before it is accepted.
-    pub reviewed: bool,
-    /// The completion detail — what happens to the issue next, in the same prose the model reads.
-    pub detail: String,
 }
 
 /// What a context reclaim actually freed from the live window.

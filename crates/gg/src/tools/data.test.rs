@@ -61,10 +61,6 @@ fn one_of_each() -> Vec<ToolData> {
             issues: 3,
             max_issues: 60,
         }),
-        ToolData::Completion(CompletionData {
-            reviewed: true,
-            detail: "approved".to_string(),
-        }),
         ToolData::Reclaim(ReclaimData {
             items: 4,
             reclaimed_tokens: 900,

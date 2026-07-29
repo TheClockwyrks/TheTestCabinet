@@ -215,16 +215,6 @@
       "types": []
     },
     {
-      "tool": "complete_issue",
-      "js": "completeIssue",
-      "object": "project",
-      "signature": "completeIssue(id: string): CompletionReport",
-      "doc": "Record that an issue's work is finished, and report what happens to it next. This does not mark the issue done on its own: it moves to `in review`, its reviewers (if any) run, and its work is merged into the main workspace before it is accepted. Throws `not-found` for an unknown id.",
-      "types": [
-        "CompletionReport"
-      ]
-    },
-    {
       "tool": "remove_epic",
       "js": "removeEpic",
       "object": "project",
@@ -395,10 +385,6 @@
     {
       "name": "BoardUsage",
       "declaration": "interface BoardUsage { epics: number; maxEpics: number; issues: number; maxIssues: number; }"
-    },
-    {
-      "name": "CompletionReport",
-      "declaration": "interface CompletionReport { reviewed: boolean; detail: string; }"
     },
     {
       "name": "ReclaimReport",

@@ -328,14 +328,6 @@ declare module "test-cabinet:gg/board" {
     maxIssues: number;
   }
 
-  /** What recording an issue's work as finished produced. */
-  export interface CompletionReport {
-    /** Whether the issue named reviewers, so its work is reviewed before acceptance. */
-    reviewed: boolean;
-    /** What happens to the issue next. */
-    detail: string;
-  }
-
   /** Create an epic to group related issues. */
   export function createEpic(epic: EpicInput): BoardUsage;
   /** Create a self-contained, dispatchable issue. */
@@ -344,8 +336,6 @@ declare module "test-cabinet:gg/board" {
   export function updateIssue(id: string, patch: IssuePatch): void;
   /** Replace an issue's full blocker set. */
   export function setIssueBlockedBy(id: string, blockedBy: string[]): void;
-  /** Mark an issue done, running a gating Code Review first when that capability is on. */
-  export function completeIssue(id: string): CompletionReport;
   /** Remove an epic. Its issues are kept and ungrouped. */
   export function removeEpic(id: string): BoardUsage;
   /** Remove an issue and every blocker edge pointing at it. */

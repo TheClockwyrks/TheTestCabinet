@@ -41,12 +41,12 @@ use tokio::runtime::Handle;
 use crate::sandbox::{ToolApi, WorkflowStageInput};
 use crate::tasks::TaskStatus;
 use crate::tools::{
-    AddTaskTool, ArchiveThreadTool, CompactTool, CompleteIssueTool, CompleteTaskTool,
-    CreateEpicTool, CreateIssueTool, CreateMemoryTool, DeleteMemoryTool, EditFileTool,
-    EditMemoryTool, EvictFileViewTool, ListDirTool, OffloadPolicy, OwnedStructured, ReadMemoryTool,
-    ReadSkillTool, RemoveEpicTool, RemoveIssueTool, RemoveTaskTool, SearchArchiveTool,
-    SearchMemoriesTool, SetBlockedByTool, SetIssueBlockedByTool, UpdateIssueTool, UpdateMemoryTool,
-    UpdateTaskTool, WriteFileTool, WriteMemoryTool, run_command,
+    AddTaskTool, ArchiveThreadTool, CompactTool, CompleteTaskTool, CreateEpicTool, CreateIssueTool,
+    CreateMemoryTool, DeleteMemoryTool, EditFileTool, EditMemoryTool, EvictFileViewTool,
+    ListDirTool, OffloadPolicy, OwnedStructured, ReadMemoryTool, ReadSkillTool, RemoveEpicTool,
+    RemoveIssueTool, RemoveTaskTool, SearchArchiveTool, SearchMemoriesTool, SetBlockedByTool,
+    SetIssueBlockedByTool, UpdateIssueTool, UpdateMemoryTool, UpdateTaskTool, WriteFileTool,
+    WriteMemoryTool, run_command,
 };
 
 // ---------------------------------------------------------------------------
@@ -1287,7 +1287,7 @@ impl LoopToolApi {
                 ToolFailure::InvalidArgument,
                 format!(
                     "you cannot wait on issue `{issue_id}`: it is the issue you were assigned to \
-                     implement. Do the work and call `complete_issue` when it is done."
+                     implement. Do the work and finish — your issue is completed when you are."
                 ),
             );
         }
@@ -1624,11 +1624,6 @@ impl ToolApi for LoopToolApi {
                     .set_issue_blocked_by(id.clone(), blocked_by.clone())
             },
         )
-    }
-    fn complete_issue(&mut self, id: String) -> ToolOutcome {
-        self.serviced(COMPLETE_ISSUE_TOOL, json!({ "id": id }), |api| {
-            CompleteIssueTool::new(api.board.store(), None).complete_issue(id.clone())
-        })
     }
     fn remove_epic(&mut self, id: String) -> ToolOutcome {
         self.serviced("remove_epic", json!({ "id": id }), |api| {

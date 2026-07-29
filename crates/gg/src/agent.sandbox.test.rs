@@ -1381,7 +1381,7 @@ async fn a_code_mode_reviewer_verdict_parses() {
     let inv = invocation(dir.path(), set);
     // The primary slot serves the root (agent 0: build the board, then finish — creating the issue
     // auto-dispatches an agent to implement it) then that dispatched issue agent (agent 1: write the
-    // work and `completeIssue`, which triggers the gating review, then finish).
+    // work, then finish — which is what triggers the gating review).
     let primary_counter = Arc::new(AtomicUsize::new(0));
     let factory = ScriptedFactory::new()
         .slot(ROOT_AGENT, move |b| {
@@ -1399,10 +1399,7 @@ async fn a_code_mode_reviewer_verdict_parses() {
                 ]
             } else {
                 vec![
-                    code_reply(&format!(
-                        "fs.writeFile(\"widget.txt\", \"the widget\\n\");\nreturn \
-                         project.completeIssue(\"{REVIEW_ISSUE_ID}\");"
-                    )),
+                    code_reply("fs.writeFile(\"widget.txt\", \"the widget\\n\");"),
                     code_reply(FINISHING_PROGRAM),
                 ]
             };
@@ -1530,9 +1527,9 @@ async fn a_code_mode_speculation_merges_the_winners_worktree() {
 /// **A code-mode issue agent's isolated worktree is merged back.**
 ///
 /// An issue's work happens on a branch, and the merge gate is the issue's acceptance — which under
-/// this protocol is reached through a `complete_issue` call inside a program. An agent whose program
-/// could not reach that call would have its work discarded silently, which is the failure this
-/// asserts is gone.
+/// this protocol is reached by the agent's program calling `finish`. An agent whose program could
+/// not reach that call would have its work discarded silently, which is the failure this asserts is
+/// gone.
 #[tokio::test]
 async fn a_code_mode_issue_agents_worktree_is_merged() {
     let dir = TempDir::new().unwrap();
@@ -1558,11 +1555,10 @@ async fn a_code_mode_issue_agents_worktree_is_merged() {
                 code_reply(FINISHING_PROGRAM),
             ]
         } else {
-            vec![code_reply(&format!(
+            vec![code_reply(
                 "fs.writeFile(\"isolated.txt\", \"from the worktree\\n\");\n\
-                 project.completeIssue(\"{REVIEW_ISSUE_ID}\");\n\
-                 harness.finish(\"wrote the file in my worktree\");"
-            ))]
+                 harness.finish(\"wrote the file in my worktree\");",
+            )]
         };
         Box::new(MockClient::new(&b.model_id, programs))
     });

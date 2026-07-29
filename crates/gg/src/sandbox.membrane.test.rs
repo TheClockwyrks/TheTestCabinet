@@ -169,11 +169,6 @@ fn crossings() -> Vec<Crossing> {
             expected: || json!({ "id": "i1", "blockedBy": ["i0"] }),
         },
         Crossing {
-            tool: "complete_issue",
-            program: "project.completeIssue(\"i1\");",
-            expected: || json!({ "id": "i1" }),
-        },
-        Crossing {
             tool: "remove_epic",
             program: "project.removeEpic(\"e1\");",
             expected: || json!({ "id": "e1" }),

@@ -1401,16 +1401,16 @@ fn the_board_block_renders_epics_issues_and_briefs() {
     assert!(!block.contains("create_issue"));
 }
 
-/// **An agent dispatched to implement an issue is told to record it finished**, in the vocabulary
-/// of its own execution mode — and is told so whether or not it may author the board, since an
-/// implementer profile normally cannot.
+/// **An agent dispatched to implement an issue is told that finishing is how it hands the work
+/// back**, in the vocabulary of its own execution mode — and is told so whether or not it may
+/// author the board, since an implementer profile normally cannot.
 ///
 /// This is the only place an implementer learns the protocol: its brief says what to *build*, and
 /// the board-authoring section it would otherwise have read this from is (rightly) not rendered for
-/// a profile with no board capability. Without it, an agent that does the work perfectly still ends
-/// its session without handing anything back, and gg discards the worktree and retries the issue.
+/// a profile with no board capability. What it must not be told is to make a board move it has no
+/// tool for — the issue is completed by the agent completing, and nothing else.
 #[test]
-fn an_assigned_issue_tells_the_implementer_to_record_it_finished() {
+fn an_assigned_issue_tells_the_implementer_that_finishing_hands_the_work_back() {
     let implementer = |responses_as_code: bool| SystemContext {
         responses_as_code,
         // The code arm lists the objects a program reaches; the tool-calling arm ignores them.
@@ -1432,8 +1432,8 @@ fn an_assigned_issue_tells_the_implementer_to_record_it_finished() {
         "the section names the issue:\n{tools}"
     );
     assert!(
-        tools.contains("call `complete_issue` with the id `feat-1`"),
-        "and names the call, in tool-calling form:\n{tools}"
+        tools.contains("Finishing this session is how you hand the work back"),
+        "and says that finishing is the hand-back, in tool-calling form:\n{tools}"
     );
     assert!(
         !tools.contains("`create_issue`"),
@@ -1442,13 +1442,19 @@ fn an_assigned_issue_tells_the_implementer_to_record_it_finished() {
 
     let code = flat(&render_system(&implementer(true), None));
     assert!(
-        code.contains("`project.completeIssue(\"feat-1\")`"),
+        code.contains("Calling `harness.finish()` is how you hand the work back"),
         "code mode names the API function form:\n{code}"
     );
     assert!(
         !code.contains("`project.createIssue`"),
         "and still teaches no authoring API:\n{code}"
     );
+    for prompt in [&tools, &code] {
+        assert!(
+            !prompt.contains("completeIssue") && !prompt.contains("complete_issue"),
+            "and never names a completion move that does not exist:\n{prompt}"
+        );
+    }
 
     // An agent that was not dispatched off the board renders no such section at all.
     let undispatched = flat(&render_system(&SystemContext::default(), None));

@@ -15,8 +15,7 @@
 //!   the same idea for an issue's grouping.
 
 use super::test_cabinet::gg::board::{
-    BoardUsage, CompletionReport, EpicAssignment, EpicInput, Host as BoardHost, IssueInput,
-    IssuePatch, IssueStatus,
+    BoardUsage, EpicAssignment, EpicInput, Host as BoardHost, IssueInput, IssuePatch, IssueStatus,
 };
 use super::test_cabinet::gg::memories::{
     Host as MemoriesHost, MemoryEdit, MemoryHit, MemoryInput, MemoryUsage,
@@ -27,7 +26,7 @@ use super::test_cabinet::gg::tasks::{
 };
 use super::test_cabinet::gg::types::{TextEdit, ToolError};
 use super::{MembraneState, ToolApi};
-use crate::tools::{COMPLETE_ISSUE_TOOL, READ_SKILL_TOOL, ToolData};
+use crate::tools::{READ_SKILL_TOOL, ToolData};
 
 /// The `write_memory` tool name.
 const WRITE_MEMORY_TOOL: &str = "write_memory";
@@ -279,20 +278,6 @@ impl<A: ToolApi> BoardHost for MembraneState<A> {
             api.set_issue_blocked_by(id, blocked_by)
         })?;
         Ok(())
-    }
-
-    fn complete_issue(&mut self, id: String) -> Result<CompletionReport, ToolError> {
-        // With Code Reviews enabled this is the one cheap-looking call that transitively spawns a
-        // reviewer (and possibly a fix loop), so the report says whether that happened — a program
-        // otherwise has no way to tell a gated acceptance from a plain status change.
-        let outcome = self.call(COMPLETE_ISSUE_TOOL, |api| api.complete_issue(id))?;
-        match outcome.data {
-            Some(ToolData::Completion(completion)) => Ok(CompletionReport {
-                reviewed: completion.reviewed,
-                detail: completion.detail,
-            }),
-            other => Err(self.missing_data(COMPLETE_ISSUE_TOOL, other.as_ref())),
-        }
     }
 
     fn remove_epic(&mut self, id: String) -> Result<BoardUsage, ToolError> {

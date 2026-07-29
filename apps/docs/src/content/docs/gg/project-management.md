@@ -42,15 +42,21 @@ An issue moves through:
 
 - **open** — enqueued, waiting on its blockers (or on scheduler capacity).
 - **in_progress** — an agent has been spawned and assigned to it.
-- **in_review** — its agent called the work finished, and gg is reconciling it:
-  running its reviewers and merging its work back. **Not** terminal, and **not**
-  done — a review that requests changes sends the issue back to **in_progress**.
+- **in_review** — its agent **finished**, and gg is reconciling it: running its
+  reviewers and merging its work back. **Not** terminal, and **not** done — a review
+  that requests changes sends the issue back to **in_progress**.
 - **done** — accepted and merged, or **failed** — terminal but not done.
 
-If an assigned agent finishes without completing its issue, gg **re-dispatches** it
-up to `maxRetries` times (default 1), then marks it **failed**. A failed issue is
-terminal but **not** done, so its dependents **stay blocked** — the board surfaces
-the stall rather than silently unblocking the work behind it.
+**An issue is finished exactly when the agent implementing it finishes.** There is no
+"complete issue" tool: an agent that ended successfully has, by definition, said its
+work is done, and how it says so is its own
+[completion rule](/gg/completion/) — a plain-text reply, an explicit `finish` call, or
+either of those gated behind validation commands. An assigned agent that ends any
+other way — a spent turn ceiling, a breached [execution ceiling](/gg/execution-limits/), a model
+error — has **not** finished, so gg **re-dispatches** the issue up to `maxRetries`
+times (default 1) and then marks it **failed**. A failed issue is terminal but **not**
+done, so its dependents **stay blocked** — the board surfaces the stall rather than
+silently unblocking the work behind it.
 
 ## Every issue works in its own worktree
 
@@ -104,16 +110,15 @@ read-only board access (below).
 
 Authoring the board and **working an issue on it** are different jobs, so an
 implementer profile is normally configured **without** project management — it has no
-business filing epics. gg therefore offers **`complete_issue`** to any agent it
-dispatched for an issue whatever that agent's own capabilities are, and its system
-prompt names the issue and tells it to record the work finished. Nothing else about
-the board is offered: an implementer without the capability gets that one tool and no
-board-authoring section in its prompt.
+business filing epics. It needs no board tool to hand its work back either: it
+finishes, and finishing is what completes the issue. An implementer without the
+capability therefore gets **no** board tools and no board-authoring section in its
+prompt — only a section naming the issue it was dispatched for and telling it that
+finishing is the hand-back.
 
-This matters because an implementer that never records its issue finished has its
-worktree **discarded** and its issue re-dispatched (see the retry rule above) however
-good the work was — so the one board move an implementer must always be able to make
-is the one it is always given.
+That is deliberate. The alternative — a separate board move an implementer had to
+remember — is a step it can forget, and forgetting it discarded the worktree and
+re-dispatched the issue however good the work was.
 
 ## Reviewers gate acceptance
 
@@ -121,8 +126,8 @@ An issue may also name **`reviewers`** — profiles its filer's roster lists wit
 **reviewer** scope. The two scopes are governed independently, so a profile trusted
 to write code is not automatically trusted to review it.
 
-`complete_issue` is the assigned agent's **claim** that the work is finished, not the
-acceptance. It moves the issue to **in_review**, and gg then:
+An agent finishing is the **claim** that the work is done, not the acceptance. gg
+moves the issue to **in_review**, and then:
 
 1. runs the issue's reviewers **in turn** against the diff of its worktree, each one
    shown the issue's brief, the diff, and **every verdict rendered so far** — so a
@@ -140,8 +145,8 @@ should keep finding them — and a review round does **not** burn the issue's re
 budget, since rework a reviewer asked for is not a failed attempt. The lifecycle is
 streamed as `issue_review` telemetry and rendered as a per-issue badge on the board.
 
-An issue that names **no** reviewers is accepted as soon as its agent completes it,
-and merged just the same.
+An issue that names **no** reviewers is accepted as soon as its agent finishes, and
+merged just the same.
 
 ## Waiting on an issue
 
@@ -162,14 +167,15 @@ Two things about the board *are* per-agent, and each is a slider in the capabili
 
 | Feature | Default | What switching it off (or on) does |
 | --- | --- | --- |
-| **Issue creation** | on | Off withholds `create_epic`/`create_issue`, leaving that agent **read-only** access to the board: it still sees the whole board in its context, can wait on issues, and can complete the one it was assigned — it just cannot file new work. |
+| **Issue creation** | on | Off withholds `create_epic`/`create_issue`, leaving that agent **read-only** access to the board: it still sees the whole board in its context and can wait on issues — it just cannot file new work. |
 | **Reviewers required** | off | On, `create_issue` **requires** one or more **`reviewers`**. Off, naming them is optional — either way, every reviewer an issue does name must approve before it is accepted. |
 | **Revise the board** | on | Off withholds `update_issue`/`remove_epic`/`remove_issue`, so the board is append-only. |
 
 ## Tools & parameters
 
 Board tools: `create_epic`, `create_issue`, `update_issue`, `set_issue_blocked_by`,
-`complete_issue`, `remove_epic`, `remove_issue`, plus `wait_for_issue`.
+`remove_epic`, `remove_issue`, plus `wait_for_issue`. There is deliberately no
+completion tool — see [auto-dispatch](#auto-dispatch).
 
 | Param | Default | Meaning |
 | --- | --- | --- |

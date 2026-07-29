@@ -183,6 +183,8 @@ saved, launched, and analyzed in the console is
 
 - [FSM-driven processes](/gg/fsms/) — fixed, named processes (e.g. TDD order) the
   agent is driven through.
+- [Completion](/gg/completion/) — how a run decides it is finished: the completion
+  signal, and the optional validation commands that gate it.
 
 **Models & tools**
 

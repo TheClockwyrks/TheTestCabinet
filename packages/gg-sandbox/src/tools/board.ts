@@ -15,7 +15,7 @@ import * as raw from "test-cabinet:gg/board";
 import type { EpicAssignment, IssueStatusRaw } from "test-cabinet:gg/board";
 import type { TextEdit } from "test-cabinet:gg/types";
 import { call, list } from "../errors.js";
-import type { BoardUsage, CompletionReport, IssueStatus } from "../types.js";
+import type { BoardUsage, IssueStatus } from "../types.js";
 
 /** Lower the `undefined` / `null` / string sentinel onto the membrane's three-way text edit. */
 function textEdit(value: string | null | undefined): TextEdit {
@@ -129,15 +129,6 @@ export function setIssueBlockedBy(id: string, blockedBy: string[]): void {
       list("setIssueBlockedBy", "blockedBy", blockedBy),
     ),
   );
-}
-
-/**
- * Record that an issue's work is finished, and report what happens to it next. This does not mark
- * the issue done on its own: it moves to `in review`, its reviewers (if any) run, and its work is
- * merged into the main workspace before it is accepted. Throws `not-found` for an unknown id.
- */
-export function completeIssue(id: string): CompletionReport {
-  return call(() => raw.completeIssue(id));
 }
 
 /**

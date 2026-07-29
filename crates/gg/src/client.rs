@@ -1465,10 +1465,10 @@ impl MockClient {
     ///   and completion criteria), then finish — submitting the issue auto-dispatches an agent to
     ///   implement it;
     /// - **the dispatched issue agent** (its brief is the issue's structured fields): do the initial
-    ///   work ([`MOCK_REVIEW_WORKER_FILE`]) then `complete_issue`, which sends the issue to its
+    ///   work ([`MOCK_REVIEW_WORKER_FILE`]) then finish, which sends the issue to its
     ///   [reviewer](Self::with_review_reviewer_script) — which requests one change;
     /// - **the same agent, re-dispatched** (its brief now carries the requested changes): write the
-    ///   review fix marker ([`MOCK_REVIEW_FIX_FILE`]), complete the issue again, and the re-review
+    ///   review fix marker ([`MOCK_REVIEW_FIX_FILE`]) and finish again, and the re-review
     ///   approves.
     ///
     /// Constructed with an empty script because it never consults one; the role is read from the
@@ -1980,12 +1980,6 @@ impl ModelClient for MockClient {
                             "contents": format!("{MOCK_REVIEW_FIX_SENTINEL}\n"),
                         }),
                     ),
-                    1 => issue_review_tool_turn(
-                        "call_recomplete",
-                        "The requested change is applied; marking the issue complete again.",
-                        "complete_issue",
-                        json!({ "id": MOCK_ISSUE_REVIEW_ISSUE_ID }),
-                    ),
                     _ => issue_review_stop_turn("The requested fix is applied."),
                 }
             } else if messages_contain(messages, MOCK_ISSUE_BRIEF_HEADING) {
@@ -1999,14 +1993,8 @@ impl ModelClient for MockClient {
                             "contents": "initial work by the dispatched issue agent\n",
                         }),
                     ),
-                    1 => issue_review_tool_turn(
-                        "call_complete",
-                        "The work is done; marking the issue complete.",
-                        "complete_issue",
-                        json!({ "id": MOCK_ISSUE_REVIEW_ISSUE_ID }),
-                    ),
                     _ => issue_review_stop_turn(
-                        "The issue's work is finished and recorded for review.",
+                        "The issue's work is finished and handed back for review.",
                     ),
                 }
             } else {
@@ -2393,7 +2381,7 @@ pub fn client_for_slot(
 /// fan-out/sequencing workflow whose stages' subagents run on the `worker` slot). A
 /// `issue-review-parent` id selects the
 /// [issue-review parent](MockClient::with_issue_review_parent_script)
-/// (create an issue with a reviewer, dispatch it, then `complete_issue` to trigger a
+/// (create an issue with a reviewer and dispatch it; the implementer finishing triggers a
 /// review → fix → approve cycle);
 /// its `review-worker` and `review-reviewer` counterparts are message-driven (their behavior lives
 /// in [`MockClient::complete`]). An `fsm-tdd` id selects the

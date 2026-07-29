@@ -428,14 +428,6 @@ interface board {
         max-issues: u32,
     }
 
-    /// What recording an issue's work as finished produced.
-    record completion-report {
-        /// Whether the issue named reviewers, so its work is reviewed before it is accepted.
-        reviewed: bool,
-        /// What happens to the issue next, in the same prose the model reads.
-        detail: string,
-    }
-
     /// Create an epic to group related issues.
     create-epic: func(epic: epic-input) -> result<board-usage, tool-error>;
     /// Create a self-contained, dispatchable issue.
@@ -444,10 +436,6 @@ interface board {
     update-issue: func(id: string, patch: issue-patch) -> result<_, tool-error>;
     /// Replace an issue's full blocker set; an empty list clears every blocker.
     set-issue-blocked-by: func(id: string, blocked-by: list<string>) -> result<_, tool-error>;
-    /// Record an issue's work as finished. This does NOT mark it done: it moves to `in review`,
-    /// its reviewers (if any) run, and its work is merged into the main workspace before it is
-    /// accepted. A reviewer that asks for changes reopens it.
-    complete-issue: func(id: string) -> result<completion-report, tool-error>;
     /// Remove an epic. Its issues are kept and ungrouped.
     remove-epic: func(id: string) -> result<board-usage, tool-error>;
     /// Remove an issue and every blocker edge pointing at it.

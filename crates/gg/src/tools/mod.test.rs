@@ -472,12 +472,11 @@ fn registry_gates_board_tools_on_capability_and_a_bound_store() {
         "create_issue",
         "update_issue",
         "set_issue_blocked_by",
-        "complete_issue",
         "remove_epic",
         "remove_issue",
     ];
 
-    // Enabled capability + a bound store => all seven board tools are offered.
+    // Enabled capability + a bound store => all six board tools are offered.
     let on = set_with(vec![GgCapabilityConfig::enabled(
         CAPABILITY_PROJECT_MANAGEMENT,
     )]);
@@ -508,36 +507,26 @@ fn registry_gates_board_tools_on_capability_and_a_bound_store() {
     }
 }
 
-/// **An agent dispatched to implement an issue is offered `complete_issue` whatever its own
-/// capabilities are** — and *only* `complete_issue`.
+/// **An agent dispatched to implement an issue earns no board tool from the assignment.**
 ///
-/// Authoring the board and working an issue on it are different jobs, so an implementer profile is
-/// normally configured without `project-management`. Gating the completion tool on that capability
-/// left such an agent with no way to record its work finished at all: gg reads a loop that ended
-/// without it as an attempt that failed, so the issue is re-dispatched until its retries run out
-/// and then marked failed, however well the work went.
+/// It hands its work back by *finishing* — the issue is completed when its implementer completes,
+/// under that agent's own completion rule — so there is nothing for the assignment to unlock.
+/// Authoring the board and working an issue on it are different jobs, and an implementer profile is
+/// normally configured without `project-management`; a run that gave it board tools anyway would be
+/// handing an implementer the vocabulary to file work instead of doing it.
 #[test]
-fn an_assigned_issue_earns_complete_issue_without_the_board_capability() {
+fn an_assigned_issue_earns_no_board_tools_without_the_board_capability() {
     use std::sync::Mutex;
 
     use crate::board::{BoardCaps, BoardStore};
-    use test_cabinet_core::gg::CAPABILITY_PROJECT_MANAGEMENT;
 
     let empty = Arc::new(SkillLibrary::empty());
     let store = Arc::new(Mutex::new(BoardStore::new(BoardCaps::default())));
     // A profile with no board capability at all — the ordinary shape of an implementer.
     let implementer = set_with(Vec::new());
 
-    let dispatched = ToolRegistry::from_run(
-        &implementer,
-        &RuntimeSet::new(&empty)
-            .with_board(&store)
-            .with_assigned_issue("feat-1"),
-    );
-    assert!(
-        offers(&dispatched, "complete_issue"),
-        "an issue's implementer can record its work finished"
-    );
+    let dispatched =
+        ToolRegistry::from_run(&implementer, &RuntimeSet::new(&empty).with_board(&store));
     for name in [
         "create_epic",
         "create_issue",
@@ -549,51 +538,12 @@ fn an_assigned_issue_earns_complete_issue_without_the_board_capability() {
     ] {
         assert!(
             !offers(&dispatched, name),
-            "the assignment earns `complete_issue` alone, not `{name}`"
+            "an implementer without the board capability is offered no `{name}`"
         );
     }
-    // The tool names the issue it was dispatched for, in its description and in the `id` argument,
-    // so the model does not have to infer which id to pass.
-    let definition = dispatched
-        .definitions()
-        .into_iter()
-        .find(|d| d.name == "complete_issue")
-        .expect("the tool is offered");
     assert!(
-        definition.description.contains("feat-1"),
-        "the description names the assigned issue: {}",
-        definition.description
-    );
-
-    // No assignment and no capability => no board tools at all, as before.
-    let undispatched =
-        ToolRegistry::from_run(&implementer, &RuntimeSet::new(&empty).with_board(&store));
-    assert!(
-        !offers(&undispatched, "complete_issue"),
-        "an agent with neither the capability nor an assignment gets nothing"
-    );
-
-    // A board-authoring agent that is *also* working an issue keeps its whole toolset, with the
-    // assignment still named on the completion tool.
-    let authoring = set_with(vec![GgCapabilityConfig::enabled(
-        CAPABILITY_PROJECT_MANAGEMENT,
-    )]);
-    let both = ToolRegistry::from_run(
-        &authoring,
-        &RuntimeSet::new(&empty)
-            .with_board(&store)
-            .with_assigned_issue("feat-1"),
-    );
-    for name in ["create_issue", "complete_issue", "wait_for_issue"] {
-        assert!(offers(&both, name), "expected `{name}` offered");
-    }
-    assert!(
-        both.definitions()
-            .into_iter()
-            .find(|d| d.name == "complete_issue")
-            .expect("the tool is offered")
-            .description
-            .contains("feat-1"),
+        !ALL_TOOL_NAMES.contains(&"complete_issue"),
+        "there is no completion tool to offer at all"
     );
 }
 

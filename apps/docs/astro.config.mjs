@@ -547,6 +547,10 @@ export default defineConfig({
                 "gg/workflows",
                 "gg/speculative-execution",
                 "gg/fsms",
+                // How a run decides it is finished — the completion signal and the
+                // optional validation commands that gate it. A capability like any
+                // other: an absent one is the historical default.
+                "gg/completion",
                 "gg/toolset-ablation",
                 "gg/responses-as-code",
                 // A property of the capability above it — the counted, disclosed

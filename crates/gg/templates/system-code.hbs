@@ -139,9 +139,9 @@ You may assign an issue to any of the following agents:
 {{/each}}
 
 Use `project.waitForIssue` to suspend until the issue you specify has been completed.
-Use `project.completeIssue` to record that an issue's work is finished — this does not
-mark it done on its own. Its reviewers run first, and its work is merged into
-the main workspace, before the issue is accepted.
+An issue is finished when the agent implementing it finishes: there is no function
+for completing one. Its reviewers run first, and its work is merged into the
+main workspace, before the issue is accepted.
 
 {{#if board.reviewerAgents}}
 {{#if board.reviewersRequired}}
@@ -169,13 +169,13 @@ You have been dispatched to implement issue `{{assignedIssue.id}}`, whose brief 
 have been given. You are working in an isolated copy of the workspace that belongs
 to that issue.
 
-When the work is finished, call `project.completeIssue("{{assignedIssue.id}}")` before
-you finish. This is how you hand the work back: the issue moves to review, its
-reviewers (if it has any) look at what you did, and its work is then merged into the
-main workspace. If you finish without calling it, your work is discarded and the
-issue is attempted again from scratch — so call it even if you believe the work was
+Calling `harness.finish()` is how you hand the work back: do the work, then finish.
+The issue then moves to review, its reviewers (if it has any) look at what you did,
+and its work is merged into the main workspace. If your session ends any other way —
+you run out of turns, or stop on an error — your work is discarded and the issue is
+attempted again from scratch, so finish deliberately even if you believe the work was
 already done before you started.
 
 If a reviewer asks for changes you will be dispatched again with their feedback;
-address it and record the issue finished again.
+address it and finish again.
 {{/if}}

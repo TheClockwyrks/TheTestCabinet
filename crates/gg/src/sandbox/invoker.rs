@@ -149,7 +149,6 @@ pub trait ToolApi: Send + 'static {
         epic_id: Option<String>,
     ) -> ToolOutcome;
     fn set_issue_blocked_by(&mut self, id: String, blocked_by: Vec<String>) -> ToolOutcome;
-    fn complete_issue(&mut self, id: String) -> ToolOutcome;
     fn remove_epic(&mut self, id: String) -> ToolOutcome;
     fn remove_issue(&mut self, id: String) -> ToolOutcome;
     /// Register a deferred wait on a board issue and return the acknowledgement. Unlike the

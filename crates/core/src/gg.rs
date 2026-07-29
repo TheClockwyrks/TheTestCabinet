@@ -3370,7 +3370,8 @@ pub enum GgTelemetryKind {
     /// Emitted once at session start (an empty board) when the
     /// [project-management](CAPABILITY_PROJECT_MANAGEMENT) capability is enabled, and again after every
     /// successful mutation
-    /// (`create_epic`/`create_issue`/`update_issue`/`set_issue_blocked_by`/`complete_issue`/`remove_epic`/`remove_issue`)
+    /// (`create_epic`/`create_issue`/`update_issue`/`set_issue_blocked_by`/`remove_epic`/`remove_issue`)
+    /// — and whenever gg itself moves an issue (a dispatch, a completion, an acceptance) —
     /// so the console can render the live board. The whole board is also a pinned
     /// [`Board`](GgContextSource::Board)-sourced context item, so the model sees its
     /// decomposition each turn. A run with the capability off emits none.
