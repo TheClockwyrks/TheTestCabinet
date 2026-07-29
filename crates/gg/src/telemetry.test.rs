@@ -1,7 +1,33 @@
 use super::*;
 // `GgRunLimits` and `GgLimitBreach` already ride in on the glob; only the ceiling taxonomy the
 // emitter itself never names has to be named here.
-use test_cabinet_core::gg::GgLimitKind;
+use test_cabinet_core::gg::{GgContextSource, GgLimitKind};
+
+/// One untagged request item, the shape most of these tests log: a message in its band at a
+/// given estimate, carrying no selector tag (see [`tagged`] for the file-view case).
+fn item<'a>(source: GgContextSource, message: &'a Message, tokens: usize) -> PromptItem<'a> {
+    PromptItem {
+        source,
+        message,
+        tokens,
+        label: None,
+    }
+}
+
+/// One request item carrying a selector tag — a file view under the path it shows.
+fn tagged<'a>(
+    source: GgContextSource,
+    message: &'a Message,
+    tokens: usize,
+    label: &'a str,
+) -> PromptItem<'a> {
+    PromptItem {
+        source,
+        message,
+        tokens,
+        label: Some(label),
+    }
+}
 
 /// The emitter serializes each event as one NDJSON line to its sink, stamped with the
 /// session id and a timestamp, and the collecting sink captures them in order.
@@ -169,8 +195,8 @@ fn log_prompt_deduplicates_across_turns() {
 
     // Turn 1: system + user prompt → assistant reply.
     let request1 = [
-        (GgContextSource::System, &system, 10usize),
-        (GgContextSource::UserPrompt, &prompt, 20usize),
+        item(GgContextSource::System, &system, 10),
+        item(GgContextSource::UserPrompt, &prompt, 20),
     ];
     emitter.log_prompt(
         &request1,
@@ -185,9 +211,9 @@ fn log_prompt_deduplicates_across_turns() {
     // history → a new assistant reply.
     let reply2 = Message::assistant(Some("done".to_string()), Vec::new());
     let request2 = [
-        (GgContextSource::System, &system, 10usize),
-        (GgContextSource::UserPrompt, &prompt, 20usize),
-        (GgContextSource::Assistant, &reply1, 5usize),
+        item(GgContextSource::System, &system, 10),
+        item(GgContextSource::UserPrompt, &prompt, 20),
+        item(GgContextSource::Assistant, &reply1, 5),
     ];
     emitter.log_prompt(
         &request2,
@@ -272,7 +298,7 @@ fn log_prompt_omits_absent_response() {
     let emitter = Emitter::with_sink(None, Box::new(sink.clone())).for_agent("root", None);
     let system = Message::system("s");
     emitter.log_prompt(
-        &[(GgContextSource::System, &system, 3)],
+        &[item(GgContextSource::System, &system, 3)],
         None,
         TokenCounts::default(),
         None,
@@ -288,4 +314,44 @@ fn log_prompt_omits_absent_response() {
         })
         .expect("a prompt was emitted");
     assert_eq!(prompt, None);
+}
+
+/// A tagged window item defines its pooled message under that tag, so a file view's tokens
+/// stay attributable to the path that filled the window — while an untagged message beside
+/// it carries none. The tag rides on the definition (emitted once), not on the per-turn
+/// pointer, so a second turn over the same file adds no further label.
+#[test]
+fn log_prompt_carries_a_file_views_path_onto_its_pooled_definition() {
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(None, Box::new(sink.clone())).for_agent("root", None);
+    let system = Message::system("you are gg");
+    let view = Message::tool_result("call_1", "export const LEVELS = [];");
+    let request = [
+        item(GgContextSource::System, &system, 10),
+        tagged(GgContextSource::FileView, &view, 120, "src/levels.ts"),
+    ];
+    for _ in 0..2 {
+        emitter.log_prompt(
+            &request,
+            None,
+            TokenCounts::default(),
+            None,
+            "stop".to_string(),
+            None,
+        );
+    }
+
+    let events = sink.events();
+    let labels: Vec<(u64, Option<String>)> = events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::ContextMessage { tokens, label, .. } => Some((*tokens, label.clone())),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        labels,
+        vec![(10, None), (120, Some("src/levels.ts".to_string()))],
+        "each message is defined once, the file view under its path"
+    );
 }

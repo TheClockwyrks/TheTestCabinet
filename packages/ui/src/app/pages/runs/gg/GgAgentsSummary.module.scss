@@ -1,0 +1,360 @@
+@use "../../../styles/tokens" as t;
+
+// The gg Agents panel: the run read per configured agent, as one collapsible row per agent.
+// It borrows the Dashboard's card, stat, and chip styles (`GgDashboard.module.scss`) so the
+// two panels read as one surface — this stylesheet owns only what is new here: the rows and
+// their opened detail, the instance chips, and the context-spend bars.
+
+// The panel is a single Dashboard card wrapping the list, so it sits on the same surface the
+// Dashboard's own cards do.
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+.empty {
+  margin: 0;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+// --- The agent rows ------------------------------------------------------------
+
+// The panel is one card holding the list, rather than a card per agent: closed rows are a
+// list to read down, and boxing each one would break the column the eye follows.
+.agentList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.agentRow {
+  border-top: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 50%, transparent);
+
+  &:first-child {
+    border-top: none;
+  }
+}
+
+// The closed row: caret, identity, then the figures pushed to the trailing edge so they line
+// up down the list. Wraps rather than scrolling sideways when the pane is too narrow to hold
+// the identity and the figures on one line — each figure carries its own label, so a wrapped
+// row still says what its numbers are.
+.agentSummary {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: t.$space-sm t.$space-md;
+  padding: t.$space-sm t.$space-xs;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+  border-radius: t.$radius-sm;
+
+  &:hover,
+  &:focus-visible {
+    background: color-mix(in srgb, t.$color-border 22%, transparent);
+  }
+}
+
+.caret {
+  flex: 0 0 auto;
+  width: 0.75rem;
+  color: t.$color-text-muted;
+  font-size: 0.7rem;
+}
+
+// The agent's identity: its name and badges on one line, the model it is bound to under
+// them. Two lines rather than one so a long model id annotates the name instead of shunting
+// the figures along the row.
+.rowIdentity {
+  flex: 1 1 12rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.rowNameLine {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  // Wider than the gap between the badges themselves: the name is what the row is called
+  // and the badges qualify it, so the pair should not read as one run-on label.
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
+.rowName {
+  color: t.$color-text;
+  font-weight: 600;
+}
+
+.rowModel {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// The figures group. Each cell has the same minimum width, so the columns align down the list
+// the way a table's would while still being free to wrap as a group.
+.figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-sm t.$space-md;
+}
+
+.figure {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  min-width: 4.5rem;
+}
+
+.figureValue {
+  color: t.$color-text;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+// A figure that is an absence rather than a quantity (an agent that never ran) — stated, but
+// not as loudly as a real number.
+.figureValueMuted {
+  color: t.$color-text-muted;
+  font-style: italic;
+  line-height: 1.2;
+}
+
+.figureLabel {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$color-text-muted;
+  white-space: nowrap;
+}
+
+.figureSub {
+  font-size: 0.68rem;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+// The opened detail, inset under its row so it reads as belonging to it rather than as the
+// next thing in the list.
+.agentDetail {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+  padding: t.$space-sm t.$space-xs t.$space-md (t.$space-xs + 0.75rem);
+}
+
+.never {
+  color: t.$color-text-muted;
+  font-style: italic;
+  margin: 0;
+}
+
+// The agent's configured capabilities, leading its detail — what it was allowed to do is the
+// first thing to know about what it then did.
+.capabilities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-2xs;
+}
+
+// A withheld tool — an ablation one notch below turning a capability off. Marked negative
+// so it does not read as one more thing the agent has.
+.disabledTool {
+  font-size: t.$font-sm;
+  color: t.$color-negative;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-negative 40%, transparent);
+  border-radius: t.$radius-sm;
+  padding: 0 t.$space-xs;
+}
+
+// --- Instances ----------------------------------------------------------------
+
+.instances {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-2xs;
+  min-width: 0;
+}
+
+.instanceChip {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-xs;
+  font: inherit;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  background: none;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 60%, transparent);
+  border-radius: t.$radius-sm;
+  padding: 0 t.$space-xs;
+}
+
+button.instanceChip {
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    color: t.$color-text;
+    border-color: t.$color-accent;
+  }
+}
+
+.instanceName {
+  color: t.$color-text;
+  font-variant-numeric: tabular-nums;
+}
+
+.instanceMeta {
+  font-variant-numeric: tabular-nums;
+}
+
+// --- The summed figures --------------------------------------------------------
+
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-md t.$space-lg;
+}
+
+// --- A section within the card (context spend, tools) ---------------------------
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
+.sectionHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: t.$space-sm;
+}
+
+.sectionNote {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  max-width: 60ch;
+}
+
+// --- The attribution bars -------------------------------------------------------
+
+.attrList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+// Name (with its meta line) · bar · figures. The name column is bounded so one deep path
+// cannot squeeze the bars every other row is read against.
+.attrRow {
+  display: grid;
+  grid-template-columns: minmax(6rem, 18rem) 1fr auto;
+  align-items: center;
+  gap: t.$space-sm;
+  font-size: t.$font-sm;
+}
+
+.attrIdentity {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+// A long path is truncated rather than wrapped — every row carries its full text as a
+// tooltip, and a wrapping path would make the bars beside it jump line to line.
+.attrName {
+  color: t.$color-text;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attrMeta {
+  color: t.$color-text-muted;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attrBar {
+  height: 0.5rem;
+  border-radius: 9999px;
+  background: color-mix(in srgb, t.$color-border 45%, transparent);
+  overflow: hidden;
+  min-width: 2rem;
+}
+
+.attrBarFill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: t.$color-accent;
+}
+
+.attrFigures {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  min-width: 4.5rem;
+}
+
+.attrValue {
+  color: t.$color-text;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.attrShare {
+  color: t.$color-text-muted;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.moreButton {
+  align-self: flex-start;
+  font: inherit;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+
+  &:hover,
+  &:focus-visible {
+    color: t.$color-text;
+  }
+}

@@ -1707,6 +1707,18 @@ async fn locked_autoload_survives_compaction() {
             .any(|m| m.content.as_deref() == Some("the whole specification")),
         "a locked spec is kept across compaction"
     );
+    // …and it is still attributable to the file it came from. Compaction re-frames the
+    // retained `tool` message as a `user` one, which discards the `tool_call_id` pairing the
+    // synthesized read was answered under; the item's path tag is what survives, so the
+    // message log can still say which file this agent's biggest context band is.
+    assert_eq!(
+        locked
+            .prompt_items()
+            .filter(|item| item.source == GgContextSource::FileView)
+            .map(|item| item.label)
+            .collect::<Vec<_>>(),
+        vec![Some("SPEC.md")],
+    );
 }
 
 /// Whether `ctx` holds a pinned file view — a locked autoloaded spec.

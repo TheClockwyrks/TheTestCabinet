@@ -1650,6 +1650,22 @@ export type GgTelemetryKind =
        * of the window is legible.
        */
       tokens: number;
+      /**
+       * The window item's **selector tag**, when it carries one: the workspace path a
+       * [`FileView`](GgContextSource::FileView) shows (the same tag
+       * `evict_file_view { path }` targets), and the sentinel naming the rebuilt
+       * fullness signal. Absent for an ordinary message, and on a stream recorded
+       * before gg carried it.
+       *
+       * It is what makes a window's *material* attributable rather than only its band:
+       * a `file_view` message says how many tokens a file occupied, and the label says
+       * **which file**, so the console can total a run's context spend per path. The
+       * tag survives what the message envelope does not — a pinned, autoloaded
+       * specification re-framed as a `user` message across a
+       * [compaction](https://docs.testcabinet.ai/gg/compaction/) boundary keeps its
+       * path, where its `tool_call_id` pairing does not.
+       */
+      label?: string;
     }
   | {
       type: "prompt";
@@ -2413,6 +2429,22 @@ export type GgTelemetryEvent = {
        * of the window is legible.
        */
       tokens: number;
+      /**
+       * The window item's **selector tag**, when it carries one: the workspace path a
+       * [`FileView`](GgContextSource::FileView) shows (the same tag
+       * `evict_file_view { path }` targets), and the sentinel naming the rebuilt
+       * fullness signal. Absent for an ordinary message, and on a stream recorded
+       * before gg carried it.
+       *
+       * It is what makes a window's *material* attributable rather than only its band:
+       * a `file_view` message says how many tokens a file occupied, and the label says
+       * **which file**, so the console can total a run's context spend per path. The
+       * tag survives what the message envelope does not — a pinned, autoloaded
+       * specification re-framed as a `user` message across a
+       * [compaction](https://docs.testcabinet.ai/gg/compaction/) boundary keeps its
+       * path, where its `tool_call_id` pairing does not.
+       */
+      label?: string;
     }
   | {
       type: "prompt";

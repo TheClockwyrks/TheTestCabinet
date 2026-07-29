@@ -251,6 +251,12 @@ export interface PooledMessage {
   toolCallId?: string;
   images: GgLoggedImage[];
   tokens: number;
+  // The window item's selector tag, when it carried one — the workspace path a file view
+  // shows. It is what makes the window's material attributable to a *file* rather than
+  // only to the `file_view` band (see ggContextAttribution), and it survives a compaction
+  // that re-frames a pinned view and drops its `toolCallId` pairing. Absent on an ordinary
+  // message, and on a stream recorded before gg carried it.
+  label?: string;
 }
 
 // One turn's exact request and response (`prompt`) — pointers into the message pool.
@@ -1350,6 +1356,7 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
           toolCallId: gg.toolCallId,
           images: gg.images,
           tokens: gg.tokens,
+          label: gg.label,
         });
         break;
       case "prompt":

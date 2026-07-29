@@ -23,6 +23,12 @@ import {
   useGgCostBreakdown,
   useGgSpend,
 } from "./ggCost";
+import {
+  formatThroughput,
+  formatThroughputValue,
+  useGgThroughput,
+  type GgThroughput,
+} from "./ggThroughput";
 import { CostWidget, TokensWidget, formatPercent } from "./GgOverviewWidgets";
 import { useGgExplorerNav } from "./GgExplorerNav";
 import styles from "./GgDashboard.module.scss";
@@ -70,12 +76,13 @@ interface GgDashboardProps {
 
 /**
  * The Dashboard panel of a gg run: everything about the run *as a whole* rather
- * than about one of its agents — its status, the running token and cost tallies
- * with their caching/reasoning/cost splits, an overview of the agents that ran, the
- * configuration it ran under, and the enforced FSM process when a machine drives it.
+ * than about one of its agents — its status, the turns and generation rate behind it, the
+ * running token and cost tallies with their caching/reasoning/cost splits, an overview of
+ * the agents that ran, the configuration it ran under, and the enforced FSM process when a
+ * machine drives it.
  *
  * The agent overview is a row per agent (its peak context, its token share, and the
- * tools it used), each a link into that agent's files in the Agents explorer — so
+ * tools it used), each a link into that agent's files in the Instances explorer — so
  * the whole-run view leads into the per-agent one.
  *
  * It is an overview of the entire session; an agent's Overview file in the Agents
@@ -97,8 +104,8 @@ interface GgDashboardProps {
  *
  * Both surfaces get the *same* layout: the one difference is the status card, which a
  * finished run omits because the run detail page's own header already carries its state
- * (and the turn count then takes that row alone, rather than reflowing everything below
- * it).
+ * (the turn count and the generation rate then split that row between them, rather than
+ * reflowing everything below it).
  */
 export function GgDashboard({
   status,
@@ -128,6 +135,10 @@ export function GgDashboard({
   // per model (the same spend folded across the slots one model is bound to).
   const spend = useGgSpend(runSlots);
 
+  // How fast the run generates: each agent's tokens over the time it spent inside its
+  // model calls, folded onto the models that did the generating.
+  const throughput = useGgThroughput(agentForest, perAgent);
+
   // The run's total turns across every agent — one per `turn_started`, summed over the
   // per-agent partitions (each turn is stamped with exactly one agent, so the sum is
   // the whole-run count). A session-level figure, so it reads at the top of the
@@ -141,16 +152,20 @@ export function GgDashboard({
   return (
     <div className={styles.dashboard}>
       <div className={styles.cards}>
-        {/* The top row: where the run is at. The live monitor pairs the status with the
-            turn count; a finished run's gg tab has its state in the page's own header,
-            so the turn count takes the whole row there rather than leaving a hole where
-            the status card would have been — the row below it is then identical on both
-            surfaces. */}
+        {/* The top row: where the run is at — its phase, how many turns it has spent, and
+            how fast it is generating. The live monitor leads the row with the status card;
+            a finished run's gg tab has its state in the page's own header, so the two stat
+            tiles split that row between them rather than leaving a hole where the status
+            card would have been — the row below it is then identical on both surfaces. */}
         {status && <StatusCard status={status} />}
         <TurnsCard
           turns={totalTurns}
           agents={perAgent.size}
-          className={status ? styles.cardHalf : styles.cardFull}
+          className={status ? styles.cardQuarter : styles.cardHalf}
+        />
+        <ThroughputCard
+          throughput={throughput}
+          className={status ? styles.cardQuarter : styles.cardHalf}
         />
 
         {/* The money row, laid out as its own block so it reads the same whether or not
@@ -405,10 +420,11 @@ function AgentOverviewRow({
 }
 
 // The session's turn count: how many model request/response cycles the run has spent,
-// across every agent. It pairs on the top row with the status — the two facts that
-// answer "where is this run at" — so the status card gives up the full width it used
-// to take and the pair fills the row between them. Where there is no status card (a
-// finished run, whose state its page header already carries) it takes the row alone.
+// across every agent. It sits on the top row with the status and the generation rate — the
+// three facts that answer "where is this run at" — so the status card gives up the full
+// width it used to take and the row fills between them. Where there is no status card (a
+// finished run, whose state its page header already carries) it splits the row with the
+// rate instead.
 function TurnsCard({
   turns,
   agents,
@@ -416,7 +432,7 @@ function TurnsCard({
 }: {
   turns: number;
   agents: number;
-  /** The bento span the card takes: half the row beside a status card, the full row alone. */
+  /** The bento span the card takes: a quarter beside a status card, half the row without one. */
   className: string | undefined;
 }) {
   return (
@@ -431,6 +447,55 @@ function TurnsCard({
   );
 }
 
+// The run's generation rate: the tokens its models produced per second of the time it
+// spent inside their calls, across every model it used (see `ggThroughput`). It joins the
+// status and the turn count on the top row as the third answer to "where is this run at" —
+// the two counts say how much a run has done and spent, and neither says whether the
+// wall-clock behind them went into generating or into waiting.
+//
+// One figure, because it is the run's average: the models that make it up are named in the
+// card's tooltip on a multi-model run, where an average is a blend of rates rather than a
+// property of the run.
+function ThroughputCard({
+  throughput,
+  className,
+}: {
+  throughput: GgThroughput;
+  /** The bento span the card takes — see {@link TurnsCard}. */
+  className: string | undefined;
+}) {
+  const { overall, perModel } = throughput;
+  return (
+    <div
+      className={`${styles.card} ${className}`}
+      title={
+        perModel.length > 1
+          ? perModel
+              .map(
+                (model) =>
+                  `${model.modelName}: ${formatThroughput(model.tokensPerSecond)}`,
+              )
+              .join("\n")
+          : undefined
+      }
+    >
+      <span className={styles.cardLabel}>Tokens / s</span>
+      <span className={styles.metricValue}>
+        {overall == null ? "—" : formatThroughputValue(overall)}
+      </span>
+      <span className={styles.metricUnit}>
+        {overall == null
+          ? "no timed model calls yet"
+          : perModel.length === 0
+            ? "tok/s generated"
+            : `tok/s across ${perModel.length} ${
+                perModel.length === 1 ? "model" : "models"
+              }`}
+      </span>
+    </div>
+  );
+}
+
 function StatusCard({ status }: { status: GgDashboardStatus }) {
   const toneClass =
     status.tone === "ok"
@@ -439,8 +504,9 @@ function StatusCard({ status }: { status: GgDashboardStatus }) {
         ? styles.pillFail
         : styles.pillLive;
   return (
-    // Seven of the twelve columns, not the full row: the turn count sits beside it.
-    <div className={`${styles.card} ${styles.cardWide}`}>
+    // Half the row, not all of it: the turn count and the generation rate take a quarter
+    // each beside it.
+    <div className={`${styles.card} ${styles.cardHalf}`}>
       <span className={styles.cardLabel}>Status</span>
       <div className={styles.statusLine}>
         <span className={`${styles.pill} ${toneClass}`}>{status.label}</span>
@@ -464,7 +530,9 @@ function StatusCard({ status }: { status: GgDashboardStatus }) {
 function ConfigurationCard({ set }: { set: GgCapabilitySet }) {
   const agents = set.agents ?? [];
   return (
-    <div className={`${styles.card} ${styles.cardWide}`}>
+    // No bento span: the money row places this card in the column beside Cost, not in the
+    // dashboard grid, so its width is that column's.
+    <div className={styles.card}>
       <span className={styles.cardLabel}>Configuration</span>
       {set.preset && <span className={styles.configPreset}>{set.preset}</span>}
       {agents.map((agent) => {

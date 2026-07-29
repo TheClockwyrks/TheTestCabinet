@@ -3215,6 +3215,21 @@ pub enum GgTelemetryKind {
         /// [`ContextBreakdown`](Self::ContextBreakdown) bands sum, so a message's own share
         /// of the window is legible.
         tokens: u64,
+        /// The window item's **selector tag**, when it carries one: the workspace path a
+        /// [`FileView`](GgContextSource::FileView) shows (the same tag
+        /// `evict_file_view { path }` targets), and the sentinel naming the rebuilt
+        /// fullness signal. Absent for an ordinary message, and on a stream recorded
+        /// before gg carried it.
+        ///
+        /// It is what makes a window's *material* attributable rather than only its band:
+        /// a `file_view` message says how many tokens a file occupied, and the label says
+        /// **which file**, so the console can total a run's context spend per path. The
+        /// tag survives what the message envelope does not — a pinned, autoloaded
+        /// specification re-framed as a `user` message across a
+        /// [compaction](https://docs.testcabinet.ai/gg/compaction/) boundary keeps its
+        /// path, where its `tool_call_id` pairing does not.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        label: Option<String>,
     },
     /// One agent turn's exact **request and response**, as pointers into the
     /// [message pool](Self::ContextMessage) — the itemized, message-level companion to the

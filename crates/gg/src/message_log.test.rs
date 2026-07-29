@@ -76,7 +76,7 @@ fn context_message_event_carries_body_and_image_descriptors() {
     let message = Message::tool_result("call_7", "file contents")
         .with_images(vec![ImageContent::new("image/jpeg", "ZZZZ", 8192)]);
     let id = fingerprint(&message);
-    let event = context_message_event(id.clone(), &message, 123);
+    let event = context_message_event(id.clone(), &message, 123, Some("specs/spec.md"));
     match event {
         GgTelemetryKind::ContextMessage {
             id: got_id,
@@ -86,6 +86,7 @@ fn context_message_event_carries_body_and_image_descriptors() {
             tool_call_id,
             images,
             tokens,
+            label,
         } => {
             assert_eq!(got_id, id);
             assert_eq!(role, "tool");
@@ -97,6 +98,9 @@ fn context_message_event_carries_body_and_image_descriptors() {
             assert_eq!(images[0].bytes, 8192);
             // The base64 bytes are deliberately NOT carried — only the descriptor.
             assert_eq!(tokens, 123);
+            // The window item's selector tag rides on the definition, so the view's tokens
+            // stay attributable to the file that filled the window.
+            assert_eq!(label.as_deref(), Some("specs/spec.md"));
         }
         other => panic!("expected ContextMessage, got {other:?}"),
     }
@@ -105,7 +109,7 @@ fn context_message_event_carries_body_and_image_descriptors() {
 #[test]
 fn context_message_event_maps_assistant_tool_calls() {
     let message = assistant_call("call_9", "read_file", json!({ "path": "level.json" }));
-    let event = context_message_event(fingerprint(&message), &message, 40);
+    let event = context_message_event(fingerprint(&message), &message, 40, None);
     match event {
         GgTelemetryKind::ContextMessage {
             role,

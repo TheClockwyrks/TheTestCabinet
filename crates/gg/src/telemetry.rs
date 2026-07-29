@@ -30,13 +30,14 @@ use std::io::Write;
 use std::sync::Arc;
 
 use test_cabinet_core::gg::{
-    GgContextSource, GgHealingStrategy, GgLimitBreach, GgPromptRef, GgRunLimits, GgSessionSummary,
-    GgTelemetryEvent, GgTelemetryKind,
+    GgHealingStrategy, GgLimitBreach, GgPromptRef, GgRunLimits, GgSessionSummary, GgTelemetryEvent,
+    GgTelemetryKind,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
+use crate::context::PromptItem;
 use crate::message_log::{MessagePool, context_message_event, fingerprint};
 use crate::model::Message;
 use crate::summary::SessionSummaryTracker;
@@ -291,9 +292,11 @@ impl Emitter {
     /// [`Prompt`](GgTelemetryKind::Prompt) carrying the request as ordered
     /// [pointers](GgPromptRef) into that pool plus the response.
     ///
-    /// `request` is the turn's messages in order, each with the
-    /// [`GgContextSource`] band it occupies *this turn* and its estimated tokens (from
-    /// [`ContextModel::prompt_items`](crate::context::ContextModel::prompt_items)). `response`
+    /// `request` is the turn's messages in order, each with the [`GgContextSource`] band it
+    /// occupies *this turn*, its estimated tokens, and its selector tag (from
+    /// [`ContextModel::prompt_items`](crate::context::ContextModel::prompt_items)) — the tag
+    /// travels onto the pooled definition, so a file view's tokens stay attributable to the
+    /// path that filled the window. `response`
     /// is the assistant reply the turn produced and its estimated tokens — pooled like any
     /// message (so it reappears, its id unchanged, as a request pointer next turn), or `None`
     /// when the turn produced no assistant message. `usage`/`cost`/`finish_reason` are the
@@ -306,7 +309,7 @@ impl Emitter {
     /// any rebuilt mutable block) carry a body; the rest are one id apiece.
     pub fn log_prompt(
         &self,
-        request: &[(GgContextSource, &Message, usize)],
+        request: &[PromptItem<'_>],
         response: Option<(&Message, usize)>,
         usage: TokenCounts,
         cost: Option<Cost>,
@@ -318,15 +321,20 @@ impl Emitter {
         // with the adjacent breakdown.
         let mut refs = Vec::with_capacity(request.len());
         let mut total_tokens: u64 = 0;
-        for (source, message, tokens) in request {
-            let id = fingerprint(message);
+        for item in request {
+            let id = fingerprint(item.message);
             if self.messages.register(&id) {
-                self.emit(context_message_event(id.clone(), message, *tokens as u64));
+                self.emit(context_message_event(
+                    id.clone(),
+                    item.message,
+                    item.tokens as u64,
+                    item.label,
+                ));
             }
-            total_tokens += *tokens as u64;
+            total_tokens += item.tokens as u64;
             refs.push(GgPromptRef {
                 id,
-                source: *source,
+                source: item.source,
             });
         }
 
@@ -336,7 +344,14 @@ impl Emitter {
         let response_id = response.map(|(message, tokens)| {
             let id = fingerprint(message);
             if self.messages.register(&id) {
-                self.emit(context_message_event(id.clone(), message, tokens as u64));
+                // An assistant reply is never a tagged window item — it is pooled here
+                // before it is pushed — so it carries no label.
+                self.emit(context_message_event(
+                    id.clone(),
+                    message,
+                    tokens as u64,
+                    None,
+                ));
             }
             id
         });

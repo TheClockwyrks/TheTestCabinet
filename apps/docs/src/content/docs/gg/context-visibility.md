@@ -105,7 +105,7 @@ differently from one turn to the next.
 The graph shows the window's _composition_; the **message log** shows its _contents_ —
 the precise messages gg sent the model each turn, and the reply it got back. It is the
 itemized companion to the graph, and the console renders it as a **Requests** file beside
-Context in the [Agents explorer](/gg/telemetry/). Reading it, a turn's request is no
+Context in the [Instances explorer](/gg/telemetry/). Reading it, a turn's request is no
 longer a stack of coloured bands but the actual system prompt, build prompt, tool results,
 and file views that filled them — each tagged with the band it occupies (the same palette
 as the graph) and its own estimated token cost, so a band on the graph and the messages
@@ -126,6 +126,15 @@ An attached image is logged as a **descriptor** — its media type, decoded size
 tokens it is charged — never its base64 bytes: a request log exists to show what was sent,
 and a multi-megabyte inline picture is neither readable nor worth storing once per unique
 read.
+
+A pooled message also carries its window item's **selector tag** (`label`) where it has
+one — for a **file view**, the workspace path it shows. That is what makes the window's
+_material_ attributable and not merely its bands: it is how the console totals a run's
+context spend **per file** (see
+[what filled the window](/gg/telemetry/#what-filled-the-window-and-what-it-cost)), and,
+because the tag is a property of the item rather than of the message envelope, it is
+what survives a [compaction](/gg/compaction/) re-framing a pinned view as a `user`
+message and dropping the `tool_call_id` pairing its read was answered under.
 
 The log and the graph are both context visibility, which is intrinsic to every gg run —
 there is no capability to switch it off — so every run emits both, and the Requests file

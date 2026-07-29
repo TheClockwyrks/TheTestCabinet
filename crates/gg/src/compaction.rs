@@ -614,13 +614,13 @@ pub fn resolve_summarizer(strategy: CompactionStrategy) -> Option<Box<dyn Summar
 pub fn handoff_messages(context: &ContextModel) -> Vec<Message> {
     context
         .prompt_items()
-        .filter(|(source, _, _)| {
+        .filter(|item| {
             !matches!(
-                source,
+                item.source,
                 GgContextSource::System | GgContextSource::Skill | GgContextSource::Memory
             )
         })
-        .map(|(source, message, _)| handoff_message(source, message))
+        .map(|item| handoff_message(item.source, item.message))
         .collect()
 }
 

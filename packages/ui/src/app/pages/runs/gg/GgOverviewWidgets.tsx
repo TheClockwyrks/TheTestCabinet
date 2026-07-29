@@ -1,6 +1,6 @@
 // The token and cost widgets shared by the two overview surfaces of a gg run: the
 // whole-run Dashboard and, scoped to one agent, that agent's Overview file in the
-// Agents explorer. Keeping them here — one Tokens widget, one Cost widget, one
+// Instances explorer. Keeping them here — one Tokens widget, one Cost widget, one
 // generic two-segment ring — is what makes an agent's overview read as the same
 // dashboard, narrowed to that agent, rather than a different-looking panel.
 //
@@ -430,7 +430,9 @@ function Stat({
  * The per-slot/per-model breakdowns live *inside* this widget rather than beside it:
  * they are the same money the headline states, read by the role and by the model that
  * spent it, so they belong under the figure they decompose. Both are drawn as the same
- * proportional bars as the per-class split, so all three read in one visual language.
+ * proportional bars as the per-class split, so all three read in one visual language, and
+ * both are always shown — a run that binds one model per slot lists the same rows twice,
+ * which is a fact about that configuration rather than a reason to withhold the reading.
  */
 export function CostWidget({
   usage,
@@ -533,17 +535,17 @@ export function CostWidget({
             rows={spend.perSlot}
             total={displayTotal}
           />
-          {/* And by model — offered only when it says something the per-slot split
-              does not, i.e. when some model is bound to more than one slot (a
-              shorter list than the per-slot one). With one model per slot the two
-              lists would be the same rows twice. */}
-          {spend.perModel.length < spend.perSlot.length && (
-            <SpendSection
-              label="Per model"
-              rows={spend.perModel}
-              total={displayTotal}
-            />
-          )}
+          {/* And by model. Always shown, alongside Per slot, even on the common run that
+              binds one model per slot and whose two lists therefore carry the same rows:
+              which model a run's money went to is a question the widget should answer the
+              same way every time, and a section that comes and goes with the run's slot
+              bindings makes its absence read as "no per-model spend" rather than as "the
+              same figures you just read". */}
+          <SpendSection
+            label="Per model"
+            rows={spend.perModel}
+            total={displayTotal}
+          />
         </>
       )}
     </div>

@@ -1,4 +1,4 @@
-// Line-art icons for the Agents explorer's filesystem tree, in the same
+// Line-art icons for the Instances explorer's filesystem tree, in the same
 // Lucide-style, 24×24, `currentColor` convention as the app's other marks
 // (BellIcon, TrashIcon, DownloadIcon, …) so size and color come from CSS. They
 // replace the ad-hoc Unicode glyphs the tree used to scan by: a folder per agent

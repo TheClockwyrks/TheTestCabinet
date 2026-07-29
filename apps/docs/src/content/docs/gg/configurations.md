@@ -179,20 +179,23 @@ and varying the configuration is an ablation; fixing the configuration and varyi
 the model is a model comparison.
 
 A launched gg run is watched on gg's own live monitor, which renders its
-[telemetry](/gg/telemetry/) through **two** surfaces, led by a tab selector:
+[telemetry](/gg/telemetry/) through a set of surfaces, led by a tab selector:
 **Dashboard** — the whole-run read-out (status, the token/cost tally with its
 caching and reasoning splits as rings, how many agents ran, the enforced
-[FSM](/gg/fsms/) process, and the configuration it is running under) — and
-**Agents**, the per-agent explorer that lays the run out as a filesystem (an agent
-is a folder, the things you can monitor about it are its files, and a spawned agent
-is a folder under `subagents`). That view is not only for the session that launched
-the run:
+[FSM](/gg/fsms/) process, and the configuration it is running under); **Agents** —
+the run read per *configured* agent, each profile's instances summed into one
+read-out (how many ran, what they spent between them, and which files and tools
+filled their windows), which is the grain an ablation is read at; and
+**Instances**, the per-running-agent explorer that lays the run out as a filesystem
+(an instance is a folder, the things you can monitor about it are its files, and a
+spawned agent is a folder under `subagents`). That view is not only for the session
+that launched the run:
 
 - The **Runs** list opens an in-flight gg run on gg's monitor, not the generic
   harness feed.
 - A finished gg run keeps a **gg tab** on its detail page, which rebuilds the very
-  same two surfaces from the recorded telemetry stream.
-- Inside the Agents explorer, a **file is offered when the run's capability set
+  same surfaces from the recorded telemetry stream.
+- Inside the Instances explorer, a **file is offered when the run's capability set
   justifies it**, not when data happens to have arrived — gg announces its
   configuration on the stream's first event, so a run with the tasks capability
   always has a per-agent **tasks** file (empty until the model builds its list), while

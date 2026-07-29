@@ -145,6 +145,27 @@ impl ContextItem {
     }
 }
 
+/// One item of the live window as [`prompt_items`](ContextModel::prompt_items) hands it to
+/// the [message log](crate::message_log): the message that is sent, the band it occupies,
+/// what it is estimated to cost, and its [selector tag](ContextItem::label).
+///
+/// A borrowed, read-only view of a [`ContextItem`] rather than the item itself — the log
+/// records what was *sent*, so it needs no access to the item's retention class or its
+/// mutability.
+#[derive(Debug, Clone, Copy)]
+pub struct PromptItem<'a> {
+    /// The band this message occupies in the window this turn.
+    pub source: GgContextSource,
+    /// The message as the client will send it.
+    pub message: &'a Message,
+    /// The estimated tokens the message occupies.
+    pub tokens: usize,
+    /// The item's selector tag, when it carries one — a file view's workspace path, or the
+    /// fullness signal's sentinel. This is what lets the console attribute a window's
+    /// tokens to the *file* that filled it rather than only to the `file_view` band.
+    pub label: Option<&'a str>,
+}
+
 /// Estimates the token cost of context items. A trait so the estimator is **swappable**:
 /// the default is a real BPE tokenizer used as a cross-model approximation, but a later
 /// phase can bind a per-model-family estimator without touching the [`ContextModel`].
@@ -616,15 +637,27 @@ impl ContextModel {
     }
 
     /// The per-item view of the current prompt for the [message log](crate::message_log):
-    /// each item's [`source`](GgContextSource) band, its [`Message`], and its cached token
-    /// estimate, in the order they are sent. This is the itemized form of
-    /// [`messages`](Self::messages) — the same messages the client consumes, each carrying
-    /// the band and token estimate the console needs to line a request's messages up with
-    /// the per-source [breakdown](Self::breakdown_event).
-    pub fn prompt_items(&self) -> impl Iterator<Item = (GgContextSource, &Message, usize)> {
-        self.items
-            .iter()
-            .map(|item| (item.source, &item.message, item.tokens))
+    /// each item's [`source`](GgContextSource) band, its [`Message`], its cached token
+    /// estimate, and its [selector tag](ContextItem::label), in the order they are sent.
+    /// This is the itemized form of [`messages`](Self::messages) — the same messages the
+    /// client consumes, each carrying the band, token estimate, and tag the console needs
+    /// to line a request's messages up with the per-source
+    /// [breakdown](Self::breakdown_event) and attribute a file view to its path.
+    ///
+    /// gg's own internal marker — the [fullness signal's](Self::refresh_fullness_signal)
+    /// [sentinel](FULLNESS_SIGNAL_LABEL) — is **not** exposed as a tag: it names a window
+    /// slot the model manager rewrites, not material a reader can attribute anything to,
+    /// and it is not something a run record should carry.
+    pub fn prompt_items(&self) -> impl Iterator<Item = PromptItem<'_>> {
+        self.items.iter().map(|item| PromptItem {
+            source: item.source,
+            message: &item.message,
+            tokens: item.tokens,
+            label: item
+                .label
+                .as_deref()
+                .filter(|label| *label != FULLNESS_SIGNAL_LABEL),
+        })
     }
 
     /// Estimate the tokens `message` would occupy under this model's estimator — used to

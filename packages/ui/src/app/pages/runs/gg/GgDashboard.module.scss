@@ -15,7 +15,7 @@
 // A bento of cards rather than a uniform grid: a twelve-column track lets tiles
 // take different widths (the token and cost widgets earn the room their rings and
 // splits want; the stat and status tiles stay narrow) so the read-out has a
-// deliberate shape. The card spans below pair up to fill each row (7+5, 12), and
+// deliberate shape. The card spans below pair up to fill each row (6+3+3, 6+6, 12), and
 // `align-items: stretch` gives the two tiles in a row a shared height — so a wide
 // widget and its shorter neighbor line up flush rather than leaving a gap beneath the
 // shorter one. Every card is full-width when the row is too narrow to bento.
@@ -110,14 +110,16 @@
 // Bento spans for the twelve-column dashboard grid. A span clamps to one column
 // under the bento breakpoint (single-column track) and in the auto-fit overview
 // grid, so a widget carrying one still stacks correctly where there is no bento.
+// The top row pairs them to fill twelve either way: status + turns + rate (6+3+3)
+// on the live monitor, turns + rate (6+6) where the page header carries the state.
 .cardFull {
   grid-column: span 12;
 }
-.cardWide {
-  grid-column: span 7;
-}
 .cardHalf {
-  grid-column: span 5;
+  grid-column: span 6;
+}
+.cardQuarter {
+  grid-column: span 3;
 }
 
 .cardLabel {

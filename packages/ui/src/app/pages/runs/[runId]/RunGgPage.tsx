@@ -33,7 +33,7 @@ function RunGgBody({ run }: { run: RunRecord }) {
   const events = state.status === "ready" ? state.data.events : null;
   // Fold the recorded stream into the same typed state the live monitor derives, so
   // both views are the same reduction of the same events — globally, and once per
-  // agent for the Agents explorer's per-agent files.
+  // agent for the Instances explorer's per-agent files.
   const derived = useMemo(() => reduceGgEvents(events ?? []), [events]);
   const perAgent = useMemo(
     () => reduceGgEventsPerAgent(events ?? []),

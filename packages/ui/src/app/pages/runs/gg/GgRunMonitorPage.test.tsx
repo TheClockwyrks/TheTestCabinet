@@ -433,16 +433,16 @@ function renderMonitor(events: HarnessEvent[] = EVENTS) {
 }
 
 // The view is led by a tab selector: the whole-run Dashboard (the default), the
-// per-agent Agents explorer, and — when the project-management capability is on — the
-// run-global Project board. Everything a run lets you read about one agent is a
-// "file" inside that agent's folder in the Agents explorer, so reading an agent's
-// activity, context, tasks, … starts by opening the Agents tab; the shared board is
-// read on the Project tab.
-function openTab(name: "Dashboard" | "Agents" | "Project") {
+// per-configured-agent Agents panel, the per-instance Instances explorer, and — when the
+// project-management capability is on — the run-global Project board. Everything a run lets
+// you read about one running agent is a "file" inside that instance's folder in the
+// Instances explorer, so reading an instance's activity, context, tasks, … starts by opening
+// the Instances tab; the shared board is read on the Project tab.
+function openTab(name: "Dashboard" | "Agents" | "Instances" | "Project") {
   fireEvent.click(screen.getByRole("radio", { name }));
 }
 
-// Open one file in the Agents explorer. Folders are expanded by default, so every
+// Open one file in the Instances explorer. Folders are expanded by default, so every
 // file is reachable; each file row is labeled with its agent so it is unambiguous
 // (e.g. "root activity", "agent-0 overview").
 function openFile(name: string) {
@@ -507,7 +507,7 @@ describe("GgRunMonitorPage", () => {
 
   it("lays the run out as a filesystem of agents-as-folders and views-as-files", () => {
     renderMonitor();
-    openTab("Agents");
+    openTab("Instances");
     // The main agent is the top-level folder, and each thing this run lets you
     // monitor about it is a file in its folder. ("root" also names the agent on its
     // open Overview, so there is more than one.)
@@ -530,7 +530,7 @@ describe("GgRunMonitorPage", () => {
 
   it("renders the gg-native activity feed on an agent's activity file", () => {
     renderMonitor();
-    openTab("Agents");
+    openTab("Instances");
     openFile("root activity");
     expect(screen.getByText("Planning the build.")).toBeInTheDocument();
     // The compaction boundary and the agent's own evict reclaim read as distinct
@@ -551,7 +551,7 @@ describe("GgRunMonitorPage", () => {
   it("renders an agent's activity through the shared feed, in the layout the user picked", () => {
     useAppSettings.getState().setEventFeedStyle("stacked");
     renderMonitor();
-    openTab("Agents");
+    openTab("Instances");
     openFile("root activity");
     const feed = document.querySelector("[data-feed-style]");
     expect(feed).toHaveAttribute("data-feed-style", "stacked");
@@ -565,7 +565,7 @@ describe("GgRunMonitorPage", () => {
 
   it("shows the context-fill graph on an agent's context file", () => {
     renderMonitor();
-    openTab("Agents");
+    openTab("Instances");
     openFile("root context");
     // The composition story lives on the context file — the source legend and the
     // compaction boundary with its retained state.
@@ -586,7 +586,7 @@ describe("GgRunMonitorPage", () => {
 
   it("renders the task DAG on an agent's tasks file", () => {
     renderMonitor();
-    openTab("Agents");
+    openTab("Instances");
     openFile("root tasks");
     expect(screen.getByText("Scaffold the project")).toBeInTheDocument();
     expect(screen.getByText("Add the win condition")).toBeInTheDocument();
@@ -617,7 +617,7 @@ describe("GgRunMonitorPage", () => {
   });
 
   it("indents the files under an epic folder, like the Agents tree", () => {
-    // The Project sidebar is the same filesystem tree the Agents explorer is, and
+    // The Project sidebar is the same filesystem tree the Instances explorer is, and
     // its nesting is carried by a per-depth inline indent rather than by CSS (the
     // Agents tree nests arbitrarily deep). Without it every row lines up flush with
     // its folder and the tree reads as a flat list.
@@ -638,7 +638,7 @@ describe("GgRunMonitorPage", () => {
 
   it("renders the plan on an agent's plan file", () => {
     renderMonitor();
-    openTab("Agents");
+    openTab("Instances");
     openFile("root plan");
     expect(screen.getByText("Implementing")).toBeInTheDocument();
     expect(screen.getByText(/Scaffold the project/)).toBeInTheDocument();
@@ -646,7 +646,7 @@ describe("GgRunMonitorPage", () => {
 
   it("renders skills and memories on an agent's knowledge file", () => {
     renderMonitor();
-    openTab("Agents");
+    openTab("Instances");
     openFile("root knowledge");
     expect(screen.getByText("gg-render")).toBeInTheDocument();
     expect(screen.getByText("1 of 2 read")).toBeInTheDocument();
@@ -682,7 +682,7 @@ describe("GgRunMonitorPage", () => {
       sessionStarted(["shell", "tasks", "memories"]),
       gg({ type: "assistant_message", text: "Working." }),
     ]);
-    openTab("Agents");
+    openTab("Instances");
     for (const file of [
       "root overview",
       "root activity",
@@ -732,7 +732,7 @@ describe("GgRunMonitorPage", () => {
         ],
       }),
     ]);
-    openTab("Agents");
+    openTab("Instances");
     expect(
       screen.getByRole("button", { name: "agent-0 tasks" }),
     ).toBeInTheDocument();
@@ -775,7 +775,7 @@ describe("GgRunMonitorPage", () => {
     // Same on its own Overview in the explorer: the sidebar folder and the identity
     // card both name the issue, and the brief the board dispatched it with reads as a
     // dispatch rather than as a parent's hand-off.
-    openTab("Agents");
+    openTab("Instances");
     openFile("WIDGET-1.0i overview");
     expect(screen.getAllByText("WIDGET-1.0i").length).toBeGreaterThan(1);
     expect(screen.getByText("Implement the widget.")).toBeInTheDocument();
@@ -876,7 +876,7 @@ describe("GgRunMonitorPage", () => {
       }),
     ]);
 
-    openTab("Agents");
+    openTab("Instances");
     // The root's Overview (the default) says it is waiting, *what* on, and where it
     // is rooted — "waiting" alone reads the same as stuck.
     expect(screen.getByText("waiting")).toBeInTheDocument();
@@ -962,10 +962,11 @@ describe("GgRunMonitorPage", () => {
     expect(screen.getAllByText("reviewer").length).toBeGreaterThan(0);
     expect(screen.getAllByText("claude-haiku-4-8").length).toBeGreaterThan(0);
     expect(screen.getAllByText("$0.0021").length).toBeGreaterThan(1);
-    // One model per slot here, so a per-model split would only restate the rows above.
-    expect(screen.queryByText("Per model")).not.toBeInTheDocument();
+    // And the same money read per model, always — here one model per slot, so it restates
+    // the rows above rather than being withheld for saying nothing new.
+    expect(screen.getByText("Per model")).toBeInTheDocument();
 
-    openTab("Agents");
+    openTab("Instances");
     // The delegation tree is the directory tree: root → subagents → the two children.
     expect(screen.getByText("subagents")).toBeInTheDocument();
     expect(screen.getByText("agent-0")).toBeInTheDocument();
@@ -1113,10 +1114,10 @@ describe("GgRunMonitorPage", () => {
     expect(screen.getByText("Agents · 2")).toBeInTheDocument();
     expect(screen.getByText("read_file")).toBeInTheDocument();
 
-    // Clicking the reviewer's row switches to the Agents tab and lands on its Overview,
+    // Clicking the reviewer's row switches to the Instances tab and lands on its Overview,
     // where its tool usage is broken down (grep, called once).
     fireEvent.click(screen.getByRole("button", { name: "Open agent-0" }));
-    expect(screen.getByRole("radio", { name: "Agents" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "Instances" })).toBeChecked();
     expect(screen.getByText("Tools")).toBeInTheDocument();
     expect(screen.getByText("grep")).toBeInTheDocument();
 
@@ -1131,6 +1132,122 @@ describe("GgRunMonitorPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("sums a configured agent's instances on the Agents tab, and says what filled their windows", () => {
+    // Two reviewers spawned off one Root, each reading the same specification and each
+    // carrying it for the turns that follow. Per instance that is two unremarkable agents;
+    // per *configured agent* it is the reviewer profile costing the run twice over — which
+    // is the read this tab exists for.
+    const spec = (agentId: string, id: string) =>
+      ggFrom(agentId, "root", {
+        type: "context_message",
+        id,
+        role: "tool",
+        content: "the whole specification",
+        toolCalls: [],
+        images: [],
+        tokens: 900,
+        label: "specs/spec.md",
+      });
+    const request = (agentId: string, id: string) =>
+      ggFrom(agentId, "root", {
+        type: "prompt",
+        request: [{ id, source: "file_view" }],
+        totalTokens: 900,
+        finishReason: "stop",
+        tokens: {
+          uncachedInput: 900,
+          cachedInput: null,
+          output: null,
+          reasoning: null,
+        },
+      } as unknown as GgTelemetryKind);
+
+    const events: HarnessEvent[] = [
+      sessionStartedWith([
+        { name: "Root", capabilities: ["subagents"] },
+        { name: "reviewer", capabilities: ["filesystem"] },
+      ]),
+      gg({ type: "agent_spawned", slot: "Root", modelId: "mock/x", depth: 0 }),
+      ...["agent-0", "agent-1"].flatMap((id, index) => [
+        ggFrom(id, "root", {
+          type: "agent_spawned",
+          slot: "reviewer",
+          modelId: "mock/x",
+          depth: 1,
+        }),
+        ggFrom(id, "root", { type: "turn_started" }),
+        ggFrom(id, "root", { type: "turn_started" }),
+        ggFrom(id, "root", { type: "tool_call", name: "read_file", args: {} }),
+        ggFrom(id, "root", {
+          type: "usage",
+          slot: "reviewer",
+          modelId: "mock/x",
+          tokens: {
+            uncachedInput: 900 * (index + 1),
+            cachedInput: null,
+            output: 100,
+            reasoning: null,
+          },
+        }),
+        spec(id, `m-${index}`),
+        request(id, `m-${index}`),
+      ]),
+    ];
+    renderMonitor(events);
+    openTab("Agents");
+
+    // Both configured agents get a row, the reviewer's carrying both its instances rather
+    // than one row apiece.
+    expect(screen.getByText("Agents · 2")).toBeInTheDocument();
+    const rows = screen.getAllByRole("button", { expanded: false });
+    const reviewer = rows.find((row) => row.textContent?.includes("reviewer"));
+    expect(reviewer).toBeDefined();
+    // Closed, the row is the comparison line — two instances, four turns across them.
+    expect(reviewer!.textContent).toContain("2instances");
+    expect(reviewer!.textContent).toContain("4turns");
+
+    // Every row starts closed, so the detail is not on the page until one is opened…
+    expect(screen.queryByText("specs/spec.md")).toBeNull();
+    fireEvent.click(reviewer!);
+    expect(reviewer!).toHaveAttribute("aria-expanded", "true");
+
+    // …and then it sums them: two instances, neither having reached a terminal state.
+    expect(screen.getByText("2 running")).toBeInTheDocument();
+    expect(screen.getByText("2.0 per instance")).toBeInTheDocument();
+
+    // And the part no other view has: the material that filled their windows, attributed to
+    // the file it came from and charged for every turn it sat there.
+    expect(screen.getByText("specs/spec.md")).toBeInTheDocument();
+    expect(screen.getByText(/resident 2 turns/)).toBeInTheDocument();
+
+    // Opening one row opens only that row — the Root's detail is still folded away, so the
+    // panel stays a list to compare down rather than becoming a stack of open cards.
+    expect(screen.getAllByRole("button", { expanded: false })).toHaveLength(1);
+
+    // Each instance is a way back into its own files.
+    fireEvent.click(screen.getByRole("button", { name: /Open agent-1/ }));
+    expect(screen.getByRole("radio", { name: "Instances" })).toBeChecked();
+    expect(screen.getByLabelText("agent-1 overview")).toBeInTheDocument();
+  });
+
+  it("folds an opened agent row back away when it is clicked again", () => {
+    renderMonitor([
+      sessionStarted(),
+      gg({ type: "agent_spawned", slot: "Root", modelId: "mock/x", depth: 0 }),
+      gg({ type: "turn_started" }),
+    ]);
+    openTab("Agents");
+
+    const row = screen.getByRole("button", { expanded: false });
+    fireEvent.click(row);
+    expect(row).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("compactions")).toBeInTheDocument();
+
+    fireEvent.click(row);
+    expect(row).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("compactions")).toBeNull();
+  });
+
   it("reconciles the root agent to the session outcome once the run concludes", () => {
     // gg never emits a terminal status for the ROOT agent — its completion is only
     // implied by `session_ended` — so a concluded run must not leave the root's
@@ -1140,7 +1257,7 @@ describe("GgRunMonitorPage", () => {
       gg({ type: "assistant_message", text: "Built the thing." }),
       gg({ type: "session_ended", status: "completed" }),
     ]);
-    openTab("Agents");
+    openTab("Instances");
     // The root's Overview (the default landing) reads the run as done, not running.
     expect(screen.getByText("done")).toBeInTheDocument();
     expect(screen.queryByText("running")).toBeNull();
@@ -1168,7 +1285,7 @@ describe("GgRunMonitorPage", () => {
     expect(screen.getByText("write_tests")).toBeInTheDocument();
     expect(screen.getByText("implement")).toBeInTheDocument();
     // Each transition is marked as a distinct row on the root's activity file.
-    openTab("Agents");
+    openTab("Instances");
     openFile("root activity");
     expect(screen.getByText("tdd → write_tests")).toBeInTheDocument();
     expect(screen.getByText("tdd → implement")).toBeInTheDocument();
@@ -1339,7 +1456,7 @@ describe("GgRunMonitorPage", () => {
       }),
     ];
     renderMonitor(events);
-    openTab("Agents");
+    openTab("Instances");
     // The speculation summary sits on the root's Overview (the default): best-of-3,
     // with the judge's rationale.
     expect(screen.getByText("best-of-3")).toBeInTheDocument();
@@ -1363,8 +1480,8 @@ describe("GgRunMonitorPage", () => {
     expect(screen.getByRole("radio", { name: "Agents" })).toBeInTheDocument();
     expect(screen.queryByRole("radio", { name: "Project" })).toBeNull();
     expect(screen.queryByRole("radio", { name: "Context" })).toBeNull();
-    // The Agents explorer still shows the root, whose activity waits on telemetry.
-    openTab("Agents");
+    // The Instances explorer still shows the root, whose activity waits on telemetry.
+    openTab("Instances");
     openFile("root activity");
     expect(screen.getByText("Waiting for telemetry…")).toBeInTheDocument();
   });

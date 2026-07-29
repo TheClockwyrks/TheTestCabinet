@@ -925,6 +925,10 @@
           },
           "type": "array"
         },
+        "label": {
+          "description": "The window item's **selector tag**, when it carries one: the workspace path a\n[`FileView`](GgContextSource::FileView) shows (the same tag\n`evict_file_view { path }` targets), and the sentinel naming the rebuilt\nfullness signal. Absent for an ordinary message, and on a stream recorded\nbefore gg carried it.\n\nIt is what makes a window's *material* attributable rather than only its band:\na `file_view` message says how many tokens a file occupied, and the label says\n**which file**, so the console can total a run's context spend per path. The\ntag survives what the message envelope does not — a pinned, autoloaded\nspecification re-framed as a `user` message across a\n[compaction](https://docs.testcabinet.ai/gg/compaction/) boundary keeps its\npath, where its `tool_call_id` pairing does not.",
+          "type": ["string", "null"]
+        },
         "role": {
           "description": "The message's role (`system`, `user`, `assistant`, or `tool`).",
           "type": "string"

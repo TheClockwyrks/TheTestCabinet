@@ -35,16 +35,21 @@ the recorded set on the run record stands in.
 
 The console (the live monitor and a finished run's gg tab, which are the **same**
 view over the same stream — live, then rebuilt from the recording, and laid out
-identically down to the order of the cards) reads a run through **two** surfaces:
+identically down to the order of the cards) reads a run through these surfaces:
 
 - The **Dashboard** — the whole-run read-out: status, the token/cost tally with its
   **caching** (cached vs uncached input) and **reasoning** (reasoning vs non-reasoning
   output) splits shown as rings, an **overview of the agents** that ran, the enforced
   FSM process, and the configuration the run's [independent variable](/gg/overview/)
-  is, plus the **turns** the session has spent across every agent. The agent overview
+  is, plus the two figures that read beside the status: the **turns** the session has
+  spent across every agent, and its **tokens / s** — everything the run generated over
+  the time it spent inside its model calls, which is the average across every model it
+  used (a multi-model run's card names each model's own rate on hover). The two counts
+  say how much a run has done and spent; the rate is what says whether the wall-clock
+  behind them went into generating or into waiting. The agent overview
   is more than a count: each agent reads as a row carrying its **own turn count**, the
   **peak** its context window reached, its **share of the run's tokens**, and the
-  **tools it used** — and each row is a link into that agent's files in the Agents
+  **tools it used** — and each row is a link into that agent's files in the Instances
   explorer, so the whole-run view and the per-agent one are one click apart. The
   **cost** read-out leads the row it shares with the token tally, and is the taller
   tile — it carries the run's whole account of its spend, with the configuration
@@ -52,19 +57,37 @@ identically down to the order of the cards) reads a run through **two** surfaces
   class** (input, cached input, reasoning, output) by pricing each token against the
   model that produced it — never at one blanket rate — the input-vs-output ring, and
   *where* the money went: bars **per slot**, each naming the model that slot was bound
-  to, and — when one model is bound to more than one slot — bars **per model**, the
-  same spend folded onto the models that did it, which a per-slot read alone cannot
-  say. A run binds one model per [agent profile](/gg/configurations/), so every
+  to, and bars **per model**, the same spend folded onto the models that did it — which
+  a per-slot read alone cannot say whenever one model is bound to more than one slot.
+  Both are always shown; a run that binds one model per slot lists the same rows twice,
+  which is a fact about that configuration rather than a reason to withhold the reading.
+  A run binds one model per [agent profile](/gg/configurations/), so every
   `usage` event names the profile and model that spent it; every one of those splits is
   therefore derived from the delta stream, and reads the same on a run spanning five
   models as on one spanning a single model — from the run's first turn, not once its
   agents finish.
   (The end-of-agent `slot_usage` rollups carry the same figures for the durable record;
   a consumer sums the deltas, never both.)
+- The **Agents** panel — the run read per **configured agent** rather than per running
+  one. A configuration declares agent [profiles](/gg/configurations/) and the run makes
+  as many instances of each as the work calls for, so a profile that spawns twelve
+  implementers is *one* arm of the experiment, not twelve; this panel groups the
+  instances by the profile they ran under and sums them. It is **one collapsible row per
+  agent, all closed to begin with**: closed, a row is the comparison line — instances,
+  turns, tokens, cost, and peak context, each with its share of the run — so the panel
+  is a short list to read down a column of. Clicking a row opens that agent's detail,
+  and only that agent's: how many instances ran and how they ended, what a *typical* one
+  cost, how full a typical window got against the worst one, how often they compacted,
+  the same Tokens and Cost widgets the Dashboard uses, the tools they called between
+  them, and the **context spend** described
+  [below](#what-filled-the-window-and-what-it-cost). A profile the configuration
+  declares but the run never instantiated still gets a row, because "the reviewer never
+  ran" is a result. Each instance is a chip that opens it in the Instances explorer.
 - The **Project** view — the run-global [Project management](/gg/project-management/)
   board. Because the board is now shared run-wide rather than per agent, it is its own
   top-level section, **not** a file under any one agent.
-- The **Agents** explorer — everything else. The rich views (the prompt the agent was
+- The **Instances** explorer — everything else, one running agent at a time. The rich
+  views (the prompt the agent was
   given, activity, context-window breakdown, the [message log](/gg/context-visibility/#the-message-log-the-exact-requests-de-duplicated),
   the **metric graphs** — [where each turn's time went](#where-a-turns-time-went),
   then throughput (tokens/s), cost per request, cache-read
@@ -98,6 +121,49 @@ identically down to the order of the cards) reads a run through **two** surfaces
   workspace), and, while it is blocked, **what it is waiting on**: `blocked` on its
   own is indistinguishable from stuck, so the wait names its condition (the issue it
   suspended for, or the subagents it is collecting).
+
+## What filled the window, and what it cost
+
+The [context graph](/gg/context-visibility/) says how many tokens each **band** held at
+a point in time; the Cost widget says what the run spent. Neither answers the question
+a configuration is actually tuned on: *which material drove the bill* — which file sat
+in the window for eighty turns, which tool returned output nobody read again, whether
+the [autoloaded specifications](/gg/autoload-specifications/) are worth what they cost.
+The Agents panel's **context spend** answers it, and the arithmetic is worth stating
+because it is not the obvious one.
+
+gg's window is [append-only](/gg/context-visibility/): a turn **re-sends** everything
+still in it. A message's cost is therefore not what it cost to bring in once — it is
+its size multiplied by every turn it survived. A 900-token specification read on turn 2
+of a 90-turn run outspends a 5,000-token file read on the last turn by an order of
+magnitude, and any read that ranks material by per-message tokens gets that backwards.
+
+So the console folds the [message log](/gg/context-visibility/#the-message-log-the-exact-requests-de-duplicated)
+turn by turn. Each turn's **reported** input tokens (uncached + cached) and the cost
+those carry at the agent's model's rates are split across that turn's request messages
+in proportion to each message's estimated share of the request. Summing per message —
+then per band, per file, and per tool — gives what each is answerable for across the
+whole run, grounded in reported usage rather than estimates alone. Two figures come out
+of it and they mean different things: the material's **own size** (each message counted
+once — what it cost to *bring in*) and its **billed tokens** (the same material summed
+over every turn it was resident — what it cost to *keep*). The bars rank the second.
+
+Only the **input** side is attributed. Output and reasoning tokens are what the model
+produced, not material the window carried, so they are no file's or tool's doing and
+stay with the Cost widget's own account.
+
+Attributing a file view to a *path* is what the `context_message` event's **`label`**
+carries: the window item's selector tag — the same tag `evict_file_view { path }`
+targets. It rides on the pooled definition (emitted once per distinct message) rather
+than on each turn's pointer, because it is a property of the material, not of the turn.
+The tag also survives what the message envelope does not: a **locked**, autoloaded
+specification is re-framed as a `user` message across a
+[compaction](/gg/compaction/) boundary, which discards the `tool_call_id` pairing its
+synthesized read was answered under — so the tag is the only thing left that says which
+file the biggest band in the window is. A stream recorded before gg carried the tag
+falls back to the `read_file` call the view answers; whatever neither resolves is
+reported as unattributed rather than dropped, so the file list never quietly
+understates the band it decomposes.
 
 ## Where a turn's time went
 

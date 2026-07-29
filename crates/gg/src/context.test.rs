@@ -34,40 +34,45 @@ fn call(id: &str, name: &str) -> ToolCall {
 }
 
 #[test]
-fn prompt_items_expose_source_message_and_tokens_in_order() {
+fn prompt_items_expose_source_message_tokens_and_label_in_order() {
     let mut ctx = model(Some(1000));
     ctx.push_system("system");
     ctx.push_user_prompt("build a game");
     ctx.push_tool_result(tool_output_source("write_file"), "c1", "wrote index.html");
+    ctx.push_file_view(
+        Some("index.html".to_string()),
+        "c2",
+        "<html></html>",
+        Vec::new(),
+    );
 
     let items: Vec<_> = ctx.prompt_items().collect();
-    assert_eq!(items.len(), 3);
+    assert_eq!(items.len(), 4);
 
-    // Each item carries its band, its message, and the cached estimate — in push order,
-    // matching what `messages()` renders and what `total_tokens()` sums.
-    let (sources, messages, tokens): (Vec<_>, Vec<_>, Vec<_>) = {
-        let mut s = Vec::new();
-        let mut m = Vec::new();
-        let mut t = Vec::new();
-        for (source, message, tok) in &items {
-            s.push(*source);
-            m.push((*message).clone());
-            t.push(*tok);
-        }
-        (s, m, t)
-    };
+    // Each item carries its band, its message, the cached estimate, and its selector tag —
+    // in push order, matching what `messages()` renders and what `total_tokens()` sums.
     assert_eq!(
-        sources,
+        items.iter().map(|i| i.source).collect::<Vec<_>>(),
         vec![
             GgContextSource::System,
             GgContextSource::UserPrompt,
             GgContextSource::ToolOutput,
+            GgContextSource::FileView,
         ]
     );
-    assert_eq!(messages, ctx.messages());
     assert_eq!(
-        tokens.iter().map(|t| *t as u64).sum::<u64>(),
+        items.iter().map(|i| i.message.clone()).collect::<Vec<_>>(),
+        ctx.messages()
+    );
+    assert_eq!(
+        items.iter().map(|i| i.tokens as u64).sum::<u64>(),
         ctx.total_tokens()
+    );
+    // Only the file view is tagged — with the path it shows, which is what makes its share
+    // of the window attributable to a file rather than only to the `file_view` band.
+    assert_eq!(
+        items.iter().map(|i| i.label).collect::<Vec<_>>(),
+        vec![None, None, None, Some("index.html")]
     );
 }
 
@@ -512,6 +517,33 @@ fn fullness_signal_reflects_current_state_and_refreshes_in_place() {
     );
     // The larger tool output shows up as a top consumer.
     assert!(signal_after_growth.contains("tool output"));
+}
+
+/// The signal's internal sentinel is a window-slot marker, not material a reader can
+/// attribute tokens to, so it never leaves the model as a `prompt_items` tag — the message
+/// log would otherwise record gg's private bookkeeping in the run record.
+#[test]
+fn prompt_items_withhold_the_fullness_signals_sentinel() {
+    let mut ctx = model(Some(1000));
+    ctx.push_system("the base system prompt");
+    ctx.refresh_fullness_signal();
+    ctx.push_file_view(
+        Some("index.html".to_string()),
+        "c1",
+        "<html></html>",
+        Vec::new(),
+    );
+
+    let labels: Vec<Option<&str>> = ctx.prompt_items().map(|i| i.label).collect();
+    assert!(
+        labels.iter().all(|l| *l != Some(FULLNESS_SIGNAL_LABEL)),
+        "the sentinel is withheld: {labels:?}"
+    );
+    assert_eq!(
+        labels.iter().filter(|l| l.is_some()).collect::<Vec<_>>(),
+        vec![&Some("index.html")],
+        "a real selector tag — the file view's path — still travels"
+    );
 }
 
 #[test]

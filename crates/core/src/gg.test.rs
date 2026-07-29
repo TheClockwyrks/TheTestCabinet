@@ -1351,15 +1351,36 @@ fn message_log_events_round_trip() {
             bytes: 4096,
         }],
         tokens: 128,
+        label: Some("index.html".to_string()),
     };
     let value = serde_json::to_value(&message).expect("serialize");
     assert_eq!(value["type"], json!("context_message"));
     assert_eq!(value["toolCallId"], json!("call_1"));
     assert_eq!(value["images"][0]["mediaType"], json!("image/png"));
+    // A file view's selector tag rides on the definition, so its tokens stay attributable
+    // to the path that filled the window.
+    assert_eq!(value["label"], json!("index.html"));
     // The descriptor never carries the base64 bytes.
     assert!(value["images"][0].get("dataBase64").is_none());
     let back: GgTelemetryKind = serde_json::from_value(value).expect("deserialize");
     assert_eq!(back, message);
+
+    // An untagged message omits the label from the wire rather than serializing a null,
+    // and a stream recorded before gg carried one reads back with none.
+    let untagged = GgTelemetryKind::ContextMessage {
+        id: "mcafe".to_string(),
+        role: "user".to_string(),
+        content: Some("build a game".to_string()),
+        tool_calls: Vec::new(),
+        tool_call_id: None,
+        images: Vec::new(),
+        tokens: 12,
+        label: None,
+    };
+    let value = serde_json::to_value(&untagged).expect("serialize");
+    assert!(value.get("label").is_none());
+    let back: GgTelemetryKind = serde_json::from_value(value).expect("deserialize");
+    assert_eq!(back, untagged);
 
     let prompt = GgTelemetryKind::Prompt {
         request: vec![

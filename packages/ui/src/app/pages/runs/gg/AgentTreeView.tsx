@@ -4,7 +4,7 @@
 // speculations) are the only window into its shape (see gg/subagents.md,
 // gg/multi-model.md, gg/workflows.md, gg/speculative-execution.md).
 //
-// The subagent *tree* itself is drawn by the Agents explorer's filesystem sidebar
+// The subagent *tree* itself is drawn by the Instances explorer's filesystem sidebar
 // (see GgAgentsExplorer), so this module no longer renders it; it exports the
 // per-agent identity row the explorer shows on an agent's Overview, the run-level
 // structure panels (workflows / speculation) it shows on the root's Overview, and the
@@ -95,7 +95,7 @@ const WORKTREE_OUTCOME: Record<
   conflict: "conflict",
 };
 
-// An agent's identity card, shown on its Overview file in the Agents explorer: its
+// An agent's identity card, shown on its Overview file in the Instances explorer: its
 // status + id, its depth/turns, its agent name + model, what it is waiting on while
 // it is blocked, the working directory its tools are rooted at, the brief it was
 // dispatched with, a worktree indicator when it ran in an isolated worktree, and its

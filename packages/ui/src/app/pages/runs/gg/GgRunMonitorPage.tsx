@@ -161,7 +161,9 @@ function statusPhase(
 ): Pick<GgDashboardStatus, "label" | "detail" | "tone"> {
   if (status.kind === "running") {
     return sawSession
-      ? { label: "Running", detail: "the agent is working", tone: "live" }
+      ? // No detail: the pill already says the run is live, and a run has as many agents
+        // working as it has dispatched, so there is nothing true to add in one phrase.
+        { label: "Running", detail: null, tone: "live" }
       : {
           label: "Queued",
           detail: "waiting for a runner and container",

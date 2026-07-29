@@ -2008,7 +2008,7 @@ $fsm-hue: #2dd4bf;
 }
 
 // The panels' own layout root: the tab selector and the panel it selects, laid out
-// as a column with one gap between them, filling the host so the Agents explorer can
+// as a column with one gap between them, filling the host so the Instances explorer can
 // grow to the bottom of the page. Owning the layout here (rather than leaning on the
 // host container's flex gap) is what makes the space below the selector identical on
 // the live monitor (a gapless `PageLayout fill` column) and a finished run's gg tab
@@ -2029,7 +2029,7 @@ $fsm-hue: #2dd4bf;
   margin: 0 0 t.$space-sm;
 }
 
-// --- Agents explorer (filesystem view) ---------------------------------------
+// --- Instances explorer (filesystem view) ---------------------------------------
 
 // The two-pane explorer: a directory-style sidebar of agents-as-folders on the
 // left, the selected file's view on the right. Fills the page like the panel body

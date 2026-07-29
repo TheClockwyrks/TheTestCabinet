@@ -114,7 +114,8 @@ use crate::compaction::{
 use crate::completion::{self, CompletionSetup};
 use crate::config::GgInvocation;
 use crate::context::{
-    BpeTokenEstimator, ContextModel, Retention, TokenEstimator, code_heading, tool_output_source,
+    BpeTokenEstimator, ContextModel, PromptItem, Retention, TokenEstimator, code_heading,
+    tool_output_source,
 };
 use crate::docs::DocsRuntime;
 use crate::ending::{Ending, EndingRole};
@@ -5417,7 +5418,7 @@ impl Agent {
             );
             let reply_tokens = context.estimate(&reply);
             let has_reply = reply.content.is_some() || !reply.tool_calls.is_empty();
-            let request: Vec<(GgContextSource, &Message, usize)> = context.prompt_items().collect();
+            let request: Vec<PromptItem<'_>> = context.prompt_items().collect();
             emitter.log_prompt(
                 &request,
                 has_reply.then_some((&reply, reply_tokens)),

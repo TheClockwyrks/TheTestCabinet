@@ -22,13 +22,13 @@ import panels from "./GgPanels.module.scss";
 
 // The Project explorer: gg's run-global epic/issue board, read like a filesystem.
 //
-// Unlike the per-agent views in the Agents explorer, the board is *one* thing shared
+// Unlike the per-agent views in the Instances explorer, the board is *one* thing shared
 // by the whole run (see gg/project-management): submitting an issue enqueues it, and
 // gg dispatches a top-level agent to implement it once its blockers clear. So the
 // board is a whole-run surface, not a per-agent file — this tab lays it out as
 // epics-as-folders holding issues-as-folders, each of which holds its own Overview and
 // one file per review round. Selecting a file opens that epic's, issue's, or round's
-// detail on the right, the same master/detail shape the Agents explorer uses for agents.
+// detail on the right, the same master/detail shape the Instances explorer uses for agents.
 //
 // Issues are folders rather than files because a review round is a thing worth *opening*:
 // the feedback one reviewer gave is what the next attempt was for, and a board that
@@ -489,7 +489,7 @@ function EpicDetail({
 }
 
 // One issue's overview: its single state badge, the assigned agent (a link into the
-// Agents explorer) and retry count, its blocked-by edges, and its full structured brief
+// Instances explorer) and retry count, its blocked-by edges, and its full structured brief
 // (shown open, since the detail pane is where you read it). Deliberately *not* the
 // feedback a review round returned — each round is its own entry beside this one, which
 // is where that is read.

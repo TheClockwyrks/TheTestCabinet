@@ -24,12 +24,9 @@ import {
 } from "@test-cabinet/ui";
 import type { PromptTurn, TurnTiming } from "./useGgRunState";
 import { formatCost, formatPercent } from "./GgOverviewWidgets";
+import { formatThroughput } from "./ggThroughput";
 import { formatMs, TurnTimingGraph } from "./TurnTimingGraph";
 import styles from "./GgPanels.module.scss";
-
-const throughputFmt = new Intl.NumberFormat("en-US", {
-  maximumFractionDigits: 0,
-});
 
 const tokenFmt = new Intl.NumberFormat("en-US");
 
@@ -133,7 +130,9 @@ export const METRICS: readonly MetricDef[] = [
       p.durationMs != null && p.durationMs > 0
         ? generatedTokens(p) / (p.durationMs / 1000)
         : null,
-    formatValue: (v) => `${throughputFmt.format(v)} tok/s`,
+    // The same rate the Dashboard's Tokens / s card states for the whole run, spelled the
+    // same way — this graph is that figure per request.
+    formatValue: formatThroughput,
     yTickFormat: "~s",
     // The rate's two halves: a slow request that generated a lot is a different
     // problem from one that generated little, and the rate alone cannot tell them

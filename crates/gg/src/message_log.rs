@@ -90,12 +90,24 @@ pub fn finish_reason_token(reason: &FinishReason) -> String {
 
 /// Build the [`ContextMessage`](GgTelemetryKind::ContextMessage) event that records
 /// `message`'s full body under its [`fingerprint`] `id`, charged at `tokens` estimated
-/// tokens.
+/// tokens and tagged with the window item's `label` (a file view's path, or `None` for an
+/// ordinary message).
+///
+/// The label rides on the pooled definition rather than on each turn's
+/// [reference](test_cabinet_core::gg::GgPromptRef) because it is a property of the
+/// *material*, not of the turn: a file view shows the same file every turn it survives, so
+/// carrying the path once with the body is both cheaper and the thing a reader wants
+/// alongside the content.
 ///
 /// Images become [descriptors](GgLoggedImage) (media type + decoded size) rather than
 /// their base64 bytes — a request log shows *what was sent*, and the pixels are neither
 /// readable nor cheap.
-pub fn context_message_event(id: String, message: &Message, tokens: u64) -> GgTelemetryKind {
+pub fn context_message_event(
+    id: String,
+    message: &Message,
+    tokens: u64,
+    label: Option<&str>,
+) -> GgTelemetryKind {
     GgTelemetryKind::ContextMessage {
         id,
         role: role_token(message.role).to_string(),
@@ -119,6 +131,7 @@ pub fn context_message_event(id: String, message: &Message, tokens: u64) -> GgTe
             })
             .collect(),
         tokens,
+        label: label.map(str::to_string),
     }
 }
 

@@ -56,7 +56,7 @@ import {
   TasksIcon,
 } from "./ggIcons";
 
-// The Agents explorer: a gg run read agent by agent, laid out like a filesystem.
+// The Instances explorer: a gg run read agent by agent, laid out like a filesystem.
 //
 // gg is headless and multi-agent, so a single globally-merged view cannot say
 // *whose* context filled, *whose* task list this is, or what one subagent did in
@@ -238,7 +238,7 @@ interface Selection {
 }
 
 /**
- * The Agents explorer — the sole rich surface a gg run is read through besides the
+ * The Instances explorer — the sole rich surface a gg run is read through besides the
  * Dashboard. A filesystem sidebar of agents-as-folders and monitor-views-as-files
  * on the left; the selected file's view on the right.
  */

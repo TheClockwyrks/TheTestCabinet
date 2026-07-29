@@ -39,10 +39,17 @@ function gg(
   };
 }
 
-// A two-slot, two-model run's worth of attributed usage deltas — enough for the Cost
-// widget to carry a spend split, with the root outspending the reviewer.
+// A two-slot, two-model run's worth of attributed usage deltas and turn timings — enough
+// for the Cost widget to carry a spend split, with the root outspending the reviewer, and
+// for the generation rate to be a blend of two different per-model rates.
 const EVENTS: HarnessEvent[] = [
   gg("root", { type: "turn_started", turn: 1 } as GgTelemetryKind),
+  gg("root", {
+    type: "agent_spawned",
+    slot: "root",
+    modelId: "vendor/big",
+    depth: 0,
+  } as GgTelemetryKind),
   gg("root", {
     type: "usage",
     slot: "root",
@@ -54,6 +61,13 @@ const EVENTS: HarnessEvent[] = [
       reasoning: 100,
     },
     cost: { comparable: 0.02, actual: 0.02 },
+  } as GgTelemetryKind),
+  // 400 generated tokens over 4s of model time — 100 tok/s.
+  gg("root", {
+    type: "turn_timing",
+    promptMs: 10,
+    requestMs: 4000,
+    responseMs: 10,
   } as GgTelemetryKind),
   gg(
     "agent-0",
@@ -81,6 +95,17 @@ const EVENTS: HarnessEvent[] = [
     } as GgTelemetryKind,
     "root",
   ),
+  // 100 generated tokens over half a second — 200 tok/s.
+  gg(
+    "agent-0",
+    {
+      type: "turn_timing",
+      promptMs: 10,
+      requestMs: 500,
+      responseMs: 10,
+    } as GgTelemetryKind,
+    "root",
+  ),
 ];
 
 const CAPABILITY_SET: GgCapabilitySet = {
@@ -93,9 +118,11 @@ const CAPABILITY_SET: GgCapabilitySet = {
   ],
 };
 
+// The live monitor's running status: the pill and nothing else. A live run has as many
+// agents working as it has dispatched, so the card carries no phrase about "the agent".
 const STATUS: GgDashboardStatus = {
   label: "Running",
-  detail: "the agent is working",
+  detail: null,
   tone: "live",
 };
 
@@ -128,6 +155,7 @@ describe("the gg Dashboard", () => {
     expect(cardLabels()).toEqual([
       "Status",
       "Turns",
+      "Tokens / s",
       "Cost",
       "Tokens",
       "Configuration",
@@ -141,11 +169,34 @@ describe("the gg Dashboard", () => {
     renderDashboard();
     expect(cardLabels()).toEqual([
       "Turns",
+      "Tokens / s",
       "Cost",
       "Tokens",
       "Configuration",
       "Agents · 2",
     ]);
+  });
+
+  it("says the run is running without claiming what its agents are doing", () => {
+    // The pill carries the phase; a run has as many agents working as it has dispatched, so
+    // there is no one thing "the agent" is doing to put beside it.
+    renderDashboard(STATUS);
+    const card = screen.getByText("Status").parentElement!;
+    expect(within(card).getByText("Running")).toBeInTheDocument();
+    expect(card.textContent).toBe("StatusRunning");
+  });
+
+  it("states the run's generation rate across every model it used", () => {
+    renderDashboard(STATUS);
+    // 400 generated tokens in 4s on the big model and 100 in 0.5s on the small one: the run
+    // generated 500 tokens over 4.5s of model time, so it reads ~111 tok/s — the average
+    // across its models, not the mean of their two rates (which would claim 150).
+    const card = screen.getByText("Tokens / s").parentElement!;
+    expect(within(card).getByText("111")).toBeInTheDocument();
+    expect(within(card).getByText("tok/s across 2 models")).toBeInTheDocument();
+    // A one-figure average cannot show its own composition, so the models behind it are
+    // named on hover (no catalog is mounted here, so each reads by its id).
+    expect(card.title).toBe("vendor/small: 200 tok/s\nvendor/big: 100 tok/s");
   });
 
   it("accounts the run's spend inside the Cost widget, per slot and per model", () => {
@@ -162,9 +213,12 @@ describe("the gg Dashboard", () => {
         .getAllByText(/^(root|reviewer)$/)
         .map((node) => node.textContent),
     ).toEqual(["root", "reviewer"]);
-    expect(within(cost).getByText("vendor/big")).toBeInTheDocument();
-    expect(within(cost).getByText("vendor/small")).toBeInTheDocument();
-    // One model per slot, so the per-model split would only restate the per-slot one.
-    expect(within(cost).queryByText("Per model")).not.toBeInTheDocument();
+    // Per model too, always — this run binds one model per slot, so it lists the same two
+    // rows again, which is a fact about the configuration rather than a reason to withhold
+    // the reading. Each model therefore names itself twice: once as a slot's binding, once
+    // as a per-model row.
+    expect(within(cost).getByText("Per model")).toBeInTheDocument();
+    expect(within(cost).getAllByText("vendor/big")).toHaveLength(2);
+    expect(within(cost).getAllByText("vendor/small")).toHaveLength(2);
   });
 });
