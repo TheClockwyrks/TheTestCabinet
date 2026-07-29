@@ -16,7 +16,8 @@ import type {
   Workflow,
 } from "./useGgRunState";
 import { ROOT_ID, ggToolBreakdown, shortTokens } from "./useGgRunState";
-import { capabilityOn } from "./ggCatalog";
+import { agentCapabilityOn } from "./ggCatalog";
+import { cx, fsIndent } from "./ggFsTree";
 import { soleModelId, useGgCostBreakdown } from "./ggCost";
 import {
   ContextUsageRing,
@@ -67,10 +68,6 @@ import {
 // (root) agent. Selecting a file opens that view for that agent in the content pane
 // — the same rich panels a gg run has always been read through, now scoped to one
 // agent rather than blurred across all of them.
-
-function cx(...parts: Array<string | false | null | undefined>): string {
-  return parts.filter(Boolean).join(" ");
-}
 
 // One gg telemetry row as a shared feed line. The tone doubles as the palette key
 // (the stylesheet maps gg's tones onto the same `--ttc-event-*` tokens the harness
@@ -185,17 +182,26 @@ const FILE_ICONS: Record<
   knowledge: KnowledgeIcon,
 };
 
-// Which files a folder offers, given the run's configuration. A file is offered
-// when the run's capability set justifies it — so a file for an enabled capability
-// is always present (showing its own empty state until data arrives) and a file for
-// a capability the run does not have is never shown. Before gg announces the set
-// (set == null), only the unconditional files are offered.
-function filesFor(set: GgCapabilitySet | null): AgentFileKind[] {
+// Which files ONE agent's folder offers, given the run's configuration and which
+// profile that agent runs under. A file is offered when that agent's *own*
+// capabilities justify it — so a file for a capability it has is always present
+// (showing its own empty state until data arrives) and a file for a capability it
+// does not have is never shown. Before gg announces the set (set == null), only the
+// unconditional files are offered.
+//
+// Per-agent rather than per-run because gg's capabilities are per-agent: a run
+// routinely gives an issue's implementer a task list its Root has no use for, and
+// reading the Root's configuration for every folder in the tree hides exactly the
+// file the agent that has the capability should be showing.
+function filesFor(
+  set: GgCapabilitySet | null,
+  agent: string | null | undefined,
+): AgentFileKind[] {
   return FILE_ORDER.filter((file) => {
     const needed = FILE_CAPABILITIES[file];
     if (needed.length === 0) return true;
     if (!set) return false;
-    return needed.some((id) => capabilityOn(set, id));
+    return needed.some((id) => agentCapabilityOn(set, agent, id));
   });
 }
 
@@ -286,13 +292,15 @@ export function GgAgentsExplorer({
   });
 
   // Keep the selection valid as the live stream grows and reshapes: if the selected
-  // agent is gone (a stream re-read) or the selected file is no longer offered (the
-  // announced configuration justifies a different set), fall back to the root's
-  // overview — which is unconditional, so it is always a valid landing.
+  // agent is gone (a stream re-read) or the selected file is no longer offered by
+  // *that agent's* profile (the announced configuration justifies a different set),
+  // fall back to the root's overview — which is unconditional, so it is always a
+  // valid landing.
   useEffect(() => {
+    const selected = nodeById.get(selection.agentId);
     if (
-      nodeById.has(selection.agentId) &&
-      filesFor(capabilitySet).includes(selection.file)
+      selected &&
+      filesFor(capabilitySet, selected.slot).includes(selection.file)
     )
       return;
     setSelection({ agentId: ROOT_ID, file: "overview" });
@@ -371,11 +379,6 @@ interface ExplorerCtx {
   onSelect: (selection: Selection) => void;
 }
 
-// A nesting-depth indent, so a child folder sits under its parent like a file tree.
-function indent(depth: number): { paddingLeft: string } {
-  return { paddingLeft: `${0.5 + depth * 0.85}rem` };
-}
-
 // One agent's folder: its files, then — when it spawned any — a `subagents` folder
 // holding their folders (recursively). The main agent is the depth-0 folder.
 function FolderNode({
@@ -387,7 +390,8 @@ function FolderNode({
   depth: number;
   ctx: ExplorerCtx;
 }) {
-  const files = filesFor(ctx.capabilitySet);
+  // This agent's own files — read off the profile it runs under, not the run's Root.
+  const files = filesFor(ctx.capabilitySet, node.slot);
   const folderKey = `folder:${node.id}`;
   const open = !ctx.collapsed.has(folderKey);
   // The main agent is the "root" folder; a board-dispatched issue agent is also
@@ -402,7 +406,7 @@ function FolderNode({
       <button
         type="button"
         className={panels.fsRow}
-        style={indent(depth)}
+        style={fsIndent(depth)}
         aria-expanded={open}
         onClick={() => ctx.toggle(folderKey)}
       >
@@ -445,7 +449,7 @@ function FolderNode({
                     panels.fsFile,
                     selected && panels.fsRowActive,
                   )}
-                  style={indent(depth + 1)}
+                  style={fsIndent(depth + 1)}
                   // Name the agent so a file row is unambiguous on its own — a
                   // screen reader (and the eye scanning a deep tree) should not have
                   // to infer which folder an "activity" row belongs to.
@@ -486,7 +490,7 @@ function SubagentsFolder({
       <button
         type="button"
         className={panels.fsRow}
-        style={indent(depth)}
+        style={fsIndent(depth)}
         aria-expanded={open}
         onClick={() => ctx.toggle(subKey)}
       >
@@ -578,6 +582,7 @@ function FileContent({
             series={state.contextSeries}
             latest={state.latestContext}
             capabilitySet={capabilitySet}
+            agent={node.slot}
             compactions={state.compactions}
             planImplementTurn={state.plan?.implementTurn ?? null}
           />
@@ -630,11 +635,15 @@ function FileContent({
         </>
       );
     case "knowledge": {
-      // Each half is shown when its own capability is on (its list carries its own
-      // empty state until entries arrive), so a memories-only run reads as a
-      // memories panel rather than a half-empty split.
-      const showSkills = capabilityOn(capabilitySet, "skills");
-      const showMemories = capabilityOn(capabilitySet, "memories");
+      // Each half is shown when this agent's own capability is on (its list carries
+      // its own empty state until entries arrive), so a memories-only agent reads as
+      // a memories panel rather than a half-empty split.
+      const showSkills = agentCapabilityOn(capabilitySet, node.slot, "skills");
+      const showMemories = agentCapabilityOn(
+        capabilitySet,
+        node.slot,
+        "memories",
+      );
       return (
         <>
           <RetainedNote

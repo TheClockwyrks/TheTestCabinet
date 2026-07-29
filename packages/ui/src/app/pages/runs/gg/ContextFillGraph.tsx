@@ -35,7 +35,7 @@ import {
   type CompactionBoundary,
   type ContextSnapshot,
 } from "./useGgRunState";
-import { capabilityOn, LEGACY_FILESYSTEM_CAP_ID } from "./ggCatalog";
+import { agentCapabilityOn, LEGACY_FILESYSTEM_CAP_ID } from "./ggCatalog";
 import { formatPercent } from "./GgOverviewWidgets";
 import styles from "./GgPanels.module.scss";
 
@@ -138,6 +138,7 @@ export function contextYMax(
 export function visibleSources(
   set: GgCapabilitySet | null,
   series: readonly ContextSnapshot[],
+  agent?: string | null,
 ): readonly GgContextSource[] {
   return CONTEXT_SOURCES.filter((source) => {
     const needed = SOURCE_CAPABILITIES[source];
@@ -145,7 +146,10 @@ export function visibleSources(
     // Before the capability set is known, show everything rather than guess a run's
     // shape from an empty configuration.
     if (!set) return true;
-    if (needed.some((id) => capabilityOn(set, id))) return true;
+    // The graph is one agent's window, so the capabilities that decide which bands
+    // it can hold are that agent's own — a task list enabled only on an implementer
+    // fills that agent's window and nobody else's.
+    if (needed.some((id) => agentCapabilityOn(set, agent, id))) return true;
     return series.some((snapshot) => sourceTokens(snapshot, source) > 0);
   });
 }
@@ -197,9 +201,12 @@ interface ContextFillGraphProps {
   series: ContextSnapshot[];
   latest: ContextSnapshot | null;
   // The run's configuration, which decides which sources are worth listing at all —
-  // there is no reason to show a Skills band to a run with skills disabled. Null
+  // there is no reason to show a Skills band to an agent with skills disabled. Null
   // until gg announces it, which shows every source.
   capabilitySet?: GgCapabilitySet | null;
+  // The profile the agent whose window this is runs under, so the bands are filtered
+  // by *its* capabilities rather than the Root's. Absent falls back to the Root.
+  agent?: string | null;
   // Compaction boundaries to mark on the graph — each drops the window (the
   // sawtooth's fall). Empty when compaction is off or never tripped.
   compactions?: CompactionBoundary[];
@@ -213,13 +220,14 @@ export function ContextFillGraph({
   series,
   latest,
   capabilitySet = null,
+  agent = null,
   compactions = [],
   planImplementTurn = null,
 }: ContextFillGraphProps) {
-  // The sources this run's configuration justifies drawing and listing.
+  // The sources this agent's configuration justifies drawing and listing.
   const sources = useMemo(
-    () => visibleSources(capabilitySet, series),
-    [capabilitySet, series],
+    () => visibleSources(capabilitySet, series, agent),
+    [capabilitySet, series, agent],
   );
 
   // The chart's series, in fixed stacking/legend order (baseline = first source).

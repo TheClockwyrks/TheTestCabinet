@@ -6,6 +6,7 @@
 // (`crates/core/src/gg.rs` + `crates/gg/src/tools/mod.rs`), not guesses.
 
 import type {
+  GgAgentConfig,
   GgCapabilitySet,
   GgHealingStrategy,
   GgRunLimits,
@@ -15,10 +16,61 @@ import type {
 // Whether a run's capability set has the named capability on. Capabilities are
 // per-agent now, so a run-level "is X on?" question is answered by the **Root** agent
 // (agents[0]) — the profile that drives the top-level session.
+//
+// Use this only for questions that genuinely are about the run as a whole. Anything
+// scoped to ONE agent must ask {@link agentCapabilityOn} instead: a run may give its
+// agents wholly different capabilities, so the Root's answer says nothing about a
+// subagent's — a task list enabled on an issue's implementer and off on the Root is an
+// ordinary configuration, not an edge case.
 export function capabilityOn(set: GgCapabilitySet | null, id: string): boolean {
   return (
     set?.agents?.[0]?.capabilities.some((c) => c.id === id && c.enabled) ??
     false
+  );
+}
+
+// The profile the agent running under `agent` (a slot name from the agent tree) was
+// configured with, falling back to the Root when the name is unknown or not yet seen —
+// an agent whose spawn event has not arrived carries no slot, and the Root is the
+// working guess until it does. Null before gg announces the configuration at all.
+export function agentProfile(
+  set: GgCapabilitySet | null,
+  agent: string | null | undefined,
+): GgAgentConfig | null {
+  if (!set?.agents?.length) return null;
+  return (
+    (agent ? set.agents.find((a) => a.name === agent) : undefined) ??
+    set.agents[0]!
+  );
+}
+
+// Whether the named agent's OWN profile has the capability on — the per-agent question,
+// and the one every agent-scoped surface (which files its folder offers, which panes its
+// Knowledge file splits into, which bands its context graph draws) has to ask.
+export function agentCapabilityOn(
+  set: GgCapabilitySet | null,
+  agent: string | null | undefined,
+  id: string,
+): boolean {
+  return (
+    agentProfile(set, agent)?.capabilities.some(
+      (c) => c.id === id && c.enabled,
+    ) ?? false
+  );
+}
+
+// Whether ANY agent in the run has the capability on — the question a **run-global**
+// surface asks. The epic/issue board is the case that matters: it is one board shared by
+// the whole run, so it is worth showing whenever some profile can author it, whether or
+// not that profile happens to be the Root.
+export function anyAgentCapabilityOn(
+  set: GgCapabilitySet | null,
+  id: string,
+): boolean {
+  return (
+    set?.agents?.some((a) =>
+      a.capabilities.some((c) => c.id === id && c.enabled),
+    ) ?? false
   );
 }
 

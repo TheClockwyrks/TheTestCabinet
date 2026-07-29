@@ -11,7 +11,7 @@ import panels from "./GgPanels.module.scss";
 import type { GgRunState } from "./useGgRunState";
 import { GgAgentsExplorer } from "./GgAgentsExplorer";
 import { ProjectExplorer } from "./ProjectExplorer";
-import { capabilityOn } from "./ggCatalog";
+import { anyAgentCapabilityOn } from "./ggCatalog";
 import { GgExplorerNavContext, type GgExplorerNav } from "./GgExplorerNav";
 
 // The two surfaces a gg run is read through. gg is headless, so these are the only
@@ -43,8 +43,10 @@ const TAB_LABELS: ReadonlyArray<SegmentedOption<MonitorTab>> = [
  * The tabs this run justifies. Agents is unconditional — every run has at least the
  * root agent to read. Dashboard is offered only when the host supplies one
  * (`hasDashboard`); both hosts do today, but the panel set is the host's to compose.
- * Project is offered only when the run's configuration has the project-management
- * capability on — a run with no board has nothing to show there.
+ * Project is offered when ANY of the run's agent profiles has the project-management
+ * capability on — a run with no board has nothing to show there, but the board is one
+ * shared thing, so which profile happens to author it does not decide whether the run
+ * has one.
  */
 export function ggTabsFor(
   hasDashboard: boolean,
@@ -53,7 +55,7 @@ export function ggTabsFor(
   return TAB_LABELS.filter(({ value }) => {
     if (value === "dashboard") return hasDashboard;
     if (value === "project")
-      return capabilityOn(capabilitySet, "project-management");
+      return anyAgentCapabilityOn(capabilitySet, "project-management");
     return true;
   });
 }

@@ -127,20 +127,32 @@ const ALL_CAPABILITIES = [
 function sessionStarted(
   capabilities: ReadonlyArray<string> = ALL_CAPABILITIES,
 ): HarnessEvent {
+  return sessionStartedWith([{ name: "Root", capabilities }]);
+}
+
+// The same announcement for a **multi-profile** run: gg's capabilities are per-agent,
+// so a run routinely gives its agents different ones (a Root that files work but keeps
+// no task list; an implementer that keeps one but files nothing). Every per-agent
+// surface has to read the profile the agent it is showing runs under, so these streams
+// are the ones that catch a surface reading the Root's configuration for everybody.
+function sessionStartedWith(
+  profiles: ReadonlyArray<{
+    name: string;
+    capabilities: ReadonlyArray<string>;
+  }>,
+): HarnessEvent {
   return gg({
     type: "session_started",
     capabilitySet: {
-      agents: [
-        {
-          name: "Root",
-          capabilities: capabilities.map((id) => ({
-            id,
-            enabled: true,
-            params: {},
-          })),
-          modelId: "mock/scripted-builder",
-        },
-      ],
+      agents: profiles.map(({ name, capabilities }) => ({
+        name,
+        capabilities: capabilities.map((id) => ({
+          id,
+          enabled: true,
+          params: {},
+        })),
+        modelId: "mock/scripted-builder",
+      })),
     },
   });
 }
@@ -600,6 +612,23 @@ describe("GgRunMonitorPage", () => {
     expect(screen.getByText("Show a win banner.")).toBeInTheDocument();
   });
 
+  it("indents the files under an epic folder, like the Agents tree", () => {
+    // The Project sidebar is the same filesystem tree the Agents explorer is, and
+    // its nesting is carried by a per-depth inline indent rather than by CSS (the
+    // Agents tree nests arbitrarily deep). Without it every row lines up flush with
+    // its folder and the tree reads as a flat list.
+    renderMonitor();
+    openTab("Project");
+    const folder = screen
+      .getAllByRole("button")
+      .find((el) => el.getAttribute("aria-expanded") === "true");
+    expect(folder).toBeDefined();
+    const issue = screen.getByRole("button", { name: "issue Add win overlay" });
+    const padding = (el: HTMLElement) => parseFloat(el.style.paddingLeft);
+    expect(padding(folder!)).toBeGreaterThan(0);
+    expect(padding(issue)).toBeGreaterThan(padding(folder!));
+  });
+
   it("renders the plan on an agent's plan file", () => {
     renderMonitor();
     openTab("Agents");
@@ -665,6 +694,77 @@ describe("GgRunMonitorPage", () => {
     // rather than being hidden until data arrives.
     openFile("root tasks");
     expect(screen.getByText(/No tasks yet/)).toBeInTheDocument();
+  });
+
+  it("offers each agent the files its own profile justifies, not the Root's", () => {
+    // The ordinary shape of a board run: the Root files work and keeps no task list;
+    // the `Coder` profile an issue dispatches under keeps one and files nothing.
+    // Reading the Root's configuration for every folder hid the task file on exactly
+    // the agent that had the capability.
+    renderMonitor([
+      sessionStartedWith([
+        { name: "Root", capabilities: ["shell", "project-management"] },
+        { name: "Coder", capabilities: ["shell", "tasks"] },
+      ]),
+      ggFrom("agent-0", undefined, {
+        type: "agent_spawned",
+        slot: "Coder",
+        modelId: "mock/scripted-builder",
+        depth: 0,
+        brief: "Implement the widget.",
+      }),
+      ggFrom("agent-0", undefined, {
+        type: "tasks_state",
+        tasks: [
+          {
+            id: "t1",
+            title: "Draw the widget",
+            status: "in_progress",
+            blockedBy: [],
+          },
+        ],
+      }),
+    ]);
+    openTab("Agents");
+    expect(
+      screen.getByRole("button", { name: "agent-0 tasks" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "root tasks" })).toBeNull();
+    // And the file reads that agent's own list.
+    openFile("agent-0 tasks");
+    expect(screen.getByText("Draw the widget")).toBeInTheDocument();
+  });
+
+  it("offers the Project tab when any profile owns the board, not only the Root", () => {
+    // The board is one thing shared by the whole run, so which profile happens to
+    // author it does not decide whether the run has one — a set that puts project
+    // management on a dedicated planning profile still has a board to read.
+    renderMonitor([
+      sessionStartedWith([
+        { name: "Root", capabilities: ["shell", "subagents"] },
+        { name: "Planner", capabilities: ["shell", "project-management"] },
+      ]),
+      gg({
+        type: "board_state",
+        epics: [],
+        issues: [
+          {
+            id: "feat-1",
+            title: "Add the widget",
+            status: "open",
+            blockedBy: [],
+            inScope: "The widget.",
+            outOfScope: "Nothing else.",
+            completionCriteria: "It works.",
+            agent: "Coder",
+            retries: 0,
+          },
+        ],
+      }),
+    ]);
+    openTab("Project");
+    // Named twice: the sidebar row, and the detail the default landing selects.
+    expect(screen.getAllByText("Add the widget").length).toBeGreaterThan(0);
   });
 
   it("nests subagents as folders under their spawner, each read on its own file", () => {
