@@ -315,10 +315,7 @@ async fn a_cost_ceiling_is_shared_across_every_agent() {
 
     // The first agent spends $1 and finishes of its own accord, comfortably under the ceiling.
     let first = drive_root(
-        &MockClient::new(
-            "mock/primary",
-            vec![priced_turn(1.0), code_reply("that is everything")],
-        ),
+        &MockClient::new("mock/primary", vec![priced_turn(1.0), stop_response()]),
         dir.path(),
         &registry,
         &emitter,
@@ -659,7 +656,7 @@ async fn every_turn_records_exactly_one_outcome() {
             "completed",
             Box::new(MockClient::new(
                 "mock/primary",
-                vec![priced_turn(0.0), code_reply("all done")],
+                vec![priced_turn(0.0), stop_response()],
             )),
             setup_from(GgRunLimits {
                 max_turns: Some(5),

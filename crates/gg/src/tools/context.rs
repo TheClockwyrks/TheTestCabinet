@@ -290,12 +290,12 @@ impl Tool for CompactTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
             COMPACT_TOOL,
-            "Compact your own context window: gg drops the detailed thread and restarts it from \
+            "Compact your own context window: the detailed thread is dropped and restarted from \
              the `summary` you write, plus a fresh read of each path in `files`. Your skills, \
-             memories and task list are kept as they are. gg asks you to call this when your \
-             window is full, and refuses every other tool until you do — but everything not in \
-             your summary and not in `files` is gone, so write the summary for your future self \
-             and name the files you will actually need in hand.",
+             memories and task list are kept as they are. You are asked to call this when your \
+             window is full, and every other tool is refused until you do — but everything not \
+             in your summary and not in `files` is gone, so write the summary for your future \
+             self and name the files you will actually need in hand.",
             json!({
                 "type": "object",
                 "properties": {

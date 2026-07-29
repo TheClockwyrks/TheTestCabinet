@@ -43,13 +43,13 @@ pub(crate) struct SignatureCatalogue {
         reason = "provenance for a human reading the committed artifact, not something gg renders"
     )]
     pub generated_from: String,
-    /// The one model-facing function that is not a gg tool: the call that ends the run.
+    /// The model-facing functions that are not gg tools: the calls that end a session, one group per
+    /// [role](crate::ending::EndingRole).
     ///
-    /// A field rather than a third array because there is exactly one of these, and a second would
-    /// be a design change rather than a data change. Keeping it out of [`tools`](Self::tools) is
-    /// what keeps that array in exact bijection with the gg tool vocabulary the committed component
-    /// is checked against.
-    pub session: SessionSignature,
+    /// Kept out of [`tools`](Self::tools) because none of them has a gg tool name, which is what
+    /// keeps that array in exact bijection with the gg tool vocabulary the committed component is
+    /// checked against.
+    pub session: Vec<SessionSignature>,
     /// One entry per gg tool the sandbox binds, in catalogue order.
     pub tools: Vec<ToolSignature>,
     /// The helper functions bound alongside a tool — convenience wrappers that are not gg tools in
@@ -79,19 +79,22 @@ pub(crate) struct ToolSignature {
     pub types: Vec<String>,
 }
 
-/// The session function — `finish` — as the guest exports it and the prompt describes it.
+/// One session-ending function as the guest exports it and the prompt describes it.
 ///
-/// It has the same shape as a [`ToolSignature`] minus the one field that would be a lie: there is no
-/// gg tool name for it, because nothing dispatches it. That absence is the whole distinction, and
-/// giving it its own type rather than an `Option<String>` on the tool entry is what stops it from
-/// being folded into a list it does not belong in.
+/// It has the same shape as a [`ToolSignature`] minus the one field that would be a lie — there is no
+/// gg tool name for it, because nothing dispatches it — plus the [role](Self::ending) whose programs
+/// it is bound for. That absence is the whole distinction, and giving these their own type rather
+/// than an `Option<String>` on the tool entry is what stops them from being folded into a list they
+/// do not belong in.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SessionSignature {
     /// The function name a program calls (`finish`).
     pub js: String,
-    /// The API object this function is grouped under (`harness`).
+    /// The API object this function is grouped under (`harness`, `review`, `judge`).
     pub object: String,
+    /// The [role](crate::ending::EndingRole) whose programs bind it: `standard`, `review`, `judge`.
+    pub ending: String,
     /// The full TypeScript signature, as the SDK declares it — `finish(summary: string): void`.
     /// The `void` is load-bearing prompt text: it tells a model at a glance that the call returns
     /// like any other, so what follows it still runs.
@@ -178,9 +181,12 @@ pub struct CatalogueFunction {
     pub object: &'static str,
     /// The name a program calls it by (`readFile`) — what `readDocs` is keyed on.
     pub name: &'static str,
-    /// The gg tool whose being enabled gates this function; `None` for a carve-out that is always
-    /// bound (`finish`).
+    /// The gg tool whose being enabled gates this function; `None` for a carve-out gated by
+    /// something other than the enabled set — an ending call, which the agent's role decides.
     pub gate: Option<&'static str>,
+    /// For an ending call, the [role](crate::ending::EndingRole) whose programs bind it; `None` for
+    /// a tool or helper, which every role's programs reach the same way.
+    pub ending: Option<&'static str>,
     /// The one-line summary `object.list()` shows — the first sentence of the documentation.
     pub summary: &'static str,
     /// The full TypeScript signature.
@@ -205,28 +211,33 @@ fn first_sentence(doc: &'static str) -> &'static str {
     doc
 }
 
-/// Every function the committed catalogue documents — `finish`, the tools, and the one helper — each
-/// projected as a [`CatalogueFunction`]. The docs runtime filters these by the run's enabled set and
-/// adds the two meta functions (`list`, `readDocs`) itself, since those are the carve-out's own and
-/// have no catalogue entry.
+/// Every function the committed catalogue documents — the ending calls, the tools, and the one
+/// helper — each projected as a [`CatalogueFunction`]. The docs runtime filters these by the run's
+/// enabled set and the agent's role, and adds the two meta functions (`list`, `readDocs`) itself,
+/// since those are the carve-out's own and have no catalogue entry.
 pub fn catalogue_functions() -> Vec<CatalogueFunction> {
     let catalogue = catalogue();
-    let mut functions = Vec::with_capacity(catalogue.tools.len() + catalogue.helpers.len() + 1);
-    let session = &catalogue.session;
-    functions.push(CatalogueFunction {
-        object: session.object.as_str(),
-        name: session.js.as_str(),
-        gate: None,
-        summary: first_sentence(&session.doc),
-        signature: session.signature.as_str(),
-        doc: session.doc.as_str(),
-        types: session.types.as_slice(),
-    });
+    let mut functions = Vec::with_capacity(
+        catalogue.session.len() + catalogue.tools.len() + catalogue.helpers.len(),
+    );
+    for session in &catalogue.session {
+        functions.push(CatalogueFunction {
+            object: session.object.as_str(),
+            name: session.js.as_str(),
+            gate: None,
+            ending: Some(session.ending.as_str()),
+            summary: first_sentence(&session.doc),
+            signature: session.signature.as_str(),
+            doc: session.doc.as_str(),
+            types: session.types.as_slice(),
+        });
+    }
     for tool in &catalogue.tools {
         functions.push(CatalogueFunction {
             object: tool.object.as_str(),
             name: tool.js.as_str(),
             gate: Some(tool.tool.as_str()),
+            ending: None,
             summary: first_sentence(&tool.doc),
             signature: tool.signature.as_str(),
             doc: tool.doc.as_str(),
@@ -238,6 +249,7 @@ pub fn catalogue_functions() -> Vec<CatalogueFunction> {
             object: helper.object.as_str(),
             name: helper.js.as_str(),
             gate: Some(helper.requires.as_str()),
+            ending: None,
             summary: first_sentence(&helper.doc),
             signature: helper.signature.as_str(),
             doc: helper.doc.as_str(),

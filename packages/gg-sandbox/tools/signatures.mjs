@@ -23,8 +23,8 @@
 //     a bare signature with nothing after the dash.
 //
 // Beside its provenance line the catalogue has four parts — `session`, `tools`, `helpers`, `types` —
-// and `session` comes first because it is the one entry that is not a projection of the run's enabled
-// set: `finish` is bound into every program's scope whatever a run enables, so the prompt renders it
+// and `session` comes first because it is the one part that is not a projection of the run's enabled
+// set: an ending call is bound from the agent's *role*, so the prompt renders the role's group
 // unconditionally, and a run that offers no tools at all still has to be told how to end.
 //
 // Usage:
@@ -229,7 +229,7 @@ function reflect(js, expectedFile, { functions, types }) {
 
 /** Build the whole catalogue. */
 async function build() {
-  const { TOOL_CATALOGUE, HELPER_CATALOGUE, SESSION_ENTRY, OBJECT_FOR_MODULE } =
+  const { TOOL_CATALOGUE, HELPER_CATALOGUE, SESSION_ENTRIES, SESSION_MODULE, OBJECT_FOR_MODULE } =
     await loadCatalogue();
   const declarations = index(await loadHeaders());
   // The API object a module's functions are grouped under in a program's scope. The host groups the
@@ -247,17 +247,25 @@ async function build() {
   const order = (name) => declarations.types.get(name)?.order ?? Number.MAX_SAFE_INTEGER;
   const sorted = (names) => [...names].sort((a, b) => order(a) - order(b));
 
-  // Reflected exactly as a tool is, minus the `tool` field it has no value for: it is not a gg tool,
-  // has no name in `ALL_TOOL_NAMES`, and nothing dispatches it.
-  const ending = reflect(SESSION_ENTRY.js, `${SESSION_ENTRY.module}.d.ts`, declarations);
-  for (const name of ending.referenced) used.add(name);
-  const session = {
-    js: SESSION_ENTRY.js,
-    object: objectForModule(SESSION_ENTRY.module),
-    signature: ending.signature,
-    doc: ending.doc,
-    types: sorted(ending.referenced),
-  };
+  // Reflected exactly as a tool is, minus the `tool` field they have no value for: none is a gg tool,
+  // none has a name in `ALL_TOOL_NAMES`, and nothing dispatches them. `ending` names the role whose
+  // programs each one is bound for, which is what lets the prompt render one group.
+  const session = SESSION_ENTRIES.map((entry) => {
+    const { signature, doc, referenced } = reflect(
+      entry.js,
+      `${SESSION_MODULE}.d.ts`,
+      declarations,
+    );
+    for (const name of referenced) used.add(name);
+    return {
+      js: entry.js,
+      object: entry.object,
+      ending: entry.ending,
+      signature,
+      doc,
+      types: sorted(referenced),
+    };
+  });
 
   const tools = TOOL_CATALOGUE.map((entry) => {
     const { signature, doc, referenced } = reflect(

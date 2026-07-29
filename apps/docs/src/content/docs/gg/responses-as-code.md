@@ -50,15 +50,19 @@ asking the model not to send.
   model that returns a value is told, once, in that turn's feedback, that the value went
   nowhere and that logging is what carries — see
   [the rule that replaced a family of rules](#a-returned-value-is-discarded) below.
-- **`finish(summary: string): void` ends the session** — and nothing else does. It is a
-  real membrane function bound into every program's scope, not a rule about text. It
-  **sets a flag** in the agent's host-side context and returns: the program runs on, and
-  the loop reads the flag once the program has ended. The summary becomes the run's final
-  text (for a subagent, its return value to whichever agent asked for the work).
+- **An [ending call](/gg/completion/#ending-calls) ends the session** — and nothing else
+  does. Which one an agent has depends on the role it was dispatched in:
+  `harness.finish(summary)` for an agent doing work, `review.approve()` /
+  `review.requestChanges(items)` for a reviewer, `judge.selectWinner(attempt, rationale)`
+  for a judge. Only that role's group is bound, so a call another role would make is an
+  undefined identifier here, exactly as a withheld tool is. Each is a real membrane
+  function, not a rule about text: it **sets a flag** in the agent's host-side context and
+  returns, the program runs on, and the loop reads the flag once the program has ended.
 - **A reply that is not a program is an error turn**, not a conclusion. Prose, an
   empty reply, comments only, or several candidate code blocks are each fed back to
   the model naming the shape it sent, saying that nothing ran and nothing changed, and
-  telling it that only `finish` ends the run. Such a turn counts as an **error turn**,
+  telling it which of its own calls would have ended the session. Such a turn counts as an
+  **error turn**,
   so a configured [error ceiling](/gg/execution-limits/) can stop a model that has
   started answering in prose; with none configured, the run is bounded by its turn
   ceiling as it always was.
@@ -197,11 +201,11 @@ scope. There is no dispatcher to name a tool through and no JSON to hand-assembl
 Thirty of gg's thirty-three tools are bound this way — everything except the three
 [turn-level transitions](#turn-level-transitions-are-not-composable) — plus one
 convenience helper, `readTextFile(path, options?)`, for the overwhelmingly common case
-of wanting a file's text rather than its metadata, and `finish(summary)`, which is a
-membrane function like any other but not a tool: no capability offers it, it dispatches
-nothing, and it is declared in its own WIT interface precisely so the one-to-one
-correspondence between the tool interfaces and gg's tool vocabulary is not perturbed by
-it. The prompt lists the signature and a
+of wanting a file's text rather than its metadata, and the
+[ending calls](/gg/completion/#ending-calls), which are membrane functions like any other
+but not tools: no capability offers them, they dispatch nothing, and they are declared in
+their own WIT interface precisely so the one-to-one correspondence between the tool
+interfaces and gg's tool vocabulary is not perturbed by them. The prompt lists the signature and a
 sentence of documentation for each tool **the run actually offers**, and both are
 reflected out of the sandbox SDK's own emitted declarations by the same build that
 produces the component. A hand-written list would drift, and a prompt that describes a

@@ -434,20 +434,6 @@ impl Healed {
         matches!(self.verdict, HealingVerdict::Program) && !self.applied.is_empty()
     }
 
-    /// One model-facing clause per application, for the healing note at the top of every code
-    /// feedback template.
-    ///
-    /// Rendered in Rust rather than in Handlebars because the wording varies with each detail's
-    /// counts, and a template that has to pluralise is a template that will one day say
-    /// "removed 1 lines". The two classification details render nothing: they are *verdicts*, and
-    /// the not-a-program message already carries them.
-    pub fn notes(&self) -> Vec<String> {
-        self.applied
-            .iter()
-            .filter_map(|application| application.detail.note())
-            .collect()
-    }
-
     /// The strategies applied, in order and with repeats — what the telemetry carries.
     pub fn strategies(&self) -> Vec<HealingStrategy> {
         self.applied
@@ -537,7 +523,7 @@ impl NotAProgramReason {
             Self::Empty => {
                 "Your reply was empty, so there was nothing to run and nothing changed.".to_string()
             }
-            Self::ToolCallsOnly => "Your reply asked gg to call tools directly and contained no \
+            Self::ToolCallsOnly => "Your reply requested tool calls and contained no \
                  text. This run offers no tool calls at all — every tool is a function you call \
                  from inside a program — so nothing ran and nothing changed."
                 .to_string(),
@@ -552,7 +538,7 @@ impl NotAProgramReason {
                     .to_string()
             }
             Self::NoProgramBlock => {
-                "Your reply contained no TypeScript to run — only fenced blocks gg does not read \
+                "Your reply contained no TypeScript to run — only fenced blocks that are not read \
                  as a program. Your whole reply is the program: send the code itself, with nothing \
                  around it."
                     .to_string()
@@ -593,7 +579,7 @@ impl NotAProgramReason {
                 "the reply contained only comments, so there was nothing to run".to_string()
             }
             Self::NoProgramBlock => {
-                "the reply contained no block gg reads as a program".to_string()
+                "the reply contained no block that reads as a program".to_string()
             }
             Self::SeveralBlocks {
                 blocks,
@@ -667,54 +653,6 @@ pub enum HealingDetail {
     ProseOnly,
 }
 
-impl HealingDetail {
-    /// The model-facing clause for this application, or `None` for the two details that are
-    /// verdicts rather than repairs.
-    ///
-    /// Each clause completes the note's opening — *"gg repaired your reply before running it:"* —
-    /// so it starts with a past-tense verb and never repeats the rule it is enforcing. Where a
-    /// repair implies something the model got wrong about the surface (there is nothing to import;
-    /// every tool function is synchronous), the clause says so once, because a repair the model
-    /// cannot learn from is one it will need again next turn.
-    fn note(self) -> Option<String> {
-        match self {
-            Self::Fence {
-                close,
-                ignored,
-                ignored_code,
-            } => Some(format!(
-                "{}{}",
-                close.note(),
-                ignored_note(ignored, ignored_code)
-            )),
-            Self::Prose { leading, trailing } => Some(prose_note(leading, trailing)),
-            Self::DuplicateProgram => Some(
-                "deleted the second, identical copy of your program — your reply sent it twice, \
-                 which redeclares every `const` in it and is why nothing in it could have run. One \
-                 reply is one program"
-                    .to_string(),
-            ),
-            Self::Imports { lines } => Some(format!(
-                "removed {} — every tool is already in scope, and there is nothing to import",
-                plural(lines, "import line")
-            )),
-            Self::Async { wrapper, awaits } => Some(format!(
-                "unwrapped the {} you wrapped your program in{} — every tool function is \
-                 synchronous and returns its value directly",
-                wrapper.description(),
-                if awaits == 0 {
-                    String::new()
-                } else {
-                    format!(", and removed its {}", plural(awaits, "await"))
-                }
-            )),
-            // Verdicts, not repairs: `NotAProgramReason::message` is what the model is told, and
-            // saying it twice in one turn's feedback would read as two separate findings.
-            Self::CommentOnly | Self::ProseOnly | Self::SeveralPrograms => None,
-        }
-    }
-}
-
 /// How a fenced block ended — the three shapes measured in round 1.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FenceClose {
@@ -728,24 +666,6 @@ pub enum FenceClose {
     Unterminated,
 }
 
-impl FenceClose {
-    /// The opening clause of this fence's [note](HealingDetail::note).
-    fn note(self) -> &'static str {
-        match self {
-            Self::Fenced => "removed the Markdown code fence you wrapped it in",
-            Self::Glued => {
-                "removed the Markdown code fence you wrapped it in — its closing fence had text on \
-                 the same line, which does not close a fence, so everything after it would \
-                 otherwise have been read as part of your program"
-            }
-            Self::Unterminated => {
-                "closed the Markdown code fence you opened and never closed, and ran everything \
-                 after it"
-            }
-        }
-    }
-}
-
 /// Which `async` wrapper shape was unwrapped.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AsyncWrapper {
@@ -753,16 +673,6 @@ pub enum AsyncWrapper {
     Function,
     /// `(async () => { … })();` or `(async function () { … })();`.
     Iife,
-}
-
-impl AsyncWrapper {
-    /// How the model-facing note names this shape.
-    fn description(self) -> &'static str {
-        match self {
-            Self::Function => "async function",
-            Self::Iife => "async function expression",
-        }
-    }
 }
 
 /// Heal one model response into the program gg will run, or classify it as not a program at all.
@@ -2471,62 +2381,6 @@ pub(crate) fn plural(count: usize, noun: &str) -> String {
         format!("{count} {noun}")
     } else {
         format!("{count} {noun}s")
-    }
-}
-
-/// The clause naming the fenced blocks an unwrap left where they were, or nothing when it left none.
-///
-/// A left-behind block that **looked like code** gets its own sentence, because that is the one
-/// shape where "gg removed the wrapper" understates what happened — most often a three-backtick
-/// program that itself writes Markdown, whose inner fence closed the outer block early — and the
-/// model has to know that part of what it sent did not run.
-fn ignored_note(ignored: usize, ignored_code: usize) -> String {
-    if ignored == 0 {
-        return String::new();
-    }
-    let single = ignored == 1;
-    let left = format!(
-        ", and left {} where {}",
-        plural(ignored, "other fenced block"),
-        if single { "it was" } else { "they were" }
-    );
-    if ignored_code == 0 {
-        return format!(
-            "{left} — {} not code",
-            if single { "it was" } else { "they were" }
-        );
-    }
-    let which = if single {
-        "that block".to_string()
-    } else {
-        format!("{ignored_code} of them")
-    };
-    let (was, it) = if single {
-        ("it was", "it")
-    } else {
-        ("they were", "they")
-    };
-    format!(
-        "{left} — {which} looked like code, so if {was} part of your program {it} did NOT run: \
-         send your whole program as one reply, with no fences"
-    )
-}
-
-/// The clause naming the explanation an unwrap removed, with either half omitted at zero.
-fn prose_note(leading: usize, trailing: usize) -> String {
-    match (leading, trailing) {
-        (0, trailing) => format!(
-            "removed {} of explanation after your program",
-            plural(trailing, "line")
-        ),
-        (leading, 0) => format!(
-            "removed {} of explanation before your program",
-            plural(leading, "line")
-        ),
-        (leading, trailing) => format!(
-            "removed {} of explanation before your program and {trailing} after it",
-            plural(leading, "line")
-        ),
     }
 }
 

@@ -524,7 +524,7 @@ async fn capture_output(stdout: &str, stderr: &str, offload: &OffloadPolicy) -> 
             let (mut body, truncated) = truncate(&merged, MAX_OUTPUT_BYTES);
             body.push_str(&separator(&body));
             body.push_str(&format!(
-                "[gg could not write this command's output to {}: {err}. The output above is all \
+                "[could not write this command's output to {}: {err}. The output above is all \
                  that was kept{}.]",
                 limits.dir.display(),
                 if truncated {

@@ -1,11 +1,10 @@
-{{> healing-note ran=true}}
 {{#if error}}
 Your program stopped{{#if error.location}} at {{error.location}}{{/if}}: {{error.message}}
 {{#if calls}}Everything it did before that still stands.
 {{/if}}
 {{#if finishRevoked}}
-The `harness.finish()` call was suppressed because your program did not run to
-completion.
+Your session was NOT ended: `{{endingRevoked}}` was suppressed because your
+program did not run to completion.
 {{/if}}
 {{else}}
 Your program ran to completion.

@@ -41,7 +41,7 @@ impl Tool for AdvanceStateTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
             ADVANCE_STATE_TOOL,
-            "Advance the fixed process you are being driven through to its next state. gg only \
+            "Advance the fixed process you are being driven through to its next state. It only \
              allows this when the current state's condition is met — for example, in a test-driven \
              process you cannot advance from writing tests to implementing until a test file \
              exists. If the condition is not met, the advance is refused and you stay in the current \

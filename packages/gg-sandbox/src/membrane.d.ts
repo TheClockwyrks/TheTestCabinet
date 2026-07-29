@@ -424,22 +424,39 @@ declare module "test-cabinet:gg/turns" {
 }
 
 /**
- * Ending the run — the one model-facing membrane function that is not a gg tool.
+ * Ending the session — the model-facing membrane functions that are not gg tools.
  *
- * It has its own interface for the same reason it has its own catalogue constant: no capability
- * offers it, nothing dispatches it, and it is bound into every program's scope, so folding it in
- * among the tool interfaces would perturb the one-to-one correspondence they hold with gg's tool
- * vocabulary. `src/session.ts` is its only importer.
+ * They have their own interface for the same reason they have their own catalogue array: no
+ * capability offers them, nothing dispatches them, and one group of them is bound into every
+ * program's scope, so folding them in among the tool interfaces would perturb the one-to-one
+ * correspondence those hold with gg's tool vocabulary. `src/session.ts` is their only importer.
+ *
+ * Which group is bound is the host's decision, passed to `run` as the agent's role.
  */
 declare module "test-cabinet:gg/session" {
   /**
-   * Declare the run complete; `summary` becomes the run's final text.
+   * Declare the work complete; `summary` becomes the session's final text.
    *
    * The host sets a flag in the agent's own context and returns. Nothing stops the program: a
-   * further call replaces the summary, and the host revokes the flag itself if the program goes on
-   * to fail. It **throws** `ToolErrorRecord` with code `invalid-argument` only for an empty summary.
+   * further call replaces the declaration, and the host revokes the flag itself if the program goes
+   * on to fail. It **throws** `ToolErrorRecord` with code `invalid-argument` only for an empty
+   * summary.
    */
   export function finish(summary: string): void;
+  /** Declare the work under review acceptable. Ends the session under the same flag rules. */
+  export function approve(): void;
+  /**
+   * Declare the work under review unacceptable, listing what must change. Ends the session under the
+   * same flag rules. **Throws** `ToolErrorRecord` with code `invalid-argument` for an empty list or a
+   * blank item.
+   */
+  export function requestChanges(items: string[]): void;
+  /**
+   * Declare which 1-based attempt won, and why. Ends the session under the same flag rules.
+   * **Throws** `ToolErrorRecord` with code `invalid-argument` for an out-of-range attempt or a blank
+   * rationale.
+   */
+  export function selectWinner(attempt: number, rationale: string): void;
 }
 
 /**

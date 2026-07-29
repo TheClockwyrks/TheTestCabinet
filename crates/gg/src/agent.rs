@@ -109,15 +109,15 @@ use crate::archive::ArchiveStore;
 use crate::board::{self, BoardCaps, BoardRuntime, IssuePolicy, IssueStatus};
 use crate::client::{ClientFactory, DefaultClientFactory, provider_for};
 use crate::compaction::{
-    self, CompactionRequest, CompactionSetup, CompactionStrategy, PendingCompaction, RestoredFile,
-    RetainedCounts,
+    self, CompactionRequest, CompactionSetup, PendingCompaction, RestoredFile, RetainedCounts,
 };
-use crate::completion::{self, CompletionSetup, FINISH_TOOL};
+use crate::completion::{self, CompletionSetup};
 use crate::config::GgInvocation;
 use crate::context::{
     BpeTokenEstimator, ContextModel, Retention, TokenEstimator, code_heading, tool_output_source,
 };
 use crate::docs::DocsRuntime;
+use crate::ending::{Ending, EndingRole};
 use crate::fsm::{FsmRuntime, StateExit, ToolPolicy, configured_machine, is_builtin_machine};
 use crate::git;
 use crate::healing::{
@@ -136,15 +136,15 @@ use crate::planning::PlanningRuntime;
 use crate::prompts::{
     self, ApiView, AssignedIssueView, AttemptBriefContext, AutoloadView, BoardView, CodeCallView,
     CodeErrorView, CodeHeadingView, CodeNotAProgramContext, CodeResultContext,
-    CodeSandboxErrorContext, CodeTimeoutContext, CodeTranspileErrorContext, CompactionView,
-    CompletionView, FixBriefContext, FsmView, JudgeAttemptView, JudgeBriefContext, MemoriesView,
-    MergeBriefContext, NumberedItem, ReadFileView, ReviewBriefContext, ReviewChangesView,
-    ReviewRecordView, ShellView, SpawnableAgentView, SystemContext, TasksView,
+    CodeSandboxErrorContext, CodeTimeoutContext, CodeTranspileErrorContext, EndingView,
+    FixBriefContext, FsmView, JudgeAttemptView, JudgeBriefContext, MemoriesView, MergeBriefContext,
+    NumberedItem, ReadFileView, ReviewBriefContext, ReviewChangesView, ReviewRecordView, ShellView,
+    SpawnableAgentView, SystemContext, TasksView,
 };
 use crate::replay::{GgRecorder, RecordingClient};
 use crate::sandbox::{
-    self, FINISH_FUNCTION, FunctionSummary, PROGRAM_CALL_ID_PREFIX, ProgramResult, SandboxError,
-    SandboxLimits, SandboxOutcome, UnreachableTail, run_program, scope_tools,
+    self, FunctionSummary, PROGRAM_CALL_ID_PREFIX, ProgramResult, SandboxError, SandboxLimits,
+    SandboxOutcome, UnreachableTail, run_program, scope_tools,
 };
 use crate::skills::{DEFAULT_SKILLS_DIR, ReadRecord, SkillLibrary, SkillsRuntime};
 use crate::subagents::{
@@ -1518,13 +1518,7 @@ impl Orchestrator {
         let Some(agent_id) = self.board.redispatch_issue(issue_id, retry) else {
             return;
         };
-        let profile = self.issue_profile(issue_id);
-        let brief = build_fix_brief(
-            &self.issue_brief_or_fallback(issue_id),
-            items,
-            self.profile_or_root(&profile)
-                .is_enabled(CAPABILITY_RESPONSES_AS_CODE),
-        );
+        let brief = build_fix_brief(&self.issue_brief_or_fallback(issue_id), items);
         emitter.emit(log(
             "info",
             format!(
@@ -1848,6 +1842,10 @@ enum AgentRole {
         /// because a reviewer and its issue share one tree, and an attempt that merged itself would
         /// defeat best-of-K.
         worktree: Option<Worktree>,
+        /// Which [ending calls](EndingRole) this subagent was dispatched with — how it declares the
+        /// result its dispatcher is waiting for. A reviewer returns a verdict, a judge names a
+        /// winner, everything else reports what it did.
+        ending: EndingRole,
         /// The spawner's wait condition the subagent signals on completion.
         parent_wait: Arc<ParentWait>,
         /// The channel the subagent's [return value](AgentReturn) is delivered on.
@@ -1982,6 +1980,12 @@ async fn run_agent(
         AgentRole::Issue { issue_id, .. } => orch.issue_worktree(issue_id),
         AgentRole::Root => None,
     };
+    // Which ending calls this agent gets. Only a dispatched subagent can be anything but the
+    // default: the root and an issue's implementer are always doing work, never judging it.
+    let ending_role = match &role {
+        AgentRole::Sub { ending, .. } => *ending,
+        AgentRole::Issue { .. } | AgentRole::Root => EndingRole::Standard,
+    };
     let worktree_branch = worktree.as_ref().map(|wt| wt.branch.clone());
     // Where this agent's file and shell tools are rooted: its worktree checkout when it has one,
     // else the shared workspace. Resolved here (rather than beside the tool context below) because
@@ -2059,9 +2063,9 @@ async fn run_agent(
     // tools with agents that write programs.
     let code = orch.code_setup(&profile);
 
-    // How this agent decides it is finished — the completion signal and any validation gate — also
-    // comes from its own profile, so a run can pair, say, a validated explicit-`finish` root with
-    // plain-text workers.
+    // What gates this agent's ending, when anything does: the validation commands its own profile
+    // configures. *How* it ends is not a profile's business — that is its dispatched
+    // [role](EndingRole)'s, and it is an explicit call either way.
     let completion = CompletionSetup::resolve(&profile);
 
     // Announce the run's configuration once, on the root's stream, so the console shows the enabled
@@ -2239,6 +2243,7 @@ async fn run_agent(
             orch.speculative_active(),
             code,
             completion,
+            ending_role,
             &profile,
             subagent_context,
             project,
@@ -2315,6 +2320,7 @@ async fn run_agent(
             let _ = result.send(AgentReturn {
                 summary,
                 status: end.status,
+                ending: end.ending.clone(),
             });
             parent_wait.child_completed(&orch.scheduler, &agent.id);
         }
@@ -2441,33 +2447,13 @@ fn announce_configuration(
         }
     }
 
-    // The completion rule this run ends on. Announced last because it is the run's *ending*, and
-    // because how the model must finish is a fact worth stating up front whatever else is enabled.
-    // The signal is only meaningful on the tool-calling path; a code-mode run always ends through
-    // its program's `finish`, so its signal is not restated here.
-    if !responses_as_code {
-        match completion.signal() {
-            completion::CompletionSignal::ExplicitCall => emitter.emit(log(
-                "info",
-                format!(
-                    "completion signal: explicit `{FINISH_TOOL}` call. The model must call the \
-                     `{FINISH_TOOL}` tool to end the run; a reply with no tool call is treated as an \
-                     error and fed back."
-                ),
-            )),
-            completion::CompletionSignal::PlainText => emitter.emit(log(
-                "info",
-                "completion signal: plain text. A reply with no tool call ends the run.",
-            )),
-        }
-    }
     if completion.has_validation() {
         emitter.emit(log(
             "info",
             format!(
-                "completion validation enabled: gg runs {} command(s) when the model signals it is \
-                 done, and only ends the run if every one exits 0 (a failure's output is fed back \
-                 and the run continues).",
+                "completion validation enabled: gg runs {} command(s) when an agent signals it is \
+                 done, and only ends its session if every one exits 0 (a failure's output is fed \
+                 back and the session continues).",
                 completion.validation().len()
             ),
         ));
@@ -2585,7 +2571,15 @@ fn spawn_subagent(sub: &mut SubagentContext, spawner: &Agent, args: &Value) -> T
     // Ad-hoc subagents carry no board issue (issues auto-dispatch to their own top-level agents)
     // and share the spawner's tree — isolation belongs to issues and speculations, which own the
     // worktree's whole lifecycle.
-    match dispatch_child(sub, spawner, brief, None, &profile, None) {
+    match dispatch_child(
+        sub,
+        spawner,
+        brief,
+        None,
+        &profile,
+        None,
+        EndingRole::Standard,
+    ) {
         Ok(child) => {
             ToolOutcome::ok(
                 format!(
@@ -2726,6 +2720,7 @@ fn dispatch_child(
     issue_id: Option<String>,
     profile_name: &str,
     worktree: Option<Worktree>,
+    ending: EndingRole,
 ) -> Result<DispatchedChild, DispatchError> {
     let orch = &sub.orch;
 
@@ -2782,6 +2777,7 @@ fn dispatch_child(
         brief,
         issue_id,
         worktree,
+        ending,
         parent_wait: Arc::clone(&sub.ctx.wait),
         result: result_tx,
         finished: Arc::clone(&finished),
@@ -3098,17 +3094,6 @@ fn send_message(sub: &mut SubagentContext, args: &Value) -> ToolOutcome {
 // Issue reconciliation: reviewers, the fix loop, and the merge back
 // ---------------------------------------------------------------------------
 
-/// The structured verdict one of an [issue's](crate::board) reviewers returns, parsed from its final
-/// message by [`parse_review_verdict`].
-struct ReviewVerdict {
-    /// Whether the reviewer **approved** the work (this reviewer is satisfied).
-    approved: bool,
-    /// When not approved, the reviewer's actionable items — the changes the issue's assigned agent
-    /// must address before re-review. Always at least one item when `!approved` (a generic item is
-    /// synthesized if the reviewer listed none).
-    items: Vec<String>,
-}
-
 /// What one round of an [issue's](crate::board) review concluded.
 enum RoundOutcome {
     /// Every reviewer approved: the issue may be merged and accepted.
@@ -3233,10 +3218,6 @@ async fn run_issue_review(
     let changes = orch.review_changes(issue_id);
     let history = orch.review_history(issue_id);
     let worktree = orch.issue_worktree(issue_id);
-    // Every reviewer is dispatched into the issue's own worktree, so its tools — and any command it
-    // runs — are rooted at the tree it is reviewing. That is what lets the brief send it to read the
-    // code rather than hand it the patch.
-    let review_dir = orch.issue_workspace(issue_id).display().to_string();
     // Who has approved so far *this round*, in the order they ran: reported on whichever event ends
     // the round, so a verdict is attributable to an agent rather than to "the review".
     let mut approvals: Vec<GgReviewer> = Vec::new();
@@ -3255,12 +3236,9 @@ async fn run_issue_review(
             &brief,
             ReviewChanges {
                 summary: &changes,
-                workspace: &review_dir,
                 baseline: baseline.as_deref(),
             },
             history.clone(),
-            orch.profile_or_root(&profile)
-                .is_enabled(CAPABILITY_RESPONSES_AS_CODE),
         );
         let returned = run_detached_agent(
             orch,
@@ -3269,10 +3247,22 @@ async fn run_issue_review(
             review_brief,
             Some(issue_id.to_string()),
             worktree.clone(),
+            EndingRole::Review,
         )
         .await;
-        let verdict = match returned {
-            Ok(ret) if ret.status == STATUS_COMPLETED => parse_review_verdict(&ret.summary),
+        // The reviewer's verdict is read from what it **declared**, not from what it wrote. A
+        // reviewer that ended any other way — a ceiling, a model error — returned no verdict at all,
+        // and work no reviewer approved is never accepted.
+        let (approved, items) = match returned {
+            Ok(ret) if ret.status == STATUS_COMPLETED => match ret.ending {
+                Some(Ending::Approved) => (true, Vec::new()),
+                Some(Ending::ChangesRequested { items }) => (false, items),
+                _ => {
+                    return RoundOutcome::Aborted(format!(
+                        "the reviewer `{profile}` ended without a verdict"
+                    ));
+                }
+            },
             Ok(ret) => {
                 return RoundOutcome::Aborted(format!(
                     "the reviewer `{profile}` {} without a verdict",
@@ -3287,19 +3277,19 @@ async fn run_issue_review(
             issue_id,
             ReviewRecord {
                 reviewer: profile.clone(),
-                approved: verdict.approved,
-                items: verdict.items.clone(),
+                approved,
+                items: items.clone(),
             },
         );
-        if !verdict.approved {
+        if !approved {
             review_emitter.emit(issue_review_event(
                 GgIssueReviewPhase::ChangesRequested,
-                Some(verdict.items.clone()),
+                Some(items.clone()),
                 Some(reviewer),
                 approvals,
                 baseline,
             ));
-            return RoundOutcome::ChangesRequested(verdict.items);
+            return RoundOutcome::ChangesRequested(items);
         }
         approvals.push(reviewer);
     }
@@ -3451,13 +3441,7 @@ async fn resolve_merge_conflict(
         ));
         return false;
     };
-    let brief = build_merge_brief(
-        issue_id,
-        &worktree.branch,
-        reason,
-        orch.profile_or_root(&merge_agent)
-            .is_enabled(CAPABILITY_RESPONSES_AS_CODE),
-    );
+    let brief = build_merge_brief(&worktree.branch, reason);
     emitter.emit(log(
         "info",
         format!("dispatching the merge agent `{merge_agent}` to resolve issue `{issue_id}`."),
@@ -3471,6 +3455,7 @@ async fn resolve_merge_conflict(
         brief,
         Some(issue_id.to_string()),
         None,
+        EndingRole::Standard,
     )
     .await
     {
@@ -3558,6 +3543,7 @@ fn run_detached_agent<'a>(
     brief: String,
     issue_id: Option<String>,
     worktree: Option<Worktree>,
+    ending: EndingRole,
 ) -> Pin<Box<dyn Future<Output = Result<AgentReturn, String>> + Send + 'a>> {
     Box::pin(async move {
         let binding = profile_binding(&orch.caps, profile)
@@ -3579,6 +3565,7 @@ fn run_detached_agent<'a>(
             brief,
             issue_id,
             worktree,
+            ending,
             parent_wait: Arc::new(ParentWait::new()),
             result: result_tx,
             finished: Arc::new(AtomicBool::new(false)),
@@ -3601,18 +3588,14 @@ struct ReviewChanges<'a> {
     /// The per-file summary of the change ([`git diff --stat`](git::diff_stat_since)) — the map of
     /// what to look at. Empty when nothing changed against the baseline (or no baseline exists).
     summary: &'a str,
-    /// The directory the reviewer's own tools are rooted at — the issue's worktree checkout — so the
-    /// brief can say plainly that the code is right there and needs no path to reach.
-    workspace: &'a str,
     /// The commit the work branched from, when there is one: what a reviewer with a shell diffs
     /// against to see the change itself.
     baseline: Option<&'a str>,
 }
 
 /// The reviewer's brief for an [issue review](run_issue_review): the issue's own brief (its title,
-/// scope, and completion criteria), any earlier verdicts, **where the work is and what it touched**,
-/// and the verdict protocol the [parser](parse_review_verdict) expects. A change set with no files
-/// in it is stated plainly so the reviewer does not hallucinate changes.
+/// scope, and completion criteria), any earlier verdicts, and **what the work touched**. A change set
+/// with no files in it is stated plainly so the reviewer does not hallucinate changes.
 ///
 /// The prose is [`review-brief.hbs`](crate::prompts); this assembles its
 /// [context](ReviewBriefContext). The brief carries the change *summary*, not the change: a reviewer
@@ -3622,17 +3605,14 @@ struct ReviewChanges<'a> {
 /// regenerated lockfile alone can dwarf the code under review), spending the reviewer's window on
 /// text it did not ask for and burying the change that mattered.
 ///
-/// `code` is whether the reviewer runs in [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) mode, and
-/// it changes the ending clause because under that protocol there is no "final message" to end:
-/// every reply is a program, and only [`finish`](FINISH_FUNCTION) ends a session. A reviewer told to
-/// stop with a verdict would never reach `completed`, the round would report it as having ended
-/// without one, and the issue would never be accepted — so the brief has to teach the contract the
-/// reviewer is actually held to.
+/// It teaches **no ending**. The reviewer's verdict calls are its role's, named once in its system
+/// prompt; a brief that restated them would be a second authority on the contract, and the
+/// mode-dependent version of that restatement is what used to send a code-mode reviewer looking for
+/// a final message its protocol does not have.
 fn build_review_brief(
     issue_brief: &str,
     changes: ReviewChanges<'_>,
     history: Vec<ReviewRecordView>,
-    code: bool,
 ) -> String {
     prompts::render_review_brief(&ReviewBriefContext {
         issue_brief: issue_brief.to_string(),
@@ -3640,10 +3620,8 @@ fn build_review_brief(
         changes: ReviewChangesView {
             summary: (!changes.summary.trim().is_empty())
                 .then(|| changes.summary.trim_end().to_string()),
-            workspace: changes.workspace.to_string(),
             baseline: changes.baseline.map(str::to_string),
         },
-        code,
     })
 }
 
@@ -3653,11 +3631,10 @@ fn build_review_brief(
 ///
 /// `code` swaps the ending clause for the same reason [`build_review_brief`] does: "then stop" is
 /// not a thing a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) agent can do.
-fn build_fix_brief(issue_brief: &str, items: &[String], code: bool) -> String {
+fn build_fix_brief(issue_brief: &str, items: &[String]) -> String {
     prompts::render_fix_brief(&FixBriefContext {
         issue_brief: issue_brief.to_string(),
         items: numbered(items),
-        code,
     })
 }
 
@@ -3680,79 +3657,11 @@ fn numbered(items: &[String]) -> Vec<NumberedItem> {
 /// It is deliberately concrete about the end state — a committed merge, no conflict markers left —
 /// because that is what gg [checks](resolve_merge_conflict) afterwards, and an agent that thinks
 /// "resolved" means "edited the files" would leave the workspace mid-merge.
-fn build_merge_brief(issue_id: &str, branch: &str, reason: &str, code: bool) -> String {
+fn build_merge_brief(branch: &str, reason: &str) -> String {
     prompts::render_merge_brief(&MergeBriefContext {
-        issue_id: issue_id.to_string(),
         branch: branch.to_string(),
         reason: reason.to_string(),
-        code,
     })
-}
-
-/// Parse a reviewer's final message into a [`ReviewVerdict`].
-///
-/// The contract: the reviewer ends with a `REVIEW:` marker whose following word is `APPROVED`
-/// (approval) or `CHANGES REQUESTED` (with a list of actionable items). Parsing is deliberately
-/// lenient — the marker match is case-insensitive and the last occurrence wins — and **conservative
-/// on ambiguity**: anything that is not a clear approval is treated as changes requested, so work no
-/// reviewer clearly approved is never accepted. When changes are requested but no list items are
-/// found, a single generic item is synthesized so the assigned agent always has something to act on.
-fn parse_review_verdict(text: &str) -> ReviewVerdict {
-    const MARKER: &str = "review:";
-    let lower = text.to_ascii_lowercase();
-    if let Some(pos) = lower.rfind(MARKER) {
-        let after = lower[pos + MARKER.len()..].trim_start();
-        if after.starts_with("approve") {
-            return ReviewVerdict {
-                approved: true,
-                items: Vec::new(),
-            };
-        }
-    }
-    let mut items = collect_actionable_items(text);
-    if items.is_empty() {
-        items.push(
-            "The review did not approve the work; revisit the completion criteria and address the \
-             reviewer's feedback."
-                .to_string(),
-        );
-    }
-    ReviewVerdict {
-        approved: false,
-        items,
-    }
-}
-
-/// Collect the actionable items from a reviewer's message: every line that reads as a list item —
-/// a `-`/`*`/`+` bullet or a `N.`/`N)` numbered entry — with its marker stripped. Order preserved;
-/// empty entries dropped.
-fn collect_actionable_items(text: &str) -> Vec<String> {
-    text.lines()
-        .filter_map(|line| {
-            let trimmed = line.trim();
-            for bullet in ["- ", "* ", "+ "] {
-                if let Some(rest) = trimmed.strip_prefix(bullet) {
-                    let rest = rest.trim();
-                    if !rest.is_empty() {
-                        return Some(rest.to_string());
-                    }
-                    return None;
-                }
-            }
-            // A numbered entry: leading ASCII digits followed by `.` or `)`.
-            let digits: String = trimmed.chars().take_while(char::is_ascii_digit).collect();
-            if !digits.is_empty() {
-                let rest = &trimmed[digits.len()..];
-                if let Some(after) = rest.strip_prefix('.').or_else(|| rest.strip_prefix(')')) {
-                    let after = after.trim();
-                    if !after.is_empty() {
-                        return Some(after.to_string());
-                    }
-                }
-            }
-            None
-        })
-        .collect()
 }
 
 /// An [`IssueReview`](GgTelemetryKind::IssueReview) telemetry event for one lifecycle transition. The
@@ -3807,7 +3716,7 @@ struct SpeculationAttempt {
 }
 
 /// The judge's verdict for a [speculative execution](handle_speculate): which candidate attempt won,
-/// and why — the judge contract (parsed from its final message by [`parse_judge_verdict`]).
+/// and why — read from the [`Winner`](Ending::Winner) the judge declared, never from its prose.
 struct JudgeVerdict {
     /// The 1-based index of the winning attempt **among the candidates the judge was shown** (not the
     /// original attempt index).
@@ -3899,10 +3808,6 @@ async fn handle_speculate(
         Ok(profile) => profile,
         Err(refusal) => return refusal,
     };
-    let attempt_code = orch
-        .profile_or_root(&attempt_profile)
-        .is_enabled(CAPABILITY_RESPONSES_AS_CODE);
-
     // K — clamped into [2, MAX]; fewer than two would not be best-of-anything.
     let attempts = call
         .arguments
@@ -3940,13 +3845,7 @@ async fn handle_speculate(
     // Fan out K attempts, each in its own isolated worktree left in place for judging.
     let mut fanned: Vec<SpeculationAttempt> = Vec::with_capacity(attempts as usize);
     for i in 0..attempts as usize {
-        let brief = build_attempt_brief(
-            &base_brief,
-            i,
-            attempts as usize,
-            approaches.get(i),
-            attempt_code,
-        );
+        let brief = build_attempt_brief(&base_brief, i, attempts as usize, approaches.get(i));
         // Each attempt gets a fresh worktree of its own, left in place for judging: only the
         // winner's is merged, so an attempt must not be able to reach another's files.
         let worktree = match make_worktree(&orch, &format!("spec-{}-{}", spawner.id, i)) {
@@ -3975,6 +3874,7 @@ async fn handle_speculate(
             issue_id.clone(),
             &attempt_profile,
             Some(worktree),
+            EndingRole::Standard,
         ) {
             Ok(child) => fanned.push(SpeculationAttempt {
                 id: child.id,
@@ -4055,13 +3955,7 @@ async fn handle_speculate(
         )
     } else {
         let judge_slot = orch.judge_profile();
-        let judge_brief = build_judge_brief(
-            &base_brief,
-            &fanned,
-            &candidates,
-            orch.profile_or_root(&judge_slot)
-                .is_enabled(CAPABILITY_RESPONSES_AS_CODE),
-        );
+        let judge_brief = build_judge_brief(&base_brief, &fanned, &candidates);
         match dispatch_judge(
             sub,
             spawner,
@@ -4069,6 +3963,7 @@ async fn handle_speculate(
             issue_id.clone(),
             judge_brief,
             &judge_slot,
+            candidates.len() as u32,
         )
         .await
         {
@@ -4183,13 +4078,7 @@ async fn abort_speculation(
 /// `code` swaps the ending clause, because an attempt that does not reach `completed` is filtered
 /// out of the candidate set entirely — a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE)
 /// speculation told to "stop" would produce K attempts and no candidates.
-fn build_attempt_brief(
-    base: &str,
-    index: usize,
-    k: usize,
-    approach: Option<&String>,
-    code: bool,
-) -> String {
+fn build_attempt_brief(base: &str, index: usize, k: usize, approach: Option<&String>) -> String {
     prompts::render_attempt_brief(&AttemptBriefContext {
         base: base.to_string(),
         index: index + 1,
@@ -4198,7 +4087,6 @@ fn build_attempt_brief(
             .map(String::as_str)
             .filter(|approach| !approach.is_empty())
             .map(str::to_string),
-        code,
     })
 }
 
@@ -4209,12 +4097,7 @@ fn build_attempt_brief(
 ///
 /// `code` swaps the ending clause: a judge that never reaches `completed` renders no verdict, and a
 /// speculation with no verdict merges nothing at all.
-fn build_judge_brief(
-    task: &str,
-    attempts: &[SpeculationAttempt],
-    candidates: &[usize],
-    code: bool,
-) -> String {
+fn build_judge_brief(task: &str, attempts: &[SpeculationAttempt], candidates: &[usize]) -> String {
     prompts::render_judge_brief(&JudgeBriefContext {
         task: task.to_string(),
         attempts: candidates
@@ -4226,23 +4109,23 @@ fn build_judge_brief(
                     number: label + 1,
                     summary: (!attempt.summary.trim().is_empty())
                         .then(|| attempt.summary.trim().to_string()),
-                    diff: (!attempt.diff.trim().is_empty()).then(|| attempt.diff.clone()),
                 }
             })
             .collect(),
         count: candidates.len(),
-        code,
     })
 }
 
-/// Dispatch one **judge** subagent against `judge_brief` on `judge_slot`, await it, and parse its
-/// [verdict](parse_judge_verdict) — the [speculative execution](handle_speculate) analogue of
-/// [`dispatch_reviewer`] (a judge that *selects among* K attempts rather than approving one diff).
+/// Dispatch one **judge** subagent against `judge_brief` on `judge_slot`, await it, and read the
+/// [verdict](JudgeVerdict) it declared — the [speculative execution](handle_speculate) analogue of an
+/// issue's reviewer (a judge that *selects among* K attempts rather than approving one diff).
 ///
-/// Returns the verdict, or a model-facing error when the judge could not be dispatched or returned
-/// without a parseable pick; the caller then merges nothing (best-of-K never merges an unjudged
+/// Returns the verdict, or a model-facing error when the judge could not be dispatched or ended
+/// without declaring one; the caller then merges nothing (best-of-K never merges an unjudged
 /// attempt). The judge is an ordinary [subagent](dispatch_child) scoped to `issue_id` (when any) and
-/// runs in the shared tree (it only reads the diffs in its brief).
+/// runs in the shared tree (it only reads the summaries in its brief). It is dispatched in the
+/// [judge role](EndingRole::Judge), carrying `candidates` so a pick outside the range it was shown is
+/// refused at the call rather than clamped into a merge of the wrong attempt.
 async fn dispatch_judge(
     sub: &mut SubagentContext,
     spawner: &Agent,
@@ -4250,61 +4133,32 @@ async fn dispatch_judge(
     issue_id: Option<String>,
     judge_brief: String,
     judge_slot: &str,
+    candidates: u32,
 ) -> Result<JudgeVerdict, String> {
-    let judge = dispatch_child(sub, spawner, judge_brief, issue_id, judge_slot, None)
-        .map_err(|err| format!("the judge could not be dispatched: {err}"))?;
+    let judge = dispatch_child(
+        sub,
+        spawner,
+        judge_brief,
+        issue_id,
+        judge_slot,
+        None,
+        EndingRole::Judge {
+            attempts: candidates,
+        },
+    )
+    .map_err(|err| format!("the judge could not be dispatched: {err}"))?;
     let collected = await_children(sub, emitter, std::slice::from_ref(&judge.id)).await;
     match collected.into_iter().next() {
-        Some((_, Some(ret))) if ret.status == STATUS_COMPLETED => parse_judge_verdict(&ret.summary),
+        Some((_, Some(ret))) if ret.status == STATUS_COMPLETED => match ret.ending {
+            Some(Ending::Winner { attempt, rationale }) => Ok(JudgeVerdict {
+                winner: attempt as usize,
+                rationale,
+            }),
+            _ => Err("the judge ended without naming a winner".to_string()),
+        },
         Some((_, Some(ret))) => Err(format!("the judge {} without a verdict", ret.status)),
         _ => Err("the judge produced no result".to_string()),
     }
-}
-
-/// Parse a judge's final message into a [`JudgeVerdict`].
-///
-/// The contract: the judge ends with a `SPECULATION JUDGE: WINNER <n>` marker naming the 1-based
-/// candidate it chose, followed by a rationale. Parsing is lenient — the marker match is
-/// case-insensitive and the last occurrence wins — but a message with **no** winner marker (or a
-/// non-numeric / zero winner) is an **error**, so a judge that did not clearly pick never causes a
-/// silent or arbitrary merge.
-fn parse_judge_verdict(text: &str) -> Result<JudgeVerdict, String> {
-    const MARKER: &str = "speculation judge: winner";
-    let lower = text.to_ascii_lowercase();
-    let pos = lower.rfind(MARKER).ok_or_else(|| {
-        "the judge did not report a `SPECULATION JUDGE: WINNER <n>` verdict".to_string()
-    })?;
-    let after = &text[pos + MARKER.len()..];
-    // The winner number is the first run of ASCII digits after the marker.
-    let Some(start) = after.find(|c: char| c.is_ascii_digit()) else {
-        return Err("the judge's verdict did not name a numeric winner".to_string());
-    };
-    let digits: String = after[start..]
-        .chars()
-        .take_while(char::is_ascii_digit)
-        .collect();
-    let winner: usize = digits
-        .parse()
-        .map_err(|_| "the judge's verdict did not name a numeric winner".to_string())?;
-    if winner == 0 {
-        return Err("the judge named winner 0 (attempts are numbered from 1)".to_string());
-    }
-    // The rationale is whatever follows the winner number, else the first line of the message.
-    let rest = after[start + digits.len()..]
-        .trim()
-        .trim_start_matches([':', '.', '-', ')', '\n'])
-        .trim();
-    let rationale = if rest.is_empty() {
-        first_line(text).to_string()
-    } else {
-        first_line(rest).to_string()
-    };
-    let rationale = if rationale.is_empty() {
-        "the judge selected this attempt".to_string()
-    } else {
-        rationale
-    };
-    Ok(JudgeVerdict { winner, rationale })
 }
 
 /// Merge a [speculative execution](handle_speculate)'s winning attempt back into the main tree:
@@ -4344,6 +4198,39 @@ fn discard_attempts(orch: &Orchestrator, attempts: &[SpeculationAttempt]) {
     let _guard = orch.git_lock.lock().expect("git lock");
     for attempt in attempts {
         let _ = git::remove_worktree(&orch.workspace_dir, &attempt.path, &attempt.branch);
+    }
+}
+
+/// Read an intercepted **ending call**'s arguments into the [`Ending`] it declares.
+///
+/// It is the tool-calling counterpart of the [sandbox membrane](crate::sandbox)'s session host, and
+/// it deliberately goes through the very same [`Ending`] constructors: an empty change list is
+/// refused in one sentence, written once, whichever execution mode the reviewer that produced it was
+/// running in. Nothing here re-reads prose — the arguments *are* the verdict.
+fn parse_ending_call(name: &str, args: &Value, role: EndingRole) -> Result<Ending, String> {
+    match name {
+        completion::APPROVE_TOOL => Ok(Ending::Approved),
+        completion::REQUEST_CHANGES_TOOL => {
+            Ending::changes_requested(parse_string_array(args, "items"))
+        }
+        completion::SELECT_WINNER_TOOL => Ending::winner(
+            args.get("attempt")
+                .and_then(Value::as_u64)
+                .and_then(|attempt| u32::try_from(attempt).ok())
+                .unwrap_or_default(),
+            args.get("rationale")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            role.attempts(),
+        ),
+        // `finish`, and — defensively — anything else the role claimed to own.
+        _ => Ending::finished(
+            args.get("summary")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+        ),
     }
 }
 
@@ -4696,7 +4583,15 @@ async fn run_workflow(
         let mut ids = Vec::with_capacity(items.len());
         for item in &items {
             let brief = render_template(&stage.prompt, item, &prior_block);
-            match dispatch_child(sub, spawner, brief, None, &stage.slot, None) {
+            match dispatch_child(
+                sub,
+                spawner,
+                brief,
+                None,
+                &stage.slot,
+                None,
+                EndingRole::Standard,
+            ) {
                 Ok(child) => ids.push(child.id),
                 Err(err) => {
                     // A dispatch failure aborts the workflow, but the already-dispatched agents of
@@ -4928,21 +4823,21 @@ struct LoopEnd {
     /// The [slot](GgSlotBinding) the agent ran on, so the orchestrator can attribute this
     /// usage/cost to the right slot in the [per-slot accounting](SlotAccounting).
     slot: String,
-    /// The agent's **final word** — its [return value](AgentReturn) to its spawner, the run's last
-    /// text, and what an issue reviewer's verdict or a speculation judge's pick is parsed out of.
+    /// The agent's **final word** — its [return value](AgentReturn) to its spawner and the run's
+    /// last text.
     ///
-    /// It is filled by two different rules, because the two execution modes mean two different
-    /// things by "final":
-    ///
-    /// * **tool calling** — the last natural-language assistant message the agent produced, exactly
-    ///   as it always has been. `None` when the loop produced no assistant text at all (an immediate
-    ///   timeout, say).
-    /// * **[responses-as-code](CAPABILITY_RESPONSES_AS_CODE)** — the summary the program passed to
-    ///   [`finish`](FINISH_FUNCTION) when the agent finished, and otherwise a
-    ///   [status line](stopped_text) gg wrote itself. It is never the last assistant message,
-    ///   because under that protocol every assistant message is a page of TypeScript: a spawner, a
-    ///   run record and a judge's brief would each be handed program source where an answer belongs.
+    /// For an agent that ended cleanly it is its [`ending`](Self::ending)'s
+    /// [text](Ending::final_text); for one a ceiling stopped it is a [status line](stopped_text) gg
+    /// wrote itself. It is never the last assistant message: in code mode every assistant message is
+    /// a page of TypeScript, so a spawner and a run record would each be handed program source where
+    /// an answer belongs.
     final_text: Option<String>,
+    /// What the agent **declared**, when it ended by declaring something.
+    ///
+    /// This — not [`final_text`](Self::final_text) — is what a reviewer's verdict and a judge's pick
+    /// are read from. They are structured because they were structured when the model produced them:
+    /// nothing between the ending call and here turns a verdict into prose and back.
+    ending: Option<Ending>,
     /// The [execution ceiling](RunLimits) that stopped this agent, when one did.
     ///
     /// Present for all five ceilings, including the two whose terminal statuses predate this
@@ -5031,6 +4926,7 @@ impl Agent {
         speculative: bool,
         code: CodeSetup,
         completion: CompletionSetup,
+        ending_role: EndingRole,
         profile: &GgAgentConfig,
         mut subagents: Option<SubagentContext>,
         project: Option<ProjectContext>,
@@ -5053,7 +4949,7 @@ impl Agent {
         // The per-agent documentation carve-out, behind `object.list()` and `fn.docs()`. Built from
         // the same scope-bound tool set the program's objects are, and always present (docs are not a
         // capability), so a code turn can always answer a lookup. Unused on the tool-calling path.
-        let mut docs = crate::docs::DocsRuntime::new(scope_tools(registry));
+        let mut docs = crate::docs::DocsRuntime::new(scope_tools(registry), ending_role);
         // This agent's own rules on filing a board issue — who it may assign one to, and whether
         // reviewers are demanded. The native `create_issue` tool carries these already (the registry
         // built it from the same profile); a code turn rebuilds the tool per call, so it needs them
@@ -5090,22 +4986,11 @@ impl Agent {
             // when locked, that they stay) rather than leaving it to infer why they are there.
             autoload_specs: autoload.enabled.then_some(autoload.locked),
             profile,
-            // A subagent renders this same prompt, and the ending section has to say what `finish`
-            // actually ends *for the reader*: a root agent's summary is the run's last word, a
-            // delegated worker's is the answer it hands back. A worker told "this ends the run" has
-            // a strong reason not to call it — and a worker that never calls it never returns a
-            // verdict. A top-level agent auto-dispatched for a board issue (depth 0, but with an
-            // assigned issue) is a worker too: `finish` returns its issue's result, not the run's.
-            delegated: self.depth > 0
-                || project
-                    .as_ref()
-                    .is_some_and(|project| project.assigned_issue.is_some()),
+            ending_role,
             assigned_issue: project
                 .as_ref()
                 .and_then(|project| project.assigned_issue.as_deref()),
             fences_are_stripped: code.healing.enabled(HealingStrategy::StripFences),
-            completion: &completion,
-            compaction: &compaction,
         }));
         context.push_user_prompt(prompt);
 
@@ -5360,13 +5245,11 @@ impl Agent {
                     })
                     .cloned()
                     .collect();
-                // Under an explicit-call completion signal, offer the `finish` tool so the model has
-                // the one way it may end the run. Appended *after* the plan-mode/FSM filter, so it is
-                // always offered — like the code-mode `finish`, it bypasses those turn-level gates
-                // (the loop intercepts it) and can end the run from a state a machine meant to hold.
-                if completion.explicit_finish(code.enabled) {
-                    tools.push(completion::finish_tool_definition());
-                }
+                // This agent's ending calls, the one way it may end its session. Appended *after*
+                // the plan-mode/FSM filter, so they are always offered — like their code-mode
+                // counterparts they bypass those turn-level gates (the loop intercepts them) and can
+                // end a session from a state a machine meant to hold.
+                tools.extend(completion::role_tool_definitions(ending_role));
                 tools
             };
 
@@ -5439,6 +5322,7 @@ impl Agent {
                             last_report.as_deref(),
                             last_text,
                         ),
+                        ending: None,
                         limit: None,
                     };
                 }
@@ -5563,7 +5447,7 @@ impl Agent {
             // model said nothing would simply overflow on its next turn. An empty reply therefore
             // degrades to gg's fixed note, recorded as a fallback so a study reads it as the
             // failure it is.
-            if pending_compaction == Some(PendingCompaction::Summary) {
+            if !code.enabled && pending_compaction == Some(PendingCompaction::Summary) {
                 pending_compaction = None;
                 let request = match response.text.as_deref().map(str::trim) {
                     Some(summary) if !summary.is_empty() => CompactionRequest {
@@ -5637,6 +5521,7 @@ impl Agent {
                     in_plan_mode,
                     speculative_active,
                     pending_compaction,
+                    ending_role,
                 };
                 // The per-turn state (`context`/`skills`/`docs`/`subagents`) is handed to the code
                 // turn **by value** — it is moved into the program's `LoopToolApi` so the program's
@@ -5663,7 +5548,7 @@ impl Agent {
                 // which the arm below reclaims the turn's state for, pushes, and loops on — the same
                 // path an ordinary error turn takes.
                 let decision = match decision {
-                    CodeTurnOutcome::Finished { summary } if completion.has_validation() => {
+                    CodeTurnOutcome::Finished { ending } if completion.has_validation() => {
                         match completion::run_validation(
                             completion.validation(),
                             tool_ctx,
@@ -5672,12 +5557,12 @@ impl Agent {
                         )
                         .await
                         {
-                            None => CodeTurnOutcome::Finished { summary },
+                            None => CodeTurnOutcome::Finished { ending },
                             Some(feedback) => CodeTurnOutcome::Continue {
                                 feedback,
                                 images: Vec::new(),
                                 error: None,
-                                report: "its completion was rejected by validation".to_string(),
+                                report: "its ending was rejected by validation".to_string(),
                             },
                         }
                     }
@@ -5688,14 +5573,15 @@ impl Agent {
                 // from the number of model calls made. Neither of those two ever breaches.
                 let breach = agent_limits.record(decision.turn_outcome(), &self.id);
                 match decision {
-                    CodeTurnOutcome::Finished { summary } => {
+                    CodeTurnOutcome::Finished { ending } => {
                         return LoopEnd {
                             status: STATUS_COMPLETED,
                             turns: turn + 1,
                             tokens: total_tokens,
                             cost: total_cost,
                             slot: self.slot.clone(),
-                            final_text: Some(summary),
+                            final_text: Some(ending.final_text()),
+                            ending: Some(ending),
                             limit: None,
                         };
                     }
@@ -5713,6 +5599,7 @@ impl Agent {
                                 last_report.as_deref(),
                                 last_text,
                             ),
+                            ending: None,
                             limit: None,
                         };
                     }
@@ -5849,12 +5736,11 @@ impl Agent {
                 }
             }
 
-            // A reply that made no tool call while a compaction is pending is **not** a completion,
-            // whatever this run's completion signal is. It is a model that was told to compact its
-            // window and answered with prose, and a run that read that as "the work is done" would
-            // end mid-task at exactly the point where the model had lost the thread of it. Counted
-            // as an error so an agent that never complies stops on the run's error ceilings rather
-            // than looping, and answered by restating what compaction is waiting for.
+            // A reply that made no tool call while a compaction is pending is answered by the
+            // compaction, not by the ending rule below: the model was told to compact its window and
+            // replied with prose, so what it needs is the instruction restated rather than a note
+            // about how to end a session it is nowhere near ending. Counted as an error either way,
+            // so an agent that never complies stops on the run's error ceilings rather than looping.
             if response.tool_calls.is_empty()
                 && let Some(pending) = pending_compaction
             {
@@ -5882,98 +5768,47 @@ impl Agent {
                 continue;
             }
 
-            // The **tool-calling** mode's termination rule. It is reached only when the code branch
-            // above did not run, and the responses-as-code protocol has no equivalent — every reply
-            // there is a program, so there is no shape of reply that could mean "finished".
+            // The **tool-calling** mode's termination rule, and it is the same rule the code branch
+            // above enforces: a session ends on an explicit ending call and on nothing else. A reply
+            // that requested no tools is therefore an *error*, not a conclusion — so a model that
+            // loops emitting prose instead of ending trips the run's error ceilings and stops early
+            // rather than burning to its turn budget — and it is answered by naming the calls this
+            // agent's role actually gives it.
             if response.tool_calls.is_empty() {
-                if completion.explicit_finish(code.enabled) {
-                    // Under an explicit-call signal a text-only reply is NOT a completion — it is the
-                    // model failing to end the run the one way this run allows. Count it as an error,
-                    // so a model that loops emitting prose instead of calling `finish` trips the run's
-                    // error ceilings and stops early, and feed back how to actually finish.
-                    let breach = agent_limits.record(
-                        TurnOutcome::Error(TurnErrorKind::MissingCompletion),
-                        &self.id,
-                    );
-                    context.push(
-                        GgContextSource::ToolOutput,
-                        Retention::Ephemeral,
-                        Message::user(completion::missing_completion_feedback()),
-                    );
-                    if let Some(breach) = breach {
-                        return self.stop_on_limit(
-                            emitter,
-                            breach,
-                            turn + 1,
-                            total_tokens,
-                            total_cost,
-                            code.enabled,
-                            last_report.as_deref(),
-                            last_text,
-                        );
-                    }
-                    continue;
-                }
-
-                // A plain-text signal: the model is saying it is done. When completion is validated,
-                // run the commands first and only end the run if every one passes; a failure is fed
-                // back (as a progressed turn — the model must fix and finish again) and the run
-                // continues.
-                let rejected = if completion.has_validation() {
-                    completion::run_validation(
-                        completion.validation(),
-                        tool_ctx,
-                        &shell_offload,
+                let breach = agent_limits.record(
+                    TurnOutcome::Error(TurnErrorKind::MissingCompletion),
+                    &self.id,
+                );
+                context.push(
+                    GgContextSource::ToolOutput,
+                    Retention::Ephemeral,
+                    Message::user(completion::missing_completion_feedback(ending_role)),
+                );
+                if let Some(breach) = breach {
+                    return self.stop_on_limit(
                         emitter,
-                    )
-                    .await
-                } else {
-                    None
-                };
-                if let Some(feedback) = rejected {
-                    let breach = agent_limits.record(TurnOutcome::Progressed, &self.id);
-                    context.push(
-                        GgContextSource::ToolOutput,
-                        Retention::Ephemeral,
-                        Message::user(feedback),
+                        breach,
+                        turn + 1,
+                        total_tokens,
+                        total_cost,
+                        code.enabled,
+                        last_report.as_deref(),
+                        last_text,
                     );
-                    if let Some(breach) = breach {
-                        return self.stop_on_limit(
-                            emitter,
-                            breach,
-                            turn + 1,
-                            total_tokens,
-                            total_cost,
-                            code.enabled,
-                            last_report.as_deref(),
-                            last_text,
-                        );
-                    }
-                    continue;
                 }
-
-                let _ = agent_limits.record(TurnOutcome::Finished, &self.id);
-                return LoopEnd {
-                    status: STATUS_COMPLETED,
-                    turns: turn + 1,
-                    tokens: total_tokens,
-                    cost: total_cost,
-                    slot: self.slot.clone(),
-                    final_text: last_text,
-                    limit: None,
-                };
+                continue;
             }
 
             // A plan submitted this turn, captured during dispatch and applied once the turn's tool
             // results are all recorded (so the conversation stays valid before the context is reset).
             let mut submitted_plan: Option<String> = None;
 
-            // The summary of an accepted `finish` this turn, under an explicit-call completion
-            // signal. Captured during dispatch (the `finish` tool is intercepted like the other
-            // loop-driven tools) and, if set, ends the run once the turn's tool results are all
-            // recorded — so the intercepted call's result is answered and the conversation stays
-            // valid, exactly as a submitted plan defers its context reset.
-            let mut finish_summary: Option<String> = None;
+            // The ending this turn declared. Captured during dispatch (an ending call is
+            // intercepted like the other loop-driven tools) and, if set, ends the session once the
+            // turn's tool results are all recorded — so the intercepted call's result is answered
+            // and the conversation stays valid, exactly as a submitted plan defers its context
+            // reset.
+            let mut declared_ending: Option<Ending> = None;
 
             // The compaction this turn declared with a `compact` call, deferred to after the
             // dispatch loop for exactly the reason a submitted plan's context reset is: the turn's
@@ -6000,7 +5835,7 @@ impl Agent {
                 // registered validators are defensive placeholders): the loop drives the state machine
                 // / the scheduler / the agent tree, which the tools cannot reach.
                 let mut outcome = if let Some(pending) =
-                    pending_compaction.filter(|pending| !pending.admits(&call.name))
+                    pending_compaction.filter(|pending| !pending.admits(&call.name, false))
                 {
                     // A compaction is in flight and this is not the call it asked for. Refused
                     // ahead of every other gate — including `finish` — because the window is
@@ -6011,7 +5846,9 @@ impl Agent {
                         ToolFailure::Refused,
                         pending.refusal(&call.name, false, memory_calls),
                     )
-                } else if call.name == COMPACT_TOOL && compaction.strategy.offers_compact_tool() {
+                } else if call.name == COMPACT_TOOL
+                    && compaction.strategy.offers_compact_tool(false)
+                {
                     // Self-compaction: the model compacts its own window. Intercepted here — ahead
                     // of the plan-mode and FSM gates, exactly as `finish` is — because the loop owns
                     // the context model the tool cannot hold, and because a machine that meant to
@@ -6027,43 +5864,44 @@ impl Agent {
                         }
                         Err(message) => ToolOutcome::failed(ToolFailure::InvalidArgument, message),
                     }
-                } else if completion.explicit_finish(code.enabled) && call.name == FINISH_TOOL {
-                    // Explicit completion: the model called `finish`. Intercepted here (like the
-                    // delegation tools) and *before* the plan-mode/FSM gates, so — like the
-                    // code-mode `finish` — it can end the run from a state those machines meant to
-                    // hold. When completion is validated, the commands run first: on success the
-                    // summary is captured and the run ends after this turn's results are recorded;
-                    // on failure the tool result carries the validation output back and the run
-                    // continues, so the model fixes the problem and calls `finish` again.
-                    let summary = call
-                        .arguments
-                        .get("summary")
-                        .and_then(Value::as_str)
-                        .map(str::trim)
-                        .filter(|summary| !summary.is_empty())
-                        .map(str::to_string);
-                    let rejected = if completion.has_validation() {
-                        completion::run_validation(
-                            completion.validation(),
-                            tool_ctx,
-                            &shell_offload,
-                            emitter,
-                        )
-                        .await
-                    } else {
-                        None
-                    };
-                    match rejected {
-                        Some(feedback) => ToolOutcome::failed(ToolFailure::Refused, feedback),
-                        None => {
-                            // Empty string is a legitimate "accepted, no summary" — the run's
-                            // final text then falls back to the model's last natural-language
-                            // message, exactly as a plain-text completion's does.
-                            finish_summary = Some(summary.unwrap_or_default());
-                            ToolOutcome::ok(
-                                "The run will end once this turn's tool results are recorded.",
-                                "finish accepted",
-                            )
+                } else if !code.enabled && ending_role.owns(&call.name) {
+                    // An ending call. Intercepted here (like the delegation tools) and *before* the
+                    // plan-mode/FSM gates, so — like its code-mode counterpart — it can end the
+                    // session from a state those machines meant to hold. The declaration is built
+                    // through the same [`Ending`] constructors the sandbox membrane uses, so a
+                    // malformed one is refused in the same words whichever mode the agent runs in.
+                    //
+                    // When the ending is validated the commands run first: on success the
+                    // declaration is captured and the session ends after this turn's results are
+                    // recorded; on failure the tool result carries the validation output back and
+                    // the session continues, so the model fixes the problem and declares again.
+                    match parse_ending_call(&call.name, &call.arguments, ending_role) {
+                        Err(message) => ToolOutcome::failed(ToolFailure::InvalidArgument, message),
+                        Ok(declared) => {
+                            let rejected = if completion.has_validation() {
+                                completion::run_validation(
+                                    completion.validation(),
+                                    tool_ctx,
+                                    &shell_offload,
+                                    emitter,
+                                )
+                                .await
+                            } else {
+                                None
+                            };
+                            match rejected {
+                                Some(feedback) => {
+                                    ToolOutcome::failed(ToolFailure::Refused, feedback)
+                                }
+                                None => {
+                                    declared_ending = Some(declared);
+                                    ToolOutcome::ok(
+                                        "Your session will end once this turn's tool results are \
+                                         recorded.",
+                                        format!("{} accepted", call.name),
+                                    )
+                                }
+                            }
                         }
                     }
                 } else if planning.offers_planning() && !plan_mode_offers(&call.name, in_plan_mode)
@@ -6252,12 +6090,10 @@ impl Agent {
                 });
             }
 
-            // An accepted `finish` this turn (explicit-call signal): every tool result — including
-            // the `finish` call's — is now recorded, so the conversation is valid and the run may
-            // end. Recorded as a `Finished` turn (which never breaches) and returned with the
-            // summary the model passed, falling back to its last natural-language message when the
-            // summary was empty, exactly as a plain-text completion's final text does.
-            if let Some(summary) = finish_summary {
+            // An ending declared this turn: every tool result — including the ending call's — is
+            // now recorded, so the conversation is valid and the session may end. Recorded as a
+            // `Finished` turn (which never breaches).
+            if let Some(ending) = declared_ending {
                 let _ = agent_limits.record(TurnOutcome::Finished, &self.id);
                 return LoopEnd {
                     status: STATUS_COMPLETED,
@@ -6265,7 +6101,8 @@ impl Agent {
                     tokens: total_tokens,
                     cost: total_cost,
                     slot: self.slot.clone(),
-                    final_text: (!summary.is_empty()).then_some(summary).or(last_text),
+                    final_text: Some(ending.final_text()),
+                    ending: Some(ending),
                     limit: None,
                 };
             }
@@ -6397,6 +6234,7 @@ impl Agent {
             cost,
             slot: self.slot.clone(),
             final_text: ended_text(code_mode, status, last_report, last_text),
+            ending: None,
             limit: Some(breach),
         }
     }
@@ -7120,27 +6958,19 @@ struct PromptInputs<'a> {
     /// may spawn, assign issues to, and name as reviewers (each enumerated in the prompt, scope by
     /// scope, so the model knows exactly which names each call accepts and why).
     profile: &'a GgAgentConfig,
-    /// Whether the agent this prompt is for is a **delegated** worker rather than the run's root,
-    /// which decides what the ending section says `finish` ends: the run, or this worker's task.
-    delegated: bool,
+    /// Which [ending calls](EndingRole) this agent has, so the prompt's ending section names the
+    /// ones it can actually make and no others.
+    ending_role: EndingRole,
     /// The [board issue](crate::board) this agent was dispatched to implement, when it was one.
     /// Renders the section that names the issue and tells the agent to record its work finished —
     /// the one thing gg needs from an implementer, and the thing it is not told anywhere else: its
     /// brief describes the work, not the protocol, and the board-authoring section it would have
     /// read the protocol from is (rightly) not rendered for a profile that may not author the board.
     assigned_issue: Option<&'a str>,
-    /// This agent's [completion](CompletionSetup) rule — the signal it ends the run with and any
-    /// validation gg runs to confirm the work — so the prompt can tell the model exactly how to
-    /// finish (and, under an explicit-call signal, that a text-only reply does not).
-    completion: &'a CompletionSetup,
     /// Whether [healing](crate::healing)'s fence-stripping strategy is armed, which decides how the
     /// prompt states the no-code-fence rule — as a repair gg will make and disclose, or as a syntax
     /// error the model will be handed.
     fences_are_stripped: bool,
-    /// This agent's [compaction](CompactionSetup) setup, so the prompt can say what happens when the
-    /// window fills — and, under a strategy that asks the agent to compact itself, what it will be
-    /// asked to do. A disabled capability renders no section.
-    compaction: &'a CompactionSetup,
 }
 
 /// The system prompt for a run: the [system template](crate::prompts::render_system) for the run's
@@ -7155,14 +6985,15 @@ struct PromptInputs<'a> {
 /// The API objects a code program has this run, in a fixed display order, each with the one-line
 /// description the prompt names it by.
 ///
-/// An object appears exactly when the run binds at least one of its functions — derived from the
-/// enabled tools through the [signature catalogue](crate::sandbox::catalogue_functions), the same
-/// grouping the guest builds a program's scope from — so a withheld capability drops its whole
-/// object rather than leaving a named-but-empty one. `harness` always appears, because it carries
-/// `finish` (which no capability gates) and the documentation lookup. The descriptions are stable
-/// product surface authored here; the *functions* on each object are not listed at all, because a
-/// model discovers those on demand with `object.list()` and `fn.docs()`.
-fn api_views(registry: &ToolRegistry) -> Vec<ApiView> {
+/// An object appears exactly when the agent binds at least one of its functions — derived from the
+/// enabled tools **and its [ending role](EndingRole)** through the
+/// [signature catalogue](crate::sandbox::catalogue_functions), the same grouping the guest builds a
+/// program's scope from — so a withheld capability drops its whole object rather than leaving a
+/// named-but-empty one, and a reviewer is shown a `review` object where an implementer is not.
+/// `harness` always appears, because it carries the documentation lookup, which nothing gates. The
+/// descriptions are stable product surface authored here; the *functions* on each object are not
+/// listed at all, because a model discovers those on demand with `object.list()` and `fn.docs()`.
+fn api_views(registry: &ToolRegistry, role: EndingRole) -> Vec<ApiView> {
     const OBJECTS: &[(&str, &str)] = &[
         ("fs", "read, write, and edit workspace files"),
         ("system", "run shell commands in the workspace"),
@@ -7175,15 +7006,26 @@ fn api_views(registry: &ToolRegistry) -> Vec<ApiView> {
         ("context", "manage your own context window"),
         ("agents", "delegate work to child agents"),
         ("skills", "read authored skills"),
+        ("harness", "read documentation"),
         (
-            "harness",
-            "the run itself — end it with `finish`, and read documentation",
+            "review",
+            "return your verdict on the work you are reviewing",
         ),
+        ("judge", "name the attempt that wins"),
     ];
     let enabled: HashSet<String> = scope_tools(registry).into_iter().collect();
+    let ending = match role {
+        EndingRole::Standard => "standard",
+        EndingRole::Review => "review",
+        EndingRole::Judge { .. } => "judge",
+    };
     let present: HashSet<&'static str> = crate::sandbox::catalogue_functions()
         .into_iter()
-        .filter(|function| function.gate.is_none_or(|tool| enabled.contains(tool)))
+        .filter(|function| match (function.gate, function.ending) {
+            (Some(tool), _) => enabled.contains(tool),
+            (None, Some(role)) => role == ending,
+            (None, None) => true,
+        })
         .map(|function| function.object)
         .collect();
     OBJECTS
@@ -7307,11 +7149,9 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
         responses_as_code,
         autoload_specs,
         profile,
-        delegated,
+        ending_role,
         assigned_issue,
         fences_are_stripped,
-        completion,
-        compaction,
     } = inputs;
 
     // This agent's roster, split by what each entry may be used **for**. The three lists are
@@ -7377,7 +7217,7 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
             // The API objects the model can inspect — only under responses-as-code, where a program
             // reaches them by name; the tool-calling path puts the tools in the request instead.
             apis: if responses_as_code {
-                api_views(registry)
+                api_views(registry, ending_role)
             } else {
                 Vec::new()
             },
@@ -7392,7 +7232,6 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
                 .map(str::to_string),
             subagents: offers_spawn,
             spawnable_agents,
-            delegated,
             fences_are_stripped,
             read_file,
             shell,
@@ -7447,39 +7286,52 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
             // On → a section telling the model the whole brief is already in its window; the
             // `locked` flag decides whether it also promises the material stays across compaction.
             autoload_specs: autoload_specs.map(|locked| AutoloadView { locked }),
-            // How this run ends, always described so the model knows how to finish: the signal
-            // (explicit `finish` call only on the tool-calling path — a program always ends through
-            // its own `finish`) and the validation, if any, that gates it.
-            completion: CompletionView {
-                explicit_call: completion.explicit_finish(responses_as_code),
-                finish_name: FINISH_TOOL.to_string(),
-                validated: completion.has_validation(),
-                validation: completion
-                    .validation()
-                    .iter()
-                    .map(|command| command.display())
-                    .collect(),
-            },
-            // What happens when the window fills. Described even for the out-of-band strategies,
-            // which say nothing about the model's own turns: an agent whose thread silently
-            // collapses into a summary between two of its turns, never told that can happen, reads
-            // the result as having lost its mind.
-            compaction: compaction.enabled.then(|| {
-                let calls = memories.strategy().calls(responses_as_code);
-                CompactionView {
-                    trigger_percent: (compaction.policy.trigger_fullness() * 100.0).round() as u64,
-                    writes_summary: compaction.strategy == CompactionStrategy::SelfSummarization,
-                    calls_compact: compaction.strategy.offers_compact_tool(),
-                    writes_memories: compaction.strategy == CompactionStrategy::Memory,
-                    compact_name: COMPACT_TOOL.to_string(),
-                    memory_create: calls.create.to_string(),
-                    memory_revise: calls.revise.to_string(),
-                }
-            }),
+            // How this agent ends its session — its role's calls, named the way this execution mode
+            // writes them.
+            ending: ending_view(ending_role, responses_as_code),
         },
         // A profile may override the whole prompt template; `None` uses the built-in one.
         profile.system_prompt_template.as_deref(),
     )
+}
+
+/// How this agent's ending section reads: which [role](EndingRole) it was dispatched in, and that
+/// role's calls named the way `responses_as_code` writes them.
+///
+/// All four names are filled whatever the role. The templates render in strict mode, where a missing
+/// variable is a render error, and three unread strings cost nothing against a prompt that fails.
+fn ending_view(role: EndingRole, responses_as_code: bool) -> EndingView {
+    // The grouped, object-qualified form a program writes, or the bare tool name a tool-calling
+    // model requests. Taken from the signature catalogue's own object names, so the prompt and the
+    // scope the guest builds cannot disagree about what a call is spelled.
+    let call = |object: &str, code_name: &str, tool_name: &str| {
+        if responses_as_code {
+            format!("{object}.{code_name}")
+        } else {
+            tool_name.to_string()
+        }
+    };
+    EndingView {
+        standard: matches!(role, EndingRole::Standard),
+        review: matches!(role, EndingRole::Review),
+        judge: matches!(role, EndingRole::Judge { .. }),
+        finish: call("harness", "finish", completion::FINISH_TOOL),
+        approve: call("review", "approve", completion::APPROVE_TOOL),
+        request_changes: call("review", "requestChanges", completion::REQUEST_CHANGES_TOOL),
+        select_winner: call("judge", "selectWinner", completion::SELECT_WINNER_TOOL),
+    }
+}
+
+/// The [ending calls](EndingRole) this agent may make, as it writes them — what the feedback for a
+/// reply that was not a program points the model at, and the one place a role's calls are spelled for
+/// a message that is not the system prompt.
+fn ending_calls(role: EndingRole, responses_as_code: bool) -> Vec<String> {
+    let view = ending_view(role, responses_as_code);
+    match role {
+        EndingRole::Standard => vec![view.finish],
+        EndingRole::Review => vec![view.approve, view.request_changes],
+        EndingRole::Judge { .. } => vec![view.select_winner],
+    }
 }
 
 /// The model-facing message for a tool call refused by the loop's plan-mode guard.

@@ -3,7 +3,7 @@
 //!
 //! Everything gg *says* to a model — the system prompt, the pinned context blocks that render
 //! the task list, the epic/issue board and the memories, the planning capability's plan-mode
-//! guidance, the [briefs](render_review_brief) it dispatches delegated agents with, and the
+//! guidance, the [briefs](render_review_brief) it dispatches agents with, and the
 //! [compaction](render_compaction_instruction), [completion](render_completion_missing),
 //! [context-pressure](render_context_pressure) and [FSM](render_fsm_guidance) prose the loop
 //! injects between turns — lives in `crates/gg/templates/*.hbs` and is rendered here. The templates
@@ -53,17 +53,33 @@
 //! # The prose gg *does* author, and why it is versioned like code
 //!
 //! What this module renders is this stage's product surface: the reply contract (your whole reply is
-//! the program), the ending contract (only `harness.finish` ends a session), and the four turn
-//! feedbacks that answer a program that ran, one that did not compile, one the sandbox stopped, and a
-//! reply that was never a program at all. Each sentence in those exists because a real model got the
-//! contract wrong without it, so treat them as behaviour: change one only with the same care as a
-//! code change, and keep the tests that pin them.
+//! the program), the ending contract (an explicit, role-shaped call ends a session and nothing else
+//! does), and the four turn feedbacks that answer a program that ran, one that did not compile, one
+//! the sandbox stopped, and a reply that was never a program at all. Each sentence in those exists
+//! because a real model got the contract wrong without it, so treat them as behaviour: change one
+//! only with the same care as a code change, and keep the tests that pin them.
 //!
-//! The same holds for the [briefs](render_review_brief): a brief is the *only* thing a dispatched
-//! reviewer, fixer, merge agent, attempt, or judge has ever been told, and each ends by teaching the
-//! ending that agent is actually held to — which is why every one of them takes a `code` flag rather
-//! than assuming a final message the [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/)
-//! protocol does not have.
+//! # What a prompt does NOT say
+//!
+//! These are rules, not preferences, and they are why several fields a reader might expect are
+//! absent from the contexts below:
+//!
+//! - **Nothing names gg, or the test case a run is scored against.** An agent is told what to do and
+//!   how, never what is driving it.
+//! - **No gg internals.** How a value is used after the model produces it is gg's business.
+//! - **No history.** "X is no longer required" spends tokens on a state the reader never saw.
+//! - **Nothing about what the reader cannot act on.** An agent with no delegation is not told other
+//!   agents exist; an agent whose ending is `approve` is not told what `finish` would have done.
+//! - **Nothing gg already says at the moment it matters.** Compaction is the clearest case: the
+//!   instruction arrives when the window fills and says exactly what to do, so no other prompt
+//!   mentions compaction at all — most sessions never compact, and every one of them would have paid
+//!   for the paragraph.
+//! - **No narration.** Exactly what is needed, and nothing else.
+//!
+//! The [briefs](render_review_brief) follow from the same rules. A brief is the *only* thing a
+//! dispatched reviewer, fixer, merge agent, attempt or judge has ever been told, so it says what that
+//! agent must do — and stops there. It does **not** teach the agent how to end its session: the
+//! ending calls are in the system prompt already, and are the only ones that agent's role has.
 
 use std::sync::OnceLock;
 
@@ -123,34 +139,6 @@ const CODE_TIMEOUT_TEMPLATE: &str = include_str!("../templates/code-timeout.hbs"
 /// to be told, in gg's own words, that saying it did nothing.
 const CODE_NOT_A_PROGRAM_TEMPLATE: &str = include_str!("../templates/code-not-a-program.hbs");
 
-/// The [healing](crate::healing) disclosure, included as a partial at the top of **all five** code
-/// feedback templates.
-///
-/// One file rather than five copies because it is a *disclosure*, and a model shown two wordings of
-/// one disclosure trusts neither. It has to appear on all five because what healing did happened to
-/// the model's **message**, not to its program: a repaired reply may then run cleanly, fail to
-/// compile, trap, time out, or turn out not to have been a program at all, and in every one of those
-/// the model is reading a diagnostic against source it did not quite send.
-///
-/// # The `ran` parameter
-///
-/// Each feedback template includes it as `{{> healing-note ran=…}}`, passing the one thing the
-/// partial cannot see for itself: whether the repaired reply went on to **run**. The three templates
-/// whose program ran — [the result](CODE_RESULT_TEMPLATE),
-/// [the sandbox limit](CODE_SANDBOX_ERROR_TEMPLATE) and [the timeout](CODE_TIMEOUT_TEMPLATE) — pass
-/// `true`; the two whose reply never executed — [the transpile failure](CODE_TRANSPILE_ERROR_TEMPLATE)
-/// and [the not-a-program verdict](CODE_NOT_A_PROGRAM_TEMPLATE) — pass `false`.
-///
-/// It exists because the unconditional wording — *"gg repaired your reply before running it"* —
-/// contradicted the body of the very feedback it opened, and did so on live traffic: a reply whose
-/// prose was stripped and which was then refused as two pasted programs opened by telling the model
-/// its reply had been run and closed by telling it nothing had. A model cannot act on a turn that
-/// asserts both. The flag is threaded from the templates rather than added to the four contexts
-/// because it is a property of *which feedback this is*, which each template knows statically and no
-/// caller should have to restate — a context field would let a caller pair the running wording with
-/// the not-a-program verdict again.
-const HEALING_NOTE_TEMPLATE: &str = include_str!("../templates/healing-note.hbs");
-
 /// The dispatch brief an [issue](crate::board) is handed to the agent that implements it.
 const ISSUE_BRIEF_TEMPLATE: &str = include_str!("../templates/issue-brief.hbs");
 
@@ -207,11 +195,11 @@ const COMPACTION_FALLBACK_TEMPLATE: &str = include_str!("../templates/compaction
 const COMPACTION_MEMORY_SUMMARY_TEMPLATE: &str =
     include_str!("../templates/compaction-memory-summary.hbs");
 
-/// The feedback for a turn that ended without a [`finish`](crate::completion) call under an
-/// explicit-call completion signal.
+/// The feedback for a tool-calling turn that requested no tools — a text-only reply, which is an
+/// error rather than an [ending](crate::ending).
 const COMPLETION_MISSING_TEMPLATE: &str = include_str!("../templates/completion-missing.hbs");
 
-/// The feedback for a completion a [validation command](crate::completion) rejected.
+/// The feedback for an ending a [validation command](crate::completion) rejected.
 const COMPLETION_VALIDATION_FAILURE_TEMPLATE: &str =
     include_str!("../templates/completion-validation-failure.hbs");
 
@@ -233,9 +221,7 @@ const FSM_PLAN_FIRST_IMPLEMENT_TEMPLATE: &str =
     include_str!("../templates/fsm-plan-first-implement.hbs");
 
 /// The template names registered with the [engine], in the order they are registered. Each name
-/// is what [`render`] looks up — and, for [`HEALING_NOTE_TEMPLATE`], what the four feedback
-/// templates include as a `{{> partial}}`, since handlebars resolves a partial against the same
-/// registry. The tests iterate this list to assert every template parses.
+/// is what [`render`] looks up. The tests iterate this list to assert every template parses.
 const TEMPLATES: &[(&str, &str)] = &[
     ("system-tools", SYSTEM_TOOLS_TEMPLATE),
     ("system-code", SYSTEM_CODE_TEMPLATE),
@@ -250,7 +236,6 @@ const TEMPLATES: &[(&str, &str)] = &[
     ("code-sandbox-error", CODE_SANDBOX_ERROR_TEMPLATE),
     ("code-timeout", CODE_TIMEOUT_TEMPLATE),
     ("code-not-a-program", CODE_NOT_A_PROGRAM_TEMPLATE),
-    ("healing-note", HEALING_NOTE_TEMPLATE),
     ("issue-brief", ISSUE_BRIEF_TEMPLATE),
     ("review-brief", REVIEW_BRIEF_TEMPLATE),
     ("fix-brief", FIX_BRIEF_TEMPLATE),
@@ -422,16 +407,6 @@ pub struct SystemContext {
     /// when [`subagents`](Self::subagents) is on.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub spawnable_agents: Vec<SpawnableAgentView>,
-    /// Whether this agent is a **delegated** worker rather than the run's root agent — set from the
-    /// agent's depth in the spawn tree.
-    ///
-    /// A subagent renders this same prompt, so the ending section has to say what `finish` actually
-    /// ends *for the reader*: a root agent's summary is the run's last word, while a subagent's is
-    /// the answer it hands back to whoever asked for the work. A delegated model told "this ends the
-    /// run" has a strong reason not to call it — and a worker that never calls it never returns a
-    /// verdict, which is the exact failure that leaves an issue unaccepted and a speculation
-    /// judge without a winner.
-    pub delegated: bool,
     /// Whether [healing](crate::healing)'s fence-stripping strategy is armed this run.
     ///
     /// The prompt tells the model not to wrap its program in a code fence either way; what changes
@@ -470,76 +445,39 @@ pub struct SystemContext {
     /// reference images, and if so whether they are locked into the window. `None` renders no
     /// section — the model was told nothing about a feature it does not have.
     pub autoload_specs: Option<AutoloadView>,
-    /// How this run decides it is finished — the completion signal and any validation that gates it.
-    /// Always present: every run has a completion rule the model must be told, in either execution
-    /// mode.
-    pub completion: CompletionView,
-    /// What happens when this agent's context window fills, or `None` when
-    /// [compaction](crate::compaction) is off — in which case the window simply runs out and there
-    /// is nothing to describe.
-    pub compaction: Option<CompactionView>,
+    /// How this agent ends its session — the calls its [role](crate::ending::EndingRole) gives it.
+    /// Always present: every agent must be told how to end, in either execution mode.
+    pub ending: EndingView,
 }
 
-/// What a run's [compaction](crate::compaction) asks of the model, as the system prompt describes
-/// it.
+/// How this agent ends its session, as the system prompt describes it: which
+/// [role](crate::ending::EndingRole) it was dispatched in, and that role's calls named as this
+/// execution mode writes them.
 ///
-/// The out-of-band strategies still render a section, short as it is: an agent whose thread silently
-/// collapses into a summary between two of its turns, with no warning that this can happen, reads
-/// the result as having lost its mind. Knowing the window has a backstop is also what makes an
-/// agent willing to keep working near a full window instead of rushing to a conclusion.
-///
-/// The three flags are mutually exclusive — a run has one strategy — and are booleans rather than a
-/// strategy name because the templates render in strict mode with no comparison helper: a name would
+/// The three flags are mutually exclusive — an agent has one role — and are booleans rather than a
+/// role name because the templates render in strict mode with no comparison helper: a name would
 /// have to be re-derived in Handlebars, which is where a prompt and the loop it describes drift.
-#[derive(Debug, Default, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CompactionView {
-    /// The window-fullness percentage at which a compaction fires, so the model can pace itself.
-    pub trigger_percent: u64,
-    /// [Self-summarization](crate::compaction::CompactionStrategy::SelfSummarization): gg will ask
-    /// for a summary, and the model's plain-text reply to that one turn is what its next context is
-    /// rebuilt from.
-    pub writes_summary: bool,
-    /// [Self-compaction](crate::compaction::CompactionStrategy::SelfCompaction): the model compacts
-    /// itself with the `compact` tool, choosing both the summary and the files to keep.
-    pub calls_compact: bool,
-    /// [Memory compaction](crate::compaction::CompactionStrategy::Memory): the model records its
-    /// working state as memories, which are what cross the boundary.
-    pub writes_memories: bool,
-    /// The name of the compact tool/function, so the prompt names it from one source.
-    pub compact_name: String,
-    /// The call that records a memory, and the call that revises one, as this run's
-    /// [memory strategy](crate::memories::MemoryStrategy::calls) names them in this execution
-    /// mode — backticks included, since they arrive already quoted.
-    ///
-    /// A memory compaction is the one section of the prompt that tells the model to call a *memory*
-    /// tool, and which memory tools exist is the memory capability's decision, not compaction's. So
-    /// they are interpolated rather than written into the template, which would otherwise name the
-    /// scratchpad's tools at a run that was never offered them.
-    pub memory_create: String,
-    /// The call that revises a memory. See [`memory_create`](Self::memory_create).
-    pub memory_revise: String,
-}
-
-/// How a run reaches completion, as the system prompt describes it: the signal the model uses to
-/// say it is done, and the [validation](test_cabinet_core::gg::CAPABILITY_COMPLETION) commands (if
-/// any) gg runs to confirm it before the run ends.
+///
+/// The four names are all populated whatever the role, and only the active role's are rendered. That
+/// is deliberate: a missing variable is a strict-mode render error, and the cost of carrying three
+/// unread strings is nothing against a prompt that fails to render at all.
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CompletionView {
-    /// Tool-calling only: whether the model must call the `finish` tool to end the run (an
-    /// explicit-call signal), rather than ending it by replying with no tool call (the plain-text
-    /// signal). The code template ignores this — a program always ends through its own `finish`.
-    pub explicit_call: bool,
-    /// The name of the finish tool/function (`finish`), so the prompt names it from one source.
-    pub finish_name: String,
-    /// Whether completion is gated behind validation commands — the flag the template branches on
-    /// before listing them.
-    pub validated: bool,
-    /// The validation commands gg runs to confirm the work before the run ends, each as it reads in
-    /// the prompt. Empty when completion is ungated.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub validation: Vec<String>,
+pub struct EndingView {
+    /// [`Standard`](crate::ending::EndingRole::Standard): the agent reports what it did.
+    pub standard: bool,
+    /// [`Review`](crate::ending::EndingRole::Review): the agent returns a verdict.
+    pub review: bool,
+    /// [`Judge`](crate::ending::EndingRole::Judge): the agent names a winning attempt.
+    pub judge: bool,
+    /// The finish call, as this execution mode writes it (`finish` / `harness.finish`).
+    pub finish: String,
+    /// The approval call (`approve` / `review.approve`).
+    pub approve: String,
+    /// The change-request call (`request_changes` / `review.requestChanges`).
+    pub request_changes: String,
+    /// The winner call (`select_winner` / `judge.selectWinner`).
+    pub select_winner: String,
 }
 
 /// The [autoload-specifications](test_cabinet_core::gg::CAPABILITY_AUTOLOAD_SPECS) section's state:
@@ -814,12 +752,6 @@ pub fn default_system_prompt_template_code() -> &'static str {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CodeResultContext {
-    /// What [healing](crate::healing) repaired in the reply before it was compiled, one
-    /// already-rendered clause per repair — [`Healed::notes`](crate::healing::Healed::notes).
-    ///
-    /// Empty for a reply that needed no repair, which is what the note is gated on: a well-formed
-    /// turn must not spend its opening line on a rule the model did not break.
-    pub healing: Vec<String>,
     /// The throw the program did not catch, or `None` if it ran to its end.
     pub error: Option<CodeErrorView>,
     /// Whether the program ended with a `return` that carried a value — which gg discarded.
@@ -829,12 +761,15 @@ pub struct CodeResultContext {
     /// once, in the moment, is what keeps the rule one sentence long in the system prompt instead of
     /// a section about what may be returned.
     pub returned_value: bool,
-    /// Whether the program declared the run finished and then **lost** that ending by throwing.
+    /// Whether the program declared its session over and then **lost** that ending by throwing.
     ///
-    /// Without it the model reads an ordinary failed turn and has no reason to think its `finish`
-    /// did not take — so it fixes the throw, does not call `finish` again, and the run carries on
-    /// past the point the model believes it ended.
+    /// Without it the model reads an ordinary failed turn and has no reason to think its ending did
+    /// not take — so it fixes the throw, does not declare again, and the session carries on past the
+    /// point the model believes it ended.
     pub finish_revoked: bool,
+    /// The ending call that was suppressed, named so the model knows which of its calls did not
+    /// take. Empty when [`finish_revoked`](Self::finish_revoked) is false and never rendered then.
+    pub ending_revoked: String,
     /// The tool calls the roster kept, in call order.
     pub calls: Vec<CodeCallView>,
     /// How many calls the program actually made — which exceeds `calls.len()` when the sandbox's
@@ -882,15 +817,6 @@ pub struct CodeResultContext {
     /// that produces it is a model pasting a second draft after the first — where the half that
     /// never ran is the half that wrote the deliverable and ended the run.
     pub unreachable: Option<String>,
-    /// Whether the agent being addressed is a **delegated** worker rather than the run's root — the
-    /// same fact [`SystemContext::delegated`] carries, for the same reason.
-    ///
-    /// This template's closing line is the one channel that repeats the termination rule *every
-    /// turn*, and it sits far later in the context than the system prompt that stated it first. If
-    /// the two disagree, the later one wins: a reviewer subagent told each turn that `finish` ends
-    /// **the run** has the strongest reason available not to call it, and a reviewer that never
-    /// calls it never returns a verdict.
-    pub delegated: bool,
 }
 
 /// The throw a program did not catch, as the feedback renders it.
@@ -922,34 +848,23 @@ pub struct CodeCallView {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CodeTranspileErrorContext {
-    /// What [healing](crate::healing) repaired before the compile, one clause per repair.
-    ///
-    /// It matters most on this path of the four. The diagnostic is located in the **healed**
-    /// source's coordinates — the program gg actually compiled — so a model told "line 4" without
-    /// also being told that a fence came off the top of its reply cannot reconcile the two, and
-    /// spends its next turn fixing a line that was never wrong.
-    pub healing: Vec<String>,
     /// The compiler's diagnostic, already located in the program's own coordinates.
     pub error: String,
-    /// Whether the agent being addressed is a **delegated** worker rather than the run's root, for
-    /// the same reason [`CodeResultContext::delegated`] carries it: this template also names what
-    /// `finish` ends, and naming the wrong thing to a worker is what stops it ever finishing.
-    pub delegated: bool,
 }
 
 /// The variables `code-sandbox-error.hbs` may reference.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CodeSandboxErrorContext {
-    /// What [healing](crate::healing) repaired before the program ran, one clause per repair.
-    pub healing: Vec<String>,
     /// What the sandbox could not do, as it states it.
     pub error: String,
-    /// Whether the program declared the run finished before the sandbox stopped it, and therefore
+    /// Whether the program declared its session over before the sandbox stopped it, and therefore
     /// lost that ending. Carried here as well as on [`CodeResultContext`] because the two are the
-    /// two ways a program can fail after a `finish`, and a model told nothing on this one would
-    /// believe the run ended on a turn it did not.
+    /// two ways a program can fail after an ending call, and a model told nothing on this one would
+    /// believe its session ended on a turn it did not.
     pub finish_revoked: bool,
+    /// The ending call that was suppressed. See [`CodeResultContext::ending_revoked`].
+    pub ending_revoked: String,
     /// How many tool calls the program had already landed — they stand, and saying so is what
     /// stops a model redoing work it already did.
     pub calls: usize,
@@ -965,13 +880,13 @@ pub struct CodeSandboxErrorContext {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CodeTimeoutContext {
-    /// What [healing](crate::healing) repaired before the program ran, one clause per repair.
-    pub healing: Vec<String>,
     /// The timeout message, already naming the ceiling that was reached.
     pub error: String,
-    /// Whether the program declared the run finished before the timeout stopped it, and therefore
+    /// Whether the program declared its session over before the timeout stopped it, and therefore
     /// lost that ending — carried for the same reason [`CodeSandboxErrorContext::finish_revoked`] is.
     pub finish_revoked: bool,
+    /// The ending call that was suppressed. See [`CodeResultContext::ending_revoked`].
+    pub ending_revoked: String,
     /// How many tool calls the program had already landed — they stand.
     pub calls: usize,
 }
@@ -986,13 +901,6 @@ pub struct CodeTimeoutContext {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CodeNotAProgramContext {
-    /// What [healing](crate::healing) repaired before it gave up on the reply, one clause per
-    /// repair.
-    ///
-    /// Non-empty more often than it looks: a reply whose fence was stripped and whose remainder
-    /// turned out to be comments only was both repaired *and* refused, and a model shown only the
-    /// refusal would conclude that gg never saw the fence.
-    pub healing: Vec<String>,
     /// Why the reply was not a program, as
     /// [`NotAProgramReason::message`](crate::healing::NotAProgramReason::message) words it.
     ///
@@ -1000,13 +908,13 @@ pub struct CodeNotAProgramContext {
     /// per variant, and a template that reproduced that mapping would be a second place for the six
     /// sentences to live.
     pub reason: String,
-    /// Whether the agent being addressed is a **delegated** worker rather than the run's root.
+    /// This agent's [ending calls](crate::ending::EndingRole), as a program writes them.
     ///
     /// It matters most on this template of the four: this is the turn a model takes when it has
-    /// answered in prose because it believes the work is done, so it is precisely the moment a
-    /// delegated worker is told what `finish` would end. Telling it "the run" here is telling it
-    /// that returning its verdict would end somebody else's work.
-    pub delegated: bool,
+    /// answered in prose because it believes the work is done, so it is precisely the moment to name
+    /// the call it should have made instead — and naming a call the agent's role does not have would
+    /// send it looking for a function that is not in its scope.
+    pub ending_calls: Vec<String>,
 }
 
 /// The model-facing feedback for a program that **ran** — whether or not it threw.
@@ -1015,22 +923,8 @@ pub struct CodeNotAProgramContext {
 /// built from a model's own output, and a turn with degraded feedback is recoverable where a
 /// panicked run is not.
 pub fn render_code_result(context: &CodeResultContext) -> String {
-    try_render("code-result", context).unwrap_or_else(|_| {
-        format!(
-            "Your program ran. Continue by emitting your next program. When the work is done and \
-             you have checked it, end {} with `harness.finish(\"...\")` from inside a program — nothing \
-             else ends it.",
-            ending(context.delegated)
-        )
-    })
-}
-
-/// What `finish` ends, for the agent being addressed.
-///
-/// Every fallback that names the termination rule goes through this, so a degraded render cannot
-/// tell a delegated worker something the template and the system prompt would not have.
-fn ending(delegated: bool) -> &'static str {
-    if delegated { "your session" } else { "the run" }
+    try_render("code-result", context)
+        .unwrap_or_else(|_| "Your program ran. Reply with your next program.".to_string())
 }
 
 /// The model-facing feedback for a program that did not compile. Nothing ran.
@@ -1071,15 +965,19 @@ pub fn render_code_timeout(context: &CodeTimeoutContext) -> String {
 ///
 /// Falls back to a plain sentence for the same reason the other three do — its input is derived from
 /// a model's own output — and the fallback keeps the two facts the turn exists to deliver: why the
-/// reply was refused, and that only `finish` ends the run.
+/// reply was refused, and which call would actually have ended the session.
 pub fn render_code_not_a_program(context: &CodeNotAProgramContext) -> String {
     try_render("code-not-a-program", context).unwrap_or_else(|_| {
         format!(
-            "{} Every turn of this run is a program: reply with code alone. If you believe the \
-             task is complete, saying so does not end {} — call `harness.finish(\"...\")` from inside a \
-             program instead.",
+            "{} Every turn is a program: reply with code alone. Saying the work is done does not \
+             end your session — call {} instead.",
             context.reason,
-            ending(context.delegated)
+            context
+                .ending_calls
+                .iter()
+                .map(|call| format!("`{call}`"))
+                .collect::<Vec<_>>()
+                .join(" or ")
         )
     })
 }
@@ -1318,10 +1216,6 @@ pub struct ReviewBriefContext {
     pub history: Vec<ReviewRecordView>,
     /// Where the work is and what it touched.
     pub changes: ReviewChangesView,
-    /// Whether the reviewer runs in
-    /// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) mode, which changes
-    /// how it is told to deliver its verdict.
-    pub code: bool,
 }
 
 /// One earlier round's verdict, as the reviewer's brief recounts it.
@@ -1347,8 +1241,6 @@ pub struct ReviewChangesView {
     /// The per-file summary of the change (`git diff --stat`), or `None` when nothing changed
     /// against the baseline — stated plainly so the reviewer does not hallucinate changes.
     pub summary: Option<String>,
-    /// The directory the reviewer's own tools are rooted at — the issue's worktree checkout.
-    pub workspace: String,
     /// The commit the work branched from, when there is one: what a reviewer with a shell diffs
     /// against to see the change itself.
     pub baseline: Option<String>,
@@ -1376,12 +1268,9 @@ pub struct NumberedItem {
 pub struct FixBriefContext {
     /// The [issue brief](render_issue_brief) of the work being redone, verbatim.
     pub issue_brief: String,
-    /// The reviewer's actionable items. Empty renders a generic item instead, so the assigned agent
-    /// always has something to act on.
+    /// The reviewer's actionable items. Never empty: `request_changes` refuses a verdict with
+    /// nothing in it, so the assigned agent always has something to act on.
     pub items: Vec<NumberedItem>,
-    /// Whether the fixing agent runs in
-    /// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) mode.
-    pub code: bool,
 }
 
 /// Render the brief an issue's own agent is re-dispatched with after a review requested changes.
@@ -1395,15 +1284,10 @@ pub fn render_fix_brief(context: &FixBriefContext) -> String {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MergeBriefContext {
-    /// The issue whose branch conflicts.
-    pub issue_id: String,
     /// The branch being merged.
     pub branch: String,
     /// What git reported.
     pub reason: String,
-    /// Whether the merge agent runs in
-    /// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) mode.
-    pub code: bool,
 }
 
 /// Render the [merge agent](crate::agent)'s brief.
@@ -1427,9 +1311,6 @@ pub struct AttemptBriefContext {
     pub count: usize,
     /// This attempt's assigned approach hint, when one was given.
     pub approach: Option<String>,
-    /// Whether the attempt runs in
-    /// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) mode.
-    pub code: bool,
 }
 
 /// Render one attempt's brief for a [speculative execution](crate::agent).
@@ -1448,9 +1329,6 @@ pub struct JudgeBriefContext {
     pub attempts: Vec<JudgeAttemptView>,
     /// How many candidates there are.
     pub count: usize,
-    /// Whether the judge runs in
-    /// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) mode.
-    pub code: bool,
 }
 
 /// One candidate as the judge's brief presents it.
@@ -1461,8 +1339,6 @@ pub struct JudgeAttemptView {
     pub number: usize,
     /// The attempt's own closing summary, or `None` when it gave none.
     pub summary: Option<String>,
-    /// The attempt's diff against the baseline, or `None` when it changed nothing.
-    pub diff: Option<String>,
 }
 
 /// Render the judge's brief for a [speculative execution](crate::agent).
@@ -1479,9 +1355,9 @@ pub fn render_judge_brief(context: &JudgeBriefContext) -> String {
 /// refused.
 ///
 /// The requirement is three booleans rather than a strategy name for the same reason
-/// [`CompactionView`] carries booleans: the templates render in strict mode with no comparison
-/// helper, so a name would have to be re-derived in Handlebars — which is where a prompt and the
-/// loop it describes drift.
+/// [`EndingView`] carries booleans: the templates render in strict mode with no comparison helper,
+/// so a name would have to be re-derived in Handlebars — which is where a prompt and the loop it
+/// describes drift.
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompactionPromptContext {
@@ -1578,15 +1454,16 @@ pub fn render_compaction_memory_summary() -> String {
 /// The variables `completion-missing.hbs` may reference.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct FinishToolContext<'a> {
-    /// The name of the finish tool, so the prompt names it from one source.
-    finish_tool: &'a str,
+struct EndingCallsContext<'a> {
+    /// The agent's [ending calls](crate::ending::EndingRole), so the prompt names the ones this
+    /// reader actually has from one source.
+    ending_calls: &'a [&'a str],
 }
 
-/// Render the feedback for a turn that ended without a [`finish`](crate::completion) call under an
-/// explicit-call completion signal — a text-only reply that is an error rather than a completion.
-pub fn render_completion_missing(finish_tool: &str) -> String {
-    render("completion-missing", &FinishToolContext { finish_tool })
+/// Render the feedback for a tool-calling turn that requested no tools — a text-only reply, which is
+/// an error rather than an ending.
+pub fn render_completion_missing(ending_calls: &[&str]) -> String {
+    render("completion-missing", &EndingCallsContext { ending_calls })
 }
 
 /// The variables `completion-validation-failure.hbs` may reference.

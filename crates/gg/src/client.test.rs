@@ -468,10 +468,12 @@ async fn mock_client_advances_through_script_then_terminates() {
     assert_eq!(second.text.as_deref(), Some("turn 2"));
     assert!(second.tool_calls.is_empty());
 
-    // Past the end: a terminal stop so any loop terminates.
+    // Past the end: an ending call, so any loop terminates. A text-only reply would not — under
+    // this contract it is an error turn — so a mock that answered that way would run a test's loop
+    // to its ceiling rather than ending it.
     let exhausted = client.complete(&[], &[]).await.expect("exhausted");
-    assert_eq!(exhausted.finish_reason, FinishReason::Stop);
-    assert!(exhausted.tool_calls.is_empty());
+    assert_eq!(exhausted.finish_reason, FinishReason::ToolCalls);
+    assert_eq!(exhausted.tool_calls[0].name, "finish");
     assert!(
         exhausted
             .text
@@ -591,10 +593,10 @@ async fn default_mock_script_exercises_every_capability_then_finishes() {
         .expect("contents is a string");
     assert!(contents.contains("<canvas"));
 
-    // Turn 12 stops.
+    // Turn 12 ends the session, the one way a session ends.
     let last = client.complete(&[], &[]).await.expect("turn 12");
-    assert_eq!(last.finish_reason, FinishReason::Stop);
-    assert!(last.tool_calls.is_empty());
+    assert_eq!(last.finish_reason, FinishReason::ToolCalls);
+    assert_eq!(last.tool_calls[0].name, "finish");
 }
 
 // ---------------------------------------------------------------------------

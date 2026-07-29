@@ -1,36 +1,27 @@
-This session's context window is full.
-
+Your context window is full.
 {{#if summary}}
 {{#if codeMode}}
-For this one turn only, do **NOT** write a program. Reply with a plain text
-summary of what has completed. This summary needs to cover the important details
-of the current session and all work yet to be completed.
+Call `{{compactTool}}(summary)` and nothing else. All other calls are blocked
+until you do.
 {{else}}
-Reply with a plain text summary of what has completed. This summary needs to
-cover the important details of the current session and all work yet to be
-completed.
+Reply with a plain text summary and nothing else. All tool calls are blocked
+until you do.
 {{/if}}
+The summary must cover the working state: what is being built, progress so far,
+and what is left to do.
 {{/if}}
 {{#if compactCall}}
 {{#if codeMode}}
-Write a program that calls `context.compact(summary, files)` and nothing else.
-All other calls are blocked until compaction is performed.
+Call `{{compactTool}}(summary, files)` and nothing else. All other calls are
+blocked until you do.
 {{else}}
-Call the `{{compactTool}}` tool. All other tool calls are blocked until
-compaction is performed.
+Call `{{compactTool}}` and nothing else. All other tool calls are blocked until
+you do.
 {{/if}}
-`summary` must record the current working state, including any important details
-like what's being built, current progress, next steps, etc. `files` must be the
-key paths that will be automatically re-read once compaction is completed.
+`summary` must cover the working state: what is being built, progress so far,
+and what is left to do. `files` are the paths re-read for you afterwards.
 {{/if}}
 {{#if memoryWrites}}
-{{#if codeMode}}
-Write a program that records the working state into memory using {{memoryCreate}} /
-{{memoryRevise}} / {{memoryDelete}} and nothing else. All other calls are
-blocked until compaction has completed.
-{{else}}
-Record the working state into memory now using {{memoryCreate}} / {{memoryRevise}} /
-{{memoryDelete}} and nothing else. All other tool calls are blocked until
-compaction has completed.
-{{/if}}
+Record the working state with {{memoryCreate}} / {{memoryRevise}} /
+{{memoryDelete}} and nothing else. All other calls are blocked until you do.
 {{/if}}

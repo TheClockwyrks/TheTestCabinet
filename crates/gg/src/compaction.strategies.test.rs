@@ -133,20 +133,38 @@ fn only_the_three_in_loop_strategies_are_pending() {
     }
 }
 
-/// The `compact` tool is offered to the **working** model only under self-compaction. Handoff
-/// compaction uses the same tool but offers it to its separate model alone, which is the whole
-/// difference between the two: one asks the agent to compact itself, the other never interrupts it.
+/// The `compact` tool is offered to the **working** model under self-compaction, and — in code mode
+/// only — under self-summarization too.
+///
+/// Handoff compaction uses the same tool but offers it to its separate model alone, which is the
+/// whole difference between the two: one asks the agent to compact itself, the other never
+/// interrupts it.
+///
+/// Self-summarization is the interesting arm. It asks the agent for a summary, and a tool-calling
+/// agent answers in prose — but a code agent has no prose to answer in, since every reply it sends
+/// is a program. So its summary arrives the way everything else a program says arrives: as a call
+/// carrying it. The alternative gg used to take was to tell a code agent to stop writing programs
+/// for one turn, which suspends the single contract the whole protocol rests on.
 #[test]
-fn only_self_compaction_offers_the_compact_tool_to_the_agent() {
-    assert!(CompactionStrategy::SelfCompaction.offers_compact_tool());
-    for other in [
-        CompactionStrategy::SelfSummarization,
-        CompactionStrategy::HandoffSummarization,
-        CompactionStrategy::HandoffCompaction,
-        CompactionStrategy::Memory,
-    ] {
-        assert!(!other.offers_compact_tool(), "{}", other.id());
+fn the_compact_tool_is_offered_where_the_agent_must_compact_itself() {
+    for code_mode in [false, true] {
+        assert!(CompactionStrategy::SelfCompaction.offers_compact_tool(code_mode));
+        for other in [
+            CompactionStrategy::HandoffSummarization,
+            CompactionStrategy::HandoffCompaction,
+            CompactionStrategy::Memory,
+        ] {
+            assert!(!other.offers_compact_tool(code_mode), "{}", other.id());
+        }
     }
+    assert!(
+        CompactionStrategy::SelfSummarization.offers_compact_tool(true),
+        "a code agent's summary arrives as a `compact` call — it has no other channel"
+    );
+    assert!(
+        !CompactionStrategy::SelfSummarization.offers_compact_tool(false),
+        "a tool-calling agent's summary is its reply's own text"
+    );
 }
 
 /// Only the two handoff strategies resolve a second model, and only from a non-blank `model` param
@@ -200,20 +218,25 @@ fn the_handoff_model_is_read_only_for_a_handoff_strategy() {
 /// refused.
 #[test]
 fn a_pending_compaction_admits_only_what_satisfies_it() {
-    assert!(PendingCompaction::CompactCall.admits("compact"));
-    assert!(!PendingCompaction::CompactCall.admits("shell"));
-    assert!(!PendingCompaction::CompactCall.admits("write_memory"));
+    for code_mode in [false, true] {
+        assert!(PendingCompaction::CompactCall.admits("compact", code_mode));
+        assert!(!PendingCompaction::CompactCall.admits("shell", code_mode));
+        assert!(!PendingCompaction::CompactCall.admits("write_memory", code_mode));
 
-    assert!(PendingCompaction::MemoryWrites.admits("write_memory"));
-    assert!(PendingCompaction::MemoryWrites.admits("update_memory"));
-    assert!(PendingCompaction::MemoryWrites.admits("delete_memory"));
-    assert!(!PendingCompaction::MemoryWrites.admits("compact"));
-    assert!(!PendingCompaction::MemoryWrites.admits("shell"));
+        assert!(PendingCompaction::MemoryWrites.admits("write_memory", code_mode));
+        assert!(PendingCompaction::MemoryWrites.admits("update_memory", code_mode));
+        assert!(PendingCompaction::MemoryWrites.admits("delete_memory", code_mode));
+        assert!(!PendingCompaction::MemoryWrites.admits("compact", code_mode));
+        assert!(!PendingCompaction::MemoryWrites.admits("shell", code_mode));
 
-    // A summarization turn is not a working turn at all — the loop takes it whole and never
-    // dispatches from it, so this only ever answers the defensive case.
-    assert!(!PendingCompaction::Summary.admits("compact"));
-    assert!(!PendingCompaction::Summary.admits("shell"));
+        assert!(!PendingCompaction::Summary.admits("shell", code_mode));
+    }
+
+    // On the tool-calling path a summarization turn is not a working turn at all — the loop takes
+    // it whole and never dispatches from it, so this only ever answers the defensive case. In code
+    // mode there is no such turn: the summary *is* a `compact` call, so that call is admitted.
+    assert!(!PendingCompaction::Summary.admits("compact", false));
+    assert!(PendingCompaction::Summary.admits("compact", true));
 }
 
 /// A memory compaction is satisfied by **one reply whose calls all succeeded**, and by nothing else
@@ -240,9 +263,9 @@ fn scratchpad_calls(code_mode: bool) -> MemoryCalls {
 #[test]
 fn each_instruction_names_the_call_for_its_execution_mode() {
     let tool_calling = PendingCompaction::CompactCall.instruction(false, scratchpad_calls(false));
-    assert!(tool_calling.contains("`compact` tool"), "{tool_calling}");
+    assert!(tool_calling.contains("Call `compact`"), "{tool_calling}");
     let code = PendingCompaction::CompactCall.instruction(true, scratchpad_calls(true));
-    assert!(code.contains("context.compact"), "{code}");
+    assert!(code.contains("`context.compact(summary, files)`"), "{code}");
 
     let memories_code = PendingCompaction::MemoryWrites.instruction(true, scratchpad_calls(true));
     assert!(
@@ -253,12 +276,26 @@ fn each_instruction_names_the_call_for_its_execution_mode() {
         PendingCompaction::MemoryWrites.instruction(false, scratchpad_calls(false));
     assert!(memories_tools.contains("write_memory"), "{memories_tools}");
 
-    // A code-mode summarization has to suspend the reply contract explicitly: prose is the one
-    // thing a code run is otherwise told never to send.
+    // **A code agent is never told to stop writing programs.** Its summary arrives the way
+    // everything else a program says arrives: as a call carrying it. Asking a code agent for prose
+    // would suspend the one contract the whole protocol rests on — and a contract suspended once is
+    // a contract a model has learned is negotiable.
     let summary_code = PendingCompaction::Summary.instruction(true, scratchpad_calls(true));
     assert!(
-        summary_code.contains("do **NOT** write a program"),
+        summary_code.contains("`context.compact(summary)`"),
         "{summary_code}"
+    );
+    for forbidden in ["NOT write a program", "plain text"] {
+        assert!(
+            !summary_code.contains(forbidden),
+            "a code agent was told to answer in prose (`{forbidden}`):\n{summary_code}"
+        );
+    }
+    // The tool-calling arm is unchanged: there, the reply's own text *is* the summary.
+    let summary_tools = PendingCompaction::Summary.instruction(false, scratchpad_calls(false));
+    assert!(
+        summary_tools.contains("plain text summary"),
+        "{summary_tools}"
     );
 
     for pending in [

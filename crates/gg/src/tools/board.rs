@@ -293,7 +293,7 @@ impl CreateIssueTool {
             )
         };
         format!(
-            " Name in `agent` the agent gg should dispatch this issue to; you may assign to: \
+            " Name in `agent` the agent this issue is dispatched to; you may assign to: \
              {implementers}.{reviewers}"
         )
     }
@@ -946,7 +946,7 @@ impl Tool for WaitForIssueTool {
 
     async fn invoke(&self, _args: Value, _ctx: &ToolContext) -> ToolOutcome {
         ToolOutcome::error(format!(
-            "`{WAIT_FOR_ISSUE_TOOL}` is a project-management tool handled by the gg runtime; it \
+            "`{WAIT_FOR_ISSUE_TOOL}` is handled by the loop; it \
              cannot be dispatched here."
         ))
     }

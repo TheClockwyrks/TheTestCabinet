@@ -12,7 +12,6 @@ import {
   CAP_GROUPS,
   RUN_LIMIT_SPECS,
   SUBAGENT_SCOPES,
-  lockedImplementation,
   paramApplies,
   type CapGroup,
   type RunLimitSpec,
@@ -671,13 +670,7 @@ export function GgConfigEditor({
                     agent.capabilities[cap.id] ?? blankCapabilityDraft();
                   const enabled = Boolean(draft.enabled);
                   const error = paramsErrors[cap.id];
-                  // Another capability on this agent may FIX this one's implementation
-                  // (a responses-as-code agent can only finish through `finish`), in
-                  // which case the picker shows that value and cannot be changed — and
-                  // the params below are filtered against it, not against the stale
-                  // selection it overrides.
-                  const locked = lockedImplementation(cap, agent.capabilities);
-                  const implementation = locked ?? draft.implementation;
+                  const implementation = draft.implementation;
                   // Run-level "which agent runs this?" knobs (the merge and judge
                   // agents) are read off the root agent, so only offer them there — and
                   // a param the selected implementation does not read (the compaction
@@ -723,37 +716,24 @@ export function GgConfigEditor({
                                 <label className={gg.capParamField}>
                                   <FieldLabel
                                     label={cap.implementationLabel}
-                                    hint={
-                                      locked !== null
-                                        ? cap.lockImplementation?.hint
-                                        : cap.implementationHint
-                                    }
+                                    hint={cap.implementationHint}
                                   />
                                   {cap.implementationOptions ? (
-                                    // A fixed implementation stays a <select> — so it
-                                    // reads and tests as the same control — but shows
-                                    // only the value gg will use, and is disabled.
                                     <select
                                       className={runExec.select}
                                       value={implementation ?? ""}
-                                      disabled={readOnly || locked !== null}
+                                      disabled={readOnly}
                                       onChange={(e) =>
                                         updateCap(cap.id, {
                                           implementation: e.target.value,
                                         })
                                       }
                                     >
-                                      {cap.implementationOptions
-                                        .filter(
-                                          (o) =>
-                                            locked === null ||
-                                            o.value === locked,
-                                        )
-                                        .map((o) => (
-                                          <option key={o.value} value={o.value}>
-                                            {o.label}
-                                          </option>
-                                        ))}
+                                      {cap.implementationOptions.map((o) => (
+                                        <option key={o.value} value={o.value}>
+                                          {o.label}
+                                        </option>
+                                      ))}
                                     </select>
                                   ) : (
                                     <input

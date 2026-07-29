@@ -1,12 +1,8 @@
-{{> healing-note ran=false}}
 Your program did not compile:
 
 ```
 {{error}}
 ```
 
-Your entire response is treated as TypeScript code. Any non-TypeScript code in
-the response will cause the compilation to fail.
-
-If the task is complete, call `harness.finish()` with a summary to signal
-completion.
+Your entire response is treated as TypeScript. Anything else in it fails the
+compilation.

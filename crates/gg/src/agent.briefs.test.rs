@@ -3,33 +3,28 @@
 //!
 //! A brief is model-facing product text like the system prompt, and its prose is a
 //! [template](crate::prompts) like the system prompt's. What is tested *here* rather than beside the
-//! templates is the property the **loop** depends on — the *ending each brief teaches*, which is the
-//! one thing a brief can get wrong that costs a whole review round or a whole speculation without
-//! failing anything. Each builder takes a `code` flag, and under
-//! [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) there is no final message to end and no
-//! stopping that is not a [`finish`](FINISH_FUNCTION) call. A brief that teaches the wrong ending
-//! fails silently — the child does the work, never reaches `completed`, and everything gated on that
-//! status quietly discards it.
+//! templates is what the **loop** depends on: that a brief describes the work and nothing else.
+//!
+//! In particular no brief teaches an ending. It cannot usefully: an agent's ending calls are decided
+//! by the [role](crate::ending::EndingRole) it was dispatched in, they are the only ones in its
+//! scope, and the system prompt has already named them. A brief that restated one would be a second
+//! authority on the contract — and the mode-dependent version of that restatement is what used to
+//! send a code-mode reviewer looking for a final message to end.
 
 use super::*;
 
-/// **No brief gg generates tells a code-mode agent to stop.**
+/// **No brief teaches an ending.**
 ///
-/// Under [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) there is no final message to end and no
-/// stopping that is not a [`finish`](FINISH_FUNCTION) call, and four consumers gate on the
-/// `completed` a delegated agent only reaches by calling it: the reviewer verdict, the judge
-/// verdict, the speculation candidate filter, and the worktree merge. A brief that says "then stop"
-/// or "end your final message" therefore costs a whole review loop or a whole speculation, silently
-/// — the child does its work, ends `exhausted`, and its worktree is discarded.
+/// Each brief below is the whole of what its agent was told to do, and none of them names a call, a
+/// marker line, or a way to stop. The ending is the role's, not the brief's.
 ///
-/// The briefs that *name an ending at all* are asserted together because the failure is uniform:
-/// each ending clause is one `if code` away from the tool-calling wording. The fix and attempt
-/// briefs deliberately name none — they add nothing to the task the agent was already given, and
-/// the system prompt's own "Responses as code" section is where both modes learn how a session
-/// ends — so they are only held to the negative half: whatever they say, they must not teach the
-/// ending the mode does not have.
+/// The forbidden phrases are the ones that were actually there. "End your final message with
+/// exactly one line" and "call `harness.finish()` passing exactly one verdict as its summary" were
+/// the two halves of a verdict protocol the loop then had to parse back out of prose — the reason a
+/// reviewer could reject work while naming nothing to fix, and a judge could end with no winner at
+/// all.
 #[test]
-fn no_generated_brief_tells_a_code_mode_agent_to_stop() {
+fn no_generated_brief_teaches_an_ending() {
     let attempts = [SpeculationAttempt {
         id: "sub-1".to_string(),
         branch: "gg/spec-1".to_string(),
@@ -39,81 +34,103 @@ fn no_generated_brief_tells_a_code_mode_agent_to_stop() {
         summary: "built it".to_string(),
         diff: "+ a line".to_string(),
     }];
-    let ends_a_session = [
+    let briefs = [
         (
             "review",
             build_review_brief(
                 "## Issue\nMake it work.",
                 ReviewChanges {
                     summary: " src/main.rs | 2 +-",
-                    workspace: "/work/.gg-worktrees/issue-1",
                     baseline: Some(&"0".repeat(40)),
                 },
                 Vec::new(),
-                true,
             ),
         ),
         (
             "judge",
-            build_judge_brief("Build the thing.", &attempts, &[0], true),
+            build_judge_brief("Build the thing.", &attempts, &[0]),
         ),
         (
             "merge",
-            build_merge_brief(
-                "AUTH-1",
-                "gg/issue-auth-1",
-                "both sides touched `main.rs`",
-                true,
-            ),
+            build_merge_brief("gg/issue-auth-1", "both sides touched `main.rs`"),
         ),
-    ];
-    let silent_on_the_ending = [
         (
             "fix",
-            build_fix_brief(
-                "## Issue\nMake it work.",
-                &["Fix the score.".to_string()],
-                true,
-            ),
+            build_fix_brief("## Issue\nMake it work.", &["Fix the score.".to_string()]),
         ),
         (
             "attempt",
-            build_attempt_brief("Build the thing.", 0, 3, None, true),
+            build_attempt_brief("Build the thing.", 0, 3, None),
         ),
     ];
 
-    for (name, brief) in &ends_a_session {
-        assert!(
-            brief.contains("finish("),
-            "the {name} brief never names the one call that ends a code-mode session:\n{brief}"
-        );
-    }
-    for (name, brief) in ends_a_session.iter().chain(&silent_on_the_ending) {
+    for (name, brief) in &briefs {
+        let lower = brief.to_ascii_lowercase();
         for forbidden in [
+            "finish(",
+            "harness.",
             "then stop",
             "end your final message",
             "stop with a short summary",
+            "review:",
+            "speculation judge",
         ] {
             assert!(
-                !brief.to_ascii_lowercase().contains(forbidden),
-                "the {name} brief tells a code-mode agent to `{forbidden}`:\n{brief}"
+                !lower.contains(forbidden),
+                "the {name} brief teaches an ending (`{forbidden}`):\n{brief}"
             );
         }
     }
+}
 
-    // The tool-calling arm is untouched: it still teaches the ending that mode actually has, which
-    // is what makes the `code` flag a switch rather than a rewrite.
-    let tool_calling = build_merge_brief(
-        "AUTH-1",
-        "gg/issue-auth-1",
-        "both sides touched `main.rs`",
-        false,
+/// **No brief names the harness, or the case a run is scored against.**
+///
+/// An agent is told what to do and how. That it is running under gg, inside a test case, for a
+/// score, is not information it can act on — and naming it invites a model to reason about the
+/// evaluation instead of the work.
+#[test]
+fn no_generated_brief_names_the_harness() {
+    let briefs = [
+        build_review_brief(
+            "## Issue\nMake it work.",
+            ReviewChanges {
+                summary: " src/main.rs | 2 +-",
+                baseline: None,
+            },
+            Vec::new(),
+        ),
+        build_fix_brief("## Issue\nMake it work.", &["Fix the score.".to_string()]),
+        build_merge_brief("gg/issue-auth-1", "conflict"),
+        build_attempt_brief("Build the thing.", 0, 3, None),
+    ];
+    for brief in &briefs {
+        let lower = brief.to_ascii_lowercase();
+        for forbidden in ["gg ", "gg's", "test cabinet", "the harness"] {
+            assert!(!lower.contains(forbidden), "leaked `{forbidden}`:\n{brief}");
+        }
+    }
+}
+
+/// **A fix brief always has something to act on.**
+///
+/// The list comes from a `request_changes` call, which refuses an empty one — so the template has no
+/// "the reviewer listed nothing" arm to render, and the agent is never sent back to re-read criteria
+/// it already believed it had met.
+#[test]
+fn a_fix_brief_lists_every_requested_change() {
+    let brief = build_fix_brief(
+        "## Issue\nMake it work.",
+        &[
+            "Fix the off-by-one in `step()`.".to_string(),
+            "Add a restart button.".to_string(),
+        ],
     );
+    assert!(brief.contains("## Requested changes"), "{brief}");
     assert!(
-        tool_calling.contains("stop with a short summary"),
-        "{tool_calling}"
+        brief.contains("1. Fix the off-by-one in `step()`."),
+        "{brief}"
     );
-    assert!(!tool_calling.contains("finish("), "{tool_calling}");
+    assert!(brief.contains("2. Add a restart button."), "{brief}");
 }
 
 /// **A reviewer is sent to the code, not handed it.**
@@ -129,17 +146,14 @@ fn the_review_brief_points_at_the_worktree_instead_of_pasting_the_diff() {
         "## Issue\nMake it work.",
         ReviewChanges {
             summary: " src/main.rs      |  12 ++++--\n package-lock.json | 900 ++++++++",
-            workspace: "/work/.gg-worktrees/issue-1",
             baseline: Some(&baseline),
         },
         Vec::new(),
-        false,
     );
 
-    // The map of what changed, and where to go read it.
+    // The map of what changed, and the commit to diff it against.
     assert!(brief.contains("src/main.rs"), "{brief}");
-    assert!(brief.contains("/work/.gg-worktrees/issue-1"), "{brief}");
-    assert!(brief.contains(&format!("Baseline: {baseline}")), "{brief}");
+    assert!(brief.contains(&baseline), "{brief}");
     // …but no patch: nothing tells the reviewer it was given one, and no diff fence is opened.
     assert!(!brief.contains("```diff"), "{brief}");
     assert!(
@@ -153,18 +167,12 @@ fn the_review_brief_points_at_the_worktree_instead_of_pasting_the_diff() {
         "## Issue\nMake it work.",
         ReviewChanges {
             summary: "",
-            workspace: "/work",
             baseline: None,
         },
         Vec::new(),
-        false,
     );
-    assert!(no_baseline.contains("/work"), "{no_baseline}");
-    assert!(!no_baseline.contains("Baseline:"), "{no_baseline}");
-    assert!(
-        no_baseline.contains("No changes were detected"),
-        "{no_baseline}"
-    );
+    assert!(!no_baseline.contains("Against `"), "{no_baseline}");
+    assert!(no_baseline.contains("Nothing changed"), "{no_baseline}");
 }
 
 /// **A blocked agent says what it is blocked on.**

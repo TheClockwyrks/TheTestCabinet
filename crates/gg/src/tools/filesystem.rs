@@ -421,7 +421,7 @@ impl ReadFileTool {
 
         if size > IMAGE_ATTACH_CAP {
             let why = format!(
-                "the image is larger than gg's {} display limit",
+                "the image is larger than the {} display limit",
                 human_bytes(IMAGE_ATTACH_CAP)
             );
             return ToolOutcome::ok(

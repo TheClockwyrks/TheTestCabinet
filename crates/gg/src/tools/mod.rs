@@ -67,9 +67,9 @@ use serde_json::Value;
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_COMPACTION, CAPABILITY_EDIT_FILE, CAPABILITY_FSM,
     CAPABILITY_LIST_DIR, CAPABILITY_MEMORIES, CAPABILITY_PLANNING, CAPABILITY_PROJECT_MANAGEMENT,
-    CAPABILITY_READ_FILE, CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE,
-    CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WORKFLOWS, CAPABILITY_WRITE_FILE,
-    GgAgentConfig,
+    CAPABILITY_READ_FILE, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL, CAPABILITY_SKILLS,
+    CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WORKFLOWS,
+    CAPABILITY_WRITE_FILE, GgAgentConfig,
 };
 
 use crate::archive::ArchiveStore;
@@ -735,7 +735,7 @@ impl ToolRegistry {
                 .and_then(|capability| capability.implementation.as_deref()),
             capabilities.is_enabled(CAPABILITY_MEMORIES),
         )
-        .offers_compact_tool()
+        .offers_compact_tool(capabilities.is_enabled(CAPABILITY_RESPONSES_AS_CODE))
             && capabilities.is_enabled(CAPABILITY_COMPACTION)
         {
             tools.push(Box::new(context::CompactTool));

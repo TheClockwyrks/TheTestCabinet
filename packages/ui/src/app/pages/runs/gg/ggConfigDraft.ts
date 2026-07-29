@@ -43,7 +43,6 @@ import {
   PRIMARY_SLOT,
   ROOT_AGENT,
   RUN_LIMIT_SPECS,
-  lockedImplementation,
   type CapSpec,
   type ParamSpec,
 } from "./ggCatalog";
@@ -1152,14 +1151,7 @@ function agentConfigFromDraft(
   const capabilities: GgCapabilityConfig[] = CAPABILITIES.map((cap) => {
     const capDraft = agent.capabilities[cap.id] ?? blankCapabilityDraft();
     const parsed = capabilityParams(cap, capDraft, agentName);
-    // A capability another one on this agent fixes the implementation of is written with
-    // the fixed value, so the stored configuration says what the run will actually do
-    // rather than what the operator last picked before switching modes.
-    const impl = (
-      lockedImplementation(cap, agent.capabilities) ??
-      capDraft.implementation ??
-      ""
-    ).trim();
+    const impl = (capDraft.implementation ?? "").trim();
     return {
       id: cap.id,
       enabled: Boolean(capDraft.enabled),

@@ -16,6 +16,7 @@ use std::time::Duration;
 
 use super::invoker::{SandboxRefusal, SandboxToolCall};
 use super::transpile::{TranspileError, UnreachableTail};
+use crate::ending::Ending;
 use crate::model::ImageContent;
 
 /// Everything one program produced — its effects, its exhaust, and how it ended.
@@ -59,22 +60,22 @@ pub struct SandboxOutcome {
     /// the only way to show gg a value is to log it. What the loop does with this is tell the model
     /// so, once, on the turn it happened, rather than leaving it to infer a rule from an absence.
     pub returned_value: bool,
-    /// The completion the program declared with `finish`, or `None` if it never did — or lost it.
-    /// `Some` ends the session.
+    /// The ending the program declared, or `None` if it never did — or lost it. `Some` ends the
+    /// session.
     ///
     /// It rides in the group populated on **every** path rather than inside
     /// [`result`](Self::result), because the flag lives in the agent's host-side context: it is set
     /// while the program runs and survives whatever happens to the program afterwards, including a
     /// trap that leaves no result at all.
     ///
-    /// It is not, however, unconditional. A program that declared the run over and then **failed** —
-    /// an uncaught throw, or a sandbox ceiling — loses the ending to
-    /// [`revoked_completion`](Self::revoked_completion), because the summary it wrote describes
+    /// It is not, however, unconditional. A program that declared its session over and then
+    /// **failed** — an uncaught throw, or a sandbox ceiling — loses the ending to
+    /// [`revoked_completion`](Self::revoked_completion), because the declaration it made rests on
     /// checks the program never finished running.
     pub completion: Option<ProgramCompletion>,
-    /// The summary of a completion the program declared and then lost by failing, so the turn's
-    /// feedback can say the ending was cancelled and why. `None` on every other path.
-    pub revoked_completion: Option<String>,
+    /// The ending a program declared and then lost by failing, so the turn's feedback can say the
+    /// ending was cancelled and why. `None` on every other path.
+    pub revoked_completion: Option<Ending>,
     /// The wall-clock time the program's **own execution** took — the guest's setup, the program,
     /// and every value marshalled across the membrane, but **not** time parked in a bridged tool
     /// call, so it is the same guest-only cost the [timeout](SandboxError::Timeout) is measured
@@ -128,20 +129,20 @@ impl SandboxOutcome {
     }
 }
 
-/// A program's declaration that the run is complete — the flag `finish(summary)` set in the agent's
-/// host-side context.
+/// A program's declaration that its session is over — the flag one of the
+/// [ending calls](crate::ending::EndingRole) set in the agent's host-side context.
 ///
-/// It is a record rather than a bare `String` because the earlier calls are a fact worth keeping.
-/// `finish` does not stop a program, so calling it more than once is an ordinary shape — two branches
-/// that both run, a call inside a loop — and the **last** summary is the one the run ends on, written
-/// with the most of the program's work behind it. The loop mentions the replacements on the
-/// operator's stream; nothing about them is a failure.
+/// It is a record rather than a bare [`Ending`] because the earlier calls are a fact worth keeping.
+/// An ending call does not stop a program, so making one more than once is an ordinary shape — two
+/// branches that both run, a call inside a loop — and the **last** declaration is the one the session
+/// ends on, made with the most of the program's work behind it. The loop mentions the replacements on
+/// the operator's stream; nothing about them is a failure.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProgramCompletion {
-    /// The summary the program last passed to `finish`, verbatim. Becomes the run's final text — for
-    /// the root agent the session's last word, for a subagent its return value to its spawner.
-    pub summary: String,
-    /// How many EARLIER summaries this one replaced.
+    /// What the program last declared: the summary it finished with, the verdict it returned, or the
+    /// attempt it picked.
+    pub ending: Ending,
+    /// How many EARLIER declarations this one replaced.
     pub superseded: u32,
 }
 

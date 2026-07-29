@@ -382,7 +382,7 @@ describe("GgConfigEditPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("configures a completion signal and its validation commands", async () => {
+  it("configures the completion validation gate", async () => {
     renderPage();
     fireEvent.change(await screen.findByPlaceholderText("e.g. no-compaction"), {
       target: { value: "gated" },
@@ -392,10 +392,12 @@ describe("GgConfigEditPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /Process & quality/i }));
     fireEvent.click(screen.getByRole("checkbox", { name: /^Completion/i }));
 
-    fireEvent.change(
-      screen.getByRole("combobox", { name: /Completion signal/i }),
-      { target: { value: "explicit-call" } },
-    );
+    // There is no signal to pick: how an agent ends is its dispatched role's, not its
+    // profile's, so the capability offers the gate and nothing else.
+    expect(
+      screen.queryByRole("combobox", { name: /Completion signal/i }),
+    ).not.toBeInTheDocument();
+
     fireEvent.click(screen.getByRole("button", { name: "+ Add command" }));
     fireEvent.change(screen.getByPlaceholderText("e.g. npm run build"), {
       target: { value: "npm test" },
@@ -414,45 +416,10 @@ describe("GgConfigEditPage", () => {
         (c: { id: string }) => c.id === "completion",
       );
     expect(completion.enabled).toBe(true);
-    expect(completion.implementation).toBe("explicit-call");
+    expect(completion.implementation).toBeUndefined();
     expect(completion.params).toEqual({
       validation: [{ command: "npm test", cwd: "game" }],
     });
-  });
-
-  // Every code-mode reply is a program, and the only way one stops is by calling
-  // `finish` — so the picker offers no choice gg would ignore.
-  it("fixes the completion signal on a responses-as-code agent", async () => {
-    renderPage();
-    fireEvent.change(await screen.findByPlaceholderText("e.g. no-compaction"), {
-      target: { value: "code-mode" },
-    });
-    openFirstAgent();
-    fireEvent.click(
-      screen.getByRole("checkbox", { name: /^Responses as code/i }),
-    );
-    fireEvent.click(screen.getByRole("button", { name: /Process & quality/i }));
-    fireEvent.click(screen.getByRole("checkbox", { name: /^Completion/i }));
-
-    const signal = screen.getByRole("combobox", {
-      name: /Completion signal/i,
-    }) as HTMLSelectElement;
-    expect(signal).toBeDisabled();
-    expect(signal.value).toBe("explicit-call");
-    expect(
-      screen.queryByRole("option", { name: /Plain text/i }),
-    ).not.toBeInTheDocument();
-    saveAgent();
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Create configuration" }),
-    );
-    await waitFor(() => expect(createGgConfig).toHaveBeenCalledTimes(1));
-    const completion =
-      createGgConfig.mock.calls[0]![0].capabilitySet.agents[0].capabilities.find(
-        (c: { id: string }) => c.id === "completion",
-      );
-    expect(completion.implementation).toBe("explicit-call");
   });
 
   it("stores no system-prompt override unless it is edited", async () => {

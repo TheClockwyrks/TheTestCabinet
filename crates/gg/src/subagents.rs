@@ -42,6 +42,8 @@ use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 
 use serde_json::Value;
+
+use crate::ending::Ending;
 use test_cabinet_core::gg::{CAPABILITY_SUBAGENTS, GgCapabilitySet};
 use tokio::sync::{mpsc, oneshot};
 
@@ -113,12 +115,19 @@ fn positive_usize(params: &Value, key: &str) -> Option<usize> {
 /// [return value](https://docs.testcabinet.ai/gg/subagents/).
 #[derive(Debug, Clone)]
 pub struct AgentReturn {
-    /// The subagent's final assistant message, or a short status line when its loop produced no
-    /// final text. This is what `wait_for_subagents` delivers to the parent.
+    /// The subagent's final text — its ending's own words, or a short status line when its loop
+    /// produced none. This is what `wait_for_subagents` delivers to the parent.
     pub summary: String,
     /// How the subagent's loop ended (`"completed"`, `"exhausted"`, `"model_error"`, …), so the
     /// parent can tell a clean return from a failed one.
     pub status: &'static str,
+    /// What the subagent **declared** when it ended, when it ended by declaring something.
+    ///
+    /// A dispatcher that asked for a *verdict* rather than for work reads this rather than
+    /// [`summary`](Self::summary): a reviewer's approval and a judge's pick are structured facts,
+    /// and turning one into prose so it can be parsed back is exactly the round trip that used to
+    /// let a reviewer reject work while naming nothing to fix.
+    pub ending: Option<Ending>,
 }
 
 /// A live handle the parent keeps for one spawned child: enough to **message** it while it runs

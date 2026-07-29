@@ -26,7 +26,6 @@ renders a test case's [`prompt.hbs`](/testing/end-to-end/overview/#prompt-templa
 | `code-sandbox-error.hbs`   | The turn feedback for a [program](/gg/responses-as-code/) the sandbox could not run to a result — a memory ceiling or a trap.                                                          |
 | `code-timeout.hbs`         | The turn feedback for a [program](/gg/responses-as-code/) the sandbox stopped at its execution timeout — its own message, because a timeout means a program that did not terminate.    |
 | `code-not-a-program.hbs`   | The turn feedback for a reply that was not a program at all — prose, empty, comments only, or several candidate blocks.                                                                |
-| `healing-note.hbs`         | The partial at the top of all five code feedback templates, disclosing what [healing](/gg/response-healing/) repaired.                                                                 |
 
 ### The briefs gg dispatches with
 
@@ -37,11 +36,11 @@ as the system prompt, so they live in the same place.
 | Template            | What it renders                                                                                                                                      |
 | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `issue-brief.hbs`   | A [board issue](/gg/project-management/) as its assigned agent is given it — title, overview, in/out of scope, and what "done" means.                |
-| `review-brief.hbs`  | The [reviewer](/gg/project-management/)'s brief: the issue brief, earlier verdicts, where the work is and what it touched, and the verdict protocol. |
+| `review-brief.hbs`  | The [reviewer](/gg/project-management/)'s brief: the issue brief, earlier verdicts, and where the work is and what it touched.                       |
 | `fix-brief.hbs`     | The brief an issue's own agent is re-dispatched with after a review requested changes — the issue brief plus the reviewer's numbered items.          |
-| `merge-brief.hbs`   | The merge agent's brief when an issue's branch conflicts: what git reported, and what finishing the merge means.                                     |
+| `merge-brief.hbs`   | The merge agent's brief when an issue's branch conflicts: which branch, and what git reported.                                                       |
 | `attempt-brief.hbs` | One attempt's brief in a [speculative execution](/gg/speculative-execution/) — the shared task and its assigned approach if any.                     |
-| `judge-brief.hbs`   | The judge's brief for a [speculative execution](/gg/speculative-execution/): the task, each candidate's own summary, and the verdict protocol.       |
+| `judge-brief.hbs`   | The judge's brief for a [speculative execution](/gg/speculative-execution/): the task and each candidate's own summary.                              |
 
 ### The rest of the loop's prose
 
@@ -55,8 +54,8 @@ as the system prompt, so they live in the same place.
 | `compaction-preface.hbs`                | The summary item a compacted thread is restarted from — the heading that frames it as a recap, then the summary itself.                         |
 | `compaction-fallback.hbs`               | The note used when the summarization call fails, so a failed summary never aborts the run it serves.                                            |
 | `compaction-memory-summary.hbs`         | What a `memory` compaction restarts the thread from: a bare note that a boundary was crossed, rather than a recap.                              |
-| `completion-missing.hbs`                | The feedback for a turn that ended without a `finish` call under an [explicit-call](/gg/completion/) signal.                                    |
-| `completion-validation-failure.hbs`     | The feedback for a completion a [validation command](/gg/completion/) rejected: which command failed, and its output.                           |
+| `completion-missing.hbs`                | The feedback for a tool-calling turn that requested no tools, naming this agent's own [ending calls](/gg/completion/#ending-calls).             |
+| `completion-validation-failure.hbs`     | The feedback for an ending a [validation command](/gg/completion/) rejected: which command failed, and its output.                              |
 | `context-pressure.hbs`                  | The per-turn [context-pressure](/gg/agent-managed-context/) signal — how full the window is, what is filling it, and how to reclaim space.      |
 | `fsm-tdd-*.hbs`, `fsm-plan-first-*.hbs` | One file per state of the two built-in [FSM](/gg/fsms/) machines: the guidance the model reads for as long as that state drives the run.        |
 
@@ -101,7 +100,7 @@ on the run's execution mode. An operator's per-agent template override still ren
 the same context in either mode; the console seeds its editor with whichever built-in default
 matches the agent's mode.
 
-The code arm teaches four things the tool-calling arm has no need of, and each is gated on
+The code arm teaches two things the tool-calling arm has no need of, and each is gated on
 something about the run:
 
 - **What a reply _is_.** The model's whole reply is the program: no fence, no language
@@ -119,17 +118,14 @@ something about the run:
   it did — and a model that tested the claim would learn that gg's rules are negotiable.
   The armed arm therefore states the repair honestly and calls it a repair rather than
   the contract.
-- **How the run ends**: `finish(summary)`, and nothing else. The signature and its
-  documentation are interpolated from the sandbox's own catalogue, like every tool
-  signature, and the section is gated on the run being in code mode at all — a
-  tool-calling run can never be shown a function it has no way to call.
-- **Whose ending it is**, gated on whether the agent is a **delegated** worker rather than
-  the run's root. A subagent renders this same prompt, and a model told "this ends the
-  run" while it is a delegated worker has a strong reason not to call it — and a worker
-  that never calls it never returns the verdict an [issue review](/gg/project-management/) or a
-  [speculation](/gg/speculative-execution/) judge is waiting for. The same fix runs
-  through the briefs gg generates for those roles: in code mode they ask for a `finish`
-  call rather than for a final message.
+
+Both arms then carry an **Ending your session** section naming this agent's own
+[ending calls](/gg/completion/#ending-calls) — `finish`, the two review verdicts, or
+`selectWinner` — spelled the way that execution mode writes them. It is the only place
+the ending is taught: the briefs gg dispatches with say nothing about it, because a brief
+that restated the contract would be a second authority on it, arriving later in the
+context and therefore winning any disagreement. That is how a code-mode reviewer once came
+to be told to end with a final message its protocol does not have.
 
 ## The pinned blocks carry state, not instructions
 

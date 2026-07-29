@@ -22,9 +22,9 @@
  * The order is `ALL_TOOL_NAMES`' order, so the prompt lists tools in the same sequence gg documents
  * them everywhere else.
  *
- * One model-facing function is deliberately **not** in either array — {@link SESSION_ENTRY}, the call
- * that ends the run. It is not a gg tool, and cataloguing it as one would break the very bijection
- * consumer 2 exists to check.
+ * The model-facing functions that **end a session** are deliberately not in either array — see
+ * {@link SESSION_ENTRIES}. None of them is a gg tool, and cataloguing them as ones would break the
+ * very bijection consumer 2 exists to check.
  */
 
 /** One tool: gg's name for it, this SDK's function name, and the module that exports it. */
@@ -49,8 +49,12 @@ export interface CatalogueEntry {
  *
  * The names are model-facing product surface, chosen for what a model already expects the object to
  * mean: `fs` for the workspace filesystem, `system` for running commands, `project` for the
- * epic/issue board, `agents` for delegation, `harness` for the two calls that are about the run
+ * epic/issue board, `agents` for delegation, `harness` for the calls that are about the session
  * itself rather than the workspace (`finish`, and the documentation lookup).
+ *
+ * The two role-shaped ending objects — `review` and `judge` — are named on {@link SESSION_ENTRIES}
+ * instead, because they are grouped by *role* rather than by module: all three groups are exported
+ * by the one `session` module.
  */
 export const OBJECT_FOR_MODULE: Readonly<Record<string, string>> = {
   shell: "system",
@@ -125,17 +129,42 @@ export const HELPER_CATALOGUE: readonly HelperEntry[] = [
   { js: "readTextFile", requires: "read_file" },
 ];
 
+/** Which group of ending functions a program is given, mirroring the WIT's `ending-kind`. */
+export type EndingKind = "standard" | "review" | "judge";
+
+/** One model-facing ending function: what it is called, where it is grouped, and which role has it. */
+export interface SessionEntry {
+  /** The exported function name a program calls. */
+  js: string;
+  /** The API object it is grouped under in a program's scope. */
+  object: string;
+  /** The role whose programs it is bound for. Exactly one group is bound per program. */
+  ending: EndingKind;
+}
+
 /**
- * The one model-facing function that is not a gg tool: the call that ends the run.
+ * Every model-facing function that ends a session — none of them a gg tool.
  *
- * A constant rather than an array because there is exactly one, and rather than a `TOOL_CATALOGUE`
- * entry because it has no gg tool name — putting it there would break the bijection
- * `boundTools() == ALL_TOOL_NAMES \ TURN_LEVEL_TOOLS` that the committed component is checked
- * against.
+ * They are here rather than in {@link TOOL_CATALOGUE} because they have no gg tool names: putting
+ * them there would break the bijection `boundTools() == ALL_TOOL_NAMES \ TURN_LEVEL_TOOLS` that the
+ * committed component is checked against.
  *
- * Its two consumers are the same two the catalogue has: the shim binds `js` into **every** program's
- * scope, unconditionally and ungated by any capability, and `tools/signatures.mjs` reflects the
- * declaration and JSDoc out of `module`'s emitted `.d.ts` so the system prompt can teach a model how
- * to end its run.
+ * An ending is a **result**, and a role's result has a shape: work reports what was done, a review
+ * returns a verdict, a judgement names a winner. So there is one function per shape, each carrying
+ * exactly what that result is made of, and the shim binds only the group matching the `ending` the
+ * host passed to `run`. A reviewer's program has no `finish` in scope at all — not a `finish` the
+ * host refuses — which is the same capability model the tools use.
+ *
+ * Two consumers, the same two the catalogue has: the shim binds these into a program's scope, and
+ * `tools/signatures.mjs` reflects each declaration and its JSDoc out of `session`'s emitted `.d.ts`
+ * so the prompt can teach a model the ending it is actually held to.
  */
-export const SESSION_ENTRY: { js: string; module: string } = { js: "finish", module: "session" };
+export const SESSION_ENTRIES: readonly SessionEntry[] = [
+  { js: "finish", object: "harness", ending: "standard" },
+  { js: "approve", object: "review", ending: "review" },
+  { js: "requestChanges", object: "review", ending: "review" },
+  { js: "selectWinner", object: "judge", ending: "judge" },
+];
+
+/** The module every {@link SESSION_ENTRIES} function is exported by. */
+export const SESSION_MODULE = "session";

@@ -578,12 +578,6 @@ fn a_classified_response_is_counted_but_not_healed() {
         "both applications must be recorded"
     );
     assert!(!result.rewritten(), "a classified response is not a heal");
-    assert_eq!(
-        result.notes().len(),
-        1,
-        "the verdict must not be rendered twice: {:?}",
-        result.notes()
-    );
 }
 
 /// A reply with no text but native tool calls is told what it actually did, rather than that it was
@@ -942,101 +936,4 @@ fn the_several_blocks_message_names_the_count() {
         reason.message()
     );
     assert!(reason.short().contains('7'), "{}", reason.short());
-}
-
-/// Every repair renders a clause the model can learn from, and the two classifications render none —
-/// they are verdicts, and the not-a-program message already carries them.
-///
-/// The `match` is exhaustive over `HealingDetail`, so a new variant cannot ship without deciding
-/// what the model is told about it.
-#[test]
-fn every_detail_renders_a_note() {
-    let details = [
-        HealingDetail::Fence {
-            close: FenceClose::Fenced,
-            ignored: 0,
-            ignored_code: 0,
-        },
-        HealingDetail::Fence {
-            close: FenceClose::Glued,
-            ignored: 1,
-            ignored_code: 0,
-        },
-        HealingDetail::Fence {
-            close: FenceClose::Unterminated,
-            ignored: 2,
-            ignored_code: 1,
-        },
-        HealingDetail::Prose {
-            leading: 2,
-            trailing: 1,
-        },
-        HealingDetail::Prose {
-            leading: 0,
-            trailing: 3,
-        },
-        HealingDetail::Imports { lines: 1 },
-        HealingDetail::Async {
-            wrapper: AsyncWrapper::Function,
-            awaits: 3,
-        },
-        HealingDetail::Async {
-            wrapper: AsyncWrapper::Iife,
-            awaits: 0,
-        },
-        HealingDetail::CommentOnly,
-        HealingDetail::ProseOnly,
-        HealingDetail::DuplicateProgram,
-        HealingDetail::SeveralPrograms,
-    ];
-    for detail in details {
-        let note = detail.note();
-        match detail {
-            HealingDetail::CommentOnly
-            | HealingDetail::ProseOnly
-            | HealingDetail::SeveralPrograms => {
-                assert!(
-                    note.is_none(),
-                    "a verdict rendered a repair clause: {detail:?}"
-                );
-            }
-            HealingDetail::Fence { .. }
-            | HealingDetail::Prose { .. }
-            | HealingDetail::Imports { .. }
-            | HealingDetail::DuplicateProgram
-            | HealingDetail::Async { .. } => {
-                let note = note.expect("a repair with no model-facing clause");
-                assert!(!note.is_empty(), "{detail:?}");
-                assert!(
-                    !note.contains("1 lines") && !note.contains("1 awaits"),
-                    "a plural where the count is one: {note}"
-                );
-            }
-        }
-    }
-
-    // The exact wording of the counted clauses, since it is a product surface rather than a comment.
-    assert_eq!(
-        HealingDetail::Prose {
-            leading: 2,
-            trailing: 1
-        }
-        .note()
-        .unwrap(),
-        "removed 2 lines of explanation before your program and 1 after it"
-    );
-    assert_eq!(
-        HealingDetail::Imports { lines: 1 }.note().unwrap(),
-        "removed 1 import line — every tool is already in scope, and there is nothing to import"
-    );
-    assert_eq!(
-        HealingDetail::Async {
-            wrapper: AsyncWrapper::Function,
-            awaits: 3
-        }
-        .note()
-        .unwrap(),
-        "unwrapped the async function you wrapped your program in, and removed its 3 awaits — \
-         every tool function is synchronous and returns its value directly"
-    );
 }

@@ -108,6 +108,7 @@ pub use {
     transpile::UnreachableTail,
 };
 
+use crate::ending::EndingRole;
 use crate::tools::{TURN_LEVEL_TOOLS, ToolRegistry};
 use membrane::{MembraneParts, MembraneState, Sandbox};
 
@@ -115,13 +116,15 @@ use membrane::{MembraneParts, MembraneState, Sandbox};
 /// against exactly `enabled`'s tools, and report everything that happened.
 ///
 /// `program` is the **TypeScript** the model emitted. `enabled` is the run's scope-bound gg tool
-/// names ([`scope_tools`]). `deadline` is the run's wall-clock budget, consulted before every
-/// bridged call so a program cannot outlive the run it belongs to. Synchronous and CPU-bound, so
+/// names ([`scope_tools`]) and `role` the agent's [ending role](EndingRole) — together, exactly what
+/// the program's scope is built from. `deadline` is the run's wall-clock budget, consulted before
+/// every bridged call so a program cannot outlive the run it belongs to. Synchronous and CPU-bound, so
 /// the [loop](crate::agent) runs it on `spawn_blocking`; it performs no I/O of its own — every
 /// effect goes through `invoker`.
 pub fn run_program<A: ToolApi>(
     program: &str,
     enabled: &[String],
+    role: EndingRole,
     limits: SandboxLimits,
     deadline: Option<Instant>,
     api: A,
@@ -154,7 +157,10 @@ pub fn run_program<A: ToolApi>(
         Ok(linker) => linker,
         Err(error) => return (SandboxOutcome::before_start(error), api),
     };
-    let mut store = bounded_store(MembraneState::new(api, enabled, limits, deadline), limits);
+    let mut store = bounded_store(
+        MembraneState::new(api, enabled, role, limits, deadline),
+        limits,
+    );
 
     let bound = match Sandbox::instantiate(&mut store, component, &linker) {
         Ok(bound) => bound,
@@ -168,7 +174,7 @@ pub fn run_program<A: ToolApi>(
     };
 
     let returned = bound
-        .call_run(&mut store, &transpiled.js, enabled)
+        .call_run(&mut store, &transpiled.js, enabled, role.into())
         .map_err(|error| engine::classify(&store, limits, &error, SandboxError::Trap));
     // A program the sandbox stopped did not run to its end, so an ending it declared on the way is
     // revoked here for the same reason a throw revokes one in the guest's `catch`: `finish` is a
@@ -303,7 +309,13 @@ pub(crate) fn component_bound_tools() -> Result<Vec<String>, SandboxError> {
     let log = fake::CallLog::default();
     // No tools are bound: the guest reports what it *can* bind, which does not depend on what this
     // particular store enables.
-    let state = MembraneState::new(fake::FakeToolApi::new(&log), &[], limits, None);
+    let state = MembraneState::new(
+        fake::FakeToolApi::new(&log),
+        &[],
+        EndingRole::Standard,
+        limits,
+        None,
+    );
     let mut store = bounded_store(state, limits);
 
     let bound = Sandbox::instantiate(&mut store, component, &linker)

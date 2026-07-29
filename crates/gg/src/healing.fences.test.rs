@@ -98,20 +98,16 @@ fn a_non_program_tag_beside_a_program_block_is_ignored_not_run() {
             ignored_code: 0
         }
     );
-    assert_eq!(
-        result.notes(),
-        vec![
-            "removed the Markdown code fence you wrapped it in, and left 1 other fenced block \
-             where it was — it was not code"
-        ]
-    );
 }
 
-/// A left-behind block that **looked like code** gets its own sentence, because that is the one
-/// shape where "gg removed the wrapper" understates what happened: part of what the model sent did
-/// not run, and it has to know.
+/// A left-behind block that **looked like code** is recorded as such, because that is the one shape
+/// where the repair understates what happened: part of what the model sent did not run.
+///
+/// It is a *record*, not a message. Healing is invisible to the model — a repaired reply is simply
+/// the reply that runs — so what this fact feeds is the telemetry a study reads, never a paragraph
+/// at the top of a turn explaining what gg did to the model's words.
 #[test]
-fn an_ignored_block_that_looked_like_code_is_named_in_the_note() {
+fn an_ignored_block_that_looked_like_code_is_recorded() {
     let result = healed(
         "The manifest currently reads:\n\n\
          ```json\n{\n  \"name\": \"x\"\n}\n```\n\n\
@@ -124,13 +120,6 @@ fn an_ignored_block_that_looked_like_code_is_named_in_the_note() {
             ignored: 1,
             ignored_code: 1
         }
-    );
-    let note = &result.notes()[0];
-    assert!(note.contains("that block looked like code"), "{note}");
-    assert!(note.contains("did NOT run"), "{note}");
-    assert!(
-        note.contains("send your whole program as one reply, with no fences"),
-        "{note}"
     );
 }
 
@@ -171,12 +160,6 @@ fn an_unterminated_fence_runs_to_the_end_of_the_response() {
             ignored_code: 0
         }
     );
-    assert_eq!(
-        result.notes(),
-        vec![
-            "closed the Markdown code fence you opened and never closed, and ran everything after it"
-        ]
-    );
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -212,8 +195,6 @@ fn the_round_one_glued_closing_fence_is_healed() {
             ignored_code: 0
         }
     );
-    let note = &result.notes()[0];
-    assert!(note.contains("does not close a fence"), "{note}");
 }
 
 /// The glued **open** — a sentence and the next fence on one line — is recognised as opening a
@@ -545,7 +526,7 @@ fn a_doubly_fenced_response_unwraps_twice_and_says_so() {
         result.strategies(),
         vec![HealingStrategy::StripFences, HealingStrategy::StripFences]
     );
-    assert_eq!(result.notes().len(), 2);
+    assert_eq!(result.applied.len(), 2);
 }
 
 /// A reply written with Windows line endings heals like any other, and the program keeps the

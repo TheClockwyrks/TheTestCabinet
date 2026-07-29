@@ -21,12 +21,12 @@
 //! schema already declares, call, and convert the [structured sidecar](crate::tools::ToolData) into
 //! its typed WIT result.
 //!
-//! Exactly four functions dispatch nothing and therefore bypass it. The three
+//! A handful of functions dispatch nothing and therefore bypass it. The three
 //! [turn-level transitions](turns) are refused, because a mode change is not a value a program can
-//! compose. And [`finish`](session) — the one model-facing function on this membrane that is not a
-//! gg tool — sets this agent's completion flag through [`MembraneState::complete`], because ending
-//! the run is the one thing a program may ask for that no capability governs and no spent budget may
-//! withhold.
+//! compose. And the four [session-ending calls](session) — the model-facing functions on this
+//! membrane that are not gg tools — set this agent's ending flag through
+//! [`MembraneState::declare`], because ending a session is the one thing a program may ask for that
+//! no capability governs and no spent budget may withhold.
 //!
 //! # The state is the agent's, not the program's
 //!
@@ -56,7 +56,8 @@ use std::time::{Duration, Instant};
 
 use super::invoker::{SandboxRefusal, SandboxToolCall, ToolApi};
 use super::limits::{MemoryLimiter, SandboxLimits};
-use super::{FINISH_FUNCTION, ProgramCompletion, ProgramError, ProgramErrorKind};
+use super::{ProgramCompletion, ProgramError, ProgramErrorKind};
+use crate::ending::{Ending, EndingRole};
 use crate::model::ImageContent;
 use crate::tools::{ToolData, ToolFailure, ToolOutcome};
 
@@ -73,6 +74,21 @@ wasmtime::component::bindgen!({ world: "sandbox", path: "wit" });
 
 use test_cabinet::gg::feedback;
 use test_cabinet::gg::types::{self, ErrorCode, ToolError};
+
+/// The guest is handed the same [role](EndingRole) the host holds, so the ending calls bound into a
+/// program's scope and the ones this membrane will accept are decided once, from one value.
+///
+/// The judge's attempt count does not cross: the guest has no use for it (its own check is only that
+/// the number is a positive integer) and the range is the host's to enforce, at the call.
+impl From<EndingRole> for EndingKind {
+    fn from(role: EndingRole) -> Self {
+        match role {
+            EndingRole::Standard => Self::Standard,
+            EndingRole::Review => Self::Review,
+            EndingRole::Judge { .. } => Self::Judge,
+        }
+    }
+}
 
 /// The per-[`Store`](wasmtime::Store) host state: the tool bridge, the memory limiter, the run's
 /// wall-clock deadline, and everything the program accumulated on its way to a result.
@@ -136,19 +152,23 @@ pub(crate) struct MembraneState<A: ToolApi> {
     /// value itself never crosses the membrane; only the fact does, so the turn's feedback can point
     /// the model at `console.log`.
     returned_value: bool,
-    /// The completion the program declared with [`FINISH_FUNCTION`]: the flag this agent's context
-    /// holds for the loop to read once the program has ended. `Some` ends the session.
+    /// The ending the program declared with one of its [ending calls](crate::ending::EndingRole):
+    /// the flag this agent's context holds for the loop to read once the program has ended. `Some`
+    /// ends the session.
     ///
-    /// It is a **flag**, not a control-flow event: `finish` sets it and returns, the program carries
-    /// on, and a later `finish` replaces the summary. [`revoke_completion`](Self::revoke_completion)
+    /// It is a **flag**, not a control-flow event: the call sets it and returns, the program carries
+    /// on, and a later call replaces the declaration. [`revoke_completion`](Self::revoke_completion)
     /// is the one thing that takes it away.
     completion: Option<ProgramCompletion>,
-    /// The summary of a completion that was revoked because the program then failed, kept so the
-    /// turn's feedback can tell the model its ending was cancelled rather than leave it wondering
-    /// why the run went on.
-    revoked_completion: Option<String>,
+    /// An ending that was revoked because the program then failed, kept so the turn's feedback can
+    /// tell the model its ending was cancelled rather than leave it wondering why the run went on.
+    revoked_completion: Option<Ending>,
     /// The throw the shim caught, if the program did not run to its end.
     program_error: Option<ProgramError>,
+    /// The agent's [ending role](EndingRole) — which ending calls the guest was given, and (for a
+    /// judge) how many attempts its pick is bounded by. The guest is handed the same role, so the
+    /// only ending calls that can reach this host are the ones it bound.
+    role: EndingRole,
 }
 
 /// Everything one program accumulated, reclaimed from the store on the way out.
@@ -177,20 +197,21 @@ pub(crate) struct MembraneParts {
     pub deferred_note: Option<String>,
     /// Whether the program ended by returning a value, which gg discarded.
     pub returned_value: bool,
-    /// The completion the program declared, when it declared one and did not lose it.
+    /// The ending the program declared, when it declared one and did not lose it.
     pub completion: Option<ProgramCompletion>,
-    /// The summary of a completion the program lost by failing afterwards.
-    pub revoked_completion: Option<String>,
+    /// The ending the program lost by failing afterwards.
+    pub revoked_completion: Option<Ending>,
     /// The program's uncaught throw, when the shim reported one.
     pub program_error: Option<ProgramError>,
 }
 
 impl<A: ToolApi> MembraneState<A> {
-    /// The state for one program: bridged through `api`, offering `enabled`'s tools, bounded by
-    /// `limits`, and stopping at `deadline`.
+    /// The state for one program: bridged through `api`, offering `enabled`'s tools and `role`'s
+    /// ending calls, bounded by `limits`, and stopping at `deadline`.
     pub(crate) fn new(
         api: A,
         enabled: &[String],
+        role: EndingRole,
         limits: SandboxLimits,
         deadline: Option<Instant>,
     ) -> Self {
@@ -217,6 +238,7 @@ impl<A: ToolApi> MembraneState<A> {
             completion: None,
             revoked_completion: None,
             program_error: None,
+            role,
         }
     }
 
@@ -298,11 +320,11 @@ impl<A: ToolApi> MembraneState<A> {
     /// Both mean the same thing — the program did not run the checks its summary claims to rest on —
     /// and the answer to both is another turn rather than an ending gg cannot vouch for.
     ///
-    /// The summary is kept in [`revoked_completion`](Self::revoked_completion) rather than dropped:
+    /// The ending is kept in [`revoked_completion`](Self::revoked_completion) rather than dropped:
     /// a model whose ending vanished with no explanation would simply write it again.
     pub(crate) fn revoke_completion(&mut self) {
         if let Some(completion) = self.completion.take() {
-            self.revoked_completion = Some(completion.summary);
+            self.revoked_completion = Some(completion.ending);
         }
     }
 
@@ -346,49 +368,50 @@ impl<A: ToolApi> MembraneState<A> {
         })
     }
 
-    /// Set this agent's completion flag: the program's declaration that the run is complete.
+    /// Set this agent's ending flag: the program's declaration that its session is over.
     ///
     /// It bypasses [`dispatch`](Self::dispatch) entirely, and both of that function's guards are
     /// wrong here: the enabled-set guard would refuse a call that is not a tool at all, and the
-    /// deadline guard would withhold the exit at exactly the moment a run most needs it. Finishing
+    /// deadline guard would withhold the exit at exactly the moment a run most needs it. Ending
     /// performs no work, so there is nothing for a spent budget to protect.
     ///
     /// **It is a flag, and setting it is all this does.** The call returns, the program runs on, and
     /// the [loop](crate::agent) reads the flag once the program has ended. That is the whole of the
     /// mechanism: no unwind, no exception a program could catch or fail to catch, and therefore no
-    /// question about what a `try`/`catch` around the work does to the run's ending.
+    /// question about what a `try`/`catch` around the work does to the session's ending.
     ///
     /// **Last call wins**, and the replacements are counted in
-    /// [`ProgramCompletion::superseded`]. With no unwind, calling it twice is an ordinary thing for a
-    /// program to do — a `finish` on two branches that both run, a `finish` inside a loop — and the
-    /// later summary is the one written with more of the program's work behind it. The count is kept
-    /// because a program that declared the run over several times in several different words is
+    /// [`ProgramCompletion::superseded`]. With no unwind, calling one twice is an ordinary thing for
+    /// a program to do — an ending on two branches that both run, one inside a loop — and the later
+    /// declaration is the one made with more of the program's work behind it. The count is kept
+    /// because a program that declared its session over several times in several different words is
     /// worth a line on the operator's stream.
     ///
-    /// The one failure is an empty summary. It is checked **here**, at the trust boundary, rather
-    /// than in the guest: the summary becomes the run's final text and, for a subagent, its entire
-    /// answer to whoever asked for the work, so "the run is over and I have nothing to say about it"
-    /// is not a completion gg accepts on the model's behalf.
-    fn complete(&mut self, summary: String) -> Result<(), ToolError> {
-        if summary.trim().is_empty() {
-            return Err(ToolError {
-                code: ErrorCode::InvalidArgument,
-                tool: FINISH_FUNCTION.to_string(),
-                message: format!(
-                    "`{FINISH_FUNCTION}(…)` takes a non-empty summary — one or two sentences saying \
-                     what you did. The run is NOT finished; write the summary and call it again."
-                ),
-            });
-        }
+    /// Whether the declaration is **well-formed** — a non-empty summary, a non-empty change list, an
+    /// in-range attempt — is [`Ending`]'s question, asked at this trust boundary rather than in the
+    /// guest, because these values become the agent's whole answer to whoever asked for the work.
+    fn declare(
+        &mut self,
+        ending: Result<Ending, String>,
+        call: &'static str,
+    ) -> Result<(), ToolError> {
+        let ending = ending.map_err(|message| ToolError {
+            code: ErrorCode::InvalidArgument,
+            tool: call.to_string(),
+            message,
+        })?;
         let superseded = match self.completion.take() {
             Some(previous) => previous.superseded.saturating_add(1),
             None => 0,
         };
-        self.completion = Some(ProgramCompletion {
-            summary,
-            superseded,
-        });
+        self.completion = Some(ProgramCompletion { ending, superseded });
         Ok(())
+    }
+
+    /// How many attempts a [judge](crate::ending::EndingRole::Judge) may pick between — the range
+    /// `select-winner` is checked against. Zero for every other role, which has no such call bound.
+    pub(crate) fn judged_attempts(&self) -> u32 {
+        self.role.attempts()
     }
 
     /// Bridge one call to the invoker, guarded and recorded.

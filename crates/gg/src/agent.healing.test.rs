@@ -122,14 +122,19 @@ async fn a_healed_turn_reports_what_was_healed_on_its_code_execution() {
     );
 }
 
-/// **The healing note reaches the model, on every one of the four code feedback templates.**
+/// **Healing never reaches the model.**
 ///
-/// What healing did happened to the model's *message*, not to its program, so it is equally true of
-/// a turn that ran, one that failed to compile, one the sandbox stopped, and one that was not a
-/// program at all. Repair without disclosure teaches the model nothing and corrupts the ablation —
-/// the whole question this capability exists to answer is whether models learn the contract.
+/// Every one of the four code feedback paths is driven here over a repaired reply — a program that
+/// ran, one that did not compile, one refused as not a program, and one the sandbox stopped — and
+/// none of the turns that follow says a word about the repair, or names the harness at all.
+///
+/// The note it replaces described a mechanism the model cannot invoke, disable or reason about, in
+/// gg's own name, on every repaired turn. It also had to stay honest about whether the repaired reply
+/// then *ran* — and on the two paths where nothing ran, an unconditional wording contradicted the
+/// very feedback it opened. What the model needs is the diagnostic, which it still gets, located in
+/// the healed source gg actually compiled.
 #[tokio::test]
-async fn the_healing_note_reaches_the_turn_feedback() {
+async fn healing_is_never_disclosed_to_the_model() {
     // Three of the four, in one run: a program that ran, one that did not compile, and a reply that
     // was not a program — each wrapped in the fence healing strips.
     let dir = TempDir::new().unwrap();
@@ -145,22 +150,17 @@ async fn the_healing_note_reaches_the_turn_feedback() {
     )
     .await;
 
-    // Each of the three turns after the first carries the note about the reply that preceded it.
+    let leaks = |messages: &[Message]| {
+        messages.iter().any(|message| {
+            message.content.as_deref().is_some_and(|text| {
+                text.contains("repaired your reply")
+                    || text.contains("Markdown code fence you wrapped")
+                    || text.contains("Only text was removed")
+            })
+        })
+    };
     for (turn, messages) in requests.iter().enumerate().skip(1) {
-        assert!(
-            messages.iter().any(|message| message
-                .content
-                .as_deref()
-                .is_some_and(|text| text.contains("gg repaired your reply before running it"))),
-            "turn {turn} was not told what gg did to its previous reply"
-        );
-        assert!(
-            messages.iter().any(|message| message
-                .content
-                .as_deref()
-                .is_some_and(|text| text.contains("removed the Markdown code fence"))),
-            "turn {turn} was not told *what* was repaired"
-        );
+        assert!(!leaks(messages), "turn {turn} was told what gg repaired");
     }
 
     // The fourth template: a program the sandbox stopped. Its own run, because it needs an execution
@@ -176,11 +176,8 @@ async fn the_healing_note_reaches_the_turn_feedback() {
     )
     .await;
     assert!(
-        requests[1].iter().any(|message| message
-            .content
-            .as_deref()
-            .is_some_and(|text| text.contains("gg repaired your reply before running it"))),
-        "a turn the sandbox stopped is still told what was repaired in its reply"
+        !leaks(&requests[1]),
+        "a turn the sandbox stopped was told what gg repaired"
     );
 }
 
@@ -298,13 +295,13 @@ async fn a_transpile_failure_over_prose_is_reported_as_not_a_program() {
         "and the operator's stream says so too: {error:?}"
     );
     // The feedback the model got is the one that fixes the failure: it names what a turn must look
-    // like, and it names the only thing that ends the run.
+    // like, and it names this agent's own ending call.
     assert!(
         requests[1]
             .iter()
             .any(|message| message.content.as_deref().is_some_and(|text| text
-                .contains("All responses must be pure TypeScript")
-                && text.contains("harness.finish("))),
+                .contains("Your whole response must be TypeScript")
+                && text.contains("`harness.finish`"))),
         "the model was told what to do instead"
     );
 }

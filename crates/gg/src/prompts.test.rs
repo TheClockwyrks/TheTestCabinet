@@ -1,8 +1,6 @@
 use super::*;
-use crate::healing::{
-    CandidateShape, Healed, HealingApplication, HealingDetail, HealingStrategy, HealingVerdict,
-    NotAProgramReason,
-};
+use crate::ending::EndingRole;
+use crate::healing::{CandidateShape, NotAProgramReason};
 
 /// A rendered prompt with every run of whitespace collapsed to one space.
 ///
@@ -38,7 +36,6 @@ fn full_system() -> SystemContext {
         custom_instructions: None,
         subagents: false,
         spawnable_agents: Vec::new(),
-        delegated: false,
         fences_are_stripped: true,
         read_file: ReadFileView {
             offered: true,
@@ -91,16 +88,28 @@ fn full_system() -> SystemContext {
         }),
         speculative: true,
         autoload_specs: Some(AutoloadView { locked: true }),
-        completion: CompletionView::default(),
-        compaction: Some(CompactionView {
-            trigger_percent: 80,
-            writes_summary: false,
-            calls_compact: true,
-            writes_memories: false,
-            compact_name: "compact".to_string(),
-            memory_create: "`write_memory`".to_string(),
-            memory_revise: "`update_memory`".to_string(),
-        }),
+        ending: ending_view(EndingRole::Standard, false),
+    }
+}
+
+/// The [`EndingView`] a role renders under, built the way [`crate::agent`] builds it so the tests
+/// and the loop cannot disagree about what a call is spelled.
+fn ending_view(role: EndingRole, responses_as_code: bool) -> EndingView {
+    let call = |object: &str, code: &str, tool: &str| {
+        if responses_as_code {
+            format!("{object}.{code}")
+        } else {
+            tool.to_string()
+        }
+    };
+    EndingView {
+        standard: matches!(role, EndingRole::Standard),
+        review: matches!(role, EndingRole::Review),
+        judge: matches!(role, EndingRole::Judge { .. }),
+        finish: call("harness", "finish", "finish"),
+        approve: call("review", "approve", "approve"),
+        request_changes: call("review", "requestChanges", "request_changes"),
+        select_winner: call("judge", "selectWinner", "select_winner"),
     }
 }
 
@@ -241,17 +250,25 @@ fn no_run_describes_shell_offloading() {
     }
 }
 
-/// The default (plain-text) completion section tells the model that a reply with no tool calls ends
-/// the run, and does not demand an explicit `finish` call.
+/// **The ending section always demands an explicit call**, whatever the agent's role.
+///
+/// There is no "a reply with no tool call ends the run" arm any more, in either mode. The prompt
+/// says so plainly, because the alternative is a model that answers in prose believing it has
+/// finished and is instead handed an error turn it was never warned about.
 #[test]
-fn plain_text_completion_section_says_a_tool_free_reply_ends_the_run() {
-    let prompt = render_system(&SystemContext::default(), None);
+fn the_ending_section_always_demands_an_explicit_call() {
+    let prompt = render_system(
+        &SystemContext {
+            ending: ending_view(EndingRole::Standard, false),
+            ..SystemContext::default()
+        },
+        None,
+    );
     let flat = flat(&prompt);
-    assert!(prompt.contains("## Finishing"), "{prompt}");
-    assert!(flat.contains("no tool calls"), "{prompt}");
+    assert!(prompt.contains("## Ending your session"), "{prompt}");
     assert!(
-        !flat.contains("does not end the run"),
-        "plain-text completion must not demand an explicit finish:\n{prompt}"
+        flat.contains("Nothing else ends it: a reply with no tool call is an error."),
+        "{prompt}"
     );
     assert!(!prompt.contains("\n\n\n"), "blank-line run:\n{prompt}");
 }
@@ -259,120 +276,108 @@ fn plain_text_completion_section_says_a_tool_free_reply_ends_the_run() {
 /// No run describes compaction, under any strategy or execution mode.
 ///
 /// The section that named the trigger, what survives the boundary, and what each in-loop strategy
-/// would ask of the model was trimmed from both templates (commit `108a3184`): compaction is gg's
-/// process, not the agent's, and the one moment the agent has a part to play — the turn gg asks for
-/// a summary, a `compact` call, or a round of memory writes — carries its own instructions. This
-/// pins the absence across every strategy, so re-adding the section is a deliberate edit rather
-/// than a silent one.
+/// would ask of the model is absent from both templates: compaction is gg's process, not the
+/// agent's, and the one moment the agent has a part to play — the turn gg asks for a summary, a
+/// `compact` call, or a round of memory writes — carries its own instructions. Most sessions never
+/// compact at all, so every one of them would have paid for a paragraph about a thing that never
+/// happened. This pins the absence, so re-adding the section is a deliberate edit rather than a
+/// silent one.
 #[test]
 fn no_run_describes_compaction() {
-    let base = CompactionView {
-        trigger_percent: 80,
-        compact_name: "compact".to_string(),
-        // The memory calls a scratchpad run names; the memory-compaction section interpolated
-        // them, since which memory tools exist is the memory capability's decision.
-        memory_create: "`write_memory`".to_string(),
-        memory_revise: "`update_memory`".to_string(),
-        ..CompactionView::default()
-    };
-    let strategies = [
-        None,
-        Some(base.clone()),
-        Some(CompactionView {
-            writes_summary: true,
-            ..base.clone()
-        }),
-        Some(CompactionView {
-            calls_compact: true,
-            ..base.clone()
-        }),
-        Some(CompactionView {
-            writes_memories: true,
-            ..base
-        }),
-    ];
     for responses_as_code in [false, true] {
-        for compaction in strategies.clone() {
-            // `harness` is always present in a code run — the object `finish` lives on — and the
-            // code template renders its object list, so a realistic code context carries at least
-            // it.
-            let apis = if responses_as_code {
-                vec![ApiView {
-                    object: "harness".to_string(),
-                    description: "the run itself".to_string(),
-                }]
-            } else {
-                Vec::new()
-            };
-            let prompt = render_system(
-                &SystemContext {
-                    responses_as_code,
-                    apis,
-                    compaction,
-                    ..SystemContext::default()
-                },
-                None,
-            );
-            let flat = flat(&prompt);
-            for absent in [
-                "Context compaction",
-                "80% full",
-                "You write that summary",
-                "`compact` tool",
-                "context.compact(summary, files)",
-            ] {
-                assert!(!flat.contains(absent), "leaked `{absent}`:\n{prompt}");
-            }
+        // `harness` is always present in a code run — the object `readDocs` lives on — and the code
+        // template renders its object list, so a realistic code context carries at least it.
+        let apis = if responses_as_code {
+            vec![ApiView {
+                object: "harness".to_string(),
+                description: "read documentation".to_string(),
+            }]
+        } else {
+            Vec::new()
+        };
+        let prompt = render_system(
+            &SystemContext {
+                responses_as_code,
+                apis,
+                ending: ending_view(EndingRole::Standard, responses_as_code),
+                ..SystemContext::default()
+            },
+            None,
+        );
+        let flat = flat(&prompt);
+        for absent in [
+            "compaction",
+            "Compaction",
+            "80% full",
+            "`compact`",
+            "context.compact",
+        ] {
+            assert!(!flat.contains(absent), "leaked `{absent}`:\n{prompt}");
         }
     }
 }
 
-/// The explicit-call completion section names the `finish` tool as the way to end the run.
+/// Each [role](EndingRole) is told exactly its own ending calls, in the form its execution mode
+/// writes them — and is told about no others.
 ///
-/// The validation-command listing and the "a tool-free reply does not end the run" warning were
-/// trimmed from the prompt (commit `dee15f9a`); they are re-added as the completion capability is
-/// re-validated, so this pins only what the section renders today: that explicit-call mode names
-/// its finish tool.
+/// The negative half is the load-bearing one. A reviewer that reads "call `finish` when the work is
+/// complete" has been handed a second, wrong way to end, and the one it would reach for returns no
+/// verdict at all — which leaves the issue it reviewed unaccepted.
 #[test]
-fn explicit_call_completion_section_names_the_finish_tool() {
-    let context = SystemContext {
-        completion: CompletionView {
-            explicit_call: true,
-            finish_name: "finish".to_string(),
-            validated: false,
-            validation: Vec::new(),
-        },
-        ..SystemContext::default()
-    };
-    let prompt = render_system(&context, None);
-    let flat = flat(&prompt);
-    assert!(prompt.contains("## Finishing"), "{prompt}");
-    assert!(
-        flat.contains("`finish`"),
-        "explicit-call completion names the finish tool:\n{prompt}"
-    );
-    assert!(!prompt.contains("\n\n\n"), "blank-line run:\n{prompt}");
+fn each_role_is_told_only_its_own_ending() {
+    let cases = [
+        (EndingRole::Standard, "finish", ["approve", "select_winner"]),
+        (EndingRole::Review, "approve", ["finish", "select_winner"]),
+        (
+            EndingRole::Judge { attempts: 3 },
+            "select_winner",
+            ["finish", "approve"],
+        ),
+    ];
+    for (role, present, absent) in cases {
+        let prompt = render_system(
+            &SystemContext {
+                ending: ending_view(role, false),
+                ..SystemContext::default()
+            },
+            None,
+        );
+        let flat = flat(&prompt);
+        assert!(flat.contains("## Ending your session"), "{prompt}");
+        assert!(flat.contains(&format!("`{present}`")), "{prompt}");
+        for name in absent {
+            assert!(
+                !flat.contains(&format!("`{name}`")),
+                "role {role:?} was offered `{name}`:\n{prompt}"
+            );
+        }
+        assert!(!prompt.contains("\n\n\n"), "blank-line run:\n{prompt}");
+    }
 }
 
-/// In responses-as-code mode a run ends through `harness.finish()` — the program's own ending
-/// call. (The validation-command listing that once accompanied it was trimmed in `dee15f9a` and is
-/// re-added when the completion capability is re-validated.)
+/// A code run names its ending calls in the grouped form a program actually writes.
 #[test]
-fn code_mode_completion_ends_through_harness_finish() {
-    let context = SystemContext {
-        responses_as_code: true,
-        // `harness` is always present in a code run — the object `finish` lives on — and the code
-        // template renders its object list, so a realistic context carries at least it.
-        apis: vec![ApiView {
-            object: "harness".to_string(),
-            description: "the run itself — end it with `finish`, and read documentation"
-                .to_string(),
-        }],
-        ..SystemContext::default()
-    };
-    let prompt = render_system(&context, None);
-    assert!(prompt.contains("harness.finish()"), "{prompt}");
-    assert!(!prompt.contains("\n\n\n"), "blank-line run:\n{prompt}");
+fn code_mode_names_the_grouped_ending_calls() {
+    for (role, expected) in [
+        (EndingRole::Standard, "harness.finish"),
+        (EndingRole::Review, "review.approve"),
+        (EndingRole::Judge { attempts: 2 }, "judge.selectWinner"),
+    ] {
+        let prompt = render_system(
+            &SystemContext {
+                responses_as_code: true,
+                apis: vec![ApiView {
+                    object: "harness".to_string(),
+                    description: "read documentation".to_string(),
+                }],
+                ending: ending_view(role, true),
+                ..SystemContext::default()
+            },
+            None,
+        );
+        assert!(prompt.contains(expected), "{prompt}");
+        assert!(!prompt.contains("\n\n\n"), "blank-line run:\n{prompt}");
+    }
 }
 
 /// The task section carries its tool instructions and this run's ceiling.
@@ -607,22 +612,23 @@ fn the_read_cap_is_stated_only_when_one_is_in_force() {
     assert!(!render_system(&uncapped, None).contains("lines"));
 }
 
-/// A code run with no workspace capabilities still names `harness` — a program can always end the
-/// run — and names no other object.
+/// A code run with no workspace capabilities still names `harness` — a program can always read
+/// documentation and end its session — and names no other object.
 #[test]
 fn code_mode_with_no_workspace_tools_still_names_harness() {
     let context = SystemContext {
         responses_as_code: true,
         apis: vec![ApiView {
             object: "harness".to_string(),
-            description: "the run itself".to_string(),
+            description: "read documentation".to_string(),
         }],
+        ending: ending_view(EndingRole::Standard, true),
         ..SystemContext::default()
     };
     let prompt = render_system(&context, None);
     assert!(prompt.contains("`harness`"), "{prompt}");
-    // A program can always end the run — the prompt names `finish` however it spells the call.
-    assert!(prompt.contains("finish"), "{prompt}");
+    // A program can always end its session — the prompt names the call however it spells it.
+    assert!(prompt.contains("harness.finish"), "{prompt}");
     assert!(!prompt.contains("`fs`"), "{prompt}");
 }
 
@@ -657,10 +663,10 @@ fn assert_no_blank_run(rendered: &str) {
 /// section off at once.
 fn quiet_result() -> CodeResultContext {
     CodeResultContext {
-        healing: Vec::new(),
         error: None,
         returned_value: false,
         finish_revoked: false,
+        ending_revoked: "finish".to_string(),
         calls: Vec::new(),
         call_count: 0,
         calls_suppressed: 0,
@@ -673,7 +679,6 @@ fn quiet_result() -> CodeResultContext {
         images_dropped: 0,
         image_budget: 0,
         deferred: None,
-        delegated: false,
     }
 }
 
@@ -844,26 +849,40 @@ fn the_feedback_says_when_a_finish_was_revoked() {
             location: Some("line 9, column 3".to_string()),
         }),
         finish_revoked: true,
+        ending_revoked: "finish".to_string(),
         silent: false,
         ..quiet_result()
     });
     assert!(
         flat(&threw).contains(
-            "The `harness.finish()` call was suppressed because your program did not run to \
-             completion."
+            "Your session was NOT ended: `finish` was suppressed because your program did not run \
+             to completion."
         ),
         "{threw}"
     );
 
     let stopped = render_code_sandbox_error(&CodeSandboxErrorContext {
-        healing: Vec::new(),
         error: "the program exceeded its 268435456-byte memory cap".to_string(),
         finish_revoked: true,
+        ending_revoked: "finish".to_string(),
         calls: 3,
     });
     assert!(
-        flat(&stopped).contains("The call to `harness.finish()` was suppressed due to the error."),
+        flat(&stopped)
+            .contains("Your session was NOT ended: `finish` was suppressed by the error."),
         "{stopped}"
+    );
+
+    // A reviewer is told which of *its* calls was lost, never one it does not have.
+    let reviewer = render_code_sandbox_error(&CodeSandboxErrorContext {
+        error: "the program exceeded its 268435456-byte memory cap".to_string(),
+        finish_revoked: true,
+        ending_revoked: "request_changes".to_string(),
+        calls: 3,
+    });
+    assert!(
+        flat(&reviewer).contains("`request_changes` was suppressed"),
+        "{reviewer}"
     );
 
     // And a turn that declared no ending is told nothing about one.
@@ -890,19 +909,16 @@ fn the_feedback_says_when_a_finish_was_revoked() {
 #[test]
 fn the_transpile_feedback_reports_the_diagnostic_and_the_code_only_rule() {
     let rendered = render_code_transpile_error(&CodeTranspileErrorContext {
-        healing: Vec::new(),
         error: "line 4, column 1: Expected a semicolon or an implicit semicolon after a \
                 statement, but found none | ```Consumed fuel: 24,000 / 1,000,000 budget."
             .to_string(),
-        delegated: false,
     });
     assert_eq!(
         rendered,
         "Your program did not compile:\n\n```\nline 4, column 1: Expected a semicolon or an \
          implicit semicolon after a statement, but found none | ```Consumed fuel: 24,000 / \
-         1,000,000 budget.\n```\n\nYour entire response is treated as TypeScript code. Any \
-         non-TypeScript code in\nthe response will cause the compilation to fail.\n\nIf the task \
-         is complete, call `harness.finish()` with a summary to signal\ncompletion."
+         1,000,000 budget.\n```\n\nYour entire response is treated as TypeScript. Anything else \
+         in it fails the\ncompilation."
     );
 }
 
@@ -912,316 +928,126 @@ fn the_transpile_feedback_reports_the_diagnostic_and_the_code_only_rule() {
 #[test]
 fn the_sandbox_feedback_separates_a_limit_a_timeout_and_a_mistake() {
     let memory = render_code_sandbox_error(&CodeSandboxErrorContext {
-        healing: Vec::new(),
         error: "the program exceeded its 4194304-byte memory cap".to_string(),
         finish_revoked: false,
+        ending_revoked: "finish".to_string(),
         calls: 12,
     });
     assert!(memory.contains("Your program could not be run to completion:"));
-    assert!(memory.contains("Split the task across several smaller programs, one per turn."));
-    assert!(flat(&memory).contains("The 12 tool call(s) your code made stand."));
+    assert!(memory.contains("Split the work across several smaller programs, one per turn."));
+    assert!(flat(&memory).contains("The 12 tool call(s) it made stand."));
     // A memory cap is "too heavy", not "you looped": it must not carry the timeout's runaway advice.
-    assert!(!memory.contains("infinite loops"));
+    assert!(!memory.contains("unbounded loop"));
 
     let timeout = render_code_timeout(&CodeTimeoutContext {
-        healing: Vec::new(),
         error: "the program ran longer than its 30s execution timeout and was stopped".to_string(),
         finish_revoked: false,
+        ending_revoked: "finish".to_string(),
         calls: 0,
     });
-    assert!(timeout.contains("Your code hit the execution limit:"));
-    assert!(timeout.contains("no infinite loops or unbounded recursion exists"));
+    assert!(timeout.contains("Your program hit the execution limit:"));
+    assert!(timeout.contains("Check for an unbounded loop or recursion."));
     // A timeout is not a "do less" problem, so it does not carry the "split it up" framing.
-    assert!(!timeout.contains("Split the task"));
+    assert!(!timeout.contains("Split the work"));
     assert!(!timeout.contains("made stand"));
     assert_no_blank_run(&memory);
     assert_no_blank_run(&timeout);
 }
 
-/// **What healing repaired is disclosed, on every one of the five feedback paths.**
+/// **Healing is invisible to the model.**
 ///
-/// A repair the model is not told about teaches it nothing and corrupts the measurement: the point
-/// of the capability is to observe how well models follow a code-only contract, and a model whose
-/// fences are silently removed will keep sending them forever while the numbers say it complied.
-/// The disclosure has to reach the model whatever became of the healed reply — it happened to the
-/// *message*, not to the program — which is why all five templates carry the same partial, and why
-/// the note bounds what gg is allowed to change rather than merely listing what it did.
+/// gg repairs a reply — strips a fence, drops an import line, unwraps an `async` wrapper — and then
+/// says nothing about it. None of the five feedback templates opens with a note about what was
+/// changed, and none of their contexts can carry one.
+///
+/// The disclosure it replaces was a paragraph at the top of every repaired turn explaining what the
+/// harness had done to the model's words, in the harness's own name. It taught the model about a
+/// mechanism it cannot invoke, cannot disable and does not need to reason about; it named gg on
+/// every one of those turns; and it had to be kept honest about whether the repaired reply then ran,
+/// which is a second contract to get wrong. What the model needs is the diagnostic, which it gets.
+/// What a study needs is the record, which is telemetry.
 #[test]
-fn every_code_feedback_reports_what_was_healed() {
-    let healing = vec![
-        "removed the Markdown code fence you wrapped it in".to_string(),
-        "removed 2 lines of explanation before your program and 1 after it".to_string(),
-    ];
-    let ran = render_code_result(&CodeResultContext {
-        healing: healing.clone(),
-        logs: vec!["1".to_string()],
-        silent: false,
-        ..quiet_result()
-    });
-    let transpile = render_code_transpile_error(&CodeTranspileErrorContext {
-        healing: healing.clone(),
-        error: "line 1, column 1: Unexpected token".to_string(),
-        delegated: false,
-    });
-    let sandbox = render_code_sandbox_error(&CodeSandboxErrorContext {
-        healing: healing.clone(),
-        error: "the program exceeded its memory cap".to_string(),
-        finish_revoked: false,
-        calls: 3,
-    });
-    let timeout = render_code_timeout(&CodeTimeoutContext {
-        healing: healing.clone(),
-        error: "the program ran longer than its 30s execution timeout and was stopped".to_string(),
-        finish_revoked: false,
-        calls: 3,
-    });
-    let refused = render_code_not_a_program(&CodeNotAProgramContext {
-        healing,
-        reason: NotAProgramReason::CommentOnly.message(),
-        delegated: false,
-    });
-
-    for rendered in [&ran, &transpile, &sandbox, &timeout, &refused] {
-        assert!(
-            rendered.contains(
-                ":\n- removed the Markdown code fence you wrapped it in\n- removed 2 lines of \
-                 explanation before your program and 1 after it\n"
-            ),
-            "the note must lead the feedback, one clause per repair:\n{rendered}"
-        );
-        assert!(
-            rendered.starts_with("gg repaired your reply"),
-            "the note must be the first thing the turn says:\n{rendered}"
-        );
-        assert!(
-            flat(rendered).contains(
-                "Only text was removed — nothing was added, and nothing was reordered. Your whole \
-                 reply is the program, so you can send the TypeScript on its own: anything you \
-                 want to say belongs in a `console.log(…)`, or in the summary you pass to \
-                 `harness.finish(…)`."
-            ),
-            "the note must bound what gg changed and say where prose belongs:\n{rendered}"
-        );
-        assert_no_blank_run(rendered);
-    }
-
-    // A reply that needed no repair earns no note at all — the feedback for a well-formed turn must
-    // not spend its opening line on a rule the model did not break.
-    let clean = render_code_result(&quiet_result());
-    assert!(!clean.contains("gg repaired your reply"), "{clean}");
-    assert!(
-        clean.starts_with("Your program ran to completion."),
-        "{clean}"
-    );
-}
-
-/// **The healing disclosure says whether the repaired reply actually ran.**
-///
-/// The note used to open *"gg repaired your reply before running it"* on all four paths, and on two
-/// of them that is false: a reply that did not type-strip, and a reply gg refused as not a program,
-/// never ran at all. The turn then contradicted itself in its first two paragraphs — the disclosure
-/// said the reply had been run, the body said nothing had — and a model cannot act on a turn that
-/// asserts both.
-///
-/// Each feedback template passes `ran` to the partial, because *which feedback this is* is exactly
-/// what settles the question: the result, the sandbox-limit and the timeout turns ran a program
-/// (their landed calls stand, which is why they are not in the other group), while the transpile and
-/// not-a-program turns did not. The non-running arm also hands the model the fact it needs to read
-/// what follows: the diagnostic or verdict below it is about the **repaired** text, which is what
-/// makes a located transpile error reconcilable with a reply the model remembers writing differently.
-#[test]
-fn the_healing_note_says_whether_the_repaired_reply_ran() {
-    let healing = vec!["removed the Markdown code fence you wrapped it in".to_string()];
-    let ran = [
+fn healing_is_never_disclosed_to_the_model() {
+    let rendered = [
         render_code_result(&CodeResultContext {
-            healing: healing.clone(),
             logs: vec!["1".to_string()],
             silent: false,
             ..quiet_result()
         }),
+        render_code_transpile_error(&CodeTranspileErrorContext {
+            error: "line 1, column 1: Unexpected token".to_string(),
+        }),
         render_code_sandbox_error(&CodeSandboxErrorContext {
-            healing: healing.clone(),
             error: "the program exceeded its memory cap".to_string(),
             finish_revoked: false,
+            ending_revoked: "finish".to_string(),
             calls: 3,
         }),
         render_code_timeout(&CodeTimeoutContext {
-            healing: healing.clone(),
             error: "the program ran longer than its 30s execution timeout and was stopped"
                 .to_string(),
             finish_revoked: false,
+            ending_revoked: "finish".to_string(),
             calls: 3,
         }),
-    ];
-    let never_ran = [
-        render_code_transpile_error(&CodeTranspileErrorContext {
-            healing: healing.clone(),
-            error: "line 1, column 1: Unexpected token".to_string(),
-            delegated: false,
-        }),
         render_code_not_a_program(&CodeNotAProgramContext {
-            healing,
             reason: NotAProgramReason::CommentOnly.message(),
-            delegated: false,
+            ending_calls: vec!["harness.finish".to_string()],
         }),
     ];
-
-    for rendered in &ran {
-        assert!(
-            rendered.starts_with("gg repaired your reply before running it:\n"),
-            "a turn whose program ran says so:\n{rendered}"
-        );
-        assert!(
-            !rendered.contains("What follows is about the repaired text"),
-            "the reconciliation clause belongs only where nothing ran:\n{rendered}"
-        );
-        assert_no_blank_run(rendered);
-    }
-    for rendered in &never_ran {
-        assert!(
-            rendered.starts_with("gg repaired your reply first, but it still did not run:\n"),
-            "a turn where nothing ran must not claim the reply was run:\n{rendered}"
-        );
-        assert!(
-            !rendered.contains("before running it"),
-            "the running wording must not survive on a turn where nothing ran:\n{rendered}"
-        );
-        assert!(
-            flat(rendered).contains(
-                "What follows is about the repaired text, not about the reply exactly as you sent \
-                 it."
-            ),
-            "a model reading a diagnostic against healed source must be told so:\n{rendered}"
-        );
-        assert_no_blank_run(rendered);
+    for feedback in &rendered {
+        let flat = flat(feedback);
+        for leaked in [
+            "repaired your reply",
+            "Only text was removed",
+            "gg ",
+            "the harness",
+        ] {
+            assert!(!flat.contains(leaked), "leaked `{leaked}`:\n{feedback}");
+        }
+        assert_no_blank_run(feedback);
     }
 }
 
-/// **The exact round-2 turn that fired the contradiction, rendered.**
+/// **No code feedback describes anything but this turn.**
 ///
-/// `google/gemini-3.6-flash`, turn 1: five programs interleaved with a fabricated transcript of gg's
-/// own replies. Healing stripped the trailing invented output (`strip-prose`) and then refused the
-/// remainder as two programs pasted one after another (`drop-duplicate-program`, recorded on the
-/// stream as `{"strategies":["strip-prose","drop-duplicate-program"],"notAProgram":"several_blocks",
-/// "blocks":2}`) — a repair *and* a refusal in one turn, which is the combination the unconditional
-/// note got wrong. Nothing ran, no tool was called, and the workspace was untouched; the feedback the
-/// model actually received opened by telling it gg had run its reply.
-///
-/// The fixture is the [`Healed`] that [`heal`](crate::healing::heal) produces over that captured
-/// reply, transcribed rather than re-derived here — the two applications in order, with the six-line
-/// tail the prose strategy took, and the verdict with its shape and count. Transcribed because the
-/// reply is six kilobytes of one model's mistake and belongs with healing's own fixtures; the
-/// wording of both halves is still healing's own, so what this test pins is the one thing the
-/// template decides: that a refused reply is never described as one that ran.
+/// The per-turn feedback does not restate the termination rule, does not say what ending a session
+/// would end, and does not vary with who is reading it. The system prompt owns the contract; a
+/// second statement of it, arriving far later in the context and therefore winning any disagreement,
+/// is how a subagent came to be told that returning its verdict would end somebody else's run.
 #[test]
-fn a_healed_reply_gg_refused_is_never_told_it_ran() {
-    let healed = Healed {
-        program: "const srcEntries = listDir(\"src\");".to_string(),
-        verdict: HealingVerdict::NotAProgram(NotAProgramReason::SeveralBlocks {
-            blocks: 2,
-            shape: CandidateShape::Bare,
-        }),
-        applied: vec![
-            HealingApplication {
-                strategy: HealingStrategy::StripProse,
-                detail: HealingDetail::Prose {
-                    leading: 0,
-                    trailing: 6,
-                },
-            },
-            HealingApplication {
-                strategy: HealingStrategy::DropDuplicateProgram,
-                detail: HealingDetail::SeveralPrograms,
-            },
-        ],
-        did_not_converge: false,
-    };
-    let HealingVerdict::NotAProgram(reason) = healed.verdict else {
-        unreachable!("the fixture is the refusal");
-    };
-    let rendered = render_code_not_a_program(&CodeNotAProgramContext {
-        healing: healed.notes(),
-        reason: reason.message(),
-        delegated: false,
-    });
-
-    // What healing actually did is still disclosed — the refusal does not swallow the repair, or the
-    // model would conclude gg never saw the invented transcript it wrote.
-    assert!(
-        rendered.starts_with(
-            "gg repaired your reply first, but it still did not run:\n- removed 6 lines of \
-             explanation after your program\n"
-        ),
-        "the refused turn must disclose the repair without claiming the reply ran:\n{rendered}"
-    );
-    // ...and the verdict follows the disclosure rather than contradicting it.
-    assert!(
-        flat(&rendered).contains(&flat(&reason.message())),
-        "the verdict must follow the disclosure:\n{rendered}"
-    );
-    assert!(
-        !rendered.contains("before running it"),
-        "this is the exact wording the live turn contradicted:\n{rendered}"
-    );
-    assert_no_blank_run(&rendered);
-}
-
-/// **No code feedback tells any agent that `finish` would end the run.**
-///
-/// A model reading "this ends the run" while it is a subagent has the strongest available reason
-/// not to call it, and a subagent that never calls it never returns a verdict — which leaves an
-/// issue unaccepted, a speculation judge without a winner, and every worktree discarded unmerged.
-/// The per-turn feedback no longer restates the termination rule at all (the system prompt owns
-/// it), so the hazard is closed by silence rather than by a branch — and this test holds that
-/// silence, on the delegated reader the wrong sentence would have cost the most.
-#[test]
-fn no_code_feedback_tells_a_delegated_agent_it_would_end_the_run() {
+fn no_code_feedback_restates_the_termination_rule() {
     let ran = render_code_result(&CodeResultContext {
-        delegated: true,
         logs: vec!["1".to_string()],
         silent: false,
         ..quiet_result()
     });
     let transpile = render_code_transpile_error(&CodeTranspileErrorContext {
-        healing: Vec::new(),
         error: "line 1, column 1: Unexpected token".to_string(),
-        delegated: true,
-    });
-    let refused = render_code_not_a_program(&CodeNotAProgramContext {
-        healing: Vec::new(),
-        reason: NotAProgramReason::Prose.message(),
-        delegated: true,
     });
 
-    for rendered in [&ran, &transpile, &refused] {
-        assert!(
-            !flat(rendered).contains("end the run"),
-            "a delegated worker was told `finish` ends the run:\n{rendered}"
-        );
+    for rendered in [&ran, &transpile] {
+        let flat = flat(rendered);
+        for leaked in ["end the run", "ends the run", "finish"] {
+            assert!(!flat.contains(leaked), "leaked `{leaked}`:\n{rendered}");
+        }
         assert_no_blank_run(rendered);
     }
-
-    // The feedback is the same text either way: nothing in it depends on who is reading it.
-    let root = render_code_result(&CodeResultContext {
-        logs: vec!["1".to_string()],
-        silent: false,
-        ..quiet_result()
-    });
-    assert_eq!(
-        root, ran,
-        "the code result feedback must not vary with the reader"
-    );
 }
 
-/// **A reply that was not a program is told what it was, and told that only `finish` ends the run.**
+/// **A reply that was not a program is told what it was, and pointed at the ending it does have.**
 ///
 /// This is the feedback that closes the failure round 1 documented most starkly: a model narrated a
 /// completed task, gg read the prose turn as "finished", and the run reported success over a
 /// workspace with no deliverable in it. Under this protocol such a turn is a *failed* turn, and the
 /// feedback has to carry both halves — what the reply was, and what a turn is supposed to look like
 /// — for every one of the six reasons a reply can fail to be a program.
+///
+/// The ending it names is the reader's **own**. A reviewer that answers in prose because it has
+/// reached a verdict is exactly the agent this turn is for, and pointing it at a `harness.finish`
+/// that is not in its scope would send it to a function that does not exist.
 #[test]
-fn the_not_a_program_feedback_names_the_reply_and_teaches_finish() {
+fn the_not_a_program_feedback_names_the_reply_and_this_role_s_ending() {
     let reasons = [
         NotAProgramReason::Empty,
         NotAProgramReason::ToolCallsOnly,
@@ -1235,47 +1061,52 @@ fn the_not_a_program_feedback_names_the_reply_and_teaches_finish() {
     ];
     for reason in reasons {
         let rendered = render_code_not_a_program(&CodeNotAProgramContext {
-            healing: Vec::new(),
             reason: reason.message(),
-            delegated: false,
+            ending_calls: vec!["harness.finish".to_string()],
         });
-        // The reason leads, in the model's own terms, and every one of the six ends by saying that
-        // nothing ran and nothing changed.
+        // The reason leads, in the model's own terms.
         assert!(
             rendered.starts_with(&reason.message()),
             "the reason must lead the feedback:\n{rendered}"
         );
         assert!(
             flat(&rendered).contains(
-                "All responses must be pure TypeScript. Returning any non-code text in your \
-                 response will prevent your responses from being processed. Do not include any \
-                 Markdown formatting, explanations, etc."
+                "Your whole response must be TypeScript. Any non-code text — Markdown, prose, \
+                 explanations — prevents it from being processed."
             ),
             "{rendered}"
         );
         assert!(
             flat(&rendered).contains(
-                "If the task is complete, call `harness.finish()` to signal that the task is \
-                 complete:"
+                "Saying the work is done does not end your session. Call `harness.finish`."
             ),
             "{rendered}"
-        );
-        assert!(
-            rendered.ends_with("    harness.finish(\"what you did, in a sentence or two\");"),
-            "the feedback must close on the call that would have ended the run:\n{rendered}"
         );
         assert_no_blank_run(&rendered);
     }
 
+    // A reviewer is pointed at both its verdicts and at no `finish` at all.
+    let reviewer = render_code_not_a_program(&CodeNotAProgramContext {
+        reason: NotAProgramReason::Prose.message(),
+        ending_calls: vec![
+            "review.approve".to_string(),
+            "review.requestChanges".to_string(),
+        ],
+    });
+    assert!(
+        flat(&reviewer).contains("Call `review.approve` or `review.requestChanges`."),
+        "{reviewer}"
+    );
+    assert!(!reviewer.contains("finish"), "{reviewer}");
+
     // The one reason whose sentence carries a number carries the real one.
     let several = render_code_not_a_program(&CodeNotAProgramContext {
-        healing: Vec::new(),
         reason: NotAProgramReason::SeveralBlocks {
             blocks: 7,
             shape: CandidateShape::Fenced,
         }
         .message(),
-        delegated: false,
+        ending_calls: vec!["harness.finish".to_string()],
     });
     assert!(
         several.starts_with("Your reply contained 7 separate code blocks."),
@@ -1477,125 +1308,111 @@ fn the_planning_templates_render() {
 // Briefs
 // ---------------------------------------------------------------------------
 
-/// One brief-rendering context per generated brief, in both execution modes.
+/// One brief-rendering context per generated brief.
 ///
-/// Rendering is where a `.hbs` typo becomes a panic (the engine is strict), so every brief has to
-/// be rendered by *some* test or a misspelled variable reaches a dispatched agent instead of the
-/// build. The ending each brief teaches is asserted next to the loop that depends on it, in
-/// `agent.briefs.test.rs`; what is asserted here is the **stable markers** other parts of gg read
-/// back out of a brief — the issue heading and the fix heading the offline mock keys off, and the
-/// approach an attempt is handed, which is the only thing that distinguishes one attempt's brief
-/// from another's.
+/// Rendering is where a `.hbs` typo becomes a panic (the engine is strict), so every brief has to be
+/// rendered by *some* test or a misspelled variable reaches a dispatched agent instead of the build.
+/// What is asserted here is the **stable markers** other parts of gg read back out of a brief — the
+/// issue heading and the fix heading the offline mock keys off, and the approach an attempt is
+/// handed, which is the only thing that distinguishes one attempt's brief from another's.
+///
+/// There is no execution-mode arm any more. A brief describes the work; the ending is the agent's
+/// role's, and is named once, in the system prompt.
 #[test]
-fn every_generated_brief_renders_in_both_execution_modes() {
-    for code in [false, true] {
-        let issue = render_issue_brief(&IssueBriefContext {
-            id: "AUTH-1".to_string(),
-            title: "Log in".to_string(),
-            description: Some("An overview.".to_string()),
-            in_scope: "The form.".to_string(),
-            out_of_scope: "Signup.".to_string(),
-            completion_criteria: "A user can log in.".to_string(),
-        });
-        assert!(issue.starts_with("# Issue `AUTH-1`: Log in"), "{issue}");
-        assert!(
-            flat(&issue).contains("## Done when A user can log in."),
-            "{issue}"
-        );
+fn every_generated_brief_renders() {
+    let issue = render_issue_brief(&IssueBriefContext {
+        id: "AUTH-1".to_string(),
+        title: "Log in".to_string(),
+        description: Some("An overview.".to_string()),
+        in_scope: "The form.".to_string(),
+        out_of_scope: "Signup.".to_string(),
+        completion_criteria: "A user can log in.".to_string(),
+    });
+    assert!(issue.starts_with("# Issue `AUTH-1`: Log in"), "{issue}");
+    assert!(
+        flat(&issue).contains("## Done when A user can log in."),
+        "{issue}"
+    );
 
-        let review = render_review_brief(&ReviewBriefContext {
-            issue_brief: issue.clone(),
-            history: vec![
-                ReviewRecordView {
-                    reviewer: "critic".to_string(),
-                    approved: false,
-                    items: vec!["Fix the score.".to_string()],
-                },
-                ReviewRecordView {
-                    reviewer: "second".to_string(),
-                    approved: true,
-                    items: Vec::new(),
-                },
-            ],
-            changes: ReviewChangesView {
-                summary: Some(" src/main.rs | 2 +-".to_string()),
-                workspace: "/work/.gg-worktrees/issue-1".to_string(),
-                baseline: Some("0".repeat(40)),
+    let review = render_review_brief(&ReviewBriefContext {
+        issue_brief: issue.clone(),
+        history: vec![
+            ReviewRecordView {
+                reviewer: "critic".to_string(),
+                approved: false,
+                items: vec!["Fix the score.".to_string()],
             },
-            code,
-        });
-        assert!(review.contains("`critic` requested changes:"), "{review}");
-        assert!(review.contains("  - Fix the score."), "{review}");
-        assert!(review.contains("`second` approved the work."), "{review}");
-        // The baseline sha is named whole, so a reviewer can diff against it itself.
-        assert!(
-            review.contains(&format!("Baseline: {}", "0".repeat(40))),
-            "{review}"
-        );
+            ReviewRecordView {
+                reviewer: "second".to_string(),
+                approved: true,
+                items: Vec::new(),
+            },
+        ],
+        changes: ReviewChangesView {
+            summary: Some(" src/main.rs | 2 +-".to_string()),
+            baseline: Some("0".repeat(40)),
+        },
+    });
+    assert!(review.contains("`critic` requested changes:"), "{review}");
+    assert!(review.contains("  - Fix the score."), "{review}");
+    assert!(review.contains("`second` approved the work."), "{review}");
+    // The baseline sha is named whole, so a reviewer can diff against it itself.
+    assert!(review.contains(&"0".repeat(40)), "{review}");
 
-        let fix = render_fix_brief(&FixBriefContext {
-            issue_brief: issue,
-            items: vec![
-                NumberedItem {
-                    number: 1,
-                    text: "Fix the score.".to_string(),
-                },
-                NumberedItem {
-                    number: 2,
-                    text: "Add a test.".to_string(),
-                },
-            ],
-            code,
-        });
-        assert!(fix.contains("## Requested changes"), "{fix}");
-        assert!(fix.contains("1. Fix the score.\n2. Add a test."), "{fix}");
+    let fix = render_fix_brief(&FixBriefContext {
+        issue_brief: issue,
+        items: vec![
+            NumberedItem {
+                number: 1,
+                text: "Fix the score.".to_string(),
+            },
+            NumberedItem {
+                number: 2,
+                text: "Add a test.".to_string(),
+            },
+        ],
+    });
+    assert!(fix.contains("## Requested changes"), "{fix}");
+    assert!(fix.contains("1. Fix the score.\n2. Add a test."), "{fix}");
 
-        let merge = render_merge_brief(&MergeBriefContext {
-            issue_id: "AUTH-1".to_string(),
-            branch: "gg/issue-auth-1".to_string(),
-            reason: "CONFLICT (content): src/main.rs".to_string(),
-            code,
-        });
-        assert!(merge.contains("gg/issue-auth-1"), "{merge}");
-        assert!(merge.contains("CONFLICT (content): src/main.rs"), "{merge}");
-        assert!(merge.contains("resolved and committed"), "{merge}");
+    let merge = render_merge_brief(&MergeBriefContext {
+        branch: "gg/issue-auth-1".to_string(),
+        reason: "CONFLICT (content): src/main.rs".to_string(),
+    });
+    assert!(merge.contains("gg/issue-auth-1"), "{merge}");
+    assert!(merge.contains("CONFLICT (content): src/main.rs"), "{merge}");
+    assert!(merge.contains("commit the merge"), "{merge}");
 
-        let attempt = render_attempt_brief(&AttemptBriefContext {
-            base: "Build it.".to_string(),
-            index: 2,
-            count: 3,
-            approach: Some("Use a state machine.".to_string()),
-            code,
-        });
-        assert!(attempt.starts_with("Build it."), "{attempt}");
-        // The assigned approach is what makes one attempt's brief differ from another's — and what
-        // the offline attempt mock reads its own number out of.
-        assert!(attempt.contains("### Approach"), "{attempt}");
-        assert!(attempt.contains("Use a state machine."), "{attempt}");
+    let attempt = render_attempt_brief(&AttemptBriefContext {
+        base: "Build it.".to_string(),
+        index: 2,
+        count: 3,
+        approach: Some("Use a state machine.".to_string()),
+    });
+    assert!(attempt.starts_with("Build it."), "{attempt}");
+    // The assigned approach is what makes one attempt's brief differ from another's — and what the
+    // offline attempt mock reads its own number out of.
+    assert!(attempt.contains("### Approach"), "{attempt}");
+    assert!(attempt.contains("Use a state machine."), "{attempt}");
 
-        let judge = render_judge_brief(&JudgeBriefContext {
-            task: "Build it.".to_string(),
-            attempts: vec![
-                JudgeAttemptView {
-                    number: 1,
-                    summary: Some("built it".to_string()),
-                    diff: Some("+ a line".to_string()),
-                },
-                JudgeAttemptView {
-                    number: 2,
-                    summary: None,
-                    diff: None,
-                },
-            ],
-            count: 2,
-            code,
-        });
-        assert!(judge.contains("### Attempt 1"), "{judge}");
-        assert!(judge.contains("built it"), "{judge}");
-        // An attempt that produced nothing says so rather than rendering an empty section.
-        assert!(judge.contains("(no summary)"), "{judge}");
-        assert!(judge.contains("SPECULATION JUDGE: WINNER <n>"), "{judge}");
-    }
+    let judge = render_judge_brief(&JudgeBriefContext {
+        task: "Build it.".to_string(),
+        attempts: vec![
+            JudgeAttemptView {
+                number: 1,
+                summary: Some("built it".to_string()),
+            },
+            JudgeAttemptView {
+                number: 2,
+                summary: None,
+            },
+        ],
+        count: 2,
+    });
+    assert!(judge.contains("### Attempt 1"), "{judge}");
+    assert!(judge.contains("built it"), "{judge}");
+    // An attempt that produced nothing says so rather than rendering an empty section.
+    assert!(judge.contains("(no summary)"), "{judge}");
 }
 
 /// The reviewer's brief degrades cleanly on a first review of a run with no git baseline: no
@@ -1608,29 +1425,12 @@ fn the_review_brief_renders_without_history_or_a_baseline() {
         history: Vec::new(),
         changes: ReviewChangesView {
             summary: None,
-            workspace: "/work".to_string(),
             baseline: None,
         },
-        code: false,
     });
     assert!(!brief.contains("Earlier review feedback"), "{brief}");
-    assert!(brief.contains("No changes were detected"), "{brief}");
-    assert!(!brief.contains("Baseline:"), "{brief}");
-}
-
-/// A review that requested changes without listing any still hands the fixing agent something to
-/// act on, rather than an empty list under a heading that promises one.
-#[test]
-fn the_fix_brief_synthesizes_an_item_when_the_review_listed_none() {
-    let brief = render_fix_brief(&FixBriefContext {
-        issue_brief: "# Issue `AUTH-1`: Log in".to_string(),
-        items: Vec::new(),
-        code: false,
-    });
-    assert!(
-        flat(&brief).contains("The reviewer requested changes but listed no specific items"),
-        "{brief}"
-    );
+    assert!(brief.contains("Nothing changed"), "{brief}");
+    assert!(!brief.contains("Against `"), "{brief}");
 }
 
 // ---------------------------------------------------------------------------
@@ -1657,29 +1457,35 @@ fn the_compaction_prompts_render_for_every_requirement() {
         let summary = context(true, false, false, code_mode);
         let instruction = render_compaction_instruction(&summary);
         assert!(
-            instruction.starts_with("This session's context window is full."),
+            instruction.starts_with("Your context window is full."),
             "{instruction}"
         );
         assert!(
-            flat(&instruction).contains("all work yet to be completed"),
+            flat(&instruction).contains("what is left to do"),
             "{instruction}"
         );
-        // A code run has to be told, in so many words, that prose is expected for this one turn.
+        // A code agent's summary arrives as a call carrying it; a tool-calling agent's is its
+        // reply's own text. Neither is ever asked to stop replying the way its protocol replies.
         assert_eq!(
-            instruction.contains("do **NOT** write a program"),
+            instruction.contains("Call `compact(summary)`"),
             code_mode,
+            "{instruction}"
+        );
+        assert_eq!(
+            instruction.contains("Reply with a plain text summary"),
+            !code_mode,
             "{instruction}"
         );
 
         let compact = context(false, true, false, code_mode);
         let instruction = render_compaction_instruction(&compact);
         assert_eq!(
-            instruction.contains("context.compact(summary, files)"),
+            instruction.contains("Call `compact(summary, files)`"),
             code_mode,
             "{instruction}"
         );
         assert_eq!(
-            instruction.contains("Call the `compact` tool."),
+            instruction.contains("Call `compact` and nothing else."),
             !code_mode,
             "{instruction}"
         );
@@ -1696,7 +1502,7 @@ fn the_compaction_prompts_render_for_every_requirement() {
             let refusal = render_compaction_refusal(&pending);
             assert!(refusal.starts_with("`shell` was NOT run:"), "{refusal}");
             assert!(
-                flat(&refusal).contains("All other operations are blocked until you"),
+                flat(&refusal).contains("Everything is blocked until you"),
                 "{refusal}"
             );
 
@@ -1746,12 +1552,19 @@ fn the_out_of_band_compaction_prompts_render() {
     );
 }
 
-/// The completion feedbacks name the finish tool from one source and quote the command that
-/// actually failed.
+/// The completion feedbacks name this role's ending calls from one source and quote the command
+/// that actually failed.
 #[test]
 fn the_completion_prompts_render() {
-    let missing = render_completion_missing("finish");
+    let missing = render_completion_missing(&["finish"]);
     assert!(missing.contains("`finish`"), "{missing}");
+
+    // A role with two endings offers both, joined so the sentence reads.
+    let reviewer = render_completion_missing(&["approve", "request_changes"]);
+    assert!(
+        flat(&reviewer).contains("call `approve` or `request_changes`."),
+        "{reviewer}"
+    );
 
     let failure = render_completion_validation_failure(&ValidationFailureContext {
         index: 1,

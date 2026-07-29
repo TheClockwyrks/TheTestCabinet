@@ -547,36 +547,79 @@ interface turns {
     advance-state: func(note: option<string>) -> result<_, tool-error>;
 }
 
-/// Ending the run.
+/// Ending the session.
 ///
-/// The one model-facing function on this membrane that is NOT a gg tool. No capability offers it, it
-/// dispatches nothing, and it is bound into every program's scope — including a program in a run that
-/// enables no tools at all, which must still be able to end. It is declared in its own interface
-/// precisely so the one-to-one correspondence the tool interfaces hold with `ALL_TOOL_NAMES`
-/// (crates/gg/src/tools/mod.rs) is not perturbed by it.
+/// The model-facing functions on this membrane that are NOT gg tools. No capability offers them, they
+/// dispatch nothing, and exactly one group of them is bound into every program's scope — including a
+/// program in a run that enables no tools at all, which must still be able to end. They are declared
+/// in their own interface precisely so the one-to-one correspondence the tool interfaces hold with
+/// `ALL_TOOL_NAMES` (crates/gg/src/tools/mod.rs) is not perturbed by them.
 ///
 /// Under responses-as-code every turn is a program, so there is no prose turn that could mean "I am
-/// done". This is what means it, and it is the ONLY thing that does.
+/// done". These are what mean it, and they are the ONLY things that do.
+///
+/// **Which group a program gets is decided by the role the agent was dispatched in** — see
+/// `ending-kind`. A reviewer cannot call `finish`, because "the work is complete" is not a verdict;
+/// an ordinary agent cannot call `approve`, because it has nothing to approve. That is what makes an
+/// ending a *typed declaration* rather than prose the host has to parse back out of a final message.
 interface session {
     use types.{tool-error};
 
-    /// Declare the run complete. `summary` becomes the run's final text — for the root agent the
-    /// session's last word, for a subagent its return value to the agent that asked for the work.
+    /// Which group of ending functions a program is given, decided by the role the agent was
+    /// dispatched in. Exactly one group is bound; the others are not names in the program's scope.
+    enum ending-kind {
+        /// `harness.finish(summary)` — an agent doing work.
+        standard,
+        /// `review.approve()` / `review.request-changes(items)` — an agent reviewing work.
+        review,
+        /// `judge.select-winner(attempt, rationale)` — an agent choosing among attempts.
+        judge,
+    }
+
+    /// Declare the work complete. `summary` becomes the session's final text — for the root agent the
+    /// run's last word, for a subagent its return value to the agent that asked for the work.
     ///
     /// It sets a **flag in the agent's host-side context** and returns normally. It does not stop the
     /// program, it raises nothing, and nothing after it is refused: the flag is what the loop reads
-    /// once the program has ended, so a completion is a declaration the host owns rather than a
-    /// control-flow trick played on the guest. Calling it again simply replaces the summary, and the
-    /// replacements are counted.
+    /// once the program has ended, so an ending is a declaration the host owns rather than a
+    /// control-flow trick played on the guest. Calling it again simply replaces the declaration, and
+    /// the replacements are counted.
     ///
     /// The flag is **revoked** if the program then fails — an uncaught throw, or a sandbox ceiling
     /// stopping it. A program that did not run to its end did not run the checks its summary claims,
-    /// so the run continues and the model is told its ending was cancelled.
+    /// so the session continues and the model is told its ending was cancelled.
     ///
     /// It is never refused for the run's wall-clock budget being spent, unlike every tool call:
-    /// finishing performs no work and ends the run, which is exactly what a spent budget wants. The
+    /// ending performs no work and ends the session, which is exactly what a spent budget wants. The
     /// one failure it has is an empty `summary`, which is `invalid-argument`.
+    ///
+    /// Bound only under `ending-kind.standard`.
     finish: func(summary: string) -> result<_, tool-error>;
+
+    /// Declare the work under review acceptable. Takes nothing: an approval carries no further
+    /// obligation, and a shape that demanded prose would be a shape the host had to read back.
+    ///
+    /// Ends the session under the same flag rules as `finish`. Bound only under `ending-kind.review`.
+    approve: func() -> result<_, tool-error>;
+
+    /// Declare the work under review unacceptable, listing every change that must be made before it
+    /// can be accepted. Each item must say what is wrong and what to change.
+    ///
+    /// `items` must be non-empty and every entry must be non-blank — `invalid-argument` otherwise.
+    /// That is the whole reason this is a typed call: a rejection with nothing to act on gives the
+    /// agent that has to fix the work no work to do, so the membrane refuses to represent one.
+    ///
+    /// Ends the session under the same flag rules as `finish`. Bound only under `ending-kind.review`.
+    request-changes: func(items: list<string>) -> result<_, tool-error>;
+
+    /// Declare which attempt won. `attempt` is the 1-based number the attempts were presented under;
+    /// `rationale` says why in a sentence.
+    ///
+    /// A zero `attempt`, an out-of-range one, or a blank `rationale` is `invalid-argument`. The range
+    /// is the host's to know, so it is checked there.
+    ///
+    /// Ends the session under the same flag rules as `finish`. Bound only under `ending-kind.judge`.
+    select-winner: func(attempt: u32, rationale: string) -> result<_, tool-error>;
 }
 
 /// Documentation lookup — the second model-facing carve-out, and like `session` NOT a gg tool.
@@ -790,6 +833,8 @@ interface feedback {
 /// The sandbox: one baked component that evaluates a program against exactly the tools a run
 /// enables.
 world sandbox {
+    use session.{ending-kind};
+
     import types;
     import shell;
     import files;
@@ -809,16 +854,17 @@ world sandbox {
     /// `program` is TypeScript the host has already type-stripped to JavaScript. `tools` is the
     /// run's enabled gg tool names (`read_file`, `shell`, …); ONLY those are bound into the
     /// program's scope, so a withheld tool is an undefined identifier rather than a call that
-    /// travels to the host to be refused.
+    /// travels to the host to be refused. `ending` selects which group of `session` functions is
+    /// bound, on the same principle: an agent that may not approve has no `review` object at all.
     ///
     /// It returns **nothing**, because a program's return value is not a channel: everything one
     /// program has to say it says over `feedback` — what it logged, what it threw, and (through
-    /// `session.finish`) whether the run is over. A value handed to a top-level `return` is
+    /// `session`) whether the session is over. A value handed to a top-level `return` is
     /// discarded, and `feedback.note-return` is how the model is told so rather than left to wonder.
     ///
     /// A throw is caught and reported over `feedback.report-error`, never allowed to escape as an
     /// opaque wasm trap.
-    export run: func(program: string, tools: list<string>);
+    export run: func(program: string, tools: list<string>, ending: ending-kind);
 
     /// The gg tool names this component can bind. gg's tests call it to assert the COMMITTED
     /// component and `ALL_TOOL_NAMES` have not drifted apart — the one check that catches a stale

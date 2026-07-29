@@ -2,58 +2,67 @@
 title: "Completion"
 ---
 
-Every gg run needs a rule for **when it is done**. Historically that rule was fixed per
-execution mode: a [tool-calling](/gg/prompts/) turn that requested no tools ended the
-run, and a [responses-as-code](/gg/responses-as-code/) program ended it by calling
-`finish`. The **completion** capability makes that rule configurable per agent, along two
-independent knobs that compose with both execution modes.
+Every agent gg drives has to say when it is done, and **saying it is always an explicit
+call**. There is no shape of reply that means "finished" by implication: a
+[tool-calling](/gg/prompts/) turn that requests no tools is an **error**, and a
+[responses-as-code](/gg/responses-as-code/) reply that is not a program is an error. One
+rule, both execution modes, no per-run variation.
 
-It is off by default, and — like every capability — it is per agent, so one run can give
-its root a loose rule and its implementers a strict, validated one. An absent or disabled
-capability yields the historical defaults exactly, so a run that never configures
-completion behaves as it always has.
+*Which* call an agent makes depends on the **role it was dispatched in** — see
+[ending calls](#ending-calls). The **completion** capability configures the one thing that
+genuinely varies between studies: the [validation commands](#validation-commands) that
+gate the ending.
 
-gg makes the rule configurable **so its effect can be measured**: an explicit `finish`
-versus an implicit stop, a validated completion versus an unchecked one, are the kind of
-question gg exists to answer.
-
-## The completion signal
-
-The capability's **implementation** selects how the model says it believes the work is
-done.
-
-| Signal | What ends a tool-calling run |
-| --- | --- |
-| **Plain text** (default) | A reply that requests **no tools**. What an unconfigured run does. |
-| **Explicit `finish` call** | The model must call the **`finish`** tool. A reply with no tool call is **not** a completion — it is an error fed back to the model. |
-
-The `finish` tool takes a short `summary` of the completed work, which becomes the run's
-final message. It is a loop-level tool gg appends to the offered set and intercepts
-itself; it is not a registry tool, and it is not
-[ablatable](/gg/toolset-ablation/) — withholding the only way to finish is not an arm
-anyone would run.
-
-Under the explicit signal a model that loops emitting prose does not quietly burn its
-whole turn budget: each text-only reply is an **error turn**, so the run trips its
+A model that loops emitting prose therefore does not quietly burn its whole turn budget:
+each text-only reply is an **error turn**, so the run trips its
 [consecutive-error and error-rate ceilings](/gg/execution-limits/) and stops early with a
 diagnosis, rather than running to exhaustion with nothing to point at.
 
-### Responses-as-code is always explicit
+## Ending calls
 
-A [responses-as-code](/gg/responses-as-code/) agent's every reply is a program, and no
-*shape* of program means "finished" — so such a run always ends through its program's
-`harness.finish()` call. The signal is therefore **inert** in code mode: a code-mode agent
-is locked to explicit completion whatever the picker says, and the console shows the
-signal fixed rather than offering a choice that would do nothing. (A plain-text signal
-stored on a code-mode agent is ignored, and gg says so at launch.)
+An ending is a **result**, and a role's result is not always a summary. An agent doing
+work reports what it did; a reviewer returns a verdict, and a verdict that requests
+changes is meaningless without the list of changes; a judge names which attempt won. Those
+are three different shapes, so they are three different calls, and each call's signature
+carries exactly what that result is made of.
+
+| Role | Ending calls | Dispatched for |
+| --- | --- | --- |
+| **Standard** | `finish(summary)` | The root agent, a spawned subagent, an issue's implementer, a [speculation](/gg/speculative-execution/) attempt, the merge agent. |
+| **Review** | `approve()` / `requestChanges(items)` | An issue's [reviewers](/gg/project-management/). |
+| **Judge** | `selectWinner(attempt, rationale)` | A [speculation](/gg/speculative-execution/)'s judge. |
+
+Only the role's own group is offered. A reviewer has **no `finish`** — "the work is
+complete" is not a verdict it was asked for — and an implementer has no `approve`. In
+responses-as-code that is enforced by scope: the calls a role does not have are not
+identifiers in its programs at all, exactly as a withheld tool is not. In tool calling,
+only the role's tools are in the offered set.
+
+The calls are named the same in both modes, so ending a session is one vocabulary a model
+learns once: `harness.finish(…)` in a program and `finish` as a tool are the same call.
+None of them is a registry tool, and none is [ablatable](/gg/toolset-ablation/) —
+withholding the only way to end a session is not an arm anyone would run.
+
+### The shapes are enforced, not parsed
+
+`requestChanges` refuses an **empty** list, and `selectWinner` refuses an attempt number
+outside the range the judge was shown. Both are refused at the membrane, so the run
+continues and the model is told what to send instead.
+
+That is the point of typing them. gg used to hand every role the same `finish(summary)`
+and read the verdict back out of the summary text — a `REVIEW: APPROVED` marker to match,
+a bulleted list to scrape. Every such parse fails by producing a *plausible* answer rather
+than an error: a reviewer that rejected the work and listed nothing (leaving the agent
+that had to fix it with nothing to act on), or a judge whose marker line never appeared.
+A typed call cannot fail that way, because the shape is refused before it is ever a
+verdict.
 
 ## Validation commands
 
-The capability's **`validation`** param is an ordered list of commands that **gate** a
-completion — in either execution mode, under whichever signal is in force. When the model
-signals it is done, gg runs them in order, and the run only ends if **every one exits
-`0`**. A failing command's output is handed back to the model, which then keeps working
-and signals completion again.
+The capability's **`validation`** param is an ordered list of commands that **gate** an
+ending — in either execution mode, for any role. When the model signals it is done, gg
+runs them in order, and the session only ends if **every one exits `0`**. A failing
+command's output is handed back to the model, which then keeps working and signals again.
 
 Each entry names a `command` (run through `sh -c`, exactly as the [shell](/gg/shell/) tool
 runs one), and optionally:
@@ -67,28 +76,26 @@ runs one), and optionally:
 Commands run **fail-fast**: the first non-zero exit stops the batch, because a later
 command usually depends on an earlier one (a test suite on a build) and its output would
 only add noise to the one the model must actually fix. Output goes through the agent's own
-[shell output policy](/gg/shell/#output-offloading), so a failing test suite that arrives by the
-megabyte is offloaded exactly as a `shell` call's output would be.
+[shell output policy](/gg/shell/#output-offloading), so a failing test suite that arrives
+by the megabyte is offloaded exactly as a `shell` call's output would be.
 
-An empty or absent `validation` leaves completion **ungated** — the model's word is taken
+An empty or absent `validation` leaves the ending **ungated** — the model's word is taken
 for it, which is what an unconfigured run does.
 
 ## Issue completion
 
 An agent gg [auto-dispatched to implement a board issue](/gg/project-management/) hands its
-work back by **finishing**, under whatever completion rule that agent's own profile
+work back by **finishing**, under whatever validation gate that agent's own profile
 configures. There is no separate "complete issue" move, so the same lever governs both:
-put an explicit signal and a validation gate on your implementer profile and an issue can
-only reach review once its build passes.
+put a validation gate on your implementer profile and an issue can only reach review once
+its build passes.
 
 ## Configuring it
 
 In the console's [configuration editor](/gg/configurations/), **Completion** sits under
-**Process & quality** on each agent. Its **Completion signal** picker offers the two
-signals (fixed to the explicit call for a responses-as-code agent), and its **Validation
-commands** rows take a command, an optional working directory, and an optional timeout.
+**Process & quality** on each agent. Its **Validation commands** rows take a command, an
+optional working directory, and an optional timeout.
 
 | Param | Default | Meaning |
 | --- | --- | --- |
-| `implementation` | `plain-text` | The [completion signal](#the-completion-signal). |
-| `validation` | — (ungated) | The [commands](#validation-commands) that gate a completion. |
+| `validation` | — (ungated) | The [commands](#validation-commands) that gate an ending. |

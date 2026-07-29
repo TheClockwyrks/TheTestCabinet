@@ -18,6 +18,7 @@ use serde_json::{Value, json};
 use super::membrane::MembraneState;
 use super::{FunctionSummary, SandboxLimits, ToolApi, WorkflowStageInput};
 use crate::board::IssueStatus;
+use crate::ending::EndingRole;
 use crate::model::ImageContent;
 use crate::tasks::TaskStatus;
 use crate::tools::{
@@ -593,9 +594,16 @@ fn read_outcome(path: &str) -> ToolOutcome {
 /// The membrane's whole surface is tested this way — no store, no component, no wasm — which is
 /// what makes covering thirty-two functions affordable.
 pub(crate) fn membrane(log: &CallLog) -> MembraneState<FakeToolApi> {
+    membrane_as(log, EndingRole::Standard)
+}
+
+/// A membrane state as [`membrane`], in `role`'s [ending group](EndingRole) — what a reviewer's or a
+/// judge's program is answered by.
+pub(crate) fn membrane_as(log: &CallLog, role: EndingRole) -> MembraneState<FakeToolApi> {
     MembraneState::new(
         FakeToolApi::new(log),
         &all_tools(),
+        role,
         SandboxLimits::default(),
         None,
     )
@@ -611,6 +619,7 @@ pub(crate) fn membrane_with(
     MembraneState::new(
         FakeToolApi::with(log, responder),
         enabled,
+        EndingRole::Standard,
         SandboxLimits::default(),
         deadline,
     )

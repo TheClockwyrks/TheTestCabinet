@@ -1,12 +1,8 @@
-{{> healing-note ran=false}}
 {{reason}}
 
 ----
 
-All responses must be pure TypeScript. Returning any non-code text in your
-response will prevent your responses from being processed. Do not include any
-Markdown formatting, explanations, etc.
+Your whole response must be TypeScript. Any non-code text — Markdown, prose,
+explanations — prevents it from being processed.
 
-If the task is complete, call `harness.finish()` to signal that the task is complete:
-
-    harness.finish("what you did, in a sentence or two");
+Saying the work is done does not end your session. Call {{#each endingCalls}}{{#unless @first}} or {{/unless}}`{{this}}`{{/each}}.

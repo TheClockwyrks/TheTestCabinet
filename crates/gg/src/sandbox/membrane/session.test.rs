@@ -1,19 +1,33 @@
-//! Tests for `finish` — the one model-facing membrane function that ends the run.
+//! Tests for the **ending calls** — the model-facing membrane functions that end a session.
 //!
-//! Host-only, and that is the design rather than a testing convenience: `finish` sets a flag in the
-//! agent's own [`MembraneState`], so everything it guarantees is a property of this file's subject
-//! and none of it is a property of the guest. What the guest still owes — that the call returns
-//! rather than stopping the program, and that a program failing afterwards loses the ending — is
-//! asserted against the real component in `a_program_ends_the_run_by_calling_finish`
-//! (`crates/gg/src/sandbox.test.rs`), which is where a component compile is already being paid for.
+//! Host-only, and that is the design rather than a testing convenience: an ending call sets a flag in
+//! the agent's own [`MembraneState`], so everything it guarantees is a property of this file's
+//! subject and none of it is a property of the guest. What the guest still owes — that the call
+//! returns rather than stopping the program, and that a program failing afterwards loses the ending —
+//! is asserted against the real component in `sandbox.test.rs`, which is where a component compile is
+//! already being paid for.
 
 use std::time::{Duration, Instant};
 
 use super::super::ErrorCode;
 use super::super::test_cabinet::gg::files::Host as FilesHost;
 use super::*;
+use crate::completion::{APPROVE_TOOL, REQUEST_CHANGES_TOOL, SELECT_WINNER_TOOL};
+use crate::ending::EndingRole;
 use crate::sandbox::FINISH_FUNCTION;
-use crate::sandbox::fake::{CallLog, all_tools, canned_outcome, membrane, membrane_with};
+use crate::sandbox::fake::{
+    CallLog, all_tools, canned_outcome, membrane, membrane_as, membrane_with,
+};
+
+/// The summary a [`Finished`](Ending::Finished) ending carries, or a panic naming what it was
+/// instead — every assertion below is about a specific ending, so a wrong variant is a test failure
+/// rather than an `Option` to unwrap.
+fn summary_of(ending: &Ending) -> &str {
+    match ending {
+        Ending::Finished { summary } => summary,
+        other => panic!("expected a finished ending, got {other:?}"),
+    }
+}
 
 /// One call sets the flag: the completion is recorded verbatim and survives out of the store.
 #[test]
@@ -28,8 +42,9 @@ fn the_first_finish_records_the_completion() {
     let parts = state.into_parts();
     let completion = parts.completion.expect("the completion survives the store");
     assert_eq!(
-        completion.summary, "wrote MANIFEST.md and verified it lists all four files",
-        "the summary is carried verbatim; it becomes the run's final text"
+        summary_of(&completion.ending),
+        "wrote MANIFEST.md and verified it lists all four files",
+        "the summary is carried verbatim; it becomes the session's final text"
     );
     assert_eq!(
         completion.superseded, 0,
@@ -63,8 +78,9 @@ fn a_later_finish_replaces_the_summary_and_the_replacements_are_counted() {
     let parts = state.into_parts();
     let completion = parts.completion.expect("a completion stands");
     assert_eq!(
-        completion.summary, "the last word",
-        "the last summary is the run's: it is the one written with the most work behind it"
+        summary_of(&completion.ending),
+        "the last word",
+        "the last summary is the session's: it is the one written with the most work behind it"
     );
     assert_eq!(completion.superseded, 2);
     assert!(
@@ -95,11 +111,7 @@ fn an_empty_summary_finishes_nothing() {
             refused.tool, FINISH_FUNCTION,
             "the failure names the function that raised it, which is not a gg tool"
         );
-        assert!(
-            refused.message.contains("The run is NOT finished"),
-            "{}",
-            refused.message
-        );
+        assert!(refused.message.contains("NOT over"), "{}", refused.message);
     }
 
     let parts = state.into_parts();
@@ -127,7 +139,12 @@ fn a_revoked_completion_is_taken_back_and_kept() {
 
     let parts = state.into_parts();
     assert!(parts.completion.is_none(), "the ending is gone");
-    assert_eq!(parts.revoked_completion.as_deref(), Some("wrote it all"));
+    assert_eq!(
+        parts.revoked_completion,
+        Some(Ending::Finished {
+            summary: "wrote it all".to_string(),
+        })
+    );
 
     // Revoking when nothing was declared is a no-op, not a phantom ending to report.
     let log = CallLog::default();
@@ -161,11 +178,7 @@ fn finishing_is_allowed_after_the_wall_clock_budget_is_spent() {
 
     let parts = state.into_parts();
     assert_eq!(
-        parts
-            .completion
-            .expect("the completion stands")
-            .summary
-            .as_str(),
+        summary_of(&parts.completion.expect("the completion stands").ending),
         "stopped early: the run's budget ran out mid-way"
     );
 }
@@ -230,7 +243,7 @@ fn a_tool_call_after_a_completion_is_ordinary_work() {
     );
     assert!(parts.refusals.is_empty(), "{:?}", parts.refusals);
     assert_eq!(
-        parts.completion.expect("the ending still stands").summary,
+        summary_of(&parts.completion.expect("the ending still stands").ending),
         "done",
         "later work does not retract the ending — only a failure does"
     );
@@ -250,5 +263,112 @@ fn a_withheld_tool_is_refused_as_unavailable() {
         refused.message.contains("unknown tool"),
         "{}",
         refused.message
+    );
+}
+
+/// **A reviewer's verdict is a typed declaration, not prose to be read back.**
+///
+/// `approve` takes nothing — an approval carries no further obligation — and `request-changes` takes
+/// the list of changes, which is refused if there is nothing actionable in it. That refusal is the
+/// whole point: the list is dispatched verbatim to the agent that must fix the work, and an empty one
+/// would give it nothing to do.
+#[test]
+fn a_reviewer_declares_a_verdict() {
+    let log = CallLog::default();
+    let mut state = membrane_as(&log, EndingRole::Review);
+
+    state
+        .approve()
+        .expect("an approval carries nothing to refuse");
+    assert_eq!(
+        state
+            .into_parts()
+            .completion
+            .expect("a verdict stands")
+            .ending,
+        Ending::Approved
+    );
+
+    let log = CallLog::default();
+    let mut state = membrane_as(&log, EndingRole::Review);
+    state
+        .request_changes(vec![
+            "  fix the off-by-one in `step()`  ".to_string(),
+            "   ".to_string(),
+        ])
+        .expect("a list with one real item is accepted");
+    assert_eq!(
+        state
+            .into_parts()
+            .completion
+            .expect("a verdict stands")
+            .ending,
+        Ending::ChangesRequested {
+            items: vec!["fix the off-by-one in `step()`".to_string()],
+        },
+        "blank entries are dropped and the rest trimmed"
+    );
+}
+
+/// A rejection with nothing to act on is refused, and the refusal names the call that *was*
+/// appropriate.
+#[test]
+fn a_rejection_with_no_changes_is_refused() {
+    let log = CallLog::default();
+    let mut state = membrane_as(&log, EndingRole::Review);
+
+    for empty in [vec![], vec![String::new()], vec!["  ".to_string()]] {
+        let refused = state
+            .request_changes(empty)
+            .expect_err("a rejection with nothing in it is not a verdict");
+        assert_eq!(refused.code, ErrorCode::InvalidArgument);
+        assert_eq!(refused.tool, REQUEST_CHANGES_TOOL);
+        assert!(
+            refused.message.contains(APPROVE_TOOL),
+            "{}",
+            refused.message
+        );
+    }
+
+    let parts = state.into_parts();
+    assert!(
+        parts.completion.is_none(),
+        "the reviewer is still working: {:?}",
+        parts.completion
+    );
+}
+
+/// **A judge may only pick an attempt it was actually shown.**
+///
+/// The range is the host's to know — the guest was never told how many attempts there are — so it is
+/// checked here. An out-of-range pick used to be clamped, which merged *some* attempt's work under a
+/// rationale written about a different one.
+#[test]
+fn a_judge_declares_a_winner_within_range() {
+    let log = CallLog::default();
+    let mut state = membrane_as(&log, EndingRole::Judge { attempts: 3 });
+
+    for out_of_range in [0, 4] {
+        let refused = state
+            .select_winner(out_of_range, "it is the best".to_string())
+            .expect_err("a pick outside the range is not a verdict");
+        assert_eq!(refused.code, ErrorCode::InvalidArgument);
+        assert_eq!(refused.tool, SELECT_WINNER_TOOL);
+    }
+    let blank = state
+        .select_winner(2, "   ".to_string())
+        .expect_err("a pick with no reason is not a verdict");
+    assert_eq!(blank.code, ErrorCode::InvalidArgument);
+
+    state
+        .select_winner(2, "it handles the empty case".to_string())
+        .expect("an in-range pick with a rationale is accepted");
+    let parts = state.into_parts();
+    assert_eq!(
+        parts.completion.expect("a verdict stands").ending,
+        Ending::Winner {
+            attempt: 2,
+            rationale: "it handles the empty case".to_string(),
+        }
     );
 }

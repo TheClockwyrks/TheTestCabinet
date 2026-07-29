@@ -65,7 +65,7 @@ export function createEpic(epic: {
  * with the board budget; you do not choose the id, so keep the returned one to block a later issue
  * on this one or to wait for it. `inScope`, `outOfScope` and `completionCriteria` are what a child
  * agent is briefed from, so write them for a reader with no other context. `agent` names the agent
- * gg dispatches the issue to and must be one you may spawn; `reviewers` names the agents that must
+ * the issue is dispatched to and must be one you may spawn; `reviewers` names the agents that must
  * approve the work, from that same set, and is required when this run's reviewers feature is on.
  * `blockedBy` defaults to none; `epicId` groups the issue under an existing epic. Throws
  * `invalid-argument` when `agent` or a reviewer is not yours to assign, and `conflict` on a blocker

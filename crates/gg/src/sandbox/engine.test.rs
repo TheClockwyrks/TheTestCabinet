@@ -7,6 +7,7 @@
 //! `sandbox.test.rs` are consolidated into a handful of functions instead of one per behaviour.
 
 use super::*;
+use crate::ending::EndingRole;
 use crate::sandbox::fake::{CallLog, FakeToolApi, process_isolated};
 use crate::sandbox::{SandboxLimits, run_program};
 
@@ -70,6 +71,7 @@ fn the_component_compiles_once_per_process() {
     run_program(
         "return 1;",
         &[],
+        EndingRole::Standard,
         SandboxLimits::default(),
         None,
         FakeToolApi::new(&log),
@@ -79,6 +81,7 @@ fn the_component_compiles_once_per_process() {
     run_program(
         "return 2;",
         &[],
+        EndingRole::Standard,
         SandboxLimits::default(),
         None,
         FakeToolApi::new(&log),
@@ -148,6 +151,7 @@ fn the_program_that_pays_the_compile_reports_what_it_cost() {
     let (cold, _api) = run_program(
         "return 1;",
         &[],
+        EndingRole::Standard,
         SandboxLimits::default(),
         None,
         FakeToolApi::new(&log),
@@ -163,6 +167,7 @@ fn the_program_that_pays_the_compile_reports_what_it_cost() {
     let (warm, _api) = run_program(
         "return 2;",
         &[],
+        EndingRole::Standard,
         SandboxLimits::default(),
         None,
         FakeToolApi::new(&log),

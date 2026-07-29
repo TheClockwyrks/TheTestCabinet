@@ -90,11 +90,11 @@ impl Tool for SubmitPlanTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
             SUBMIT_PLAN_TOOL,
-            "Submit your implementation plan and leave plan mode. gg clears your exploration \
-             history (your skills, memories, tasks, and board are kept), seeds your context with \
-             the original request plus this plan, and restores your full toolset so you implement \
-             from a clean window. Make the plan self-contained: capture everything you learned \
-             that implementation will need.",
+            "Submit your implementation plan and leave plan mode. Your exploration history is \
+             cleared (your skills, memories, tasks, and board are kept), your context is seeded \
+             with the original request plus this plan, and your full toolset is restored, so you \
+             implement from a clean window. Make the plan self-contained: capture everything you \
+             learned that implementation will need.",
             json!({
                 "type": "object",
                 "properties": {

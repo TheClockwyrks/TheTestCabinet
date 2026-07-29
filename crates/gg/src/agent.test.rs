@@ -245,6 +245,7 @@ async fn drive_root(
             false,
             code,
             no_completion(),
+            EndingRole::Standard,
             &GgAgentConfig::root(),
             None,
             None,
@@ -925,6 +926,7 @@ async fn drive_exhausts_the_turn_ceiling_when_the_model_never_stops() {
             false,
             no_code(),
             no_completion(),
+            EndingRole::Standard,
             &GgAgentConfig::root(),
             None,
             None,
@@ -980,6 +982,7 @@ async fn drive_times_out_at_a_passed_deadline() {
             false,
             no_code(),
             no_completion(),
+            EndingRole::Standard,
             &GgAgentConfig::root(),
             None,
             None,
@@ -1036,6 +1039,7 @@ async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
             false,
             no_code(),
             no_completion(),
+            EndingRole::Standard,
             &GgAgentConfig::root(),
             None,
             None,
@@ -1062,27 +1066,27 @@ async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
 // ---------------------------------------------------------------------------------------------
 
 /// Resolve a [`CompletionSetup`] from a Root profile carrying an enabled `completion` capability
-/// with the given signal implementation and `validation` params.
-fn completion_setup(implementation: Option<&str>, params: serde_json::Value) -> CompletionSetup {
+/// with the given `validation` params.
+fn completion_setup(params: serde_json::Value) -> CompletionSetup {
     use test_cabinet_core::gg::{CAPABILITY_COMPLETION, GgCapabilityConfig};
     let mut profile = GgAgentConfig::root();
     profile.capabilities.push(GgCapabilityConfig {
         id: CAPABILITY_COMPLETION.to_string(),
         enabled: true,
-        implementation: implementation.map(str::to_string),
+        implementation: None,
         params,
     });
     CompletionSetup::resolve(&profile)
 }
 
-/// A model turn that calls the `finish` tool with `summary` — the explicit-call completion signal.
-fn finish_call(id: &str, summary: &str) -> ModelResponse {
+/// A model turn that calls one of the [ending](EndingRole) tools with `arguments`.
+fn ending_call(id: &str, name: &str, arguments: serde_json::Value) -> ModelResponse {
     ModelResponse {
-        text: Some("finishing".to_string()),
+        text: Some("ending".to_string()),
         tool_calls: vec![ToolCall {
             id: id.to_string(),
-            name: "finish".to_string(),
-            arguments: json!({ "summary": summary }),
+            name: name.to_string(),
+            arguments,
         }],
         finish_reason: FinishReason::ToolCalls,
         usage: TokenCounts::default(),
@@ -1090,9 +1094,14 @@ fn finish_call(id: &str, summary: &str) -> ModelResponse {
     }
 }
 
-/// [`drive_root`] with a caller-chosen [`CompletionSetup`], so a test can drive an explicit-call or
-/// validated completion. The profile stays a bare Root — the loop reads the completion rule from the
-/// setup, not the profile.
+/// A turn that calls `finish` with `summary`.
+fn finish_call(id: &str, summary: &str) -> ModelResponse {
+    ending_call(id, "finish", json!({ "summary": summary }))
+}
+
+/// [`drive_root`] with a caller-chosen [`CompletionSetup`] and [`EndingRole`], so a test can drive a
+/// validated ending or a role that ends with something other than `finish`. The profile stays a bare
+/// Root — how an agent ends is its dispatched role's business, never its profile's.
 #[allow(clippy::too_many_arguments)]
 async fn drive_completion(
     client: &dyn ModelClient,
@@ -1101,6 +1110,7 @@ async fn drive_completion(
     emitter: &Emitter,
     limits: LimitsSetup,
     completion: CompletionSetup,
+    ending_role: EndingRole,
 ) -> LoopEnd {
     let ctx = ToolContext::new(dir);
     Agent::root(ROOT_AGENT)
@@ -1127,6 +1137,7 @@ async fn drive_completion(
             false,
             no_code(),
             completion,
+            ending_role,
             &GgAgentConfig::root(),
             None,
             None,
@@ -1135,19 +1146,18 @@ async fn drive_completion(
         .await
 }
 
-/// Under an explicit-call signal a text-only reply does NOT end the run (it is an error turn); the
-/// run ends only when the model calls `finish`, and its summary is the run's final text.
+/// A text-only reply does NOT end a session — it is an error turn. The session ends only when the
+/// model makes its ending call, and that call's declaration is the session's final text.
 #[tokio::test]
-async fn explicit_call_ends_on_finish_not_on_text() {
-    use test_cabinet_core::gg::COMPLETION_SIGNAL_EXPLICIT_CALL;
+async fn a_session_ends_on_an_ending_call_and_not_on_text() {
     let dir = TempDir::new().unwrap();
     let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/x").root());
     let emitter = Emitter::with_sink(None, Box::new(CollectingSink::new()));
 
-    // Turn 1 is text-only (an error under this signal — not a completion); turn 2 calls `finish`.
+    // Turn 1 is text-only (an error, not a conclusion); turn 2 calls `finish`.
     let client = MockClient::new(
         "mock/x",
-        vec![stop_response(), finish_call("f1", "all done")],
+        vec![text_only_response(), finish_call("f1", "all done")],
     );
     let end = drive_completion(
         &client,
@@ -1155,20 +1165,26 @@ async fn explicit_call_ends_on_finish_not_on_text() {
         &registry,
         &emitter,
         no_limits(5),
-        completion_setup(Some(COMPLETION_SIGNAL_EXPLICIT_CALL), json!({})),
+        CompletionSetup::default(),
+        EndingRole::Standard,
     )
     .await;
 
     assert_eq!(end.status, "completed");
-    assert_eq!(end.turns, 2, "the text-only turn did not end the run");
+    assert_eq!(end.turns, 2, "the text-only turn did not end the session");
     assert_eq!(end.final_text.as_deref(), Some("all done"));
+    assert_eq!(
+        end.ending,
+        Some(Ending::Finished {
+            summary: "all done".to_string(),
+        })
+    );
 }
 
-/// Under an explicit-call signal, repeated text-only replies are counted as errors, so a
-/// consecutive-error ceiling stops the run early rather than letting it loop to its turn budget.
+/// Repeated text-only replies are counted as errors, so a consecutive-error ceiling stops the run
+/// early rather than letting it loop to its turn budget.
 #[tokio::test]
-async fn explicit_call_text_only_trips_the_error_ceiling() {
-    use test_cabinet_core::gg::COMPLETION_SIGNAL_EXPLICIT_CALL;
+async fn repeated_text_only_replies_trip_the_error_ceiling() {
     let dir = TempDir::new().unwrap();
     let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/x").root());
     let emitter = Emitter::with_sink(None, Box::new(CollectingSink::new()));
@@ -1177,7 +1193,11 @@ async fn explicit_call_text_only_trips_the_error_ceiling() {
     limits.limits.max_consecutive_errors = Some(2);
     let client = MockClient::new(
         "mock/x",
-        vec![stop_response(), stop_response(), stop_response()],
+        vec![
+            text_only_response(),
+            text_only_response(),
+            text_only_response(),
+        ],
     );
     let end = drive_completion(
         &client,
@@ -1185,7 +1205,8 @@ async fn explicit_call_text_only_trips_the_error_ceiling() {
         &registry,
         &emitter,
         limits,
-        completion_setup(Some(COMPLETION_SIGNAL_EXPLICIT_CALL), json!({})),
+        CompletionSetup::default(),
+        EndingRole::Standard,
     )
     .await;
 
@@ -1201,21 +1222,153 @@ async fn explicit_call_text_only_trips_the_error_ceiling() {
     );
 }
 
-/// A plain-text completion whose validation commands all pass ends the run.
+/// A reviewer is offered `approve`/`request_changes` and **not** `finish`, and its approval comes
+/// back as a structured verdict rather than as text somebody has to read a marker out of.
 #[tokio::test]
-async fn plain_text_completion_passes_validation() {
+async fn a_reviewer_ends_with_a_verdict_and_has_no_finish() {
     let dir = TempDir::new().unwrap();
     let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/x").root());
     let emitter = Emitter::with_sink(None, Box::new(CollectingSink::new()));
 
-    let client = MockClient::new("mock/x", vec![stop_response()]);
+    let client = MockClient::new("mock/x", vec![ending_call("a1", "approve", json!({}))]);
     let end = drive_completion(
         &client,
         dir.path(),
         &registry,
         &emitter,
         no_limits(5),
-        completion_setup(None, json!({ "validation": ["true"] })),
+        CompletionSetup::default(),
+        EndingRole::Review,
+    )
+    .await;
+
+    assert_eq!(end.status, "completed");
+    assert_eq!(end.ending, Some(Ending::Approved));
+    let offered = client.last_tool_names();
+    assert!(
+        offered.contains(&"approve".to_string())
+            && offered.contains(&"request_changes".to_string()),
+        "a reviewer is offered both verdicts: {offered:?}"
+    );
+    assert!(
+        !offered.contains(&"finish".to_string()),
+        "a reviewer has no `finish` — \"the work is complete\" is not a verdict: {offered:?}",
+    );
+}
+
+/// A reviewer that requests changes without naming any is **refused**, and the session continues so
+/// it can answer properly. This is the defect the typed verdict exists to remove: the old contract
+/// let a reviewer reject work and list nothing, and the fixing agent was then dispatched with a
+/// synthesized "re-check the criteria" item that told it nothing.
+#[tokio::test]
+async fn a_reviewer_cannot_request_changes_without_naming_any() {
+    let dir = TempDir::new().unwrap();
+    let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/x").root());
+    let emitter = Emitter::with_sink(None, Box::new(CollectingSink::new()));
+
+    let client = MockClient::new(
+        "mock/x",
+        vec![
+            ending_call("r1", "request_changes", json!({ "items": [] })),
+            ending_call(
+                "r2",
+                "request_changes",
+                json!({ "items": ["`step()` is off by one"] }),
+            ),
+        ],
+    );
+    let end = drive_completion(
+        &client,
+        dir.path(),
+        &registry,
+        &emitter,
+        no_limits(5),
+        CompletionSetup::default(),
+        EndingRole::Review,
+    )
+    .await;
+
+    assert_eq!(end.turns, 2, "the empty verdict did not end the session");
+    assert_eq!(
+        end.ending,
+        Some(Ending::ChangesRequested {
+            items: vec!["`step()` is off by one".to_string()],
+        })
+    );
+}
+
+/// A judge is offered only `select_winner`, and a pick outside the range it was shown is refused
+/// rather than clamped into a merge of some other attempt.
+#[tokio::test]
+async fn a_judge_must_pick_one_of_the_attempts_it_was_shown() {
+    let dir = TempDir::new().unwrap();
+    let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/x").root());
+    let emitter = Emitter::with_sink(None, Box::new(CollectingSink::new()));
+
+    let client = MockClient::new(
+        "mock/x",
+        vec![
+            ending_call(
+                "j1",
+                "select_winner",
+                json!({ "attempt": 7, "rationale": "it is the best" }),
+            ),
+            ending_call(
+                "j2",
+                "select_winner",
+                json!({ "attempt": 2, "rationale": "it handles the empty case" }),
+            ),
+        ],
+    );
+    let end = drive_completion(
+        &client,
+        dir.path(),
+        &registry,
+        &emitter,
+        no_limits(5),
+        CompletionSetup::default(),
+        EndingRole::Judge { attempts: 3 },
+    )
+    .await;
+
+    assert_eq!(
+        end.turns, 2,
+        "the out-of-range pick did not end the session"
+    );
+    assert_eq!(
+        end.ending,
+        Some(Ending::Winner {
+            attempt: 2,
+            rationale: "it handles the empty case".to_string(),
+        })
+    );
+    let offered = client.last_tool_names();
+    assert_eq!(
+        offered
+            .iter()
+            .filter(|name| ["finish", "approve", "request_changes"].contains(&name.as_str()))
+            .count(),
+        0,
+        "a judge is offered no ending but its own: {offered:?}",
+    );
+}
+
+/// An ending whose validation commands all pass ends the session.
+#[tokio::test]
+async fn an_ending_passes_validation() {
+    let dir = TempDir::new().unwrap();
+    let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/x").root());
+    let emitter = Emitter::with_sink(None, Box::new(CollectingSink::new()));
+
+    let client = MockClient::new("mock/x", vec![finish_call("f1", "all done")]);
+    let end = drive_completion(
+        &client,
+        dir.path(),
+        &registry,
+        &emitter,
+        no_limits(5),
+        completion_setup(json!({ "validation": ["true"] })),
+        EndingRole::Standard,
     )
     .await;
 
@@ -1223,34 +1376,38 @@ async fn plain_text_completion_passes_validation() {
     assert_eq!(end.turns, 1);
 }
 
-/// A plain-text completion whose validation fails does NOT end the run: the failure is fed back and
-/// the run continues, so a run that can never satisfy validation stops on its turn ceiling instead.
+/// An ending whose validation fails does NOT end the session: the failure is fed back and the run
+/// continues, so a run that can never satisfy validation stops on its turn ceiling instead.
 #[tokio::test]
-async fn plain_text_completion_blocked_by_failing_validation() {
+async fn an_ending_is_blocked_by_failing_validation() {
     let dir = TempDir::new().unwrap();
     let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/x").root());
     let emitter = Emitter::with_sink(None, Box::new(CollectingSink::new()));
 
-    let client = MockClient::new("mock/x", vec![stop_response(), stop_response()]);
+    let client = MockClient::new(
+        "mock/x",
+        vec![finish_call("f1", "all done"), finish_call("f2", "all done")],
+    );
     let end = drive_completion(
         &client,
         dir.path(),
         &registry,
         &emitter,
         no_limits(2),
-        completion_setup(None, json!({ "validation": ["false"] })),
+        completion_setup(json!({ "validation": ["false"] })),
+        EndingRole::Standard,
     )
     .await;
 
     assert_eq!(
         end.status, "exhausted",
-        "failing validation never lets the run complete"
+        "failing validation never lets the session end"
     );
     assert_eq!(end.turns, 2);
     assert_eq!(
         client.turns_taken(),
         2,
-        "the completion was rejected and the run continued to the next turn",
+        "the ending was rejected and the run continued to the next turn",
     );
 }
 
@@ -1292,6 +1449,7 @@ async fn drive_ends_model_error_on_exhausted_retries() {
             false,
             no_code(),
             no_completion(),
+            EndingRole::Standard,
             &GgAgentConfig::root(),
             None,
             None,
@@ -1345,6 +1503,7 @@ async fn drive_ends_auth_error_when_the_credential_is_refused() {
             false,
             no_code(),
             no_completion(),
+            EndingRole::Standard,
             &GgAgentConfig::root(),
             None,
             None,
@@ -1686,12 +1845,6 @@ struct DisabledRuntimes {
     /// vary custom instructions or the delegation allowlist. Owned here so `PromptInputs` can
     /// borrow it.
     profile: GgAgentConfig,
-    /// The completion rule the prompt describes — the default (plain-text, ungated), since these
-    /// prompt tests do not vary it. Owned here so `PromptInputs` can borrow it.
-    completion: CompletionSetup,
-    /// The compaction setup the prompt describes — disabled, so these tests render no compaction
-    /// section. Owned here so `PromptInputs` can borrow it.
-    compaction: CompactionSetup,
     /// The `shell` output policy the prompt describes — inline by default, so these tests render no
     /// shell-output section. Owned here so `PromptInputs` can borrow it.
     shell_offload: OffloadPolicy,
@@ -1711,8 +1864,6 @@ impl DisabledRuntimes {
             // the model it can see images.
             vision: VisionContext::unknown(),
             profile: GgAgentConfig::root(),
-            completion: CompletionSetup::resolve(&GgAgentConfig::root()),
-            compaction: no_compaction(),
             shell_offload: OffloadPolicy::Inline,
         }
     }
@@ -1748,11 +1899,9 @@ impl DisabledRuntimes {
             responses_as_code: false,
             autoload_specs: None,
             profile: &self.profile,
-            compaction: &self.compaction,
-            delegated: false,
+            ending_role: EndingRole::Standard,
             assigned_issue: None,
             fences_are_stripped: true,
-            completion: &self.completion,
         }
     }
 }
@@ -2129,6 +2278,13 @@ fn read_skill_call(id: &str, name: &str) -> ModelResponse {
 
 /// A terminal, tool-free response that ends the loop.
 fn stop_response() -> ModelResponse {
+    finish_call("call_finish", "done")
+}
+
+/// A reply with **no tool call at all** — which is an error turn, not a conclusion. The helper a
+/// test reaches for when the text-only reply *is* the subject; every other test wants
+/// [`stop_response`], which ends the session the one way a session ends.
+fn text_only_response() -> ModelResponse {
     ModelResponse {
         text: Some("done".to_string()),
         tool_calls: Vec::new(),
@@ -2230,6 +2386,7 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
             false,
             no_code(),
             no_completion(),
+            EndingRole::Standard,
             &GgAgentConfig::root(),
             None,
             None,
@@ -2420,6 +2577,7 @@ async fn drive_enforces_memory_caps_end_to_end() {
             false,
             no_code(),
             no_completion(),
+            EndingRole::Standard,
             &GgAgentConfig::root(),
             None,
             None,
@@ -2586,6 +2744,7 @@ async fn drive_pins_only_the_index_under_the_markdown_strategy() {
             false,
             no_code(),
             no_completion(),
+            EndingRole::Standard,
             &GgAgentConfig::root(),
             None,
             None,
@@ -2671,6 +2830,7 @@ async fn the_memory_block_costs_nothing_until_the_boundary() {
             false,
             no_code(),
             no_completion(),
+            EndingRole::Standard,
             &GgAgentConfig::root(),
             None,
             None,
@@ -2868,6 +3028,7 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
             false,
             no_code(),
             no_completion(),
+            EndingRole::Standard,
             &GgAgentConfig::root(),
             None,
             None,
@@ -3184,6 +3345,7 @@ async fn drive_compacts_at_the_threshold_and_retains_pinned_state() {
             false,
             no_code(),
             no_completion(),
+            EndingRole::Standard,
             &GgAgentConfig::root(),
             None,
             None,
@@ -3349,6 +3511,7 @@ async fn drive_never_compacts_when_capability_off() {
             false,
             no_code(),
             no_completion(),
+            EndingRole::Standard,
             &GgAgentConfig::root(),
             None,
             None,
@@ -3451,6 +3614,7 @@ async fn drive_manages_context_end_to_end() {
             false,
             no_code(),
             no_completion(),
+            EndingRole::Standard,
             &GgAgentConfig::root(),
             None,
             None,
@@ -3565,6 +3729,7 @@ async fn drive_without_amc_offers_no_context_management() {
             false,
             no_code(),
             no_completion(),
+            EndingRole::Standard,
             &GgAgentConfig::root(),
             None,
             None,
@@ -3656,6 +3821,7 @@ async fn drive_plans_then_implements_from_a_fresh_context() {
             false,
             no_code(),
             no_completion(),
+            EndingRole::Standard,
             &GgAgentConfig::root(),
             None,
             None,
@@ -3820,6 +3986,7 @@ async fn drive_without_planning_offers_no_planning() {
             false,
             no_code(),
             no_completion(),
+            EndingRole::Standard,
             &GgAgentConfig::root(),
             None,
             None,
@@ -5023,13 +5190,7 @@ fn counting_worker() -> impl Fn(&GgSlotBinding) -> Box<dyn ModelClient> + Send +
             usage: TokenCounts::default(),
             cost: None,
         };
-        let finish = ModelResponse {
-            text: Some(format!("part {n} built")),
-            tool_calls: Vec::new(),
-            finish_reason: FinishReason::Stop,
-            usage: TokenCounts::default(),
-            cost: None,
-        };
+        let finish = finish_call("call_part_done", &format!("part {n} built"));
         Box::new(MockClient::new("mock/worker", vec![write, finish]))
     }
 }
@@ -5429,25 +5590,19 @@ fn issue_review_root_producer(
     }
 }
 
-/// A reviewer that returns a clean, parseable verdict in one turn — APPROVED, or CHANGES REQUESTED
-/// with one actionable item.
+/// A reviewer that declares its verdict in one turn — `approve`, or `request_changes` with one
+/// actionable item.
 fn reviewer_verdict_mock(model_id: &str, approved: bool) -> MockClient {
-    let text = if approved {
-        "The work satisfies the completion criteria.\n\nREVIEW: APPROVED".to_string()
+    let turn = if approved {
+        ending_call("verdict", "approve", json!({}))
     } else {
-        "Not finished.\n\nREVIEW: CHANGES REQUESTED\n1. Add the missing widget to the game."
-            .to_string()
+        ending_call(
+            "verdict",
+            "request_changes",
+            json!({ "items": ["Add the missing widget to the game."] }),
+        )
     };
-    MockClient::new(
-        model_id,
-        vec![ModelResponse {
-            text: Some(text),
-            tool_calls: Vec::new(),
-            finish_reason: FinishReason::Stop,
-            usage: TokenCounts::default(),
-            cost: None,
-        }],
-    )
+    MockClient::new(model_id, vec![turn])
 }
 
 /// A `reviewer`-slot producer that requests changes for its first `approve_after` dispatches, then
@@ -6114,8 +6269,8 @@ async fn an_issues_reviewers_gate_its_acceptance_and_its_merge() {
             .iter()
             .any(|(_, _, slot, _, brief)| slot == "reviewer"
                 && brief.as_deref().is_some_and(|b| b.contains("work-1.txt")
-                    && b.contains("What changed (against the baseline)")
-                    && b.contains("Changes are in\nthe current workspace.")
+                    && b.contains("## What changed")
+                    && b.contains("The work is in your\ncurrent working directory.")
                     && !b.contains("```diff"))),
         "the reviewer is given the change summary and sent to the worktree, not handed the patch"
     );
@@ -7075,43 +7230,6 @@ async fn session_summary_counts_match_an_issue_review_run_stream() {
     );
 }
 
-/// The verdict parser: an explicit approval marker approves; anything else is changes-requested with
-/// the message's list items (a generic item when it lists none); the last marker wins.
-#[test]
-fn parse_review_verdict_reads_the_contract() {
-    // Approval.
-    let approved = parse_review_verdict("Looks good.\n\nCODE REVIEW: APPROVED");
-    assert!(approved.approved);
-    assert!(approved.items.is_empty());
-
-    // Changes with numbered items.
-    let changes = parse_review_verdict(
-        "CODE REVIEW: CHANGES REQUESTED\n1. Fix the score.\n2. Add a restart button.",
-    );
-    assert!(!changes.approved);
-    assert_eq!(
-        changes.items,
-        vec![
-            "Fix the score.".to_string(),
-            "Add a restart button.".to_string()
-        ]
-    );
-
-    // Changes with bullet items.
-    let bullets = parse_review_verdict("CODE REVIEW: CHANGES REQUESTED\n- Do X\n- Do Y");
-    assert_eq!(bullets.items, vec!["Do X".to_string(), "Do Y".to_string()]);
-
-    // No clear verdict → conservatively not approved, with a synthesized item so a fixer has work.
-    let unclear = parse_review_verdict("I looked at it and I have some thoughts.");
-    assert!(!unclear.approved);
-    assert_eq!(unclear.items.len(), 1);
-
-    // The last marker wins (a reviewer that discusses then concludes).
-    let concludes =
-        parse_review_verdict("I might request changes... but actually: CODE REVIEW: APPROVED");
-    assert!(concludes.approved);
-}
-
 // ---------------------------------------------------------------------------
 // Phase 5b: FSM-driven processes — the built-in machines, order enforced
 // ---------------------------------------------------------------------------
@@ -7355,13 +7473,7 @@ fn speculation_attempt_producer(
                     "write_file",
                     json!({ "path": format!("attempt-{n}.txt"), "contents": format!("attempt {n}\n") }),
                 ),
-                ModelResponse {
-                    text: Some(format!("Attempt {n} complete.")),
-                    tool_calls: Vec::new(),
-                    finish_reason: FinishReason::Stop,
-                    usage: TokenCounts::default(),
-                    cost: None,
-                },
+                finish_call("call_attempt_done", &format!("Attempt {n} complete.")),
             ],
         ))
     }
@@ -7374,15 +7486,11 @@ fn judge_producer(
     move |b| {
         Box::new(MockClient::new(
             &b.model_id,
-            vec![ModelResponse {
-                text: Some(format!(
-                    "Attempt {winner} is the most complete.\n\nSPECULATION JUDGE: WINNER {winner}"
-                )),
-                tool_calls: Vec::new(),
-                finish_reason: FinishReason::Stop,
-                usage: TokenCounts::default(),
-                cost: None,
-            }],
+            vec![ending_call(
+                "verdict",
+                "select_winner",
+                json!({ "attempt": winner, "rationale": "it is the most complete" }),
+            )],
         ))
     }
 }
@@ -7678,38 +7786,6 @@ async fn speculate_offline_e2e_through_the_default_factory() {
         &events.last().unwrap().kind,
         GgTelemetryKind::SessionEnded { status } if status == "completed"
     ));
-}
-
-/// The judge verdict contract: `parse_judge_verdict` reads the 1-based winner (last marker wins,
-/// case-insensitive), and treats a missing or non-positive winner as an error so an unclear judge
-/// never causes a silent or arbitrary merge.
-#[test]
-fn parse_judge_verdict_reads_the_winner_and_rejects_no_verdict() {
-    let verdict =
-        parse_judge_verdict("Attempt 2 wins.\n\nSPECULATION JUDGE: WINNER 2\nIt is more complete.")
-            .expect("a clean verdict parses");
-    assert_eq!(verdict.winner, 2);
-    assert!(!verdict.rationale.is_empty(), "a rationale is captured");
-
-    // Case-insensitive, and the last marker wins.
-    let verdict = parse_judge_verdict("speculation judge: winner 1\nspeculation judge: winner 3")
-        .expect("the last marker wins");
-    assert_eq!(verdict.winner, 3);
-
-    // No marker at all → error (never guess a winner).
-    assert!(
-        parse_judge_verdict("I think the second attempt is best, honestly.").is_err(),
-        "a message with no verdict marker is an error"
-    );
-    // A zero (or non-numeric) winner → error (attempts are 1-based).
-    assert!(
-        parse_judge_verdict("SPECULATION JUDGE: WINNER 0").is_err(),
-        "winner 0 is rejected"
-    );
-    assert!(
-        parse_judge_verdict("SPECULATION JUDGE: WINNER none").is_err(),
-        "a non-numeric winner is rejected"
-    );
 }
 
 // ---------------------------------------------------------------------------
@@ -8015,7 +8091,7 @@ impl ModelClient for VisionRefusingClient {
                 message: "No endpoints found that support image input".to_string(),
             });
         }
-        // Turn 1 reads the mockup; every later turn finishes.
+        // Turn 1 reads the mockup; every later turn ends the session.
         let tool_calls = if self.turn.fetch_add(1, Ordering::SeqCst) == 0 {
             vec![ToolCall {
                 id: "call_read".to_string(),
@@ -8023,15 +8099,15 @@ impl ModelClient for VisionRefusingClient {
                 arguments: json!({ "path": "ref.png" }),
             }]
         } else {
-            Vec::new()
+            vec![ToolCall {
+                id: "call_finish".to_string(),
+                name: "finish".to_string(),
+                arguments: json!({ "summary": "done" }),
+            }]
         };
         Ok(ModelResponse {
             text: Some("done".to_string()),
-            finish_reason: if tool_calls.is_empty() {
-                FinishReason::Stop
-            } else {
-                FinishReason::ToolCalls
-            },
+            finish_reason: FinishReason::ToolCalls,
             tool_calls,
             usage: TokenCounts::default(),
             cost: None,

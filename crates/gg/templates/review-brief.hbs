@@ -1,12 +1,11 @@
-Review the work for the issue against the issue's requirements. Changes are in
-the current workspace.
+Review the work for this issue against its requirements. The work is in your
+current working directory.
 
 {{issueBrief}}
 {{#if history}}
 
 ## Earlier review feedback
-This issue has been reviewed before. Check whether each point below was
-addressed, and do not repeat a point that has been:
+Check whether each point below was addressed. Do not repeat one that was.
 {{#each history}}
 {{#if approved}}
 - `{{reviewer}}` approved the work.
@@ -19,51 +18,19 @@ addressed, and do not repeat a point that has been:
 {{/each}}
 {{/if}}
 
-## What changed (against the baseline)
+## What changed
 {{#if changes.baseline}}
-Baseline: {{changes.baseline}}
+Against `{{changes.baseline}}`:
 {{/if}}
 {{#if changes.summary}}
 ```
 {{changes.summary}}
 ```
 {{else}}
-(No changes were detected against the baseline. Review against the completion
-criteria and, unless the work was clearly already present, request the missing
-work.)
+Nothing changed. Unless the work was already present, request the missing work.
 {{/if}}
-
-Your working directory is the checkout the work was done in (`{{changes.workspace}}`).
 
 ## Your verdict
-Review the work against the completion criteria and the in/out-of-scope
-boundaries.
-{{#if code}}
-When you are done, end your session by calling `harness.finish()`, passing
-exactly one verdict as its summary:
-- If the work fully satisfies the completion criteria and stays in scope:
-```
-harness.finish("REVIEW: APPROVED")
-```
-- Otherwise:
-```
-harness.finish("REVIEW: CHANGES REQUESTED\n1. …")
-```
-where the summary continues with a numbered list of specific, actionable items
-that must be fixed before the work can be accepted. Be concrete: each item
-should say what is wrong and what to change.
-{{else}}
-When you are done, end your final message with exactly one verdict:
-- If the work fully satisfies the completion criteria and stays in scope, write
-on its own line:
-```
-REVIEW: APPROVED
-```
-- Otherwise, write on its own line:
-```
-REVIEW: CHANGES REQUESTED
-```
-and then a numbered list of specific, actionable items that must be fixed before
-the work can be accepted. Be concrete: each item should say what is wrong and
-what to change.
-{{/if}}
+Approve only if the work satisfies every completion criterion and stays in
+scope. Otherwise request changes, listing each one: what is wrong, and what to
+change.

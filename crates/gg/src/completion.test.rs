@@ -2,10 +2,7 @@ use super::*;
 
 use serde_json::json;
 use tempfile::TempDir;
-use test_cabinet_core::gg::{
-    CAPABILITY_COMPLETION, COMPLETION_SIGNAL_EXPLICIT_CALL, COMPLETION_SIGNAL_PLAIN_TEXT,
-    GgAgentConfig, GgCapabilityConfig,
-};
+use test_cabinet_core::gg::{CAPABILITY_COMPLETION, GgAgentConfig, GgCapabilityConfig};
 
 use crate::telemetry::{CollectingSink, Emitter};
 use crate::tools::ToolContext;
@@ -38,60 +35,73 @@ fn emitter() -> Emitter {
     Emitter::with_sink(None, Box::new(CollectingSink::new())).for_agent("root", None)
 }
 
-/// An absent completion capability resolves to the historical defaults: a plain-text signal and no
-/// validation, so an unconfigured run is unchanged.
+/// An absent completion capability leaves the ending ungated.
 #[test]
-fn resolve_defaults_to_plain_text_ungated_when_absent() {
+fn resolve_leaves_the_ending_ungated_when_absent() {
     let setup = CompletionSetup::resolve(&GgAgentConfig::root());
-    assert_eq!(setup.signal(), CompletionSignal::PlainText);
     assert!(!setup.has_validation());
-    assert!(!setup.explicit_finish(false));
-}
-
-/// An enabled capability with the explicit-call implementation resolves that signal.
-#[test]
-fn resolve_reads_explicit_call_signal() {
-    let setup = CompletionSetup::resolve(&profile_with(completion_cap(
-        true,
-        Some(COMPLETION_SIGNAL_EXPLICIT_CALL),
-        json!({}),
-    )));
-    assert_eq!(setup.signal(), CompletionSignal::ExplicitCall);
-}
-
-/// The plain-text implementation resolves the plain-text signal explicitly.
-#[test]
-fn resolve_reads_plain_text_signal() {
-    let setup = CompletionSetup::resolve(&profile_with(completion_cap(
-        true,
-        Some(COMPLETION_SIGNAL_PLAIN_TEXT),
-        json!({}),
-    )));
-    assert_eq!(setup.signal(), CompletionSignal::PlainText);
 }
 
 /// A present-but-disabled completion capability is the unchanged control: it records its config but
-/// applies neither the signal nor the validation it would have used.
+/// applies none of the validation it would have run.
 #[test]
-fn disabled_capability_falls_back_to_defaults() {
+fn disabled_capability_gates_nothing() {
     let setup = CompletionSetup::resolve(&profile_with(completion_cap(
         false,
-        Some(COMPLETION_SIGNAL_EXPLICIT_CALL),
+        None,
         json!({ "validation": ["cargo test"] }),
     )));
-    assert_eq!(setup.signal(), CompletionSignal::PlainText);
     assert!(!setup.has_validation());
 }
 
-/// An unrecognized implementation string falls back to the plain-text default rather than failing.
+/// Each [role](EndingRole) is offered exactly its own ending calls, and each definition demands what
+/// that role's verdict is made of — a change list that cannot be empty, a bounded attempt number.
 #[test]
-fn unrecognized_signal_falls_back_to_plain_text() {
-    let setup = CompletionSetup::resolve(&profile_with(completion_cap(
-        true,
-        Some("teletype"),
-        json!({}),
-    )));
-    assert_eq!(setup.signal(), CompletionSignal::PlainText);
+fn role_tool_definitions_carry_each_role_s_shape() {
+    let standard = role_tool_definitions(EndingRole::Standard);
+    assert_eq!(
+        standard.iter().map(|t| t.name.as_str()).collect::<Vec<_>>(),
+        [FINISH_TOOL]
+    );
+
+    let review = role_tool_definitions(EndingRole::Review);
+    assert_eq!(
+        review.iter().map(|t| t.name.as_str()).collect::<Vec<_>>(),
+        [APPROVE_TOOL, REQUEST_CHANGES_TOOL]
+    );
+    let items = &review[1].parameters["properties"]["items"];
+    assert_eq!(
+        items["minItems"], 1,
+        "a rejection must name at least one change"
+    );
+
+    let judge = role_tool_definitions(EndingRole::Judge { attempts: 4 });
+    assert_eq!(
+        judge.iter().map(|t| t.name.as_str()).collect::<Vec<_>>(),
+        [SELECT_WINNER_TOOL]
+    );
+    let attempt = &judge[0].parameters["properties"]["attempt"];
+    assert_eq!(attempt["minimum"], 1);
+    assert_eq!(
+        attempt["maximum"], 4,
+        "the judge may only pick among the attempts it was shown"
+    );
+}
+
+/// The feedback for a text-only reply names the calls the reader actually has — never one its role
+/// was not given.
+#[test]
+fn missing_completion_feedback_names_only_this_role_s_calls() {
+    let standard = missing_completion_feedback(EndingRole::Standard);
+    assert!(standard.contains(FINISH_TOOL), "{standard}");
+
+    let review = missing_completion_feedback(EndingRole::Review);
+    assert!(review.contains(APPROVE_TOOL), "{review}");
+    assert!(review.contains(REQUEST_CHANGES_TOOL), "{review}");
+    assert!(
+        !review.contains(FINISH_TOOL),
+        "a reviewer is never pointed at a `finish` it does not have: {review}"
+    );
 }
 
 /// The validation param parses the object form, including a per-command `cwd`.
@@ -160,26 +170,10 @@ fn resolve_drops_malformed_validation_entries() {
     );
 }
 
-/// `explicit_finish` is true only under an explicit-call signal AND on the tool-calling path — a
-/// code-mode run always ends through its program's `finish`.
-#[test]
-fn explicit_finish_only_when_explicit_call_and_not_code() {
-    let explicit = CompletionSetup::resolve(&profile_with(completion_cap(
-        true,
-        Some(COMPLETION_SIGNAL_EXPLICIT_CALL),
-        json!({}),
-    )));
-    assert!(explicit.explicit_finish(false));
-    assert!(!explicit.explicit_finish(true));
-
-    let plain = CompletionSetup::resolve(&GgAgentConfig::root());
-    assert!(!plain.explicit_finish(false));
-}
-
 /// The finish tool is named `finish` and requires a `summary`.
 #[test]
 fn finish_tool_definition_names_finish_and_requires_summary() {
-    let definition = finish_tool_definition();
+    let definition = &role_tool_definitions(EndingRole::Standard)[0];
     assert_eq!(definition.name, FINISH_TOOL);
     assert_eq!(
         definition.parameters["required"],

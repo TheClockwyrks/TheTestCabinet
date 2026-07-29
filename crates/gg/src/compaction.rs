@@ -77,6 +77,13 @@ use crate::model::{ImageContent, Message, ModelClient, Role};
 use crate::prompts::{self, CompactionPromptContext};
 use crate::tools::{COMPACT_TOOL, CompactTool, Tool, parse_compact_request};
 
+/// The API object a program reaches the [`compact`](COMPACT_TOOL) function through, and the name it
+/// is bound under there. Both are the sandbox's own catalogue values; they are named here so the
+/// compaction prompts spell the call exactly as the guest binds it.
+const COMPACT_OBJECT: &str = "context";
+/// See [`COMPACT_OBJECT`].
+const COMPACT_FUNCTION: &str = "compact";
+
 /// The compaction capability param naming the
 /// [summary headroom](CompactionPolicy::summary_headroom) — a `0.0..=0.9` fraction of the
 /// model's window held back from the agent so the summarization call fits.
@@ -233,14 +240,29 @@ impl CompactionStrategy {
 
     /// Whether the **working** agent is offered the [`compact`](COMPACT_TOOL) tool this run.
     ///
-    /// True only for [self-compaction](Self::SelfCompaction), and true for *every* turn of such a
-    /// run — not only the turn a compaction is pending. That is deliberate: the offered tool set is
-    /// part of the prompt a provider caches, so adding a tool at the moment the window is fullest
-    /// would invalidate the whole cached prefix at the most expensive point in the run.
+    /// True for [self-compaction](Self::SelfCompaction), whose whole point it is, and true for
+    /// *every* turn of such a run — not only the turn a compaction is pending. That is deliberate:
+    /// the offered tool set is part of the prompt a provider caches, so adding a tool at the moment
+    /// the window is fullest would invalidate the whole cached prefix at the most expensive point in
+    /// the run.
+    ///
+    /// It is also true for [self-summarization](Self::SelfSummarization) under
+    /// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE), and that is not a
+    /// special case so much as the only coherent reading of the strategy there. Self-summarization
+    /// asks the agent for a summary; a tool-calling agent answers in prose, but a code agent has no
+    /// prose to answer in — every reply it sends is a program. Asking one to stop writing programs
+    /// for a turn is asking it to break the single contract the whole protocol rests on, and a
+    /// contract that is suspended once is a contract a model has learned is negotiable. So the
+    /// summary arrives the way everything else a program says arrives: as a call carrying it.
+    ///
     /// [Handoff compaction](Self::HandoffCompaction) uses the same tool but never offers it here —
     /// only its separate compaction model is given it.
-    pub fn offers_compact_tool(self) -> bool {
-        matches!(self, Self::SelfCompaction)
+    pub fn offers_compact_tool(self, responses_as_code: bool) -> bool {
+        match self {
+            Self::SelfCompaction => true,
+            Self::SelfSummarization => responses_as_code,
+            _ => false,
+        }
     }
 
     /// Whether this strategy delegates to a **separate model** — the two `handoff-*` strategies,
@@ -277,12 +299,18 @@ impl PendingCompaction {
     /// Whether a call named `name` is one this pending compaction accepts.
     ///
     /// The narrowing is total rather than advisory, and it has to be: the window is full, so a call
-    /// that is allowed through is a call that makes the problem worse. [`Summary`](Self::Summary)
-    /// admits nothing at all, because a summarization turn is not a working turn — the loop takes
-    /// that turn whole and never dispatches from it, so this only ever answers the defensive case.
-    pub fn admits(self, name: &str) -> bool {
+    /// that is allowed through is a call that makes the problem worse.
+    ///
+    /// [`Summary`](Self::Summary) admits nothing on the **tool-calling** path, where the summary is
+    /// the reply's own text and the loop takes that turn whole without dispatching from it. Under
+    /// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) there is no such
+    /// reply — every reply is a program — so the summary arrives as a `compact` call carrying it,
+    /// and that call is what this must admit. `code_mode` is therefore a parameter rather than a
+    /// property of the requirement: the same pending compaction is satisfied differently in the two
+    /// modes because the two modes give a model different ways to say anything at all.
+    pub fn admits(self, name: &str, code_mode: bool) -> bool {
         match self {
-            Self::Summary => false,
+            Self::Summary => code_mode && name == COMPACT_TOOL,
             Self::CompactCall => name == COMPACT_TOOL,
             Self::MemoryWrites => crate::tools::is_memory_tool(name),
         }
@@ -334,9 +362,10 @@ impl PendingCompaction {
     /// `code_mode` is the one thing that changes the wording: under
     /// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) every reply is a
     /// program and every call is a function on an API object, so the instruction has to name the
-    /// call the way that run's model actually makes it — and, for [`Summary`](Self::Summary), has to
-    /// explicitly suspend the reply contract for one turn, since prose is the one thing a code run
-    /// is otherwise told never to send.
+    /// call the way that run's model actually makes it. For [`Summary`](Self::Summary) it changes
+    /// more than the wording: a code run has no prose reply to summarize *in*, so its summary is
+    /// asked for as a `compact` call carrying it — a code agent is never told to stop writing
+    /// programs, which is not a thing this protocol can ask for.
     ///
     /// `calls` is how this run's [memory strategy](crate::memories::MemoryStrategy) names its own
     /// calls, so a [`MemoryWrites`](Self::MemoryWrites) instruction asks for the tools the model was
@@ -352,7 +381,13 @@ impl PendingCompaction {
             compact_call: matches!(self, Self::CompactCall),
             memory_writes: matches!(self, Self::MemoryWrites),
             code_mode,
-            compact_tool: COMPACT_TOOL.to_string(),
+            // Named as the reader writes it: a program calls a method on an API object, a
+            // tool-calling model requests a tool.
+            compact_tool: if code_mode {
+                format!("{COMPACT_OBJECT}.{COMPACT_FUNCTION}")
+            } else {
+                COMPACT_TOOL.to_string()
+            },
             memory_create: calls.create.to_string(),
             memory_revise: calls.revise.to_string(),
             memory_delete: calls.delete.to_string(),

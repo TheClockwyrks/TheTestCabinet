@@ -55,6 +55,7 @@ async fn drive_compaction(
             false,
             no_code(),
             no_completion(),
+            EndingRole::Standard,
             &GgAgentConfig::root(),
             None,
             None,

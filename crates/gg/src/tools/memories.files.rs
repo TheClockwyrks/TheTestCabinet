@@ -63,7 +63,7 @@ impl Tool for CreateMemoryTool {
         drop(store);
 
         let purpose = if indexed {
-            "Record a new memory. gg adds it to your memory index — the list of slugs and \
+            "Record a new memory. It is added to your memory index — the list of slugs and \
              descriptions you can see above, which stays in your context — and keeps the \
              contents themselves outside your context until you `read_memory` them. Write the \
              `description` for a future you scanning that index and deciding whether this is the \

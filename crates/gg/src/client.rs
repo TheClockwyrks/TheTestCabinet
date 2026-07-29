@@ -57,6 +57,7 @@
 //! test that constructs the invocation itself (supplying the windows a launch would
 //! have), which is exactly the intended blast radius.
 
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
@@ -779,6 +780,12 @@ pub struct MockClient {
     /// must not run again inside an agent the board itself dispatched. See
     /// [`complete`](ModelClient::complete).
     default_script: bool,
+    /// The tool names offered on the most recent [`complete`](ModelClient::complete) call.
+    ///
+    /// Recorded because *what a run offers* is as much a behaviour as what it does with the answer:
+    /// a reviewer that is handed a `finish` it must not call, or a judge handed a reviewer's
+    /// verdicts, is a bug no assertion about the returned ending would catch.
+    offered_tools: Mutex<Vec<String>>,
 }
 
 impl MockClient {
@@ -789,6 +796,7 @@ impl MockClient {
             script,
             cursor: AtomicUsize::new(0),
             default_script: false,
+            offered_tools: Mutex::new(Vec::new()),
         }
     }
 
@@ -811,6 +819,15 @@ impl MockClient {
     #[cfg(test)]
     pub fn turns_taken(&self) -> usize {
         self.cursor.load(Ordering::SeqCst)
+    }
+
+    /// The tool names offered on the most recent [`complete`](ModelClient::complete) call.
+    ///
+    /// Test-only for the same reason [`turns_taken`](Self::turns_taken) is: nothing in a run asks a
+    /// client what it was offered.
+    #[cfg(test)]
+    pub fn last_tool_names(&self) -> Vec<String> {
+        self.offered_tools.lock().expect("offered tools").clone()
     }
 
     /// The default script exercising every Phase 1 capability offline:
@@ -1101,11 +1118,6 @@ impl MockClient {
             }),
         };
         let finish = ModelResponse {
-            text: Some(
-                "Done — index.html holds a minimal HTML5 canvas game; open it to play.".to_string(),
-            ),
-            tool_calls: Vec::new(),
-            finish_reason: FinishReason::Stop,
             usage: TokenCounts {
                 uncached_input: Some(1400),
                 cached_input: None,
@@ -1116,6 +1128,7 @@ impl MockClient {
                 comparable: Some(0.0021),
                 actual: Some(0.0021),
             }),
+            ..done_turn("Done — index.html holds a minimal HTML5 canvas game; open it to play.")
         };
         Self {
             default_script: true,
@@ -1221,11 +1234,8 @@ impl MockClient {
             cost: None,
         };
         let finish = ModelResponse {
-            text: Some("Done — managed my context along the way.".to_string()),
-            tool_calls: Vec::new(),
-            finish_reason: FinishReason::Stop,
             usage: usage(500, 40),
-            cost: None,
+            ..done_turn("Done — managed my context along the way.")
         };
         Self::new(
             model_id,
@@ -1332,11 +1342,8 @@ impl MockClient {
             cost: None,
         };
         let finish = ModelResponse {
-            text: Some("Done — implemented the plan in index.html.".to_string()),
-            tool_calls: Vec::new(),
-            finish_reason: FinishReason::Stop,
             usage: usage(1200, 50),
-            cost: None,
+            ..done_turn("Done — implemented the plan in index.html.")
         };
         Self::new(
             model_id,
@@ -1390,11 +1397,8 @@ impl MockClient {
             cost: None,
         };
         let finish = ModelResponse {
-            text: Some("The subagent finished; the game is assembled.".to_string()),
-            tool_calls: Vec::new(),
-            finish_reason: FinishReason::Stop,
             usage: usage(1000, 50),
-            cost: None,
+            ..done_turn("The subagent finished; the game is assembled.")
         };
         Self::new(model_id, vec![spawn, wait, finish])
     }
@@ -1451,11 +1455,8 @@ impl MockClient {
             cost: None,
         };
         let finish = ModelResponse {
-            text: Some("The workflow finished; the game is assembled.".to_string()),
-            tool_calls: Vec::new(),
-            finish_reason: FinishReason::Stop,
             usage: usage(1000, 40),
-            cost: None,
+            ..done_turn("The workflow finished; the game is assembled.")
         };
         Self::new(model_id, vec![run, finish])
     }
@@ -1576,11 +1577,8 @@ impl MockClient {
                 ),
                 advance("adv_verify", "Implementation done — advancing to verify."),
                 ModelResponse {
-                    text: Some("Verified: the tests pass. Done.".to_string()),
-                    tool_calls: Vec::new(),
-                    finish_reason: FinishReason::Stop,
                     usage: usage(1000, 40),
-                    cost: None,
+                    ..done_turn("Verified: the tests pass. Done.")
                 },
             ],
         )
@@ -1635,14 +1633,8 @@ impl MockClient {
             cost: None,
         };
         let finish = ModelResponse {
-            text: Some(
-                "The best attempt was merged into the workspace; the game is assembled."
-                    .to_string(),
-            ),
-            tool_calls: Vec::new(),
-            finish_reason: FinishReason::Stop,
             usage: usage(1000, 40),
-            cost: None,
+            ..done_turn("The best attempt was merged into the workspace; the game is assembled.")
         };
         Self::new(model_id, vec![speculate, finish])
     }
@@ -1693,11 +1685,8 @@ impl MockClient {
             cost: None,
         };
         let finish = ModelResponse {
-            text: Some(MOCK_SUBAGENT_RETURN.to_string()),
-            tool_calls: Vec::new(),
-            finish_reason: FinishReason::Stop,
             usage: usage(550, 40),
-            cost: None,
+            ..done_turn(MOCK_SUBAGENT_RETURN)
         };
         Self::new(model_id, vec![write, finish])
     }
@@ -1946,8 +1935,11 @@ impl ModelClient for MockClient {
     async fn complete(
         &self,
         messages: &[Message],
-        _tools: &[ToolDefinition],
+        tools: &[ToolDefinition],
     ) -> Result<ModelResponse, ModelError> {
+        *self.offered_tools.lock().expect("offered tools") =
+            tools.iter().map(|tool| tool.name.clone()).collect();
+
         // A compaction summary request (recognized by the marker the summarizer embeds in
         // its system prompt) is answered with a deterministic canned summary and does
         // **not** advance the scripted cursor, so the mock's main script stays in step
@@ -1989,13 +1981,9 @@ impl ModelClient for MockClient {
         // files another copy. A script whose whole point is to demonstrate the board offline must not
         // be the thing that recurses through it.
         if self.default_script && messages_contain(messages, MOCK_ISSUE_BRIEF_HEADING) {
-            return Ok(ModelResponse {
-                text: Some("The work described in the issue's brief is complete.".to_string()),
-                tool_calls: Vec::new(),
-                finish_reason: FinishReason::Stop,
-                usage: TokenCounts::default(),
-                cost: None,
-            });
+            return Ok(done_turn(
+                "The work described in the issue's brief is complete.",
+            ));
         }
 
         // An issue-review **parent** (offline e2e): message-driven so one `issue-review-parent` model
@@ -2076,22 +2064,23 @@ impl ModelClient for MockClient {
         // dispatch behaves correctly. Answered off-script (the script cursor is never touched).
         if self.model_id.contains("review-reviewer") {
             let approved = messages_contain(messages, MOCK_REVIEW_FIX_SENTINEL);
-            let text = if approved {
-                "The requested change is present; the work meets the criteria.\n\nREVIEW: APPROVED"
-                    .to_string()
-            } else {
-                format!(
-                    "The work is missing the required marker.\n\nREVIEW: CHANGES REQUESTED\n\
-                     1. Write `{MOCK_REVIEW_FIX_FILE}` containing `{MOCK_REVIEW_FIX_SENTINEL}` to \
-                     record that the review fix was applied."
+            return Ok(if approved {
+                ending_turn(
+                    "approve",
+                    "The requested change is present; the work meets the criteria.",
+                    json!({}),
                 )
-            };
-            return Ok(ModelResponse {
-                text: Some(text),
-                tool_calls: Vec::new(),
-                finish_reason: FinishReason::Stop,
-                usage: TokenCounts::default(),
-                cost: None,
+            } else {
+                ending_turn(
+                    "request_changes",
+                    "The work is missing the required marker.",
+                    json!({
+                        "items": [format!(
+                            "Write `{MOCK_REVIEW_FIX_FILE}` containing `{MOCK_REVIEW_FIX_SENTINEL}` \
+                             to record that the review fix was applied."
+                        )],
+                    }),
+                )
             });
         }
 
@@ -2129,13 +2118,7 @@ impl ModelClient for MockClient {
                     cost: None,
                 });
             }
-            return Ok(ModelResponse {
-                text: Some("Done with this pass.".to_string()),
-                tool_calls: Vec::new(),
-                finish_reason: FinishReason::Stop,
-                usage: TokenCounts::default(),
-                cost: None,
-            });
+            return Ok(done_turn("Done with this pass."));
         }
 
         // A speculative-execution **attempt** (offline e2e): it reads its attempt number from its
@@ -2160,28 +2143,17 @@ impl ModelClient for MockClient {
                     cost: None,
                 });
             }
-            return Ok(ModelResponse {
-                text: Some("My attempt is complete.".to_string()),
-                tool_calls: Vec::new(),
-                finish_reason: FinishReason::Stop,
-                usage: TokenCounts::default(),
-                cost: None,
-            });
+            return Ok(done_turn("My attempt is complete."));
         }
 
         // A speculative-execution **judge** (offline e2e): picks the first attempt as the winner in a
         // single turn. Answered off-script (the cursor is never touched).
         if self.model_id.contains("speculate-judge") {
-            return Ok(ModelResponse {
-                text: Some(
-                    "Attempt 1 is the strongest solution.\n\nSPECULATION JUDGE: WINNER 1"
-                        .to_string(),
-                ),
-                tool_calls: Vec::new(),
-                finish_reason: FinishReason::Stop,
-                usage: TokenCounts::default(),
-                cost: None,
-            });
+            return Ok(ending_turn(
+                "select_winner",
+                "Attempt 1 is the strongest solution.",
+                json!({ "attempt": 1, "rationale": "it is the strongest solution" }),
+            ));
         }
 
         let index = self.cursor.fetch_add(1, Ordering::SeqCst);
@@ -2189,18 +2161,39 @@ impl ModelClient for MockClient {
             .script
             .get(index)
             .cloned()
-            .unwrap_or_else(|| ModelResponse {
-                text: Some("(mock script exhausted)".to_string()),
-                tool_calls: Vec::new(),
-                finish_reason: FinishReason::Stop,
-                usage: TokenCounts::default(),
-                cost: None,
-            }))
+            .unwrap_or_else(|| done_turn("(mock script exhausted)")))
     }
 
     fn model_id(&self) -> &str {
         &self.model_id
     }
+}
+
+/// A model turn that ends the agent's session by calling one of its
+/// [ending tools](crate::completion), with `arguments`.
+///
+/// Every offline script that used to end a run by replying with prose goes through one of these
+/// three. Prose no longer ends anything — a reply with no tool call is an error turn — so a mock that
+/// still answered that way would loop to its ceiling instead of demonstrating the capability it was
+/// written for.
+fn ending_turn(name: &str, text: &str, arguments: Value) -> ModelResponse {
+    ModelResponse {
+        text: Some(text.to_string()),
+        tool_calls: vec![ToolCall {
+            id: format!("call_{name}"),
+            name: name.to_string(),
+            arguments,
+        }],
+        finish_reason: FinishReason::ToolCalls,
+        usage: TokenCounts::default(),
+        cost: None,
+    }
+}
+
+/// A model turn that finishes with `summary` — what a
+/// [standard](crate::ending::EndingRole::Standard) agent ends with.
+fn done_turn(summary: &str) -> ModelResponse {
+    ending_turn("finish", summary, json!({ "summary": summary }))
 }
 
 /// Whether `messages` is a [compaction](crate::compaction) summary request — detected by
@@ -2252,15 +2245,9 @@ fn issue_review_tool_turn(
     }
 }
 
-/// A tool-free stop turn for the message-driven issue-review parent mock.
+/// The ending turn for the message-driven issue-review parent mock.
 fn issue_review_stop_turn(text: &str) -> ModelResponse {
-    ModelResponse {
-        text: Some(text.to_string()),
-        tool_calls: Vec::new(),
-        finish_reason: FinishReason::Stop,
-        usage: TokenCounts::default(),
-        cost: None,
-    }
+    done_turn(text)
 }
 
 /// Whether any message's content contains `needle` — how the issue-review offline mocks read the

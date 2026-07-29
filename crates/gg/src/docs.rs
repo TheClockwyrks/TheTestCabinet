@@ -21,9 +21,10 @@
 
 use std::collections::HashSet;
 
+use crate::ending::EndingRole;
 use crate::sandbox::{CatalogueFunction, FunctionSummary, catalogue_functions, type_declaration};
 
-/// The API object `finish`, `readDocs`, and every object's `list()` are grouped under.
+/// The API object `readDocs` and every object's `list()` are grouped under.
 const HARNESS_OBJECT: &str = "harness";
 
 /// The `list()` meta function's one-line summary — it is added to **every** object's directory.
@@ -64,6 +65,10 @@ pub struct DocsRuntime {
     /// The run's enabled gg tool names — the gate on which catalogue functions are bound, and so on
     /// which functions a directory lists and a lookup will document.
     enabled: HashSet<String>,
+    /// This agent's [ending role](EndingRole), the second gate: an ending call belonging to another
+    /// role is not in this agent's scope, so documenting it would describe a function the model
+    /// cannot call. The catalogue's `ending` tag is what this is matched against.
+    role: &'static str,
     /// Type names already emitted in a doc block this session, so a later lookup omits a declaration
     /// the model has already seen — the dedup the guest cannot do because only gg knows the context.
     shown_types: HashSet<String>,
@@ -73,10 +78,15 @@ pub struct DocsRuntime {
 }
 
 impl DocsRuntime {
-    /// A fresh runtime for a run whose scope binds `enabled`'s tools.
-    pub fn new(enabled: Vec<String>) -> Self {
+    /// A fresh runtime for an agent whose scope binds `enabled`'s tools and `role`'s ending calls.
+    pub fn new(enabled: Vec<String>, role: EndingRole) -> Self {
         Self {
             enabled: enabled.into_iter().collect(),
+            role: match role {
+                EndingRole::Standard => "standard",
+                EndingRole::Review => "review",
+                EndingRole::Judge { .. } => "judge",
+            },
             shown_types: HashSet::new(),
             shown_functions: HashSet::new(),
         }
@@ -88,7 +98,7 @@ impl DocsRuntime {
     pub fn list(&self, object: &str) -> Vec<FunctionSummary> {
         let mut out: Vec<FunctionSummary> = catalogue_functions()
             .into_iter()
-            .filter(|function| function.object == object && self.bound(function.gate))
+            .filter(|function| function.object == object && self.bound(function))
             .map(|function| FunctionSummary {
                 name: function.name.to_string(),
                 summary: function.summary.to_string(),
@@ -117,7 +127,7 @@ impl DocsRuntime {
             _ => {
                 let function = catalogue_functions()
                     .into_iter()
-                    .find(|function| function.name == name && self.bound(function.gate))?;
+                    .find(|function| function.name == name && self.bound(function))?;
                 Some(self.assemble(&function))
             }
         }
@@ -125,8 +135,15 @@ impl DocsRuntime {
 
     /// Whether a function gated by `gate` is bound this run — a `None` gate is a carve-out, always
     /// bound; a `Some(tool)` gate is bound exactly when that tool is enabled.
-    fn bound(&self, gate: Option<&str>) -> bool {
-        gate.is_none_or(|tool| self.enabled.contains(tool))
+    fn bound(&self, function: &CatalogueFunction) -> bool {
+        match (function.gate, function.ending) {
+            // A tool or helper: bound when the run enables it.
+            (Some(tool), _) => self.enabled.contains(tool),
+            // An ending call: bound when it is this agent's role's.
+            (None, Some(ending)) => ending == self.role,
+            // Neither gate — nothing in the committed catalogue is shaped this way.
+            (None, None) => true,
+        }
     }
 
     /// Assemble a catalogue function's documentation: its signature and description, followed by the

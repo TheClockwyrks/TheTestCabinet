@@ -10,7 +10,7 @@
 //! # Two questions this file does not answer
 //!
 //! **What counts as a program** is [healing](crate::healing)'s question, and **what counts as
-//! finished** is [`finish`](crate::sandbox::FINISH_FUNCTION)'s. Neither is decided here, and neither
+//! finished** is an [ending call](crate::ending)'s. Neither is decided here, and neither
 //! has a second, quieter answer hiding in this module: there is no shape of reply this file reads as
 //! a conclusion, and no ending it invents. That is the whole of the protocol change this design
 //! carries — under the protocol this replaces, both questions were answered here, by an extractor
@@ -38,6 +38,7 @@ use std::time::Duration;
 
 use tokio::runtime::Handle;
 
+use crate::ending::Ending;
 use crate::sandbox::{ToolApi, WorkflowStageInput};
 use crate::tasks::TaskStatus;
 use crate::tools::{
@@ -63,10 +64,11 @@ use crate::tools::{
 /// it, so an illegal pairing — a `Finished` that also counts as an error, a `Continue` that ends the
 /// session — is unrepresentable.
 pub(super) enum CodeTurnOutcome {
-    /// The program called [`finish`](crate::sandbox::FINISH_FUNCTION).
+    /// The program made one of its [ending calls](crate::ending::EndingRole).
     Finished {
-        /// The summary the program passed to `finish`, verbatim. Becomes the run's final text.
-        summary: String,
+        /// What the program declared — the summary it finished with, the verdict it returned, or
+        /// the attempt it picked. Its [text](Ending::final_text) becomes the session's final word.
+        ending: Ending,
     },
     /// The turn produced feedback for the model; the loop pushes it and takes another turn.
     Continue {
@@ -261,7 +263,7 @@ pub(super) async fn run_code_turn(
         finished: outcome
             .completion
             .as_ref()
-            .map(|completion| completion.summary.clone()),
+            .map(|completion| completion.ending.final_text()),
         // Non-zero only for the program that beat the run's warm-up to the one shared component
         // compile and paid it itself — the figure that separates "this program was slow" from
         // "this program compiled a 13 MB component inside its own span".
@@ -271,8 +273,8 @@ pub(super) async fn run_code_turn(
         healing: healing_record(&healed),
     });
 
-    // Honour the completion before interpreting the result. A completion that is still here is one
-    // the program declared and then ran out cleanly with — the sandbox has already revoked it if the
+    // Honour the ending before interpreting the result. An ending that is still here is one the
+    // program declared and then ran out cleanly with — the sandbox has already revoked it if the
     // program failed afterwards — so there is nothing left to weigh it against and no next turn to
     // feed anything back to.
     if let Some(completion) = outcome.completion {
@@ -280,8 +282,9 @@ pub(super) async fn run_code_turn(
             emitter.emit(log(
                 "warn",
                 format!(
-                    "the program called `{FINISH_FUNCTION}` {} more time(s) before the call that \
-                     ended the run; the last summary is the one that stands.",
+                    "the program called `{}` {} more time(s) before the call that ended the \
+                     session; the last declaration is the one that stands.",
+                    completion.ending.call_name(),
                     completion.superseded
                 ),
             ));
@@ -289,34 +292,33 @@ pub(super) async fn run_code_turn(
         emitter.emit(log(
             "info",
             format!(
-                "the program ended the run: {}",
-                ellipsize(&completion.summary, MAX_REPORTED_SUMMARY_BYTES)
+                "the program ended the session: {}",
+                ellipsize(&completion.ending.final_text(), MAX_REPORTED_SUMMARY_BYTES)
             ),
         ));
         return (
             CodeTurnOutcome::Finished {
-                summary: completion.summary,
+                ending: completion.ending,
             },
             state,
         );
     }
 
     // An ending the program declared and then lost. It is said on the operator's stream as well as
-    // in the model's feedback because it is the one shape in which a run that a model believed was
-    // over carries on: without a word here, the stream shows a `finish` on a turn that did not end
-    // the session and nothing that explains it.
-    if let Some(summary) = &outcome.revoked_completion {
+    // in the model's feedback because it is the one shape in which a session that a model believed
+    // was over carries on: without a word here, the stream shows an ending call on a turn that did
+    // not end the session and nothing that explains it.
+    if let Some(ending) = &outcome.revoked_completion {
         emitter.emit(log(
             "warn",
             format!(
-                "the program called `{FINISH_FUNCTION}` and then failed, so the run was NOT ended: \
-                 {}",
-                ellipsize(summary, MAX_REPORTED_SUMMARY_BYTES)
+                "the program called `{}` and then failed, so the session was NOT ended: {}",
+                ending.call_name(),
+                ellipsize(&ending.final_text(), MAX_REPORTED_SUMMARY_BYTES)
             ),
         ));
     }
 
-    let notes = healed.notes();
     let decision = match &outcome.result {
         // gg's own machinery, in its two flavours. Both would fail identically on every further
         // turn, so neither is fed back and neither is ever charged to the model's error budget.
@@ -337,7 +339,7 @@ pub(super) async fn run_code_turn(
             ),
         },
         Err(error @ SandboxError::Transpile(_)) => CodeTurnOutcome::Continue {
-            feedback: code_failure_feedback(error, &outcome, notes, turn.delegated()),
+            feedback: code_failure_feedback(error, &outcome),
             images: Vec::new(),
             error: Some(TurnErrorKind::Transpile),
             report: "its last program did not compile".to_string(),
@@ -348,7 +350,7 @@ pub(super) async fn run_code_turn(
                 format!("the code program did not run to a result: {error}"),
             ));
             CodeTurnOutcome::Continue {
-                feedback: code_failure_feedback(error, &outcome, notes, turn.delegated()),
+                feedback: code_failure_feedback(error, &outcome),
                 images: outcome.images.clone(),
                 error: Some(TurnErrorKind::SandboxLimit),
                 report: "its last program was stopped by a sandbox limit".to_string(),
@@ -361,12 +363,7 @@ pub(super) async fn run_code_turn(
                 .is_some()
                 .then_some(TurnErrorKind::ProgramFault);
             CodeTurnOutcome::Continue {
-                feedback: prompts::render_code_result(&code_result_context(
-                    &outcome,
-                    result,
-                    notes,
-                    turn.delegated(),
-                )),
+                feedback: prompts::render_code_result(&code_result_context(&outcome, result)),
                 images: outcome.images.clone(),
                 error,
                 report,
@@ -402,9 +399,8 @@ fn not_a_program(
     });
     CodeTurnOutcome::Continue {
         feedback: prompts::render_code_not_a_program(&CodeNotAProgramContext {
-            healing: healed.notes(),
             reason: reason.message(),
-            delegated: turn.delegated(),
+            ending_calls: turn.ending_calls(),
         }),
         images: Vec::new(),
         error: Some(TurnErrorKind::NotAProgram),
@@ -555,21 +551,15 @@ fn wire_reason(reason: NotAProgramReason) -> GgNotAProgram {
 /// caught, output the capture caps dropped, work it deferred past its own end, a value it returned
 /// into the void, an ending it declared and lost, pictures the budget dropped, and
 /// [what gg repaired in its reply](crate::healing) before any of it ran.
-fn code_result_context(
-    outcome: &SandboxOutcome,
-    result: &ProgramResult,
-    healing: Vec<String>,
-    delegated: bool,
-) -> CodeResultContext {
+fn code_result_context(outcome: &SandboxOutcome, result: &ProgramResult) -> CodeResultContext {
     CodeResultContext {
-        healing,
-        delegated,
         error: result.error.as_ref().map(|error| CodeErrorView {
             message: error.message.clone(),
             location: error.location.clone(),
         }),
         returned_value: outcome.returned_value,
         finish_revoked: outcome.revoked_completion.is_some(),
+        ending_revoked: revoked_call(outcome),
         calls: outcome
             .tool_calls
             .iter()
@@ -634,38 +624,42 @@ fn unreachable_note(tail: &UnreachableTail) -> String {
 /// model's **message** rather than to its program. It matters most on the transpile path: the
 /// diagnostic is located in the *healed* source's coordinates, so a model told "line 4" without also
 /// being told that a wrapper came off the top of its reply cannot reconcile the two.
-fn code_failure_feedback(
-    error: &SandboxError,
-    outcome: &SandboxOutcome,
-    healing: Vec<String>,
-    delegated: bool,
-) -> String {
+fn code_failure_feedback(error: &SandboxError, outcome: &SandboxOutcome) -> String {
     let calls = outcome.tool_calls.len() + outcome.tool_calls_suppressed as usize;
     let finish_revoked = outcome.revoked_completion.is_some();
+    let ending_revoked = revoked_call(outcome);
     match error {
         SandboxError::Transpile(transpile) => {
             prompts::render_code_transpile_error(&CodeTranspileErrorContext {
-                healing,
                 error: transpile.to_string(),
-                delegated,
             })
         }
         // A timeout is not "too much work for one program" — the ceiling is far larger than any
         // honest program needs — it is a program that did not terminate. It gets its own message so
         // the advice is to find the runaway loop rather than to write less.
         SandboxError::Timeout { .. } => prompts::render_code_timeout(&CodeTimeoutContext {
-            healing,
             error: error.to_string(),
             finish_revoked,
+            ending_revoked: ending_revoked.clone(),
             calls,
         }),
         _ => prompts::render_code_sandbox_error(&CodeSandboxErrorContext {
-            healing,
             error: error.to_string(),
             finish_revoked,
+            ending_revoked,
             calls,
         }),
     }
+}
+
+/// Which ending call a program declared and then lost, for the feedback that has to say so. Empty
+/// when nothing was revoked, which is also when no template renders it.
+fn revoked_call(outcome: &SandboxOutcome) -> String {
+    outcome
+        .revoked_completion
+        .as_ref()
+        .map(|ending| ending.call_name().to_string())
+        .unwrap_or_default()
 }
 
 // ---------------------------------------------------------------------------
@@ -730,25 +724,21 @@ pub(super) struct CodeTurn<'a> {
     /// satisfies it — everything else is refused, because everything else adds to a window that is
     /// already full.
     pub(super) pending_compaction: Option<PendingCompaction>,
+    /// Which [ending calls](EndingRole) this agent's programs are given, and what the sandbox will
+    /// accept from them.
+    pub(super) ending_role: EndingRole,
 }
 
 impl CodeTurn<'_> {
-    /// Whether the agent taking this turn is a **delegated** worker rather than the run's root —
-    /// the same question [`SystemContext::delegated`](crate::prompts::SystemContext::delegated)
-    /// answers for the system prompt, read from the same place (an agent's depth in the spawn tree).
+    /// The [ending calls](EndingRole) this agent's programs may make, as a program writes them.
     ///
-    /// Three of the four code feedback templates name what `finish` ends, and they do it *every
-    /// turn*, far later in the context than the system prompt that named it first. If the two ever
-    /// disagree the later text wins, so both read this one fact: a delegated worker told each turn
-    /// that `finish` ends **the run** has the strongest reason available not to call it, and a
-    /// worker that never calls it never returns a verdict — which is exactly what leaves a Code
-    /// Review unaccepted, a speculation judge without a winner, and a subagent's worktree
-    /// discarded.
-    pub(super) fn delegated(&self) -> bool {
-        self.spawner.depth > 0
-            || self
-                .project
-                .is_some_and(|project| project.assigned_issue.is_some())
+    /// The feedback for a reply that was not a program names them, and it does so *every turn* — far
+    /// later in the context than the system prompt that named them first. If the two ever disagree
+    /// the later text wins, so both read this one fact: a reviewer pointed at a `harness.finish` it
+    /// does not have would spend its turns calling a function that is not in its scope, and a
+    /// reviewer that never returns a verdict is exactly what leaves an issue unaccepted.
+    pub(super) fn ending_calls(&self) -> Vec<String> {
+        ending_calls(self.ending_role, true)
     }
 }
 
@@ -827,6 +817,9 @@ async fn run_code_program(
     // transitions. Derived from the same registry the system prompt was rendered from, so the
     // functions in scope and the signatures the model was shown are the same set.
     let enabled = scope_tools(turn.registry);
+    // The ending group bound alongside them. It is the agent's role rather than a capability, which
+    // is why it travels beside the tool names instead of among them.
+    let role = turn.ending_role;
     // The production `ToolApi`: the loop's own per-turn state, servicing each typed call inline. The
     // mutable, reclaimed-after-the-turn state moves in; the rest is cloned from the turn (all
     // Arc-backed, so cheap) or captured fresh (`Handle::current()` bridges the delegation family
@@ -862,8 +855,9 @@ async fn run_code_program(
         serviced: 0,
     };
 
-    let sandbox =
-        tokio::task::spawn_blocking(move || run_program(&program, &enabled, limits, deadline, api));
+    let sandbox = tokio::task::spawn_blocking(move || {
+        run_program(&program, &enabled, role, limits, deadline, api)
+    });
 
     match sandbox.await {
         // The sandbox ran (to a result, a throw, or a ceiling): reclaim the state the api carried so
@@ -1081,7 +1075,7 @@ impl LoopToolApi {
     /// window, and the run has no way forward until the window is reclaimed.
     fn gate(&self, name: &str) -> Option<ToolOutcome> {
         if let Some(pending) = self.pending_compaction
-            && !pending.admits(name)
+            && !pending.admits(name, true)
         {
             return Some(ToolOutcome::failed(
                 ToolFailure::Refused,

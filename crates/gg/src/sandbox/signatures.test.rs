@@ -121,22 +121,58 @@ fn read_text_file_is_a_helper_not_a_tool() {
     );
 }
 
-/// The catalogue carries the one model-facing function that is not a gg tool, with the signature the
-/// prompt renders.
+/// The catalogue carries every model-facing function that is not a gg tool, each tagged with the
+/// [role](crate::ending::EndingRole) whose programs bind it and with the signature a doc lookup
+/// renders.
 ///
-/// The `never` return type is asserted rather than assumed: it is not decoration but the accurate
-/// type of a function that always throws, and it is what tells a model at a glance that nothing after
-/// the call runs. A `void` here would teach the opposite.
+/// The tags are what make one catalogue serve three scopes: the host filters by them to decide what a
+/// given agent's `object.list()` enumerates, so an untagged entry would be documented to every agent
+/// including the ones that cannot call it.
 #[test]
-fn the_catalogue_carries_the_session_function() {
-    let session = &catalogue().session;
-    assert_eq!(session.js, FINISH_FUNCTION);
-    assert_eq!(session.signature, "finish(summary: string): void");
-    assert!(
-        session.doc.contains("ONLY thing that ends a run"),
-        "the prompt renders this verbatim, and it is the whole protocol: {}",
-        session.doc
+fn the_catalogue_carries_every_ending_function() {
+    let by_name = |js: &str| {
+        catalogue()
+            .session
+            .iter()
+            .find(|entry| entry.js == js)
+            .unwrap_or_else(|| panic!("`{js}` is catalogued"))
+    };
+
+    let finish = by_name(FINISH_FUNCTION);
+    assert_eq!(finish.object, "harness");
+    assert_eq!(finish.ending, "standard");
+    assert_eq!(finish.signature, "finish(summary: string): void");
+
+    let approve = by_name("approve");
+    assert_eq!(approve.object, "review");
+    assert_eq!(approve.ending, "review");
+    assert_eq!(approve.signature, "approve(): void");
+
+    let request_changes = by_name("requestChanges");
+    assert_eq!(request_changes.object, "review");
+    assert_eq!(request_changes.ending, "review");
+    assert_eq!(
+        request_changes.signature,
+        "requestChanges(items: string[]): void"
     );
+
+    let select_winner = by_name("selectWinner");
+    assert_eq!(select_winner.object, "judge");
+    assert_eq!(select_winner.ending, "judge");
+    assert_eq!(
+        select_winner.signature,
+        "selectWinner(attempt: number, rationale: string): void"
+    );
+
+    // Every entry documents itself: the doc is what a `.docs()` lookup renders verbatim.
+    for entry in &catalogue().session {
+        assert!(
+            entry.doc.contains("ends your session") || entry.doc.contains("End your session"),
+            "`{}` does not say that it ends the session: {}",
+            entry.js,
+            entry.doc
+        );
+    }
 }
 
 /// **`finish` is not a gg tool, and no gg tool is called `finish`.**

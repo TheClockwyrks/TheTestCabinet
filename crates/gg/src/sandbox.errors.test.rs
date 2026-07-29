@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use super::transpile::TranspileError;
 use super::*;
+use crate::ending::EndingRole;
 use crate::sandbox::fake::{CallLog, FakeToolApi, process_isolated};
 
 /// **A program that does not compile never touches the engine.** It is the only failure that costs
@@ -19,6 +20,7 @@ fn a_transpile_error_never_touches_the_engine() {
     let (outcome, _api) = run_program(
         "const x: = ;",
         &[],
+        EndingRole::Standard,
         SandboxLimits::default(),
         None,
         FakeToolApi::new(&log),
@@ -56,6 +58,7 @@ fn an_unsupported_feature_is_a_transpile_error_with_guidance() {
     let (outcome, _api) = run_program(
         "import fs from 'node:fs';\nreturn 1;",
         &[],
+        EndingRole::Standard,
         SandboxLimits::default(),
         None,
         FakeToolApi::new(&log),

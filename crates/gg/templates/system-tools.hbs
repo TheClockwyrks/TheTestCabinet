@@ -1,13 +1,18 @@
 {{#if customInstructions}}{{customInstructions}}
 
-{{/if}}## Finishing
+{{/if}}## Ending your session
 
-{{#if completion.explicitCall}}
-When the work is complete, call the `{{completion.finishName}}` tool with a
-short summary of what you did to end the run.
-{{else}}
-When the work is complete, reply with a message and no tool calls.
+{{#if ending.standard}}
+Call `{{ending.finish}}` with a short summary of what you did once the work is
+complete.
 {{/if}}
+{{#if ending.review}}
+Return your verdict with `{{ending.approve}}` or `{{ending.requestChanges}}`.
+{{/if}}
+{{#if ending.judge}}
+Name the winning attempt with `{{ending.selectWinner}}`.
+{{/if}}
+Nothing else ends it: a reply with no tool call is an error.
 
 {{#if memories}}
 ## Memory

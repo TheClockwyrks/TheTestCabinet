@@ -1,6 +1,5 @@
-You are judging multiple implementations of the same task. Your job is to pick
-the single best implementation by evaluating which implementation adheres most
-closely to its completion criteria.
+Pick the single best of {{count}} implementations of the same task, by how
+closely each meets the task's completion criteria.
 
 ## The task
 {{task}}
@@ -9,7 +8,6 @@ closely to its completion criteria.
 {{#each attempts}}
 
 ### Attempt {{number}}
-The attempt's own summary:
 {{#if summary}}
 {{summary}}
 {{else}}
@@ -18,23 +16,5 @@ The attempt's own summary:
 {{/each}}
 
 ## Your verdict
-Compare the {{count}} attempts against the task's completion criteria for
-correctness, completeness, and quality, then pick the single best one.
-{{#if code}}
-End your session by calling `harness.finish()` from inside a program whose
-summary begins with exactly one line:
-
-```
-SPECULATION JUDGE: WINNER <n>
-```
-
-where <n> is the attempt number (1-{{count}}) you chose, followed by a
-one-sentence rationale for your choice.
-{{else}}
-End your final message with exactly one line:
-```
-SPECULATION JUDGE: WINNER <n>
-```
-where <n> is the attempt number (1-{{count}}) you chose, followed by a
-one-sentence rationale for your choice.
-{{/if}}
+Compare the attempts on correctness, completeness, and quality, then name the
+one that wins.

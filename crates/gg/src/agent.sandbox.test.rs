@@ -1148,7 +1148,7 @@ async fn a_reply_that_is_not_a_program_does_not_end_the_session() {
             messages.iter().any(|message| message
                 .content
                 .as_deref()
-                .is_some_and(|text| text.contains("All responses must be pure TypeScript"))),
+                .is_some_and(|text| text.contains("Your whole response must be TypeScript"))),
             "turn {turn} was not told what a turn is supposed to look like"
         );
     }
@@ -1156,8 +1156,8 @@ async fn a_reply_that_is_not_a_program_does_not_end_the_session() {
         requests[1].iter().any(|message| message
             .content
             .as_deref()
-            .is_some_and(|text| text.contains("harness.finish("))),
-        "and it was told the one thing that does end the run"
+            .is_some_and(|text| text.contains("Call `harness.finish`."))),
+        "and it was pointed at its own ending call"
     );
 }
 
@@ -1359,16 +1359,15 @@ async fn a_sandbox_limit_counts_as_an_error_turn_but_a_handled_tool_failure_does
 // The delegation routines under the code protocol
 // ---------------------------------------------------------------------------
 
-/// **A code-mode reviewer's verdict parses, and the issue is accepted.**
+/// **A code-mode reviewer declares its verdict, and the issue is accepted.**
 ///
-/// Every brief gg generates used to tell its agent to end by *stopping*, which this protocol
-/// abolishes — a reviewer that never calls `finish` never reaches `completed`, so gg would report it
-/// as having ended without a verdict and the issue would never be accepted. This drives a whole
-/// issue review through the code path: the root program files the board issue (which auto-dispatches
-/// an agent to implement it), the dispatched agent's program does the work and completes the issue,
-/// and the reviewer's program finishes with the verdict.
+/// The reviewer's program calls `review.approve()` — the verdict *is* the call, so nothing has to be
+/// read back out of prose, and a reviewer has no `harness.finish` to reach for instead. This drives a
+/// whole issue review through the code path: the root program files the board issue (which
+/// auto-dispatches an agent to implement it), the dispatched agent's program does the work and
+/// completes the issue, and the reviewer's program declares the verdict that accepts it.
 #[tokio::test]
-async fn a_code_mode_reviewer_verdict_parses() {
+async fn a_code_mode_reviewer_declares_its_verdict() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-code-review".to_string()), Box::new(sink.clone()));
@@ -1409,7 +1408,7 @@ async fn a_code_mode_reviewer_verdict_parses() {
         .slot("reviewer", |b| {
             Box::new(MockClient::new(
                 &b.model_id,
-                vec![code_reply("harness.finish(\"REVIEW: APPROVED\");")],
+                vec![code_reply("review.approve();")],
             ))
         });
 
@@ -1429,18 +1428,23 @@ async fn a_code_mode_reviewer_verdict_parses() {
     assert_eq!(
         phases,
         vec![GgIssueReviewPhase::Requested, GgIssueReviewPhase::Approved],
-        "the reviewer's `finish` summary parsed as an approval: {phases:?}"
+        "the reviewer's `review.approve()` is the approval: {phases:?}"
     );
-    // The reviewer was told the contract it actually runs under.
+    // The brief teaches **no** ending. The reviewer's verdict calls are its role's, named once in
+    // its system prompt and bound into its programs' scope; a brief that restated them would be a
+    // second authority on the contract — and the mode-dependent version of that restatement is what
+    // used to send a code-mode reviewer looking for a final message its protocol does not have.
     let review_brief = agent_spawns(&events)
         .into_iter()
         .find(|(_, _, slot, _, _)| slot == "reviewer")
         .and_then(|(_, _, _, _, brief)| brief)
         .expect("a reviewer was dispatched");
-    assert!(
-        review_brief.contains("harness.finish(\"REVIEW: APPROVED\")"),
-        "the code-mode brief asks for the verdict the way a program gives one: {review_brief}"
-    );
+    for forbidden in ["finish(", "harness.", "review.approve", "REVIEW:"] {
+        assert!(
+            !review_brief.contains(forbidden),
+            "the brief teaches an ending (`{forbidden}`): {review_brief}"
+        );
+    }
     assert_eq!(ended_with(&events), "completed");
 }
 
@@ -1490,7 +1494,7 @@ async fn a_code_mode_speculation_merges_the_winners_worktree() {
             Box::new(MockClient::new(
                 &b.model_id,
                 vec![code_reply(
-                    "harness.finish(\"SPECULATION JUDGE: WINNER 1\\nIt is the most complete.\");",
+                    "judge.selectWinner(1, \"it is the most complete\");",
                 )],
             ))
         });

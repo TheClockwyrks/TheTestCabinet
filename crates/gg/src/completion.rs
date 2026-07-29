@@ -1,32 +1,27 @@
-//! How a run decides it is **finished**, and the optional external **validation** that gates it.
+//! The **ending calls** an agent is offered, and the optional external **validation** that gates
+//! them.
 //!
-//! Every gg run needs a rule for when it is done. Historically that rule was fixed per execution
-//! mode: a tool-calling turn that requested no tools ended the run, and a
-//! [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) program ended it by
-//! calling `finish`. The [completion](test_cabinet_core::gg::CAPABILITY_COMPLETION) capability makes
-//! that rule configurable, along two independent axes this module resolves from an agent's profile
-//! into a [`CompletionSetup`]:
+//! How an agent declares it is done is **not** configurable and never was worth making so. Every
+//! agent ends its session with an explicit, typed call, in both execution modes: a tool-calling reply
+//! that requests no tools is an error, and a
+//! [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) reply that is not a
+//! program is an error. *Which* calls an agent has is decided by its [role](crate::ending::EndingRole)
+//! — see [`crate::ending`], which owns the shapes; this module owns how they reach a **tool-calling**
+//! model, as the [synthetic tool definitions](role_tool_definitions) the loop appends and intercepts.
 //!
-//! - the [signal](CompletionSignal) — [plain text](CompletionSignal::PlainText) (a tool-calling
-//!   reply with no tool calls means done) or an [explicit call](CompletionSignal::ExplicitCall) to
-//!   the `finish` tool (a text-only reply is then an *error*, not a completion). The signal governs
-//!   only the tool-calling path; a code-mode run always ends through its program's `finish`.
-//! - the [validation](ValidationCommand) commands — an optional external check gg runs when the
-//!   model signals completion, in either execution mode. The run only ends if every command exits
-//!   `0`; a failure's output is handed back to the model and the run continues.
-//!
-//! When a profile does not enable the capability, [`CompletionSetup::resolve`] yields the historical
-//! defaults (a plain-text signal and no validation), so an unconfigured run is unchanged.
+//! What the [completion](test_cabinet_core::gg::CAPABILITY_COMPLETION) capability still configures is
+//! the one thing that genuinely varies between studies: the [validation](ValidationCommand) commands
+//! gg runs when the model signals it is done. The session only ends if every command exits `0`; a
+//! failure's output is handed back to the model and the run continues. A profile that does not enable
+//! the capability leaves the ending ungated.
 
 use std::path::Path;
 use std::time::Duration;
 
 use serde_json::{Value, json};
-use test_cabinet_core::gg::{
-    CAPABILITY_COMPLETION, COMPLETION_SIGNAL_EXPLICIT_CALL, COMPLETION_SIGNAL_PLAIN_TEXT,
-    GgAgentConfig, GgTelemetryKind,
-};
+use test_cabinet_core::gg::{CAPABILITY_COMPLETION, GgAgentConfig, GgTelemetryKind};
 
+use crate::ending::EndingRole;
 use crate::model::ToolDefinition;
 use crate::prompts::{self, ValidationFailureContext};
 use crate::sandbox::FINISH_FUNCTION;
@@ -48,40 +43,21 @@ const PARAM_TIMEOUT_SECS: &str = "timeoutSecs";
 /// validation command is typically a build or a test suite rather than a quick check.
 const DEFAULT_VALIDATION_TIMEOUT: Duration = Duration::from_secs(300);
 
-/// The name of the tool/function that ends a run when the model must signal completion explicitly —
-/// the same name in both execution modes, so "end the run" is one word a model learns once.
+/// The four **ending call** names, shared by both execution modes so that ending a session is one
+/// vocabulary a model learns once — `harness.finish(…)` in a program and `finish` as a tool are the
+/// same call.
 ///
-/// It is [`FINISH_FUNCTION`], the responses-as-code sandbox's finish function, reused here for the
-/// tool-calling finish tool. That tool is a **loop-level synthetic** appended to the offered set by
-/// [`Agent::drive`](crate::agent) and intercepted by the loop — it is deliberately not a registry
-/// tool and not in [`ALL_TOOL_NAMES`](crate::tools::ALL_TOOL_NAMES), exactly as the code-mode
-/// `finish` is not.
+/// Each is a **loop-level synthetic**: appended to the offered set by [`Agent::drive`](crate::agent)
+/// according to the agent's [role](EndingRole) and intercepted by the loop. None is a registry tool
+/// or a name in [`ALL_TOOL_NAMES`](crate::tools::ALL_TOOL_NAMES), exactly as their code-mode
+/// counterparts are not in the sandbox's tool catalogue.
 pub(crate) const FINISH_TOOL: &str = FINISH_FUNCTION;
-
-/// How the model signals that it believes the run is complete — the
-/// [completion](CAPABILITY_COMPLETION) capability's implementation, on the tool-calling path.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CompletionSignal {
-    /// A tool-calling reply that requests no tools ends the run. The historical default, and what an
-    /// unconfigured run uses.
-    PlainText,
-    /// The model must call the [`finish`](FINISH_TOOL) tool to end the run; a reply with no tool
-    /// call is treated as an error and fed back, so a run that never learns to call `finish` stops
-    /// on its error ceilings rather than looping to its turn budget.
-    ExplicitCall,
-}
-
-impl CompletionSignal {
-    /// The signal an [implementation](test_cabinet_core::gg::GgCapabilityConfig::implementation)
-    /// string names, or `None` for an empty or unrecognized value (which resolves to the default).
-    fn from_impl(value: &str) -> Option<Self> {
-        match value {
-            COMPLETION_SIGNAL_PLAIN_TEXT => Some(Self::PlainText),
-            COMPLETION_SIGNAL_EXPLICIT_CALL => Some(Self::ExplicitCall),
-            _ => None,
-        }
-    }
-}
+/// See [`FINISH_TOOL`]. A reviewer's approval.
+pub(crate) const APPROVE_TOOL: &str = "approve";
+/// See [`FINISH_TOOL`]. A reviewer's rejection, carrying the changes it requires.
+pub(crate) const REQUEST_CHANGES_TOOL: &str = "request_changes";
+/// See [`FINISH_TOOL`]. A judge's pick among the attempts it was shown.
+pub(crate) const SELECT_WINNER_TOOL: &str = "select_winner";
 
 /// One command gg runs to [validate](CompletionSetup::validation) a completion before it is
 /// accepted.
@@ -143,36 +119,25 @@ impl ValidationCommand {
     }
 }
 
-/// The resolved completion rule for one agent: its [signal](CompletionSignal) and its
-/// [validation](ValidationCommand) commands.
-#[derive(Debug, Clone)]
+/// The resolved completion gate for one agent: the [validation](ValidationCommand) commands that
+/// must pass before its ending is accepted.
+#[derive(Debug, Clone, Default)]
 pub(crate) struct CompletionSetup {
-    /// The tool-calling completion signal. Inert on the responses-as-code path, which always ends
-    /// through its program's `finish` call.
-    signal: CompletionSignal,
-    /// The commands that gate a completion, run in order when the model signals it is done. Empty
-    /// leaves completion ungated.
+    /// The commands that gate an ending, run in order when the model signals it is done. Empty
+    /// leaves the ending ungated.
     validation: Vec<ValidationCommand>,
 }
 
 impl CompletionSetup {
-    /// Resolve `profile`'s completion rule: its [signal](CompletionSignal) (from the capability's
-    /// implementation, defaulting to [plain text](CompletionSignal::PlainText)) and its
-    /// [validation](ValidationCommand) commands (from the capability's `validation` param).
+    /// Resolve `profile`'s [validation](ValidationCommand) commands from the
+    /// [completion](CAPABILITY_COMPLETION) capability's `validation` param.
     ///
-    /// A [completion](CAPABILITY_COMPLETION) capability that is absent **or** present-but-disabled
-    /// yields the historical defaults — a plain-text signal and no validation — so the disabled arm
-    /// of an ablation is the unchanged control.
+    /// A capability that is absent **or** present-but-disabled yields no commands, so the disabled
+    /// arm of an ablation is the unchanged control.
     pub(crate) fn resolve(profile: &GgAgentConfig) -> Self {
-        let active = profile
+        let validation = profile
             .capability(CAPABILITY_COMPLETION)
-            .filter(|capability| capability.enabled);
-        let signal = active
-            .and_then(|capability| capability.implementation.as_deref())
-            .map(str::trim)
-            .and_then(CompletionSignal::from_impl)
-            .unwrap_or(CompletionSignal::PlainText);
-        let validation = active
+            .filter(|capability| capability.enabled)
             .and_then(|capability| capability.params.get(PARAM_VALIDATION))
             .and_then(Value::as_array)
             .map(|items| {
@@ -182,54 +147,98 @@ impl CompletionSetup {
                     .collect()
             })
             .unwrap_or_default();
-        Self { signal, validation }
+        Self { validation }
     }
 
-    /// The configured completion signal.
-    pub(crate) fn signal(&self) -> CompletionSignal {
-        self.signal
-    }
-
-    /// Whether completion is gated behind at least one validation command.
+    /// Whether the ending is gated behind at least one validation command.
     pub(crate) fn has_validation(&self) -> bool {
         !self.validation.is_empty()
     }
 
-    /// The validation commands, for the system prompt's description of what gates completion.
+    /// The validation commands, for the system prompt's description of what gates the ending.
     pub(crate) fn validation(&self) -> &[ValidationCommand] {
         &self.validation
     }
-
-    /// Whether this run reaches completion through an **explicit `finish` call** on the tool-calling
-    /// path — the condition under which gg offers the `finish` tool and treats a text-only reply as
-    /// an error. Always false in `responses_as_code` mode, whose program-driven `finish` this
-    /// tool-calling machinery does not touch.
-    pub(crate) fn explicit_finish(&self, responses_as_code: bool) -> bool {
-        !responses_as_code && self.signal == CompletionSignal::ExplicitCall
-    }
 }
 
-/// The definition of the tool-calling `finish` tool, offered when an agent completes through an
-/// [explicit call](CompletionSignal::ExplicitCall).
-pub(crate) fn finish_tool_definition() -> ToolDefinition {
-    ToolDefinition::new(
-        FINISH_TOOL,
-        "End the run. Call this once the work is complete, passing a short summary of what you did \
-         — the summary becomes the run's final message. Until you call it the run continues; a \
-         reply with no tool call does NOT end the run.",
-        json!({
-            "type": "object",
-            "properties": {
-                "summary": {
-                    "type": "string",
-                    "description": "A short summary of the completed work. Becomes the run's final \
-                                    message."
-                }
-            },
-            "required": ["summary"],
-            "additionalProperties": false
-        }),
-    )
+/// The tool-calling definitions of `role`'s [ending calls](FINISH_TOOL) — the synthetic tools the
+/// loop appends to the offered set and intercepts.
+///
+/// They are built here rather than in the registry for the same reason their code-mode counterparts
+/// are outside the sandbox's tool catalogue: nothing dispatches them. A call to one is read by the
+/// loop as a **declaration**, and its arguments are the declaration's content, which is why each
+/// schema demands exactly what that role's verdict is made of and nothing more.
+pub(crate) fn role_tool_definitions(role: EndingRole) -> Vec<ToolDefinition> {
+    match role {
+        EndingRole::Standard => vec![ToolDefinition::new(
+            FINISH_TOOL,
+            "End your session once the work is complete, reporting what you did. This is the only \
+             way to end it: a reply with no tool call does not.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "summary": {
+                        "type": "string",
+                        "description": "What you did, in a sentence or two."
+                    }
+                },
+                "required": ["summary"],
+                "additionalProperties": false
+            }),
+        )],
+        EndingRole::Review => vec![
+            ToolDefinition::new(
+                APPROVE_TOOL,
+                "Accept the work you are reviewing: it meets every completion criterion and stays \
+                 in scope. Ends your session.",
+                json!({
+                    "type": "object",
+                    "properties": {},
+                    "additionalProperties": false
+                }),
+            ),
+            ToolDefinition::new(
+                REQUEST_CHANGES_TOOL,
+                "Reject the work you are reviewing, listing every change it needs before it can be \
+                 accepted. Ends your session.",
+                json!({
+                    "type": "object",
+                    "properties": {
+                        "items": {
+                            "type": "array",
+                            "minItems": 1,
+                            "items": { "type": "string" },
+                            "description": "One change per entry, each saying what is wrong and \
+                                            what to change."
+                        }
+                    },
+                    "required": ["items"],
+                    "additionalProperties": false
+                }),
+            ),
+        ],
+        EndingRole::Judge { attempts } => vec![ToolDefinition::new(
+            SELECT_WINNER_TOOL,
+            "Name the attempt that wins. Ends your session.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "attempt": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": attempts.max(1),
+                        "description": "The number the winning attempt was presented under."
+                    },
+                    "rationale": {
+                        "type": "string",
+                        "description": "Why that attempt won, in a sentence."
+                    }
+                },
+                "required": ["attempt", "rationale"],
+                "additionalProperties": false
+            }),
+        )],
+    }
 }
 
 /// Run `commands` in order to gate a completion, returning `None` when every one succeeds (the run
@@ -321,11 +330,11 @@ fn validation_failure_feedback(
     })
 }
 
-/// The message handed back to the model when it ends a turn without calling [`finish`](FINISH_TOOL)
-/// under an [explicit-call](CompletionSignal::ExplicitCall) signal — a text-only reply that is an
-/// error rather than a completion.
-pub(crate) fn missing_completion_feedback() -> String {
-    prompts::render_completion_missing(FINISH_TOOL)
+/// The message handed back to the model when a tool-calling turn requested no tools at all — a
+/// text-only reply, which is an error rather than an ending. It names the calls `role` actually has,
+/// so a reviewer is never pointed at a `finish` it was not given.
+pub(crate) fn missing_completion_feedback(role: EndingRole) -> String {
+    prompts::render_completion_missing(role.tools())
 }
 
 #[cfg(test)]

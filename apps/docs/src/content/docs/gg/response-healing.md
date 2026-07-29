@@ -13,11 +13,13 @@ program has already returned.
 
 **Healing** is the pass that turns those replies into the program the model meant. It is
 not a lenient parser and not a rescue mission — it is an instrument. Every repair is
-**disclosed to the model** in the same turn's feedback and **counted on the run**, so
-"how often did this model still send a fence after being told not to?" is a number a
-study can group by. That count is the point: the ablation this capability exists to run
-is about how well models follow a code-only contract, and a repair the model is never
-told about teaches it nothing and corrupts the measurement.
+**counted on the run**, so "how often did this model still send a fence after being told
+not to?" is a number a study can group by. That count is the point: the ablation this
+capability exists to run is about how well models follow a code-only contract.
+
+Healing is **invisible to the model**. A repaired reply is simply the reply that runs —
+no note at the top of the turn, no mention anywhere in the prompt. See
+[why it is silent](#why-healing-is-silent).
 
 ## The seam
 
@@ -75,7 +77,7 @@ diagnostic; a wrong repair deletes the model's work. Only one of those is recove
 
 Dropping a byte-order mark, the blank lines around a reply and its trailing whitespace is
 **canonicalisation, not repair**: a program that differs from another only in that is the
-same program, so it is neither disclosed nor counted. What is deliberately *kept* is the
+same program, so it is not counted. What is deliberately *kept* is the
 **indentation of the first content line** — four spaces make an indented code block rather
 than a fence, so un-indenting it here would answer a question the fence scanner exists to
 ask.
@@ -157,8 +159,8 @@ inside 9,800 bytes of narration — would decline silently, record nothing, seri
 tells a fence *inside* a program from a fence *around* one is whether real code survives
 outside it, and that code sits below the block as often as above it: a model that fences
 the working half of its program and writes `finish("…")` underneath has written one
-program across a fence. An unwrap keeps only the candidate block's body — and its
-disclosure counts other *blocks*, not outside lines — so unwrapping there would delete the
+program across a fence. An unwrap keeps only the candidate block's body — and its record
+counts other *blocks*, not outside lines — so unwrapping there would delete the
 ending, leave the run unable to terminate, and never say so. The narrowness lives in the
 code predicate instead, where it costs nothing: only shapes English does not have count as
 code, so a stray `;` in a model's lead-in sentence does not block the unwrap, and across
@@ -313,44 +315,34 @@ empty string as "nothing to run" is not a repair, it is reading it correctly, an
 alternative is that the off arm of an ablation type-strips the empty program, runs it to
 a silent success, and loops forever on a model that has stopped answering.
 
-## Disclosure
+## Why healing is silent
 
-Every repair is stated to the model, in the same turn, at the top of **all four** code
-feedback templates — the one that ran, the one that did not compile, the one the sandbox
-stopped, and the one that was not a program. It has to appear on all four because what
-healing did happened to the model's *message*, not to its program:
+gg says nothing to the model about what it repaired. The turn's feedback is about the
+turn: what the program did, what it threw, why it did not compile.
 
-```text
-gg repaired your reply before running it:
-- removed the Markdown code fence you wrapped it in — its closing fence had text on the
-  same line, which does not close a fence, so everything after it would otherwise have
-  been read as part of your program
-Only text was removed — nothing was added, and nothing was reordered. Your whole reply is
-the program, so you can send the TypeScript on its own: anything you want to say belongs
-in a `console.log(…)`, or in the summary you pass to `finish(…)`.
-```
+That is a deliberate reversal. Healing used to open every repaired turn with a paragraph
+naming each repair, bounding what gg was allowed to change, and explaining where prose
+belongs — in the harness's own name. Three things were wrong with it:
 
-The note teaches rather than nags by doing three things and no others: it says what was
-changed, it **bounds** what gg is allowed to change (so the model can trust the rest of
-its program), and it says where the prose it wanted to write actually belongs. There is
-no "you must not", no repetition of the rule, and no tally of previous offences.
+- **It described a mechanism the model cannot act on.** Healing is not a tool it invokes,
+  a setting it controls, or a behaviour it can opt out of. A prompt spends tokens on what
+  the reader can do something about.
+- **It named the harness on every repaired turn.** An agent is told what to do and how,
+  never what is driving it.
+- **It had a second contract to get wrong.** The note had to say whether the repaired
+  reply then *ran* — and when it did not (a reply that failed to type-strip, or one gg
+  refused as not a program) an unconditional wording contradicted the very feedback it
+  opened. That shipped, and a model cannot act on a turn that asserts both.
 
-The clause is written per repair, with its own counts — *"removed 2 lines of explanation
-before your program and 1 after it"*, *"removed 1 import line — every tool is already in
-scope, and there is nothing to import"*, *"unwrapped the async function you wrapped your
-program in, and removed its 3 awaits — every tool function is synchronous and returns its
-value directly"*. Where a repair implies something the model got wrong about the surface,
-the clause says so once.
+What the model needs from a repaired turn is the diagnostic, which it gets. A type-strip
+error is located in the **healed** source; a model told "line 4" fixes line 4, which is
+the line gg compiled.
 
-Disclosure also reaches the **operator**: a repaired reply logs an `info` line naming the
-strategies that fired, so a study watching a live run can see that the program gg
-compiled was not byte-for-byte the one the model sent, without waiting for the closing
-rollup.
-
-Because the model reads a type-strip diagnostic against the program gg actually compiled
-— located to a line and column of the **healed** source — the disclosure is what lets it
-reconcile the two. A model told "line 4" *and* "a fence was stripped from the top of your
-reply" can find its mistake; one told only "line 4" cannot.
+What a *study* needs is the record, and that is telemetry rather than prompt text. A
+repaired reply logs an `info` line naming the strategies that fired, so a live run shows
+that the program gg compiled was not byte-for-byte the one the model sent; the raw reply
+is streamed and stored unmodified, so "did this model still emit a fence?" is answerable
+from the transcript as well as from the counters.
 
 ## Configuration
 

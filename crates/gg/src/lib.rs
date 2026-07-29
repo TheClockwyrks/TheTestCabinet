@@ -28,6 +28,7 @@ mod config;
 mod context;
 mod dag;
 mod docs;
+mod ending;
 mod fsm;
 mod git;
 mod healing;

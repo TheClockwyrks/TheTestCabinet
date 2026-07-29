@@ -179,20 +179,6 @@ export interface ParamSpec {
 }
 
 /**
- * The implementation `cap` is **fixed** to on an agent whose other capabilities are
- * `capabilities`, or `null` when the operator's own selection stands. See
- * [CapSpec.lockImplementation].
- */
-export function lockedImplementation(
-  cap: CapSpec,
-  capabilities: Record<string, { enabled: boolean }>,
-): string | null {
-  const lock = cap.lockImplementation;
-  if (!lock) return null;
-  return capabilities[lock.whenCapability]?.enabled ? lock.value : null;
-}
-
-/**
  * Whether a param's dedicated control is offered while `implementation` is selected —
  * always, unless the param names the implementations it is read under.
  */
@@ -235,17 +221,6 @@ export interface CapSpec {
   // The help-tooltip text for the implementation field — what the modes mean, kept
   // off the picker's option labels so the dropdown reads as a list of names.
   implementationHint?: string;
-  // Another capability on the *same agent* whose being enabled **fixes** this one's
-  // implementation, because gg would ignore anything else. The form then shows the value
-  // instead of a picker, with `hint` explaining why, and serialization writes it — so a
-  // stored configuration says what the run will actually do rather than what the operator
-  // last picked before switching modes. Today's one use: a responses-as-code agent can
-  // only ever finish through its program's `finish`, so its completion signal is fixed.
-  lockImplementation?: {
-    whenCapability: string;
-    value: string;
-    hint: string;
-  };
   // Dedicated param controls; anything else goes in the generic JSON editor.
   params?: ReadonlyArray<ParamSpec>;
   // The tool names this capability offers — a run's toolset withholds individual
@@ -466,31 +441,6 @@ export const SUBAGENT_SCOPES: ReadonlyArray<{
     hint: "May be named among an issue's `reviewers` — the profiles that must each approve the finished work before the issue is accepted.",
   },
 ];
-
-// How a run decides it is finished (`crates/gg/src/completion.rs`) — the completion
-// capability's implementation, and the **completion signal**. The values are gg's signal
-// ids (`COMPLETION_SIGNAL_*` in `crates/core/src/gg.rs`); the empty value is the default
-// (plain text), which is what an unconfigured run has always done.
-export const COMPLETION_SIGNAL_OPTIONS = [
-  { value: "", label: "Plain text (default)" },
-  { value: "explicit-call", label: "Explicit `finish` call" },
-] as const;
-
-// What each completion signal does — the detail lifted off the picker's option labels
-// into the field's help tooltip.
-export const COMPLETION_SIGNAL_HINT =
-  "Plain text ends a tool-calling run on a reply that requests no tools — the historical default. Explicit `finish` call requires the model to call the `finish` tool: a text-only reply is then an error fed back to it, so a model that loops emitting prose trips the run's error ceilings instead of running to its turn budget. Responses-as-code always ends through its program's `finish`, so the signal is fixed there.";
-
-// The completion signal a responses-as-code agent is locked to. Every reply in code mode
-// is a program, and no *shape* of program means "finished", so such a run can only ever
-// end through an explicit `finish` — the picker is fixed rather than offering a choice
-// gg would ignore.
-export const COMPLETION_SIGNAL_EXPLICIT = "explicit-call";
-
-// Why the signal picker is fixed on a code-mode agent — the note shown beside it in place
-// of a choice.
-export const COMPLETION_LOCKED_HINT =
-  "This agent runs responses as code, where every reply is a program and the only way to stop is to call `finish`. The signal is fixed to the explicit call.";
 
 // The per-command timeout gg falls back to when a validation command declares none
 // (`DEFAULT_VALIDATION_TIMEOUT` in `crates/gg/src/completion.rs`). Generous, because a
@@ -1000,28 +950,18 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     name: "Completion",
     group: "Process & quality",
     purpose:
-      "How this agent's run decides it is finished: the signal the model ends on, and an optional list of commands that must pass before a completion is accepted. Off leaves gg's historical rule — a text-only reply ends a tool-calling run, a program's `finish` ends a code one, and nothing is checked.",
-    implementationLabel: "Completion signal",
-    implementationOptions: COMPLETION_SIGNAL_OPTIONS,
-    implementationHint: COMPLETION_SIGNAL_HINT,
-    // Responses-as-code has only one way to stop, so a code-mode agent's signal is shown
-    // fixed rather than as a choice gg would ignore.
-    lockImplementation: {
-      whenCapability: "responses-as-code",
-      value: COMPLETION_SIGNAL_EXPLICIT,
-      hint: COMPLETION_LOCKED_HINT,
-    },
+      "Commands that must pass before this agent's ending is accepted. How an agent ends is not configurable — it is always an explicit call, shaped by the role it was dispatched in — so this capability only adds the gate. Off takes the model's word for it.",
     params: [
       {
         key: "validation",
         label: "Validation commands",
         kind: "commands",
-        hint: `Commands gg runs when the model signals completion, in order, in either execution mode. The run only ends if every one exits 0; the first failure's output is handed back to the model and the run continues. Leave the list empty to take the model's word for it. A blank working directory is the agent's workspace root; a blank timeout is ${DEFAULT_VALIDATION_TIMEOUT_SECS}s.`,
+        hint: `Commands gg runs when the agent signals it is done, in order, in either execution mode. Its session only ends if every one exits 0; the first failure's output is handed back to the model and the run continues. Leave the list empty to take the model's word for it. A blank working directory is the agent's workspace root; a blank timeout is ${DEFAULT_VALIDATION_TIMEOUT_SECS}s.`,
       },
     ],
-    // `finish` is deliberately absent: it is a loop-level tool gg appends and intercepts
-    // itself under the explicit signal, not a registry tool — and withholding the only
-    // way to finish is not an arm anyone would run.
+    // The ending calls are deliberately absent: they are loop-level tools gg appends
+    // according to the agent's role and intercepts itself, not registry tools — and
+    // withholding the only way to end a session is not an arm anyone would run.
   },
   {
     id: "speculative-execution",

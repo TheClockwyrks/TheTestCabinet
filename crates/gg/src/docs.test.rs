@@ -1,6 +1,7 @@
 //! Tests for the [documentation carve-out runtime](super::DocsRuntime).
 
 use super::*;
+use crate::ending::EndingRole;
 
 /// The scope-bound tool names a full run offers, as gg expresses its enabled set — enough to bind
 /// `fs`, `system`, and `project`.
@@ -15,7 +16,7 @@ fn enabled() -> Vec<String> {
 /// every object carries — and only the functions the run enabled.
 #[test]
 fn list_enumerates_bound_functions_and_the_list_meta() {
-    let docs = DocsRuntime::new(enabled());
+    let docs = DocsRuntime::new(enabled(), EndingRole::Standard);
     let fs = docs.list("fs");
     let names: Vec<&str> = fs.iter().map(|f| f.name.as_str()).collect();
     assert!(names.contains(&"readFile"), "{names:?}");
@@ -33,7 +34,7 @@ fn list_enumerates_bound_functions_and_the_list_meta() {
 /// The `harness` object always carries `finish` and the two meta functions, whatever a run enables.
 #[test]
 fn harness_always_carries_finish_readdocs_and_list() {
-    let docs = DocsRuntime::new(Vec::new());
+    let docs = DocsRuntime::new(Vec::new(), EndingRole::Standard);
     let harness = docs.list("harness");
     let names: Vec<&str> = harness.iter().map(|f| f.name.as_str()).collect();
     assert!(names.contains(&"finish"), "{names:?}");
@@ -45,7 +46,7 @@ fn harness_always_carries_finish_readdocs_and_list() {
 /// the first time it is shown but not the second — the session-level dedup only gg can do.
 #[test]
 fn read_includes_a_referenced_type_only_once() {
-    let mut docs = DocsRuntime::new(enabled());
+    let mut docs = DocsRuntime::new(enabled(), EndingRole::Standard);
 
     let first = docs.read("readFile").expect("readFile is bound");
     assert!(first.fresh, "the first read of a function is fresh");
@@ -74,14 +75,14 @@ fn read_includes_a_referenced_type_only_once() {
 /// available rather than shown docs for a method its scope does not carry.
 #[test]
 fn read_of_a_withheld_function_is_none() {
-    let mut docs = DocsRuntime::new(vec!["read_file".to_string()]);
+    let mut docs = DocsRuntime::new(vec!["read_file".to_string()], EndingRole::Standard);
     assert!(docs.read("writeFile").is_none());
 }
 
 /// The meta functions document themselves.
 #[test]
 fn read_documents_the_meta_functions() {
-    let mut docs = DocsRuntime::new(Vec::new());
+    let mut docs = DocsRuntime::new(Vec::new(), EndingRole::Standard);
     assert!(
         docs.read("list")
             .expect("list is a meta function")

@@ -1,10 +1,9 @@
-{{> healing-note ran=true}}
-Your code hit the execution limit:
+Your program hit the execution limit:
 
 ```
 {{error}}
 ```
 
-Verify that no infinite loops or unbounded recursion exists.{{#if calls}} The {{calls}}
-tool call(s) your code made stand.{{/if}} {{#if finishRevoked}} The call to
-`harness.finish()` was suppressed due to the error.{{/if}}
+Check for an unbounded loop or recursion.{{#if calls}} The {{calls}}
+tool call(s) it made stand.{{/if}}{{#if finishRevoked}} Your session was NOT ended: `{{endingRevoked}}` was
+suppressed by the error.{{/if}}

@@ -39,10 +39,6 @@ fn prose_around_a_bare_program_is_removed() {
             }
         }]
     );
-    assert_eq!(
-        result.notes(),
-        vec!["removed 1 line of explanation before your program and 1 after it"]
-    );
 }
 
 /// A line that is not **certainly** prose stops the strip dead, with no scanning past it.
@@ -75,10 +71,6 @@ fn a_prose_only_response_is_not_a_program() {
             strategy: HealingStrategy::StripProse,
             detail: HealingDetail::ProseOnly
         }]
-    );
-    assert!(
-        result.notes().is_empty(),
-        "a verdict rendered a repair clause"
     );
     assert!(!result.rewritten());
 }
@@ -195,10 +187,6 @@ fn an_exact_repeated_program_is_deleted() {
         "the redeclaration survived:\n{}",
         result.program
     );
-    // The model is told, in one clause, both what gg deleted and why the reply could not have run.
-    let note = result.notes().join(" ");
-    assert!(note.contains("second, identical copy"), "{note}");
-    assert!(note.contains("One reply is one program"), "{note}");
 }
 
 /// The same shape from the other model, two lines long, so the repair does not depend on the
@@ -389,7 +377,7 @@ fn disarming_the_strategy_leaves_the_duplicate_alone() {
 // drop-imports
 // ---------------------------------------------------------------------------------------------
 
-/// A complete single-line `import` goes, and the model is told why there was nothing to import.
+/// A complete single-line `import` goes.
 #[test]
 fn a_single_import_line_is_dropped() {
     let result = healed(
@@ -403,12 +391,6 @@ fn a_single_import_line_is_dropped() {
             strategy: HealingStrategy::DropImports,
             detail: HealingDetail::Imports { lines: 1 }
         }]
-    );
-    assert_eq!(
-        result.notes(),
-        vec![
-            "removed 1 import line — every tool is already in scope, and there is nothing to import"
-        ]
     );
 }
 
@@ -496,13 +478,6 @@ fn an_async_function_wrapper_is_unwrapped_and_its_awaits_removed() {
                 awaits: 2
             }
         }]
-    );
-    assert_eq!(
-        result.notes(),
-        vec![
-            "unwrapped the async function you wrapped your program in, and removed its 2 awaits — \
-             every tool function is synchronous and returns its value directly"
-        ]
     );
 }
 

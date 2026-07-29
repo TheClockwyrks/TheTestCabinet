@@ -15,6 +15,7 @@ use std::time::Duration;
 use serde_json::{Value, json};
 
 use super::*;
+use crate::ending::{Ending, EndingRole};
 use crate::sandbox::fake::{CallLog, FakeToolApi, all_tools, canned_outcome};
 use crate::tools::{ToolFailure, ToolOutcome};
 
@@ -34,7 +35,8 @@ fn run(program: &str) -> (SandboxOutcome, CallLog) {
     )
 }
 
-/// Run `program` against `enabled`'s tools under `limits`, answering calls with `responder`.
+/// Run `program` against `enabled`'s tools under `limits`, answering calls with `responder`. The
+/// program is given the [standard](EndingRole::Standard) ending group; [`run_as`] varies that.
 fn run_with(
     program: &str,
     enabled: &[String],
@@ -45,11 +47,27 @@ fn run_with(
     let (outcome, _api) = run_program(
         program,
         enabled,
+        EndingRole::Standard,
         limits,
         None,
         FakeToolApi::with(&log, responder),
     );
     (outcome, log)
+}
+
+/// Run `program` in `role`'s ending group with no tools at all — what the ending calls are bound
+/// beside, and what a program in a run that enables nothing still has.
+fn run_as(program: &str, role: EndingRole) -> SandboxOutcome {
+    let log = CallLog::default();
+    let (outcome, _api) = run_program(
+        program,
+        &[],
+        role,
+        SandboxLimits::default(),
+        None,
+        FakeToolApi::new(&log),
+    );
+    outcome
 }
 
 /// What a program logged, insisting that it ran and did not throw.
@@ -87,12 +105,20 @@ fn logged_json(outcome: &SandboxOutcome) -> Value {
     })
 }
 
-/// The completion a program declared, insisting that it declared one.
+/// The ending a program declared, insisting that it declared one.
 fn completion(outcome: &SandboxOutcome) -> &ProgramCompletion {
     outcome
         .completion
         .as_ref()
-        .unwrap_or_else(|| panic!("the program did not finish the run: {:?}", outcome.result))
+        .unwrap_or_else(|| panic!("the program did not end its session: {:?}", outcome.result))
+}
+
+/// The summary a [`Finished`](Ending::Finished) ending carries, insisting that is what it was.
+fn summary_of(completion: &ProgramCompletion) -> &str {
+    match &completion.ending {
+        Ending::Finished { summary } => summary,
+        other => panic!("expected a finished ending, got {other:?}"),
+    }
 }
 
 /// The throw a program did not catch, insisting that the sandbox itself did not fail.
@@ -440,7 +466,7 @@ fn a_program_ends_the_run_by_calling_finish() {
     // 1. The plain case. The completion is carried out verbatim and the turn is not a failure:
     //    nothing was thrown, because `finish` throws nothing.
     let (outcome, log) = run("harness.finish(\"wrote the manifest\");");
-    assert_eq!(completion(&outcome).summary, "wrote the manifest");
+    assert_eq!(summary_of(completion(&outcome)), "wrote the manifest");
     assert_eq!(completion(&outcome).superseded, 0);
     assert!(logs(&outcome).is_empty());
     assert!(log.calls().is_empty());
@@ -454,7 +480,7 @@ fn a_program_ends_the_run_by_calling_finish() {
         "fs.writeFile(\"after.txt\", \"x\");\n",
         "console.log(\"tidied up\");",
     ));
-    assert_eq!(completion(&outcome).summary, "done");
+    assert_eq!(summary_of(completion(&outcome)), "done");
     assert_eq!(logs(&outcome), ["tidied up"]);
     assert_eq!(
         log.names(),
@@ -482,7 +508,7 @@ fn a_program_ends_the_run_by_calling_finish() {
         "if (n > 10) { harness.finish(\"big enough\"); }\n",
         "fs.writeFile(\"after.txt\", \"x\");",
     ));
-    assert_eq!(completion(&outcome).summary, "big enough");
+    assert_eq!(summary_of(completion(&outcome)), "big enough");
     assert_eq!(log.names(), ["write_file"]);
 
     // 5. **Last call wins, and calling twice is not a failure.** With no unwind to catch, a second
@@ -495,7 +521,7 @@ fn a_program_ends_the_run_by_calling_finish() {
     ));
     assert_eq!(logs(&outcome), ["neither call threw"]);
     assert_eq!(
-        completion(&outcome).summary,
+        summary_of(completion(&outcome)),
         "the last word",
         "last wins: the summary written with the most of the program behind it"
     );
@@ -508,7 +534,7 @@ fn a_program_ends_the_run_by_calling_finish() {
         "try { throw new Error(\"handled\"); } catch (e) { console.log(\"recovered\"); }\n",
         "harness.finish(\"done anyway\");",
     ));
-    assert_eq!(completion(&outcome).summary, "done anyway");
+    assert_eq!(summary_of(completion(&outcome)), "done anyway");
     assert_eq!(logs(&outcome), ["recovered"]);
 
     // 7. **A throw after a completion revokes it.** The summary describes checks the program never
@@ -523,7 +549,12 @@ fn a_program_ends_the_run_by_calling_finish() {
         "a program that failed after `finish` has not finished: {:?}",
         outcome.completion
     );
-    assert_eq!(outcome.revoked_completion.as_deref(), Some("done"));
+    assert_eq!(
+        outcome.revoked_completion,
+        Some(Ending::Finished {
+            summary: "done".to_string(),
+        })
+    );
     assert!(
         program_error(&outcome)
             .message
@@ -556,7 +587,7 @@ fn a_program_ends_the_run_by_calling_finish() {
             error.message
         );
         assert!(
-            error.message.contains("The run is NOT finished"),
+            error.message.contains("session is NOT over"),
             "`{program}`: {}",
             error.message
         );
@@ -634,4 +665,81 @@ fn the_committed_component_matches_this_build() {
         "the committed component and gg's tool vocabulary have drifted apart — rebuild the guest \
          with `packages/gg-sandbox/build.sh`"
     );
+}
+
+/// **A role's ending calls are the only ones in its programs' scope.**
+///
+/// Scope injection is the capability model, and the ending calls obey it exactly as the tools do: a
+/// call this agent's role does not have is an undefined identifier, not a call that travels to the
+/// host to be refused there. So a reviewer that reaches for `harness.finish` gets a
+/// `ReferenceError` naming the objects it *does* have, on the turn it reaches — rather than a
+/// verdict gg has to decide what to do with.
+///
+/// This is the end-to-end half of the membrane's own tests: it pays a component compile to prove the
+/// **committed artifact** binds what the host thinks it binds.
+#[test]
+fn a_role_gets_only_its_own_ending_calls() {
+    // The standard group: `harness.finish` is there, and neither verdict object exists.
+    let outcome = run_as("harness.finish(\"done\");", EndingRole::Standard);
+    assert_eq!(summary_of(completion(&outcome)), "done");
+    let outcome = run_as("review.approve();", EndingRole::Standard);
+    assert_eq!(
+        program_error(&outcome).kind,
+        ProgramErrorKind::UnknownName,
+        "an agent doing work has no `review` object at all"
+    );
+
+    // A reviewer: both verdicts, and no `harness.finish` at all.
+    let outcome = run_as("review.approve();", EndingRole::Review);
+    assert_eq!(
+        completion(&outcome).ending,
+        Ending::Approved,
+        "an approval needs no arguments"
+    );
+    let outcome = run_as(
+        "review.requestChanges([\"`step()` is off by one\"]);",
+        EndingRole::Review,
+    );
+    assert_eq!(
+        completion(&outcome).ending,
+        Ending::ChangesRequested {
+            items: vec!["`step()` is off by one".to_string()],
+        }
+    );
+    // `harness` still exists — every program can read documentation — but `finish` is not on it, so
+    // the call is a `TypeError` on the turn it is made rather than a verdict gg has to interpret.
+    let outcome = run_as(
+        "harness.finish(\"the work is complete\");",
+        EndingRole::Review,
+    );
+    assert_eq!(program_error(&outcome).kind, ProgramErrorKind::Other);
+    assert!(
+        program_error(&outcome).message.contains("not a function"),
+        "a reviewer has no `finish`: {:?}",
+        program_error(&outcome).message
+    );
+    assert!(outcome.completion.is_none());
+
+    // A judge: one call, bounded by the attempts it was shown.
+    let outcome = run_as(
+        "judge.selectWinner(2, \"it handles the empty case\");",
+        EndingRole::Judge { attempts: 3 },
+    );
+    assert_eq!(
+        completion(&outcome).ending,
+        Ending::Winner {
+            attempt: 2,
+            rationale: "it handles the empty case".to_string(),
+        }
+    );
+    let outcome = run_as(
+        "judge.selectWinner(9, \"whichever\");",
+        EndingRole::Judge { attempts: 3 },
+    );
+    assert_eq!(
+        program_error(&outcome).kind,
+        ProgramErrorKind::ToolFailure,
+        "an out-of-range pick is a typed failure, not a merge of the wrong work"
+    );
+    assert!(outcome.completion.is_none());
 }

@@ -20,8 +20,9 @@
  * 3. **The scope is built from the run's enabled tools** ({@link buildScope}), and the program is
  *    evaluated as the body of a function whose *parameters* are those names. Scope injection is the
  *    capability model: a withheld tool is an undefined identifier, not a call that reaches the host
- *    and is refused there. `finish` is bound alongside them unconditionally: it is not a tool, no
- *    capability offers it, and it is the only thing that ends a session.
+ *    and is refused there. The session-ending calls are bound alongside them by the same rule, from
+ *    the agent's `ending` role rather than from a capability: exactly one group is in scope, so a
+ *    reviewer has no `finish` to call and an ordinary agent has no `approve`.
  * 4. **Everything the program has to say is said through `feedback`**, never through a trap and
  *    never through a return value. A throw is caught once, described with a line number remapped
  *    into the program's own coordinates, and reported; a returned Promise and work deferred past the
@@ -38,10 +39,16 @@
 
 import * as feedback from "test-cabinet:gg/feedback";
 import type { ProgramError } from "test-cabinet:gg/feedback";
-import { HELPER_CATALOGUE, OBJECT_FOR_MODULE, SESSION_ENTRY, TOOL_CATALOGUE } from "./catalogue.js";
+import type { EndingKind } from "./catalogue.js";
+import {
+  HELPER_CATALOGUE,
+  OBJECT_FOR_MODULE,
+  SESSION_ENTRIES,
+  TOOL_CATALOGUE,
+} from "./catalogue.js";
 import { ToolError, asToolError } from "./errors.js";
 import * as helpers from "./helpers.js";
-import { finish } from "./session.js";
+import * as sessionMod from "./session.js";
 import * as boardMod from "./tools/board.js";
 import * as contextMod from "./tools/context.js";
 import * as delegationMod from "./tools/delegation.js";
@@ -352,11 +359,16 @@ function readDocs(target: unknown): string {
  *
  * Every object also carries a `list()` (the directory of its own functions), and every bound
  * function carries a `.docs()` — both routed to the {@link docsMod} carve-out. The `harness` object
- * is present whatever a run enables: it holds `finish` (no capability offers it and a run that
- * enables nothing must still be able to end) and `readDocs`. Everything goes through {@link guard},
- * so a call made from deferred work — which lands after the turn is over — is reported.
+ * is present whatever a run enables, because it holds `readDocs`. The session-ending calls are bound
+ * from `ending`, one group per role, so a program has exactly the ending its role produces — a
+ * reviewer gets a `review` object and no `finish`, a judge a `judge` object and no `finish`.
+ * Everything goes through {@link guard}, so a call made from deferred work — which lands after the
+ * turn is over — is reported.
  */
-function buildScope(enabled: readonly string[]): Record<string, Record<string, unknown>> {
+function buildScope(
+  enabled: readonly string[],
+  ending: EndingKind,
+): Record<string, Record<string, unknown>> {
   const on = new Set(enabled);
   const objects = new Map<string, Record<string, unknown>>();
   // Fetch (creating on first use) the object for a namespace, seeding it with the `list()` directory
@@ -385,10 +397,17 @@ function buildScope(enabled: readonly string[]): Record<string, Record<string, u
     if (fn && object) objectFor(object)[helper.js] = documented(guard(helper.js, fn), helper.js);
   }
 
-  // `harness`: always present. `finish` ends the run; `readDocs` is the top-level doc lookup.
-  const harness = objectFor(OBJECT_FOR_MODULE[SESSION_ENTRY.module] ?? "harness");
-  harness[SESSION_ENTRY.js] = documented(guard(SESSION_ENTRY.js, finish as ToolFn), SESSION_ENTRY.js);
+  // `harness`: always present, because `readDocs` is always available.
+  const harness = objectFor(OBJECT_FOR_MODULE["session"] ?? "harness");
   harness["readDocs"] = documented(guard("readDocs", readDocs as ToolFn), "readDocs");
+
+  // The one ending group this role produces. Bound by the same rule the tools are: what is not this
+  // role's ending is not a name in the program's scope.
+  for (const entry of SESSION_ENTRIES) {
+    if (entry.ending !== ending) continue;
+    const fn = lookup(sessionMod as Readonly<Record<string, unknown>>, entry.js);
+    if (fn) objectFor(entry.object)[entry.js] = documented(guard(entry.js, fn), entry.js);
+  }
 
   return Object.fromEntries(objects);
 }
@@ -397,22 +416,23 @@ function buildScope(enabled: readonly string[]): Record<string, Record<string, u
  * Evaluate one program against exactly the tools this run enables.
  *
  * `program` is JavaScript: gg type-stripped the model's TypeScript before it got here. `enabled` is
- * the run's gg tool names. Nothing comes back: a throw is reported over `feedback.report-error`
- * rather than being allowed to escape as an opaque wasm trap, everything a program wanted to say it
- * said with `console.log`, and a completion is a flag the host already holds.
+ * the run's gg tool names and `ending` the agent's role, which together are the whole scope. Nothing
+ * comes back: a throw is reported over `feedback.report-error` rather than being allowed to escape as
+ * an opaque wasm trap, everything a program wanted to say it said with `console.log`, and an ending
+ * is a flag the host already holds.
  *
  * A **returned value is discarded**, and {@link feedback.noteReturn} is how the model learns that
  * rather than by noticing an absence. Discarding it is what makes the rule one sentence — log what
  * you want to see — and it costs a program nothing: there is no value it could return that it could
  * not log.
  */
-export function run(program: string, enabled: string[]): void {
+export function run(program: string, enabled: string[], ending: EndingKind): void {
   installConsole();
   installDenials();
   ended = false;
   deferredNoted = false;
 
-  const scope: Record<string, unknown> = buildScope(enabled);
+  const scope: Record<string, unknown> = buildScope(enabled, ending);
   // Captured BEFORE `ToolError` joins the scope: the unknown-name hint lists the OBJECTS a program
   // may reach (`fs`, `project`, `harness`, …), and a model offered `ToolError` there would be
   // pointed at a class as though it were an API object.

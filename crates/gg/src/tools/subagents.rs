@@ -73,7 +73,7 @@ pub fn is_subagent_tool(name: &str) -> bool {
 /// intercepted by the loop). Never seen in a correctly wired session.
 pub(crate) fn handled_by_loop(name: &str) -> ToolOutcome {
     ToolOutcome::error(format!(
-        "`{name}` is a delegation tool handled by the gg runtime; it cannot be dispatched here."
+        "`{name}` is handled by the loop; it cannot be dispatched here."
     ))
 }
 
