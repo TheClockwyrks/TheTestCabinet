@@ -2,17 +2,19 @@
 // from the tool results, file views, and history that accrue as it works (those are
 // what the Requests view itemizes turn by turn).
 //
-// For a subagent this is the whole point of reading its prompt: the *brief its
-// parent handed it* is the direct content of the delegation, so it leads — and it
-// comes off the spawn event, so it is present even for an older run that recorded
-// no rendered prompt. Beneath it (and, for the root, alone) is the rendered
+// For any agent but the main one this is the whole point of reading its prompt: the
+// *brief it was dispatched with* — by its parent when an agent spawned it, by the
+// board when it was dispatched for an issue — is the direct content of the
+// delegation, so it leads, and it comes off the spawn event, so it is present even
+// for an older run that recorded no rendered prompt. Beneath it (and, for the main
+// agent, alone) is the rendered
 // opening prompt: the system framing and the build/user prompt the agent actually
 // started its first turn from, resolved from the de-duplicated message log.
 
 import type { GgContextSource } from "@test-cabinet/run-record/gg";
 import panels from "./GgPanels.module.scss";
 import type { AgentNode, PooledMessage, PromptTurn } from "./useGgRunState";
-import { shortTokens } from "./useGgRunState";
+import { ROOT_ID, shortTokens } from "./useGgRunState";
 import {
   CONTEXT_SOURCE_COLORS,
   CONTEXT_SOURCE_LABELS,
@@ -40,7 +42,10 @@ export function PromptView({
   pool: Map<string, PooledMessage>;
   live: boolean;
 }) {
-  const isRoot = node.parentId == null;
+  // Only the main agent has no brief to read: a board-dispatched issue agent is
+  // parentless too, but it was dispatched *with* the issue's brief, so keying this on
+  // being parentless hid the very instruction it was working from.
+  const isRoot = node.id === ROOT_ID;
   const firstTurn = prompts[0] ?? null;
   const promptMessages: PromptMessageRef[] = firstTurn
     ? firstTurn.request
@@ -54,10 +59,13 @@ export function PromptView({
 
   return (
     <div className={panels.promptView}>
-      {/* A subagent's brief: the direct instruction its parent dispatched it with. */}
+      {/* The brief the agent was dispatched with — from its parent when an agent
+          spawned it, from the board when the issue it works was dispatched. */}
       {!isRoot && (
         <section className={panels.promptSection}>
-          <span className={panels.subPanelLabel}>Brief from parent</span>
+          <span className={panels.subPanelLabel}>
+            {node.parentId == null ? "Dispatch brief" : "Brief from parent"}
+          </span>
           {brief ? (
             <p className={panels.promptBrief}>{brief}</p>
           ) : (

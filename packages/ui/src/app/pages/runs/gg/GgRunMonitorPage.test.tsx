@@ -742,6 +742,48 @@ describe("GgRunMonitorPage", () => {
     expect(screen.getByText("Draw the widget")).toBeInTheDocument();
   });
 
+  it("names a board-dispatched issue agent by its issue, never “root”", () => {
+    // The board auto-dispatches an issue to a **top-level** agent — parentless, depth 0
+    // — whose id is minted from the issue itself (`WIDGET-1.0i`, its reviewers
+    // `WIDGET-1.0i.0r`). Only the main agent is "root"; deciding that by parentlessness
+    // called every dispatched agent "root" too, which is exactly the name that says
+    // nothing about the work it was dispatched for.
+    renderMonitor([
+      sessionStartedWith([
+        { name: "Root", capabilities: ["shell", "project-management"] },
+        { name: "Coder", capabilities: ["shell", "tasks"] },
+      ]),
+      ggFrom("WIDGET-1.0i", undefined, {
+        type: "agent_spawned",
+        slot: "Coder",
+        modelId: "mock/scripted-builder",
+        depth: 0,
+        brief: "Implement the widget.",
+      }),
+      ggFrom("WIDGET-1.0i", undefined, { type: "turn_started" }),
+    ]);
+    // The Dashboard's overview lists both agents, the dispatched one under its issue
+    // name — and "root" names exactly one row, the main agent's.
+    expect(screen.getByText("Agents · 2")).toBeInTheDocument();
+    expect(screen.getByText("WIDGET-1.0i")).toBeInTheDocument();
+    expect(screen.getAllByText("root")).toHaveLength(1);
+    // Its meta line carries the profile it runs under and its own turn count. ("Coder"
+    // reads twice on the Dashboard: the configuration card's profile, and this row's.)
+    expect(screen.getAllByText("Coder")).toHaveLength(2);
+    expect(screen.getByText("1 turn")).toBeInTheDocument();
+
+    // Same on its own Overview in the explorer: the sidebar folder and the identity
+    // card both name the issue, and the brief the board dispatched it with reads as a
+    // dispatch rather than as a parent's hand-off.
+    openTab("Agents");
+    openFile("WIDGET-1.0i overview");
+    expect(screen.getAllByText("WIDGET-1.0i").length).toBeGreaterThan(1);
+    expect(screen.getByText("Implement the widget.")).toBeInTheDocument();
+    openFile("WIDGET-1.0i prompt");
+    expect(screen.getByText("Dispatch brief")).toBeInTheDocument();
+    expect(screen.queryByText("Brief from parent")).toBeNull();
+  });
+
   it("offers the Project tab when any profile owns the board, not only the Root", () => {
     // The board is one thing shared by the whole run, so which profile happens to
     // author it does not decide whether the run has one — a set that puts project

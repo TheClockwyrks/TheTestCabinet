@@ -70,6 +70,13 @@ through **two** surfaces:
   folder, the things you can monitor about it are its files, and every agent an agent
   spawned is a folder under a `subagents` folder — so the
   [delegation tree](/gg/subagents/) *is* the directory tree, rooted at the main agent.
+  Each agent folder leads with its **lifecycle dot** (running / waiting / done /
+  failed) in place of a folder glyph, and carries the profile it runs under on the
+  row's trailing edge. Only the main agent is named `root`: an agent the board
+  [dispatched for an issue](/gg/project-management/) is a top-level folder *beside* it
+  and reads by its own issue-derived name (`AUTH-1.0i`, its reviewers `AUTH-1.0i.0r`),
+  everywhere it is named — the tree, its Overview, and the Dashboard's agent overview
+  — so a fleet of concurrent agents says which piece of work each one is on.
   A file is offered when the run's configuration justifies it, not when data happens
   to have arrived: a capability the run **has** always has its file (showing its own
   "nothing yet" state until the first event streams), a capability the run **lacks**

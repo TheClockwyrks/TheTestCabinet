@@ -506,8 +506,9 @@
   min-width: 0;
 }
 
-// The identity's text half: the name line over the agent's own turn count, so the
-// status dot stays centered against the pair rather than against a single line.
+// The identity's text half: the agent's name over its meta line (its profile and its
+// own turn count), so the status dot stays centered against the pair rather than
+// against a single line.
 .agentIdentityText {
   display: flex;
   flex-direction: column;
@@ -515,18 +516,29 @@
   min-width: 0;
 }
 
-.agentNameLine {
+// The line under the name: the agent's profile and its own turn count, joined by a
+// dot. Baseline-aligned so the uppercase profile and the figure sit on one line.
+.agentMetaLine {
   display: flex;
   align-items: baseline;
-  gap: t.$space-xs;
+  gap: t.$space-2xs;
   min-width: 0;
 }
 
-// The agent's own turn count, under its name.
+// A dot between the profile and the turn count, so they read as one grouped pair
+// rather than two loose figures.
+.agentMetaSep {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  user-select: none;
+}
+
+// The agent's own turn count, on the meta line under its name.
 .agentTurns {
   font-size: t.$font-sm;
   color: t.$color-text-muted;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 // A status dot keyed to the agent's lifecycle, the same palette as the explorer's
@@ -560,11 +572,15 @@
   white-space: nowrap;
 }
 
+// The agent's profile, on the meta line beside the turn count.
 .agentSlot {
   font-size: t.$font-sm;
   color: t.$color-text-muted;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 // A labeled mini-meter (peak context, token share): a caption, a proportional bar,

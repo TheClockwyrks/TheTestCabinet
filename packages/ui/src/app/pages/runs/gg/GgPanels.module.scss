@@ -2197,9 +2197,10 @@ $fsm-hue: #2dd4bf;
   font-size: 0.7rem;
 }
 
-// The leading icon on a tree row — a folder for an agent, a line-art mark for a
-// file. An SVG sized in CSS (drawn in `currentColor`), so it takes the row's muted
-// tone and the active row's accent alike.
+// The leading icon on a tree row — a folder for a grouping row, a line-art mark for a
+// file (an agent row spends the slot on its status dot instead). An SVG sized in CSS
+// (drawn in `currentColor`), so it takes the row's muted tone and the active row's
+// accent alike.
 .fsIcon {
   flex: 0 0 auto;
   width: 0.95rem;
@@ -2224,6 +2225,13 @@ $fsm-hue: #2dd4bf;
   letter-spacing: 0.04em;
 }
 
+// The same hint, pushed to the row's far edge instead of trailing the name: on the
+// agent tree the annotations then line up in a column down the sidebar rather than
+// starting at a different offset on every row.
+.fsMetaTrailing {
+  margin-left: auto;
+}
+
 // The chosen best-of-K attempt, starred on its folder.
 .fsWinner {
   flex: 0 0 auto;
@@ -2231,11 +2239,13 @@ $fsm-hue: #2dd4bf;
   font-size: 0.8rem;
 }
 
-// A small status dot pushed to the row's trailing edge, tinted by the agent's
-// lifecycle status so the tree reads who is running vs done vs failed at a glance.
-.fsStatusDot {
+// A small status dot tinted by the node's lifecycle status, so a tree reads who is
+// running vs done vs failed at a glance. The Project tree pushes it to the row's
+// trailing edge (`fsStatusDot`); the agent tree draws it in the leading icon slot,
+// where a folder glyph would otherwise sit (`fsAgentDot`).
+.fsStatusDot,
+.fsAgentDot {
   flex: 0 0 auto;
-  margin-left: auto;
   width: 0.5rem;
   height: 0.5rem;
   border-radius: 50%;
@@ -2253,6 +2263,16 @@ $fsm-hue: #2dd4bf;
   &[data-status="failed"] {
     background: t.$color-negative;
   }
+}
+
+.fsStatusDot {
+  margin-left: auto;
+}
+
+// Centered in the footprint a row icon takes (0.95rem), so an agent row whose glyph
+// is a dot keeps its name aligned with the icon-led rows around it.
+.fsAgentDot {
+  margin: 0 calc((0.95rem - 0.5rem) / 2);
 }
 
 // The content pane's Overview file: the agent's identity card, its context-usage

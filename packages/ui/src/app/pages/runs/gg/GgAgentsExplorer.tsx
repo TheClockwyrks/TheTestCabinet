@@ -413,26 +413,35 @@ function FolderNode({
         <span className={panels.fsCaret} aria-hidden="true">
           {open ? "▾" : "▸"}
         </span>
-        {open ? (
-          <FolderOpenIcon className={panels.fsIcon} />
-        ) : (
-          <FolderIcon className={panels.fsIcon} />
-        )}
-        <span className={panels.fsName}>{isRoot ? "root" : node.id}</span>
-        {isRoot && <span className={panels.fsMeta}>main agent</span>}
-        {node.slot && !isRoot && (
-          <span className={panels.fsMeta}>{node.slot}</span>
-        )}
+        {/* An agent's lifecycle dot stands where a folder icon would: the caret
+            already says the row is a folder, so the glyph is spent on the one thing
+            worth reading at a glance in a fleet of agents — who is running, waiting,
+            done, or failed. */}
+        <span
+          className={panels.fsAgentDot}
+          data-status={node.status}
+          aria-hidden="true"
+        />
+        <span className={panels.fsName}>{label}</span>
         {role === "winner" && (
           <span className={panels.fsWinner} title="chosen best-of-K attempt">
             ★
           </span>
         )}
-        <span
-          className={panels.fsStatusDot}
-          data-status={node.status}
-          aria-hidden="true"
-        />
+        {/* The trailing annotation — "main agent", or the profile the agent runs
+            under — pushed to the row's far edge, so it lines up down the tree instead
+            of jittering with each agent's name length. */}
+        {isRoot ? (
+          <span className={cx(panels.fsMeta, panels.fsMetaTrailing)}>
+            main agent
+          </span>
+        ) : (
+          node.slot && (
+            <span className={cx(panels.fsMeta, panels.fsMetaTrailing)}>
+              {node.slot}
+            </span>
+          )
+        )}
       </button>
       {open && (
         <ul className={panels.fsChildren}>

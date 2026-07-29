@@ -19,7 +19,7 @@ import type {
   Workflow,
   WorkflowStage,
 } from "./useGgRunState";
-import { shortTokens } from "./useGgRunState";
+import { ROOT_ID, shortTokens } from "./useGgRunState";
 import type {
   GgAgentStatus,
   GgSpeculationPhase,
@@ -133,7 +133,10 @@ export function AgentIdentity({
    */
   turns?: number;
 }) {
-  const isRoot = node.parentId == null;
+  // Only the main agent is "root" — a board-dispatched issue agent is parentless too
+  // (it is its own top-level tree in the run's forest) but reads by its own
+  // issue-derived id, which is exactly what names the work it was dispatched for.
+  const isRoot = node.id === ROOT_ID;
   return (
     <div
       className={styles.agentRow}

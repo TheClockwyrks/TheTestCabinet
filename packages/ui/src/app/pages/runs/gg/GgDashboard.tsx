@@ -11,7 +11,12 @@ import type {
   SlotUsage,
   UsageTally,
 } from "./useGgRunState";
-import { ggPeakContext, ggToolBreakdown, shortTokens } from "./useGgRunState";
+import {
+  ROOT_ID,
+  ggPeakContext,
+  ggToolBreakdown,
+  shortTokens,
+} from "./useGgRunState";
 import { runPricedSlots, useGgCostBreakdown } from "./ggCost";
 import { CostWidget, TokensWidget, formatPercent } from "./GgOverviewWidgets";
 import { SlotUsagePanel } from "./AgentTreeView";
@@ -164,7 +169,6 @@ const OVERVIEW_TOOLS_SHOWN = 6;
 interface AgentOverviewRowData {
   id: string;
   label: string;
-  isRoot: boolean;
   depth: number;
   status: GgAgentStatus;
   slot: string | null;
@@ -204,8 +208,11 @@ function buildAgentRows(
     const tokens = st?.usage.totalTokens ?? 0;
     return {
       id: node.id,
-      label: node.parentId == null ? "root" : node.id,
-      isRoot: node.parentId == null,
+      // Only the main agent is "root". A board-dispatched issue agent is parentless
+      // too — it is a top-level tree of its own in the forest — but its id *is* its
+      // name (`AUTH-1.0i`, its reviewers `AUTH-1.0i.0r`), so keying the label on
+      // being parentless named every dispatched agent "root".
+      label: node.id === ROOT_ID ? "root" : node.id,
       depth,
       status: node.status,
       slot: node.slot,
@@ -281,16 +288,26 @@ function AgentOverviewRow({
           data-status={row.status}
           aria-hidden="true"
         />
-        {/* The agent's name over its own turn count: how much of the session this
+        {/* The agent's instance name alone on the first line, with its profile and
+            its own turn count as the meta line beneath — how much of the session this
             agent spent is a per-agent fact, so it hangs under the name it belongs to
-            rather than being summed away into one figure. */}
+            rather than being summed away into one figure, and the profile reads beside
+            it rather than crowding the name it annotates. A dot joins the pair, the
+            way depth · turns is joined on an agent's Overview. */}
         <span className={styles.agentIdentityText}>
-          <span className={styles.agentNameLine}>
-            <span className={styles.agentName}>{row.label}</span>
-            {row.slot && <span className={styles.agentSlot}>{row.slot}</span>}
-          </span>
-          <span className={styles.agentTurns}>
-            {row.turns} turn{row.turns === 1 ? "" : "s"}
+          <span className={styles.agentName}>{row.label}</span>
+          <span className={styles.agentMetaLine}>
+            {row.slot && (
+              <>
+                <span className={styles.agentSlot}>{row.slot}</span>
+                <span className={styles.agentMetaSep} aria-hidden="true">
+                  ·
+                </span>
+              </>
+            )}
+            <span className={styles.agentTurns}>
+              {row.turns} turn{row.turns === 1 ? "" : "s"}
+            </span>
           </span>
         </span>
       </span>
