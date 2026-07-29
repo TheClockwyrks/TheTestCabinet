@@ -15,6 +15,15 @@
 // rather than parsed JSON or numbers, so an in-progress, not-yet-valid edit survives
 // a re-render (and a save round-trip) instead of being silently dropped, and so an
 // empty ceiling field stays distinguishable from a ceiling deliberately set to zero.
+//
+// Everything the draft refers to internally — an agent an allowlist entry points at, an
+// agent a capability param names, the model slot an agent binds — is referred to by a
+// **local id** ([localId]), never by the name shown in the form. The wire format is
+// name-keyed (gg puts an agent to work by name and labels a launch input by slot name),
+// so those names are resolved on the way out and re-resolved to ids on the way in. That
+// is what makes a rename a rename: renaming an agent or a model slot in the editor moves
+// every reference with it instead of quietly orphaning the ones that spelled the old
+// name. The ids are editor-only and per-session; nothing persists them.
 
 import type {
   GgAgentConfig,
@@ -54,11 +63,25 @@ export interface GgCapabilityDraft {
   extraParams?: Record<string, unknown>;
 }
 
+// A fresh local id. Local ids exist only inside an editing session: they give an agent
+// profile and a model slot an identity independent of the name shown in the form, so a
+// rename cannot orphan the references to them. Nothing serializes them, so a plain
+// monotonic counter is identity enough — two drafts alive at once never share one.
+let localIdCounter = 0;
+export function localId(prefix: string): string {
+  localIdCounter += 1;
+  return `${prefix}-${localIdCounter}`;
+}
+
 // One declared **model slot** as the editor holds it: a launch-time model parameter
 // with an optional default the new-run form pre-fills. Declaring these is what makes
 // one saved configuration reusable across models — the operator supplies the models
 // at launch instead of the configuration baking them in.
 export interface GgModelSlotDraft {
+  // Editor-only identity: what an agent's binding points at, so renaming a slot carries
+  // every agent bound to it along instead of orphaning them. Never serialized — the
+  // wire format names slots.
+  id: string;
   name: string;
   defaultModelId: string;
 }
@@ -71,7 +94,9 @@ export type GgAgentModelSource = "model-slot" | "model";
 // this agent may spawn (may be itself), plus the caller-scoped description that tells
 // the spawning agent when to use it.
 export interface GgSubagentDraft {
-  agent: string;
+  // The target agent's [local id](localId) — not its name, so renaming the target keeps
+  // the entry pointed at it.
+  agentId: string;
   description: string;
   // What this agent may use the target **for**. An entry with no scopes is dropped on
   // serialize — the editor removes a roster row by clearing its last scope rather than
@@ -88,10 +113,16 @@ export interface GgSubagentDraft {
 // non-empty value is a full override. The editor blanks it back to `""` when it
 // matches the built-in default, so an unedited override is not stored.
 export interface GgAgentDraft {
+  // Editor-only identity, stable across every rename. Which profile is the **root** is
+  // a flag on the configuration ([GgConfigDraft.rootAgentId]) holding this id, so no
+  // part of the editor decides it by looking for a particular name.
+  id: string;
   name: string;
   capabilities: Record<string, GgCapabilityDraft>;
   modelSource: GgAgentModelSource;
-  modelSlot: string;
+  // The [id](GgModelSlotDraft.id) of the model slot this agent defers to, or empty when
+  // it defers to none (a pinned binding, or a slot that was deleted out from under it).
+  modelSlotId: string;
   modelId: string;
   disabledTools: string[];
   customInstructions: string;
@@ -108,12 +139,34 @@ export interface GgAgentDraft {
 export type GgRunLimitsDraft = Record<keyof GgRunLimits, string>;
 
 // A whole gg configuration as the editor holds it, minus the test case/variant
-// (those are per-run): the agent profiles, the declared launch-time model slots, and
-// the run's execution ceilings.
+// (those are per-run): the agent profiles, which of them is the root, the declared
+// launch-time model slots, and the run's execution ceilings.
 export interface GgConfigDraft {
   agents: GgAgentDraft[];
+  // The [id](GgAgentDraft.id) of the agent that drives the run's top-level session.
+  // A flag rather than a position or a name, so the root can be renamed freely and the
+  // role moved to another profile without touching either. Serialization is what turns
+  // it back into the wire format's "the root is `agents[0]`". Empty only while the
+  // configuration has no agents at all — which is an editing state, not a savable one.
+  rootAgentId: string;
   modelSlots: GgModelSlotDraft[];
   limits: GgRunLimitsDraft;
+}
+
+/** The agent a draft flags as its root, or `undefined` when it has no agents. */
+export function rootAgent(draft: GgConfigDraft): GgAgentDraft | undefined {
+  return draft.agents.find((a) => a.id === draft.rootAgentId);
+}
+
+/**
+ * The draft's agents in wire order — the root first, then the rest as the editor lists
+ * them. gg reads the root off `agents[0]`, so this is where the editor's flag becomes
+ * the contract's position.
+ */
+export function agentsInWireOrder(draft: GgConfigDraft): GgAgentDraft[] {
+  const root = rootAgent(draft);
+  if (!root) return [...draft.agents];
+  return [root, ...draft.agents.filter((a) => a.id !== root.id)];
 }
 
 /**
@@ -146,13 +199,45 @@ export function seededRunLimits(): GgRunLimitsDraft {
   return draft;
 }
 
-/** A capability's dedicated param controls seeded to their documented defaults. */
+/**
+ * A capability's dedicated param controls seeded to their documented defaults.
+ *
+ * An `agent` param is skipped: its draft value is an agent's [local id](localId), and
+ * its documented default ([ROOT_AGENT]) names the root — which only becomes an id once
+ * a draft has a root to point at. [seedAgentParams] fills those in.
+ */
 function seededParams(cap: CapSpec): Record<string, string> {
   const out: Record<string, string> = {};
   for (const p of cap.params ?? []) {
+    if (p.kind === "agent") continue;
     if (p.defaultValue !== undefined) out[p.key] = p.defaultValue;
   }
   return out;
+}
+
+/**
+ * Point every unset `agent` param on `agent` at `rootAgentId`. The catalog spells those
+ * defaults as [ROOT_AGENT] — "whichever profile is the root" — so they are seeded here,
+ * where the draft's root is known, rather than by name.
+ */
+export function seedAgentParams(
+  agent: GgAgentDraft,
+  rootAgentId: string,
+): GgAgentDraft {
+  const capabilities = { ...agent.capabilities };
+  for (const cap of CAPABILITIES) {
+    const agentParams = (cap.params ?? []).filter(
+      (p) => p.kind === "agent" && p.defaultValue === ROOT_AGENT,
+    );
+    if (!agentParams.length) continue;
+    const draft = capabilities[cap.id] ?? blankCapabilityDraft();
+    const params = { ...(draft.params ?? {}) };
+    for (const p of agentParams) {
+      if (!params[p.key]) params[p.key] = rootAgentId;
+    }
+    capabilities[cap.id] = { ...draft, params };
+  }
+  return { ...agent, capabilities };
 }
 
 /** A capability row that is off, unconfigured, and carries no params. */
@@ -160,9 +245,14 @@ export function blankCapabilityDraft(): GgCapabilityDraft {
   return { enabled: false, implementation: "", params: {}, extraParams: {} };
 }
 
+/** A freshly identified model-slot declaration with the given name and no default. */
+export function blankModelSlot(name: string = ""): GgModelSlotDraft {
+  return { id: localId("slot"), name, defaultModelId: "" };
+}
+
 /** The matching `primary` model-slot declaration, with no default. */
 export function blankPrimaryModelSlot(): GgModelSlotDraft {
-  return { name: PRIMARY_SLOT, defaultModelId: "" };
+  return blankModelSlot(PRIMARY_SLOT);
 }
 
 // Build a full draft map with every catalog capability present, the given ids on,
@@ -186,25 +276,70 @@ function draftsFor(
 }
 
 /**
- * A fresh agent profile deferring to the `primary` model slot, with the given
- * capabilities on. The name defaults to the Root; pass another for an added agent.
+ * A fresh agent profile deferring to the given model slot, with the given capabilities
+ * on. The name defaults to [ROOT_AGENT] — the name a first profile is born with, not a
+ * name anything checks for; pass another for an added agent. `modelSlotId` is empty when
+ * the configuration declares no slot for it to defer to yet.
  */
 export function blankAgentDraft(
   name: string = ROOT_AGENT,
   enabledIds: ReadonlyArray<string> = [],
   paramDefaults: Record<string, Record<string, string>> = {},
+  modelSlotId: string = "",
 ): GgAgentDraft {
   return {
+    id: localId("agent"),
     name,
     capabilities: draftsFor(enabledIds, paramDefaults),
     modelSource: "model-slot",
-    modelSlot: PRIMARY_SLOT,
+    modelSlotId,
     modelId: "",
     disabledTools: [],
     customInstructions: "",
     systemPromptTemplate: "",
     subagents: [],
   };
+}
+
+/**
+ * `agents` with every reference to the removed profile `removedId` cleared: roster
+ * entries pointing at it are dropped, and any `agent` param naming it falls back to
+ * `fallbackId` (the merge agent is *required*, so a dangling one would make the
+ * configuration unsavable for a reason no control could show). Passing an empty
+ * `fallbackId` — the last agent was removed — clears such a param instead.
+ */
+export function dropAgentReferences(
+  agents: GgAgentDraft[],
+  removedId: string,
+  fallbackId: string,
+): GgAgentDraft[] {
+  return agents.map((agent) => {
+    const capabilities = { ...agent.capabilities };
+    for (const cap of CAPABILITIES) {
+      const agentParams = (cap.params ?? []).filter((p) => p.kind === "agent");
+      const capDraft = capabilities[cap.id];
+      if (!agentParams.length || !capDraft?.params) continue;
+      const params = { ...capDraft.params };
+      for (const p of agentParams) {
+        if (params[p.key] === removedId) params[p.key] = fallbackId;
+      }
+      capabilities[cap.id] = { ...capDraft, params };
+    }
+    return {
+      ...agent,
+      capabilities,
+      subagents: agent.subagents.filter((s) => s.agentId !== removedId),
+    };
+  });
+}
+
+/** A default agent name no profile in `agents` has taken. */
+export function unusedAgentName(agents: ReadonlyArray<GgAgentDraft>): string {
+  const taken = new Set(agents.map((a) => a.name.trim()));
+  let n = agents.length + 1;
+  let name = `agent-${n}`;
+  while (taken.has(name)) name = `agent-${++n}`;
+  return name;
 }
 
 // --- Built-in configurations ----------------------------------------------------
@@ -235,17 +370,34 @@ function builtIn(
   return {
     name,
     description,
-    draft: {
-      // A built-in is a single Root agent — the starting point an operator duplicates
-      // and then grows extra agents onto.
-      agents: [blankAgentDraft(ROOT_AGENT, enabledIds, paramDefaults)],
-      modelSlots: [blankPrimaryModelSlot()],
-      // Every built-in seeds gg's own defaults (the two error ceilings; turns
-      // unbounded, runtime and cost off) and nothing more: the runtime and cost
-      // ceilings are the arms of an ablation, and a shared read-only configuration that
-      // quietly capped them would change what every study measured without saying so.
-      limits: seededRunLimits(),
-    },
+    // A built-in is a single root agent bound to a single `primary` slot — the starting
+    // point an operator duplicates and then grows extra agents onto.
+    //
+    // Every built-in seeds gg's own default ceilings (the two error ones; turns
+    // unbounded, runtime and cost off) and nothing more: the runtime and cost ceilings
+    // are the arms of an ablation, and a shared read-only configuration that quietly
+    // capped them would change what every study measured without saying so.
+    draft: singleAgentDraft(
+      blankAgentDraft(ROOT_AGENT, enabledIds, paramDefaults),
+    ),
+  };
+}
+
+/**
+ * A whole draft around one agent: it is the root, it defers to a freshly declared
+ * `primary` model slot, and any `agent` param it carries points at it.
+ */
+function singleAgentDraft(agent: GgAgentDraft): GgConfigDraft {
+  const slot = blankPrimaryModelSlot();
+  const root = seedAgentParams(
+    { ...agent, modelSource: "model-slot", modelSlotId: slot.id },
+    agent.id,
+  );
+  return {
+    agents: [root],
+    rootAgentId: root.id,
+    modelSlots: [slot],
+    limits: seededRunLimits(),
   };
 }
 
@@ -292,25 +444,26 @@ function cloneAgentDraft(agent: GgAgentDraft): GgAgentDraft {
   };
 }
 
-/** A deep copy of a draft, so applying a built-in never aliases its constant. */
+/**
+ * A deep copy of a draft, so applying a built-in never aliases its constant. Local ids
+ * are copied as they are: a duplicate is the same configuration in a new editing
+ * session, and the two are never live at once.
+ */
 export function cloneDraft(draft: GgConfigDraft): GgConfigDraft {
   return {
     agents: draft.agents.map(cloneAgentDraft),
+    rootAgentId: draft.rootAgentId,
     modelSlots: draft.modelSlots.map((s) => ({ ...s })),
     limits: { ...draft.limits },
   };
 }
 
 /**
- * A blank draft: a single Root agent with every catalog capability present and off,
- * one declared `primary` model slot, and the Root deferred to it.
+ * A blank draft: a single root agent with every catalog capability present and off,
+ * one declared `primary` model slot, and the root deferred to it.
  */
 export function emptyDraft(): GgConfigDraft {
-  return {
-    agents: [blankAgentDraft()],
-    modelSlots: [blankPrimaryModelSlot()],
-    limits: seededRunLimits(),
-  };
+  return singleAgentDraft(blankAgentDraft());
 }
 
 // --- `toggles` params -----------------------------------------------------------
@@ -386,8 +539,15 @@ function togglesToParam(
  * row even if the config predates it (or omits it, which means off). A config saved
  * before the `filesystem` capability was split names only the umbrella; it is expanded
  * into the four per-tool capabilities here, matching how gg reads it.
+ *
+ * The stored config's cross-references are still *names* at this point: `slotIdByName`
+ * resolves the model-slot binding, and the roster and `agent` params are resolved in a
+ * second pass ([resolveAgentReferences]) once every profile in the set has an id.
  */
-function agentDraftFromConfig(agent: GgAgentConfig): GgAgentDraft {
+function agentDraftFromConfig(
+  agent: GgAgentConfig,
+  slotIdByName: ReadonlyMap<string, string>,
+): GgAgentDraft {
   const stored = new Map(
     (agent.capabilities ?? []).map((cap) => [cap.id, cap] as const),
   );
@@ -442,48 +602,116 @@ function agentDraftFromConfig(agent: GgAgentConfig): GgAgentDraft {
     };
   }
   return {
+    id: localId("agent"),
     name: agent.name,
     capabilities,
     modelSource: agent.modelSlot ? "model-slot" : "model",
-    modelSlot: agent.modelSlot ?? "",
+    modelSlotId: slotIdByName.get(agent.modelSlot?.trim() ?? "") ?? "",
     modelId: agent.modelId ?? "",
     disabledTools: [...(agent.disabledTools ?? [])],
     customInstructions: agent.customInstructions ?? "",
     systemPromptTemplate: agent.systemPromptTemplate ?? "",
-    subagents: (agent.subagents ?? []).map((s) => ({
-      agent: s.agent,
-      description: s.description ?? "",
-      // A stored entry with no `scopes` predates them, and meant plain spawning.
-      scopes: s.scopes?.length ? [...s.scopes] : ["subagent"],
-    })),
+    // Filled in by [resolveAgentReferences], which needs every profile's id.
+    subagents: [],
+  };
+}
+
+/**
+ * Resolve one agent's *name*-keyed cross-references — its roster and its `agent` params
+ * — onto the local ids the draft works in.
+ *
+ * A roster entry naming a profile the set does not declare is dropped: gg refuses such a
+ * set at launch, and the draft has no id to point it at, so carrying it would only be a
+ * broken reference the editor could not show. An `agent` param that names no declared
+ * profile *is* kept verbatim, because it round-trips as itself and the form flags it as
+ * missing rather than silently repointing it.
+ */
+function resolveAgentReferences(
+  draft: GgAgentDraft,
+  stored: GgAgentConfig,
+  idByName: ReadonlyMap<string, string>,
+): GgAgentDraft {
+  const capabilities = { ...draft.capabilities };
+  for (const cap of CAPABILITIES) {
+    const agentParams = (cap.params ?? []).filter((p) => p.kind === "agent");
+    if (!agentParams.length) continue;
+    const capDraft = capabilities[cap.id];
+    if (!capDraft?.params) continue;
+    const params = { ...capDraft.params };
+    for (const p of agentParams) {
+      const name = params[p.key];
+      if (name) params[p.key] = idByName.get(name) ?? name;
+    }
+    capabilities[cap.id] = { ...capDraft, params };
+  }
+  return {
+    ...draft,
+    capabilities,
+    subagents: (stored.subagents ?? []).flatMap((s) => {
+      const agentId = idByName.get(s.agent);
+      if (!agentId) return [];
+      return [
+        {
+          agentId,
+          description: s.description ?? "",
+          // A stored entry with no `scopes` predates them, and meant plain spawning.
+          scopes: s.scopes?.length
+            ? [...s.scopes]
+            : (["subagent"] as GgSubagentScope[]),
+        },
+      ];
+    }),
   };
 }
 
 /**
  * Fill a draft from a stored capability set. A set with no agents (which should never
- * happen — the backend migrates legacy sets to a Root agent) is given a fresh Root, so
+ * happen — the backend migrates legacy sets to a root agent) is given a fresh one, so
  * the editor never opens on an empty agent list. Every model slot an agent defers to
  * is guaranteed present in the declared list, so a stored set with a dangling
- * reference still opens on a legible form.
+ * reference still opens on a legible form. The wire format's root is `agents[0]`, which
+ * is what the draft's root flag is set from.
  */
 export function draftFromCapabilitySet(set: GgCapabilitySet): GgConfigDraft {
-  const agents =
+  const stored: ReadonlyArray<GgAgentConfig> =
     set.agents && set.agents.length > 0
-      ? set.agents.map(agentDraftFromConfig)
-      : [blankAgentDraft(ROOT_AGENT, DEFAULT_CAP_IDS)];
+      ? set.agents
+      : [
+          {
+            name: ROOT_AGENT,
+            capabilities: DEFAULT_CAP_IDS.map((id) => ({
+              id,
+              enabled: true,
+              params: {},
+            })),
+            modelId: "",
+          },
+        ];
   const modelSlots: GgModelSlotDraft[] = (set.modelSlots ?? []).map((s) => ({
+    id: localId("slot"),
     name: s.name,
     defaultModelId: s.defaultModelId ?? "",
   }));
-  for (const agent of agents) {
-    if (agent.modelSource !== "model-slot") continue;
-    const slot = agent.modelSlot.trim();
-    if (slot && !modelSlots.some((m) => m.name === slot)) {
-      modelSlots.push({ name: slot, defaultModelId: "" });
+  // An agent may name a slot the set never declared; declare it here so the binding has
+  // something real to point at rather than opening as an unexplained blank.
+  for (const agent of stored) {
+    const name = agent.modelSlot?.trim();
+    if (name && !modelSlots.some((m) => m.name === name)) {
+      modelSlots.push({ id: localId("slot"), name, defaultModelId: "" });
     }
   }
+  const slotIdByName = new Map(modelSlots.map((s) => [s.name, s.id] as const));
+  const agents = stored.map((agent) =>
+    agentDraftFromConfig(agent, slotIdByName),
+  );
+  const idByName = new Map(
+    stored.map((agent, i) => [agent.name, agents[i]!.id] as const),
+  );
   return {
-    agents,
+    agents: agents.map((agent, i) =>
+      resolveAgentReferences(agent, stored[i]!, idByName),
+    ),
+    rootAgentId: agents[0]!.id,
     modelSlots,
     limits: runLimitsDraft(set.limits),
   };
@@ -513,16 +741,25 @@ type ParamsParse =
  * Validate + fold a capability's dedicated param controls over the params a stored
  * configuration carried that no control covers ([GgCapabilityDraft.extraParams]). A
  * dedicated control's value wins over a same-named passthrough key.
+ *
+ * `agentName` turns an `agent` param's draft value — a profile's [local id](localId) —
+ * back into the name gg reads. Omit it to check the params without resolving anything
+ * (the validation path), which leaves such a value as it is.
  */
 export function capabilityParams(
   cap: CapSpec,
   draft: GgCapabilityDraft,
+  agentName?: (agentId: string) => string,
 ): ParamsParse {
   const out: Record<string, unknown> = { ...(draft.extraParams ?? {}) };
   for (const p of cap.params ?? []) {
     const raw = (draft.params?.[p.key] ?? "").trim();
     if (!raw) continue;
-    if (p.kind === "select" || p.kind === "text" || p.kind === "agent") {
+    if (p.kind === "agent") {
+      out[p.key] = agentName ? agentName(raw) : raw;
+      continue;
+    }
+    if (p.kind === "select" || p.kind === "text") {
       out[p.key] = raw;
       continue;
     }
@@ -658,15 +895,15 @@ export function agentParamErrors(
 }
 
 /**
- * The names of the model slots at least one agent actually defers to. A
- * declared-but-unreferenced slot feeds nothing, so it is never asked about at launch
- * (and the editor flags it).
+ * The [ids](GgModelSlotDraft.id) of the model slots at least one agent actually defers
+ * to. A declared-but-unreferenced slot feeds nothing, so it is never asked about at
+ * launch (and the editor flags it).
  */
 export function referencedModelSlots(draft: GgConfigDraft): Set<string> {
   return new Set(
     draft.agents
       .filter((a) => a.modelSource === "model-slot")
-      .map((a) => a.modelSlot.trim())
+      .map((a) => a.modelSlotId)
       .filter(Boolean),
   );
 }
@@ -690,18 +927,46 @@ function filesIssues(agent: GgAgentDraft): boolean {
 }
 
 /**
+ * Why one agent profile cannot be saved on its own, or `null` when it is well-formed.
+ *
+ * This is deliberately narrower than [draftSaveError]: it asks only what is wrong with
+ * *this* profile as the operator edits it, so the per-agent view never reports a fault
+ * belonging to the configuration around it (an undeclared model slot, another agent's
+ * bad params) as though it were this agent's.
+ */
+export function agentSaveError(
+  draft: GgConfigDraft,
+  agentId: string,
+): string | null {
+  const agent = draft.agents.find((a) => a.id === agentId);
+  if (!agent) return null;
+  const name = agent.name.trim();
+  if (!name) return "This agent needs a name.";
+  if (draft.agents.some((a) => a.id !== agent.id && a.name.trim() === name)) {
+    return `Another agent is already called \`${name}\` — agent names must be unique.`;
+  }
+  const failed = Object.entries(agentParamErrors(agent)).find(
+    ([, error]) => error !== null,
+  );
+  return failed ? failed[1] : null;
+}
+
+/**
  * Why a draft cannot be saved, or `null` when it is well-formed. A *saved*
  * configuration may still be waiting on its models — that is what a model slot is for
- * — so this rejects only structurally broken names, an agent deferred to a model slot
- * that was never declared, a pinned agent with no model, a subagent reference to an
- * agent that does not exist, an issue filer with nobody to assign issues to, and
- * unparseable params.
+ * — so this rejects only an agent-less configuration, structurally broken names, an
+ * agent deferred to a model slot that was never declared, a pinned agent with no model,
+ * an issue filer with nobody to assign issues to, and unparseable params.
+ *
+ * A roster reference cannot dangle here — the draft holds it as a local id, and removing
+ * an agent takes its references with it — so there is nothing to check for.
  */
 export function draftSaveError(draft: GgConfigDraft): string | null {
-  const root = draft.agents[0];
-  if (!root) return "A configuration needs a Root agent.";
-  if (root.name !== ROOT_AGENT)
-    return `The first agent must be named \`${ROOT_AGENT}\`.`;
+  // Emptying the agent list is a legitimate editing state (it is how every profile gets
+  // replaced); saving one is not, because a run has to have something to start.
+  if (draft.agents.length === 0)
+    return "A configuration needs at least one agent.";
+  if (!rootAgent(draft)) return "One agent must be the root agent.";
   const agentNames = draft.agents.map((a) => a.name.trim());
   if (agentNames.some((n) => !n)) return "Every agent needs a name.";
   if (new Set(agentNames).size !== agentNames.length)
@@ -714,18 +979,12 @@ export function draftSaveError(draft: GgConfigDraft): string | null {
 
   for (const agent of draft.agents) {
     if (agent.modelSource === "model-slot") {
-      const slot = agent.modelSlot.trim();
-      if (!slot || !modelSlotNames.includes(slot)) {
-        return `The \`${agent.name.trim()}\` agent is bound to the \`${slot}\` model slot, which isn't declared.`;
+      const slot = draft.modelSlots.find((s) => s.id === agent.modelSlotId);
+      if (!slot) {
+        return `The \`${agent.name.trim()}\` agent defers to a model slot this configuration doesn't declare — pick one of its slots, or pin the agent a model.`;
       }
     } else if (!agent.modelId.trim()) {
       return `The \`${agent.name.trim()}\` agent pins no model — choose one, or bind it to a model slot.`;
-    }
-    for (const sub of agent.subagents) {
-      const target = sub.agent.trim();
-      if (!target || !agentNames.includes(target)) {
-        return `The \`${agent.name.trim()}\` agent lists \`${target}\` in its roster, which isn't an agent in this configuration.`;
-      }
     }
     // An issue names the agent it is dispatched to, drawn from the filer's own
     // *implementers* — so an agent that may file issues but lists none could never
@@ -750,11 +1009,21 @@ export function draftSaveError(draft: GgConfigDraft): string | null {
 
 // --- Draft -> capability set ----------------------------------------------------
 
-/** Serialize one agent draft into the wire [`GgAgentConfig`]. */
-function agentConfigFromDraft(agent: GgAgentDraft): GgAgentConfig {
+/**
+ * Serialize one agent draft into the wire [`GgAgentConfig`], resolving every local id it
+ * refers to back into the name the contract carries: `agentName` for the roster and the
+ * `agent` params, `slotName` for the model binding. An id neither resolves is written
+ * through verbatim — it is a stored value the editor could not match to a declaration,
+ * and dropping it would lose more than it fixed.
+ */
+function agentConfigFromDraft(
+  agent: GgAgentDraft,
+  agentName: (agentId: string) => string,
+  slotName: (slotId: string) => string,
+): GgAgentConfig {
   const capabilities: GgCapabilityConfig[] = CAPABILITIES.map((cap) => {
     const capDraft = agent.capabilities[cap.id] ?? blankCapabilityDraft();
-    const parsed = capabilityParams(cap, capDraft);
+    const parsed = capabilityParams(cap, capDraft, agentName);
     const impl = capDraft.implementation?.trim();
     return {
       id: cap.id,
@@ -766,9 +1035,9 @@ function agentConfigFromDraft(agent: GgAgentDraft): GgAgentConfig {
     };
   });
   const subagents: GgSubagentRef[] = agent.subagents
-    .filter((s) => s.agent.trim() && s.scopes.length)
+    .filter((s) => agentName(s.agentId) && s.scopes.length)
     .map((s) => ({
-      agent: s.agent.trim(),
+      agent: agentName(s.agentId),
       description: s.description,
       scopes: [...s.scopes],
     }));
@@ -779,7 +1048,7 @@ function agentConfigFromDraft(agent: GgAgentDraft): GgAgentConfig {
     capabilities,
     modelId: agent.modelSource === "model" ? agent.modelId.trim() : "",
     ...(agent.modelSource === "model-slot"
-      ? { modelSlot: agent.modelSlot.trim() }
+      ? { modelSlot: slotName(agent.modelSlotId) }
       : {}),
     ...(agent.disabledTools.length
       ? { disabledTools: agent.disabledTools }
@@ -793,7 +1062,9 @@ function agentConfigFromDraft(agent: GgAgentDraft): GgAgentConfig {
 /**
  * Serialize a draft into the wire capability set. `preset` records the name the set
  * was assembled from (a run's slice-by facet); pass `null` for a hand-assembled one.
- * Only the model slots at least one agent defers to are saved.
+ * Only the model slots at least one agent defers to are saved, and the agents are
+ * written root-first — which is how the draft's root *flag* becomes the contract's
+ * "the root is `agents[0]`".
  */
 export function capabilitySetFromDraft(
   draft: GgConfigDraft,
@@ -801,17 +1072,27 @@ export function capabilitySetFromDraft(
 ): GgCapabilitySet {
   const referenced = referencedModelSlots(draft);
   const modelSlots: GgModelSlot[] = draft.modelSlots
-    .filter((s) => referenced.has(s.name.trim()))
+    .filter((s) => referenced.has(s.id))
     .map((s) => ({
       name: s.name.trim(),
       ...(s.defaultModelId.trim()
         ? { defaultModelId: s.defaultModelId.trim() }
         : {}),
     }));
+  const nameById = new Map(
+    draft.agents.map((a) => [a.id, a.name.trim()] as const),
+  );
+  const slotNameById = new Map(
+    draft.modelSlots.map((s) => [s.id, s.name.trim()] as const),
+  );
+  const agentName = (agentId: string) => nameById.get(agentId) ?? agentId;
+  const slotName = (slotId: string) => slotNameById.get(slotId) ?? slotId;
   const limits = runLimitsFromDraft(draft.limits);
   return {
     ...(preset ? { preset } : {}),
-    agents: draft.agents.map(agentConfigFromDraft),
+    agents: agentsInWireOrder(draft).map((agent) =>
+      agentConfigFromDraft(agent, agentName, slotName),
+    ),
     ...(modelSlots.length ? { modelSlots } : {}),
     ...(limits ? { limits } : {}),
   };

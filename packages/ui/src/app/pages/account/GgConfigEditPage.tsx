@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import type { GgConfigInput } from "@test-cabinet/run-record/gg";
 import { useAuth } from "../../../client/auth";
@@ -10,6 +10,7 @@ import { PageLayout } from "../../components/PageLayout";
 import { routes } from "../../routes";
 import { GgConfigEditor } from "../runs/gg/GgConfigEditor";
 import {
+  agentSaveError,
   capabilitySetFromDraft,
   draftFromCapabilitySet,
   draftSaveError,
@@ -20,9 +21,34 @@ import { builtInDraft } from "../runs/gg/useGgConfigs";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
 
+// What a configuration looked like when it was loaded (or last saved), as the one string
+// the dirty check compares against. The capability set is serialized because that is the
+// form the configuration is actually stored in — it ignores the editor's internal ids and
+// the order the agents happen to sit in, so reopening and closing a configuration without
+// touching it never counts as a change.
+function snapshotOf(name: string, description: string, draft: GgConfigDraft) {
+  return JSON.stringify({
+    name: name.trim(),
+    description: description.trim(),
+    set: capabilitySetFromDraft(draft, null),
+  });
+}
+
+// What the operator is told they would lose. Kept out of the handler so the confirm text
+// is one thing, said the same way wherever navigation is intercepted.
+const UNSAVED_CHANGES =
+  "This gg configuration has unsaved changes. Leave without saving them?";
+
 // The gg configuration editor (`/account/gg/new` and `/account/gg/:configId/edit`):
 // a configuration's name, its one-line purpose, and the capability set itself.
 // Save creates or updates and returns to the gg tab.
+//
+// The page has two modes, because the editor does: on the **configuration** it shows the
+// identity fields and the Save button, and while an **agent** is open it shows neither —
+// an agent is saved (or cancelled) back onto the configuration first, and only the
+// configuration itself is written to the account. That is also what keeps a
+// configuration-level complaint ("the `reviewer` agent defers to no declared slot") off
+// the screen while a different agent is being edited.
 //
 // A configuration is deliberately test-case-free and need not bind a model: the New
 // run page supplies the case and binds the primary slot from its own model picker,
@@ -47,6 +73,16 @@ export function GgConfigEditPage() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [draft, setDraft] = useState<GgConfigDraft>(() => emptyDraft());
+  // What the form held when it was loaded — the baseline the unsaved-changes prompt
+  // measures against.
+  const [saved, setSaved] = useState<string | null>(null);
+  // Which agent's view is open, and the whole draft as it was when it opened: cancelling
+  // an agent restores that, which is what makes Cancel mean something on a form that
+  // edits a single draft in place.
+  const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
+  const [agentSnapshot, setAgentSnapshot] = useState<GgConfigDraft | null>(
+    null,
+  );
 
   useEffect(() => {
     if (!backend || !token) {
@@ -56,17 +92,28 @@ export function GgConfigEditPage() {
     let active = true;
     setLoading(true);
     setError(null);
+    // Seed the form and take the baseline the unsaved-changes prompt measures against —
+    // whatever the form opened on is, by definition, unedited.
+    const seed = (
+      nextName: string,
+      nextDescription: string,
+      nextDraft: GgConfigDraft,
+    ) => {
+      setName(nextName);
+      setDescription(nextDescription);
+      setDraft(nextDraft);
+      setSaved(snapshotOf(nextName, nextDescription, nextDraft));
+    };
     // A built-in seed needs no round-trip; everything else reads the account's
     // stored configurations (to load the one being edited, or the one duplicated).
     const seedBuiltIn = from?.startsWith("builtin:")
       ? builtInDraft(from.slice("builtin:".length))
       : null;
     if (seedBuiltIn) {
-      setName(`${from!.slice("builtin:".length)} (copy)`);
-      setDraft(seedBuiltIn);
+      seed(`${from!.slice("builtin:".length)} (copy)`, "", seedBuiltIn);
       setLoading(false);
     } else if (!editing && !from) {
-      setDraft(emptyDraft());
+      seed("", "", emptyDraft());
       setLoading(false);
     } else {
       Promise.resolve(backend.listGgConfigs?.(token) ?? [])
@@ -81,9 +128,11 @@ export function GgConfigEditPage() {
           if (!found) {
             setError("That configuration no longer exists.");
           } else {
-            setName(editing ? found.name : `${found.name} (copy)`);
-            setDescription(found.description);
-            setDraft(draftFromCapabilitySet(found.capabilitySet));
+            seed(
+              editing ? found.name : `${found.name} (copy)`,
+              found.description,
+              draftFromCapabilitySet(found.capabilitySet),
+            );
           }
           setLoading(false);
         })
@@ -106,6 +155,50 @@ export function GgConfigEditPage() {
 
   const structuralError = draftSaveError(draft);
   const savable = name.trim().length > 0 && structuralError === null && !busy;
+  // Only what is wrong with the open agent — a configuration-level complaint about some
+  // other agent is not this view's business, and cannot be fixed from it.
+  const agentError = editingAgentId
+    ? agentSaveError(draft, editingAgentId)
+    : null;
+
+  const dirty = useMemo(
+    () => saved !== null && snapshotOf(name, description, draft) !== saved,
+    [saved, name, description, draft],
+  );
+
+  // Leaving with unsaved work needs a confirmation, whichever way the operator leaves:
+  // the page's own back control (below) and a full-page navigation (here). A React Router
+  // navigation triggered outside this page cannot be intercepted under a `BrowserRouter`
+  // — there is no data router to block on — so the back control is deliberately the one
+  // in-app exit and is guarded directly.
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+
+  const confirmLeave = useCallback(
+    () => !dirty || window.confirm(UNSAVED_CHANGES),
+    [dirty],
+  );
+
+  // Opening an agent banks the draft so Cancel has something to restore; saving the agent
+  // simply keeps the edits already applied and returns to the configuration.
+  function onEditingAgentChange(agentId: string | null) {
+    setAgentSnapshot(agentId ? draft : null);
+    setEditingAgentId(agentId);
+  }
+  function cancelAgent() {
+    if (agentSnapshot) setDraft(agentSnapshot);
+    setAgentSnapshot(null);
+    setEditingAgentId(null);
+  }
+  function saveAgent() {
+    if (agentError) return;
+    setAgentSnapshot(null);
+    setEditingAgentId(null);
+  }
 
   async function onSave() {
     if (!token || !savable) return;
@@ -131,15 +224,21 @@ export function GgConfigEditPage() {
     }
   }
 
+  const openAgent = draft.agents.find((a) => a.id === editingAgentId);
   const header = (
     <header className={styles.detailHeader}>
       <div className={styles.detailTitleRow}>
         <BackChevron
           to={routes.accountGgConfigs()}
           label="All gg configurations"
+          guard={confirmLeave}
         />
         <h1 className={styles.detailTitle}>
-          {editing ? name || "Configuration" : "New gg configuration"}
+          {openAgent
+            ? `${openAgent.name.trim() || "Agent"} — agent`
+            : editing
+              ? name || "Configuration"
+              : "New gg configuration"}
         </h1>
       </div>
     </header>
@@ -166,48 +265,83 @@ export function GgConfigEditPage() {
         <LoadingState label="Loading…" />
       ) : (
         <>
-          <div className={exec.fields}>
-            <label className={exec.field}>
-              <span className={exec.fieldLabel}>Configuration name</span>
-              <input
-                className={exec.input}
-                type="text"
-                value={name}
-                placeholder="e.g. no-compaction"
-                onChange={(e) => setName(e.target.value)}
-              />
-            </label>
-            <label className={exec.field}>
-              <span className={exec.fieldLabel}>Description (optional)</span>
-              <input
-                className={exec.input}
-                type="text"
-                value={description}
-                placeholder="what this arm is for"
-                onChange={(e) => setDescription(e.target.value)}
-              />
-            </label>
-          </div>
+          {/* The configuration's identity belongs to the configuration: while an agent
+              is open these are not what is being edited, so they are not shown. */}
+          {!editingAgentId && (
+            <div className={exec.fields}>
+              <label className={exec.field}>
+                <span className={exec.fieldLabel}>Configuration name</span>
+                <input
+                  className={exec.input}
+                  type="text"
+                  value={name}
+                  placeholder="e.g. no-compaction"
+                  onChange={(e) => setName(e.target.value)}
+                />
+              </label>
+              <label className={exec.field}>
+                <span className={exec.fieldLabel}>Description (optional)</span>
+                <input
+                  className={exec.input}
+                  type="text"
+                  value={description}
+                  placeholder="what this arm is for"
+                  onChange={(e) => setDescription(e.target.value)}
+                />
+              </label>
+            </div>
+          )}
 
-          <GgConfigEditor value={draft} onChange={setDraft} models={models} />
+          <GgConfigEditor
+            value={draft}
+            onChange={setDraft}
+            editingAgentId={editingAgentId}
+            onEditingAgentChange={onEditingAgentChange}
+            models={models}
+          />
 
           <div className={exec.actions}>
             <div className={exec.actionsEnd}>
-              {structuralError && (
-                <span className={exec.muted}>{structuralError}</span>
+              {editingAgentId ? (
+                <>
+                  {agentError && (
+                    <span className={exec.muted}>{agentError}</span>
+                  )}
+                  <button
+                    type="button"
+                    className={exec.secondary}
+                    onClick={cancelAgent}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className={exec.primary}
+                    onClick={saveAgent}
+                    disabled={agentError !== null}
+                  >
+                    Save agent
+                  </button>
+                </>
+              ) : (
+                <>
+                  {structuralError && (
+                    <span className={exec.muted}>{structuralError}</span>
+                  )}
+                  <button
+                    type="button"
+                    className={exec.primary}
+                    onClick={onSave}
+                    disabled={!savable}
+                  >
+                    {busy
+                      ? "Saving…"
+                      : editing
+                        ? "Save configuration"
+                        : "Create configuration"}
+                  </button>
+                </>
               )}
-              <button
-                type="button"
-                className={exec.primary}
-                onClick={onSave}
-                disabled={!savable}
-              >
-                {busy
-                  ? "Saving…"
-                  : editing
-                    ? "Save configuration"
-                    : "Create configuration"}
-              </button>
             </div>
           </div>
         </>

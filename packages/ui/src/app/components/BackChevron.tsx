@@ -11,6 +11,7 @@ export function BackChevron({
   to,
   label = "Back",
   section,
+  guard,
 }: {
   /**
    * The parent list route to return to. When `section` is given and the user
@@ -26,10 +27,24 @@ export function BackChevron({
    * Omit for a parent list with no tabs.
    */
   section?: BackSection;
+  /**
+   * Asked before leaving; returning `false` cancels the navigation. Set it on a
+   * detail page that can hold unsaved work, so going back can confirm first
+   * instead of discarding it silently. Omit on a read-only detail.
+   */
+  guard?: () => boolean;
 }) {
   const target = sectionReturnTo(section, to);
   return (
-    <Link className={styles.back} to={target} aria-label={label} title={label}>
+    <Link
+      className={styles.back}
+      to={target}
+      aria-label={label}
+      title={label}
+      onClick={(e) => {
+        if (guard && !guard()) e.preventDefault();
+      }}
+    >
       <span aria-hidden>&lsaquo;</span>
     </Link>
   );

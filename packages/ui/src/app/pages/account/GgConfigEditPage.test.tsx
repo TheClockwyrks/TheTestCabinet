@@ -58,6 +58,12 @@ function openFirstAgent() {
   fireEvent.click(screen.getAllByRole("button", { name: "Edit" })[0]!);
 }
 
+// Return to the configuration keeping the agent's edits — the only way back other than
+// discarding them with Cancel.
+function saveAgent() {
+  fireEvent.click(screen.getByRole("button", { name: "Save agent" }));
+}
+
 describe("GgConfigEditPage", () => {
   // The save spy is module-scoped, so its call log accumulates across tests unless
   // cleared — every "called once" assertion counts from a fresh slate.
@@ -87,17 +93,38 @@ describe("GgConfigEditPage", () => {
     expect(screen.queryByText("Multi-model")).not.toBeInTheDocument();
   });
 
-  it("navigates into an agent and back", async () => {
+  it("navigates into an agent and back, hiding the configuration's own controls", async () => {
     renderPage();
     await screen.findByText("Agents");
     openFirstAgent();
     expect(screen.getByText("Capabilities")).toBeInTheDocument();
-    fireEvent.click(
-      screen.getByRole("button", { name: /Back to configuration/i }),
-    );
+    // An agent is not the configuration: its identity fields and its save go away, and
+    // the agent's own pair takes their place.
+    expect(
+      screen.queryByPlaceholderText("e.g. no-compaction"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /configuration/i }),
+    ).not.toBeInTheDocument();
+
+    saveAgent();
     // Back on the top-level form.
     expect(screen.getByText("Model slots")).toBeInTheDocument();
     expect(screen.queryByText("Capabilities")).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText("e.g. no-compaction")).toBeVisible();
+  });
+
+  it("discards an agent's edits when its editing is cancelled", async () => {
+    renderPage();
+    await screen.findByText("Agents");
+    openFirstAgent();
+    fireEvent.change(screen.getByPlaceholderText("e.g. reviewer"), {
+      target: { value: "conductor" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    // The rename never reached the configuration.
+    expect(screen.getByText("Root")).toBeInTheDocument();
+    expect(screen.queryByText("conductor")).not.toBeInTheDocument();
   });
 
   it("reveals a collapsed group's capabilities when expanded", async () => {
@@ -112,17 +139,19 @@ describe("GgConfigEditPage", () => {
 
   it("requires a name, then saves the capability set under it", async () => {
     renderPage();
-    const save = await screen.findByRole("button", {
-      name: "Create configuration",
-    });
-    expect(save).toBeDisabled();
+    expect(
+      await screen.findByRole("button", { name: "Create configuration" }),
+    ).toBeDisabled();
 
     fireEvent.change(screen.getByPlaceholderText("e.g. no-compaction"), {
       target: { value: "shell-heavy" },
     });
-    // Turn a capability on, on the Root agent, so the saved set is distinguishable.
+    // Turn a capability on, on the root agent, so the saved set is distinguishable.
     openFirstAgent();
     fireEvent.click(screen.getAllByRole("checkbox", { name: /Shell/i })[0]!);
+    saveAgent();
+
+    const save = screen.getByRole("button", { name: "Create configuration" });
     expect(save).toBeEnabled();
     fireEvent.click(save);
 
@@ -156,6 +185,7 @@ describe("GgConfigEditPage", () => {
     const revise = screen.getByRole("checkbox", { name: /Revise memories/i });
     expect(revise).toBeChecked();
     fireEvent.click(revise);
+    saveAgent();
 
     fireEvent.click(
       screen.getByRole("button", { name: "Create configuration" }),
@@ -191,6 +221,7 @@ describe("GgConfigEditPage", () => {
     fireEvent.change(screen.getByPlaceholderText("when to use this agent"), {
       target: { value: "for reviews" },
     });
+    saveAgent();
 
     fireEvent.click(
       screen.getByRole("button", { name: "Create configuration" }),
@@ -206,12 +237,158 @@ describe("GgConfigEditPage", () => {
     ]);
   });
 
+  // The root is a flag, not the name "Root": renaming it has to leave a configuration
+  // that still saves, with the renamed profile still written first.
+  it("renames the root agent and keeps it the root", async () => {
+    renderPage();
+    fireEvent.change(await screen.findByPlaceholderText("e.g. no-compaction"), {
+      target: { value: "renamed-root" },
+    });
+    openFirstAgent();
+    fireEvent.change(screen.getByPlaceholderText("e.g. reviewer"), {
+      target: { value: "conductor" },
+    });
+    saveAgent();
+    expect(screen.getByText("conductor")).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Create configuration" }),
+    );
+    await waitFor(() => expect(createGgConfig).toHaveBeenCalledTimes(1));
+    const { agents } = createGgConfig.mock.calls[0]![0].capabilitySet;
+    expect(agents.map((a: { name: string }) => a.name)).toEqual(["conductor"]);
+  });
+
+  // Handing the root role to another profile reorders the saved set, because gg reads
+  // the root off the first agent.
+  it("moves the root flag to another agent", async () => {
+    renderPage();
+    fireEvent.change(await screen.findByPlaceholderText("e.g. no-compaction"), {
+      target: { value: "second-root" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Add agent/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Make root" }));
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Create configuration" }),
+    );
+    await waitFor(() => expect(createGgConfig).toHaveBeenCalledTimes(1));
+    const { agents } = createGgConfig.mock.calls[0]![0].capabilitySet;
+    expect(agents.map((a: { name: string }) => a.name)).toEqual([
+      "agent-2",
+      "Root",
+    ]);
+  });
+
+  // Every agent can be removed, the root included — but a configuration with none of
+  // them cannot be saved.
+  it("removes the root agent, passing the flag on, and refuses an empty configuration", async () => {
+    renderPage();
+    fireEvent.change(await screen.findByPlaceholderText("e.g. no-compaction"), {
+      target: { value: "shrinking" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Add agent/i }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remove the Root agent" }),
+    );
+    // The survivor took the role over, so there is no "Make root" left to offer.
+    expect(screen.getByText("agent-2")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Make root" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Create configuration" }),
+    ).toBeEnabled();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remove the agent-2 agent" }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Create configuration" }),
+    ).toBeDisabled();
+    expect(screen.getByText(/no agents/i)).toBeInTheDocument();
+  });
+
+  // A roster entry points at a profile, not at the spelling of its name, so renaming
+  // the target used to break the configuration and now does not.
+  it("keeps a roster entry pointed at an agent that is renamed", async () => {
+    renderPage();
+    fireEvent.change(await screen.findByPlaceholderText("e.g. no-compaction"), {
+      target: { value: "renaming" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Add agent/i }));
+    // Put agent-2 on the root's roster …
+    openFirstAgent();
+    const reviewerToggles = screen.getAllByRole("checkbox", {
+      name: /Reviewer/i,
+    });
+    fireEvent.click(reviewerToggles[reviewerToggles.length - 1]!);
+    saveAgent();
+    // … then rename agent-2 out from under it.
+    fireEvent.click(screen.getAllByRole("button", { name: "Edit" })[1]!);
+    fireEvent.change(screen.getByPlaceholderText("e.g. reviewer"), {
+      target: { value: "critic" },
+    });
+    saveAgent();
+
+    const save = screen.getByRole("button", { name: "Create configuration" });
+    expect(save).toBeEnabled();
+    fireEvent.click(save);
+    await waitFor(() => expect(createGgConfig).toHaveBeenCalledTimes(1));
+    const { agents } = createGgConfig.mock.calls[0]![0].capabilitySet;
+    expect(agents[0].subagents).toEqual([
+      { agent: "critic", description: "", scopes: ["reviewer"] },
+    ]);
+  });
+
+  // A model slot is bound by identity too, so its name is free to change.
+  it("keeps an agent bound to a model slot that is renamed", async () => {
+    renderPage();
+    fireEvent.change(await screen.findByPlaceholderText("e.g. no-compaction"), {
+      target: { value: "renamed-slot" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("e.g. primary"), {
+      target: { value: "critic" },
+    });
+    // No "declares no slot" complaint: the binding moved with the name.
+    const save = screen.getByRole("button", { name: "Create configuration" });
+    expect(save).toBeEnabled();
+    fireEvent.click(save);
+
+    await waitFor(() => expect(createGgConfig).toHaveBeenCalledTimes(1));
+    const { agents, modelSlots } =
+      createGgConfig.mock.calls[0]![0].capabilitySet;
+    expect(modelSlots).toEqual([{ name: "critic" }]);
+    expect(agents[0].modelSlot).toBe("critic");
+  });
+
+  // The compaction model is read by the handoff strategies alone, so its box only
+  // appears once one of them is selected.
+  it("offers the compaction model only under a handoff strategy", async () => {
+    renderPage();
+    await screen.findByText("Agents");
+    openFirstAgent();
+    fireEvent.click(screen.getByRole("checkbox", { name: /^Compaction/i }));
+    expect(
+      screen.queryByPlaceholderText("e.g. openai/gpt-4.1-mini"),
+    ).not.toBeInTheDocument();
+
+    fireEvent.change(
+      screen.getByRole("combobox", { name: /Summarization strategy/i }),
+      { target: { value: "handoff-compaction" } },
+    );
+    expect(
+      screen.getByPlaceholderText("e.g. openai/gpt-4.1-mini"),
+    ).toBeInTheDocument();
+  });
+
   it("stores no system-prompt override unless it is edited", async () => {
     renderPage();
     fireEvent.change(await screen.findByPlaceholderText("e.g. no-compaction"), {
       target: { value: "stock-prompt" },
     });
     openFirstAgent();
+    saveAgent();
     fireEvent.click(
       screen.getByRole("button", { name: "Create configuration" }),
     );

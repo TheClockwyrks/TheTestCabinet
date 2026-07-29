@@ -56,14 +56,30 @@ models it runs on.
 ## Agents
 
 gg's capabilities are configured **per agent**, not once for the whole run. A
-configuration declares one or more **agent profiles**; the first is always the
-**Root agent**, which drives the run's top-level session and cannot be removed.
-Adding more profiles is how a study gives different agents different tools, models,
-prompts, or execution modes — a cheap-and-fast scout, a careful reviewer, a
-code-writing implementer.
+configuration declares one or more **agent profiles**, exactly one of which is
+flagged as the **root agent** — the profile that drives the run's top-level session
+and the default for the [merge agent](/gg/project-management/) and
+[speculation judging](/gg/speculative-execution/). Adding more profiles is how a
+study gives different agents different tools, models, prompts, or execution modes —
+a cheap-and-fast scout, a careful reviewer, a code-writing implementer.
 
-Opening an agent switches the editor into that profile's own view (with a back
-control to the run-level form). Each profile carries:
+Being the root is a **flag, not a name and not a position**: a fresh configuration
+starts with one profile called `Root`, but it can be renamed to anything, the flag
+can be handed to another profile ("Make root"), and any profile can be removed —
+including the root, which passes the flag to whatever is left. The only rule is that
+a configuration must have **at least one agent** to be saved. (On the wire the root
+is `agents[0]`, so saving writes the flagged profile first; nothing reads the name.)
+
+Every reference between the parts of a configuration — a roster entry, a merge or
+judge agent, an agent's model-slot binding — is held by identity rather than by the
+name shown in the form, so **renaming an agent or a model slot moves every reference
+to it** instead of leaving one spelling the old name.
+
+Opening an agent switches the editor into that profile's own view. That view is
+saved (or discarded) on its own: **Save agent** returns to the configuration keeping
+the edits, **Cancel** returns discarding them, and the configuration itself is only
+written to your account by the Save button on the configuration view. Each profile
+carries:
 
 - its own enabled **capabilities**, their implementations and params, and per-tool
   [ablation](/gg/toolset-ablation/) overrides — so [responses as
@@ -108,9 +124,13 @@ once, which is why gg accounts usage and cost **per agent profile** rather than 
 figure for one model.
 
 The default a fresh configuration starts from is the simple case — one `primary`
-model slot, with the Root agent deferred to it — so a configuration that says nothing
+model slot, with the root agent deferred to it — so a configuration that says nothing
 about models still asks for exactly one at launch. A configuration saved before
-capabilities were per-agent reads as a single Root agent bound that same way.
+capabilities were per-agent reads as a single root agent bound that same way. A slot's
+name is only its label: agents bind slots by identity, so renaming `primary` to
+`critic` keeps every agent bound to it, and deleting a slot leaves the agents that
+deferred to it deferring to nothing — which the save gate names, rather than silently
+re-pointing them at another model.
 
 Declaring a slot is an authoring-time concern only. **Launching resolves every
 deferred binding to a concrete model**, so the capability set a run carries — and

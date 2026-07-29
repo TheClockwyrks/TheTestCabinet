@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE,
   DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE_CODE,
@@ -12,6 +12,7 @@ import {
   CAP_GROUPS,
   RUN_LIMIT_SPECS,
   SUBAGENT_SCOPES,
+  paramApplies,
   type CapGroup,
   type RunLimitSpec,
 } from "./ggCatalog";
@@ -19,13 +20,17 @@ import {
   agentParamErrors,
   blankAgentDraft,
   blankCapabilityDraft,
+  blankModelSlot,
+  dropAgentReferences,
   referencedModelSlots,
   runLimitsError,
   runLimitsWarning,
+  seedAgentParams,
   setToolBundle,
   togglesDraftValue,
   togglesOff,
   toolBundleOn,
+  unusedAgentName,
   type GgAgentDraft,
   type GgCapabilityDraft,
   type GgConfigDraft,
@@ -100,6 +105,15 @@ interface GgConfigEditorProps {
   value: GgConfigDraft;
   /** Called with the whole next draft on every edit. */
   onChange: (next: GgConfigDraft) => void;
+  /**
+   * The [id](GgAgentDraft.id) of the agent whose per-agent view is open, or `null` for
+   * the top-level configuration form. Owned by the page rather than here, because which
+   * view is open decides what the page shows around the editor: its identity fields and
+   * Save configuration belong to the configuration, and Cancel / Save agent to an agent.
+   */
+  editingAgentId: string | null;
+  /** Open an agent's view (or return to the configuration with `null`). */
+  onEditingAgentChange: (agentId: string | null) => void;
   /** The model catalog backing the per-agent pickers (free text is still allowed). */
   models: Model[];
   /**
@@ -112,9 +126,13 @@ interface GgConfigEditorProps {
 // The gg capability-set editor. Its top level is the run's execution ceilings, the
 // declared launch-time model slots, and the list of **agent profiles**; opening an
 // agent switches to a per-agent view (its capabilities, model, custom prompt, and the
-// agents it may spawn) with a Back control. Capabilities are per agent now — there is
-// no run-global capability list — so an ablation can vary what each agent in a run can
-// do, and give different agents different models or even different execution modes.
+// agents it may spawn). Capabilities are per agent now — there is no run-global
+// capability list — so an ablation can vary what each agent in a run can do, and give
+// different agents different models or even different execution modes.
+//
+// Which profile is the **root** — the one that drives the run's top-level session — is a
+// flag on the draft, so it can be renamed to anything and moved to another profile;
+// nothing here decides it by looking for a particular name.
 //
 // This is the one authoring surface for a gg configuration. It is deliberately *not* a
 // launcher: a configuration carries no test case, and the models it does not pin
@@ -122,18 +140,24 @@ interface GgConfigEditorProps {
 export function GgConfigEditor({
   value,
   onChange,
+  editingAgentId,
+  onEditingAgentChange,
   models,
   readOnly = false,
 }: GgConfigEditorProps) {
-  // Which agent's per-agent view is open, or `null` for the top-level form. Owned here
-  // so the page that mounts the editor stays a thin wrapper.
-  const [editingAgent, setEditingAgent] = useState<number | null>(null);
   // Which capability groups are collapsed in the per-agent view.
   const [collapsed, setCollapsed] = useState<Set<CapGroup>>(
     () => new Set(CAP_GROUPS.filter((g) => !g.startOpen).map((g) => g.group)),
   );
   // Whether the (collapsed-by-default) full system-prompt template is expanded.
   const [promptOpen, setPromptOpen] = useState(false);
+
+  // A guard against a stale id (the open agent was removed out from under the view):
+  // fall back to the top-level form rather than rendering nothing at all.
+  const openAgentExists = value.agents.some((a) => a.id === editingAgentId);
+  useEffect(() => {
+    if (editingAgentId !== null && !openAgentExists) onEditingAgentChange(null);
+  }, [editingAgentId, openAgentExists, onEditingAgentChange]);
 
   function toggleGroup(group: CapGroup) {
     setCollapsed((prev) => {
@@ -145,69 +169,80 @@ export function GgConfigEditor({
   }
 
   // --- Agent mutators -------------------------------------------------------
-  function updateAgent(index: number, patch: Partial<GgAgentDraft>) {
+  function updateAgent(agentId: string, patch: Partial<GgAgentDraft>) {
     onChange({
       ...value,
-      agents: value.agents.map((a, i) =>
-        i === index ? { ...a, ...patch } : a,
+      agents: value.agents.map((a) =>
+        a.id === agentId ? { ...a, ...patch } : a,
       ),
     });
   }
   function addAgent() {
-    // A unique default name so the added agent is immediately valid.
-    const taken = new Set(value.agents.map((a) => a.name));
-    let n = value.agents.length + 1;
-    let name = `agent-${n}`;
-    while (taken.has(name)) name = `agent-${++n}`;
-    onChange({ ...value, agents: [...value.agents, blankAgentDraft(name)] });
-  }
-  function removeAgent(index: number) {
-    const removed = value.agents[index]?.name;
+    // A unique default name so the added agent is immediately valid, bound to the first
+    // declared slot (there is nothing else for it to defer to), and with its run-level
+    // agent params pointed at the root.
+    const added = blankAgentDraft(
+      unusedAgentName(value.agents),
+      [],
+      {},
+      value.modelSlots[0]?.id ?? "",
+    );
+    const agents = [
+      ...value.agents,
+      seedAgentParams(added, value.rootAgentId || added.id),
+    ];
     onChange({
       ...value,
-      agents: value.agents
-        .filter((_, i) => i !== index)
-        // Drop every allowlist entry that pointed at the removed agent, or it would
-        // dangle.
-        .map((a) => ({
-          ...a,
-          subagents: a.subagents.filter((s) => s.agent !== removed),
-        })),
+      agents,
+      // The first agent added to an empty configuration is its root: a configuration
+      // always has one as soon as it has any agent at all.
+      rootAgentId: value.rootAgentId || added.id,
     });
+  }
+  function removeAgent(agentId: string) {
+    const remaining = value.agents.filter((a) => a.id !== agentId);
+    // Removing the root hands the role to whatever is left, so a configuration is never
+    // left with agents but no root. Removing the last agent leaves none — a legitimate
+    // editing state on the way to replacing them, which the save gate refuses.
+    const rootAgentId =
+      agentId === value.rootAgentId
+        ? (remaining[0]?.id ?? "")
+        : value.rootAgentId;
+    onChange({
+      ...value,
+      agents: dropAgentReferences(remaining, agentId, rootAgentId),
+      rootAgentId,
+    });
+  }
+  function makeRoot(agentId: string) {
+    onChange({ ...value, rootAgentId: agentId });
   }
 
   // --- Model-slot (launch parameter) mutators -------------------------------
-  function updateModelSlot(index: number, patch: Partial<GgModelSlotDraft>) {
-    const previous = value.modelSlots[index];
-    const next = value.modelSlots.map((s, i) =>
-      i === index ? { ...s, ...patch } : s,
-    );
-    // Renaming a declaration must carry every agent bound to it along, or the rename
-    // would silently orphan them.
-    const renamed =
-      patch.name !== undefined && previous && patch.name !== previous.name;
+  //
+  // An agent binds a slot by its internal id, so renaming a declaration carries every
+  // agent bound to it along with no fixing up here.
+  function updateModelSlot(slotId: string, patch: Partial<GgModelSlotDraft>) {
     onChange({
       ...value,
-      modelSlots: next,
-      agents: renamed
-        ? value.agents.map((a) =>
-            a.modelSource === "model-slot" && a.modelSlot === previous.name
-              ? { ...a, modelSlot: patch.name! }
-              : a,
-          )
-        : value.agents,
+      modelSlots: value.modelSlots.map((s) =>
+        s.id === slotId ? { ...s, ...patch } : s,
+      ),
     });
   }
   function addModelSlot() {
-    onChange({
-      ...value,
-      modelSlots: [...value.modelSlots, { name: "", defaultModelId: "" }],
-    });
+    onChange({ ...value, modelSlots: [...value.modelSlots, blankModelSlot()] });
   }
-  function removeModelSlot(index: number) {
+  function removeModelSlot(slotId: string) {
+    // An agent that deferred to the removed slot is left deferring to nothing rather
+    // than silently re-pointed at another one: which model it should run on is the
+    // operator's call, and the save gate names the agent until they make it.
     onChange({
       ...value,
-      modelSlots: value.modelSlots.filter((_, i) => i !== index),
+      modelSlots: value.modelSlots.filter((s) => s.id !== slotId),
+      agents: value.agents.map((a) =>
+        a.modelSlotId === slotId ? { ...a, modelSlotId: "" } : a,
+      ),
     });
   }
 
@@ -219,7 +254,7 @@ export function GgConfigEditor({
     onChange({ ...value, limits: { ...value.limits, [key]: limit } });
   }
 
-  if (editingAgent === null) {
+  if (editingAgentId === null) {
     const referenced = referencedModelSlots(value);
     return (
       <>
@@ -270,10 +305,10 @@ export function GgConfigEditor({
           these by name.
         </p>
         <div className={gg.slotList}>
-          {value.modelSlots.map((modelSlot, i) => {
-            const unused = !referenced.has(modelSlot.name.trim());
+          {value.modelSlots.map((modelSlot) => {
+            const unused = !referenced.has(modelSlot.id);
             return (
-              <div key={i} className={gg.slotBlock}>
+              <div key={modelSlot.id} className={gg.slotBlock}>
                 <div className={gg.slotFields}>
                   <label className={`${runExec.field} ${gg.slotNameField}`}>
                     <span className={runExec.fieldLabel}>Slot name</span>
@@ -283,7 +318,7 @@ export function GgConfigEditor({
                       value={modelSlot.name}
                       disabled={readOnly}
                       onChange={(e) =>
-                        updateModelSlot(i, { name: e.target.value })
+                        updateModelSlot(modelSlot.id, { name: e.target.value })
                       }
                       placeholder="e.g. primary"
                     />
@@ -295,7 +330,7 @@ export function GgConfigEditor({
                     <ModelCombobox
                       value={modelSlot.defaultModelId}
                       onChange={(v) =>
-                        updateModelSlot(i, { defaultModelId: v })
+                        updateModelSlot(modelSlot.id, { defaultModelId: v })
                       }
                       models={models}
                       harnessFamily={GG_MODEL_FAMILY}
@@ -308,7 +343,7 @@ export function GgConfigEditor({
                     <button
                       type="button"
                       className={gg.slotRemove}
-                      onClick={() => removeModelSlot(i)}
+                      onClick={() => removeModelSlot(modelSlot.id)}
                       aria-label={`Remove the ${modelSlot.name || "unnamed"} model slot`}
                     >
                       ✕
@@ -335,9 +370,10 @@ export function GgConfigEditor({
           )}
         </div>
 
-        {/* Agents — the per-agent profiles. The first is always the Root, which
+        {/* Agents — the per-agent profiles. One of them is flagged as the root: it
             drives the run's top-level session and is the default for the merge agent
-            and speculation judging. */}
+            and speculation judging. Any profile may be it, and any profile may be
+            removed — including the root, which passes the flag on. */}
         <p
           className={`${runExec.sectionLabel} ${runExec.sectionLabelBackdrop}`}
         >
@@ -345,46 +381,69 @@ export function GgConfigEditor({
         </p>
         <p className={`${runExec.muted} ${gg.backdropNote}`}>
           Each agent has its own capabilities, model, custom prompt, and the set
-          of agents it may spawn. Open one to configure it.
+          of agents it may spawn. Open one to configure it. The{" "}
+          <strong>root</strong> agent drives the run&rsquo;s top-level session;
+          make another one the root at any time.
         </p>
         <div className={gg.slotList}>
-          {value.agents.map((agent, i) => {
+          {value.agents.map((agent) => {
             const onCount = CAPABILITIES.filter(
               (c) => agent.capabilities[c.id]?.enabled,
             ).length;
+            const slotName = value.modelSlots.find(
+              (s) => s.id === agent.modelSlotId,
+            )?.name;
             const modelSummary =
               agent.modelSource === "model-slot"
-                ? `slot: ${agent.modelSlot || "—"}`
+                ? `slot: ${slotName?.trim() || "none"}`
                 : agent.modelId || "no model";
+            const isRootAgent = agent.id === value.rootAgentId;
             return (
-              <div key={i} className={gg.slotBlock}>
-                <div className={gg.slotTop}>
-                  <span className={gg.slotName}>
-                    <span className={gg.capName}>
-                      {agent.name || "unnamed"}
+              <div key={agent.id} className={gg.slotBlock}>
+                <div className={gg.agentRow}>
+                  {/* Name over its summary, so a row reads as a heading with a
+                      subtitle rather than one long line. */}
+                  <span className={gg.agentIdentity}>
+                    <span className={gg.agentNameLine}>
+                      <span className={gg.capName}>
+                        {agent.name || "unnamed"}
+                      </span>
+                      {isRootAgent && (
+                        <span className={gg.rootBadge}>root</span>
+                      )}
                     </span>
                     <span className={gg.capId}>
-                      {onCount} on · {modelSummary}
+                      {onCount} capabilities enabled · {modelSummary}
                     </span>
                   </span>
-                  <button
-                    type="button"
-                    className={runExec.secondary}
-                    onClick={() => setEditingAgent(i)}
-                    style={{ marginLeft: "auto" }}
-                  >
-                    {readOnly ? "View" : "Edit"}
-                  </button>
-                  {!readOnly && i !== 0 && (
+                  {!readOnly && !isRootAgent && (
                     <button
                       type="button"
-                      className={gg.slotRemove}
-                      onClick={() => removeAgent(i)}
-                      aria-label={`Remove the ${agent.name || "unnamed"} agent`}
+                      className={runExec.secondary}
+                      onClick={() => makeRoot(agent.id)}
                     >
-                      ✕
+                      Make root
                     </button>
                   )}
+                  <span className={gg.agentActions}>
+                    <button
+                      type="button"
+                      className={runExec.secondary}
+                      onClick={() => onEditingAgentChange(agent.id)}
+                    >
+                      {readOnly ? "View" : "Edit"}
+                    </button>
+                    {!readOnly && (
+                      <button
+                        type="button"
+                        className={gg.slotRemove}
+                        onClick={() => removeAgent(agent.id)}
+                        aria-label={`Remove the ${agent.name || "unnamed"} agent`}
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </span>
                 </div>
               </div>
             );
@@ -399,25 +458,26 @@ export function GgConfigEditor({
             </button>
           )}
         </div>
+        {value.agents.length === 0 && (
+          <p className={gg.fieldError}>
+            This configuration has no agents. Add at least one before saving it.
+          </p>
+        )}
       </>
     );
   }
 
   // --- Per-agent view -------------------------------------------------------
-  const index = editingAgent;
-  const agent = value.agents[index];
-  // A guard against a stale index (e.g. the edited agent was removed): fall back to
-  // the top-level view rather than crashing.
-  if (!agent) {
-    setEditingAgent(null);
-    return null;
-  }
-  const isRoot = index === 0;
+  const agent = value.agents.find((a) => a.id === editingAgentId);
+  // The effect above is already returning to the top-level form; render nothing for the
+  // one frame in between rather than crashing on the missing profile.
+  if (!agent) return null;
+  const isRoot = agent.id === value.rootAgentId;
   const paramsErrors = agentParamErrors(agent);
-  const declaredSlots = value.modelSlots.map((s) => s.name.trim());
+  const boundSlot = value.modelSlots.find((s) => s.id === agent.modelSlotId);
 
   const patchAgent = (patch: Partial<GgAgentDraft>) =>
-    updateAgent(index, patch);
+    updateAgent(agent.id, patch);
   const updateCap = (id: string, patch: Partial<GgCapabilityDraft>) =>
     patchAgent({
       capabilities: {
@@ -441,28 +501,32 @@ export function GgConfigEditor({
   // separate "listed" toggle, because an entry that is listed but usable for nothing
   // is a state with no meaning gg could act on.
   const toggleSubagentScope = (
-    target: string,
+    targetId: string,
     scope: GgSubagentScope,
     on: boolean,
   ) => {
-    const entry = agent.subagents.find((s) => s.agent === target);
+    const entry = agent.subagents.find((s) => s.agentId === targetId);
     const scopes = on
       ? [...(entry?.scopes ?? []), scope]
       : (entry?.scopes ?? []).filter((s) => s !== scope);
-    const others = agent.subagents.filter((s) => s.agent !== target);
+    const others = agent.subagents.filter((s) => s.agentId !== targetId);
     patchAgent({
       subagents: scopes.length
         ? [
             ...others,
-            { agent: target, description: entry?.description ?? "", scopes },
+            {
+              agentId: targetId,
+              description: entry?.description ?? "",
+              scopes,
+            },
           ]
         : others,
     });
   };
-  const setSubagentDescription = (target: string, description: string) =>
+  const setSubagentDescription = (targetId: string, description: string) =>
     patchAgent({
       subagents: agent.subagents.map((s) =>
-        s.agent === target ? { ...s, description } : s,
+        s.agentId === targetId ? { ...s, description } : s,
       ),
     });
 
@@ -488,23 +552,20 @@ export function GgConfigEditor({
 
   return (
     <>
-      <button
-        type="button"
-        className={runExec.secondary}
-        onClick={() => setEditingAgent(null)}
-      >
-        ← Back to configuration
-      </button>
-
+      {/* Every agent's name is editable, the root's included: the root is a flag on the
+          configuration, not a name, and renaming one here carries every reference to it
+          (rosters, the merge agent, the speculation judge) along. */}
       <div className={gg.agentHeading}>
         <label className={`${runExec.field} ${gg.slotNameField}`}>
-          <span className={runExec.fieldLabel}>Agent name</span>
+          <span className={runExec.fieldLabel}>
+            Agent name
+            {isRoot && <span className={gg.rootBadge}>root</span>}
+          </span>
           <input
             className={runExec.input}
             type="text"
             value={agent.name}
-            // The Root's name is fixed — the runtime references it by name.
-            disabled={readOnly || isRoot}
+            disabled={readOnly}
             onChange={(e) => patchAgent({ name: e.target.value })}
             placeholder="e.g. reviewer"
           />
@@ -535,18 +596,18 @@ export function GgConfigEditor({
             <span className={runExec.fieldLabel}>Model slot</span>
             <select
               className={runExec.select}
-              value={agent.modelSlot}
+              value={agent.modelSlotId}
               disabled={readOnly}
-              onChange={(e) => patchAgent({ modelSlot: e.target.value })}
+              onChange={(e) => patchAgent({ modelSlotId: e.target.value })}
             >
-              {!declaredSlots.includes(agent.modelSlot.trim()) && (
-                <option value={agent.modelSlot}>
-                  {agent.modelSlot || "(none)"}
-                </option>
-              )}
-              {declaredSlots.map((name) => (
-                <option key={name} value={name}>
-                  {name}
+              {/* The offered slots are the ones this configuration declares, by id — a
+                  slot the operator renamed keeps its binding, and one they deleted
+                  leaves the agent on "(none)" rather than on a name nothing answers
+                  to. */}
+              {!boundSlot && <option value={agent.modelSlotId}>(none)</option>}
+              {value.modelSlots.map((slot) => (
+                <option key={slot.id} value={slot.id}>
+                  {slot.name.trim() || "(unnamed slot)"}
                 </option>
               ))}
             </select>
@@ -566,12 +627,12 @@ export function GgConfigEditor({
           </label>
         )}
       </div>
-      {agent.modelSource === "model-slot" &&
-        !declaredSlots.includes(agent.modelSlot.trim()) && (
-          <p className={gg.fieldError}>
-            That model slot isn&rsquo;t declared on the configuration.
-          </p>
-        )}
+      {agent.modelSource === "model-slot" && !boundSlot && (
+        <p className={gg.fieldError}>
+          This agent defers to no model slot, so a run could never give it a
+          model. Pick one of the configuration&rsquo;s slots, or pin it a model.
+        </p>
+      )}
 
       {/* The full capability catalog, grouped by concern, collapsible — this agent's
           capabilities. */}
@@ -605,10 +666,15 @@ export function GgConfigEditor({
                     agent.capabilities[cap.id] ?? blankCapabilityDraft();
                   const enabled = Boolean(draft.enabled);
                   const error = paramsErrors[cap.id];
-                  // Run-level "which agent runs this?" knobs (the reviewer and judge
-                  // agents) are read off the Root agent, so only offer them there.
+                  // Run-level "which agent runs this?" knobs (the merge and judge
+                  // agents) are read off the root agent, so only offer them there — and
+                  // a param the selected implementation does not read (the compaction
+                  // model outside a handoff strategy) is not offered at all, rather
+                  // than sitting there inert.
                   const offered = (cap.params ?? []).filter(
-                    (p) => p.kind !== "agent" || isRoot,
+                    (p) =>
+                      (p.kind !== "agent" || isRoot) &&
+                      paramApplies(p, draft.implementation),
                   );
                   // A boolean param is a feature switch, not a value: it renders with
                   // the tool-ablation sliders rather than in the param grid.
@@ -774,19 +840,21 @@ export function GgConfigEditor({
                                       >
                                         {/* An agent named by a stored param that no
                                             longer exists stays selectable so the
-                                            value round-trips until re-pointed. */}
+                                            value round-trips until re-pointed. Live
+                                            profiles are offered by id, so renaming one
+                                            never breaks the param. */}
                                         {draft.params?.[p.key] &&
                                           !value.agents.some(
                                             (a) =>
-                                              a.name === draft.params?.[p.key],
+                                              a.id === draft.params?.[p.key],
                                           ) && (
                                             <option value={draft.params[p.key]}>
                                               {draft.params[p.key]} (missing)
                                             </option>
                                           )}
                                         {value.agents.map((a) => (
-                                          <option key={a.name} value={a.name}>
-                                            {a.name}
+                                          <option key={a.id} value={a.id}>
+                                            {a.name || "unnamed"}
                                           </option>
                                         ))}
                                       </select>
@@ -914,63 +982,67 @@ export function GgConfigEditor({
       })}
 
       {/* Roster — which other agents this one may put to work, and for what. An agent
-          may list itself, for recursion. */}
-      <p className={`${runExec.sectionLabel} ${runExec.sectionLabelBackdrop}`}>
-        Roster
-      </p>
-      <p className={`${runExec.muted} ${gg.backdropNote}`}>
-        The agents this one may put to work, and what for:{" "}
-        <strong>Subagent</strong> (spawnable with <code>spawn_subagent</code>,{" "}
-        <code>speculate</code>, or <code>run_workflow</code>),{" "}
-        <strong>Implementer</strong> (assignable as an issue&rsquo;s agent), and{" "}
-        <strong>Reviewer</strong> (namable among an issue&rsquo;s reviewers).
-        The three are independent. Describe when to use a target — the
-        description is what this agent sees.
-      </p>
-      <div className={gg.subagentList}>
-        {value.agents.map((target) => {
-          const entry = agent.subagents.find((s) => s.agent === target.name);
-          const on = Boolean(entry);
-          return (
-            <div key={target.name} className={gg.subagentRow}>
-              <span className={gg.ablationName}>
-                {target.name}
-                {target.name === agent.name && (
-                  <span className={gg.capId}> (self)</span>
-                )}
-              </span>
-              {SUBAGENT_SCOPES.map((scope) => (
-                <label
-                  key={scope.value}
-                  className={gg.ablationLabel}
-                  title={scope.hint}
-                >
-                  <Switch
-                    checked={Boolean(entry?.scopes.includes(scope.value))}
+          may list itself, for recursion. Panelled, like the run limits: it is a table of
+          sliders, and a table reads against a surface rather than straight on the
+          backdrop (which is also why its heading takes no readability halo). */}
+      <section className={gg.rosterWidget}>
+        <p className={runExec.sectionLabel}>Roster</p>
+        <p className={runExec.muted}>
+          The agents this one may put to work, and what for:{" "}
+          <strong>Subagent</strong> (spawnable with <code>spawn_subagent</code>,{" "}
+          <code>speculate</code>, or <code>run_workflow</code>),{" "}
+          <strong>Implementer</strong> (assignable as an issue&rsquo;s agent),
+          and <strong>Reviewer</strong> (namable among an issue&rsquo;s
+          reviewers). The three are independent. Describe when to use a target —
+          the description is what this agent sees.
+        </p>
+        <div className={gg.subagentList}>
+          {value.agents.map((target) => {
+            const entry = agent.subagents.find((s) => s.agentId === target.id);
+            const on = Boolean(entry);
+            return (
+              <div key={target.id} className={gg.subagentRow}>
+                <span className={gg.ablationName}>
+                  {target.name || "unnamed"}
+                  {target.id === agent.id && (
+                    <span className={gg.capId}> (self)</span>
+                  )}
+                </span>
+                <span className={gg.subagentScopes}>
+                  {SUBAGENT_SCOPES.map((scope) => (
+                    <label
+                      key={scope.value}
+                      className={gg.ablationLabel}
+                      title={scope.hint}
+                    >
+                      <Switch
+                        checked={Boolean(entry?.scopes.includes(scope.value))}
+                        disabled={readOnly}
+                        onChange={(next) =>
+                          toggleSubagentScope(target.id, scope.value, next)
+                        }
+                      />
+                      <span className={gg.capId}>{scope.label}</span>
+                    </label>
+                  ))}
+                </span>
+                {on && (
+                  <input
+                    className={`${runExec.input} ${gg.subagentDescription}`}
+                    type="text"
+                    value={entry?.description ?? ""}
                     disabled={readOnly}
-                    onChange={(next) =>
-                      toggleSubagentScope(target.name, scope.value, next)
+                    onChange={(e) =>
+                      setSubagentDescription(target.id, e.target.value)
                     }
+                    placeholder="when to use this agent"
                   />
-                  <span className={gg.capId}>{scope.label}</span>
-                </label>
-              ))}
-              {on && (
-                <input
-                  className={`${runExec.input} ${gg.subagentDescription}`}
-                  type="text"
-                  value={entry?.description ?? ""}
-                  disabled={readOnly}
-                  onChange={(e) =>
-                    setSubagentDescription(target.name, e.target.value)
-                  }
-                  placeholder="when to use this agent"
-                />
-              )}
-            </div>
-          );
-        })}
-      </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
 
       {/* Custom instructions — the field an operator edits normally; inserted into the
           system prompt. */}

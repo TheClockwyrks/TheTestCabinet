@@ -22,15 +22,19 @@ export function capabilityOn(set: GgCapabilitySet | null, id: string): boolean {
   );
 }
 
-// The conventional name of the Root agent — the unremovable first profile that drives
-// the run's top-level session, and the default target for the Code Review and
-// speculation-judge helpers. (A board issue names its own agent when it is filed, so it
-// is not one of them.) Mirrors `ROOT_AGENT` in `crates/core/src/gg.rs`.
+// The name a fresh configuration's root agent is *born* with. It is a starting value,
+// not an invariant: the root is whichever profile the configuration flags as such (the
+// editor tracks it by internal id, and the wire format by position — gg reads the root
+// off `agents[0]`), so it can be renamed to anything and the flag can be moved to
+// another profile. Mirrors `ROOT_AGENT` in `crates/core/src/gg.rs`, which is likewise
+// only the name `GgAgentConfig::root()` seeds.
 export const ROOT_AGENT = "Root";
 
-// The conventional name of the first model slot a fresh configuration declares — the
-// launch input the Root agent's model defers to by default. Kept for the New run
-// page's launch-summary heuristic and the draft's default model-slot name.
+// The name of the first model slot a fresh configuration declares — the launch input
+// the root agent's model defers to by default. Like the root's name it is only a
+// starting value: agents bind to a slot by internal id, so renaming this one carries
+// its bindings along. Kept for the New run page's launch-summary heuristic and the
+// draft's default model-slot name.
 export const PRIMARY_SLOT = "primary";
 
 // The concern each capability belongs to, and the group render order + which start
@@ -106,6 +110,28 @@ export interface ParamSpec {
   // The closed set of values a `select` offers, or the independently switchable
   // members a `toggles` param is made of.
   options?: ReadonlyArray<{ value: string; label: string }>;
+  // The capability [implementations](CapSpec.implementationOptions) this param is
+  // actually read under, when it is not read under all of them. A param gg ignores
+  // outside a particular strategy is a control that can only mislead — the form hides
+  // it while another implementation is selected rather than showing a box that does
+  // nothing. Absent means the param applies to every implementation, which is the
+  // common case. A value already stored for a hidden param is kept and re-saved, so
+  // switching strategy back and forth never loses it.
+  showWhenImplementation?: ReadonlyArray<string>;
+}
+
+/**
+ * Whether a param's dedicated control is offered while `implementation` is selected —
+ * always, unless the param names the implementations it is read under.
+ */
+export function paramApplies(
+  param: ParamSpec,
+  implementation: string | undefined,
+): boolean {
+  return (
+    !param.showWhenImplementation ||
+    param.showWhenImplementation.includes((implementation ?? "").trim())
+  );
 }
 
 // Why a `toggles` param writes only the switched-*off* members: the underlying gg
@@ -384,6 +410,14 @@ export const SUMMARIZER_OPTIONS = [
   { value: "memory-compaction", label: "Memory compaction" },
 ] as const;
 
+// The two strategies that condense the thread on a **separate** model — the only ones
+// that read the compaction capability's `model` param, and so the only ones its control
+// is offered under.
+export const HANDOFF_SUMMARIZERS = [
+  "handoff-summarization",
+  "handoff-compaction",
+] as const;
+
 // What each compaction strategy does — the detail lifted off the picker's option
 // labels into the field's help tooltip.
 export const SUMMARIZER_HINT =
@@ -556,7 +590,11 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         label: "Compaction model",
         kind: "text",
         placeholder: "e.g. openai/gpt-4.1-mini",
-        hint: "Only used by the two Handoff strategies: the model that condenses the thread instead of the agent. Leave blank (or name a model that will not resolve) and gg condenses on the agent's own model rather than skipping the compaction.",
+        // Only the handoff strategies condense on another model at all, so the field
+        // is offered only under them rather than sitting inert beside every other
+        // strategy.
+        showWhenImplementation: HANDOFF_SUMMARIZERS,
+        hint: "The model that condenses the thread instead of the agent. Leave blank (or name a model that will not resolve) and gg condenses on the agent's own model rather than skipping the compaction.",
       },
     ],
     tools: ["compact"],

@@ -377,20 +377,6 @@
   align-self: stretch;
 }
 
-// The slot's top line: name (or fixed "primary" label), mock toggle, remove button.
-.slotTop {
-  display: flex;
-  align-items: flex-end;
-  gap: t.$space-md;
-  flex-wrap: wrap;
-}
-
-.slotName {
-  display: flex;
-  align-items: baseline;
-  gap: t.$space-sm;
-}
-
 .slotNameField {
   flex: 1 1 10rem;
   min-width: 0;
@@ -483,13 +469,85 @@
 
 // --- Agents / per-agent view ----------------------------------------------------
 
-// The agent-name field row at the top of the per-agent view, set off from the Back
-// control above it.
-.agentHeading {
-  margin: t.$space-md 0;
+// One agent's row in the configuration's agent list: its identity block on the left,
+// then the row's controls, which the identity block's `flex: 1` pushes to the right.
+.agentRow {
+  display: flex;
+  align-items: center;
+  gap: t.$space-md;
+  flex-wrap: wrap;
 }
 
-// The subagent allowlist: one row per candidate agent, its enable toggle over an
+// The agent's name over its summary line, stacked so the row reads as a heading with a
+// subtitle rather than one long run of text.
+.agentIdentity {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.agentNameLine {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+}
+
+// Edit and remove belong together — they act on the same agent — so they sit in one
+// group rather than drifting apart across the row.
+.agentActions {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  flex: 0 0 auto;
+
+  // The remove control's auto left margin is what pushes it away from its neighbours
+  // elsewhere; inside this group it must sit right beside Edit.
+  .slotRemove {
+    margin-left: 0;
+  }
+}
+
+// The "root" marker: which profile drives the run's top-level session, called out on
+// its list row and beside its name field.
+.rootBadge {
+  flex: 0 0 auto;
+  padding: 0 t.$space-xs;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline solid t.$color-accent;
+  color: t.$color-accent;
+  font-size: t.$font-sm;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+}
+
+// The agent-name field row at the top of the per-agent view.
+.agentHeading {
+  margin: 0 0 t.$space-md;
+}
+
+// The roster lives in its own surface card, like the run limits: it is a table of
+// sliders, which needs a panel to read against — and a panelled heading takes the
+// panel's own contrast rather than the backdrop halo.
+.rosterWidget {
+  padding: t.$space-md t.$space-lg t.$space-lg;
+  margin-bottom: t.$space-md;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+
+  > :first-child {
+    margin-top: 0;
+  }
+
+  > :last-child {
+    margin-bottom: 0;
+  }
+}
+
+// The subagent allowlist: one row per candidate agent, its scope sliders over an
 // optional caller-scoped description that appears when enabled.
 .subagentList {
   display: flex;
@@ -505,9 +563,21 @@
   flex-wrap: wrap;
 }
 
-// The description field takes the row's spare width once its target is enabled.
+// The three scope sliders, ganged at the row's right edge so they line up into columns
+// down the roster instead of starting wherever the agent's name happened to end.
+.subagentScopes {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: t.$space-md;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+// The description drops onto its own full-width line beneath the row, so switching a
+// scope on never shoves the sliders out of their columns.
 .subagentDescription {
-  flex: 1 1 18rem;
+  flex: 1 1 100%;
   min-width: 0;
 }
 

@@ -7,12 +7,15 @@ import type {
 import { DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE } from "@test-cabinet/run-record/gg-system-prompt";
 import {
   bindModelSlots,
+  blankAgentDraft,
   capabilitySetFromDraft,
   draftFromCapabilitySet,
   draftSaveError,
   emptyDraft,
   launchModelSlots,
   runLimitsWarning,
+  type GgAgentDraft,
+  type GgConfigDraft,
 } from "./ggConfigDraft";
 import {
   DEFAULT_ERROR_RATE_WINDOW,
@@ -142,8 +145,19 @@ describe("gg model slots", () => {
   it("refuses to save an agent bound to a slot that was never declared", () => {
     const draft = emptyDraft();
     expect(draftSaveError(draft)).toBeNull();
-    draft.agents[0]!.modelSlot = "nope";
-    expect(draftSaveError(draft)).toContain("nope");
+    draft.agents[0]!.modelSlotId = "slot-that-was-deleted";
+    expect(draftSaveError(draft)).toContain("model slot");
+  });
+
+  // The whole point of binding a slot by internal id: the name is a label the launch
+  // form shows, so changing it must move every agent bound to it rather than orphan them.
+  it("keeps an agent bound to a model slot that is renamed", () => {
+    const draft = emptyDraft();
+    draft.modelSlots[0]!.name = "critic";
+    expect(draftSaveError(draft)).toBeNull();
+    const back = capabilitySetFromDraft(draft, null);
+    expect(back.modelSlots).toEqual([{ name: "critic" }]);
+    expect(back.agents[0]!.modelSlot).toBe("critic");
   });
 });
 
@@ -218,7 +232,7 @@ describe("gg agents", () => {
 
   it("refuses structural agent errors", () => {
     const draft = emptyDraft();
-    draft.agents.push(agentDraft("reviewer"));
+    draft.agents.push(agentDraft(draft, "reviewer"));
     expect(draftSaveError(draft)).toBeNull();
 
     // Duplicate names.
@@ -226,19 +240,63 @@ describe("gg agents", () => {
     expect(draftSaveError(draft)).toContain("unique");
     draft.agents[1]!.name = "reviewer";
 
-    // A subagent pointing at an agent that does not exist.
+    // An empty name.
+    draft.agents[1]!.name = "  ";
+    expect(draftSaveError(draft)).toContain("needs a name");
+    draft.agents[1]!.name = "reviewer";
+    expect(draftSaveError(draft)).toBeNull();
+  });
+
+  // The root is a flag, not a name and not a position: renaming it (or handing the flag
+  // to another profile) has to leave a configuration that still saves, with the root
+  // written first because that is where gg reads it from.
+  it("lets the root be renamed and the flag moved to another agent", () => {
+    const draft = emptyDraft();
+    const reviewer = agentDraft(draft, "reviewer");
+    draft.agents.push(reviewer);
+
+    draft.agents[0]!.name = "conductor";
+    expect(draftSaveError(draft)).toBeNull();
+    expect(
+      capabilitySetFromDraft(draft, null).agents.map((a) => a.name),
+    ).toEqual(["conductor", "reviewer"]);
+
+    // Hand the flag over: the wire order follows the flag, not the list order.
+    draft.rootAgentId = reviewer.id;
+    expect(draftSaveError(draft)).toBeNull();
+    expect(
+      capabilitySetFromDraft(draft, null).agents.map((a) => a.name),
+    ).toEqual(["reviewer", "conductor"]);
+  });
+
+  // Renaming an agent another agent's roster names used to write an unsavable
+  // configuration (the roster still spelled the old name). References are ids now, so a
+  // rename is just a rename.
+  it("carries a roster reference through a rename of its target", () => {
+    const draft = emptyDraft();
+    const reviewer = agentDraft(draft, "reviewer");
+    draft.agents.push(reviewer);
     draft.agents[0]!.subagents = [
-      { agent: "ghost", description: "", scopes: ["subagent"] },
-    ];
-    expect(draftSaveError(draft)).toContain("ghost");
-    draft.agents[0]!.subagents = [
-      { agent: "reviewer", description: "", scopes: ["subagent"] },
+      {
+        agentId: reviewer.id,
+        description: "for reviews",
+        scopes: ["reviewer"],
+      },
     ];
     expect(draftSaveError(draft)).toBeNull();
 
-    // The first agent must be the Root.
-    draft.agents[0]!.name = "notroot";
-    expect(draftSaveError(draft)).toContain("Root");
+    reviewer.name = "critic";
+    expect(draftSaveError(draft)).toBeNull();
+    expect(capabilitySetFromDraft(draft, null).agents[0]!.subagents).toEqual([
+      { agent: "critic", description: "for reviews", scopes: ["reviewer"] },
+    ]);
+  });
+
+  it("refuses to save a configuration with no agents at all", () => {
+    const draft = emptyDraft();
+    draft.agents = [];
+    draft.rootAgentId = "";
+    expect(draftSaveError(draft)).toContain("at least one agent");
   });
 
   // An issue names the agent it is dispatched to, drawn from the filer's own
@@ -254,8 +312,9 @@ describe("gg agents", () => {
     expect(draftSaveError(draft)).toContain("no implementer");
 
     // A spawnable-only roster entry is not an implementer, so it does not satisfy it.
+    const rootId = draft.agents[0]!.id;
     draft.agents[0]!.subagents = [
-      { agent: "Root", description: "", scopes: ["subagent"] },
+      { agentId: rootId, description: "", scopes: ["subagent"] },
     ];
     expect(draftSaveError(draft)).toContain("no implementer");
 
@@ -267,16 +326,19 @@ describe("gg agents", () => {
     // And so does a filer with an implementer — a profile may list itself.
     draft.agents[0]!.disabledTools = [];
     draft.agents[0]!.subagents = [
-      { agent: "Root", description: "", scopes: ["implementer"] },
+      { agentId: rootId, description: "", scopes: ["implementer"] },
     ];
     expect(draftSaveError(draft)).toBeNull();
   });
 });
 
-// A minimal agent draft for tests that push a second agent onto an existing draft.
-function agentDraft(name: string) {
-  const base = emptyDraft().agents[0]!;
-  return { ...base, name, subagents: [] };
+// A minimal agent draft for tests that push a second agent onto an existing draft, bound
+// to the same model slot its root is.
+function agentDraft(draft: GgConfigDraft, name: string): GgAgentDraft {
+  return {
+    ...blankAgentDraft(name, [], {}, draft.modelSlots[0]!.id),
+    subagents: [],
+  };
 }
 
 describe("gg filesystem capabilities", () => {
