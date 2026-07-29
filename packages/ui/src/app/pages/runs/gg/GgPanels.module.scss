@@ -633,40 +633,17 @@ $context-palette: (
   font-family: monospace;
 }
 
+// An epic's or issue's description. The board's prose is the model's own Markdown, so it
+// is rendered through the shared <Markdown> primitive — which owns the text color, and
+// carries this class alongside its own, so only the size and wrapping are set here.
 .issueDesc {
   font-size: t.$font-sm;
-  color: t.$color-text-muted;
   word-break: break-word;
 }
 
-// The badge on one review round of an issue (see gg/project-management). A round gates
-// the issue's acceptance, so the badge shows what it concluded — in review while its
-// reviewers inspect the diff (accent), changes-requested (warm) while the issue's own
-// agent works the actionable items, approved (positive) once the issue may finally be
-// accepted. An issue that named no reviewers has no rounds, so it carries no badge.
-.reviewBadge {
-  flex: 0 0 auto;
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  padding: t.$space-2xs t.$space-xs;
-  border-radius: t.$radius-sm;
-  border: t.$border-hairline solid t.$color-accent;
-  color: t.$color-accent;
-
-  &[data-review-phase="changes_requested"] {
-    color: t.$color-accent-2;
-    border-color: t.$color-accent-2;
-  }
-  &[data-review-phase="approved"] {
-    color: t.$color-positive;
-    border-color: t.$color-positive;
-  }
-}
-
 // The actionable items a review round's `changes_requested` returned — what the issue's
-// own agent must address before re-review. A warm rule ties them to the changes-
-// requested badge so the gate's remaining work reads as one thing.
+// own agent must address before re-review. A warm rule reads them as the gate's
+// remaining work, in the same tone the tree's changes-requested dot carries.
 .reviewItems {
   display: flex;
   flex-direction: column;
@@ -740,11 +717,12 @@ $context-palette: (
   font-size: 0.72rem;
 }
 
+// The body of one brief field. No `white-space: pre-wrap`: the body is rendered as
+// Markdown, so the renderer decides what a line break means, not the CSS.
 .briefText {
   margin: 0;
   color: t.$color-text;
   word-break: break-word;
-  white-space: pre-wrap;
 }
 
 // --- Project explorer (the run-global board detail pane) ---------------------
@@ -810,6 +788,14 @@ $context-palette: (
   text-transform: uppercase;
   letter-spacing: 0.04em;
   font-size: 0.72rem;
+}
+
+// The wider label a review round's reviewer rows use: "Changes requested by" does not fit
+// the width an issue's one-word meta labels are sized to, and letting it wrap onto a
+// second line pulled the row apart.
+.projMetaLabelWide {
+  width: 11rem;
+  white-space: nowrap;
 }
 
 .projMetaValue {

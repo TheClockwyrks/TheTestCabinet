@@ -812,8 +812,11 @@ describe("GgRunMonitorPage", () => {
       }),
     ]);
     openTab("Project");
-    // Named twice: the sidebar row, and the detail the default landing selects.
-    expect(screen.getAllByText("Add the widget").length).toBeGreaterThan(0);
+    // Named twice — the sidebar row and the detail the default landing selects — and both
+    // read `ID: title`, the board's own name for the work.
+    expect(
+      screen.getAllByText("feat-1: Add the widget").length,
+    ).toBeGreaterThan(0);
   });
 
   it("counts the session's turns beside the status, and each agent's own beneath its name", () => {
@@ -1195,6 +1198,7 @@ describe("GgRunMonitorPage", () => {
         issues: [
           issue("i1", "Set up the canvas", "in_progress"),
           issue("i2", "Draw the board", "done"),
+          issue("i3", "Add the win overlay", "in_progress"),
         ],
       }),
       ggIssue("i1", { type: "issue_review", phase: "requested" }),
@@ -1210,13 +1214,14 @@ describe("GgRunMonitorPage", () => {
         phase: "approved",
         approvals: [{ agentId: "i2.0i.0r", profile: "critic" }],
       }),
+      // i3's round is still open: its reviewers have the diff and no verdict has landed.
+      ggIssue("i3", { type: "issue_review", phase: "requested" }),
     ];
     renderMonitor(events);
     openTab("Project");
     // Each review round is its own entry under the issue, so its feedback stays readable
     // after the issue has moved on — and the round says WHO ended it.
     openFile("i1 review 1");
-    expect(screen.getByText("Changes Requested")).toBeInTheDocument();
     expect(screen.getByText("Changes requested by")).toBeInTheDocument();
     expect(screen.getByText("i1.0i.0r")).toBeInTheDocument();
     expect(screen.getByText("Handle the empty-input case")).toBeInTheDocument();
@@ -1224,9 +1229,58 @@ describe("GgRunMonitorPage", () => {
     // The second issue's round approved, which is what let it be accepted — and it names
     // the agents that approved.
     openFile("i2 review 1");
-    expect(screen.getByText("Approved")).toBeInTheDocument();
     expect(screen.getByText("Approved by")).toBeInTheDocument();
     expect(screen.getByText("i2.0i.0r")).toBeInTheDocument();
+    // A round states its outcome by naming who reached it, so the header carries no
+    // verdict badge repeating that in front of the title.
+    expect(screen.queryByText("Changes Requested")).toBeNull();
+    expect(screen.queryByText("Approved")).toBeNull();
+    // The issue's own Overview does NOT repeat a round's feedback: each round is an entry
+    // beside it, which is where that is read.
+    openFile("i1 overview");
+    expect(screen.queryByText("Handle the empty-input case")).toBeNull();
+    // And an issue whose reviewers are on the diff right now reads "In Review", even
+    // though the board snapshot still calls it in-progress.
+    openFile("i3 overview");
+    expect(screen.getByText("In Review")).toBeInTheDocument();
+    expect(screen.queryByText("In Progress")).toBeNull();
+  });
+
+  it("heads an issue's Overview `ID: title` and renders its prose as Markdown", () => {
+    const events: HarnessEvent[] = [
+      sessionStarted(),
+      gg({
+        type: "board_state",
+        epics: [],
+        issues: [
+          {
+            id: "AUDIO-1",
+            title: "Wire the audio",
+            description: "Play a cue on **every** hit.",
+            inScope: "- The hit cue\n- The win jingle",
+            outOfScope: "",
+            completionCriteria: "`api.audio()` reports both cues.",
+            status: "in_progress",
+            blockedBy: [],
+            agent: "implementer",
+            retries: 0,
+          },
+        ],
+      }),
+    ];
+    renderMonitor(events);
+    openTab("Project");
+    openFile("AUDIO-1 overview");
+    // The header is the board's own name for the work — the id and the title as one line,
+    // not the id orphaned onto a row of its own.
+    expect(
+      screen.getAllByText("AUDIO-1: Wire the audio").length,
+    ).toBeGreaterThan(0);
+    // The board's strings are the model's Markdown, so they render as Markdown: emphasis
+    // is emphasis, a dashed list is a list, and a backticked identifier is code.
+    expect(screen.getByText("every").tagName).toBe("STRONG");
+    expect(screen.getByText("The win jingle").tagName).toBe("LI");
+    expect(screen.getByText("api.audio()").tagName).toBe("CODE");
   });
 
   it("marks the chosen winner of a best-of-K speculation in the tree and summary", () => {

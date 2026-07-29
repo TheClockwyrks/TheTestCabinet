@@ -66,12 +66,17 @@ export const ISSUE_STATES: IssueState[] = [
 export function issueState(
   issue: GgBoardIssue,
   byId: Map<string, GgBoardIssue>,
+  // Whether a review round is open on the issue right now — an `issue_review` said
+  // `requested` and nothing has closed it yet. The board snapshot alone is not enough:
+  // gg does move a submitted issue to `in_review`, but the review stream says so first,
+  // so an issue whose reviewers are already on the diff read as "In Progress" until the
+  // next `board_state` caught up.
+  reviewing = false,
 ): IssueState {
+  if (issue.status === "done") return "approved";
+  if (issue.status === "failed") return "failed";
+  if (reviewing) return "in_review";
   switch (issue.status) {
-    case "done":
-      return "approved";
-    case "failed":
-      return "failed";
     case "in_review":
       return "in_review";
     case "in_progress":

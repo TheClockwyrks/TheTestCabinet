@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Markdown } from "@test-cabinet/ui";
 import type { GgBoardIssue, GgReviewer } from "@test-cabinet/run-record/gg";
 import type {
   BoardState,
@@ -461,7 +462,9 @@ function EpicDetail({
           <span className={panels.issueId}>{group.id}</span>
         </header>
         {group.description && (
-          <p className={panels.issueDesc}>{group.description}</p>
+          <Markdown breaks className={panels.issueDesc}>
+            {group.description}
+          </Markdown>
         )}
         {group.issues.length === 0 ? (
           <p className={panels.empty}>No issues yet.</p>
@@ -486,9 +489,10 @@ function EpicDetail({
 }
 
 // One issue's overview: its single state badge, the assigned agent (a link into the
-// Agents explorer) and retry count, its blocked-by edges, the items the latest review
-// round is waiting on, and its full structured brief (shown open, since the detail pane
-// is where you read it).
+// Agents explorer) and retry count, its blocked-by edges, and its full structured brief
+// (shown open, since the detail pane is where you read it). Deliberately *not* the
+// feedback a review round returned — each round is its own entry beside this one, which
+// is where that is read.
 function IssueDetail({
   issue,
   byId,
@@ -500,25 +504,27 @@ function IssueDetail({
 }) {
   const nav = useGgExplorerNav();
   const { incomplete } = deriveIssue(issue, byId);
-  const state = issueState(issue, byId);
+  const state = issueState(issue, byId, review?.phase === "requested");
   return (
     <div className={panels.panelBody}>
       <div className={panels.projDetail}>
-        {/* One badge, not three: the issue's state already folds in whether its blockers
-            are clear and whether a review is in flight, so a reader has one thing to
-            read rather than a row of chips to reconcile. */}
+        {/* Headed `ID: title`, the board's own name for this work, with the state badge
+            trailing right — and one badge, not three: the issue's state already folds in
+            whether its blockers are clear and whether a review is in flight, so a reader
+            has one thing to read rather than a row of chips to reconcile. */}
         <header className={panels.projDetailHead}>
+          <h3 className={panels.projDetailTitle} data-status={issue.status}>
+            {issue.id}: {issue.title}
+          </h3>
           <span className={panels.statusBadge} data-issue-state={state}>
             {ISSUE_STATE_LABELS[state]}
           </span>
-          <h3 className={panels.projDetailTitle} data-status={issue.status}>
-            {issue.title}
-          </h3>
-          <span className={panels.issueId}>{issue.id}</span>
         </header>
 
         {issue.description && (
-          <p className={panels.issueDesc}>{issue.description}</p>
+          <Markdown breaks className={panels.issueDesc}>
+            {issue.description}
+          </Markdown>
         )}
 
         <dl className={panels.projMeta}>
@@ -579,10 +585,6 @@ function IssueDetail({
           />
         )}
 
-        {review?.phase === "changes_requested" && review.items.length > 0 && (
-          <ReviewItems items={review.items} />
-        )}
-
         <dl className={panels.briefGrid}>
           <BriefField label="In scope" body={issue.inScope} />
           <BriefField label="Out of scope" body={issue.outOfScope} />
@@ -621,10 +623,10 @@ function ReviewDetail({
   return (
     <div className={panels.panelBody}>
       <div className={panels.projDetail}>
+        {/* No verdict badge: what the round concluded is already the thing the body says
+            — who requested changes or who approved, and the items — so a badge repeating
+            it in front of the title only crowded the header. */}
         <header className={panels.projDetailHead}>
-          <span className={panels.reviewBadge} data-review-phase={round.phase}>
-            {ROUND_LABELS[round.phase]}
-          </span>
           <h3 className={panels.projDetailTitle}>Review {index + 1}</h3>
           <span className={panels.issueId}>{issue.id}</span>
         </header>
@@ -651,14 +653,6 @@ function ReviewDetail({
   );
 }
 
-// The label a round's badge carries — the round's own outcome, in the same words the
-// issue's state badge uses for the whole issue.
-const ROUND_LABELS: Record<IssueReviewRound["phase"], string> = {
-  requested: "In Review",
-  changes_requested: "Changes Requested",
-  approved: "Approved",
-};
-
 // The reviewers behind one verdict: each as the agent gg dispatched (whose id names the
 // issue, the attempt, and the review pass — `AUTH-1.0i.0r`) with the profile it ran
 // under, so a verdict is attributable to a specific pass rather than to "the review".
@@ -672,7 +666,12 @@ function ReviewerList({
   const nav = useGgExplorerNav();
   return (
     <div className={panels.projMetaRow}>
-      <span className={panels.projMetaLabel}>{label}</span>
+      {/* A wider label than the issue meta rows carry: "Changes requested by" does not
+          fit the width an issue's one-word labels are sized to, and wrapping it onto a
+          second line pulls the row apart. */}
+      <span className={cx(panels.projMetaLabel, panels.projMetaLabelWide)}>
+        {label}
+      </span>
       <span className={panels.projMetaValue}>
         {reviewers.map((reviewer, i) => (
           <span key={reviewer.agentId}>
@@ -696,11 +695,16 @@ function ReviewerList({
   );
 }
 
+// One field of an issue's brief. The body is the model's own prose — it writes these as
+// Markdown (bulleted scope lists, backticked identifiers), so it is rendered as Markdown
+// rather than shown as source.
 function BriefField({ label, body }: { label: string; body: string }) {
   return (
     <div className={panels.briefField}>
       <dt className={panels.briefLabel}>{label}</dt>
-      <dd className={panels.briefText}>{body || "—"}</dd>
+      <dd className={panels.briefText}>
+        {body ? <Markdown breaks>{body}</Markdown> : "—"}
+      </dd>
     </div>
   );
 }
