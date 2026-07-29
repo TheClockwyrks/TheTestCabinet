@@ -1229,7 +1229,7 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
       case "slot_usage":
         // A cumulative rollup, NOT a delta: the latest per (slot, model) is that
         // pair's total, so overwrite (never accumulate) the pair's entry.
-        slotUsageByKey.set(`${gg.slot} ${gg.modelId}`, {
+        slotUsageByKey.set(`${gg.slot}\u0000${gg.modelId}`, {
           slot: gg.slot,
           modelId: gg.modelId,
           tokens: gg.tokens,

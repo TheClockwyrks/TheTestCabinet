@@ -216,7 +216,7 @@ export function MetricsContent({
       if (!scored || !scored.rating) continue;
       const harness = run.subject.harnessSlug;
       const modelId = canonicalModelId(run.subject.modelId, harness);
-      const key = `${harness} ${modelId}`;
+      const key = `${harness}\u0000${modelId}`;
       let group = byPair.get(key);
       if (!group) {
         group = {
