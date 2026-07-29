@@ -31,7 +31,7 @@ use tokio::sync::broadcast::error::RecvError;
 
 use test_cabinet_core::event::HarnessEvent;
 use test_cabinet_core::preview::AssetPreview;
-use test_cabinet_core::run_record::{RunRecord, RunState};
+use test_cabinet_core::run_record::{HarnessSlug, RunRecord, RunState};
 // The job-API wire shapes shared with the dispatcher, driver, and the queue's
 // Rust clients live in `core` (so neither must depend on this crate) — both the
 // request shapes the driver/dispatcher speak and the server **output** shapes a
@@ -66,6 +66,7 @@ pub async fn launch(
     Json(mut body): Json<LaunchBody>,
 ) -> Result<Response, ApiError> {
     let now = now_rfc3339()?;
+    crate::bootstrap::seed_launch_prices(&state.db, &state.prices, &launch_models(&body)).await;
     resolve_gg_model_facts(&state.db, &state.prices, &mut body)
         .await
         .map_err(ApiError::bad_request)?;
@@ -111,6 +112,12 @@ pub async fn launch_batch(
     }
 
     let now = now_rfc3339()?;
+    // Price every model the batch binds in one pass — one catalog fetch for the whole
+    // batch rather than one per run, and before any run resolves its window.
+    let batch_models: Vec<(String, HarnessSlug)> =
+        body.runs.iter().flat_map(launch_models).collect();
+    crate::bootstrap::seed_launch_prices(&state.db, &state.prices, &batch_models).await;
+
     // Validate and mint each requested run up front. A rejected run records its
     // error at its index and is dropped from the insert set; an accepted run
     // records its (already minted) job id and is queued for the batch insert. The
@@ -150,6 +157,30 @@ pub async fn launch_batch(
         .map_err(ApiError::from)?;
 
     Ok((StatusCode::ACCEPTED, Json(LaunchBatchAck { jobs: items })).into_response())
+}
+
+/// Every model a launch binds, paired with the harness that will run it: the run's own
+/// model id plus — for a gg run — each model its capability set binds to an agent.
+///
+/// This is the set the catalog is asked to know about at enqueue (see
+/// [`crate::bootstrap::seed_launch_prices`]), which is the same set a gg launch resolves
+/// windows for. It is harness-agnostic on purpose: a third-party-harness run has one
+/// model, and it deserves a priced catalog entry just as much as a gg run's does.
+fn launch_models(body: &LaunchBody) -> Vec<(String, HarnessSlug)> {
+    let mut models: Vec<(String, HarnessSlug)> = Vec::new();
+    let mut push = |id: &str| {
+        let id = id.trim();
+        if !id.is_empty() && !models.iter().any(|(known, _)| known == id) {
+            models.push((id.to_string(), body.harness));
+        }
+    };
+    push(&body.model);
+    if let Some(set) = body.gg_capability_set.as_ref() {
+        for id in set.bound_model_ids() {
+            push(id);
+        }
+    }
+    models
 }
 
 /// Fill in a **gg** launch's per-model catalog facts — the
@@ -231,7 +262,7 @@ async fn resolve_one_model_facts(
     db: &crate::db::Db,
     prices: &test_cabinet_core::OpenRouterPrices,
     model_id: &str,
-    harness: test_cabinet_core::run_record::HarnessSlug,
+    harness: HarnessSlug,
 ) -> Result<ResolvedModelFacts, String> {
     let stored = match super::models::launch_facts_for(db, model_id, harness).await {
         Ok(facts) => facts,

@@ -45,8 +45,9 @@ name, aliases (and their harness families), provider, logo, description, or
 OpenRouter slug, and **Save**.
 
 Prices are not edited here: the backend records each model's OpenRouter price
-automatically — once when a run completes and again on a 24-hour refresh — and
-the model's detail page shows that history as a graph and a table.
+automatically — first when you save the model (or when a run that uses it is
+enqueued), then when a run completes and again on a 24-hour refresh — and the
+model's detail page shows that history as a graph and a table.
 
 ## Verify
 

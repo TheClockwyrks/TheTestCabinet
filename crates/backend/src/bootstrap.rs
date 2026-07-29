@@ -6,6 +6,10 @@
 //! every known model on a periodic schedule, so the catalog's comparable prices
 //! track OpenRouter's — including promotional pricing — without the removed
 //! `tcab catalog` step.
+//!
+//! A model is also priced the moment it first *appears* — when it is curated in the
+//! app and when a launch binds it — so the catalog never shows a blank price for a
+//! model the system already knows about but has not finished a run with yet.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -235,6 +239,115 @@ async fn try_observe_completion(
     Ok(())
 }
 
+/// Record a first price observation for every model in `targets` the catalog holds
+/// none for, so a model's prices (and the catalog facts riding along on them) are on
+/// record **before** anything needs them — the Models page, the public snapshot, and a
+/// run's per-class cost split — rather than only once a run using it completes.
+///
+/// Seeding is deliberately *missing-only*: a model already on record is left to the
+/// completion-time observation (which captures the price as it was when the run
+/// actually ran) and the periodic refresh. That also makes the steady state free —
+/// nothing is fetched when every target is already priced, so this costs a network
+/// round trip exactly on the first sighting of a new model.
+///
+/// `targets` maps the storage key an observation is filed under to the OpenRouter id
+/// to ask about. Returns how many models were seeded; a catalog fetch that fails
+/// seeds nothing rather than failing the caller.
+async fn seed_missing_prices(
+    db: &Db,
+    prices: &OpenRouterPrices,
+    targets: HashMap<String, String>,
+) -> Result<usize> {
+    let mut missing: Vec<(String, String)> = Vec::new();
+    for (storage_key, lookup) in targets {
+        if db.latest_price(&storage_key).await?.is_none() {
+            missing.push((storage_key, lookup));
+        }
+    }
+    if missing.is_empty() {
+        return Ok(0);
+    }
+    let catalog = match prices.all_model_details().await {
+        Ok(catalog) => catalog,
+        Err(err) => {
+            tracing::warn!(error = %err, "price seeding: could not fetch OpenRouter catalog");
+            return Ok(0);
+        }
+    };
+    let now = OffsetDateTime::now_utc().format(&Rfc3339)?;
+    let mut seeded = 0usize;
+    for (storage_key, lookup) in missing {
+        // A model OpenRouter does not list (a provider-native id, an unlisted model)
+        // simply stays unpriced, exactly as at completion time.
+        if let Some(details) = catalog.get(&lookup)
+            && insert_if_changed(db, &storage_key, details, &now).await?
+        {
+            seeded += 1;
+        }
+    }
+    Ok(seeded)
+}
+
+/// Seed the prices of every model a launch binds, keyed by canonical id exactly as the
+/// completion-time observation is. Called at enqueue so the catalog knows a run's
+/// model from the moment the run exists — the console's Models page and the run's own
+/// cost split do not have to wait for the run to finish.
+///
+/// It runs *before* the launch resolves its context window (`resolve_gg_model_facts`),
+/// so a gg run against a never-before-seen model usually finds the window already in
+/// the catalog rather than paying for a second, per-model fetch.
+///
+/// Best-effort: a failure is logged and dropped, never blocking a launch. An unpriced
+/// model costs a cost split, not a run.
+pub async fn seed_launch_prices(
+    db: &Db,
+    prices: &OpenRouterPrices,
+    models: &[(String, HarnessSlug)],
+) {
+    let mut targets: HashMap<String, String> = HashMap::new();
+    for (model_id, harness) in models {
+        let canonical = canonical_model_id(model_id, *harness);
+        if targets.contains_key(&canonical) {
+            continue;
+        }
+        match openrouter_lookup_id(db, model_id, *harness).await {
+            Ok(lookup) => {
+                targets.insert(canonical, lookup);
+            }
+            Err(err) => {
+                tracing::warn!(model_id, error = %err, "could not resolve a launch model's OpenRouter id");
+            }
+        }
+    }
+    match seed_missing_prices(db, prices, targets).await {
+        Ok(seeded) if seeded > 0 => {
+            tracing::info!(seeded, "seeded model prices for a launch");
+        }
+        Ok(_) => {}
+        Err(err) => tracing::warn!(error = %err, "could not seed a launch's model prices"),
+    }
+}
+
+/// Seed a just-configured curated model's prices from its OpenRouter slug, so a model
+/// added or re-pointed in the app shows its prices at once instead of `—` until its
+/// first run completes. Filed under the slug — the key the periodic refresh uses — so
+/// the observation merges with the model's other alias histories at compose time.
+///
+/// Best-effort: a failure is logged and dropped, so saving a model config never fails
+/// on OpenRouter being unreachable.
+pub async fn seed_curated_price(db: &Db, prices: &OpenRouterPrices, openrouter_slug: &str) {
+    let targets = HashMap::from([(openrouter_slug.to_string(), openrouter_slug.to_string())]);
+    match seed_missing_prices(db, prices, targets).await {
+        Ok(seeded) if seeded > 0 => {
+            tracing::info!(slug = openrouter_slug, "seeded prices for a curated model");
+        }
+        Ok(_) => {}
+        Err(err) => {
+            tracing::warn!(slug = openrouter_slug, error = %err, "could not seed a curated model's prices");
+        }
+    }
+}
+
 /// Re-price every known model from a single OpenRouter catalog fetch: each curated
 /// model against its configured slug, and each model a run references against its
 /// canonical lookup id. Appends an observation only where the price changed.
@@ -381,3 +494,7 @@ fn parse_harness(slug: &str) -> HarnessSlug {
     // correct for a gg run rather than defaulting to Claude for an unknown slug.
     HarnessSlug::from_wire(slug).unwrap_or(HarnessSlug::Claude)
 }
+
+#[cfg(test)]
+#[path = "bootstrap.test.rs"]
+mod tests;

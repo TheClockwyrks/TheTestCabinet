@@ -272,6 +272,11 @@ async fn write_config(
         .format(&Rfc3339)
         .map_err(|e| ApiError::internal(format!("formatting timestamp: {e}")))?;
 
+    let openrouter_slug = input
+        .openrouter_slug
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
     state
         .db
         .upsert_model_config(ModelConfigWrite {
@@ -281,19 +286,23 @@ async fn write_config(
             provider_logo_url: input.provider_logo_url.filter(|u| !u.trim().is_empty()),
             provider_logo_svg: logo_svg,
             description_md: input.description.filter(|d| !d.trim().is_empty()),
-            openrouter_slug: input
-                .openrouter_slug
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty()),
+            openrouter_slug: openrouter_slug.clone(),
             aliases,
             now,
         })
         .await
         .map_err(ApiError::from)?;
 
-    // The catalog changed, so the public snapshot must be regenerated. Best-effort
-    // price seeding for a newly-configured openrouter slug happens on the next
-    // run completion or periodic refresh.
+    // Price a newly-configured OpenRouter slug right now, so the model shows its prices
+    // (and its context window) the moment it is saved rather than staying blank until
+    // its first run completes. Best-effort and missing-only: a slug already on record
+    // costs nothing and keeps its history.
+    if let Some(slug) = &openrouter_slug {
+        crate::bootstrap::seed_curated_price(&state.db, &state.prices, slug).await;
+    }
+
+    // The catalog changed, so the public snapshot must be regenerated — after the
+    // seeding above, so the snapshot carries the price too.
     state.publisher.queue_refresh();
 
     // Re-compose just this model for the response.

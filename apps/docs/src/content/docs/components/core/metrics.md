@@ -76,7 +76,10 @@ backend records a model's price **when a run completes** — capturing the rate 
 effect at that moment, so a promotional price such as a launch-week discount is
 reflected in the runs that ran under it — and again on a **24-hour periodic
 refresh**, appending a new observation to the model's price history only when the
-price changed. The history is retained per model and shown on the model's detail
+price changed. A model with no price on record yet is seeded the first time it is
+seen at all — when it is curated in the app, and when a run binding it is enqueued
+— so a cost split is available while the run is still going rather than only after
+it ends. The history is retained per model and shown on the model's detail
 page. A run whose model id carries a `:free`-style OpenRouter variant tag is
 priced at the model's **base rate**, never `$0`: the free tag is a routing hint,
 not a genuinely free run.

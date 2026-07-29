@@ -112,6 +112,11 @@ single committed number:
 
 - The **backend** fetches a model's current OpenRouter price **when a run
   completes**, and again on a **24-hour periodic refresh**.
+- It also records a **first** observation the moment a model first appears — when
+  you save it here with an OpenRouter slug, and when a run that binds it is
+  enqueued — so a model shows real figures straight away instead of `—` until its
+  first run finishes. That seeding is *missing-only*: a model already on record is
+  left to the two paths above, and nothing is fetched when everything is priced.
 - An observation is appended **only when something changed** — the price, or one of
   the catalog facts riding along on it (see below) — so the table doesn't grow on
   every identical fetch. The graph and table collapse consecutive-equal prices, so an
@@ -133,9 +138,11 @@ set binds and **pushes** the figures onto the launch, so gg keeps no model table
 its own and never queries for one from inside the run container.
 
 A model with no observation yet — the first gg run against a just-released model — is
-fetched from OpenRouter right there at enqueue, for that one model rather than the
-whole catalog. If neither the catalog nor that lookup can answer, **the launch is
-rejected**: gg assumes no default window, because a run measured against a guessed
+seeded at enqueue by the launch-time price fetch above, which records the window on
+the same observation. Should that not answer (a model OpenRouter does not list, an
+unreachable catalog), the launch falls back to a per-model lookup for that one model
+rather than the whole catalog. If neither the catalog nor that lookup can answer,
+**the launch is rejected**: gg assumes no default window, because a run measured against a guessed
 one looks healthy and reports the wrong thing. See
 [A run with no window does not start](/gg/context-visibility/#a-run-with-no-window-does-not-start).
 

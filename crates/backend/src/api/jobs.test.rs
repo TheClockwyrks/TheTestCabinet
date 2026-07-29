@@ -58,3 +58,64 @@ fn terminal_run_state_falls_back_when_no_record() {
         RunState::Infrastructure
     );
 }
+
+// --- The models a launch asks the catalog about -----------------------------
+
+#[test]
+fn launch_models_covers_the_run_model_and_every_bound_agent_model() {
+    // A gg run's catalog set is the run's own model plus each model its capability
+    // set binds to an agent, de-duplicated — so a subagent on a different model is
+    // priced (and window-resolved) too, and a shared model is asked about once.
+    let mut set = test_cabinet_core::gg::GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
+    set.agents.push(test_cabinet_core::gg::GgAgentConfig {
+        name: "subagent".to_string(),
+        model_id: "openai/gpt-5.4-mini".to_string(),
+        ..test_cabinet_core::gg::GgAgentConfig::root()
+    });
+    let body = LaunchBody {
+        test_case: "pong".to_string(),
+        version: "v1.0.0".to_string(),
+        variant: "base".to_string(),
+        harness: HarnessSlug::Gg,
+        model: "anthropic/claude-opus-4.8".to_string(),
+        orchestrator: None,
+        max_runtime_seconds: None,
+        auth_mode: None,
+        retry_count: None,
+        gg_capability_set: Some(set),
+        gg_model_windows: Default::default(),
+        gg_model_modalities: Default::default(),
+    };
+
+    assert_eq!(
+        launch_models(&body),
+        vec![
+            ("anthropic/claude-opus-4.8".to_string(), HarnessSlug::Gg),
+            ("openai/gpt-5.4-mini".to_string(), HarnessSlug::Gg),
+        ]
+    );
+}
+
+#[test]
+fn launch_models_of_a_third_party_harness_run_is_its_one_model() {
+    // No capability set: the run's single model, under the harness that will run it.
+    let body = LaunchBody {
+        test_case: "pong".to_string(),
+        version: "v1.0.0".to_string(),
+        variant: "base".to_string(),
+        harness: HarnessSlug::Claude,
+        model: "claude-opus-4-8".to_string(),
+        orchestrator: None,
+        max_runtime_seconds: None,
+        auth_mode: None,
+        retry_count: None,
+        gg_capability_set: None,
+        gg_model_windows: Default::default(),
+        gg_model_modalities: Default::default(),
+    };
+
+    assert_eq!(
+        launch_models(&body),
+        vec![("claude-opus-4-8".to_string(), HarnessSlug::Claude)]
+    );
+}
