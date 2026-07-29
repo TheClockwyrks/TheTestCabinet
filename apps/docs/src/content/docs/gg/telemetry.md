@@ -41,7 +41,8 @@ through **two** surfaces:
   **caching** (cached vs uncached input) and **reasoning** (reasoning vs non-reasoning
   output) splits shown as rings, an **overview of the agents** that ran, the enforced
   FSM process, and the configuration the run's [independent variable](/gg/overview/)
-  is. The agent overview is more than a count: each agent reads as a row carrying the
+  is, plus the **turns** the session has spent across every agent. The agent overview
+  is more than a count: each agent reads as a row carrying its **own turn count**, the
   **peak** its context window reached, its **share of the run's tokens**, and the
   **tools it used** — and each row is a link into that agent's files in the Agents
   explorer, so the whole-run view and the per-agent one are one click apart.
@@ -70,7 +71,11 @@ through **two** surfaces:
   Prompt file is always there. The **Overview** also carries the agent's own
   **tool-usage breakdown** — the itemized version of the Dashboard row's tool chips:
   every tool it called, how many times, and how much each tool's results added to its
-  window.
+  window — its **working directory** (the isolated
+  [worktree](/gg/project-management/) checkout its tools are rooted at, or the shared
+  workspace), and, while it is blocked, **what it is waiting on**: `blocked` on its
+  own is indistinguishable from stuck, so the wait names its condition (the issue it
+  suspended for, or the subagents it is collecting).
 
 ## Where a turn's time went
 

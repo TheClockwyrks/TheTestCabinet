@@ -37,7 +37,16 @@ fn no_generated_brief_tells_a_code_mode_agent_to_stop() {
     let briefs = [
         (
             "review",
-            build_review_brief("## Issue\nMake it work.", "+ a line", None, true),
+            build_review_brief(
+                "## Issue\nMake it work.",
+                ReviewChanges {
+                    summary: " src/main.rs | 2 +-",
+                    workspace: "/work/.gg-worktrees/issue-1",
+                    baseline: Some(&"0".repeat(40)),
+                },
+                None,
+                true,
+            ),
         ),
         (
             "fix",
@@ -83,4 +92,95 @@ fn no_generated_brief_tells_a_code_mode_agent_to_stop() {
     );
     assert!(tool_calling.contains("then stop"), "{tool_calling}");
     assert!(!tool_calling.contains("finish("), "{tool_calling}");
+}
+
+/// **A reviewer is sent to the code, not handed it.**
+///
+/// The brief carries the per-file *summary* of the change and the worktree the reviewer is rooted
+/// at; it must not carry the patch. A full diff of a real issue drags in every generated file the
+/// work touched — a regenerated lockfile alone can dwarf the code under review — and the reviewer
+/// can read any of it for itself, since its tools run in that very tree.
+#[test]
+fn the_review_brief_points_at_the_worktree_instead_of_pasting_the_diff() {
+    let baseline = "0".repeat(40);
+    let brief = build_review_brief(
+        "## Issue\nMake it work.",
+        ReviewChanges {
+            summary: " src/main.rs      |  12 ++++--\n package-lock.json | 900 ++++++++",
+            workspace: "/work/.gg-worktrees/issue-1",
+            baseline: Some(&baseline),
+        },
+        None,
+        false,
+    );
+
+    // The map of what changed, and where to go read it.
+    assert!(brief.contains("src/main.rs"), "{brief}");
+    assert!(brief.contains("/work/.gg-worktrees/issue-1"), "{brief}");
+    assert!(brief.contains(&format!("git diff {baseline}")), "{brief}");
+    // …but no patch: nothing tells the reviewer it was given one, and no diff fence is opened.
+    assert!(!brief.contains("```diff"), "{brief}");
+    assert!(
+        !brief.to_ascii_lowercase().contains("the diff below"),
+        "{brief}"
+    );
+
+    // With no baseline (a run without git isolation) the reviewer still knows where it is working,
+    // and is never told to diff against a commit that does not exist.
+    let no_baseline = build_review_brief(
+        "## Issue\nMake it work.",
+        ReviewChanges {
+            summary: "",
+            workspace: "/work",
+            baseline: None,
+        },
+        None,
+        false,
+    );
+    assert!(no_baseline.contains("/work"), "{no_baseline}");
+    assert!(!no_baseline.contains("git diff"), "{no_baseline}");
+    assert!(
+        no_baseline.contains("No changes were detected"),
+        "{no_baseline}"
+    );
+}
+
+/// **A blocked agent says what it is blocked on.**
+///
+/// `blocked` on its own is indistinguishable from stuck, so every wait names its condition: the
+/// issue being awaited, or the subagents being collected (summarized past the first few, since a
+/// wall of ids on a status line is no more legible than a count).
+#[test]
+fn a_wait_condition_names_what_is_being_waited_for() {
+    match agent_blocked_on("issue `AUTH-1.0`") {
+        GgTelemetryKind::AgentStatus { status, waiting_on } => {
+            assert_eq!(status, GgAgentStatus::Blocked);
+            assert_eq!(waiting_on.as_deref(), Some("issue `AUTH-1.0`"));
+        }
+        other => panic!("expected an agent status event, got {other:?}"),
+    }
+    // A non-blocking transition carries no condition — there is nothing to wait for.
+    match agent_status(GgAgentStatus::Running) {
+        GgTelemetryKind::AgentStatus { waiting_on, .. } => assert!(waiting_on.is_none()),
+        other => panic!("expected an agent status event, got {other:?}"),
+    }
+
+    assert_eq!(
+        waited_subagents_condition(&["sub-1".to_string()]),
+        "subagent `sub-1`"
+    );
+    assert_eq!(
+        waited_subagents_condition(&["sub-1".to_string(), "sub-2".to_string()]),
+        "subagents `sub-1`, `sub-2`"
+    );
+    assert_eq!(
+        waited_subagents_condition(&[
+            "sub-1".to_string(),
+            "sub-2".to_string(),
+            "sub-3".to_string(),
+            "sub-4".to_string(),
+            "sub-5".to_string(),
+        ]),
+        "subagents `sub-1`, `sub-2`, `sub-3` +2 more"
+    );
 }

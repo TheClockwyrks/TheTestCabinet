@@ -1492,6 +1492,44 @@ $context-palette: (
   }
 }
 
+// The caption on the identity card's labeled lines (waiting on / cwd) — the same
+// small, uppercase key the return line uses, so the card reads as one set of fields.
+.agentFieldLabel {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.68rem;
+  color: t.$color-text-muted;
+  margin-right: t.$space-xs;
+}
+
+// What a blocked agent is waiting on. Takes the warm "waiting" cue the status pill
+// does, so the condition reads as part of that state rather than as another note.
+.agentWaiting {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-accent-2;
+  word-break: break-word;
+}
+
+// The directory the agent's tools are rooted at. Monospace and truncated to one line
+// (full path on hover) — a deep worktree path would otherwise wrap the card.
+.agentCwd {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.agentCwdPath {
+  font-family: monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
 // The brief the subagent was dispatched with, truncated to one line (full text on
 // hover) so a long brief never blows out the row.
 .agentBrief {

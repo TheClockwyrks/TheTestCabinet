@@ -124,8 +124,16 @@ export interface AgentNode {
   // The isolated git worktree branch the agent runs in, when it was dispatched with
   // one; absent for an agent running in the shared main tree.
   worktree?: string;
+  // The directory the agent's file and shell tools are rooted at — its worktree
+  // checkout when it has one, else the shared workspace. Absent on a stream recorded
+  // before gg reported it.
+  cwd?: string;
   // The agent's latest lifecycle status.
   status: GgAgentStatus;
+  // What the agent is waiting on while `status` is "blocked" (the issue or the
+  // subagents it suspended for). Cleared the moment it runs again, so it is only ever
+  // set on an agent that is actually waiting.
+  waitingOn?: string;
   // The value the agent returned to its parent, once it returned.
   returnSummary?: string;
   // How the agent's worktree reconciled, once it did: merged back cleanly,
@@ -1172,6 +1180,7 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
         node.depth = gg.depth;
         if (gg.brief != null) node.brief = gg.brief;
         if (gg.worktree != null) node.worktree = gg.worktree;
+        if (gg.cwd != null) node.cwd = gg.cwd;
         break;
       }
       case "agent_status": {
@@ -1180,6 +1189,11 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
           event.event.parentAgentId,
         );
         node.status = gg.status;
+        // The wait condition belongs to the block that carries it: an agent that is
+        // running (or done) is waiting for nothing, so resuming clears it rather than
+        // leaving a stale "waiting on issue X" beside a live agent.
+        if (gg.status === "blocked") node.waitingOn = gg.waitingOn;
+        else delete node.waitingOn;
         break;
       }
       case "agent_returned": {
@@ -1188,8 +1202,10 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
           event.event.parentAgentId,
         );
         node.returnSummary = gg.summary;
-        // A return implies the agent's loop ended normally.
+        // A return implies the agent's loop ended normally — and an agent that has
+        // returned is waiting for nothing.
         node.status = "done";
+        delete node.waitingOn;
         break;
       }
       case "worktree_merged": {

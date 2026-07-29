@@ -18,6 +18,10 @@ import { SlotUsagePanel } from "./AgentTreeView";
 import { useGgExplorerNav } from "./GgExplorerNav";
 import styles from "./GgDashboard.module.scss";
 
+// Grouped digits for the whole-run counts the Dashboard states as bare figures (the
+// turn count), so a long run reads as "1,204" rather than "1204".
+const numberFmt = new Intl.NumberFormat("en-US");
+
 // The run's lifecycle read-out, as the host page knows it. Only the live monitor
 // has one: on a finished run's gg tab the run's own header already carries its
 // state, so that host omits the card rather than restating it.
@@ -96,10 +100,21 @@ export function GgDashboard({
     soleModelId(capabilitySet),
   );
 
+  // The run's total turns across every agent — one per `turn_started`, summed over the
+  // per-agent partitions (each turn is stamped with exactly one agent, so the sum is
+  // the whole-run count). A session-level figure, so it reads at the top of the
+  // Dashboard beside the status rather than inside the agents card.
+  const totalTurns = useMemo(
+    () =>
+      [...perAgent.values()].reduce((sum, state) => sum + state.turnCount, 0),
+    [perAgent],
+  );
+
   return (
     <div className={styles.dashboard}>
       <div className={styles.cards}>
         {status && <StatusCard status={status} />}
+        <TurnsCard turns={totalTurns} agents={perAgent.size} />
 
         <TokensWidget usage={usage} className={styles.cardWide} />
         <CostWidget
@@ -150,6 +165,8 @@ interface AgentOverviewRowData {
   depth: number;
   status: GgAgentStatus;
   slot: string | null;
+  /** How many turns this agent took — its own partition of the run's total. */
+  turns: number;
   peakTokens: number;
   peakFullness: number | null;
   tokenShare: number;
@@ -189,6 +206,7 @@ function buildAgentRows(
       depth,
       status: node.status,
       slot: node.slot,
+      turns: st?.turnCount ?? 0,
       peakTokens: peak?.tokens ?? 0,
       peakFullness: peak?.fullness ?? null,
       tokenShare: runTokens > 0 ? tokens / runTokens : 0,
@@ -214,31 +232,13 @@ function AgentsCard({
     () => buildAgentRows(agentForest, perAgent),
     [agentForest, perAgent],
   );
-  // The run's total turns across every agent — one per `turn_started`, summed over
-  // the per-agent partitions (each turn is stamped with exactly one agent, so the
-  // sum is the whole-run count). Reads here beside the agent overview because it is a
-  // fact about the agents taken together.
-  const totalTurns = useMemo(
-    () =>
-      [...perAgent.values()].reduce((sum, state) => sum + state.turnCount, 0),
-    [perAgent],
-  );
 
   return (
     <div className={`${styles.card} ${styles.cardFull}`}>
-      <span className={styles.cardLabel}>
-        Agents · {rows.length}
-        <span className={styles.agentsTurns}>
-          {" · "}
-          {totalTurns} turn{totalTurns === 1 ? "" : "s"} total
-        </span>
-        {nav && rows.length > 1 && (
-          <span className={styles.agentsHint}>
-            {" "}
-            — select one to open its files
-          </span>
-        )}
-      </span>
+      {/* Just the count: the run's total turns read on the Turns card at the top of
+          the Dashboard (a session fact, not an agent one), and the rows are visibly
+          clickable, so neither needs a caption here. */}
+      <span className={styles.cardLabel}>Agents · {rows.length}</span>
       <ul className={styles.agentOverview}>
         {rows.map((row) => (
           <AgentOverviewRow
@@ -278,8 +278,18 @@ function AgentOverviewRow({
           data-status={row.status}
           aria-hidden="true"
         />
-        <span className={styles.agentName}>{row.label}</span>
-        {row.slot && <span className={styles.agentSlot}>{row.slot}</span>}
+        {/* The agent's name over its own turn count: how much of the session this
+            agent spent is a per-agent fact, so it hangs under the name it belongs to
+            rather than being summed away into one figure. */}
+        <span className={styles.agentIdentityText}>
+          <span className={styles.agentNameLine}>
+            <span className={styles.agentName}>{row.label}</span>
+            {row.slot && <span className={styles.agentSlot}>{row.slot}</span>}
+          </span>
+          <span className={styles.agentTurns}>
+            {row.turns} turn{row.turns === 1 ? "" : "s"}
+          </span>
+        </span>
       </span>
 
       <span className={styles.agentMetric}>
@@ -352,6 +362,23 @@ function AgentOverviewRow({
   );
 }
 
+// The session's turn count: how many model request/response cycles the run has spent,
+// across every agent. It pairs on the top row with the status — the two facts that
+// answer "where is this run at" — so the status card gives up the full width it used
+// to take and the pair fills the row between them.
+function TurnsCard({ turns, agents }: { turns: number; agents: number }) {
+  return (
+    <div className={`${styles.card} ${styles.cardHalf}`}>
+      <span className={styles.cardLabel}>Turns</span>
+      <span className={styles.metricValue}>{numberFmt.format(turns)}</span>
+      <span className={styles.metricUnit}>
+        {turns === 1 ? "turn" : "turns"} across {agents}{" "}
+        {agents === 1 ? "agent" : "agents"}
+      </span>
+    </div>
+  );
+}
+
 function StatusCard({ status }: { status: GgDashboardStatus }) {
   const toneClass =
     status.tone === "ok"
@@ -360,7 +387,8 @@ function StatusCard({ status }: { status: GgDashboardStatus }) {
         ? styles.pillFail
         : styles.pillLive;
   return (
-    <div className={`${styles.card} ${styles.cardFull}`}>
+    // Seven of the twelve columns, not the full row: the turn count sits beside it.
+    <div className={`${styles.card} ${styles.cardWide}`}>
       <span className={styles.cardLabel}>Status</span>
       <div className={styles.statusLine}>
         <span className={`${styles.pill} ${toneClass}`}>{status.label}</span>

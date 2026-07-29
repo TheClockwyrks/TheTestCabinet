@@ -3558,6 +3558,14 @@ pub enum GgTelemetryKind {
         /// [`WorktreeMerged`](Self::WorktreeMerged).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         worktree: Option<String>,
+        /// The **working directory** this agent's file and shell tools are rooted at — the
+        /// directory a command it runs without an explicit path executes in. It is the checkout of
+        /// the agent's isolated [worktree](Self::AgentSpawned::worktree) when it was dispatched into
+        /// one, and the shared workspace otherwise, so the two together say both *which branch* an
+        /// agent works on and *where on disk* that is. Unset only on a stream recorded before gg
+        /// reported it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cwd: Option<String>,
     },
     /// A per-[slot](GgSlotBinding) usage/cost rollup for the run so far — the accounting that
     /// replaces "one figure for one model" now that a run spans several models.
@@ -3599,6 +3607,15 @@ pub enum GgTelemetryKind {
     AgentStatus {
         /// The agent's new lifecycle status.
         status: GgAgentStatus,
+        /// What the agent is **waiting on**, on a [`Blocked`](GgAgentStatus::Blocked) transition:
+        /// the condition that has to be met before the scheduler grants it a slot again — for
+        /// example `issue AUTH-1.0` for a [`wait_for_issue`](CAPABILITY_PROJECT_MANAGEMENT), or the
+        /// subagents a [`wait_for_subagents`](CAPABILITY_SUBAGENTS) is collecting. A blocked agent
+        /// is otherwise indistinguishable from a stuck one, so the console shows this beside the
+        /// status. Absent on every non-blocking transition (and on a blocked one recorded before gg
+        /// reported the condition).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        waiting_on: Option<String>,
     },
     /// A subagent [returned](https://docs.testcabinet.ai/gg/subagents/) to the agent that
     /// spawned it — the event that closes a node of the agent tree and carries the child's

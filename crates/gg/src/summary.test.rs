@@ -125,6 +125,7 @@ fn records_the_effective_toolset_verbatim() {
         depth: 0,
         brief: None,
         worktree: None,
+        cwd: None,
     });
     tracker.record_effective_tools(vec![
         "shell".to_string(),
@@ -157,6 +158,7 @@ fn counts_agents_and_max_depth() {
             depth,
             brief: None,
             worktree: None,
+            cwd: None,
         });
     }
     let summary = tracker.finalize("completed");
@@ -471,6 +473,7 @@ fn a_tool_calling_run_reports_a_zeroed_healing_rollup() {
         depth: 0,
         brief: None,
         worktree: None,
+        cwd: None,
     });
     tracker.observe(&GgTelemetryKind::AssistantMessage {
         text: "calling a tool".to_string(),

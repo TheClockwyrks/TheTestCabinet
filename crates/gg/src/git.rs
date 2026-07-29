@@ -12,7 +12,8 @@
 //! - [`add_worktree`] creates a fresh worktree on a new branch (an isolated copy the agents working
 //!   that issue — or that speculation attempt — mutate on their own);
 //! - [`commit_worktree`] stages and commits whatever an agent produced onto its branch;
-//! - [`diff_since`] renders the work a reviewer (or a judge) is shown;
+//! - [`diff_since`] renders the full patch a speculation's judge scores, and [`diff_stat_since`] the
+//!   per-file summary a reviewer is pointed at its own worktree with;
 //! - [`merge_branch`] merges that branch back into the main tree, either **aborting** a conflict
 //!   (the speculation path, where a losing attempt is simply dropped) or **leaving it in the tree**
 //!   for the [merge agent](test_cabinet_core::gg::PROJECT_MANAGEMENT_PARAM_MERGE_AGENT) to resolve
@@ -169,8 +170,8 @@ pub fn head_commit(dir: &Path) -> Result<String, GitError> {
     run_git(dir, "git rev-parse HEAD", &["rev-parse", "HEAD"])
 }
 
-/// The full textual diff of the working tree at `dir` against commit `base` — what an issue's
-/// review hands its reviewers, and what a speculation's judge scores.
+/// The full textual diff of the working tree at `dir` against commit `base` — what a
+/// [speculation](https://docs.testcabinet.ai/gg/speculative-execution/)'s judge scores.
 ///
 /// Includes new, modified, and deleted files (not just tracked modifications): everything is
 /// staged (`git add -A`) so the `--cached` diff against `base` covers untracked additions too, then
@@ -185,6 +186,29 @@ pub fn diff_since(dir: &Path, base: &str) -> Result<String, GitError> {
     // the diff we already captured.
     let _ = run_git(dir, "git reset", &["reset", "-q"]);
     Ok(diff)
+}
+
+/// The **per-file summary** of the working tree at `dir` against commit `base` — one line per
+/// changed path with its added/removed line counts (`git diff --stat`) — which is what an issue's
+/// [review](https://docs.testcabinet.ai/gg/project-management/) hands its reviewers.
+///
+/// A reviewer works *in* the tree it is reviewing, so it can read any file and (given a shell) run
+/// `git diff` for itself; what it cannot get on its own is the **map** of what this issue touched.
+/// Handing it that map instead of the whole patch is the difference between a prompt that costs a
+/// few hundred tokens and one that carries every generated lockfile line in the diff — and the patch
+/// crowded out the reviewer's own reading of the code besides.
+///
+/// Staged and restored exactly like [`diff_since`] (so untracked additions count), and serialized by
+/// the caller on the same git lock.
+pub fn diff_stat_since(dir: &Path, base: &str) -> Result<String, GitError> {
+    run_git(dir, "git add", &["add", "-A"])?;
+    let stat = run_git(
+        dir,
+        "git diff --cached --stat",
+        &["diff", "--cached", "--stat", base],
+    )?;
+    let _ = run_git(dir, "git reset", &["reset", "-q"]);
+    Ok(stat)
 }
 
 /// Create a fresh worktree at `worktree_path` on a new `branch` based at commit `base`, from the

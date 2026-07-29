@@ -140,16 +140,26 @@ to write code is not automatically trusted to review it.
 An agent finishing is the **claim** that the work is done, not the acceptance. gg
 moves the issue to **in_review**, and then:
 
-1. runs the issue's reviewers **in turn** against the diff of its worktree, each one
-   shown the issue's brief, the diff, and **every verdict rendered so far** — so a
-   re-review can tell whether its own earlier items were addressed, and a later
-   reviewer knows what an earlier one already asked for;
+1. runs the issue's reviewers **in turn** *inside the issue's own worktree*, each one
+   shown the issue's brief, a **per-file summary of what changed** against the
+   baseline, and **every verdict rendered so far** — so a re-review can tell whether
+   its own earlier items were addressed, and a later reviewer knows what an earlier
+   one already asked for;
 2. on **changes requested**, re-invokes the issue's **own assigned agent** with the
    original brief plus the reviewer's actionable items, in the same worktree, and
    reviews again once it finishes. The first reviewer that does not approve ends the
    round, so a second opinion is never spent on work already known to need changes;
 3. on **approval by every reviewer**, merges the worktree back and marks the issue
    **done**.
+
+A reviewer is **not handed the patch**. Its working directory *is* the worktree the
+work was done in — its filesystem tools and its shell are rooted there — so it reads
+the files it cares about at the depth it needs, and (given a shell) can run
+`git diff <baseline>` for the change itself. Pasting the whole diff into the brief
+instead made every review prompt carry every generated file the work touched — a
+regenerated lockfile alone can dwarf the code under review — spending the reviewer's
+window on text it did not ask for and burying what mattered. What it gets is the
+**map**: which files changed and by how much.
 
 There is deliberately **no cycle limit** — a review that keeps finding real problems
 should keep finding them — and a review round does **not** burn the issue's retry

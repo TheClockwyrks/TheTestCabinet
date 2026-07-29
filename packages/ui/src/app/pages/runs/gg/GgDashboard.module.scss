@@ -449,18 +449,6 @@
 // each carrying its peak context, its share of the run's tokens, and the tools it
 // used, and — where the panels wire it — clickable to open that agent's files.
 
-.agentsHint {
-  text-transform: none;
-  letter-spacing: 0;
-  color: t.$color-text-muted;
-}
-
-// The run's total turns across every agent, beside the agent count on the card label.
-.agentsTurns {
-  color: t.$color-text-muted;
-  font-variant-numeric: tabular-nums;
-}
-
 .agentOverview {
   list-style: none;
   margin: 0;
@@ -516,6 +504,29 @@
   align-items: center;
   gap: t.$space-xs;
   min-width: 0;
+}
+
+// The identity's text half: the name line over the agent's own turn count, so the
+// status dot stays centered against the pair rather than against a single line.
+.agentIdentityText {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  min-width: 0;
+}
+
+.agentNameLine {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-xs;
+  min-width: 0;
+}
+
+// The agent's own turn count, under its name.
+.agentTurns {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
 }
 
 // A status dot keyed to the agent's lifecycle, the same palette as the explorer's

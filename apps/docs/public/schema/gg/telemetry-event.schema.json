@@ -1332,6 +1332,10 @@
           "description": "The task/issue brief the agent was dispatched with, when it is a subagent spawned to\ndo a scoped piece of work. Absent for the root agent, which is driven by the run's\nbuild prompt rather than a delegated brief.",
           "type": ["string", "null"]
         },
+        "cwd": {
+          "description": "The **working directory** this agent's file and shell tools are rooted at — the\ndirectory a command it runs without an explicit path executes in. It is the checkout of\nthe agent's isolated [worktree](Self::AgentSpawned::worktree) when it was dispatched into\none, and the shared workspace otherwise, so the two together say both *which branch* an\nagent works on and *where on disk* that is. Unset only on a stream recorded before gg\nreported it.",
+          "type": ["string", "null"]
+        },
         "depth": {
           "description": "The agent's depth in the [subagent tree](https://docs.testcabinet.ai/gg/subagents/):\n`0` for the root, `parent.depth + 1` for a spawned child. A spawn that would exceed\nthe configured maximum depth is refused (Phase 4B).",
           "format": "uint64",
@@ -1402,6 +1406,10 @@
         "type": {
           "const": "agent_status",
           "type": "string"
+        },
+        "waitingOn": {
+          "description": "What the agent is **waiting on**, on a [`Blocked`](GgAgentStatus::Blocked) transition:\nthe condition that has to be met before the scheduler grants it a slot again — for\nexample `issue AUTH-1.0` for a [`wait_for_issue`](CAPABILITY_PROJECT_MANAGEMENT), or the\nsubagents a [`wait_for_subagents`](CAPABILITY_SUBAGENTS) is collecting. A blocked agent\nis otherwise indistinguishable from a stuck one, so the console shows this beside the\nstatus. Absent on every non-blocking transition (and on a blocked one recorded before gg\nreported the condition).",
+          "type": ["string", "null"]
         }
       },
       "required": ["type", "status"],

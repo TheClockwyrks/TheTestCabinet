@@ -111,9 +111,10 @@ function slotTokenTotal(usage: SlotUsage): number {
 }
 
 // An agent's identity card, shown on its Overview file in the Agents explorer: its
-// status + id, its depth/turns, its agent name + model, the brief it was dispatched
-// with, a worktree indicator when it ran in an isolated worktree, and its return
-// summary once it returned. Running / waiting / done / failed are the glanceable
+// status + id, its depth/turns, its agent name + model, what it is waiting on while
+// it is blocked, the working directory its tools are rooted at, the brief it was
+// dispatched with, a worktree indicator when it ran in an isolated worktree, and its
+// return summary once it returned. Running / waiting / done / failed are the glanceable
 // states, so the status pill leads the top row beside the agent's instance id; the
 // agent's name and the model it ran on read on their own line beneath, so who the
 // agent is and what it ran on is a distinct pair from its lifecycle. `role` marks the
@@ -200,6 +201,24 @@ export function AgentIdentity({
             </>
           )}
         </div>
+      )}
+      {/* What the agent is blocked on, while it is blocked. "waiting" alone reads the
+          same as stuck; the condition is what says the run is making progress
+          elsewhere and this agent is parked on it. */}
+      {node.status === "blocked" && node.waitingOn && (
+        <p className={styles.agentWaiting}>
+          <span className={styles.agentFieldLabel}>waiting on</span>
+          {node.waitingOn}
+        </p>
+      )}
+      {/* Where the agent's tools are rooted — the directory a command it runs without
+          a path executes in. On a worktree-isolated agent this is its private
+          checkout, so it says on disk what the branch chip says in git. */}
+      {node.cwd && (
+        <p className={styles.agentCwd} title={node.cwd}>
+          <span className={styles.agentFieldLabel}>cwd</span>
+          <span className={styles.agentCwdPath}>{node.cwd}</span>
+        </p>
       )}
       {node.brief && (
         <p className={styles.agentBrief} title={node.brief}>

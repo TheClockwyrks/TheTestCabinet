@@ -774,6 +774,82 @@ describe("GgRunMonitorPage", () => {
     expect(screen.getAllByText("Add the widget").length).toBeGreaterThan(0);
   });
 
+  it("counts the session's turns beside the status, and each agent's own beneath its name", () => {
+    // Two agents take three turns between them: the root twice, its child once.
+    renderMonitor([
+      sessionStarted(),
+      gg({ type: "turn_started" }),
+      ggFrom("agent-0", "root", {
+        type: "agent_spawned",
+        slot: "builder",
+        modelId: "mock/scripted-builder",
+        depth: 1,
+        brief: "Build the overlay.",
+      }),
+      ggFrom("agent-0", "root", { type: "turn_started" }),
+      gg({ type: "turn_started" }),
+    ]);
+    // The session's total is its own card at the top of the Dashboard — a run-level
+    // fact, stated beside the status rather than tucked into the agents card.
+    expect(screen.getByText("Turns")).toBeInTheDocument();
+    expect(screen.getByText("3")).toBeInTheDocument();
+    expect(screen.getByText("turns across 2 agents")).toBeInTheDocument();
+    // …and the agents card carries only the count, with each agent's own turns under
+    // its name instead of one summed figure.
+    expect(screen.getByText("Agents · 2")).toBeInTheDocument();
+    expect(screen.queryByText(/turns total/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/select one to open/)).not.toBeInTheDocument();
+    expect(screen.getByText("2 turns")).toBeInTheDocument();
+    expect(screen.getByText("1 turn")).toBeInTheDocument();
+  });
+
+  it("shows an agent's working directory and what it is waiting on", () => {
+    // The root dispatches an issue agent into a worktree and suspends on that issue;
+    // the child works in the worktree checkout, not the shared workspace.
+    renderMonitor([
+      sessionStarted(),
+      gg({
+        type: "agent_spawned",
+        slot: "Root",
+        modelId: "mock/scripted-builder",
+        depth: 0,
+        cwd: "/work/game",
+      }),
+      ggFrom("agent-0", "root", {
+        type: "agent_spawned",
+        slot: "Coder",
+        modelId: "mock/scripted-builder",
+        depth: 1,
+        brief: "Implement the widget.",
+        worktree: "gg/issue-1",
+        cwd: "/work/game.gg-worktrees/issue-1",
+      }),
+      ggFrom("root", undefined, {
+        type: "agent_status",
+        status: "blocked",
+        waitingOn: "issue `WIDGET-1.0`",
+      }),
+    ]);
+
+    openTab("Agents");
+    // The root's Overview (the default) says it is waiting, *what* on, and where it
+    // is rooted — "waiting" alone reads the same as stuck.
+    expect(screen.getByText("waiting")).toBeInTheDocument();
+    expect(screen.getByText("waiting on")).toBeInTheDocument();
+    expect(screen.getByText("issue `WIDGET-1.0`")).toBeInTheDocument();
+    expect(screen.getByText("/work/game")).toBeInTheDocument();
+
+    // The dispatched agent's directory is its worktree checkout: the branch chip says
+    // which branch, the cwd says where on disk that is.
+    openFile("agent-0 overview");
+    expect(screen.getByText(/gg\/issue-1/)).toBeInTheDocument();
+    expect(
+      screen.getByText("/work/game.gg-worktrees/issue-1"),
+    ).toBeInTheDocument();
+    // A running agent is waiting for nothing, so it carries no condition.
+    expect(screen.queryByText("waiting on")).not.toBeInTheDocument();
+  });
+
   it("nests subagents as folders under their spawner, each read on its own file", () => {
     // The root spawns a reviewer (isolated worktree; runs, returns, merges → done)
     // and a builder (main tree; still running); the root is blocked waiting on them.

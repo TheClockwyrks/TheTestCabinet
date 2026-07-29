@@ -1382,18 +1382,23 @@ impl Orchestrator {
             .collect()
     }
 
-    /// The textual diff of `issue_id`'s work against its [review baseline](Self::issue_baseline) —
-    /// what its reviewers are shown. Read from the issue's own worktree (or the shared workspace
-    /// when it has none). Empty when no baseline exists, and empty when the git diff itself fails,
-    /// which keeps a review resilient rather than aborting it. Serialized on the shared
-    /// [git lock](Self::git_lock) since it stages the index transiently.
-    fn review_diff(&self, issue_id: &str) -> String {
+    /// The **per-file summary** of `issue_id`'s work against its [review baseline](Self::issue_baseline)
+    /// — the map of what changed that its reviewers are shown. Read from the issue's own worktree
+    /// (or the shared workspace when it has none). Empty when no baseline exists, and empty when the
+    /// git call itself fails, which keeps a review resilient rather than aborting it. Serialized on
+    /// the shared [git lock](Self::git_lock) since it stages the index transiently.
+    ///
+    /// A reviewer is dispatched **into the worktree it is reviewing**, so it reads the code itself
+    /// rather than being handed a patch of it: a full diff of a real change carries every generated
+    /// file it touched (lockfiles above all), which bloats the prompt without telling the reviewer
+    /// anything it could not read for itself.
+    fn review_changes(&self, issue_id: &str) -> String {
         let Some(baseline) = self.issue_baseline(issue_id) else {
             return String::new();
         };
         let dir = self.issue_workspace(issue_id);
         let _guard = self.git_lock.lock().expect("git lock");
-        git::diff_since(&dir, &baseline).unwrap_or_default()
+        git::diff_stat_since(&dir, &baseline).unwrap_or_default()
     }
 
     /// Append `record` to the [review history](Self::issue_reviews) of `issue_id`.
@@ -1746,7 +1751,7 @@ async fn wait_for_issue_by_id(
         IssueWaitOutcome::AlreadyTerminal => {}
         IssueWaitOutcome::Blocked(rx) => {
             if project.orch.multi_agent() {
-                emitter.emit(agent_status(GgAgentStatus::Blocked));
+                emitter.emit(agent_blocked_on(format!("issue `{issue_id}`")));
             }
             // The sender is held by the scheduler until this agent is granted a slot after its
             // issue goes terminal; a dropped sender (impossible here) would also end the wait.
@@ -1979,12 +1984,21 @@ async fn run_agent(
         AgentRole::Root => None,
     };
     let worktree_branch = worktree.as_ref().map(|wt| wt.branch.clone());
+    // Where this agent's file and shell tools are rooted: its worktree checkout when it has one,
+    // else the shared workspace. Resolved here (rather than beside the tool context below) because
+    // it is part of the agent's announced identity — a run with worktrees has agents working in
+    // *different* directories, and which one an agent is in is not otherwise observable.
+    let workspace_dir = match &worktree {
+        Some(wt) => wt.path.clone(),
+        None => orch.workspace_dir.clone(),
+    };
     emitter.emit(GgTelemetryKind::AgentSpawned {
         slot: agent.slot.clone(),
         model_id: model_id.clone(),
         depth: agent.depth as u64,
         brief,
         worktree: worktree_branch,
+        cwd: Some(workspace_dir.display().to_string()),
     });
     // The running transition is only meaningful (and only emitted) when the run is multi-agent
     // (delegation, or project-management auto-dispatch) — it is what animates the live tree.
@@ -2030,14 +2044,12 @@ async fn run_agent(
         .with_board(&board_store)
         .with_archive(&archive_store);
     let registry = ToolRegistry::from_run(&profile, &runtimes);
-    // Root the agent's file/shell tools in its isolated worktree when it has one, so every
-    // mutation lands in the private copy rather than the shared main tree; otherwise root them in
-    // the shared workspace (the default). This is the whole of the worktree isolation at the tool
-    // layer — the loop is otherwise identical.
-    let workspace_dir = match &worktree {
-        Some(wt) => wt.path.clone(),
-        None => orch.workspace_dir.clone(),
-    };
+    // The agent's file/shell tools are rooted at the [directory it was announced with](workspace_dir)
+    // — its isolated worktree when it has one, so every mutation (and every command it runs without
+    // an explicit path) lands in the private copy rather than the shared main tree; otherwise the
+    // shared workspace. This is the whole of the worktree isolation at the tool layer — the loop is
+    // otherwise identical.
+    //
     // The tool context carries this agent's model alongside its workspace root, because
     // one tool's answer depends on it: `read_file` attaches a picture only when the model
     // asking can see one. The registry behind it is the run's, not this agent's.
@@ -2492,9 +2504,26 @@ fn announce_fsm(emitter: &Emitter, caps: &GgCapabilitySet, fsm: &FsmRuntime) {
     }
 }
 
-/// An [`AgentStatus`](GgTelemetryKind::AgentStatus) telemetry event for `status`.
+/// An [`AgentStatus`](GgTelemetryKind::AgentStatus) telemetry event for `status`, carrying no wait
+/// condition — every transition that is not a block into a wait.
 fn agent_status(status: GgAgentStatus) -> GgTelemetryKind {
-    GgTelemetryKind::AgentStatus { status }
+    GgTelemetryKind::AgentStatus {
+        status,
+        waiting_on: None,
+    }
+}
+
+/// An [`AgentStatus`](GgTelemetryKind::AgentStatus) telemetry event for an agent suspending itself
+/// on `condition` — the [`Blocked`](GgAgentStatus::Blocked) transition, told with *what* it is
+/// waiting for.
+///
+/// The condition is what makes a blocked agent readable: without it the console can only say an
+/// agent is waiting, which is indistinguishable from an agent that is stuck.
+fn agent_blocked_on(condition: impl Into<String>) -> GgTelemetryKind {
+    GgTelemetryKind::AgentStatus {
+        status: GgAgentStatus::Blocked,
+        waiting_on: Some(condition.into()),
+    }
 }
 
 /// A human-readable provider label for the model the [profile](GgAgentConfig) named `profile` is
@@ -2975,7 +3004,7 @@ async fn await_children(
     // there is nothing to block on.
     let awaited: HashSet<String> = awaited_ids.iter().cloned().collect();
     if let Some(rx) = sub.ctx.wait.begin_wait(&sub.orch.scheduler, &awaited) {
-        emitter.emit(agent_status(GgAgentStatus::Blocked));
+        emitter.emit(agent_blocked_on(waited_subagents_condition(awaited_ids)));
         let _ = rx.await;
         emitter.emit(agent_status(GgAgentStatus::Running));
     }
@@ -2997,6 +3026,22 @@ async fn await_children(
         collected.push((id.clone(), returned));
     }
     collected
+}
+
+/// The [wait condition](agent_blocked_on) for an agent blocking on its subagents: the ids it is
+/// collecting, named. Long fan-outs are summarized after the first few — the point is *what* the
+/// agent is waiting for, and a wall of ids on a status line is no more legible than a count.
+fn waited_subagents_condition(ids: &[String]) -> String {
+    /// How many awaited ids are named before the rest become a "+N more".
+    const NAMED: usize = 3;
+    let named: Vec<String> = ids.iter().take(NAMED).map(|id| format!("`{id}`")).collect();
+    let rest = ids.len().saturating_sub(named.len());
+    let plural = if ids.len() == 1 { "" } else { "s" };
+    if rest == 0 {
+        format!("subagent{plural} {}", named.join(", "))
+    } else {
+        format!("subagent{plural} {} +{rest} more", named.join(", "))
+    }
 }
 
 /// Handle `send_message`: deliver a message to one of this agent's **running** children, which the
@@ -3186,9 +3231,13 @@ async fn run_issue_review(
         baseline.clone(),
     ));
 
-    let diff = orch.review_diff(issue_id);
+    let changes = orch.review_changes(issue_id);
     let history = orch.review_history(issue_id);
     let worktree = orch.issue_worktree(issue_id);
+    // Every reviewer is dispatched into the issue's own worktree, so its tools — and any command it
+    // runs — are rooted at the tree it is reviewing. That is what lets the brief send it to read the
+    // code rather than hand it the patch.
+    let review_dir = orch.issue_workspace(issue_id).display().to_string();
     // Who has approved so far *this round*, in the order they ran: reported on whichever event ends
     // the round, so a verdict is attributable to an agent rather than to "the review".
     let mut approvals: Vec<GgReviewer> = Vec::new();
@@ -3205,7 +3254,11 @@ async fn run_issue_review(
         };
         let review_brief = build_review_brief(
             &brief,
-            &diff,
+            ReviewChanges {
+                summary: &changes,
+                workspace: &review_dir,
+                baseline: baseline.as_deref(),
+            },
             history.as_deref(),
             orch.profile_or_root(&profile)
                 .is_enabled(CAPABILITY_RESPONSES_AS_CODE),
@@ -3543,10 +3596,31 @@ fn run_detached_agent<'a>(
     })
 }
 
+/// What an [issue review](run_issue_review) tells its reviewers about the work: **where** it is and
+/// **what it touched**, rather than the work itself.
+struct ReviewChanges<'a> {
+    /// The per-file summary of the change ([`git diff --stat`](git::diff_stat_since)) — the map of
+    /// what to look at. Empty when nothing changed against the baseline (or no baseline exists).
+    summary: &'a str,
+    /// The directory the reviewer's own tools are rooted at — the issue's worktree checkout — so the
+    /// brief can say plainly that the code is right there and needs no path to reach.
+    workspace: &'a str,
+    /// The commit the work branched from, when there is one: what a reviewer with a shell diffs
+    /// against to see the change itself.
+    baseline: Option<&'a str>,
+}
+
 /// The reviewer's brief for an [issue review](run_issue_review): the issue's own brief (its title,
-/// scope, and completion criteria), any earlier verdicts, the diff to review, and the verdict
-/// protocol the [parser](parse_review_verdict) expects. A missing/empty diff is stated plainly so the
-/// reviewer does not hallucinate changes.
+/// scope, and completion criteria), any earlier verdicts, **where the work is and what it touched**,
+/// and the verdict protocol the [parser](parse_review_verdict) expects. A change set with no files
+/// in it is stated plainly so the reviewer does not hallucinate changes.
+///
+/// The brief carries the change *summary*, not the change. A reviewer is dispatched into the issue's
+/// own worktree — its filesystem tools and its shell are rooted there — so it can read exactly the
+/// files it cares about at exactly the depth it needs. Pasting the whole patch in instead made every
+/// review prompt carry every generated file the work touched (a regenerated lockfile alone can dwarf
+/// the code under review), spending the reviewer's window on text it did not ask for and burying the
+/// change that mattered.
 ///
 /// `code` is whether the reviewer runs in [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) mode, and
 /// it changes the ending clause because under that protocol there is no "final message" to end:
@@ -3554,14 +3628,38 @@ fn run_detached_agent<'a>(
 /// stop with a verdict would never reach `completed`, the round would report it as having ended
 /// without one, and the issue would never be accepted — so the brief has to teach the contract the
 /// reviewer is actually held to.
-fn build_review_brief(issue_brief: &str, diff: &str, history: Option<&str>, code: bool) -> String {
-    let diff_block = if diff.trim().is_empty() {
-        "(No textual diff was available — no changes were detected against the baseline. Review \
-         against the completion criteria and, unless the work was clearly already present, request \
-         the missing work.)"
+fn build_review_brief(
+    issue_brief: &str,
+    changes: ReviewChanges<'_>,
+    history: Option<&str>,
+    code: bool,
+) -> String {
+    let changed_block = if changes.summary.trim().is_empty() {
+        "(No changes were detected against the baseline. Review against the completion criteria \
+         and, unless the work was clearly already present, request the missing work.)"
             .to_string()
     } else {
-        format!("```diff\n{diff}\n```")
+        format!("```\n{}\n```", changes.summary.trim_end())
+    };
+    // How to see the change itself. Every reviewer can read the files; one with a shell can also
+    // diff them against the commit the work branched from, which is the precise answer to "what did
+    // this issue change" — so it is offered when there is a baseline to name.
+    let inspect_block = {
+        let mut block = format!(
+            "\n\nYour working directory **is** the checkout the work was done in (`{}`), so read \
+             the files above directly — no clone, no path prefix, and any command you run already \
+             runs there.",
+            changes.workspace
+        );
+        if let Some(baseline) = changes.baseline {
+            block.push_str(&format!(
+                " If you have a shell, `git diff {baseline} -- <path>` shows exactly what this \
+                 issue changed in a file, and `git diff {baseline}` the change as a whole; prefer \
+                 reading a file over diffing it when you are judging whether the code is *right*, \
+                 not merely what moved."
+            ));
+        }
+        block
     };
     let history_block = match history {
         Some(history) => format!(
@@ -3574,7 +3672,7 @@ fn build_review_brief(issue_brief: &str, diff: &str, history: Option<&str>, code
     // that final text *is* the `finish` summary — so only the instruction changes, never the
     // protocol the verdict is written in.
     let verdict = if code {
-        "Review the diff carefully against the completion criteria and the in/out-of-scope \
+        "Review the work carefully against the completion criteria and the in/out-of-scope \
          boundaries. When you are done, end your session by calling `harness.finish()` from inside a \
          program, passing exactly one verdict as its summary:\n\
          - If the work fully satisfies the completion criteria and stays in scope:\n\
@@ -3584,7 +3682,7 @@ fn build_review_brief(issue_brief: &str, diff: &str, history: Option<&str>, code
          be fixed before the work can be accepted. Be concrete: each item should say what is wrong \
          and what to change."
     } else {
-        "Review the diff carefully against the completion criteria and the in/out-of-scope \
+        "Review the work carefully against the completion criteria and the in/out-of-scope \
          boundaries. When you are done, end your final message with exactly one verdict:\n\
          - If the work fully satisfies the completion criteria and stays in scope, write on its own \
          line:\n`REVIEW: APPROVED`\n\
@@ -3593,12 +3691,13 @@ fn build_review_brief(issue_brief: &str, diff: &str, history: Option<&str>, code
          can be accepted. Be concrete: each item should say what is wrong and what to change."
     };
     format!(
-        "You are **reviewing** the work for an issue. Inspect the changes below against the issue's \
-         requirements and decide whether the work is complete and stays in scope. You are working in \
-         the same workspace the changes were made in, so you may read any file you need.\n\n\
+        "You are **reviewing** the work for an issue. It was done in the very workspace you are \
+         running in, so **review the workspace itself** — open the files that changed and judge the \
+         code as it now stands against the issue's requirements. You are not given the patch: read \
+         what you need, in the order you need it.\n\n\
          {issue_brief}{history_block}\
-         \n\n## Changes to review (diff against the baseline)\n{diff_block}\n\n## Your verdict\n\
-         {verdict}"
+         \n\n## What changed (against the baseline)\n{changed_block}{inspect_block}\n\n\
+         ## Your verdict\n{verdict}"
     )
 }
 

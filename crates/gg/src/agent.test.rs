@@ -3898,18 +3898,20 @@ async fn run_tags_events_as_root_and_emits_agent_spawned_and_slot_usage() {
                 depth,
                 brief,
                 worktree,
+                cwd,
             } => Some((
                 slot.clone(),
                 model_id.clone(),
                 *depth,
                 brief.clone(),
                 worktree.clone(),
+                cwd.clone(),
             )),
             _ => None,
         })
         .collect();
     assert_eq!(spawns.len(), 1, "exactly one AgentSpawned for the root");
-    let (slot, model_id, depth, brief, worktree) = &spawns[0];
+    let (slot, model_id, depth, brief, worktree, cwd) = &spawns[0];
     assert_eq!(slot, ROOT_AGENT);
     assert_eq!(model_id, "mock/echo");
     assert_eq!(*depth, 0);
@@ -3917,6 +3919,13 @@ async fn run_tags_events_as_root_and_emits_agent_spawned_and_slot_usage() {
     assert!(
         worktree.is_none(),
         "the root runs in the main tree, not a worktree"
+    );
+    // …and the spawn says *where* that tree is: the root's working directory is the workspace, which
+    // is what its tools (and any command it runs without a path) are rooted at.
+    assert_eq!(
+        cwd.as_deref(),
+        Some(dir.path().to_string_lossy().as_ref()),
+        "the root's announced working directory is the workspace"
     );
 
     // The spawn announces the agent before its first turn runs.
@@ -4549,7 +4558,8 @@ async fn run_spawns_a_subagent_that_runs_under_cap_one_and_returns() {
                 && matches!(
                     e.kind,
                     GgTelemetryKind::AgentStatus {
-                        status: GgAgentStatus::Blocked
+                        status: GgAgentStatus::Blocked,
+                        ..
                     }
                 )
         })
@@ -5293,7 +5303,8 @@ async fn workflow_reuses_the_global_cap_and_completes_under_cap_one() {
                 && matches!(
                     e.kind,
                     GgTelemetryKind::AgentStatus {
-                        status: GgAgentStatus::Blocked
+                        status: GgAgentStatus::Blocked,
+                        ..
                     }
                 )
         })
@@ -5983,7 +5994,8 @@ async fn a_code_program_waits_for_an_issue_after_it_ends() {
                 && matches!(
                     e.kind,
                     GgTelemetryKind::AgentStatus {
-                        status: GgAgentStatus::Blocked
+                        status: GgAgentStatus::Blocked,
+                        ..
                     }
                 )),
         "the root suspended on the deferred wait after its program ended"
@@ -6089,15 +6101,18 @@ async fn an_issues_reviewers_gate_its_acceptance_and_its_merge() {
         2,
         "a reviewer is dispatched for the first review and the re-review"
     );
-    // The reviewer's brief carries the diff of the work against the issue's baseline.
+    // The reviewer's brief carries the *summary* of what changed against the issue's baseline — the
+    // files to look at — and sends it to read them in the worktree it is running in, rather than
+    // pasting the patch (which would carry every generated file the work touched).
     assert!(
         spawns
             .iter()
             .any(|(_, _, slot, _, brief)| slot == "reviewer"
-                && brief.as_deref().is_some_and(
-                    |b| b.contains("work-1.txt") && b.contains("diff against the baseline")
-                )),
-        "the reviewer is given the baseline diff of the work"
+                && brief.as_deref().is_some_and(|b| b.contains("work-1.txt")
+                    && b.contains("What changed (against the baseline)")
+                    && b.contains("review the workspace itself")
+                    && !b.contains("```diff"))),
+        "the reviewer is given the change summary and sent to the worktree, not handed the patch"
     );
     // The rework was done by the issue's OWN assigned agent (Root), re-invoked with the original
     // brief plus the review's items — not by a separate fix profile.
