@@ -6,13 +6,13 @@
 // The whole scene is posed with control ops (`arrange`); `act` only lets the posed
 // change take effect, gives the build a frame to paint, and reads the pixels back.
 import {
-  colorDistance,
+  amberInProfile,
   denAllExcept,
-  isAmber,
   openTiles,
   pred,
+  profileDistance,
   quietBoard,
-  sampleAmberOrb,
+  sampleMoteProfile,
   startPlaying,
   tileCenter,
 } from "../_helpers.mjs";
@@ -67,18 +67,24 @@ export default function item() {
       // A REAL pause (the old wait(120)), so the build has actually painted the posed
       // scene: these are reads of drawn pixels, and an instant advance paints no frame.
       await api.settle(120);
-      bulb = await sampleAmberOrb(api, lj.x, lj.y);
-      drift = await sampleAmberOrb(api, dr0.x, dr0.y);
+      // Each mote read across its whole profile rather than at one fixed ring: the spec
+      // fixes the amber, not the size of the glow it is painted in (see `MOTE_RADII`).
+      // Reading both the same way is also what makes them comparable ring for ring.
+      bulb = await sampleMoteProfile(api, lj.x, lj.y);
+      drift = await sampleMoteProfile(api, dr0.x, dr0.y);
       await api.screenshot("amber");
     },
 
     async assert(api, check) {
       check.expectOk("a drifter is present", hasDrifter);
-      check.expectOk("the Lanternjaw's bulb is amber", isAmber(bulb));
-      check.expectOk("the drifter is amber", isAmber(drift));
+      check.expectOk(
+        "the Lanternjaw's bulb is amber",
+        Boolean(amberInProfile(bulb)),
+      );
+      check.expectOk("the drifter is amber", Boolean(amberInProfile(drift)));
       check.expectLt(
         "the two amber lights are near-identical",
-        colorDistance(bulb, drift),
+        profileDistance(bulb, drift),
         70,
       );
     },
