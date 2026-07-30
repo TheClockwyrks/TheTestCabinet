@@ -1066,6 +1066,74 @@ export async function sampleAmberOrb(api, x, y, radius = 5) {
   return { r: r / n, g: g / n, b: b / n };
 }
 
+/**
+ * The radii, in px out from a mote's center, that `sampleMoteProfile` reads it at.
+ *
+ * WHY A PROFILE AND NOT ONE RING. `sampleAmberOrb` reads a single ring 5 px out, which
+ * is where the REFERENCE implementation happens to keep its amber: it draws a 14 px orb
+ * whose inner 4 px blow out to near-white, so 5 px lands just outside that core, in the
+ * halo. But the spec fixes the mote's COLOR and, in words, its shape — "a soft amber mote
+ * with a bright core (the amber palette color `#ffd166`)" (specs/gameplay.md,
+ * specs/assets.md) — and nothing else: not the orb's radius, not how bright its core is,
+ * not how fast the glow falls off. A build that draws the same light tighter (an amber
+ * core a couple of px across under a fainter halo) paints an unmistakable amber mote that
+ * a 5 px ring reads as dark fog, and a build that draws it wider blows the 5 px ring out
+ * to white. Both are the mote the spec asks for.
+ *
+ * So a mote is read across a spread of radii instead, and "is it amber" is asked of the
+ * profile rather than of one arbitrary ring. That still fails a build that draws no amber
+ * light at all — nothing in the fog reads amber at ANY radius (see `fog/unrevealed-black`
+ * for how dark the unlit ground is) — while leaving a conforming build free to shape its
+ * own glow.
+ */
+export const MOTE_RADII = [0, 2, 4, 6, 8, 10];
+
+/**
+ * The rendered color at `radius` px out from (x, y): the center pixel itself at radius
+ * 0, otherwise the mean of a 6-point ring at that radius.
+ */
+export async function sampleMoteRing(api, x, y, radius) {
+  if (radius === 0) {
+    const [u, v] = uvOf(x, y);
+    const p = await api.pixel(u, v);
+    return { r: p.r, g: p.g, b: p.b };
+  }
+  return sampleAmberOrb(api, x, y, radius);
+}
+
+/**
+ * A mote's rendered color profile: `{ radius, color }` at each of {@link MOTE_RADII},
+ * innermost first. Like every pixel read, call it from `act` after an `api.settle` (see
+ * the section header above).
+ */
+export async function sampleMoteProfile(api, x, y) {
+  const profile = [];
+  for (const radius of MOTE_RADII) {
+    profile.push({ radius, color: await sampleMoteRing(api, x, y, radius) });
+  }
+  return profile;
+}
+
+/** The innermost sample of `profile` that reads as a warm amber light, or null. */
+export function amberInProfile(profile) {
+  return profile.find((sample) => isAmber(sample.color)) ?? null;
+}
+
+/**
+ * How far apart two motes are drawn, as the LARGEST color distance between their samples
+ * at the same radius. Comparing like radius with like keeps the reading honest — two
+ * motes drawn identically match at every radius, and one drawn differently (a wider halo,
+ * a colder core) separates somewhere in the profile even if it happens to agree on one
+ * ring.
+ */
+export function profileDistance(a, b) {
+  let worst = 0;
+  for (let i = 0; i < a.length && i < b.length; i++) {
+    worst = Math.max(worst, colorDistance(a[i].color, b[i].color));
+  }
+  return worst;
+}
+
 /** Near the pitch-black fog / blackout (very low luminance). */
 export function isDark(c) {
   return luminance(c) < 26;

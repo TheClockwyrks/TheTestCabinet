@@ -4,17 +4,17 @@
 // The distant drifter is posed instantly (`arrange`); `act` lets the pose settle, gives
 // the build a frame to paint, and reads the amber halo back off the canvas.
 import {
+  amberInProfile,
   denAllExcept,
   findFarTile,
-  isAmber,
   quietBoard,
-  sampleAmberOrb,
+  sampleMoteProfile,
   startPlaying,
 } from "../_helpers.mjs";
 
 export default function item() {
   let hasDrifter;
-  let col;
+  let profile;
 
   return {
     id: "standard.amber-any-distance",
@@ -33,7 +33,9 @@ export default function item() {
       hasDrifter = Boolean(d);
       // A REAL pause (the old wait(120)) so the drifter has been painted before sampling.
       await api.settle(120);
-      col = await sampleAmberOrb(api, d.x, d.y);
+      // The mote read across its whole profile rather than at one fixed ring: the spec
+      // fixes the amber, not the size of the glow it is painted in (see `MOTE_RADII`).
+      profile = await sampleMoteProfile(api, d.x, d.y);
       await api.screenshot("amber");
     },
 
@@ -41,7 +43,7 @@ export default function item() {
       check.expectOk("the distant drifter exists", hasDrifter);
       check.expectOk(
         "the distant amber drifter is still drawn amber",
-        isAmber(col),
+        Boolean(amberInProfile(profile)),
       );
     },
   };
