@@ -404,9 +404,9 @@ fn evict_file_views_on_a_missing_path_reclaims_nothing() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn archive_thread_removes_old_turns_keeping_the_recent_one() {
+fn archive_thread_removes_the_named_turns_and_archives_only_their_results() {
     let mut ctx = model(Some(100_000));
-    // Pinned prefix (never archived).
+    // Pinned prefix (never archived), seeded before any turn opens.
     ctx.push_system("system");
     ctx.push_user_prompt("build");
     ctx.push(
@@ -414,9 +414,9 @@ fn archive_thread_removes_old_turns_keeping_the_recent_one() {
         Retention::Pinned,
         Message::user("SKILL BODY"),
     );
-    // Turn 0.
+    ctx.begin_turn(1);
     ctx.push_assistant(
-        Some("turn zero reading".to_string()),
+        Some("turn one reading".to_string()),
         vec![call("c1", "read_file")],
     );
     ctx.push_file_view(
@@ -426,23 +426,34 @@ fn archive_thread_removes_old_turns_keeping_the_recent_one() {
         "a contents",
         Vec::new(),
     );
-    // Turn 1.
+    ctx.begin_turn(2);
     ctx.push_assistant(
-        Some("turn one listing".to_string()),
+        Some("turn two listing".to_string()),
         vec![call("c2", "list_dir")],
     );
     ctx.push_tool_result(GgContextSource::ToolOutput, "c2", "listing output");
-    // Turn 2 (current).
-    ctx.push_assistant(Some("turn two current".to_string()), Vec::new());
+    ctx.begin_turn(3);
+    ctx.push_assistant(Some("turn three current".to_string()), Vec::new());
 
     let before = ctx.total_tokens();
-    let result = ctx.archive_thread(1); // keep the current turn, archive 0 and 1.
+    let result = ctx.archive_thread(&[TurnRange { from: 1, to: 2 }]);
     assert!(result.tokens > 0);
-    // Four items archived: two assistant turns and their two tool/file results.
-    assert_eq!(result.items.len(), 4);
+    // Two results archived (the file view and the tool output); the two assistant messages of
+    // those turns are dropped rather than archived.
+    assert_eq!(result.items.len(), 2);
+    assert_eq!(result.dropped, 2);
+    assert_eq!(result.turns, vec![1, 2]);
     assert!(ctx.total_tokens() < before);
+    assert!(
+        result
+            .items
+            .iter()
+            .all(|it| it.source != GgContextSource::Assistant),
+        "an archived turn's own messages are not kept: {:?}",
+        result.items.iter().map(|it| it.source).collect::<Vec<_>>()
+    );
 
-    // The pinned prefix survives; the current turn stays live; the older turns are gone.
+    // The pinned prefix survives; the un-named turn stays live; the named ones are gone.
     let contents: Vec<String> = ctx
         .messages()
         .iter()
@@ -452,9 +463,9 @@ fn archive_thread_removes_old_turns_keeping_the_recent_one() {
         contents.iter().any(|c| c == "SKILL BODY"),
         "skills retained"
     );
-    assert!(contents.iter().any(|c| c.contains("turn two current")));
-    assert!(!contents.iter().any(|c| c.contains("turn zero reading")));
-    assert!(!contents.iter().any(|c| c.contains("turn one listing")));
+    assert!(contents.iter().any(|c| c.contains("turn three current")));
+    assert!(!contents.iter().any(|c| c.contains("turn one reading")));
+    assert!(!contents.iter().any(|c| c.contains("turn two listing")));
     assert_eq!(
         ctx.tokens_for(GgContextSource::FileView),
         0,
@@ -472,133 +483,408 @@ fn archive_thread_removes_old_turns_keeping_the_recent_one() {
 }
 
 #[test]
-fn archive_thread_keeping_all_turns_archives_nothing() {
+fn archive_thread_ranges_are_inclusive_and_may_overlap() {
     let mut ctx = model(Some(100_000));
     ctx.push_system("system");
+    for turn in 1..=5u64 {
+        ctx.begin_turn(turn);
+        ctx.push_assistant(Some(format!("turn {turn}")), vec![call("c", "shell")]);
+        ctx.push_tool_result(GgContextSource::ToolOutput, "c", format!("output {turn}"));
+    }
+
+    // [1,2] and [2,4] overlap: turn 2 is removed once, not twice.
+    let result = ctx.archive_thread(&[TurnRange { from: 1, to: 2 }, TurnRange { from: 2, to: 4 }]);
+    assert_eq!(result.turns, vec![1, 2, 3, 4]);
+    assert_eq!(result.items.len(), 4, "one result per archived turn");
+    assert_eq!(result.dropped, 4);
+
+    let contents: Vec<String> = ctx
+        .messages()
+        .iter()
+        .filter_map(|m| m.content.clone())
+        .collect();
+    assert!(contents.iter().any(|c| c.contains("turn 5")));
+    for turn in 1..=4 {
+        assert!(!contents.iter().any(|c| c.contains(&format!("turn {turn}"))));
+    }
+}
+
+#[test]
+fn archive_thread_never_touches_the_pinned_prefix_or_an_unopened_turn() {
+    let mut ctx = model(Some(100_000));
+    // Seeded before the first turn, so it carries turn 0.
+    ctx.push_system("system");
+    ctx.begin_turn(1);
+    ctx.push_assistant(Some("turn one".to_string()), Vec::new());
+
+    // A range wide enough to cover everything still leaves the pinned system prompt alone.
+    let result = ctx.archive_thread(&[TurnRange { from: 0, to: 99 }]);
+    assert_eq!(result.dropped, 1);
+    assert!(ctx.tokens_for(GgContextSource::System) > 0);
+    assert_eq!(ctx.tokens_for(GgContextSource::Assistant), 0);
+}
+
+#[test]
+fn archive_thread_with_no_ranges_or_no_match_archives_nothing() {
+    let mut ctx = model(Some(100_000));
+    ctx.push_system("system");
+    ctx.begin_turn(1);
     ctx.push_assistant(Some("only turn".to_string()), Vec::new());
+
     let before = ctx.total_tokens();
-    let result = ctx.archive_thread(5); // more than the number of turns.
+    assert_eq!(ctx.archive_thread(&[]).tokens, 0);
+    // A range naming turns that never happened is a no-op rather than an error.
+    let result = ctx.archive_thread(&[TurnRange { from: 7, to: 9 }]);
     assert!(result.items.is_empty());
     assert_eq!(result.tokens, 0);
+    assert!(result.turns.is_empty());
     assert_eq!(ctx.total_tokens(), before);
 }
 
+// ---------------------------------------------------------------------------
+// Turn headers on tool results
+// ---------------------------------------------------------------------------
+
 #[test]
-fn archive_thread_with_zero_keep_archives_all_ephemeral_history() {
+fn tool_results_carry_a_turn_header_once_archival_is_armed() {
     let mut ctx = model(Some(100_000));
-    ctx.push_system("system"); // pinned
-    ctx.push_assistant(Some("turn a".to_string()), Vec::new());
-    ctx.push_assistant(Some("turn b".to_string()), Vec::new());
-    let result = ctx.archive_thread(0);
-    assert_eq!(result.items.len(), 2);
-    // Only the pinned system prompt remains.
-    assert_eq!(ctx.tokens_for(GgContextSource::Assistant), 0);
-    assert!(ctx.tokens_for(GgContextSource::System) > 0);
-}
-
-// ---------------------------------------------------------------------------
-// Agent-managed context: the fullness signal
-// ---------------------------------------------------------------------------
-
-#[test]
-fn fullness_signal_reflects_current_state_and_refreshes_in_place() {
-    let mut ctx = model(Some(1000));
-    ctx.push_system("the base system prompt");
-    ctx.refresh_fullness_signal();
-
-    // The signal is a pinned, system-adjacent line that reports the current fill.
-    let signal_after_first = signal_text(&ctx).expect("a signal was injected");
-    assert!(signal_after_first.contains("Context window:"));
-    assert!(signal_after_first.contains("% full"));
-    // It mentions the tools the agent can use to reclaim space.
-    assert!(signal_after_first.contains("evict_file_view"));
-    assert!(signal_after_first.contains("archive_thread"));
-
-    // There is exactly one signal item, and the base prompt is untouched.
-    assert_eq!(count_signal_items(&ctx), 1);
-    assert!(
-        ctx.messages()
-            .iter()
-            .any(|m| m.content.as_deref() == Some("the base system prompt"))
-    );
-
-    // Grow the window, refresh again: still exactly one signal (refreshed in place), and the
-    // reported percentage tracks the larger window.
-    ctx.push_tool_result(GgContextSource::ToolOutput, "c1", "x".repeat(2000));
-    ctx.refresh_fullness_signal();
-    assert_eq!(count_signal_items(&ctx), 1);
-    let signal_after_growth = signal_text(&ctx).unwrap();
-    assert_ne!(
-        signal_after_first, signal_after_growth,
-        "the signal updated to the new fill"
-    );
-    // The larger tool output shows up as a top consumer.
-    assert!(signal_after_growth.contains("tool output"));
-}
-
-/// The signal's internal sentinel is a window-slot marker, not material a reader can
-/// attribute tokens to, so it never leaves the model as a `prompt_items` tag — the message
-/// log would otherwise record gg's private bookkeeping in the run record.
-#[test]
-fn prompt_items_withhold_the_fullness_signals_sentinel() {
-    let mut ctx = model(Some(1000));
-    ctx.push_system("the base system prompt");
-    ctx.refresh_fullness_signal();
+    ctx.enable_turn_headers();
+    // Seeded before the first turn: no turn happened yet, so no header.
     ctx.push_file_view(
-        Some("index.html".to_string()),
+        Some("spec.md".to_string()),
         None,
-        "c1",
-        "<html></html>",
+        "c0",
+        "the whole spec",
         Vec::new(),
     );
+    ctx.begin_turn(12);
+    ctx.push_tool_result(GgContextSource::ToolOutput, "c1", "exit code: 0");
 
-    let labels: Vec<Option<&str>> = ctx.prompt_items().map(|i| i.label).collect();
+    let contents: Vec<String> = ctx
+        .messages()
+        .iter()
+        .filter_map(|m| m.content.clone())
+        .collect();
     assert!(
-        labels.iter().all(|l| *l != Some(FULLNESS_SIGNAL_LABEL)),
-        "the sentinel is withheld: {labels:?}"
+        contents.iter().any(|c| c == "the whole spec"),
+        "the opening context is not labelled with a turn that never happened: {contents:?}"
     );
+    let headed = contents
+        .iter()
+        .find(|c| c.contains("exit code: 0"))
+        .expect("the result is in the window");
+    assert!(
+        headed.starts_with("Turn #12\n"),
+        "the header leads the result: {headed:?}"
+    );
+    assert!(headed.contains(" tokens\n----\n"), "{headed:?}");
+    assert!(headed.ends_with("exit code: 0"));
+}
+
+#[test]
+fn turn_headers_are_absent_until_armed() {
+    let mut ctx = model(Some(100_000));
+    ctx.begin_turn(3);
+    ctx.push_tool_result(GgContextSource::ToolOutput, "c1", "exit code: 0");
     assert_eq!(
-        labels.iter().filter(|l| l.is_some()).collect::<Vec<_>>(),
-        vec![&Some("index.html")],
-        "a real selector tag — the file view's path — still travels"
+        ctx.messages()[0].content.as_deref(),
+        Some("exit code: 0"),
+        "an agent that cannot archive pays nothing for turn headers"
     );
 }
 
 #[test]
-fn no_fullness_signal_without_a_window_limit() {
+fn a_turn_header_reports_the_results_own_cost_with_separators() {
+    let mut ctx = model(Some(1_000_000));
+    ctx.enable_turn_headers();
+    ctx.begin_turn(1);
+    // Large enough that the figure is four digits and so carries a thousands separator.
+    ctx.push_tool_result(GgContextSource::ToolOutput, "c1", "token ".repeat(5_000));
+    let content = ctx.messages()[0].content.clone().unwrap();
+    let reported: String = content
+        .lines()
+        .nth(1)
+        .expect("the token line")
+        .trim_end_matches(" tokens")
+        .to_string();
+    assert!(
+        reported.contains(','),
+        "separated for reading: {reported:?}"
+    );
+    let reported: u64 = reported.replace(',', "").parse().expect("a number");
+    // The header understates the item by its own length, and by nothing else.
+    let actual = ctx.items()[0].tokens() as u64;
+    assert!(
+        reported <= actual && reported + 40 > actual,
+        "{reported} vs {actual}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Agent-managed context: the context-usage signal
+// ---------------------------------------------------------------------------
+
+/// The default options: an agent with both reclaim tools and a five-file breakdown.
+fn signal_options() -> UsageSignalOptions {
+    UsageSignalOptions {
+        can_evict: true,
+        can_archive: true,
+        top_file_views: 5,
+    }
+}
+
+#[test]
+fn the_usage_signal_reports_every_category_as_a_share_of_the_window() {
+    let mut ctx = model(Some(10_000));
+    ctx.push_system("the base system prompt");
+    ctx.push_user_prompt("build a game");
+    ctx.replace_source(
+        GgContextSource::TaskList,
+        Retention::Pinned,
+        Some(Message::user("# Your tasks\n\n- [ ] scaffold")),
+    );
+    ctx.refresh_context_usage_signal(signal_options());
+
+    let text = signal_text(&ctx).expect("a signal was injected");
+    assert!(text.starts_with("Context Usage:\n"), "{text}");
+    assert!(text.contains("- Overall: "), "{text}");
+    // Each category the window actually holds is named with its own share, as a list.
+    assert!(text.contains("- System Prompt: "), "{text}");
+    assert!(text.contains("- Task Prompt: "), "{text}");
+    assert!(text.contains("- Tasks: "), "{text}");
+    // A category holding nothing is left out rather than reported as 0.0%.
+    assert!(!text.contains("Memories"), "{text}");
+    assert!(!text.contains("Board"), "{text}");
+    // The figures are percentages to one decimal place.
+    assert!(
+        text.lines()
+            .filter(|line| line.starts_with("- ") && line.contains(": "))
+            .all(|line| line.ends_with('%')),
+        "{text}"
+    );
+}
+
+#[test]
+fn the_usage_signal_breaks_file_views_down_by_file_when_eviction_is_possible() {
+    let mut ctx = model(Some(20_000));
+    ctx.push_system("system");
+    ctx.push_file_view(
+        Some("src/main.rs".to_string()),
+        None,
+        "c1",
+        "main ".repeat(2_000),
+        Vec::new(),
+    );
+    ctx.push_file_view(
+        Some("src/foo.rs".to_string()),
+        None,
+        "c2",
+        "foo ".repeat(200),
+        Vec::new(),
+    );
+    ctx.refresh_context_usage_signal(signal_options());
+
+    let text = signal_text(&ctx).unwrap();
+    assert!(text.contains("- File Views: "), "{text}");
+    assert!(text.contains("- Top File Views:"), "{text}");
+    let main_at = text
+        .find("`src/main.rs`")
+        .expect("the biggest read is listed");
+    let foo_at = text
+        .find("`src/foo.rs`")
+        .expect("the smaller read is listed");
+    assert!(main_at < foo_at, "largest first: {text}");
+}
+
+/// The whole point of the rewrite: an agent that cannot evict is not handed a ranked list of
+/// files it has no way to drop.
+#[test]
+fn the_file_breakdown_is_withheld_from_an_agent_that_cannot_evict() {
+    let mut ctx = model(Some(20_000));
+    ctx.push_system("system");
+    ctx.push_file_view(
+        Some("src/main.rs".to_string()),
+        None,
+        "c1",
+        "main ".repeat(2_000),
+        Vec::new(),
+    );
+    ctx.refresh_context_usage_signal(UsageSignalOptions {
+        can_evict: false,
+        ..signal_options()
+    });
+
+    let text = signal_text(&ctx).unwrap();
+    assert!(
+        text.contains("- File Views: "),
+        "the band is still reported"
+    );
+    assert!(!text.contains("Top File Views"), "{text}");
+    assert!(!text.contains("src/main.rs"), "{text}");
+    assert!(!text.contains("evict_file_view"), "{text}");
+}
+
+#[test]
+fn the_file_breakdown_is_capped_at_the_configured_count() {
+    let mut ctx = model(Some(100_000));
+    ctx.push_system("system");
+    for index in 0..8 {
+        ctx.push_file_view(
+            Some(format!("src/f{index}.rs")),
+            None,
+            format!("c{index}"),
+            "x".repeat(500 * (8 - index)),
+            Vec::new(),
+        );
+    }
+    ctx.refresh_context_usage_signal(UsageSignalOptions {
+        top_file_views: 2,
+        ..signal_options()
+    });
+
+    let text = signal_text(&ctx).unwrap();
+    assert_eq!(
+        text.matches("src/f").count(),
+        2,
+        "only the configured number of files is named: {text}"
+    );
+    assert!(text.contains("`src/f0.rs`"), "the two largest: {text}");
+    assert!(text.contains("`src/f1.rs`"), "{text}");
+}
+
+/// Repeated reads of one path are one line, because one `evict_file_view { path }` reclaims all
+/// of them — three entries would understate what dropping that file buys.
+#[test]
+fn repeated_reads_of_one_file_are_summed_into_one_entry() {
+    let mut ctx = model(Some(100_000));
+    ctx.push_system("system");
+    for id in ["c1", "c2", "c3"] {
+        ctx.push_file_view(
+            Some("src/main.rs".to_string()),
+            None,
+            id,
+            "main ".repeat(400),
+            Vec::new(),
+        );
+    }
+    ctx.push_file_view(
+        Some("src/other.rs".to_string()),
+        None,
+        "c4",
+        "other ".repeat(500),
+        Vec::new(),
+    );
+    ctx.refresh_context_usage_signal(signal_options());
+
+    let text = signal_text(&ctx).unwrap();
+    assert_eq!(text.matches("`src/main.rs`").count(), 1, "{text}");
+    assert!(
+        text.find("`src/main.rs`") < text.find("`src/other.rs`"),
+        "the summed three reads outweigh the single larger one: {text}"
+    );
+}
+
+/// A locked, autoloaded specification is pinned precisely so it cannot be evicted, so listing it
+/// among the files to drop would be pointing at the one read that will not go.
+#[test]
+fn a_pinned_file_view_is_left_out_of_the_breakdown() {
+    let mut ctx = model(Some(20_000));
+    ctx.push_system("system");
+    ctx.push_file_view_with_retention(
+        Some("specs/spec.md".to_string()),
+        None,
+        "c1",
+        "spec ".repeat(2_000),
+        Vec::new(),
+        Retention::Pinned,
+    );
+    ctx.refresh_context_usage_signal(signal_options());
+    let text = signal_text(&ctx).unwrap();
+    assert!(!text.contains("specs/spec.md"), "{text}");
+}
+
+#[test]
+fn the_usage_signal_is_refreshed_in_its_slot_and_never_accumulates() {
+    let mut ctx = model(Some(10_000));
+    ctx.push_system("the base system prompt");
+    ctx.refresh_context_usage_signal(signal_options());
+    let first = signal_text(&ctx).unwrap();
+    assert_eq!(count_signal_items(&ctx), 1);
+
+    ctx.push_tool_result(GgContextSource::ToolOutput, "c1", "x".repeat(20_000));
+    ctx.refresh_context_usage_signal(signal_options());
+    assert_eq!(count_signal_items(&ctx), 1, "a slot cannot accumulate");
+    let second = signal_text(&ctx).unwrap();
+    assert_ne!(first, second, "the signal tracked the larger window");
+    assert!(second.contains("- Tool Output: "), "{second}");
+}
+
+/// The bug this fixes: as a *pinned* item the signal crossed every compaction boundary, so a
+/// compacted window opened holding a reading of the window it no longer had — and then gained a
+/// second one the moment the next turn refreshed it.
+#[test]
+fn the_usage_signal_does_not_survive_a_context_reset() {
+    let mut ctx = model(Some(10_000));
+    ctx.push_system("system");
+    ctx.push_assistant(Some("working".to_string()), Vec::new());
+    ctx.refresh_context_usage_signal(signal_options());
+    assert_eq!(count_signal_items(&ctx), 1);
+
+    ctx.clear_ephemeral();
+    assert_eq!(count_signal_items(&ctx), 0, "the stale reading is gone");
+
+    ctx.refresh_context_usage_signal(signal_options());
+    assert_eq!(count_signal_items(&ctx), 1, "and exactly one replaces it");
+}
+
+/// The signal is always the last message, which is what lets it be rewritten every turn without
+/// disturbing the prefix a provider's prompt cache reads.
+#[test]
+fn the_usage_signal_renders_last() {
+    let mut ctx = model(Some(10_000));
+    ctx.push_system("system");
+    ctx.refresh_context_usage_signal(signal_options());
+    ctx.push_assistant(Some("working".to_string()), Vec::new());
+    ctx.push_tool_result(GgContextSource::ToolOutput, "c1", "exit code: 0");
+
+    let messages = ctx.messages();
+    assert!(
+        messages
+            .last()
+            .and_then(|m| m.content.as_deref())
+            .is_some_and(|c| c.starts_with("Context Usage:")),
+        "the signal is appended at the end of the prompt: {messages:?}"
+    );
+    // It is part of the request, so the log of that request carries it too.
+    assert_eq!(ctx.prompt_items().count(), messages.len());
+}
+
+#[test]
+fn no_usage_signal_without_a_window_limit() {
     let mut ctx = model(None);
     ctx.push_system("system");
-    ctx.refresh_fullness_signal();
+    ctx.refresh_context_usage_signal(signal_options());
     assert_eq!(count_signal_items(&ctx), 0);
 }
 
-/// The text of the current fullness-signal item, if any (a `System` item whose content is the
-/// signal line — identified here by its stable "Context window:" prefix).
+/// The text of the current context-usage signal, if any — identified by its stable heading.
 fn signal_text(ctx: &ContextModel) -> Option<String> {
-    ctx.items()
-        .iter()
-        .find(|item| {
-            item.source() == GgContextSource::System
-                && item
-                    .message()
-                    .content
-                    .as_deref()
-                    .is_some_and(|c| c.starts_with("Context window:"))
-        })
-        .and_then(|item| item.message().content.clone())
+    ctx.messages().into_iter().find_map(|message| {
+        message
+            .content
+            .filter(|content| content.starts_with("Context Usage:"))
+    })
 }
 
-/// How many fullness-signal items exist (should always be 0 or 1).
+/// How many context-usage signals the rendered window holds (should always be 0 or 1).
 fn count_signal_items(ctx: &ContextModel) -> usize {
-    ctx.items()
+    ctx.messages()
         .iter()
-        .filter(|item| {
-            item.source() == GgContextSource::System
-                && item
-                    .message()
-                    .content
-                    .as_deref()
-                    .is_some_and(|c| c.starts_with("Context window:"))
+        .filter(|message| {
+            message
+                .content
+                .as_deref()
+                .is_some_and(|c| c.starts_with("Context Usage:"))
         })
         .count()
 }
@@ -771,76 +1057,39 @@ fn replacing_an_absent_source_with_nothing_changes_nothing() {
     assert_eq!(ctx.messages(), before);
 }
 
+/// The property the slot buys: the signal is rewritten every turn, and because it renders after
+/// every conversation item the *prefix* a prompt cache reads is untouched by that rewrite.
 #[test]
-fn an_unchanged_fullness_signal_stays_where_it_is() {
-    // A 100k window rounds its reported figures to the nearest 1k, so a small growth does
-    // not change the line.
+fn refreshing_the_signal_only_ever_changes_the_last_message() {
     let mut ctx = model(Some(100_000));
     ctx.push_system("system");
-    ctx.refresh_fullness_signal();
-    // The *live* signal: a superseded copy is retagged to `History`, so it no longer matches.
-    let signal_index = |ctx: &ContextModel| {
-        ctx.items()
-            .iter()
-            .position(|item| {
-                item.source() == GgContextSource::System
-                    && item
-                        .message()
-                        .content
-                        .as_deref()
-                        .is_some_and(|c| c.starts_with("Context window:"))
-            })
-            .expect("a signal is present")
-    };
-    assert_eq!(signal_index(&ctx), 1);
-
+    ctx.refresh_context_usage_signal(signal_options());
     ctx.push_assistant(None, vec![call("c1", "shell")]);
-    ctx.push_tool_result(GgContextSource::ToolOutput, "c1", "exit code: 0");
-    let before = ctx.messages();
-    ctx.refresh_fullness_signal();
+    ctx.push_tool_result(GgContextSource::ToolOutput, "c1", "x".repeat(40_000));
 
+    let before = ctx.messages();
+    ctx.refresh_context_usage_signal(signal_options());
+    let after = ctx.messages();
+
+    assert_eq!(after.len(), before.len());
     assert_eq!(
-        ctx.messages(),
-        before,
-        "a signal whose figures did not move stays put, keeping the prompt an extension"
+        after[..after.len() - 1],
+        before[..before.len() - 1],
+        "everything before the signal is byte-identical"
     );
-    assert_eq!(signal_index(&ctx), 1);
+    assert_ne!(
+        after.last(),
+        before.last(),
+        "and the signal itself tracked the window"
+    );
     assert_eq!(count_signal_items(&ctx), 1);
-
-    // Growth past the reporting resolution appends a fresh line — the signal still tracks the
-    // window — while the superseded copy stays put so the prompt is still an extension.
-    ctx.push_tool_result(GgContextSource::ToolOutput, "c2", "x".repeat(40_000));
-    let before = ctx.messages();
-    ctx.refresh_fullness_signal();
-    assert!(ctx.messages().starts_with(&before));
-    assert_eq!(count_signal_items(&ctx), 1, "exactly one live signal");
-    assert_eq!(
-        signal_index(&ctx),
-        ctx.items().len() - 1,
-        "a meaningfully changed signal is appended at the tail"
-    );
-}
-
-#[test]
-fn fullness_figures_are_reported_at_one_percent_of_the_window() {
-    assert_eq!(fullness_report_granularity(100_000), 1_000);
-    // A tiny or zero limit never divides by zero or rounds everything to nothing.
-    assert_eq!(fullness_report_granularity(50), 1);
-    assert_eq!(fullness_report_granularity(0), 1);
-
-    // Round-half-up to the nearest multiple, and an exact multiple is unchanged.
-    assert_eq!(round_to(1_499, 1_000), 1_000);
-    assert_eq!(round_to(1_500, 1_000), 2_000);
-    assert_eq!(round_to(2_000, 1_000), 2_000);
-    // A granularity of one reports the exact figure.
-    assert_eq!(round_to(1_234, 1), 1_234);
 }
 
 #[test]
 fn every_turn_extends_the_previous_turns_window() {
     // The property a provider prompt cache needs, and the one this module owes the loop: turn
     // N+1's rendered messages always start with turn N's. Every mutable block is refreshed each
-    // turn here — the memory block, the task list, the board, and the fullness signal — some
+    // turn here — the memory block, the task list, the board, and the usage signal — some
     // holding still, some genuinely changing, and the window still only ever grows.
     let mut ctx = model(Some(100_000));
     ctx.push_system("system");
@@ -870,11 +1119,16 @@ fn every_turn_extends_the_previous_turns_window() {
             Retention::Pinned,
             Some(Message::user(format!("# Board\n\n- issue {}", turn / 4))),
         );
-        // Growing tool output pushes the fullness figures past their reporting resolution now
-        // and then, so the signal changes on its own schedule as well.
-        ctx.refresh_fullness_signal();
+        // The signal is rebuilt every turn and changes constantly as the window grows; it renders
+        // after every conversation item, so it is compared separately from the prefix below.
+        ctx.refresh_context_usage_signal(signal_options());
 
-        let rendered = ctx.messages();
+        // The conversation itself — everything a prompt cache reads — only ever grows.
+        let rendered: Vec<Message> = ctx
+            .items()
+            .iter()
+            .map(|item| item.message().clone())
+            .collect();
         if let Some(previous) = &previous {
             assert!(
                 rendered.starts_with(previous),

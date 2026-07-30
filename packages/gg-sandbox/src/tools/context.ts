@@ -7,8 +7,8 @@
  */
 
 import * as raw from "test-cabinet:gg/context";
-import { U32_MAX, call, uint } from "../errors.js";
-import type { ArchiveSearch, ReclaimReport } from "../types.js";
+import { ToolError, U32_MAX, call, list, uint } from "../errors.js";
+import type { ArchiveSearch, ReclaimReport, TurnRange } from "../types.js";
 
 /**
  * Drop the contents of files you have read out of your context window, freeing the tokens they
@@ -20,12 +20,36 @@ export function evictFileView(path?: string): ReclaimReport {
 }
 
 /**
- * Move older thread history out of your context window, keeping the most recent turns (default 1),
- * and report what that reclaimed. Archived history stays searchable with `searchArchive`.
+ * Move whole turns out of your context window and report what that reclaimed.
+ *
+ * Every result you are given carries a header with its turn number and roughly what holding it
+ * costs, so name the turns worth dropping: `ranges` is a list of inclusive spans, and
+ * `archiveThread([{ from: 4, to: 19 }])` archives turns 4 through 19. Your own messages in an
+ * archived turn are dropped; the results are kept and stay searchable with `searchArchive`.
  */
-export function archiveThread(keepRecentTurns?: number): ReclaimReport {
-  const keep = uint("archiveThread", "keepRecentTurns", keepRecentTurns, U32_MAX);
-  return call(() => raw.archiveThread(keep));
+export function archiveThread(ranges: TurnRange[]): ReclaimReport {
+  const spans = list<TurnRange>("archiveThread", "ranges", ranges).map((range) => {
+    if (typeof range !== "object" || range === null) {
+      throw new ToolError(
+        "archiveThread",
+        "invalid-argument",
+        "archiveThread(…): every entry of `ranges` must be a { from, to } turn span.",
+      );
+    }
+    const from = uint("archiveThread", "ranges[].from", range.from, U32_MAX);
+    const to = uint("archiveThread", "ranges[].to", range.to, U32_MAX);
+    if (from === undefined || to === undefined) {
+      throw new ToolError(
+        "archiveThread",
+        "invalid-argument",
+        "archiveThread(…): every entry of `ranges` needs both `from` and `to`.",
+      );
+    }
+    // `from`/`to` on the way in, `start`/`end` across the membrane — `from` is a WIT keyword, and
+    // the model-facing spelling is the one worth keeping.
+    return { start: from, end: to };
+  });
+  return call(() => raw.archiveThread(spans));
 }
 
 /**

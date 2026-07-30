@@ -285,10 +285,11 @@
       "tool": "archive_thread",
       "js": "archiveThread",
       "object": "context",
-      "signature": "archiveThread(keepRecentTurns?: number): ReclaimReport",
-      "doc": "Move older thread history out of your context window, keeping the most recent turns (default 1), and report what that reclaimed. Archived history stays searchable with `searchArchive`.",
+      "signature": "archiveThread(ranges: TurnRange[]): ReclaimReport",
+      "doc": "Move whole turns out of your context window and report what that reclaimed. Every result you are given carries a header with its turn number and roughly what holding it costs, so name the turns worth dropping: `ranges` is a list of inclusive spans, and `archiveThread([{ from: 4, to: 19 }])` archives turns 4 through 19. Your own messages in an archived turn are dropped; the results are kept and stay searchable with `searchArchive`.",
       "types": [
-        "ReclaimReport"
+        "ReclaimReport",
+        "TurnRange"
       ]
     },
     {
@@ -426,6 +427,10 @@
     {
       "name": "ReclaimReport",
       "declaration": "interface ReclaimReport { items: number; reclaimedTokens: number; paths: string[]; detail: string; }"
+    },
+    {
+      "name": "TurnRange",
+      "declaration": "interface TurnRange { from: number; to: number; }"
     },
     {
       "name": "ArchiveHit",

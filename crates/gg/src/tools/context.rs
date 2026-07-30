@@ -30,6 +30,7 @@ use super::{
 };
 use crate::archive::ArchiveStore;
 use crate::compaction::CompactionRequest;
+use crate::context::TurnRange;
 use crate::model::ToolDefinition;
 
 /// The `evict_file_view` tool name.
@@ -50,9 +51,12 @@ pub const COMPACT_TOOL: &str = "compact";
 /// it are reported to the model rather than silently dropped.
 pub const MAX_COMPACT_FILES: usize = 12;
 
-/// The default number of most-recent assistant turns `archive_thread` keeps live when the
-/// call does not specify one — keep the current turn, archive everything older.
-pub const DEFAULT_ARCHIVE_KEEP_RECENT: usize = 1;
+/// The most turn ranges one [`archive_thread`](ARCHIVE_THREAD_TOOL) call may name.
+///
+/// Generous relative to any real call — an agent reclaiming space names one span, or a handful of
+/// them — and present only so a malformed program cannot hand the loop an unbounded list to scan the
+/// window against.
+pub const MAX_ARCHIVE_RANGES: usize = 32;
 
 /// The maximum number of hits a single `search_archive` returns, so a broad query cannot
 /// itself flood the window it is meant to relieve.
@@ -81,19 +85,51 @@ pub fn parse_evict_path(args: &Value) -> Result<Option<String>, String> {
     }
 }
 
-/// Parse `archive_thread`'s optional `keep_recent_turns` argument: absent means
-/// [`DEFAULT_ARCHIVE_KEEP_RECENT`], otherwise a non-negative integer, anything else is a usage
-/// error. Shared by the tool's validation and the loop's reclaim.
-pub fn parse_archive_keep_recent(args: &Value) -> Result<usize, String> {
-    match args.get("keep_recent_turns") {
-        None | Some(Value::Null) => Ok(DEFAULT_ARCHIVE_KEEP_RECENT),
-        Some(value) => match value.as_u64() {
-            Some(n) => Ok(n as usize),
-            None => Err(format!(
-                "`{ARCHIVE_THREAD_TOOL}`: `keep_recent_turns` must be a non-negative integer"
-            )),
-        },
+/// Parse `archive_thread`'s required `ranges` argument into the inclusive
+/// [turn ranges](TurnRange) the reclaim selects by. Shared by the tool's validation and the loop's
+/// reclaim, so what counts as a well-formed call is one definition rather than two.
+///
+/// A range is written as a **pair**, `[from, to]`, and an object `{"from": n, "to": m}` is accepted
+/// as the same thing — the pair is what the tool schema asks for, and the object is what a model
+/// reaching for the more explicit spelling writes anyway. Both ends are inclusive and `from` may not
+/// exceed `to`: a reversed range is refused rather than normalized, because the two readings of
+/// `[19, 4]` ("nothing" and "turns 4–19") differ by the entire call, and guessing would silently
+/// archive a span the model never asked for.
+pub fn parse_archive_ranges(args: &Value) -> Result<Vec<TurnRange>, String> {
+    let usage = || {
+        format!(
+            "`{ARCHIVE_THREAD_TOOL}`: `ranges` must be a non-empty array of inclusive turn pairs, \
+             e.g. [[4, 19], [22, 25]] — read the turn numbers off the headers on your results"
+        )
+    };
+    let Some(Value::Array(entries)) = args.get("ranges") else {
+        return Err(usage());
+    };
+    if entries.is_empty() || entries.len() > MAX_ARCHIVE_RANGES {
+        return Err(usage());
     }
+    let mut ranges = Vec::with_capacity(entries.len());
+    for entry in entries {
+        let (from, to) = match entry {
+            Value::Array(pair) if pair.len() == 2 => (pair[0].as_u64(), pair[1].as_u64()),
+            Value::Object(_) => (
+                entry.get("from").and_then(Value::as_u64),
+                entry.get("to").and_then(Value::as_u64),
+            ),
+            _ => return Err(usage()),
+        };
+        let (Some(from), Some(to)) = (from, to) else {
+            return Err(usage());
+        };
+        if from > to {
+            return Err(format!(
+                "`{ARCHIVE_THREAD_TOOL}`: the range [{from}, {to}] ends before it starts; write it \
+                 as [{to}, {from}] if you meant those turns"
+            ));
+        }
+        ranges.push(TurnRange { from, to });
+    }
+    Ok(ranges)
 }
 
 // ---------------------------------------------------------------------------
@@ -175,21 +211,28 @@ impl Tool for ArchiveThreadTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
             ARCHIVE_THREAD_TOOL,
-            "Move older parts of this thread out of your context window to reclaim space, \
-             keeping the most recent turns. The archived history is NOT lost — it stays \
-             searchable with `search_archive`, so you can recover any detail later. By default \
-             it keeps your most recent turn and archives everything older; set \
-             `keep_recent_turns` to keep more.",
+            "Move whole turns of this thread out of your context window to reclaim space. Every \
+             result you have been given carries a header with its turn number and what it costs, \
+             so name the turns worth dropping: `ranges` is a list of inclusive [from, to] pairs, \
+             e.g. [[4, 19]] archives turns 4 through 19. The archived history is NOT lost — it \
+             stays searchable with `search_archive`, so you can recover any detail later.",
             json!({
                 "type": "object",
                 "properties": {
-                    "keep_recent_turns": {
-                        "type": "integer",
-                        "minimum": 0,
-                        "description": "How many of your most recent assistant turns to keep live (default 1)."
+                    "ranges": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": MAX_ARCHIVE_RANGES,
+                        "items": {
+                            "type": "array",
+                            "minItems": 2,
+                            "maxItems": 2,
+                            "items": { "type": "integer", "minimum": 0 }
+                        },
+                        "description": "Inclusive [from, to] turn-number pairs to archive, e.g. [[4, 19], [22, 25]]."
                     }
                 },
-                "required": [],
+                "required": ["ranges"],
                 "additionalProperties": false
             }),
         )
@@ -198,8 +241,8 @@ impl Tool for ArchiveThreadTool {
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
         // Validate only; the loop performs the archival against the live window and rewrites this
         // result (and attaches its `ToolData::Reclaim`) with what it actually moved out.
-        match parse_archive_keep_recent(&args) {
-            Ok(keep_recent_turns) => self.archive(keep_recent_turns),
+        match parse_archive_ranges(&args) {
+            Ok(ranges) => self.archive(ranges),
             Err(message) => invalid_argument(message),
         }
     }
@@ -209,9 +252,24 @@ impl ArchiveThreadTool {
     /// Validate an `archive_thread` call — the **standard, typed** API function both the JSON
     /// [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach. It only
     /// validates: the [loop](crate::agent) performs the archival against the live window and rewrites
-    /// this outcome (and its [`ToolData::Reclaim`]) with what it actually moved out. `keep_recent_turns`
-    /// is the count of most-recent turns to keep live.
-    pub(crate) fn archive(&self, _keep_recent_turns: usize) -> ToolOutcome {
+    /// this outcome (and its [`ToolData::Reclaim`]) with what it actually moved out. `ranges` are the
+    /// inclusive turn spans to move into the archive.
+    pub(crate) fn archive(&self, ranges: Vec<TurnRange>) -> ToolOutcome {
+        // The typed entry point is reachable without going through the JSON schema (a program calls
+        // it directly), so the same rules are enforced here rather than assumed.
+        if ranges.is_empty() || ranges.len() > MAX_ARCHIVE_RANGES {
+            return invalid_argument(format!(
+                "`{ARCHIVE_THREAD_TOOL}`: name between 1 and {MAX_ARCHIVE_RANGES} inclusive turn \
+                 ranges to archive"
+            ));
+        }
+        if let Some(range) = ranges.iter().find(|range| range.from > range.to) {
+            return invalid_argument(format!(
+                "`{ARCHIVE_THREAD_TOOL}`: the range [{}, {}] ends before it starts; write it as \
+                 [{}, {}] if you meant those turns",
+                range.from, range.to, range.to, range.from
+            ));
+        }
         ToolOutcome::ok("archiving thread history", "archive thread")
     }
 }

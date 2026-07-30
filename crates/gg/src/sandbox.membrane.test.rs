@@ -189,8 +189,8 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "archive_thread",
-            program: "context.archiveThread(3);",
-            expected: || json!({ "keep_recent_turns": 3 }),
+            program: "context.archiveThread([{ from: 4, to: 19 }]);",
+            expected: || json!({ "ranges": [[4, 19]] }),
         },
         Crossing {
             tool: "search_archive",

@@ -1577,27 +1577,72 @@ fn the_completion_prompts_render() {
     assert!(failure.contains("1 test failed"), "{failure}");
 }
 
-/// The pressure signal opens with the stable `Context window:` prefix the refresh keys off, and
-/// names its consumers only when there are any.
+/// The context-usage block opens with its stable heading, lists each category as a share of the
+/// window, and nests the per-file breakdown under the file-view category.
 #[test]
-fn the_context_pressure_signal_renders() {
-    let with_consumers = render_context_pressure(&ContextPressureContext {
-        total: 90_000,
-        limit: 100_000,
-        percent: 90,
-        consumers: vec!["history 40000".to_string(), "files 20000".to_string()],
+fn the_context_usage_signal_renders() {
+    let full = render_context_pressure(&ContextPressureContext {
+        overall: "80.1%".to_string(),
+        categories: vec![
+            UsageCategoryView {
+                label: "System Prompt".to_string(),
+                percent: "4.9%".to_string(),
+                top_files: Vec::new(),
+            },
+            UsageCategoryView {
+                label: "File Views".to_string(),
+                percent: "62.1%".to_string(),
+                top_files: vec![
+                    UsageFileView {
+                        path: "src/main.rs".to_string(),
+                        percent: "12.7%".to_string(),
+                    },
+                    UsageFileView {
+                        path: "src/foo.rs".to_string(),
+                        percent: "4.6%".to_string(),
+                    },
+                ],
+            },
+            UsageCategoryView {
+                label: "Tasks".to_string(),
+                percent: "2.0%".to_string(),
+                top_files: Vec::new(),
+            },
+        ],
+        can_evict: true,
+        can_archive: true,
     });
-    assert!(with_consumers.starts_with("Context window: 90000/100000 tokens (90% full)."));
-    assert!(with_consumers.contains("Largest consumers (tokens): history 40000, files 20000."));
+    assert!(
+        full.starts_with("Context Usage:\n- Overall: 80.1%\n"),
+        "{full}"
+    );
+    assert!(full.contains("\n- System Prompt: 4.9%\n"), "{full}");
+    assert!(full.contains("\n- File Views: 62.1%\n"), "{full}");
+    assert!(full.contains("\n- Top File Views:\n"), "{full}");
+    assert!(full.contains("\n  - `src/main.rs`: 12.7%\n"), "{full}");
+    assert!(full.contains("\n  - `src/foo.rs`: 4.6%\n"), "{full}");
+    assert!(full.contains("\n- Tasks: 2.0%\n"), "{full}");
+    assert!(full.contains("`evict_file_view`"), "{full}");
+    assert!(full.contains("`archive_thread`"), "{full}");
 
+    // An agent with neither reclaim tool is given the figures and no advice it cannot take.
     let bare = render_context_pressure(&ContextPressureContext {
-        total: 10,
-        limit: 100,
-        percent: 10,
-        consumers: Vec::new(),
+        overall: "10.0%".to_string(),
+        categories: vec![UsageCategoryView {
+            label: "System Prompt".to_string(),
+            percent: "10.0%".to_string(),
+            top_files: Vec::new(),
+        }],
+        can_evict: false,
+        can_archive: false,
     });
-    assert!(bare.starts_with("Context window: 10/100 tokens (10% full)."));
-    assert!(!bare.contains("Largest consumers"));
+    assert!(
+        bare.starts_with("Context Usage:\n- Overall: 10.0%\n"),
+        "{bare}"
+    );
+    assert!(!bare.contains("Top File Views"), "{bare}");
+    assert!(!bare.contains("evict_file_view"), "{bare}");
+    assert!(!bare.contains("archive_thread"), "{bare}");
 }
 
 /// Every built-in FSM state's guidance renders, and each opens with its own heading — the model

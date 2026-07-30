@@ -86,9 +86,9 @@ pub use board::{
     SetIssueBlockedByTool, UpdateIssueTool, WAIT_FOR_ISSUE_TOOL, is_board_tool,
 };
 pub use context::{
-    ARCHIVE_THREAD_TOOL, ArchiveThreadTool, COMPACT_TOOL, CompactTool, DEFAULT_ARCHIVE_KEEP_RECENT,
-    EVICT_FILE_VIEW_TOOL, EvictFileViewTool, SEARCH_ARCHIVE_TOOL, SearchArchiveTool,
-    is_context_reclaim_tool, parse_archive_keep_recent, parse_compact_request, parse_evict_path,
+    ARCHIVE_THREAD_TOOL, ArchiveThreadTool, COMPACT_TOOL, CompactTool, EVICT_FILE_VIEW_TOOL,
+    EvictFileViewTool, SEARCH_ARCHIVE_TOOL, SearchArchiveTool, is_context_reclaim_tool,
+    parse_archive_ranges, parse_compact_request, parse_evict_path,
 };
 // Every payload shape, including the ones the LOOP produces rather than a tool (a context reclaim
 // and the four delegation results). They are declared beside the outcome they ride on, because that

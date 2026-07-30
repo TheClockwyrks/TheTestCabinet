@@ -14,7 +14,7 @@
 //! from the tool itself.
 
 use super::test_cabinet::gg::context::{
-    ArchiveHit, ArchiveSearch, Host as ContextHost, MessageRole, ReclaimReport,
+    ArchiveHit, ArchiveSearch, Host as ContextHost, MessageRole, ReclaimReport, TurnRange,
 };
 use super::test_cabinet::gg::types::ToolError;
 use super::{MembraneState, ToolApi};
@@ -30,12 +30,18 @@ impl<A: ToolApi> ContextHost for MembraneState<A> {
         reclaim(self, EVICT_FILE_VIEW_TOOL, outcome.data)
     }
 
-    fn archive_thread(
-        &mut self,
-        keep_recent_turns: Option<u32>,
-    ) -> Result<ReclaimReport, ToolError> {
+    fn archive_thread(&mut self, ranges: Vec<TurnRange>) -> Result<ReclaimReport, ToolError> {
+        // The membrane's `u32` turn bounds widen to the model's `u64` here rather than the other
+        // way around, so a range can never be narrowed on its way in.
+        let ranges: Vec<crate::context::TurnRange> = ranges
+            .into_iter()
+            .map(|range| crate::context::TurnRange {
+                from: u64::from(range.start),
+                to: u64::from(range.end),
+            })
+            .collect();
         let outcome = self.call(ARCHIVE_THREAD_TOOL, |api| {
-            api.archive_thread(keep_recent_turns)
+            api.archive_thread(ranges.clone())
         })?;
         reclaim(self, ARCHIVE_THREAD_TOOL, outcome.data)
     }

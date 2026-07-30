@@ -40,6 +40,20 @@ per agent. Because the board is run-global, the run **has** one as soon as *any*
 to be the Root. A configuration that puts project management on a dedicated planning
 profile gets a board, a dispatcher, and worktrees just the same.
 
+## The board is run-global; the view of it is not
+
+The **pinned board block** — the whole decomposition, rebuilt at every turn boundary and
+[retained across compaction](/gg/compaction/) — is attached only to the window of an agent
+whose **own profile enables this capability**. It is the same gate the prompt's board
+section uses, so what an agent is *told* about the board and what it is *shown* of it can
+never disagree.
+
+An agent without the capability therefore never sees the board at all. That is the point:
+it has no board tool, is not told a board exists, and cannot act on one, so pinning the
+whole decomposition into its window would spend its context every turn on a document it
+can only be distracted by — and would invite a dispatched implementer to go looking for
+work other than the issue it was given.
+
 ## Auto-dispatch
 
 The board **runs itself**. Submitting an issue **enqueues** it. Once every issue it
@@ -123,9 +137,10 @@ Authoring the board and **working an issue on it** are different jobs, so an
 implementer profile is normally configured **without** project management — it has no
 business filing epics. It needs no board tool to hand its work back either: it
 finishes, and finishing is what completes the issue. An implementer without the
-capability therefore gets **no** board tools and no board-authoring section in its
-prompt — only a section naming the issue it was dispatched for and telling it that
-finishing is the hand-back.
+capability therefore gets **no** board tools, **no** [pinned board
+block](#the-board-is-run-global-the-view-of-it-is-not) in its window, and no
+board-authoring section in its prompt — only a section naming the issue it was dispatched
+for and telling it that finishing is the hand-back.
 
 That is deliberate. The alternative — a separate board move an implementer had to
 remember — is a step it can forget, and forgetting it discarded the worktree and

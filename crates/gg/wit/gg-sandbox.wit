@@ -495,12 +495,22 @@ interface context {
         text: string,
     }
 
+    /// An inclusive span of turn numbers, as read off the header on each of your results.
+    record turn-range {
+        /// The first turn in the span. (Named `start`/`end` rather than `from`/`to` only because
+        /// `from` is a WIT keyword; the SDK spells them `from`/`to`, as the model writes them.)
+        start: u32,
+        /// The last turn in the span, inclusive.
+        end: u32,
+    }
+
     /// Drop file contents you have read from the context window. `none` drops every file view. The
     /// files on disk are unchanged.
     evict-file-view: func(path: option<string>) -> result<reclaim-report, tool-error>;
-    /// Move older thread history out of the window, keeping the most recent turns (default 1). The
-    /// archived history stays searchable.
-    archive-thread: func(keep-recent-turns: option<u32>) -> result<reclaim-report, tool-error>;
+    /// Move whole turns out of the window, named by the turn numbers on your results. Ranges are
+    /// inclusive and may overlap. Your own messages in an archived turn are dropped; the results are
+    /// kept and stay searchable.
+    archive-thread: func(ranges: list<turn-range>) -> result<reclaim-report, tool-error>;
     /// What a search of the archive found.
     record archive-search {
         /// Nothing has been archived yet, so there was nothing to search. Distinct from a search

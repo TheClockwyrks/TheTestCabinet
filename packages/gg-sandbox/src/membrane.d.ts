@@ -392,10 +392,21 @@ declare module "test-cabinet:gg/context" {
     hits: ArchiveHit[];
   }
 
+  /**
+   * An inclusive span of turn numbers, as read off the header on each of your results. Spelled
+   * `start`/`end` because `from` is a WIT keyword; the SDK presents it as `{ from, to }`.
+   */
+  export interface TurnRange {
+    /** The first turn in the span. */
+    start: number;
+    /** The last turn in the span, inclusive. */
+    end: number;
+  }
+
   /** Drop file contents from the context window. `undefined` drops every file view. */
   export function evictFileView(path: string | undefined): ReclaimReport;
-  /** Move older thread history out of the window, keeping the most recent turns. */
-  export function archiveThread(keepRecentTurns: number | undefined): ReclaimReport;
+  /** Move whole turns out of the window, named by the turn numbers on your results. */
+  export function archiveThread(ranges: TurnRange[]): ReclaimReport;
   /** Search archived history (case-insensitive substring). */
   export function searchArchive(query: string): ArchiveSearch;
   /**

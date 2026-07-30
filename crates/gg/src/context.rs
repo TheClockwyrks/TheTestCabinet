@@ -50,20 +50,13 @@ use std::sync::Arc;
 use test_cabinet_core::gg::{GgContextSource, GgContextSourceUsage, GgTelemetryKind};
 
 use crate::model::{ImageContent, Message, Role, ToolCall};
-use crate::prompts::{self, ContextPressureContext};
+use crate::prompts::{self, ContextPressureContext, UsageCategoryView, UsageFileView};
 
 /// A small fixed per-message token allowance approximating the role tag and message
 /// framing a provider adds around the content (chat formats wrap each message in a few
 /// tokens of delimiters). Added to every item's estimate so short messages are not
 /// counted as ~zero. An approximation, like the rest of the accounting.
 const MESSAGE_FRAMING_TOKENS: usize = 4;
-
-/// The [`label`](ContextItem::label) sentinel marking the fullness-signal item — the
-/// rebuilt-each-turn, system-adjacent line telling the agent how full its window is (see
-/// [`ContextModel::refresh_fullness_signal`]). It lets the signal be refreshed in place
-/// without disturbing the base system prompt (both are [`System`](GgContextSource::System)
-/// items, distinguished only by this tag). Not a value any real content would collide with.
-const FULLNESS_SIGNAL_LABEL: &str = "\u{0}gg:fullness-signal";
 
 /// Whether a [`ContextItem`] is retained verbatim across a
 /// [compaction](https://docs.testcabinet.ai/gg/compaction/) boundary and shielded from
@@ -108,9 +101,9 @@ pub struct ContextItem {
     /// The estimated tokens this item occupies (computed at push time).
     tokens: usize,
     /// An optional selector tag used by agent-managed context: the workspace path a
-    /// [`FileView`](GgContextSource::FileView) shows (so `evict_file_view { path }` can target
-    /// it) and the sentinel marking the rebuilt-each-turn fullness signal (so it can be
-    /// refreshed without touching the base system prompt). `None` for ordinary items.
+    /// [`FileView`](GgContextSource::FileView) shows, so `evict_file_view { path }` can target it
+    /// and the [context-usage signal](ContextModel::refresh_context_usage_signal) can break the
+    /// file-view band down by file. `None` for ordinary items.
     label: Option<String>,
     /// For a [`FileView`](GgContextSource::FileView) produced by a **paged** read, the
     /// `offset`/`limit` window it covers; `None` for a whole-file view and for every other kind of
@@ -119,6 +112,12 @@ pub struct ContextItem {
     /// `src/main.rs` and sometimes `src/main.rs@200+50` would make the same file un-evictable
     /// depending on how it had been read.
     region: Option<FileRegion>,
+    /// The [session turn](ContextModel::begin_turn) this item was pushed on — the number
+    /// [`archive_thread`](ContextModel::archive_thread) selects ranges of, and the number a tool
+    /// result's [turn header](ContextModel::turn_header) shows the model. `0` for everything seeded
+    /// before the first turn (the system prompt, the build prompt, autoloaded specs, re-opened
+    /// views), which is why turn numbering the model sees starts at `1`.
+    turn: u64,
 }
 
 // Accessors for tests and the Phase 2 compaction/eviction consumers (the loop reads the
@@ -145,10 +144,14 @@ impl ContextItem {
         self.tokens
     }
 
-    /// The item's selector tag, when it carries one (a file view's path, or the fullness
-    /// signal's sentinel).
+    /// The item's selector tag, when it carries one (a file view's path).
     pub fn label(&self) -> Option<&str> {
         self.label.as_deref()
+    }
+
+    /// The [session turn](ContextModel::begin_turn) this item was pushed on.
+    pub fn turn(&self) -> u64 {
+        self.turn
     }
 
     /// The `offset`/`limit` window a paged [file view](GgContextSource::FileView) covers, when this
@@ -369,14 +372,67 @@ pub struct ArchivedItem {
     pub message: Message,
 }
 
+/// What the [context-usage signal](ContextModel::refresh_context_usage_signal) may say, resolved
+/// from the agent's own configuration and toolset.
+///
+/// The block only ever reports something the reading agent can *do* something about, so what it
+/// contains is a function of what that agent was given rather than a fixed layout.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UsageSignalOptions {
+    /// Whether this agent has `evict_file_view`. On, the file-view category is broken down into the
+    /// individual files behind it (which is the list eviction acts on); off, that breakdown is
+    /// omitted entirely — a ranked list of reads it cannot drop is exactly the noise this block was
+    /// rewritten to remove.
+    pub can_evict: bool,
+    /// Whether this agent has `archive_thread`, which decides whether the block closes by pointing at
+    /// it — and, upstream of that, whether tool results carry
+    /// [turn headers](ContextModel::turn_header) at all.
+    pub can_archive: bool,
+    /// How many individual files the file-view breakdown names, most expensive first. Configured per
+    /// agent, because how many reads a window holds at once differs enormously between an agent that
+    /// reads two specs and one crawling a codebase.
+    pub top_file_views: usize,
+}
+
+/// An **inclusive** range of [session turns](ContextModel::begin_turn), the unit
+/// [`archive_thread`](ContextModel::archive_thread) selects by.
+///
+/// Turn numbers are the ones the model reads off the [turn header](ContextModel::turn_header) on
+/// every tool result, so `{ from: 3, to: 7 }` means exactly "the turns I can see numbered 3 through
+/// 7" — no arithmetic, no counting backwards from the present, and no dependence on how many turns
+/// have happened since.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TurnRange {
+    /// The first turn in the range.
+    pub from: u64,
+    /// The last turn in the range, inclusive.
+    pub to: u64,
+}
+
+impl TurnRange {
+    /// Whether `turn` falls inside this range. A reversed range (`from > to`) contains nothing
+    /// rather than being silently normalized — the parsers refuse one, so this only has to be
+    /// harmless.
+    pub fn contains(&self, turn: u64) -> bool {
+        turn >= self.from && turn <= self.to
+    }
+}
+
 /// What an [`archive_thread`](ContextModel::archive_thread) call removed: the archived items
-/// (oldest first) and the tokens reclaimed.
+/// (oldest first), the tokens reclaimed, and how many messages were dropped without being archived.
 #[derive(Debug, Clone, Default)]
 pub struct ArchiveResult {
-    /// The removed thread items, in original order.
+    /// The removed thread items that went **into** the archive, in original order — the tool
+    /// results of the archived turns.
     pub items: Vec<ArchivedItem>,
-    /// The estimated tokens the removed items occupied.
+    /// The estimated tokens every removed item occupied, archived or dropped.
     pub tokens: u64,
+    /// How many assistant messages were removed from the window **without** being archived (see
+    /// [`archive_thread`](ContextModel::archive_thread)).
+    pub dropped: usize,
+    /// The turns that actually contributed something, ascending — what the tool result reports back,
+    /// so a range naming turns that were already archived says so rather than reading as a success.
+    pub turns: Vec<u64>,
 }
 
 /// The source-tagged, token-accounted model of a session's context window.
@@ -403,6 +459,16 @@ pub struct ContextModel {
     /// rebuilt state block. Off on the tool-calling path, where those distinctions are carried by the
     /// message role and the tool-call structure instead, and no heading is added.
     code_mode: bool,
+    /// The [context-usage signal](Self::refresh_context_usage_signal), held in a slot of its own
+    /// rather than among the [`items`](Self::items) — see that method for why.
+    usage_signal: Option<ContextItem>,
+    /// The session turn items are currently being pushed on, set by [`begin_turn`](Self::begin_turn).
+    /// `0` until the first turn opens, which is what leaves the opening context unnumbered.
+    turn: u64,
+    /// Whether every tool result carries a [turn header](Self::turn_header) — on exactly when the
+    /// agent can [archive](Self::archive_thread) turns, since the header exists to give it the turn
+    /// numbers to name.
+    turn_headers: bool,
 }
 
 impl ContextModel {
@@ -419,7 +485,32 @@ impl ContextModel {
             estimator,
             window_limit,
             code_mode,
+            usage_signal: None,
+            turn: 0,
+            turn_headers: false,
         }
+    }
+
+    /// Arm the per-tool-result [turn headers](Self::turn_header).
+    ///
+    /// Called once, at setup, when the agent can [archive turns](Self::archive_thread): the header
+    /// is what gives it the turn numbers to name and the per-result cost to choose between them, and
+    /// without archival it would be a per-result tax on the window buying the model nothing.
+    pub fn enable_turn_headers(&mut self) {
+        self.turn_headers = true;
+    }
+
+    /// Open session turn `turn` — every item pushed from here until the next call is
+    /// [tagged](ContextItem::turn) with it, and (when [armed](Self::enable_turn_headers)) every tool
+    /// result pushed carries a header naming it.
+    ///
+    /// The number is the agent's **session** turn: it increases monotonically for the whole life of
+    /// the agent and is never renumbered — not by a [compaction](Self::clear_ephemeral), not by an
+    /// [archival](Self::archive_thread). A model that read `Turn #37` and later archived turns 12–20
+    /// has to be naming the same turns it saw, and a counter that restarted at a compaction boundary
+    /// would silently point that call at different material.
+    pub fn begin_turn(&mut self, turn: u64) {
+        self.turn = turn;
     }
 
     /// Append `message` as an item tagged with `source` and `retention`, estimating and
@@ -461,7 +552,55 @@ impl ContextModel {
             tokens,
             label,
             region,
+            turn: self.turn,
         });
+    }
+
+    /// Prefix a tool result's body with its **turn header** — the two lines that tell the model
+    /// which [session turn](Self::begin_turn) produced this result and roughly what holding it costs:
+    ///
+    /// ```text
+    /// Turn #123
+    /// 1,234 tokens
+    /// ----
+    /// ```
+    ///
+    /// This is what makes [`archive_thread`](Self::archive_thread) usable. Without it the agent can
+    /// see that its window is full but has no way to name *which* part of the thread to move out of
+    /// it: the turns are unnumbered, and what each one costs is invisible. With it, "archive turns 4
+    /// through 19" is a decision the model can make from what is in front of it.
+    ///
+    /// A no-op until the headers are [armed](Self::enable_turn_headers) and until the first turn has
+    /// [opened](Self::begin_turn), so the opening context — the autoloaded specs and the file views
+    /// [persistence](crate::persistence) re-opens — is not labelled with a turn that never happened.
+    ///
+    /// The token figure is the estimate of the result **without** its header, so the header does not
+    /// have to account for itself; it understates the item by the header's own dozen or so tokens,
+    /// which is well inside what "estimate" already means here.
+    fn turn_header(&self, message: Message) -> Message {
+        if !self.turn_headers || self.turn == 0 {
+            return message;
+        }
+        let tokens = self.estimator.estimate_message(&message);
+        let Message {
+            role,
+            content,
+            tool_calls,
+            tool_call_id,
+            images,
+        } = message;
+        let header = format!(
+            "Turn #{}\n{} tokens\n----\n",
+            self.turn,
+            thousands(tokens as u64)
+        );
+        Message {
+            role,
+            content: Some(format!("{header}{}", content.unwrap_or_default())),
+            tool_calls,
+            tool_call_id,
+            images,
+        }
     }
 
     /// Prefix a synthesized `user` message with its [code-mode heading](code_heading) when this run
@@ -612,11 +751,8 @@ impl ContextModel {
         tool_call_id: impl Into<String>,
         content: impl Into<String>,
     ) {
-        self.push(
-            source,
-            Retention::Ephemeral,
-            Message::tool_result(tool_call_id, content),
-        );
+        let message = self.turn_header(Message::tool_result(tool_call_id, content));
+        self.push(source, Retention::Ephemeral, message);
     }
 
     /// Like [`push_tool_result`](Self::push_tool_result) but attaching `images` to the
@@ -628,11 +764,9 @@ impl ContextModel {
         content: impl Into<String>,
         images: Vec<ImageContent>,
     ) {
-        self.push(
-            source,
-            Retention::Ephemeral,
-            Message::tool_result(tool_call_id, content).with_images(images),
-        );
+        let message =
+            self.turn_header(Message::tool_result(tool_call_id, content).with_images(images));
+        self.push(source, Retention::Ephemeral, message);
     }
 
     /// Record a `read_file` result as an ephemeral [`FileView`](GgContextSource::FileView)
@@ -681,13 +815,9 @@ impl ContextModel {
         images: Vec<ImageContent>,
         retention: Retention,
     ) {
-        self.push_tagged(
-            GgContextSource::FileView,
-            retention,
-            Message::tool_result(tool_call_id, content).with_images(images),
-            path,
-            region,
-        );
+        let message =
+            self.turn_header(Message::tool_result(tool_call_id, content).with_images(images));
+        self.push_tagged(GgContextSource::FileView, retention, message, path, region);
     }
 
     /// Drop every attached image from the window, re-estimating the items that carried
@@ -718,10 +848,19 @@ impl ContextModel {
         stripped
     }
 
+    /// Every item that is part of the live window, in the order it is sent: the conversation items
+    /// followed by the [context-usage signal](Self::refresh_context_usage_signal), which is always
+    /// last.
+    fn window_items(&self) -> impl Iterator<Item = &ContextItem> {
+        self.items.iter().chain(self.usage_signal.iter())
+    }
+
     /// Render the model to the ordered `Vec<Message>` the client consumes — the faithful
-    /// Phase 0 transcript, in item order.
+    /// Phase 0 transcript, in item order, with the context-usage signal appended at the end.
     pub fn messages(&self) -> Vec<Message> {
-        self.items.iter().map(|item| item.message.clone()).collect()
+        self.window_items()
+            .map(|item| item.message.clone())
+            .collect()
     }
 
     /// The per-item view of the current prompt for the [message log](crate::message_log):
@@ -732,19 +871,15 @@ impl ContextModel {
     /// to line a request's messages up with the per-source
     /// [breakdown](Self::breakdown_event) and attribute a file view to its path.
     ///
-    /// gg's own internal marker — the [fullness signal's](Self::refresh_fullness_signal)
-    /// [sentinel](FULLNESS_SIGNAL_LABEL) — is **not** exposed as a tag: it names a window
-    /// slot the model manager rewrites, not material a reader can attribute anything to,
-    /// and it is not something a run record should carry.
+    /// The [context-usage signal](Self::refresh_context_usage_signal) is included, last, because it
+    /// is part of the request that went out — a log that omitted it would not add up to the prompt
+    /// the provider was billed for.
     pub fn prompt_items(&self) -> impl Iterator<Item = PromptItem<'_>> {
-        self.items.iter().map(|item| PromptItem {
+        self.window_items().map(|item| PromptItem {
             source: item.source,
             message: &item.message,
             tokens: item.tokens,
-            label: item
-                .label
-                .as_deref()
-                .filter(|label| *label != FULLNESS_SIGNAL_LABEL),
+            label: item.label.as_deref(),
         })
     }
 
@@ -756,15 +891,14 @@ impl ContextModel {
         self.estimator.estimate_message(message)
     }
 
-    /// The estimated total tokens across every item.
+    /// The estimated total tokens across every item of the live window, the signal included.
     pub fn total_tokens(&self) -> u64 {
-        self.items.iter().map(|item| item.tokens as u64).sum()
+        self.window_items().map(|item| item.tokens as u64).sum()
     }
 
     /// The estimated tokens attributed to `source`.
     pub fn tokens_for(&self, source: GgContextSource) -> u64 {
-        self.items
-            .iter()
+        self.window_items()
             .filter(|item| item.source == source)
             .map(|item| item.tokens as u64)
             .sum()
@@ -834,6 +968,10 @@ impl ContextModel {
     /// caption. Its [`source`](GgContextSource) tag (and thus its accounting band) is
     /// unchanged, and its token estimate is recomputed for the new envelope.
     pub fn clear_ephemeral(&mut self) {
+        // The context-usage signal describes the window as it stood *before* the reset, so carrying
+        // it across would leave the model reading a fullness figure for a window that no longer
+        // exists. It is rebuilt from the post-reset window at the next turn boundary.
+        self.usage_signal = None;
         let estimator = Arc::clone(&self.estimator);
         let code_mode = self.code_mode;
         self.items.retain(|item| item.retention.is_pinned());
@@ -856,123 +994,145 @@ impl ContextModel {
     }
 
     // -----------------------------------------------------------------------
-    // Agent-managed context: the fullness signal, file-view eviction, and
+    // Agent-managed context: the context-usage signal, file-view eviction, and
     // thread archival.
     // -----------------------------------------------------------------------
 
-    /// Rebuild the pinned **fullness signal** — a concise, system-adjacent line telling the
-    /// agent how full its window is and what is consuming it — from the *current* window
-    /// state, so the model sees an up-to-date signal it can act on each turn (the model-facing
-    /// half of [agent-managed context](https://docs.testcabinet.ai/gg/agent-managed-context/)).
+    /// Rebuild the **context-usage signal** — the block telling the agent how full its window is and
+    /// which categories (and which *files*) are filling it — from the *current* window state, so the
+    /// model acts each turn on figures that are true this turn (the model-facing half of
+    /// [agent-managed context](https://docs.testcabinet.ai/gg/agent-managed-context/)).
     ///
-    /// The numbers are computed **without** the live signal, so the line never accounts for
-    /// itself and cannot ratchet the window up turn over turn; it is a single short line, kept
-    /// cheap by design. It is a [`System`](GgContextSource::System) pinned item tagged with
-    /// [`FULLNESS_SIGNAL_LABEL`] so it is found without disturbing the base system prompt, and
-    /// — being pinned — it survives compaction (and is rebuilt fresh the next turn regardless).
-    /// A no-op when no window limit is known (there is no fullness to report).
+    /// A no-op when no window limit is known: there is no fullness to report against.
     ///
-    /// It follows the same append-only rule as the other mutable blocks (see
-    /// [`replace_source`](Self::replace_source)): an unchanged line stays exactly where it is,
-    /// and a changed one leaves the superseded copy in place as ephemeral history rather than
-    /// being deleted out of the middle of the prompt.
-    pub fn refresh_fullness_signal(&mut self) {
-        let Some(text) = self.fullness_signal_text() else {
+    /// # It lives in a slot, not in the thread
+    ///
+    /// The signal is held in a **single slot** appended after every conversation item rather than
+    /// pushed into them, and that is what makes it correct on both counts it used to get wrong:
+    ///
+    /// - **There can only ever be one.** As a thread item it had to be retired in place each turn
+    ///   (deleting from the middle of a prompt invalidates everything after it), so every refresh
+    ///   left the previous line behind as history — and being *pinned*, the live one also crossed
+    ///   every [compaction](Self::clear_ephemeral) boundary, so a compacted window opened with a
+    ///   stale reading and then gained a second one. A slot cannot accumulate: assigning it
+    ///   overwrites, and [`clear_ephemeral`](Self::clear_ephemeral) empties it.
+    /// - **The prompt stays append-only anyway.** Everything a provider's prompt cache reads — the
+    ///   whole conversation — sits *before* the signal, so rewriting the signal every turn only ever
+    ///   changes the last message. The old design had to round its figures to hold its position;
+    ///   this one can report them exactly.
+    pub fn refresh_context_usage_signal(&mut self, options: UsageSignalOptions) {
+        let Some(text) = self.context_usage_text(options) else {
             return;
         };
-        let live = self.items.iter().find(|item| is_fullness_signal(item));
-        // An unchanged line does not move, so this turn's prompt still extends the last one.
-        if live.is_some_and(|item| item.message.content.as_deref() == Some(text.as_str())) {
-            return;
-        }
-        self.supersede_fullness_signal();
-        self.push_labeled(
-            GgContextSource::System,
-            Retention::Pinned,
-            Message::system(text),
-            Some(FULLNESS_SIGNAL_LABEL.to_string()),
-        );
+        let message = Message::system(text);
+        let tokens = self.estimator.estimate_message(&message);
+        self.usage_signal = Some(ContextItem {
+            source: GgContextSource::System,
+            retention: Retention::Pinned,
+            message,
+            tokens,
+            label: None,
+            region: None,
+            turn: self.turn,
+        });
     }
 
-    /// Retire the live fullness signal in place, as ephemeral
-    /// [`History`](GgContextSource::History) — the [`supersede_source`](Self::supersede_source)
-    /// treatment, matched on the sentinel label so the base system prompt is untouched.
-    fn supersede_fullness_signal(&mut self) {
-        for item in self
-            .items
-            .iter_mut()
-            .filter(|item| is_fullness_signal(item))
-        {
-            item.source = GgContextSource::History;
-            item.retention = Retention::Ephemeral;
-            item.label = None;
-        }
-    }
-
-    /// The text of the fullness signal for the current window, or `None` when no window limit
-    /// is known. Reports `used/limit tokens (P% full)` plus the two or three largest consuming
-    /// sources, and a short hint that the agent can reclaim space itself.
+    /// The text of the [context-usage signal](Self::refresh_context_usage_signal) for the current
+    /// window, or `None` when no window limit is known.
     ///
-    /// Every token figure is reported to [one-percent-of-window](fullness_report_granularity)
-    /// resolution. The line is a *hint* — the agent acts on "how full am I, and where is it
-    /// going", for which a token-exact figure is no more useful than a rounded one — and the
-    /// rounding is what lets [`refresh_fullness_signal`](Self::refresh_fullness_signal) leave
-    /// the line in place across turns that did not move it a meaningful amount. A figure that
-    /// changed by a handful of tokens would otherwise rewrite the tail of the prompt every
-    /// turn and cost the run its whole prompt cache.
-    fn fullness_signal_text(&self) -> Option<String> {
+    /// It reports the share of the window each [source](GgContextSource) holds, as a percentage —
+    /// and, when the agent can act on it, breaks the file-view band down into the
+    /// [`top_file_views`](UsageSignalOptions::top_file_views) individual files inside it.
+    ///
+    /// **Why percentages of named categories, and why files.** The line this replaces reported raw
+    /// token counts for the two or three largest bands, which is a number the agent could read but
+    /// not use: most of what it named — the system prompt, the build prompt, the task list — is not
+    /// something the agent is able to reclaim, so being told they are large is noise. What it can act
+    /// on is precisely the file views it has open (`evict_file_view { path }` takes a path, so the
+    /// per-*file* split is the actionable unit) and its own thread (`archive_thread`). Reporting
+    /// every category as a share of the window says how much of the problem each one *is*, and the
+    /// nested file list says which reads to drop first.
+    ///
+    /// The figures are computed over the conversation items only — the signal's own cost is excluded,
+    /// so the block never accounts for itself and computing it is idempotent.
+    fn context_usage_text(&self, options: UsageSignalOptions) -> Option<String> {
         let limit = self.window_limit?;
         if limit == 0 {
             return None;
         }
-        let granularity = fullness_report_granularity(limit);
-        // The live signal is excluded from its own figures, so the line never accounts for
-        // itself and computing it is idempotent. A *superseded* copy is ordinary history by
-        // then and counts like any other history, which is what it is.
-        let own_tokens: u64 = self
-            .items
-            .iter()
-            .filter(|item| is_fullness_signal(item))
-            .map(|item| item.tokens as u64)
-            .sum();
-        let total = round_to(self.total_tokens().saturating_sub(own_tokens), granularity);
-        // Derived from the rounded total so the reported figures agree with each other.
-        let percent = ((total as f64 / limit as f64) * 100.0).round() as u64;
+        let percent = |tokens: u64| format!("{:.1}%", (tokens as f64 / limit as f64) * 100.0);
+        let total: u64 = self.items.iter().map(|item| item.tokens as u64).sum();
 
-        // The largest consumers, most first, for an at-a-glance hint of where the window is
-        // going.
-        let mut bands: Vec<(GgContextSource, u64)> = self
-            .usage_by_source()
-            .into_iter()
-            .map(|usage| (usage.source, usage.tokens))
-            .map(|(source, tokens)| match source {
-                // Net out the live signal's own cost from the band it sits in.
-                GgContextSource::System => (source, tokens.saturating_sub(own_tokens)),
-                other => (other, tokens),
-            })
-            .collect();
-        // Stable sort by tokens descending; ties keep `GgContextSource::ALL` order (the
-        // order `usage_by_source` produced), so the hint is deterministic. Sorted on the
-        // exact counts and only then rounded, so rounding cannot reorder the bands.
-        bands.sort_by_key(|&(_, tokens)| std::cmp::Reverse(tokens));
-        // A band is named only once it rounds to a non-zero figure. That keeps the line free
-        // of `history 0` noise, and — because a source appearing in the window for the first
-        // time no longer rewrites the line while it is still a rounding error — keeps the line
-        // stable enough to hold its position turn over turn.
-        let top: Vec<String> = bands
+        // One entry per source that is actually holding something, in `GgContextSource::ALL` order
+        // so the block reads the same way from turn to turn. A category at zero is left out rather
+        // than listed as `0.0%`: the point of the block is where the window is going.
+        let categories: Vec<UsageCategoryView> = GgContextSource::ALL
             .iter()
-            .map(|&(source, tokens)| (source, round_to(tokens, granularity)))
-            .filter(|&(_, tokens)| tokens > 0)
-            .take(3)
-            .map(|(source, tokens)| format!("{} {tokens}", source_label(source)))
+            .filter_map(|&source| {
+                let tokens: u64 = self
+                    .items
+                    .iter()
+                    .filter(|item| item.source == source)
+                    .map(|item| item.tokens as u64)
+                    .sum();
+                if tokens == 0 {
+                    return None;
+                }
+                Some(UsageCategoryView {
+                    label: source_label(source).to_string(),
+                    percent: percent(tokens),
+                    // Only the file-view band breaks down further, and only for an agent that can
+                    // evict: naming the files to an agent with no `evict_file_view` is a list it
+                    // cannot act on, which is the defect this whole block exists to fix.
+                    top_files: if source == GgContextSource::FileView && options.can_evict {
+                        self.top_file_views(options.top_file_views)
+                            .into_iter()
+                            .map(|(path, tokens)| UsageFileView {
+                                path,
+                                percent: percent(tokens),
+                            })
+                            .collect()
+                    } else {
+                        Vec::new()
+                    },
+                })
+            })
             .collect();
 
         Some(prompts::render_context_pressure(&ContextPressureContext {
-            total,
-            limit,
-            percent,
-            consumers: top,
+            overall: percent(total),
+            categories,
+            can_evict: options.can_evict,
+            can_archive: options.can_archive,
         }))
+    }
+
+    /// The `limit` most expensive **evictable** file views, as `(path, tokens)` pairs, largest first
+    /// — the per-file breakdown of the file-view band.
+    ///
+    /// Views of the same path are summed, because `evict_file_view { path }` reclaims all of them at
+    /// once: reporting three reads of one file as three entries would understate what dropping it
+    /// buys. A [pinned](Retention::Pinned) view (a locked, autoloaded specification) is excluded —
+    /// eviction is exactly what locking prevents — and so is a view whose path is unknown, which no
+    /// targeted call could name.
+    fn top_file_views(&self, limit: usize) -> Vec<(String, u64)> {
+        let mut totals: Vec<(String, u64)> = Vec::new();
+        for item in &self.items {
+            if item.source != GgContextSource::FileView || item.retention.is_pinned() {
+                continue;
+            }
+            let Some(path) = item.label.as_deref() else {
+                continue;
+            };
+            match totals.iter_mut().find(|(seen, _)| seen == path) {
+                Some((_, tokens)) => *tokens += item.tokens as u64,
+                None => totals.push((path.to_string(), item.tokens as u64)),
+            }
+        }
+        // Descending by cost; ties keep first-read order, so the list is deterministic.
+        totals.sort_by_key(|&(_, tokens)| std::cmp::Reverse(tokens));
+        totals.truncate(limit);
+        totals
     }
 
     /// The [file views](GgContextSource::FileView) currently **open** in the window — each path the
@@ -1050,62 +1210,47 @@ impl ContextModel {
         result
     }
 
-    /// Archive the oldest ephemeral thread material, keeping the most recent
-    /// `keep_recent_turns` assistant turns live: the removed items are returned (for the caller
-    /// to move into the searchable [archive](crate::archive::ArchiveStore)) and their tokens
-    /// are reclaimed from the window.
+    /// Archive the named **[turn](Self::begin_turn) ranges** out of the live window: every eligible
+    /// item whose turn falls inside any of `ranges` is removed, the tool results among them are
+    /// returned (for the caller to move into the searchable
+    /// [archive](crate::archive::ArchiveStore)), and their tokens are reclaimed.
     ///
-    /// **Selection model.** Only [`Ephemeral`](Retention::Ephemeral) items are eligible; the
-    /// pinned prefix (system prompt, build prompt, read skills, memories, task list, the
-    /// fullness signal) is never archived. The eligible items are grouped into *turns* — a new
-    /// turn begins at each [`Assistant`](GgContextSource::Assistant) item and includes the tool
-    /// results and file views that follow it — and the newest `keep_recent_turns` turns are
-    /// kept live while every older item is archived (a leading run of items with no preceding
-    /// assistant, such as a prior compaction summary, forms the oldest turn). `keep_recent_turns`
-    /// of `0` archives all ephemeral history; a value at least the number of turns archives
-    /// nothing (an empty result). This is a clean, predictable "section" the agent can reason
-    /// about: "everything but my most recent turn(s)".
-    pub fn archive_thread(&mut self, keep_recent_turns: usize) -> ArchiveResult {
-        // Assign each ephemeral item a turn-group index, in order.
-        let mut group_of: Vec<usize> = Vec::new();
-        let mut group = 0usize;
-        let mut seen_assistant = false;
-        for item in &self.items {
-            if item.retention.is_pinned() {
-                continue;
-            }
-            if item.source == GgContextSource::Assistant {
-                if seen_assistant {
-                    group += 1;
-                }
-                seen_assistant = true;
-            }
-            group_of.push(group);
-        }
-        let total_groups = if group_of.is_empty() { 0 } else { group + 1 };
-        // Groups strictly below this cutoff are archived; the newest `keep_recent_turns`
-        // groups (at or above it) stay live.
-        let cutoff = total_groups.saturating_sub(keep_recent_turns);
-
+    /// **Selection model.** Ranges are **inclusive** on both ends and name the turn numbers the model
+    /// reads off each result's [turn header](Self::turn_header), so `{from: 4, to: 19}` is exactly
+    /// "the turns I can see numbered 4 to 19". They may be given in any order and may overlap; an
+    /// item is removed if any range contains it. Only [`Ephemeral`](Retention::Ephemeral) items are
+    /// eligible, so the pinned prefix (the system prompt, the build prompt, read skills, memories,
+    /// the task list, the board) is never touched however wide a range is — and neither is the
+    /// [context-usage signal](Self::refresh_context_usage_signal), which is not a thread item at all.
+    ///
+    /// **Only the results are kept.** An archived turn's [`Assistant`](GgContextSource::Assistant)
+    /// message is removed from the window but **not** written to the archive; everything else in the
+    /// turn is. What is worth recovering later is what the turn *found* — the file it read, the
+    /// command's output, the error — not the model's own narration of what it was about to do, which
+    /// is the half of the thread that ages worst and would otherwise be what a `search_archive` query
+    /// mostly matched.
+    pub fn archive_thread(&mut self, ranges: &[TurnRange]) -> ArchiveResult {
         let mut result = ArchiveResult::default();
-        if cutoff == 0 {
-            return result; // Nothing old enough to archive.
+        if ranges.is_empty() {
+            return result;
         }
-        let mut ephemeral_index = 0usize;
         self.items.retain(|item| {
-            if item.retention.is_pinned() {
+            if item.retention.is_pinned() || !ranges.iter().any(|range| range.contains(item.turn)) {
                 return true;
             }
-            let keep = group_of[ephemeral_index] >= cutoff;
-            ephemeral_index += 1;
-            if !keep {
-                result.tokens += item.tokens as u64;
+            result.tokens += item.tokens as u64;
+            if let Err(at) = result.turns.binary_search(&item.turn) {
+                result.turns.insert(at, item.turn);
+            }
+            if item.source == GgContextSource::Assistant {
+                result.dropped += 1;
+            } else {
                 result.items.push(ArchivedItem {
                     source: item.source,
                     message: item.message.clone(),
                 });
             }
-            keep
+            false
         });
         result
     }
@@ -1124,8 +1269,8 @@ impl ContextModel {
 ///
 /// [`Assistant`](GgContextSource::Assistant) is `None` because an assistant turn is the model's own
 /// program, never gg's synthesis; [`System`](GgContextSource::System) maps to a heading for the
-/// process *notices* pushed as `user` guidance, but the base system prompt and the fullness signal
-/// are `system`-role and so are never headed regardless.
+/// process *notices* pushed as `user` guidance, but the base system prompt and the context-usage
+/// signal are `system`-role and so are never headed regardless.
 ///
 /// The strings are the closed vocabulary the prompt documents, so a new source must be given a
 /// heading here and listed there in the same change.
@@ -1165,52 +1310,41 @@ fn apply_code_heading(code_mode: bool, source: GgContextSource, message: Message
     }
 }
 
-/// A short, human-facing name for a [`GgContextSource`], used in the fullness signal's
-/// "largest consumers" hint.
+/// The category name a [`GgContextSource`] is reported under in the
+/// [context-usage signal](ContextModel::refresh_context_usage_signal).
+///
+/// Title-case and spelled for a reader rather than for the wire, because these are the words the
+/// model reads: the block is a short table it acts on, not a dump of enum variants. The file-view
+/// label doubles as the heading of its nested per-file list (`Top File Views`), so it is plural.
 fn source_label(source: GgContextSource) -> &'static str {
     match source {
-        GgContextSource::System => "system",
-        GgContextSource::UserPrompt => "prompt",
-        GgContextSource::Assistant => "assistant",
-        GgContextSource::ToolOutput => "tool output",
-        GgContextSource::FileView => "file views",
-        GgContextSource::Skill => "skills",
-        GgContextSource::Memory => "memories",
-        GgContextSource::TaskList => "tasks",
-        GgContextSource::Board => "board",
-        GgContextSource::Plan => "plan",
-        GgContextSource::History => "history",
+        GgContextSource::System => "System Prompt",
+        GgContextSource::UserPrompt => "Task Prompt",
+        GgContextSource::Assistant => "Your Messages",
+        GgContextSource::ToolOutput => "Tool Output",
+        GgContextSource::FileView => "File Views",
+        GgContextSource::Skill => "Documentation",
+        GgContextSource::Memory => "Memories",
+        GgContextSource::TaskList => "Tasks",
+        GgContextSource::Board => "Board",
+        GgContextSource::Plan => "Plan",
+        GgContextSource::History => "History",
     }
 }
 
-/// Whether `item` is the pinned fullness-signal line (a [`System`](GgContextSource::System)
-/// item carrying the [`FULLNESS_SIGNAL_LABEL`] sentinel), as opposed to the base system prompt.
-fn is_fullness_signal(item: &ContextItem) -> bool {
-    item.source == GgContextSource::System && item.label.as_deref() == Some(FULLNESS_SIGNAL_LABEL)
-}
-
-/// The resolution the [fullness signal](ContextModel::refresh_fullness_signal) reports token
-/// figures at: one percent of the window, and never less than one token (so a tiny or unknown
-/// window still reports something rather than dividing by zero).
-///
-/// One percent is the resolution the line already reported its *percentage* at, so this simply
-/// holds its token figures to the same precision as the percentage beside them.
-fn fullness_report_granularity(limit: u64) -> u64 {
-    (limit / 100).max(1)
-}
-
-/// `value` rounded to the nearest multiple of `granularity` (halves round up).
-fn round_to(value: u64, granularity: u64) -> u64 {
-    if granularity <= 1 {
-        return value;
+/// `value` written with `,` thousands separators — how a
+/// [turn header](ContextModel::turn_header) reports a result's token count, since a five- or
+/// six-digit figure is what the model is comparing turns by.
+fn thousands(value: u64) -> String {
+    let digits = value.to_string();
+    let mut out = String::with_capacity(digits.len() + digits.len() / 3);
+    for (index, digit) in digits.char_indices() {
+        if index > 0 && (digits.len() - index).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(digit);
     }
-    // Integer round-half-up without overflowing on a large `value`.
-    let remainder = value % granularity;
-    if remainder * 2 >= granularity {
-        value - remainder + granularity
-    } else {
-        value - remainder
-    }
+    out
 }
 
 // Read/partition seams for Phase 2 (compaction summarizes the ephemeral history and

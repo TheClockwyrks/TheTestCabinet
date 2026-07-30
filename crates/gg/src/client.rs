@@ -1469,13 +1469,14 @@ impl MockClient {
     /// 1. `write_file` creates a chunky `level.json` (working material to reclaim);
     /// 2. `read_file` reads it back — a [`FileView`](test_cabinet_core::gg::GgContextSource::FileView)
     ///    enters the window;
-    /// 3. `evict_file_view { path: "level.json" }` drops that file view, reclaiming its tokens
+    /// 3. `archive_thread { ranges: [[1, 2]] }` moves those two turns out of the live window into
+    ///    the searchable archive, naming them by the turn numbers on their results;
+    /// 4. `read_file` reads the level back again — the window holds a file view once more;
+    /// 5. `evict_file_view { path: "level.json" }` drops that file view, reclaiming its tokens
     ///    (the next context breakdown shows the file-view band fall to zero);
-    /// 4. `archive_thread` moves the older turns out of the live window into the searchable
-    ///    archive (reclaiming more), keeping the current turn;
-    /// 5. `search_archive { query: "level.json" }` recovers the archived reference on demand,
-    ///    proving the archived history is still reachable though out of the window;
-    /// 6. a final tool-free turn stops.
+    /// 6. `search_archive { query: "level.json" }` recovers the archived read on demand, proving
+    ///    the archived history is still reachable though out of the window;
+    /// 7. a final tool-free turn stops.
     ///
     /// Used by the offline agent-managed-context e2e; requires a run with the
     /// [`agent-managed-context`](test_cabinet_core::gg::CAPABILITY_AGENT_MANAGED_CONTEXT) and
@@ -1523,12 +1524,25 @@ impl MockClient {
             usage: usage(1200, 40),
             cost: None,
         };
+        let reread_level = ModelResponse {
+            text: Some("Pulling level.json back up to finish the layout pass.".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "call_reread_level".to_string(),
+                name: "read_file".to_string(),
+                arguments: json!({ "path": "level.json" }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: usage(1100, 40),
+            cost: None,
+        };
         let archive = ModelResponse {
             text: Some("Archiving the earlier thread to keep my window lean.".to_string()),
             tool_calls: vec![ToolCall {
                 id: "call_archive".to_string(),
                 name: "archive_thread".to_string(),
-                arguments: json!({}),
+                // The first two turns: the write and the read, whose numbers the model read off
+                // the headers on their results.
+                arguments: json!({ "ranges": [[1, 2]] }),
             }],
             finish_reason: FinishReason::ToolCalls,
             usage: usage(700, 30),
@@ -1554,8 +1568,9 @@ impl MockClient {
             vec![
                 write_level,
                 read_level,
-                evict_level,
                 archive,
+                reread_level,
+                evict_level,
                 search,
                 finish,
             ],

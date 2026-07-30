@@ -43,22 +43,45 @@ fn parse_evict_path_accepts_absent_null_and_string() {
 }
 
 #[test]
-fn parse_archive_keep_recent_defaults_and_validates() {
+fn parse_archive_ranges_reads_pairs_and_objects() {
     assert_eq!(
-        parse_archive_keep_recent(&json!({})),
-        Ok(DEFAULT_ARCHIVE_KEEP_RECENT)
+        parse_archive_ranges(&json!({ "ranges": [[4, 19]] })),
+        Ok(vec![TurnRange { from: 4, to: 19 }])
     );
+    // A single turn is a range of one.
     assert_eq!(
-        parse_archive_keep_recent(&json!({ "keep_recent_turns": 0 })),
-        Ok(0)
+        parse_archive_ranges(&json!({ "ranges": [[7, 7], [9, 12]] })),
+        Ok(vec![
+            TurnRange { from: 7, to: 7 },
+            TurnRange { from: 9, to: 12 }
+        ])
     );
+    // The object spelling a model reaches for means the same thing.
     assert_eq!(
-        parse_archive_keep_recent(&json!({ "keep_recent_turns": 3 })),
-        Ok(3)
+        parse_archive_ranges(&json!({ "ranges": [{ "from": 4, "to": 19 }] })),
+        Ok(vec![TurnRange { from: 4, to: 19 }])
     );
-    // Negative / non-integer are usage errors.
-    assert!(parse_archive_keep_recent(&json!({ "keep_recent_turns": -1 })).is_err());
-    assert!(parse_archive_keep_recent(&json!({ "keep_recent_turns": "lots" })).is_err());
+}
+
+#[test]
+fn parse_archive_ranges_refuses_malformed_calls() {
+    // `ranges` is required, and an empty list would archive nothing while reading as a success.
+    assert!(parse_archive_ranges(&json!({})).is_err());
+    assert!(parse_archive_ranges(&json!({ "ranges": [] })).is_err());
+    // Wrong shapes.
+    assert!(parse_archive_ranges(&json!({ "ranges": 3 })).is_err());
+    assert!(parse_archive_ranges(&json!({ "ranges": [[1]] })).is_err());
+    assert!(parse_archive_ranges(&json!({ "ranges": [[1, 2, 3]] })).is_err());
+    assert!(parse_archive_ranges(&json!({ "ranges": [["a", "b"]] })).is_err());
+    assert!(parse_archive_ranges(&json!({ "ranges": [[-1, 4]] })).is_err());
+    // A reversed range is refused rather than silently normalized — the two readings of it
+    // differ by the whole call.
+    let reversed = parse_archive_ranges(&json!({ "ranges": [[19, 4]] }));
+    assert!(reversed.is_err());
+    assert!(reversed.unwrap_err().contains("[4, 19]"));
+    // And the list is bounded.
+    let many: Vec<[u64; 2]> = (0..MAX_ARCHIVE_RANGES as u64 + 1).map(|n| [n, n]).collect();
+    assert!(parse_archive_ranges(&json!({ "ranges": many })).is_err());
 }
 
 #[test]
@@ -82,16 +105,19 @@ async fn evict_and_archive_tools_validate_arguments() {
     assert!(!evict.invoke(json!({ "path": 5 }), &ctx()).await.ok);
 
     let archive = ArchiveThreadTool;
-    assert!(archive.invoke(json!({}), &ctx()).await.ok);
     assert!(
         archive
-            .invoke(json!({ "keep_recent_turns": 2 }), &ctx())
+            .invoke(json!({ "ranges": [[4, 19]] }), &ctx())
             .await
             .ok
     );
+    // `ranges` is required: a call that named nothing would reclaim nothing while reading as a
+    // success.
+    assert!(!archive.invoke(json!({}), &ctx()).await.ok);
+    assert!(!archive.invoke(json!({ "ranges": [] }), &ctx()).await.ok);
     assert!(
         !archive
-            .invoke(json!({ "keep_recent_turns": -3 }), &ctx())
+            .invoke(json!({ "ranges": [[19, 4]] }), &ctx())
             .await
             .ok
     );
@@ -215,7 +241,9 @@ async fn the_reclaim_tools_leave_the_sidecar_to_the_loop() {
     assert!(evict.ok);
     assert_eq!(evict.data, None);
 
-    let archive = ArchiveThreadTool.invoke(json!({}), &ctx()).await;
+    let archive = ArchiveThreadTool
+        .invoke(json!({ "ranges": [[1, 3]] }), &ctx())
+        .await;
     assert!(archive.ok);
     assert_eq!(archive.data, None);
 }
@@ -231,8 +259,9 @@ async fn argument_diagnostics_are_classified_as_invalid_arguments() {
         EvictFileViewTool
             .invoke(json!({ "path": "  " }), &ctx())
             .await,
+        ArchiveThreadTool.invoke(json!({}), &ctx()).await,
         ArchiveThreadTool
-            .invoke(json!({ "keep_recent_turns": -3 }), &ctx())
+            .invoke(json!({ "ranges": [[19, 4]] }), &ctx())
             .await,
         search.invoke(json!({}), &ctx()).await,
         search.invoke(json!({ "query": "  " }), &ctx()).await,

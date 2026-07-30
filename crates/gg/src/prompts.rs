@@ -1497,23 +1497,51 @@ pub fn render_completion_validation_failure(context: &ValidationFailureContext<'
 // Context pressure
 // ---------------------------------------------------------------------------
 
-/// The variables `context-pressure.hbs` may reference: how full the window is and what is filling
-/// it.
+/// The variables `context-pressure.hbs` may reference: what share of the window each category holds,
+/// and — for the one category the agent can act on file by file — which files are inside it.
+///
+/// Every figure arrives here **pre-formatted as a percentage string**. The template's job is layout;
+/// deciding what a number means (and to how many places) belongs with the accounting that produced
+/// it, in [`crate::context`].
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ContextPressureContext {
-    /// Tokens currently in the window.
-    pub total: u64,
-    /// The window's size.
-    pub limit: u64,
-    /// How full it is, as a percentage.
-    pub percent: u64,
-    /// The largest [sources](crate::context) in the window, pre-labelled and pre-rounded, largest
-    /// first. Empty renders no consumers clause.
-    pub consumers: Vec<String>,
+    /// How much of the window is in use, as a percentage.
+    pub overall: String,
+    /// One entry per [source](crate::context) actually holding something, in a stable order.
+    pub categories: Vec<UsageCategoryView>,
+    /// Whether to point the agent at `evict_file_view`.
+    pub can_evict: bool,
+    /// Whether to point the agent at `archive_thread`.
+    pub can_archive: bool,
 }
 
-/// Render the per-turn [context-pressure](crate::context) signal.
+/// One category of the [context-usage](ContextPressureContext) block: what it is called, what share
+/// of the window it holds, and (only for file views, and only for an agent that can evict) the
+/// individual files inside it.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageCategoryView {
+    /// The category's model-facing name — also the heading its nested list gets (`Top <label>`).
+    pub label: String,
+    /// Its share of the window, as a percentage.
+    pub percent: String,
+    /// The largest individual contributors inside this category, largest first. Empty renders no
+    /// nested list.
+    pub top_files: Vec<UsageFileView>,
+}
+
+/// One file inside the [file-view breakdown](UsageCategoryView::top_files).
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageFileView {
+    /// The workspace path, exactly as `evict_file_view { path }` takes it.
+    pub path: String,
+    /// Its share of the window, as a percentage.
+    pub percent: String,
+}
+
+/// Render the per-turn [context-usage](crate::context) signal.
 pub fn render_context_pressure(context: &ContextPressureContext) -> String {
     render("context-pressure", context)
 }

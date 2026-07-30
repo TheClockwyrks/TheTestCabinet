@@ -1,7 +1,17 @@
-Context window: {{total}}/{{limit}} tokens ({{percent}}% full).
-{{#if consumers}}
-Largest consumers (tokens): {{#each consumers}}{{this}}{{#unless @last}}, {{/unless}}{{/each}}.
+Context Usage:
+- Overall: {{overall}}
+{{#each categories}}
+- {{this.label}}: {{this.percent}}
+{{#if this.topFiles}}
+- Top {{this.label}}:
+{{#each this.topFiles}}
+  - `{{this.path}}`: {{this.percent}}
+{{/each}}
 {{/if}}
-
-Use `evict_file_view` to reclaim space whenever file views are no longer needed.
-Use `archive_thread` to evict thread history into the archive.
+{{/each}}
+{{#if canEvict}}
+Use `evict_file_view` to drop file views you no longer need; you can always read the file again.
+{{/if}}
+{{#if canArchive}}
+Use `archive_thread` to move whole turns into the searchable archive, naming them by the turn numbers on your results.
+{{/if}}

@@ -194,6 +194,19 @@ export interface ReclaimReport {
   detail: string;
 }
 
+/**
+ * An inclusive span of turn numbers, the unit `archiveThread` moves out of the window.
+ *
+ * The numbers are the ones on the header of every result you are given, so `{ from: 4, to: 19 }`
+ * means exactly the turns you can see numbered 4 through 19 — both ends included.
+ */
+export interface TurnRange {
+  /** The first turn in the span. */
+  from: number;
+  /** The last turn in the span, inclusive. */
+  to: number;
+}
+
 /** One archived message that matched a search. */
 export interface ArchiveHit {
   /** The archived message's sequence number. */

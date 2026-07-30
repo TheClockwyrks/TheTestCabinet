@@ -21,6 +21,7 @@
 use std::time::Duration;
 
 use crate::board::IssueStatus;
+use crate::context::TurnRange;
 use crate::tasks::TaskStatus;
 use crate::tools::ToolOutcome;
 
@@ -157,7 +158,7 @@ pub trait ToolApi: Send + 'static {
     /// wait, so the wait is deferred to a place that does — between turns.
     fn wait_for_issue(&mut self, id: String) -> ToolOutcome;
     fn evict_file_view(&mut self, path: Option<String>) -> ToolOutcome;
-    fn archive_thread(&mut self, keep_recent_turns: Option<u32>) -> ToolOutcome;
+    fn archive_thread(&mut self, ranges: Vec<TurnRange>) -> ToolOutcome;
     fn search_archive(&mut self, query: String) -> ToolOutcome;
     /// Register a compaction of the agent's own window and return. Deferred exactly as
     /// [`wait_for_issue`](Self::wait_for_issue) is, and for the same reason: rewriting the context

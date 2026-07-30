@@ -314,11 +314,12 @@ impl ToolApi for FakeToolApi {
     fn evict_file_view(&mut self, path: Option<String>) -> ToolOutcome {
         self.call("evict_file_view", json!({ "path": path }))
     }
-    fn archive_thread(&mut self, keep_recent_turns: Option<u32>) -> ToolOutcome {
-        self.call(
-            "archive_thread",
-            json!({ "keep_recent_turns": keep_recent_turns }),
-        )
+    fn archive_thread(&mut self, ranges: Vec<crate::context::TurnRange>) -> ToolOutcome {
+        let pairs: Vec<serde_json::Value> = ranges
+            .iter()
+            .map(|range| json!([range.from, range.to]))
+            .collect();
+        self.call("archive_thread", json!({ "ranges": pairs }))
     }
     fn search_archive(&mut self, query: String) -> ToolOutcome {
         self.call("search_archive", json!({ "query": query }))

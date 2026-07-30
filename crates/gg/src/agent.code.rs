@@ -1641,15 +1641,16 @@ impl ToolApi for LoopToolApi {
             EvictFileViewTool.evict(path.clone())
         })
     }
-    fn archive_thread(&mut self, keep_recent_turns: Option<u32>) -> ToolOutcome {
-        let keep = keep_recent_turns
-            .map(|k| k as usize)
-            .unwrap_or(DEFAULT_ARCHIVE_KEEP_RECENT);
-        self.serviced(
-            "archive_thread",
-            json!({ "keep_recent_turns": keep_recent_turns }),
-            move |_api| ArchiveThreadTool.archive(keep),
-        )
+    fn archive_thread(&mut self, ranges: Vec<TurnRange>) -> ToolOutcome {
+        // Recorded as the same `[from, to]` pairs the JSON schema takes, because the loop re-parses
+        // these arguments to perform the archival — the recorded call *is* the request.
+        let pairs: Vec<Value> = ranges
+            .iter()
+            .map(|range| json!([range.from, range.to]))
+            .collect();
+        self.serviced("archive_thread", json!({ "ranges": pairs }), move |_api| {
+            ArchiveThreadTool.archive(ranges.clone())
+        })
     }
     fn search_archive(&mut self, query: String) -> ToolOutcome {
         self.serviced("search_archive", json!({ "query": query }), |api| {

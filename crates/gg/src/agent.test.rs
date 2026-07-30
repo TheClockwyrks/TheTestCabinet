@@ -433,11 +433,14 @@ fn compaction_setup(
 }
 
 /// A disabled agent-managed-context setup — the `drive` tests that are not about
-/// agent-managed context inject no fullness signal and apply no reclaim tools.
+/// agent-managed context inject no usage signal and apply no reclaim tools.
 fn no_amc() -> AmcSetup {
     AmcSetup {
         enabled: false,
         archive: Arc::new(Mutex::new(ArchiveStore::new())),
+        can_evict: false,
+        can_archive: false,
+        top_file_views: 0,
     }
 }
 
@@ -462,6 +465,9 @@ fn amc_with(archive: Arc<Mutex<ArchiveStore>>) -> AmcSetup {
     AmcSetup {
         enabled: true,
         archive,
+        can_evict: true,
+        can_archive: true,
+        top_file_views: 5,
     }
 }
 
@@ -3571,6 +3577,115 @@ async fn drive_never_compacts_when_capability_off() {
     );
 }
 
+/// A [`BoardRuntime`] holding one real epic and one real issue, so the pinned board block it
+/// produces is non-empty and would be visible in any window it were attached to.
+fn seeded_board() -> BoardRuntime {
+    let board = BoardRuntime::new(BoardCaps::default());
+    {
+        let handle = board.store();
+        let mut store = handle.lock().unwrap();
+        let epic = store
+            .create_epic("RENDER", "Rendering", "Everything that draws")
+            .unwrap();
+        store
+            .create_issue(crate::board::NewIssue {
+                title: "Draw the board",
+                description: None,
+                in_scope: "the canvas",
+                out_of_scope: "input",
+                completion_criteria: "the board renders",
+                blocked_by: &[],
+                epic_id: Some(&epic),
+                agent: ROOT_AGENT,
+                reviewers: &[],
+            })
+            .unwrap();
+    }
+    board
+}
+
+/// Drive one agent against a run-global `board` under `profile`, and report the largest `Board`
+/// token band any of its context breakdowns carried.
+async fn board_band_driving(profile: &GgAgentConfig, board: BoardRuntime) -> u64 {
+    let dir = TempDir::new().unwrap();
+    let ctx = ToolContext::new(dir.path());
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-board-gate".to_string()), Box::new(sink.clone()));
+    let library = Arc::new(SkillLibrary::empty());
+    let registry = ToolRegistry::from_run(profile, &RuntimeSet::new(&library));
+    let client = MockClient::new("mock/echo", vec![finish_call("f1", "done")]);
+
+    Agent::root(ROOT_AGENT)
+        .drive(
+            &client,
+            "go",
+            &registry,
+            &ctx,
+            &emitter,
+            no_limits(4),
+            test_context_setup(),
+            no_compaction(),
+            no_amc(),
+            no_autoload(),
+            no_persistence(),
+            &[],
+            SkillsRuntime::disabled(),
+            MemoriesRuntime::disabled(),
+            TasksRuntime::disabled(),
+            board,
+            PlanningRuntime::disabled(),
+            FsmRuntime::disabled(),
+            ReadPolicy::default(),
+            OffloadPolicy::default(),
+            false,
+            no_code(),
+            no_completion(),
+            EndingRole::Standard,
+            profile,
+            None,
+            None,
+            None,
+        )
+        .await;
+
+    sink.events()
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::ContextBreakdown { by_source, .. } => by_source
+                .iter()
+                .find(|b| b.source == GgContextSource::Board)
+                .map(|b| b.tokens),
+            _ => None,
+        })
+        .max()
+        .unwrap_or(0)
+}
+
+/// The board is run-global, but the pinned board block is **per agent**. An agent whose own
+/// profile does not carry the project-management capability has no board tool, is told nothing
+/// about a board in its system prompt, and cannot act on one — so pinning the whole decomposition
+/// into its window every turn spends its context on a document it can only be distracted by, and
+/// invites an implementer to go looking for work other than the job it was dispatched to do.
+#[tokio::test]
+async fn the_board_block_is_withheld_from_an_agent_without_the_capability() {
+    let mut authoring = GgAgentConfig::root();
+    authoring.capabilities.push(GgCapabilityConfig {
+        params: json!({ "mergeAgent": ROOT_AGENT }),
+        ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
+    });
+    authoring.subagents.push(GgSubagentRef::any(ROOT_AGENT));
+
+    assert!(
+        board_band_driving(&authoring, seeded_board()).await > 0,
+        "an agent that authors the board is shown it"
+    );
+    assert_eq!(
+        board_band_driving(&GgAgentConfig::root(), seeded_board()).await,
+        0,
+        "an agent without the capability never sees the board, however full it is"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Agent-managed context, end to end through the loop
 // ---------------------------------------------------------------------------
@@ -3583,6 +3698,60 @@ fn minimal_with_amc(model: &str) -> GgCapabilitySet {
         CAPABILITY_AGENT_MANAGED_CONTEXT,
     ));
     set
+}
+
+/// The context-usage block is shaped by what its agent was actually given: the per-file breakdown
+/// appears only for an agent that can evict, its length is the agent's own configuration, and the
+/// turn headers are armed only for an agent that can archive.
+#[test]
+fn amc_setup_reads_the_agents_own_toolset_and_configuration() {
+    let library = Arc::new(SkillLibrary::empty());
+    let archive = Arc::new(Mutex::new(ArchiveStore::new()));
+    let resolve = |profile: &GgAgentConfig| {
+        let registry =
+            ToolRegistry::from_run(profile, &RuntimeSet::new(&library).with_archive(&archive));
+        AmcSetup::resolve(profile, &registry, Arc::clone(&archive))
+    };
+
+    // Off: no signal, no reclaim, and nothing to configure.
+    let off = resolve(&GgAgentConfig::root());
+    assert!(!off.enabled);
+    assert!(!off.can_evict && !off.can_archive);
+
+    // On, unconfigured: both reclaim tools, and the documented default breakdown length.
+    let mut on = GgAgentConfig::root();
+    on.capabilities.push(GgCapabilityConfig::enabled(
+        CAPABILITY_AGENT_MANAGED_CONTEXT,
+    ));
+    let default = resolve(&on);
+    assert!(default.enabled && default.can_evict && default.can_archive);
+    assert_eq!(default.top_file_views, DEFAULT_TOP_FILE_VIEWS);
+    assert_eq!(
+        default.signal_options(),
+        UsageSignalOptions {
+            can_evict: true,
+            can_archive: true,
+            top_file_views: DEFAULT_TOP_FILE_VIEWS,
+        }
+    );
+
+    // On, configured: the breakdown is as long as the profile asked for.
+    let mut configured = GgAgentConfig::root();
+    configured.capabilities.push(GgCapabilityConfig {
+        params: json!({ PARAM_TOP_FILE_VIEWS: 12 }),
+        ..GgCapabilityConfig::enabled(CAPABILITY_AGENT_MANAGED_CONTEXT)
+    });
+    assert_eq!(resolve(&configured).top_file_views, 12);
+
+    // A withheld tool is read off the registry rather than assumed from the capability, so the
+    // block never points at a call this agent does not have.
+    let mut without_evict = on.clone();
+    without_evict
+        .disabled_tools
+        .push(EVICT_FILE_VIEW_TOOL.to_string());
+    let narrowed = resolve(&without_evict);
+    assert!(narrowed.enabled && narrowed.can_archive);
+    assert!(!narrowed.can_evict);
 }
 
 /// The FileView token band of every emitted `ContextBreakdown`, in order.
@@ -3713,6 +3882,80 @@ async fn drive_manages_context_end_to_end() {
         !archive.lock().unwrap().search("level.json", 10).is_empty(),
         "the archived thread material remains searchable after the run"
     );
+
+    // (e) every tool result the run sent carried a turn header, so the model had the turn numbers
+    // its `archive_thread` call named and the per-result cost to choose between them.
+    let results: Vec<String> = logged_messages(&events)
+        .into_iter()
+        .filter(|(role, _)| role == "tool")
+        .map(|(_, content)| content)
+        .collect();
+    assert!(!results.is_empty(), "the run sent tool results");
+    for result in &results {
+        assert!(
+            result.starts_with("Turn #") && result.contains(" tokens\n----\n"),
+            "every tool result is headed with its turn and cost: {result:?}"
+        );
+    }
+
+    // (f) exactly one context-usage block was ever sent. Its previous incarnation was a pinned
+    // thread item that had to be superseded rather than removed, so a long run accumulated a
+    // trail of stale readings — and a compaction carried the live one across on top of that.
+    for prompt in prompt_contents(&events) {
+        assert_eq!(
+            prompt
+                .iter()
+                .filter(|content| content.starts_with("Context Usage:"))
+                .count(),
+            1,
+            "one usage block per prompt: {prompt:?}"
+        );
+        assert!(
+            prompt
+                .last()
+                .is_some_and(|c| c.starts_with("Context Usage:")),
+            "and it is the last message of the prompt: {prompt:?}"
+        );
+    }
+}
+
+/// Every pooled context message the stream carried, as `(role, content)`.
+fn logged_messages(events: &[test_cabinet_core::gg::GgTelemetryEvent]) -> Vec<(String, String)> {
+    events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::ContextMessage {
+                role,
+                content: Some(content),
+                ..
+            } => Some((role.clone(), content.clone())),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Each `Prompt` event's message bodies, in the order they were sent — resolved through the
+/// message pool the references point into.
+fn prompt_contents(events: &[test_cabinet_core::gg::GgTelemetryEvent]) -> Vec<Vec<String>> {
+    let mut pool: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut prompts = Vec::new();
+    for event in events {
+        match &event.kind {
+            GgTelemetryKind::ContextMessage { id, content, .. } => {
+                pool.insert(id.clone(), content.clone().unwrap_or_default());
+            }
+            GgTelemetryKind::Prompt { request, .. } => {
+                prompts.push(
+                    request
+                        .iter()
+                        .map(|reference| pool[&reference.id].clone())
+                        .collect(),
+                );
+            }
+            _ => {}
+        }
+    }
+    prompts
 }
 
 /// With the capability off, none of the agent-managed-context tools are offered and no

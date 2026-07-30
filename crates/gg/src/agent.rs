@@ -114,8 +114,8 @@ use crate::compaction::{
 use crate::completion::{self, CompletionSetup};
 use crate::config::GgInvocation;
 use crate::context::{
-    BpeTokenEstimator, ContextModel, FileRegion, PromptItem, Retention, TokenEstimator,
-    code_heading, tool_output_source,
+    BpeTokenEstimator, ContextModel, FileRegion, PromptItem, Retention, TokenEstimator, TurnRange,
+    UsageSignalOptions, code_heading, tool_output_source,
 };
 use crate::docs::DocsRuntime;
 use crate::ending::{Ending, EndingRole};
@@ -156,17 +156,16 @@ use crate::tasks::{TasksRuntime, resolve_max_tasks, resolve_task_mode};
 use crate::telemetry::Emitter;
 use crate::tools::VisionContext;
 use crate::tools::{
-    ARCHIVE_THREAD_TOOL, AgentStatusData, COMPACT_TOOL, CREATE_ISSUE_TOOL,
-    DEFAULT_ARCHIVE_KEEP_RECENT, ENTER_PLAN_MODE_TOOL, EVICT_FILE_VIEW_TOOL, OffloadPolicy,
-    PARAM_MAX_CHARS, PARAM_MAX_LINES, READ_FILE_TOOL, READ_SKILL_TOOL, RUN_WORKFLOW_TOOL,
-    ReadFileTool, ReadPolicy, ReclaimData, RuntimeSet, SEND_MESSAGE_TOOL, SHELL_OUTPUT_OFFLOAD,
-    SHELL_TOOL, SPAWN_SUBAGENT_TOOL, SPECULATE_TOOL, SUBMIT_PLAN_TOOL, SpeculationData,
-    SubagentHandleData, SubagentResultData, Tool, ToolContext, ToolData, ToolFailure, ToolOutcome,
-    ToolRegistry, WAIT_FOR_ISSUE_TOOL, WAIT_FOR_SUBAGENTS_TOOL, WorkflowData, handled_by_loop,
-    is_board_tool, is_context_reclaim_tool, is_fsm_tool, is_memory_tool, is_planning_tool,
-    is_subagent_tool, is_task_tool, offload_misconfigured, parse_archive_keep_recent,
-    parse_compact_request, parse_evict_path, plan_mode_offers, read_policy, saturating_u32,
-    saturating_u64, shell_offload, unknown_disabled_tools,
+    ARCHIVE_THREAD_TOOL, AgentStatusData, COMPACT_TOOL, CREATE_ISSUE_TOOL, ENTER_PLAN_MODE_TOOL,
+    EVICT_FILE_VIEW_TOOL, OffloadPolicy, PARAM_MAX_CHARS, PARAM_MAX_LINES, READ_FILE_TOOL,
+    READ_SKILL_TOOL, RUN_WORKFLOW_TOOL, ReadFileTool, ReadPolicy, ReclaimData, RuntimeSet,
+    SEND_MESSAGE_TOOL, SHELL_OUTPUT_OFFLOAD, SHELL_TOOL, SPAWN_SUBAGENT_TOOL, SPECULATE_TOOL,
+    SUBMIT_PLAN_TOOL, SpeculationData, SubagentHandleData, SubagentResultData, Tool, ToolContext,
+    ToolData, ToolFailure, ToolOutcome, ToolRegistry, WAIT_FOR_ISSUE_TOOL, WAIT_FOR_SUBAGENTS_TOOL,
+    WorkflowData, handled_by_loop, is_board_tool, is_context_reclaim_tool, is_fsm_tool,
+    is_memory_tool, is_planning_tool, is_subagent_tool, is_task_tool, offload_misconfigured,
+    parse_archive_ranges, parse_compact_request, parse_evict_path, plan_mode_offers, read_policy,
+    saturating_u32, saturating_u64, shell_offload, unknown_disabled_tools,
 };
 use crate::turn_timing::TurnTimer;
 use crate::vision::VisionSupport;
@@ -2198,10 +2197,7 @@ async fn run_agent(
             )),
         }
     }
-    let amc = AmcSetup {
-        enabled: profile.is_enabled(CAPABILITY_AGENT_MANAGED_CONTEXT),
-        archive: Arc::clone(&archive_store),
-    };
+    let amc = AmcSetup::resolve(&profile, &registry, Arc::clone(&archive_store));
     let autoload = AutoloadSetup::resolve(&profile);
     // This agent's persistence: whether its instances are serialized and carry their open file views,
     // bound to the run-global record every instance of its profile shares.
@@ -5036,6 +5032,12 @@ impl Agent {
         // built it from the same profile); a code turn rebuilds the tool per call, so it needs them
         // too.
         let issue_policy = IssuePolicy::resolve(profile);
+        // Whether the pinned board block belongs in *this* agent's window: the run has a board and
+        // this agent's own profile carries the capability to author it. The same conjunction gates
+        // the prompt's board section (see `system_prompt`), so what an agent is told about the board
+        // and what it is shown of it agree.
+        let offers_board =
+            board.offers_board() && profile.is_enabled(CAPABILITY_PROJECT_MANAGEMENT);
 
         // Build the source-tagged context model in place of a flat transcript, seeded with
         // the two pinned items every session opens with: the system prompt (which lists any
@@ -5049,6 +5051,13 @@ impl Agent {
             context_setup.window_limit,
             code.enabled,
         );
+        // Arm the per-result turn headers when this agent can actually archive turns. They are what
+        // makes `archive_thread` a decision the model can make — it reads the turn number and the
+        // cost off each result and names the spans worth dropping — so they are armed by the tool
+        // being present rather than by the capability being on in the abstract.
+        if amc.can_archive {
+            context.enable_turn_headers();
+        }
         context.push_system(system_prompt(PromptInputs {
             registry,
             skills: &skills,
@@ -5203,6 +5212,12 @@ impl Agent {
                 );
             }
 
+            // Open the turn on the context model, so everything pushed from here — this turn's
+            // assistant message and every result answering it — is tagged with a turn number the
+            // model can see on its results and name in an `archive_thread` call. One-based, so
+            // "Turn #1" is the agent's first turn and turn 0 stays the un-numbered opening context.
+            context.begin_turn(turn as u64 + 1);
+
             emitter.emit(GgTelemetryKind::TurnStarted {});
 
             // Where this turn's wall-clock goes, split into prompt assembly / model call /
@@ -5251,7 +5266,14 @@ impl Agent {
             // model's current decomposition (epics, issues, and what is ready vs blocked) and
             // compaction retains it. Also rebuilt at the turn boundary, never between an assistant
             // tool-call message and its tool results.
-            if board.offers_board() {
+            //
+            // Gated on **this agent's own** capability, not merely on the run having a board. The
+            // board is run-global, but the block is not: an agent without the capability has no
+            // board tool, is not told in its system prompt that a board exists, and cannot act on
+            // one — so pinning the whole decomposition into its window spends its context every turn
+            // on a document it can only be distracted by, and invites an implementer to go looking
+            // for work other than the job it was dispatched to do.
+            if offers_board {
                 context.replace_source(
                     GgContextSource::Board,
                     Retention::Pinned,
@@ -5319,12 +5341,13 @@ impl Agent {
                 }
             }
 
-            // Agent-managed context: rebuild the pinned, system-adjacent fullness signal from the
-            // now fully-assembled (and possibly just-compacted) window, so the model sees an
-            // up-to-date "how full is my window, and what is filling it" line it can act on this
-            // turn. Cheap by design (one short line) and refreshed in place each turn.
+            // Agent-managed context: rebuild the context-usage signal from the now fully-assembled
+            // (and possibly just-compacted) window, so the model acts this turn on figures that are
+            // true this turn. It lives in a slot of its own that is overwritten rather than appended
+            // to, so a run can never accumulate two of them — including across the compaction that
+            // may have just happened a few lines above.
             if amc.enabled {
-                context.refresh_fullness_signal();
+                context.refresh_context_usage_signal(amc.signal_options());
             }
 
             // The offered toolset for this turn — the intersection of every active restriction, so
@@ -6488,18 +6511,68 @@ struct ContextSetup {
     window_limit: Option<u64>,
 }
 
+/// The [agent-managed-context](CAPABILITY_AGENT_MANAGED_CONTEXT) param naming how many individual
+/// files the context-usage signal's file-view breakdown lists, most expensive first.
+const PARAM_TOP_FILE_VIEWS: &str = "topFileViews";
+
+/// How many files that breakdown names when the capability configures no
+/// [`PARAM_TOP_FILE_VIEWS`]. Enough that the reads actually worth dropping are in the list, short
+/// enough that the block stays a glance rather than a directory listing.
+const DEFAULT_TOP_FILE_VIEWS: usize = 5;
+
 /// The agent-managed-context configuration threaded into the [turn loop](Agent::drive): whether the
-/// capability is on and the shared thread [archive](ArchiveStore) that `archive_thread` fills
-/// and `search_archive` reads.
+/// capability is on, what this agent can actually do about its window, and the shared thread
+/// [archive](ArchiveStore) that `archive_thread` fills and `search_archive` reads.
 #[derive(Clone)]
 struct AmcSetup {
     /// Whether the [agent-managed-context](CAPABILITY_AGENT_MANAGED_CONTEXT) capability is on.
-    /// When on the loop injects the per-turn fullness signal and applies the reclaim tools;
+    /// When on the loop injects the per-turn context-usage signal and applies the reclaim tools;
     /// off, it does neither (and the tools were never offered).
     enabled: bool,
     /// The shared thread archive the reclaim applies to. Bound to the same store the
     /// `search_archive` tool reads, so archived material is immediately searchable.
     archive: Arc<Mutex<ArchiveStore>>,
+    /// Whether this agent actually has `evict_file_view` — read off the registry rather than assumed
+    /// from the capability, so the per-file breakdown appears exactly when a call could act on it.
+    can_evict: bool,
+    /// Whether this agent actually has `archive_thread`. This is also what arms the per-result
+    /// [turn headers](ContextModel::turn_header): the header exists to give an archival its turn
+    /// numbers, so an agent that cannot archive should not be paying for one on every result.
+    can_archive: bool,
+    /// How many individual files the context-usage signal's file-view breakdown names, from this
+    /// agent's [`PARAM_TOP_FILE_VIEWS`] param.
+    top_file_views: usize,
+}
+
+impl AmcSetup {
+    /// Resolve the capability for `profile` against the toolset it was actually given, binding the
+    /// shared `archive`.
+    fn resolve(
+        profile: &GgAgentConfig,
+        registry: &ToolRegistry,
+        archive: Arc<Mutex<ArchiveStore>>,
+    ) -> Self {
+        Self {
+            enabled: profile.is_enabled(CAPABILITY_AGENT_MANAGED_CONTEXT),
+            archive,
+            can_evict: registry.offers(EVICT_FILE_VIEW_TOOL),
+            can_archive: registry.offers(ARCHIVE_THREAD_TOOL),
+            top_file_views: profile
+                .capability(CAPABILITY_AGENT_MANAGED_CONTEXT)
+                .and_then(|cap| cap.params.get(PARAM_TOP_FILE_VIEWS))
+                .and_then(Value::as_u64)
+                .map_or(DEFAULT_TOP_FILE_VIEWS, |n| n as usize),
+        }
+    }
+
+    /// What this agent's [context-usage signal](ContextModel::refresh_context_usage_signal) may say.
+    fn signal_options(&self) -> UsageSignalOptions {
+        UsageSignalOptions {
+            can_evict: self.can_evict,
+            can_archive: self.can_archive,
+            top_file_views: self.top_file_views,
+        }
+    }
 }
 
 /// Whether — and how — an agent's opening context is seeded with the test case's
@@ -6674,38 +6747,50 @@ fn apply_context_reclaim(
             })
         }
         ARCHIVE_THREAD_TOOL => {
-            let keep =
-                parse_archive_keep_recent(&call.arguments).unwrap_or(DEFAULT_ARCHIVE_KEEP_RECENT);
-            let result = context.archive_thread(keep);
-            let count = result.items.len();
+            // Already validated by the tool; a malformed call that somehow reached here names no
+            // ranges and so archives nothing, which is the safe direction.
+            let ranges = parse_archive_ranges(&call.arguments).unwrap_or_default();
+            let result = context.archive_thread(&ranges);
+            let archived = result.items.len();
+            // What left the window, archived or dropped — the figure the model reasons about when it
+            // asks how much its call bought.
+            let removed = archived + result.dropped;
             let archive_total = {
                 let mut store = archive.lock().expect("archive store lock");
                 store.archive(result.items.iter().map(|item| (item.source, &item.message)));
                 store.len()
             };
-            let detail = if count == 0 {
-                "No older thread history to archive — the recent turns are kept live.".to_string()
+            let detail = if removed == 0 {
+                format!(
+                    "Nothing was archived: {} matched no turns still in your window (they may \
+                     already be archived or compacted away).",
+                    describe_ranges(&ranges)
+                )
             } else {
                 format!(
-                    "Archived {count} older thread item(s), reclaiming ~{} tokens. They are out \
-                     of your window but still searchable with search_archive (the archive now \
-                     holds {archive_total} item(s)).",
+                    "Archived turn(s) {}: {archived} result(s) moved into the archive and {} of \
+                     your own messages dropped, reclaiming ~{} tokens. The results are out of your \
+                     window but still searchable with search_archive (the archive now holds \
+                     {archive_total} item(s)).",
+                    describe_turns(&result.turns),
+                    result.dropped,
                     result.tokens
                 )
             };
-            *outcome = ToolOutcome::ok(detail.clone(), format!("archived {count} thread item(s)"))
-                .with_data(ToolData::Reclaim(ReclaimData {
-                    items: saturating_u32(count),
-                    reclaimed_tokens: u32::try_from(result.tokens).unwrap_or(u32::MAX),
-                    // A thread archival frees whole conversation items, not file views, so it has
-                    // no paths to name. An empty list here is a fact, not a gap.
-                    paths: Vec::new(),
-                    detail: detail.clone(),
-                }));
+            *outcome =
+                ToolOutcome::ok(detail.clone(), format!("archived {removed} thread item(s)"))
+                    .with_data(ToolData::Reclaim(ReclaimData {
+                        items: saturating_u32(removed),
+                        reclaimed_tokens: u32::try_from(result.tokens).unwrap_or(u32::MAX),
+                        // A thread archival frees whole conversation items, not file views, so it has
+                        // no paths to name. An empty list here is a fact, not a gap.
+                        paths: Vec::new(),
+                        detail: detail.clone(),
+                    }));
             Some(GgTelemetryKind::ContextManaged {
                 action: GgContextAction::ArchiveThread,
                 reclaimed_tokens: result.tokens,
-                items: count as u64,
+                items: removed as u64,
                 detail,
             })
         }
@@ -6713,6 +6798,51 @@ fn apply_context_reclaim(
         // to apply.
         _ => None,
     }
+}
+
+/// The turn ranges an `archive_thread` call named, as the failure message reads them back — `turn 7`
+/// for a single turn, `turns 4-19` for a span, comma-joined.
+///
+/// A call that reclaimed nothing has to say *what* it asked for, or the model reads "nothing was
+/// archived" as gg refusing rather than as its own range having already been archived.
+fn describe_ranges(ranges: &[TurnRange]) -> String {
+    if ranges.is_empty() {
+        return "no turn ranges".to_string();
+    }
+    let spans: Vec<String> = ranges
+        .iter()
+        .map(|range| {
+            if range.from == range.to {
+                format!("turn {}", range.from)
+            } else {
+                format!("turns {}-{}", range.from, range.to)
+            }
+        })
+        .collect();
+    spans.join(", ")
+}
+
+/// The turns an archival actually removed something from, collapsed back into runs — `4-19, 22` —
+/// so a call spanning fifty turns reports a span rather than fifty numbers.
+fn describe_turns(turns: &[u64]) -> String {
+    let mut spans: Vec<String> = Vec::new();
+    let mut index = 0;
+    while index < turns.len() {
+        let start = turns[index];
+        let mut end = start;
+        // Extend while the next turn is the consecutive one.
+        while index + 1 < turns.len() && turns[index + 1] == end + 1 {
+            index += 1;
+            end = turns[index];
+        }
+        spans.push(if start == end {
+            start.to_string()
+        } else {
+            format!("{start}-{end}")
+        });
+        index += 1;
+    }
+    spans.join(", ")
 }
 
 /// Resolve the context window the active model's fullness ratio is measured against, in two
@@ -7337,7 +7467,10 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
         code_heading_views(
             memories.offers_memories(),
             tasks.offers_tasks(),
-            board.offers_board(),
+            // Gated on this agent's own capability, exactly as the board section below is: an agent
+            // without it is never shown a `Board` block, so naming the heading would describe a
+            // message kind it cannot receive.
+            board.offers_board() && profile.is_enabled(CAPABILITY_PROJECT_MANAGEMENT),
             planning.offers_planning() || fsm.is_active(),
             // A restored file view is a `File` message too, so a persistent agent is told the heading
             // even in the (unusual) case that it reads nothing itself.

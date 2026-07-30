@@ -5,7 +5,7 @@ title: "Context visibility"
 gg **tracks what is consuming the context window**, broken down by source: skills,
 memories, file contents, the thread/history, tool output, and so on.
 
-- Internally this is the accounting that powers the fullness signal in
+- Internally this is the accounting that powers the context-usage signal in
   [agent-managed context](/gg/agent-managed-context/) and the trigger in
   [compaction](/gg/compaction/).
 - Externally this breakdown is streamed as [telemetry](/gg/telemetry/) and rendered
@@ -50,7 +50,8 @@ There is no default window and no guess from the model id.
 This is deliberate, and it is the one place gg refuses to degrade gracefully. An
 assumed window is not a slightly-worse answer: it is the denominator of every
 fullness figure, it decides when [compaction](/gg/compaction/) fires, and it is the
-number in the fullness signal the agent itself steers by. A run against a guessed
+denominator of every share in the
+[context-usage signal](/gg/agent-managed-context/) the agent itself steers by. A run against a guessed
 window looks completely healthy and measures the wrong thing — and an ablation study
 built on it compares runs that were never measured the same way. A rejected launch
 tells you the catalog needs the model; a fabricated one tells you nothing.
@@ -151,10 +152,10 @@ every message after the edit. On a long run that is most of its token bill.
 
 Two kinds of state make that non-trivial.
 
-**Mutable blocks.** The memory block, the task list, the [Project management](/gg/project-management/) board, and the
-fullness signal are each rebuilt from their backing store at every turn boundary so the
-model always sees current state, and each is a _single_ live block. Two rules keep the
-rebuild append-only:
+**Mutable blocks.** The memory block, the task list, and the
+[Project management](/gg/project-management/) board are each rebuilt from their backing
+store at every turn boundary so the model always sees current state, and each is a
+_single_ live block. Two rules keep the rebuild append-only:
 
 - **An unchanged block does not move.** When it comes back byte-identical the rebuild is
   skipped and the block keeps its position, rather than being lifted to the tail behind
@@ -168,10 +169,16 @@ rebuild append-only:
 A superseded copy is the honest record of what the model was told at that point in the
 thread — no different from a tool result — and the model reads the newest block as
 current. It costs one block's worth of tokens per real change, is accounted as history
-rather than inflating the source's own band, and a compaction summarizes it away. The
-same rule is why the fullness signal reports
-[rounded figures](/gg/agent-managed-context/): a line that moved by a handful of tokens
-would otherwise supersede itself every turn for no benefit.
+rather than inflating the source's own band, and a compaction summarizes it away.
+
+The [context-usage signal](/gg/agent-managed-context/) is deliberately **not** one of
+these blocks. Its figures move every turn — that is the whole point of it — so as a block
+in the thread it would supersede itself every turn and leave a trail of stale readings
+behind it. It is rendered instead from a **slot of its own, after the whole conversation**,
+so it is always the last message of the prompt: everything a cache can read sits _before_
+it, rewriting it invalidates no prefix, and assigning the slot overwrites rather than
+accumulates. It is exactly because it costs nothing to rewrite that it can report exact
+figures rather than rounded ones.
 
 **File views.** A `read_file` result is a snapshot of the file _as it was read_, and
 nothing later rewrites it — not a `write_file`, not an `edit_file`, not a re-read. Each

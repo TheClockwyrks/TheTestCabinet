@@ -23,7 +23,9 @@ fn reclaim_reports_carry_real_numbers() {
     assert_eq!(evicted.paths, ["src/a.ts"]);
     assert!(!evicted.detail.is_empty());
 
-    let archived = state.archive_thread(Some(3)).expect("archived");
+    let archived = state
+        .archive_thread(vec![TurnRange { start: 4, end: 19 }])
+        .expect("archived");
     assert_eq!(archived.items, 2);
 
     assert_eq!(
@@ -32,8 +34,8 @@ fn reclaim_reports_carry_real_numbers() {
     );
     assert_eq!(
         log.args("archive_thread"),
-        Some(json!({ "keep_recent_turns": 3 })),
-        "the schema spells this one with underscores"
+        Some(json!({ "ranges": [[4, 19]] })),
+        "the membrane's start/end record lowers to the schema's [from, to] pairs"
     );
 }
 

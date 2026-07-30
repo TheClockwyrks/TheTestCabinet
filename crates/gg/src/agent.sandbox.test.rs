@@ -844,7 +844,7 @@ async fn a_program_reclaim_really_acts_on_the_live_window() {
                 // reports at all proves the loop rewrote the outcomes: an un-rewritten outcome has
                 // no structured result and would have thrown.
                 "const evicted = context.evictFileView();\n\
-                 const archived = context.archiveThread(0);\n\
+                 const archived = context.archiveThread([{ from: 1, to: 1 }]);\n\
                  console.log(evicted.detail);\n\
                  return { evicted: evicted.items, archived: archived.items, \
                  freed: archived.reclaimedTokens };",
