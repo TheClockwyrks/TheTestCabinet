@@ -9,8 +9,22 @@ use test_cabinet_core::gg::{
     GgAgentConfig, GgCapabilityConfig, SHELL_OUTPUT_OFFLOAD,
 };
 
+use crate::archive::ArchiveRuntime;
+use crate::board::BoardRuntime;
+use crate::memories::{MemoriesRuntime, MemoryCaps, MemoryStrategy};
 use crate::model::ToolCall;
-use crate::skills::SkillLibrary;
+use crate::modules::ModuleHandle;
+use crate::skills::{SkillLibrary, SkillsRuntime};
+use crate::tasks::TasksRuntime;
+
+/// The [capability modules](CapabilityModules) a registry is assembled against when only the skill
+/// `library` is bound. An empty library still binds a module — an *enabled* skills module with
+/// nothing in it, which is exactly the "there is nothing to read" case `read_skill` is gated on.
+fn skills_modules(library: &Arc<SkillLibrary>) -> CapabilityModules {
+    CapabilityModules::inert().with(ModuleHandle::Skills(SkillsRuntime::new(Arc::clone(
+        library,
+    ))))
+}
 
 /// An agent profile with the given capability configs and no model binding.
 fn set_with(capabilities: Vec<GgCapabilityConfig>) -> GgAgentConfig {
@@ -352,20 +366,20 @@ fn registry_gates_read_skill_on_capability_and_a_non_empty_library() {
     // Enabled capability + a non-empty library => read_skill is offered.
     let on = set_with(vec![GgCapabilityConfig::enabled(CAPABILITY_SKILLS)]);
     assert!(offers(
-        &ToolRegistry::from_run(&on, &RuntimeSet::new(&library)),
+        &ToolRegistry::from_run(&on, &skills_modules(&library)),
         "read_skill"
     ));
 
     // Enabled capability but an empty library => nothing to read, so no tool.
     assert!(!offers(
-        &ToolRegistry::from_run(&on, &RuntimeSet::new(&empty)),
+        &ToolRegistry::from_run(&on, &skills_modules(&empty)),
         "read_skill"
     ));
 
     // Disabled capability => no tool even with a populated library (the ablation off arm).
     let off = set_with(vec![GgCapabilityConfig::disabled(CAPABILITY_SKILLS)]);
     assert!(!offers(
-        &ToolRegistry::from_run(&off, &RuntimeSet::new(&library)),
+        &ToolRegistry::from_run(&off, &skills_modules(&library)),
         "read_skill"
     ));
 }
@@ -374,24 +388,25 @@ fn registry_gates_read_skill_on_capability_and_a_non_empty_library() {
 /// memory store is bound — capability off, or no store bound, offers none.
 #[test]
 fn registry_gates_memory_tools_on_capability_and_a_bound_store() {
-    use std::sync::Mutex;
-
-    use crate::memories::MemoryStore;
     use test_cabinet_core::gg::CAPABILITY_MEMORIES;
 
-    let empty = Arc::new(SkillLibrary::empty());
-    let store = Arc::new(Mutex::new(MemoryStore::scratchpad()));
+    let modules = || {
+        CapabilityModules::inert().with(ModuleHandle::Memories(MemoriesRuntime::new(
+            MemoryStrategy::Scratchpad,
+            MemoryCaps::default(),
+        )))
+    };
     let names = ["write_memory", "update_memory", "delete_memory"];
 
-    // Enabled capability + a bound store => all three memory tools are offered.
+    // Enabled capability + an enabled memories module => all three memory tools are offered.
     let on = set_with(vec![GgCapabilityConfig::enabled(CAPABILITY_MEMORIES)]);
-    let registry = ToolRegistry::from_run(&on, &RuntimeSet::new(&empty).with_memories(&store));
+    let registry = ToolRegistry::from_run(&on, &modules());
     for name in names {
         assert!(offers(&registry, name), "expected `{name}` offered");
     }
 
-    // Enabled capability but no store bound => no memory tools (the bare convenience path).
-    let none = ToolRegistry::from_run(&on, &RuntimeSet::new(&empty));
+    // Enabled capability but a disabled module => no memory tools (the bare convenience path).
+    let none = ToolRegistry::from_run(&on, &CapabilityModules::inert());
     for name in names {
         assert!(
             !offers(&none, name),
@@ -401,7 +416,7 @@ fn registry_gates_memory_tools_on_capability_and_a_bound_store() {
 
     // Disabled capability => no memory tools even with a bound store (the ablation off arm).
     let off = set_with(vec![GgCapabilityConfig::disabled(CAPABILITY_MEMORIES)]);
-    let registry = ToolRegistry::from_run(&off, &RuntimeSet::new(&empty).with_memories(&store));
+    let registry = ToolRegistry::from_run(&off, &modules());
     for name in names {
         assert!(
             !offers(&registry, name),
@@ -414,13 +429,9 @@ fn registry_gates_memory_tools_on_capability_and_a_bound_store() {
 /// store is bound — capability off, or no store bound, offers none.
 #[test]
 fn registry_gates_task_tools_on_capability_and_a_bound_store() {
-    use std::sync::Mutex;
-
-    use crate::tasks::TaskStore;
     use test_cabinet_core::gg::CAPABILITY_TASKS;
 
-    let empty = Arc::new(SkillLibrary::empty());
-    let store = Arc::new(Mutex::new(TaskStore::new(100)));
+    let modules = || CapabilityModules::inert().with(ModuleHandle::Tasks(TasksRuntime::new(100)));
     let names = [
         "add_task",
         "update_task",
@@ -431,13 +442,13 @@ fn registry_gates_task_tools_on_capability_and_a_bound_store() {
 
     // Enabled capability + a bound store => all five task tools are offered.
     let on = set_with(vec![GgCapabilityConfig::enabled(CAPABILITY_TASKS)]);
-    let registry = ToolRegistry::from_run(&on, &RuntimeSet::new(&empty).with_tasks(&store));
+    let registry = ToolRegistry::from_run(&on, &modules());
     for name in names {
         assert!(offers(&registry, name), "expected `{name}` offered");
     }
 
-    // Enabled capability but no store bound => no task tools (the bare convenience path).
-    let none = ToolRegistry::from_run(&on, &RuntimeSet::new(&empty));
+    // Enabled capability but a disabled module => no task tools (the bare convenience path).
+    let none = ToolRegistry::from_run(&on, &CapabilityModules::inert());
     for name in names {
         assert!(
             !offers(&none, name),
@@ -447,7 +458,7 @@ fn registry_gates_task_tools_on_capability_and_a_bound_store() {
 
     // Disabled capability => no task tools even with a bound store (the ablation off arm).
     let off = set_with(vec![GgCapabilityConfig::disabled(CAPABILITY_TASKS)]);
-    let registry = ToolRegistry::from_run(&off, &RuntimeSet::new(&empty).with_tasks(&store));
+    let registry = ToolRegistry::from_run(&off, &modules());
     for name in names {
         assert!(
             !offers(&registry, name),
@@ -460,13 +471,13 @@ fn registry_gates_task_tools_on_capability_and_a_bound_store() {
 /// board store is bound — capability off, or no store bound, offers none.
 #[test]
 fn registry_gates_board_tools_on_capability_and_a_bound_store() {
-    use std::sync::Mutex;
-
-    use crate::board::{BoardCaps, BoardStore};
+    use crate::board::BoardCaps;
     use test_cabinet_core::gg::CAPABILITY_PROJECT_MANAGEMENT;
 
-    let empty = Arc::new(SkillLibrary::empty());
-    let store = Arc::new(Mutex::new(BoardStore::new(BoardCaps::default())));
+    let modules = || {
+        CapabilityModules::inert()
+            .with(ModuleHandle::Board(BoardRuntime::new(BoardCaps::default())))
+    };
     let names = [
         "create_epic",
         "create_issue",
@@ -480,13 +491,13 @@ fn registry_gates_board_tools_on_capability_and_a_bound_store() {
     let on = set_with(vec![GgCapabilityConfig::enabled(
         CAPABILITY_PROJECT_MANAGEMENT,
     )]);
-    let registry = ToolRegistry::from_run(&on, &RuntimeSet::new(&empty).with_board(&store));
+    let registry = ToolRegistry::from_run(&on, &modules());
     for name in names {
         assert!(offers(&registry, name), "expected `{name}` offered");
     }
 
-    // Enabled capability but no store bound => no board tools.
-    let none = ToolRegistry::from_run(&on, &RuntimeSet::new(&empty));
+    // Enabled capability but a disabled module => no board tools.
+    let none = ToolRegistry::from_run(&on, &CapabilityModules::inert());
     for name in names {
         assert!(
             !offers(&none, name),
@@ -498,7 +509,7 @@ fn registry_gates_board_tools_on_capability_and_a_bound_store() {
     let off = set_with(vec![GgCapabilityConfig::disabled(
         CAPABILITY_PROJECT_MANAGEMENT,
     )]);
-    let registry = ToolRegistry::from_run(&off, &RuntimeSet::new(&empty).with_board(&store));
+    let registry = ToolRegistry::from_run(&off, &modules());
     for name in names {
         assert!(
             !offers(&registry, name),
@@ -516,17 +527,16 @@ fn registry_gates_board_tools_on_capability_and_a_bound_store() {
 /// handing an implementer the vocabulary to file work instead of doing it.
 #[test]
 fn an_assigned_issue_earns_no_board_tools_without_the_board_capability() {
-    use std::sync::Mutex;
+    use crate::board::BoardCaps;
 
-    use crate::board::{BoardCaps, BoardStore};
-
-    let empty = Arc::new(SkillLibrary::empty());
-    let store = Arc::new(Mutex::new(BoardStore::new(BoardCaps::default())));
     // A profile with no board capability at all — the ordinary shape of an implementer.
     let implementer = set_with(Vec::new());
 
-    let dispatched =
-        ToolRegistry::from_run(&implementer, &RuntimeSet::new(&empty).with_board(&store));
+    let dispatched = ToolRegistry::from_run(
+        &implementer,
+        &CapabilityModules::inert()
+            .with(ModuleHandle::Board(BoardRuntime::new(BoardCaps::default()))),
+    );
     for name in [
         "create_epic",
         "create_issue",
@@ -553,19 +563,18 @@ fn an_assigned_issue_earns_no_board_tools_without_the_board_capability() {
 fn registry_gates_planning_tools_on_capability() {
     use test_cabinet_core::gg::CAPABILITY_PLANNING;
 
-    let empty = Arc::new(SkillLibrary::empty());
     let names = ["enter_plan_mode", "submit_plan"];
 
     // Enabled => both planning tools offered (no store needed).
     let on = set_with(vec![GgCapabilityConfig::enabled(CAPABILITY_PLANNING)]);
-    let registry = ToolRegistry::from_run(&on, &RuntimeSet::new(&empty));
+    let registry = ToolRegistry::from_run(&on, &CapabilityModules::inert());
     for name in names {
         assert!(offers(&registry, name), "expected `{name}` offered");
     }
 
     // Disabled => neither offered (the ablation off arm).
     let off = set_with(vec![GgCapabilityConfig::disabled(CAPABILITY_PLANNING)]);
-    let registry = ToolRegistry::from_run(&off, &RuntimeSet::new(&empty));
+    let registry = ToolRegistry::from_run(&off, &CapabilityModules::inert());
     for name in names {
         assert!(
             !offers(&registry, name),
@@ -574,7 +583,7 @@ fn registry_gates_planning_tools_on_capability() {
     }
 
     // Absent => neither offered.
-    let none = ToolRegistry::from_run(&set_with(Vec::new()), &RuntimeSet::new(&empty));
+    let none = ToolRegistry::from_run(&set_with(Vec::new()), &CapabilityModules::inert());
     for name in names {
         assert!(
             !offers(&none, name),
@@ -711,13 +720,9 @@ fn unknown_disabled_tools_flags_only_typos() {
 /// vocabulary against drift when a tool is added or renamed.
 #[test]
 fn all_tool_names_matches_a_maximal_registry() {
+    use crate::board::BoardCaps;
+    use crate::memories::{MemoryCaps, MemoryStrategy};
     use std::collections::BTreeSet;
-    use std::sync::Mutex;
-
-    use crate::archive::ArchiveStore;
-    use crate::board::{BoardCaps, BoardStore};
-    use crate::memories::{MemoryCaps, MemoryStore, MemoryStrategy};
-    use crate::tasks::TaskStore;
     use test_cabinet_core::gg::{
         CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_COMPACTION, CAPABILITY_FSM,
         CAPABILITY_MEMORIES, CAPABILITY_PLANNING, CAPABILITY_PROJECT_MANAGEMENT,
@@ -732,9 +737,6 @@ fn all_tool_names_matches_a_maximal_registry() {
     )
     .unwrap();
     let library = Arc::new(SkillLibrary::load(dir.path()));
-    let tasks = Arc::new(Mutex::new(TaskStore::new(100)));
-    let board = Arc::new(Mutex::new(BoardStore::new(BoardCaps::default())));
-    let archive = Arc::new(Mutex::new(ArchiveStore::new()));
 
     let mut capabilities = vec![GgCapabilityConfig::enabled(CAPABILITY_SHELL)];
     capabilities.extend(filesystem_enabled());
@@ -773,17 +775,16 @@ fn all_tool_names_matches_a_maximal_registry() {
     ]
     .into_iter()
     .flat_map(|strategy| {
-        let memories = Arc::new(Mutex::new(MemoryStore::new(
-            strategy,
-            MemoryCaps::for_strategy(strategy),
-        )));
         ToolRegistry::from_run(
             &set,
-            &RuntimeSet::new(&library)
-                .with_memories(&memories)
-                .with_tasks(&tasks)
-                .with_board(&board)
-                .with_archive(&archive),
+            &skills_modules(&library)
+                .with(ModuleHandle::Memories(MemoriesRuntime::new(
+                    strategy,
+                    MemoryCaps::for_strategy(strategy),
+                )))
+                .with(ModuleHandle::Tasks(TasksRuntime::new(100)))
+                .with(ModuleHandle::Board(BoardRuntime::new(BoardCaps::default())))
+                .with(ModuleHandle::Archive(ArchiveRuntime::new())),
         )
         .tool_names()
     })
@@ -801,12 +802,10 @@ fn all_tool_names_matches_a_maximal_registry() {
 #[test]
 fn each_memory_strategy_offers_its_own_tools() {
     use std::collections::BTreeSet;
-    use std::sync::Mutex;
 
-    use crate::memories::{MemoryCaps, MemoryStore, MemoryStrategy};
+    use crate::memories::{MemoryCaps, MemoryStrategy};
     use test_cabinet_core::gg::CAPABILITY_MEMORIES;
 
-    let empty = Arc::new(SkillLibrary::empty());
     let on = set_with(vec![GgCapabilityConfig::enabled(CAPABILITY_MEMORIES)]);
 
     for (strategy, expected) in [
@@ -834,11 +833,13 @@ fn each_memory_strategy_offers_its_own_tools() {
             ],
         ),
     ] {
-        let store = Arc::new(Mutex::new(MemoryStore::new(
-            strategy,
-            MemoryCaps::for_strategy(strategy),
-        )));
-        let registry = ToolRegistry::from_run(&on, &RuntimeSet::new(&empty).with_memories(&store));
+        let registry = ToolRegistry::from_run(
+            &on,
+            &CapabilityModules::inert().with(ModuleHandle::Memories(MemoriesRuntime::new(
+                strategy,
+                MemoryCaps::for_strategy(strategy),
+            ))),
+        );
         let offered: BTreeSet<String> = registry
             .tool_names()
             .into_iter()

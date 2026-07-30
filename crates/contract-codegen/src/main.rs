@@ -191,6 +191,7 @@ fn main() -> Result<()> {
                 gg::GgAgentConfig, gg::GgSubagentRef, gg::GgSubagentScope,
                 gg::GgPromptCacheTtl, gg::GgModelSlot,
                 gg::GgCapabilityConfig, gg::GgCapabilitySet,
+                gg::GgModuleKind, gg::GgModuleOwnership,
                 gg::GgContextSource, gg::GgContextSourceUsage,
                 gg::GgPromptRef, gg::GgLoggedToolCall, gg::GgLoggedImage,
                 gg::GgSkillState,

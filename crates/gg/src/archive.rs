@@ -15,9 +15,14 @@
 //! the memory and task stores, it lives behind an `Arc<Mutex<…>>` the `search_archive` tool
 //! shares with the [loop](crate::agent), which moves archived items into it.
 
-use test_cabinet_core::gg::GgContextSource;
+use std::sync::{Arc, Mutex};
+
+use test_cabinet_core::gg::{GgAgentConfig, GgContextSource, GgTelemetryKind};
 
 use crate::model::{Message, Role};
+use crate::modules::{
+    AdoptError, Module, ModuleHandle, ModuleKind, ModuleResolveCtx, Ownership, Refresh,
+};
 
 /// One archived thread item — a message that was removed from the live window and kept here so
 /// [`search_archive`](crate::tools) can recover it.
@@ -57,7 +62,12 @@ impl ArchiveEntry {
 /// `archive_thread` moves removed thread items in via [`archive`](Self::archive); `search_archive`
 /// reads them back via [`search`](Self::search). Entries are never evicted from the archive —
 /// its whole purpose is to be the durable, out-of-window record — so it only grows.
-#[derive(Debug, Default)]
+///
+/// [`Clone`] is a **deep copy that carries [`next_seq`](Self::next_seq) forward**, which is what an
+/// [archive module](crate::modules::ArchiveRuntime)'s fork needs: restarting the ordinal would make
+/// two different entries both print as `#0`, and the ordinal is the only handle a model has on
+/// where an archived item sat in its thread.
+#[derive(Debug, Default, Clone)]
 pub struct ArchiveStore {
     /// The archived entries, in the order they were archived.
     entries: Vec<ArchiveEntry>,
@@ -121,6 +131,189 @@ impl ArchiveStore {
             .filter(|entry| entry.text.to_lowercase().contains(&needle))
             .take(limit)
             .collect()
+    }
+}
+
+/// The loop's live view of the thread archive: whether
+/// [agent-managed context](test_cabinet_core::gg::CAPABILITY_AGENT_MANAGED_CONTEXT) is on for this
+/// agent, and the shared [`ArchiveStore`] behind `archive_thread` / `search_archive`.
+///
+/// It exists so the archive is a [module](crate::modules::Module) like every other piece of
+/// per-agent state rather than the bare `Arc<Mutex<…>>` the loop used to carry: an archive is
+/// exactly the sort of thing a successor agent should be able to inherit (the thread it can no
+/// longer see is still the thread it worked) or deliberately not (a fresh state that starts clean),
+/// and that decision has to be expressible.
+///
+/// Unlike the other capability modules it contributes **nothing** to the prompt — no pinned block,
+/// no system-prompt section of its own — so its [ownership](crate::modules::Ownership) is recorded
+/// for uniformity and changes nothing about how it behaves. What the model is told about archival
+/// belongs to the agent-managed-context prose, which is about the tools, not about the store.
+#[derive(Debug)]
+pub struct ArchiveRuntime {
+    /// Whether the agent-managed-context capability is enabled for this agent.
+    enabled: bool,
+    /// Whether this module is carried in its holder's prompt. Recorded for uniformity; the
+    /// archive pins nothing either way.
+    ownership: Ownership,
+    /// The shared, mutable store — the same handle `search_archive` reads and the loop's
+    /// `archive_thread` reclaim fills.
+    store: Arc<Mutex<ArchiveStore>>,
+}
+
+impl ArchiveRuntime {
+    /// An enabled runtime over a fresh, empty archive.
+    pub fn new() -> Self {
+        Self {
+            enabled: true,
+            ownership: Ownership::Owned,
+            store: Arc::new(Mutex::new(ArchiveStore::new())),
+        }
+    }
+
+    /// A disabled runtime (agent-managed context is off): no tools, and nothing ever archived.
+    /// The store still exists — an empty one costs nothing and spares every reader an `Option` —
+    /// but nothing can reach it, since the tools that would were never offered.
+    pub fn disabled() -> Self {
+        Self {
+            enabled: false,
+            ..Self::new()
+        }
+    }
+
+    /// An enabled runtime over an **existing** archive — how a caller that already holds the store
+    /// (the loop's agent-managed-context setup, and the tests that assert on what was archived)
+    /// binds the same one into a module set.
+    #[allow(dead_code)] // bound by the tests and by a future incarnation's module set.
+    pub fn from_store(store: Arc<Mutex<ArchiveStore>>) -> Self {
+        Self {
+            enabled: true,
+            ownership: Ownership::Owned,
+            store,
+        }
+    }
+
+    /// This runtime with its [ownership](Ownership) set — the builder
+    /// [`ModuleSet::resolve`](crate::modules::ModuleSet::resolve) applies the capability's
+    /// `ownership` param through.
+    pub fn with_ownership(mut self, ownership: Ownership) -> Self {
+        self.ownership = ownership;
+        self
+    }
+
+    /// Whether agent-managed context is on for this agent, and so whether the archive tools are
+    /// offered and the loop's reclaim has anywhere to put what it removes.
+    pub fn offers_archive(&self) -> bool {
+        self.enabled
+    }
+
+    /// The shared store, for binding into `search_archive` and the loop's reclaim.
+    pub fn store(&self) -> Arc<Mutex<ArchiveStore>> {
+        Arc::clone(&self.store)
+    }
+
+    /// The number of entries archived so far — a read surface for the tests and for the
+    /// module's own reporting.
+    #[allow(dead_code)] // a read surface for the module tests; the loop reaches the store directly.
+    pub fn len(&self) -> usize {
+        self.store.lock().expect("archive store lock").len()
+    }
+
+    /// An **independent** archive holding a copy of everything this one holds, with the ordinal
+    /// counter carried forward so the two copies never reissue the same `#n`. What a
+    /// [fork](Module::fork) takes.
+    #[allow(dead_code)] // reached through `Module::fork`, which arrives with `fork`/`exec`.
+    pub fn forked(&self) -> Self {
+        Self {
+            enabled: self.enabled,
+            ownership: self.ownership,
+            store: Arc::new(Mutex::new(
+                self.store.lock().expect("archive store lock").clone(),
+            )),
+        }
+    }
+
+    /// A **linked** handle onto the same archive: what one holder archives, the other can search.
+    /// What a [share](Module::share) takes, and what an agent that succeeds another in place
+    /// receives.
+    #[allow(dead_code)] // reached through `Module::share`, which arrives with `fork`/`exec`.
+    pub fn shared(&self) -> Self {
+        Self {
+            enabled: self.enabled,
+            ownership: self.ownership,
+            store: Arc::clone(&self.store),
+        }
+    }
+}
+
+impl Default for ArchiveRuntime {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Module for ArchiveRuntime {
+    fn kind(&self) -> ModuleKind {
+        ModuleKind::Archive
+    }
+
+    fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    fn ownership(&self) -> Ownership {
+        self.ownership
+    }
+
+    fn context_source(&self) -> Option<GgContextSource> {
+        None
+    }
+
+    fn refresh(&self) -> Refresh {
+        Refresh::Never
+    }
+
+    fn context_block(&self) -> Option<Message> {
+        None
+    }
+
+    fn state_events(&self) -> Vec<GgTelemetryKind> {
+        Vec::new()
+    }
+
+    fn drain_events(&mut self) -> Vec<GgTelemetryKind> {
+        Vec::new()
+    }
+
+    fn retained(&self) -> u64 {
+        // The archive is by definition *out* of the window, so it retains nothing across a
+        // compaction boundary — the retention proof counts what crossed, not what was set aside.
+        0
+    }
+
+    fn fork(&self) -> ModuleHandle {
+        ModuleHandle::Archive(self.forked())
+    }
+
+    fn share(&self) -> ModuleHandle {
+        ModuleHandle::Archive(self.shared())
+    }
+
+    fn adopt(
+        &mut self,
+        profile: &GgAgentConfig,
+        ctx: &ModuleResolveCtx<'_>,
+    ) -> Result<(), AdoptError> {
+        let _ = ctx;
+        if !profile.is_enabled(test_cabinet_core::gg::CAPABILITY_AGENT_MANAGED_CONTEXT) {
+            return Err(AdoptError::Disabled);
+        }
+        self.enabled = true;
+        self.ownership = crate::modules::resolve_ownership(
+            profile,
+            test_cabinet_core::gg::CAPABILITY_AGENT_MANAGED_CONTEXT,
+        )
+        .0;
+        Ok(())
     }
 }
 

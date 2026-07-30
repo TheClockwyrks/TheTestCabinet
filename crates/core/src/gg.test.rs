@@ -635,6 +635,40 @@ fn context_breakdown_serializes_source_bands_and_omits_unknown_limit() {
     );
 }
 
+/// The [module](GgModuleKind) vocabulary is a closed taxonomy on the wire: a transfer list and an
+/// `ownership` param are both read back from a recorded configuration, so their spellings are part
+/// of the contract rather than an implementation detail.
+#[test]
+fn the_module_vocabulary_serializes_in_its_documented_spelling() {
+    assert_eq!(GgModuleKind::ALL.len(), 6);
+    assert_eq!(GgModuleKind::ALL[0], GgModuleKind::History);
+    for kind in GgModuleKind::ALL {
+        assert_eq!(
+            serde_json::to_value(kind).unwrap(),
+            json!(kind.as_str()),
+            "the wire form and `as_str` must never disagree"
+        );
+        assert_eq!(kind.to_string(), kind.as_str());
+    }
+    assert_eq!(
+        serde_json::to_value(GgModuleKind::Board).unwrap(),
+        json!("board")
+    );
+
+    // Ownership defaults to the behaviour gg had before it was configurable, so a set written
+    // without the param keeps behaving exactly as it did.
+    assert_eq!(GgModuleOwnership::default(), GgModuleOwnership::Owned);
+    assert_eq!(
+        serde_json::to_value(GgModuleOwnership::Owned).unwrap(),
+        json!("owned")
+    );
+    assert_eq!(
+        serde_json::to_value(GgModuleOwnership::Unowned).unwrap(),
+        json!("unowned")
+    );
+    assert_eq!(MODULE_PARAM_OWNERSHIP, "ownership");
+}
+
 #[test]
 fn context_source_all_covers_every_variant_in_stable_order() {
     // `ALL` constructs every variant (so none is dead) and fixes the band order.

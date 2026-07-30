@@ -30,10 +30,16 @@
 
 use std::collections::HashSet;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
-use test_cabinet_core::gg::{GgSkillState, GgTelemetryKind};
+use test_cabinet_core::gg::{
+    CAPABILITY_SKILLS, GgAgentConfig, GgContextSource, GgSkillState, GgTelemetryKind,
+};
 
+use crate::model::Message;
+use crate::modules::{
+    AdoptError, Module, ModuleHandle, ModuleKind, ModuleResolveCtx, Ownership, Refresh,
+};
 use crate::prompts::SkillView;
 
 /// The default directory skills are loaded from, relative to the run workspace, when the
@@ -172,15 +178,27 @@ impl SkillLibrary {
 /// ([`state_event`](Self::state_event)), and records reads
 /// ([`record_read`](Self::record_read)) — the loop uses the result to pin a freshly read
 /// skill's body exactly once.
-#[derive(Debug, Clone)]
+///
+/// It is a [module](crate::modules::Module) whose two halves are copied differently: the catalog is
+/// immutable and always shared, while the **read set** is a promise about the window — "these skill
+/// bodies are already pinned, do not pin them twice". A [fork](Self::forked) copies the read set
+/// because it travels with a copy of the window it describes; a [share](Self::shared) aliases it
+/// because two holders of one window would otherwise each re-pin what the other had already read.
+/// It is deliberately not `Clone`; see [the module model](crate::modules).
+#[derive(Debug)]
 pub struct SkillsRuntime {
     /// Whether the skills capability is enabled for this run. When `false` the runtime is
     /// inert regardless of the (empty) library.
     enabled: bool,
+    /// Whether this holder's prompt carries the catalog — the "here are the skills you have"
+    /// listing in the system prompt. An [unowned](crate::modules::Ownership::Unowned) holder still
+    /// has `read_skill` and can still read any skill by name; it is simply not handed the menu.
+    ownership: Ownership,
     /// The shared, immutable catalog.
     library: Arc<SkillLibrary>,
-    /// The names of skills the model has read this session.
-    read: HashSet<String>,
+    /// The names of skills the model has read this session — behind a lock so linked holders of one
+    /// window agree on what is already pinned in it.
+    read: Arc<Mutex<HashSet<String>>>,
 }
 
 /// The outcome of recording a `read_skill` call against the [`SkillsRuntime`].
@@ -202,8 +220,9 @@ impl SkillsRuntime {
     pub fn new(library: Arc<SkillLibrary>) -> Self {
         Self {
             enabled: true,
+            ownership: Ownership::Owned,
             library,
-            read: HashSet::new(),
+            read: Arc::new(Mutex::new(HashSet::new())),
         }
     }
 
@@ -212,8 +231,39 @@ impl SkillsRuntime {
     pub fn disabled() -> Self {
         Self {
             enabled: false,
+            ownership: Ownership::Owned,
             library: Arc::new(SkillLibrary::empty()),
-            read: HashSet::new(),
+            read: Arc::new(Mutex::new(HashSet::new())),
+        }
+    }
+
+    /// This runtime with its [ownership](Ownership) set.
+    pub fn with_ownership(mut self, ownership: Ownership) -> Self {
+        self.ownership = ownership;
+        self
+    }
+
+    /// An **independent** runtime over the same catalog with a copy of the read set — what an
+    /// agent built over the orchestrator's shared runtime takes, and what a fork of a window takes
+    /// along with the window the read set describes.
+    pub fn forked(&self) -> Self {
+        Self {
+            enabled: self.enabled,
+            ownership: self.ownership,
+            library: Arc::clone(&self.library),
+            read: Arc::new(Mutex::new(
+                self.read.lock().expect("skills read set lock").clone(),
+            )),
+        }
+    }
+
+    /// A **linked** runtime over the same catalog *and* the same read set.
+    pub fn shared(&self) -> Self {
+        Self {
+            enabled: self.enabled,
+            ownership: self.ownership,
+            library: Arc::clone(&self.library),
+            read: Arc::clone(&self.read),
         }
     }
 
@@ -233,7 +283,7 @@ impl SkillsRuntime {
     /// in the window, reported as the skills figure of a
     /// [compaction](https://docs.testcabinet.ai/gg/compaction/) boundary's retention proof.
     pub fn read_count(&self) -> usize {
-        self.read.len()
+        self.read.lock().expect("skills read set lock").len()
     }
 
     /// Each offered skill's name and description, for the
@@ -242,7 +292,10 @@ impl SkillsRuntime {
     /// front" affordance: the model sees what skills exist and reads one by name when it is
     /// relevant.
     pub fn prompt_entries(&self) -> Vec<SkillView> {
-        if !self.offers_skills() {
+        // An unowned skills module contributes nothing to the automatically assembled prompt, so
+        // there is no menu — `read_skill` still reads any skill by name, which is the whole of what
+        // "reachable through its tools and nothing else" means here.
+        if !self.offers_skills() || self.ownership != Ownership::Owned {
             return Vec::new();
         }
         self.library
@@ -269,7 +322,11 @@ impl SkillsRuntime {
             .map(|skill| GgSkillState {
                 name: skill.name().to_string(),
                 description: skill.description().to_string(),
-                read: self.read.contains(skill.name()),
+                read: self
+                    .read
+                    .lock()
+                    .expect("skills read set lock")
+                    .contains(skill.name()),
             })
             .collect();
         Some(GgTelemetryKind::SkillsState { skills })
@@ -283,11 +340,89 @@ impl SkillsRuntime {
         if self.library.get(name).is_none() {
             return ReadRecord::Unknown;
         }
-        if self.read.insert(name.to_string()) {
+        if self
+            .read
+            .lock()
+            .expect("skills read set lock")
+            .insert(name.to_string())
+        {
             ReadRecord::Fresh
         } else {
             ReadRecord::Repeat
         }
+    }
+}
+
+impl Module for SkillsRuntime {
+    fn kind(&self) -> ModuleKind {
+        ModuleKind::Skills
+    }
+
+    fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    fn ownership(&self) -> Ownership {
+        self.ownership
+    }
+
+    /// None: skills do not occupy a single block. A read skill's body is pinned as its own
+    /// [`Skill`](GgContextSource::Skill) item at the moment it is read and is never rebuilt, so
+    /// there is no block for a refresh to replace.
+    fn context_source(&self) -> Option<GgContextSource> {
+        None
+    }
+
+    fn refresh(&self) -> Refresh {
+        Refresh::Never
+    }
+
+    fn context_block(&self) -> Option<Message> {
+        None
+    }
+
+    fn state_events(&self) -> Vec<GgTelemetryKind> {
+        self.state_event().into_iter().collect()
+    }
+
+    /// Nothing: the read set's telemetry is **snapshot-only** — the whole catalog with its read
+    /// flags is re-emitted by the loop after each fresh read.
+    fn drain_events(&mut self) -> Vec<GgTelemetryKind> {
+        Vec::new()
+    }
+
+    fn retained(&self) -> u64 {
+        self.read_count() as u64
+    }
+
+    fn fork(&self) -> ModuleHandle {
+        ModuleHandle::Skills(self.forked())
+    }
+
+    fn share(&self) -> ModuleHandle {
+        ModuleHandle::Skills(self.shared())
+    }
+
+    /// Re-resolve the ownership from the receiving profile. The catalog itself is run-global and
+    /// immutable, so there is nothing else to re-point.
+    ///
+    /// A read set is a promise about a **window**: it says which skill bodies are already pinned in
+    /// it, so the loop answers a repeat read with a note instead of a second copy. That promise is
+    /// only true where the window is, which is why this module is carried by exactly the same
+    /// transfers that carry [history](crate::modules::ModuleKind::History) — a read set adopted
+    /// without its window would suppress a pin the successor's window does not have.
+    fn adopt(
+        &mut self,
+        profile: &GgAgentConfig,
+        ctx: &ModuleResolveCtx<'_>,
+    ) -> Result<(), AdoptError> {
+        let _ = ctx;
+        if !profile.is_enabled(CAPABILITY_SKILLS) {
+            return Err(AdoptError::Disabled);
+        }
+        self.enabled = true;
+        self.ownership = crate::modules::resolve_ownership(profile, CAPABILITY_SKILLS).0;
+        Ok(())
     }
 }
 

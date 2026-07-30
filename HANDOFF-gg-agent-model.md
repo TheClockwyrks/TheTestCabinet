@@ -27,7 +27,7 @@ Five things land together, in this order (§7 has the stage plan):
 | # | Change | Primary code |
 | --- | --- | --- |
 | 0 | Delete planning + the built-in machines | §5 |
-| 1 | The module abstraction (`Module`, `ModuleSet`, ownership, clone/transfer) | `crates/gg/src/module.rs` (new), `crates/gg/src/agent.rs` |
+| 1 | The module abstraction (`Module`, `ModuleSet`, ownership, clone/transfer) | `crates/gg/src/modules.rs` (new), `crates/gg/src/agent.rs` |
 | 2 | Memory scoping + linked memory | `crates/gg/src/memories.rs`, `crates/gg/src/tools/memories*.rs` |
 | 3 | `fork` / `exec` (the incarnation loop) | `crates/gg/src/agent.rs`, `crates/gg/src/tools/transitions.rs` (new) |
 | 4 | FSM agents (data-driven, built on `exec`) | `crates/gg/src/fsm.rs` (rewritten) |
@@ -76,7 +76,7 @@ Today these five properties are spread across `MemoriesRuntime`
 
 ### 1.2 The trait
 
-New file `crates/gg/src/module.rs` (with `module.test.rs`). Rustdoc on every item
+New file `crates/gg/src/modules.rs` (with `modules.test.rs`). Rustdoc on every item
 must match the crate's explanatory voice — read `memories.rs:1260-1290` and
 `context.rs:637-660` before writing it.
 
@@ -1376,7 +1376,9 @@ plan/FSM cases.
 
 ### Stage 2 — `refactor(gg): extract per-agent state into modules`
 
-New `crates/gg/src/module.rs` + `module.test.rs`. `RuntimeSet` deleted.
+**LANDED.** Implementation notes and the deviations from the text above are in §7.1.
+
+New `crates/gg/src/modules.rs` + `modules.test.rs`. `RuntimeSet` deleted.
 `ModuleSet::resolve`, `ModuleHandle`, `Module` implemented for all six kinds.
 `Clone` removed from the four runtimes. `ContextModel` gains `Clone`, `rebase`,
 `set_window_limit`, `set_code_mode`. `ArchiveRuntime` and `HistoryModule` added.
@@ -1392,6 +1394,59 @@ does not. `agent.test.rs` — an unowned `tasks` module offers the task tools an
 puts nothing in the window (assert on `ContextBreakdown` bands). Existing
 `memories.test.rs` / `tasks.test.rs` / `skills.test.rs` adjust to the new
 constructors.
+
+### 7.1 Stage 2 as built — deviations from §1
+
+Everything in §1 landed. Eleven things are shaped differently from the sketch above; each is a
+deliberate change, and later stages should build on **this** list, not on §1's signatures.
+
+1. **`modules.rs`, not `module.rs`** (with `modules.test.rs`). No other reason than the plural
+   reads better beside `ModuleSet`; the file is otherwise exactly §1.2's.
+2. **`ModuleSet` has named fields, not `entries: Vec<ModuleHandle>`**, and all six kinds are
+   *always* present (a disabled module occupies its slot). It is
+   `ModuleSet { history: HistoryModule, caps: CapabilityModules }`, and
+   `CapabilityModules` holds the other five. The reason is the borrow checker: the turn loop needs
+   `&mut` on the window and simultaneous access to the modules whose blocks it refreshes into it,
+   for the whole of a session, and only two disjoint **struct fields** prove that. `drive` takes
+   the split once at the top (`ModuleSet::split_mut`) and holds both halves throughout.
+   Consequently `detach`/`attach` do not exist: the one caller that needed them (the code turn,
+   which moves the window and the skills runtime onto a blocking thread) uses
+   `ContextModel::take()` and a `mem::replace`, and puts both back on every path that returns.
+   `ModuleSet::put`/`with` and `into_handles` are what transfer uses.
+3. **`ModuleHandle::History` is boxed** (`Box<HistoryModule>`) — a window is two orders of
+   magnitude larger than any other module, and clippy's `large_enum_variant` is right about it.
+4. **`ToolRegistry::from_run(capabilities, &CapabilityModules)`**, not `&ModuleSet` + `AgentFacts`.
+   The registry never needs the window, and taking only the capability half is what lets a toolset
+   be assembled without a token estimator (`from_capabilities` builds one against
+   `CapabilityModules::inert()`). `AgentFacts` is deferred to the FSM stage, which is the only
+   thing that needs it.
+5. **`Module::adopt(&mut self, profile, ctx: &ModuleResolveCtx<'_>)`**, not `(profile, agent_id)`.
+   The history module has to re-resolve the *holder's* window limit and execution mode, which are
+   not on the profile; `ModuleResolveCtx` already carries them, and it carries `agent_id` too.
+6. **`ModuleKind` and `Ownership` are re-exports** of the contract enums
+   `GgModuleKind`/`GgModuleOwnership` rather than gg-local duplicates. One enum, no conversion
+   layer. `GgModuleKind::ALL` and `as_str()` live in core.
+7. **Both contract enums landed in stage 2**, not with the FSM stage, and are registered in
+   `ts_decls!` **only**. They are the documented shape of a `params` key and of a transfer list;
+   they are not referenced by any schema root, so listing them in a `SchemaDoc`'s `owns` would emit
+   a name schemars never generated.
+8. **`HistoryModule::share()` returns an independent copy and does not warn.** There is no emitter
+   in a module's scope; the reason is stated in its rustdoc instead, and every caller that would
+   ask for a shared window wants a copy anyway.
+9. **`transfer(old, profile, plan, ctx)`** — `agent_id` rides on `ctx`. `TransferReport` gained
+   `notes` (the model-facing reasons for the successor's opening note) and `warnings` (a transfer
+   list naming a module the source state never held).
+10. **`drive` is 13 parameters plus `DriveSetup`, not 12.** `planning` and `fsm` are still separate
+    arguments because §5's removal has not landed; `#[allow(clippy::too_many_arguments)]` stays
+    until it does, and drops out with them. `DriveSetup` is the "resolved configuration, never
+    transferred" half named in §1.9.
+11. **`ModuleSet::resolve` does not emit warnings.** `modules::ownership_warnings(profile)` is
+    called once per declared profile from `Orchestrator::build`, so a mis-spelled `ownership` is
+    reported before the first turn rather than per agent at spawn.
+
+Two additions later stages should know about: `MemoryStore::forget_pending()` (what a fork calls on
+the *copy*, so one write is never streamed twice) and `ContextModel::take()` (the by-value move the
+code turn needs while the window lives in a set).
 
 ### Stage 3 — `feat(gg): memory scoping strategies and linked memory instances`
 

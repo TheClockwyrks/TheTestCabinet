@@ -259,6 +259,117 @@ pub const MEMORY_STRATEGY_KEYWORD_SEARCH: &str = "keyword-search";
 /// a blocked-by DAG that survives compaction verbatim.
 pub const CAPABILITY_TASKS: &str = "tasks";
 
+/// The [`params`](GgCapabilityConfig::params) key every **module-backed** capability reads to
+/// decide whether the state it keeps is [owned](GgModuleOwnership::Owned) by the agent holding
+/// it — the default, and the only behaviour gg had before modules existed — or
+/// [unowned](GgModuleOwnership::Unowned).
+///
+/// A module-backed capability is one whose state gg keeps for the agent rather than one that is
+/// a pure function of a call: [`memories`](CAPABILITY_MEMORIES), [`tasks`](CAPABILITY_TASKS),
+/// [`project-management`](CAPABILITY_PROJECT_MANAGEMENT), [`skills`](CAPABILITY_SKILLS) and
+/// [`agent-managed-context`](CAPABILITY_AGENT_MANAGED_CONTEXT) — see [`GgModuleKind`] for the
+/// closed list. An unrecognized value falls back to `owned` and is reported as a launch warning,
+/// never as a launch failure, in line with how every other unrecognized capability *value* is
+/// treated.
+///
+/// See the [module model](https://docs.testcabinet.ai/gg/modules/) for what ownership changes.
+pub const MODULE_PARAM_OWNERSHIP: &str = "ownership";
+
+/// Whether the state a module-backed capability keeps is carried in its holder's **prompt**, or
+/// is reachable only through the tools it contributes.
+///
+/// This is the [`ownership`](MODULE_PARAM_OWNERSHIP) param, and it is the one knob that separates
+/// "the agent is told what it holds, every turn" from "the agent may look it up". It exists
+/// because a module is no longer necessarily *about* the agent holding it: once a memory instance
+/// can be shared between agents, or a task list handed from one FSM state to the next, an agent
+/// can be given a working store it should be able to act on without paying for it in every
+/// request it makes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum GgModuleOwnership {
+    /// The holder's prompt carries the module: its system-prompt section is rendered, and the
+    /// pinned block it keeps (the memory index, the task list, the board) is refreshed into the
+    /// window on that module's own schedule. Every capability behaved this way before ownership
+    /// was configurable, so this is the default and the back-compatible value.
+    #[default]
+    Owned,
+    /// The module is reachable through the holder's **tools and nothing else**: no system-prompt
+    /// section, no pinned block, and no per-turn notice. Its state is still live — the tools read
+    /// and write it, and it is still transferred, shared and reported as
+    /// [telemetry](GgTelemetryKind) exactly as an owned one is — it simply costs the holder no
+    /// context until it asks.
+    Unowned,
+}
+
+/// The closed set of **modules** an agent instance holds: one unit of per-agent capability state
+/// that gg can clone, share between agents, and hand from one agent instance to the next.
+///
+/// The names are the vocabulary a configuration uses to talk about that state — most visibly an
+/// [FSM](CAPABILITY_FSM) transition's transfer list, which names the modules the successor state
+/// inherits. They are a closed taxonomy rather than open capability ids because gg has to
+/// implement clone/share/transfer semantics per kind; a capability with no module keeps no state
+/// worth carrying.
+///
+/// See the [module model](https://docs.testcabinet.ai/gg/modules/) for the per-kind semantics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum GgModuleKind {
+    /// The agent's **conversation window** — every message, file view and pinned block it holds.
+    /// Always present (an agent without a window is not an agent); it is the module a successor
+    /// receives to continue a predecessor's thread rather than start afresh.
+    History,
+    /// The [memories](CAPABILITY_MEMORIES) the agent curates, under whichever strategy the
+    /// capability configures.
+    Memories,
+    /// The [task](CAPABILITY_TASKS) list — the blocked-by DAG the agent steers by.
+    Tasks,
+    /// The [project-management](CAPABILITY_PROJECT_MANAGEMENT) board. Run-global by
+    /// construction: every holder of it holds the *same* board, so it is shared rather than
+    /// copied however it is carried.
+    Board,
+    /// The [skills](CAPABILITY_SKILLS) library and the set of skills read so far — a promise
+    /// about which skill bodies are already pinned in the window, so it travels with it.
+    Skills,
+    /// The thread [archive](CAPABILITY_AGENT_MANAGED_CONTEXT) `archive_thread` fills and
+    /// `search_archive` reads.
+    Archive,
+}
+
+impl GgModuleKind {
+    /// Every module kind, in a stable order — the order a set is built, iterated, reported and
+    /// transferred in, so two runs of the same configuration produce the same sequence.
+    pub const ALL: [GgModuleKind; 6] = [
+        GgModuleKind::History,
+        GgModuleKind::Memories,
+        GgModuleKind::Tasks,
+        GgModuleKind::Board,
+        GgModuleKind::Skills,
+        GgModuleKind::Archive,
+    ];
+
+    /// The kind's wire spelling — the same string its
+    /// [serialization](GgModuleKind#impl-Serialize-for-GgModuleKind) produces, for log lines,
+    /// telemetry lists and the transfer-list parsing that has to report an unknown name back.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            GgModuleKind::History => "history",
+            GgModuleKind::Memories => "memories",
+            GgModuleKind::Tasks => "tasks",
+            GgModuleKind::Board => "board",
+            GgModuleKind::Skills => "skills",
+            GgModuleKind::Archive => "archive",
+        }
+    }
+}
+
+impl std::fmt::Display for GgModuleKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// The stable id of the Phase 2 [compaction] capability: the automatic
 /// summarize-and-restart that lets a run continue past the active model's context
 /// window. When the thread nears the window it summarizes the ephemeral history and

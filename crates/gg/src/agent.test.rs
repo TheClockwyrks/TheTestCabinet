@@ -9,6 +9,7 @@ use tempfile::TempDir;
 use std::collections::HashMap;
 
 use super::*;
+use crate::archive::ArchiveRuntime;
 use crate::board::BoardRuntime;
 use crate::client::MockClient;
 use crate::client::{
@@ -26,21 +27,22 @@ use crate::memories::MemoriesRuntime;
 use crate::model::{
     FinishReason, Message, ModelClient, ModelError, ModelResponse, ToolCall, ToolDefinition,
 };
+use crate::modules::{HistorySetup, ModuleHandle, ModuleSet};
 use crate::planning::PlanningRuntime;
 use crate::skills::{SkillLibrary, SkillsRuntime};
 use crate::tasks::TasksRuntime;
 use crate::telemetry::{CollectingSink, Emitter};
-use crate::tools::{RuntimeSet, ToolContext, ToolRegistry, VisionContext};
+use crate::tools::{ToolContext, ToolRegistry, VisionContext};
 use test_cabinet_core::gg::{
     ALL_SUBAGENT_SCOPES, CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_COMPACTION,
     CAPABILITY_CONTEXT_WINDOW_OVERRIDE, CAPABILITY_FSM, CAPABILITY_PLANNING,
     CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_READ_FILE, CAPABILITY_REPLAY,
     CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE,
-    CAPABILITY_SUBAGENTS, CAPABILITY_WORKFLOWS, GG_REPLAY_ARTIFACT_PATH, GgAgentConfig,
-    GgAgentStatus, GgCapabilityConfig, GgCapabilitySet, GgContextAction, GgContextSource,
-    GgIssueReviewPhase, GgIssueStatus, GgPlanPhase, GgPromptCacheTtl, GgReplayEntryKind,
-    GgReplayRecord, GgSessionSummary, GgSlotBinding, GgSubagentRef, GgSubagentScope,
-    GgTelemetryEvent, GgTelemetryKind, GgWorkflowPhase, ROOT_AGENT,
+    CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WORKFLOWS, GG_REPLAY_ARTIFACT_PATH,
+    GgAgentConfig, GgAgentStatus, GgCapabilityConfig, GgCapabilitySet, GgContextAction,
+    GgContextSource, GgIssueReviewPhase, GgIssueStatus, GgPlanPhase, GgPromptCacheTtl,
+    GgReplayEntryKind, GgReplayRecord, GgSessionSummary, GgSlotBinding, GgSubagentRef,
+    GgSubagentScope, GgTelemetryEvent, GgTelemetryKind, GgWorkflowPhase, ROOT_AGENT,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
@@ -231,31 +233,56 @@ async fn drive_root(
             registry,
             &ctx,
             emitter,
-            limits,
-            test_context_setup(),
-            no_compaction(),
-            no_amc(),
-            no_autoload(),
-            no_persistence(),
+            &mut test_modules(test_context_setup(), code.enabled)
+                .with(ModuleHandle::Skills(SkillsRuntime::disabled()))
+                .with(ModuleHandle::Memories(MemoriesRuntime::disabled()))
+                .with(ModuleHandle::Tasks(TasksRuntime::disabled()))
+                .with(ModuleHandle::Board(BoardRuntime::disabled())),
+            DriveSetup {
+                limits,
+                compaction: no_compaction(),
+                amc: no_amc(),
+                autoload: no_autoload(),
+                persistence: no_persistence(),
+                read_policy: ReadPolicy::default(),
+                shell_offload: OffloadPolicy::default(),
+                speculative: false,
+                code,
+                completion: no_completion(),
+                ending_role: EndingRole::Standard,
+                replay: None,
+            },
             &[],
-            SkillsRuntime::disabled(),
-            MemoriesRuntime::disabled(),
-            TasksRuntime::disabled(),
-            BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
-            ReadPolicy::default(),
-            OffloadPolicy::default(),
-            false,
-            code,
-            no_completion(),
-            EndingRole::Standard,
             &GgAgentConfig::root(),
-            None,
             None,
             None,
         )
         .await
+}
+
+/// The [module set](ModuleSet) a `drive` call in these tests is given: an empty window measured by
+/// `setup` (in `code_mode` when the test drives programs), and five disabled capability modules the
+/// caller replaces with `.with(…)` for whichever ones its test is actually about.
+///
+/// It is the test-side counterpart of [`ModuleSet::resolve`]: the loop builds an agent's modules
+/// from its profile, and a test that is about the loop rather than about a capability builds them
+/// from nothing.
+fn test_modules(setup: ContextSetup, code_mode: bool) -> ModuleSet {
+    ModuleSet::inert(&HistorySetup {
+        estimator: setup.estimator,
+        window_limit: setup.window_limit,
+        code_mode,
+    })
+}
+
+/// The capability modules binding only the skill `library`, for a registry that must offer
+/// `read_skill`.
+fn skills_modules(library: &Arc<SkillLibrary>) -> CapabilityModules {
+    CapabilityModules::inert().with(ModuleHandle::Skills(SkillsRuntime::new(Arc::clone(
+        library,
+    ))))
 }
 
 /// Every [`LimitExceeded`](GgTelemetryKind::LimitExceeded) breach in the stream, in order.
@@ -925,27 +952,29 @@ async fn drive_exhausts_the_turn_ceiling_when_the_model_never_stops() {
             &registry,
             &ctx,
             &emitter,
-            no_limits(2),
-            test_context_setup(),
-            no_compaction(),
-            no_amc(),
-            no_autoload(),
-            no_persistence(),
+            &mut test_modules(test_context_setup(), no_code().enabled)
+                .with(ModuleHandle::Skills(SkillsRuntime::disabled()))
+                .with(ModuleHandle::Memories(MemoriesRuntime::disabled()))
+                .with(ModuleHandle::Tasks(TasksRuntime::disabled()))
+                .with(ModuleHandle::Board(BoardRuntime::disabled())),
+            DriveSetup {
+                limits: no_limits(2),
+                compaction: no_compaction(),
+                amc: no_amc(),
+                autoload: no_autoload(),
+                persistence: no_persistence(),
+                read_policy: ReadPolicy::default(),
+                shell_offload: OffloadPolicy::default(),
+                speculative: false,
+                code: no_code(),
+                completion: no_completion(),
+                ending_role: EndingRole::Standard,
+                replay: None,
+            },
             &[],
-            SkillsRuntime::disabled(),
-            MemoriesRuntime::disabled(),
-            TasksRuntime::disabled(),
-            BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
-            ReadPolicy::default(),
-            OffloadPolicy::default(),
-            false,
-            no_code(),
-            no_completion(),
-            EndingRole::Standard,
             &GgAgentConfig::root(),
-            None,
             None,
             None,
         )
@@ -982,27 +1011,29 @@ async fn drive_times_out_at_a_passed_deadline() {
             &registry,
             &ctx,
             &emitter,
-            no_limits_until(50, Instant::now()),
-            test_context_setup(),
-            no_compaction(),
-            no_amc(),
-            no_autoload(),
-            no_persistence(),
+            &mut test_modules(test_context_setup(), no_code().enabled)
+                .with(ModuleHandle::Skills(SkillsRuntime::disabled()))
+                .with(ModuleHandle::Memories(MemoriesRuntime::disabled()))
+                .with(ModuleHandle::Tasks(TasksRuntime::disabled()))
+                .with(ModuleHandle::Board(BoardRuntime::disabled())),
+            DriveSetup {
+                limits: no_limits_until(50, Instant::now()),
+                compaction: no_compaction(),
+                amc: no_amc(),
+                autoload: no_autoload(),
+                persistence: no_persistence(),
+                read_policy: ReadPolicy::default(),
+                shell_offload: OffloadPolicy::default(),
+                speculative: false,
+                code: no_code(),
+                completion: no_completion(),
+                ending_role: EndingRole::Standard,
+                replay: None,
+            },
             &[],
-            SkillsRuntime::disabled(),
-            MemoriesRuntime::disabled(),
-            TasksRuntime::disabled(),
-            BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
-            ReadPolicy::default(),
-            OffloadPolicy::default(),
-            false,
-            no_code(),
-            no_completion(),
-            EndingRole::Standard,
             &GgAgentConfig::root(),
-            None,
             None,
             None,
         )
@@ -1040,27 +1071,29 @@ async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
             &registry,
             &ctx,
             &emitter,
-            no_limits(5),
-            test_context_setup(),
-            no_compaction(),
-            no_amc(),
-            no_autoload(),
-            no_persistence(),
+            &mut test_modules(test_context_setup(), no_code().enabled)
+                .with(ModuleHandle::Skills(SkillsRuntime::disabled()))
+                .with(ModuleHandle::Memories(MemoriesRuntime::disabled()))
+                .with(ModuleHandle::Tasks(TasksRuntime::disabled()))
+                .with(ModuleHandle::Board(BoardRuntime::disabled())),
+            DriveSetup {
+                limits: no_limits(5),
+                compaction: no_compaction(),
+                amc: no_amc(),
+                autoload: no_autoload(),
+                persistence: no_persistence(),
+                read_policy: ReadPolicy::default(),
+                shell_offload: OffloadPolicy::default(),
+                speculative: false,
+                code: no_code(),
+                completion: no_completion(),
+                ending_role: EndingRole::Standard,
+                replay: None,
+            },
             &[],
-            SkillsRuntime::disabled(),
-            MemoriesRuntime::disabled(),
-            TasksRuntime::disabled(),
-            BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
-            ReadPolicy::default(),
-            OffloadPolicy::default(),
-            false,
-            no_code(),
-            no_completion(),
-            EndingRole::Standard,
             &GgAgentConfig::root(),
-            None,
             None,
             None,
         )
@@ -1139,27 +1172,29 @@ async fn drive_completion(
             registry,
             &ctx,
             emitter,
-            limits,
-            test_context_setup(),
-            no_compaction(),
-            no_amc(),
-            no_autoload(),
-            no_persistence(),
+            &mut test_modules(test_context_setup(), no_code().enabled)
+                .with(ModuleHandle::Skills(SkillsRuntime::disabled()))
+                .with(ModuleHandle::Memories(MemoriesRuntime::disabled()))
+                .with(ModuleHandle::Tasks(TasksRuntime::disabled()))
+                .with(ModuleHandle::Board(BoardRuntime::disabled())),
+            DriveSetup {
+                limits,
+                compaction: no_compaction(),
+                amc: no_amc(),
+                autoload: no_autoload(),
+                persistence: no_persistence(),
+                read_policy: ReadPolicy::default(),
+                shell_offload: OffloadPolicy::default(),
+                speculative: false,
+                code: no_code(),
+                completion,
+                ending_role,
+                replay: None,
+            },
             &[],
-            SkillsRuntime::disabled(),
-            MemoriesRuntime::disabled(),
-            TasksRuntime::disabled(),
-            BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
-            ReadPolicy::default(),
-            OffloadPolicy::default(),
-            false,
-            no_code(),
-            completion,
-            ending_role,
             &GgAgentConfig::root(),
-            None,
             None,
             None,
         )
@@ -1452,27 +1487,29 @@ async fn drive_ends_model_error_on_exhausted_retries() {
             &registry,
             &ctx,
             &emitter,
-            no_limits(5),
-            test_context_setup(),
-            no_compaction(),
-            no_amc(),
-            no_autoload(),
-            no_persistence(),
+            &mut test_modules(test_context_setup(), no_code().enabled)
+                .with(ModuleHandle::Skills(SkillsRuntime::disabled()))
+                .with(ModuleHandle::Memories(MemoriesRuntime::disabled()))
+                .with(ModuleHandle::Tasks(TasksRuntime::disabled()))
+                .with(ModuleHandle::Board(BoardRuntime::disabled())),
+            DriveSetup {
+                limits: no_limits(5),
+                compaction: no_compaction(),
+                amc: no_amc(),
+                autoload: no_autoload(),
+                persistence: no_persistence(),
+                read_policy: ReadPolicy::default(),
+                shell_offload: OffloadPolicy::default(),
+                speculative: false,
+                code: no_code(),
+                completion: no_completion(),
+                ending_role: EndingRole::Standard,
+                replay: None,
+            },
             &[],
-            SkillsRuntime::disabled(),
-            MemoriesRuntime::disabled(),
-            TasksRuntime::disabled(),
-            BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
-            ReadPolicy::default(),
-            OffloadPolicy::default(),
-            false,
-            no_code(),
-            no_completion(),
-            EndingRole::Standard,
             &GgAgentConfig::root(),
-            None,
             None,
             None,
         )
@@ -1507,27 +1544,29 @@ async fn drive_ends_auth_error_when_the_credential_is_refused() {
             &registry,
             &ctx,
             &emitter,
-            no_limits(5),
-            test_context_setup(),
-            no_compaction(),
-            no_amc(),
-            no_autoload(),
-            no_persistence(),
+            &mut test_modules(test_context_setup(), no_code().enabled)
+                .with(ModuleHandle::Skills(SkillsRuntime::disabled()))
+                .with(ModuleHandle::Memories(MemoriesRuntime::disabled()))
+                .with(ModuleHandle::Tasks(TasksRuntime::disabled()))
+                .with(ModuleHandle::Board(BoardRuntime::disabled())),
+            DriveSetup {
+                limits: no_limits(5),
+                compaction: no_compaction(),
+                amc: no_amc(),
+                autoload: no_autoload(),
+                persistence: no_persistence(),
+                read_policy: ReadPolicy::default(),
+                shell_offload: OffloadPolicy::default(),
+                speculative: false,
+                code: no_code(),
+                completion: no_completion(),
+                ending_role: EndingRole::Standard,
+                replay: None,
+            },
             &[],
-            SkillsRuntime::disabled(),
-            MemoriesRuntime::disabled(),
-            TasksRuntime::disabled(),
-            BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
-            ReadPolicy::default(),
-            OffloadPolicy::default(),
-            false,
-            no_code(),
-            no_completion(),
-            EndingRole::Standard,
             &GgAgentConfig::root(),
-            None,
             None,
             None,
         )
@@ -1606,7 +1645,7 @@ fn system_prompt_states_the_configured_read_cap() {
     read_file.params = json!({ "lineCap": 42 });
 
     let library = Arc::new(SkillLibrary::empty());
-    let registry = ToolRegistry::from_run(set.root(), &RuntimeSet::new(&library));
+    let registry = ToolRegistry::from_run(set.root(), &skills_modules(&library));
     let runtimes = DisabledRuntimes::new();
     let capped = system_prompt(PromptInputs {
         read_policy: read_policy(set.root()),
@@ -1759,7 +1798,7 @@ fn context_has_pinned_file_view(ctx: &ContextModel) -> bool {
 fn system_prompt_states_whether_images_can_be_seen() {
     let set = GgCapabilitySet::minimal("mock/x");
     let library = Arc::new(SkillLibrary::empty());
-    let registry = ToolRegistry::from_run(set.root(), &RuntimeSet::new(&library));
+    let registry = ToolRegistry::from_run(set.root(), &skills_modules(&library));
 
     let seeing = DisabledRuntimes::new();
     let prompt = system_prompt(seeing.inputs(&registry));
@@ -1784,7 +1823,7 @@ fn system_prompt_omits_image_guidance_without_read_file() {
         .disabled_tools
         .push(READ_FILE_TOOL.to_string());
     let library = Arc::new(SkillLibrary::empty());
-    let registry = ToolRegistry::from_run(set.root(), &RuntimeSet::new(&library));
+    let registry = ToolRegistry::from_run(set.root(), &skills_modules(&library));
 
     let prompt = system_prompt(DisabledRuntimes::new().inputs(&registry));
     assert!(!prompt.contains("Reading images"), "{prompt}");
@@ -1799,16 +1838,14 @@ fn system_prompt_omits_image_guidance_without_read_file() {
 #[test]
 fn the_board_section_follows_the_agents_own_capability() {
     let library = Arc::new(SkillLibrary::empty());
-    let board_store = Arc::new(std::sync::Mutex::new(crate::board::BoardStore::new(
-        BoardCaps::default(),
-    )));
 
     // The run has a board (some other profile owns it), but this agent may not author it.
     let mut runtimes = DisabledRuntimes::new();
     runtimes.board = Some(BoardRuntime::new(BoardCaps::default()));
     let registry = ToolRegistry::from_run(
         &runtimes.profile,
-        &RuntimeSet::new(&library).with_board(&board_store),
+        &skills_modules(&library)
+            .with(ModuleHandle::Board(BoardRuntime::new(BoardCaps::default()))),
     );
     let prompt = system_prompt(runtimes.inputs(&registry));
     assert!(
@@ -1825,7 +1862,8 @@ fn the_board_section_follows_the_agents_own_capability() {
         .push(GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT));
     let registry = ToolRegistry::from_run(
         &authoring.profile,
-        &RuntimeSet::new(&library).with_board(&board_store),
+        &skills_modules(&library)
+            .with(ModuleHandle::Board(BoardRuntime::new(BoardCaps::default()))),
     );
     let prompt = system_prompt(authoring.inputs(&registry));
     assert!(
@@ -1841,7 +1879,7 @@ fn the_assigned_issue_section_is_rendered_for_a_dispatched_agent() {
     let library = Arc::new(SkillLibrary::empty());
     let mut runtimes = DisabledRuntimes::new();
     runtimes.board = Some(BoardRuntime::new(BoardCaps::default()));
-    let registry = ToolRegistry::from_run(&runtimes.profile, &RuntimeSet::new(&library));
+    let registry = ToolRegistry::from_run(&runtimes.profile, &skills_modules(&library));
 
     let mut inputs = runtimes.inputs(&registry);
     inputs.assigned_issue = Some("feat-7");
@@ -2380,7 +2418,7 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
     assert_eq!(library.len(), 1);
 
     let set = GgCapabilitySet::minimal("mock/echo");
-    let registry = ToolRegistry::from_run(set.root(), &RuntimeSet::new(&library));
+    let registry = ToolRegistry::from_run(set.root(), &skills_modules(&library));
     let runtime = SkillsRuntime::new(Arc::clone(&library));
     let ctx = ToolContext::new(dir.path());
     let sink = CollectingSink::new();
@@ -2404,27 +2442,29 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
             &registry,
             &ctx,
             &emitter,
-            no_limits(10),
-            test_context_setup(),
-            no_compaction(),
-            no_amc(),
-            no_autoload(),
-            no_persistence(),
+            &mut test_modules(test_context_setup(), no_code().enabled)
+                .with(ModuleHandle::Skills(runtime))
+                .with(ModuleHandle::Memories(MemoriesRuntime::disabled()))
+                .with(ModuleHandle::Tasks(TasksRuntime::disabled()))
+                .with(ModuleHandle::Board(BoardRuntime::disabled())),
+            DriveSetup {
+                limits: no_limits(10),
+                compaction: no_compaction(),
+                amc: no_amc(),
+                autoload: no_autoload(),
+                persistence: no_persistence(),
+                read_policy: ReadPolicy::default(),
+                shell_offload: OffloadPolicy::default(),
+                speculative: false,
+                code: no_code(),
+                completion: no_completion(),
+                ending_role: EndingRole::Standard,
+                replay: None,
+            },
             &[],
-            runtime,
-            MemoriesRuntime::disabled(),
-            TasksRuntime::disabled(),
-            BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
-            ReadPolicy::default(),
-            OffloadPolicy::default(),
-            false,
-            no_code(),
-            no_completion(),
-            EndingRole::Standard,
             &GgAgentConfig::root(),
-            None,
             None,
             None,
         )
@@ -2570,12 +2610,14 @@ async fn drive_enforces_memory_caps_end_to_end() {
         max_results: None,
     };
     let memories = MemoriesRuntime::new(crate::memories::MemoryStrategy::Scratchpad, caps);
+    // A second handle on the same store, kept behind so what the run left in it can be read after
+    // `drive` has taken the module.
+    let kept = memories.shared();
     let set = GgCapabilitySet::minimal("mock/echo");
     let library = Arc::new(SkillLibrary::empty());
-    let memory_store = memories.store();
     let registry = ToolRegistry::from_run(
         set.root(),
-        &RuntimeSet::new(&library).with_memories(&memory_store),
+        &skills_modules(&library).with(ModuleHandle::Memories(memories.shared())),
     );
 
     // Write `first` (accepted), then `second` (refused — count cap), then stop.
@@ -2596,27 +2638,29 @@ async fn drive_enforces_memory_caps_end_to_end() {
             &registry,
             &ctx,
             &emitter,
-            no_limits(10),
-            test_context_setup(),
-            no_compaction(),
-            no_amc(),
-            no_autoload(),
-            no_persistence(),
+            &mut test_modules(test_context_setup(), no_code().enabled)
+                .with(ModuleHandle::Skills(SkillsRuntime::disabled()))
+                .with(ModuleHandle::Memories(memories))
+                .with(ModuleHandle::Tasks(TasksRuntime::disabled()))
+                .with(ModuleHandle::Board(BoardRuntime::disabled())),
+            DriveSetup {
+                limits: no_limits(10),
+                compaction: no_compaction(),
+                amc: no_amc(),
+                autoload: no_autoload(),
+                persistence: no_persistence(),
+                read_policy: ReadPolicy::default(),
+                shell_offload: OffloadPolicy::default(),
+                speculative: false,
+                code: no_code(),
+                completion: no_completion(),
+                ending_role: EndingRole::Standard,
+                replay: None,
+            },
             &[],
-            SkillsRuntime::disabled(),
-            memories,
-            TasksRuntime::disabled(),
-            BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
-            ReadPolicy::default(),
-            OffloadPolicy::default(),
-            false,
-            no_code(),
-            no_completion(),
-            EndingRole::Standard,
             &GgAgentConfig::root(),
-            None,
             None,
             None,
         )
@@ -2664,7 +2708,7 @@ async fn drive_enforces_memory_caps_end_to_end() {
     // compaction on this run there has been no boundary to rebuild the pinned block at,
     // and the model has been reading its own write in the thread (see
     // `memory_block_is_rebuilt_only_at_a_compaction_boundary`).
-    assert_eq!(memory_store.lock().unwrap().count(), 1);
+    assert_eq!(kept.store().lock().unwrap().count(), 1);
     let last_memory_tokens = memory_band_tokens(&events);
     assert_eq!(
         last_memory_tokens, 0,
@@ -2733,13 +2777,12 @@ async fn drive_pins_only_the_index_under_the_markdown_strategy() {
     );
     // A second handle on the same store, kept behind so the block gg *would* pin can be
     // read after `drive` has taken ownership of the runtime.
-    let pinned = memories.clone();
+    let pinned = memories.shared();
     let set = GgCapabilitySet::minimal("mock/echo");
     let library = Arc::new(SkillLibrary::empty());
-    let memory_store = memories.store();
     let registry = ToolRegistry::from_run(
         set.root(),
-        &RuntimeSet::new(&library).with_memories(&memory_store),
+        &skills_modules(&library).with(ModuleHandle::Memories(memories.shared())),
     );
     let offered = registry.tool_names();
     assert!(offered.iter().any(|name| name == "create_memory"));
@@ -2764,27 +2807,29 @@ async fn drive_pins_only_the_index_under_the_markdown_strategy() {
             &registry,
             &ctx,
             &emitter,
-            no_limits(10),
-            test_context_setup(),
-            no_compaction(),
-            no_amc(),
-            no_autoload(),
-            no_persistence(),
+            &mut test_modules(test_context_setup(), no_code().enabled)
+                .with(ModuleHandle::Skills(SkillsRuntime::disabled()))
+                .with(ModuleHandle::Memories(memories))
+                .with(ModuleHandle::Tasks(TasksRuntime::disabled()))
+                .with(ModuleHandle::Board(BoardRuntime::disabled())),
+            DriveSetup {
+                limits: no_limits(10),
+                compaction: no_compaction(),
+                amc: no_amc(),
+                autoload: no_autoload(),
+                persistence: no_persistence(),
+                read_policy: ReadPolicy::default(),
+                shell_offload: OffloadPolicy::default(),
+                speculative: false,
+                code: no_code(),
+                completion: no_completion(),
+                ending_role: EndingRole::Standard,
+                replay: None,
+            },
             &[],
-            SkillsRuntime::disabled(),
-            memories,
-            TasksRuntime::disabled(),
-            BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
-            ReadPolicy::default(),
-            OffloadPolicy::default(),
-            false,
-            no_code(),
-            no_completion(),
-            EndingRole::Standard,
             &GgAgentConfig::root(),
-            None,
             None,
             None,
         )
@@ -2807,7 +2852,7 @@ async fn drive_pins_only_the_index_under_the_markdown_strategy() {
     // and this run has none — the block's *shape* is this test's claim, and the timing
     // of the rebuild is `memory_block_is_rebuilt_only_at_a_compaction_boundary`'s.
     assert_eq!(
-        memory_store.lock().unwrap().index_text(),
+        pinned.store().lock().unwrap().index_text(),
         "- `layout` — a note"
     );
     let block = pinned
@@ -2851,27 +2896,29 @@ async fn the_memory_block_costs_nothing_until_the_boundary() {
             &registry,
             &ctx,
             &emitter,
-            no_limits(10),
-            test_context_setup_with_window(4_000),
-            compaction_at(0.6),
-            no_amc(),
-            no_autoload(),
-            no_persistence(),
+            &mut test_modules(test_context_setup_with_window(4_000), no_code().enabled)
+                .with(ModuleHandle::Skills(skills))
+                .with(ModuleHandle::Memories(memories))
+                .with(ModuleHandle::Tasks(tasks))
+                .with(ModuleHandle::Board(BoardRuntime::disabled())),
+            DriveSetup {
+                limits: no_limits(10),
+                compaction: compaction_at(0.6),
+                amc: no_amc(),
+                autoload: no_autoload(),
+                persistence: no_persistence(),
+                read_policy: ReadPolicy::default(),
+                shell_offload: OffloadPolicy::default(),
+                speculative: false,
+                code: no_code(),
+                completion: no_completion(),
+                ending_role: EndingRole::Standard,
+                replay: None,
+            },
             &[],
-            skills,
-            memories,
-            tasks,
-            BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
-            ReadPolicy::default(),
-            OffloadPolicy::default(),
-            false,
-            no_code(),
-            no_completion(),
-            EndingRole::Standard,
             &GgAgentConfig::root(),
-            None,
             None,
             None,
         )
@@ -3005,10 +3052,9 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
     let tasks = TasksRuntime::new(50);
     let set = GgCapabilitySet::minimal("mock/echo");
     let library = Arc::new(SkillLibrary::empty());
-    let task_store = tasks.store();
     let registry = ToolRegistry::from_run(
         set.root(),
-        &RuntimeSet::new(&library).with_tasks(&task_store),
+        &skills_modules(&library).with(ModuleHandle::Tasks(tasks.shared())),
     );
 
     // add a, add b (blocked by a), try a blocked-by b (cycle → refused), complete a, stop.
@@ -3050,27 +3096,29 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
             &registry,
             &ctx,
             &emitter,
-            no_limits(10),
-            test_context_setup(),
-            no_compaction(),
-            no_amc(),
-            no_autoload(),
-            no_persistence(),
+            &mut test_modules(test_context_setup(), no_code().enabled)
+                .with(ModuleHandle::Skills(SkillsRuntime::disabled()))
+                .with(ModuleHandle::Memories(MemoriesRuntime::disabled()))
+                .with(ModuleHandle::Tasks(tasks))
+                .with(ModuleHandle::Board(BoardRuntime::disabled())),
+            DriveSetup {
+                limits: no_limits(10),
+                compaction: no_compaction(),
+                amc: no_amc(),
+                autoload: no_autoload(),
+                persistence: no_persistence(),
+                read_policy: ReadPolicy::default(),
+                shell_offload: OffloadPolicy::default(),
+                speculative: false,
+                code: no_code(),
+                completion: no_completion(),
+                ending_role: EndingRole::Standard,
+                replay: None,
+            },
             &[],
-            SkillsRuntime::disabled(),
-            MemoriesRuntime::disabled(),
-            tasks,
-            BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
-            ReadPolicy::default(),
-            OffloadPolicy::default(),
-            false,
-            no_code(),
-            no_completion(),
-            EndingRole::Standard,
             &GgAgentConfig::root(),
-            None,
             None,
             None,
         )
@@ -3121,6 +3169,124 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
     assert!(
         last_task_breakdown > 0,
         "the pinned task list is accounted to the TaskList source"
+    );
+}
+
+/// **An unowned task list is a live list nobody is shown.**
+///
+/// The [ownership](crate::modules::Ownership) param is the one capability configuration whose
+/// effect is invisible in the toolset: every task tool is still offered, every call still lands in
+/// the store, and every `TasksState` still reaches the console — but the pinned block never enters
+/// the window, so the `TaskList` band stays at zero for the whole run.
+///
+/// It is asserted from the loop rather than from the module because the claim is about *prompt
+/// assembly*: the loop no longer refreshes the task block by name, so an owned/unowned mistake here
+/// would be a mistake in the one pass that refreshes them all.
+#[tokio::test]
+async fn drive_keeps_an_unowned_task_list_out_of_the_window() {
+    let dir = TempDir::new().unwrap();
+    let ctx = ToolContext::new(dir.path());
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-unowned".to_string()), Box::new(sink.clone()));
+
+    let tasks = TasksRuntime::new(50).with_ownership(crate::modules::Ownership::Unowned);
+    let set = GgCapabilitySet::minimal("mock/echo");
+    let library = Arc::new(SkillLibrary::empty());
+    let registry = ToolRegistry::from_run(
+        set.root(),
+        &skills_modules(&library).with(ModuleHandle::Tasks(tasks.shared())),
+    );
+    assert!(
+        registry.tool_names().iter().any(|name| name == "add_task"),
+        "an unowned module still contributes every one of its tools"
+    );
+
+    let client = MockClient::new(
+        "mock/echo",
+        vec![
+            ModelResponse {
+                text: Some("adding a task".to_string()),
+                tool_calls: vec![ToolCall {
+                    id: "c1".to_string(),
+                    name: "add_task".to_string(),
+                    arguments: json!({ "id": "a", "title": "A task nobody is shown" }),
+                }],
+                finish_reason: FinishReason::ToolCalls,
+                usage: TokenCounts::default(),
+                cost: None,
+            },
+            stop_response(),
+        ],
+    );
+
+    let end = Agent::root(ROOT_AGENT)
+        .drive(
+            &client,
+            "go",
+            &registry,
+            &ctx,
+            &emitter,
+            &mut test_modules(test_context_setup(), no_code().enabled)
+                .with(ModuleHandle::Skills(SkillsRuntime::disabled()))
+                .with(ModuleHandle::Memories(MemoriesRuntime::disabled()))
+                .with(ModuleHandle::Tasks(tasks))
+                .with(ModuleHandle::Board(BoardRuntime::disabled())),
+            DriveSetup {
+                limits: no_limits(5),
+                compaction: no_compaction(),
+                amc: no_amc(),
+                autoload: no_autoload(),
+                persistence: no_persistence(),
+                read_policy: ReadPolicy::default(),
+                shell_offload: OffloadPolicy::default(),
+                speculative: false,
+                code: no_code(),
+                completion: no_completion(),
+                ending_role: EndingRole::Standard,
+                replay: None,
+            },
+            &[],
+            PlanningRuntime::disabled(),
+            FsmRuntime::disabled(),
+            &GgAgentConfig::root(),
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(end.status, "completed");
+
+    let events = sink.events();
+    // The call ran and the store took it — the module is live, not ablated.
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::ToolResult { name, ok, .. } if name == "add_task" && *ok
+        )),
+        "an unowned module's tools still work"
+    );
+    let last_tasks = events
+        .iter()
+        .rev()
+        .find_map(|e| match &e.kind {
+            GgTelemetryKind::TasksState { tasks } => Some(tasks.clone()),
+            _ => None,
+        })
+        .expect("an unowned module still reports its state");
+    assert_eq!(last_tasks.len(), 1);
+
+    // ...and the window never carries it.
+    assert!(
+        events.iter().all(|e| match &e.kind {
+            GgTelemetryKind::ContextBreakdown { by_source, .. } =>
+                by_source
+                    .iter()
+                    .find(|band| band.source == GgContextSource::TaskList)
+                    .map(|band| band.tokens)
+                    .unwrap_or(0)
+                    == 0,
+            _ => true,
+        }),
+        "an unowned task list must never account tokens to the TaskList source"
     );
 }
 
@@ -3334,13 +3500,11 @@ fn compaction_runtimes(dir: &Path) -> (ToolRegistry, SkillsRuntime, MemoriesRunt
     );
     let tasks = TasksRuntime::new(50);
     let set = GgCapabilitySet::minimal("mock/echo");
-    let memory_store = memories.store();
-    let task_store = tasks.store();
     let registry = ToolRegistry::from_run(
         set.root(),
-        &RuntimeSet::new(&library)
-            .with_memories(&memory_store)
-            .with_tasks(&task_store),
+        &skills_modules(&library)
+            .with(ModuleHandle::Memories(memories.shared()))
+            .with(ModuleHandle::Tasks(tasks.shared())),
     );
     (registry, skills, memories, tasks)
 }
@@ -3368,27 +3532,29 @@ async fn drive_compacts_at_the_threshold_and_retains_pinned_state() {
             &registry,
             &ctx,
             &emitter,
-            no_limits(10),
-            test_context_setup_with_window(4_000),
-            compaction_at(0.6),
-            no_amc(),
-            no_autoload(),
-            no_persistence(),
+            &mut test_modules(test_context_setup_with_window(4_000), no_code().enabled)
+                .with(ModuleHandle::Skills(skills))
+                .with(ModuleHandle::Memories(memories))
+                .with(ModuleHandle::Tasks(tasks))
+                .with(ModuleHandle::Board(BoardRuntime::disabled())),
+            DriveSetup {
+                limits: no_limits(10),
+                compaction: compaction_at(0.6),
+                amc: no_amc(),
+                autoload: no_autoload(),
+                persistence: no_persistence(),
+                read_policy: ReadPolicy::default(),
+                shell_offload: OffloadPolicy::default(),
+                speculative: false,
+                code: no_code(),
+                completion: no_completion(),
+                ending_role: EndingRole::Standard,
+                replay: None,
+            },
             &[],
-            skills,
-            memories,
-            tasks,
-            BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
-            ReadPolicy::default(),
-            OffloadPolicy::default(),
-            false,
-            no_code(),
-            no_completion(),
-            EndingRole::Standard,
             &GgAgentConfig::root(),
-            None,
             None,
             None,
         )
@@ -3535,27 +3701,29 @@ async fn drive_never_compacts_when_capability_off() {
             &registry,
             &ctx,
             &emitter,
-            no_limits(10),
-            test_context_setup_with_window(4_000),
-            no_compaction(),
-            no_amc(),
-            no_autoload(),
-            no_persistence(),
+            &mut test_modules(test_context_setup_with_window(4_000), no_code().enabled)
+                .with(ModuleHandle::Skills(skills))
+                .with(ModuleHandle::Memories(memories))
+                .with(ModuleHandle::Tasks(tasks))
+                .with(ModuleHandle::Board(BoardRuntime::disabled())),
+            DriveSetup {
+                limits: no_limits(10),
+                compaction: no_compaction(),
+                amc: no_amc(),
+                autoload: no_autoload(),
+                persistence: no_persistence(),
+                read_policy: ReadPolicy::default(),
+                shell_offload: OffloadPolicy::default(),
+                speculative: false,
+                code: no_code(),
+                completion: no_completion(),
+                ending_role: EndingRole::Standard,
+                replay: None,
+            },
             &[],
-            skills,
-            memories,
-            tasks,
-            BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
-            ReadPolicy::default(),
-            OffloadPolicy::default(),
-            false,
-            no_code(),
-            no_completion(),
-            EndingRole::Standard,
             &GgAgentConfig::root(),
-            None,
             None,
             None,
         )
@@ -3615,7 +3783,7 @@ async fn board_band_driving(profile: &GgAgentConfig, board: BoardRuntime) -> u64
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-board-gate".to_string()), Box::new(sink.clone()));
     let library = Arc::new(SkillLibrary::empty());
-    let registry = ToolRegistry::from_run(profile, &RuntimeSet::new(&library));
+    let registry = ToolRegistry::from_run(profile, &skills_modules(&library));
     let client = MockClient::new("mock/echo", vec![finish_call("f1", "done")]);
 
     Agent::root(ROOT_AGENT)
@@ -3625,27 +3793,29 @@ async fn board_band_driving(profile: &GgAgentConfig, board: BoardRuntime) -> u64
             &registry,
             &ctx,
             &emitter,
-            no_limits(4),
-            test_context_setup(),
-            no_compaction(),
-            no_amc(),
-            no_autoload(),
-            no_persistence(),
+            &mut test_modules(test_context_setup(), no_code().enabled)
+                .with(ModuleHandle::Skills(SkillsRuntime::disabled()))
+                .with(ModuleHandle::Memories(MemoriesRuntime::disabled()))
+                .with(ModuleHandle::Tasks(TasksRuntime::disabled()))
+                .with(ModuleHandle::Board(board)),
+            DriveSetup {
+                limits: no_limits(4),
+                compaction: no_compaction(),
+                amc: no_amc(),
+                autoload: no_autoload(),
+                persistence: no_persistence(),
+                read_policy: ReadPolicy::default(),
+                shell_offload: OffloadPolicy::default(),
+                speculative: false,
+                code: no_code(),
+                completion: no_completion(),
+                ending_role: EndingRole::Standard,
+                replay: None,
+            },
             &[],
-            SkillsRuntime::disabled(),
-            MemoriesRuntime::disabled(),
-            TasksRuntime::disabled(),
-            board,
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
-            ReadPolicy::default(),
-            OffloadPolicy::default(),
-            false,
-            no_code(),
-            no_completion(),
-            EndingRole::Standard,
             profile,
-            None,
             None,
             None,
         )
@@ -3711,8 +3881,12 @@ fn amc_setup_reads_the_agents_own_toolset_and_configuration() {
     let library = Arc::new(SkillLibrary::empty());
     let archive = Arc::new(Mutex::new(ArchiveStore::new()));
     let resolve = |profile: &GgAgentConfig| {
-        let registry =
-            ToolRegistry::from_run(profile, &RuntimeSet::new(&library).with_archive(&archive));
+        let registry = ToolRegistry::from_run(
+            profile,
+            &skills_modules(&library).with(ModuleHandle::Archive(ArchiveRuntime::from_store(
+                Arc::clone(&archive),
+            ))),
+        );
         AmcSetup::resolve(profile, &registry, Arc::clone(&archive))
     };
 
@@ -3790,7 +3964,9 @@ async fn drive_manages_context_end_to_end() {
     let library = Arc::new(SkillLibrary::empty());
     let registry = ToolRegistry::from_run(
         set.root(),
-        &RuntimeSet::new(&library).with_archive(&archive),
+        &skills_modules(&library).with(ModuleHandle::Archive(ArchiveRuntime::from_store(
+            Arc::clone(&archive),
+        ))),
     );
 
     let client = MockClient::with_agent_managed_context_script("mock/echo");
@@ -3802,27 +3978,29 @@ async fn drive_manages_context_end_to_end() {
             &registry,
             &ctx,
             &emitter,
-            no_limits(20),
-            test_context_setup(),
-            no_compaction(),
-            amc_with(Arc::clone(&archive)),
-            no_autoload(),
-            no_persistence(),
+            &mut test_modules(test_context_setup(), no_code().enabled)
+                .with(ModuleHandle::Skills(SkillsRuntime::disabled()))
+                .with(ModuleHandle::Memories(MemoriesRuntime::disabled()))
+                .with(ModuleHandle::Tasks(TasksRuntime::disabled()))
+                .with(ModuleHandle::Board(BoardRuntime::disabled())),
+            DriveSetup {
+                limits: no_limits(20),
+                compaction: no_compaction(),
+                amc: amc_with(Arc::clone(&archive)),
+                autoload: no_autoload(),
+                persistence: no_persistence(),
+                read_policy: ReadPolicy::default(),
+                shell_offload: OffloadPolicy::default(),
+                speculative: false,
+                code: no_code(),
+                completion: no_completion(),
+                ending_role: EndingRole::Standard,
+                replay: None,
+            },
             &[],
-            SkillsRuntime::disabled(),
-            MemoriesRuntime::disabled(),
-            TasksRuntime::disabled(),
-            BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
-            ReadPolicy::default(),
-            OffloadPolicy::default(),
-            false,
-            no_code(),
-            no_completion(),
-            EndingRole::Standard,
             &GgAgentConfig::root(),
-            None,
             None,
             None,
         )
@@ -3975,7 +4153,7 @@ async fn drive_without_amc_offers_no_context_management() {
     // Minimal set (no agent-managed-context), and no archive bound to the registry.
     let set = GgCapabilitySet::minimal("mock/echo");
     let library = Arc::new(SkillLibrary::empty());
-    let registry = ToolRegistry::from_run(set.root(), &RuntimeSet::new(&library));
+    let registry = ToolRegistry::from_run(set.root(), &skills_modules(&library));
     for name in ["evict_file_view", "archive_thread", "search_archive"] {
         assert!(
             !registry.definitions().iter().any(|d| d.name == name),
@@ -3992,27 +4170,29 @@ async fn drive_without_amc_offers_no_context_management() {
             &registry,
             &ctx,
             &emitter,
-            no_limits(20),
-            test_context_setup(),
-            no_compaction(),
-            no_amc(),
-            no_autoload(),
-            no_persistence(),
+            &mut test_modules(test_context_setup(), no_code().enabled)
+                .with(ModuleHandle::Skills(SkillsRuntime::disabled()))
+                .with(ModuleHandle::Memories(MemoriesRuntime::disabled()))
+                .with(ModuleHandle::Tasks(TasksRuntime::disabled()))
+                .with(ModuleHandle::Board(BoardRuntime::disabled())),
+            DriveSetup {
+                limits: no_limits(20),
+                compaction: no_compaction(),
+                amc: no_amc(),
+                autoload: no_autoload(),
+                persistence: no_persistence(),
+                read_policy: ReadPolicy::default(),
+                shell_offload: OffloadPolicy::default(),
+                speculative: false,
+                code: no_code(),
+                completion: no_completion(),
+                ending_role: EndingRole::Standard,
+                replay: None,
+            },
             &[],
-            SkillsRuntime::disabled(),
-            MemoriesRuntime::disabled(),
-            TasksRuntime::disabled(),
-            BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
-            ReadPolicy::default(),
-            OffloadPolicy::default(),
-            false,
-            no_code(),
-            no_completion(),
-            EndingRole::Standard,
             &GgAgentConfig::root(),
-            None,
             None,
             None,
         )
@@ -4074,7 +4254,7 @@ async fn drive_plans_then_implements_from_a_fresh_context() {
 
     let set = minimal_with_planning("mock/echo");
     let library = Arc::new(SkillLibrary::empty());
-    let registry = ToolRegistry::from_run(set.root(), &RuntimeSet::new(&library));
+    let registry = ToolRegistry::from_run(set.root(), &skills_modules(&library));
 
     let client = MockClient::with_planning_script("mock/echo");
     let agent = Agent::root(ROOT_AGENT);
@@ -4085,27 +4265,29 @@ async fn drive_plans_then_implements_from_a_fresh_context() {
             &registry,
             &ctx,
             &emitter,
-            no_limits(20),
-            test_context_setup(),
-            no_compaction(),
-            no_amc(),
-            no_autoload(),
-            no_persistence(),
+            &mut test_modules(test_context_setup(), no_code().enabled)
+                .with(ModuleHandle::Skills(SkillsRuntime::disabled()))
+                .with(ModuleHandle::Memories(MemoriesRuntime::disabled()))
+                .with(ModuleHandle::Tasks(TasksRuntime::disabled()))
+                .with(ModuleHandle::Board(BoardRuntime::disabled())),
+            DriveSetup {
+                limits: no_limits(20),
+                compaction: no_compaction(),
+                amc: no_amc(),
+                autoload: no_autoload(),
+                persistence: no_persistence(),
+                read_policy: ReadPolicy::default(),
+                shell_offload: OffloadPolicy::default(),
+                speculative: false,
+                code: no_code(),
+                completion: no_completion(),
+                ending_role: EndingRole::Standard,
+                replay: None,
+            },
             &[],
-            SkillsRuntime::disabled(),
-            MemoriesRuntime::disabled(),
-            TasksRuntime::disabled(),
-            BoardRuntime::disabled(),
             PlanningRuntime::resolve(set.root()),
             FsmRuntime::disabled(),
-            ReadPolicy::default(),
-            OffloadPolicy::default(),
-            false,
-            no_code(),
-            no_completion(),
-            EndingRole::Standard,
             &GgAgentConfig::root(),
-            None,
             None,
             None,
         )
@@ -4240,7 +4422,7 @@ async fn drive_without_planning_offers_no_planning() {
     // `minimal` does not include planning, so it is off.
     let set = GgCapabilitySet::minimal("mock/echo");
     let library = Arc::new(SkillLibrary::empty());
-    let registry = ToolRegistry::from_run(set.root(), &RuntimeSet::new(&library));
+    let registry = ToolRegistry::from_run(set.root(), &skills_modules(&library));
 
     let client = MockClient::with_planning_script("mock/echo");
     let agent = Agent::root(ROOT_AGENT);
@@ -4251,27 +4433,29 @@ async fn drive_without_planning_offers_no_planning() {
             &registry,
             &ctx,
             &emitter,
-            no_limits(20),
-            test_context_setup(),
-            no_compaction(),
-            no_amc(),
-            no_autoload(),
-            no_persistence(),
+            &mut test_modules(test_context_setup(), no_code().enabled)
+                .with(ModuleHandle::Skills(SkillsRuntime::disabled()))
+                .with(ModuleHandle::Memories(MemoriesRuntime::disabled()))
+                .with(ModuleHandle::Tasks(TasksRuntime::disabled()))
+                .with(ModuleHandle::Board(BoardRuntime::disabled())),
+            DriveSetup {
+                limits: no_limits(20),
+                compaction: no_compaction(),
+                amc: no_amc(),
+                autoload: no_autoload(),
+                persistence: no_persistence(),
+                read_policy: ReadPolicy::default(),
+                shell_offload: OffloadPolicy::default(),
+                speculative: false,
+                code: no_code(),
+                completion: no_completion(),
+                ending_role: EndingRole::Standard,
+                replay: None,
+            },
             &[],
-            SkillsRuntime::disabled(),
-            MemoriesRuntime::disabled(),
-            TasksRuntime::disabled(),
-            BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
-            ReadPolicy::default(),
-            OffloadPolicy::default(),
-            false,
-            no_code(),
-            no_completion(),
-            EndingRole::Standard,
             &GgAgentConfig::root(),
-            None,
             None,
             None,
         )

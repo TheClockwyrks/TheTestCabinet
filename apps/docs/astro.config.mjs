@@ -538,6 +538,10 @@ export default defineConfig({
                 "gg/compaction",
                 "gg/context-visibility",
                 "gg/agent-managed-context",
+                // What an agent *holds*, as opposed to what it can do: the six
+                // per-agent modules, whether its prompt carries each one, and what
+                // happens to them when it is copied or succeeded.
+                "gg/modules",
                 "gg/skills",
                 "gg/memories",
                 "gg/tasks",

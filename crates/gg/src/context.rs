@@ -445,6 +445,17 @@ pub struct ArchiveResult {
 /// Items are appended in the order they enter the conversation, so the rendered messages
 /// match the Phase 0 transcript exactly (system, build prompt, then per turn the
 /// assistant message followed by its tool results).
+///
+/// # Cloning is a deep copy of the window
+///
+/// [`Clone`] duplicates every item, the usage-signal slot and the turn counter, and shares only
+/// the [estimator](TokenEstimator) — which is process-wide and stateless, so two windows measured
+/// by it agree. It is what backs the [`history` module](crate::modules::HistoryModule)'s
+/// [fork](crate::modules::Module::fork): the copy and the original diverge from the moment they
+/// are made, and neither can see the other's pushes. Nothing in a `ContextModel` is shared
+/// mutable state, so there is no "linked window" — see
+/// [`HistoryModule::share`](crate::modules::HistoryModule) for why two agents cannot write one.
+#[derive(Clone)]
 pub struct ContextModel {
     /// The context items, in conversation order.
     items: Vec<ContextItem>,
@@ -729,6 +740,88 @@ impl ContextModel {
             Retention::Pinned,
             Message::user(content),
         );
+    }
+
+    /// Replace the window's opening pair — the [system prompt](Self::push_system) and the
+    /// [build prompt](Self::push_user_prompt) — **in place**, leaving every item behind them
+    /// exactly where it is.
+    ///
+    /// This is what makes a window legal for a different agent profile to continue. A system
+    /// prompt states the toolset, the roster, the ending calls and the capability prose of the
+    /// agent it was rendered for; when a module transfer hands this window to a *different*
+    /// profile, item 0 is the one thing that must not be inherited, or the successor is reading
+    /// instructions written for someone else. The thread behind it is exactly what the successor
+    /// is meant to keep.
+    ///
+    /// A `None` `user_prompt` leaves the existing build prompt alone (an agent continuing on the
+    /// same task); `Some` replaces it. Both replacements are done through
+    /// [`replace_source`](Self::replace_source), so a byte-identical rebase is a no-op — the
+    /// common case when an agent re-incarnates as itself — and a changed one supersedes rather
+    /// than deletes, keeping the render append-only for the prompt cache.
+    ///
+    /// Everything else — the [turn counter](Self::begin_turn), the usage-signal slot, the pinned
+    /// blocks, the file views — is untouched. In particular the turn counter is **never** reset:
+    /// a model that read `Turn #37` and later archives turns 12–20 must be naming the turns it
+    /// saw, whichever incarnation showed them to it.
+    #[allow(dead_code)] // the successor half of a module transfer; see `crate::modules::HistoryModule`.
+    pub fn rebase(&mut self, system: impl Into<String>, user_prompt: Option<String>) {
+        self.replace_source(
+            GgContextSource::System,
+            Retention::Pinned,
+            Some(Message::system(system)),
+        );
+        if let Some(prompt) = user_prompt {
+            self.replace_source(
+                GgContextSource::UserPrompt,
+                Retention::Pinned,
+                Some(Message::user(prompt)),
+            );
+        }
+    }
+
+    /// Re-point the [fullness](Self::fullness) denominator at a different model's context window.
+    ///
+    /// A property of the *holder's model*, not of the conversation, so it is re-resolved whenever
+    /// a different agent adopts this window — an agent moving from a 1M-token model to a 32k one
+    /// is over its window the instant it arrives, which is precisely the fact the successor's
+    /// compaction check needs to see.
+    #[allow(dead_code)] // re-resolved by `HistoryModule::adopt`, which a transfer reaches.
+    pub fn set_window_limit(&mut self, limit: Option<u64>) {
+        self.window_limit = limit;
+    }
+
+    /// Arm or disarm the [responses-as-code headings](code_heading) gg prefixes synthesized user
+    /// messages with.
+    ///
+    /// Like the [window limit](Self::set_window_limit) this is a property of the holder — its
+    /// execution mode — and is re-resolved on adoption. Note that the heading is baked into a
+    /// message's **body** when it is pushed, so changing this affects only messages pushed after
+    /// the change: a window that crosses from a code-mode agent to a tool-calling one keeps the
+    /// headings on the messages it already carries, which is the honest record of what that model
+    /// was actually shown.
+    #[allow(dead_code)] // re-resolved by `HistoryModule::adopt`, which a transfer reaches.
+    pub fn set_code_mode(&mut self, code_mode: bool) {
+        self.code_mode = code_mode;
+    }
+
+    /// Move the window out, leaving an **empty** one with the same configuration (estimator,
+    /// window limit, code mode, turn number, turn headers) behind.
+    ///
+    /// The [responses-as-code](crate::sandbox) turn needs the window *by value*: a program's calls
+    /// run on a `spawn_blocking` thread and act on the live window there, so it is moved in and
+    /// handed back. This is the seam that lets the loop do that while the window lives inside a
+    /// [`ModuleSet`](crate::modules::ModuleSet) — the vacated model is a placeholder the loop
+    /// overwrites the moment the turn returns, and on the one path it cannot come back (a host
+    /// fault inside the sandbox) the loop ends the session without reading the window again.
+    pub fn take(&mut self) -> ContextModel {
+        let mut vacant = ContextModel::new(
+            Arc::clone(&self.estimator),
+            self.window_limit,
+            self.code_mode,
+        );
+        vacant.turn_headers = self.turn_headers;
+        vacant.turn = self.turn;
+        std::mem::replace(self, vacant)
     }
 
     /// Record an assistant turn (its text and tool calls) as an ephemeral

@@ -106,12 +106,15 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
 use test_cabinet_core::gg::{
-    CAPABILITY_PROJECT_MANAGEMENT, GgAgentConfig, GgBoardEpic, GgBoardIssue, GgIssueStatus,
-    GgSubagentScope, GgTelemetryKind,
+    CAPABILITY_PROJECT_MANAGEMENT, GgAgentConfig, GgBoardEpic, GgBoardIssue, GgContextSource,
+    GgIssueStatus, GgSubagentScope, GgTelemetryKind,
 };
 
 use crate::dag::{self, DagNode};
 use crate::model::Message;
+use crate::modules::{
+    AdoptError, Module, ModuleHandle, ModuleKind, ModuleResolveCtx, Ownership, Refresh,
+};
 use crate::prompts::{self, BoardBlockContext, EpicItemView, IssueBriefContext, IssueItemView};
 
 /// Default ceiling on the number of epics the board may hold at once.
@@ -788,6 +791,14 @@ pub struct BoardStore {
 }
 
 impl BoardStore {
+    /// Re-point the board's limits — what a [transfer](crate::modules::transfer) does when a
+    /// different agent profile [adopts](crate::modules::Module::adopt) the board. Contents already
+    /// over a newly-tightened cap are kept and further filings refused, never deleted.
+    #[allow(dead_code)] // used by `Module::adopt`, which a transfer reaches — see `crate::modules`.
+    pub fn set_caps(&mut self, caps: BoardCaps) {
+        self.caps = caps;
+    }
+
     /// An empty board bounded by `caps`.
     pub fn new(caps: BoardCaps) -> Self {
         Self {
@@ -1452,10 +1463,20 @@ fn clean_optional(value: Option<&str>) -> Option<String> {
 /// [`BoardState`](GgTelemetryKind::BoardState)
 /// [telemetry](Self::state_event), and the pinned [context block](Self::context_block) the loop
 /// keeps in the window.
-#[derive(Debug, Clone)]
+///
+/// It is the one [module](crate::modules::Module) that is **run-global by construction**: the board
+/// is the run's single work queue, and every agent's handle on it is a [share](Self::shared) of the
+/// one the orchestrator built. Forking it would fork the per-prefix issue counter and hand out
+/// `ABC-4` twice, so [`Module::fork`] deliberately shares as well. What *is* per agent is
+/// [ownership](Ownership): a profile without the authoring capability holds the board unowned, so
+/// it is not shown a decomposition it has no tool to act on. It is deliberately not `Clone`; see
+/// [the module model](crate::modules).
+#[derive(Debug)]
 pub struct BoardRuntime {
     /// Whether the epics-and-issues capability is enabled for this run.
     enabled: bool,
+    /// Whether this holder's prompt carries the board.
+    ownership: Ownership,
     /// The shared, mutable store — the same handle the tools mutate.
     store: Arc<Mutex<BoardStore>>,
 }
@@ -1465,6 +1486,7 @@ impl BoardRuntime {
     pub fn new(caps: BoardCaps) -> Self {
         Self {
             enabled: true,
+            ownership: Ownership::Owned,
             store: Arc::new(Mutex::new(BoardStore::new(caps))),
         }
     }
@@ -1474,7 +1496,24 @@ impl BoardRuntime {
     pub fn disabled() -> Self {
         Self {
             enabled: false,
+            ownership: Ownership::Owned,
             store: Arc::new(Mutex::new(BoardStore::new(BoardCaps::default()))),
+        }
+    }
+
+    /// This runtime with its [ownership](Ownership) set.
+    pub fn with_ownership(mut self, ownership: Ownership) -> Self {
+        self.ownership = ownership;
+        self
+    }
+
+    /// A **linked** handle onto the same board — the only way an agent ever gets one, since the
+    /// board is the run's single work queue.
+    pub fn shared(&self) -> Self {
+        Self {
+            enabled: self.enabled,
+            ownership: self.ownership,
+            store: Arc::clone(&self.store),
         }
     }
 
@@ -1707,6 +1746,87 @@ impl BoardRuntime {
             return false;
         }
         self.store.lock().expect("board store lock").fail_issue(id)
+    }
+}
+
+impl Module for BoardRuntime {
+    fn kind(&self) -> ModuleKind {
+        ModuleKind::Board
+    }
+
+    fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    fn ownership(&self) -> Ownership {
+        self.ownership
+    }
+
+    fn context_source(&self) -> Option<GgContextSource> {
+        Some(GgContextSource::Board)
+    }
+
+    fn refresh(&self) -> Refresh {
+        Refresh::EveryTurn
+    }
+
+    fn context_block(&self) -> Option<Message> {
+        if self.ownership != Ownership::Owned {
+            return None;
+        }
+        BoardRuntime::context_block(self)
+    }
+
+    fn state_events(&self) -> Vec<GgTelemetryKind> {
+        self.state_event().into_iter().collect()
+    }
+
+    /// Nothing: like the task list, the board's telemetry is **snapshot-only** — the whole board is
+    /// re-emitted after each successful mutation by the agent that made it, and the board being
+    /// run-global means that agent is by definition the one whose stream should carry it.
+    fn drain_events(&mut self) -> Vec<GgTelemetryKind> {
+        Vec::new()
+    }
+
+    fn retained(&self) -> u64 {
+        self.issue_count() as u64
+    }
+
+    /// A **share**, not a copy. Two boards would each keep their own per-prefix issue counter and
+    /// would both hand out `ABC-4`, for two different pieces of work, in a run whose logs, briefs
+    /// and agent names all quote that id.
+    fn fork(&self) -> ModuleHandle {
+        self.share()
+    }
+
+    fn share(&self) -> ModuleHandle {
+        ModuleHandle::Board(self.shared())
+    }
+
+    /// Re-resolve the caps and the ownership from the receiving profile.
+    ///
+    /// A profile without the authoring capability does **not** refuse the board: it holds the same
+    /// run-global queue [unowned](Ownership::Unowned), exactly as it would have been handed one at
+    /// its own construction. Refusing would leave an agent that is working an issue unable to see
+    /// the board its issue is on.
+    fn adopt(
+        &mut self,
+        profile: &GgAgentConfig,
+        ctx: &ModuleResolveCtx<'_>,
+    ) -> Result<(), AdoptError> {
+        let _ = ctx;
+        if profile.is_enabled(CAPABILITY_PROJECT_MANAGEMENT) {
+            let caps = profile
+                .capability(CAPABILITY_PROJECT_MANAGEMENT)
+                .map(|cap| BoardCaps::resolve(&cap.params))
+                .unwrap_or_default();
+            self.store.lock().expect("board store lock").set_caps(caps);
+            self.ownership =
+                crate::modules::resolve_ownership(profile, CAPABILITY_PROJECT_MANAGEMENT).0;
+        } else {
+            self.ownership = Ownership::Unowned;
+        }
+        Ok(())
     }
 }
 

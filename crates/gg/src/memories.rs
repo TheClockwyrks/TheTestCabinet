@@ -59,11 +59,15 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
 use test_cabinet_core::gg::{
-    GgMemoryCaps, GgMemoryChange, GgMemoryEntry, GgMemoryPeak, GgTelemetryKind,
-    MEMORY_STRATEGY_KEYWORD_SEARCH, MEMORY_STRATEGY_MARKDOWN, MEMORY_STRATEGY_SCRATCHPAD,
+    CAPABILITY_MEMORIES, GgAgentConfig, GgContextSource, GgMemoryCaps, GgMemoryChange,
+    GgMemoryEntry, GgMemoryPeak, GgTelemetryKind, MEMORY_STRATEGY_KEYWORD_SEARCH,
+    MEMORY_STRATEGY_MARKDOWN, MEMORY_STRATEGY_SCRATCHPAD,
 };
 
 use crate::model::Message;
+use crate::modules::{
+    AdoptError, Module, ModuleHandle, ModuleKind, ModuleResolveCtx, Ownership, Refresh,
+};
 use crate::prompts::{self, MemoriesBlockContext, MemoryIndexContext, MemoryItemView};
 
 #[path = "memories.search.rs"]
@@ -720,6 +724,18 @@ impl MemoryStore {
         self.caps
     }
 
+    /// Re-point the limits at `caps` — what a [transfer](crate::modules::transfer) does when a
+    /// different agent profile [adopts](crate::modules::Module::adopt) this store, so the limits
+    /// in force are the *receiving* profile's rather than the ones the donor happened to resolve.
+    ///
+    /// Contents already over a newly-tightened cap are **kept**: the ordinary cap checks refuse
+    /// the next write, but deleting a memory because the successor's profile is stingier would
+    /// lose work the run already paid for.
+    #[allow(dead_code)] // used by `Module::adopt`, which a transfer reaches — see `crate::modules`.
+    pub fn set_caps(&mut self, caps: MemoryCaps) {
+        self.caps = caps;
+    }
+
     /// The number of memories currently held.
     pub fn count(&self) -> usize {
         self.memories.len()
@@ -751,6 +767,17 @@ impl MemoryStore {
     /// hours does not carry every body it ever wrote in process memory as well.
     pub fn drain_revisions(&mut self) -> Vec<GgTelemetryKind> {
         self.pending.drain(..).map(|rev| rev.to_event()).collect()
+    }
+
+    /// Discard the undrained revisions **without** reporting them — what a
+    /// [fork](MemoriesRuntime::forked) does to the *copy* it makes.
+    ///
+    /// A write is one event on one stream. The copy inherits the memories and their history, but
+    /// the queue of mutations nobody has streamed yet still belongs to the holder that made them:
+    /// leaving it in both would emit the same `MemoryRevision` twice, on two agents' streams, for
+    /// one call.
+    pub fn forget_pending(&mut self) {
+        self.pending.clear();
     }
 
     /// The memories, in slug order. (A read surface for the tests; the loop reaches the
@@ -1265,10 +1292,21 @@ fn validate_slug(name: &str) -> Result<String, MemoryError> {
 /// [system prompt](crate::prompts::SystemContext::memories) states, the
 /// [`MemoryState`](GgTelemetryKind::MemoryState) [telemetry](Self::state_event), and the pinned
 /// [context block](Self::context_block) the loop keeps in the window.
-#[derive(Debug, Clone)]
+///
+/// It is a [module](crate::modules::Module): it can be [forked](Self::forked) into an independent
+/// notebook, [shared](Self::shared) so several agents curate one, and handed to an agent running
+/// under a different profile, which re-resolves the limits it enforces. It is deliberately **not**
+/// `Clone` — see [the module model](crate::modules) for why every copy names which of the two it
+/// wants.
+#[derive(Debug)]
 pub struct MemoriesRuntime {
     /// Whether the memories capability is enabled for this run.
     enabled: bool,
+    /// Whether this holder's prompt carries the memories — the index (or the bodies) pinned in the
+    /// window and the memory section of the system prompt. An
+    /// [unowned](crate::modules::Ownership::Unowned) holder keeps the same store and the same
+    /// tools, and is told nothing about it up front.
+    ownership: Ownership,
     /// The shared, mutable store — the same handle the tools mutate.
     store: Arc<Mutex<MemoryStore>>,
 }
@@ -1278,6 +1316,7 @@ impl MemoriesRuntime {
     pub fn new(strategy: MemoryStrategy, caps: MemoryCaps) -> Self {
         Self {
             enabled: true,
+            ownership: Ownership::Owned,
             store: Arc::new(Mutex::new(MemoryStore::new(strategy, caps))),
         }
     }
@@ -1287,14 +1326,67 @@ impl MemoriesRuntime {
     pub fn disabled() -> Self {
         Self {
             enabled: false,
+            ownership: Ownership::Owned,
             store: Arc::new(Mutex::new(MemoryStore::scratchpad())),
         }
+    }
+
+    /// Build the memories module `profile` configures: when the [memories](CAPABILITY_MEMORIES)
+    /// capability is enabled, an empty store organized by the [strategy](MemoryStrategy) its
+    /// `implementation` selects and bounded by the [limits](MemoryCaps::resolve) its params
+    /// resolve; otherwise a [disabled](Self::disabled) module (an ablation's off arm).
+    pub fn resolve(profile: &GgAgentConfig) -> Self {
+        if !profile.is_enabled(CAPABILITY_MEMORIES) {
+            return Self::disabled();
+        }
+        let capability = profile.capability(CAPABILITY_MEMORIES);
+        let strategy =
+            MemoryStrategy::resolve(capability.and_then(|cap| cap.implementation.as_deref()));
+        let caps = capability
+            .map(|cap| MemoryCaps::resolve(strategy, &cap.params))
+            .unwrap_or_else(|| MemoryCaps::for_strategy(strategy));
+        Self::new(strategy, caps)
+            .with_ownership(crate::modules::resolve_ownership(profile, CAPABILITY_MEMORIES).0)
+    }
+
+    /// This runtime with its [ownership](Ownership) set.
+    pub fn with_ownership(mut self, ownership: Ownership) -> Self {
+        self.ownership = ownership;
+        self
     }
 
     /// Whether the capability offers memory tools this run (simply whether it is enabled —
     /// unlike skills, memories need no pre-existing library; the model creates them).
     pub fn offers_memories(&self) -> bool {
         self.enabled
+    }
+
+    /// An **independent** notebook holding a copy of everything this one holds: a new store, the
+    /// memories and their revision history deep-copied, and the two holders diverging from here.
+    /// Carrying the revision numbers is what stops a re-created slug from restarting its history
+    /// in the copy.
+    #[allow(dead_code)] // reached through `Module::fork`, which arrives with `fork`/`exec`.
+    pub fn forked(&self) -> Self {
+        let mut copy = self.store.lock().expect("memory store lock").clone();
+        // The revisions this holder has not streamed yet stay with *it*: a write is reported once,
+        // on the stream of the agent that made it, however many copies of the store exist.
+        copy.forget_pending();
+        Self {
+            enabled: self.enabled,
+            ownership: self.ownership,
+            store: Arc::new(Mutex::new(copy)),
+        }
+    }
+
+    /// A **linked** handle onto the same notebook: what one holder writes, every other holder of
+    /// it reads. The basis of
+    /// [shared memory](https://docs.testcabinet.ai/gg/memories/) between agents.
+    pub fn shared(&self) -> Self {
+        Self {
+            enabled: self.enabled,
+            ownership: self.ownership,
+            store: Arc::clone(&self.store),
+        }
     }
 
     /// The shared store, for binding into the memory tools.
@@ -1374,6 +1466,104 @@ impl MemoriesRuntime {
             .lock()
             .expect("memory store lock")
             .context_block()
+    }
+}
+
+impl Module for MemoriesRuntime {
+    fn kind(&self) -> ModuleKind {
+        ModuleKind::Memories
+    }
+
+    fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    fn ownership(&self) -> Ownership {
+        self.ownership
+    }
+
+    fn context_source(&self) -> Option<GgContextSource> {
+        Some(GgContextSource::Memory)
+    }
+
+    fn refresh(&self) -> Refresh {
+        Refresh::AtBoundary
+    }
+
+    fn context_block(&self) -> Option<Message> {
+        if self.ownership != Ownership::Owned {
+            return None;
+        }
+        MemoriesRuntime::context_block(self)
+    }
+
+    fn state_events(&self) -> Vec<GgTelemetryKind> {
+        self.state_event().into_iter().collect()
+    }
+
+    fn drain_events(&mut self) -> Vec<GgTelemetryKind> {
+        // The revisions first — the append-only record of what the model did, which for a deletion
+        // is the only place it is recorded at all — then the snapshot the store is left in. A drain
+        // that found nothing says nothing: re-emitting the snapshot on a turn where memory did not
+        // change would tell the console what it already knows.
+        let mut events = self.revision_events();
+        if events.is_empty() {
+            return events;
+        }
+        events.extend(self.state_event());
+        events
+    }
+
+    fn retained(&self) -> u64 {
+        self.count() as u64
+    }
+
+    fn fork(&self) -> ModuleHandle {
+        ModuleHandle::Memories(self.forked())
+    }
+
+    fn share(&self) -> ModuleHandle {
+        ModuleHandle::Memories(self.shared())
+    }
+
+    /// Re-resolve the limits and the ownership from the receiving profile, refusing a profile that
+    /// does not enable memories at all, or that organizes them by a **different**
+    /// [strategy](MemoryStrategy).
+    ///
+    /// The strategy is the one thing that cannot be re-resolved: it decides both what the store
+    /// means (bodies pinned in the window, an index over files, or nothing pinned at all) and which
+    /// tools read it. Converting a scratchpad into a markdown index would silently change both, so
+    /// gg refuses, the caller starts the successor with a fresh store, and the successor is told
+    /// why rather than left to discover an empty notebook.
+    fn adopt(
+        &mut self,
+        profile: &GgAgentConfig,
+        ctx: &ModuleResolveCtx<'_>,
+    ) -> Result<(), AdoptError> {
+        let _ = ctx;
+        if !profile.is_enabled(CAPABILITY_MEMORIES) {
+            return Err(AdoptError::Disabled);
+        }
+        let capability = profile.capability(CAPABILITY_MEMORIES);
+        let strategy =
+            MemoryStrategy::resolve(capability.and_then(|cap| cap.implementation.as_deref()));
+        let held = self.strategy();
+        if strategy != held {
+            return Err(AdoptError::Incompatible(format!(
+                "your memories were organized as `{}` and this agent organizes them as `{}`, \
+                 which reads them with different calls; they were not carried over and you are \
+                 starting with an empty set.",
+                held.id(),
+                strategy.id()
+            )));
+        }
+        let caps = capability
+            .map(|cap| MemoryCaps::resolve(strategy, &cap.params))
+            .unwrap_or_else(|| MemoryCaps::for_strategy(strategy));
+        self.store.lock().expect("memory store lock").set_caps(caps);
+        self.enabled = true;
+        self.ownership = crate::modules::resolve_ownership(profile, CAPABILITY_MEMORIES).0;
+        Ok(())
     }
 }
 

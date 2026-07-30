@@ -92,14 +92,13 @@ use std::time::Instant;
 use serde_json::{Value, json};
 use test_cabinet_core::gg::{
     AUTOLOAD_LOCKED_IMPL, CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_AUTOLOAD_SPECS,
-    CAPABILITY_COMPACTION, CAPABILITY_CONTEXT_WINDOW_OVERRIDE, CAPABILITY_MEMORIES,
-    CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_REPLAY, CAPABILITY_RESPONSES_AS_CODE,
-    CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS,
-    CAPABILITY_TASKS, CAPABILITY_WORKFLOWS, GgAgentConfig, GgAgentStatus, GgCandidateShape,
-    GgCapabilitySet, GgContextAction, GgContextSource, GgHealingStrategy, GgIssueReviewPhase,
-    GgLimitBreach, GgLimitKind, GgNotAProgram, GgPlanPhase, GgResponseHealing, GgReviewer,
-    GgRunLimits, GgSlotBinding, GgSpeculationPhase, GgSubagentScope, GgTelemetryKind,
-    GgWorkflowPhase, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT, SHELL_OUTPUT_ADAPTIVE,
+    CAPABILITY_COMPACTION, CAPABILITY_CONTEXT_WINDOW_OVERRIDE, CAPABILITY_PROJECT_MANAGEMENT,
+    CAPABILITY_REPLAY, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL, CAPABILITY_SKILLS,
+    CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS, CAPABILITY_WORKFLOWS, GgAgentConfig,
+    GgAgentStatus, GgCandidateShape, GgCapabilitySet, GgContextAction, GgContextSource,
+    GgHealingStrategy, GgIssueReviewPhase, GgLimitBreach, GgLimitKind, GgNotAProgram, GgPlanPhase,
+    GgResponseHealing, GgReviewer, GgRunLimits, GgSlotBinding, GgSpeculationPhase, GgSubagentScope,
+    GgTelemetryKind, GgWorkflowPhase, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT, SHELL_OUTPUT_ADAPTIVE,
     SHELL_OUTPUT_MODES,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
@@ -111,7 +110,7 @@ use crate::board::{self, BoardCaps, BoardRuntime, IssuePolicy, IssueStatus};
 use crate::cancel::CancelWatch;
 use crate::client::{ClientFactory, DefaultClientFactory, provider_for};
 use crate::compaction::{
-    self, CompactionRequest, CompactionSetup, PendingCompaction, RestoredFile, RetainedCounts,
+    self, CompactionRequest, CompactionSetup, PendingCompaction, RestoredFile,
 };
 use crate::completion::{self, CompletionSetup};
 use crate::config::GgInvocation;
@@ -130,10 +129,13 @@ use crate::healing::{
 use crate::limits::{
     AgentLimits, FatalFault, RunLimits, RunSpend, TurnErrorKind, TurnOutcome, resolve_run_limits,
 };
-use crate::memories::{MemoriesRuntime, MemoryCaps, MemoryStrategy};
+use crate::memories::{MemoriesRuntime, MemoryStrategy};
 use crate::message_log::finish_reason_token;
 use crate::model::{
     ImageContent, Message, ModelClient, ModelError, ModelResponse, ToolCall, ToolDefinition,
+};
+use crate::modules::{
+    CapabilityModules, HistorySetup, Module, ModuleResolveCtx, ModuleSet, Ownership, Refresh,
 };
 use crate::persistence::{self, AgentPersistence, PersistenceSetup};
 use crate::planning::PlanningRuntime;
@@ -154,19 +156,19 @@ use crate::skills::{DEFAULT_SKILLS_DIR, ReadRecord, SkillLibrary, SkillsRuntime}
 use crate::subagents::{
     AgentCtx, AgentReturn, ChildHandle, ParentWait, Scheduler, SubagentConfig, WaiterToken,
 };
-use crate::tasks::{TasksRuntime, resolve_max_tasks, resolve_task_mode};
+use crate::tasks::TasksRuntime;
 use crate::telemetry::Emitter;
 use crate::tools::VisionContext;
 use crate::tools::{
     ARCHIVE_THREAD_TOOL, AgentStatusData, COMPACT_TOOL, CREATE_ISSUE_TOOL, ENTER_PLAN_MODE_TOOL,
     EVICT_FILE_VIEW_TOOL, OffloadPolicy, READ_FILE_TOOL, READ_SKILL_TOOL, RUN_WORKFLOW_TOOL,
-    ReadFileTool, ReadPolicy, ReclaimData, RuntimeSet, SEND_MESSAGE_TOOL, SHELL_TOOL,
-    SPAWN_SUBAGENT_TOOL, SPECULATE_TOOL, SUBMIT_PLAN_TOOL, SpeculationData, SubagentHandleData,
-    SubagentResultData, Tool, ToolContext, ToolData, ToolFailure, ToolOutcome, ToolRegistry,
-    WAIT_FOR_ISSUE_TOOL, WAIT_FOR_SUBAGENTS_TOOL, WorkflowData, handled_by_loop, is_board_tool,
-    is_context_reclaim_tool, is_fsm_tool, is_memory_tool, is_planning_tool, is_subagent_tool,
-    is_task_tool, parse_archive_ranges, parse_compact_request, parse_evict_path, plan_mode_offers,
-    read_policy, saturating_u32, saturating_u64, shell_offload, unknown_disabled_tools,
+    ReadFileTool, ReadPolicy, ReclaimData, SEND_MESSAGE_TOOL, SHELL_TOOL, SPAWN_SUBAGENT_TOOL,
+    SPECULATE_TOOL, SUBMIT_PLAN_TOOL, SpeculationData, SubagentHandleData, SubagentResultData,
+    Tool, ToolContext, ToolData, ToolFailure, ToolOutcome, ToolRegistry, WAIT_FOR_ISSUE_TOOL,
+    WAIT_FOR_SUBAGENTS_TOOL, WorkflowData, handled_by_loop, is_board_tool, is_context_reclaim_tool,
+    is_fsm_tool, is_memory_tool, is_planning_tool, is_subagent_tool, is_task_tool,
+    parse_archive_ranges, parse_compact_request, parse_evict_path, plan_mode_offers, read_policy,
+    saturating_u32, saturating_u64, shell_offload, unknown_disabled_tools,
 };
 use crate::turn_timing::TurnTimer;
 use crate::vision::VisionSupport;
@@ -1097,6 +1099,12 @@ impl Orchestrator {
         // share its Arc across agents; each agent keeps its own read-state runtime over it.
         let skills = resolve_skills(set, &invocation.workspace_dir);
         let limits = resolve_run_limits(set, warnings);
+        // Every profile's [module](crate::modules) configuration, checked once here rather than
+        // per agent at spawn: a mis-spelled `ownership` value must be reported before the first
+        // turn, not discovered by an agent that quietly stopped being shown its own task list.
+        for agent in &set.agents {
+            warnings.extend(crate::modules::ownership_warnings(agent));
+        }
         let deadline = limits.max_runtime.map(|budget| Instant::now() + budget);
         // The Root agent's code setup: responses-as-code is per-agent, but the Root's is what the
         // run-level launch log and the sandbox warm-up decision key on.
@@ -2105,15 +2113,6 @@ async fn run_agent(
         emitter.emit(agent_status(GgAgentStatus::Running));
     }
 
-    // Build this agent's resources. The memory/task/planning runtimes and the archive are
-    // **per-agent** (a subagent has its own scratchpad, task list, and plan); the skills library
-    // and estimator are shared through the orchestrator; and the **project-management board is
-    // shared run-wide** — every agent's board tools mutate the one [`orch.board`], the global work
-    // queue the dispatcher reads (cloning a `BoardRuntime` shares its store).
-    let skills = orch.skills_runtime();
-    let memories = resolve_memories(&profile);
-    let tasks = resolve_tasks(&profile);
-    let board = orch.board.clone();
     let planning = PlanningRuntime::resolve(&profile);
     // The FSM engine drives only the **root** agent (the run's top-level process); a subagent does
     // scoped work and is not itself driven through a machine, so it gets a disabled runtime.
@@ -2122,11 +2121,31 @@ async fn run_agent(
     } else {
         FsmRuntime::disabled()
     };
-    let archive_store = Arc::new(Mutex::new(ArchiveStore::new()));
-    let library = skills.library();
-    let memory_store = memories.store();
-    let task_store = tasks.store();
-    let board_store = board.store();
+    // This agent's execution mode (traditional tool calling vs a code-shaped reply) and the sandbox
+    // ceilings/healing behind it come from its **own profile**, so a run can mix agents that call
+    // tools with agents that write programs. Resolved here, ahead of the modules, because the
+    // window it opens is armed by it.
+    let code = orch.code_setup(&profile);
+    let context_setup = orch.context_setup(&model_id);
+
+    // Build this agent's [modules](crate::modules) — everything it holds. The memory, task and
+    // archive modules are **per agent** (a subagent has its own scratchpad, task list and
+    // archive); the skills library and the estimator are shared through the orchestrator; and the
+    // **project-management board is shared run-wide** — every agent's board tools mutate the one
+    // [`orch.board`], the global work queue the dispatcher reads.
+    let orch_skills = orch.skills_runtime();
+    let module_ctx = ModuleResolveCtx {
+        skills: &orch_skills,
+        board: &orch.board,
+        history: HistorySetup {
+            estimator: Arc::clone(&context_setup.estimator),
+            window_limit: context_setup.window_limit,
+            code_mode: code.enabled,
+        },
+        agent_id: &agent.id,
+    };
+    let mut modules = ModuleSet::resolve(&profile, &module_ctx);
+    let archive_store = modules.caps().archive().store();
     // The issue this agent was auto-dispatched to implement, if any. It shapes the agent's *prompt*
     // (which names the issue it is working) and its issue-wait guard, but not its toolset: an
     // implementer hands its work back by finishing, not by making a board move, so it needs no board
@@ -2136,13 +2155,8 @@ async fn run_agent(
         _ => None,
     };
     // This agent's toolset, model, and prompt all come from **its own profile**, so a run can give
-    // different agents different capabilities. The board store it binds is the run-global one.
-    let runtimes = RuntimeSet::new(&library)
-        .with_memories(&memory_store)
-        .with_tasks(&task_store)
-        .with_board(&board_store)
-        .with_archive(&archive_store);
-    let registry = ToolRegistry::from_run(&profile, &runtimes);
+    // different agents different capabilities. The stores it binds are its modules'.
+    let registry = ToolRegistry::from_run(&profile, modules.caps());
     // The agent's file/shell tools are rooted at the [directory it was announced with](workspace_dir)
     // — its isolated worktree when it has one, so every mutation (and every command it runs without
     // an explicit path) lands in the private copy rather than the shared main tree; otherwise the
@@ -2153,11 +2167,6 @@ async fn run_agent(
     // one tool's answer depends on it: `read_file` attaches a picture only when the model
     // asking can see one. The registry behind it is the run's, not this agent's.
     let tool_ctx = ToolContext::new(workspace_dir).with_vision(&model_id, Arc::clone(&orch.vision));
-
-    // This agent's execution mode (traditional tool calling vs a code-shaped reply) and the sandbox
-    // ceilings/healing behind it come from its **own profile**, so a run can mix agents that call
-    // tools with agents that write programs.
-    let code = orch.code_setup(&profile);
 
     // What gates this agent's ending, when anything does: the validation commands its own profile
     // configures. *How* it ends is not a profile's business — that is its dispatched
@@ -2170,10 +2179,7 @@ async fn run_agent(
         announce_configuration(
             emitter,
             &registry,
-            &skills,
-            &memories,
-            &tasks,
-            &board,
+            modules.caps(),
             &planning,
             &fsm,
             orch.speculative_active(),
@@ -2205,7 +2211,6 @@ async fn run_agent(
         }
     }
 
-    let context_setup = orch.context_setup(&model_id);
     let mut compaction = CompactionSetup::resolve(&profile);
     // A handoff strategy condenses on a **second** model, resolved through the same factory every
     // agent's own model is. A named model that will not resolve is a misconfiguration, not a reason
@@ -2237,7 +2242,7 @@ async fn run_agent(
             )),
         }
     }
-    let amc = AmcSetup::resolve(&profile, &registry, Arc::clone(&archive_store));
+    let amc = AmcSetup::resolve(&profile, &registry, archive_store);
     let autoload = AutoloadSetup::resolve(&profile);
     // This agent's persistence: whether its instances are serialized and carry their open file views,
     // bound to the run-global record every instance of its profile shares.
@@ -2320,34 +2325,32 @@ async fn run_agent(
             &registry,
             &tool_ctx,
             emitter,
-            LimitsSetup {
-                limits: orch.limits,
-                deadline: orch.deadline,
-                spend: Arc::clone(&orch.spend),
-                cancel: orch.cancel.clone(),
+            &mut modules,
+            DriveSetup {
+                limits: LimitsSetup {
+                    limits: orch.limits,
+                    deadline: orch.deadline,
+                    spend: Arc::clone(&orch.spend),
+                    cancel: orch.cancel.clone(),
+                },
+                compaction,
+                amc,
+                autoload,
+                persistence,
+                read_policy: read_policy(&profile),
+                shell_offload: shell_offload(&profile),
+                speculative: orch.speculative_active(),
+                code,
+                completion,
+                ending_role,
+                replay: orch.replay.clone(),
             },
-            context_setup,
-            compaction,
-            amc,
-            autoload,
-            persistence,
             &orch.provided_files,
-            skills,
-            memories,
-            tasks,
-            board,
             planning,
             fsm,
-            read_policy(&profile),
-            shell_offload(&profile),
-            orch.speculative_active(),
-            code,
-            completion,
-            ending_role,
             &profile,
             subagent_context,
             project,
-            orch.replay.clone(),
         )
         .await;
 
@@ -2435,10 +2438,7 @@ async fn run_agent(
 fn announce_configuration(
     emitter: &Emitter,
     registry: &ToolRegistry,
-    skills: &SkillsRuntime,
-    memories: &MemoriesRuntime,
-    tasks: &TasksRuntime,
-    board: &BoardRuntime,
+    modules: &CapabilityModules,
     planning: &PlanningRuntime,
     fsm: &FsmRuntime,
     speculative: bool,
@@ -2460,6 +2460,7 @@ fn announce_configuration(
             ),
         ));
     }
+    let skills = modules.skills();
     if let Some(state) = skills.state_event() {
         emitter.emit(log(
             "info",
@@ -2470,10 +2471,12 @@ fn announce_configuration(
         ));
         emitter.emit(state);
     }
+    let memories = modules.memories();
     if let Some(state) = memories.state_event() {
         emitter.emit(log("info", memories_startup_note(memories)));
         emitter.emit(state);
     }
+    let tasks = modules.tasks();
     if let Some(state) = tasks.state_event() {
         emitter.emit(log(
             "info",
@@ -2484,17 +2487,37 @@ fn announce_configuration(
         ));
         emitter.emit(state);
     }
+    let board = modules.board();
     if let Some(state) = board.state_event() {
-        let caps = board.caps();
+        let board_caps = board.caps();
         emitter.emit(log(
             "info",
             format!(
                 "epic/issue board enabled (structured, dispatchable issues in a blocked-by DAG, \
                  up to {} epics and {} issues).",
-                caps.max_epics, caps.max_issues
+                board_caps.max_epics, board_caps.max_issues
             ),
         ));
         emitter.emit(state);
+    }
+    // Any module the agent holds but its prompt does **not** carry. Named on the operator log
+    // because it is the one capability configuration whose effect is invisible in the toolset: the
+    // tools are all there, and the model is simply never told what it is holding.
+    let unowned: Vec<&str> = modules
+        .each()
+        .into_iter()
+        .filter(|module| module.enabled() && module.ownership() == Ownership::Unowned)
+        .map(|module| module.kind().as_str())
+        .collect();
+    if !unowned.is_empty() {
+        emitter.emit(log(
+            "info",
+            format!(
+                "the {} module(s) are unowned: their tools are offered and their state is live, \
+                 but nothing about them is put in the prompt.",
+                unowned.join(", ")
+            ),
+        ));
     }
     if planning.offers_planning() {
         emitter.emit(log(
@@ -5026,30 +5049,34 @@ impl Agent {
         registry: &ToolRegistry,
         tool_ctx: &ToolContext,
         emitter: &Emitter,
-        limits: LimitsSetup,
-        context_setup: ContextSetup,
-        compaction: CompactionSetup,
-        amc: AmcSetup,
-        autoload: AutoloadSetup,
-        persistence: PersistenceSetup,
+        modules: &mut ModuleSet,
+        setup: DriveSetup,
         provided_files: &[PathBuf],
-        mut skills: SkillsRuntime,
-        memories: MemoriesRuntime,
-        tasks: TasksRuntime,
-        board: BoardRuntime,
         planning: PlanningRuntime,
         mut fsm: FsmRuntime,
-        read_policy: ReadPolicy,
-        shell_offload: OffloadPolicy,
-        speculative: bool,
-        code: CodeSetup,
-        completion: CompletionSetup,
-        ending_role: EndingRole,
         profile: &GgAgentConfig,
         mut subagents: Option<SubagentContext>,
         project: Option<ProjectContext>,
-        replay: Option<Arc<GgRecorder>>,
     ) -> LoopEnd {
+        let DriveSetup {
+            limits,
+            compaction,
+            amc,
+            autoload,
+            persistence,
+            read_policy,
+            shell_offload,
+            speculative,
+            code,
+            completion,
+            ending_role,
+            replay,
+        } = setup;
+        // The window and the capability modules, borrowed apart for the whole session: the loop
+        // pushes into the one and refreshes the others' pinned blocks into it at each boundary, and
+        // the borrow checker will only prove those two things disjoint through the set's own split.
+        let (history, caps) = modules.split_mut();
+        let context = history.context_mut();
         // The per-agent turn ceiling, or `None` for unbounded (the default — the host caps the
         // wall-clock, so gg imposes no turn backstop unless a study asks for one). An unbounded run
         // iterates to `usize::MAX`, a bound no real run reaches, so it stops only on `finish`, an
@@ -5078,7 +5105,7 @@ impl Agent {
         // the prompt's board section (see `system_prompt`), so what an agent is told about the board
         // and what it is shown of it agree.
         let offers_board =
-            board.offers_board() && profile.is_enabled(CAPABILITY_PROJECT_MANAGEMENT);
+            caps.board().offers_board() && profile.is_enabled(CAPABILITY_PROJECT_MANAGEMENT);
 
         // Build the source-tagged context model in place of a flat transcript, seeded with
         // the two pinned items every session opens with: the system prompt (which lists any
@@ -5087,11 +5114,6 @@ impl Agent {
         // read skills, the memory block, the task list) is appended as a tagged item, so the
         // window can be accounted by source and the pinned/ephemeral split is available for
         // Phase 2 compaction.
-        let mut context = ContextModel::new(
-            context_setup.estimator,
-            context_setup.window_limit,
-            code.enabled,
-        );
         // Arm the per-result turn headers when this agent can actually archive turns. They are what
         // makes `archive_thread` a decision the model can make — it reads the turn number and the
         // cost off each result and names the spans worth dropping — so they are armed by the tool
@@ -5101,10 +5123,10 @@ impl Agent {
         }
         context.push_system(system_prompt(PromptInputs {
             registry,
-            skills: &skills,
-            memories: &memories,
-            tasks: &tasks,
-            board: &board,
+            skills: caps.skills(),
+            memories: caps.memories(),
+            tasks: caps.tasks(),
+            board: caps.board(),
             planning: &planning,
             fsm: &fsm,
             read_policy,
@@ -5134,14 +5156,8 @@ impl Agent {
         // though the model had already `read_file`d each — before the first turn, so the model
         // starts with the whole brief in the window. Locked pins them across compaction.
         if autoload.enabled {
-            autoload_specifications(
-                &mut context,
-                provided_files,
-                tool_ctx,
-                autoload.locked,
-                emitter,
-            )
-            .await;
+            autoload_specifications(context, provided_files, tool_ctx, autoload.locked, emitter)
+                .await;
         }
 
         // Re-open the file views this agent's profile had open when one of its instances last
@@ -5153,7 +5169,7 @@ impl Agent {
         if persistence.enabled() {
             let restored = persistence.restored();
             let reopened = crate::persistence::restore_file_views(
-                &mut context,
+                context,
                 &restored,
                 read_policy,
                 tool_ctx,
@@ -5182,7 +5198,7 @@ impl Agent {
             let guidance = state.guidance.clone();
             let exit = state.exit;
             emitter.emit(event);
-            push_state_guidance(&mut context, guidance, exit);
+            push_state_guidance(context, guidance, exit);
         }
 
         let mut total_tokens = TokenCounts::default();
@@ -5217,7 +5233,7 @@ impl Agent {
         // mode. Resolved once, because neither the strategy nor the mode changes within a run, and
         // both of the places that need it (a memory compaction's instruction, and the refusal that
         // answers anything else while one is pending) must name calls the agent actually has.
-        let memory_calls = memories.strategy().calls(code.enabled);
+        let memory_calls = caps.memories().strategy().calls(code.enabled);
 
         for turn in 0..turn_bound {
             // An operator killed the run. Checked first, and at the same boundary as the two
@@ -5313,12 +5329,11 @@ impl Agent {
             // assistant tool-call message and the tool results answering it. Unlike memories,
             // the list is what the model steers by from turn to turn rather than a record it
             // consults, so it is worth keeping current every turn.
-            if tasks.offers_tasks() {
-                context.replace_source(
-                    GgContextSource::TaskList,
-                    Retention::Pinned,
-                    tasks.context_block(),
-                );
+            for (source, block) in caps.pinned_blocks(Refresh::EveryTurn) {
+                if source == GgContextSource::Board && !offers_board {
+                    continue;
+                }
+                context.replace_source(source, Retention::Pinned, block);
             }
 
             // Refresh the pinned epic/issue board the same way, so the window always shows the
@@ -5332,14 +5347,6 @@ impl Agent {
             // one — so pinning the whole decomposition into its window spends its context every turn
             // on a document it can only be distracted by, and invites an implementer to go looking
             // for work other than the job it was dispatched to do.
-            if offers_board {
-                context.replace_source(
-                    GgContextSource::Board,
-                    Retention::Pinned,
-                    board.context_block(),
-                );
-            }
-
             // With the pinned blocks refreshed, the window for this turn is fully assembled.
             // If the compaction backstop is on and fullness has crossed its threshold, compact
             // now — at the turn boundary, before this turn's model call, never between an
@@ -5353,23 +5360,18 @@ impl Agent {
             // so gg appends the instruction, records what it is waiting for, and the turn that
             // follows is the compaction. The `pending_compaction.is_none()` guard is what stops a
             // still-full window from opening a second compaction on top of the one in flight.
-            if pending_compaction.is_none() && compaction::should_compact(&context, &compaction) {
-                let retained = RetainedCounts {
-                    skills: skills.read_count() as u64,
-                    tasks: tasks.count() as u64,
-                    memories: memories.count() as u64,
-                    issues: board.issue_count() as u64,
-                };
+            if pending_compaction.is_none() && compaction::should_compact(context, &compaction) {
+                let retained = caps.retained_counts();
                 match compaction.strategy.pending() {
                     None => {
                         let (request, fallback) =
-                            compaction::condense_out_of_band(&context, client, &compaction).await;
+                            compaction::condense_out_of_band(context, client, &compaction).await;
                         let files = restore_compact_files(&request.files, tool_ctx, emitter).await;
                         // Current *before* the rewrite, so the stale copy goes out with the
                         // history and the fresh one crosses in the pinned prefix.
-                        refresh_memory_block(&mut context, &memories);
+                        refresh_boundary_blocks(context, caps);
                         emitter.emit(compaction::apply_compaction(
-                            &mut context,
+                            context,
                             &compaction,
                             retained,
                             &request,
@@ -5465,7 +5467,7 @@ impl Agent {
             turn_timer.model_call_started();
             let response = match complete_with_vision_recovery(
                 client,
-                &mut context,
+                context,
                 &tools,
                 &tool_ctx.vision.support,
                 emitter,
@@ -5660,21 +5662,8 @@ impl Agent {
                         compaction::fallback_request()
                     }
                 };
-                apply_pending_compaction(
-                    &mut context,
-                    &compaction,
-                    &memories,
-                    RetainedCounts {
-                        skills: skills.read_count() as u64,
-                        tasks: tasks.count() as u64,
-                        memories: memories.count() as u64,
-                        issues: board.issue_count() as u64,
-                    },
-                    &request,
-                    tool_ctx,
-                    emitter,
-                )
-                .await;
+                apply_pending_compaction(context, &compaction, caps, &request, tool_ctx, emitter)
+                    .await;
                 // The turn did exactly the work it was asked for, so it counts as progress — not as
                 // an error, and not as the completion a tool-less reply would otherwise be.
                 if let Some(breach) = agent_limits.record(TurnOutcome::Progressed, &self.id) {
@@ -5698,17 +5687,25 @@ impl Agent {
             // on what the turn asks for. There is no implicit ending here: a session under this
             // capability ends only when a program calls `finish`, or when a ceiling stops the run.
             if code.enabled {
+                // The window and the skills runtime are moved **out of the module set** for the
+                // turn: a program's calls act on the live window from a blocking thread, so they
+                // travel by value and are put back the moment the turn hands them over. The set is
+                // left holding a vacated window and an inert skills runtime in the meantime, which
+                // nothing reads — the only path that never hands them back is a host fault, and the
+                // loop ends the session there without looking at either again.
+                let turn_window = context.take();
+                let turn_skills = std::mem::replace(caps.skills_mut(), SkillsRuntime::disabled());
                 let turn_ctx = CodeTurn {
                     spawner: self,
                     registry,
                     tool_ctx,
                     read_policy,
                     shell_offload: &shell_offload,
-                    board: &board,
+                    board: caps.board(),
                     issue_policy: &issue_policy,
                     project: project.as_ref(),
-                    memories: &memories,
-                    tasks: &tasks,
+                    memories: caps.memories(),
+                    tasks: caps.tasks(),
                     planning: &planning,
                     fsm: &fsm,
                     amc: &amc,
@@ -5731,8 +5728,8 @@ impl Agent {
                     &code,
                     limits.deadline,
                     &turn_ctx,
-                    context,
-                    skills,
+                    turn_window,
+                    turn_skills,
                     docs,
                     subagents,
                 )
@@ -5775,8 +5772,10 @@ impl Agent {
                         // code path the window carries none (a program's reads are consumed inside the
                         // program), so this records an empty desk — which is the honest answer, not a
                         // reason to skip the call and leave a stale one behind.
-                        if let Some(state) = &state {
+                        if let Some(state) = state {
                             persistence.record(&state.context);
+                            *context = state.context;
+                            *caps.skills_mut() = state.skills;
                         }
                         return LoopEnd {
                             status: STATUS_COMPLETED,
@@ -5790,6 +5789,12 @@ impl Agent {
                         };
                     }
                     CodeTurnOutcome::Fatal { message, .. } => {
+                        // Put back whatever came back, so the set is coherent for the epilogue even
+                        // though nothing reads the window after a host fault.
+                        if let Some(state) = state {
+                            *context = state.context;
+                            *caps.skills_mut() = state.skills;
+                        }
                         emitter.emit(log("error", message));
                         return LoopEnd {
                             status: STATUS_MODEL_ERROR,
@@ -5826,8 +5831,8 @@ impl Agent {
                             compact_requested: turn_compaction,
                             compaction_calls: (turn_compaction_calls, turn_compaction_failures),
                         } = state.expect("a non-fatal code turn hands back its per-turn state");
-                        context = turn_context;
-                        skills = turn_skills;
+                        *context = turn_context;
+                        *caps.skills_mut() = turn_skills;
                         docs = turn_docs;
                         subagents = turn_subagents;
                         last_report = Some(report);
@@ -5867,9 +5872,14 @@ impl Agent {
                         {
                             let mut resolved = Vec::with_capacity(turn_issue_waits.len());
                             for issue_id in &turn_issue_waits {
-                                let outcome =
-                                    wait_for_issue_by_id(project, self, &board, emitter, issue_id)
-                                        .await;
+                                let outcome = wait_for_issue_by_id(
+                                    project,
+                                    self,
+                                    caps.board(),
+                                    emitter,
+                                    issue_id,
+                                )
+                                .await;
                                 resolved.push(outcome.output);
                             }
                             context.push(
@@ -5909,15 +5919,9 @@ impl Agent {
                             (Some(request), _) => {
                                 pending_compaction = None;
                                 apply_pending_compaction(
-                                    &mut context,
+                                    context,
                                     &compaction,
-                                    &memories,
-                                    RetainedCounts {
-                                        skills: skills.read_count() as u64,
-                                        tasks: tasks.count() as u64,
-                                        memories: memories.count() as u64,
-                                        issues: board.issue_count() as u64,
-                                    },
+                                    caps,
                                     &request,
                                     tool_ctx,
                                     emitter,
@@ -6123,8 +6127,7 @@ impl Agent {
                     // when it holds, and refuse the advance otherwise so the agent cannot skip
                     // ahead. A `plan-first` plan reset is captured here and applied after the turn's
                     // tool results are recorded, exactly like `submit_plan`.
-                    let advance =
-                        handle_advance_state(&mut fsm, &mut context, tool_ctx, emitter, call);
+                    let advance = handle_advance_state(&mut fsm, context, tool_ctx, emitter, call);
                     if let Some(plan) = advance.submit_plan {
                         submitted_plan = Some(plan);
                     }
@@ -6138,7 +6141,7 @@ impl Agent {
                     // delegation tools) because it must free this agent's scheduler slot and
                     // block on the orchestrator's issue-wait registry, which the tool cannot
                     // reach.
-                    handle_wait_for_issue(project, self, &board, emitter, call).await
+                    handle_wait_for_issue(project, self, caps.board(), emitter, call).await
                 } else if let Some(sub) = subagents.as_mut() {
                     if is_subagent_tool(&call.name) {
                         handle_subagent_call(sub, self, emitter, call).await
@@ -6147,7 +6150,7 @@ impl Agent {
                         // delegation tools) so gg runs the best-of-K fan-out → judge → merge
                         // routine against the orchestrator, scheduler, and worktree machinery,
                         // which the tool itself cannot reach.
-                        handle_speculate(sub, self, &board, emitter, call).await
+                        handle_speculate(sub, self, caps.board(), emitter, call).await
                     } else {
                         registry.dispatch(call, tool_ctx).await
                     }
@@ -6163,7 +6166,7 @@ impl Agent {
                 // special handling — it read the shared archive in its own `invoke`.
                 let managed_event =
                     if amc.enabled && outcome.ok && is_context_reclaim_tool(&call.name) {
-                        apply_context_reclaim(&mut context, &amc.archive, call, &mut outcome)
+                        apply_context_reclaim(context, &amc.archive, call, &mut outcome)
                     } else {
                         None
                     };
@@ -6215,16 +6218,7 @@ impl Agent {
                 // validated the call — the loop owns plan mode and the context window, so it applies
                 // the effect here (after recording the tool result keeps the conversation valid).
                 let planning_ok = outcome.ok;
-                record_tool_result(
-                    &mut context,
-                    &mut skills,
-                    &memories,
-                    &tasks,
-                    &board,
-                    call,
-                    outcome,
-                    emitter,
-                );
+                record_tool_result(context, caps, call, outcome, emitter);
                 if planning.offers_planning() && planning_ok && is_planning_tool(&call.name) {
                     match call.name.as_str() {
                         ENTER_PLAN_MODE_TOOL => {
@@ -6277,7 +6271,7 @@ impl Agent {
                 // The reset drops the exploration thread, which is where anything the model
                 // recorded during planning was visible; the pinned block has to be current
                 // before it goes, exactly as at a compaction boundary.
-                refresh_memory_block(&mut context, &memories);
+                refresh_boundary_blocks(context, caps);
                 context.clear_ephemeral();
                 let framed = match fsm.planner() {
                     Some(planner) => planner.frame_plan(&plan),
@@ -6303,7 +6297,7 @@ impl Agent {
                 // recorded only on this path, because only an agent that *finished its work* has a desk
                 // worth inheriting. One stopped by a ceiling or an error leaves the previous
                 // instance's record standing.
-                persistence.record(&context);
+                persistence.record(context);
                 return LoopEnd {
                     status: STATUS_COMPLETED,
                     turns: turn + 1,
@@ -6336,15 +6330,9 @@ impl Agent {
                 (Some(request), _) => {
                     pending_compaction = None;
                     apply_pending_compaction(
-                        &mut context,
+                        context,
                         &compaction,
-                        &memories,
-                        RetainedCounts {
-                            skills: skills.read_count() as u64,
-                            tasks: tasks.count() as u64,
-                            memories: memories.count() as u64,
-                            issues: board.issue_count() as u64,
-                        },
+                        caps,
                         &request,
                         tool_ctx,
                         emitter,
@@ -6732,6 +6720,50 @@ struct CodeSetup {
     assistant_messages: AssistantMessageMode,
 }
 
+/// Everything the [turn loop](Agent::drive) is *configured* by, as opposed to everything it holds.
+///
+/// The distinction it draws is the one the [module model](crate::modules) rests on. A
+/// [`ModuleSet`] is **state**: it is cloned, shared and handed from one agent instance to the next,
+/// and the loop mutates it all session. A `DriveSetup` is **resolved configuration**: every field
+/// is a pure function of the agent's profile, its model and its dispatched role, so an agent that
+/// succeeds another re-resolves the whole struct rather than inheriting any of it. Nothing here is
+/// ever transferred.
+///
+/// It exists because the alternative — and what this replaced — is a twenty-six-parameter method
+/// whose reader cannot tell which arguments are the agent's working state and which are the knobs
+/// it was launched with.
+struct DriveSetup {
+    /// Every [ceiling](RunLimits) this agent is bounded by, plus the run-wide spend and the
+    /// cancellation watch checked on the same terms.
+    limits: LimitsSetup,
+    /// Whether and how the thread [compacts](crate::compaction) when the window fills.
+    compaction: CompactionSetup,
+    /// The [agent-managed-context](CAPABILITY_AGENT_MANAGED_CONTEXT) configuration: the per-turn
+    /// usage signal and what this agent may do about its own window.
+    amc: AmcSetup,
+    /// Whether the test case's provided specifications seed the opening context, and whether they
+    /// are pinned across compaction.
+    autoload: AutoloadSetup,
+    /// This agent's [persistence](crate::persistence): whether its instances are serialized and
+    /// carry their open file views between them.
+    persistence: PersistenceSetup,
+    /// How much of a file one `read_file` returns.
+    read_policy: ReadPolicy,
+    /// How much of a command's output one `shell` call returns.
+    shell_offload: OffloadPolicy,
+    /// Whether `speculate` is routed through the best-of-K routine this run.
+    speculative: bool,
+    /// Whether this agent answers with programs rather than tool calls, and the sandbox ceilings
+    /// and [healing](crate::healing) behind that.
+    code: CodeSetup,
+    /// What gates this agent's ending — the validation commands its profile configures.
+    completion: CompletionSetup,
+    /// Which [ending calls](EndingRole) this agent is given, from the role it was dispatched in.
+    ending_role: EndingRole,
+    /// The [replay](crate::replay) recorder, when the capability is on.
+    replay: Option<Arc<GgRecorder>>,
+}
+
 /// The [execution ceilings](RunLimits) threaded into the [turn loop](Agent::drive), together with
 /// the run-wide [spend](RunSpend) the cost ceiling is measured against and the absolute instant the
 /// wall-clock budget expires at.
@@ -7064,19 +7096,6 @@ fn resolve_skills_dir(set: &GgCapabilitySet, workspace_dir: &Path) -> PathBuf {
 /// organized by the [strategy](MemoryStrategy::resolve) its `implementation` names and bounded by
 /// the [limits resolved](MemoryCaps::resolve) from the capability's params; otherwise a
 /// [disabled](MemoriesRuntime::disabled) runtime (an ablation's off arm) that offers nothing.
-fn resolve_memories(profile: &GgAgentConfig) -> MemoriesRuntime {
-    if !profile.is_enabled(CAPABILITY_MEMORIES) {
-        return MemoriesRuntime::disabled();
-    }
-    let capability = profile.capability(CAPABILITY_MEMORIES);
-    let strategy =
-        MemoryStrategy::resolve(capability.and_then(|cap| cap.implementation.as_deref()));
-    let caps = capability
-        .map(|cap| MemoryCaps::resolve(strategy, &cap.params))
-        .unwrap_or_else(|| MemoryCaps::for_strategy(strategy));
-    MemoriesRuntime::new(strategy, caps)
-}
-
 /// The startup log line describing a run's memory configuration: which
 /// [strategy](MemoryStrategy) it runs, and the limits that are actually in force.
 ///
@@ -7111,18 +7130,6 @@ fn memories_startup_note(memories: &MemoriesRuntime) -> String {
 /// DAG holding at most the [count resolved](resolve_max_tasks) from the capability's params;
 /// otherwise a [disabled](TasksRuntime::disabled) runtime (an ablation's off arm) that
 /// offers nothing.
-fn resolve_tasks(profile: &GgAgentConfig) -> TasksRuntime {
-    if !profile.is_enabled(CAPABILITY_TASKS) {
-        return TasksRuntime::disabled();
-    }
-    let params = profile.capability(CAPABILITY_TASKS).map(|cap| &cap.params);
-    let max_tasks = params
-        .map(resolve_max_tasks)
-        .unwrap_or(crate::tasks::DEFAULT_MAX_TASKS);
-    let mode = params.map(resolve_task_mode).unwrap_or_default();
-    TasksRuntime::with_mode(max_tasks, mode)
-}
-
 /// The [agent profile](GgAgentConfig) whose [project-management](CAPABILITY_PROJECT_MANAGEMENT)
 /// configuration governs the run's **one shared board** — the first profile that has the capability
 /// on, or `None` when no profile does and the run therefore has no board at all.
@@ -7854,13 +7861,9 @@ async fn restore_compact_files(
 /// its memories out of, so the block has to be current *before* the sweep. Called just before
 /// the rewrite for exactly that reason — the stale copy is superseded into the ephemeral history
 /// the rewrite is about to discard, and the fresh one crosses in the pinned prefix.
-fn refresh_memory_block(context: &mut ContextModel, memories: &MemoriesRuntime) {
-    if memories.offers_memories() {
-        context.replace_source(
-            GgContextSource::Memory,
-            Retention::Pinned,
-            memories.context_block(),
-        );
+fn refresh_boundary_blocks(context: &mut ContextModel, modules: &CapabilityModules) {
+    for (source, block) in modules.pinned_blocks(Refresh::AtBoundary) {
+        context.replace_source(source, Retention::Pinned, block);
     }
 }
 
@@ -7874,13 +7877,13 @@ fn refresh_memory_block(context: &mut ContextModel, memories: &MemoriesRuntime) 
 async fn apply_pending_compaction(
     context: &mut ContextModel,
     setup: &CompactionSetup,
-    memories: &MemoriesRuntime,
-    retained: RetainedCounts,
+    modules: &CapabilityModules,
     request: &CompactionRequest,
     tool_ctx: &ToolContext,
     emitter: &Emitter,
 ) {
-    refresh_memory_block(context, memories);
+    let retained = modules.retained_counts();
+    refresh_boundary_blocks(context, modules);
     let files = restore_compact_files(&request.files, tool_ctx, emitter).await;
     let restored = files.len();
     let event = compaction::apply_compaction(
@@ -7931,10 +7934,7 @@ async fn apply_pending_compaction(
 #[allow(clippy::too_many_arguments)]
 fn record_tool_result(
     context: &mut ContextModel,
-    skills: &mut SkillsRuntime,
-    memories: &MemoriesRuntime,
-    tasks: &TasksRuntime,
-    board: &BoardRuntime,
+    modules: &mut CapabilityModules,
     call: &ToolCall,
     outcome: ToolOutcome,
     emitter: &Emitter,
@@ -7946,11 +7946,8 @@ fn record_tool_result(
     // at the next turn boundary; it is rebuilt at a compaction boundary (see
     // `refresh_memory_block`).
     if is_memory_tool(&call.name) && outcome.ok {
-        for revision in memories.revision_events() {
-            emitter.emit(revision);
-        }
-        if let Some(state) = memories.state_event() {
-            emitter.emit(state);
+        for event in modules.memories_mut().drain_events() {
+            emitter.emit(event);
         }
         context.push_tool_result(tool_output_source(&call.name), &call.id, outcome.output);
         return;
@@ -7960,7 +7957,7 @@ fn record_tool_result(
     // check); re-emit the state so the console tracks the live DAG. The pinned task block
     // is refreshed at the next turn boundary, like the memory block.
     if is_task_tool(&call.name) && outcome.ok {
-        if let Some(state) = tasks.state_event() {
+        if let Some(state) = modules.tasks().state_event() {
             emitter.emit(state);
         }
         context.push_tool_result(tool_output_source(&call.name), &call.id, outcome.output);
@@ -7971,7 +7968,7 @@ fn record_tool_result(
     // invariant checks, and the cycle check); re-emit the state so the console tracks the live
     // board. The pinned board block is refreshed at the next turn boundary, like the task block.
     if is_board_tool(&call.name) && outcome.ok {
-        if let Some(state) = board.state_event() {
+        if let Some(state) = modules.board().state_event() {
             emitter.emit(state);
         }
         context.push_tool_result(tool_output_source(&call.name), &call.id, outcome.output);
@@ -7984,7 +7981,7 @@ fn record_tool_result(
         && outcome.ok
         && let Some(name) = call.arguments.get("name").and_then(Value::as_str)
     {
-        match skills.record_read(name) {
+        match modules.skills_mut().record_read(name) {
             ReadRecord::Fresh => {
                 // Pin the skill body so context accounting attributes it to skills and
                 // compaction retains it verbatim.
@@ -7993,7 +7990,7 @@ fn record_tool_result(
                     Retention::Pinned,
                     crate::model::Message::tool_result(&call.id, outcome.output),
                 );
-                if let Some(state) = skills.state_event() {
+                if let Some(state) = modules.skills().state_event() {
                     emitter.emit(state);
                 }
                 return;

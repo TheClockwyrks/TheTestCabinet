@@ -291,6 +291,39 @@ export type GgCapabilitySet = {
 };
 
 /**
+ * The closed set of **modules** an agent instance holds: one unit of per-agent capability state
+ * that gg can clone, share between agents, and hand from one agent instance to the next.
+ *
+ * The names are the vocabulary a configuration uses to talk about that state — most visibly an
+ * [FSM](CAPABILITY_FSM) transition's transfer list, which names the modules the successor state
+ * inherits. They are a closed taxonomy rather than open capability ids because gg has to
+ * implement clone/share/transfer semantics per kind; a capability with no module keeps no state
+ * worth carrying.
+ *
+ * See the [module model](https://docs.testcabinet.ai/gg/modules/) for the per-kind semantics.
+ */
+export type GgModuleKind =
+  | "history"
+  | "memories"
+  | "tasks"
+  | "board"
+  | "skills"
+  | "archive";
+
+/**
+ * Whether the state a module-backed capability keeps is carried in its holder's **prompt**, or
+ * is reachable only through the tools it contributes.
+ *
+ * This is the [`ownership`](MODULE_PARAM_OWNERSHIP) param, and it is the one knob that separates
+ * "the agent is told what it holds, every turn" from "the agent may look it up". It exists
+ * because a module is no longer necessarily *about* the agent holding it: once a memory instance
+ * can be shared between agents, or a task list handed from one FSM state to the next, an agent
+ * can be given a working store it should be able to act on without paying for it in every
+ * request it makes.
+ */
+export type GgModuleOwnership = "owned" | "unowned";
+
+/**
  * The **source** a context-window contribution is attributed to, for the per-source
  * accounting [context visibility] reports.
  *

@@ -48,10 +48,15 @@ use std::fmt;
 use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
-use test_cabinet_core::gg::{GgTaskEntry, GgTaskStatus, GgTelemetryKind};
+use test_cabinet_core::gg::{
+    CAPABILITY_TASKS, GgAgentConfig, GgContextSource, GgTaskEntry, GgTaskStatus, GgTelemetryKind,
+};
 
 use crate::dag::{self, DagNode};
 use crate::model::Message;
+use crate::modules::{
+    AdoptError, Module, ModuleHandle, ModuleKind, ModuleResolveCtx, Ownership, Refresh,
+};
 use crate::prompts::{self, TaskItemView, TasksBlockContext};
 
 /// Default ceiling on the number of tasks the list may hold at once. Generous — a task
@@ -418,6 +423,19 @@ impl TaskStore {
         self.max_tasks
     }
 
+    /// Re-point the ceiling and the list [mode](TaskMode) — what a
+    /// [transfer](crate::modules::transfer) does when a different agent profile
+    /// [adopts](crate::modules::Module::adopt) this list, so the limits in force are the
+    /// *receiving* profile's rather than the ones the donor happened to resolve.
+    ///
+    /// A list already longer than a newly-tightened ceiling is **kept**: the ordinary cap check
+    /// refuses the next `add_task`, but deleting work the predecessor planned because the
+    /// successor's profile is stingier would lose exactly the plan the transfer was for.
+    pub fn reconfigure(&mut self, max_tasks: usize, mode: TaskMode) {
+        self.max_tasks = max_tasks;
+        self.mode = mode;
+    }
+
     /// The list [mode](TaskMode) this store enforces.
     pub fn mode(&self) -> TaskMode {
         self.mode
@@ -781,10 +799,19 @@ fn require_non_empty_when_present(
 /// count cap the [system prompt](crate::prompts::SystemContext::tasks) states, the
 /// [`TasksState`](GgTelemetryKind::TasksState) [telemetry](Self::state_event), and the
 /// pinned [context block](Self::context_block) the loop keeps in the window.
-#[derive(Debug, Clone)]
+///
+/// It is a [module](crate::modules::Module): it can be [forked](Self::forked) into an independent
+/// list, [shared](Self::shared) so two agent instances work one, and handed to the agent that
+/// succeeds this one — which is what lets a machine's next state pick up exactly the plan the last
+/// state left. It is deliberately **not** `Clone`; see [the module model](crate::modules).
+#[derive(Debug)]
 pub struct TasksRuntime {
     /// Whether the tasks capability is enabled for this run.
     enabled: bool,
+    /// Whether this holder's prompt carries the list — the pinned task block and the tasks section
+    /// of the system prompt. An [unowned](crate::modules::Ownership::Unowned) holder keeps the same
+    /// store and the same tools, and is not shown the list every turn.
+    ownership: Ownership,
     /// The shared, mutable store — the same handle the tools mutate.
     store: Arc<Mutex<TaskStore>>,
 }
@@ -803,6 +830,7 @@ impl TasksRuntime {
     pub fn with_mode(max_tasks: usize, mode: TaskMode) -> Self {
         Self {
             enabled: true,
+            ownership: Ownership::Owned,
             store: Arc::new(Mutex::new(TaskStore::with_mode(max_tasks, mode))),
         }
     }
@@ -812,8 +840,57 @@ impl TasksRuntime {
     pub fn disabled() -> Self {
         Self {
             enabled: false,
+            ownership: Ownership::Owned,
             store: Arc::new(Mutex::new(TaskStore::new(DEFAULT_MAX_TASKS))),
         }
+    }
+
+    /// Build the tasks module `profile` configures: when the [tasks](CAPABILITY_TASKS) capability
+    /// is enabled, an empty DAG holding at most the [count](resolve_max_tasks) its params resolve
+    /// in the [mode](TaskMode) they name; otherwise a [disabled](Self::disabled) module (an
+    /// ablation's off arm).
+    pub fn resolve(profile: &GgAgentConfig) -> Self {
+        if !profile.is_enabled(CAPABILITY_TASKS) {
+            return Self::disabled();
+        }
+        let params = profile.capability(CAPABILITY_TASKS).map(|cap| &cap.params);
+        let max_tasks = params.map(resolve_max_tasks).unwrap_or(DEFAULT_MAX_TASKS);
+        let mode = params.map(resolve_task_mode).unwrap_or_default();
+        Self::with_mode(max_tasks, mode)
+            .with_ownership(crate::modules::resolve_ownership(profile, CAPABILITY_TASKS).0)
+    }
+
+    /// This runtime with its [ownership](Ownership) set.
+    pub fn with_ownership(mut self, ownership: Ownership) -> Self {
+        self.ownership = ownership;
+        self
+    }
+
+    /// An **independent** list holding a copy of everything this one holds. Task ids are
+    /// model-authored and two copies never merge, so nothing has to be re-minted.
+    pub fn forked(&self) -> Self {
+        Self {
+            enabled: self.enabled,
+            ownership: self.ownership,
+            store: Arc::new(Mutex::new(
+                self.store.lock().expect("task store lock").clone(),
+            )),
+        }
+    }
+
+    /// A **linked** handle onto the same list: what one holder adds, the other sees.
+    pub fn shared(&self) -> Self {
+        Self {
+            enabled: self.enabled,
+            ownership: self.ownership,
+            store: Arc::clone(&self.store),
+        }
+    }
+
+    /// The list [mode](TaskMode) this run enforces.
+    #[allow(dead_code)] // a read surface for the module tests, which assert what an adopt re-resolved.
+    pub fn mode(&self) -> TaskMode {
+        self.store.lock().expect("task store lock").mode()
     }
 
     /// Whether the capability offers task tools this run (simply whether it is enabled — the
@@ -858,6 +935,86 @@ impl TasksRuntime {
             return None;
         }
         self.store.lock().expect("task store lock").context_block()
+    }
+}
+
+impl Module for TasksRuntime {
+    fn kind(&self) -> ModuleKind {
+        ModuleKind::Tasks
+    }
+
+    fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    fn ownership(&self) -> Ownership {
+        self.ownership
+    }
+
+    fn context_source(&self) -> Option<GgContextSource> {
+        Some(GgContextSource::TaskList)
+    }
+
+    fn refresh(&self) -> Refresh {
+        Refresh::EveryTurn
+    }
+
+    fn context_block(&self) -> Option<Message> {
+        if self.ownership != Ownership::Owned {
+            return None;
+        }
+        TasksRuntime::context_block(self)
+    }
+
+    fn state_events(&self) -> Vec<GgTelemetryKind> {
+        self.state_event().into_iter().collect()
+    }
+
+    /// Nothing: the task list's telemetry is **snapshot-only**. There is no per-mutation record to
+    /// stream — the whole DAG is re-emitted after each successful call by the loop that made it —
+    /// so a drain has nothing of its own to hand over, and [`state_events`](Self::state_events) is
+    /// what an agent adopting the list re-emits.
+    fn drain_events(&mut self) -> Vec<GgTelemetryKind> {
+        Vec::new()
+    }
+
+    fn retained(&self) -> u64 {
+        self.count() as u64
+    }
+
+    fn fork(&self) -> ModuleHandle {
+        ModuleHandle::Tasks(self.forked())
+    }
+
+    fn share(&self) -> ModuleHandle {
+        ModuleHandle::Tasks(self.shared())
+    }
+
+    /// Re-resolve the count ceiling, the list mode and the ownership from the receiving profile.
+    ///
+    /// Unlike the memory strategy, the list [mode](TaskMode) is not a compatibility barrier: both
+    /// modes are the same DAG, differing only in which fields a *new* task must carry, so a list
+    /// written in one mode reads perfectly well in the other and only the next `add_task` is held
+    /// to the successor's rule.
+    fn adopt(
+        &mut self,
+        profile: &GgAgentConfig,
+        ctx: &ModuleResolveCtx<'_>,
+    ) -> Result<(), AdoptError> {
+        let _ = ctx;
+        if !profile.is_enabled(CAPABILITY_TASKS) {
+            return Err(AdoptError::Disabled);
+        }
+        let params = profile.capability(CAPABILITY_TASKS).map(|cap| &cap.params);
+        let max_tasks = params.map(resolve_max_tasks).unwrap_or(DEFAULT_MAX_TASKS);
+        let mode = params.map(resolve_task_mode).unwrap_or_default();
+        self.store
+            .lock()
+            .expect("task store lock")
+            .reconfigure(max_tasks, mode);
+        self.enabled = true;
+        self.ownership = crate::modules::resolve_ownership(profile, CAPABILITY_TASKS).0;
+        Ok(())
     }
 }
 
