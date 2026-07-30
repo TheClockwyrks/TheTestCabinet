@@ -7753,13 +7753,19 @@ fn record_tool_result(
             .get("path")
             .and_then(Value::as_str)
             .map(str::to_string);
-        // The `offset`/`limit` the read was made with, when it named either — recorded on the view so
-        // [agent persistence](crate::persistence) can re-open a paged read over the same
-        // lines rather than from the top of the file.
-        let region = FileRegion::new(
-            call.arguments.get("offset").and_then(Value::as_u64),
-            call.arguments.get("limit").and_then(Value::as_u64),
-        );
+        // The line window the read actually **returned**, when it was not the whole file — recorded on
+        // the view so [agent persistence](crate::persistence) can re-open a paged read over the same
+        // lines rather than from the top of the file. Taken from what the tool reports rather than from
+        // the call's `offset`/`limit`, because the two disagree whenever the run's
+        // [read policy](ReadPolicy) ignores or reduces what was asked for.
+        let region = match &outcome.data {
+            Some(ToolData::FileText(text)) => FileRegion::covered(
+                text.first_line.into(),
+                text.last_line.into(),
+                text.total_lines.into(),
+            ),
+            _ => None,
+        };
         context.push_file_view(path, region, &call.id, outcome.output, outcome.images);
     } else {
         context.push_tool_result_with_images(source, &call.id, outcome.output, outcome.images);

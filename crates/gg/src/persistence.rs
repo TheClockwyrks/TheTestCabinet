@@ -218,15 +218,14 @@ pub async fn restore_file_views(
         if already_open.contains(&view.path) {
             continue;
         }
-        let mut arguments = json!({ "path": view.path });
-        if let Some(region) = view.region {
-            if let Some(offset) = region.offset {
-                arguments["offset"] = json!(offset);
-            }
-            if let Some(limit) = region.limit {
-                arguments["limit"] = json!(limit);
-            }
-        }
+        let arguments = match view.region {
+            Some(region) => json!({
+                "path": view.path,
+                "offset": region.offset,
+                "limit": region.limit,
+            }),
+            None => json!({ "path": view.path }),
+        };
         let outcome = reader.invoke(arguments.clone(), tool_ctx).await;
         if !outcome.ok {
             emitter.emit(GgTelemetryKind::Log {

@@ -158,26 +158,41 @@ impl ContextItem {
     }
 }
 
-/// The `offset`/`limit` window one **paged** `read_file` covered — the arguments the call was made
-/// with, kept so a view can be re-opened over the same lines rather than from the top of the file.
+/// The line window a **paged** `read_file` covered, as `offset`/`limit` — kept so a view can be
+/// re-opened over the same lines rather than from the top of the file.
 ///
-/// Both halves are optional because either can be: a call may name an `offset` and take the run's
-/// default window from there, or name a `limit` and read that many lines from the top. A read that
-/// names neither has no region at all (it is a whole-file view, or the first window of a capped one),
-/// which is why this appears behind an `Option` wherever it is carried.
+/// It is what the read **actually returned**, not what the call asked for. The two differ often
+/// enough to matter: an `offset`/`limit` on a call made under an
+/// [unlimited](crate::tools::ReadPolicy::Unlimited) policy is ignored by the tool and the whole file
+/// comes back, and a `limit` above a [hard cap](crate::tools::ReadPolicy::HardCap) is reduced to it.
+/// Recording the ask rather than the answer would give a view a window it does not have — two
+/// whole-file views recorded as two *different* windows, or a re-opened page that silently covers
+/// fewer lines than the one it replaces.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FileRegion {
-    /// The 1-based line the read started at, when the call named one.
-    pub offset: Option<u64>,
-    /// The maximum number of lines the read returned, when the call named one.
-    pub limit: Option<u64>,
+    /// The 1-based first line the read returned.
+    pub offset: u64,
+    /// How many lines it returned.
+    pub limit: u64,
 }
 
 impl FileRegion {
-    /// The region a `read_file` call's `offset`/`limit` arguments describe, or `None` when it named
-    /// neither — the whole-file (or default-window) read that needs no region recorded.
-    pub fn new(offset: Option<u64>, limit: Option<u64>) -> Option<Self> {
-        (offset.is_some() || limit.is_some()).then_some(Self { offset, limit })
+    /// The region a read covered, given the window it reported (`first_line`/`last_line`, both
+    /// 1-based and inclusive) and the file's `total_lines` — or `None` when it covered the **whole
+    /// file**, which needs no region because re-reading the path re-opens it exactly.
+    ///
+    /// An empty file (`last_line` of `0`) and a read that ran to the end of the file are both
+    /// whole-file views. A view that starts at line 1 but stops short is a genuine window: it is the
+    /// first page of a capped read, and re-opening it without the limit would pull in the rest of the
+    /// file.
+    pub fn covered(first_line: u64, last_line: u64, total_lines: u64) -> Option<Self> {
+        if first_line <= 1 && last_line >= total_lines {
+            return None;
+        }
+        Some(Self {
+            offset: first_line.max(1),
+            limit: last_line.saturating_sub(first_line.max(1)) + 1,
+        })
     }
 }
 

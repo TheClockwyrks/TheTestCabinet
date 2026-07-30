@@ -30,9 +30,17 @@ deadlocking against itself.
 ## The open files carry over
 
 When an instance **finishes its work successfully**, gg records the set of
-[file views](/gg/context-visibility/) it still had open: each path, plus the `offset`/`limit`
-region of a paged read. The next instance of the profile re-opens exactly those views as the
-first thing in its window, before its first turn.
+[file views](/gg/context-visibility/) it still had open: each path, plus the lines a paged read
+covered. The next instance of the profile re-opens exactly those views as the first thing in its
+window, before its first turn.
+
+A file the agent read in **several windows** is several views, and every one of them comes back
+over its own lines — the desk is a list of `(path, region)` pairs, not a set of paths, so an agent
+working a large file through a capped [read mode](/gg/filesystem/#read-modes) does not come back to
+only its first or last page. The region recorded is the window the read **returned**, not the one
+the call asked for: under an unlimited read mode `offset`/`limit` are not part of `read_file`'s
+schema and the whole file comes back, and a `limit` above a hard cap is reduced to it. Recording
+the ask instead would give a view a window it never had.
 
 What is recorded is the **reference** to each read, never the bytes it returned. The next
 instance re-reads each file from the workspace, so it opens on what the files say *now*:
@@ -77,7 +85,9 @@ capability composes with the rest of the context machinery rather than fighting 
 - A **locked** [autoloaded specification](/gg/autoload-specifications/) is not carried over
   either — autoload re-seeds and re-pins it for the next instance, and persisting it as an
   ordinary evictable read would give the same file two entries.
-- A path that is **already open** when the restore runs is not opened twice.
+- A path that is **already open** when the restore runs is not opened twice — and since the only
+  thing that can have opened one that early is [autoload](/gg/autoload-specifications/), which reads
+  whole files, that view is a superset of any window of it the desk held.
 - A file that can no longer be read — deleted, renamed, or moved since it was recorded — is
   skipped with a warning. The desk it was on is gone, which is a normal thing to come back to.
 

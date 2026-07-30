@@ -181,7 +181,10 @@ fn the_recorded_desk_is_the_windows_ephemeral_file_views() {
     window.push_file_view(Some("a.rs".to_string()), None, "c1", "whole a", vec![]);
     window.push_file_view(
         Some("b.rs".to_string()),
-        FileRegion::new(Some(200), Some(50)),
+        Some(FileRegion {
+            offset: 200,
+            limit: 50,
+        }),
         "c2",
         "a window of b",
         vec![],
@@ -206,10 +209,38 @@ fn the_recorded_desk_is_the_windows_ephemeral_file_views() {
             whole("a.rs"),
             OpenFileView {
                 path: "b.rs".to_string(),
-                region: FileRegion::new(Some(200), Some(50)),
+                region: Some(FileRegion {
+                    offset: 200,
+                    limit: 50
+                }),
             },
         ]
     );
+
+    // Two *different* windows of one file are two entries: the dedupe is on the whole view (path and
+    // region), not on the path, so an agent paging through a large file keeps every page it holds.
+    // Eviction, by contrast, is per path — so all of a file's windows go together.
+    let mut paged = context();
+    for (id, offset) in [("c1", 1), ("c2", 100), ("c3", 200)] {
+        paged.push_file_view(
+            Some("big.rs".to_string()),
+            Some(FileRegion { offset, limit: 100 }),
+            id,
+            format!("lines from {offset}"),
+            vec![],
+        );
+    }
+    assert_eq!(
+        paged
+            .open_file_views()
+            .iter()
+            .map(|view| view.region.map(|region| region.offset))
+            .collect::<Vec<_>>(),
+        vec![Some(1), Some(100), Some(200)],
+        "every page the agent holds is on the desk, in the order it opened them"
+    );
+    assert_eq!(paged.evict_file_views(Some("big.rs")).items, 3);
+    assert!(paged.open_file_views().is_empty());
 
     // A view the agent evicted is no longer open, so it is not carried over.
     window.evict_file_views(Some("a.rs"));
@@ -217,7 +248,10 @@ fn the_recorded_desk_is_the_windows_ephemeral_file_views() {
         window.open_file_views(),
         vec![OpenFileView {
             path: "b.rs".to_string(),
-            region: FileRegion::new(Some(200), Some(50)),
+            region: Some(FileRegion {
+                offset: 200,
+                limit: 50
+            }),
         }]
     );
 }
@@ -284,7 +318,10 @@ async fn restoring_a_paged_view_re_reads_the_same_region() {
 
     let view = OpenFileView {
         path: "big.rs".to_string(),
-        region: FileRegion::new(Some(200), Some(5)),
+        region: Some(FileRegion {
+            offset: 200,
+            limit: 5,
+        }),
     };
     let restored = restore_file_views(
         &mut window,
@@ -324,11 +361,17 @@ async fn two_windows_of_one_file_both_come_back() {
     let desk = vec![
         OpenFileView {
             path: "big.rs".to_string(),
-            region: FileRegion::new(Some(1), Some(3)),
+            region: Some(FileRegion {
+                offset: 1,
+                limit: 3,
+            }),
         },
         OpenFileView {
             path: "big.rs".to_string(),
-            region: FileRegion::new(Some(200), Some(3)),
+            region: Some(FileRegion {
+                offset: 200,
+                limit: 3,
+            }),
         },
     ];
     let restored =

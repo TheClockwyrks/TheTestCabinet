@@ -1104,3 +1104,42 @@ fn every_source_has_a_heading_except_the_assistants_own_turn() {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// File-view regions
+// ---------------------------------------------------------------------------
+
+/// A view's region is the window the read **returned**, and a read that covered the whole file has
+/// none — so re-opening it is a plain read of the path, and two whole-file views of one file are the
+/// same view rather than two windows.
+#[test]
+fn a_region_is_the_window_a_read_actually_covered() {
+    // The whole file, however it was asked for: no region.
+    assert_eq!(FileRegion::covered(1, 300, 300), None);
+    // An empty file: `last_line` of 0 precedes `first_line`, and it is still a whole-file view.
+    assert_eq!(FileRegion::covered(1, 0, 0), None);
+    // A first page that stops short is a genuine window — re-reading without the limit would pull in
+    // the rest of the file.
+    assert_eq!(
+        FileRegion::covered(1, 50, 300),
+        Some(FileRegion {
+            offset: 1,
+            limit: 50
+        })
+    );
+    // A window in the middle, and one that runs to the end of the file.
+    assert_eq!(
+        FileRegion::covered(200, 249, 300),
+        Some(FileRegion {
+            offset: 200,
+            limit: 50
+        })
+    );
+    assert_eq!(
+        FileRegion::covered(291, 300, 300),
+        Some(FileRegion {
+            offset: 291,
+            limit: 10
+        })
+    );
+}

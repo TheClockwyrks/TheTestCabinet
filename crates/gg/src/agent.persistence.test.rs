@@ -11,10 +11,15 @@
 //! (a program's reads are consumed inside the program), which is exactly what persistence carries.
 
 use super::*;
-use crate::context::OpenFileView;
+use crate::context::{FileRegion, OpenFileView};
 use test_cabinet_core::gg::CAPABILITY_AGENT_PERSISTENCE;
 
-/// The profile the tests below run as: a persistent agent with the filesystem tools.
+/// The line cap [`paging_profile`] reads under — small enough that the 300-line fixture below is read
+/// in pages rather than whole.
+const PAGING_LINE_CAP: usize = 50;
+
+/// The profile the tests below run as: a persistent agent that reads whole files (gg's default read
+/// mode).
 fn persistent_profile() -> GgAgentConfig {
     GgAgentConfig {
         name: "Owner".to_string(),
@@ -26,8 +31,36 @@ fn persistent_profile() -> GgAgentConfig {
     }
 }
 
+/// [`persistent_profile`] under a **capped** read mode, so its `read_file` calls really page — the only
+/// way a windowed file view exists at all. The cap goes on the profile's own capability rather than
+/// being handed to `drive`, because the dispatching tool is built from the profile: a policy passed
+/// only to the loop would describe a cap in the prompt that the reads themselves did not honor.
+fn paging_profile() -> GgAgentConfig {
+    let mut profile = persistent_profile();
+    profile.capabilities[0] = GgCapabilityConfig {
+        implementation: Some("default-cap".to_string()),
+        params: json!({ "lineCap": PAGING_LINE_CAP }),
+        ..GgCapabilityConfig::enabled(CAPABILITY_READ_FILE)
+    };
+    // Asserted rather than assumed: the mode id above is the wire value an operator writes, so a
+    // renamed mode would otherwise silently leave this profile reading whole files and quietly stop
+    // testing paging at all.
+    assert!(
+        matches!(
+            read_policy(&profile),
+            ReadPolicy::DefaultCap(PAGING_LINE_CAP)
+        ),
+        "the paging profile must resolve to a capped read policy, not {:?}",
+        read_policy(&profile)
+    );
+    profile
+}
+
 /// Drive one instance of `profile` against `script` in `dir`, sharing `store` with every other
 /// instance — the run-global record two instances of one profile meet through.
+///
+/// The read policy is resolved from the profile, exactly as `run_agent` resolves it, so the cap the
+/// loop describes and the cap the dispatched reads honor are always the same one.
 async fn drive_instance(
     dir: &TempDir,
     profile: &GgAgentConfig,
@@ -60,7 +93,7 @@ async fn drive_instance(
             BoardRuntime::disabled(),
             PlanningRuntime::disabled(),
             FsmRuntime::disabled(),
-            ReadPolicy::default(),
+            read_policy(profile),
             OffloadPolicy::default(),
             false,
             no_code(),
@@ -78,12 +111,18 @@ async fn drive_instance(
 
 /// A turn that reads `path`.
 fn read_call(id: &str, path: &str) -> ModelResponse {
+    read_with(id, json!({ "path": path }))
+}
+
+/// A turn that calls `read_file` with exactly `arguments` — how a test drives a **paged** read, so the
+/// region under test really comes off the model's own call.
+fn read_with(id: &str, arguments: serde_json::Value) -> ModelResponse {
     ModelResponse {
         text: Some("looking at the file".to_string()),
         tool_calls: vec![ToolCall {
             id: id.to_string(),
             name: READ_FILE_TOOL.to_string(),
-            arguments: json!({ "path": path }),
+            arguments,
         }],
         finish_reason: FinishReason::ToolCalls,
         usage: TokenCounts::default(),
@@ -248,5 +287,117 @@ async fn a_non_persistent_profile_carries_nothing() {
             GgTelemetryKind::Log { message, .. } if message.contains("agent persistence")
         )),
         "and is told nothing about a capability it does not have"
+    );
+}
+
+/// An agent paging through one large file holds **several windows of it at once**, and every one of
+/// them is carried over: the desk is a list of `(path, region)` views, not a set of paths.
+///
+/// The regions come off what the read **returned**, which is the seam a direct push cannot exercise —
+/// and the reason this drives a capped read policy. Under the default unlimited policy an
+/// `offset`/`limit` is ignored by the tool and the whole file comes back, which the case below asserts.
+#[tokio::test]
+async fn every_page_of_a_paged_file_is_carried_over() {
+    let dir = TempDir::new().unwrap();
+    let body: String = (1..=300).map(|n| format!("line {n}\n")).collect();
+    std::fs::write(dir.path().join("big.rs"), &body).unwrap();
+    let profile = paging_profile();
+    let store = AgentPersistence::new();
+
+    // Two windows of the same file, then finish holding both.
+    let (first, _events, _requests) = drive_instance(
+        &dir,
+        &profile,
+        Arc::clone(&store),
+        vec![
+            read_with("c1", json!({ "path": "big.rs", "offset": 10, "limit": 5 })),
+            read_with("c2", json!({ "path": "big.rs", "offset": 200, "limit": 5 })),
+            finish_call("c3", "read both ends"),
+        ],
+    )
+    .await;
+    assert_eq!(first.status, "completed");
+    let both_windows = vec![
+        OpenFileView {
+            path: "big.rs".to_string(),
+            region: Some(FileRegion {
+                offset: 10,
+                limit: 5,
+            }),
+        },
+        OpenFileView {
+            path: "big.rs".to_string(),
+            region: Some(FileRegion {
+                offset: 200,
+                limit: 5,
+            }),
+        },
+    ];
+    assert_eq!(
+        store.views("Owner"),
+        both_windows,
+        "both windows are recorded, in the order they were opened"
+    );
+
+    // The next instance opens on both of them, each over its own lines rather than from the top.
+    let (second, _events, requests) = drive_instance(
+        &dir,
+        &profile,
+        Arc::clone(&store),
+        vec![finish_call("c4", "done")],
+    )
+    .await;
+    assert_eq!(second.status, "completed");
+    let opening = requests.first().expect("one model call was made");
+    let pages: Vec<String> = opening
+        .iter()
+        .filter(|message| message.tool_call_id.is_some())
+        .map(|message| message.content.clone().unwrap_or_default())
+        .collect();
+    assert_eq!(pages.len(), 2, "both pages are re-opened, not just one");
+    assert!(
+        pages[0].contains("line 10") && !pages[0].contains("line 200"),
+        "{pages:?}"
+    );
+    assert!(
+        pages[1].contains("line 200") && !pages[1].contains("line 10"),
+        "{pages:?}"
+    );
+    // And what the second instance records is those same two windows — re-read, re-recorded, byte for
+    // byte the same desk — so the pages do not decay over a chain of instances.
+    assert_eq!(store.views("Owner"), both_windows);
+}
+
+/// The desk records the window a read **returned**, not the one it asked for. Under an unlimited read
+/// policy `offset`/`limit` are not part of `read_file`'s schema at all and the whole file comes back —
+/// so two such calls are two whole-file views, which collapse to one desk entry rather than being
+/// recorded as two distinct windows the agent never actually had.
+#[tokio::test]
+async fn an_ignored_offset_records_no_region() {
+    let dir = TempDir::new().unwrap();
+    let body: String = (1..=300).map(|n| format!("line {n}\n")).collect();
+    std::fs::write(dir.path().join("big.rs"), &body).unwrap();
+    let profile = persistent_profile();
+    let store = AgentPersistence::new();
+
+    let (end, _events, _requests) = drive_instance(
+        &dir,
+        &profile,
+        Arc::clone(&store),
+        vec![
+            read_with("c1", json!({ "path": "big.rs", "offset": 10, "limit": 5 })),
+            read_with("c2", json!({ "path": "big.rs", "offset": 200, "limit": 5 })),
+            finish_call("c3", "read it twice"),
+        ],
+    )
+    .await;
+    assert_eq!(end.status, "completed");
+    assert_eq!(
+        store.views("Owner"),
+        vec![OpenFileView {
+            path: "big.rs".to_string(),
+            region: None,
+        }],
+        "both reads returned the whole file, so the desk holds one whole-file view"
     );
 }
