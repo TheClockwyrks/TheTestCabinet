@@ -97,7 +97,7 @@ characters.
 {{#if readFile.offered}}
 {{#if readFile.images}}Reading images is supported.{{else}}Reading images is not supported.{{/if}}
 
-{{#if readFile.capped}} Reading a file returns at most {{readFile.lineCap}} lines per call.{{/if}}
+{{#if readFile.capped}}Reading a file returns at most {{readFile.lineCap}} lines per call.{{/if}}
 {{/if}}
 
 {{#if tasks}}
@@ -167,7 +167,7 @@ completed and merged into the main worktree.
 Every issue must name one or more `reviewers`.
 {{else}}
 An issue may name one or more `reviewers`.
-{{/if}} You may name any of the following agents as a reviewer:
+{{/if}}You may name any of the following agents as a reviewer:
 
 {{#each board.reviewerAgents}}
 - `{{name}}`{{#if description}}: {{description}}{{/if}}
