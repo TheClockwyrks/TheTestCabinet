@@ -61,8 +61,6 @@ async fn drive_compaction(
                 replay: None,
             },
             &[],
-            PlanningRuntime::disabled(),
-            FsmRuntime::disabled(),
             &GgAgentConfig::root(),
             None,
             None,

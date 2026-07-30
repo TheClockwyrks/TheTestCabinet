@@ -3,11 +3,9 @@ import type {
   GgAgentStatus,
   GgCapabilitySet,
 } from "@test-cabinet/run-record/gg";
-import { FsmStateStrip } from "./FsmStateStrip";
 import type {
   AgentTreeNode,
   DerivedGgState,
-  FsmProgress,
   SlotUsage,
   UsageTally,
 } from "./useGgRunState";
@@ -71,7 +69,6 @@ interface GgDashboardProps {
    * spawner.
    */
   agentForest: AgentTreeNode[];
-  fsm: FsmProgress | null;
   /** The run's recorded configuration — its independent variable. */
   capabilitySet: GgCapabilitySet | null;
   /**
@@ -133,7 +130,6 @@ export function GgDashboard({
   slotUsage,
   perAgent,
   agentForest,
-  fsm,
   capabilitySet,
   runtime,
   timeoutSeconds,
@@ -221,11 +217,6 @@ export function GgDashboard({
 
         <AgentsCard agentForest={agentForest} perAgent={perAgent} />
       </div>
-
-      {/* The enforced FSM process, when a machine drives the run: the current state
-          shown on the ordered machine path. Renders nothing when no FSM is
-          configured. */}
-      <FsmStateStrip fsm={fsm} />
     </div>
   );
 }

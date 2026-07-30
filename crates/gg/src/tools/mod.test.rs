@@ -557,74 +557,6 @@ fn an_assigned_issue_earns_no_board_tools_without_the_board_capability() {
     );
 }
 
-/// The planning tools are gated purely on the capability (they are stateless, like
-/// shell/filesystem — they need no bound store).
-#[test]
-fn registry_gates_planning_tools_on_capability() {
-    use test_cabinet_core::gg::CAPABILITY_PLANNING;
-
-    let names = ["enter_plan_mode", "submit_plan"];
-
-    // Enabled => both planning tools offered (no store needed).
-    let on = set_with(vec![GgCapabilityConfig::enabled(CAPABILITY_PLANNING)]);
-    let registry = ToolRegistry::from_run(&on, &CapabilityModules::inert());
-    for name in names {
-        assert!(offers(&registry, name), "expected `{name}` offered");
-    }
-
-    // Disabled => neither offered (the ablation off arm).
-    let off = set_with(vec![GgCapabilityConfig::disabled(CAPABILITY_PLANNING)]);
-    let registry = ToolRegistry::from_run(&off, &CapabilityModules::inert());
-    for name in names {
-        assert!(
-            !offers(&registry, name),
-            "expected `{name}` withheld when off"
-        );
-    }
-
-    // Absent => neither offered.
-    let none = ToolRegistry::from_run(&set_with(Vec::new()), &CapabilityModules::inert());
-    for name in names {
-        assert!(
-            !offers(&none, name),
-            "expected `{name}` withheld when the capability is absent"
-        );
-    }
-}
-
-/// `is_read_only_tool` admits exactly the four non-mutating tools, and `plan_mode_offers`
-/// restricts the offered set to those (plus `submit_plan`) in plan mode while withholding only
-/// `submit_plan` outside it.
-#[test]
-fn plan_mode_offers_restricts_to_read_only_tools() {
-    // The read-only allowlist.
-    for name in ["read_file", "list_dir", "read_skill", "search_archive"] {
-        assert!(is_read_only_tool(name), "`{name}` is read-only");
-    }
-    for name in [
-        "write_file",
-        "edit_file",
-        "shell",
-        "add_task",
-        "create_issue",
-    ] {
-        assert!(!is_read_only_tool(name), "`{name}` mutates");
-    }
-
-    // In plan mode: read-only tools + submit_plan are offered; everything mutating (and a second
-    // enter_plan_mode) is withheld.
-    assert!(plan_mode_offers("read_file", true));
-    assert!(plan_mode_offers(SUBMIT_PLAN_TOOL, true));
-    assert!(!plan_mode_offers("write_file", true));
-    assert!(!plan_mode_offers("shell", true));
-    assert!(!plan_mode_offers(ENTER_PLAN_MODE_TOOL, true));
-
-    // Outside plan mode: everything is offered except submit_plan (no plan pass in progress).
-    assert!(plan_mode_offers("write_file", false));
-    assert!(plan_mode_offers(ENTER_PLAN_MODE_TOOL, false));
-    assert!(!plan_mode_offers(SUBMIT_PLAN_TOOL, false));
-}
-
 /// A per-tool override withholds exactly the named tool while its capability stays on: the rest of
 /// the capability's tools remain offered. This is the finest-grained toolset-ablation lever — one
 /// notch below toggling a whole capability (the `apply-patch` vs `write-file` study).
@@ -724,10 +656,10 @@ fn all_tool_names_matches_a_maximal_registry() {
     use crate::memories::{MemoryCaps, MemoryStrategy};
     use std::collections::BTreeSet;
     use test_cabinet_core::gg::{
-        CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_COMPACTION, CAPABILITY_FSM,
-        CAPABILITY_MEMORIES, CAPABILITY_PLANNING, CAPABILITY_PROJECT_MANAGEMENT,
-        CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WORKFLOWS,
-        COMPACTION_STRATEGY_SELF_COMPACTION, GgSubagentRef, ROOT_AGENT,
+        CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_COMPACTION, CAPABILITY_MEMORIES,
+        CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS,
+        CAPABILITY_TASKS, CAPABILITY_WORKFLOWS, COMPACTION_STRATEGY_SELF_COMPACTION, GgSubagentRef,
+        ROOT_AGENT,
     };
 
     let dir = TempDir::new().unwrap();
@@ -746,8 +678,6 @@ fn all_tool_names_matches_a_maximal_registry() {
         GgCapabilityConfig::enabled(CAPABILITY_TASKS),
         GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT),
         GgCapabilityConfig::enabled(CAPABILITY_AGENT_MANAGED_CONTEXT),
-        GgCapabilityConfig::enabled(CAPABILITY_PLANNING),
-        GgCapabilityConfig::enabled(CAPABILITY_FSM),
         GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS),
         GgCapabilityConfig::enabled(CAPABILITY_WORKFLOWS),
         GgCapabilityConfig::enabled(CAPABILITY_SPECULATIVE),
@@ -898,28 +828,29 @@ fn attaching_data_leaves_the_model_facing_text_alone() {
     assert_eq!(with_data.data, Some(ToolData::BytesWritten(5)));
 }
 
-/// The turn-level partition names exactly the three transitions, and every one of them is a real
-/// gg tool — so a consumer that subtracts this list from [`ALL_TOOL_NAMES`] is left with tools
-/// that all exist.
+/// The three **turn-level transitions** — `enter_plan_mode`, `submit_plan`, `advance_state` — are
+/// gone from the vocabulary along with the capabilities that offered them, and so is the partition
+/// that named them.
+///
+/// Asserted rather than merely deleted because a name removed from [`ALL_TOOL_NAMES`] is exactly
+/// what makes a stored `disabledTools` entry earn the "unknown disabled tool" launch warning — the
+/// loud outcome the removal wanted — and because a later stage adding a `transition_state` tool
+/// must not quietly resurrect the old names alongside it.
 #[test]
-fn turn_level_tools_are_the_three_transitions() {
-    assert_eq!(
-        TURN_LEVEL_TOOLS,
-        ["enter_plan_mode", "submit_plan", "advance_state"]
-    );
-    for name in TURN_LEVEL_TOOLS {
+fn the_removed_turn_level_transitions_are_not_tool_names() {
+    for name in ["enter_plan_mode", "submit_plan", "advance_state"] {
         assert!(
-            ALL_TOOL_NAMES.contains(name),
-            "`{name}` must be a real tool"
+            !ALL_TOOL_NAMES.contains(&name),
+            "`{name}` was removed with the planning capability and the built-in machines"
         );
-    }
-    // The partition is exactly the planning and FSM tools — the two capabilities whose tools
-    // change the loop's mode rather than producing a value.
-    for name in ALL_TOOL_NAMES {
-        assert_eq!(
-            TURN_LEVEL_TOOLS.contains(name),
-            is_planning_tool(name) || is_fsm_tool(name),
-            "`{name}` is misclassified"
+        assert!(
+            unknown_disabled_tools(&{
+                let mut set = set_with(Vec::new());
+                set.disabled_tools = vec![name.to_string()];
+                set
+            })
+            .contains(&name.to_string()),
+            "a stored override naming `{name}` is now flagged as unknown"
         );
     }
 }

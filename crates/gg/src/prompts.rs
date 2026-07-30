@@ -2,11 +2,10 @@
 //! literals.
 //!
 //! Everything gg *says* to a model — the system prompt, the pinned context blocks that render
-//! the task list, the epic/issue board and the memories, the planning capability's plan-mode
-//! guidance, the [briefs](render_review_brief) it dispatches agents with, and the
-//! [compaction](render_compaction_instruction), [completion](render_completion_missing),
-//! [context-pressure](render_context_pressure) and [FSM](render_fsm_guidance) prose the loop
-//! injects between turns — lives in `crates/gg/templates/*.hbs` and is rendered here. The templates
+//! the task list, the epic/issue board and the memories, the [briefs](render_review_brief) it
+//! dispatches agents with, and the [compaction](render_compaction_instruction),
+//! [completion](render_completion_missing) and [context-pressure](render_context_pressure) prose
+//! the loop injects between turns — lives in `crates/gg/templates/*.hbs` and is rendered here. The templates
 //! are [embedded](include_str!) at compile time, so gg keeps its "no external resources" property:
 //! the binary carries its prompts.
 //!
@@ -23,7 +22,7 @@
 //! across as many modules, each carrying a paragraph of prose in string-continuation syntax.
 //! Templating collapses that into one readable file per artifact: the conditional sections are
 //! `{{#if}}` blocks over the [rendering context](SystemContext), and a run's configuration
-//! (memory caps, the task ceiling, the `read_file` line cap, the FSM's name) is interpolated
+//! (memory caps, the task ceiling, the `read_file` line cap) is interpolated
 //! inline instead of being restated in prose.
 //!
 //! # The contexts are the contract
@@ -113,12 +112,6 @@ const MEMORIES_TEMPLATE: &str = include_str!("../templates/memories.hbs");
 /// The pinned [memory index](crate::memories::MemoryStrategy::Markdown) block.
 const MEMORY_INDEX_TEMPLATE: &str = include_str!("../templates/memory-index.hbs");
 
-/// The [default planner](crate::planning::DefaultPlanner)'s plan-mode guidance.
-const PLAN_MODE_TEMPLATE: &str = include_str!("../templates/plan-mode.hbs");
-
-/// The [default planner](crate::planning::DefaultPlanner)'s framing of an accepted plan.
-const PLAN_FRAMING_TEMPLATE: &str = include_str!("../templates/plan-framing.hbs");
-
 /// The turn feedback for a [code program](crate::sandbox) that **ran** — whether or not it threw.
 const CODE_RESULT_TEMPLATE: &str = include_str!("../templates/code-result.hbs");
 
@@ -207,19 +200,6 @@ const COMPLETION_VALIDATION_FAILURE_TEMPLATE: &str =
 /// it, and how the agent can reclaim space itself.
 const CONTEXT_PRESSURE_TEMPLATE: &str = include_str!("../templates/context-pressure.hbs");
 
-/// The guidance for each state of the two built-in [FSM](crate::fsm) machines — the block injected
-/// into the context while that state drives the run.
-const FSM_TDD_WRITE_TESTS_TEMPLATE: &str = include_str!("../templates/fsm-tdd-write-tests.hbs");
-/// See [`FSM_TDD_WRITE_TESTS_TEMPLATE`].
-const FSM_TDD_IMPLEMENT_TEMPLATE: &str = include_str!("../templates/fsm-tdd-implement.hbs");
-/// See [`FSM_TDD_WRITE_TESTS_TEMPLATE`].
-const FSM_TDD_VERIFY_TEMPLATE: &str = include_str!("../templates/fsm-tdd-verify.hbs");
-/// See [`FSM_TDD_WRITE_TESTS_TEMPLATE`].
-const FSM_PLAN_FIRST_PLAN_TEMPLATE: &str = include_str!("../templates/fsm-plan-first-plan.hbs");
-/// See [`FSM_TDD_WRITE_TESTS_TEMPLATE`].
-const FSM_PLAN_FIRST_IMPLEMENT_TEMPLATE: &str =
-    include_str!("../templates/fsm-plan-first-implement.hbs");
-
 /// The template names registered with the [engine], in the order they are registered. Each name
 /// is what [`render`] looks up. The tests iterate this list to assert every template parses.
 const TEMPLATES: &[(&str, &str)] = &[
@@ -229,8 +209,6 @@ const TEMPLATES: &[(&str, &str)] = &[
     ("board", BOARD_TEMPLATE),
     ("memories", MEMORIES_TEMPLATE),
     ("memory-index", MEMORY_INDEX_TEMPLATE),
-    ("plan-mode", PLAN_MODE_TEMPLATE),
-    ("plan-framing", PLAN_FRAMING_TEMPLATE),
     ("code-result", CODE_RESULT_TEMPLATE),
     ("code-transpile-error", CODE_TRANSPILE_ERROR_TEMPLATE),
     ("code-sandbox-error", CODE_SANDBOX_ERROR_TEMPLATE),
@@ -265,14 +243,6 @@ const TEMPLATES: &[(&str, &str)] = &[
         COMPLETION_VALIDATION_FAILURE_TEMPLATE,
     ),
     ("context-pressure", CONTEXT_PRESSURE_TEMPLATE),
-    ("fsm-tdd-write-tests", FSM_TDD_WRITE_TESTS_TEMPLATE),
-    ("fsm-tdd-implement", FSM_TDD_IMPLEMENT_TEMPLATE),
-    ("fsm-tdd-verify", FSM_TDD_VERIFY_TEMPLATE),
-    ("fsm-plan-first-plan", FSM_PLAN_FIRST_PLAN_TEMPLATE),
-    (
-        "fsm-plan-first-implement",
-        FSM_PLAN_FIRST_IMPLEMENT_TEMPLATE,
-    ),
 ];
 
 /// The process-wide Handlebars engine, built once with every template registered.
@@ -435,10 +405,6 @@ pub struct SystemContext {
     /// normally configured without the authoring capability, so this is usually the *only* board
     /// section such an agent is shown.
     pub assigned_issue: Option<AssignedIssueView>,
-    /// Whether the [planning](crate::planning) capability is on.
-    pub planning: bool,
-    /// The [FSM](crate::fsm) driving the run, or `None` when no machine drives it.
-    pub fsm: Option<FsmView>,
     /// Whether speculative execution (`speculate`) is available this run.
     pub speculative: bool,
     /// Whether this agent's opening context was pre-seeded with the test case's specifications and
@@ -680,14 +646,6 @@ pub struct BoardView {
 pub struct AssignedIssueView {
     /// The id of the issue this agent is implementing.
     pub id: String,
-}
-
-/// The process driving the run, named in the prompt.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FsmView {
-    /// The active machine's name (for example `tdd`).
-    pub machine: String,
 }
 
 /// The built-in template name for a run's execution mode: the code arm under
@@ -1138,36 +1096,6 @@ pub fn render_memory_index(context: &MemoryIndexContext) -> String {
     render("memory-index", context)
 }
 
-// ---------------------------------------------------------------------------
-// Planning
-// ---------------------------------------------------------------------------
-
-/// Render the [default planner](crate::planning::DefaultPlanner)'s plan-mode guidance — the
-/// block injected into the context when an agent enters read-only plan mode. It takes no
-/// variables, but renders through the same engine so all of gg's prose lives in one place.
-pub fn render_plan_mode() -> String {
-    render("plan-mode", &PlanContext { plan: None })
-}
-
-/// Render the [default planner](crate::planning::DefaultPlanner)'s framing of an accepted
-/// `plan`: the heading that orients the agent, followed by the plan verbatim.
-pub fn render_plan_framing(plan: &str) -> String {
-    render(
-        "plan-framing",
-        &PlanContext {
-            plan: Some(plan.trim().to_string()),
-        },
-    )
-}
-
-/// The variables the two planning templates may reference.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct PlanContext {
-    /// The submitted plan, verbatim. `None` for the plan-mode guidance, which has no plan yet.
-    plan: Option<String>,
-}
-
 /// The empty rendering context, for the templates that interpolate nothing and exist purely so
 /// their prose is a file an operator can edit rather than a Rust literal.
 #[derive(Debug, Serialize)]
@@ -1544,42 +1472,6 @@ pub struct UsageFileView {
 /// Render the per-turn [context-usage](crate::context) signal.
 pub fn render_context_pressure(context: &ContextPressureContext) -> String {
     render("context-pressure", context)
-}
-
-// ---------------------------------------------------------------------------
-// FSM guidance
-// ---------------------------------------------------------------------------
-
-/// One state of a built-in [FSM](crate::fsm) machine, naming the template that carries its
-/// guidance.
-///
-/// The guidance is prose the model reads for the whole time that state drives the run, so it is
-/// templated like every other prompt — but it takes no variables, since a built-in machine's states
-/// are fixed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FsmGuidance {
-    /// The TDD machine's `write_tests` state.
-    TddWriteTests,
-    /// The TDD machine's `implement` state.
-    TddImplement,
-    /// The TDD machine's `verify` state.
-    TddVerify,
-    /// The plan-first machine's read-only `plan` state.
-    PlanFirstPlan,
-    /// The plan-first machine's `implement` state.
-    PlanFirstImplement,
-}
-
-/// Render one built-in [FSM](crate::fsm) state's guidance.
-pub fn render_fsm_guidance(state: FsmGuidance) -> String {
-    let name = match state {
-        FsmGuidance::TddWriteTests => "fsm-tdd-write-tests",
-        FsmGuidance::TddImplement => "fsm-tdd-implement",
-        FsmGuidance::TddVerify => "fsm-tdd-verify",
-        FsmGuidance::PlanFirstPlan => "fsm-plan-first-plan",
-        FsmGuidance::PlanFirstImplement => "fsm-plan-first-implement",
-    };
-    render(name, &NoContext {})
 }
 
 #[cfg(test)]

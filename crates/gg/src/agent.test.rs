@@ -14,33 +14,29 @@ use crate::board::BoardRuntime;
 use crate::client::MockClient;
 use crate::client::{
     ClientFactory, DEFAULT_MOCK_MEMORY, DEFAULT_MOCK_SKILL, DEFAULT_MOCK_TASK_MOVEMENT,
-    DEFAULT_MOCK_TASK_SCAFFOLD, MOCK_CODE_LEVEL_FILES, MOCK_FSM_IMPL_FILE, MOCK_FSM_TEST_FILE,
-    MOCK_ISSUE_REVIEW_PREFIX, MOCK_REVIEW_FIX_FILE, MOCK_REVIEW_FIX_SENTINEL,
-    MOCK_REVIEW_WORKER_FILE, MOCK_SPECULATE_ATTEMPT_PREFIX, MOCK_SUBAGENT_FILE,
-    MOCK_SUBAGENT_RETURN,
+    DEFAULT_MOCK_TASK_SCAFFOLD, MOCK_CODE_LEVEL_FILES, MOCK_ISSUE_REVIEW_PREFIX,
+    MOCK_REVIEW_FIX_FILE, MOCK_REVIEW_FIX_SENTINEL, MOCK_REVIEW_WORKER_FILE,
+    MOCK_SPECULATE_ATTEMPT_PREFIX, MOCK_SUBAGENT_FILE, MOCK_SUBAGENT_RETURN,
 };
 use crate::compaction::{CompactionSetup, CompactionStrategy};
 use crate::config::GgInvocation;
 use crate::context::HeuristicTokenEstimator;
-use crate::fsm::FsmRuntime;
 use crate::memories::MemoriesRuntime;
 use crate::model::{
     FinishReason, Message, ModelClient, ModelError, ModelResponse, ToolCall, ToolDefinition,
 };
 use crate::modules::{HistorySetup, ModuleHandle, ModuleSet};
-use crate::planning::PlanningRuntime;
 use crate::skills::{SkillLibrary, SkillsRuntime};
 use crate::tasks::TasksRuntime;
 use crate::telemetry::{CollectingSink, Emitter};
 use crate::tools::{ToolContext, ToolRegistry, VisionContext};
 use test_cabinet_core::gg::{
     ALL_SUBAGENT_SCOPES, CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_COMPACTION,
-    CAPABILITY_CONTEXT_WINDOW_OVERRIDE, CAPABILITY_FSM, CAPABILITY_PLANNING,
-    CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_READ_FILE, CAPABILITY_REPLAY,
-    CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE,
-    CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WORKFLOWS, GG_REPLAY_ARTIFACT_PATH,
-    GgAgentConfig, GgAgentStatus, GgCapabilityConfig, GgCapabilitySet, GgContextAction,
-    GgContextSource, GgIssueReviewPhase, GgIssueStatus, GgPlanPhase, GgPromptCacheTtl,
+    CAPABILITY_CONTEXT_WINDOW_OVERRIDE, CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_READ_FILE,
+    CAPABILITY_REPLAY, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL, CAPABILITY_SKILLS,
+    CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WORKFLOWS,
+    GG_REPLAY_ARTIFACT_PATH, GgAgentConfig, GgAgentStatus, GgCapabilityConfig, GgCapabilitySet,
+    GgContextAction, GgContextSource, GgIssueReviewPhase, GgIssueStatus, GgPromptCacheTtl,
     GgReplayEntryKind, GgReplayRecord, GgSessionSummary, GgSlotBinding, GgSubagentRef,
     GgSubagentScope, GgTelemetryEvent, GgTelemetryKind, GgWorkflowPhase, ROOT_AGENT,
 };
@@ -253,8 +249,6 @@ async fn drive_root(
                 replay: None,
             },
             &[],
-            PlanningRuntime::disabled(),
-            FsmRuntime::disabled(),
             &GgAgentConfig::root(),
             None,
             None,
@@ -972,8 +966,6 @@ async fn drive_exhausts_the_turn_ceiling_when_the_model_never_stops() {
                 replay: None,
             },
             &[],
-            PlanningRuntime::disabled(),
-            FsmRuntime::disabled(),
             &GgAgentConfig::root(),
             None,
             None,
@@ -1031,8 +1023,6 @@ async fn drive_times_out_at_a_passed_deadline() {
                 replay: None,
             },
             &[],
-            PlanningRuntime::disabled(),
-            FsmRuntime::disabled(),
             &GgAgentConfig::root(),
             None,
             None,
@@ -1091,8 +1081,6 @@ async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
                 replay: None,
             },
             &[],
-            PlanningRuntime::disabled(),
-            FsmRuntime::disabled(),
             &GgAgentConfig::root(),
             None,
             None,
@@ -1192,8 +1180,6 @@ async fn drive_completion(
                 replay: None,
             },
             &[],
-            PlanningRuntime::disabled(),
-            FsmRuntime::disabled(),
             &GgAgentConfig::root(),
             None,
             None,
@@ -1507,8 +1493,6 @@ async fn drive_ends_model_error_on_exhausted_retries() {
                 replay: None,
             },
             &[],
-            PlanningRuntime::disabled(),
-            FsmRuntime::disabled(),
             &GgAgentConfig::root(),
             None,
             None,
@@ -1564,8 +1548,6 @@ async fn drive_ends_auth_error_when_the_credential_is_refused() {
                 replay: None,
             },
             &[],
-            PlanningRuntime::disabled(),
-            FsmRuntime::disabled(),
             &GgAgentConfig::root(),
             None,
             None,
@@ -1902,14 +1884,12 @@ fn the_assigned_issue_section_is_rendered_for_a_dispatched_agent() {
 }
 
 /// Every capability runtime, disabled — owned by the caller so a prompt test can borrow
-/// [`PromptInputs`] from it without binding six locals of its own.
+/// [`PromptInputs`] from it without binding four locals of its own.
 struct DisabledRuntimes {
     skills: Option<SkillsRuntime>,
     memories: Option<MemoriesRuntime>,
     tasks: Option<TasksRuntime>,
     board: Option<BoardRuntime>,
-    planning: Option<PlanningRuntime>,
-    fsm: Option<FsmRuntime>,
     /// The vision context the prompt reads to decide whether to promise images. Owned here
     /// for the same reason as the runtimes: `PromptInputs` borrows it.
     vision: VisionContext,
@@ -1930,8 +1910,6 @@ impl DisabledRuntimes {
             memories: Some(MemoriesRuntime::disabled()),
             tasks: Some(TasksRuntime::disabled()),
             board: Some(BoardRuntime::disabled()),
-            planning: Some(PlanningRuntime::disabled()),
-            fsm: Some(FsmRuntime::disabled()),
             // Nothing declared: the optimistic default, under which the prompt promises
             // the model it can see images.
             vision: VisionContext::unknown(),
@@ -1962,8 +1940,6 @@ impl DisabledRuntimes {
             memories: self.memories.as_ref().expect("built"),
             tasks: self.tasks.as_ref().expect("built"),
             board: self.board.as_ref().expect("built"),
-            planning: self.planning.as_ref().expect("built"),
-            fsm: self.fsm.as_ref().expect("built"),
             read_policy: ReadPolicy::default(),
             shell_offload: &self.shell_offload,
             vision: &self.vision,
@@ -2462,8 +2438,6 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
                 replay: None,
             },
             &[],
-            PlanningRuntime::disabled(),
-            FsmRuntime::disabled(),
             &GgAgentConfig::root(),
             None,
             None,
@@ -2658,8 +2632,6 @@ async fn drive_enforces_memory_caps_end_to_end() {
                 replay: None,
             },
             &[],
-            PlanningRuntime::disabled(),
-            FsmRuntime::disabled(),
             &GgAgentConfig::root(),
             None,
             None,
@@ -2827,8 +2799,6 @@ async fn drive_pins_only_the_index_under_the_markdown_strategy() {
                 replay: None,
             },
             &[],
-            PlanningRuntime::disabled(),
-            FsmRuntime::disabled(),
             &GgAgentConfig::root(),
             None,
             None,
@@ -2916,8 +2886,6 @@ async fn the_memory_block_costs_nothing_until_the_boundary() {
                 replay: None,
             },
             &[],
-            PlanningRuntime::disabled(),
-            FsmRuntime::disabled(),
             &GgAgentConfig::root(),
             None,
             None,
@@ -3116,8 +3084,6 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
                 replay: None,
             },
             &[],
-            PlanningRuntime::disabled(),
-            FsmRuntime::disabled(),
             &GgAgentConfig::root(),
             None,
             None,
@@ -3246,8 +3212,6 @@ async fn drive_keeps_an_unowned_task_list_out_of_the_window() {
                 replay: None,
             },
             &[],
-            PlanningRuntime::disabled(),
-            FsmRuntime::disabled(),
             &GgAgentConfig::root(),
             None,
             None,
@@ -3552,8 +3516,6 @@ async fn drive_compacts_at_the_threshold_and_retains_pinned_state() {
                 replay: None,
             },
             &[],
-            PlanningRuntime::disabled(),
-            FsmRuntime::disabled(),
             &GgAgentConfig::root(),
             None,
             None,
@@ -3721,8 +3683,6 @@ async fn drive_never_compacts_when_capability_off() {
                 replay: None,
             },
             &[],
-            PlanningRuntime::disabled(),
-            FsmRuntime::disabled(),
             &GgAgentConfig::root(),
             None,
             None,
@@ -3813,8 +3773,6 @@ async fn board_band_driving(profile: &GgAgentConfig, board: BoardRuntime) -> u64
                 replay: None,
             },
             &[],
-            PlanningRuntime::disabled(),
-            FsmRuntime::disabled(),
             profile,
             None,
             None,
@@ -3998,8 +3956,6 @@ async fn drive_manages_context_end_to_end() {
                 replay: None,
             },
             &[],
-            PlanningRuntime::disabled(),
-            FsmRuntime::disabled(),
             &GgAgentConfig::root(),
             None,
             None,
@@ -4190,8 +4146,6 @@ async fn drive_without_amc_offers_no_context_management() {
                 replay: None,
             },
             &[],
-            PlanningRuntime::disabled(),
-            FsmRuntime::disabled(),
             &GgAgentConfig::root(),
             None,
             None,
@@ -4215,283 +4169,6 @@ async fn drive_without_amc_offers_no_context_management() {
         )),
         "the reclaim call falls through to an unknown-tool error when the capability is off"
     );
-}
-
-// ---------------------------------------------------------------------------
-// Planning: the read-only plan-then-implement cycle, and the off arm
-// ---------------------------------------------------------------------------
-
-/// `minimal`, plus the (opt-in) planning capability enabled.
-fn minimal_with_planning(model: &str) -> GgCapabilitySet {
-    let mut set = GgCapabilitySet::minimal(model);
-    set.agents[0]
-        .capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_PLANNING));
-    set
-}
-
-/// The tokens a breakdown attributes to `source`, or 0.
-fn source_band(
-    by_source: &[test_cabinet_core::gg::GgContextSourceUsage],
-    source: GgContextSource,
-) -> u64 {
-    by_source
-        .iter()
-        .find(|b| b.source == source)
-        .map(|b| b.tokens)
-        .unwrap_or(0)
-}
-
-/// The full planning cycle end to end: the model enters read-only plan mode, a mutating call is
-/// refused while planning, it submits a plan, gg clears the exploration and seeds the plan into a
-/// fresh context, and the model implements (writes the file) with its full toolset restored.
-#[tokio::test]
-async fn drive_plans_then_implements_from_a_fresh_context() {
-    let dir = TempDir::new().unwrap();
-    let ctx = ToolContext::new(dir.path());
-    let sink = CollectingSink::new();
-    let emitter = Emitter::with_sink(Some("run-plan".to_string()), Box::new(sink.clone()));
-
-    let set = minimal_with_planning("mock/echo");
-    let library = Arc::new(SkillLibrary::empty());
-    let registry = ToolRegistry::from_run(set.root(), &skills_modules(&library));
-
-    let client = MockClient::with_planning_script("mock/echo");
-    let agent = Agent::root(ROOT_AGENT);
-    let end = agent
-        .drive(
-            &client,
-            "build the game",
-            &registry,
-            &ctx,
-            &emitter,
-            &mut test_modules(test_context_setup(), no_code().enabled)
-                .with(ModuleHandle::Skills(SkillsRuntime::disabled()))
-                .with(ModuleHandle::Memories(MemoriesRuntime::disabled()))
-                .with(ModuleHandle::Tasks(TasksRuntime::disabled()))
-                .with(ModuleHandle::Board(BoardRuntime::disabled())),
-            DriveSetup {
-                limits: no_limits(20),
-                compaction: no_compaction(),
-                amc: no_amc(),
-                autoload: no_autoload(),
-                persistence: no_persistence(),
-                read_policy: ReadPolicy::default(),
-                shell_offload: OffloadPolicy::default(),
-                speculative: false,
-                code: no_code(),
-                completion: no_completion(),
-                ending_role: EndingRole::Standard,
-                replay: None,
-            },
-            &[],
-            PlanningRuntime::resolve(set.root()),
-            FsmRuntime::disabled(),
-            &GgAgentConfig::root(),
-            None,
-            None,
-        )
-        .await;
-    assert_eq!(end.status, "completed");
-
-    let events = sink.events();
-
-    // (a) The three planning transitions fired, in order: entered (no plan), submitted (plan),
-    //     implementing (same plan).
-    let phases: Vec<(GgPlanPhase, Option<String>)> = events
-        .iter()
-        .filter_map(|e| match &e.kind {
-            GgTelemetryKind::Planning { phase, plan } => Some((*phase, plan.clone())),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(phases.len(), 3, "entered, submitted, implementing");
-    assert_eq!(phases[0].0, GgPlanPhase::Entered);
-    assert!(phases[0].1.is_none(), "no plan text on entry");
-    assert_eq!(phases[1].0, GgPlanPhase::Submitted);
-    assert_eq!(phases[2].0, GgPlanPhase::Implementing);
-    let plan = phases[2]
-        .1
-        .clone()
-        .expect("the implementing phase carries the plan");
-    assert!(
-        plan.contains("index.html"),
-        "the submitted plan text survived"
-    );
-    assert_eq!(
-        phases[1].1.as_deref(),
-        Some(plan.as_str()),
-        "submitted and implementing carry the same plan"
-    );
-
-    // (b) enter_plan_mode succeeded; list_dir (read-only) was allowed while planning; the
-    //     mutating write to premature.txt was REFUSED in plan mode and never written.
-    assert!(
-        events.iter().any(|e| matches!(
-            &e.kind,
-            GgTelemetryKind::ToolResult { name, ok: true, .. } if name == "enter_plan_mode"
-        )),
-        "enter_plan_mode succeeded"
-    );
-    assert!(
-        events.iter().any(|e| matches!(
-            &e.kind,
-            GgTelemetryKind::ToolResult { name, ok: true, .. } if name == "list_dir"
-        )),
-        "list_dir is allowed in plan mode"
-    );
-    assert!(
-        events.iter().any(|e| matches!(
-            &e.kind,
-            GgTelemetryKind::ToolResult { name, ok: false, summary: Some(s) }
-                if name == "write_file" && s.contains("plan mode")
-        )),
-        "the mutating write_file was refused in plan mode"
-    );
-    assert!(
-        !dir.path().join("premature.txt").exists(),
-        "the plan-mode write was blocked, so premature.txt was never created"
-    );
-
-    // (c) submit_plan succeeded and the implementation write actually wrote index.html with the
-    //     full toolset restored.
-    assert!(
-        events.iter().any(|e| matches!(
-            &e.kind,
-            GgTelemetryKind::ToolResult { name, ok: true, .. } if name == "submit_plan"
-        )),
-        "submit_plan succeeded"
-    );
-    assert!(
-        dir.path().join("index.html").exists(),
-        "the model implemented from the fresh context"
-    );
-
-    // (d) The reset kept the pinned prefix, cleared the exploration, and seeded the plan: the
-    //     breakdown right after the Implementing transition shows the pinned original prompt and
-    //     the pinned plan present, and the plan-phase assistant/tool-output bands cleared.
-    let impl_pos = events
-        .iter()
-        .position(|e| {
-            matches!(
-                &e.kind,
-                GgTelemetryKind::Planning {
-                    phase: GgPlanPhase::Implementing,
-                    ..
-                }
-            )
-        })
-        .unwrap();
-    let post = events[impl_pos..]
-        .iter()
-        .find_map(|e| match &e.kind {
-            GgTelemetryKind::ContextBreakdown { by_source, .. } => Some(by_source.clone()),
-            _ => None,
-        })
-        .expect("a breakdown follows the implementing transition");
-    assert!(
-        source_band(&post, GgContextSource::Plan) > 0,
-        "the submitted plan is pinned to the Plan source"
-    );
-    assert!(
-        source_band(&post, GgContextSource::UserPrompt) > 0,
-        "the original build prompt is kept across the reset"
-    );
-    assert_eq!(
-        source_band(&post, GgContextSource::Assistant),
-        0,
-        "the plan-phase assistant turns were cleared"
-    );
-    assert_eq!(
-        source_band(&post, GgContextSource::ToolOutput),
-        0,
-        "the plan-phase exploration output was cleared"
-    );
-}
-
-/// With the planning capability off, no planning tools are offered and no Planning telemetry is
-/// produced — the ablation off arm. Driving the same script, `enter_plan_mode`/`submit_plan` come
-/// back as unknown-tool errors, no Plan-source tokens ever accumulate, and the run still completes.
-#[tokio::test]
-async fn drive_without_planning_offers_no_planning() {
-    let dir = TempDir::new().unwrap();
-    let ctx = ToolContext::new(dir.path());
-    let sink = CollectingSink::new();
-    let emitter = Emitter::with_sink(Some("run-no-plan".to_string()), Box::new(sink.clone()));
-
-    // `minimal` does not include planning, so it is off.
-    let set = GgCapabilitySet::minimal("mock/echo");
-    let library = Arc::new(SkillLibrary::empty());
-    let registry = ToolRegistry::from_run(set.root(), &skills_modules(&library));
-
-    let client = MockClient::with_planning_script("mock/echo");
-    let agent = Agent::root(ROOT_AGENT);
-    let end = agent
-        .drive(
-            &client,
-            "build the game",
-            &registry,
-            &ctx,
-            &emitter,
-            &mut test_modules(test_context_setup(), no_code().enabled)
-                .with(ModuleHandle::Skills(SkillsRuntime::disabled()))
-                .with(ModuleHandle::Memories(MemoriesRuntime::disabled()))
-                .with(ModuleHandle::Tasks(TasksRuntime::disabled()))
-                .with(ModuleHandle::Board(BoardRuntime::disabled())),
-            DriveSetup {
-                limits: no_limits(20),
-                compaction: no_compaction(),
-                amc: no_amc(),
-                autoload: no_autoload(),
-                persistence: no_persistence(),
-                read_policy: ReadPolicy::default(),
-                shell_offload: OffloadPolicy::default(),
-                speculative: false,
-                code: no_code(),
-                completion: no_completion(),
-                ending_role: EndingRole::Standard,
-                replay: None,
-            },
-            &[],
-            PlanningRuntime::disabled(),
-            FsmRuntime::disabled(),
-            &GgAgentConfig::root(),
-            None,
-            None,
-        )
-        .await;
-    assert_eq!(end.status, "completed");
-
-    let events = sink.events();
-
-    // No planning telemetry at all.
-    assert!(
-        !events
-            .iter()
-            .any(|e| matches!(e.kind, GgTelemetryKind::Planning { .. })),
-        "planning off must not emit any Planning event"
-    );
-    // No Plan-source tokens ever accumulate.
-    assert!(
-        events.iter().all(|e| match &e.kind {
-            GgTelemetryKind::ContextBreakdown { by_source, .. } =>
-                source_band(by_source, GgContextSource::Plan) == 0,
-            _ => true,
-        }),
-        "planning off must never account tokens to the Plan source"
-    );
-    // enter_plan_mode / submit_plan are unknown tools when the capability is off.
-    for tool in ["enter_plan_mode", "submit_plan"] {
-        assert!(
-            events.iter().any(|e| matches!(
-                &e.kind,
-                GgTelemetryKind::ToolResult { name, ok, .. } if name == tool && !*ok
-            )),
-            "`{tool}` should be an unknown tool when planning is off"
-        );
-    }
-    // The run still completes and implements the file (no read-only mode ever engaged).
-    assert!(dir.path().join("index.html").exists());
 }
 
 // ---------------------------------------------------------------------------
@@ -6491,7 +6168,7 @@ async fn an_implementer_without_the_board_capability_completes_its_issue() {
 }
 
 /// **The board is run-global, so it exists whenever *any* profile owns it** — not only when the
-/// Root does. A set that puts project management on a dedicated planning profile would otherwise
+/// Root does. A set that puts project management on a dedicated board-owning profile would otherwise
 /// offer that profile the board tools while the run around it had no board runtime and no
 /// dispatcher, so every issue it filed would sit on the board forever.
 #[tokio::test]
@@ -7789,187 +7466,6 @@ async fn session_summary_counts_match_an_issue_review_run_stream() {
         summary.slot_costs.len() >= 2,
         "the run spent on more than one slot (worker + reviewer)"
     );
-}
-
-// ---------------------------------------------------------------------------
-// Phase 5b: FSM-driven processes — the built-in machines, order enforced
-// ---------------------------------------------------------------------------
-
-/// A capability set with the `fsm` capability selecting `machine`, on top of the minimal defaults,
-/// plus a binding for each named `extra_slot` (`mock/<slot>`).
-fn fsm_set(machine: &str) -> GgCapabilitySet {
-    fsm_set_for(machine, "mock/primary")
-}
-
-/// A capability set with the `fsm` capability selecting `machine`, bound to `model_id` on the primary
-/// slot (so the offline `DefaultClientFactory` selects a specific mock script by id).
-fn fsm_set_for(machine: &str, model_id: &str) -> GgCapabilitySet {
-    let mut set = GgCapabilitySet::minimal(model_id);
-    let mut cap = GgCapabilityConfig::enabled(CAPABILITY_FSM);
-    cap.params = json!({ "machine": machine });
-    set.agents[0].capabilities.push(cap);
-    set
-}
-
-/// Every `FsmState` transition in the stream, as `(machine, state, stateIndex)`, in order.
-fn fsm_states(events: &[test_cabinet_core::gg::GgTelemetryEvent]) -> Vec<(String, String, u64)> {
-    events
-        .iter()
-        .filter_map(|e| match &e.kind {
-            GgTelemetryKind::FsmState {
-                machine,
-                state,
-                state_index,
-            } => Some((machine.clone(), state.clone(), *state_index)),
-            _ => None,
-        })
-        .collect()
-}
-
-/// The `ok` flag of every `advance_state` tool result, in order.
-fn advance_results(events: &[test_cabinet_core::gg::GgTelemetryEvent]) -> Vec<bool> {
-    events
-        .iter()
-        .filter_map(|e| match &e.kind {
-            GgTelemetryKind::ToolResult { name, ok, .. } if name == "advance_state" => Some(*ok),
-            _ => None,
-        })
-        .collect()
-}
-
-/// The headline TDD proof: the machine **enforces** write tests → implement → verify. A first
-/// `advance_state` (before any test exists) is **refused** — the agent cannot jump to implementing —
-/// and only after a test file is written does the advance succeed and the machine move to
-/// `implement`, then `verify`. The order is a property of the process, not the model's discretion.
-#[tokio::test]
-async fn fsm_tdd_cannot_advance_to_implement_before_tests_exist() {
-    let dir = TempDir::new().unwrap();
-    let sink = CollectingSink::new();
-    let emitter = Emitter::with_sink(Some("run-tdd".to_string()), Box::new(sink.clone()));
-    let inv = invocation(dir.path(), fsm_set("tdd"));
-
-    // The scripted agent *tries* to advance before writing any test — the engine must refuse it.
-    let factory = ScriptedFactory::new().slot(ROOT_AGENT, |b| {
-        Box::new(MockClient::new(
-            &b.model_id,
-            vec![
-                // 1. Jump straight to advancing — no test exists yet. Refused.
-                tool_call_response("adv1", "advance_state", json!({})),
-                // 2. Now write the tests.
-                tool_call_response(
-                    "wt",
-                    "write_file",
-                    json!({ "path": "game.test.js", "contents": "// a test\n" }),
-                ),
-                // 3. Advance — tests exist, so this is allowed → implement.
-                tool_call_response("adv2", "advance_state", json!({})),
-                // 4. Implement.
-                tool_call_response(
-                    "impl",
-                    "write_file",
-                    json!({ "path": "game.js", "contents": "// the implementation\n" }),
-                ),
-                // 5. Advance → verify.
-                tool_call_response("adv3", "advance_state", json!({})),
-                stop_response(),
-            ],
-        ))
-    });
-
-    assert_eq!(
-        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
-        SessionOutcome::Ran
-    );
-    let events = sink.events();
-
-    // The machine drove the states in order, never skipping.
-    assert_eq!(
-        fsm_states(&events),
-        vec![
-            ("tdd".to_string(), "write_tests".to_string(), 0),
-            ("tdd".to_string(), "implement".to_string(), 1),
-            ("tdd".to_string(), "verify".to_string(), 2),
-        ],
-        "tdd is driven write_tests → implement → verify, in order"
-    );
-
-    // The first advance (no tests) was REFUSED; the two after the test file was written succeeded.
-    assert_eq!(
-        advance_results(&events),
-        vec![false, true, true],
-        "the advance before any test exists is refused, not honored"
-    );
-    // ...and the refusal explains why (tests must exist first).
-    assert!(
-        events.iter().any(|e| matches!(
-            &e.kind,
-            GgTelemetryKind::ToolResult { name, ok: false, summary: Some(s) }
-                if name == "advance_state" && s.contains("test file")
-        )),
-        "the refusal tells the agent it must write tests first"
-    );
-
-    // The enforcement is temporal: the machine only entered `implement` AFTER the refusal — the agent
-    // could not reach the implement state before tests existed.
-    let refusal_at = events
-        .iter()
-        .position(|e| matches!(&e.kind, GgTelemetryKind::ToolResult { name, ok: false, .. } if name == "advance_state"))
-        .expect("a refused advance");
-    let implement_at = events
-        .iter()
-        .position(
-            |e| matches!(&e.kind, GgTelemetryKind::FsmState { state, .. } if state == "implement"),
-        )
-        .expect("an implement transition");
-    assert!(
-        refusal_at < implement_at,
-        "the machine refused to implement before tests existed"
-    );
-
-    // Both files landed, in their phases.
-    assert!(
-        dir.path().join("game.test.js").exists(),
-        "tests were written"
-    );
-    assert!(
-        dir.path().join("game.js").exists(),
-        "the implementation was written"
-    );
-    assert!(matches!(
-        &events.last().unwrap().kind,
-        GgTelemetryKind::SessionEnded { status } if status == "completed"
-    ));
-}
-
-/// The TDD order enforced **offline through the real binary path** (the `DefaultClientFactory` + the
-/// `mock/…-fsm-tdd` script), not the in-crate scripted factory: the machine drives write_tests →
-/// implement → verify and refuses the premature advance.
-#[tokio::test]
-async fn fsm_tdd_offline_e2e_through_the_default_factory() {
-    let dir = TempDir::new().unwrap();
-    let sink = CollectingSink::new();
-    let emitter = Emitter::with_sink(Some("run-tdd-mock".to_string()), Box::new(sink.clone()));
-    let inv = invocation(dir.path(), fsm_set_for("tdd", "mock/demo-fsm-tdd"));
-
-    // `run` uses the production DefaultClientFactory, which selects the tdd script by model id.
-    assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
-
-    let events = sink.events();
-    assert_eq!(
-        fsm_states(&events)
-            .iter()
-            .map(|(_, s, _)| s.clone())
-            .collect::<Vec<_>>(),
-        vec!["write_tests", "implement", "verify"],
-        "the machine drives the states in order through the real binary path"
-    );
-    assert_eq!(
-        advance_results(&events),
-        vec![false, true, true],
-        "the premature advance (before tests) is refused offline too"
-    );
-    assert!(dir.path().join(MOCK_FSM_TEST_FILE).exists());
-    assert!(dir.path().join(MOCK_FSM_IMPL_FILE).exists());
 }
 
 // ---------------------------------------------------------------------------

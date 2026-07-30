@@ -546,7 +546,6 @@ export default defineConfig({
                 "gg/memories",
                 "gg/tasks",
                 "gg/project-management",
-                "gg/planning",
                 "gg/subagents",
                 "gg/workflows",
                 "gg/speculative-execution",

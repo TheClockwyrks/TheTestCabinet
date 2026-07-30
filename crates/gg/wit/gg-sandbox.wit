@@ -539,24 +539,6 @@ interface context {
     compact: func(summary: string, files: list<string>) -> result<_, tool-error>;
 }
 
-/// Turn-level transitions.
-///
-/// These are declared so the membrane covers gg's whole tool vocabulary and the refusal lives in
-/// exactly one place. They are NEVER bound into a program's scope: they change the loop's mode,
-/// which is not a value a program can compose, and the system prompt says so when the capability
-/// that offers them is on. Every one of them therefore always fails here — the host's defensive
-/// backstop for a path a correct guest cannot take.
-interface turns {
-    use types.{tool-error};
-
-    /// Always fails: entering a read-only planning pass is a turn-level transition.
-    enter-plan-mode: func() -> result<_, tool-error>;
-    /// Always fails: submitting a plan is a turn-level transition.
-    submit-plan: func(plan: string) -> result<_, tool-error>;
-    /// Always fails: advancing the run's process state is a turn-level transition.
-    advance-state: func(note: option<string>) -> result<_, tool-error>;
-}
-
 /// Ending the session.
 ///
 /// The model-facing functions on this membrane that are NOT gg tools. No capability offers them, they
@@ -853,7 +835,6 @@ world sandbox {
     import tasks;
     import board;
     import context;
-    import turns;
     import session;
     import docs;
     import delegation;

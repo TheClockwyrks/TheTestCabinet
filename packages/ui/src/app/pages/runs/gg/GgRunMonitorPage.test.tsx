@@ -117,11 +117,9 @@ const ALL_CAPABILITIES = [
   "memories",
   "tasks",
   "project-management",
-  "planning",
   "subagents",
   "multi-model",
   "workflows",
-  "fsm",
   "speculative-execution",
 ];
 function sessionStarted(
@@ -342,19 +340,6 @@ const EVENTS: HarnessEvent[] = [
       },
     ],
   }),
-  // Phase 3: a planning pass — enter read-only plan mode, submit a plan, then
-  // implement from a fresh context seeded with it (the plan→implement transition).
-  gg({ type: "planning", phase: "entered" }),
-  gg({
-    type: "planning",
-    phase: "submitted",
-    plan: "1. Scaffold the project\n2. Wire the renderer\n3. Add the win condition",
-  }),
-  gg({
-    type: "planning",
-    phase: "implementing",
-    plan: "1. Scaffold the project\n2. Wire the renderer\n3. Add the win condition",
-  }),
   // Phase 2: a compaction boundary (summarize-and-drop, honoring the retention
   // contract), the reclaimed post-compaction breakdown it drops to, and the agent
   // evicting a file view itself.
@@ -524,7 +509,6 @@ describe("GgRunMonitorPage", () => {
       "root overview",
       "root activity",
       "root context",
-      "root plan",
       "root tasks",
       "root knowledge",
     ]) {
@@ -700,14 +684,6 @@ describe("GgRunMonitorPage", () => {
     expect(padding(overview)).toBeGreaterThan(padding(issue));
   });
 
-  it("renders the plan on an agent's plan file", () => {
-    renderMonitor();
-    openTab("Instances");
-    openFile("root plan");
-    expect(screen.getByText("Implementing")).toBeInTheDocument();
-    expect(screen.getByText(/Scaffold the project/)).toBeInTheDocument();
-  });
-
   it("renders skills and memories on an agent's knowledge file", () => {
     renderMonitor();
     openTab("Instances");
@@ -740,8 +716,8 @@ describe("GgRunMonitorPage", () => {
     // yet. The files a capability justifies are offered up front — a file is gated
     // by the run's configuration, not by whether data has streamed — so `tasks` and
     // `knowledge` are present (showing their own empty state), Context is
-    // unconditional, and the capability the run lacks (planning) offers no file at
-    // all.
+    // unconditional, and the capability the run lacks (compaction) offers no file
+    // at all.
     renderMonitor([
       sessionStarted(["shell", "tasks", "memories"]),
       gg({ type: "assistant_message", text: "Working." }),
@@ -756,7 +732,7 @@ describe("GgRunMonitorPage", () => {
     ]) {
       expect(screen.getByRole("button", { name: file })).toBeInTheDocument();
     }
-    for (const file of ["root plan", "root board"]) {
+    for (const file of ["root compaction", "root board"]) {
       expect(screen.queryByRole("button", { name: file })).toBeNull();
     }
     // With project-management off there is also no Project tab.
@@ -853,7 +829,7 @@ describe("GgRunMonitorPage", () => {
   it("offers the Project tab when any profile owns the board, not only the Root", () => {
     // The board is one thing shared by the whole run, so which profile happens to
     // author it does not decide whether the run has one — a set that puts project
-    // management on a dedicated planning profile still has a board to read.
+    // management on a dedicated board-owning profile still has a board to read.
     renderMonitor([
       sessionStartedWith([
         { name: "Root", capabilities: ["shell", "subagents"] },
@@ -1401,34 +1377,6 @@ describe("GgRunMonitorPage", () => {
     // The root's Overview (the default landing) reads the run as done, not running.
     expect(screen.getByText("done")).toBeInTheDocument();
     expect(screen.queryByText("running")).toBeNull();
-  });
-
-  it("shows the FSM current-state strip and marks transitions on the activity file", () => {
-    const events: HarnessEvent[] = [
-      sessionStarted(),
-      gg({
-        type: "fsm_state",
-        machine: "tdd",
-        state: "write_tests",
-        stateIndex: 0,
-      }),
-      gg({
-        type: "fsm_state",
-        machine: "tdd",
-        state: "implement",
-        stateIndex: 1,
-      }),
-    ];
-    renderMonitor(events);
-    // The strip names the machine and its ordered states on the Dashboard.
-    expect(screen.getByText("tdd")).toBeInTheDocument();
-    expect(screen.getByText("write_tests")).toBeInTheDocument();
-    expect(screen.getByText("implement")).toBeInTheDocument();
-    // Each transition is marked as a distinct row on the root's activity file.
-    openTab("Instances");
-    openFile("root activity");
-    expect(screen.getByText("tdd → write_tests")).toBeInTheDocument();
-    expect(screen.getByText("tdd → implement")).toBeInTheDocument();
   });
 
   it("surfaces issue review status and actionable items on the Project tab", () => {

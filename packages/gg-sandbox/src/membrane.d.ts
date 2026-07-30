@@ -418,23 +418,6 @@ declare module "test-cabinet:gg/context" {
 }
 
 /**
- * Turn-level transitions.
- *
- * Declared here only so this mirror covers the whole WIT world. The guest never imports this module
- * and the shim never binds these names into a program's scope: they change the loop's mode, which is
- * not a value a program can compose. gg implements them as an always-failing host backstop, so
- * nothing in this package may start calling them.
- */
-declare module "test-cabinet:gg/turns" {
-  /** Always fails: entering a read-only planning pass is a turn-level transition. */
-  export function enterPlanMode(): void;
-  /** Always fails: submitting a plan is a turn-level transition. */
-  export function submitPlan(plan: string): void;
-  /** Always fails: advancing the run's process state is a turn-level transition. */
-  export function advanceState(note: string | undefined): void;
-}
-
-/**
  * Ending the session — the model-facing membrane functions that are not gg tools.
  *
  * They have their own interface for the same reason they have their own catalogue array: no

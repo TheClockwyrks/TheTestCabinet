@@ -11,7 +11,7 @@
 //! ([`Tool::invoke`](crate::tools::Tool)).
 //!
 //! The production implementation (the loop's `LoopToolApi`, in [`crate::agent`]) performs each call
-//! against gg's real tools and does the loop servicing — plan-mode/FSM gating, `ToolCall`/
+//! against gg's real tools and does the loop servicing — the compaction gate, `ToolCall`/
 //! `ToolResult` telemetry, replay capture, agent-managed-context reclaim, skill pinning, and — for
 //! the delegation family — routing through the subagent scheduler. Because it holds the agent's
 //! loop state and the sandbox runs on a blocking thread, it drives the async parts (`shell`,

@@ -37,8 +37,8 @@ what turns gg from a single agent into a fleet working a backlog.
 Any agent with permission can create epics and issues; there is one board, not one
 per agent. Because the board is run-global, the run **has** one as soon as *any*
 [agent profile](/gg/configurations/#agents) enables this capability — it does not have
-to be the Root. A configuration that puts project management on a dedicated planning
-profile gets a board, a dispatcher, and worktrees just the same.
+to be the Root. A configuration that puts project management on a dedicated
+board-owning profile gets a board, a dispatcher, and worktrees just the same.
 
 ## The board is run-global; the view of it is not
 

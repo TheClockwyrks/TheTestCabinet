@@ -244,7 +244,7 @@ export interface CapSpec {
   // meaningful together share one slider, and a capability's core tools (the ones
   // that come with it) are deliberately absent, so no slider can leave the
   // capability in a state nobody would run. A capability whose toolset is atomic
-  // (planning's plan/submit pair) declares none, and the capability toggle is its
+  // (the two workspace writers, say) declares none, and the capability toggle is its
   // only granularity.
   toolAblation?: ReadonlyArray<{
     label: string;
@@ -484,17 +484,6 @@ export const SUBAGENT_SCOPES: ReadonlyArray<{
 // (`DEFAULT_VALIDATION_TIMEOUT` in `crates/gg/src/completion.rs`). Generous, because a
 // validation command is typically a build or a test suite.
 export const DEFAULT_VALIDATION_TIMEOUT_SECS = 300;
-
-export const FSM_MACHINE_OPTIONS = [
-  { value: "", label: "(none)" },
-  { value: "tdd", label: "tdd" },
-  { value: "plan-first", label: "plan-first" },
-] as const;
-
-// What each state machine does — the detail lifted off the picker's option labels
-// into the Machine field's help tooltip.
-export const FSM_MACHINE_HINT =
-  "None runs no state machine. tdd: write tests → implement → verify. plan-first: plan pass → implement pass.";
 
 // The compaction strategies gg resolves at run time (`crates/gg/src/compaction.rs`),
 // in editor order — grouped by who condenses the thread: the working agent itself (the
@@ -924,16 +913,6 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
       },
     ],
   },
-  {
-    id: "planning",
-    name: "Planning",
-    group: "Work tracking",
-    purpose:
-      "A read-only planning pass, then a fresh-context implementation pass seeded from the submitted plan.",
-    implementationLabel: "Planner",
-    implementationPlaceholder: "default",
-    tools: ["enter_plan_mode", "submit_plan"],
-  },
   // --- Delegation -------------------------------------------------------------
   {
     id: "subagents",
@@ -981,23 +960,6 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     tools: ["run_workflow"],
   },
   // --- Process & quality ------------------------------------------------------
-  {
-    id: "fsm",
-    name: "FSM-driven process",
-    group: "Process & quality",
-    purpose:
-      "Drive the run through a fixed, named state machine so the order of work is a property of the process.",
-    params: [
-      {
-        key: "machine",
-        label: "Machine",
-        kind: "select",
-        hint: FSM_MACHINE_HINT,
-        options: FSM_MACHINE_OPTIONS,
-      },
-    ],
-    tools: ["advance_state"],
-  },
   {
     id: "completion",
     name: "Completion",

@@ -7,7 +7,7 @@
 
 use super::*;
 use crate::sandbox::FINISH_FUNCTION;
-use crate::tools::{ALL_TOOL_NAMES, TURN_LEVEL_TOOLS};
+use crate::tools::ALL_TOOL_NAMES;
 
 /// The committed catalogue parses, and is not empty.
 #[test]
@@ -21,8 +21,8 @@ fn the_committed_catalogue_parses() {
     );
 }
 
-/// **G4: the catalogue covers exactly the tools the sandbox binds** — every gg tool except the
-/// three turn-level transitions, and nothing else.
+/// **G4: the catalogue covers exactly the tools the sandbox binds** — every gg tool, and nothing
+/// else.
 #[test]
 fn the_signature_catalogue_covers_every_tool() {
     let mut catalogued: Vec<&str> = catalogue()
@@ -41,8 +41,8 @@ fn the_signature_catalogue_covers_every_tool() {
     );
     assert_eq!(
         expected.len(),
-        ALL_TOOL_NAMES.len() - TURN_LEVEL_TOOLS.len(),
-        "the sandbox binds every gg tool but the three turn-level transitions"
+        ALL_TOOL_NAMES.len(),
+        "the sandbox binds every gg tool"
     );
 }
 

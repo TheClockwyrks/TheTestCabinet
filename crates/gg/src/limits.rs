@@ -595,8 +595,8 @@ impl AgentLimits {
     /// purpose — or to one gg's own machinery ended — would be a lie.
     ///
     /// The consecutive count is cleared by, and only by, a `Progressed` turn: not by a compaction,
-    /// not by a plan submission, not by a subagent returning, not by an FSM move. A turn is the
-    /// unit, and only a turn that carried out its declared work clears the count.
+    /// not by a subagent returning. A turn is the unit, and only a turn that carried out its
+    /// declared work clears the count.
     pub fn record(&mut self, outcome: TurnOutcome, agent_id: &str) -> Option<GgLimitBreach> {
         self.turns_recorded += 1;
 

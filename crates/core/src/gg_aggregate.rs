@@ -214,7 +214,7 @@ pub enum GgFacet {
     /// the named capability (`"default"` when the capability is present with no
     /// implementation selected), or absent when the run does not carry the capability.
     CapabilityImplementation {
-        /// The capability's stable id (for example `"planning"`).
+        /// The capability's stable id (for example `"memories"`).
         capability: String,
     },
     /// A [parameter](crate::gg::GgCapabilityConfig::params) of the named capability,
@@ -619,8 +619,8 @@ impl GgMetricFilter {
 ///
 /// The four canonical study questions are all expressible: "runs with compaction off,
 /// context-overflow rate" (`facet_filters: CapabilityEnabled{compaction}=false`,
-/// `metrics: avg Summary(RanOutOfContext)`); "group by planning implementation,
-/// reopened-issue count" (`group_by: CapabilityImplementation{planning}`, `metrics:
+/// `metrics: avg Summary(RanOutOfContext)`); "group by memory implementation,
+/// reopened-issue count" (`group_by: CapabilityImplementation{memories}`, `metrics:
 /// sum Summary(IssuesReopened)`); "subagent depth vs score" (`group_by:
 /// Summary?` — bucket via a metric filter sweep, or `metrics: avg Score` grouped by a
 /// depth facet); "speculative on vs off, score at a fixed budget" (`group_by:

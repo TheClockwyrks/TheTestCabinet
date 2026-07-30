@@ -39,7 +39,6 @@ mod message_log;
 mod model;
 mod modules;
 mod persistence;
-mod planning;
 mod prompts;
 mod replay;
 pub mod replay_driver;

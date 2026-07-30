@@ -703,20 +703,12 @@ pub(super) struct CodeTurn<'a> {
     pub(super) memories: &'a MemoriesRuntime,
     /// The task list, for its state event.
     pub(super) tasks: &'a TasksRuntime,
-    /// The planning capability, whose read-only gate still applies to every composed call.
-    pub(super) planning: &'a PlanningRuntime,
-    /// The process machine, whose current state still narrows the toolset.
-    pub(super) fsm: &'a FsmRuntime,
     /// The [agent-managed-context](apply_context_reclaim) setup, for the reclaim tools.
     pub(super) amc: &'a AmcSetup,
     /// Where this turn's telemetry goes.
     pub(super) emitter: &'a Emitter,
     /// The replay recorder, when the capability is on.
     pub(super) replay: Option<&'a Arc<GgRecorder>>,
-    /// Whether an FSM state is actually narrowing the toolset this turn.
-    pub(super) fsm_active: bool,
-    /// Whether the agent is inside a read-only planning pass.
-    pub(super) in_plan_mode: bool,
     /// Whether `speculate` is routed through the best-of-K routine this run.
     pub(super) speculative_active: bool,
     /// The [compaction](crate::compaction) the loop is waiting for this agent to perform, when one
@@ -785,7 +777,7 @@ pub(super) struct CodeTurnState {
 /// validators use). Every call the program composes is serviced by the turn's [`LoopToolApi`], which
 /// runs **on that blocking thread** — calling the stage-1 typed tool functions directly and routing
 /// the delegation family back onto the async loop via `block_on`. That is where every must-survive
-/// loop behaviour lives now: plan-mode/FSM gating, `ToolCall`/`ToolResult` telemetry, replay
+/// loop behaviour lives now: the compaction gate, `ToolCall`/`ToolResult` telemetry, replay
 /// capture, knowledge-state re-emission, agent-managed-context reclaim, and skill pinning — all
 /// exactly as a native tool call is serviced.
 ///
@@ -842,14 +834,10 @@ async fn run_code_program(
         project: turn.project.cloned(),
         memories_rt: turn.memories.shared(),
         tasks_rt: turn.tasks.shared(),
-        planning: turn.planning.clone(),
-        fsm: turn.fsm.clone(),
         amc: turn.amc.clone(),
         emitter: turn.emitter.clone(),
         replay: turn.replay.cloned(),
         handle: Handle::current(),
-        fsm_active: turn.fsm_active,
-        in_plan_mode: turn.in_plan_mode,
         speculative_active: turn.speculative_active,
         pending_compaction: turn.pending_compaction,
         serviced: 0,
@@ -985,8 +973,8 @@ fn pin_docs(context: &mut ContextModel, text: &str) {
 // ---------------------------------------------------------------------------
 
 /// The production [`ToolApi`]: the loop's own state, servicing each typed call exactly as the
-/// tool-calling loop services a native one — plan/FSM gating, ToolCall/ToolResult telemetry, replay,
-/// agent-managed-context reclaim, skill pinning, board pump + state events — and routing the
+/// tool-calling loop services a native one — the compaction gate, ToolCall/ToolResult telemetry,
+/// replay, agent-managed-context reclaim, skill pinning, board pump + state events — and routing the
 /// delegation family to the subagent scheduler via `block_on` (the sandbox runs on a blocking
 /// thread).
 pub(super) struct LoopToolApi {
@@ -1022,14 +1010,10 @@ pub(super) struct LoopToolApi {
     project: Option<ProjectContext>,
     memories_rt: MemoriesRuntime,
     tasks_rt: TasksRuntime,
-    planning: PlanningRuntime,
-    fsm: FsmRuntime,
     amc: AmcSetup,
     emitter: Emitter,
     replay: Option<Arc<GgRecorder>>,
     handle: Handle,
-    fsm_active: bool,
-    in_plan_mode: bool,
     speculative_active: bool,
     pending_compaction: Option<PendingCompaction>,
     serviced: u64,
@@ -1037,9 +1021,9 @@ pub(super) struct LoopToolApi {
 
 #[allow(dead_code)]
 impl LoopToolApi {
-    /// Gate (plan/FSM) then, if allowed, run `exec` (an ordinary typed tool call), then service the
-    /// outcome (telemetry, AMC reclaim, replay, board pump, state events, skill pin). Returns the
-    /// serviced outcome the membrane maps to a WIT result.
+    /// Gate the call and, if it is allowed, run `exec` (an ordinary typed tool call), then service
+    /// the outcome (telemetry, AMC reclaim, replay, board pump, state events, skill pin). Returns
+    /// the serviced outcome the membrane maps to a WIT result.
     fn serviced(
         &mut self,
         name: &str,
@@ -1047,8 +1031,8 @@ impl LoopToolApi {
         exec: impl FnOnce(&mut Self) -> ToolOutcome,
     ) -> ToolOutcome {
         // The gate is evaluated first, but the `ToolCall` is streamed *before* the call runs either
-        // way — a plan/FSM refusal is a serviced call that streams its `ToolCall`/`ToolResult` pair
-        // exactly as a call that ran does, so its telemetry order matches the native path's.
+        // way — a refusal is a serviced call that streams its `ToolCall`/`ToolResult` pair exactly
+        // as a call that ran does, so its telemetry order matches the native path's.
         let refused = self.gate(name);
         let call = self.begin(name, args);
         if let Some(refused) = refused {
@@ -1064,37 +1048,20 @@ impl LoopToolApi {
         self.complete(call, outcome, managed)
     }
 
-    /// The compaction/plan-mode/FSM gate; `Some(refusal_outcome)` when this call is withheld this
-    /// turn.
+    /// The compaction gate; `Some(refusal_outcome)` when this call is withheld this turn.
     ///
-    /// Compaction is checked **first**, and it is the strictest gate gg has: while one is in flight
-    /// the window is full, so every call that is not the one compaction asked for is refused
-    /// regardless of what any other gate would have allowed. `compact` itself then bypasses the
-    /// plan-mode and FSM gates outright, exactly as the native path lets it through ahead of the
-    /// same two — a machine that meant to hold the agent in a state cannot hold it in a full
-    /// window, and the run has no way forward until the window is reclaimed.
+    /// It is the strictest gate gg has: while a compaction is in flight the window is full, so
+    /// every call that is not the one compaction asked for is refused. `compact` itself is exempt,
+    /// exactly as the native path lets it through — the run has no way forward until the window is
+    /// reclaimed.
     fn gate(&self, name: &str) -> Option<ToolOutcome> {
         if let Some(pending) = self.pending_compaction
             && !pending.admits(name, true)
+            && name != COMPACT_TOOL
         {
             return Some(ToolOutcome::failed(
                 ToolFailure::Refused,
                 pending.refusal(name, true, self.memories_rt.strategy().calls(true)),
-            ));
-        }
-        if name == COMPACT_TOOL {
-            return None;
-        }
-        if self.planning.offers_planning() && !plan_mode_offers(name, self.in_plan_mode) {
-            return Some(ToolOutcome::failed(
-                ToolFailure::Refused,
-                plan_mode_refusal(name, self.in_plan_mode),
-            ));
-        }
-        if self.fsm_active && !self.fsm.offers(name) {
-            return Some(ToolOutcome::failed(
-                ToolFailure::Refused,
-                fsm_refusal(name, &self.fsm),
             ));
         }
         None

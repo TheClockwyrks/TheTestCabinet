@@ -99,7 +99,7 @@
           "description": "The selected [implementation](crate::gg::GgCapabilityConfig::implementation) of\nthe named capability (`\"default\"` when the capability is present with no\nimplementation selected), or absent when the run does not carry the capability.",
           "properties": {
             "capability": {
-              "description": "The capability's stable id (for example `\"planning\"`).",
+              "description": "The capability's stable id (for example `\"memories\"`).",
               "type": "string"
             },
             "kind": {
@@ -469,7 +469,7 @@
   },
   "$id": "https://docs.testcabinet.ai/schema/gg/aggregate-query.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "A **capability-set-sliced aggregate query** over gg runs — the Kibana-style\nrequest: narrow the gg runs by [facet](GgFacetFilter) and\n[metric](GgMetricFilter) predicates, group them by one or more\n[facets](GgFacet), and aggregate a set of [metrics](GgMetricSpec) per bucket.\n\nThe four canonical study questions are all expressible: \"runs with compaction off,\ncontext-overflow rate\" (`facet_filters: CapabilityEnabled{compaction}=false`,\n`metrics: avg Summary(RanOutOfContext)`); \"group by planning implementation,\nreopened-issue count\" (`group_by: CapabilityImplementation{planning}`, `metrics:\nsum Summary(IssuesReopened)`); \"subagent depth vs score\" (`group_by:\nSummary?` — bucket via a metric filter sweep, or `metrics: avg Score` grouped by a\ndepth facet); \"speculative on vs off, score at a fixed budget\" (`group_by:\nCapabilityEnabled{speculative-execution}`, `metric_filters: Cost<=budget`,\n`metrics: avg Score`).",
+  "description": "A **capability-set-sliced aggregate query** over gg runs — the Kibana-style\nrequest: narrow the gg runs by [facet](GgFacetFilter) and\n[metric](GgMetricFilter) predicates, group them by one or more\n[facets](GgFacet), and aggregate a set of [metrics](GgMetricSpec) per bucket.\n\nThe four canonical study questions are all expressible: \"runs with compaction off,\ncontext-overflow rate\" (`facet_filters: CapabilityEnabled{compaction}=false`,\n`metrics: avg Summary(RanOutOfContext)`); \"group by memory implementation,\nreopened-issue count\" (`group_by: CapabilityImplementation{memories}`, `metrics:\nsum Summary(IssuesReopened)`); \"subagent depth vs score\" (`group_by:\nSummary?` — bucket via a metric filter sweep, or `metrics: avg Score` grouped by a\ndepth facet); \"speculative on vs off, score at a fixed budget\" (`group_by:\nCapabilityEnabled{speculative-execution}`, `metric_filters: Cost<=budget`,\n`metrics: avg Score`).",
   "properties": {
     "facetFilters": {
       "description": "Facet predicates every returned run must satisfy (ANDed together).",

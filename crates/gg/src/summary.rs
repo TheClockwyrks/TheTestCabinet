@@ -351,8 +351,8 @@ impl SessionSummaryTracker {
             }),
             // Every other event carries no aggregatable figure of its own: session/turn
             // lifecycle, assistant text and tool call/result, per-turn usage deltas, the
-            // knowledge-state snapshots (skills/memories/tasks), planning/agent-status/worktree/
-            // workflow/fsm transitions, diagnostic logs, and the terminal summary/ended events
+            // knowledge-state snapshots (skills/memories/tasks), agent-status/worktree/
+            // workflow transitions, diagnostic logs, and the terminal summary/ended events
             // this summary itself precedes.
             //
             // `LimitExceeded` is here **deliberately** rather than by omission: it carries exactly

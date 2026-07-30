@@ -117,7 +117,6 @@ const SOURCE_LABELS: Record<GgContextSource, string> = {
   memory: "memories",
   task_list: "task list",
   board: "board",
-  plan: "plan",
   history: "history",
 };
 

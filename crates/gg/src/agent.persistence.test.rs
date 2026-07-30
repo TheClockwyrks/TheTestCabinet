@@ -100,8 +100,6 @@ async fn drive_instance(
                 replay: None,
             },
             &[],
-            PlanningRuntime::disabled(),
-            FsmRuntime::disabled(),
             profile,
             None,
             None,

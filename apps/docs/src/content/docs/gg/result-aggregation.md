@@ -9,7 +9,7 @@ The point is to make the experiments gg enables **analyzable in aggregate**:
 
 - "across every run with compaction off, how often did the model run out of
   context?"
-- "which planning implementation produced fewer reopened issues?"
+- "which memory implementation produced fewer reopened issues?"
 - "how does subagent depth correlate with score?"
 - "does [speculative execution](/gg/speculative-execution/) beat single-attempt at a
   fixed budget?"

@@ -19,10 +19,10 @@ use std::sync::OnceLock;
 
 use serde::Deserialize;
 
-// The whole-vocabulary partition backs [`sandbox_tool_names`], which is a drift gate rather than a
+// The whole vocabulary backs [`sandbox_tool_names`], which is a drift gate rather than a
 // run-time need — so, like it, the names it is built from are only reachable under test.
 #[cfg(test)]
-use crate::tools::{ALL_TOOL_NAMES, TURN_LEVEL_TOOLS};
+use crate::tools::ALL_TOOL_NAMES;
 
 /// The committed catalogue, emitted by the guest package's `signatures` script alongside the
 /// component itself.
@@ -146,15 +146,11 @@ pub(crate) fn catalogue() -> &'static SignatureCatalogue {
     })
 }
 
-/// The gg tool names the sandbox binds into a program's scope: [`ALL_TOOL_NAMES`] minus the
-/// [turn-level transitions](TURN_LEVEL_TOOLS), which change the loop's mode rather than producing a
-/// value. Every other gg tool is bound — responses-as-code is the richer interface, so the guest's
-/// surface is the whole vocabulary bar the three transitions a composed program has nothing to
-/// compose them into.
+/// The gg tool names the sandbox binds into a program's scope: **all** of [`ALL_TOOL_NAMES`].
+/// Responses-as-code is the richer interface, and there is no class of gg tool a program is denied.
 ///
 /// Derived rather than listed, so a tool added to gg is bound (or its absence from the guest is a
-/// test failure) without anyone remembering to edit a second list — the turn-level subtraction is
-/// the only exception, named and justified where it is defined.
+/// test failure) without anyone remembering to edit a second list.
 ///
 /// `#[cfg(test)]` because a run never needs the whole vocabulary — it binds *its own* enabled set,
 /// which the loop derives from the registry. The set-equality drift gates
@@ -162,11 +158,7 @@ pub(crate) fn catalogue() -> &'static SignatureCatalogue {
 /// its only callers.
 #[cfg(test)]
 pub(crate) fn sandbox_tool_names() -> Vec<&'static str> {
-    ALL_TOOL_NAMES
-        .iter()
-        .copied()
-        .filter(|name| !TURN_LEVEL_TOOLS.contains(name))
-        .collect()
+    ALL_TOOL_NAMES.to_vec()
 }
 
 /// One documented function as the [docs carve-out](crate::docs) sees it: the object it lives on, the

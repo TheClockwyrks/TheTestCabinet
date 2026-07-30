@@ -672,7 +672,7 @@ fn the_module_vocabulary_serializes_in_its_documented_spelling() {
 #[test]
 fn context_source_all_covers_every_variant_in_stable_order() {
     // `ALL` constructs every variant (so none is dead) and fixes the band order.
-    assert_eq!(GgContextSource::ALL.len(), 11);
+    assert_eq!(GgContextSource::ALL.len(), 10);
     assert_eq!(GgContextSource::ALL[0], GgContextSource::System);
     assert_eq!(
         serde_json::to_value(GgContextSource::TaskList).unwrap(),
@@ -682,9 +682,11 @@ fn context_source_all_covers_every_variant_in_stable_order() {
         serde_json::to_value(GgContextSource::Board).unwrap(),
         json!("board")
     );
-    assert_eq!(
-        serde_json::to_value(GgContextSource::Plan).unwrap(),
-        json!("plan")
+    // The plan band went away with the planning capability; nothing replaced it.
+    assert!(
+        !GgContextSource::ALL
+            .iter()
+            .any(|source| serde_json::to_value(source).unwrap() == json!("plan"))
     );
 }
 

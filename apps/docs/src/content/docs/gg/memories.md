@@ -145,8 +145,7 @@ carry the news. What the thread cannot carry is a compaction, which drops the ve
 tool results the model was reading its memories out of — so gg rebuilds the block
 there, immediately before the window is rewritten. The stale copy is superseded
 into the ephemeral history the boundary is about to sweep away, and the fresh one
-crosses as part of the pinned prefix. (A plan-mode context reset clears the thread
-the same way, and gets the same treatment.)
+crosses as part of the pinned prefix.
 
 The consequence to know about is that a pinned index can lag: a memory created
 since the last compaction is stored and readable but is not listed there yet. The

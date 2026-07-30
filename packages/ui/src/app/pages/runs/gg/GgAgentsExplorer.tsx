@@ -44,7 +44,6 @@ import { PromptView } from "./PromptView";
 import { RequestsView } from "./RequestsView";
 import { RequestMetricsGraphs } from "./RequestMetricsGraphs";
 import { CompactionView } from "./CompactionView";
-import { PlanView } from "./PlanView";
 import { TaskDagView } from "./TaskDagView";
 import { SkillsList } from "./SkillsList";
 import { MemoriesList } from "./MemoriesList";
@@ -58,7 +57,6 @@ import {
   KnowledgeIcon,
   MetricsIcon,
   OverviewIcon,
-  PlanIcon,
   PromptIcon,
   RequestsIcon,
   TasksIcon,
@@ -70,7 +68,7 @@ import {
 // *whose* context filled, *whose* task list this is, or what one subagent did in
 // isolation — those are per-agent facts (see gg/subagents.md). The explorer makes
 // each agent a folder whose "files" are the things a run lets you monitor about it
-// (its activity, its context-window fill, its plan, its tasks, its knowledge), and
+// (its activity, its context-window fill, its tasks, its knowledge), and
 // nests every agent an agent spawned under a `subagents` folder, so
 // the delegation tree *is* the directory tree. The top-level folder is the main
 // (root) agent. Selecting a file opens that view for that agent in the content pane
@@ -102,7 +100,6 @@ export type AgentFileKind =
   | "requests"
   | "metrics"
   | "compaction"
-  | "plan"
   | "tasks"
   | "knowledge";
 
@@ -121,7 +118,6 @@ const FILE_ORDER: ReadonlyArray<AgentFileKind> = [
   "requests",
   "metrics",
   "compaction",
-  "plan",
   "tasks",
   "knowledge",
 ];
@@ -154,7 +150,6 @@ const FILE_CAPABILITIES: Record<AgentFileKind, ReadonlyArray<string>> = {
   // off, a run never compacts, so the file is hidden rather than shown perpetually
   // empty. Its own record travels on the compaction event, so it needs nothing else.
   compaction: ["compaction"],
-  plan: ["planning"],
   tasks: ["tasks"],
   knowledge: ["skills", "memories"],
 };
@@ -167,7 +162,6 @@ const FILE_LABELS: Record<AgentFileKind, string> = {
   requests: "requests",
   metrics: "metrics",
   compaction: "compaction",
-  plan: "plan",
   tasks: "tasks",
   knowledge: "knowledge",
 };
@@ -185,7 +179,6 @@ const FILE_ICONS: Record<
   requests: RequestsIcon,
   metrics: MetricsIcon,
   compaction: CompactionIcon,
-  plan: PlanIcon,
   tasks: TasksIcon,
   knowledge: KnowledgeIcon,
 };
@@ -616,7 +609,6 @@ function FileContent({
             capabilitySet={capabilitySet}
             agent={node.slot}
             compactions={state.compactions}
-            planImplementTurn={state.plan?.implementTurn ?? null}
           />
         </div>
       );
@@ -644,18 +636,6 @@ function FileContent({
         <div className={panels.panelBody}>
           <CompactionView compactions={state.compactions} />
         </div>
-      );
-    case "plan":
-      return (
-        <>
-          <RetainedNote
-            count={state.compactions.length}
-            what="submitted plan"
-          />
-          <div className={panels.panelBody}>
-            <PlanView plan={state.plan} />
-          </div>
-        </>
       );
     case "tasks":
       return (
@@ -912,7 +892,7 @@ function knowledgeLabel(skills: boolean, memories: boolean): string {
   return skills ? "skills" : "memories";
 }
 
-// A reassurance line shown on the Plan / Board / Tasks / Knowledge files once this
+// A reassurance line shown on the Board / Tasks / Knowledge files once this
 // agent has crossed a compaction boundary: the retention contract kept this state
 // verbatim, so it never blanked out when the window was summarized. Renders nothing
 // before any compaction.

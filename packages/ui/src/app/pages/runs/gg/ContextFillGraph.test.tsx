@@ -25,7 +25,6 @@ const SOURCE_ORDER: GgContextSource[] = [
   "memory",
   "task_list",
   "board",
-  "plan",
   "history",
 ];
 

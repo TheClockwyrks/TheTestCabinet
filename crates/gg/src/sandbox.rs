@@ -109,7 +109,7 @@ pub use {
 };
 
 use crate::ending::EndingRole;
-use crate::tools::{TURN_LEVEL_TOOLS, ToolRegistry};
+use crate::tools::ToolRegistry;
 use membrane::{MembraneParts, MembraneState, Sandbox};
 
 /// Run one program end to end: type-strip it, instantiate the interpreter component, evaluate it
@@ -267,18 +267,17 @@ pub fn precompile() -> Result<Option<Duration>, SandboxError> {
     engine::component().map(|(_, compiled_in)| compiled_in)
 }
 
-/// The gg tool names to bind into a program's scope for `registry`: the run's offered tools minus
-/// the [turn-level transitions](crate::tools::TURN_LEVEL_TOOLS), which change the loop's mode
-/// rather than producing a value.
+/// The gg tool names to bind into a program's scope for `registry`: **every** tool the run offers.
+///
+/// There is no class of call a program is denied. gg once withheld the three *turn-level*
+/// transitions — they changed the loop's mode rather than producing a value a program could use —
+/// but those tools are gone, and nothing has replaced them, so a program's scope and a
+/// tool-calling session's toolset are now the same set.
 ///
 /// Derived from the registry rather than from a list, so a capability toggle or a per-tool ablation
 /// changes the program's scope and the system prompt together — they are the same source.
 pub fn scope_tools(registry: &ToolRegistry) -> Vec<String> {
-    registry
-        .tool_names()
-        .into_iter()
-        .filter(|name| !TURN_LEVEL_TOOLS.contains(&name.as_str()))
-        .collect()
+    registry.tool_names()
 }
 
 /// The name of the one model-facing sandbox function that is **not** a gg tool: the call that ends

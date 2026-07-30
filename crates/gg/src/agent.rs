@@ -96,7 +96,7 @@ use test_cabinet_core::gg::{
     CAPABILITY_REPLAY, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL, CAPABILITY_SKILLS,
     CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS, CAPABILITY_WORKFLOWS, GgAgentConfig,
     GgAgentStatus, GgCandidateShape, GgCapabilitySet, GgContextAction, GgContextSource,
-    GgHealingStrategy, GgIssueReviewPhase, GgLimitBreach, GgLimitKind, GgNotAProgram, GgPlanPhase,
+    GgHealingStrategy, GgIssueReviewPhase, GgLimitBreach, GgLimitKind, GgNotAProgram,
     GgResponseHealing, GgReviewer, GgRunLimits, GgSlotBinding, GgSpeculationPhase, GgSubagentScope,
     GgTelemetryKind, GgWorkflowPhase, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT, SHELL_OUTPUT_ADAPTIVE,
     SHELL_OUTPUT_MODES,
@@ -120,7 +120,6 @@ use crate::context::{
 };
 use crate::docs::DocsRuntime;
 use crate::ending::{Ending, EndingRole};
-use crate::fsm::{FsmRuntime, StateExit, ToolPolicy, configured_machine, is_builtin_machine};
 use crate::git;
 use crate::healing::{
     self, AssistantMessageMode, CandidateShape, Healed, HealingConfig, HealingStrategy,
@@ -138,12 +137,11 @@ use crate::modules::{
     CapabilityModules, HistorySetup, Module, ModuleResolveCtx, ModuleSet, Ownership, Refresh,
 };
 use crate::persistence::{self, AgentPersistence, PersistenceSetup};
-use crate::planning::PlanningRuntime;
 use crate::prompts::{
     self, ApiView, AssignedIssueView, AttemptBriefContext, AutoloadView, BoardView, CodeCallView,
     CodeErrorView, CodeHeadingView, CodeNotAProgramContext, CodeResultContext,
     CodeSandboxErrorContext, CodeTimeoutContext, CodeTranspileErrorContext, EndingView,
-    FixBriefContext, FsmView, JudgeAttemptView, JudgeBriefContext, MemoriesView, MergeBriefContext,
+    FixBriefContext, JudgeAttemptView, JudgeBriefContext, MemoriesView, MergeBriefContext,
     NumberedItem, ReadFileView, ReviewBriefContext, ReviewChangesView, ReviewRecordView, ShellView,
     SpawnableAgentView, SystemContext, TasksView,
 };
@@ -160,15 +158,14 @@ use crate::tasks::TasksRuntime;
 use crate::telemetry::Emitter;
 use crate::tools::VisionContext;
 use crate::tools::{
-    ARCHIVE_THREAD_TOOL, AgentStatusData, COMPACT_TOOL, CREATE_ISSUE_TOOL, ENTER_PLAN_MODE_TOOL,
-    EVICT_FILE_VIEW_TOOL, OffloadPolicy, READ_FILE_TOOL, READ_SKILL_TOOL, RUN_WORKFLOW_TOOL,
-    ReadFileTool, ReadPolicy, ReclaimData, SEND_MESSAGE_TOOL, SHELL_TOOL, SPAWN_SUBAGENT_TOOL,
-    SPECULATE_TOOL, SUBMIT_PLAN_TOOL, SpeculationData, SubagentHandleData, SubagentResultData,
-    Tool, ToolContext, ToolData, ToolFailure, ToolOutcome, ToolRegistry, WAIT_FOR_ISSUE_TOOL,
-    WAIT_FOR_SUBAGENTS_TOOL, WorkflowData, handled_by_loop, is_board_tool, is_context_reclaim_tool,
-    is_fsm_tool, is_memory_tool, is_planning_tool, is_subagent_tool, is_task_tool,
-    parse_archive_ranges, parse_compact_request, parse_evict_path, plan_mode_offers, read_policy,
-    saturating_u32, saturating_u64, shell_offload, unknown_disabled_tools,
+    ARCHIVE_THREAD_TOOL, AgentStatusData, COMPACT_TOOL, CREATE_ISSUE_TOOL, EVICT_FILE_VIEW_TOOL,
+    OffloadPolicy, READ_FILE_TOOL, READ_SKILL_TOOL, RUN_WORKFLOW_TOOL, ReadFileTool, ReadPolicy,
+    ReclaimData, SEND_MESSAGE_TOOL, SHELL_TOOL, SPAWN_SUBAGENT_TOOL, SPECULATE_TOOL,
+    SpeculationData, SubagentHandleData, SubagentResultData, Tool, ToolContext, ToolData,
+    ToolFailure, ToolOutcome, ToolRegistry, WAIT_FOR_ISSUE_TOOL, WAIT_FOR_SUBAGENTS_TOOL,
+    WorkflowData, handled_by_loop, is_board_tool, is_context_reclaim_tool, is_memory_tool,
+    is_subagent_tool, is_task_tool, parse_archive_ranges, parse_compact_request, parse_evict_path,
+    read_policy, saturating_u32, saturating_u64, shell_offload, unknown_disabled_tools,
 };
 use crate::turn_timing::TurnTimer;
 use crate::vision::VisionSupport;
@@ -420,6 +417,40 @@ fn profile_binding(set: &GgCapabilitySet, profile: &str) -> Result<GgSlotBinding
         format!("the `{profile}` agent profile has no model bound; there is no model to run")
     })?;
     Ok(GgSlotBinding::new(profile, model_id).with_prompt_cache_ttl(agent.prompt_cache_ttl))
+}
+
+/// The launch warnings a capability set earns for naming a capability gg **no longer implements**.
+///
+/// A capability id is an open string on the wire ([`GgCapabilityConfig::id`]), so a set written
+/// against an older gg deserializes cleanly and its stale entry simply contributes nothing: no
+/// tools, no prompt section, no telemetry. That silence is the problem. An ablation arm whose whole
+/// identity is "planning on" would be recorded, scored and compared as a configured run rather than
+/// as the plain single agent it has become, and nothing in the record would say which it was. So the
+/// stale id is named, once, on the root's stream before the first turn.
+///
+/// Only capabilities gg has actually **removed** are listed. An id gg never had is not reported:
+/// a capability set is an extension point, and a study that carries its own annotations through it
+/// is doing something legitimate.
+fn removed_capability_warnings(set: &GgCapabilitySet) -> Vec<String> {
+    /// The removed ids, each with what replaced it (or with what its absence now means).
+    const REMOVED: &[(&str, &str)] = &[(
+        "planning",
+        "gg no longer implements a read-only planning pass; the `enter_plan_mode` and `submit_plan` \
+         tools are gone. Ask for a plan in the prompt, or give the planning agent its own profile.",
+    )];
+    let mut warnings = Vec::new();
+    for agent in &set.agents {
+        for (id, replacement) in REMOVED {
+            if agent.capability(id).is_some_and(|cap| cap.enabled) {
+                warnings.push(format!(
+                    "agent `{}`: the `{id}` capability is enabled, but it no longer exists — \
+                     {replacement}",
+                    agent.name
+                ));
+            }
+        }
+    }
+    warnings
 }
 
 /// Validate a run's [agent profiles](GgAgentConfig) before launch: the set must declare at least
@@ -1105,6 +1136,13 @@ impl Orchestrator {
         for agent in &set.agents {
             warnings.extend(crate::modules::ownership_warnings(agent));
         }
+        // A capability id gg no longer implements is inert rather than fatal (ids are open strings,
+        // so a set naming one still deserializes), which is precisely why it has to be *said*: a
+        // sweep arm that still asks for the removed `planning` capability, or for a state machine,
+        // would otherwise be recorded as a differently-configured run rather than as the ordinary
+        // single agent it actually is.
+        warnings.extend(removed_capability_warnings(set));
+        warnings.extend(crate::fsm::launch_warnings(set));
         let deadline = limits.max_runtime.map(|budget| Instant::now() + budget);
         // The Root agent's code setup: responses-as-code is per-agent, but the Root's is what the
         // run-level launch log and the sandbox warm-up decision key on.
@@ -2113,14 +2151,6 @@ async fn run_agent(
         emitter.emit(agent_status(GgAgentStatus::Running));
     }
 
-    let planning = PlanningRuntime::resolve(&profile);
-    // The FSM engine drives only the **root** agent (the run's top-level process); a subagent does
-    // scoped work and is not itself driven through a machine, so it gets a disabled runtime.
-    let fsm = if is_root {
-        FsmRuntime::resolve(&profile)
-    } else {
-        FsmRuntime::disabled()
-    };
     // This agent's execution mode (traditional tool calling vs a code-shaped reply) and the sandbox
     // ceilings/healing behind it come from its **own profile**, so a run can mix agents that call
     // tools with agents that write programs. Resolved here, ahead of the modules, because the
@@ -2180,13 +2210,10 @@ async fn run_agent(
             emitter,
             &registry,
             modules.caps(),
-            &planning,
-            &fsm,
             orch.speculative_active(),
             code.enabled,
             &completion,
         );
-        announce_fsm(emitter, &orch.caps, &fsm);
         // Record the run's effective toolset on the session summary — the exact set of tool names
         // offered to the root agent after capability gating and per-tool overrides — so the toolset
         // is a durable, slice-by ablation variable. Then warn (loudly but non-fatally) about any
@@ -2346,8 +2373,6 @@ async fn run_agent(
                 replay: orch.replay.clone(),
             },
             &orch.provided_files,
-            planning,
-            fsm,
             &profile,
             subagent_context,
             project,
@@ -2434,13 +2459,10 @@ async fn run_agent(
 /// Announce the run's enabled capabilities once (on the root's stream) so the console shows the
 /// configuration from the start — the offered toolset and the initial (empty) skills/memory/task/
 /// board state — mirroring the per-capability announcements a single-agent run emitted.
-#[allow(clippy::too_many_arguments)]
 fn announce_configuration(
     emitter: &Emitter,
     registry: &ToolRegistry,
     modules: &CapabilityModules,
-    planning: &PlanningRuntime,
-    fsm: &FsmRuntime,
     speculative: bool,
     responses_as_code: bool,
     completion: &CompletionSetup,
@@ -2519,13 +2541,6 @@ fn announce_configuration(
             ),
         ));
     }
-    if planning.offers_planning() {
-        emitter.emit(log(
-            "info",
-            "planning enabled; the model can enter a read-only plan mode mid-session and \
-             implement from a fresh context after submitting a plan.",
-        ));
-    }
     if speculative {
         emitter.emit(log(
             "info",
@@ -2543,31 +2558,6 @@ fn announce_configuration(
              tool calls) that gg runs in a wasmtime sandbox — the tool calls the program makes still \
              stream as ToolCall/ToolResult, and the execution is streamed as a CodeExecution event.",
         ));
-        // Responses-as-code does not compose with either machine that is driven by a *turn-level*
-        // transition, because in code mode every turn is a program and a program cannot make one.
-        // Both combinations are launchable and neither fails, so the only thing that stops a study
-        // spending its whole budget on a run that can never move is saying so loudly, at the start.
-        if planning.offers_planning() {
-            emitter.emit(log(
-                "warn",
-                "responses-as-code and planning are both enabled, but they do not compose: \
-                 `enter_plan_mode` and `submit_plan` are turn-level transitions a program cannot \
-                 make, and a code-mode run has no turn that is not a program. Planning is inert for \
-                 this run — a pass that can never be entered restricts nothing.",
-            ));
-        }
-        if fsm.is_active() {
-            emitter.emit(log(
-                "warn",
-                format!(
-                    "responses-as-code and the `{}` FSM are both enabled, but they do not compose: \
-                     `advance_state` is a turn-level transition a program cannot make, so this run \
-                     is pinned in the machine's first state — that state's tool restrictions apply \
-                     to every call every program makes, and the run can never advance out of it.",
-                    fsm.machine_name()
-                ),
-            ));
-        }
     }
 
     if completion.has_validation() {
@@ -2580,35 +2570,6 @@ fn announce_configuration(
                 completion.validation().len()
             ),
         ));
-    }
-}
-
-/// Announce the [FSM-driven process](crate::fsm) driving the run, once on the root's stream: which
-/// machine is active (and what it enforces), or a **warning** when the [`fsm`](test_cabinet_core::gg::CAPABILITY_FSM)
-/// capability names a machine gg does not recognize (so the misconfiguration is loud rather than
-/// silently leaving the run undriven).
-fn announce_fsm(emitter: &Emitter, caps: &GgCapabilitySet, fsm: &FsmRuntime) {
-    if fsm.is_active() {
-        emitter.emit(log(
-            "info",
-            format!(
-                "FSM-driven process enabled: the `{}` machine drives this run through a fixed order \
-                 of states. The agent is kept in each state until its transition condition is met \
-                 (it cannot skip ahead); each transition is streamed as an FsmState event.",
-                fsm.machine_name()
-            ),
-        ));
-    } else if let Some(name) = configured_machine(caps) {
-        // The capability named a machine, but it is not one gg ships — warn rather than run undriven.
-        if !is_builtin_machine(name) {
-            emitter.emit(log(
-                "warn",
-                format!(
-                    "the `fsm` capability named an unknown machine `{name}`; no FSM will drive this \
-                     run. The built-in machines are `tdd`, `review-gated`, and `plan-first`."
-                ),
-            ));
-        }
     }
 }
 
@@ -4405,192 +4366,6 @@ fn speculation_event(
 }
 
 // ---------------------------------------------------------------------------
-// FSM-driven processes: drive the agent through a fixed, ordered machine
-// ---------------------------------------------------------------------------
-
-/// The result of an intercepted `advance_state` call: the model-facing [outcome](ToolOutcome) plus,
-/// for a [`plan-first`](crate::fsm) plan reset, the plan text to seed after the turn's tool results
-/// are recorded (mirroring how `submit_plan` defers its context reset, so the conversation stays
-/// valid).
-struct AdvanceResult {
-    /// What the model sees for its `advance_state` call — the state entered, or a refusal explaining
-    /// the unmet condition.
-    outcome: ToolOutcome,
-    /// The plan to reset the context with after this turn (the `plan-first` `plan → implement`
-    /// reset), or `None` for every other transition.
-    submit_plan: Option<String>,
-}
-
-impl AdvanceResult {
-    /// A result carrying only an outcome (no deferred plan reset).
-    fn just(outcome: ToolOutcome) -> Self {
-        Self {
-            outcome,
-            submit_plan: None,
-        }
-    }
-}
-
-/// Handle an intercepted `advance_state` by driving the [FSM](crate::fsm): check the current state's
-/// [transition condition](StateExit) and, when it holds, move the machine to the next state (emitting
-/// [`FsmState`](GgTelemetryKind::FsmState) and injecting the new state's guidance); when it does not,
-/// **refuse** the advance so the agent stays put and cannot skip ahead.
-///
-/// The three exit kinds:
-/// - [`Advance`](StateExit::Advance) — evaluate the [guard](crate::fsm::AdvanceGuard) against the
-///   workspace (for `tdd`, tests/implementation must exist) and step forward on success;
-/// - [`PlanReset`](StateExit::PlanReset) — `plan-first`'s `plan` state: take the plan from the call's
-///   `note`, step to `implement`, and defer the [context reset](AdvanceResult::submit_plan) (reusing
-///   the planning flow);
-/// - [`Terminal`](StateExit::Terminal) — not agent-advanced, so `advance_state` is refused (it was
-///   never offered while resting there).
-fn handle_advance_state(
-    fsm: &mut FsmRuntime,
-    context: &mut ContextModel,
-    tool_ctx: &ToolContext,
-    emitter: &Emitter,
-    call: &ToolCall,
-) -> AdvanceResult {
-    // The current state's exit decides how (and whether) the machine moves. Copied out so no borrow
-    // of `fsm` is held across the mutation below.
-    let Some(exit) = fsm.current_state().map(|state| state.exit) else {
-        return AdvanceResult::just(ToolOutcome::error(
-            "advance_state: no state machine is driving this run.",
-        ));
-    };
-
-    match exit {
-        StateExit::Advance(guard) => {
-            // Enforce the order: the guard's evidence must be present in the workspace, else the
-            // advance is refused and the agent stays in this state.
-            if let Err(reason) = guard.evaluate(&tool_ctx.workspace_dir) {
-                return AdvanceResult::just(ToolOutcome::error(reason));
-            }
-            let (name, guidance, new_exit) = advance_owned(fsm);
-            if name.is_empty() {
-                return AdvanceResult::just(ToolOutcome::ok(
-                    "You are already at the final state; finish your work and stop.",
-                    "fsm already at final state",
-                ));
-            }
-            emitter.emit(fsm_state_event(
-                fsm.machine_name(),
-                name,
-                fsm.current_index(),
-            ));
-            push_state_guidance(context, guidance, new_exit);
-            AdvanceResult::just(ToolOutcome::ok(
-                format!("Advanced to the `{name}` state. Follow its guidance."),
-                format!("advanced to `{name}`"),
-            ))
-        }
-        StateExit::PlanReset => {
-            // plan-first: the plan comes from the call's `note`. The reset (clearing the exploration
-            // and seeding the framed plan) is deferred to after this turn's tool results, like
-            // `submit_plan`, so the conversation stays valid.
-            let plan = call
-                .arguments
-                .get("note")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .trim()
-                .to_string();
-            if plan.is_empty() {
-                return AdvanceResult::just(ToolOutcome::error(
-                    "advance_state: include your implementation plan in the `note` before advancing \
-                     from the plan state — it seeds your fresh implementation context.",
-                ));
-            }
-            emitter.emit(GgTelemetryKind::Planning {
-                phase: GgPlanPhase::Submitted,
-                plan: Some(plan.clone()),
-            });
-            let (name, guidance, new_exit) = advance_owned(fsm);
-            emitter.emit(fsm_state_event(
-                fsm.machine_name(),
-                name,
-                fsm.current_index(),
-            ));
-            // The implement-state guidance is pinned, so it survives the deferred `clear_ephemeral`.
-            push_state_guidance(context, guidance, new_exit);
-            AdvanceResult {
-                outcome: ToolOutcome::ok(
-                    "Plan accepted. Clearing your exploration and starting implementation from a \
-                     clean context with the original request and your plan.",
-                    "advanced to `implement`",
-                ),
-                submit_plan: Some(plan),
-            }
-        }
-        StateExit::Terminal => AdvanceResult::just(ToolOutcome::error(
-            "advance_state: you are in the final state of the process; finish your work and stop.",
-        )),
-    }
-}
-
-/// Step the machine to the next state and return the entered state's `(name, guidance, exit)` as
-/// owned/copied values, so the caller holds no borrow of the runtime across the emit/inject that
-/// follow. A machine already at its last state returns an empty name.
-fn advance_owned(fsm: &mut FsmRuntime) -> (&'static str, String, StateExit) {
-    match fsm.advance() {
-        Some(state) => (state.name, state.guidance.clone(), state.exit),
-        None => ("", String::new(), StateExit::Terminal),
-    }
-}
-
-/// Inject a state's `guidance` into the context on entering it. A [`PlanReset`](StateExit::PlanReset)
-/// (plan-first `plan`) state's guidance is **ephemeral** — the plan → implement reset clears it —
-/// while every other state's guidance is **pinned** (it frames what the agent must do for the rest of
-/// that state and survives compaction). Tagged [`System`](GgContextSource::System) as process-level
-/// instruction. An empty guidance (a machine past its last state) injects nothing.
-fn push_state_guidance(context: &mut ContextModel, guidance: String, exit: StateExit) {
-    if guidance.trim().is_empty() {
-        return;
-    }
-    let retention = if matches!(exit, StateExit::PlanReset) {
-        Retention::Ephemeral
-    } else {
-        Retention::Pinned
-    };
-    context.push(GgContextSource::System, retention, Message::user(guidance));
-}
-
-/// A [`FsmState`](GgTelemetryKind::FsmState) telemetry event for a transition into `state` (index
-/// `index`) of `machine`.
-fn fsm_state_event(machine: &str, state: &str, index: usize) -> GgTelemetryKind {
-    GgTelemetryKind::FsmState {
-        machine: machine.to_string(),
-        state: state.to_string(),
-        state_index: index as u64,
-    }
-}
-
-/// The model-facing message for a tool call the current [FSM](crate::fsm) state withholds — a
-/// defensive guard (the tool was not offered this turn). Explains the state and how to proceed
-/// (explore then advance, for a read-only state; complete the work then advance, otherwise).
-fn fsm_refusal(name: &str, fsm: &FsmRuntime) -> String {
-    match fsm.current_state() {
-        Some(state) => {
-            let how = match state.tool_policy {
-                ToolPolicy::ReadOnly => {
-                    "This state is read-only: explore with `read_file`, `list_dir`, `read_skill`, \
-                     and `search_archive`, then call `advance_state` to move on."
-                }
-                ToolPolicy::All => {
-                    "Do this state's work, then call `advance_state` once its condition is met."
-                }
-            };
-            format!(
-                "`{name}` is not available in the `{}` state of the `{}` process. {how}",
-                state.name,
-                fsm.machine_name(),
-            )
-        }
-        None => format!("`{name}` is not available right now."),
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Declared workflows: fan-out + sequencing over the subagent scheduler
 // ---------------------------------------------------------------------------
 
@@ -5030,7 +4805,7 @@ impl Agent {
     /// it.
     ///
     /// The agent's resources are passed in rather than owned by the struct: the `registry`,
-    /// the capability runtimes (`skills`/`memories`/`tasks`/`board`/`planning`), the
+    /// the capability [modules](crate::modules) it holds, the
     /// [`context_setup`](ContextSetup), and the `client` are all constructed per agent by the
     /// orchestrator ([`run_agent`] for every agent). When the [subagents](CAPABILITY_SUBAGENTS)
     /// capability is on, `subagents` carries this agent's [delegation context](SubagentContext):
@@ -5052,8 +4827,6 @@ impl Agent {
         modules: &mut ModuleSet,
         setup: DriveSetup,
         provided_files: &[PathBuf],
-        planning: PlanningRuntime,
-        mut fsm: FsmRuntime,
         profile: &GgAgentConfig,
         mut subagents: Option<SubagentContext>,
         project: Option<ProjectContext>,
@@ -5087,9 +4860,8 @@ impl Agent {
         // attempts and run the judge; with it off, the tool (if offered) falls through to a defensive
         // refusal rather than engaging.
         let speculative_active = speculative && subagents.is_some();
-        // The full offered toolset. When planning is on, each turn's request is filtered from this
-        // by the loop's plan-mode state (read-only tools only while planning); otherwise the whole
-        // set is offered every turn.
+        // The full offered toolset — every turn offers all of it, so the tool schemas are a stable
+        // prefix a provider can cache.
         let all_tools = registry.definitions();
         // The per-agent documentation carve-out, behind `object.list()` and `fn.docs()`. Built from
         // the same scope-bound tool set the program's objects are, and always present (docs are not a
@@ -5127,8 +4899,6 @@ impl Agent {
             memories: caps.memories(),
             tasks: caps.tasks(),
             board: caps.board(),
-            planning: &planning,
-            fsm: &fsm,
             read_policy,
             shell_offload: &shell_offload,
             vision: &tool_ctx.vision,
@@ -5190,17 +4960,6 @@ impl Agent {
             ));
         }
 
-        // FSM start: emit the machine's entry state and inject its guidance, so the run is driven
-        // through the process from the very first turn. Only the root carries an active machine.
-        let fsm_active = fsm.is_active();
-        if fsm_active && let Some(state) = fsm.current_state() {
-            let event = fsm_state_event(fsm.machine_name(), state.name, fsm.current_index());
-            let guidance = state.guidance.clone();
-            let exit = state.exit;
-            emitter.emit(event);
-            push_state_guidance(context, guidance, exit);
-        }
-
         let mut total_tokens = TokenCounts::default();
         let mut total_cost: Option<Cost> = None;
         // The last natural-language assistant message. It is this agent's final text on the
@@ -5212,11 +4971,6 @@ impl Agent {
         // has taken a code turn, which is also the honest answer for an agent stopped before it
         // could take one.
         let mut last_report: Option<String> = None;
-        // Plan mode is loop state: while `true`, the offered toolset is restricted to read-only
-        // tools (plus `submit_plan`). It flips on a successful `enter_plan_mode` and back off once a
-        // submitted plan has seeded the fresh implementation context. Only meaningful when planning
-        // is enabled.
-        let mut in_plan_mode = false;
         // Compaction that is **in flight**: an [in-loop strategy](PendingCompaction) has asked the
         // agent to condense its own window, and the loop is waiting for the turn that does it.
         //
@@ -5388,10 +5142,9 @@ impl Agent {
                                 compaction.strategy.id()
                             ),
                         ));
-                        // Pushed as process-level guidance, exactly as the FSM's state guidance and
-                        // the plan-mode notice are: it is gg speaking about the run rather than
-                        // material the agent produced, and it is ephemeral, so the compaction it
-                        // opens is also what clears it.
+                        // Pushed as process-level guidance: it is gg speaking about the run rather
+                        // than material the agent produced, and it is ephemeral, so the compaction
+                        // it opens is also what clears it.
                         context.push(
                             GgContextSource::System,
                             Retention::Ephemeral,
@@ -5411,43 +5164,19 @@ impl Agent {
                 context.refresh_context_usage_signal(amc.signal_options());
             }
 
-            // The offered toolset for this turn — the intersection of every active restriction, so
-            // what the model is shown and what it may run agree (the same predicates guard dispatch
-            // below). In plan mode gg restricts it to the read-only tools (plus `submit_plan`, the way
-            // out); an active FSM state restricts it to what that state allows (a read-only plan
-            // state, and `advance_state` only while the current state is one the agent leaves by
-            // calling it).
-            // In responses-as-code mode the model is offered **no** native tool definitions — it
-            // composes the tools as functions inside a program instead (the toolset is described in
-            // the system prompt, and each program tool call is bridged to the real registry). In the
-            // ordinary tool-calling mode the offered set is the intersection of every active
-            // restriction, so what the model is shown and what it may run agree.
+            // The offered toolset for this turn. In responses-as-code mode the model is offered
+            // **no** native tool definitions — it composes the tools as functions inside a program
+            // instead (the toolset is described in the system prompt, and each program tool call is
+            // bridged to the real registry). In the ordinary tool-calling mode the whole offered set
+            // goes out every turn: the tool list is part of the prompt a provider caches, so a
+            // toolset that varied turn to turn would rewrite the cached prefix.
             let tools: Vec<ToolDefinition> = if code.enabled {
                 Vec::new()
             } else {
-                let mut tools: Vec<ToolDefinition> = all_tools
-                    .iter()
-                    .filter(|tool| {
-                        // `compact` is exempt from every turn-level filter, so the offered set is
-                        // byte-identical on every turn of a self-compaction run. That is the point:
-                        // the tool list is part of the prompt a provider caches, and a tool that
-                        // came and went with plan mode or an FSM state would rewrite the cached
-                        // prefix — and the turn it would appear on is the one where the window, and
-                        // so the cost of a cache miss, is at its largest. The loop intercepts the
-                        // call ahead of those same gates, so what is offered and what may run agree.
-                        if tool.name == COMPACT_TOOL {
-                            return true;
-                        }
-                        let planning_ok = !planning.offers_planning()
-                            || plan_mode_offers(&tool.name, in_plan_mode);
-                        planning_ok && fsm.offers(&tool.name)
-                    })
-                    .cloned()
-                    .collect();
-                // This agent's ending calls, the one way it may end its session. Appended *after*
-                // the plan-mode/FSM filter, so they are always offered — like their code-mode
-                // counterparts they bypass those turn-level gates (the loop intercepts them) and can
-                // end a session from a state a machine meant to hold.
+                let mut tools: Vec<ToolDefinition> = all_tools.clone();
+                // This agent's ending calls, the one way it may end its session. They are not
+                // registry tools — the loop intercepts them — so they are appended here rather than
+                // contributed by a capability.
                 tools.extend(completion::role_tool_definitions(ending_role));
                 tools
             };
@@ -5706,13 +5435,9 @@ impl Agent {
                     project: project.as_ref(),
                     memories: caps.memories(),
                     tasks: caps.tasks(),
-                    planning: &planning,
-                    fsm: &fsm,
                     amc: &amc,
                     emitter,
                     replay: replay.as_ref(),
-                    fsm_active,
-                    in_plan_mode,
                     speculative_active,
                     pending_compaction,
                     ending_role,
@@ -6007,23 +5732,17 @@ impl Agent {
                 continue;
             }
 
-            // A plan submitted this turn, captured during dispatch and applied once the turn's tool
-            // results are all recorded (so the conversation stays valid before the context is reset).
-            let mut submitted_plan: Option<String> = None;
-
             // The ending this turn declared. Captured during dispatch (an ending call is
             // intercepted like the other loop-driven tools) and, if set, ends the session once the
             // turn's tool results are all recorded — so the intercepted call's result is answered
-            // and the conversation stays valid, exactly as a submitted plan defers its context
-            // reset.
+            // and the conversation stays valid.
             let mut declared_ending: Option<Ending> = None;
 
             // The compaction this turn declared with a `compact` call, deferred to after the
-            // dispatch loop for exactly the reason a submitted plan's context reset is: the turn's
-            // tool results must all be recorded first, or the rewrite would drop an assistant
-            // `tool_calls` message whose `tool` answers had not been written yet. How this turn's
-            // calls fared against a pending compaction is tallied alongside, for the memory
-            // strategy's "one reply whose calls all succeeded" gate.
+            // dispatch loop because the turn's tool results must all be recorded first, or the
+            // rewrite would drop an assistant `tool_calls` message whose `tool` answers had not been
+            // written yet. How this turn's calls fared against a pending compaction is tallied
+            // alongside, for the memory strategy's "one reply whose calls all succeeded" gate.
             let mut compact_request: Option<CompactionRequest> = None;
             let mut compaction_calls = 0u32;
             let mut compaction_failures = 0u32;
@@ -6036,12 +5755,9 @@ impl Agent {
                     args: call.arguments.clone(),
                 });
 
-                // In plan mode the loop is read-only, and an active FSM state may restrict the toolset
-                // further: a tool either filter withheld is refused here too (a defensive guard — the
-                // model was not offered it) rather than dispatched. `advance_state` and the subagent
-                // tools are intercepted here (never routed through `registry.dispatch`, whose
-                // registered validators are defensive placeholders): the loop drives the state machine
-                // / the scheduler / the agent tree, which the tools cannot reach.
+                // The subagent tools are intercepted here (never routed through
+                // `registry.dispatch`, whose registered validators are defensive placeholders): the
+                // loop drives the scheduler and the agent tree, which the tools cannot reach.
                 let mut outcome = if let Some(pending) =
                     pending_compaction.filter(|pending| !pending.admits(&call.name, false))
                 {
@@ -6057,11 +5773,10 @@ impl Agent {
                 } else if call.name == COMPACT_TOOL
                     && compaction.strategy.offers_compact_tool(false)
                 {
-                    // Self-compaction: the model compacts its own window. Intercepted here — ahead
-                    // of the plan-mode and FSM gates, exactly as `finish` is — because the loop owns
-                    // the context model the tool cannot hold, and because a machine that meant to
-                    // hold the agent in a state cannot hold it in a full window. The rewrite itself
-                    // is deferred until this turn's results are all recorded.
+                    // Self-compaction: the model compacts its own window. Intercepted here,
+                    // exactly as `finish` is, because the loop owns the context model the tool
+                    // cannot hold. The rewrite itself is deferred until this turn's results are all
+                    // recorded.
                     match parse_compact_request(&call.arguments) {
                         Ok(request) => {
                             compact_request = Some(request);
@@ -6073,11 +5788,10 @@ impl Agent {
                         Err(message) => ToolOutcome::failed(ToolFailure::InvalidArgument, message),
                     }
                 } else if !code.enabled && ending_role.owns(&call.name) {
-                    // An ending call. Intercepted here (like the delegation tools) and *before* the
-                    // plan-mode/FSM gates, so — like its code-mode counterpart — it can end the
-                    // session from a state those machines meant to hold. The declaration is built
-                    // through the same [`Ending`] constructors the sandbox membrane uses, so a
-                    // malformed one is refused in the same words whichever mode the agent runs in.
+                    // An ending call. Intercepted here, like the delegation tools. The
+                    // declaration is built through the same [`Ending`] constructors the sandbox
+                    // membrane uses, so a malformed one is refused in the same words whichever mode
+                    // the agent runs in.
                     //
                     // When the ending is validated the commands run first: on success the
                     // declaration is captured and the session ends after this turn's results are
@@ -6112,26 +5826,6 @@ impl Agent {
                             }
                         }
                     }
-                } else if planning.offers_planning() && !plan_mode_offers(&call.name, in_plan_mode)
-                {
-                    ToolOutcome::failed(
-                        ToolFailure::Refused,
-                        plan_mode_refusal(&call.name, in_plan_mode),
-                    )
-                } else if fsm_active && !fsm.offers(&call.name) {
-                    // The FSM's current state withholds this tool this turn (a read-only plan state,
-                    // or a tool that is not the state's exit) — refuse it with guidance.
-                    ToolOutcome::failed(ToolFailure::Refused, fsm_refusal(&call.name, &fsm))
-                } else if fsm_active && is_fsm_tool(&call.name) {
-                    // Drive the state machine: check the current state's transition guard, move on
-                    // when it holds, and refuse the advance otherwise so the agent cannot skip
-                    // ahead. A `plan-first` plan reset is captured here and applied after the turn's
-                    // tool results are recorded, exactly like `submit_plan`.
-                    let advance = handle_advance_state(&mut fsm, context, tool_ctx, emitter, call);
-                    if let Some(plan) = advance.submit_plan {
-                        submitted_plan = Some(plan);
-                    }
-                    advance.outcome
                 } else if let Some(project) = project
                     .as_ref()
                     .filter(|_| call.name == WAIT_FOR_ISSUE_TOOL)
@@ -6214,78 +5908,7 @@ impl Agent {
                     }
                 }
 
-                // Planning transitions: like the agent-managed-context reclaim, the tool only
-                // validated the call — the loop owns plan mode and the context window, so it applies
-                // the effect here (after recording the tool result keeps the conversation valid).
-                let planning_ok = outcome.ok;
                 record_tool_result(context, caps, call, outcome, emitter);
-                if planning.offers_planning() && planning_ok && is_planning_tool(&call.name) {
-                    match call.name.as_str() {
-                        ENTER_PLAN_MODE_TOOL => {
-                            // Enter read-only mode and inject the plan-mode guidance as an ephemeral
-                            // item (dropped when the plan is submitted and the context is cleared).
-                            in_plan_mode = true;
-                            context.push(
-                                GgContextSource::Plan,
-                                Retention::Ephemeral,
-                                crate::model::Message::user(planning.plan_mode_guidance()),
-                            );
-                            emitter.emit(GgTelemetryKind::Planning {
-                                phase: GgPlanPhase::Entered,
-                                plan: None,
-                            });
-                        }
-                        SUBMIT_PLAN_TOOL => {
-                            // Capture the plan; the reset is applied after the turn's tool results
-                            // are all recorded.
-                            let plan = call
-                                .arguments
-                                .get("plan")
-                                .and_then(Value::as_str)
-                                .unwrap_or_default()
-                                .trim()
-                                .to_string();
-                            emitter.emit(GgTelemetryKind::Planning {
-                                phase: GgPlanPhase::Submitted,
-                                plan: Some(plan.clone()),
-                            });
-                            submitted_plan = Some(plan);
-                        }
-                        // `is_planning_tool` admits only the two arms above.
-                        _ => {}
-                    }
-                }
-            }
-
-            // A plan was submitted this turn — either via `submit_plan` (the planning capability) or
-            // an `advance_state` out of a `plan-first` FSM plan state (both defer here). Clear the
-            // exploration history (keeping the pinned prefix — system, original prompt, skills,
-            // memories, tasks, board, and any pinned FSM guidance) via the shared context-reset
-            // primitive, seed the fresh implementation context with the framed plan as a pinned item,
-            // leave plan mode, and restore the full toolset for the next turn. The plan is framed by
-            // the FSM's own planner when a machine drives the run (so a `plan-first` machine reuses
-            // the planning flow even with the standalone planning capability off), else by the
-            // planning runtime.
-            if let Some(plan) = submitted_plan {
-                in_plan_mode = false;
-                // The reset drops the exploration thread, which is where anything the model
-                // recorded during planning was visible; the pinned block has to be current
-                // before it goes, exactly as at a compaction boundary.
-                refresh_boundary_blocks(context, caps);
-                context.clear_ephemeral();
-                let framed = match fsm.planner() {
-                    Some(planner) => planner.frame_plan(&plan),
-                    None => planning.frame_plan(&plan),
-                };
-                context.push(
-                    GgContextSource::Plan,
-                    Retention::Pinned,
-                    crate::model::Message::user(framed),
-                );
-                emitter.emit(GgTelemetryKind::Planning {
-                    phase: GgPlanPhase::Implementing,
-                    plan: Some(plan),
-                });
             }
 
             // An ending declared this turn: every tool result — including the ending call's — is
@@ -6348,9 +5971,9 @@ impl Agent {
             }
 
             // The tool-calling turn is done: every requested call was dispatched and answered, and
-            // every state transition the turn asked for has been applied. Recorded **last** for
-            // exactly that reason — a stop must not land between a plan submission and the context
-            // reset that completes it — and recorded at all because a `Progressed` turn can be the
+            // every deferred effect the turn asked for has been applied. Recorded **last** for
+            // exactly that reason — a stop must not land between a declaration and the rewrite that
+            // completes it — and recorded at all because a `Progressed` turn can be the
             // one that first *fills* the error-rate window, and a window that becomes judgeable at
             // three errors in four must breach then rather than waiting for a fourth failure.
             if let Some(breach) = agent_limits.record(TurnOutcome::Progressed, &self.id) {
@@ -7136,7 +6759,7 @@ fn memories_startup_note(memories: &MemoriesRuntime) -> String {
 ///
 /// Read across every profile rather than off the [root](GgCapabilitySet::root) because the board is
 /// run-global while the capability is per-agent: a set that puts project management on a dedicated
-/// planning profile (a perfectly ordinary shape — the root need not be the agent that files work)
+/// board-owning profile (a perfectly ordinary shape — the root need not be the agent that files work)
 /// would otherwise offer that profile the board tools while the run around it had no board runtime,
 /// no auto-dispatch, and no worktrees, so every issue it filed would sit on the board forever.
 /// Mirrors how [`merge_agent_name`] reads the same capability's merge-agent param.
@@ -7300,10 +6923,6 @@ struct PromptInputs<'a> {
     tasks: &'a TasksRuntime,
     /// The epic/issue board capability, for its ceilings.
     board: &'a BoardRuntime,
-    /// The planning capability.
-    planning: &'a PlanningRuntime,
-    /// The FSM driving the run, when one does.
-    fsm: &'a FsmRuntime,
     /// How much of a file one `read_file` call returns, so a capped run says so up front.
     read_policy: ReadPolicy,
     /// How much of a command's output one `shell` call returns, and where the rest of it is kept, so
@@ -7351,8 +6970,8 @@ struct PromptInputs<'a> {
 /// Every capability section is gated on that capability being enabled, so the prompt describes
 /// exactly what this run can do — the tools it offers (and, when it offers none, that the model
 /// can only reply in text), the catalog of available [skills](crate::skills), and how to use the
-/// [memories](crate::memories), [tasks](crate::tasks), [board](crate::board), and
-/// [planning](crate::planning) capabilities, each stating that run's configured limits. A
+/// [memories](crate::memories), [tasks](crate::tasks) and [board](crate::board) capabilities,
+/// each stating that run's configured limits. A
 /// disabled capability contributes nothing at all: no tools, no prose, no context.
 /// The API objects a code program has this run, in a fixed display order, each with the one-line
 /// description the prompt names it by.
@@ -7422,7 +7041,6 @@ fn code_heading_views(
     memories: bool,
     tasks: bool,
     board: bool,
-    plan: bool,
     files: bool,
 ) -> Vec<CodeHeadingView> {
     // (source, one-line description, whether this run can produce it). The heading word itself comes
@@ -7470,11 +7088,6 @@ fn code_heading_views(
             board,
         ),
         (
-            GgContextSource::Plan,
-            "your accepted plan, or plan-mode guidance",
-            plan,
-        ),
-        (
             GgContextSource::FileView,
             "the contents of a file seeded into your context",
             files,
@@ -7512,8 +7125,6 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
         memories,
         tasks,
         board,
-        planning,
-        fsm,
         read_policy,
         shell_offload,
         vision,
@@ -7580,7 +7191,6 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
             // without it is never shown a `Board` block, so naming the heading would describe a
             // message kind it cannot receive.
             board.offers_board() && profile.is_enabled(CAPABILITY_PROJECT_MANAGEMENT),
-            planning.offers_planning() || fsm.is_active(),
             // A restored file view is a `File` message too, so a persistent agent is told the heading
             // even in the (unusual) case that it reads nothing itself.
             offers_read || autoload_specs.is_some() || persistence,
@@ -7656,10 +7266,6 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
             // whatever its own capabilities are, since being told what it is working on has
             // nothing to do with whether it may author the board.
             assigned_issue: assigned_issue.map(|id| AssignedIssueView { id: id.to_string() }),
-            planning: planning.offers_planning(),
-            fsm: fsm.is_active().then(|| FsmView {
-                machine: fsm.machine_name().to_string(),
-            }),
             speculative,
             // On → a section telling the model the whole brief is already in its window; the
             // `locked` flag decides whether it also promises the material stays across compaction.
@@ -7712,34 +7318,6 @@ fn ending_calls(role: EndingRole, responses_as_code: bool) -> Vec<String> {
         EndingRole::Standard => vec![view.finish],
         EndingRole::Review => vec![view.approve, view.request_changes],
         EndingRole::Judge { .. } => vec![view.select_winner],
-    }
-}
-
-/// The model-facing message for a tool call refused by the loop's plan-mode guard.
-///
-/// While planning, every mutating tool is withheld (the pass is read-only) and a second
-/// `enter_plan_mode` is meaningless; outside plan mode, only `submit_plan` is withheld (there is
-/// no plan pass in progress). Each message tells the model how to proceed.
-fn plan_mode_refusal(name: &str, in_plan_mode: bool) -> String {
-    if in_plan_mode {
-        if name == ENTER_PLAN_MODE_TOOL {
-            "you are already in plan mode; explore with the read-only tools (`read_file`, \
-             `list_dir`, `read_skill`, `search_archive`) and call `submit_plan` when your plan is \
-             ready."
-                .to_string()
-        } else {
-            format!(
-                "`{name}` is unavailable in plan mode, which is read-only. You can read the \
-                 workspace (`read_file`, `list_dir`), read skills, and search your archive. When \
-                 your plan is ready, call `submit_plan` to clear your exploration and start \
-                 implementing with your full toolset."
-            )
-        }
-    } else {
-        format!(
-            "`{name}` is only available in plan mode; call `enter_plan_mode` first to start a \
-             read-only planning pass."
-        )
     }
 }
 
@@ -7856,8 +7434,8 @@ async fn restore_compact_files(
 ///
 /// This is the **only** place the block is rebuilt. Between boundaries the model's own memory
 /// calls and their confirmations are what tell it what it holds, so re-sending the block each
-/// turn would buy nothing and cost a copy of every memory per mutation. A compaction (or a
-/// plan-mode reset) is where that stops being true: it sweeps the thread the model was reading
+/// turn would buy nothing and cost a copy of every memory per mutation. A compaction is where
+/// that stops being true: it sweeps the thread the model was reading
 /// its memories out of, so the block has to be current *before* the sweep. Called just before
 /// the rewrite for exactly that reason — the stale copy is superseded into the ephemeral history
 /// the rewrite is about to discard, and the fresh one crosses in the pinned prefix.

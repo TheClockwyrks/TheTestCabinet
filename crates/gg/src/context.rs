@@ -1039,15 +1039,14 @@ impl ContextModel {
 
     /// Drop every [`Ephemeral`](Retention::Ephemeral) item, keeping the pinned prefix verbatim
     /// and re-framing any pinned `tool`-role item to a standalone `user` message — the shared
-    /// **context-reset primitive** behind both
-    /// [compaction](crate::compaction::apply_compaction) (which then seeds the files the model
-    /// asked to keep and appends the summary) and
-    /// [planning](https://docs.testcabinet.ai/gg/planning/) (which then seeds the accepted plan).
+    /// **context-reset primitive** behind
+    /// [compaction](crate::compaction::apply_compaction), which then seeds the files the model
+    /// asked to keep and appends the summary.
     ///
     /// The pinned prefix (the system prompt, the build prompt, read skills, in-play memories,
-    /// the task list, the epic/issue board, and a submitted plan) is retained unchanged and in
-    /// order; all ephemeral thread material (assistant turns, tool output, file views, plan-mode
-    /// guidance, and any prior summary) is dropped.
+    /// the task list, and the epic/issue board) is retained unchanged and in order; all ephemeral
+    /// thread material (assistant turns, tool output, file views, process guidance, and any prior
+    /// summary) is dropped.
     ///
     /// A retained skill body is pinned as the `tool` result that answered its `read_skill`
     /// call; once the assistant turn that made that call is dropped, that `tool` message would
@@ -1376,7 +1375,6 @@ pub fn code_heading(source: GgContextSource) -> Option<&'static str> {
         GgContextSource::Memory => Some("Memories"),
         GgContextSource::TaskList => Some("Tasks"),
         GgContextSource::Board => Some("Board"),
-        GgContextSource::Plan => Some("Plan"),
         GgContextSource::History => Some("Summary"),
         GgContextSource::System => Some("Notice"),
         GgContextSource::Assistant => None,
@@ -1420,7 +1418,6 @@ fn source_label(source: GgContextSource) -> &'static str {
         GgContextSource::Memory => "Memories",
         GgContextSource::TaskList => "Tasks",
         GgContextSource::Board => "Board",
-        GgContextSource::Plan => "Plan",
         GgContextSource::History => "History",
     }
 }

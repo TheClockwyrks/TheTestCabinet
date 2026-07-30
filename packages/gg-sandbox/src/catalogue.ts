@@ -13,11 +13,9 @@
  *    emitted `.d.ts` into `crates/gg/src/sandbox/signatures.json` — the catalogue gg renders the
  *    system prompt from.
  *
- * It holds **35** entries, not the 38 names in `ALL_TOOL_NAMES` (`crates/gg/src/tools/mod.rs`).
- * `enter_plan_mode`, `submit_plan` and `advance_state` are absent by design: they change the loop's
- * *mode*, which is not a value a program can compose, so they are declared in the WIT, refused by
- * the host as a backstop, and never bound into a program's scope. gg asserts
- * `boundTools() == ALL_TOOL_NAMES \ TURN_LEVEL_TOOLS`.
+ * It holds one entry per name in `ALL_TOOL_NAMES` (`crates/gg/src/tools/mod.rs`) — there is no
+ * class of gg tool a program is denied — and gg asserts exactly that:
+ * `boundTools() == ALL_TOOL_NAMES`.
  *
  * The order is `ALL_TOOL_NAMES`' order, so the prompt lists tools in the same sequence gg documents
  * them everywhere else.
@@ -146,8 +144,8 @@ export interface SessionEntry {
  * Every model-facing function that ends a session — none of them a gg tool.
  *
  * They are here rather than in {@link TOOL_CATALOGUE} because they have no gg tool names: putting
- * them there would break the bijection `boundTools() == ALL_TOOL_NAMES \ TURN_LEVEL_TOOLS` that the
- * committed component is checked against.
+ * them there would break the bijection `boundTools() == ALL_TOOL_NAMES` that the committed
+ * component is checked against.
  *
  * An ending is a **result**, and a role's result has a shape: work reports what was done, a review
  * returns a verdict, a judgement names a winner. So there is one function per shape, each carrying

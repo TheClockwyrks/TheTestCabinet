@@ -26,7 +26,6 @@ import type {
   GgMemoryCaps,
   GgMemoryEntry,
   GgMemoryPeak,
-  GgPlanPhase,
   GgPromptRef,
   GgRetainedState,
   GgReviewer,
@@ -59,11 +58,7 @@ export type FeedTone =
   | "ok"
   | "fail"
   | "warn"
-  | "compact"
-  | "plan"
-  // Phase-5 process tone: an FSM-driven transition — the run being advanced to the
-  // next enforced state of a built-in machine (see gg/fsms).
-  | "fsm";
+  | "compact";
 
 export interface FeedRow {
   key: string;
@@ -377,23 +372,6 @@ export interface BoardState {
   issues: GgBoardIssue[];
 }
 
-// The live state of the model's planning pass (see gg/planning): a read-only
-// exploration phase that produces a plan, then a fresh-context implementation phase
-// seeded from the original prompt plus that plan. `phase` is the latest transition,
-// `plan` the latest submitted plan text (carried from `submitted` into
-// `implementing`). `implementTurn`/`implementTimestamp` mark the plan→implement
-// boundary — the point the exploration history was cleared and implementation began
-// from a clean window — so it can be marked like a compaction boundary on the
-// context-fill graph. Null until the implementing phase is entered. The whole
-// object is null when no planning happened (the planning capability was off, or a
-// mid-session `enter_plan_mode` was never elected).
-export interface PlanState {
-  phase: GgPlanPhase;
-  plan: string | null;
-  implementTurn: number | null;
-  implementTimestamp: string | null;
-}
-
 // --- Issue reviews -----------------------------------------------------------
 
 // The review lifecycle of one issue (see gg/project-management). An issue's reviewers
@@ -432,22 +410,6 @@ export interface IssueReviewRound {
   items: string[];
   // Who approved during the round, in the order they ran.
   approvals: GgReviewer[];
-}
-
-// --- FSM-driven process (Phase 5) --------------------------------------------
-
-// The current enforced FSM state (see gg/fsms): a built-in machine (tdd,
-// plan-first, …) drives the run through a fixed, ordered sequence the
-// agent cannot skip. `machine`/`state`/`stateIndex` are the latest `fsm_state`
-// transition; `states` is the ordered machine path discovered so far (indexed by
-// `stateIndex`, so a loop-back that repeats an earlier index does not grow it), so
-// the UI can render progress through the machine with the current state highlighted.
-// Null when no FSM drove the run (the capability was off — no `fsm_state` events).
-export interface FsmProgress {
-  machine: string;
-  state: string;
-  stateIndex: number;
-  states: string[];
 }
 
 // --- Speculative execution (Phase 5) -----------------------------------------
@@ -557,21 +519,10 @@ export interface GgRunState {
   // epics-and-issues capability is off (or no snapshot has arrived yet).
   board: BoardState | null;
 
-  // --- Planning pass (latest transition) -----------------------------------
-  // The current plan phase + submitted plan, and the plan→implement boundary;
-  // null when no planning happened (the planning capability is off, or the model
-  // never entered plan mode).
-  plan: PlanState | null;
-
   // --- Issue reviews -------------------------------------------------------
   // Per-issue review lifecycle, keyed by issue id (from the event envelope);
   // empty when no issue named reviewers (no `issue_review` events).
   issueReviews: Map<string, IssueReviewState>;
-
-  // --- FSM-driven process (Phase 5) ----------------------------------------
-  // The current enforced FSM state driving the run, or null when no machine drove
-  // it (the FSM capability was off).
-  fsm: FsmProgress | null;
 
   // --- Speculative execution (Phase 5) -------------------------------------
   // The best-of-K speculations run this session, in first-seen order, each with its
@@ -669,28 +620,6 @@ function contextActionLabel(action: GgContextAction): string {
   }
 }
 
-// The feed line for one planning transition — a distinct row (like a compaction
-// boundary) so the read-only-then-implement structure is legible in the timeline:
-// entering read-only exploration, the plan landing, and implementation restarting
-// from a fresh context seeded with that plan.
-function planPhaseFeed(phase: GgPlanPhase): { label: string; detail: string } {
-  switch (phase) {
-    case "entered":
-      return {
-        label: "plan mode",
-        detail: "Entered plan mode — read-only exploration, no mutations.",
-      };
-    case "submitted":
-      return { label: "plan", detail: "Plan submitted." };
-    case "implementing":
-      return {
-        label: "implementing",
-        detail:
-          "Implementing from the plan — fresh context, original prompt plus plan.",
-      };
-  }
-}
-
 // Map one gg-native telemetry event to a feed row, or null to drop it. `usage` and
 // the Phase-1 state kinds (`context_breakdown`, `skills_state`, `memory_state`,
 // `tasks_state`) drive their own panels, not the feed, so they render no row.
@@ -775,20 +704,6 @@ function ggFeedRow(
         label: "session",
         detail: `Session ended: ${gg.status}.`,
         tone: gg.status === "completed" ? "ok" : "fail",
-      };
-    case "planning": {
-      const { label, detail } = planPhaseFeed(gg.phase);
-      return { ...base, label, detail, tone: "plan" };
-    }
-    case "fsm_state":
-      // Mark each FSM transition — the run being advanced to the next enforced state
-      // of the built-in machine. The strip carries the prominent current-state
-      // read-out; this row locates the transition in the timeline.
-      return {
-        ...base,
-        label: "fsm",
-        detail: `${gg.machine} → ${gg.state}`,
-        tone: "fsm",
       };
     case "usage":
     case "context_breakdown":
@@ -897,9 +812,7 @@ export interface DerivedGgState {
   memory: GgMemoryState | null;
   tasks: GgTaskEntry[];
   board: BoardState | null;
-  plan: PlanState | null;
   issueReviews: Map<string, IssueReviewState>;
-  fsm: FsmProgress | null;
   speculations: SpeculationState[];
 }
 
@@ -1259,7 +1172,7 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
   let skills: GgSkillState[] = [];
   // The latest snapshot, on a const so the post-loop read narrows cleanly — a `let`
   // assigned only inside the forEach closure is not narrowed by control flow after
-  // the loop (the same reason `fsmRef` below is shaped this way).
+  // the loop.
   const memoryRef: { latest: GgMemoryState | null } = { latest: null };
   // Every memory this agent ever held, in first-written order — folded from the
   // `memory_revision` stream and stitched onto the snapshot after the pass, so a
@@ -1267,15 +1180,8 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
   const memoryHistory = new Map<string, GgMemoryHistory>();
   let tasks: GgTaskEntry[] = [];
   let board: BoardState | null = null;
-  let plan: PlanState | null = null;
   // Per-issue review lifecycle, keyed by the envelope's issueId.
   const issueReviews = new Map<string, IssueReviewState>();
-  // The latest FSM transition, plus the state seen at each index so the ordered
-  // machine path can be reconstructed for the progress strip. Held on a const so the
-  // post-loop read narrows cleanly (a `let` assigned only inside the forEach closure
-  // is not narrowed by control flow after the loop).
-  const fsmRef: { latest: FsmProgress | null } = { latest: null };
-  const fsmStatesByIndex = new Map<number, string>();
   // The best-of-K speculations, in first-seen order. The lifecycle carries no id, so
   // a `fanned_out` opens a new speculation and the following `judged`/`merged`
   // advance the one it opened (the last in the list).
@@ -1639,23 +1545,6 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
         // the most recent `board_state` is the live board.
         board = { epics: gg.epics, issues: gg.issues };
         break;
-      case "planning":
-        // Latest transition wins. The plan text lands on `submitted` and is carried
-        // into `implementing`; `entered` carries none, so keep any prior plan.
-        // `implementing` fixes the plan→implement boundary at the current `turn` —
-        // the graph index the fresh post-plan window will show at, mirroring how a
-        // compaction boundary is placed — so the fresh-context reset is markable.
-        plan = {
-          phase: gg.phase,
-          plan: gg.plan ?? plan?.plan ?? null,
-          implementTurn:
-            gg.phase === "implementing" ? turn : (plan?.implementTurn ?? null),
-          implementTimestamp:
-            gg.phase === "implementing"
-              ? event.timestamp
-              : (plan?.implementTimestamp ?? null),
-        };
-        break;
       case "issue_review": {
         // The reviewed issue rides on the event envelope's `issueId`, not the
         // payload; a review with no scoped issue is dropped (nothing to gate).
@@ -1680,17 +1569,6 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
         }
         break;
       }
-      case "fsm_state":
-        // Latest transition wins; record the state at its index so the ordered
-        // machine path can be rebuilt (a review-gated loop-back repeats an index).
-        fsmStatesByIndex.set(gg.stateIndex, gg.state);
-        fsmRef.latest = {
-          machine: gg.machine,
-          state: gg.state,
-          stateIndex: gg.stateIndex,
-          states: [],
-        };
-        break;
       case "speculation": {
         // A `fanned_out` opens a new speculation; a later `judged`/`merged` advances
         // the open (latest) one — latest phase wins, and the winner/rationale land on
@@ -1786,19 +1664,6 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
     for (const s of slotUsageByKey.values()) addTokens(usage, s.tokens, s.cost);
   }
 
-  // Fill in the FSM's ordered path: the states seen so far, indexed by stateIndex,
-  // so the strip can show progress through the machine with the current state
-  // highlighted. Since an FSM cannot skip, the run has passed through every prior
-  // index by the time it reaches one; an unseen index is a placeholder ("").
-  let fsm: FsmProgress | null = fsmRef.latest;
-  if (fsm != null && fsmStatesByIndex.size > 0) {
-    const maxIndex = Math.max(...fsmStatesByIndex.keys());
-    const states: string[] = [];
-    for (let i = 0; i <= maxIndex; i++)
-      states.push(fsmStatesByIndex.get(i) ?? "");
-    fsm = { ...fsm, states };
-  }
-
   const workflows: Workflow[] = [...workflowStages.entries()].map(
     ([workflowId, stages]) => ({
       workflowId,
@@ -1841,15 +1706,13 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
     memory,
     tasks,
     board,
-    plan,
     issueReviews,
-    fsm,
     speculations,
   };
 }
 
 // Fold the stream once per agent, so each agent can be read in isolation — its own
-// activity, context-window fill, plan, board, tasks, and knowledge — rather than
+// activity, context-window fill, board, tasks, and knowledge — rather than
 // only as one globally-merged view. gg stamps every event with the agent that
 // emitted it (the envelope's `agentId`), so the per-agent view is exact: partition
 // the stream by owning agent, then run the same single-pass fold over each

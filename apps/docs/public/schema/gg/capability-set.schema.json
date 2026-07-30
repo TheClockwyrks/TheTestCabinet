@@ -66,7 +66,7 @@
           "type": "string"
         },
         "implementation": {
-          "description": "The selected implementation of the capability, when it offers more than one\n(for example two compaction strategies or two planners). `None` selects the\ndefault. This is the basis for A/B comparisons between implementations.",
+          "description": "The selected implementation of the capability, when it offers more than one\n(for example two compaction strategies or two memory strategies). `None` selects the\ndefault. This is the basis for A/B comparisons between implementations.",
           "type": ["string", "null"]
         },
         "params": {

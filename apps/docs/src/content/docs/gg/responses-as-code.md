@@ -234,7 +234,7 @@ family. That has three consequences worth the effort:
 
 JSON survives in exactly one place, and it is deliberately **inside the host**: between
 the membrane implementation and gg's existing tool registry, which has always dispatched
-on a name and a JSON value. That is what keeps plan-mode and FSM gating, delegation
+on a name and a JSON value. That is what keeps the compaction gate, delegation
 routing through the subagent scheduler, `ToolCall`/`ToolResult` telemetry and
 [replay](/gg/replay/) capture completely untouched while the model-facing surface
 becomes typed functions.
@@ -468,34 +468,19 @@ program's reads exactly as it caps a tool call's.
 **`finish` is the one bound name no capability gates.** A run that enables no tools at
 all must still be able to end, so it is bound whatever the capability set says — and
 because it is not a tool, neither the membrane's enabled-set backstop nor the loop's
-dispatch gates apply to it. A program can therefore end the run from a state
-[plan mode](/gg/planning/) or an [FSM](/gg/fsms/) was meant to hold it in. That is
-consistent with both machines being inert under this capability, which gg already warns
-about at launch.
+dispatch gates apply to it. A program can therefore end the run even while the loop is
+waiting for a compaction — which is deliberate, since a run that cannot end is worse
+than one that ends early.
 :::
 
-### Turn-level transitions are not composable
+### Every tool is bound
 
-Three tools are declared in the membrane and never bound into a program's scope:
-`enter_plan_mode`, `submit_plan` and `advance_state`. They change the loop's **mode**,
-which takes effect between turns and is not a value a program can compose — "the rest of
-this turn now runs in plan mode" means nothing. Reaching one anyway (through the host's
-backstop) is refused with the reason, and the refusal is listed in the turn's feedback. The
-refusal deliberately does **not** suggest making the transition on a later turn: under
-responses-as-code every turn is a program, so there is no turn that could. It tells the
-model to do the work directly instead.
-
-:::note
-**Responses as code therefore does not compose with [planning](/gg/planning/) or
-[FSM-driven processes](/gg/fsms/).** Both machines are driven by a transition the model
-can no longer call. Planning is left simply inert — a pass that can never be entered
-restricts nothing. An FSM is worse than inert: its first state's tool restrictions still
-apply to every call a program makes, but the run can never advance out of that state.
-This is stated rather than hidden: the prompt says so, and gg emits a startup **warning**
-naming the combination and what it does, so a misconfigured study is loud at launch rather
-than at its deadline. A study that wants to vary either must vary it against tool-calling
-runs.
-:::
+There is **no** class of gg tool a program is denied: the toolset a program's scope is
+built from is exactly the toolset a tool-calling session of the same run would be
+offered. gg once withheld three *turn-level transitions* — `enter_plan_mode`,
+`submit_plan` and `advance_state`, which changed the loop's mode rather than producing a
+value a program could compose — but those tools no longer exist, and nothing has replaced
+them.
 
 ## A tool failure throws
 

@@ -53,12 +53,12 @@
   padding: t.$space-2xs 0;
 }
 
-// The eleven fixed context sources get a stable categorical color, keyed to the
+// The ten fixed context sources get a stable categorical color, keyed to the
 // band's position in `CONTEXT_SOURCES` (see ContextFillGraph.tsx). Reused by the
 // later stacked graph so a source reads as the same hue everywhere. Accessible,
-// spaced-out hues that hold up in both themes. Indices 8 (board) and 9 (plan)
-// were added with the Phase 3 work-decomposition + planning sources, shifting
-// history to index 10; keep this in lockstep with `CONTEXT_SOURCE_COLORS`.
+// spaced-out hues that hold up in both themes. Index 8 (board) arrived with the
+// Phase 3 work-decomposition source; keep this in lockstep with
+// `CONTEXT_SOURCE_COLORS`.
 $context-palette: (
   0: #6ea8fe,
   1: #ffca3a,
@@ -69,8 +69,7 @@ $context-palette: (
   6: #ff6b9d,
   7: #b5e48c,
   8: #ef5350,
-  9: #818cf8,
-  10: #9aa5b1,
+  9: #9aa5b1,
 );
 
 .swatch {
@@ -198,8 +197,8 @@ $context-palette: (
   font-variant-numeric: tabular-nums;
 }
 
-// The strategy pill: which summarizer produced this boundary. Keyed to the plan
-// hue so it reads as a labelled mode, not a status.
+// The strategy pill: which summarizer produced this boundary. Keyed to its own
+// fixed hue so it reads as a labelled mode, not a status.
 .strategyBadge {
   font-size: 0.72rem;
   font-weight: 600;
@@ -826,104 +825,6 @@ $context-palette: (
     outline: t.$border-hairline solid t.$color-accent;
     outline-offset: 2px;
   }
-}
-
-// --- Plan (planning pass) ----------------------------------------------------
-
-// The plan panel: a phase banner over the submitted plan text. The banner and its
-// dot key to the plan context-source hue (#818cf8) so the panel, the plan band on
-// the context graph, and the plan rows in the feed all read as one thing. The fixed
-// hue holds up on both the light and dark console themes.
-.plan {
-  display: flex;
-  flex-direction: column;
-  gap: t.$space-md;
-}
-
-.planBanner {
-  display: flex;
-  align-items: flex-start;
-  gap: t.$space-sm;
-  padding: t.$space-sm t.$space-md;
-  border-radius: t.$radius-md;
-  border: t.$border-hairline solid color-mix(in srgb, #818cf8 45%, transparent);
-  background: color-mix(in srgb, #818cf8 10%, transparent);
-}
-
-// A dot cueing the phase: hollow while read-only exploration is underway, filled
-// once the run is implementing from the plan.
-.planDot {
-  flex: 0 0 auto;
-  width: 0.6rem;
-  height: 0.6rem;
-  margin-top: 0.28rem;
-  border-radius: 9999px;
-  border: 2px solid #818cf8;
-
-  .planBanner[data-mode="implementing"] & {
-    background: #818cf8;
-  }
-}
-
-.planBannerText {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-}
-
-.planPhase {
-  color: t.$color-text;
-  font-weight: 600;
-}
-
-.planPhaseDetail {
-  font-size: t.$font-sm;
-  color: t.$color-text-muted;
-  word-break: break-word;
-}
-
-// The plan→implement note: the fresh-context restart, phrased like the retained
-// note so the window reset reads as deliberate rather than lost work.
-.planTransition {
-  margin: 0;
-  font-size: t.$font-sm;
-  color: t.$color-text-muted;
-  border-left: 2px solid #818cf8;
-  padding-left: t.$space-sm;
-}
-
-.planDoc {
-  display: flex;
-  flex-direction: column;
-  gap: t.$space-xs;
-  min-width: 0;
-}
-
-.planDocLabel {
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: t.$color-text-muted;
-}
-
-// The plan body: the submitted plan verbatim, wrapped and scrollable so a long plan
-// never blows out the panel. `pre-wrap` keeps the plan's own line breaks.
-.planText {
-  margin: 0;
-  padding: t.$space-md;
-  border: t.$border-hairline solid
-    color-mix(in srgb, t.$color-border 40%, transparent);
-  border-radius: t.$radius-md;
-  background: s.$panel-bg;
-  color: t.$color-text;
-  font-size: t.$font-sm;
-  line-height: 1.5;
-  white-space: pre-wrap;
-  word-break: break-word;
-  overflow-x: auto;
-  max-height: 40rem;
-  overflow-y: auto;
 }
 
 // --- Skills / memories (Knowledge) -------------------------------------------
@@ -1750,94 +1651,6 @@ $spec-winner-hue: #f5c451;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-// --- FSM state strip (Phase 5) -----------------------------------------------
-
-// The enforced-process strip shown prominently above the tabs when a built-in FSM
-// drives the run (see gg/fsms): the machine name beside its ordered states as a chip
-// row, the current enforced state highlighted. Keyed to the FSM process hue
-// (#2dd4bf) so the strip and the FSM transition rows in the feed read as one thing.
-// The fixed hue holds up on both the light and dark console themes.
-$fsm-hue: #2dd4bf;
-
-.fsmStrip {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: t.$space-sm t.$space-md;
-  margin: t.$space-md 0;
-  padding: t.$space-sm t.$space-md;
-  border: t.$border-hairline solid
-    color-mix(in srgb, #{$fsm-hue} 45%, transparent);
-  border-radius: t.$radius-md;
-  background: color-mix(in srgb, #{$fsm-hue} 8%, transparent);
-}
-
-.fsmLabel {
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: t.$color-text-muted;
-}
-
-.fsmMachine {
-  font-weight: 700;
-  font-size: t.$font-sm;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: $fsm-hue;
-}
-
-.fsmStates {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: t.$space-xs;
-}
-
-// One state on the machine's path: a past state reads settled (tinted), the current
-// enforced state is filled and prominent (where the run is, and the only state it
-// may act in), a future state is a faint outline the run has not reached.
-.fsmState {
-  display: inline-flex;
-  align-items: center;
-  font-size: t.$font-sm;
-  padding: t.$space-2xs t.$space-sm;
-  border-radius: t.$radius-sm;
-  border: t.$border-hairline solid
-    color-mix(in srgb, t.$color-border 60%, transparent);
-  color: t.$color-text-muted;
-
-  &[data-position="past"] {
-    color: color-mix(in srgb, #{$fsm-hue} 75%, t.$color-text);
-    border-color: color-mix(in srgb, #{$fsm-hue} 40%, transparent);
-  }
-  &[data-position="current"] {
-    color: t.$color-bg;
-    background: $fsm-hue;
-    border-color: $fsm-hue;
-    font-weight: 600;
-  }
-  &[data-position="future"] {
-    opacity: 0.55;
-  }
-
-  // A connector between consecutive states, cueing the enforced order.
-  & + & {
-    position: relative;
-    margin-left: t.$space-md;
-
-    &::before {
-      content: "→";
-      position: absolute;
-      left: calc(-1 * #{t.$space-md} - 0.1rem);
-      color: t.$color-text-muted;
-    }
-  }
 }
 
 // --- Panels grid + tab bar (used by the monitor page) ------------------------

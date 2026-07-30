@@ -19,8 +19,6 @@ renders a test case's [`prompt.hbs`](/testing/end-to-end/overview/#prompt-templa
 | `tasks.hbs`                | The pinned [task list](/gg/tasks/) block.                                                                                                                                              |
 | `board.hbs`                | The pinned [Project management](/gg/project-management/) board block.                                                                                                                  |
 | `memories.hbs`             | The pinned [memories](/gg/memories/) block.                                                                                                                                            |
-| `plan-mode.hbs`            | The [planning](/gg/planning/) capability's read-only plan-mode guidance.                                                                                                               |
-| `plan-framing.hbs`         | How an accepted plan is framed as it seeds the fresh implementation context.                                                                                                           |
 | `code-result.hbs`          | The turn feedback for a [responses-as-code](/gg/responses-as-code/) program that ran — its call roster, its output, and anything it needs telling.                                     |
 | `code-transpile-error.hbs` | The turn feedback for a [program](/gg/responses-as-code/) that did not compile, so nothing ran.                                                                                        |
 | `code-sandbox-error.hbs`   | The turn feedback for a [program](/gg/responses-as-code/) the sandbox could not run to a result — a memory ceiling or a trap.                                                          |
@@ -57,7 +55,6 @@ as the system prompt, so they live in the same place.
 | `completion-missing.hbs`                | The feedback for a tool-calling turn that requested no tools, naming this agent's own [ending calls](/gg/completion/#ending-calls).             |
 | `completion-validation-failure.hbs`     | The feedback for an ending a [validation command](/gg/completion/) rejected: which command failed, and its output.                              |
 | `context-pressure.hbs`                  | The per-turn [context-pressure](/gg/agent-managed-context/) signal — how full the window is, what is filling it, and how to reclaim space.      |
-| `fsm-tdd-*.hbs`, `fsm-plan-first-*.hbs` | One file per state of the two built-in [FSM](/gg/fsms/) machines: the guidance the model reads for as long as that state drives the run.        |
 
 ## The system prompt is assembled from the capability set
 
@@ -75,7 +72,6 @@ limits are interpolated inline rather than restated in prose:
 - the [memories](/gg/memories/) budget (count, per-memory length, total length);
 - the [task](/gg/tasks/) count ceiling;
 - the [Project management](/gg/project-management/) epic and issue ceilings;
-- the name of the [FSM](/gg/fsms/) driving the run;
 - the catalog of available [skills](/gg/skills/), each with its description.
 
 The rendering context is a typed Rust struct (`prompts::SystemContext`), and rendering

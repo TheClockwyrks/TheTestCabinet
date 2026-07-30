@@ -218,7 +218,7 @@ export type GgCapabilityConfig = {
   enabled: boolean;
   /**
    * The selected implementation of the capability, when it offers more than one
-   * (for example two compaction strategies or two planners). `None` selects the
+   * (for example two compaction strategies or two memory strategies). `None` selects the
    * default. This is the basis for A/B comparisons between implementations.
    */
   implementation?: string;
@@ -349,7 +349,6 @@ export type GgContextSource =
   | "memory"
   | "task_list"
   | "board"
-  | "plan"
   | "history";
 
 /**
@@ -622,7 +621,7 @@ export type GgTaskStatus = "pending" | "in_progress" | "done";
  * optional [`description`](Self::description), a [`status`](Self::status), and the set of
  * task ids it is [`blocked_by`](Self::blocked_by). The blocking relation is a **DAG** —
  * gg rejects any edge that would introduce a cycle — and the whole list is retained across
- * a [compaction] boundary verbatim, so the model never loses its plan.
+ * a [compaction] boundary verbatim, so the model never loses the plan it decomposed.
  *
  * [compaction]: https://docs.testcabinet.ai/gg/compaction/
  */
@@ -871,19 +870,6 @@ export type GgRetainedState = {
  * is reported only as an ordinary tool result, not as a `ContextManaged` action.
  */
 export type GgContextAction = "evict_file_views" | "archive_thread";
-
-/**
- * The phase of a [planning](https://docs.testcabinet.ai/gg/planning/) pass a
- * [`Planning`](GgTelemetryKind::Planning) event reports — the read-only-then-implement
- * lifecycle the console renders as the plan view and the plan → implement transition.
- *
- * The model [enters](Self::Entered) plan mode (the loop restricts the offered toolset to
- * read-only tools so it can only explore and reason), then [submits](Self::Submitted) a plan;
- * on submit gg clears the exploration history — keeping the pinned prefix — and seeds a fresh
- * implementation context from the original prompt plus the plan, entering the
- * [implementing](Self::Implementing) phase where the full (mutating) toolset is restored.
- */
-export type GgPlanPhase = "entered" | "submitted" | "implementing";
 
 /**
  * The lifecycle status of an agent in the [subagent tree](https://docs.testcabinet.ai/gg/subagents/),
@@ -1492,7 +1478,7 @@ export type GgSessionSummary = {
    * The total number of review **verdicts** the run's reviewers rendered — every
    * [`ChangesRequested`](GgIssueReviewPhase::ChangesRequested) plus every
    * [`Approved`](GgIssueReviewPhase::Approved) phase — so a single issue that took several
-   * fix rounds counts each round. The correlate for "which reviewer/planner produced fewer
+   * fix rounds counts each round. The correlate for "which reviewer produced fewer
    * rework cycles?".
    */
   reviewCycles: number;
@@ -1570,8 +1556,8 @@ export type GgSessionSummary = {
    * `write_file`"). Because switching a capability on/off *is* offering/withholding its
    * tools, this is the ground truth an ablation study reads rather than re-deriving the
    * toolset from the capability set. Empty only for a run whose agent was offered no tools
-   * at all. Recorded off the root agent's toolset (subagents inherit the same capability
-   * set; only the root may additionally be driven by an FSM).
+   * at all. Recorded off the root agent's toolset (recorded from the root agent, whose
+   * profile is the run's headline configuration).
    */
   effectiveTools: Array<string>;
   /**
@@ -1999,19 +1985,6 @@ export type GgTelemetryKind =
       detail: string;
     }
   | {
-      type: "planning";
-      /**
-       * Which phase of the planning pass this transition is.
-       */
-      phase: GgPlanPhase;
-      /**
-       * The submitted plan text, on the [`Submitted`](GgPlanPhase::Submitted) and
-       * [`Implementing`](GgPlanPhase::Implementing) phases (absent on
-       * [`Entered`](GgPlanPhase::Entered), before any plan exists).
-       */
-      plan?: string;
-    }
-  | {
       type: "agent_spawned";
       /**
        * The [agent profile](GgAgentConfig) name this agent runs under (for example
@@ -2186,23 +2159,6 @@ export type GgTelemetryKind =
        * branched from. Absent when no git baseline could be established for the run.
        */
       baseline?: string;
-    }
-  | {
-      type: "fsm_state";
-      /**
-       * The built-in machine driving the run (for example `"tdd"` or `"plan-first"`).
-       */
-      machine: string;
-      /**
-       * The name of the state just entered (for example `"write_tests"`, `"implement"`,
-       * `"verify"`, or `"plan"`).
-       */
-      state: string;
-      /**
-       * The state's zero-based index in the machine's ordered states, so the console can place it
-       * on the machine's path.
-       */
-      stateIndex: number;
     }
   | {
       type: "speculation";
@@ -2778,19 +2734,6 @@ export type GgTelemetryEvent = {
       detail: string;
     }
   | {
-      type: "planning";
-      /**
-       * Which phase of the planning pass this transition is.
-       */
-      phase: GgPlanPhase;
-      /**
-       * The submitted plan text, on the [`Submitted`](GgPlanPhase::Submitted) and
-       * [`Implementing`](GgPlanPhase::Implementing) phases (absent on
-       * [`Entered`](GgPlanPhase::Entered), before any plan exists).
-       */
-      plan?: string;
-    }
-  | {
       type: "agent_spawned";
       /**
        * The [agent profile](GgAgentConfig) name this agent runs under (for example
@@ -2965,23 +2908,6 @@ export type GgTelemetryEvent = {
        * branched from. Absent when no git baseline could be established for the run.
        */
       baseline?: string;
-    }
-  | {
-      type: "fsm_state";
-      /**
-       * The built-in machine driving the run (for example `"tdd"` or `"plan-first"`).
-       */
-      machine: string;
-      /**
-       * The name of the state just entered (for example `"write_tests"`, `"implement"`,
-       * `"verify"`, or `"plan"`).
-       */
-      state: string;
-      /**
-       * The state's zero-based index in the machine's ordered states, so the console can place it
-       * on the machine's path.
-       */
-      stateIndex: number;
     }
   | {
       type: "speculation";

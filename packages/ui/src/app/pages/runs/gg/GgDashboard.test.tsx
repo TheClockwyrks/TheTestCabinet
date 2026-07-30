@@ -139,7 +139,6 @@ function renderDashboard(
       slotUsage={derived.slotUsage}
       perAgent={reduceGgEventsPerAgent(EVENTS)}
       agentForest={derived.agentForest}
-      fsm={derived.fsm}
       capabilitySet={CAPABILITY_SET}
       runtime={deriveGgRuntime(
         derived.agentForest,

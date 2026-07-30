@@ -64,11 +64,10 @@ failures the one capability that cannot survive them.
 | Not an error | Why not |
 | --- | --- |
 | a tool call that **failed inside** a program that carried on | the program handled it — caught it, branched on `result.exitCode`, or ignored it. Counting it would penalise a program that correctly anticipates failure exactly as much as one that crashes. |
-| a **refused** call — a turn-level transition, a tool this run withholds, a spent wall-clock budget | it never reached the loop and is reported to the program as a value it can react to |
+| a **refused** call — a compaction the loop is waiting for, a tool this run withholds, a spent wall-clock budget | it never reached the loop and is reported to the program as a value it can react to |
 | a **healed** reply | [healing](/gg/response-healing/) repairs the message, not the turn. A reply healing turned into a program that then ran is a good turn. Heal counts and error counts are independent measurements. |
 | a program that returned **nothing** | it ran; the feedback nudges it, the ceilings do not |
 | a tool-calling turn whose dispatched calls **all failed** | every requested call was dispatched and answered; nothing was cut short. The mirror of the first row, and keeping the two symmetrical is what lets one definition serve both modes. |
-| a plan-mode or FSM refusal | gating working as designed |
 | a **compaction** | not a turn outcome at all |
 | gg's own machinery failing | gg's fault, not the model's: recorded so the accounting stays exact, excluded from every ceiling, and fatal on its first occurrence anyway |
 
@@ -135,9 +134,9 @@ can make an agent queue.
 ### `maxConsecutiveErrors`
 
 One counter per agent. It increments on every error turn and is cleared by — and only by
-— a turn that carried out its declared work. Not by a compaction, not by a plan
-submission, not by a subagent returning, not by an FSM move: a *turn* is the unit, and
-only a turn that did its job is evidence the agent recovered. The check fires as soon as
+— a turn that carried out its declared work. Not by a compaction, not by a subagent
+returning: a *turn* is the unit, and only a turn that did its job is evidence the agent
+recovered. The check fires as soon as
 the count reaches the configured value.
 
 A sandbox limit stop **is** an error here, which is a change from the fixed five-failure

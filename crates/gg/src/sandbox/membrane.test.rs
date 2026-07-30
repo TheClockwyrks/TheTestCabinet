@@ -18,10 +18,9 @@ use super::test_cabinet::gg::files::Host as FilesHost;
 use super::test_cabinet::gg::skills::Host as SkillsHost;
 use super::*;
 use crate::sandbox::fake::{CallLog, all_tools, canned_outcome, membrane, membrane_with};
-use crate::tools::{ALL_TOOL_NAMES, TURN_LEVEL_TOOLS};
+use crate::tools::ALL_TOOL_NAMES;
 
-/// Every tool the model-facing catalogue offers is a real gg tool, and none of them is a turn-level
-/// transition — those change the loop's mode and are never bound into a program's scope.
+/// Every tool the model-facing catalogue offers is a real gg tool.
 ///
 /// Together with its sibling below this is the drift gate on the *source* side. The gate on the
 /// **committed artifact** is `the_component_binds_exactly_the_tools_gg_offers` in `sandbox.test.rs`,
@@ -34,16 +33,11 @@ fn every_bound_tool_is_a_gg_tool_name() {
             "`{}` is in the sandbox catalogue but is not a gg tool",
             entry.tool
         );
-        assert!(
-            !TURN_LEVEL_TOOLS.contains(&entry.tool.as_str()),
-            "`{}` is a turn-level transition and must not be bound into a program",
-            entry.tool
-        );
     }
 }
 
-/// Every gg tool that is not a turn-level transition is offered to a program. A tool added to gg
-/// with no typed binding would be invisible in code mode, which is the drift this catches.
+/// Every gg tool is offered to a program. A tool added to gg with no typed binding would be
+/// invisible in code mode, which is the drift this catches.
 #[test]
 fn every_gg_tool_name_is_bound() {
     let catalogue: Vec<&str> = crate::sandbox::signatures::catalogue()

@@ -499,8 +499,8 @@ pub enum ToolFailure {
     /// Well-formed, but in conflict with the current state: an ambiguous edit, a dependency cycle,
     /// a duplicate id, a subagent that already returned.
     Conflict,
-    /// gg refused the call: plan mode, the run's FSM state, the delegation depth cap, or a
-    /// turn-level transition attempted from somewhere it cannot be made.
+    /// gg refused the call: a compaction the loop is waiting for, the delegation depth cap, or a
+    /// completion gate the call did not satisfy.
     Refused,
     /// The tool exists but this run's capability set does not offer it.
     Unavailable,

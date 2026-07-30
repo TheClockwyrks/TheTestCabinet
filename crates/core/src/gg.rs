@@ -26,7 +26,7 @@ use crate::metrics::{Cost, TokenCounts};
 
 /// The conventional name of the single model slot a Phase 0 gg run uses. Later
 /// phases bind additional, possibly cross-provider slots (for example `subagent`,
-/// `planner`, or `reviewer`); the [`GgCapabilitySet`] allows any number, but Phase 0
+/// `judge`, or `reviewer`); the [`GgCapabilitySet`] allows any number, but Phase 0
 /// only ever binds this one.
 pub const PRIMARY_SLOT: &str = "primary";
 
@@ -529,22 +529,6 @@ pub const CAPABILITY_PROJECT_MANAGEMENT: &str = "project-management";
 /// a shell can do.
 pub const PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: &str = "mergeAgent";
 
-/// The stable id of the Phase 3 [planning] capability: a **read-only planning pass**
-/// followed by a **fresh-context implementation pass**. When enabled the model is offered
-/// the `enter_plan_mode`/`submit_plan` tools — it can, mid-session, put itself into a
-/// read-only mode (only non-mutating tools are offered), explore and reason about a plan,
-/// then submit it, at which point gg **clears the exploration history** (keeping the pinned
-/// prefix) and seeds a fresh implementation context from the original prompt plus the plan.
-/// The plan-mode guidance and how the plan is framed on re-entry are the capability's
-/// swappable [`implementation`](GgCapabilityConfig::implementation) (its *planner*) — different
-/// planning prompts are exactly what gg exists to compare. Opt-in, like compaction and
-/// agent-managed context. In Phase 3 planning is reachable as a **tool** an agent elects
-/// mid-session; its [FSM](https://docs.testcabinet.ai/gg/fsms/) form (Phase 5) reuses the same
-/// mechanism.
-///
-/// [planning]: https://docs.testcabinet.ai/gg/planning/
-pub const CAPABILITY_PLANNING: &str = "planning";
-
 /// The stable id of the Phase 4 [subagents] capability: the delegation core — an agent's
 /// ability to **spawn other agents**, work in parallel with them or **block** until they
 /// return, **message** a running child, and receive its **return value**.
@@ -584,23 +568,20 @@ pub const CAPABILITY_SUBAGENTS: &str = "subagents";
 pub const CAPABILITY_WORKFLOWS: &str = "workflows";
 
 /// The stable id of the Phase 5 [FSM-driven processes] capability: driving a run through a
-/// **fixed, named finite state machine** so the *order* of the work is a property of the process,
-/// not the model's discretion.
+/// **finite state machine** so the *order* of the work is a property of the process, not the
+/// model's discretion.
 ///
-/// Where a [workflow](CAPABILITY_WORKFLOWS) is a fan-out the agent assembles, an FSM is a
-/// **built-in** machine the agent is *driven through* — the machines are authored as part of the
-/// harness (a shipped library), not a per-study data format and not model-defined. The capability's
-/// `machine` param selects which built-in drives the run — `"tdd"` (write tests → implement → verify
-/// with tests) or `"plan-first"` (a read-only plan pass → a
-/// fresh-context implementation pass, reusing the [planning](CAPABILITY_PLANNING) plan→implement
-/// flow); an absent/unrecognized `machine` leaves no FSM driving the run. The engine keeps the agent
-/// in each state until its transition condition holds — enforced through per-state system guidance,
-/// a controlled `advance_state` transition (gated on evidence: for `tdd`, tests must exist before
-/// the machine will move to `implement`), and per-state toolset gating (the `plan` state is
-/// read-only, mirroring plan mode) — so the agent **cannot skip ahead**. Each transition is streamed
-/// as [`FsmState`](GgTelemetryKind::FsmState) telemetry. Opt-in, like the other Phase 2+
-/// capabilities; `plan-first` composes with the capability its states reuse (the plan pass reuses
-/// the planner).
+/// Where a [workflow](CAPABILITY_WORKFLOWS) is a fan-out the agent assembles, an FSM is a state
+/// table the agent is *driven through*: each state binds an [agent profile](GgAgentConfig), and a
+/// transition replaces the running agent instance with the next state's, carrying the
+/// [modules](GgModuleKind) the transition names. Opt-in, like the other Phase 2+ capabilities.
+///
+/// **The capability is currently inert.** gg's earlier form of it shipped a small library of
+/// harness-authored machines (`tdd`, `plan-first`) selected by a `machine` param; those were
+/// removed along with the planning capability they reused, and the user-authored replacement — a
+/// `states` param naming agent profiles and their transitions — is not implemented yet. An enabled
+/// `fsm` capability therefore drives nothing today and is reported as a launch warning, so a
+/// configuration that still asks for a machine is loud rather than silently degraded.
 ///
 /// [FSM-driven processes]: https://docs.testcabinet.ai/gg/fsms/
 pub const CAPABILITY_FSM: &str = "fsm";
@@ -651,8 +632,7 @@ pub const CAPABILITY_SPECULATIVE: &str = "speculative-execution";
 /// still stream as ordinary [`ToolCall`](GgTelemetryKind::ToolCall)/[`ToolResult`](GgTelemetryKind::ToolResult)
 /// telemetry, and the turn itself is streamed as a [`CodeExecution`](GgTelemetryKind::CodeExecution)
 /// event. A program that calls a delegation tool still goes through the subagent
-/// [scheduler](CAPABILITY_SUBAGENTS), and its tool calls still respect plan-mode read-only and FSM
-/// state gating.
+/// [scheduler](CAPABILITY_SUBAGENTS).
 ///
 /// The session ends **only** when a program calls `finish(summary)` — a real function on the
 /// sandbox's model-facing surface rather than a rule about text — whose summary becomes the run's
@@ -667,14 +647,11 @@ pub const CAPABILITY_SPECULATIVE: &str = "speculative-execution";
 /// it nothing and corrupts the ablation; each [strategy](GgHealingStrategy) is independently
 /// toggleable through the capability's `healing` param, and on unless turned off.
 ///
-/// The three **turn-level** transitions — `advance_state`, `enter_plan_mode`, `submit_plan` — change
-/// the loop's *mode* rather than producing a value a program could use, so they are not offered
-/// inside a program at all: combining this capability with [planning](CAPABILITY_PLANNING) or the
-/// [FSM](CAPABILITY_FSM) leaves those machines inert for the run. `finish` bypasses plan-mode and
-/// FSM gating — it is not a tool, so neither the membrane's enabled-set guard nor the loop's
-/// dispatch gates apply to it, and a program can end the run from a state the machine was meant to
-/// hold it in. That is consistent with those machines being inert under this capability, which gg
-/// already warns about at launch.
+/// Every tool the run offers is bound into the program's surface: there is no class of call a
+/// program is denied, so the toolset a program sees is exactly the toolset a JSON tool-calling
+/// session would see. `finish` is the one exception in the other direction — it is a real function
+/// but not a tool, so neither the membrane's enabled-set guard nor the loop's dispatch gates apply
+/// to it.
 ///
 /// gg includes responses-as-code **so its effectiveness can be measured empirically** — toggled
 /// against traditional tool calling (the [`capabilityEnabled`](crate::gg_aggregate::GgFacet::CapabilityEnabled)
@@ -1413,7 +1390,7 @@ pub struct GgCapabilityConfig {
     /// basis for ablation studies.
     pub enabled: bool,
     /// The selected implementation of the capability, when it offers more than one
-    /// (for example two compaction strategies or two planners). `None` selects the
+    /// (for example two compaction strategies or two memory strategies). `None` selects the
     /// default. This is the basis for A/B comparisons between implementations.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
@@ -1914,11 +1891,6 @@ pub enum GgContextSource {
     /// — the heavyweight work-decomposition counterpart to the task list, retained across
     /// a compaction boundary.
     Board,
-    /// The model's [plan](https://docs.testcabinet.ai/gg/planning/) — the plan-mode guidance
-    /// while it is planning and, after it submits, the accepted plan that seeds the
-    /// fresh implementation context. The submitted plan is pinned, so it is retained across a
-    /// compaction boundary through the whole implementation pass.
-    Plan,
     /// Prior-turn thread material not attributable to a more specific source — the
     /// catch-all history bucket, and what compaction summarizes.
     History,
@@ -1928,7 +1900,7 @@ impl GgContextSource {
     /// Every source, in a stable order. A [`ContextBreakdown`](GgTelemetryKind::ContextBreakdown)
     /// reports one entry per source in this order (zero when a source contributed
     /// nothing), so the console's stacked graph keeps stable bands across turns.
-    pub const ALL: [GgContextSource; 11] = [
+    pub const ALL: [GgContextSource; 10] = [
         GgContextSource::System,
         GgContextSource::UserPrompt,
         GgContextSource::Assistant,
@@ -1938,7 +1910,6 @@ impl GgContextSource {
         GgContextSource::Memory,
         GgContextSource::TaskList,
         GgContextSource::Board,
-        GgContextSource::Plan,
         GgContextSource::History,
     ];
 }
@@ -2132,7 +2103,7 @@ pub enum GgTaskStatus {
 /// optional [`description`](Self::description), a [`status`](Self::status), and the set of
 /// task ids it is [`blocked_by`](Self::blocked_by). The blocking relation is a **DAG** —
 /// gg rejects any edge that would introduce a cycle — and the whole list is retained across
-/// a [compaction] boundary verbatim, so the model never loses its plan.
+/// a [compaction] boundary verbatim, so the model never loses the plan it decomposed.
 ///
 /// [compaction]: https://docs.testcabinet.ai/gg/compaction/
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -2428,31 +2399,6 @@ pub enum GgContextAction {
     /// ephemeral turns — removing it from the live window while keeping it searchable and
     /// recoverable through `search_archive`.
     ArchiveThread,
-}
-
-/// The phase of a [planning](https://docs.testcabinet.ai/gg/planning/) pass a
-/// [`Planning`](GgTelemetryKind::Planning) event reports — the read-only-then-implement
-/// lifecycle the console renders as the plan view and the plan → implement transition.
-///
-/// The model [enters](Self::Entered) plan mode (the loop restricts the offered toolset to
-/// read-only tools so it can only explore and reason), then [submits](Self::Submitted) a plan;
-/// on submit gg clears the exploration history — keeping the pinned prefix — and seeds a fresh
-/// implementation context from the original prompt plus the plan, entering the
-/// [implementing](Self::Implementing) phase where the full (mutating) toolset is restored.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub enum GgPlanPhase {
-    /// The model entered plan mode: the loop restricted the offered toolset to read-only tools
-    /// and the model explores and reasons about a plan.
-    Entered,
-    /// The model submitted its plan. gg is about to clear the exploration history and seed the
-    /// fresh implementation context.
-    Submitted,
-    /// gg cleared the exploration history (keeping the pinned prefix), seeded the fresh
-    /// implementation context from the original prompt plus the plan, and restored the full
-    /// toolset — the model now implements from a clean window.
-    Implementing,
 }
 
 /// The lifecycle status of an agent in the [subagent tree](https://docs.testcabinet.ai/gg/subagents/),
@@ -2953,7 +2899,7 @@ pub struct GgSessionSummary {
     /// The total number of review **verdicts** the run's reviewers rendered — every
     /// [`ChangesRequested`](GgIssueReviewPhase::ChangesRequested) plus every
     /// [`Approved`](GgIssueReviewPhase::Approved) phase — so a single issue that took several
-    /// fix rounds counts each round. The correlate for "which reviewer/planner produced fewer
+    /// fix rounds counts each round. The correlate for "which reviewer produced fewer
     /// rework cycles?".
     pub review_cycles: u64,
     /// How many times a review **reopened** an issue for fixes — one per
@@ -3016,8 +2962,8 @@ pub struct GgSessionSummary {
     /// `write_file`"). Because switching a capability on/off *is* offering/withholding its
     /// tools, this is the ground truth an ablation study reads rather than re-deriving the
     /// toolset from the capability set. Empty only for a run whose agent was offered no tools
-    /// at all. Recorded off the root agent's toolset (subagents inherit the same capability
-    /// set; only the root may additionally be driven by an FSM).
+    /// at all. Recorded off the root agent's toolset (recorded from the root agent, whose
+    /// profile is the run's headline configuration).
     #[serde(default)]
     pub effective_tools: Vec<String>,
     /// The [execution ceilings](GgRunLimits) that were actually **in force** for this run — the
@@ -3780,27 +3726,6 @@ pub enum GgTelemetryKind {
         /// size), for the console feed.
         detail: String,
     },
-    /// A [planning](https://docs.testcabinet.ai/gg/planning/) transition: the model entered a
-    /// read-only planning pass, submitted a plan, or began implementing from the fresh context
-    /// the plan seeded.
-    ///
-    /// Emitted when the [planning](CAPABILITY_PLANNING) capability is enabled and the model calls
-    /// `enter_plan_mode` ([`Entered`](GgPlanPhase::Entered)) or `submit_plan`
-    /// ([`Submitted`](GgPlanPhase::Submitted), then [`Implementing`](GgPlanPhase::Implementing)
-    /// once gg has cleared the exploration history and seeded the plan). The console renders the
-    /// plan view from the `plan` text and marks the plan → implement transition on
-    /// the timeline; the plan itself also becomes a pinned
-    /// [`Plan`](GgContextSource::Plan)-sourced context item. A run with the capability off emits
-    /// none.
-    Planning {
-        /// Which phase of the planning pass this transition is.
-        phase: GgPlanPhase,
-        /// The submitted plan text, on the [`Submitted`](GgPlanPhase::Submitted) and
-        /// [`Implementing`](GgPlanPhase::Implementing) phases (absent on
-        /// [`Entered`](GgPlanPhase::Entered), before any plan exists).
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        plan: Option<String>,
-    },
     /// An agent [started running](https://docs.testcabinet.ai/gg/subagents/) — the event
     /// that builds the live agent tree the console visualizes.
     ///
@@ -4019,27 +3944,6 @@ pub enum GgTelemetryKind {
         /// branched from. Absent when no git baseline could be established for the run.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         baseline: Option<String>,
-    },
-    /// A [FSM-driven process](https://docs.testcabinet.ai/gg/fsms/) transition: the run entered a
-    /// new state of the built-in machine driving it — the event that lets the console show the
-    /// current state (and the ordered path through the machine).
-    ///
-    /// Emitted (when the [fsm](CAPABILITY_FSM) capability selects a machine) on the agent the machine
-    /// drives — the root — once as the run **enters the machine's first state**, and again on every
-    /// transition the [engine](CAPABILITY_FSM) makes: an `advance_state` the agent earns by meeting a
-    /// state's transition condition, or the plan → implement reset of `plan-first` (which also
-    /// streams its [`Planning`](Self::Planning) events). The order is a
-    /// property of the machine, so this sequence of states is what proves the run was driven through
-    /// the process rather than freelancing. A run with no machine selected emits none.
-    FsmState {
-        /// The built-in machine driving the run (for example `"tdd"` or `"plan-first"`).
-        machine: String,
-        /// The name of the state just entered (for example `"write_tests"`, `"implement"`,
-        /// `"verify"`, or `"plan"`).
-        state: String,
-        /// The state's zero-based index in the machine's ordered states, so the console can place it
-        /// on the machine's path.
-        state_index: u64,
     },
     /// A [speculative execution](https://docs.testcabinet.ai/gg/speculative-execution/) lifecycle
     /// transition — the event that makes a **best-of-K** attempt (the K parallel tries, the judge's

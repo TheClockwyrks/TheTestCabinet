@@ -48,8 +48,8 @@
 //! # The mock is test infrastructure, not a launchable model
 //!
 //! [`MockClient`] exists so gg's own suite can drive the **real** binary offline —
-//! the whole spawn → wait → return path and its workflow, issue-review, FSM,
-//! and speculative variants are exercised through [`mock_client_for`], not around it.
+//! the whole spawn → wait → return path and its workflow, issue-review and
+//! speculative variants are exercised through [`mock_client_for`], not around it.
 //! It is **not** a model anyone can run a real test case on: the launch path resolves
 //! every bound model's [context window](test_cabinet_core::gg::GgInvocation::model_windows)
 //! from the model catalog and refuses a run it cannot resolve one for, and no catalog
@@ -1577,107 +1577,6 @@ impl MockClient {
         )
     }
 
-    /// A script exercising the [planning](crate::planning) capability offline end to end —
-    /// the full read-only-plan-then-implement cycle including the context reset:
-    ///
-    /// 1. `enter_plan_mode` puts the loop into read-only mode (the loop emits
-    ///    [`Planning`](test_cabinet_core::gg::GgTelemetryKind::Planning)`{phase: entered}` and
-    ///    injects the plan-mode guidance);
-    /// 2. `list_dir` — a read-only exploration call that **is** allowed in plan mode;
-    /// 3. `write_file { path: "premature.txt" }` — a **mutating** call that is **refused** in plan
-    ///    mode (the tool result comes back `ok: false`; the file is never written), demonstrating
-    ///    the read-only restriction;
-    /// 4. `submit_plan { plan }` — the loop emits `Planning{phase: submitted}`, clears the
-    ///    exploration history (keeping the pinned prefix), seeds the fresh implementation context
-    ///    with the plan (pinned), restores the full toolset, and emits
-    ///    `Planning{phase: implementing}`;
-    /// 5. `write_file { path: "index.html" }` — now allowed, the model implements from the clean
-    ///    window;
-    /// 6. a final tool-free turn stops.
-    ///
-    /// Used by the offline planning e2e; requires a run with the
-    /// [`planning`](test_cabinet_core::gg::CAPABILITY_PLANNING) and filesystem capabilities
-    /// enabled so every call resolves to a real tool (or is refused by the plan-mode guard).
-    #[cfg(test)]
-    pub fn with_planning_script(model_id: impl Into<String>) -> Self {
-        let usage = |input: u64, output: u64| TokenCounts {
-            uncached_input: Some(input),
-            cached_input: None,
-            output: Some(output),
-            reasoning: None,
-        };
-        let enter = ModelResponse {
-            text: Some(
-                "This needs some thought — entering plan mode to explore first.".to_string(),
-            ),
-            tool_calls: vec![ToolCall {
-                id: "call_enter_plan".to_string(),
-                name: "enter_plan_mode".to_string(),
-                arguments: json!({}),
-            }],
-            finish_reason: FinishReason::ToolCalls,
-            usage: usage(900, 30),
-            cost: None,
-        };
-        let explore = ModelResponse {
-            text: Some("Looking at the workspace layout.".to_string()),
-            tool_calls: vec![ToolCall {
-                id: "call_explore".to_string(),
-                name: "list_dir".to_string(),
-                arguments: json!({ "path": "." }),
-            }],
-            finish_reason: FinishReason::ToolCalls,
-            usage: usage(950, 30),
-            cost: None,
-        };
-        // A mutating call while in plan mode — refused by the read-only guard; `premature.txt`
-        // must never be written.
-        let premature_write = ModelResponse {
-            text: Some("Trying to write a file (should be blocked in plan mode).".to_string()),
-            tool_calls: vec![ToolCall {
-                id: "call_premature".to_string(),
-                name: "write_file".to_string(),
-                arguments: json!({ "path": "premature.txt", "contents": "too soon" }),
-            }],
-            finish_reason: FinishReason::ToolCalls,
-            usage: usage(1000, 30),
-            cost: None,
-        };
-        let submit = ModelResponse {
-            text: Some("Plan ready — submitting it.".to_string()),
-            tool_calls: vec![ToolCall {
-                id: "call_submit_plan".to_string(),
-                name: "submit_plan".to_string(),
-                arguments: json!({
-                    "plan": "1. Create index.html with a canvas. 2. Add an arrow-key player and a \
-                             goal. 3. Draw and update each frame.",
-                }),
-            }],
-            finish_reason: FinishReason::ToolCalls,
-            usage: usage(1050, 60),
-            cost: None,
-        };
-        let implement = ModelResponse {
-            text: Some("Implementing the plan: writing index.html.".to_string()),
-            tool_calls: vec![ToolCall {
-                id: "call_impl_index".to_string(),
-                name: "write_file".to_string(),
-                arguments: json!({ "path": "index.html", "contents": DEFAULT_GAME_HTML }),
-            }],
-            finish_reason: FinishReason::ToolCalls,
-            usage: usage(1100, 180),
-            cost: None,
-        };
-        let finish = ModelResponse {
-            usage: usage(1200, 50),
-            ..done_turn("Done — implemented the plan in index.html.")
-        };
-        Self::new(
-            model_id,
-            vec![enter, explore, premature_write, submit, implement, finish],
-        )
-    }
-
     /// The **parent** side of the offline [subagents](crate::subagents) e2e: a script that
     /// delegates a piece of work, waits for the result, then finishes.
     ///
@@ -1833,82 +1732,6 @@ impl MockClient {
     /// script for the same reason as the reviewer; production selects it via [`mock_client_for`].
     pub fn with_review_worker_script(model_id: impl Into<String>) -> Self {
         Self::new(model_id, Vec::new())
-    }
-
-    /// The offline driver for a [`tdd`](crate::fsm) [FSM-driven](crate::fsm) run: a script that is
-    /// **kept in order** by the engine — it *tries* to advance before writing any test (which the
-    /// engine refuses), then writes the tests, advances to `implement`, implements, advances to
-    /// `verify`, and stops.
-    ///
-    /// 1. `advance_state` — attempted with **no test written yet**; gg refuses it (the
-    ///    [`write_tests` → `implement`](crate::fsm) guard is unmet), so the run stays in `write_tests`;
-    /// 2. `write_file` [`MOCK_FSM_TEST_FILE`] — the tests;
-    /// 3. `advance_state` — now a test exists, so gg allows it → `implement`;
-    /// 4. `write_file` [`MOCK_FSM_IMPL_FILE`] — the implementation;
-    /// 5. `advance_state` → `verify`;
-    /// 6. a final tool-free turn stops.
-    ///
-    /// The mock replays this fixed script regardless of the refusal (it ignores tool results), so the
-    /// refused first advance is a genuine, engine-enforced no-op — proof the order holds. Selected in
-    /// production by a mock `model_id` naming `fsm-tdd` (see [`mock_client_for`]), so the enforced
-    /// order is drivable **offline through the real binary** (bind the primary slot to a
-    /// `mock/…-fsm-tdd` model with the `fsm` capability's `machine` set to `tdd`).
-    pub fn with_fsm_tdd_script(model_id: impl Into<String>) -> Self {
-        let usage = |input: u64, output: u64| TokenCounts {
-            uncached_input: Some(input),
-            cached_input: None,
-            output: Some(output),
-            reasoning: None,
-        };
-        let advance = |id: &str, text: &str| ModelResponse {
-            text: Some(text.to_string()),
-            tool_calls: vec![ToolCall {
-                id: id.to_string(),
-                name: "advance_state".to_string(),
-                arguments: json!({}),
-            }],
-            finish_reason: FinishReason::ToolCalls,
-            usage: usage(900, 20),
-            cost: None,
-        };
-        let write = |id: &str, path: &str, contents: &str, text: &str| ModelResponse {
-            text: Some(text.to_string()),
-            tool_calls: vec![ToolCall {
-                id: id.to_string(),
-                name: "write_file".to_string(),
-                arguments: json!({ "path": path, "contents": contents }),
-            }],
-            finish_reason: FinishReason::ToolCalls,
-            usage: usage(950, 60),
-            cost: None,
-        };
-        Self::new(
-            model_id,
-            vec![
-                advance(
-                    "adv_early",
-                    "Trying to implement first (should be refused).",
-                ),
-                write(
-                    "wt",
-                    MOCK_FSM_TEST_FILE,
-                    "// tests for the game\n",
-                    "Writing the tests first.",
-                ),
-                advance("adv_impl", "Tests are written — advancing to implement."),
-                write(
-                    "impl",
-                    MOCK_FSM_IMPL_FILE,
-                    "// the implementation\n",
-                    "Implementing to satisfy the tests.",
-                ),
-                advance("adv_verify", "Implementation done — advancing to verify."),
-                ModelResponse {
-                    usage: usage(1000, 40),
-                    ..done_turn("Verified: the tests pass. Done.")
-                },
-            ],
-        )
     }
 
     /// The **parent** side of the offline [speculative execution](https://docs.testcabinet.ai/gg/speculative-execution/)
@@ -2214,14 +2037,6 @@ pub const MOCK_REVIEWER_AGENT: &str = "reviewer";
 /// creates — and so the stem of the one issue it files, which the board numbers `RVIEW-1`. The id
 /// itself is not a constant here because it is **gg's** to assign, not the script's to declare.
 pub const MOCK_ISSUE_REVIEW_PREFIX: &str = "RVIEW";
-
-/// The test file the [`tdd` FSM script](MockClient::with_fsm_tdd_script) writes in its `write_tests`
-/// state — the evidence that lets the machine advance to `implement`.
-pub const MOCK_FSM_TEST_FILE: &str = "game.test.js";
-
-/// The implementation file the [`tdd` FSM script](MockClient::with_fsm_tdd_script) writes in its
-/// `implement` state.
-pub const MOCK_FSM_IMPL_FILE: &str = "game.js";
 
 /// The file the issue-review offline **worker** writes on its initial pass (its ordinary "work").
 pub const MOCK_REVIEW_WORKER_FILE: &str = "review-work.txt";
@@ -2740,13 +2555,11 @@ pub fn client_for_slot(
 /// (create an issue with a reviewer and dispatch it; the implementer finishing triggers a
 /// review → fix → approve cycle);
 /// its `review-worker` and `review-reviewer` counterparts are message-driven (their behavior lives
-/// in [`MockClient::complete`]). An `fsm-tdd` id selects the
-/// [TDD FSM driver](MockClient::with_fsm_tdd_script) (an agent kept in `write_tests → implement →
-/// verify` order by the engine). A `speculate-parent` id selects the
+/// in [`MockClient::complete`]). A `speculate-parent` id selects the
 /// [best-of-K parent](MockClient::with_speculate_parent_script) (fan out K attempts, judge, and merge
 /// the winner); its `speculate-attempt` and `speculate-judge` counterparts are message-driven (each
 /// attempt writes a distinctly-named file; the judge picks the first). So the full spawn → wait →
-/// return path — and its declared-workflow, issue-review, FSM, and speculative-execution
+/// return path — and its declared-workflow, issue-review and speculative-execution
 /// variants — can be driven **offline through the real binary**
 /// (bind the primary slot to a `mock/…-subagent-parent`,
 /// `mock/…-workflow-parent`, `mock/…-issue-review-parent`, or `mock/…-speculate-parent` model and the
@@ -2766,8 +2579,6 @@ fn mock_client_for(model_id: &str) -> MockClient {
         MockClient::with_review_reviewer_script(model_id)
     } else if model_id.contains("review-worker") {
         MockClient::with_review_worker_script(model_id)
-    } else if model_id.contains("fsm-tdd") {
-        MockClient::with_fsm_tdd_script(model_id)
     } else if model_id.contains("speculate-attempt") {
         MockClient::with_speculate_attempt_script(model_id)
     } else if model_id.contains("speculate-judge") {

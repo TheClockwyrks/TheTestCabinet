@@ -78,8 +78,8 @@ offer gg would refuse.
 
 The signal is **not** a thread item. It occupies a single **slot** rendered after the
 conversation, and each turn's rebuild **overwrites** it, so a window can never hold two of
-them. A [compaction](/gg/compaction/) or a [planning](/gg/planning/) reset empties the
-slot, so a reading taken before a boundary can never be read after one.
+them. A [compaction](/gg/compaction/) empties the slot, so a reading taken before a
+boundary can never be read after one.
 
 A thread item could do neither, and both failures are worth naming because they are the
 ones the slot exists to prevent. An item in the thread has to be retired *in place* when it

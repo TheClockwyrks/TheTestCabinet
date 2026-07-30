@@ -88,10 +88,7 @@
   // --- gg's telemetry tones --------------------------------------------------
   // gg's first-party stream renders through this same feed, so its tones map onto
   // the same palette (see `ggFeedLine`): a tool call reads like a command, a
-  // result like a write, a failure like an error. The three *process* tones keep
-  // their own fixed hues — the plan hue ties to the plan band on the context
-  // graph and the FSM hue to the current-state strip — and all three read on both
-  // the light and dark console themes.
+  // result like a write, a failure like an error.
   &[data-event-type="tool"] {
     --event-color: var(--ttc-event-command);
   }
@@ -107,19 +104,11 @@
   &[data-event-type="compact"] {
     --event-color: var(--ttc-event-search);
   }
-  &[data-event-type="plan"] {
-    --event-color: #818cf8;
-  }
-  &[data-event-type="fsm"] {
-    --event-color: #2dd4bf;
-  }
 
-  // Context reclaims, planning transitions, and FSM transitions are structural
-  // moments in a run, not another agent/tool line, so they take a faint wash of
-  // their own hue and lift out of the stream in every layout.
-  &[data-event-type="compact"],
-  &[data-event-type="plan"],
-  &[data-event-type="fsm"] {
+  // A context reclaim is a structural moment in a run, not another agent/tool line,
+  // so it takes a faint wash of its own hue and lifts out of the stream in every
+  // layout.
+  &[data-event-type="compact"] {
     background: color-mix(in srgb, var(--event-color) 8%, transparent);
   }
 }

@@ -34,7 +34,6 @@ export function GgRunMonitorPage() {
     sawSession,
     sessionEndStatus,
     usage,
-    fsm,
     capabilitySet,
   } = state;
   const live = status.kind === "running";
@@ -108,7 +107,6 @@ export function GgRunMonitorPage() {
             slotUsage={state.slotUsage}
             perAgent={state.perAgent}
             agentForest={state.agentForest}
-            fsm={fsm}
             capabilitySet={capabilitySet}
             runtime={runtime}
             timeoutSeconds={timeoutSeconds}

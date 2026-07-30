@@ -3,7 +3,7 @@
 // (BellIcon, TrashIcon, DownloadIcon, …) so size and color come from CSS. They
 // replace the ad-hoc Unicode glyphs the tree used to scan by: a disclosure caret, a
 // folder per agent (open when expanded), and a distinct mark per monitor-view "file"
-// so overview / activity / context / plan / board / tasks / knowledge read at a glance.
+// so overview / activity / context / board / tasks / knowledge read at a glance.
 
 interface IconProps {
   className?: string;
@@ -143,18 +143,6 @@ export function CompactionIcon({ className }: IconProps) {
       <path d="M16 5l3 3-3 3" />
       <path d="M8 19l-3-3 3-3" />
       <path d="M16 19l3-3-3-3" />
-    </Icon>
-  );
-}
-
-// Plan — a clipboard of ordered steps.
-export function PlanIcon({ className }: IconProps) {
-  return (
-    <Icon className={className}>
-      <rect x="8" y="2" width="8" height="4" rx="1" />
-      <path d="M9 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-3" />
-      <path d="M8 11h8" />
-      <path d="M8 15h6" />
     </Icon>
   );
 }

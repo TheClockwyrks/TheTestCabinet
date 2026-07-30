@@ -25,8 +25,8 @@ of owning both sides drive that separation:
   a flat tuple of harness + model + orchestrator. A gg run is configured by a
   [capability set](#the-capability-set) — a set of **per-agent
   [profiles](/gg/configurations/#agents)**, each with its own capabilities, tool
-  implementations, [FSM](/gg/fsms/) (if any), and one **possibly cross-provider
-  model**. None of that maps onto the existing run dimensions, so gg gets its own
+  implementations, and one **possibly cross-provider model**. None of that maps onto
+  the existing run dimensions, so gg gets its own
   configuration space rather than overloading them.
 - **Its results belong in a separate comparison space.** The current metric graphs
   plot results **per model**, precisely because the third-party harnesses are so
@@ -95,7 +95,7 @@ the capability set, and the harness becomes a laboratory. It must be:
   what makes an ablation study analyzable after the fact; see
   [Result aggregation](/gg/result-aggregation/)).
 - **Named / preset-able** — common configurations ("full", "minimal",
-  "no-compaction", "planning-A") should be nameable presets, so a study is a sweep
+  "no-compaction", "memories-A") should be nameable presets, so a study is a sweep
   over presets rather than hand-assembled flag soup. A named capability set is a
   [configuration](/gg/configurations/): registered on an operator's account, then
   picked by name when a run is launched.
@@ -239,8 +239,6 @@ saved, launched, and analyzed in the console is
 - [Tasks](/gg/tasks/) — a lightweight blocked-by DAG of to-dos.
 - [Project management](/gg/project-management/) — a run-global board of scoped,
   auto-dispatched work items.
-- [Planning](/gg/planning/) — a read-only planning pass, then implement from a
-  fresh context.
 
 **Delegation**
 
@@ -255,8 +253,8 @@ saved, launched, and analyzed in the console is
 
 **Process & quality**
 
-- [FSM-driven processes](/gg/fsms/) — fixed, named processes (e.g. TDD order) the
-  agent is driven through.
+- [FSM-driven processes](/gg/fsms/) — a state table the agent is driven through
+  (currently inert; see the page).
 - [Completion](/gg/completion/) — how a run decides it is finished: the completion
   signal, and the optional validation commands that gate it.
 

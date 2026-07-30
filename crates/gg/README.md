@@ -94,7 +94,7 @@ completed session.
 
 The spine of the crate — where a reader should start. Each capability additionally
 owns its own module (`skills.rs`, `memories.rs`, `tasks.rs`, `board.rs`,
-`planning.rs`, `fsm.rs`, `compaction.rs`, `archive.rs`, `subagents.rs`, `git.rs`,
+`fsm.rs`, `compaction.rs`, `archive.rs`, `subagents.rs`, `git.rs`,
 `dag.rs`, `vision.rs`, `summary.rs`); the authoritative description of each is its
 page in [the docs section](../../apps/docs/src/content/docs/gg/), not this table.
 

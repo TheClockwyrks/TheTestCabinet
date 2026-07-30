@@ -50,9 +50,7 @@ mod board;
 mod context;
 mod data;
 mod filesystem;
-mod fsm;
 mod memories;
-mod planning;
 mod shell;
 mod skills;
 mod subagents;
@@ -65,11 +63,11 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use test_cabinet_core::gg::{
-    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_COMPACTION, CAPABILITY_EDIT_FILE, CAPABILITY_FSM,
-    CAPABILITY_LIST_DIR, CAPABILITY_MEMORIES, CAPABILITY_PLANNING, CAPABILITY_PROJECT_MANAGEMENT,
-    CAPABILITY_READ_FILE, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL, CAPABILITY_SKILLS,
-    CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WORKFLOWS,
-    CAPABILITY_WRITE_FILE, GgAgentConfig,
+    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_COMPACTION, CAPABILITY_EDIT_FILE,
+    CAPABILITY_LIST_DIR, CAPABILITY_MEMORIES, CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_READ_FILE,
+    CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE,
+    CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WORKFLOWS, CAPABILITY_WRITE_FILE,
+    GgAgentConfig,
 };
 
 use crate::board::IssuePolicy;
@@ -101,12 +99,10 @@ pub use data::{
 pub use filesystem::{
     EditFileTool, ListDirTool, READ_FILE_TOOL, ReadFileTool, ReadPolicy, WriteFileTool,
 };
-pub use fsm::{ADVANCE_STATE_TOOL, is_fsm_tool};
 pub use memories::{
     CreateMemoryTool, DeleteMemoryTool, EditMemoryTool, ReadMemoryTool, SearchMemoriesTool,
     UpdateMemoryTool, WriteMemoryTool, is_memory_tool,
 };
-pub use planning::{ENTER_PLAN_MODE_TOOL, SUBMIT_PLAN_TOOL, is_planning_tool};
 pub(crate) use shell::run_command;
 pub use shell::{OffloadPolicy, SHELL_TOOL};
 pub use skills::{READ_SKILL_TOOL, ReadSkillTool};
@@ -159,31 +155,12 @@ pub const ALL_TOOL_NAMES: &[&str] = &[
     "archive_thread",
     "search_archive",
     COMPACT_TOOL,
-    "enter_plan_mode",
-    "submit_plan",
-    "advance_state",
     "spawn_subagent",
     "wait_for_subagents",
     "send_message",
     "run_workflow",
     "speculate",
 ];
-
-/// The tools that perform a **turn-level transition** rather than producing a value: they change
-/// the loop's mode — into a read-only planning pass, out of one, or on to the next
-/// [FSM](crate::fsm) state — and the change takes effect between turns, not within one.
-///
-/// They are ordinary tools on the native tool-calling path, where a turn *is* the unit of work. But
-/// a caller that composes several calls into one turn (a program under
-/// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE)) has nothing to compose
-/// them *into*: "the rest of this turn now runs in plan mode" is not a value. Naming them once here
-/// is what lets such a caller withhold exactly these and explain why, rather than each site
-/// re-deriving the list and drifting.
-///
-/// Its readers are [`scope_tools`](crate::sandbox::scope_tools), which withholds exactly these from
-/// a program's scope, and the [system prompt](crate::prompts), which names them as things a program
-/// cannot call.
-pub const TURN_LEVEL_TOOLS: &[&str] = &[ENTER_PLAN_MODE_TOOL, SUBMIT_PLAN_TOOL, ADVANCE_STATE_TOOL];
 
 /// The names in a capability set's per-tool [overrides](GgAgentConfig::disabled_tools) that are
 /// **unknown** — not a tool gg can offer at all (a typo, or a removed tool), validated against
@@ -244,35 +221,6 @@ pub fn shell_offload(capabilities: &GgAgentConfig) -> OffloadPolicy {
             OffloadPolicy::resolve(capability.implementation.as_deref(), &capability.params)
         })
         .unwrap_or(OffloadPolicy::Inline)
-}
-
-/// The tool names that are **read-only** — they inspect the workspace or gg's own state but
-/// mutate nothing — and so remain available in [plan mode](crate::planning). Everything not on
-/// this list (writes, edits, shell, and every task/memory/board/context mutation) is withheld
-/// while planning. Centralized here so the loop's plan-mode toolset filter and its dispatch
-/// guard share one definition.
-pub fn is_read_only_tool(name: &str) -> bool {
-    matches!(
-        name,
-        READ_FILE_TOOL | "list_dir" | READ_SKILL_TOOL | SEARCH_ARCHIVE_TOOL
-    )
-}
-
-/// Whether `name` is offered while the loop is in the given plan-mode state — the single
-/// predicate behind both the per-turn offered [toolset](ToolRegistry::definitions) filter and
-/// the loop's dispatch guard, so what the model is shown and what it is allowed to run can never
-/// disagree.
-///
-/// In plan mode only the [read-only tools](is_read_only_tool) and [`submit_plan`](SUBMIT_PLAN_TOOL)
-/// (the way out) are available. Outside plan mode everything is available **except**
-/// `submit_plan`, which is meaningless with no plan pass in progress — including
-/// [`enter_plan_mode`](ENTER_PLAN_MODE_TOOL), which starts one.
-pub fn plan_mode_offers(name: &str, in_plan_mode: bool) -> bool {
-    if in_plan_mode {
-        is_read_only_tool(name) || name == SUBMIT_PLAN_TOOL
-    } else {
-        name != SUBMIT_PLAN_TOOL
-    }
 }
 
 /// The ambient state a [`Tool`] invocation runs against.
@@ -537,9 +485,7 @@ impl ToolRegistry {
     /// [`agent-managed-context`](CAPABILITY_AGENT_MANAGED_CONTEXT) capability contributes the
     /// `evict_file_view`/`archive_thread`/`search_archive` tools when an archive store is bound
     /// (the store backs `search_archive`; the loop applies the reclaim); and the
-    /// [`planning`](CAPABILITY_PLANNING) capability contributes the `enter_plan_mode`/`submit_plan`
-    /// tools (stateless, like shell/filesystem — the loop owns plan mode and the context reset);
-    /// and the [`subagents`](CAPABILITY_SUBAGENTS) capability contributes the
+    /// [`subagents`](CAPABILITY_SUBAGENTS) capability contributes the
     /// `spawn_subagent`/`wait_for_subagents`/`send_message` tools (stateless declarations — the
     /// loop intercepts and performs delegation against the scheduler and agent tree); and the
     /// [`workflows`](CAPABILITY_WORKFLOWS) capability contributes the `run_workflow` tool (likewise
@@ -677,22 +623,6 @@ impl ToolRegistry {
             && capabilities.is_enabled(CAPABILITY_COMPACTION)
         {
             tools.push(Box::new(context::CompactTool));
-        }
-
-        if capabilities.is_enabled(CAPABILITY_PLANNING) {
-            // The planning tools are stateless validators (like shell/filesystem, they need no
-            // bound store): the loop owns plan mode, the read-only toolset restriction, and the
-            // context reset, and applies them when a call succeeds.
-            tools.push(Box::new(planning::EnterPlanModeTool));
-            tools.push(Box::new(planning::SubmitPlanTool));
-        }
-
-        if capabilities.is_enabled(CAPABILITY_FSM) {
-            // The `advance_state` tool is a declaration the loop intercepts to drive its
-            // [FSM](crate::fsm) engine (checking the current state's transition guard and moving the
-            // machine on). It is withheld per-turn by the loop's toolset filter while the current
-            // state is not one the agent advances by calling it.
-            tools.push(Box::new(fsm::AdvanceStateTool));
         }
 
         // The agents this profile may spawn — its delegation allowlist. A spawn tool is only worth

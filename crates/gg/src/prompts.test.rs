@@ -82,10 +82,6 @@ fn full_system() -> SystemContext {
         assigned_issue: Some(AssignedIssueView {
             id: "feat-1".to_string(),
         }),
-        planning: true,
-        fsm: Some(FsmView {
-            machine: "tdd".to_string(),
-        }),
         speculative: true,
         autoload_specs: Some(AutoloadView { locked: true }),
         persistence: true,
@@ -766,7 +762,7 @@ fn the_result_feedback_reports_what_was_dropped_refused_and_deferred() {
     let rendered = render_code_result(&CodeResultContext {
         logs: vec!["checked 12 files".to_string(), "wrote 3".to_string()],
         logs_suppressed: 41,
-        refusals: vec!["`enter_plan_mode` — not composable inside a program".to_string()],
+        refusals: vec!["`speculate` — the run has no worktree isolation".to_string()],
         refusals_suppressed: 3,
         deferred: Some("your program deferred work with `.then()`; it ran after the program had already ended.".to_string()),
         images_dropped: 2,
@@ -776,7 +772,7 @@ fn the_result_feedback_reports_what_was_dropped_refused_and_deferred() {
     });
     assert!(rendered.contains("Output:\nchecked 12 files\nwrote 3"));
     assert!(flat(&rendered).contains("(41 earlier line(s) were dropped"));
-    assert!(rendered.contains("- refused: `enter_plan_mode` — not composable inside a program"));
+    assert!(rendered.contains("- refused: `speculate` — the run has no worktree isolation"));
     assert!(rendered.contains("(3 further refusal(s) were not listed"));
     assert!(rendered.contains("it ran after the program had already ended."));
     assert!(rendered.contains("(2 image(s) were not attached: max image count reached)"));
@@ -1288,24 +1284,6 @@ fn the_memory_block_lists_notes_verbatim() {
 }
 
 // ---------------------------------------------------------------------------
-// Planning
-// ---------------------------------------------------------------------------
-
-/// The plan-mode guidance names the read-only restriction and how to submit; the framing carries
-/// the plan verbatim under its heading.
-#[test]
-fn the_planning_templates_render() {
-    let guidance = render_plan_mode();
-    assert!(guidance.starts_with("# Plan Mode"));
-    assert!(guidance.contains("read-only"));
-    assert!(guidance.contains("submit_plan"));
-
-    let framed = render_plan_framing("  Build the grid first.  ");
-    assert!(framed.starts_with("# Implementation Plan"));
-    assert!(framed.ends_with("Build the grid first."));
-}
-
-// ---------------------------------------------------------------------------
 // Briefs
 // ---------------------------------------------------------------------------
 
@@ -1435,7 +1413,7 @@ fn the_review_brief_renders_without_history_or_a_baseline() {
 }
 
 // ---------------------------------------------------------------------------
-// Compaction, completion, context pressure, and the FSM guidance
+// Compaction, completion, and context pressure
 // ---------------------------------------------------------------------------
 
 /// Each pending compaction's three messages name the calls **that run** actually offers: the
@@ -1643,20 +1621,4 @@ fn the_context_usage_signal_renders() {
     assert!(!bare.contains("Top File Views"), "{bare}");
     assert!(!bare.contains("evict_file_view"), "{bare}");
     assert!(!bare.contains("archive_thread"), "{bare}");
-}
-
-/// Every built-in FSM state's guidance renders, and each opens with its own heading — the model
-/// reads it as the state it is in, not as a continuation of the prompt above it.
-#[test]
-fn every_built_in_fsm_state_renders_its_guidance() {
-    for (state, heading) in [
-        (FsmGuidance::TddWriteTests, "# Test Phase"),
-        (FsmGuidance::TddImplement, "# Implementation Phase"),
-        (FsmGuidance::TddVerify, "# Verification Phase"),
-        (FsmGuidance::PlanFirstPlan, "# Planning Phase"),
-        (FsmGuidance::PlanFirstImplement, "# Implement your plan"),
-    ] {
-        let guidance = render_fsm_guidance(state);
-        assert!(guidance.starts_with(heading), "{guidance}");
-    }
 }

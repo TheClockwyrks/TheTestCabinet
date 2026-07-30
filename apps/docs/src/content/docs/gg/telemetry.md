@@ -39,8 +39,8 @@ identically down to the order of the cards) reads a run through these surfaces:
 
 - The **Dashboard** — the whole-run read-out: status, the token/cost tally with its
   **caching** (cached vs uncached input) and **reasoning** (reasoning vs non-reasoning
-  output) splits shown as rings, an **overview of the agents** that ran, the enforced
-  FSM process, and the configuration the run's [independent variable](/gg/overview/)
+  output) splits shown as rings, an **overview of the agents** that ran, and the
+  configuration the run's [independent variable](/gg/overview/)
   is, plus the figures that read beside the status: the **turns** the session has
   spent across every agent, and its **tokens / s** — everything the run generated over
   the time it spent inside its model calls, which is the average across every model it
@@ -101,7 +101,7 @@ identically down to the order of the cards) reads a run through these surfaces:
   the **metric graphs** — [where each turn's time went](#where-a-turns-time-went),
   then throughput (tokens/s), cost per request, cache-read
   share and reasoning share, each gaining one point per model call and each point
-  carrying [the figures behind it](#reading-the-metric-graphs) on hover — plan, tasks,
+  carrying [the figures behind it](#reading-the-metric-graphs) on hover — tasks,
   knowledge) are inherently **per agent** — *whose*
   window filled, *whose* task list this is — so they cannot honestly be shown as one
   global panel. The explorer lays the run out as a **filesystem**: every agent is a

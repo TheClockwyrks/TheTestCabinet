@@ -34,12 +34,6 @@ binary/generated artifacts** in the Rust crate:
 There is deliberately **one** copy of the WIT, and it lives in the Rust crate that
 embeds the component (`crates/gg/wit/`); `build.sh` points `componentize-js` at it.
 
-There is deliberately **no `src/tools/turns.ts`**: `enter_plan_mode`, `submit_plan`
-and `advance_state` change the loop's mode rather than producing a value, so they
-are declared in the WIT, refused by the host as a backstop, and never bound into a
-program's scope. That is why the catalogue holds 29 entries against gg's 32 tool
-names.
-
 `src/session.ts` sits **beside** `src/tools/` rather than inside it for the mirror
 reason. `finish(summary)` is model-facing — it is the only thing that ends a
 responses-as-code session, and the system prompt teaches it — but it is not a gg
@@ -48,7 +42,7 @@ tool: no capability offers it, nothing dispatches it, and the shim binds it into
 therefore gets its own `interface session` in the WIT, its own `SESSION_ENTRY`
 constant in the catalogue, and its own top-level `session` object in
 `signatures.json`, so that the bijection gg's `bound-tools` gate checks —
-`boundTools() == ALL_TOOL_NAMES \ TURN_LEVEL_TOOLS` — is not perturbed by it.
+`boundTools() == ALL_TOOL_NAMES` — is not perturbed by it.
 
 ## Refreshing the artifacts
 

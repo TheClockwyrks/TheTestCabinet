@@ -1374,6 +1374,53 @@ Nothing new is added.
 `GgContextSource::ALL.len() == 10`. UI: `GgRunMonitorPage.test.tsx` loses its
 plan/FSM cases.
 
+### 7.0.1 Stage 1 as built — deviations from §5
+
+**LANDED** (after stage 2, which the pipeline ran first). Everything in §5 is gone. Seven things
+differ from the text above; later stages should build on **this** list.
+
+1. **`GgTelemetryKind::FsmState` is deleted outright, not redefined.** §5.1 removes the old shape and
+   §3.5 defines the new one; with no engine to emit either, redefining it now would have put a kind
+   on the wire that nothing produces. Stage 5 (the FSM rewrite) adds `{ fsm, state, agent, from }`
+   as a **new** variant, and re-adds the console reduction alongside it.
+2. **The `fsm` capability entry is removed from `ggCatalog.ts`**, not merely stripped of its
+   `machine` param. Between here and stage 6 the capability is therefore not authorable in the
+   editor — which is correct, because it does nothing; a stored set that still carries it round-trips
+   through the draft's unknown-capability passthrough. Stage 6 adds the entry back with its `states`
+   param. `FSM_MACHINE_OPTIONS` / `FSM_MACHINE_HINT` are gone.
+3. **The WIT `turns` interface, `TURN_LEVEL_TOOLS` and the wasm/signatures regeneration landed
+   here**, not in stage 4 as §4.5 assigned them. They had to: §5.2 deletes
+   `sandbox/membrane/turns.rs`, and a host that no longer implements an imported interface does not
+   compile. `packages/gg-sandbox/build.sh` ran cleanly in the devcontainer (the pinned
+   `componentize-js@0.21.0` was already in the npx cache), so
+   `crates/gg/src/sandbox/gg-sandbox.component.wasm` and `signatures.json` are committed refreshed.
+   `scope_tools` is now `registry.tool_names()`, and stage 4 adds `fork`/`exec` to the **delegation**
+   interface against this world.
+4. **`fsm.rs` is a stub with exactly one function**, `launch_warnings(&GgCapabilitySet) -> Vec<String>`
+   — one warning per profile that enables the capability, since gg drives nothing. `FsmRuntime`,
+   `Machine`, `FsmState`, `ToolPolicy`, `StateExit`, `AdvanceGuard` and the workspace-walking evidence
+   guards are gone; stage 5 writes the file from scratch. `mod fsm;` stays in `lib.rs`.
+5. **A `removed_capability_warnings(&GgCapabilitySet)` in `agent.rs`** implements §6.1's "add a launch
+   warning naming it": a table of removed capability ids and what replaced each, checked per profile.
+   Adding a future removal is one row. Both it and `fsm::launch_warnings` are collected in
+   `Orchestrator::build` beside `modules::ownership_warnings`.
+6. **`CAPABILITY_FSM`'s rustdoc says the capability is inert**, rather than describing the
+   user-authored engine §3 specifies. The docs site is the source of truth for *current* behaviour,
+   so it states what is true today and names what is coming; stage 5 rewrites it to the real thing.
+   `apps/docs/src/content/docs/gg/fsms.md` was rewritten the same way (with a `:::caution`), rather
+   than deleted, so the sidebar entry and every inbound link survive.
+7. **`drive` lost its two runtime parameters** and is now 11 positional arguments plus `DriveSetup`;
+   `#[allow(clippy::too_many_arguments)]` is still on it (11 is over clippy's 7). The plan/FSM
+   dispatch arms, the per-turn toolset filter and `plan_mode_refusal`/`fsm_refusal` are gone, so a
+   tool-calling turn now offers `registry.definitions()` unfiltered — which is what makes the offered
+   set byte-identical on every turn of a run, and what stage 5's `transition_state` must not
+   casually break (§3.3 already requires the offered set to be stable *within* an incarnation).
+
+Also removed, beyond §5's list: `MockClient::with_planning_script` / `with_fsm_tdd_script` and the
+`fsm-tdd` arm of `mock_client_for`, `MOCK_FSM_TEST_FILE` / `MOCK_FSM_IMPL_FILE`, and the console's
+`PlanView.tsx`, `FsmStateStrip.tsx`, `PlanIcon`, the `plan`/`fsm` feed tones and the `plan` band in
+`CONTEXT_SOURCES` (now ten, with `history` at palette index 9).
+
 ### Stage 2 — `refactor(gg): extract per-agent state into modules`
 
 **LANDED.** Implementation notes and the deviations from the text above are in §7.1.

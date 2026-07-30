@@ -5,7 +5,7 @@
 //! Unlike the workspace tools, these are **not** self-contained: spawning, waiting, and messaging
 //! act on the live [subagent scheduler](crate::subagents) and the agent tree, which a [`Tool`]
 //! (which only sees its parsed args and the workspace [`ToolContext`]) cannot reach. So — like the
-//! [planning](crate::tools::planning) and [agent-managed-context](crate::tools::context) tools —
+//! [agent-managed-context](crate::tools::context) tools —
 //! the [turn loop](crate::agent) **intercepts** these calls and performs the real work against the
 //! orchestrator; the [`Tool`] implementations here exist only to **declare** the tools to the
 //! model (their name, description, and schema, so toolset ablation and the system-prompt listing

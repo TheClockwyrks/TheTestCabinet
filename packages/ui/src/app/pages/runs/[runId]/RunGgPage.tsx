@@ -14,7 +14,7 @@ import styles from "./RunEventsPage.module.scss";
 
 // The gg tab (`/runs/:runId/gg`): a finished gg run read through the very same
 // capability-shaped panels its live monitor rendered — the activity feed, the agent
-// tree, the context-fill graph, the plan, the board, the task DAG, and the model's
+// tree, the context-fill graph, the board, the task DAG, and the model's
 // skills and memories.
 //
 // gg's telemetry is recorded with the run, so nothing about the rich view is
@@ -111,7 +111,6 @@ function RunGgBody({ run }: { run: RunRecord }) {
             slotUsage={derived.slotUsage}
             perAgent={perAgent}
             agentForest={derived.agentForest}
-            fsm={derived.fsm}
             capabilitySet={capabilitySet}
             runtime={runtime}
             timeoutSeconds={timeoutSeconds}

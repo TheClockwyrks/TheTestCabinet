@@ -213,8 +213,8 @@ the model is a model comparison.
 A launched gg run is watched on gg's own live monitor, which renders its
 [telemetry](/gg/telemetry/) through a set of surfaces, led by a tab selector:
 **Dashboard** — the whole-run read-out (status, the token/cost tally with its
-caching and reasoning splits as rings, how many agents ran, the enforced
-[FSM](/gg/fsms/) process, and the configuration it is running under); **Agents** —
+caching and reasoning splits as rings, how many agents ran, and the configuration it
+is running under); **Agents** —
 the run read per *configured* agent, each profile's instances summed into one
 read-out (how many ran, what they spent between them, and which files and tools
 filled their windows), which is the grain an ablation is read at; and
@@ -231,7 +231,7 @@ that launched the run:
   justifies it**, not when data happens to have arrived — gg announces its
   configuration on the stream's first event, so a run with the tasks capability
   always has a per-agent **tasks** file (empty until the model builds its list), while
-  a run with no planning pass has no plan file. Every agent always has **overview**,
+  a run with compaction off has no compaction file. Every agent always has **overview**,
   **activity**, and **context** files. The [Project management](/gg/project-management/)
   board is **not** a per-agent file — because it is shared run-wide it surfaces as a
   run-global **Project** section, present only when that capability is on.

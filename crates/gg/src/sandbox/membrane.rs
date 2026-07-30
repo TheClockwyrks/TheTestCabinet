@@ -2,7 +2,7 @@
 //! helper every host function on it goes through.
 //!
 //! [`bindgen!`](wasmtime::component::bindgen) turns the WIT into one `Host` trait per interface,
-//! and this module (with its six submodules) implements every one of them for [`MembraneState`].
+//! and this module (with its five submodules) implements every one of them for [`MembraneState`].
 //! That is what makes the boundary typed end to end: a program calls `readFile(path, { limit })`,
 //! the guest lowers it into a WIT call with typed parameters, and the host receives
 //! `read_file(path: String, offset: Option<u32>, limit: Option<u32>)`. Nothing on the model-facing
@@ -21,9 +21,8 @@
 //! schema already declares, call, and convert the [structured sidecar](crate::tools::ToolData) into
 //! its typed WIT result.
 //!
-//! A handful of functions dispatch nothing and therefore bypass it. The three
-//! [turn-level transitions](turns) are refused, because a mode change is not a value a program can
-//! compose. And the four [session-ending calls](session) — the model-facing functions on this
+//! A handful of functions dispatch nothing and therefore bypass it: the four
+//! [session-ending calls](session) — the model-facing functions on this
 //! membrane that are not gg tools — set this agent's ending flag through
 //! [`MembraneState::declare`], because ending a session is the one thing a program may ask for that
 //! no capability governs and no spent budget may withhold.
@@ -67,7 +66,6 @@ mod delegation;
 mod docs;
 mod knowledge;
 mod session;
-mod turns;
 mod workspace;
 
 wasmtime::component::bindgen!({ world: "sandbox", path: "wit" });
@@ -463,29 +461,6 @@ impl<A: ToolApi> MembraneState<A> {
         let completed = completed(&outcome);
         self.record(tool, &outcome, completed);
         Ok(outcome)
-    }
-
-    /// The refusal a [turn-level transition](crate::tools::TURN_LEVEL_TOOLS) always gets.
-    ///
-    /// It never reaches the invoker: these three tools change the loop's *mode*, which is not a
-    /// value a program can compose, so there is nothing to dispatch and nothing to wait for.
-    ///
-    /// The message deliberately stops at *why*, and does not tell the model to make the transition
-    /// in a later turn: under responses-as-code there is no turn that can. Every turn of such a run
-    /// is a program, and a program is where the refusal comes from — so "try again next turn" would
-    /// send a model round a loop that has no exit. The honest instruction is to do the work
-    /// directly, and the operator-facing warning about the combination is raised at startup by
-    /// [`announce_configuration`](crate::agent) rather than discovered here.
-    fn refuse_turn_level(&mut self, tool: &'static str, what: &str) -> ToolError {
-        self.refuse(
-            tool,
-            ErrorCode::Refused,
-            format!(
-                "`{tool}` cannot be called from within a code program: {what} is a turn-level \
-                 transition, not a composable value, and this run has no turn that is not a \
-                 program. Do the work directly instead."
-            ),
-        )
     }
 
     /// Record a refusal and render it as the error the program will see thrown.

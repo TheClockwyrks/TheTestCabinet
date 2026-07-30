@@ -38,7 +38,7 @@ export type ToolErrorCode =
   | "not-found"
   /** Well-formed, but in conflict with the current state: an ambiguous edit, a cycle, a duplicate. */
   | "conflict"
-  /** gg refused the call: plan mode, the run's FSM state, or the delegation depth cap. */
+  /** gg refused the call: a compaction in flight, or the delegation depth cap. */
   | "refused"
   /** The tool exists but this run's capability set does not offer it. */
   | "unavailable"
