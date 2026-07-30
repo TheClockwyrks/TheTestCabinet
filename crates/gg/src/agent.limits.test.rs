@@ -19,6 +19,7 @@
 
 use super::*;
 use crate::limits::DEFAULT_MAX_CONSECUTIVE_ERRORS;
+use crate::subagents::DEFAULT_MAX_PARALLEL;
 
 /// A reply that is not a program — the shape a model sends when it narrates a finished task instead
 /// of ending the run, and therefore an error turn under this protocol.
@@ -177,7 +178,11 @@ async fn an_unlimited_run_stops_on_the_default_error_ceiling() {
     // And a run left unbounded records the turn ceiling as absent — an honest default, not a hidden
     // fifty.
     assert_eq!(
-        recorded_limits(&setup_from(GgRunLimits::default()).limits).max_turns,
+        recorded_limits(
+            &setup_from(GgRunLimits::default()).limits,
+            DEFAULT_MAX_PARALLEL
+        )
+        .max_turns,
         None
     );
 }

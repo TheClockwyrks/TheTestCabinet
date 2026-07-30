@@ -31,6 +31,14 @@
 //!   **cannot resume until its wait condition is met** (its awaited children finished), even if a
 //!   slot is free — so a free slot is granted to a blocked-**and-ready** agent ahead of any
 //!   fresh waiter, and only to a fresh waiter when no blocked agent is ready.
+//! - A slot may additionally be held under an **exclusivity key** ([`ExclusiveKey`]), which no two
+//!   running agents may hold at once. This is how a
+//!   [persistent](test_cabinet_core::gg::CAPABILITY_AGENT_PERSISTENCE) agent profile is capped at
+//!   one running instance: every instance takes the slot under the profile's name, so the second
+//!   one queues behind the first *within* the global pool rather than getting a pool of its own. A
+//!   key is held only while the agent is **running** — an agent that blocks releases it with its
+//!   slot and re-takes it when it resumes — so a persistent agent waiting on a child of its own
+//!   profile cannot deadlock against itself.
 //!
 //! The depth cap is **not** enforced here — it is a *structural* check made at spawn time (an
 //! agent at [`max_depth`](SubagentConfig::max_depth) is refused, not queued); see
@@ -47,20 +55,24 @@ use crate::ending::Ending;
 use test_cabinet_core::gg::{CAPABILITY_SUBAGENTS, GgCapabilitySet};
 use tokio::sync::{mpsc, oneshot};
 
-/// The default global parallelism cap when the capability names no `maxParallel`.
-pub const DEFAULT_MAX_PARALLEL: usize = 4;
+/// The default global parallelism cap when the configuration declares no
+/// [`maxParallel`](test_cabinet_core::gg::GgRunLimits::max_parallel).
+pub const DEFAULT_MAX_PARALLEL: usize = 16;
 
 /// The default recursion depth cap when the capability names no `maxDepth`. The root is depth `0`;
 /// an agent at depth `maxDepth` may not spawn (its child would be `maxDepth + 1`).
 pub const DEFAULT_MAX_DEPTH: usize = 3;
 
-/// The subagents-capability param naming the global [parallelism cap](SubagentConfig::max_parallel).
+/// The **legacy** subagents-capability param naming the global
+/// [parallelism cap](SubagentConfig::max_parallel), still honored for configurations stored before
+/// the cap moved to the run's [`limits`](test_cabinet_core::gg::GgRunLimits::max_parallel).
 const PARAM_MAX_PARALLEL: &str = "maxParallel";
 
 /// The subagents-capability param naming the recursion [depth cap](SubagentConfig::max_depth).
 const PARAM_MAX_DEPTH: &str = "maxDepth";
 
-/// The two bounds the subagents capability enforces, resolved from its params.
+/// The two bounds a run's delegation is governed by: the run-level
+/// [parallelism cap](test_cabinet_core::gg::GgRunLimits::max_parallel) and the subagents capability's depth cap.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SubagentConfig {
     /// The single global cap on how many agents run at once (counting the root). A spawn beyond
@@ -81,15 +93,27 @@ impl Default for SubagentConfig {
 }
 
 impl SubagentConfig {
-    /// Resolve the config from a [`GgCapabilitySet`]: `maxParallel` / `maxDepth` on the
-    /// [subagents](CAPABILITY_SUBAGENTS) capability override the defaults when present as positive
-    /// integers; a missing, zero, or non-integer value keeps the default. `max_parallel` is
-    /// clamped to at least `1`.
+    /// Resolve the config from a [`GgCapabilitySet`].
+    ///
+    /// The parallelism cap is the run's own [`limits.maxParallel`](test_cabinet_core::gg::GgRunLimits::max_parallel) when it
+    /// declares one — it is a run-level guardrail, so it is readable whether or not any profile
+    /// enables the [subagents](CAPABILITY_SUBAGENTS) capability, which matters for a run that
+    /// delegates purely through the [board](test_cabinet_core::gg::CAPABILITY_PROJECT_MANAGEMENT).
+    /// Failing that, the **legacy** [`maxParallel`](PARAM_MAX_PARALLEL) param on the root's subagents
+    /// capability is honored, so a configuration stored before the cap moved still runs at the number
+    /// it was written with. Failing both, the [default](DEFAULT_MAX_PARALLEL) applies. `max_depth`
+    /// comes from the subagents capability alone (it bounds *that* capability's recursion, nothing
+    /// else). A missing, zero, or non-integer value keeps the default everywhere, and
+    /// `max_parallel` is clamped to at least `1` so a run always makes progress.
     pub fn resolve(set: &GgCapabilitySet) -> Self {
         let default = Self::default();
         let params = set.capability(CAPABILITY_SUBAGENTS).map(|cap| &cap.params);
-        let max_parallel = params
-            .and_then(|p| positive_usize(p, PARAM_MAX_PARALLEL))
+        let max_parallel = set
+            .limits
+            .max_parallel
+            .filter(|&max| max > 0)
+            .map(|max| usize::try_from(max).unwrap_or(usize::MAX))
+            .or_else(|| params.and_then(|p| positive_usize(p, PARAM_MAX_PARALLEL)))
             .unwrap_or(default.max_parallel)
             .max(1);
         let max_depth = params
@@ -166,15 +190,24 @@ pub struct AgentCtx {
     pub inbox: mpsc::UnboundedReceiver<String>,
     /// The children this agent has spawned, in spawn order.
     pub children: Vec<ChildHandle>,
+    /// The [exclusivity key](ExclusiveKey) this agent holds its running slot under, when it is an
+    /// instance of a [persistent](test_cabinet_core::gg::CAPABILITY_AGENT_PERSISTENCE) profile.
+    ///
+    /// Carried here because a `wait_for_subagents` frees the agent's slot from deep inside the
+    /// delegation code, which has this context in hand but not the agent's profile — and a slot
+    /// released under the wrong key (or none) would leave a persistent profile held forever.
+    pub exclusive: Option<String>,
 }
 
 impl AgentCtx {
-    /// A fresh context owning `inbox`, with no children yet and a new [`ParentWait`].
-    pub fn new(inbox: mpsc::UnboundedReceiver<String>) -> Self {
+    /// A fresh context owning `inbox`, with no children yet and a new [`ParentWait`], for an agent
+    /// whose slot is held under `exclusive` (`None` for every non-persistent agent).
+    pub fn new(inbox: mpsc::UnboundedReceiver<String>, exclusive: Option<String>) -> Self {
         Self {
             wait: Arc::new(ParentWait::new()),
             inbox,
             children: Vec::new(),
+            exclusive,
         }
     }
 
@@ -187,6 +220,15 @@ impl AgentCtx {
         out
     }
 }
+
+/// The **exclusivity key** a running slot may be held under: a name no two *running* agents may
+/// hold at the same time, on top of the global [parallelism cap](SubagentConfig::max_parallel).
+///
+/// `None` — the ordinary case — is a slot held under no key, which contends with nothing. `Some(name)`
+/// is how a [persistent](test_cabinet_core::gg::CAPABILITY_AGENT_PERSISTENCE) agent profile is capped
+/// at one running instance: the name is the profile's, so every instance of it contends with every
+/// other instance and with nothing else.
+pub type ExclusiveKey<'a> = Option<&'a str>;
 
 /// A token identifying one **blocked** waiter in the [`Scheduler`], handed to the parent by
 /// [`Scheduler::block_and_release`] and used by a completing child (via [`ParentWait`]) to mark
@@ -231,13 +273,14 @@ impl ParentWait {
         }
     }
 
-    /// Signal that the child `child_id` has finished, releasing its running slot on `scheduler`.
+    /// Signal that the child `child_id` has finished, releasing its running slot on `scheduler` —
+    /// and with it the [exclusivity key](ExclusiveKey) `key` the child held the slot under, if any.
     ///
     /// If the parent is currently waiting and this was the **last** outstanding awaited child, the
     /// child's slot release and the parent's readiness are applied to the scheduler **together**
     /// ([`Scheduler::finish_and_ready`]) so the freed slot goes to the ready parent ahead of any
     /// fresh waiter. Otherwise the slot is simply [released](Scheduler::release).
-    pub fn child_completed(&self, scheduler: &Scheduler, child_id: &str) {
+    pub fn child_completed(&self, scheduler: &Scheduler, child_id: &str, key: ExclusiveKey<'_>) {
         let ready_token = {
             let mut inner = self.inner.lock().expect("parent wait lock");
             inner.finished.insert(child_id.to_string());
@@ -252,14 +295,15 @@ impl ParentWait {
             ready_token
         };
         match ready_token {
-            Some(token) => scheduler.finish_and_ready(token),
-            None => scheduler.release(),
+            Some(token) => scheduler.finish_and_ready(token, key),
+            None => scheduler.release(key),
         }
     }
 
-    /// Begin waiting on `awaited`: register a blocked waiter (freeing the caller's slot) if any of
-    /// the awaited children are still outstanding, and return the resume channel to await. Returns
-    /// `None` when every awaited child has already finished (the caller keeps its slot and does not
+    /// Begin waiting on `awaited`: register a blocked waiter (freeing the caller's slot, and the
+    /// [exclusivity key](ExclusiveKey) `key` it holds that slot under) if any of the awaited children
+    /// are still outstanding, and return the resume channel to await. Returns `None` when every
+    /// awaited child has already finished (the caller keeps its slot — and its key — and does not
     /// block).
     ///
     /// The scheduler registration happens under this parent's lock so a child completing
@@ -268,6 +312,7 @@ impl ParentWait {
         &self,
         scheduler: &Scheduler,
         awaited: &HashSet<String>,
+        key: ExclusiveKey<'_>,
     ) -> Option<oneshot::Receiver<()>> {
         let mut inner = self.inner.lock().expect("parent wait lock");
         let outstanding: HashSet<String> = awaited
@@ -278,7 +323,7 @@ impl ParentWait {
         if outstanding.is_empty() {
             return None;
         }
-        let (token, rx) = scheduler.block_and_release();
+        let (token, rx) = scheduler.block_and_release(key);
         inner.waiting_on = Some(outstanding);
         inner.token = Some(token);
         Some(rx)
@@ -303,6 +348,10 @@ struct Waiter {
     /// blocked waiter is ineligible for a slot until this is `true`. Always `true` for a fresh
     /// waiter.
     ready: bool,
+    /// The [exclusivity key](ExclusiveKey) this waiter will hold its slot under, when it wants one.
+    /// A waiter whose key is already held by a running agent is ineligible, however old its ticket
+    /// and whether or not it is blocked-and-ready.
+    key: Option<String>,
     /// Fired (with a slot granted) to wake the waiting task.
     wake: oneshot::Sender<()>,
 }
@@ -313,6 +362,10 @@ struct SchedulerState {
     max_parallel: usize,
     /// How many agents currently hold a running slot.
     running: usize,
+    /// The [exclusivity keys](ExclusiveKey) currently held by running agents — at most one running
+    /// agent per key, which is what caps a persistent profile at one instance. A slot taken under no
+    /// key adds nothing here.
+    held: HashSet<String>,
     /// The next FCFS ticket to hand out.
     next_ticket: u64,
     /// Queued waiters (fresh and blocked), in arrival order.
@@ -338,15 +391,17 @@ impl Scheduler {
             state: Mutex::new(SchedulerState {
                 max_parallel: max_parallel.max(1),
                 running: 0,
+                held: HashSet::new(),
                 next_ticket: 0,
                 waiters: Vec::new(),
             }),
         })
     }
 
-    /// Acquire a running slot to **start** an agent, blocking until one is free. Enqueues the
+    /// Acquire a running slot to **start** an agent, blocking until one is free — and, when `key` is
+    /// `Some`, until no other running agent holds that [exclusivity key](ExclusiveKey). Enqueues the
     /// caller as a fresh waiter (so it never jumps a blocked-ready waiter) and awaits the grant.
-    pub async fn acquire_start(&self) {
+    pub async fn acquire_start(&self, key: ExclusiveKey<'_>) {
         let rx = {
             let mut state = self.state.lock().expect("scheduler lock");
             let (wake, rx) = oneshot::channel();
@@ -355,6 +410,7 @@ impl Scheduler {
                 ticket,
                 blocked: false,
                 ready: true,
+                key: key.map(str::to_string),
                 wake,
             });
             Self::pump(&mut state);
@@ -365,19 +421,25 @@ impl Scheduler {
         let _ = rx.await;
     }
 
-    /// Release a running slot held by an agent that has finished (with no parent to wake), and
-    /// grant the freed slot to the best eligible waiter.
-    pub fn release(&self) {
+    /// Release a running slot held by an agent that has finished (with no parent to wake) — freeing
+    /// the [exclusivity key](ExclusiveKey) it held the slot under, if any — and grant the freed slot
+    /// to the best eligible waiter.
+    pub fn release(&self, key: ExclusiveKey<'_>) {
         let mut state = self.state.lock().expect("scheduler lock");
         state.running = state.running.saturating_sub(1);
+        state.free_key(key);
         Self::pump(&mut state);
     }
 
-    /// Release the caller's running slot **and** register it as a blocked waiter (its wait
-    /// condition not yet met), returning the waiter's [token](WaiterToken) and the resume channel.
-    /// The freed slot is offered to the best eligible waiter (never this just-registered blocked
-    /// one, which is not yet ready).
-    pub fn block_and_release(&self) -> (WaiterToken, oneshot::Receiver<()>) {
+    /// Release the caller's running slot (and its [exclusivity key](ExclusiveKey)) **and** register
+    /// it as a blocked waiter (its wait condition not yet met), returning the waiter's
+    /// [token](WaiterToken) and the resume channel. The freed slot is offered to the best eligible
+    /// waiter (never this just-registered blocked one, which is not yet ready).
+    ///
+    /// The key is released with the slot and re-taken when the waiter is granted a slot again: a
+    /// suspended agent is not running, so holding a key across a wait would let a persistent agent
+    /// blocked on a child of its own profile deadlock against itself.
+    pub fn block_and_release(&self, key: ExclusiveKey<'_>) -> (WaiterToken, oneshot::Receiver<()>) {
         let mut state = self.state.lock().expect("scheduler lock");
         let (wake, rx) = oneshot::channel();
         let ticket = state.take_ticket();
@@ -385,19 +447,22 @@ impl Scheduler {
             ticket,
             blocked: true,
             ready: false,
+            key: key.map(str::to_string),
             wake,
         });
         state.running = state.running.saturating_sub(1);
+        state.free_key(key);
         Self::pump(&mut state);
         (WaiterToken(ticket), rx)
     }
 
-    /// Release a finishing child's slot **and** mark the blocked waiter `token` ready, in one
-    /// step, then grant. Applying both together is what lets the freed slot go to the now-ready
-    /// (higher-priority) parent ahead of any fresh waiter.
-    pub fn finish_and_ready(&self, token: WaiterToken) {
+    /// Release a finishing child's slot (and its [exclusivity key](ExclusiveKey)) **and** mark the
+    /// blocked waiter `token` ready, in one step, then grant. Applying both together is what lets the
+    /// freed slot go to the now-ready (higher-priority) parent ahead of any fresh waiter.
+    pub fn finish_and_ready(&self, token: WaiterToken, key: ExclusiveKey<'_>) {
         let mut state = self.state.lock().expect("scheduler lock");
         state.running = state.running.saturating_sub(1);
+        state.free_key(key);
         if let Some(waiter) = state.waiters.iter_mut().find(|w| w.ticket == token.0) {
             waiter.ready = true;
         }
@@ -422,15 +487,21 @@ impl Scheduler {
     /// eligible. Each grant increments `running`, removes the chosen waiter, and wakes it.
     fn pump(state: &mut SchedulerState) {
         loop {
-            let view: Vec<(bool, bool, u64)> = state
+            let view: Vec<WaiterView<'_>> = state
                 .waiters
                 .iter()
-                .map(|w| (w.blocked, w.ready, w.ticket))
+                .map(|w| (w.blocked, w.ready, w.ticket, w.key.as_deref()))
                 .collect();
-            match select_grant_index(&view, state.running, state.max_parallel) {
+            match select_grant_index(&view, state.running, state.max_parallel, &state.held) {
                 Some(index) => {
                     let waiter = state.waiters.remove(index);
                     state.running += 1;
+                    // The granted agent takes its exclusivity key with the slot, so the next
+                    // iteration of this very loop already sees it held and skips any other waiter
+                    // queued under the same name.
+                    if let Some(key) = waiter.key {
+                        state.held.insert(key);
+                    }
                     // A dropped receiver (the waiting task went away) just means the slot is
                     // immediately spare; the next pump reclaims it. Ignore the send result.
                     let _ = waiter.wake.send(());
@@ -451,6 +522,17 @@ impl Scheduler {
     pub fn waiter_count(&self) -> usize {
         self.state.lock().expect("scheduler lock").waiters.len()
     }
+
+    /// Whether a running agent currently holds the [exclusivity key](ExclusiveKey) `key` (test-only
+    /// introspection).
+    #[cfg(test)]
+    pub fn holds(&self, key: &str) -> bool {
+        self.state
+            .lock()
+            .expect("scheduler lock")
+            .held
+            .contains(key)
+    }
 }
 
 impl SchedulerState {
@@ -460,20 +542,41 @@ impl SchedulerState {
         self.next_ticket += 1;
         ticket
     }
+
+    /// Release the [exclusivity key](ExclusiveKey) a slot was held under, so the next agent queued
+    /// under that name becomes eligible. A no-op for a keyless slot.
+    fn free_key(&mut self, key: ExclusiveKey<'_>) {
+        if let Some(key) = key {
+            self.held.remove(key);
+        }
+    }
 }
 
+/// One queued waiter as the [grant policy](select_grant_index) sees it: whether it is blocked,
+/// whether it is ready, its FCFS ticket, and the [exclusivity key](ExclusiveKey) it would take its
+/// slot under.
+pub type WaiterView<'a> = (bool, bool, u64, Option<&'a str>);
+
 /// Choose which queued waiter to grant a free slot to, or `None` when no slot is free or no
-/// waiter is eligible. Pure over a `(blocked, ready, ticket)` view of the queue so the grant
-/// policy is unit-tested directly.
+/// waiter is eligible. Pure over a [`WaiterView`] of the queue (plus the set of
+/// [exclusivity keys](ExclusiveKey) running agents hold) so the grant policy is unit-tested
+/// directly.
 ///
-/// The policy: a slot is available only while `running < max`. A waiter is **eligible** if it is
-/// fresh, or blocked **and** ready (a blocked-but-not-ready waiter cannot resume even with a free
-/// slot). Among eligible waiters, a **blocked** (ready) one outranks any **fresh** one — the
-/// blocked-agent priority — and ties within a class are broken by the smallest ticket (FCFS).
+/// The policy: a slot is available only while `running < max`. A waiter is **eligible** if
+///
+/// - it is fresh, or blocked **and** ready (a blocked-but-not-ready waiter cannot resume even with a
+///   free slot); **and**
+/// - its exclusivity key, if it has one, is not already `held` by a running agent — the one rule
+///   that a waiter cannot age out of, since it is what caps a persistent profile at one running
+///   instance.
+///
+/// Among eligible waiters, a **blocked** (ready) one outranks any **fresh** one — the blocked-agent
+/// priority — and ties within a class are broken by the smallest ticket (FCFS).
 pub fn select_grant_index(
-    waiters: &[(bool, bool, u64)],
+    waiters: &[WaiterView<'_>],
     running: usize,
     max: usize,
+    held: &HashSet<String>,
 ) -> Option<usize> {
     if running >= max {
         return None;
@@ -481,10 +584,11 @@ pub fn select_grant_index(
     waiters
         .iter()
         .enumerate()
-        .filter(|(_, (blocked, ready, _))| if *blocked { *ready } else { true })
+        .filter(|(_, (blocked, ready, _, _))| if *blocked { *ready } else { true })
+        .filter(|(_, (_, _, _, key))| !key.is_some_and(|key| held.contains(key)))
         // Key `(!blocked, ticket)`: a blocked waiter's `!blocked` is `false` (0) and sorts ahead
         // of a fresh waiter's `true` (1); within a class the smaller ticket (older) wins.
-        .min_by_key(|(_, (blocked, _, ticket))| (!*blocked, *ticket))
+        .min_by_key(|(_, (blocked, _, ticket, _))| (!*blocked, *ticket))
         .map(|(index, _)| index)
 }
 

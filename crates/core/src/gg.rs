@@ -134,6 +134,41 @@ pub const CAPABILITY_AUTOLOAD_SPECS: &str = "autoload-specs";
 /// unrecognized).
 pub const AUTOLOAD_LOCKED_IMPL: &str = "locked";
 
+/// The stable id of the **agent-persistence** capability: an agent profile whose instances
+/// share one **serialized identity** across the whole run instead of being independent,
+/// interchangeable workers.
+///
+/// A persistent profile changes two things about every instance of it, and nothing else:
+///
+/// - **Its parallelism is capped at one.** At most one instance of the profile *runs* at a
+///   time, run-wide — regardless of which [worktree](CAPABILITY_PROJECT_MANAGEMENT) each was
+///   dispatched into, and regardless of the run's own
+///   [parallelism cap](GgRunLimits::max_parallel). Further instances are **queued**, not
+///   refused: they are spawned normally and wait their turn on the same scheduler every other
+///   agent waits on. An instance that suspends itself (blocking on its subagents or on an
+///   issue) is not running, so it releases the profile to the next queued instance and
+///   re-takes it when it resumes.
+/// - **Its open file views carry over.** When an instance finishes its work successfully, the
+///   set of [file views](GgContextSource::FileView) it had open — each path, and the
+///   `offset`/`limit` region of a paged read — is recorded against the profile. The next
+///   instance re-opens exactly those views as its first act, reading each file **fresh from
+///   disk at that moment** rather than replaying the bytes the last instance saw.
+///
+/// Together those make a profile behave like a long-lived worker with a desk: it comes back to
+/// the files it was last working on, in their current state, having never had two of itself
+/// editing at once. Off (the default), instances of a profile are independent — they run as
+/// concurrently as the run's cap allows and each opens with an empty desk.
+///
+/// The recorded views are re-opened **when the instance starts its first turn**, not when it
+/// was spawned. A queued instance may wait a long time behind the one ahead of it, and the
+/// point of the capability is to open on what the files *say now* — seeding at spawn time
+/// would hand it a snapshot that the instance ahead of it has since rewritten.
+///
+/// It is a per-agent capability (like every other), so a run can make one profile persistent —
+/// a single reviewer, or a single owner of a subsystem — while the rest of the fleet stays
+/// parallel and stateless.
+pub const CAPABILITY_AGENT_PERSISTENCE: &str = "agent-persistence";
+
 /// The stable id of the Phase 1 skills capability: markdown-with-front-matter skills
 /// whose descriptions are shown up front and whose bodies, once read, are retained
 /// across a compaction boundary.
@@ -614,8 +649,10 @@ pub struct GgCapabilitySet {
     /// because launching resolves every deferred binding first.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub model_slots: Vec<GgModelSlot>,
-    /// The **execution ceilings** this run is bounded by — the turn, runtime, error and
-    /// cost guardrails that stop a session and record which one stopped it.
+    /// The **run-level guardrails** this run is bounded by — the turn, runtime, error and
+    /// cost ceilings that stop a session and record which one stopped it, plus the
+    /// [parallelism cap](GgRunLimits::max_parallel) that bounds how many of its agents run
+    /// at once.
     ///
     /// They ride on the capability set rather than on the [launch envelope](GgInvocation)
     /// because the set is what a run *records*: a ceiling that stopped a run is only
@@ -1319,8 +1356,9 @@ pub struct GgModelSlot {
     pub default_model_id: Option<String>,
 }
 
-/// The **run-level execution ceilings** a gg run is bounded by — the guardrails that stop a
-/// session and record which one stopped it.
+/// The **run-level guardrails** a gg run is bounded by: the [execution ceilings](GgLimitKind) that
+/// stop a session and record which one stopped it, plus the
+/// [parallelism cap](Self::max_parallel) that bounds how much of the run happens at once.
 ///
 /// Deliberately **not** a [capability](GgCapabilityConfig): a capability is a feature under
 /// ablation, with tools and an on/off arm a study varies; a ceiling is an operator's guardrail
@@ -1351,6 +1389,26 @@ pub struct GgModelSlot {
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgRunLimits {
+    /// How many of the run's agents may **run at once**, counting the root and every subagent,
+    /// issue implementer, reviewer and speculation attempt alike. **Absent means gg's default of
+    /// 16**; set it explicitly to widen or tighten the pool, and `0` is read as "no cap declared"
+    /// (a run with no agent able to run could not start at all).
+    ///
+    /// Unlike every other field here it **stops nothing** — it *queues*. An agent spawned while the
+    /// pool is full is created normally and waits for a slot, so a configuration cannot lose work by
+    /// setting this low, only serialize it. An agent that **suspends** itself (blocking on its
+    /// subagents or on an [issue](CAPABILITY_PROJECT_MANAGEMENT)) frees its slot while it waits and
+    /// does not count against the cap, and takes priority over any not-yet-started agent when a slot
+    /// frees — a suspended agent is holding work that is already half-done, and starting a new agent
+    /// ahead of it is how a fleet fills its pool with agents that are all waiting on each other.
+    ///
+    /// It is run-level rather than per-agent because it bounds the *run's* concurrency: a cap each
+    /// profile declared for itself would not add up to a number the operator could reason about. The
+    /// one per-agent exception is [agent-persistence](CAPABILITY_AGENT_PERSISTENCE), which caps a
+    /// single profile at one instance *within* this pool.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub max_parallel: Option<u64>,
     /// The per-agent turn ceiling. **Absent means unbounded** — the host already caps a run's
     /// wall-clock, so a turn ceiling is left to the operator to set when a study wants one rather
     /// than imposed as a backstop that mostly cuts productive runs short. An agent that reaches a

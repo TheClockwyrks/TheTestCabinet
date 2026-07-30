@@ -114,8 +114,8 @@ use crate::compaction::{
 use crate::completion::{self, CompletionSetup};
 use crate::config::GgInvocation;
 use crate::context::{
-    BpeTokenEstimator, ContextModel, PromptItem, Retention, TokenEstimator, code_heading,
-    tool_output_source,
+    BpeTokenEstimator, ContextModel, FileRegion, PromptItem, Retention, TokenEstimator,
+    code_heading, tool_output_source,
 };
 use crate::docs::DocsRuntime;
 use crate::ending::{Ending, EndingRole};
@@ -133,6 +133,7 @@ use crate::message_log::finish_reason_token;
 use crate::model::{
     ImageContent, Message, ModelClient, ModelError, ModelResponse, ToolCall, ToolDefinition,
 };
+use crate::persistence::{self, AgentPersistence, PersistenceSetup};
 use crate::planning::PlanningRuntime;
 use crate::prompts::{
     self, ApiView, AssignedIssueView, AttemptBriefContext, AutoloadView, BoardView, CodeCallView,
@@ -671,7 +672,7 @@ pub(crate) async fn run_with_factory(
     // ...and the ceilings that *are* in force, including the turn ceiling's default, so "what was
     // this run bounded by?" is answerable from the operator log as well as from the summary.
     root_emitter.emit(log("info", orch.limits.armed_summary()));
-    root_emitter.record_limits(recorded_limits(&orch.limits));
+    root_emitter.record_limits(recorded_limits(&orch.limits, orch.config.max_parallel));
     // ...and, for a code-mode run, which response-healing strategies are armed. Recorded and logged
     // beside the ceilings because it is the same kind of fact — a resolved configuration that
     // decides how the run behaves — and because it is the one an ablation turns on: every healing
@@ -986,6 +987,12 @@ struct Orchestrator {
     config: SubagentConfig,
     /// The single global [scheduler](Scheduler) coordinating every agent's running slot.
     scheduler: Arc<Scheduler>,
+    /// The run-global [persistence record](AgentPersistence): what each
+    /// [persistent](crate::persistence) profile had open when one of its instances last
+    /// finished, so the next instance opens on the same files. Shared by every agent, since the whole
+    /// point is that a later instance reads what an earlier one wrote; inert for a run whose profiles
+    /// are all non-persistent.
+    persistence: Arc<AgentPersistence>,
     /// The per-`(slot, model)` usage/cost accounting every agent folds its total into.
     accounting: Mutex<SlotAccounting>,
     /// The base (unscoped) emitter each agent derives its scoped stream from.
@@ -1138,6 +1145,7 @@ impl Orchestrator {
             merge_lock: tokio::sync::Mutex::new(()),
             config: SubagentConfig::resolve(set),
             scheduler: Scheduler::new(SubagentConfig::resolve(set).max_parallel),
+            persistence: AgentPersistence::new(),
             accounting: Mutex::new(SlotAccounting::default()),
             base_emitter: emitter.clone(),
             factory,
@@ -1240,6 +1248,17 @@ impl Orchestrator {
     /// reference falls back to a working profile rather than refusing).
     fn profile_or_root(&self, profile: &str) -> &GgAgentConfig {
         self.caps.agent(profile).unwrap_or_else(|| self.caps.root())
+    }
+
+    /// The [exclusivity key](crate::subagents::ExclusiveKey) an agent running under the profile named
+    /// `profile` holds its scheduler slot under — the profile's name when it is
+    /// [persistent](crate::persistence), else `None`.
+    ///
+    /// Every site that takes, frees, or re-takes a slot for an agent asks this rather than carrying the
+    /// key around, so the answer is derived from the one capability set in every case and a slot can
+    /// never be released under a key it was not taken under.
+    fn exclusive_key(&self, profile: &str) -> Option<String> {
+        persistence::exclusive_key(self.profile_or_root(profile))
     }
 
     /// The name of an [agent profile](GgAgentConfig) a run-level capability points a helper agent at:
@@ -1639,15 +1658,18 @@ impl Orchestrator {
 
     /// Begin an agent's [`wait_for_issue`](handle_wait_for_issue) on `issue_id`: if the issue is
     /// already terminal, return [`AlreadyTerminal`](IssueWaitOutcome::AlreadyTerminal) so the caller
-    /// does not block; otherwise **free the caller's running slot** and register it as a blocked
+    /// does not block; otherwise **free the caller's running slot** (and the
+    /// [exclusivity key](Self::exclusive_key) `key` it holds it under, so a
+    /// [persistent](crate::persistence) agent suspended here releases its profile to the
+    /// next queued instance) and register it as a blocked
     /// waiter on the issue, returning the resume channel it awaits. The post-registration
     /// re-check closes the race where the issue goes terminal between the first check and the
     /// registration (the caller would otherwise never be woken).
-    fn begin_issue_wait(self: &Arc<Self>, issue_id: &str) -> IssueWaitOutcome {
+    fn begin_issue_wait(self: &Arc<Self>, issue_id: &str, key: Option<&str>) -> IssueWaitOutcome {
         if self.board.issue_is_terminal(issue_id) {
             return IssueWaitOutcome::AlreadyTerminal;
         }
-        let (token, rx) = self.scheduler.block_and_release();
+        let (token, rx) = self.scheduler.block_and_release(key);
         self.issue_waits
             .lock()
             .expect("issue waits lock")
@@ -1741,7 +1763,8 @@ async fn wait_for_issue_by_id(
     if status.is_terminal() {
         return issue_wait_result(issue_id, status);
     }
-    match project.orch.begin_issue_wait(issue_id) {
+    let key = project.orch.exclusive_key(&agent.slot);
+    match project.orch.begin_issue_wait(issue_id, key.as_deref()) {
         IssueWaitOutcome::AlreadyTerminal => {}
         IssueWaitOutcome::Blocked(rx) => {
             if project.orch.multi_agent() {
@@ -1753,7 +1776,6 @@ async fn wait_for_issue_by_id(
             if project.orch.multi_agent() {
                 emitter.emit(agent_status(GgAgentStatus::Running));
             }
-            let _ = agent; // the agent identity is carried by the scoped `emitter`.
         }
     }
     // Report the issue's final state (it is terminal now, unless it was removed while we waited).
@@ -1933,9 +1955,15 @@ async fn run_agent(
     client: Box<dyn ModelClient>,
     inbox_rx: mpsc::UnboundedReceiver<String>,
 ) -> LoopEnd {
+    // The exclusivity key this agent holds its slot under: its profile's name when the profile is
+    // [persistent](crate::persistence), so a second instance of it queues behind this one
+    // instead of running beside it; `None` for every ordinary agent, which contends with nothing.
+    // Resolved before the slot is taken, and re-resolved (never carried) at each release.
+    let exclusive = orch.exclusive_key(&agent.slot);
+
     // Acquire a running slot before doing anything: a spawned agent blocks here until the
     // scheduler grants one (the root's is granted immediately). This is the parallelism cap.
-    orch.scheduler.acquire_start().await;
+    orch.scheduler.acquire_start(exclusive.as_deref()).await;
 
     let is_root = matches!(role, AgentRole::Root);
     let issue_id = match &role {
@@ -2145,6 +2173,9 @@ async fn run_agent(
         archive: Arc::clone(&archive_store),
     };
     let autoload = AutoloadSetup::resolve(&profile);
+    // This agent's persistence: whether its instances are serialized and carry their open file views,
+    // bound to the run-global record every instance of its profile shares.
+    let persistence = PersistenceSetup::resolve(&profile, Arc::clone(&orch.persistence));
     if is_root && autoload.enabled {
         emitter.emit(log(
             "info",
@@ -2184,7 +2215,7 @@ async fn run_agent(
     // such context (and the tools were never offered).
     let subagent_context = orch.delegation_enabled().then(|| SubagentContext {
         orch: Arc::clone(&orch),
-        ctx: AgentCtx::new(inbox_rx),
+        ctx: AgentCtx::new(inbox_rx, exclusive.clone()),
     });
 
     // When project management is enabled, this agent gets a project context so its loop can trigger
@@ -2232,6 +2263,7 @@ async fn run_agent(
             compaction,
             amc,
             autoload,
+            persistence,
             &orch.provided_files,
             skills,
             memories,
@@ -2275,14 +2307,14 @@ async fn run_agent(
         AgentRole::Root => {
             // The root frees its slot so any cap-limited subagents it spawned can now run to
             // completion while the session joins them.
-            orch.scheduler.release();
+            orch.scheduler.release(exclusive.as_deref());
         }
         AgentRole::Issue {
             issue_id, retry, ..
         } => {
             // Free the slot first (like the root), so a re-dispatch or a newly-unblocked issue can
             // acquire it, then reconcile the issue against what the agent did.
-            orch.scheduler.release();
+            orch.scheduler.release(exclusive.as_deref());
             reconcile_issue(&orch, &issue_id, retry, completed, emitter).await;
         }
         AgentRole::Sub {
@@ -2323,7 +2355,7 @@ async fn run_agent(
                 status: end.status,
                 ending: end.ending.clone(),
             });
-            parent_wait.child_completed(&orch.scheduler, &agent.id);
+            parent_wait.child_completed(&orch.scheduler, &agent.id, exclusive.as_deref());
         }
     }
     end
@@ -2982,7 +3014,9 @@ async fn wait_for_subagents(
 }
 
 /// Block until every child in `awaited_ids` has returned — freeing this agent's running slot while
-/// it waits so its children (and other agents) can run under the [cap](Scheduler) — then collect
+/// it waits (and, for an instance of a [persistent](crate::persistence) profile, the
+/// profile itself, so a queued instance may run while this one is suspended) so its children and
+/// other agents can run under the [cap](Scheduler) — then collect
 /// each child's [return value](AgentReturn) (in the given order) and mark it collected. Emits the
 /// [`Blocked`](GgAgentStatus::Blocked)→[`Running`](GgAgentStatus::Running) transitions only when it
 /// actually blocks.
@@ -2999,7 +3033,12 @@ async fn await_children(
     // `begin_wait` returns `None` when every awaited child has already finished, in which case
     // there is nothing to block on.
     let awaited: HashSet<String> = awaited_ids.iter().cloned().collect();
-    if let Some(rx) = sub.ctx.wait.begin_wait(&sub.orch.scheduler, &awaited) {
+    let exclusive = sub.ctx.exclusive.clone();
+    if let Some(rx) = sub
+        .ctx
+        .wait
+        .begin_wait(&sub.orch.scheduler, &awaited, exclusive.as_deref())
+    {
         emitter.emit(agent_blocked_on(waited_subagents_condition(awaited_ids)));
         let _ = rx.await;
         emitter.emit(agent_status(GgAgentStatus::Running));
@@ -4915,6 +4954,7 @@ impl Agent {
         compaction: CompactionSetup,
         amc: AmcSetup,
         autoload: AutoloadSetup,
+        persistence: PersistenceSetup,
         provided_files: &[PathBuf],
         mut skills: SkillsRuntime,
         memories: MemoriesRuntime,
@@ -4986,6 +5026,10 @@ impl Agent {
             // reference images, so the prompt can tell the model they are already loaded (and,
             // when locked, that they stay) rather than leaving it to infer why they are there.
             autoload_specs: autoload.enabled.then_some(autoload.locked),
+            // Whether this agent is a persistent one, so the prompt can explain the file views it is
+            // opening on and that only one of it runs at a time — a model that finds reads in its
+            // window it never made would otherwise have to guess where they came from.
+            persistence: persistence.enabled(),
             profile,
             ending_role,
             assigned_issue: project
@@ -5008,6 +5052,36 @@ impl Agent {
                 emitter,
             )
             .await;
+        }
+
+        // Re-open the file views this agent's profile had open when one of its instances last
+        // finished — [agent persistence](crate::persistence). Deliberately here, as part of
+        // setting up the first turn, rather than at spawn time: a persistent agent's instances are
+        // serialized, so this one may have sat queued for a long while behind the instance ahead of it,
+        // and the files are re-read as they stand *now* rather than as that instance last saw them.
+        // After autoload, so a path the specs already seeded is not opened twice.
+        if persistence.enabled() {
+            let restored = persistence.restored();
+            let reopened = crate::persistence::restore_file_views(
+                &mut context,
+                &restored,
+                read_policy,
+                tool_ctx,
+                emitter,
+            )
+            .await;
+            emitter.emit(log(
+                "info",
+                match reopened {
+                    0 => "agent persistence enabled; no file views carried over from an earlier \
+                          session of this agent."
+                        .to_string(),
+                    count => format!(
+                        "agent persistence enabled; re-opened {count} file view(s) this agent had \
+                         open when it last finished, re-read from the workspace as it stands now."
+                    ),
+                },
+            ));
         }
 
         // FSM start: emit the machine's entry state and inject its guidance, so the run is driven
@@ -5575,6 +5649,13 @@ impl Agent {
                 let breach = agent_limits.record(decision.turn_outcome(), &self.id);
                 match decision {
                     CodeTurnOutcome::Finished { ending } => {
+                        // A persistent agent hands its open file views to its next instance. On the
+                        // code path the window carries none (a program's reads are consumed inside the
+                        // program), so this records an empty desk — which is the honest answer, not a
+                        // reason to skip the call and leave a stale one behind.
+                        if let Some(state) = &state {
+                            persistence.record(&state.context);
+                        }
                         return LoopEnd {
                             status: STATUS_COMPLETED,
                             turns: turn + 1,
@@ -6096,6 +6177,11 @@ impl Agent {
             // `Finished` turn (which never breaches).
             if let Some(ending) = declared_ending {
                 let _ = agent_limits.record(TurnOutcome::Finished, &self.id);
+                // A persistent agent hands the file views it still has open to its next instance —
+                // recorded only on this path, because only an agent that *finished its work* has a desk
+                // worth inheriting. One stopped by a ceiling or an error leaves the previous
+                // instance's record standing.
+                persistence.record(&context);
                 return LoopEnd {
                     status: STATUS_COMPLETED,
                     turns: turn + 1,
@@ -6331,12 +6417,14 @@ fn stopped_text(status: &str, report: Option<&str>) -> Option<String> {
 /// The resolved [ceilings](RunLimits) as the run **records** them on its session summary.
 ///
 /// gg's [defaults](crate::limits) are written out exactly as they were in force — the error ceilings
-/// a run left unset, and an absent turn ceiling recorded as `None` (unbounded) — because that is
-/// what makes a default honest: "what ceiling was this run under?" has to be answerable from the
-/// record, and a default that is recorded is not a hidden one. Everything else is `None` when the
-/// ceiling is off, which is the same thing the declaration said.
-fn recorded_limits(limits: &RunLimits) -> GgRunLimits {
+/// a run left unset, the [parallelism cap](SubagentConfig::max_parallel) it ran under, and an absent
+/// turn ceiling recorded as `None` (unbounded) — because that is what makes a default honest: "what
+/// ceiling was this run under?" has to be answerable from the record, and a default that is recorded
+/// is not a hidden one. Everything else is `None` when the ceiling is off, which is the same thing the
+/// declaration said.
+fn recorded_limits(limits: &RunLimits, max_parallel: usize) -> GgRunLimits {
     GgRunLimits {
+        max_parallel: Some(max_parallel as u64),
         max_turns: limits.max_turns.map(|turns| turns as u64),
         max_runtime_secs: limits.max_runtime.map(|budget| budget.as_secs()),
         max_consecutive_errors: limits.max_consecutive_errors.map(u64::from),
@@ -6954,6 +7042,10 @@ struct PromptInputs<'a> {
     /// they are **locked**: `None` off, `Some(false)` on, `Some(true)` on and locked. Gates the
     /// prompt section that tells the model the brief is already in its window.
     autoload_specs: Option<bool>,
+    /// Whether this agent is [persistent](crate::persistence) — serialized to one running
+    /// instance, opening on the file views it had open when it last finished. Gates the prompt section
+    /// that explains where those views came from.
+    persistence: bool,
     /// This agent's [profile](GgAgentConfig): the source of its operator custom instructions, its
     /// optional full-template override, and its [roster](GgAgentConfig::subagents) — the agents it
     /// may spawn, assign issues to, and name as reviewers (each enumerated in the prompt, scope by
@@ -7149,6 +7241,7 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
         speculative,
         responses_as_code,
         autoload_specs,
+        persistence,
         profile,
         ending_role,
         assigned_issue,
@@ -7206,7 +7299,9 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
             tasks.offers_tasks(),
             board.offers_board(),
             planning.offers_planning() || fsm.is_active(),
-            offers_read || autoload_specs.is_some(),
+            // A restored file view is a `File` message too, so a persistent agent is told the heading
+            // even in the (unusual) case that it reads nothing itself.
+            offers_read || autoload_specs.is_some() || persistence,
         )
     } else {
         Vec::new()
@@ -7287,6 +7382,9 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
             // On → a section telling the model the whole brief is already in its window; the
             // `locked` flag decides whether it also promises the material stays across compaction.
             autoload_specs: autoload_specs.map(|locked| AutoloadView { locked }),
+            // On → a section telling the model it is one serialized, long-lived worker and that the
+            // file views already in its window are the ones it left open.
+            persistence,
             // How this agent ends its session — its role's calls, named the way this execution mode
             // writes them.
             ending: ending_view(ending_role, responses_as_code),
@@ -7418,6 +7516,8 @@ async fn autoload_specifications(
         context.push_assistant(None, vec![call]);
         context.push_file_view_with_retention(
             Some(rel),
+            // Autoloaded files are read whole, so an autoloaded view covers no region.
+            None,
             &call_id,
             outcome.output,
             outcome.images,
@@ -7653,7 +7753,14 @@ fn record_tool_result(
             .get("path")
             .and_then(Value::as_str)
             .map(str::to_string);
-        context.push_file_view(path, &call.id, outcome.output, outcome.images);
+        // The `offset`/`limit` the read was made with, when it named either — recorded on the view so
+        // [agent persistence](crate::persistence) can re-open a paged read over the same
+        // lines rather than from the top of the file.
+        let region = FileRegion::new(
+            call.arguments.get("offset").and_then(Value::as_u64),
+            call.arguments.get("limit").and_then(Value::as_u64),
+        );
+        context.push_file_view(path, region, &call.id, outcome.output, outcome.images);
     } else {
         context.push_tool_result_with_images(source, &call.id, outcome.output, outcome.images);
     }

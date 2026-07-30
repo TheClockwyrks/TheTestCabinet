@@ -36,6 +36,7 @@ mod limits;
 mod memories;
 mod message_log;
 mod model;
+mod persistence;
 mod planning;
 mod prompts;
 mod replay;

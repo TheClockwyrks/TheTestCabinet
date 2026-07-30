@@ -546,6 +546,10 @@ export default defineConfig({
                 "gg/subagents",
                 "gg/workflows",
                 "gg/speculative-execution",
+                // A property of delegation rather than of context, despite what it
+                // carries: what it changes is how many instances of one profile run
+                // at a time, and the file views ride along on that.
+                "gg/agent-persistence",
                 "gg/fsms",
                 // How a run decides it is finished — the completion signal and the
                 // optional validation commands that gate it. A capability like any

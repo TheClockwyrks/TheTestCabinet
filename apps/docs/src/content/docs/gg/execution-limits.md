@@ -2,12 +2,12 @@
 title: "Execution limits"
 ---
 
-The **ceilings a gg run is bounded by**: how many turns an agent may take, how long the
-run may take, how many failing turns it tolerates, and how much it may spend. They are
-deliberately **not** capabilities — a capability is a feature under ablation, with tools
-and an on/off arm a study varies, while a ceiling is an operator's guardrail that applies
-to every capability and to **both execution modes** at once. A runaway is a runaway
-whether the model is calling tools one at a time or writing
+The **guardrails a gg run is bounded by**: how much of it happens at once, how many turns
+an agent may take, how long the run may take, how many failing turns it tolerates, and how
+much it may spend. They are deliberately **not** capabilities — a capability is a feature
+under ablation, with tools and an on/off arm a study varies, while a guardrail is an
+operator's bound that applies to every capability and to **both execution modes** at once.
+A runaway is a runaway whether the model is calling tools one at a time or writing
 [programs](/gg/responses-as-code/).
 
 Five ceilings, one home, one resolution path, one breach record:
@@ -19,6 +19,11 @@ Five ceilings, one home, one resolution path, one breach record:
 | `maxConsecutiveErrors` | per agent | ends **that agent** | `limit_exceeded` |
 | `maxErrorRate` + `errorRateWindow` | per agent | ends **that agent** | `limit_exceeded` |
 | `maxCost` | run-wide | ends **every agent** at its next turn boundary | `limit_exceeded` |
+
+Plus one guardrail that is not a ceiling at all — [`maxParallel`](#parallelism), which
+**queues** rather than stops. It lives here because it is configured, resolved and recorded
+with the other five, and because it is the other thing an operator reaches for when a run
+is doing too much.
 
 Three of them are new. The turn ceiling and the wall-clock budget predate them and are
 folded in **unchanged in behaviour**, so there is one place to configure a ceiling, one
@@ -96,6 +101,31 @@ launch naming every armed ceiling, or *"no execution ceiling is armed; the run i
 only by the host's clock"* when a configuration disables everything.
 
 ## The ceilings, exactly
+
+### `maxParallel` {#parallelism}
+
+How many of the run's agents may **run at once** — the root and every subagent, issue
+implementer, reviewer and [speculation](/gg/speculative-execution/) attempt, counted
+together regardless of which profile or model each runs on. **The default is 16.**
+
+It is the only guardrail here that stops nothing. An agent spawned while the pool is full
+is created normally and **waits for a slot**, so setting this low serializes a run without
+losing any of its work, and there is no breach, no terminal status and no
+`limit_exceeded` to record. What it bounds is how much a run does at the same time —
+provider rate limits, host CPU, and how legible the [agent tree](/gg/subagents/) is.
+
+Two rules make the queue behave sensibly under a small pool:
+
+- **A suspended agent does not count.** An agent blocked on its subagents or on an
+  [issue](/gg/project-management/) releases its slot for the duration of the wait.
+- **Resuming beats starting.** When a slot frees, it goes to a suspended agent whose wait
+  is satisfied ahead of any not-yet-started one. A suspended agent is holding work that is
+  already half-done; starting fresh agents ahead of it is how a fleet fills its whole pool
+  with agents that are all waiting on each other.
+
+A [persistent](/gg/agent-persistence/) profile is additionally capped at **one running
+instance** *within* this pool — the one per-agent exception, and the only other thing that
+can make an agent queue.
 
 ### `maxConsecutiveErrors`
 
@@ -229,17 +259,19 @@ ceiling carries both the breach and the ceiling that produced it:
 "capabilitySet": {
   "capabilities": [ /* … */ ],
   "slots": [{ "slot": "primary", "modelId": "anthropic/claude-opus-5" }],
-  "limits": { "maxTurns": 60, "maxRuntimeSecs": 5400, "maxConsecutiveErrors": 5,
-              "maxErrorRate": 0.5, "errorRateWindow": 10, "maxCost": 25.0 }
+  "limits": { "maxParallel": 16, "maxTurns": 60, "maxRuntimeSecs": 5400,
+              "maxConsecutiveErrors": 5, "maxErrorRate": 0.5, "errorRateWindow": 10,
+              "maxCost": 25.0 }
 }
 ```
 
 A set that declares nothing omits the key entirely, so every stored configuration
 round-trips unchanged. In the console they are a **Run limits** fieldset above the
 capability groups in the [configuration](/gg/configurations/) editor. A fresh
-configuration shows gg's defaults in the fields — the two error ceilings seeded, the turn
-ceiling left empty (unbounded) — so an empty error-ceiling field falls back to its
-default, while an empty `maxTurns`, `maxRuntimeSecs` or `maxCost` leaves that ceiling off.
+configuration shows gg's defaults in the fields — the parallelism cap and the two error
+ceilings seeded, the turn ceiling left empty (unbounded) — so an empty parallelism or
+error-ceiling field falls back to its default, while an empty `maxTurns`,
+`maxRuntimeSecs` or `maxCost` leaves that ceiling off.
 
 Resolution is **total**: an unset, zero, negative or nonsensical declaration becomes "the
 ceiling is off" plus a warning, never a launch error, on the same terms an unknown name in
@@ -248,7 +280,9 @@ configuration document has to stay interpretable by every arm.
 
 | Declaration | Resolves to | Warning |
 | --- | --- | --- |
-| `limits` absent | turns unbounded, the error defaults armed, runtime and cost off | — |
+| `limits` absent | 16 agents in parallel, turns unbounded, the error defaults armed, runtime and cost off | — |
+| `maxParallel: 0` or absent | `16` (the default) | — |
+| `maxParallel` on the **subagents** capability's params | honored, but the run-level value wins | — |
 | `maxTurns: 0` or absent | **unbounded** (no turn ceiling) | — |
 | `maxRuntimeSecs: 0` or absent | no budget | — |
 | `maxConsecutiveErrors` absent | `5` (the default) | — |

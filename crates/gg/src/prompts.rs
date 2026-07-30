@@ -445,6 +445,14 @@ pub struct SystemContext {
     /// reference images, and if so whether they are locked into the window. `None` renders no
     /// section — the model was told nothing about a feature it does not have.
     pub autoload_specs: Option<AutoloadView>,
+    /// Whether this agent is a [persistent](test_cabinet_core::gg::CAPABILITY_AGENT_PERSISTENCE) one:
+    /// only one instance of it runs at a time, and its opening window already holds the file views it
+    /// had open when it last finished, re-read from the workspace as it stands now.
+    ///
+    /// Worth a prompt section of its own precisely because the seeded views are indistinguishable from
+    /// reads the model made itself — an agent that finds five `read_file` results at the top of a fresh
+    /// session and is told nothing has to guess whether it is resuming, hallucinating, or being tested.
+    pub persistence: bool,
     /// How this agent ends its session — the calls its [role](crate::ending::EndingRole) gives it.
     /// Always present: every agent must be told how to end, in either execution mode.
     pub ending: EndingView,

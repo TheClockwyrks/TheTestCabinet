@@ -895,13 +895,11 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     purpose:
       "Spawn other agents — run in parallel, block on them, message them, receive their return value.",
     params: [
-      {
-        key: "maxParallel",
-        label: "Max parallel",
-        kind: "number",
-        placeholder: "e.g. 4",
-        hint: "Cap on agents running at once (a spawn beyond it blocks).",
-      },
+      // The parallelism cap is deliberately **not** here: it bounds the whole run's
+      // concurrency (including the agents a board dispatches, with no subagents
+      // capability in sight), so it lives with the run limits below. A `maxParallel`
+      // left on this capability by an older configuration is still honored by gg, but
+      // the run-level field wins and is the only one this editor writes.
       {
         key: "maxDepth",
         label: "Max depth",
@@ -918,6 +916,14 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         hint: "Off leaves spawn-and-wait only — agents can't message one another mid-run.",
       },
     ],
+  },
+  {
+    id: "agent-persistence",
+    name: "Agent persistence",
+    group: "Delegation",
+    purpose:
+      "Make this agent one long-lived worker instead of a pool of interchangeable ones: only one instance of it runs at a time (further instances queue), and each instance opens on the file views the last one had open — re-read from the workspace as it stands then, not replayed.",
+    defaultOn: false,
   },
   {
     id: "workflows",
@@ -1019,6 +1025,11 @@ export const DEFAULT_MAX_CONSECUTIVE_ERRORS = 5;
 export const DEFAULT_MAX_ERROR_RATE = 0.4;
 export const DEFAULT_ERROR_RATE_WINDOW = 50;
 
+// How many agents gg runs at once when a configuration names no cap. Unlike the
+// ceilings, this one is always in force — a run always has *some* pool — so the
+// default is a number rather than "off".
+export const DEFAULT_MAX_PARALLEL = 16;
+
 // One execution ceiling's control. `key` is the wire field on
 // `GgCapabilitySet.limits`; `kind` is what makes the value legible *and* checkable
 // — a `count` is a whole number of turns, seconds or errors, a `fraction` is a rate
@@ -1037,13 +1048,22 @@ export interface RunLimitSpec {
   defaultValue?: string;
 }
 
-// The six ceilings, in the order they read as a sentence: how long a run may go on
-// for, then how badly it may go, then how much it may cost.
+// The guardrails, in the order they read as a sentence: how much of the run happens
+// at once, then how long it may go on for, then how badly it may go, then how much it
+// may cost.
 //
 // `key` is typed as `keyof GgRunLimits`, and [ggConfigDraft]'s draft is a total
 // record over the same keys, so a ceiling added to the contract cannot ship without
 // a control here.
 export const RUN_LIMIT_SPECS: ReadonlyArray<RunLimitSpec> = [
+  {
+    key: "maxParallel",
+    label: "Max parallel agents",
+    kind: "count",
+    defaultValue: String(DEFAULT_MAX_PARALLEL),
+    placeholder: `e.g. ${DEFAULT_MAX_PARALLEL}`,
+    hint: `How many of the run's agents may run at once, counting the root and every subagent, issue implementer and reviewer; gg's default is ${DEFAULT_MAX_PARALLEL}. Alone among these, it stops nothing — an agent spawned while the pool is full queues for a slot rather than being refused, so a low value serializes the run without losing any of its work. A suspended agent (waiting on its subagents or an issue) frees its slot and takes priority over any not-yet-started agent when one opens up.`,
+  },
   {
     key: "maxTurns",
     label: "Max turns per agent",

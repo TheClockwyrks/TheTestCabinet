@@ -41,6 +41,7 @@ fn prompt_items_expose_source_message_tokens_and_label_in_order() {
     ctx.push_tool_result(tool_output_source("write_file"), "c1", "wrote index.html");
     ctx.push_file_view(
         Some("index.html".to_string()),
+        None,
         "c2",
         "<html></html>",
         Vec::new(),
@@ -263,12 +264,14 @@ fn evict_file_views_removes_all_or_by_path_and_reclaims_tokens() {
     ctx.push_system("system");
     ctx.push_file_view(
         Some("a.js".to_string()),
+        None,
         "c1",
         "contents of a".repeat(5),
         Vec::new(),
     );
     ctx.push_file_view(
         Some("b.js".to_string()),
+        None,
         "c2",
         "contents of b".repeat(5),
         Vec::new(),
@@ -304,9 +307,16 @@ fn evict_file_views_removes_all_or_by_path_and_reclaims_tokens() {
 fn a_locked_file_view_is_spared_by_eviction() {
     let mut ctx = model(Some(100_000));
     // An ordinary (ephemeral) read and a locked (pinned) autoloaded spec, both file views.
-    ctx.push_file_view(Some("read.md".to_string()), "c1", "a read spec", Vec::new());
+    ctx.push_file_view(
+        Some("read.md".to_string()),
+        None,
+        "c1",
+        "a read spec",
+        Vec::new(),
+    );
     ctx.push_file_view_with_retention(
         Some("locked.md".to_string()),
+        None,
         "c2",
         "a locked spec",
         Vec::new(),
@@ -339,6 +349,7 @@ fn compaction_keeps_a_locked_file_view_and_carries_its_image() {
     ctx.push_assistant(None, vec![call("c1", "read_file")]);
     ctx.push_file_view_with_retention(
         Some("reference/title.png".to_string()),
+        None,
         "c1",
         "`reference/title.png` — PNG image, 3 bytes. The image follows.",
         vec![image],
@@ -380,7 +391,7 @@ fn compaction_keeps_a_locked_file_view_and_carries_its_image() {
 #[test]
 fn evict_file_views_on_a_missing_path_reclaims_nothing() {
     let mut ctx = model(Some(100_000));
-    ctx.push_file_view(Some("a.js".to_string()), "c1", "body", Vec::new());
+    ctx.push_file_view(Some("a.js".to_string()), None, "c1", "body", Vec::new());
     let before = ctx.total_tokens();
     let result = ctx.evict_file_views(Some("nope.js"));
     assert_eq!(result.items, 0);
@@ -408,7 +419,13 @@ fn archive_thread_removes_old_turns_keeping_the_recent_one() {
         Some("turn zero reading".to_string()),
         vec![call("c1", "read_file")],
     );
-    ctx.push_file_view(Some("a.js".to_string()), "c1", "a contents", Vec::new());
+    ctx.push_file_view(
+        Some("a.js".to_string()),
+        None,
+        "c1",
+        "a contents",
+        Vec::new(),
+    );
     // Turn 1.
     ctx.push_assistant(
         Some("turn one listing".to_string()),
@@ -529,6 +546,7 @@ fn prompt_items_withhold_the_fullness_signals_sentinel() {
     ctx.refresh_fullness_signal();
     ctx.push_file_view(
         Some("index.html".to_string()),
+        None,
         "c1",
         "<html></html>",
         Vec::new(),
@@ -904,6 +922,7 @@ fn an_attached_image_is_charged_to_the_window() {
     let mut with_image = model(Some(100_000));
     with_image.push_file_view(
         Some("ref.png".to_string()),
+        None,
         "c1",
         "`ref.png` — PNG image, 400 KB.",
         vec![image(400 * 1024)],
@@ -912,6 +931,7 @@ fn an_attached_image_is_charged_to_the_window() {
     let mut without = model(Some(100_000));
     without.push_file_view(
         Some("ref.png".to_string()),
+        None,
         "c1",
         "`ref.png` — PNG image, 400 KB.",
         Vec::new(),
@@ -937,6 +957,7 @@ fn evicting_a_file_view_reclaims_its_image_too() {
     let mut ctx = model(Some(100_000));
     ctx.push_file_view(
         Some("ref.png".to_string()),
+        None,
         "c1",
         "`ref.png` — PNG image.",
         vec![image(400 * 1024)],
@@ -954,6 +975,7 @@ fn strip_images_drops_pictures_but_keeps_the_conversation_well_formed() {
     ctx.push_assistant(None, vec![call("c1", "read_file")]);
     ctx.push_file_view(
         Some("ref.png".to_string()),
+        None,
         "c1",
         "`ref.png` — PNG image, 400 KB.",
         vec![image(400 * 1024)],

@@ -112,6 +112,13 @@ pub struct ContextItem {
     /// it) and the sentinel marking the rebuilt-each-turn fullness signal (so it can be
     /// refreshed without touching the base system prompt). `None` for ordinary items.
     label: Option<String>,
+    /// For a [`FileView`](GgContextSource::FileView) produced by a **paged** read, the
+    /// `offset`/`limit` window it covers; `None` for a whole-file view and for every other kind of
+    /// item. Carried beside the [`label`](Self::label) rather than folded into it because the label
+    /// is a selector `evict_file_view { path }` matches on exactly — a tag that sometimes read
+    /// `src/main.rs` and sometimes `src/main.rs@200+50` would make the same file un-evictable
+    /// depending on how it had been read.
+    region: Option<FileRegion>,
 }
 
 // Accessors for tests and the Phase 2 compaction/eviction consumers (the loop reads the
@@ -143,6 +150,50 @@ impl ContextItem {
     pub fn label(&self) -> Option<&str> {
         self.label.as_deref()
     }
+
+    /// The `offset`/`limit` window a paged [file view](GgContextSource::FileView) covers, when this
+    /// item is one and the read was paged.
+    pub fn region(&self) -> Option<FileRegion> {
+        self.region
+    }
+}
+
+/// The `offset`/`limit` window one **paged** `read_file` covered — the arguments the call was made
+/// with, kept so a view can be re-opened over the same lines rather than from the top of the file.
+///
+/// Both halves are optional because either can be: a call may name an `offset` and take the run's
+/// default window from there, or name a `limit` and read that many lines from the top. A read that
+/// names neither has no region at all (it is a whole-file view, or the first window of a capped one),
+/// which is why this appears behind an `Option` wherever it is carried.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FileRegion {
+    /// The 1-based line the read started at, when the call named one.
+    pub offset: Option<u64>,
+    /// The maximum number of lines the read returned, when the call named one.
+    pub limit: Option<u64>,
+}
+
+impl FileRegion {
+    /// The region a `read_file` call's `offset`/`limit` arguments describe, or `None` when it named
+    /// neither — the whole-file (or default-window) read that needs no region recorded.
+    pub fn new(offset: Option<u64>, limit: Option<u64>) -> Option<Self> {
+        (offset.is_some() || limit.is_some()).then_some(Self { offset, limit })
+    }
+}
+
+/// One [file view](GgContextSource::FileView) **open in the window**: the workspace path it shows and
+/// the [region](FileRegion) of it the read covered.
+///
+/// What [`ContextModel::open_file_views`] reports and what
+/// [agent persistence](test_cabinet_core::gg::CAPABILITY_AGENT_PERSISTENCE) records against a profile
+/// — deliberately the *reference* to a read rather than the bytes it returned, so re-opening it reads
+/// the file as it stands then instead of replaying a stale copy of it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OpenFileView {
+    /// The workspace-relative path read.
+    pub path: String,
+    /// The `offset`/`limit` window the read covered, or `None` for a whole-file read.
+    pub region: Option<FileRegion>,
 }
 
 /// One item of the live window as [`prompt_items`](ContextModel::prompt_items) hands it to
@@ -373,6 +424,19 @@ impl ContextModel {
         message: Message,
         label: Option<String>,
     ) {
+        self.push_tagged(source, retention, message, label, None);
+    }
+
+    /// The one push every other one routes through: [`push_labeled`](Self::push_labeled) plus the
+    /// [region](FileRegion) a paged [file view](Self::push_file_view) covers.
+    fn push_tagged(
+        &mut self,
+        source: GgContextSource,
+        retention: Retention,
+        message: Message,
+        label: Option<String>,
+        region: Option<FileRegion>,
+    ) {
         let message = self.headed(source, message);
         let tokens = self.estimator.estimate_message(&message);
         self.items.push(ContextItem {
@@ -381,6 +445,7 @@ impl ContextModel {
             message,
             tokens,
             label,
+            region,
         });
     }
 
@@ -563,15 +628,21 @@ impl ContextModel {
     /// `images` is what a read of a **reference mockup** carries. The picture is part of
     /// the same file view as its text, so `evict_file_view { path }` reclaims both, and
     /// the [image's estimated cost](estimate_image) is what gets reclaimed.
+    ///
+    /// `region` is the `offset`/`limit` window a **paged** read covered (`None` for a whole-file
+    /// read), recorded so [agent persistence](Self::open_file_views) can re-open the view over the
+    /// same lines.
     pub fn push_file_view(
         &mut self,
         path: Option<String>,
+        region: Option<FileRegion>,
         tool_call_id: impl Into<String>,
         content: impl Into<String>,
         images: Vec<ImageContent>,
     ) {
         self.push_file_view_with_retention(
             path,
+            region,
             tool_call_id,
             content,
             images,
@@ -589,16 +660,18 @@ impl ContextModel {
     pub fn push_file_view_with_retention(
         &mut self,
         path: Option<String>,
+        region: Option<FileRegion>,
         tool_call_id: impl Into<String>,
         content: impl Into<String>,
         images: Vec<ImageContent>,
         retention: Retention,
     ) {
-        self.push_labeled(
+        self.push_tagged(
             GgContextSource::FileView,
             retention,
             Message::tool_result(tool_call_id, content).with_images(images),
             path,
+            region,
         );
     }
 
@@ -885,6 +958,40 @@ impl ContextModel {
             percent,
             consumers: top,
         }))
+    }
+
+    /// The [file views](GgContextSource::FileView) currently **open** in the window — each path the
+    /// agent has read and still has in front of it, with the [region](FileRegion) the read covered —
+    /// in the order they were opened, with exact duplicates collapsed.
+    ///
+    /// What [agent persistence](test_cabinet_core::gg::CAPABILITY_AGENT_PERSISTENCE) records against a
+    /// profile when one of its instances finishes, so the next instance can re-open the same desk.
+    /// Two deliberate exclusions:
+    ///
+    /// - A [`Pinned`](Retention::Pinned) view is **not** reported. The only pinned views are **locked**
+    ///   [autoloaded specifications](https://docs.testcabinet.ai/gg/autoload-specifications/), which
+    ///   the next instance's own autoload re-seeds — reporting them would have persistence re-open,
+    ///   as ordinary evictable reads, files the capability that put them there is about to pin again.
+    /// - A view whose path is unknown (a malformed call, tagged `None`) is not reported either: there
+    ///   is nothing to re-open.
+    pub fn open_file_views(&self) -> Vec<OpenFileView> {
+        let mut open: Vec<OpenFileView> = Vec::new();
+        for item in &self.items {
+            if item.source != GgContextSource::FileView || item.retention.is_pinned() {
+                continue;
+            }
+            let Some(path) = item.label.clone() else {
+                continue;
+            };
+            let view = OpenFileView {
+                path,
+                region: item.region,
+            };
+            if !open.contains(&view) {
+                open.push(view);
+            }
+        }
+        open
     }
 
     /// Evict [`FileView`](GgContextSource::FileView) items from the live window, reclaiming

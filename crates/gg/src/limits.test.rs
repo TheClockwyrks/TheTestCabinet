@@ -116,6 +116,7 @@ fn an_absent_limits_block_arms_the_error_defaults_and_leaves_turns_unbounded() {
 #[test]
 fn every_declared_ceiling_resolves_when_it_is_usable() {
     let limits = resolve_cleanly(GgRunLimits {
+        max_parallel: None,
         max_turns: Some(60),
         max_runtime_secs: Some(5400),
         max_consecutive_errors: Some(5),
@@ -364,6 +365,7 @@ fn resolution_never_fails_a_launch() {
             ..GgAgentConfig::root()
         }],
         limits: GgRunLimits {
+            max_parallel: None,
             max_turns: Some(0),
             max_runtime_secs: Some(0),
             max_consecutive_errors: Some(0),
@@ -384,6 +386,7 @@ fn resolution_never_fails_a_launch() {
 #[test]
 fn the_armed_summary_names_every_ceiling_in_force() {
     let armed = resolve_cleanly(GgRunLimits {
+        max_parallel: None,
         max_turns: Some(60),
         max_runtime_secs: Some(5400),
         max_consecutive_errors: Some(5),

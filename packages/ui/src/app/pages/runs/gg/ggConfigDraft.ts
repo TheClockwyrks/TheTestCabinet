@@ -176,6 +176,7 @@ export function agentsInWireOrder(draft: GgConfigDraft): GgAgentDraft[] {
  */
 export function blankRunLimits(): GgRunLimitsDraft {
   return {
+    maxParallel: "",
     maxTurns: "",
     maxRuntimeSecs: "",
     maxConsecutiveErrors: "",
@@ -186,10 +187,10 @@ export function blankRunLimits(): GgRunLimitsDraft {
 }
 
 /**
- * A fresh configuration's ceilings, with every ceiling that has a documented default
- * (the two error ceilings) seeded to it, so a new configuration shows gg's real
- * default rather than an empty box. The turn ceiling is left empty (unbounded), and
- * runtime and cost are off.
+ * A fresh configuration's guardrails, with every one that has a documented default (the
+ * parallelism cap and the two error ceilings) seeded to it, so a new configuration shows
+ * gg's real default rather than an empty box. The turn ceiling is left empty (unbounded),
+ * and runtime and cost are off.
  */
 export function seededRunLimits(): GgRunLimitsDraft {
   const draft = blankRunLimits();

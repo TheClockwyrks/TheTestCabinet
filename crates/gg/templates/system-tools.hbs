@@ -66,6 +66,16 @@ dependencies when adding a task or using `set_blocked_by`. Cycles will be
 automatically rejected.
 {{/if}}
 
+{{#if persistence}}
+## Persistence
+
+You are a persistent agent: only one instance of you runs at a time, and you
+keep the files you were working on between sessions. The `read_file` results
+already in your context are the file views you had open when you last finished —
+re-read just now, so they show the workspace as it stands today, not as you left
+it. Files you leave open when you finish will be waiting for you next time.
+{{/if}}
+
 {{#if subagents}}
 ## Subagents
 

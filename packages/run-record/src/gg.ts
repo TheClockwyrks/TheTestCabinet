@@ -239,8 +239,10 @@ export type GgCapabilitySet = {
    */
   modelSlots?: Array<GgModelSlot>;
   /**
-   * The **execution ceilings** this run is bounded by — the turn, runtime, error and
-   * cost guardrails that stop a session and record which one stopped it.
+   * The **run-level guardrails** this run is bounded by — the turn, runtime, error and
+   * cost ceilings that stop a session and record which one stopped it, plus the
+   * [parallelism cap](GgRunLimits::max_parallel) that bounds how many of its agents run
+   * at once.
    *
    * They ride on the capability set rather than on the [launch envelope](GgInvocation)
    * because the set is what a run *records*: a ceiling that stopped a run is only
@@ -900,8 +902,9 @@ export type GgReviewer = {
 export type GgSpeculationPhase = "fanned_out" | "judged" | "merged";
 
 /**
- * The **run-level execution ceilings** a gg run is bounded by — the guardrails that stop a
- * session and record which one stopped it.
+ * The **run-level guardrails** a gg run is bounded by: the [execution ceilings](GgLimitKind) that
+ * stop a session and record which one stopped it, plus the
+ * [parallelism cap](Self::max_parallel) that bounds how much of the run happens at once.
  *
  * Deliberately **not** a [capability](GgCapabilityConfig): a capability is a feature under
  * ablation, with tools and an on/off arm a study varies; a ceiling is an operator's guardrail
@@ -930,6 +933,26 @@ export type GgSpeculationPhase = "fanned_out" | "judged" | "merged";
  * ceiling is accounted (per agent or run-wide) and what breaching it does to the run.
  */
 export type GgRunLimits = {
+  /**
+   * How many of the run's agents may **run at once**, counting the root and every subagent,
+   * issue implementer, reviewer and speculation attempt alike. **Absent means gg's default of
+   * 16**; set it explicitly to widen or tighten the pool, and `0` is read as "no cap declared"
+   * (a run with no agent able to run could not start at all).
+   *
+   * Unlike every other field here it **stops nothing** — it *queues*. An agent spawned while the
+   * pool is full is created normally and waits for a slot, so a configuration cannot lose work by
+   * setting this low, only serialize it. An agent that **suspends** itself (blocking on its
+   * subagents or on an [issue](CAPABILITY_PROJECT_MANAGEMENT)) frees its slot while it waits and
+   * does not count against the cap, and takes priority over any not-yet-started agent when a slot
+   * frees — a suspended agent is holding work that is already half-done, and starting a new agent
+   * ahead of it is how a fleet fills its pool with agents that are all waiting on each other.
+   *
+   * It is run-level rather than per-agent because it bounds the *run's* concurrency: a cap each
+   * profile declared for itself would not add up to a number the operator could reason about. The
+   * one per-agent exception is [agent-persistence](CAPABILITY_AGENT_PERSISTENCE), which caps a
+   * single profile at one instance *within* this pool.
+   */
+  maxParallel?: number;
   /**
    * The per-agent turn ceiling. **Absent means unbounded** — the host already caps a run's
    * wall-clock, so a turn ceiling is left to the operator to set when a study wants one rather

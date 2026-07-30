@@ -21,6 +21,7 @@ import {
   DEFAULT_ERROR_RATE_WINDOW,
   DEFAULT_MAX_CONSECUTIVE_ERRORS,
   DEFAULT_MAX_ERROR_RATE,
+  DEFAULT_MAX_PARALLEL,
   RUN_LIMIT_SPECS,
 } from "./ggCatalog";
 
@@ -614,8 +615,9 @@ describe("gg capability params", () => {
 });
 
 describe("gg run limits", () => {
-  it("seeds gg's default error ceilings into a fresh form, and leaves turns unbounded", () => {
+  it("seeds gg's documented defaults into a fresh form, and leaves turns unbounded", () => {
     expect(capabilitySetFromDraft(emptyDraft(), null).limits).toEqual({
+      maxParallel: DEFAULT_MAX_PARALLEL,
       maxConsecutiveErrors: DEFAULT_MAX_CONSECUTIVE_ERRORS,
       maxErrorRate: DEFAULT_MAX_ERROR_RATE,
       errorRateWindow: DEFAULT_ERROR_RATE_WINDOW,

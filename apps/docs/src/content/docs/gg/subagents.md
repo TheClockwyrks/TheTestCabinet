@@ -52,14 +52,24 @@ own the whole merge-or-discard lifecycle of the branch they create.
 
 The scheduler is intentionally simple:
 
-- **A single global parallelism cap** (not per-level). A newly spawned subagent
-  **blocks until a slot frees up**, and slots are granted **first-come,
-  first-served**.
+- **A single global parallelism cap** (not per-level), the run's
+  [`maxParallel`](/gg/execution-limits/#parallelism) — 16 unless the configuration says
+  otherwise. A newly spawned subagent **blocks until a slot frees up**, and slots are
+  granted **first-come, first-served**.
 - **A blocked agent frees its slot.** When an agent blocks waiting on its subagents,
   it releases its slot so other work can run — but it retains **priority over
   not-yet-started agents** for the next free slot. A blocked agent **cannot be
   resumed until its wait condition is met**, even once a slot is available.
+- **A [persistent](/gg/agent-persistence/) profile is capped at one running instance**
+  inside that pool: its instances hold their slot under the profile's name, and no two
+  running agents hold the same name.
 
 Subagents may run under a different [agent profile](/gg/configurations/#agents) —
 and so a different model — than their parent; that is orthogonal to the parallelism
 cap, which counts running agents regardless of profile.
+
+The cap is a **run-level** guardrail rather than a param on this capability, because it
+bounds the run's concurrency as a whole — including the top-level agents a
+[board](/gg/project-management/) dispatches, in a run where nothing has the subagents
+capability at all. A `maxParallel` left on this capability by an older configuration is
+still honored, but the run-level value wins when both are set.

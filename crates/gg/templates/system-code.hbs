@@ -113,6 +113,15 @@ dependencies when adding a task or with `tasks.setBlockedBy`. Cycles will be
 automatically rejected.
 {{/if}}
 
+{{#if persistence}}
+## Persistence
+
+You are a persistent agent: only one instance of you runs at a time, and you
+keep the files you were working on between sessions. Any file views already in
+your context are the ones you had open when you last finished — re-read just now,
+so they show the workspace as it stands today, not as you left it.
+{{/if}}
+
 {{#if subagents}}
 ## Subagents
 

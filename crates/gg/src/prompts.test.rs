@@ -88,6 +88,7 @@ fn full_system() -> SystemContext {
         }),
         speculative: true,
         autoload_specs: Some(AutoloadView { locked: true }),
+        persistence: true,
         ending: ending_view(EndingRole::Standard, false),
     }
 }

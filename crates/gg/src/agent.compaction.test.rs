@@ -43,6 +43,7 @@ async fn drive_compaction(
             compaction,
             no_amc(),
             no_autoload(),
+            no_persistence(),
             &[],
             skills,
             memories,

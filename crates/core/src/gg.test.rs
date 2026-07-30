@@ -158,12 +158,13 @@ fn capability_set_round_trips_through_json() {
     assert_eq!(set, back);
 }
 
-/// The ceilings are camelCase like the rest of the contract, and a ceiling that is off is
-/// **absent** rather than `null` — so a configuration that arms two of the six says so in two
-/// keys, and "unset" and "set to nothing" can never be confused on the wire.
+/// The guardrails are camelCase like the rest of the contract, and one that is off is **absent**
+/// rather than `null` — so a configuration that arms two of them says so in two keys, and "unset" and
+/// "set to nothing" can never be confused on the wire.
 #[test]
 fn run_limits_round_trip_camel_case_and_omit_every_unset_ceiling() {
     let limits = GgRunLimits {
+        max_parallel: Some(16),
         max_turns: Some(60),
         max_runtime_secs: Some(5_400),
         max_consecutive_errors: Some(5),
@@ -175,6 +176,7 @@ fn run_limits_round_trip_camel_case_and_omit_every_unset_ceiling() {
     assert_eq!(
         value,
         json!({
+            "maxParallel": 16,
             "maxTurns": 60,
             "maxRuntimeSecs": 5_400,
             "maxConsecutiveErrors": 5,

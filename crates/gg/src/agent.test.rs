@@ -233,6 +233,7 @@ async fn drive_root(
             no_compaction(),
             no_amc(),
             no_autoload(),
+            no_persistence(),
             &[],
             SkillsRuntime::disabled(),
             MemoriesRuntime::disabled(),
@@ -447,6 +448,12 @@ fn no_autoload() -> AutoloadSetup {
         enabled: false,
         locked: false,
     }
+}
+
+/// The agent-persistence setup with the capability **off** — every `drive` e2e that is not exercising
+/// persistence passes this, so nothing is carried into the opening window or recorded out of it.
+fn no_persistence() -> PersistenceSetup {
+    PersistenceSetup::disabled()
 }
 
 /// An enabled agent-managed-context setup sharing `archive` with a registry's `search_archive`
@@ -914,6 +921,7 @@ async fn drive_exhausts_the_turn_ceiling_when_the_model_never_stops() {
             no_compaction(),
             no_amc(),
             no_autoload(),
+            no_persistence(),
             &[],
             SkillsRuntime::disabled(),
             MemoriesRuntime::disabled(),
@@ -970,6 +978,7 @@ async fn drive_times_out_at_a_passed_deadline() {
             no_compaction(),
             no_amc(),
             no_autoload(),
+            no_persistence(),
             &[],
             SkillsRuntime::disabled(),
             MemoriesRuntime::disabled(),
@@ -1027,6 +1036,7 @@ async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
             no_compaction(),
             no_amc(),
             no_autoload(),
+            no_persistence(),
             &[],
             SkillsRuntime::disabled(),
             MemoriesRuntime::disabled(),
@@ -1125,6 +1135,7 @@ async fn drive_completion(
             no_compaction(),
             no_amc(),
             no_autoload(),
+            no_persistence(),
             &[],
             SkillsRuntime::disabled(),
             MemoriesRuntime::disabled(),
@@ -1437,6 +1448,7 @@ async fn drive_ends_model_error_on_exhausted_retries() {
             no_compaction(),
             no_amc(),
             no_autoload(),
+            no_persistence(),
             &[],
             SkillsRuntime::disabled(),
             MemoriesRuntime::disabled(),
@@ -1491,6 +1503,7 @@ async fn drive_ends_auth_error_when_the_credential_is_refused() {
             no_compaction(),
             no_amc(),
             no_autoload(),
+            no_persistence(),
             &[],
             SkillsRuntime::disabled(),
             MemoriesRuntime::disabled(),
@@ -1910,6 +1923,7 @@ impl DisabledRuntimes {
             speculative: false,
             responses_as_code: false,
             autoload_specs: None,
+            persistence: false,
             profile: &self.profile,
             ending_role: EndingRole::Standard,
             assigned_issue: None,
@@ -2386,6 +2400,7 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
             no_compaction(),
             no_amc(),
             no_autoload(),
+            no_persistence(),
             &[],
             runtime,
             MemoriesRuntime::disabled(),
@@ -2577,6 +2592,7 @@ async fn drive_enforces_memory_caps_end_to_end() {
             no_compaction(),
             no_amc(),
             no_autoload(),
+            no_persistence(),
             &[],
             SkillsRuntime::disabled(),
             memories,
@@ -2744,6 +2760,7 @@ async fn drive_pins_only_the_index_under_the_markdown_strategy() {
             no_compaction(),
             no_amc(),
             no_autoload(),
+            no_persistence(),
             &[],
             SkillsRuntime::disabled(),
             memories,
@@ -2830,6 +2847,7 @@ async fn the_memory_block_costs_nothing_until_the_boundary() {
             compaction_at(0.6),
             no_amc(),
             no_autoload(),
+            no_persistence(),
             &[],
             skills,
             memories,
@@ -3028,6 +3046,7 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
             no_compaction(),
             no_amc(),
             no_autoload(),
+            no_persistence(),
             &[],
             SkillsRuntime::disabled(),
             MemoriesRuntime::disabled(),
@@ -3345,6 +3364,7 @@ async fn drive_compacts_at_the_threshold_and_retains_pinned_state() {
             compaction_at(0.6),
             no_amc(),
             no_autoload(),
+            no_persistence(),
             &[],
             skills,
             memories,
@@ -3511,6 +3531,7 @@ async fn drive_never_compacts_when_capability_off() {
             no_compaction(),
             no_amc(),
             no_autoload(),
+            no_persistence(),
             &[],
             skills,
             memories,
@@ -3614,6 +3635,7 @@ async fn drive_manages_context_end_to_end() {
             no_compaction(),
             amc_with(Arc::clone(&archive)),
             no_autoload(),
+            no_persistence(),
             &[],
             SkillsRuntime::disabled(),
             MemoriesRuntime::disabled(),
@@ -3729,6 +3751,7 @@ async fn drive_without_amc_offers_no_context_management() {
             no_compaction(),
             no_amc(),
             no_autoload(),
+            no_persistence(),
             &[],
             SkillsRuntime::disabled(),
             MemoriesRuntime::disabled(),
@@ -3821,6 +3844,7 @@ async fn drive_plans_then_implements_from_a_fresh_context() {
             no_compaction(),
             no_amc(),
             no_autoload(),
+            no_persistence(),
             &[],
             SkillsRuntime::disabled(),
             MemoriesRuntime::disabled(),
@@ -3986,6 +4010,7 @@ async fn drive_without_planning_offers_no_planning() {
             no_compaction(),
             no_amc(),
             no_autoload(),
+            no_persistence(),
             &[],
             SkillsRuntime::disabled(),
             MemoriesRuntime::disabled(),
@@ -8305,3 +8330,13 @@ mod brief_tests;
 /// answers on the next — which only exists in [`Agent::drive`].
 #[path = "agent.compaction.test.rs"]
 mod compaction_tests;
+
+/// [Agent persistence](crate::persistence) through the **live loop**: that a finishing instance's open
+/// file views are recorded against its profile, and that the next instance opens its first turn on
+/// them, re-read from the workspace as it stands then.
+///
+/// Separate from `persistence.test.rs` (the record, the key and the restore, with no loop behind them)
+/// because what these guard is the two seams in [`Agent::drive`] — the seed before the first turn and
+/// the record on the completion path — which only exist here.
+#[path = "agent.persistence.test.rs"]
+mod persistence_tests;

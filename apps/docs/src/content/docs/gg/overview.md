@@ -178,6 +178,9 @@ saved, launched, and analyzed in the console is
 - [Workflows](/gg/workflows/) — declared subagent fan-out plus sequencing.
 - [Speculative execution](/gg/speculative-execution/) — best-of-K attempts judged
   to a winner.
+- [Agent persistence](/gg/agent-persistence/) — make one profile a single long-lived
+  worker: one instance runs at a time, and each opens on the files the last one left
+  open.
 
 **Process & quality**
 
