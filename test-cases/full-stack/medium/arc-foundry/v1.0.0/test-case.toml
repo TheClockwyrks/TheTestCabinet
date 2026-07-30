@@ -352,7 +352,10 @@ validation = { script = "validation/pathing/map-c-housings.mjs", outputs = [{ id
 id = "three-maps"
 title = "Three maps with distinct waypoint topologies"
 description = "The three maps (The Substation, The Switchyard, The Transformer Yard) define different ordered waypoint chains at pinned coordinates — chosen, not randomly generated — so they differ in topology, not in numbers."
-validation = { script = "validation/pathing/three-maps.mjs", outputs = [{ id = "maps", name = "The three maps' waypoint layouts", kind = "image" }] }
+# One still PER MAP. A single capture could only ever show one of the three topologies, which is
+# no evidence that they differ — the claim is about the comparison, so the media has to carry all
+# three for a reviewer to make it.
+validation = { script = "validation/pathing/three-maps.mjs", outputs = [{ id = "map-substation", name = "The Substation's waypoint layout", kind = "image" }, { id = "map-switchyard", name = "The Switchyard's waypoint layout", kind = "image" }, { id = "map-transformer", name = "The Transformer Yard's waypoint layout", kind = "image" }] }
 
 # --- Economy & Grid Integrity -------------------------------------------------
 [[review.categories]]

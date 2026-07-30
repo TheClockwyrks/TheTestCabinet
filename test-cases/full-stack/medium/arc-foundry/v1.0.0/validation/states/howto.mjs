@@ -1,28 +1,27 @@
 // Automated validation for states.howto: the how-to-play state is reachable from the title.
 //
-// Only the reset is arranged; NAVIGATING to the state is the behavior under test, so the menu
-// move and the confirm are the act.
-
-import { snap } from "../_helpers.mjs";
-
-// A menu screen is PAINTED, not simulated, and `advance` moves the simulation. On a menu the
-// debug API's `step` does nothing at all (`specs/instrumentation.md`), and in the validate pass
-// `advance` is an instant `step` — so advancing between two menu confirms paints no frame and
-// lets no time pass. A build that reads its menu geometry from the last rendered frame (a
-// perfectly ordinary way to lay a menu out, and how the panel read in
-// `build/combine-actions-only` works) then sees the SECOND confirm before it has drawn the
-// screen the first one moved to, and re-activates the entry it was already on. The screen never
-// advances and a build whose menus a player walks without trouble fails.
+// HOW TO PLAY is clicked on the main menu, on the entry's own reported rectangle
+// (`menuButtons()`), so the click lands wherever this build drew it.
 //
-// `settle` is what this needs and what it always meant: a real pause in both passes, which is
-// the only thing that gives the build's own frame loop a chance to draw. Keep it to a paint
-// settle — nothing here should move the game.
-// Generous on purpose: a headless browser may throttle its frame loop, so this is sized to
-// buy several repaints even then rather than the one or two a tighter pause assumes.
-const SETTLE_MS = 300;
+// WHY THE MOUSE AND NOT `ArrowDown` + `Enter`. This used to move the highlight down and confirm.
+// `specs/controls.md` makes the pointer the primary path and the keyboard "an alternative", so a
+// build that binds no menu keys is conformant — and one failed this item, reporting the screen as
+// unreachable when a player reaches it in one click. The keyboard route was also the more fragile
+// of the two here: it depended on HOW TO PLAY being the SECOND entry and on the moved highlight
+// having painted before the confirm, neither of which the spec fixes beyond the entry order. A
+// click asks for the entry by name. See `clickMenu` in `_helpers.mjs`.
+//
+// Only the reset is arranged; NAVIGATING to the state is the behavior under test, so the click is
+// the act.
+
+import { clickMenu, snap } from "../_helpers.mjs";
+
+// A real pause so the arrived-at screen has painted before the still is taken.
+const PAINT_MS = 300;
 
 export default function item() {
-  // The screen the navigation landed on, read by `assert`.
+  // The entry that was clicked and the screen it landed on, both read by `assert`.
+  let entry;
   let screen;
 
   return {
@@ -33,17 +32,15 @@ export default function item() {
     },
 
     async act(api) {
-      await api.settle(SETTLE_MS);
-      await api.call("press", "ArrowDown"); // move to HOW TO PLAY
-      await api.settle(SETTLE_MS); // let the moved highlight draw before confirming on it
-      await api.call("press", "Enter");
+      entry = await clickMenu(api, "howto");
       screen = (await snap(api)).screen;
 
-      await api.settle(SETTLE_MS); // let the screen paint before the still
+      await api.settle(PAINT_MS); // let the screen paint before the still
       await api.screenshot("howto");
     },
 
     async assert(api, check) {
+      check.expectOk("the title menu offers HOW TO PLAY as a clickable choice", Boolean(entry));
       check.expectEq("the how-to-play screen is reachable", screen, "howto");
     },
   };

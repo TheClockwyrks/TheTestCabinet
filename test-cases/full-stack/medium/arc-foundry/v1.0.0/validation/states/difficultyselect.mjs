@@ -1,29 +1,29 @@
 // Automated validation for states.difficultyselect: the difficulty-select state is reachable
 // after a map is chosen.
 //
-// Only the reset is arranged; NAVIGATING to the state is the behavior under test, so the two
-// confirms are the act and the clip walks the menu the way a player would.
-
-import { snap } from "../_helpers.mjs";
-
-// A menu screen is PAINTED, not simulated, and `advance` moves the simulation. On a menu the
-// debug API's `step` does nothing at all (`specs/instrumentation.md`), and in the validate pass
-// `advance` is an instant `step` — so advancing between two menu confirms paints no frame and
-// lets no time pass. A build that reads its menu geometry from the last rendered frame (a
-// perfectly ordinary way to lay a menu out, and how the panel read in
-// `build/combine-actions-only` works) then sees the SECOND confirm before it has drawn the
-// screen the first one moved to, and re-activates the entry it was already on. The screen never
-// advances and a build whose menus a player walks without trouble fails.
+// SALVAGE is clicked at the title and then a map on map select, both on the entries' own reported
+// rectangles (`menuButtons()`), so each click lands wherever this build drew that entry.
 //
-// `settle` is what this needs and what it always meant: a real pause in both passes, which is
-// the only thing that gives the build's own frame loop a chance to draw. Keep it to a paint
-// settle — nothing here should move the game.
-// Generous on purpose: a headless browser may throttle its frame loop, so this is sized to
-// buy several repaints even then rather than the one or two a tighter pause assumes.
-const SETTLE_MS = 300;
+// WHY THE MOUSE AND NOT `Enter`. This used to press `Enter` twice. `specs/controls.md` makes the
+// pointer the primary path and the keyboard "an alternative", so a build that binds no menu keys is
+// conformant — and one failed this item, reporting the screen as unreachable when a player reaches
+// it in two clicks. The claim here is that the STATE is reachable, so the check takes the path the
+// spec guarantees. It also removes the paint race the keyboard route had: a click is aimed at a
+// rectangle the build has actually reported, so arriving at the second menu is confirmed by
+// finding its entries rather than assumed after a pause. See `clickMenu` in `_helpers.mjs`.
+//
+// Only the reset is arranged; NAVIGATING to the state is the behavior under test, so the two
+// clicks are the act and the clip walks the menu the way a player would.
+
+import { clickMenu, snap } from "../_helpers.mjs";
+
+// A real pause so the arrived-at screen has painted before the still is taken.
+const PAINT_MS = 300;
 
 export default function item() {
-  // The screen the navigation landed on, read by `assert`.
+  // Each click's entry and the screen the navigation landed on, read by `assert`.
+  let salvage;
+  let map;
   let screen;
 
   return {
@@ -34,17 +34,17 @@ export default function item() {
     },
 
     async act(api) {
-      await api.settle(SETTLE_MS);
-      await api.call("press", "Enter"); // title -> map select
-      await api.settle(SETTLE_MS); // let map select draw before confirming on it
-      await api.call("press", "Enter"); // choose the first map -> difficulty select
+      salvage = await clickMenu(api, "salvage"); // title -> map select
+      map = await clickMenu(api, "map-substation"); // choose a map -> difficulty select
       screen = (await snap(api)).screen;
 
-      await api.settle(SETTLE_MS); // let the screen paint before the still
+      await api.settle(PAINT_MS); // let the screen paint before the still
       await api.screenshot("difficultyselect");
     },
 
     async assert(api, check) {
+      check.expectOk("the title menu offers SALVAGE as a clickable choice", Boolean(salvage));
+      check.expectOk("map select offers a map as a clickable choice", Boolean(map));
       check.expectEq("the difficulty-select screen is reachable", screen, "difficultyselect");
     },
   };

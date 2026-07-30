@@ -103,6 +103,41 @@ space of `specs/overview.md`; tile coordinates are `(col, row)` on the grid of
   action set and its geometry depend only on which structure is selected
   (`specs/controls.md`), so a caller can compare two calls across a change in game
   state and confirm the panel did not reflow. It is a pure read.
+- `menuButtons()` returns the choices of the menu screen currently showing, in the
+  order they are presented, as an array of plain objects
+  `{ action, label, x, y, w, h, disabled }` — the same shape `panelButtons()` uses.
+  `label` is the entry text as drawn, `x`/`y`/`w`/`h` are its rectangle in the
+  `1280x720` logical stage, and `disabled` reports whether it currently ignores
+  clicks. `action` names where the choice leads, using exactly these identifiers:
+
+  | `action` | The choice it reports |
+  | --- | --- |
+  | `salvage` | SALVAGE (start the campaign) on the main menu |
+  | `howto` | HOW TO PLAY on the main menu |
+  | `map-substation` | The Substation, on map select |
+  | `map-switchyard` | The Switchyard, on map select |
+  | `map-transformer` | The Transformer Yard, on map select |
+  | `difficulty-easy` | Easy, on difficulty select |
+  | `difficulty-medium` | Medium, on difficulty select |
+  | `difficulty-hard` | Hard, on difficulty select |
+  | `back` | the BACK choice that returns to the previous screen |
+  | `resume` | Resume, on the pause menu |
+  | `restart` | Restart, on the pause menu |
+  | `quit` | Quit to menu, on the pause menu |
+  | `again` | PLAY AGAIN (or TRY AGAIN), on victory or overload |
+  | `menu` | MENU, on victory or overload |
+
+  Because the layout of a menu is the build's own (`specs/ui.md` fixes each menu's
+  content and navigation, not its presentation), this is how a caller finds a
+  choice without knowing where it was drawn: read the entry, then click the middle
+  of the rectangle it reported. **A click at the center of a reported, non-disabled
+  rectangle must activate that choice** — the rectangle is the entry's real hit
+  region, not a decorative bounding box.
+
+  It returns an empty array on any screen that is not a menu (in match, whether
+  building or mid-wave, and during the in-place pause, which shows no menu). It is a
+  pure read and never changes anything — reading the entries never moves the
+  highlight or activates a choice.
 
 ### Control operations
 
@@ -231,7 +266,8 @@ feed.
   stampsLeft: <number>,              // of the 5-per-level allowance
   speed: <number>,                   // 1 | 2 | 4 | 8
   muted: <boolean>,
-  mazeLength: <number>,              // ground route length through the chain
+  mazeLength: <number>,              // ground route length through the chain, in tiles
+                                     // (diagonal step = sqrt(2); specs/board.md)
   mazeRating: <number>,              // damage tallied on the Overload Dynamo
   selected: <id> | null,
   combineSet: [<id>, ...],
