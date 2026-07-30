@@ -156,12 +156,21 @@ The harness version is not duplicated here; it lives in the subject.
     and excluded from every model statistic. A harness that merely exited non-zero is
     a `harness_error`, and one that stopped responding is `hung`, not this.
   - **`canceled`** — an operator killed the run before it finished: a deliberate
-    stop, not an outcome. The run is retained, with everything it streamed before
-    the kill — for a harness whose telemetry is its event stream, that timeline is
-    nearly all of it — and whatever partial artifacts it had collected, so a killed
-    run stays visible and inspectable in the run list rather than vanishing — but it
-    is **never** publishable and is excluded from every model statistic, since
-    nothing about the model can be concluded from a run a human ended. Distinct from
+    stop, not an outcome. The kill is a *request to wind down*, not a teardown, so a
+    canceled [gg](/gg/overview/) run is recorded through the same post-session path
+    as any other run: it carries its **real** [metrics](#metrics) (the tokens and
+    cost it actually spent), the **collected working tree** as it stood at the last
+    completed turn, its session summary, and everything it streamed before the kill.
+    The one thing absent is [validation](/components/core/validation/) — that is
+    fresh work on an implementation the run was told to stop writing, so nothing was
+    checked and the validation summary is **empty rather than failed**. (Two degraded
+    paths yield a bare record instead — a session that will not wind down inside its
+    grace, and a run that errors on the way out — and a third-party harness, which has
+    no wind-down protocol to be asked for, always takes them; see the
+    [driver](/components/driver/overview/#cancellation).) A canceled run stays visible
+    and inspectable in the run list rather than vanishing, but it is **never**
+    publishable and is excluded from every model statistic, since nothing about the
+    model can be concluded from a run a human ended. Distinct from
     `timed_out` and `hung`, the two terminations the Test Cabinet itself decides on a
     timer: a cancel has no timer and no fault, only an operator.
 

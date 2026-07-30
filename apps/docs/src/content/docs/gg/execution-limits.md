@@ -25,6 +25,11 @@ Plus one guardrail that is not a ceiling at all — [`maxParallel`](#parallelism
 with the other five, and because it is the other thing an operator reaches for when a run
 is doing too much.
 
+And one stop that is not configured at all — an operator's
+[cancellation](#cancellation), which nobody declares and no threshold expresses. It is
+documented here because it is read at exactly the same place as the two run-wide ceilings,
+on exactly the same terms, and stops a run in exactly the same shape.
+
 Three of them are new. The turn ceiling and the wall-clock budget predate them and are
 folded in **unchanged in behaviour**, so there is one place to configure a ceiling, one
 place a breach is recorded, and one aggregation facet across all five, rather than two
@@ -212,6 +217,58 @@ That is deliberate: a turn is the loop's atomic unit, and interrupting one would
 half-applied tool batch behind and, on an OpenAI-shaped provider, an assistant
 `tool_calls` message with no `tool` message answering it — which would invalidate the
 conversation for every later turn.
+
+## Cancellation
+
+An operator can kill a running gg run from the host's live monitor. That is not a ceiling
+— nothing was declared and nothing was measured — but it stops the run through the same
+machinery, at the same point in the loop, and it is worth reading beside the two run-wide
+ceilings because it behaves identically to them in every respect but why it fired.
+
+**The channel is a file.** gg runs as its own process inside the run container, and the
+host driving it holds no handle on that process — it holds the *container*, and reads gg's
+telemetry off an exec stream. What it can always do is put a file inside the container, so
+the host names a sentinel path in the [invocation](/gg/overview/) document (`cancelFile`)
+and creates that file when the run is killed. Signalling the process instead would be
+worse in the way that matters: gg's result *is* its telemetry, and the most valuable part
+of it — the session summary, the per-slot rollups, the [replay](/gg/replay/) sidecar — is
+emitted in the session's epilogue. A signal that cut the process down would throw away
+precisely what the operator killed the run to look at.
+
+**The reading is at the turn boundary.** Every agent — the root and every subagent —
+checks the sentinel at its own boundary, next to the run deadline and the cost ceiling and
+on exactly the same terms: N independent readers of one value, each stopping itself, with
+no cancellation machinery to propagate anything. So the wind-down bound is again **one
+turn per agent**, the turn in flight completes, and nothing is abandoned half-applied. One
+`stat` per turn, against turns measured in seconds, is not a cost worth engineering around.
+
+The observation **latches**: once any agent has seen the sentinel the whole run is
+canceled, whatever happens to the file afterwards. Otherwise a sentinel removed
+mid-wind-down would stop the agents that had already reached a boundary and leave the rest
+running, which is not a state anybody asked for.
+
+**The terminal status is `canceled`**, and like the ceiling statuses — and unlike the two
+error statuses — it is **not** a failure: a run a human stopped has not failed at
+anything. It is kept distinct from all of them because it is the one terminal status that
+says nothing whatsoever about the model; it is the only one caused entirely from outside
+the run.
+
+**It records no breach**, and that absence is the point. Every
+[breach](#what-a-breach-records) names a ceiling that was measured and crossed; a
+cancellation crossed nothing. Fabricating one would put a ceiling that does not exist into
+the single field a study reads to find out why runs stop, so a canceled run's `limitHit`
+stays empty.
+
+[What a stopped run leaves behind](#what-a-stopped-run-leaves-behind) applies with one
+exception. The epilogue runs in full — slot rollups, the closing log, the replay record,
+the session summary, the session-ended event — the process exits 0, and the workspace is
+exactly as the last completed turn left it. On the host's side that epilogue is what makes
+a killed run worth keeping: the host writes the sentinel, keeps draining the stream so the
+epilogue is ingested, and then records the run through its ordinary post-session path. The
+exception is the host's, not gg's: a canceled run is collected but **not validated**, since
+validating it would mean building and driving an implementation the run was told to stop
+writing. See the [driver's cancellation](/components/driver/overview/#cancellation) for
+that half.
 
 ## What a stopped run leaves behind
 

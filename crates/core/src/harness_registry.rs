@@ -310,6 +310,9 @@ impl AgentHarness for CliHarness {
             // A third-party harness emits no gg session summary.
             gg_summary: None,
             tool_calls,
+            // See `orchestrator::drive_orchestrator`: cooperative cancellation is a gg
+            // path, so a third-party session never reports itself canceled.
+            canceled: false,
         })
     }
 }

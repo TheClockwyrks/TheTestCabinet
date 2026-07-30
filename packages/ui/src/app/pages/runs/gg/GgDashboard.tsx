@@ -45,7 +45,10 @@ export interface GgDashboardStatus {
   label: string;
   detail: string | null;
   /** Which cue the pill takes: a live phase glows, a terminal one reads by outcome. */
-  tone: "live" | "ok" | "fail";
+  // `stopped` is neither: an operator ended the run, so it is terminal without being an
+  // outcome. It reads muted rather than negative, because painting a killed run red
+  // reports a failure that did not happen.
+  tone: "live" | "ok" | "fail" | "stopped";
   /** A secondary line under the pill (e.g. the gg session ending before the stream does). */
   note?: string | null;
   /** A control on the card's label row, trailing edge (the live monitor's kill affordance). */
@@ -606,7 +609,9 @@ function StatusCard({ status }: { status: GgDashboardStatus }) {
       ? styles.pillOk
       : status.tone === "fail"
         ? styles.pillFail
-        : styles.pillLive;
+        : status.tone === "stopped"
+          ? styles.pillStopped
+          : styles.pillLive;
   return (
     // A quarter of the row, not all of it: the turn count, the generation rate, and the
     // runtime take a quarter each beside it. The kill control rides on the label's row at

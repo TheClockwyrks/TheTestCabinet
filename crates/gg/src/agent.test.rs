@@ -66,6 +66,8 @@ fn invocation(dir: &Path, set: GgCapabilitySet) -> GgInvocation {
         model_modalities: BTreeMap::new(),
         // No provided files by default; the autoload-specifications tests set this.
         provided_files: Vec::new(),
+        // Nothing cancels a test run: the loop is driven to its own ending.
+        cancel_file: None,
     }
 }
 
@@ -134,6 +136,7 @@ fn no_limits(max_turns: usize) -> LimitsSetup {
             max_cost: None,
         },
         deadline: None,
+        cancel: CancelWatch::disabled(),
         spend: Arc::new(RunSpend::default()),
     }
 }
@@ -8578,6 +8581,15 @@ mod sandbox_tests;
 /// needs a program: they drive the ceilings with a scripted client and no component compile at all.
 #[path = "agent.limits.test.rs"]
 mod limits_tests;
+
+/// The loop under an **operator cancellation** — the host's kill, driven through the live loop for
+/// the same reason the ceilings are: what these guard is that a killed run really stops, keeps what
+/// it accumulated, and still emits the epilogue a frozen view is rebuilt from.
+///
+/// Separate from `cancel.test.rs` (which unit-tests the sentinel watch with no loop behind it) on
+/// exactly the terms `agent.limits.test.rs` is separate from `limits.test.rs`.
+#[path = "agent.cancel.test.rs"]
+mod cancel_tests;
 
 /// The seam between [response healing](crate::healing) and the loop: that what gg repaired is
 /// disclosed to the model, counted on the turn's telemetry, and — for a reply that never became a

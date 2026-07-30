@@ -29,6 +29,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::RunRequest;
+use crate::cancel::RunCancellation;
 use crate::error::{Error, Result};
 use crate::event::{EventKind, EventSink, HarnessEvent, SystemStage, SystemStatus};
 use crate::exec_stream::HARNESS_IDLE_TIMEOUT;
@@ -53,6 +54,24 @@ const GG_BINARY_PATH: &str = "/tmp/gg";
 /// The absolute in-container path the [`GgInvocation`] JSON is written to, also
 /// outside `/work` so it is not collected. `gg` reads it via `--config`.
 const GG_INVOCATION_PATH: &str = "/tmp/gg-invocation.json";
+
+/// The absolute in-container path of the **cancellation sentinel**: the file the host
+/// creates to tell a running gg session that an operator killed the run. Named to gg in
+/// the invocation ([`GgInvocation::cancel_file`]) so neither side hardcodes the other's
+/// path, and kept outside `/work` for the same reason as the two above — a killed run's
+/// collected tree must not carry the machinery that stopped it.
+const GG_CANCEL_PATH: &str = "/tmp/gg-cancel";
+
+/// How long a canceled gg session is given to wind down and exit on its own after the
+/// sentinel is raised.
+///
+/// gg stops at a turn boundary, so the wind-down is bounded by whatever is in flight when
+/// the kill lands — in practice one model call per running agent. Ten minutes covers a
+/// slow provider with room to spare while still bounding a session that has stopped
+/// responding altogether; past it the host stops waiting and keeps what it already has,
+/// which costs only the session's epilogue (its summary and replay sidecar), never the
+/// telemetry itself.
+const GG_CANCEL_GRACE: std::time::Duration = std::time::Duration::from_secs(600);
 
 /// Env override: an explicit host path to a locally-built `gg` binary to copy in.
 /// Highest priority; when set to a missing path the run fails clearly rather than
@@ -288,6 +307,7 @@ pub(crate) async fn run_gg(
     max_runtime: u64,
     run_id: &str,
     events: &mut dyn EventSink,
+    cancel: &RunCancellation,
 ) -> Result<HarnessOutcome> {
     // 1. Ensure the binary is present. A `Local` install was already materialized into
     //    the container at start time (as a `ContainerFile`), so only a `Release` needs a
@@ -368,9 +388,27 @@ pub(crate) async fn run_gg(
         GG_INVOCATION_PATH.to_string(),
     ];
     let mut sink = GgIngestSink::new(events);
-    let output = runtime
-        .exec_streamed(handle, &command, Some(HARNESS_IDLE_TIMEOUT), &mut sink)
-        .await?;
+    // Drive the session, racing it against an operator's kill. The race is scoped so the
+    // stream future is dropped before `sink` is read below: whatever the outcome, every
+    // line gg produced has already been folded into the sink and bridged onto the run's
+    // event stream, so the accumulated usage, cost and summary are readable here even
+    // when the session itself never returned.
+    let drained = {
+        let stream = runtime.exec_streamed(handle, &command, Some(HARNESS_IDLE_TIMEOUT), &mut sink);
+        tokio::pin!(stream);
+        tokio::select! {
+            output = &mut stream => Drained::Exited(output?),
+            () = cancel.canceled() => {
+                stop_gg(runtime, handle).await;
+                // Keep draining while gg winds down, so the epilogue it emits on the way
+                // out — the per-slot rollups, the session summary, the replay sidecar —
+                // lands on the stream like any other telemetry. Past the grace the host
+                // stops waiting and keeps what it has; the sink is complete either way.
+                let _ = tokio::time::timeout(GG_CANCEL_GRACE, &mut stream).await;
+                Drained::Canceled
+            }
+        }
+    };
     let GgIngestSink {
         tokens,
         reported_cost,
@@ -380,6 +418,30 @@ pub(crate) async fn run_gg(
         gg_summary,
         ..
     } = sink;
+
+    // A canceled session is not classified: nothing it did or did not do is a fault to
+    // report, and its exit code says only how far the wind-down got. Hand back everything
+    // accumulated, marked canceled, so the engine finishes the run through its ordinary
+    // post-session path and the killed run keeps the tree, the metrics and the telemetry
+    // it earned rather than vanishing.
+    let output = match drained {
+        Drained::Exited(output) => output,
+        Drained::Canceled => {
+            return Ok(HarnessOutcome {
+                usage: Usage { tokens },
+                harness_version,
+                reported_cost,
+                raw_output,
+                translated_events,
+                // Present when gg wound down inside the grace and emitted its summary on
+                // the way out; absent when it did not, in which case the same figures
+                // remain derivable from the persisted event stream.
+                gg_summary,
+                tool_calls: std::collections::BTreeMap::new(),
+                canceled: true,
+            });
+        }
+    };
 
     // 5. Classify the result.
     //    - The idle watchdog firing means gg stopped responding: it is hung, not failed.
@@ -424,7 +486,37 @@ pub(crate) async fn run_gg(
         // `ggToolBreakdown`), not the third-party event parser, so the parser-side
         // tally is empty for a gg run.
         tool_calls: std::collections::BTreeMap::new(),
+        // This session ended on its own terms; the cancellation path returns above.
+        canceled: false,
     })
+}
+
+/// How a gg session's output stream ended.
+enum Drained {
+    /// gg exited on its own; the [`ExecOutput`](crate::execution::ExecOutput) describes how.
+    Exited(crate::execution::ExecOutput),
+    /// An operator killed the run — whether or not gg then wound down and exited inside
+    /// [`GG_CANCEL_GRACE`]. Nothing is carried because nothing about *how* the wind-down
+    /// went changes the outcome: the exit status of a session that was told to stop is not
+    /// a fault to classify, and the ingest sink already holds everything gg produced
+    /// either way.
+    Canceled,
+}
+
+/// Ask a running gg session to stop, by raising the
+/// [cancellation sentinel](GG_CANCEL_PATH) it watches for at each agent's turn boundary.
+///
+/// Best-effort and deliberately quiet: the run is already ending, and a sentinel that
+/// cannot be written costs only the session's epilogue — the host still keeps every event
+/// gg streamed, and the sandbox teardown stops the process regardless. Failing the run
+/// over it would throw away the very data the cancellation exists to preserve.
+async fn stop_gg(runtime: &dyn ContainerRuntime, handle: &ContainerHandle) {
+    if let Err(err) = write_container_file(runtime, handle, GG_CANCEL_PATH, b"", 0o600).await {
+        tracing::warn!(
+            error = %err,
+            "could not raise the gg cancellation sentinel; the session will stop with the sandbox",
+        );
+    }
 }
 
 /// Construct the [`GgInvocation`] for this run: the run id as the session id, the
@@ -441,6 +533,9 @@ fn build_invocation(
     run_id: &str,
 ) -> Result<GgInvocation> {
     Ok(GgInvocation {
+        // Tell gg where to look for the host's kill. Always set: every run the engine
+        // drives is cancelable, and a run nobody cancels simply never sees the file.
+        cancel_file: Some(std::path::PathBuf::from(GG_CANCEL_PATH)),
         session_id: run_id.to_string(),
         workspace_dir: PathBuf::from(workspace_dir),
         prompt: base_prompt.to_string(),

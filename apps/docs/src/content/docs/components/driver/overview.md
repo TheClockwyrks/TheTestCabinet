@@ -64,35 +64,96 @@ A run can be **killed** while it is in progress from the console's live monitor.
 The console asks the backend to cancel the job (`POST /jobs/{id}/cancel`, gated on
 the launching account); the backend moves it to the terminal `canceled` state and
 closes its live stream, so every watching monitor reflects the end at once and the
-queue never claims a canceled-while-queued job. The driver **polls its own job's
-state** while it runs, so it observes the cancellation and drops the in-flight
-harness session (which cancels the container `exec`).
+queue never claims a canceled-while-queued job. That much is settled immediately —
+the operator's answer does not wait on anything the run still has to do.
 
-The job's *state* is settled at that point, but the run is not nothing: it streamed
-[events](/components/core/events/) right up to the kill, and for a harness whose
-telemetry is its event stream that is the bulk of what the run produced. So rather
-than walk away, the driver **records the killed run**. It waits for its relay to
-drain (every streamed event has reached the backend before any terminal status is
-sent), builds a partial [run record](/components/core/run-records/) with the state
-[`canceled`](/components/core/run-records/#status) and the detail
-`canceled by operator` — carrying the resolved case identity and test type when the
-definition had already materialized — uploads whatever partial artifacts the run
-had collected (proof media, an asset frame, a build it had already produced) the
-same way a failed run does, and posts a `canceled` status carrying that record to
-`POST /jobs/{id}/status`. The backend persists the record together with the events
-its relay accumulated and attaches it to the already-canceled job. It changes
-nothing else: no state change, no completion notification, and no retry. The killed
-run therefore appears in the run list like any other unpublished run, with a working
-Events view, instead of vanishing — though it is
+The run itself is wound down **cooperatively**. The driver **polls its own job's
+state** while it runs, and on observing the cancellation it raises the run's
+cancellation latch and then **keeps awaiting the run**, bounded by a wind-down
+grace (20 minutes). It does *not* drop the run future, for two independent reasons:
+
+- **Dropping it would not stop the run.** The harness is its own process inside the
+  sandbox pod, and the future the driver holds is only reading that process's output
+  stream. Closing the stream leaves the harness running — and spending — until the
+  sandbox is torn out from under it.
+- **A run's result is assembled after the session returns.** Collecting the produced
+  tree, folding the accumulated usage into metrics, writing the record: a dropped
+  future skips every one of those, so the killed run loses exactly what an operator
+  kills a run to look at.
+
+So the latch is a request to stop at the next clean boundary, and the run then
+finishes through its ordinary path.
+
+### How gg winds down
+
+For a [gg](/gg/overview/) run the engine races the session against the latch. On a
+kill it writes the **cancellation sentinel** — a file at a path gg was named in its
+invocation document (`cancelFile`), which is how the host reaches a process it holds
+no handle on — and then **keeps draining gg's telemetry stream** for up to its own
+grace (10 minutes), so the session's epilogue is ingested rather than cut off.
+
+Every gg agent, the root and every subagent, checks that sentinel at its own **turn
+boundary**, next to the run-wide deadline and cost ceilings and on exactly the same
+terms (see [Execution limits](/gg/execution-limits/#cancellation)). The turn already
+in flight completes, so nothing is abandoned half-applied; the agent ends with the
+terminal status `canceled` and, deliberately, **no limit breach** — nothing was
+measured and nothing was crossed. The session then runs its ordinary epilogue: the
+per-slot rollups, the session summary, the [replay](/gg/replay/) sidecar, and the
+session-ended event.
+
+The engine therefore gets back a normal harness outcome marked *canceled*, carrying
+the tokens, the cost and the session summary the run accumulated. It is **not** an
+error, and the engine walks its whole post-session path: it collects the produced
+tree out of the sandbox, folds the metrics, and assembles the
+[run record](/components/core/run-records/). The **one** stage it skips is
+[validation](/components/core/validation/) — every other stage reads state the run
+already produced, while validation is fresh work (install, build, serve, drive a
+browser). A run told to stop is meant to be frozen where it stood, not judged on an
+unfinished implementation, so its validation summary is **empty rather than failed**.
+The record's terminal state is
+[`canceled`](/components/core/run-records/#status).
+
+The driver then runs **every artifact upload it runs for any other run** — the
+produced tree, proof media, asset media, the `.gg/replay.json` sidecar — and posts a
+`canceled` status carrying the record to `POST /jobs/{id}/status`. The backend
+persists it with the events its relay accumulated and attaches it to the
+already-canceled job. It changes nothing else: no state change, no completion
+notification, and no retry. (The driver waits for its relay to drain first, so every
+streamed event has reached the backend before any terminal status is sent.)
+
+### The degraded fallbacks
+
+Two paths produce a **bare** canceled record instead — the session does not wind down
+inside the grace, or the run errors on its way out (the sandbox went away under it,
+say). In both, the driver builds the record itself from what it still holds: state
+[`canceled`](/components/core/run-records/#status), the detail `canceled by operator`,
+the resolved case identity and test type when the definition had already
+materialized, but **no produced tree and zero metrics**.
+
+It is worth building anyway because of what it anchors. The run streamed
+[events](/components/core/events/) right up to the kill — for a harness whose
+telemetry *is* its event stream, the bulk of what it produced — and those are already
+in the backend's hands; without a record to attach them to, the killed run never
+reaches the run list at all. Recording is **best-effort**: the job is already terminal
+and the teardown still has to happen, so a record that cannot be built or posted is
+logged and never fatal.
+
+### Scope: cooperative wind-down is a gg path
+
+Only [gg](/gg/overview/) has a wind-down protocol to be asked for. A third-party
+harness is a CLI the Test Cabinet drives through an `exec`; there is no boundary at
+which it can be told to stop and no epilogue to wait for, so a canceled third-party
+run never reports a canceled outcome and always takes the degraded fallback above.
+
+### Teardown, and late statuses
+
+Whichever path recorded the run, the driver **tears its sandbox down** — the sandbox the run created outlives the
+run future, so under the Kubernetes runtime the driver deletes the run's sandbox
+pod, which it finds by the job-id label it stamped on it — and **exits
+successfully**, so the cluster does not read a canceled run as a driver failure and
+retry it. The killed run appears in the run list like any other unpublished run,
+with a working Events view, instead of vanishing — though it is
 [never publishable](/components/core/results/#publish).
-
-Recording is **best-effort**: the job is already terminal and the teardown still has
-to happen, so a record that cannot be built or posted is logged and never fatal.
-Either way the driver **tears its sandbox down** — dropping the run future cancels
-the `exec` but leaves the sandbox the run created, so under the Kubernetes runtime
-the driver deletes the run's sandbox pod, which it finds by the job-id label it
-stamped on it — and **exits successfully**, so the cluster does not read a canceled
-run as a driver failure and retry it.
 
 The path is identical on the local [k3d](/development/running/) cluster and in
 production, since both drive a run through a driver pod. Any *other* late status the

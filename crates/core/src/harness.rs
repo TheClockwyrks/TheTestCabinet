@@ -517,6 +517,19 @@ pub struct HarnessOutcome {
     /// with no tool activity.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub tool_calls: std::collections::BTreeMap<String, u64>,
+    /// Whether this session was ended by an **operator cancellation** rather than by the
+    /// model or a ceiling — the run was killed, the harness was asked to wind down, and
+    /// what is carried here is everything it had accumulated at that point.
+    ///
+    /// It rides the *outcome* rather than an error because a canceled session is not a
+    /// failure to drive: it succeeded in producing a partial result, and the whole point
+    /// of cancelling cooperatively is that the run then finishes through its ordinary
+    /// post-session path (collect the tree, fold the metrics, write the record) instead
+    /// of unwinding and losing all of it. The engine reads it to mark the run
+    /// [`RunState::Canceled`](crate::run_record::RunState::Canceled) and to skip
+    /// validation, which would be new work on a run that was told to stop.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub canceled: bool,
 }
 
 /// Reports whether a harness's CLI was installed and can be invoked.

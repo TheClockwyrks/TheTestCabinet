@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use test_cabinet_core::job_api::JobState;
-use test_cabinet_core::write_failed_record;
+use test_cabinet_core::{RunCancellation, write_failed_record};
 use time::OffsetDateTime;
 
 use test_cabinet_driver::client::JobClient;
@@ -25,6 +25,17 @@ use test_cabinet_driver::sink;
 /// cancellation. Short enough that a killed run stops promptly, long enough to be
 /// negligible load on the backend for the run's duration.
 const CANCEL_POLL_INTERVAL: Duration = Duration::from_secs(3);
+
+/// How long a canceled run is given to wind down and hand back its record before the
+/// driver stops waiting on the engine.
+///
+/// It has to cover the whole tail of a run: the harness winding down at its next clean
+/// boundary (itself bounded, for gg, by `gg_exec`'s own grace), then collecting the
+/// produced tree out of the sandbox and uploading it. Generous, because overrunning it
+/// costs the operator the produced tree and the folded metrics — everything the
+/// cooperative path exists to save — while waiting a few extra minutes on an
+/// already-terminal job costs nothing but a pod.
+const CANCEL_WINDDOWN_GRACE: Duration = Duration::from_secs(1200);
 
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -86,25 +97,58 @@ async fn main() -> ExitCode {
     let (tx, rx) = sink::channel();
     let relay = tokio::spawn(sink::relay_task(client.clone(), rx));
 
-    // Filled by `drive` the moment the definition materializes, so the cancellation
-    // arm below — which never sees a return value — can still record the killed run
-    // against its real case identity and test type.
+    // Filled by `drive` the moment the definition materializes, so the fallback
+    // cancellation path below — the one that never gets a return value — can still
+    // record the killed run against its real case identity and test type.
     let resolved: std::sync::Mutex<Option<test_cabinet_core::TestCaseVersion>> =
         std::sync::Mutex::new(None);
 
-    // Race the run against an operator cancellation. `wait_for_cancellation`
-    // resolves only when the backend reports this job `canceled`, so a cancel makes
-    // the `select!` drop the `drive` future — which cancels the in-flight harness
-    // `exec` — and fall to the `None` teardown arm below. A run that finishes on its
-    // own wins the race, and the watcher future is simply dropped. This is the same
-    // both locally (a k3d cluster) and in production: both drive a run through a
-    // driver pod that polls its backend job here.
+    // Race the run against an operator cancellation. `wait_for_cancellation` resolves
+    // only when the backend reports this job `canceled`, so a cancel raises the run's
+    // cancellation latch — and then this **keeps awaiting the run**.
+    //
+    // Not dropping the run future is the whole point. Dropping it would not stop
+    // anything that matters (the harness is its own process inside the sandbox and
+    // would keep going regardless) and it would skip every stage that turns a session
+    // into a result: collecting the produced tree, folding the accumulated usage into
+    // metrics, writing the record. Raising the latch instead asks the session to wind
+    // down at its next clean boundary, after which the run finishes normally and hands
+    // back a complete record of everything it got through — which is what an operator
+    // killed it to look at.
+    //
+    // The wait is bounded. A session that will not wind down must not hold the driver
+    // open forever, so past `CANCEL_WINDDOWN_GRACE` this gives up on the engine and
+    // falls back to recording the run from what the driver itself still holds. This is
+    // the same both locally (a k3d cluster) and in production: both drive a run through
+    // a driver pod that polls its backend job here.
+    let cancel = RunCancellation::new();
     let outcome = {
-        let cancelled = wait_for_cancellation(&client);
-        tokio::pin!(cancelled);
-        tokio::select! {
-            outcome = drive(&config, &request, &tx, &client, &resolved) => Some(outcome),
-            _ = &mut cancelled => None,
+        let run = drive(&config, &request, &tx, &client, &resolved, &cancel);
+        tokio::pin!(run);
+        let observed = tokio::select! {
+            outcome = &mut run => Some(outcome),
+            () = wait_for_cancellation(&client) => None,
+        };
+        match observed {
+            Some(outcome) => Some(outcome),
+            None => {
+                tracing::info!(
+                    job_id = %config.job_id,
+                    "run canceled by operator; winding the session down so its work is recorded"
+                );
+                cancel.cancel();
+                match tokio::time::timeout(CANCEL_WINDDOWN_GRACE, &mut run).await {
+                    Ok(outcome) => Some(outcome),
+                    Err(_elapsed) => {
+                        tracing::warn!(
+                            job_id = %config.job_id,
+                            seconds = CANCEL_WINDDOWN_GRACE.as_secs(),
+                            "the canceled run did not wind down in time; recording what is held",
+                        );
+                        None
+                    }
+                }
+            }
         }
     };
 
@@ -119,21 +163,17 @@ async fn main() -> ExitCode {
 
     match outcome {
         None => {
-            // The run was canceled mid-flight. The backend already moved the job to
-            // `canceled` and closed its live stream (that is what the watcher saw),
-            // so the job's *state* is settled — but the run is not nothing: it
-            // streamed events right up to the kill, and for a gg run that stream is
-            // the bulk of its telemetry. Hand back a record for it so the killed run
-            // stays in the run list and stays inspectable, instead of vanishing.
+            // The canceled run did not wind down inside the grace, so the engine never
+            // reached its post-session path and there is no engine-built record. Fall
+            // back to recording the run from what the driver itself holds: the killed
+            // run still streamed events right up to the kill — for a gg run, the bulk
+            // of its telemetry — and the backend needs a record to hang them on or the
+            // run vanishes from the run list entirely.
             //
-            // Dropping the run future also only canceled the harness `exec`; it did
-            // not remove the sandbox the run created, so tear that down too. Exit
-            // successfully either way so the cluster does not treat the canceled run
-            // as a driver failure and retry it.
-            tracing::info!(
-                job_id = %config.job_id,
-                "run canceled by operator; recording the partial run and tearing down the sandbox"
-            );
+            // This is the degraded path, not the intended one: it loses the produced
+            // tree and the folded metrics that a wound-down session hands back. It
+            // exists so a session that stops responding cannot cost the operator
+            // everything the run had streamed.
             let test_case = resolved.lock().ok().and_then(|slot| slot.clone());
             report_canceled(&client, &config, &request, started_at, test_case.as_ref()).await;
             teardown_sandbox(&config).await;
@@ -174,6 +214,35 @@ async fn main() -> ExitCode {
             // `.gg/replay.json` record into the backend store so `GET /runs/{id}/replay`
             // can serve it to a replay driver. A no-op for any run that captured none.
             finalize_replay_backend_upload(&config, &record).await;
+
+            // A run that wound down for an operator's kill took this same path — it is
+            // an ordinary engine outcome, produced by the ordinary post-session stages,
+            // and every upload above applies to it exactly as it does to a run that
+            // finished on its own. Only the terminal status differs.
+            //
+            // The branch is on whether the run was *canceled*, not on the record's own
+            // state, because those can honestly disagree: a run that reached its own
+            // ending in the moment between the kill landing and the driver noticing it
+            // hands back a `completed` record against an already-`canceled` job. Its
+            // state is recorded as what it truly was, but it is still handed over as a
+            // cancellation — the only status the backend accepts on a canceled job, and
+            // the difference between retaining that run and silently discarding it.
+            if cancel.is_canceled() {
+                tracing::info!(
+                    run_id = %record.id,
+                    state = ?record.status.state,
+                    "canceled run wound down and produced a record; reporting canceled"
+                );
+                if let Err(err) = client.post_status_canceled(record).await {
+                    // The job is already terminal and the operator has their answer;
+                    // failing the driver over the record post would only make the pod
+                    // look broken. Log it and exit cleanly.
+                    tracing::warn!(error = %err, "could not report `canceled` to the backend");
+                }
+                teardown_sandbox(&config).await;
+                return ExitCode::SUCCESS;
+            }
+
             tracing::info!(run_id = %record.id, "run produced a record; reporting succeeded");
             if let Err(err) = client.post_status_succeeded(record).await {
                 eprintln!("could not report `succeeded` to the backend: {err}");
@@ -181,7 +250,28 @@ async fn main() -> ExitCode {
             }
             ExitCode::SUCCESS
         }
-        Some(Err(failure)) => report_failure(&client, &config, &request, started_at, failure).await,
+        Some(Err(failure)) => {
+            // A run that was canceled and then errored on its way out — the sandbox
+            // went away under it, say — is still a canceled run, not a failure to
+            // report against the model. Record it as one, from what the driver holds.
+            if cancel.is_canceled() {
+                tracing::warn!(
+                    detail = %failure.detail,
+                    "the canceled run errored while winding down; recording what is held",
+                );
+                report_canceled(
+                    &client,
+                    &config,
+                    &request,
+                    started_at,
+                    failure.test_case.as_ref(),
+                )
+                .await;
+                teardown_sandbox(&config).await;
+                return ExitCode::SUCCESS;
+            }
+            report_failure(&client, &config, &request, started_at, failure).await
+        }
     }
 }
 
@@ -211,18 +301,23 @@ async fn wait_for_cancellation(client: &JobClient) {
 /// ends where it does rather than an unexplained stop.
 const CANCELED_DETAIL: &str = "canceled by operator";
 
-/// Record a run an operator killed: build the partial
-/// [`RunRecord`](test_cabinet_core::RunRecord) for what it got
-/// through — [`RunState::Canceled`](test_cabinet_core::RunState::Canceled), carrying
-/// the resolved case identity when the definition had materialized — and hand it to
-/// the backend, which persists it with the events the relay already accumulated.
+/// The **fallback** record for a run an operator killed: the one the driver builds itself
+/// when the engine could not hand one back.
 ///
-/// That event stream is the point of this: the run's telemetry (for a gg run, nearly
-/// all of it) was streamed as it happened, and without a record to hang it on the
-/// backend has nothing to attach it to and the killed run never reaches the run
-/// list. Everything here is best-effort — the job is already terminal and the
-/// sandbox teardown still has to happen, so a failure to record is logged, never
-/// fatal.
+/// A killed run is normally recorded by the engine, through its ordinary post-session
+/// path — that record carries the produced tree, the folded metrics and the session
+/// summary, and is what the cooperative cancellation exists to produce. This is what
+/// happens when that does not arrive: the session would not wind down inside its grace,
+/// or it errored on the way out. The record built here is
+/// [`RunState::Canceled`](test_cabinet_core::RunState::Canceled) all the same, carrying
+/// the resolved case identity when the definition had materialized, but it is bare —
+/// zero metrics, no tree.
+///
+/// It is worth building anyway because of what it anchors: the run's telemetry (for a gg
+/// run, nearly all of what it produced) was streamed as it happened and is already in the
+/// backend's hands, and without a record to attach it to the killed run never reaches the
+/// run list at all. Everything here is best-effort — the job is already terminal and the
+/// sandbox teardown still has to happen, so a failure to record is logged, never fatal.
 async fn report_canceled(
     client: &JobClient,
     config: &Config,
@@ -244,10 +339,10 @@ async fn report_canceled(
         &[],
     ) {
         Ok(mut record) => {
-            // A killed run may still have collected partial artifacts worth keeping
-            // (proof media, an asset frame, a build it had already produced) — upload
-            // them the same as a failed run, so the retained run is as inspectable as
-            // what it actually got to.
+            // Upload whatever happens to be in the out directory. On this path the
+            // engine never reached artifact collection, so it is usually empty — but a
+            // run that errored *after* collecting has a tree worth keeping, and the
+            // upload is a no-op when there is nothing there.
             finalize_artifacts(config, &mut record).await;
             record
         }

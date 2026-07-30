@@ -108,6 +108,7 @@ use tokio::task::JoinHandle;
 
 use crate::archive::ArchiveStore;
 use crate::board::{self, BoardCaps, BoardRuntime, IssuePolicy, IssueStatus};
+use crate::cancel::CancelWatch;
 use crate::client::{ClientFactory, DefaultClientFactory, provider_for};
 use crate::compaction::{
     self, CompactionRequest, CompactionSetup, PendingCompaction, RestoredFile, RetainedCounts,
@@ -219,6 +220,17 @@ const STATUS_TIMED_OUT: &str = "timed_out";
 /// not the agent failing at its work, which is exactly why `exhausted` and `timed_out` are excluded
 /// too.
 const STATUS_LIMIT_EXCEEDED: &str = "limit_exceeded";
+
+/// The [`SessionEnded`](GgTelemetryKind::SessionEnded) status for a run an **operator
+/// killed** — the host raised the [cancellation sentinel](crate::cancel) and every agent
+/// wound down at its next turn boundary.
+///
+/// Like the ceiling statuses beside it, and unlike the two error statuses, this is **not**
+/// a failure ([`is_failure_status`]): a run a human stopped has not failed at anything. It
+/// is kept distinct from all of them because it is the one terminal status that says
+/// nothing whatsoever about the model — it is the only one caused entirely from outside
+/// the run.
+const STATUS_CANCELED: &str = "canceled";
 
 /// The [`SessionEnded`](GgTelemetryKind::SessionEnded) status for a session a model
 /// turn failed in — the model was reached and did not deliver a usable turn.
@@ -1039,6 +1051,13 @@ struct Orchestrator {
     /// folded only when an agent *finishes*, so a subagent forty turns deep would contribute nothing
     /// until it was done — precisely the run a cost ceiling exists to stop.
     spend: Arc<RunSpend>,
+    /// The host's [cancellation watch](crate::cancel), read by every agent at its own turn boundary
+    /// exactly as the deadline and the spend are. Shared so one agent's observation is the run's
+    /// decision — see [`crate::cancel`] for why it latches.
+    ///
+    /// Disabled when the invocation named no [sentinel](GgInvocation::cancel_file), which is the
+    /// shape of a run whose host cannot cancel it.
+    cancel: CancelWatch,
     /// The join handles of every spawned subagent task, drained and awaited before the session
     /// ends. Guarded so concurrently-spawning agents can register their children.
     tasks: Mutex<Vec<JoinHandle<()>>>,
@@ -1181,6 +1200,10 @@ impl Orchestrator {
             limits,
             deadline,
             spend: Arc::new(RunSpend::default()),
+            cancel: match invocation.cancel_file.clone() {
+                Some(path) => CancelWatch::new(path),
+                None => CancelWatch::disabled(),
+            },
             tasks: Mutex::new(Vec::new()),
             next_seq: AtomicU64::new(0),
             next_workflow_seq: AtomicU64::new(0),
@@ -2301,6 +2324,7 @@ async fn run_agent(
                 limits: orch.limits,
                 deadline: orch.deadline,
                 spend: Arc::clone(&orch.spend),
+                cancel: orch.cancel.clone(),
             },
             context_setup,
             compaction,
@@ -5196,6 +5220,24 @@ impl Agent {
         let memory_calls = memories.strategy().calls(code.enabled);
 
         for turn in 0..turn_bound {
+            // An operator killed the run. Checked first, and at the same boundary as the two
+            // run-wide ceilings below, because a human's decision outranks every configured one —
+            // and on the same terms, so a killed run winds down exactly as cleanly as a run that
+            // spent its clock: this turn has not started, so nothing is abandoned, and the epilogue
+            // still emits the session summary, the per-slot rollups and the replay sidecar that are
+            // the whole reason a killed run is worth keeping.
+            if limits.cancel.is_canceled() {
+                return self.stop_on_cancel(
+                    emitter,
+                    turn,
+                    total_tokens,
+                    total_cost,
+                    code.enabled,
+                    last_report.as_deref(),
+                    last_text,
+                );
+            }
+
             // Stop cleanly at a turn boundary once the run's wall-clock budget is spent. Nothing is
             // in flight here, so nothing is abandoned mid-turn.
             if let Some(breach) = limits.check_deadline(&self.id, agent_limits.turns_recorded()) {
@@ -6405,6 +6447,45 @@ impl Agent {
             limit: Some(breach),
         }
     }
+
+    /// End this agent because an **operator killed the run** — [`stop_on_limit`](Self::stop_on_limit)'s
+    /// sibling, and deliberately its twin in shape: the same accumulated tokens and cost, the same
+    /// honest `final_text` for what the agent last did, the same return into the session's ordinary
+    /// epilogue.
+    ///
+    /// It carries **no** [breach](GgLimitBreach), and that absence is the point. Every breach names
+    /// a ceiling that was measured and crossed; a cancellation crossed nothing. Recording one would
+    /// put a fabricated ceiling into the one field a study reads to find out why runs stop.
+    #[allow(clippy::too_many_arguments)]
+    fn stop_on_cancel(
+        &self,
+        emitter: &Emitter,
+        turns: usize,
+        tokens: TokenCounts,
+        cost: Option<Cost>,
+        code_mode: bool,
+        last_report: Option<&str>,
+        last_text: Option<String>,
+    ) -> LoopEnd {
+        emitter.emit(log(
+            "warn",
+            format!(
+                "agent `{}` stopped at a turn boundary: the run was canceled by its host after \
+                 {turns} turns.",
+                self.id
+            ),
+        ));
+        LoopEnd {
+            status: STATUS_CANCELED,
+            turns,
+            tokens,
+            cost,
+            slot: self.slot.clone(),
+            final_text: ended_text(code_mode, STATUS_CANCELED, last_report, last_text),
+            ending: None,
+            limit: None,
+        }
+    }
 }
 
 /// The terminal status one breached [ceiling](GgLimitKind) ends an agent under.
@@ -6671,6 +6752,10 @@ struct LimitsSetup {
     /// The run's shared accumulated spend, added to at each agent's model-response site and read at
     /// each agent's turn boundary.
     spend: Arc<RunSpend>,
+    /// The host's [cancellation watch](crate::cancel), read at each agent's turn boundary alongside
+    /// the two run-wide ceilings. Not a ceiling — nothing is measured and nothing is breached — but
+    /// enforced on identical terms, which is why it travels with them rather than beside them.
+    cancel: CancelWatch,
 }
 
 impl LimitsSetup {

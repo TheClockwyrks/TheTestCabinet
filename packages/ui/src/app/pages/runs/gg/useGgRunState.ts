@@ -1175,6 +1175,19 @@ function buildAgentForest(agents: Map<string, AgentNode>): AgentTreeNode[] {
 // Fold the whole event log into the derived state in a single pass. Resilient to a
 // capability being OFF: that kind simply never arrives, so its slice stays empty
 // (skills `[]`, memory `null`, tasks `[]`, contextSeries `[]`).
+// The gg session-end statuses that mean an agent actually **failed** — the model was
+// reached and the turn did not work out, or the credential was refused. Every other
+// terminal status (`completed`, the ceiling statuses `exhausted` / `timed_out` /
+// `limit_exceeded`, and `canceled`) ended the session without anything failing, so an
+// agent still running when it landed is reconciled to `done` rather than `failed`.
+//
+// Kept in step with gg's own `is_failure_status` (crates/gg/src/agent.rs), which is the
+// authority and draws the line in exactly the same place.
+const FAILED_SESSION_STATUSES: ReadonlySet<string> = new Set([
+  "model_error",
+  "auth_error",
+]);
+
 export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
   const feed: FeedRow[] = [];
   let announcedCapabilitySet: GgCapabilitySet | null = null;
@@ -1716,9 +1729,16 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
   // A suspension still open at that point closes there for the same reason: the run is
   // over, so an agent that was waiting when it ended waited until then and no longer —
   // left open, the wait would keep growing against the present on a finished run's page.
+  //
+  // Which terminal badge they take is decided by whether the session *failed*, not by
+  // whether it completed: a run that spent a ceiling, or one an operator canceled, ended
+  // without any agent failing at anything, and painting its whole tree red would report a
+  // fault that never happened. This mirrors gg's own `is_failure_status`, which draws the
+  // line in exactly the same place and for exactly this reason.
   if (sessionEndStatus != null) {
-    const terminal: GgAgentStatus =
-      sessionEndStatus === "completed" ? "done" : "failed";
+    const terminal: GgAgentStatus = FAILED_SESSION_STATUSES.has(sessionEndStatus)
+      ? "failed"
+      : "done";
     // Read off the closure-assigned `let` once, so the loop below narrows cleanly.
     const endTimestamp: string | null = sessionEndTimestamp;
     for (const node of agents.values()) {

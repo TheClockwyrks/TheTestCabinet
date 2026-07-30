@@ -1745,6 +1745,19 @@ pub struct GgInvocation {
     /// agent leaves autoload off, in which case gg reads none of them up front.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub provided_files: Vec<PathBuf>,
+    /// The path of the **cancellation sentinel** to watch, when the host can cancel this
+    /// run. gg checks for the file's existence at each agent's turn boundary and, once it
+    /// appears, winds the session down exactly as a breached run-wide ceiling does.
+    ///
+    /// A file rather than a signal or a channel because gg runs as its own process inside
+    /// the run container: the host has no handle on it beyond the container, but it can
+    /// always write a file into one. A file rather than a flag in this document because
+    /// the document is written once, before launch, and a cancellation is by definition
+    /// news that arrives afterwards.
+    ///
+    /// `None` — the default — means nothing can cancel this run, and gg never looks.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cancel_file: Option<PathBuf>,
 }
 
 /// The **source** a context-window contribution is attributed to, for the per-source

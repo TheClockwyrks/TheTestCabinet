@@ -291,9 +291,15 @@ done by the publisher at **publish** time, not before.
 that record — also accepts a **`canceled`** status, and it is the **only** status
 accepted on a job already in the terminal `canceled` state (every other late report
 from a winding-down driver is discarded, so nothing can resurrect or overwrite a
-killed run). A `canceled` status must carry a run record (`422` without one); the
-backend persists it with the events its relay accumulated for the job and attaches
-the resulting record id to the already-canceled job. It changes nothing else: the
+killed run). A `canceled` status must carry a run record (`422` without one), and
+that record is normally a **complete partial record** rather than a stub: the driver
+[winds the run down cooperatively](/components/driver/overview/#cancellation) and
+posts what the engine's ordinary post-session path produced — real metrics, the
+collected tree, the session summary, everything but validation — after running every
+artifact upload. (A run that would not wind down, or that errored on the way out,
+posts a bare record instead.) The backend persists it with the events its relay
+accumulated for the job and attaches the resulting record id to the already-canceled
+job. It changes nothing else: the
 job keeps its `canceled` state and its cancellation detail, no completion
 notification fires — a kill is an operator action, not something to alert on — and
 no retry is enqueued, since an operator who stopped a run does not want it started

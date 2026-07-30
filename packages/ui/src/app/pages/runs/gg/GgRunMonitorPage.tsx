@@ -227,8 +227,10 @@ function statusPhase(
     case "canceled":
       return {
         label: "Canceled",
+        // Not a `fail` tone: nothing failed. An operator stopped the run, and everything
+        // below this pill is the frozen record of what it did first.
         detail: "stopped by an operator",
-        tone: "fail",
+        tone: "stopped",
       };
     case "failed":
       return { label: "Failed", detail: status.outcome.message, tone: "fail" };

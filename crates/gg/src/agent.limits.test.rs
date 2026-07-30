@@ -51,6 +51,7 @@ fn setup_from(declared: GgRunLimits) -> LimitsSetup {
         limits,
         deadline: limits.max_runtime.map(|budget| Instant::now() + budget),
         spend: Arc::new(RunSpend::default()),
+        cancel: CancelWatch::disabled(),
     }
 }
 

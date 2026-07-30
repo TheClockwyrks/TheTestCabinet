@@ -521,3 +521,11 @@ fn build_invocation_carries_the_resolved_model_modalities() {
         .expect("unknown modalities never block a run");
     assert!(invocation.model_modalities.is_empty());
 }
+
+/// The cancellation path, driven through [`run_gg`] against a container double: raising the
+/// sentinel, draining the wind-down, and the partial outcome that comes back.
+///
+/// Separate from the tests above because those are deliberately container-free (pure ingest
+/// and path resolution) while these need a runtime to drive the branch's race at all.
+#[path = "gg_exec.cancel.test.rs"]
+mod cancel_tests;

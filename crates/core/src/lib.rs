@@ -15,6 +15,7 @@ pub mod asset_reference;
 pub mod auth;
 pub mod backend_client;
 pub mod browser;
+pub mod cancel;
 pub mod comparison;
 pub mod comparison_aggregate;
 pub mod comparison_stats;
@@ -88,6 +89,7 @@ pub use backend_client::{
     BackendClient, HttpBackendClient, PrerenderedReferenceRenderer, PublishAck, PublishedReview,
     PublishedRun, ResolvedArtifact, ResolvedReference, RunPage, materialize_version,
 };
+pub use cancel::RunCancellation;
 pub use container::{CliArtifactCollector, CliContainerRuntime};
 pub use error::{Error, Result};
 pub use event::{
@@ -499,6 +501,7 @@ where
         events: &mut dyn EventSink,
         host_gateway: bool,
         run_id: &str,
+        cancel: &RunCancellation,
     ) -> Result<(ContainerHandle, HarnessOutcome, RunEnvironment, Duration)> {
         // gg is The Test Cabinet's own harness and is invoked *directly* — it is its
         // own executor, not a subprocess driven through the `AgentHarness` trait or
@@ -875,6 +878,7 @@ where
                 max_runtime,
                 run_id,
                 events,
+                cancel,
             );
             with_runtime_cap(drive, max_runtime, slug).await
         } else {
@@ -1026,14 +1030,20 @@ where
     /// [`NoopEventSink`] to ignore them. An asset-generation run also streams its
     /// live drawing [frames](crate::preview) to `preview` when one is supplied;
     /// pass `None` to ignore them.
+    ///
+    /// `cancel` is the run's [cancellation latch](RunCancellation): raise it and the
+    /// harness session is asked to wind down, after which the run still finishes through
+    /// its ordinary post-session path and produces a complete record of what it got
+    /// through. Pass a [`RunCancellation::default`] for a run nothing can cancel.
     pub async fn run(
         &self,
         request: &RunRequest,
         events: &mut dyn EventSink,
         preview: Option<Arc<dyn PreviewSink>>,
+        cancel: &RunCancellation,
     ) -> Result<RunRecord> {
         let test_case = self.resolve(request)?;
-        self.run_resolved(request, &test_case, events, preview)
+        self.run_resolved(request, &test_case, events, preview, cancel)
             .await
     }
 
@@ -1069,6 +1079,7 @@ where
         test_case: &TestCaseVersion,
         events: &mut dyn EventSink,
         preview: Option<Arc<dyn PreviewSink>>,
+        cancel: &RunCancellation,
     ) -> Result<RunRecord> {
         let started_at = OffsetDateTime::now_utc();
         let timer = Instant::now();
@@ -1205,6 +1216,7 @@ where
                 events,
                 live.is_some(),
                 &run_id,
+                cancel,
             )
             .await?;
 
@@ -1258,13 +1270,30 @@ where
         // The proof-of-implementation artifacts requested for this variant; the
         // validator records whether each turned up in the produced tree.
         let proofs = test_case.proofs_for(&variant);
-        let validation = self.validate(test_case, &variant, &artifacts, &references, &proofs)?;
+        // Validation is the one post-session stage a canceled run **skips**, and the
+        // reason is the distinction the whole cooperative path is built on: everything
+        // else here reads state the run already produced, while validation is fresh work
+        // — it installs, builds, serves and drives the model's output, minutes of it. A
+        // run an operator stopped is meant to be frozen where it stood, and judging a
+        // half-written implementation would be neither a freeze nor a fair result. Its
+        // summary is therefore empty rather than failed: nothing was checked, so nothing
+        // is reported as having failed a check.
+        let validation = if outcome.canceled {
+            ValidationSummary::default()
+        } else {
+            self.validate(test_case, &variant, &artifacts, &references, &proofs)?
+        };
         let finished_at = OffsetDateTime::now_utc();
 
         // A clean harness exit that produced nothing evaluable is a model
         // catastrophe, not a completion (computed before `validation` is moved into
-        // the record).
-        let terminal_state = completed_state(test_case.test_type, &validation);
+        // the record). A canceled run is neither: an operator ended it, so it is
+        // recorded as what it is rather than judged on output it never finished.
+        let terminal_state = if outcome.canceled {
+            RunState::Canceled
+        } else {
+            completed_state(test_case.test_type, &validation)
+        };
         let record = RunRecord {
             id: run_id,
             started_at: started_at.format(&Rfc3339).unwrap_or_default(),

@@ -168,7 +168,8 @@
 }
 
 // A live (queued/running) phase glows in the accent; a terminal phase takes the
-// positive/negative cue by outcome.
+// positive/negative cue by outcome — or, for a run an operator stopped, no cue at all,
+// because there was no outcome to cue.
 .pillLive {
   border-color: t.$color-accent;
   color: t.$color-accent;
@@ -183,6 +184,11 @@
 .pillFail {
   border-color: t.$color-negative;
   color: t.$color-negative;
+}
+
+.pillStopped {
+  border-color: t.$color-text-muted;
+  color: t.$color-text-muted;
 }
 
 .statusDetail {

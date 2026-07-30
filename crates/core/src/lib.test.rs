@@ -470,6 +470,7 @@ fn ready_outcome() -> HarnessOutcome {
         translated_events: Vec::new(),
         gg_summary: None,
         tool_calls: Default::default(),
+        canceled: false,
     }
 }
 

@@ -19,8 +19,8 @@ use test_cabinet_core::{
     ArtifactCollector, BackendClient, CliArtifactCollector, CliContainerRuntime, ContainerRuntime,
     CredBytesSource, DefaultHarnessRegistry, DispatchValidator, FsRepoSeeder, HttpBackendClient,
     OpenRouterPrices, OrchestratorCatalog, PrerenderedReferenceRenderer, PriorGameJamEntry,
-    RenderedReference, RunEngine, RunRecord, RunRequest, RunState, TestCaseCatalog,
-    TestCaseVersion, TestType, materialize_version,
+    RenderedReference, RunCancellation, RunEngine, RunRecord, RunRequest, RunState,
+    TestCaseCatalog, TestCaseVersion, TestType, materialize_version,
 };
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -84,6 +84,7 @@ pub async fn drive(
     outbound: &UnboundedSender<Outbound>,
     job_client: &JobClient,
     resolved: &std::sync::Mutex<Option<TestCaseVersion>>,
+    cancel: &RunCancellation,
 ) -> Result<RunRecord, RunFailure> {
     // When the run requests an explicit auth mode, lock it for the engine by
     // setting `TCAB_AUTH_MODE` before resolution — the driver does not select the
@@ -210,6 +211,7 @@ pub async fn drive(
                 creds,
                 outbound,
                 job_client,
+                cancel,
             )
             .await
         }
@@ -233,6 +235,7 @@ pub async fn drive(
                 creds,
                 outbound,
                 job_client,
+                cancel,
             )
             .await
         }
@@ -266,6 +269,7 @@ async fn drive_engine<R, C>(
     creds: Option<Box<dyn CredBytesSource + Send + Sync>>,
     outbound: &UnboundedSender<Outbound>,
     client: &JobClient,
+    cancel: &RunCancellation,
 ) -> Result<RunRecord, test_cabinet_core::Error>
 where
     R: ContainerRuntime,
@@ -316,7 +320,7 @@ where
     }
 
     engine
-        .run_resolved(request, test_case, &mut events, Some(preview))
+        .run_resolved(request, test_case, &mut events, Some(preview), cancel)
         .await
 }
 

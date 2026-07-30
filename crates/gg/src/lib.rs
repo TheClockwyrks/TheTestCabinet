@@ -21,6 +21,7 @@
 mod agent;
 mod archive;
 mod board;
+mod cancel;
 mod client;
 mod compaction;
 mod completion;

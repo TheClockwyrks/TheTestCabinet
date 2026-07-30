@@ -203,6 +203,22 @@ operator kills from the live monitor is recorded as
 crossed and no fault to attribute, only a human who stopped it, so it is retained
 for inspection but says nothing about the model and can never be published.
 
+A kill also winds the run down **cooperatively**, which the two timer terminations do
+not. The [driver](/components/driver/overview/#cancellation) raises a cancellation
+latch and keeps awaiting the run rather than dropping it; a [gg](/gg/overview/)
+session sees the latch at its next turn boundary, finishes the turn in flight, runs
+its epilogue, and hands back everything it accumulated, so the run completes its
+post-session stages — tree collection, metrics, the record — and skips only
+validation. The wait is **bounded** at every layer (a grace on the session's
+wind-down, a longer one on the driver's), and a run that overruns it falls back to a
+bare record.
+
+`timed_out` and `hung` get none of that: both unwind the run instead of asking it to
+stop, so both lose the post-session stages and are recorded without a collected tree
+or folded metrics. That asymmetry is real and known — the cooperative path exists
+today only for a cancellation, where an operator is waiting on the answer, and the
+two timer terminations have not been moved onto it.
+
 ## Model Authored Tests
 
 The goal of a test case is to measure how well a model writes code in a large
