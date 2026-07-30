@@ -343,10 +343,20 @@ export function ContextUsageRing({
  */
 export function TokensWidget({
   usage,
+  throughput,
   className,
   bare = false,
+  wide = false,
 }: {
   usage: UsageTally;
+  /**
+   * The scope's generation rate, shown at the trailing edge of the totals row. Given for
+   * one agent profile (across every instance of it) and for one instance (across every call
+   * it made) — the grains at which "how fast does this thing generate" is a property of the
+   * thing rather than of the run. Omitted on the whole-run Dashboard, whose own Tokens / s
+   * card already states the run's rate. Null where no call of the scope's was timed.
+   */
+  throughput?: number | null;
   className?: string;
   /**
    * Drop the card's own border/padding/background so the widget sits directly in
@@ -355,6 +365,12 @@ export function TokensWidget({
    * the Dashboard's bento leaves it off so each tile keeps its card.
    */
   bare?: boolean;
+  /**
+   * The host gives this widget its column's full width, so the two composition rings sit
+   * side by side rather than wrapping under one another. Left off in the Dashboard's bento,
+   * where Tokens is the narrow tile beside Cost and stacking them is what fits.
+   */
+  wide?: boolean;
 }) {
   const totalInput = usage.uncachedInput + usage.cachedInput;
   const totalOutput = usage.output + usage.reasoning;
@@ -368,8 +384,23 @@ export function TokensWidget({
             <Stat label="input" value={totalInput} sub="cached + uncached" />
             <Stat label="output" value={totalOutput} sub="reasoning + output" />
             <Stat label="total" value={usage.totalTokens} />
+            {/* The rate rides at the far edge of the row it belongs to: it is the same
+                tokens read against time rather than a fourth class of them, so it is set
+                apart from the three counts instead of listed as one more. */}
+            {throughput !== undefined && (
+              <Stat
+                label="tok/s"
+                value={throughput}
+                sub={throughput == null ? "no timed calls" : "generated"}
+                className={styles.statTrailing}
+              />
+            )}
           </div>
-          <div className={styles.ringRow}>
+          <div
+            className={
+              wide ? `${styles.ringRow} ${styles.ringRowWide}` : styles.ringRow
+            }
+          >
             <SplitRing
               label="Input caching"
               primary={{ label: "cached", value: usage.cachedInput }}
@@ -400,19 +431,25 @@ export function TokensWidget({
 }
 
 // One figure in a widget's totals row: a big number over its class label (and, for
-// the composed classes, the sum that makes it up).
+// the composed classes, the sum that makes it up). A null figure is a quantity the run
+// could not measure, stated as a dash rather than as zero.
 function Stat({
   label,
   value,
   sub,
+  className,
 }: {
   label: string;
-  value: number;
+  value: number | null;
   sub?: string;
+  /** An extra class on the cell — the totals row's trailing placement. */
+  className?: string;
 }) {
   return (
-    <div className={styles.stat}>
-      <span className={styles.statValue}>{formatTokens(value)}</span>
+    <div className={className ? `${styles.stat} ${className}` : styles.stat}>
+      <span className={styles.statValue}>
+        {value == null ? "—" : formatTokens(Math.round(value))}
+      </span>
       <span className={styles.statLabel}>{label}</span>
       {sub && <span className={styles.statSub}>{sub}</span>}
     </div>

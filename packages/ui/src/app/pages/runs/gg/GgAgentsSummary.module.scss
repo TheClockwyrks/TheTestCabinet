@@ -231,10 +231,24 @@ button.instanceChip {
 
 // --- The summed figures --------------------------------------------------------
 
+// The figures span the detail's full width and share it evenly, so they read as a row of
+// columns rather than a left-hugging cluster with dead space beside it — and so the same six
+// figures line up under one another when two agents are open at once. Tracks size to the
+// space available, dropping to as many per line as fit, so nothing overflows a narrow pane.
 .stats {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
   gap: t.$space-md t.$space-lg;
+}
+
+// The Tokens and Cost widgets under the figures: stacked, each at the detail's full width.
+// Both carry breakdowns of their own (two composition rings, a per-class split), which a
+// half-width column turns into a pair of narrow towers.
+.widgetStack {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+  min-width: 0;
 }
 
 // --- A section within the card (context spend, tools) ---------------------------

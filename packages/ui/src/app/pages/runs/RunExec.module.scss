@@ -205,6 +205,35 @@
   min-width: 0;
 }
 
+// A gg combination is a stack, not a line: its configuration declares one model slot per
+// agent profile, and an unbounded set of pickers laid out side by side leaves none of them
+// wide enough to read a model id in. The configuration leads on its own line, then one slot
+// per row beneath it, each at the panel's full width.
+.comboRowStacked {
+  flex-direction: column;
+  align-items: stretch;
+  gap: t.$space-sm;
+}
+
+// The stacked row's head: the configuration picker with the remove control at the far edge,
+// so the control stays on the line that names what it removes rather than trailing the last
+// slot.
+.comboHead {
+  display: flex;
+  align-items: flex-end;
+  gap: t.$space-md;
+}
+
+.comboHead .comboField {
+  flex: 1 1 auto;
+}
+
+// One model slot's row — full width, since a model id is the longest value on the form.
+.comboSlotField {
+  width: 100%;
+  min-width: 0;
+}
+
 // The remove-combination button: a compact, muted glyph that turns negative on
 // hover, aligned to the bottom of the row so it sits on the controls' line.
 .comboRemove {

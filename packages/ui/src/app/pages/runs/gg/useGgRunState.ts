@@ -139,6 +139,15 @@ export interface AgentNode {
   // How the agent's worktree reconciled, once it did: merged back cleanly,
   // discarded, or left unmerged by a conflict.
   worktreeOutcome?: "merged" | "discarded" | "conflict";
+  // When the agent's clock started — the envelope timestamp of the first event it
+  // emitted (its `agent_spawned` for a subagent, the session's opening for the root).
+  // Absent for an agent no event was ever attributed to.
+  startedAt?: string;
+  // When it stopped: its `agent_returned`, the `agent_status` that took it terminal, or
+  // — for an agent whose end is only implied, the root above all — `session_ended`.
+  // ABSENT MEANS STILL RUNNING, so a read-out counts it against the live clock rather
+  // than treating it as a zero-length agent.
+  endedAt?: string;
 }
 
 // A node of the rooted subagent tree — an `AgentNode` plus its spawned children (in
@@ -465,6 +474,14 @@ export interface GgRunState {
 
   // --- Activity feed -------------------------------------------------------
   feed: FeedRow[];
+
+  // --- The run's clock -----------------------------------------------------
+  // The span the stream covers: its first and last envelope timestamps. Null before the
+  // first event arrives. A live view measures the run's wall clock from `firstTimestamp` to
+  // the ticking present (the newest event always lags it); a finished one measures to
+  // `lastTimestamp`. See `ggRuntime`.
+  firstTimestamp: string | null;
+  lastTimestamp: string | null;
 
   // --- Per-agent slices ----------------------------------------------------
   // The same fold run over each agent's own slice of the stream, keyed by agent id
@@ -824,6 +841,12 @@ export interface DerivedGgState {
   feed: FeedRow[];
   // The capability set gg announced on `session_started`; null until it arrives.
   announcedCapabilitySet: GgCapabilitySet | null;
+  // The span the stream covers: the first and last envelope timestamps in it. Null on an
+  // empty stream. This is the run's wall clock as its telemetry knows it — a live view
+  // measures against `now` instead of `lastTimestamp`, since the newest event always lags
+  // the clock (see `ggRuntime`).
+  firstTimestamp: string | null;
+  lastTimestamp: string | null;
   // How many turns this partition took — one per `turn_started` event, which gg
   // emits once per model request/response cycle whatever the capabilities are (so it
   // is always available). Over the whole stream it is the run's total turns; over one
@@ -1119,6 +1142,20 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
       },
     ],
   ]);
+  // The stream's own clock: the first and last envelope timestamps seen, which is what
+  // the run's wall-clock read-out is measured over (see `ggRuntime`).
+  let firstTimestamp: string | null = null;
+  let lastTimestamp: string | null = null;
+  // Each agent's stream span — the first and last event it emitted — and, separately, the
+  // moment it *ended* (its `agent_returned`, or the `agent_status` that took it terminal).
+  // The two are distinct: an agent's last event is not its end (a returned agent emits
+  // nothing after), and an agent that never reported an end (the root, which returns to no
+  // parent) is closed out by `session_ended` below.
+  const agentSpans = new Map<string, { first: string; last: string }>();
+  const agentEnded = new Map<string, string>();
+  // When gg's own session ended, which is the root's end — and the end of any agent a
+  // truncated stream stranded mid-flight.
+  let sessionEndTimestamp: string | null = null;
   // Per-workflow stages, keyed by stageIndex so a stage's "finished" updates the
   // "started" it began at; the outer map preserves first-seen workflow order.
   const workflowStages = new Map<string, Map<number, WorkflowStage>>();
@@ -1189,6 +1226,21 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
     const row = toFeedRow(event, index);
     if (row) feed.push(row);
 
+    // The stream's span, and the emitting agent's own. A non-gg row is the orchestrator's
+    // setup/teardown, which belongs to the root — the same attribution the per-agent
+    // partition uses.
+    if (firstTimestamp == null) firstTimestamp = event.timestamp;
+    lastTimestamp = event.timestamp;
+    const emitter =
+      event.type === "gg" ? (event.event.agentId ?? ROOT_ID) : ROOT_ID;
+    const span = agentSpans.get(emitter);
+    if (span) span.last = event.timestamp;
+    else
+      agentSpans.set(emitter, {
+        first: event.timestamp,
+        last: event.timestamp,
+      });
+
     if (event.type !== "gg") return;
     const gg = event.event;
     switch (gg.type) {
@@ -1200,6 +1252,7 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
         break;
       case "session_ended":
         sessionEndStatus = gg.status;
+        sessionEndTimestamp = event.timestamp;
         break;
       case "turn_started":
         // One model request/response cycle began. Counted here (not from `prompt`,
@@ -1270,6 +1323,11 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
         // leaving a stale "waiting on issue X" beside a live agent.
         if (gg.status === "blocked") node.waitingOn = gg.waitingOn;
         else delete node.waitingOn;
+        // A terminal transition is this agent's clock stopping; a return to running (a
+        // retried issue agent) starts it again, so the recorded end is dropped.
+        if (gg.status === "done" || gg.status === "failed")
+          agentEnded.set(node.id, event.timestamp);
+        else agentEnded.delete(node.id);
         break;
       }
       case "agent_returned": {
@@ -1282,6 +1340,7 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
         // returned is waiting for nothing.
         node.status = "done";
         delete node.waitingOn;
+        agentEnded.set(node.id, event.timestamp);
         break;
       }
       case "worktree_merged": {
@@ -1550,6 +1609,18 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
     }
   }
 
+  // Stamp each agent's clock. It starts at its first event — for a subagent that is its
+  // `agent_spawned`, and for the root the session's own opening — and stops where it
+  // reported an end, or at `session_ended` for the agents (the root above all) whose end
+  // is only implied by the session's. An agent still running carries no end, which is how
+  // the read-out knows to keep counting it against the live clock.
+  for (const node of agents.values()) {
+    const span = agentSpans.get(node.id);
+    if (span) node.startedAt = span.first;
+    const ended = agentEnded.get(node.id) ?? sessionEndTimestamp;
+    if (ended != null) node.endedAt = ended;
+  }
+
   // The per-model split, preferring the one summed from the attributed deltas: it
   // covers the whole run from its first turn, where the `slot_usage` rollups only
   // appear as each agent ends — and, being emitted on the root's stream, describe the
@@ -1606,6 +1677,8 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
   return {
     feed,
     announcedCapabilitySet,
+    firstTimestamp,
+    lastTimestamp,
     turnCount,
     usage,
     slotUsage,

@@ -29,6 +29,7 @@ import {
   useGgThroughput,
   type GgThroughput,
 } from "./ggThroughput";
+import { formatLimit, formatRuntime, type GgRuntime } from "./ggRuntime";
 import { CostWidget, TokensWidget, formatPercent } from "./GgOverviewWidgets";
 import { useGgExplorerNav } from "./GgExplorerNav";
 import styles from "./GgDashboard.module.scss";
@@ -70,7 +71,23 @@ interface GgDashboardProps {
   fsm: FsmProgress | null;
   /** The run's recorded configuration — its independent variable. */
   capabilitySet: GgCapabilitySet | null;
-  /** Notices under the cards: the terminal outcome, a stream error, the replay link. */
+  /**
+   * The run's two clocks — its wall clock and its agents' summed runtime (see
+   * {@link GgRuntime}). The host derives it, since only the host knows whether the stream
+   * is still arriving and therefore which clock a running span is measured against.
+   */
+  runtime: GgRuntime;
+  /**
+   * The wall-clock ceiling the run is bounded by, in seconds — the test case's own
+   * `max_runtime_hours`, which is what the host stops a run at. Null where the catalog could
+   * not be reached to resolve it, in which case the Runtime card simply states no limit.
+   */
+  timeoutSeconds: number | null;
+  /**
+   * Notices above the cards: the terminal outcome, a stream error, the replay link. They
+   * lead the panel rather than trailing it — a run that has just finished should say so
+   * where the reader is already looking, not at the foot of a screen of widgets.
+   */
   children?: ReactNode;
 }
 
@@ -115,6 +132,8 @@ export function GgDashboard({
   agentForest,
   fsm,
   capabilitySet,
+  runtime,
+  timeoutSeconds,
   children,
 }: GgDashboardProps) {
   // The run's spend, per (slot, model): the split gg's attributed `usage` deltas carry
@@ -149,23 +168,37 @@ export function GgDashboard({
     [perAgent],
   );
 
+  // The bento span the top row's stat tiles take: a quarter each beside the status card
+  // (6 + 3 + 3 + 3 overflows twelve, so the status card gives up half its width — see
+  // `StatusCard`), a third each where the page header carries the state instead.
+  const statSpan = status ? styles.cardQuarter : styles.cardThird;
+
   return (
     <div className={styles.dashboard}>
+      {/* The run's own notices — its terminal outcome, a stream error, the replay link —
+          lead the panel, directly under the tab selector and above the read-out they are
+          about. Trailing the cards, "run complete" landed a screen below the fold on the
+          very surface a reader is watching to learn exactly that. */}
+      {children}
+
       <div className={styles.cards}>
-        {/* The top row: where the run is at — its phase, how many turns it has spent, and
-            how fast it is generating. The live monitor leads the row with the status card;
-            a finished run's gg tab has its state in the page's own header, so the two stat
-            tiles split that row between them rather than leaving a hole where the status
-            card would have been — the row below it is then identical on both surfaces. */}
+        {/* The top row: where the run is at — its phase, how many turns it has spent, how
+            fast it is generating, and how long it has been going. The live monitor leads the
+            row with the status card; a finished run's gg tab has its state in the page's own
+            header, so the three stat tiles split that row between them rather than leaving a
+            hole where the status card would have been — the row below it is then identical on
+            both surfaces. */}
         {status && <StatusCard status={status} />}
         <TurnsCard
           turns={totalTurns}
           agents={perAgent.size}
-          className={status ? styles.cardQuarter : styles.cardHalf}
+          className={statSpan}
         />
-        <ThroughputCard
-          throughput={throughput}
-          className={status ? styles.cardQuarter : styles.cardHalf}
+        <ThroughputCard throughput={throughput} className={statSpan} />
+        <RuntimeCard
+          runtime={runtime}
+          timeoutSeconds={timeoutSeconds}
+          className={statSpan}
         />
 
         {/* The money row, laid out as its own block so it reads the same whether or not
@@ -190,8 +223,6 @@ export function GgDashboard({
           shown on the ordered machine path. Renders nothing when no FSM is
           configured. */}
       <FsmStateStrip fsm={fsm} />
-
-      {children}
     </div>
   );
 }
@@ -420,11 +451,10 @@ function AgentOverviewRow({
 }
 
 // The session's turn count: how many model request/response cycles the run has spent,
-// across every agent. It sits on the top row with the status and the generation rate — the
-// three facts that answer "where is this run at" — so the status card gives up the full
-// width it used to take and the row fills between them. Where there is no status card (a
-// finished run, whose state its page header already carries) it splits the row with the
-// rate instead.
+// across every agent. It sits on the top row with the status, the generation rate, and the
+// runtime — the four facts that answer "where is this run at" — each taking a quarter of the
+// row. Where there is no status card (a finished run, whose state its page header already
+// carries) the three stat tiles split the row into thirds instead.
 function TurnsCard({
   turns,
   agents,
@@ -432,7 +462,7 @@ function TurnsCard({
 }: {
   turns: number;
   agents: number;
-  /** The bento span the card takes: a quarter beside a status card, half the row without one. */
+  /** The bento span the card takes: a quarter beside a status card, a third without one. */
   className: string | undefined;
 }) {
   return (
@@ -496,6 +526,60 @@ function ThroughputCard({
   );
 }
 
+// How long the run has been going, and how much agent-time that bought: the wall clock as
+// the headline, with every agent's runtime summed beneath it and the ceiling the host will
+// stop the run at.
+//
+// Two figures rather than one because either alone misleads (see `ggRuntime`): the wall clock
+// is what the operator waits and what the timeout is measured against, while the sum is the
+// work the run actually got done in that time — a run that fans four agents out spends four
+// minutes of agent time per wall minute, and the gap between the figures is the parallelism
+// the configuration bought. The wall clock counts up live, so the card is a clock rather than
+// a snapshot of whenever the newest event happened to land.
+function RuntimeCard({
+  runtime,
+  timeoutSeconds,
+  className,
+}: {
+  runtime: GgRuntime;
+  timeoutSeconds: number | null;
+  /** The bento span the card takes — see {@link TurnsCard}. */
+  className: string | undefined;
+}) {
+  const { wallMs, agentMs, agentCount, parallelism } = runtime;
+  return (
+    <div
+      className={`${styles.card} ${className}`}
+      title={
+        parallelism != null
+          ? `${formatRuntime(agentMs)} of agent time in ${formatRuntime(
+              wallMs ?? 0,
+            )} of wall clock — ${parallelism.toFixed(1)} agents working at once on average`
+          : undefined
+      }
+    >
+      <span className={styles.cardLabel}>Runtime</span>
+      <span className={styles.metricValue}>
+        {wallMs == null ? "—" : formatRuntime(wallMs)}
+      </span>
+      <span className={styles.metricUnit}>
+        {wallMs == null ? "no telemetry yet" : "wall clock"}
+      </span>
+      {/* The sum reads as a second line rather than a second tile: it is the same clock
+          counted per agent, so it belongs under the figure it decomposes. */}
+      <span className={styles.metricUnit}>
+        total {formatRuntime(agentMs)} across {agentCount}{" "}
+        {agentCount === 1 ? "agent" : "agents"}
+      </span>
+      <span className={styles.metricUnit}>
+        {timeoutSeconds != null
+          ? `limit ${formatLimit(timeoutSeconds)}`
+          : "no limit resolved"}
+      </span>
+    </div>
+  );
+}
+
 function StatusCard({ status }: { status: GgDashboardStatus }) {
   const toneClass =
     status.tone === "ok"
@@ -504,9 +588,11 @@ function StatusCard({ status }: { status: GgDashboardStatus }) {
         ? styles.pillFail
         : styles.pillLive;
   return (
-    // Half the row, not all of it: the turn count and the generation rate take a quarter
-    // each beside it.
-    <div className={`${styles.card} ${styles.cardHalf}`}>
+    // A quarter of the row, not all of it: the turn count, the generation rate, and the
+    // runtime take a quarter each beside it. The kill control wraps under the pill at this
+    // width, which is the right trade — the three figures beside it are read at a glance and
+    // the control is reached deliberately.
+    <div className={`${styles.card} ${styles.cardQuarter}`}>
       <span className={styles.cardLabel}>Status</span>
       <div className={styles.statusLine}>
         <span className={`${styles.pill} ${toneClass}`}>{status.label}</span>

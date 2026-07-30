@@ -39,6 +39,7 @@ import {
   mergeGgAttributions,
   type GgContextAttribution,
 } from "./ggContextAttribution";
+import { agentModelMs, generatedTokens } from "./ggThroughput";
 import { ROOT_AGENT } from "./ggCatalog";
 import {
   ROOT_ID,
@@ -112,6 +113,14 @@ export interface GgAgentSummary {
   meanPeakFullness: number | null;
   /** How many times its instances compacted between them. */
   compactions: number;
+  /**
+   * The profile's generation rate — everything its instances produced over the time they
+   * spent inside their model calls, folded across all of them. Null when none of their calls
+   * were timed. Summed rather than averaged across instances, so twelve short-lived reviewers
+   * read as the one rate their shared model actually generated at rather than as the mean of
+   * twelve small samples.
+   */
+  tokensPerSecond: number | null;
   /** Every tool its instances called, most-used first. */
   tools: GgToolBreakdown;
   /** What filled its instances' windows, and what that material cost. */
@@ -261,6 +270,10 @@ export function deriveGgAgentSummaries(
     const rows: GgAgentInstance[] = [];
     let turns = 0;
     let compactions = 0;
+    // The two halves of the profile's generation rate, summed across its instances (see
+    // `tokensPerSecond`).
+    let generated = 0;
+    let modelMs = 0;
     let peakTokens = 0;
     let peakFullness: number | null = null;
     let fullnessSum = 0;
@@ -290,6 +303,8 @@ export function deriveGgAgentSummaries(
       addTally(usage, state.usage);
       turns += state.turnCount;
       compactions += state.compactions.length;
+      generated += generatedTokens(state.usage);
+      modelMs += agentModelMs(state);
       pricedSlots.push(
         ...agentPricedSlots(state.slotUsage, state.usage, node.modelId),
       );
@@ -339,6 +354,7 @@ export function deriveGgAgentSummaries(
       peakTokens,
       meanPeakFullness: fullnessCount > 0 ? fullnessSum / fullnessCount : null,
       compactions,
+      tokensPerSecond: modelMs > 0 ? generated / (modelMs / 1000) : null,
       tools: mergeToolBreakdowns(toolParts),
       context: mergeGgAttributions(contextParts),
     };

@@ -298,9 +298,17 @@ function AgentDetail({ agent }: { agent: GgAgentSummary }) {
           <AgentStats agent={agent} />
           {/* The same Tokens and Cost widgets the Dashboard and an instance's Overview
               use, fed this agent's summed usage — so a profile's spend reads in the shape
-              a run's spend does, rather than as a differently-shaped summary. */}
-          <div className={dash.overviewCards}>
-            <TokensWidget usage={agent.usage} bare />
+              a run's spend does, rather than as a differently-shaped summary. Stacked at
+              the detail's full width rather than side by side: each carries a rate, two
+              composition rings, or a class split, and halving the column squeezed all of
+              that into a pair of narrow towers. */}
+          <div className={styles.widgetStack}>
+            <TokensWidget
+              usage={agent.usage}
+              throughput={agent.tokensPerSecond}
+              bare
+              wide
+            />
             <CostWidget usage={agent.usage} breakdown={agent.cost} bare />
           </div>
           <ContextBreakdown agent={agent} />

@@ -16,7 +16,7 @@ import {
   issueState,
 } from "./IssueViews";
 import { useGgExplorerNav } from "./GgExplorerNav";
-import { cx, fsIndent } from "./ggFsTree";
+import { cx, fsGuide, fsIndent } from "./ggFsTree";
 import { EpicIcon, FolderIcon, FolderOpenIcon, IssueIcon } from "./ggIcons";
 import panels from "./GgPanels.module.scss";
 
@@ -138,16 +138,21 @@ export function ProjectExplorer({ board, issueReviews }: ProjectExplorerProps) {
 
   const [selection, setSelection] = useState<Selection | null>(firstSelection);
 
-  // Folders open by default — a run's board is small, and seeing it whole is the
-  // point — so the set holds only what the user has explicitly collapsed.
-  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
-  const toggle = (key: string) =>
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
+  // Only the *overrides* of each folder's default open state are held, so an issue the
+  // board files mid-run takes the default (closed) as it appears rather than springing
+  // open the moment gg enqueues it. Epics open by default — they are the board's outline,
+  // and closed they say nothing — while an issue is a folder you open to read: a decomposed
+  // epic has a dozen of them, each holding an Overview and a file per review round, and all
+  // of that unfolded at once buries the outline it hangs under.
+  const [openOverrides, setOpenOverrides] = useState<
+    ReadonlyMap<string, boolean>
+  >(() => new Map());
+  const isOpen = (key: string, byDefault: boolean) =>
+    openOverrides.get(key) ?? byDefault;
+  const toggle = (key: string, byDefault: boolean) =>
+    setOpenOverrides((prev) => {
+      const next = new Map(prev);
+      next.set(key, !(prev.get(key) ?? byDefault));
       return next;
     });
 
@@ -201,7 +206,7 @@ export function ProjectExplorer({ board, issueReviews }: ProjectExplorerProps) {
               key={group.id}
               group={group}
               issueReviews={issueReviews}
-              collapsed={collapsed}
+              isOpen={isOpen}
               toggle={toggle}
               selection={selection}
               onSelect={setSelection}
@@ -237,20 +242,20 @@ export function ProjectExplorer({ board, issueReviews }: ProjectExplorerProps) {
 function EpicFolder({
   group,
   issueReviews,
-  collapsed,
+  isOpen,
   toggle,
   selection,
   onSelect,
 }: {
   group: EpicGroup;
   issueReviews: Map<string, IssueReviewState>;
-  collapsed: ReadonlySet<string>;
-  toggle: (key: string) => void;
+  isOpen: (key: string, byDefault: boolean) => boolean;
+  toggle: (key: string, byDefault: boolean) => void;
   selection: Selection | null;
   onSelect: (selection: Selection) => void;
 }) {
   const folderKey = `epic:${group.id}`;
-  const open = !collapsed.has(folderKey);
+  const open = isOpen(folderKey, true);
   const done = group.issues.filter((i) => i.status === "done").length;
   const epicSelected =
     selection?.kind === "epic" && selection.groupId === group.id;
@@ -262,7 +267,7 @@ function EpicFolder({
         className={panels.fsRow}
         style={fsIndent(0)}
         aria-expanded={open}
-        onClick={() => toggle(folderKey)}
+        onClick={() => toggle(folderKey, true)}
       >
         <span className={panels.fsCaret} aria-hidden="true">
           {open ? "▾" : "▸"}
@@ -281,7 +286,7 @@ function EpicFolder({
         // The rows under a folder carry the depth-1 indent, exactly as the Agents
         // explorer's do — without it every row lines up flush with its folder and the
         // tree reads as a flat list rather than a directory.
-        <ul className={panels.fsChildren}>
+        <ul className={panels.fsChildren} style={fsGuide(0)}>
           {group.isEpic && (
             <li>
               <button
@@ -306,7 +311,7 @@ function EpicFolder({
               key={issue.id}
               issue={issue}
               rounds={issueReviews.get(issue.id)?.rounds ?? []}
-              collapsed={collapsed}
+              isOpen={isOpen}
               toggle={toggle}
               selection={selection}
               onSelect={onSelect}
@@ -326,20 +331,20 @@ function EpicFolder({
 function IssueFolder({
   issue,
   rounds,
-  collapsed,
+  isOpen,
   toggle,
   selection,
   onSelect,
 }: {
   issue: GgBoardIssue;
   rounds: IssueReviewRound[];
-  collapsed: ReadonlySet<string>;
-  toggle: (key: string) => void;
+  isOpen: (key: string, byDefault: boolean) => boolean;
+  toggle: (key: string, byDefault: boolean) => void;
   selection: Selection | null;
   onSelect: (selection: Selection) => void;
 }) {
   const folderKey = `issue:${issue.id}`;
-  const open = !collapsed.has(folderKey);
+  const open = isOpen(folderKey, false);
   const overviewSelected =
     selection?.kind === "issue" && selection.issueId === issue.id;
 
@@ -351,7 +356,7 @@ function IssueFolder({
         style={fsIndent(1)}
         aria-expanded={open}
         aria-label={`issue ${issue.id}`}
-        onClick={() => toggle(folderKey)}
+        onClick={() => toggle(folderKey, false)}
       >
         <span className={panels.fsCaret} aria-hidden="true">
           {open ? "▾" : "▸"}
@@ -371,7 +376,7 @@ function IssueFolder({
         />
       </button>
       {open && (
-        <ul className={panels.fsChildren}>
+        <ul className={panels.fsChildren} style={fsGuide(1)}>
           <li>
             <button
               type="button"

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -442,10 +442,17 @@ function openTab(name: "Dashboard" | "Agents" | "Instances" | "Project") {
   fireEvent.click(screen.getByRole("radio", { name }));
 }
 
-// Open one file in the Instances explorer. Folders are expanded by default, so every
-// file is reachable; each file row is labeled with its agent so it is unambiguous
-// (e.g. "root activity", "agent-0 overview").
+// Open one file in an explorer. Each file row is labeled with the folder that holds it so
+// it is unambiguous ("root activity", "agent-0 overview", "i3 overview").
 function openFile(name: string) {
+  fireEvent.click(screen.getByRole("button", { name }));
+}
+
+// Expand a folder. Only the run's root agent and the board's epics are open to begin with —
+// a run fields dozens of instances and an epic a dozen issues, and all of it unfolded at
+// once is a sidebar nobody can scan — so reading a file inside any other folder starts by
+// opening it. Folder rows are labeled `agent <id>` / `issue <id>`.
+function openFolder(name: string) {
   fireEvent.click(screen.getByRole("button", { name }));
 }
 
@@ -528,6 +535,61 @@ describe("GgRunMonitorPage", () => {
     expect(screen.queryByRole("button", { name: "root board" })).toBeNull();
   });
 
+  it("opens the run's root instance and no other, so a fleet stays scannable", () => {
+    // A gg run routinely fields dozens of instances, each holding ten files: every folder
+    // open is a sidebar of hundreds of rows, and the tree it is meant to show is unreadable.
+    // So an instance is a closed folder you open, and the run's entry point is the one
+    // already open.
+    renderMonitor([
+      sessionStarted(),
+      gg({
+        type: "agent_spawned",
+        slot: "Root",
+        modelId: "mock/scripted-builder",
+        depth: 0,
+      }),
+      ggFrom("agent-0", "root", {
+        type: "agent_spawned",
+        slot: "Reviewer",
+        modelId: "mock/scripted-builder",
+        depth: 1,
+      }),
+    ]);
+    openTab("Instances");
+    // The root's files are there to read without a click...
+    expect(
+      screen.getByRole("button", { name: "root overview" }),
+    ).toBeInTheDocument();
+    // ...and the subagent is a folder, listed but closed, whose files appear once opened.
+    const folder = screen.getByRole("button", { name: "agent agent-0" });
+    expect(folder).toHaveAttribute("aria-expanded", "false");
+    expect(
+      screen.queryByRole("button", { name: "agent-0 overview" }),
+    ).toBeNull();
+    fireEvent.click(folder);
+    expect(
+      screen.getByRole("button", { name: "agent-0 overview" }),
+    ).toBeInTheDocument();
+  });
+
+  it("opens the board's epics and leaves their issues closed", () => {
+    // The epics are the board's outline and say nothing closed; an issue is a folder holding
+    // an Overview and a file per review round, and a decomposed epic's dozen of them
+    // unfolded at once buries the outline they hang under.
+    renderMonitor();
+    openTab("Project");
+    // The epic folder is open, so its issues are listed...
+    expect(screen.getByText("i3: Add win overlay")).toBeInTheDocument();
+    // ...as closed folders, whose own files appear only once opened.
+    const issue = screen.getByRole("button", { name: "issue i3" });
+    expect(issue).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: "i3 overview" })).toBeNull();
+    fireEvent.click(issue);
+    expect(
+      screen.getByRole("button", { name: "i3 overview" }),
+    ).toBeInTheDocument();
+  });
+
   it("renders the gg-native activity feed on an agent's activity file", () => {
     renderMonitor();
     openTab("Instances");
@@ -606,6 +668,7 @@ describe("GgRunMonitorPage", () => {
     expect(screen.getByText("i4: Wire audio")).toBeInTheDocument();
     // Selecting a blocked issue's Overview shows its detail: its ONE state badge (which
     // folds its status together with its unmet blocker), its retries, and its brief.
+    openFolder("issue i3");
     openFile("i3 overview");
     expect(screen.getByText("Blocked")).toBeInTheDocument();
     expect(screen.getByText("Retries")).toBeInTheDocument();
@@ -623,6 +686,7 @@ describe("GgRunMonitorPage", () => {
     // its folder and the tree reads as a flat list.
     renderMonitor();
     openTab("Project");
+    openFolder("issue i3");
     const folder = screen
       .getAllByRole("button")
       .find((el) => el.getAttribute("aria-expanded") === "true");
@@ -733,6 +797,7 @@ describe("GgRunMonitorPage", () => {
       }),
     ]);
     openTab("Instances");
+    openFolder("agent agent-0");
     expect(
       screen.getByRole("button", { name: "agent-0 tasks" }),
     ).toBeInTheDocument();
@@ -776,6 +841,7 @@ describe("GgRunMonitorPage", () => {
     // card both name the issue, and the brief the board dispatched it with reads as a
     // dispatch rather than as a parent's hand-off.
     openTab("Instances");
+    openFolder("agent WIDGET-1.0i");
     openFile("WIDGET-1.0i overview");
     expect(screen.getAllByText("WIDGET-1.0i").length).toBeGreaterThan(1);
     expect(screen.getByText("Implement the widget.")).toBeInTheDocument();
@@ -886,6 +952,7 @@ describe("GgRunMonitorPage", () => {
 
     // The dispatched agent's directory is its worktree checkout: the branch chip says
     // which branch, the cwd says where on disk that is.
+    openFolder("agent agent-0");
     openFile("agent-0 overview");
     expect(screen.getByText(/gg\/issue-1/)).toBeInTheDocument();
     expect(
@@ -981,6 +1048,7 @@ describe("GgRunMonitorPage", () => {
 
     // The reviewer subagent reads on its own Overview: slot/model, its worktree with
     // the merged outcome, its returned value, and its done status.
+    openFolder("agent agent-0");
     openFile("agent-0 overview");
     expect(screen.getAllByText("reviewer").length).toBeGreaterThan(0);
     expect(screen.getAllByText("claude-haiku-4-8").length).toBeGreaterThan(0);
@@ -992,6 +1060,7 @@ describe("GgRunMonitorPage", () => {
     expect(screen.getByText("done")).toBeInTheDocument();
 
     // The builder is still running.
+    openFolder("agent agent-1");
     openFile("agent-1 overview");
     expect(screen.getByText("running")).toBeInTheDocument();
   });
@@ -1230,6 +1299,66 @@ describe("GgRunMonitorPage", () => {
     expect(screen.getByLabelText("agent-1 overview")).toBeInTheDocument();
   });
 
+  it("states a profile's and an instance's own generation rate in their Tokens read-out", () => {
+    // Two reviewer instances generating 200 tokens each: one spends 2s inside its model
+    // (100 tok/s), the other 8s (25 tok/s). The profile's rate is its whole generation over
+    // its whole model time — 400 tokens in 10s, so 40 tok/s — NOT the mean of its instances'
+    // rates, which would claim 62 and describe no run that happened. Each instance still
+    // reads its own rate on its Overview, which is where "which of them was slow" is
+    // answered.
+    const instance = (id: string, requestMs: number) => [
+      ggFrom(id, "root", {
+        type: "agent_spawned",
+        slot: "reviewer",
+        modelId: "mock/x",
+        depth: 1,
+      }),
+      ggFrom(id, "root", { type: "turn_started" }),
+      ggFrom(id, "root", {
+        type: "usage",
+        slot: "reviewer",
+        modelId: "mock/x",
+        tokens: {
+          uncachedInput: 1000,
+          cachedInput: null,
+          output: 200,
+          reasoning: null,
+        },
+      }),
+      ggFrom(id, "root", {
+        type: "turn_timing",
+        promptMs: 5,
+        requestMs,
+        responseMs: 5,
+      }),
+    ];
+    renderMonitor([
+      sessionStartedWith([
+        { name: "Root", capabilities: ["subagents"] },
+        { name: "reviewer", capabilities: ["filesystem"] },
+      ]),
+      gg({ type: "agent_spawned", slot: "Root", modelId: "mock/x", depth: 0 }),
+      ...instance("agent-0", 2000),
+      ...instance("agent-1", 8000),
+    ]);
+
+    // The profile's rate, on the Tokens widget in its opened detail.
+    openTab("Agents");
+    const reviewer = screen
+      .getAllByRole("button", { expanded: false })
+      .find((row) => row.textContent?.includes("reviewer"));
+    fireEvent.click(reviewer!);
+    const profileRate = screen.getByText("tok/s").parentElement!;
+    expect(within(profileRate).getByText("40")).toBeInTheDocument();
+
+    // And one instance's own, on its Overview in the Instances explorer.
+    openTab("Instances");
+    openFolder("agent agent-0");
+    openFile("agent-0 overview");
+    const instanceRate = screen.getByText("tok/s").parentElement!;
+    expect(within(instanceRate).getByText("100")).toBeInTheDocument();
+  });
+
   it("folds an opened agent row back away when it is clicked again", () => {
     renderMonitor([
       sessionStarted(),
@@ -1338,6 +1467,7 @@ describe("GgRunMonitorPage", () => {
     openTab("Project");
     // Each review round is its own entry under the issue, so its feedback stays readable
     // after the issue has moved on — and the round says WHO ended it.
+    openFolder("issue i1");
     openFile("i1 review 1");
     expect(screen.getByText("Changes requested by")).toBeInTheDocument();
     expect(screen.getByText("i1.0i.0r")).toBeInTheDocument();
@@ -1345,6 +1475,7 @@ describe("GgRunMonitorPage", () => {
     expect(screen.getByText("Add a unit test")).toBeInTheDocument();
     // The second issue's round approved, which is what let it be accepted — and it names
     // the agents that approved.
+    openFolder("issue i2");
     openFile("i2 review 1");
     expect(screen.getByText("Approved by")).toBeInTheDocument();
     expect(screen.getByText("i2.0i.0r")).toBeInTheDocument();
@@ -1358,6 +1489,7 @@ describe("GgRunMonitorPage", () => {
     expect(screen.queryByText("Handle the empty-input case")).toBeNull();
     // And an issue whose reviewers are on the diff right now reads "In Review", even
     // though the board snapshot still calls it in-progress.
+    openFolder("issue i3");
     openFile("i3 overview");
     expect(screen.getByText("In Review")).toBeInTheDocument();
     expect(screen.queryByText("In Progress")).toBeNull();
@@ -1387,6 +1519,7 @@ describe("GgRunMonitorPage", () => {
     ];
     renderMonitor(events);
     openTab("Project");
+    openFolder("issue AUDIO-1");
     openFile("AUDIO-1 overview");
     // The header is the board's own name for the work — the id and the title as one line,
     // not the id orphaned onto a row of its own.

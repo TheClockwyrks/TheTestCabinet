@@ -17,8 +17,9 @@ import type {
 } from "./useGgRunState";
 import { ROOT_ID, ggToolBreakdown, shortTokens } from "./useGgRunState";
 import { agentCapabilityOn } from "./ggCatalog";
-import { cx, fsIndent } from "./ggFsTree";
+import { cx, fsGuide, fsIndent } from "./ggFsTree";
 import { agentPricedSlots, useGgCostBreakdown } from "./ggCost";
+import { agentThroughput } from "./ggThroughput";
 import {
   ContextUsageRing,
   CostWidget,
@@ -272,17 +273,19 @@ export function GgAgentsExplorer({
   );
 
   // The open/closed state of the tree's folders, keyed `folder:<id>` (an agent
-  // folder) and `sub:<id>` (an agent's subagents folder). Everything is open by
-  // default — a gg run's tree is small, and seeing it whole is the point — so the
-  // set holds only what the user has explicitly collapsed.
-  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
-  const toggle = (key: string) =>
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
+  // folder) and `sub:<id>` (an agent's subagents folder). Only the *overrides* are
+  // held: a folder the reader has not touched reads its default (see `folderOpen`),
+  // which is what keeps a fleet's worth of agents arriving mid-run collapsed as they
+  // appear rather than each one springing open the moment it spawns.
+  const [openOverrides, setOpenOverrides] = useState<
+    ReadonlyMap<string, boolean>
+  >(() => new Map());
+  const isOpen = (key: string, byDefault: boolean) =>
+    openOverrides.get(key) ?? byDefault;
+  const toggle = (key: string, byDefault: boolean) =>
+    setOpenOverrides((prev) => {
+      const next = new Map(prev);
+      next.set(key, !(prev.get(key) ?? byDefault));
       return next;
     });
 
@@ -313,16 +316,18 @@ export function GgAgentsExplorer({
   useEffect(() => {
     if (focusAgent == null || !nodeById.has(focusAgent)) return;
     setSelection({ agentId: focusAgent, file: "overview" });
-    setCollapsed((prev) => {
-      if (prev.size === 0) return prev;
-      const next = new Set(prev);
+    setOpenOverrides((prev) => {
+      // Force every folder on the path open, rather than clearing its override back to
+      // the default — a subagent folder's default is *closed*, so clearing it would
+      // leave the agent the reader just asked for hidden.
+      const next = new Map(prev);
       let cur: string | null = focusAgent;
       while (cur != null) {
-        next.delete(`folder:${cur}`);
-        next.delete(`sub:${cur}`);
+        next.set(`folder:${cur}`, true);
+        next.set(`sub:${cur}`, true);
         cur = nodeById.get(cur)?.parentId ?? null;
       }
-      return next.size === prev.size ? prev : next;
+      return next;
     });
     onFocusHandled?.();
   }, [focusAgent, nodeById, onFocusHandled]);
@@ -333,7 +338,7 @@ export function GgAgentsExplorer({
   const ctx: ExplorerCtx = {
     capabilitySet,
     roles,
-    collapsed,
+    isOpen,
     toggle,
     selection,
     onSelect: setSelection,
@@ -373,8 +378,9 @@ export function GgAgentsExplorer({
 interface ExplorerCtx {
   capabilitySet: GgCapabilitySet | null;
   roles: Map<string, SpeculationRole>;
-  collapsed: ReadonlySet<string>;
-  toggle: (key: string) => void;
+  /** Whether a folder is open, given the default it takes when untouched. */
+  isOpen: (key: string, byDefault: boolean) => boolean;
+  toggle: (key: string, byDefault: boolean) => void;
   selection: Selection;
   onSelect: (selection: Selection) => void;
 }
@@ -393,11 +399,16 @@ function FolderNode({
   // This agent's own files — read off the profile it runs under, not the run's Root.
   const files = filesFor(ctx.capabilitySet, node.slot);
   const folderKey = `folder:${node.id}`;
-  const open = !ctx.collapsed.has(folderKey);
   // The main agent is the "root" folder; a board-dispatched issue agent is also
   // top-level (parentless) but reads by its own id, so key on the id rather than
   // on being parentless.
   const isRoot = node.id === ROOT_ID;
+  // Only the main agent opens by default. A gg run routinely fields dozens of
+  // instances, and every one of them opened is a sidebar of a hundred rows to scroll
+  // past — so an agent is a closed folder you open to read, and the run's entry point
+  // (its root) is the one already open.
+  const openByDefault = isRoot;
+  const open = ctx.isOpen(folderKey, openByDefault);
   const label = isRoot ? "root" : node.id;
   const role = ctx.roles.get(node.id);
 
@@ -408,7 +419,11 @@ function FolderNode({
         className={panels.fsRow}
         style={fsIndent(depth)}
         aria-expanded={open}
-        onClick={() => ctx.toggle(folderKey)}
+        // Named as the folder it is, the way an issue folder is: without this the row's
+        // accessible name is its id run together with its profile ("agent-0 reviewer"),
+        // which reads as two loose tokens rather than as the thing being opened.
+        aria-label={`agent ${label}`}
+        onClick={() => ctx.toggle(folderKey, openByDefault)}
       >
         <span className={panels.fsCaret} aria-hidden="true">
           {open ? "▾" : "▸"}
@@ -444,7 +459,7 @@ function FolderNode({
         )}
       </button>
       {open && (
-        <ul className={panels.fsChildren}>
+        <ul className={panels.fsChildren} style={fsGuide(depth)}>
           {files.map((file) => {
             const selected =
               ctx.selection.agentId === node.id && ctx.selection.file === file;
@@ -493,7 +508,9 @@ function SubagentsFolder({
   ctx: ExplorerCtx;
 }) {
   const subKey = `sub:${node.id}`;
-  const open = !ctx.collapsed.has(subKey);
+  // The grouping folder itself stays open by default: it is not an agent, and closing it
+  // would hide the *list* of agents the reader then has to open one of.
+  const open = ctx.isOpen(subKey, true);
   return (
     <li className={panels.fsNode}>
       <button
@@ -501,7 +518,7 @@ function SubagentsFolder({
         className={panels.fsRow}
         style={fsIndent(depth)}
         aria-expanded={open}
-        onClick={() => ctx.toggle(subKey)}
+        onClick={() => ctx.toggle(subKey, true)}
       >
         <span className={panels.fsCaret} aria-hidden="true">
           {open ? "▾" : "▸"}
@@ -515,7 +532,7 @@ function SubagentsFolder({
         <span className={panels.fsMeta}>{node.children.length}</span>
       </button>
       {open && (
-        <ul className={panels.fsChildren}>
+        <ul className={panels.fsChildren} style={fsGuide(depth)}>
           {node.children.map((child) => (
             <FolderNode
               key={child.id}
@@ -754,6 +771,9 @@ function OverviewFile({
     [state.slotUsage, state.usage, node.modelId],
   );
   const costBreakdown = useGgCostBreakdown(pricedSlots);
+  // How fast this one instance generated, across every call it made — the run-wide rate on
+  // the Dashboard narrowed to the instance whose tokens these are.
+  const throughput = useMemo(() => agentThroughput(state), [state]);
   // The agent's tool usage — the breakdown behind the Dashboard overview's chips.
   const tools = useMemo(() => ggToolBreakdown(state), [state]);
   // The high-water context snapshot — the turn the window was fullest — for the peak
@@ -786,7 +806,7 @@ function OverviewFile({
             width. `bare` drops the widgets' card chrome — the panel already frames
             them, so a bordered card would read as a widget-in-a-widget. */}
         <div className={dash.overviewCards}>
-          <TokensWidget usage={state.usage} bare />
+          <TokensWidget usage={state.usage} throughput={throughput} bare />
           <CostWidget usage={state.usage} breakdown={costBreakdown} bare />
         </div>
         {tools.tools.length > 0 && <AgentToolsPanel breakdown={tools} />}

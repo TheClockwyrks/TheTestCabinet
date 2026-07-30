@@ -110,13 +110,14 @@
 // Bento spans for the twelve-column dashboard grid. A span clamps to one column
 // under the bento breakpoint (single-column track) and in the auto-fit overview
 // grid, so a widget carrying one still stacks correctly where there is no bento.
-// The top row pairs them to fill twelve either way: status + turns + rate (6+3+3)
-// on the live monitor, turns + rate (6+6) where the page header carries the state.
+// The top row pairs them to fill twelve either way: status + turns + rate + runtime
+// (3+3+3+3) on the live monitor, turns + rate + runtime (4+4+4) where the page header
+// carries the state.
 .cardFull {
   grid-column: span 12;
 }
-.cardHalf {
-  grid-column: span 6;
+.cardThird {
+  grid-column: span 4;
 }
 .cardQuarter {
   grid-column: span 3;
@@ -213,6 +214,16 @@
   min-width: 0;
 }
 
+// A figure set apart at the trailing edge of the totals row (the generation rate, which
+// is those same tokens read against time rather than a fourth class of them). Right-aligned
+// so it reads as the row's outer column rather than as a straggler after the last count;
+// on a wrapped row it simply leads its own line, which the `auto` margin costs nothing.
+.statTrailing {
+  margin-left: auto;
+  align-items: flex-end;
+  text-align: right;
+}
+
 .statValue {
   font-size: t.$font-lg;
   font-weight: 600;
@@ -251,6 +262,17 @@
   display: flex;
   flex-wrap: wrap;
   gap: t.$space-md t.$space-lg;
+}
+
+// The full-width variant (the Agents panel's opened detail, where Tokens owns the whole
+// column): two equal tracks, so Input caching and Output tokens sit deliberately side by
+// side rather than wrapping under one another whenever the legends happen to run long.
+// `min(18rem, 100%)` is what still lets them stack on a genuinely narrow pane instead of
+// overflowing it.
+.ringRowWide {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(18rem, 100%), 1fr));
+  align-items: start;
 }
 
 // One labeled ring block: its title over the gauge-and-legend.

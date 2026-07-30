@@ -17,6 +17,7 @@ import type {
 } from "@test-cabinet/run-record/gg";
 import type { HarnessEvent } from "../../../../client/types";
 import { GgDashboard, type GgDashboardStatus } from "./GgDashboard";
+import { deriveGgRuntime } from "./ggRuntime";
 import { reduceGgEvents, reduceGgEventsPerAgent } from "./useGgRunState";
 
 const TS = "2026-07-29T00:00:00Z";
@@ -126,7 +127,10 @@ const STATUS: GgDashboardStatus = {
   tone: "live",
 };
 
-function renderDashboard(status?: GgDashboardStatus) {
+function renderDashboard(
+  status?: GgDashboardStatus,
+  children?: React.ReactNode,
+) {
   const derived = reduceGgEvents(EVENTS);
   return render(
     <GgDashboard
@@ -137,7 +141,18 @@ function renderDashboard(status?: GgDashboardStatus) {
       agentForest={derived.agentForest}
       fsm={derived.fsm}
       capabilitySet={CAPABILITY_SET}
-    />,
+      runtime={deriveGgRuntime(
+        derived.agentForest,
+        derived.firstTimestamp,
+        // Every event in the fixture carries the same timestamp, so the run's clock is
+        // measured against one 90-second-later "present" — enough for the card to state a
+        // wall clock and a summed agent time rather than two zeroes.
+        Date.parse(TS) + 90_000,
+      )}
+      timeoutSeconds={4 * 3600}
+    >
+      {children}
+    </GgDashboard>,
   );
 }
 
@@ -156,6 +171,7 @@ describe("the gg Dashboard", () => {
       "Status",
       "Turns",
       "Tokens / s",
+      "Runtime",
       "Cost",
       "Tokens",
       "Configuration",
@@ -170,6 +186,7 @@ describe("the gg Dashboard", () => {
     expect(cardLabels()).toEqual([
       "Turns",
       "Tokens / s",
+      "Runtime",
       "Cost",
       "Tokens",
       "Configuration",
@@ -197,6 +214,37 @@ describe("the gg Dashboard", () => {
     // A one-figure average cannot show its own composition, so the models behind it are
     // named on hover (no catalog is mounted here, so each reads by its id).
     expect(card.title).toBe("vendor/small: 200 tok/s\nvendor/big: 100 tok/s");
+  });
+
+  it("states both of the run's clocks and the ceiling it is bounded by", () => {
+    renderDashboard(STATUS);
+    const card = screen.getByText("Runtime").parentElement!;
+    // The wall clock is the headline — 90s of it, per the fixture's stated present.
+    expect(within(card).getByText("1m 30s")).toBeInTheDocument();
+    expect(within(card).getByText("wall clock")).toBeInTheDocument();
+    // And the sum beneath it: every event carries the run's start timestamp and neither
+    // agent ended, so both agents count the full 90s — 3m 00s of agent time inside 1m 30s of
+    // wall clock, which is the whole reason both figures are shown.
+    expect(
+      within(card).getByText("total 3m 00s across 2 agents"),
+    ).toBeInTheDocument();
+    expect(within(card).getByText("limit 4h")).toBeInTheDocument();
+    // The ratio between them is what the tooltip spells out, so "2.0 agents at once" is
+    // stated somewhere rather than left to be divided by the reader.
+    expect(card.title).toContain("2.0 agents working at once");
+  });
+
+  it("leads the panel with the run's notices rather than burying them under the cards", () => {
+    // A run that has just finished says so where the reader is already looking. Trailing the
+    // cards put "run complete" a screen below the fold on the very surface being watched to
+    // learn exactly that.
+    renderDashboard(STATUS, <p>Run complete</p>);
+    const notice = screen.getByText("Run complete");
+    const firstCardLabel = screen.getByText("Status");
+    expect(
+      notice.compareDocumentPosition(firstCardLabel) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("accounts the run's spend inside the Cost widget, per slot and per model", () => {

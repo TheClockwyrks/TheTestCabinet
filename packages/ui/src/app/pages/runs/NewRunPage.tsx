@@ -663,29 +663,80 @@ export function NewRunPage() {
         {isGg ? "gg configuration" : "Harness / model combinations"}
       </p>
       <div className={styles.comboList}>
-        {combinations.map((combo) => (
-          <div key={combo.id} className={styles.comboRow}>
-            {isGg ? (
-              <label className={`${styles.field} ${styles.comboField}`}>
-                <span className={styles.fieldLabel}>gg configuration</span>
-                <select
-                  className={styles.select}
-                  value={combo.ggConfig}
-                  onChange={(e) => setGgConfig(combo.id, e.target.value)}
-                  title={ggOptionFor(combo.ggConfig)?.description}
-                >
-                  {ggOptions.length === 0 && (
-                    <option value="">(loading…)</option>
-                  )}
-                  {ggOptions.map((o) => (
-                    <option key={o.key} value={o.key} title={o.description}>
-                      {o.name}
-                      {o.builtIn ? " (built-in)" : ""}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : (
+        {combinations.map((combo) => {
+          const remove = (
+            <button
+              type="button"
+              className={styles.comboRemove}
+              onClick={() => removeCombination(combo.id)}
+              disabled={combinations.length <= 1}
+              aria-label="Remove combination"
+              title="Remove combination"
+            >
+              ✕
+            </button>
+          );
+
+          // A gg row is a stack rather than a line. A configuration declares one model
+          // slot per agent profile it does not pin itself, so the row holds an unbounded
+          // number of pickers — laid out beside the configuration they squeeze every one of
+          // them below the width a model id is legible in, and the row reflows differently
+          // for every configuration. So the configuration leads its own line, and each slot
+          // gets a row to itself beneath it.
+          if (isGg) {
+            return (
+              <div
+                key={combo.id}
+                className={`${styles.comboRow} ${styles.comboRowStacked}`}
+              >
+                <div className={styles.comboHead}>
+                  <label className={`${styles.field} ${styles.comboField}`}>
+                    <span className={styles.fieldLabel}>gg configuration</span>
+                    <select
+                      className={styles.select}
+                      value={combo.ggConfig}
+                      onChange={(e) => setGgConfig(combo.id, e.target.value)}
+                      title={ggOptionFor(combo.ggConfig)?.description}
+                    >
+                      {ggOptions.length === 0 && (
+                        <option value="">(loading…)</option>
+                      )}
+                      {ggOptions.map((o) => (
+                        <option key={o.key} value={o.key} title={o.description}>
+                          {o.name}
+                          {o.builtIn ? " (built-in)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {remove}
+                </div>
+                {/* One picker per model slot the chosen configuration declares, in
+                    declaration order, pre-filled with that slot's default. gg reaches
+                    every slot's model through OpenRouter, so each picker is scoped to
+                    that family and commits the OpenRouter slug. */}
+                {ggSlotsFor(combo.ggConfig).map((slot) => (
+                  <label
+                    key={slot.name}
+                    className={`${styles.field} ${styles.comboSlotField}`}
+                  >
+                    <span className={styles.fieldLabel}>{slot.name}</span>
+                    <ModelCombobox
+                      value={combo.slotModels[slot.name] ?? ""}
+                      onChange={(v) => setSlotModel(combo.id, slot.name, v)}
+                      models={models}
+                      harnessFamily={familyOf("gg")}
+                      inputClassName={styles.input}
+                      placeholder="model id (e.g. anthropic/claude-opus-4.8)"
+                    />
+                  </label>
+                ))}
+              </div>
+            );
+          }
+
+          return (
+            <div key={combo.id} className={styles.comboRow}>
               <label className={`${styles.field} ${styles.comboField}`}>
                 <span className={styles.fieldLabel}>Harness</span>
                 <select
@@ -708,29 +759,6 @@ export function NewRunPage() {
                   ))}
                 </select>
               </label>
-            )}
-            {isGg ? (
-              // One picker per model slot the chosen configuration declares, in
-              // declaration order, pre-filled with that slot's default. gg reaches
-              // every slot's model through OpenRouter, so each picker is scoped to
-              // that family and commits the OpenRouter slug.
-              ggSlotsFor(combo.ggConfig).map((slot) => (
-                <label
-                  key={slot.name}
-                  className={`${styles.field} ${styles.comboFieldWide}`}
-                >
-                  <span className={styles.fieldLabel}>{slot.name}</span>
-                  <ModelCombobox
-                    value={combo.slotModels[slot.name] ?? ""}
-                    onChange={(v) => setSlotModel(combo.id, slot.name, v)}
-                    models={models}
-                    harnessFamily={familyOf("gg")}
-                    inputClassName={styles.input}
-                    placeholder="model id (e.g. anthropic/claude-opus-4.8)"
-                  />
-                </label>
-              ))
-            ) : (
               <label className={`${styles.field} ${styles.comboFieldWide}`}>
                 <span className={styles.fieldLabel}>Model</span>
                 <ModelCombobox
@@ -742,38 +770,29 @@ export function NewRunPage() {
                   placeholder="model id (e.g. claude-opus-4-8)"
                 />
               </label>
-            )}
-            {!isGg && harnessUsesProvider(combo.harness) && (
-              <label className={`${styles.field} ${styles.comboField}`}>
-                <span className={styles.fieldLabel}>Provider</span>
-                <select
-                  className={styles.select}
-                  value={combo.provider}
-                  onChange={(e) =>
-                    updateCombination(combo.id, { provider: e.target.value })
-                  }
-                  title="How this harness reaches the model — the model id is launched with this provider's routing prefix."
-                >
-                  {PROVIDERS.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.displayName}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            <button
-              type="button"
-              className={styles.comboRemove}
-              onClick={() => removeCombination(combo.id)}
-              disabled={combinations.length <= 1}
-              aria-label="Remove combination"
-              title="Remove combination"
-            >
-              ✕
-            </button>
-          </div>
-        ))}
+              {harnessUsesProvider(combo.harness) && (
+                <label className={`${styles.field} ${styles.comboField}`}>
+                  <span className={styles.fieldLabel}>Provider</span>
+                  <select
+                    className={styles.select}
+                    value={combo.provider}
+                    onChange={(e) =>
+                      updateCombination(combo.id, { provider: e.target.value })
+                    }
+                    title="How this harness reaches the model — the model id is launched with this provider's routing prefix."
+                  >
+                    {PROVIDERS.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.displayName}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {remove}
+            </div>
+          );
+        })}
       </div>
       <div className={styles.actions}>
         <button

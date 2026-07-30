@@ -4,9 +4,11 @@ import { ProgressBar } from "@test-cabinet/ui";
 import type { RunRecord } from "@test-cabinet/run-record";
 import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
 import { useRunEvents } from "../../../data/useRunEvents";
+import { useCaseMaxRuntime } from "../../../data/useCaseMaxRuntime";
 import { routes } from "../../../routes";
 import { GgDashboard } from "../gg/GgDashboard";
 import { GgRunPanels } from "../gg/GgRunPanels";
+import { useGgRuntime } from "../gg/ggRuntime";
 import { reduceGgEvents, reduceGgEventsPerAgent } from "../gg/useGgRunState";
 import styles from "./RunEventsPage.module.scss";
 
@@ -44,6 +46,20 @@ function RunGgBody({ run }: { run: RunRecord }) {
   // that announcement or could not be read at all.
   const capabilitySet =
     derived.announcedCapabilitySet ?? run.subject.ggCapabilitySet ?? null;
+  // The run's two clocks, read off the recorded stream — the same reduction the live
+  // monitor derives, with the run's own last event standing in for the present since
+  // nothing is still arriving.
+  const runtime = useGgRuntime(
+    derived.agentForest,
+    derived.firstTimestamp,
+    derived.lastTimestamp,
+    false,
+  );
+  // And the ceiling it was bounded by, resolved from the case version the record names.
+  const timeoutSeconds = useCaseMaxRuntime(
+    run.subject.testCaseSlug,
+    run.subject.testCaseVersion,
+  );
 
   if (state.status === "loading") {
     const { progress } = state;
@@ -97,6 +113,8 @@ function RunGgBody({ run }: { run: RunRecord }) {
             agentForest={derived.agentForest}
             fsm={derived.fsm}
             capabilitySet={capabilitySet}
+            runtime={runtime}
+            timeoutSeconds={timeoutSeconds}
           >
             {replayCaptured && (
               <p className={styles.notice}>

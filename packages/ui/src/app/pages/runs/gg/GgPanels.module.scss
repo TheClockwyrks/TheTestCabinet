@@ -2021,6 +2021,19 @@ $fsm-hue: #2dd4bf;
   gap: t.$space-md;
 }
 
+// A trailing spacer so the last widget never sits flush against the bottom of the page.
+// It has to be a box *inside* the column rather than padding on it: both hosts lay the
+// panels out in a viewport-height column, so a panel taller than the viewport (the
+// Dashboard, the Agents list) overflows the column — and the column's own bottom padding
+// then sits at the viewport edge, above the overflow, rather than after it. A flex item is
+// laid out after the panel and carries its own height into the scrollable region, so the
+// gap holds whether the content overflows or not. (The column's `gap` supplies the rest.)
+.panelsRoot::after {
+  content: "";
+  flex: 0 0 auto;
+  height: t.$space-md;
+}
+
 // The tab selector leads the view directly. The host above it (the run-detail tab
 // strip, or the live monitor's header) already provides the gap above, so the
 // selector carries none of its own on top — only a small space of its own added to
@@ -2072,8 +2085,73 @@ $fsm-hue: #2dd4bf;
   padding: 0;
 }
 
+// A three-tier scale for the indent guidelines drawn by the rules below. `muted` is the
+// resting tint every guide takes; `related` is a stronger neutral for the lineage of the
+// row under the pointer; `active` is the accent, spent on exactly one guide at a time —
+// the folder the pointed-at row actually sits in.
+.fsTree {
+  --gg-guide-muted: color-mix(in srgb, #{t.$color-text} 12%, transparent);
+  --gg-guide-related: color-mix(in srgb, #{t.$color-text} 30%, transparent);
+  --gg-guide-active: #{t.$color-accent};
+}
+
 .fsNode {
   min-width: 0;
+}
+
+// An open folder's children, with the guideline that makes the tree readable as a tree:
+// a hairline dropping from the folder's own caret down through everything it holds, so
+// which folder a row belongs to is legible without counting indents.
+.fsChildren {
+  position: relative;
+}
+
+.fsChildren::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  // The centre of the owning folder's caret: that row's indent (`fsIndent`) plus half the
+  // caret's width, with `--gg-guide-depth` (set per list by `fsGuide`) naming the folder's
+  // own depth. The rows inside step one level further in, so they clear the rule rather
+  // than sitting on it.
+  left: calc(0.5rem + var(--gg-guide-depth, 0) * 0.85rem + 0.45rem);
+  width: 1px;
+  background: var(--gg-guide-muted);
+  pointer-events: none;
+  // The guide is a pseudo of the list, so in tree order it paints *before* the rows nested
+  // inside it — a row's semi-transparent hover wash would otherwise dim it exactly where
+  // the eye is looking. Lift it above the row backgrounds so it stays crisp either way.
+  z-index: 1;
+}
+
+// Hovering a row paints its lineage across the guides in three tiers, so what holds what
+// is answerable at a glance without clicking anything.
+//
+// Tier 1 — ancestors. Every guide containing the hovered row (at any depth) lifts to the
+// `related` tint. The innermost of them is the folder the row actually sits in, which the
+// accent rules below override.
+.fsChildren:has(.fsRow:hover)::before {
+  background: var(--gg-guide-related);
+}
+
+// Tier 2 — descendants. Hovering a *folder* previews its whole subtree: every guide nested
+// inside its own lifts to `related` too. A file row has no child list, so this naturally
+// does nothing for one.
+.fsRow:hover + .fsChildren .fsChildren::before {
+  background: var(--gg-guide-related);
+}
+
+// Tier 3 — the single accent guide, in two mutually exclusive cases:
+//   - a hovered folder lights its *own* guide (the list right after its row); and
+//   - a hovered *file* lights the guide of the folder that directly holds it — the list
+//     whose own child row is that file. `.fsFile` is what keeps a hovered folder from also
+//     accenting its parent's guide (that stays `related`).
+// Written after the tiers above, which they tie or beat on specificity, so the accent
+// always wins where they overlap.
+.fsRow:hover + .fsChildren::before,
+.fsChildren:has(> li > .fsRow.fsFile:hover)::before {
+  background: var(--gg-guide-active);
 }
 
 // One row in the tree — a folder toggle or a file link. A full-width button so the

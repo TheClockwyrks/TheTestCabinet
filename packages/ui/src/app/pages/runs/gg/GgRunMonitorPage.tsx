@@ -3,8 +3,11 @@ import { useWorkers } from "../../../../client/context";
 import { KillRunControl } from "../../../components/KillRunControl";
 import { PageLayout } from "../../../components/PageLayout";
 import { PromptHeader } from "../../../components/PromptHeader";
+import { useCaseMaxRuntime } from "../../../data/useCaseMaxRuntime";
+import { useRunsRuntime } from "../../../runtime/runsRuntime";
 import { routes } from "../../../routes";
 import runExec from "../RunExec.module.scss";
+import { useGgRuntime } from "./ggRuntime";
 import { useGgRunState, type GgMonitorStatus } from "./useGgRunState";
 import { GgDashboard, type GgDashboardStatus } from "./GgDashboard";
 import { GgRunPanels } from "./GgRunPanels";
@@ -23,6 +26,7 @@ import { GgRunPanels } from "./GgRunPanels";
 export function GgRunMonitorPage() {
   const { jobId } = useParams<{ jobId: string }>();
   const { active: worker } = useWorkers();
+  const runs = useRunsRuntime();
   const state = useGgRunState(jobId);
   const {
     status,
@@ -33,6 +37,26 @@ export function GgRunMonitorPage() {
     fsm,
     capabilitySet,
   } = state;
+  const live = status.kind === "running";
+
+  // The run's two clocks. The wall clock ticks while the stream is live and settles on the
+  // last event once it is not, so the read-out is a clock during the run and a record after
+  // it (see `ggRuntime`).
+  const runtime = useGgRuntime(
+    state.agentForest,
+    state.firstTimestamp,
+    state.lastTimestamp,
+    live,
+  );
+  // The ceiling the host will stop this run at. A live run has no RunRecord yet, so the
+  // case it is exercising is read off the launch this session is tracking; null once the run
+  // has dropped out of that list (or on a monitor reached by URL alone), where the card
+  // simply states no limit rather than guessing one.
+  const launched = runs.inProgress.find((run) => run.runId === jobId);
+  const timeoutSeconds = useCaseMaxRuntime(
+    launched?.testCaseSlug ?? null,
+    launched?.testCaseVersion ?? null,
+  );
 
   // Whether this run was captured for replay — the debug-only `replay` capability was
   // on. Only then does a stored replay record exist to step through, so the Replay
@@ -76,7 +100,7 @@ export function GgRunMonitorPage() {
       <GgRunPanels
         state={state}
         capabilitySet={capabilitySet}
-        live={status.kind === "running"}
+        live={live}
         dashboard={
           <GgDashboard
             status={dashboardStatus}
@@ -86,6 +110,8 @@ export function GgRunMonitorPage() {
             agentForest={state.agentForest}
             fsm={fsm}
             capabilitySet={capabilitySet}
+            runtime={runtime}
+            timeoutSeconds={timeoutSeconds}
           >
             {/* Terminal outcome + a link to the produced run. */}
             {status.kind === "done" && status.outcome.kind === "completed" && (

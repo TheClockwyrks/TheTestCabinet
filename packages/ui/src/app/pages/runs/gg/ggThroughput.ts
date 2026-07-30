@@ -69,9 +69,11 @@ export interface GgThroughput {
   overall: number | null;
 }
 
-// Everything an agent produced: output plus any separately-reported reasoning, which is
-// generated all the same (the same numerator the per-request throughput metric plots).
-function generatedTokens(usage: UsageTally): number {
+/**
+ * Everything a scope produced: output plus any separately-reported reasoning, which is
+ * generated all the same (the same numerator the per-request throughput metric plots).
+ */
+export function generatedTokens(usage: UsageTally): number {
   return usage.output + usage.reasoning;
 }
 
@@ -80,12 +82,26 @@ function generatedTokens(usage: UsageTally): number {
 // every run, not only one that logged its prompts. A stream recorded before gg timed its
 // turns falls back to the per-request latencies on the prompts themselves, which exist
 // only where context visibility was on; hence the fallback rather than the source.
-function agentModelMs(state: DerivedGgState): number {
+export function agentModelMs(state: DerivedGgState): number {
   let ms = 0;
   for (const timing of state.turnTimings) ms += timing.requestMs;
   if (ms > 0) return ms;
   for (const prompt of state.prompts) ms += prompt.durationMs ?? 0;
   return ms;
+}
+
+/**
+ * One agent instance's own generation rate — everything it produced over the time it spent
+ * inside its model calls, across every call it made. Null when none of its calls were timed,
+ * so a read-out shows nothing rather than a rate of zero.
+ *
+ * The same accounting the run-wide rate is built from ({@link deriveGgThroughput}), narrowed
+ * to one instance: an instance runs on exactly one model, so this *is* that model's rate as
+ * this instance experienced it.
+ */
+export function agentThroughput(state: DerivedGgState): number | null {
+  const ms = agentModelMs(state);
+  return ms > 0 ? generatedTokens(state.usage) / (ms / 1000) : null;
 }
 
 /**
