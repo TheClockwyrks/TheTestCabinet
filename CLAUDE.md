@@ -164,6 +164,45 @@ Task-oriented walkthroughs:
 - **Run-container image:** [`containers/`](containers/) — the single shared base
   image every run executes in (harnesses install into it at run time). See
   [`containers/README.md`](containers/README.md).
+  
+## Subagents
+
+Unrestricted use of subagents is allowed at all times.
+
+## Workflows
+
+Multi-agent workflows are **authorized standing**, in every session, without the
+user asking for one. Do not ask permission first and do not wait to be prompted.
+Reach for one whenever the work genuinely suits it; work inline only when it does
+not. The bar is low — a task a single edit finishes does not need a workflow, but
+most things larger than that do.
+
+**Two reasons to run one, and parallelism is only the second.**
+
+1. **A fresh context window per step.** A strictly sequential chain is a perfectly
+   good workflow: each stage starts clean instead of inheriting the accumulated
+   noise of the ones before it. *"These steps must happen in order"* is therefore
+   never a reason to skip the workflow and grind through inline — sequential and
+   workflow-shaped are not in tension.
+2. **Fan-out** — parallel investigation, broad sweeps, adversarial verification.
+
+**Scope is not a reason to hesitate.** A workflow is the right tool for taking a
+large, fully scoped piece of work end to end in one go. The work has to be done
+either way, and it should be done *correctly* rather than quickly — so prefer the
+thorough decomposition over the one that finishes soonest, and do not trim scope
+to make a single pass fit.
+
+**Optimize for how the work gets reviewed.** The user validates by *exercising the
+functionality*, not by reading the diff. Two consequences:
+
+- **A large change with a small externally-visible surface is the ideal shape.**
+  Do not split or shrink a change to make it easier to read.
+- **Code review will not be the thing that catches a defect** — so the gates and
+  the verification are load-bearing. Run them (see *Building, testing & the CI
+  gates* and *Verification & the live API key*), build adversarial verification
+  into the workflow rather than trusting a single agent's report, and finish by
+  telling the user **how to exercise the change** — the route, the command, the
+  screen. Report honestly what was and was not verified.
 
 ## Changelog
 
