@@ -465,6 +465,24 @@
   min-width: 0;
 }
 
+// The prompt-cache lifetime selector: intrinsic width like the "Model from" one it
+// sits under, leaving the row's spare space to the note beside it.
+.cacheTtlField {
+  flex: 0 1 18rem;
+  min-width: 0;
+}
+
+// The reminder shown beside the selector once an agent is on the extended lifetime —
+// which agents earn back its premium. Guidance, not a fault, so it takes the muted
+// cue rather than the warning or negative one.
+.cacheTtlNote {
+  flex: 1 1 16rem;
+  margin: 0;
+  padding-bottom: t.$space-xs;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
 // --- Per-feature tool ablation --------------------------------------------------
 //
 // Withholding a sub-feature of a capability without turning the whole thing off.

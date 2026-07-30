@@ -21,7 +21,13 @@ fn build_request_body_uses_openai_tools_shape() {
         json!({ "type": "object", "properties": { "path": { "type": "string" } } }),
     )];
 
-    let body = build_request_body("anthropic/claude-opus-4-8", &messages, &tools, None);
+    let body = build_request_body(
+        "anthropic/claude-opus-4-8",
+        &messages,
+        &tools,
+        None,
+        CacheTtl::Standard,
+    );
 
     assert_eq!(body["model"], json!("anthropic/claude-opus-4-8"));
     assert_eq!(body["messages"][0]["role"], json!("system"));
@@ -54,7 +60,7 @@ fn build_request_body_encodes_tool_call_arguments_as_string() {
         Message::tool_result("call_1", "wrote 13 bytes"),
     ];
 
-    let body = build_request_body("m", &messages, &[], None);
+    let body = build_request_body("m", &messages, &[], None, CacheTtl::Standard);
 
     let wire_call = &body["messages"][0]["tool_calls"][0];
     assert_eq!(wire_call["id"], json!("call_1"));
@@ -81,7 +87,7 @@ fn build_request_body_encodes_tool_call_arguments_as_string() {
 /// With no tools offered, neither `tools` nor `tool_choice` is present.
 #[test]
 fn build_request_body_omits_tools_when_none() {
-    let body = build_request_body("m", &[Message::user("hi")], &[], None);
+    let body = build_request_body("m", &[Message::user("hi")], &[], None, CacheTtl::Standard);
     assert!(body.get("tools").is_none());
     assert!(body.get("tool_choice").is_none());
 }
@@ -93,7 +99,13 @@ fn build_request_body_omits_tools_when_none() {
 /// left routing on a fallback path and cost whole runs their cache.
 #[test]
 fn build_request_body_sends_the_session_key_as_both_fields() {
-    let body = build_request_body("m", &[Message::user("hi")], &[], Some("session-42"));
+    let body = build_request_body(
+        "m",
+        &[Message::user("hi")],
+        &[],
+        Some("session-42"),
+        CacheTtl::Standard,
+    );
     assert_eq!(body["session_id"], json!("session-42"));
     assert_eq!(body["prompt_cache_key"], json!("session-42"));
 }
@@ -103,8 +115,14 @@ fn build_request_body_sends_the_session_key_as_both_fields() {
 #[test]
 fn build_request_body_omits_the_session_key_without_one() {
     for body in [
-        build_request_body("m", &[Message::user("hi")], &[], None),
-        build_request_body("m", &[Message::user("hi")], &[], Some("")),
+        build_request_body("m", &[Message::user("hi")], &[], None, CacheTtl::Standard),
+        build_request_body(
+            "m",
+            &[Message::user("hi")],
+            &[],
+            Some(""),
+            CacheTtl::Standard,
+        ),
     ] {
         assert!(body.get("session_id").is_none());
         assert!(body.get("prompt_cache_key").is_none());
@@ -118,7 +136,13 @@ fn build_request_body_omits_the_session_key_without_one() {
 fn build_request_body_truncates_an_over_long_session_key() {
     // A multi-byte character straddling the cap would panic a naive byte slice.
     let key = "sesh-".to_string() + &"é".repeat(MAX_SESSION_KEY_CHARS);
-    let body = build_request_body("m", &[Message::user("hi")], &[], Some(&key));
+    let body = build_request_body(
+        "m",
+        &[Message::user("hi")],
+        &[],
+        Some(&key),
+        CacheTtl::Standard,
+    );
 
     let sent = body["session_id"].as_str().expect("a session id");
     assert_eq!(sent.chars().count(), MAX_SESSION_KEY_CHARS);
@@ -137,7 +161,13 @@ fn build_request_body_truncates_an_over_long_session_key() {
 fn build_request_body_sends_an_attached_image_as_a_content_part() {
     let read = Message::tool_result("call_1", "`ref.png` — PNG image, 12 bytes.")
         .with_images(vec![ImageContent::new("image/png", "QUJD", 3)]);
-    let body = build_request_body("m", &[Message::user("look at ref.png"), read], &[], None);
+    let body = build_request_body(
+        "m",
+        &[Message::user("look at ref.png"), read],
+        &[],
+        None,
+        CacheTtl::Standard,
+    );
 
     let tool_msg = &body["messages"][1];
     assert_eq!(tool_msg["role"], json!("tool"));
@@ -168,7 +198,13 @@ fn build_request_body_keeps_plain_content_without_images() {
         Message::assistant(Some("on it".to_string()), vec![]),
         Message::user("carry on"),
     ];
-    let body = build_request_body("anthropic/claude-haiku-4.5", &messages, &[], None);
+    let body = build_request_body(
+        "anthropic/claude-haiku-4.5",
+        &messages,
+        &[],
+        None,
+        CacheTtl::Standard,
+    );
 
     // The anchor (index 1) and the tail (index 3) are breakpoints; the untouched middle keeps
     // the bare-string shape.
@@ -193,7 +229,13 @@ fn build_request_body_sends_no_markers_to_an_implicitly_caching_model() {
     let mut shapes: Vec<Vec<serde_json::Value>> = Vec::new();
     for turn in 0..24 {
         messages.push(Message::assistant(Some(format!("turn {turn}")), vec![]));
-        let body = build_request_body("deepseek/deepseek-chat", &messages, &[], None);
+        let body = build_request_body(
+            "deepseek/deepseek-chat",
+            &messages,
+            &[],
+            None,
+            CacheTtl::Standard,
+        );
         assert!(
             markers(&body).is_empty(),
             "turn {turn} marked an implicitly-caching model: {:?}",
@@ -271,16 +313,23 @@ fn build_request_body_marks_the_opening_context_and_the_tail() {
         Message::assistant(Some("starting".to_string()), vec![]),
         Message::user("keep going"),
     ];
-    let body = build_request_body("anthropic/claude-haiku-4.5", &messages, &[], None);
+    let body = build_request_body(
+        "anthropic/claude-haiku-4.5",
+        &messages,
+        &[],
+        None,
+        CacheTtl::Standard,
+    );
 
     // The anchor is the last message before the first assistant turn (the fixed preamble), and
     // the tail writes this turn's prefix for the next turn to read.
     assert_eq!(marked_indices(&body), vec![1, 3]);
-    // The anchor is read by every later turn, so it asks for the extended lifetime; the tail takes
-    // the default. See `CacheTtl`.
+    // An agent on the standard lifetime qualifies neither marker, so both are the bare form gg
+    // sent before the lifetime was configurable. Which markers ask for an hour is the
+    // per-agent choice asserted below.
     assert_eq!(
         body["messages"][1]["content"][0]["cache_control"],
-        json!({ "type": "ephemeral", "ttl": "1h" })
+        json!({ "type": "ephemeral" })
     );
     assert_eq!(body["messages"][1]["content"][0]["text"], json!("build it"));
     assert_eq!(
@@ -376,6 +425,7 @@ fn build_request_body_marks_the_last_part_of_an_image_message() {
         &[Message::user("look at ref.png"), read],
         &[],
         None,
+        CacheTtl::Extended,
     );
 
     let parts = body["messages"][1]["content"]
@@ -431,7 +481,13 @@ fn build_request_body_extends_the_ttl_of_the_stable_breakpoints() {
     for turn in 0..24 {
         messages.push(Message::assistant(Some(format!("turn {turn}")), vec![]));
     }
-    let body = build_request_body("anthropic/claude-haiku-4.5", &messages, &[], None);
+    let body = build_request_body(
+        "anthropic/claude-haiku-4.5",
+        &messages,
+        &[],
+        None,
+        CacheTtl::Extended,
+    );
 
     let extended = json!({ "type": "ephemeral", "ttl": "1h" });
     let rolling = json!({ "type": "ephemeral" });
@@ -447,6 +503,44 @@ fn build_request_body_extends_the_ttl_of_the_stable_breakpoints() {
     );
 }
 
+/// An agent left at the **standard** lifetime qualifies nothing: every marker is the bare
+/// `{type: "ephemeral"}` form, so its requests are byte-identical to the ones gg sent before the
+/// lifetime became configurable.
+///
+/// This is the property that makes the knob safe to ship. The extended lifetime is billed a higher
+/// write premium on every entry it applies to, so a run that never asked for it — which is every
+/// stored configuration — must not quietly start paying it.
+#[test]
+fn build_request_body_qualifies_no_marker_at_the_standard_lifetime() {
+    let mut messages = vec![
+        Message::system("a long system prompt"),
+        Message::user("build it"),
+    ];
+    for turn in 0..24 {
+        messages.push(Message::assistant(Some(format!("turn {turn}")), vec![]));
+    }
+    let body = build_request_body(
+        "anthropic/claude-haiku-4.5",
+        &messages,
+        &[],
+        None,
+        CacheTtl::Standard,
+    );
+
+    let standard = json!({ "type": "ephemeral" });
+    // The same four breakpoints as the extended arm — the placement policy is unchanged; only what
+    // each marker asks for differs.
+    assert_eq!(
+        markers(&body),
+        vec![
+            (1, standard.clone()),
+            (16, standard.clone()),
+            (24, standard.clone()),
+            (25, standard),
+        ]
+    );
+}
+
 /// A request whose only breakpoint is the anchor — the first turn, before the thread starts —
 /// extends it rather than treating it as a rolling tail. It is the opening context, the run's
 /// single most valuable entry, and a long first turn is exactly when the default lifetime would
@@ -457,7 +551,13 @@ fn build_request_body_extends_a_lone_anchor() {
         Message::system("a long system prompt"),
         Message::user("build it"),
     ];
-    let body = build_request_body("anthropic/claude-haiku-4.5", &messages, &[], None);
+    let body = build_request_body(
+        "anthropic/claude-haiku-4.5",
+        &messages,
+        &[],
+        None,
+        CacheTtl::Extended,
+    );
 
     assert_eq!(
         markers(&body),
@@ -475,7 +575,13 @@ fn build_request_body_orders_extended_markers_before_the_rolling_one() {
         for turn in 2..length {
             messages.push(Message::assistant(Some(format!("turn {turn}")), vec![]));
         }
-        let body = build_request_body("anthropic/claude-haiku-4.5", &messages, &[], None);
+        let body = build_request_body(
+            "anthropic/claude-haiku-4.5",
+            &messages,
+            &[],
+            None,
+            CacheTtl::Extended,
+        );
         let sent = markers(&body);
         let rolling = sent
             .iter()
@@ -710,11 +816,7 @@ fn backoff_delay_doubles_and_caps() {
 // ---------------------------------------------------------------------------
 
 fn binding(model_id: &str) -> GgSlotBinding {
-    GgSlotBinding {
-        slot: PRIMARY_SLOT.to_string(),
-        model_id: model_id.to_string(),
-        model_slot: None,
-    }
+    GgSlotBinding::new(PRIMARY_SLOT, model_id)
 }
 
 /// The `mock/…` model prefix and the fake-model override each select the mock; a real
@@ -755,6 +857,34 @@ fn client_for_slot_builds_mock_for_mock_binding() {
 // ---------------------------------------------------------------------------
 // OpenRouter client construction
 // ---------------------------------------------------------------------------
+
+/// A client takes the standard prompt-cache lifetime unless the agent profile it was built for
+/// asked for the extended one — the per-agent choice, carried in on the binding, that decides what
+/// this client's stable markers ask for on every request it sends.
+#[test]
+fn a_client_takes_the_prompt_cache_lifetime_of_the_agent_it_serves() {
+    let client = OpenRouterClient::new(
+        "https://example.test/api/v1",
+        reqwest::Client::new(),
+        "anthropic/claude-opus-4-8",
+        "sk-test",
+        RetryPolicy::default(),
+        None,
+    );
+    assert_eq!(client.stable_ttl, CacheTtl::Standard);
+
+    let extended = client.with_prompt_cache_ttl(GgPromptCacheTtl::Extended);
+    assert_eq!(extended.stable_ttl, CacheTtl::Extended);
+    // The configuration's two lifetimes map onto the two wire lifetimes and nothing else.
+    assert_eq!(
+        CacheTtl::from(GgPromptCacheTtl::Standard),
+        CacheTtl::Standard
+    );
+    assert_eq!(
+        CacheTtl::from(GgPromptCacheTtl::Extended),
+        CacheTtl::Extended
+    );
+}
 
 /// The endpoint URL is the base with a single `/chat/completions`, regardless of a
 /// trailing slash on the base.

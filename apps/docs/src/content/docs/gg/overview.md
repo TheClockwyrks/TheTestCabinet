@@ -176,17 +176,22 @@ the forwarded OpenAI-shaped payload sees the prefix change underneath it and re-
 the request in full, which is why gg marked requests read 0% on turns that read 98%
 unmarked.
 
-The anchor and the rolling points ask for the **extended** (one-hour) cache
-lifetime; only the tail takes the provider default of five minutes. That default is
-written for a chat turn, not a harness turn: one gg turn can run a build, a test
-suite or a browser pass, and every agent in a run shares one runtime thread, so the
-gap between one agent's successive requests is routinely minutes. A gap past five
-minutes means the next turn re-sends a prefix whose entry has expired, and is billed
-for it in full. The tail is
-excluded because it is rewritten every turn and read exactly once, by the turn
-immediately after it — an hour would pay the higher write premium for material
-superseded in seconds. That split keeps the arrangement close to cost-neutral: the
-premium falls on the entries the design exists to stop re-paying for.
+How long those entries live is a **per-agent** setting — the
+[prompt-cache lifetime](/gg/configurations/#prompt-cache-lifetime) on each agent
+profile. Left alone, every entry takes the provider default of five minutes. An agent
+switched to the **extended** (one-hour) lifetime asks for it on its anchor and rolling
+points only; the tail keeps the default whatever the agent is set to, because it is
+rewritten every turn and read exactly once, by the turn immediately after it — an hour
+would pay the higher write premium for material superseded in seconds.
+
+The five-minute default is written for a chat turn, not a harness turn: one gg turn can
+run a build, a test suite or a browser pass, and every agent in a run shares one runtime
+thread, so the gap between one agent's successive requests can be minutes. A gap past
+five minutes means the next turn re-sends a prefix whose entry has expired, and is
+billed for it in full. But the extended lifetime is charged a higher write premium — on
+Anthropic, 2× the base input rate against five minutes' 1.25× — so it is worth buying
+only for the agents that actually come back to their context that late, which is why it
+is set per agent rather than for the run.
 
 This is also why [compaction](/gg/compaction/) and
 [agent-managed context](/gg/agent-managed-context/) go to such lengths to keep the

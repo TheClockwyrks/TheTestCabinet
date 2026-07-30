@@ -422,6 +422,29 @@ describe("GgConfigEditPage", () => {
     });
   });
 
+  it("buys the extended prompt-cache lifetime for one agent and leaves the other at the default", async () => {
+    renderPage();
+    fireEvent.change(await screen.findByPlaceholderText("e.g. no-compaction"), {
+      target: { value: "delegating" },
+    });
+    // A second agent, so the choice is visibly per agent rather than run-wide.
+    fireEvent.click(screen.getByRole("button", { name: "+ Add agent" }));
+    openFirstAgent();
+    fireEvent.change(screen.getByLabelText(/Prompt cache/i), {
+      target: { value: "extended" },
+    });
+    saveAgent();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Create configuration" }),
+    );
+
+    await waitFor(() => expect(createGgConfig).toHaveBeenCalledTimes(1));
+    const agents = createGgConfig.mock.calls[0]![0].capabilitySet.agents;
+    expect(agents[0].promptCacheTtl).toBe("extended");
+    // The untouched agent writes no key at all, so it keeps paying the base rate.
+    expect(agents[1].promptCacheTtl).toBeUndefined();
+  });
+
   it("stores no system-prompt override unless it is edited", async () => {
     renderPage();
     fireEvent.change(await screen.findByPlaceholderText("e.g. no-compaction"), {

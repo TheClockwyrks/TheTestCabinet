@@ -909,6 +909,14 @@ pub struct GgAgentConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub system_prompt_template: Option<String>,
+    /// How long this agent asks the provider to keep the **stable** entries of its
+    /// [prompt cache](GgPromptCacheTtl) — the knob that decides whether its opening context is
+    /// still cached when a slow turn comes back. Standard (the provider's five minutes) unless an
+    /// operator opts this profile into the extended lifetime, because the extended one is charged
+    /// a higher write premium and is only worth it for an agent whose turns are long enough, or
+    /// spread far enough apart, to outlive five minutes.
+    #[serde(default, skip_serializing_if = "GgPromptCacheTtl::is_standard")]
+    pub prompt_cache_ttl: GgPromptCacheTtl,
     /// The other agents this agent may put to work — its delegation **roster**. Each entry names
     /// a target agent (which may be this agent itself), the [scopes](GgSubagentRef::scopes) it may
     /// be used in (spawnable subagent, issue implementer, issue reviewer), and a caller-scoped
@@ -933,6 +941,7 @@ impl GgAgentConfig {
             disabled_tools: Vec::new(),
             custom_instructions: None,
             system_prompt_template: None,
+            prompt_cache_ttl: GgPromptCacheTtl::default(),
             subagents: Vec::new(),
         }
     }
@@ -961,6 +970,7 @@ impl GgAgentConfig {
             disabled_tools,
             custom_instructions: None,
             system_prompt_template: None,
+            prompt_cache_ttl: GgPromptCacheTtl::default(),
             subagents: Vec::new(),
         }
     }
@@ -1145,6 +1155,49 @@ impl GgSubagentScope {
     }
 }
 
+/// How long one [agent](GgAgentConfig::prompt_cache_ttl) asks the provider to keep the **stable**
+/// entries of its prompt cache — the opening context and the cached grid points a later turn reads,
+/// as opposed to the rolling tail, which is rewritten every turn and always takes the provider
+/// default.
+///
+/// This is a **per-agent** choice because it is a cost trade, and the trade comes out differently
+/// for different agents in the same run. The extended lifetime is billed at a higher write premium
+/// (on Anthropic, 2× the base input rate against the standard lifetime's 1.25×), so it pays for
+/// itself only when it turns cache *misses* into hits:
+///
+/// - An agent whose turns are long or far apart — one that runs builds and test suites, or one that
+///   delegates and then sits idle while its subagents work — routinely comes back to its own
+///   context more than five minutes later, and under the standard lifetime re-sends that whole
+///   prefix at full price. [`Extended`](Self::Extended) is what stops that.
+/// - An agent that runs quickly, or is spawned once and never resumed, never reaches the standard
+///   lifetime's expiry in the first place. Buying it an hour is pure premium on entries that would
+///   have been read (or discarded) within the five minutes it already had.
+///
+/// [`Standard`](Self::Standard) is therefore the default: it is the arrangement that cannot cost a
+/// configuration money it was not already spending, and an operator opts individual profiles into
+/// the extended lifetime where the run's shape justifies it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum GgPromptCacheTtl {
+    /// The provider's default lifetime (five minutes), at the base write premium. Every cache
+    /// entry this agent writes takes it, including the stable ones.
+    #[default]
+    Standard,
+    /// The extended lifetime (one hour) on this agent's stable entries, at the higher write
+    /// premium. The rolling tail still takes the provider default: it is superseded within seconds,
+    /// so an hour would buy nothing and be charged for it.
+    Extended,
+}
+
+impl GgPromptCacheTtl {
+    /// Whether this is the [standard](Self::Standard) lifetime — the default, which is why a
+    /// configuration that never touched the knob omits the field entirely.
+    pub fn is_standard(&self) -> bool {
+        matches!(self, Self::Standard)
+    }
+}
+
 /// A single Root agent with the default capabilities — the [`Default`] and migration
 /// fallback for [`GgCapabilitySet::agents`].
 fn default_agents() -> Vec<GgAgentConfig> {
@@ -1295,6 +1348,13 @@ pub struct GgSlotBinding {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub model_slot: Option<String>,
+    /// The [prompt-cache lifetime](GgPromptCacheTtl) the client built for this binding asks for on
+    /// its stable cache entries — carried here because the binding is what a client is resolved
+    /// from, and the lifetime is a property of the *agent* whose turns that client serves, not of
+    /// the model it runs on. [Standard](GgPromptCacheTtl::Standard) unless the agent profile this
+    /// binding was built for opts into the extended one.
+    #[serde(default, skip_serializing_if = "GgPromptCacheTtl::is_standard")]
+    pub prompt_cache_ttl: GgPromptCacheTtl,
 }
 
 impl GgSlotBinding {
@@ -1304,6 +1364,7 @@ impl GgSlotBinding {
             slot: slot.into(),
             model_id: model_id.into(),
             model_slot: None,
+            prompt_cache_ttl: GgPromptCacheTtl::default(),
         }
     }
 
@@ -1314,7 +1375,15 @@ impl GgSlotBinding {
             slot: slot.into(),
             model_id: String::new(),
             model_slot: Some(model_slot.into()),
+            prompt_cache_ttl: GgPromptCacheTtl::default(),
         }
+    }
+
+    /// This binding with `ttl` as the [prompt-cache lifetime](GgPromptCacheTtl) its client asks
+    /// for — how an agent profile's choice reaches the client resolved for it.
+    pub fn with_prompt_cache_ttl(mut self, ttl: GgPromptCacheTtl) -> Self {
+        self.prompt_cache_ttl = ttl;
+        self
     }
 
     /// Whether this binding names a model to run — a pinned binding, or a deferred one

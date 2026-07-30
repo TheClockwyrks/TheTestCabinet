@@ -158,6 +158,85 @@ fn capability_set_round_trips_through_json() {
     assert_eq!(set, back);
 }
 
+/// The prompt-cache lifetime is a **per-agent** knob: one profile can buy the extended lifetime
+/// while its siblings stay on the provider default, which is the whole point — the extended one is
+/// billed a higher write premium, so a run pays it only for the agents whose turns are slow or far
+/// enough apart to outlive five minutes.
+///
+/// A profile that never touched the knob writes **no key at all**, so every configuration stored
+/// before the knob existed round-trips byte for byte — and none of them silently starts paying the
+/// premium.
+#[test]
+fn the_prompt_cache_lifetime_is_per_agent_and_omitted_at_its_default() {
+    let set = GgCapabilitySet {
+        agents: vec![
+            GgAgentConfig {
+                model_id: "anthropic/claude-opus-4.8".to_string(),
+                prompt_cache_ttl: GgPromptCacheTtl::Extended,
+                ..GgAgentConfig::root()
+            },
+            GgAgentConfig {
+                name: "scout".to_string(),
+                model_id: "anthropic/claude-haiku-4.5".to_string(),
+                ..GgAgentConfig::root()
+            },
+        ],
+        ..GgCapabilitySet::default()
+    };
+
+    let value = serde_json::to_value(&set).expect("serialize");
+    assert_eq!(value["agents"][0]["promptCacheTtl"], json!("extended"));
+    assert!(
+        value["agents"][1].get("promptCacheTtl").is_none(),
+        "an agent at the standard lifetime writes no key: {}",
+        value["agents"][1]
+    );
+
+    let back: GgCapabilitySet = serde_json::from_value(value).expect("deserialize");
+    assert_eq!(set, back);
+    assert_eq!(back.agents[0].prompt_cache_ttl, GgPromptCacheTtl::Extended);
+    assert_eq!(back.agents[1].prompt_cache_ttl, GgPromptCacheTtl::Standard);
+    assert!(back.agents[1].prompt_cache_ttl.is_standard());
+}
+
+/// A configuration stored before the lifetime was configurable — including one in the legacy flat
+/// shape — reads as the **standard** lifetime, so upgrading gg cannot double the input price of a
+/// run that never asked for it.
+#[test]
+fn a_capability_set_without_a_prompt_cache_lifetime_reads_as_standard() {
+    let stored = json!({
+        "agents": [{
+            "name": ROOT_AGENT,
+            "capabilities": [{ "id": CAPABILITY_SHELL, "enabled": true, "params": {} }],
+            "modelId": "anthropic/claude-opus-4.8",
+        }],
+    });
+    let set: GgCapabilitySet = serde_json::from_value(stored).expect("deserialize");
+    assert_eq!(set.root().prompt_cache_ttl, GgPromptCacheTtl::Standard);
+
+    let flat = json!({
+        "capabilities": [{ "id": CAPABILITY_SHELL, "enabled": true, "params": {} }],
+        "slots": [{ "slot": PRIMARY_SLOT, "modelId": "anthropic/claude-opus-4.8" }],
+    });
+    let migrated: GgCapabilitySet = serde_json::from_value(flat).expect("migrate legacy shape");
+    assert_eq!(migrated.root().prompt_cache_ttl, GgPromptCacheTtl::Standard);
+}
+
+/// The lifetime reaches the client through the [binding](GgSlotBinding) a profile is resolved into,
+/// because the binding is what a client is built from. A binding that was never told otherwise —
+/// the compaction handoff's, for one — keeps the standard lifetime and writes no key.
+#[test]
+fn a_slot_binding_carries_the_prompt_cache_lifetime_it_was_given() {
+    let binding = GgSlotBinding::new(PRIMARY_SLOT, "anthropic/claude-opus-4.8")
+        .with_prompt_cache_ttl(GgPromptCacheTtl::Extended);
+    assert_eq!(binding.prompt_cache_ttl, GgPromptCacheTtl::Extended);
+
+    let plain = GgSlotBinding::new(PRIMARY_SLOT, "anthropic/claude-opus-4.8");
+    assert_eq!(plain.prompt_cache_ttl, GgPromptCacheTtl::Standard);
+    let value = serde_json::to_value(&plain).expect("serialize");
+    assert!(value.get("promptCacheTtl").is_none(), "{value}");
+}
+
 /// The guardrails are camelCase like the rest of the contract, and one that is off is **absent**
 /// rather than `null` — so a configuration that arms two of them says so in two keys, and "unset" and
 /// "set to nothing" can never be confused on the wire.

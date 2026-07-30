@@ -30,6 +30,7 @@ import type {
   GgCapabilityConfig,
   GgCapabilitySet,
   GgModelSlot,
+  GgPromptCacheTtl,
   GgRunLimits,
   GgSubagentRef,
   GgSubagentScope,
@@ -127,6 +128,11 @@ export interface GgAgentDraft {
   disabledTools: string[];
   customInstructions: string;
   systemPromptTemplate: string;
+  // How long this agent asks the provider to keep its stable prompt-cache entries. Held
+  // as the wire value itself (there is nothing to parse), and "standard" — the provider
+  // default, and the only one that costs no premium — is what an agent that never touched
+  // the knob saves as: no key at all.
+  promptCacheTtl: GgPromptCacheTtl;
   subagents: GgSubagentDraft[];
 }
 
@@ -298,6 +304,7 @@ export function blankAgentDraft(
     disabledTools: [],
     customInstructions: "",
     systemPromptTemplate: "",
+    promptCacheTtl: "standard",
     subagents: [],
   };
 }
@@ -734,6 +741,9 @@ function agentDraftFromConfig(
     disabledTools: [...(agent.disabledTools ?? [])],
     customInstructions: agent.customInstructions ?? "",
     systemPromptTemplate: agent.systemPromptTemplate ?? "",
+    // A configuration stored before the lifetime was configurable names none, and reads
+    // as the standard one — the same reading gg gives it.
+    promptCacheTtl: agent.promptCacheTtl ?? "standard",
     // Filled in by [resolveAgentReferences], which needs every profile's id.
     subagents: [],
   };
@@ -1183,6 +1193,11 @@ function agentConfigFromDraft(
       : {}),
     ...(custom ? { customInstructions: custom } : {}),
     ...(template.trim() ? { systemPromptTemplate: template } : {}),
+    // The standard lifetime is the default, so an agent left on it writes no key — which is
+    // what keeps a configuration that predates the knob byte-identical after a round-trip.
+    ...(agent.promptCacheTtl !== "standard"
+      ? { promptCacheTtl: agent.promptCacheTtl }
+      : {}),
     ...(subagents.length ? { subagents } : {}),
   };
 }

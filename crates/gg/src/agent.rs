@@ -396,7 +396,9 @@ impl SlotAccounting {
 ///
 /// A [`GgSlotBinding`] is still the [factory](ClientFactory)'s input DTO (it keys purely on the
 /// model id); its `slot` field carries the profile name so the resolved model is attributed to the
-/// right profile in telemetry.
+/// right profile in telemetry, and its
+/// [prompt-cache lifetime](GgAgentConfig::prompt_cache_ttl) carries this profile's choice through
+/// to the client built for it.
 fn profile_binding(set: &GgCapabilitySet, profile: &str) -> Result<GgSlotBinding, String> {
     let agent = set.agent(profile).ok_or_else(|| {
         format!("no `{profile}` agent profile is declared; there is no model to run")
@@ -404,7 +406,7 @@ fn profile_binding(set: &GgCapabilitySet, profile: &str) -> Result<GgSlotBinding
     let model_id = agent.resolved_model_id().ok_or_else(|| {
         format!("the `{profile}` agent profile has no model bound; there is no model to run")
     })?;
-    Ok(GgSlotBinding::new(profile, model_id))
+    Ok(GgSlotBinding::new(profile, model_id).with_prompt_cache_ttl(agent.prompt_cache_ttl))
 }
 
 /// Validate a run's [agent profiles](GgAgentConfig) before launch: the set must declare at least
@@ -2169,7 +2171,9 @@ async fn run_agent(
     // A handoff strategy condenses on a **second** model, resolved through the same factory every
     // agent's own model is. A named model that will not resolve is a misconfiguration, not a reason
     // to stop compacting — a run that stopped compacting would overflow its window a few turns
-    // later — so it is reported loudly and the agent's own client stands in.
+    // later — so it is reported loudly and the agent's own client stands in. This binding keeps the
+    // standard prompt-cache lifetime whatever the agent chose: a handoff is a one-shot summary
+    // request, so an extended entry would be paid for and never read.
     if let Some(model) = compaction::handoff_model_id(&profile) {
         let binding = GgSlotBinding::new(COMPACTION_SLOT, &model);
         match orch.factory.client_for(&binding) {

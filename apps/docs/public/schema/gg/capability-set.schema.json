@@ -35,6 +35,10 @@
           "description": "The profile's name, unique within a set. `\"Root\"` ([`ROOT_AGENT`]) for the\nfirst profile.",
           "type": "string"
         },
+        "promptCacheTtl": {
+          "$ref": "#/$defs/GgPromptCacheTtl",
+          "description": "How long this agent asks the provider to keep the **stable** entries of its\n[prompt cache](GgPromptCacheTtl) — the knob that decides whether its opening context is\nstill cached when a slow turn comes back. Standard (the provider's five minutes) unless an\noperator opts this profile into the extended lifetime, because the extended one is charged\na higher write premium and is only worth it for an agent whose turns are long enough, or\nspread far enough apart, to outlive five minutes."
+        },
         "subagents": {
           "description": "The other agents this agent may put to work — its delegation **roster**. Each entry names\na target agent (which may be this agent itself), the [scopes](GgSubagentRef::scopes) it may\nbe used in (spawnable subagent, issue implementer, issue reviewer), and a caller-scoped\n[description](GgSubagentRef::description) telling this agent when to use that target. Empty\nmeans this agent can name nobody — it neither spawns nor assigns.\n\nIndependent of the [subagents](CAPABILITY_SUBAGENTS) capability: the roster says *which*\nprofiles are namable, the capability says whether this agent may spawn at all.",
           "items": {
@@ -87,6 +91,21 @@
       },
       "required": ["name"],
       "type": "object"
+    },
+    "GgPromptCacheTtl": {
+      "description": "How long one [agent](GgAgentConfig::prompt_cache_ttl) asks the provider to keep the **stable**\nentries of its prompt cache — the opening context and the cached grid points a later turn reads,\nas opposed to the rolling tail, which is rewritten every turn and always takes the provider\ndefault.\n\nThis is a **per-agent** choice because it is a cost trade, and the trade comes out differently\nfor different agents in the same run. The extended lifetime is billed at a higher write premium\n(on Anthropic, 2× the base input rate against the standard lifetime's 1.25×), so it pays for\nitself only when it turns cache *misses* into hits:\n\n- An agent whose turns are long or far apart — one that runs builds and test suites, or one that\n  delegates and then sits idle while its subagents work — routinely comes back to its own\n  context more than five minutes later, and under the standard lifetime re-sends that whole\n  prefix at full price. [`Extended`](Self::Extended) is what stops that.\n- An agent that runs quickly, or is spawned once and never resumed, never reaches the standard\n  lifetime's expiry in the first place. Buying it an hour is pure premium on entries that would\n  have been read (or discarded) within the five minutes it already had.\n\n[`Standard`](Self::Standard) is therefore the default: it is the arrangement that cannot cost a\nconfiguration money it was not already spending, and an operator opts individual profiles into\nthe extended lifetime where the run's shape justifies it.",
+      "oneOf": [
+        {
+          "const": "standard",
+          "description": "The provider's default lifetime (five minutes), at the base write premium. Every cache\nentry this agent writes takes it, including the stable ones.",
+          "type": "string"
+        },
+        {
+          "const": "extended",
+          "description": "The extended lifetime (one hour) on this agent's stable entries, at the higher write\npremium. The rolling tail still takes the provider default: it is superseded within seconds,\nso an hour would buy nothing and be charged for it.",
+          "type": "string"
+        }
+      ]
     },
     "GgRunLimits": {
       "description": "The **run-level guardrails** a gg run is bounded by: the [execution ceilings](GgLimitKind) that\nstop a session and record which one stopped it, plus the\n[parallelism cap](Self::max_parallel) that bounds how much of the run happens at once.\n\nDeliberately **not** a [capability](GgCapabilityConfig): a capability is a feature under\nablation, with tools and an on/off arm a study varies; a ceiling is an operator's guardrail\nthat applies to every capability and to both execution modes at once. They live on the\n[capability set](GgCapabilitySet) rather than on the [launch envelope](GgInvocation) because\nthe set is what a run **records**, so a run stopped by a ceiling carries both the\n[breach](GgSessionSummary::limit_hit) and the [ceilings](GgSessionSummary::limits) that\nproduced it — where limits on the invocation would let a run record *which* ceiling was hit\nwhile making *what the ceiling was* unrecoverable.\n\n**The defaults catch a stuck run without capping a productive one.** gg's host (The Test\nCabinet) already enforces a wall-clock cap on every run, so a turn ceiling is redundant as the\nbackstop it used to be and mostly just cuts a run short before it is done — which is why the\nturn ceiling is now **unbounded** when unset. What is armed by default instead are the two error\nceilings that end a run which is *failing* rather than merely *long*: **5 consecutive errors**,\nand an **error rate above 0.4 over the last 50 turns**. Runtime and cost stay off when unset —\nthe host owns the clock, and gg will not invent a spend ceiling nobody asked for. A field set to\na value that cannot bound anything — a zero window, a negative rate, a rate above `1.0` — is a\nstartup warning and is ignored, never an error, on the same terms as an unknown name in\n[`disabled_tools`](GgAgentConfig::disabled_tools); a **partially** declared error rate (a rate\nwithout a window, or a window without a rate) is likewise a warning and no ceiling, and does not\nfall back to the default. The run records the ceilings that were actually in force on\n[`GgSessionSummary::limits`], so a default is a recorded fact rather than a hidden one.\n\nSee the [execution-limits](https://docs.testcabinet.ai/gg/execution-limits/) page for how each\nceiling is accounted (per agent or run-wide) and what breaching it does to the run.",

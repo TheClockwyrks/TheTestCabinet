@@ -188,7 +188,8 @@ fn main() -> Result<()> {
         TsModule {
             file: "gg.ts",
             decls: ts_decls![&cfg;
-                gg::GgAgentConfig, gg::GgSubagentRef, gg::GgSubagentScope, gg::GgModelSlot,
+                gg::GgAgentConfig, gg::GgSubagentRef, gg::GgSubagentScope,
+                gg::GgPromptCacheTtl, gg::GgModelSlot,
                 gg::GgCapabilityConfig, gg::GgCapabilitySet,
                 gg::GgContextSource, gg::GgContextSourceUsage,
                 gg::GgPromptRef, gg::GgLoggedToolCall, gg::GgLoggedImage,
@@ -345,6 +346,7 @@ fn main() -> Result<()> {
                 "GgAgentConfig",
                 "GgSubagentRef",
                 "GgSubagentScope",
+                "GgPromptCacheTtl",
                 "GgCapabilityConfig",
                 "GgModelSlot",
                 "GgRunLimits",

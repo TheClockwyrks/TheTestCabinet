@@ -63,7 +63,7 @@ use std::time::Duration;
 
 use serde::Deserialize;
 use serde_json::{Value, json};
-use test_cabinet_core::gg::{GgSlotBinding, ROOT_AGENT};
+use test_cabinet_core::gg::{GgPromptCacheTtl, GgSlotBinding, ROOT_AGENT};
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
 use crate::model::{
@@ -244,6 +244,11 @@ pub struct OpenRouterClient {
     /// intermediary that filters one of them can quietly cost the run its cache). `None` leaves
     /// the key off the wire entirely.
     session_key: Option<String>,
+    /// The [lifetime](CacheTtl) this client's requests ask for on their **stable** cache markers —
+    /// the [choice](GgPromptCacheTtl) the agent profile this client was resolved for made. Per
+    /// client rather than per run: a client serves one agent, and that is the granularity at which
+    /// the extended lifetime is worth its premium.
+    stable_ttl: CacheTtl,
 }
 
 impl OpenRouterClient {
@@ -251,6 +256,10 @@ impl OpenRouterClient {
     /// `/chat/completions`); pass an injected `http` and a test `base_url` to exercise
     /// it offline. `session_key` is the stable [sticky-session key](build_request_body) this
     /// client stamps on every request; `None` sends none.
+    ///
+    /// The prompt cache takes the [standard lifetime](CacheTtl::Standard); a client for an agent
+    /// configured for the extended one is built through
+    /// [`with_prompt_cache_ttl`](Self::with_prompt_cache_ttl).
     pub fn new(
         base_url: impl Into<String>,
         http: reqwest::Client,
@@ -266,7 +275,16 @@ impl OpenRouterClient {
             api_key: api_key.into(),
             retry,
             session_key,
+            stable_ttl: CacheTtl::Standard,
         }
+    }
+
+    /// This client with `ttl` as the [lifetime](CacheTtl) its stable cache markers ask for — the
+    /// agent profile's [configured choice](GgPromptCacheTtl), which
+    /// [`client_for_slot`] carries in on the binding.
+    pub fn with_prompt_cache_ttl(mut self, ttl: GgPromptCacheTtl) -> Self {
+        self.stable_ttl = ttl.into();
+        self
     }
 
     /// Build a live client for `binding`, reading `OPENROUTER_API_KEY` from the
@@ -294,7 +312,8 @@ impl OpenRouterClient {
             api_key,
             RetryPolicy::default(),
             session_key.map(str::to_string),
-        ))
+        )
+        .with_prompt_cache_ttl(binding.prompt_cache_ttl))
     }
 
     /// The chat-completions URL for this client's base.
@@ -310,7 +329,13 @@ impl ModelClient for OpenRouterClient {
         messages: &[Message],
         tools: &[ToolDefinition],
     ) -> Result<ModelResponse, ModelError> {
-        let body = build_request_body(&self.model_id, messages, tools, self.session_key.as_deref());
+        let body = build_request_body(
+            &self.model_id,
+            messages,
+            tools,
+            self.session_key.as_deref(),
+            self.stable_ttl,
+        );
         self.send(body, messages).await
     }
 
@@ -327,6 +352,7 @@ impl ModelClient for OpenRouterClient {
             messages,
             tool,
             self.session_key.as_deref(),
+            self.stable_ttl,
         );
         self.send(body, messages).await
     }
@@ -493,13 +519,19 @@ fn truncate(body: &str) -> String {
 /// On a model that [needs them](requires_cache_markers), the messages the
 /// [breakpoint policy](cache_breakpoints) selects are additionally stamped with an explicit
 /// `cache_control` marker, which is what actually *enables* the prompt cache on a provider that
-/// does not cache implicitly — see that function for why the key alone is not enough, and
-/// [`CacheTtl`] for the lifetime each marker asks for.
+/// does not cache implicitly — see that function for why the key alone is not enough.
+///
+/// `stable_ttl` is the [lifetime](CacheTtl) this request's **stable** markers ask for — the running
+/// agent's [configured choice](GgPromptCacheTtl), which is per agent because whether an hour is
+/// worth its write premium depends on how that agent's turns are shaped. The tail always takes
+/// [`CacheTtl::Standard`], so `Standard` here produces exactly the unqualified markers gg sent
+/// before the lifetime was configurable.
 pub fn build_request_body(
     model_id: &str,
     messages: &[Message],
     tools: &[ToolDefinition],
     session_key: Option<&str>,
+    stable_ttl: CacheTtl,
 ) -> Value {
     let breakpoints = if requires_cache_markers(model_id) {
         cache_breakpoints(messages)
@@ -509,17 +541,18 @@ pub fn build_request_body(
     // The last breakpoint is the rolling tail; every earlier one names a prefix meant to survive
     // between turns (see `CacheTtl`). A *lone* breakpoint is the exception: the thread has not
     // started, so it is the opening context's anchor — the run's single most valuable entry, and
-    // the one a long first turn would otherwise let expire before the second turn could read it.
-    let rolling = (breakpoints.len() > 1).then(|| breakpoints[breakpoints.len() - 1]);
+    // the one a long first turn would otherwise let expire before the second turn could read it —
+    // so it counts as stable rather than as a tail.
+    let tail = (breakpoints.len() > 1).then(|| breakpoints[breakpoints.len() - 1]);
     let messages: Vec<Value> = messages
         .iter()
         .enumerate()
         .map(|(index, message)| {
             let ttl = breakpoints.contains(&index).then(|| {
-                if Some(index) == rolling {
-                    CacheTtl::Rolling
+                if Some(index) == tail {
+                    CacheTtl::Standard
                 } else {
-                    CacheTtl::Extended
+                    stable_ttl
                 }
             });
             wire_message(message, ttl)
@@ -571,8 +604,15 @@ pub fn build_required_tool_request_body(
     messages: &[Message],
     tool: &ToolDefinition,
     session_key: Option<&str>,
+    stable_ttl: CacheTtl,
 ) -> Value {
-    let mut body = build_request_body(model_id, messages, std::slice::from_ref(tool), session_key);
+    let mut body = build_request_body(
+        model_id,
+        messages,
+        std::slice::from_ref(tool),
+        session_key,
+        stable_ttl,
+    );
     body["tool_choice"] = json!({
         "type": "function",
         "function": { "name": tool.name },
@@ -620,37 +660,54 @@ pub fn requires_cache_markers(model_id: &str) -> bool {
 
 /// How long a [breakpoint](cache_breakpoints) asks the provider to keep its cache entry.
 ///
-/// gg's breakpoints are not interchangeable, so their lifetimes are not either:
+/// Within one request gg's breakpoints are not interchangeable, so their lifetimes need not be
+/// either:
 ///
-/// - **`Extended`** — the anchor and the grid points, which name prefixes deliberately chosen to
-///   still be prefixes several turns from now. These are what a turn *reads*, so they have to
-///   outlive the gap between two of an agent's turns. Under the five-minute default they often do
-///   not: see [`CACHE_EXTENDED_TTL`].
-/// - **`Rolling`** — the tail, which is rewritten every turn by construction and is read exactly
-///   once, by the turn immediately after it. It gets the default lifetime; buying an hour for
-///   material that is superseded in seconds would be paying the higher write premium for nothing.
-///   A request whose *only* breakpoint is the anchor has no rolling marker at all — see
+/// - The **stable** markers — the anchor and the grid points — name prefixes deliberately chosen to
+///   still be prefixes several turns from now. These are what a turn *reads*, so they are the only
+///   ones an [`Extended`](Self::Extended) lifetime can help: see [`CACHE_EXTENDED_TTL`]. Whether
+///   they actually ask for it is the running agent's
+///   [configured lifetime](GgPromptCacheTtl), passed into [`build_request_body`].
+/// - The **tail** is rewritten every turn by construction and is read exactly once, by the turn
+///   immediately after it. It always takes [`Standard`](Self::Standard); buying an hour for
+///   material that is superseded in seconds would be paying the higher write premium for nothing. A
+///   request whose *only* breakpoint is the anchor has no tail marker at all — see
 ///   [`build_request_body`].
 ///
 /// Mixing the two in one request is supported, and the stable markers all precede the tail, which
-/// is the order the providers that care require. The split is also why the arrangement is close to
-/// cost-neutral: the extended premium applies to the writes at the stable markers, which the whole
-/// point of the design is to *stop* re-paying every turn.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// is the order the providers that care require. The split is also what keeps the extended
+/// lifetime close to cost-neutral for the agents configured with it: the premium falls on the
+/// writes at the stable markers, which is what an extended lifetime exists to *stop* re-paying for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CacheTtl {
-    /// The provider default (five minutes) — the rolling tail.
-    Rolling,
-    /// [`CACHE_EXTENDED_TTL`] — the anchor and grid points.
+    /// The provider default (five minutes) — the tail always, and every marker on an agent left at
+    /// the [standard](GgPromptCacheTtl::Standard) lifetime.
+    #[default]
+    Standard,
+    /// [`CACHE_EXTENDED_TTL`] — the stable markers of an agent configured for the
+    /// [extended](GgPromptCacheTtl::Extended) lifetime.
     Extended,
 }
 
 impl CacheTtl {
     /// The `cache_control` value this lifetime serializes to. The default lifetime is expressed by
-    /// *omitting* `ttl`, so the rolling marker is byte-identical to an unqualified breakpoint.
+    /// *omitting* `ttl`, so the standard marker is byte-identical to an unqualified breakpoint.
     fn marker(self) -> Value {
         match self {
-            Self::Rolling => json!({ "type": "ephemeral" }),
+            Self::Standard => json!({ "type": "ephemeral" }),
             Self::Extended => json!({ "type": "ephemeral", "ttl": CACHE_EXTENDED_TTL }),
+        }
+    }
+}
+
+impl From<GgPromptCacheTtl> for CacheTtl {
+    /// The wire lifetime an [agent profile's](GgPromptCacheTtl) configured choice asks for on its
+    /// stable breakpoints. The two enums are deliberately separate: the configuration is a stored
+    /// contract, this is the request-building detail it selects.
+    fn from(configured: GgPromptCacheTtl) -> Self {
+        match configured {
+            GgPromptCacheTtl::Standard => Self::Standard,
+            GgPromptCacheTtl::Extended => Self::Extended,
         }
     }
 }
@@ -2639,7 +2696,9 @@ pub fn provider_for(binding: &GgSlotBinding) -> ProviderKind {
 ///
 /// `session_key` is the session-wide [sticky-session key](build_request_body) a live client stamps
 /// on every request (the mock client ignores it). It is the run's session id, so every agent's
-/// client carries the same value — see [`OpenRouterClient::from_binding`].
+/// client carries the same value — see [`OpenRouterClient::from_binding`]. The binding's
+/// [prompt-cache lifetime](GgSlotBinding::prompt_cache_ttl), by contrast, is the *agent's* own
+/// choice and differs from one profile to the next.
 pub fn client_for_slot(
     binding: &GgSlotBinding,
     session_key: Option<&str>,

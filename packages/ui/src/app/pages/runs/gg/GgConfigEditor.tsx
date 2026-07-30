@@ -638,6 +638,40 @@ export function GgConfigEditor({
         </p>
       )}
 
+      {/* How long this agent's stable prompt-cache entries live. Per agent because it is a
+          cost trade that comes out differently for each: the extended lifetime is charged a
+          higher write premium, and only earns it back on an agent whose turns are slow or
+          far enough apart to outlive the provider default. */}
+      <div className={gg.slotFields}>
+        <label className={`${runExec.field} ${gg.cacheTtlField}`}>
+          <FieldLabel
+            label="Prompt cache"
+            hint="How long this agent asks the provider to keep its stable cache entries — its opening context and the cached points a later turn reads. One hour costs a higher write premium (on Anthropic, 2× the input rate against 5 minutes' 1.25×), and only pays for itself on an agent whose turns are long, or spread far enough apart, that five minutes would have expired before the next one. An agent that runs quickly and is never resumed should stay on 5 minutes."
+          />
+          <select
+            className={runExec.select}
+            value={agent.promptCacheTtl}
+            disabled={readOnly}
+            onChange={(e) =>
+              patchAgent({
+                promptCacheTtl: e.target
+                  .value as GgAgentDraft["promptCacheTtl"],
+              })
+            }
+          >
+            <option value="standard">5 minutes (provider default)</option>
+            <option value="extended">1 hour (extended, costs more)</option>
+          </select>
+        </label>
+        {agent.promptCacheTtl === "extended" && (
+          <p className={gg.cacheTtlNote}>
+            Worth it for an agent that delegates, or whose turns run builds and
+            test suites; wasted on one that answers quickly and is never
+            resumed.
+          </p>
+        )}
+      </div>
+
       {/* The full capability catalog, grouped by concern, collapsible — this agent's
           capabilities. */}
       <p className={`${runExec.sectionLabel} ${runExec.sectionLabelBackdrop}`}>

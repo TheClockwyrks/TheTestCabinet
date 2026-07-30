@@ -86,7 +86,8 @@ carries:
   code](/gg/responses-as-code/) is a per-agent choice too, and one run can mix
   code-emitting and tool-calling agents;
 - **one model**, either pinned outright or deferred to a run-level [model
-  slot](#model-slots) (below);
+  slot](#model-slots) (below), and the
+  [prompt-cache lifetime](#prompt-cache-lifetime) its requests ask for;
 - optional **custom instructions** — operator prose inserted into the agent's
   [system prompt](/gg/prompts/) — and, for full control, a complete **system-prompt
   template override** (the editor seeds it with gg's built-in template so the normal
@@ -137,6 +138,32 @@ deferred binding to a concrete model**, so the capability set a run carries — 
 records — is fully pinned, which is what keeps
 [result aggregation](/gg/result-aggregation/) sliceable by "which model ran this
 agent". The backend rejects a launch that leaves one unresolved, naming the agent.
+
+## Prompt cache lifetime
+
+Each agent chooses how long the provider is asked to keep its **stable**
+[prompt-cache](/gg/overview/#prompt-caching) entries — its opening context and the
+cached points a later turn reads:
+
+- **5 minutes (provider default).** What every agent takes unless told otherwise, and
+  what every configuration written before this setting existed reads as.
+- **1 hour (extended).** The stable entries survive a long gap between two of the
+  agent's turns, at a higher write premium — on Anthropic, 2× the base input rate
+  against the default's 1.25×.
+
+It is per agent because the trade comes out differently for each one in the same run. An
+agent that delegates and then waits, or whose turns run builds and test suites, routinely
+comes back to its own context more than five minutes later; under the default it re-sends
+that whole prefix at full price, and the extended lifetime pays for itself the first time
+it does not. An agent that answers quickly and is never resumed never reaches the
+five-minute expiry in the first place, so buying it an hour is premium paid on entries
+that would have been read — or discarded — anyway.
+
+The rolling **tail** marker always takes the provider default, whatever the agent is set
+to: it is rewritten every turn and read exactly once, so an hour would buy nothing and be
+charged for it. Setting this on an agent bound to a model that caches implicitly
+(everything outside the Anthropic family) changes nothing — gg sends those providers no
+markers at all.
 
 ## Storage
 

@@ -38,9 +38,9 @@ use test_cabinet_core::gg::{
     CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE,
     CAPABILITY_SUBAGENTS, CAPABILITY_WORKFLOWS, GG_REPLAY_ARTIFACT_PATH, GgAgentConfig,
     GgAgentStatus, GgCapabilityConfig, GgCapabilitySet, GgContextAction, GgContextSource,
-    GgIssueReviewPhase, GgIssueStatus, GgPlanPhase, GgReplayEntryKind, GgReplayRecord,
-    GgSessionSummary, GgSlotBinding, GgSubagentRef, GgSubagentScope, GgTelemetryEvent,
-    GgTelemetryKind, GgWorkflowPhase, ROOT_AGENT,
+    GgIssueReviewPhase, GgIssueStatus, GgPlanPhase, GgPromptCacheTtl, GgReplayEntryKind,
+    GgReplayRecord, GgSessionSummary, GgSlotBinding, GgSubagentRef, GgSubagentScope,
+    GgTelemetryEvent, GgTelemetryKind, GgWorkflowPhase, ROOT_AGENT,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
@@ -4315,6 +4315,38 @@ async fn run_tags_launch_failure_events_as_root() {
             .iter()
             .any(|e| matches!(e.kind, GgTelemetryKind::SlotUsage { .. }))
     );
+}
+
+/// Every agent resolves its client through its own profile, so the profile's
+/// [prompt-cache lifetime](GgAgentConfig::prompt_cache_ttl) rides along on the binding — a run in
+/// which the delegating root buys the extended lifetime and its short-lived worker does not is one
+/// configuration, resolved per agent.
+#[test]
+fn profile_binding_carries_the_profiles_prompt_cache_lifetime() {
+    let set = GgCapabilitySet {
+        agents: vec![
+            GgAgentConfig {
+                model_id: "mock/a".to_string(),
+                prompt_cache_ttl: GgPromptCacheTtl::Extended,
+                subagents: vec![GgSubagentRef::any("worker")],
+                ..GgAgentConfig::root()
+            },
+            GgAgentConfig {
+                name: "worker".to_string(),
+                model_id: "mock/b".to_string(),
+                ..GgAgentConfig::root()
+            },
+        ],
+        ..GgCapabilitySet::default()
+    };
+
+    let root = profile_binding(&set, ROOT_AGENT).expect("the root profile resolves");
+    assert_eq!(root.model_id, "mock/a");
+    assert_eq!(root.prompt_cache_ttl, GgPromptCacheTtl::Extended);
+
+    let worker = profile_binding(&set, "worker").expect("the worker profile resolves");
+    assert_eq!(worker.model_id, "mock/b");
+    assert_eq!(worker.prompt_cache_ttl, GgPromptCacheTtl::Standard);
 }
 
 /// Agent-profile validation rejects the launch-blocking misconfigurations and accepts a good set.

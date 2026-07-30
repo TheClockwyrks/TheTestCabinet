@@ -231,6 +231,25 @@ describe("gg agents", () => {
     ).toContain("extra");
   });
 
+  it("round-trips the prompt-cache lifetime per agent, writing no key at the default", () => {
+    const configured = set({
+      modelSlots: [{ name: "primary" }],
+      agents: [
+        agent({ modelSlot: "primary", promptCacheTtl: "extended" }),
+        agent({ name: "scout", modelId: "openai/o-fixed" }),
+      ],
+    });
+    const draft = draftFromCapabilitySet(configured);
+    expect(draft.agents[0]!.promptCacheTtl).toBe("extended");
+    // An agent that names no lifetime — every configuration stored before the knob
+    // existed — loads as the provider default rather than as the priced-up one.
+    expect(draft.agents[1]!.promptCacheTtl).toBe("standard");
+
+    const back = capabilitySetFromDraft(draft, null);
+    expect(back.agents[0]!.promptCacheTtl).toBe("extended");
+    expect(back.agents[1]!.promptCacheTtl).toBeUndefined();
+  });
+
   it("refuses structural agent errors", () => {
     const draft = emptyDraft();
     draft.agents.push(agentDraft(draft, "reviewer"));
