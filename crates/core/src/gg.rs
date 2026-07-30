@@ -255,6 +255,93 @@ pub const MEMORY_STRATEGY_MARKDOWN: &str = "markdown";
 /// [`max_results`](GgMemoryCaps::max_results) memories.
 pub const MEMORY_STRATEGY_KEYWORD_SEARCH: &str = "keyword-search";
 
+/// The [`params`](GgCapabilityConfig::params) key on the [memories](CAPABILITY_MEMORIES)
+/// capability naming which memory **instance** an agent instance binds to — its
+/// [scope](GgMemoryScope).
+///
+/// Meaningful only where memories are enabled: a profile that sets it with the capability off is
+/// reported as a launch warning, because the two together describe an intent gg cannot honour.
+/// An unrecognized value falls back to [`isolated`](GgMemoryScope::Isolated) and warns, in line
+/// with how every other unrecognized capability *value* is treated.
+///
+/// See [memories](https://docs.testcabinet.ai/gg/memories/) for what each scope does, and
+/// [`MODULE_PARAM_OWNERSHIP`] for the orthogonal question of whether the bound instance is carried
+/// in the holder's prompt.
+pub const MEMORY_PARAM_SCOPE: &str = "scope";
+
+/// Which [memory](CAPABILITY_MEMORIES) instance an agent instance binds to — the
+/// [`scope`](MEMORY_PARAM_SCOPE) param, resolved.
+///
+/// Memory used to be strictly per agent instance: a subagent started with an empty notebook and
+/// nothing it wrote was ever seen by anyone else. That is still the default, and it is still the
+/// right answer for an ablation that wants each agent measured on its own curation. The other
+/// three bind the *same* store to several holders, which is what makes a study of shared,
+/// accumulated knowledge possible at all.
+///
+/// Two rules make the four coherent, and they are the ones a configuration's reader has to know:
+///
+/// 1. **[`ReadOnly`](Self::ReadOnly) only ever restricts an inherited handle.** An agent that ends
+///    up with a fresh instance under `read-only` may write it — a private notebook nobody may
+///    write is not a feature.
+/// 2. **Write access is a property of the holder, not of the store.** So a read-only agent's
+///    [`Inherited`](Self::Inherited) subagent gets a read/**write** handle onto the same store.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum GgMemoryScope {
+    /// A fresh instance per agent **instance**: what one agent writes, no other agent ever sees.
+    /// The default, and gg's only behaviour before scoping existed.
+    #[default]
+    Isolated,
+    /// One instance per agent **profile**, shared by every instance of it in the run — including
+    /// instances running in parallel, which are then linked holders of one store and are told
+    /// about each other's writes.
+    Shared,
+    /// A subagent binds its **spawner's** instance, read/write; an agent spawned any other way
+    /// (the root, an issue's implementer, a reviewer or judge) gets its own. Chains: a subagent of
+    /// a subagent inherits the instance its parent inherited, however deep.
+    Inherited,
+    /// As [`Inherited`](Self::Inherited), but this holder may **not** write: it is offered the
+    /// read calls alone, and a write reaching gg any other way is refused with an explanation
+    /// rather than silently dropped.
+    ReadOnly,
+}
+
+impl GgMemoryScope {
+    /// Every scope, in declaration order — what an editor offers and what a validation enumerates.
+    pub const ALL: [GgMemoryScope; 4] = [
+        GgMemoryScope::Isolated,
+        GgMemoryScope::Shared,
+        GgMemoryScope::Inherited,
+        GgMemoryScope::ReadOnly,
+    ];
+
+    /// The scope's wire spelling — the same string its
+    /// [serialization](GgMemoryScope#impl-Serialize-for-GgMemoryScope) produces, for the
+    /// [`MemoryState`](GgTelemetryKind::MemoryState) telemetry, prompt text and launch warnings.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            GgMemoryScope::Isolated => "isolated",
+            GgMemoryScope::Shared => "shared",
+            GgMemoryScope::Inherited => "inherited",
+            GgMemoryScope::ReadOnly => "read-only",
+        }
+    }
+
+    /// Whether a holder under this scope may end up **linked** to another holder — sharing one
+    /// store, and so owed a notice when another holder writes to it. False only for
+    /// [`Isolated`](Self::Isolated), whose instances are never shared with anyone.
+    pub fn may_link(self) -> bool {
+        !matches!(self, GgMemoryScope::Isolated)
+    }
+}
+
+impl std::fmt::Display for GgMemoryScope {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// The stable id of the Phase 1 tasks capability: the model's lightweight to-do list,
 /// a blocked-by DAG that survives compaction verbatim.
 pub const CAPABILITY_TASKS: &str = "tasks";
@@ -1428,6 +1515,15 @@ impl GgCapabilityConfig {
 /// An empty JSON object, the default for [`GgCapabilityConfig::params`].
 fn empty_params() -> Value {
     Value::Object(serde_json::Map::new())
+}
+
+/// `true`, for a boolean field whose back-compatible reading of an older record is "yes".
+///
+/// Used by [`MemoryState::writable`](GgTelemetryKind::MemoryState): every memory holder could
+/// write before read-only handles existed, so a record that does not carry the field describes a
+/// writable one.
+fn default_true() -> bool {
+    true
 }
 
 /// The default [execution mode](GgSessionSummary::execution_mode): traditional tool calling. Used
@@ -3580,6 +3676,19 @@ pub enum GgTelemetryKind {
         peak: GgMemoryPeak,
         /// The bounds these memories are kept within.
         caps: GgMemoryCaps,
+        /// The [scope](GgMemoryScope) the emitting agent binds this instance under — `isolated`,
+        /// `shared`, `inherited` or `read-only`. It is what tells the console that two agents'
+        /// memory panels are showing **one** store rather than two that happen to agree, which is
+        /// otherwise indistinguishable from a snapshot. Empty on records written before scoping
+        /// existed, which the console reads as the `isolated` every run then was.
+        #[serde(default)]
+        scope: String,
+        /// Whether the emitting agent may **write** this instance. `false` marks a
+        /// [read-only](GgMemoryScope::ReadOnly) inherited handle: the agent is shown the set and
+        /// offered the read calls, and every write call is withheld. Defaults to `true`, which is
+        /// what every holder was before read-only handles existed.
+        #[serde(default = "default_true")]
+        writable: bool,
     },
     /// One revision of one [memory](https://docs.testcabinet.ai/gg/memories/) — the
     /// append-only record of everything the model ever wrote to memory.

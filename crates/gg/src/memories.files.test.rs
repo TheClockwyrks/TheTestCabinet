@@ -98,6 +98,7 @@ fn markdown_limits_can_be_disabled_individually() {
     for n in 0..50 {
         store
             .create(
+                "",
                 &format!("memory-{n}"),
                 &"d".repeat(200),
                 &"x".repeat(20_000),
@@ -116,6 +117,7 @@ fn create_stores_the_contents_and_indexes_the_entry() {
     let mut store = markdown_store();
     assert_eq!(
         store.create(
+            "",
             "build-commands",
             "How to build and test",
             "cargo nextest run"
@@ -136,9 +138,9 @@ fn create_stores_the_contents_and_indexes_the_entry() {
 #[test]
 fn create_rejects_a_duplicate_slug_and_leaves_the_original() {
     let mut store = markdown_store();
-    store.create("dup", "d", "first").unwrap();
+    store.create("", "dup", "d", "first").unwrap();
     assert_eq!(
-        store.create("dup", "d2", "second").unwrap_err(),
+        store.create("", "dup", "d2", "second").unwrap_err(),
         MemoryError::Duplicate {
             name: "dup".to_string(),
             revise: "`edit_memory`",
@@ -159,14 +161,14 @@ fn create_rejects_a_malformed_slug() {
         "quote\"d",
         &"x".repeat(65),
     ] {
-        let err = store.create(bad, "d", "body").unwrap_err();
+        let err = store.create("", bad, "d", "body").unwrap_err();
         assert!(
             matches!(err, MemoryError::InvalidSlug(_)),
             "`{bad}` should be refused, got {err:?}"
         );
     }
     // The three separators a file name conventionally uses are fine.
-    assert!(store.create("build.commands_v2-b", "d", "body").is_ok());
+    assert!(store.create("", "build.commands_v2-b", "d", "body").is_ok());
 }
 
 /// The index entry is the memory's only presence in the window under markdown, so a description is
@@ -174,12 +176,15 @@ fn create_rejects_a_malformed_slug() {
 #[test]
 fn a_description_is_required_only_where_there_is_an_index() {
     assert_eq!(
-        markdown_store().create("m", "  ", "body").unwrap_err(),
+        markdown_store().create("", "m", "  ", "body").unwrap_err(),
         MemoryError::EmptyField("description")
     );
 
     let mut keyword = keyword_store();
-    assert_eq!(keyword.create("m", "", "body"), Ok(MemoryChange::Written));
+    assert_eq!(
+        keyword.create("", "m", "", "body"),
+        Ok(MemoryChange::Written)
+    );
     assert_eq!(keyword.read("m").unwrap().description(), "");
     // The index line of a memory without a description is just its slug.
     assert_eq!(keyword.index_text(), "- `m`");
@@ -188,7 +193,7 @@ fn a_description_is_required_only_where_there_is_an_index() {
 #[test]
 fn create_rejects_empty_contents() {
     assert_eq!(
-        markdown_store().create("m", "d", "   ").unwrap_err(),
+        markdown_store().create("", "m", "d", "   ").unwrap_err(),
         MemoryError::EmptyField("contents")
     );
 }
@@ -202,7 +207,7 @@ fn create_enforces_the_per_memory_limit() {
     };
     let mut store = MemoryStore::new(strategy, caps);
     assert_eq!(
-        store.create("m", "d", "01234567890").unwrap_err(),
+        store.create("", "m", "d", "01234567890").unwrap_err(),
         MemoryError::PerMemoryCap {
             name: "m".to_string(),
             len: 11,
@@ -224,10 +229,10 @@ fn create_is_refused_when_the_index_entry_would_not_fit() {
         ..MemoryCaps::for_strategy(strategy)
     };
     let mut store = MemoryStore::new(strategy, caps);
-    store.create("aaa", "dd", "body").unwrap();
+    store.create("", "aaa", "dd", "body").unwrap();
     assert_eq!(store.index_len(), 12);
 
-    let err = store.create("bbb", "dd", "body").unwrap_err();
+    let err = store.create("", "bbb", "dd", "body").unwrap_err();
     assert!(
         matches!(err, MemoryError::IndexCap { cap: 12, .. }),
         "{err:?}"
@@ -236,8 +241,8 @@ fn create_is_refused_when_the_index_entry_would_not_fit() {
     assert_eq!(store.count(), 1, "a refused create must not be stored");
 
     // Deleting frees the room again, so the ceiling is a budget rather than a one-way ratchet.
-    store.delete("aaa").unwrap();
-    assert!(store.create("bbb", "dd", "body").is_ok());
+    store.delete("", "aaa").unwrap();
+    assert!(store.create("", "bbb", "dd", "body").is_ok());
 }
 
 /// The length the index limit measures is the text the pinned block renders, entry separators
@@ -245,8 +250,8 @@ fn create_is_refused_when_the_index_entry_would_not_fit() {
 #[test]
 fn the_index_limit_measures_the_rendered_index() {
     let mut store = markdown_store();
-    store.create("aaa", "one", "body").unwrap();
-    store.create("bbb", "two", "body").unwrap();
+    store.create("", "aaa", "one", "body").unwrap();
+    store.create("", "bbb", "two", "body").unwrap();
     assert_eq!(store.index_text(), "- `aaa` — one\n- `bbb` — two");
     assert_eq!(store.index_len(), store.index_text().chars().count());
 }
@@ -259,10 +264,10 @@ fn keyword_search_enforces_a_count_limit_when_one_is_configured() {
         ..MemoryCaps::for_strategy(strategy)
     };
     let mut store = MemoryStore::new(strategy, caps);
-    store.create("a", "", "one").unwrap();
-    store.create("b", "", "two").unwrap();
+    store.create("", "a", "", "one").unwrap();
+    store.create("", "b", "", "two").unwrap();
     assert_eq!(
-        store.create("c", "", "three").unwrap_err(),
+        store.create("", "c", "", "three").unwrap_err(),
         MemoryError::CountCap {
             cap: 2,
             revise: "`edit_memory`",
@@ -278,7 +283,7 @@ fn keyword_search_enforces_a_count_limit_when_one_is_configured() {
 #[test]
 fn read_returns_the_contents_and_needs_an_existing_slug() {
     let mut store = keyword_store();
-    store.create("m", "d", "the contents").unwrap();
+    store.create("", "m", "d", "the contents").unwrap();
     assert_eq!(store.read("m").unwrap().body(), "the contents");
     assert_eq!(
         store.read("nope").unwrap_err(),
@@ -296,9 +301,11 @@ fn read_returns_the_contents_and_needs_an_existing_slug() {
 #[test]
 fn edit_replaces_one_occurrence_in_place() {
     let mut store = markdown_store();
-    store.create("m", "d", "the old line\nand another").unwrap();
+    store
+        .create("", "m", "d", "the old line\nand another")
+        .unwrap();
     assert_eq!(
-        store.edit("m", "the old line", "the new line"),
+        store.edit("", "m", "the old line", "the new line"),
         Ok(MemoryChange::Updated)
     );
     assert_eq!(store.read("m").unwrap().body(), "the new line\nand another");
@@ -309,9 +316,9 @@ fn edit_replaces_one_occurrence_in_place() {
 #[test]
 fn edit_can_append_by_quoting_the_tail() {
     let mut store = markdown_store();
-    store.create("m", "d", "first line").unwrap();
+    store.create("", "m", "d", "first line").unwrap();
     store
-        .edit("m", "first line", "first line\nsecond line")
+        .edit("", "m", "first line", "first line\nsecond line")
         .unwrap();
     assert_eq!(store.read("m").unwrap().body(), "first line\nsecond line");
 }
@@ -319,16 +326,16 @@ fn edit_can_append_by_quoting_the_tail() {
 #[test]
 fn edit_requires_a_unique_match() {
     let mut store = markdown_store();
-    store.create("m", "d", "same same").unwrap();
+    store.create("", "m", "d", "same same").unwrap();
     assert_eq!(
-        store.edit("m", "same", "other").unwrap_err(),
+        store.edit("", "m", "same", "other").unwrap_err(),
         MemoryError::EditNotUnique {
             name: "m".to_string(),
             occurrences: 2,
         }
     );
     assert_eq!(
-        store.edit("m", "absent", "x").unwrap_err(),
+        store.edit("", "m", "absent", "x").unwrap_err(),
         MemoryError::EditNotFound {
             name: "m".to_string()
         }
@@ -342,8 +349,8 @@ fn edit_requires_a_unique_match() {
 #[test]
 fn edit_refuses_to_empty_a_memory_and_names_the_alternative() {
     let mut store = markdown_store();
-    store.create("m", "d", "all of it").unwrap();
-    let err = store.edit("m", "all of it", "   ").unwrap_err();
+    store.create("", "m", "d", "all of it").unwrap();
+    let err = store.edit("", "m", "all of it", "   ").unwrap_err();
     assert_eq!(err, MemoryError::WouldEmpty("m".to_string()));
     assert!(err.to_string().contains("delete"));
     assert_eq!(store.read("m").unwrap().body(), "all of it");
@@ -358,8 +365,10 @@ fn edit_enforces_the_per_memory_limit() {
         ..MemoryCaps::for_strategy(strategy)
     };
     let mut store = MemoryStore::new(strategy, caps);
-    store.create("m", "d", "0123456789").unwrap();
-    let err = store.edit("m", "0123456789", "0123456789abc").unwrap_err();
+    store.create("", "m", "d", "0123456789").unwrap();
+    let err = store
+        .edit("", "m", "0123456789", "0123456789abc")
+        .unwrap_err();
     assert!(
         matches!(err, MemoryError::PerMemoryCap { cap: 12, .. }),
         "{err:?}"
@@ -371,15 +380,15 @@ fn edit_enforces_the_per_memory_limit() {
 fn edit_needs_an_existing_slug_and_a_search_string() {
     let mut store = markdown_store();
     assert_eq!(
-        store.edit("nope", "a", "b").unwrap_err(),
+        store.edit("", "nope", "a", "b").unwrap_err(),
         MemoryError::NotFound {
             name: "nope".to_string(),
             create: "`create_memory`",
         }
     );
-    store.create("m", "d", "body").unwrap();
+    store.create("", "m", "d", "body").unwrap();
     assert_eq!(
-        store.edit("m", "", "b").unwrap_err(),
+        store.edit("", "m", "", "b").unwrap_err(),
         MemoryError::EmptyField("search")
     );
 }
@@ -389,9 +398,9 @@ fn edit_needs_an_existing_slug_and_a_search_string() {
 #[test]
 fn delete_removes_the_memory_and_its_index_entry() {
     let mut store = markdown_store();
-    store.create("keep", "kept", "a").unwrap();
-    store.create("drop", "dropped", "b").unwrap();
-    assert_eq!(store.delete("drop"), Ok(MemoryChange::Deleted));
+    store.create("", "keep", "kept", "a").unwrap();
+    store.create("", "drop", "dropped", "b").unwrap();
+    assert_eq!(store.delete("", "drop"), Ok(MemoryChange::Deleted));
     assert_eq!(store.index_text(), "- `keep` — kept");
     assert_eq!(
         store.read("drop").unwrap_err(),
@@ -420,7 +429,7 @@ fn markdown_pins_the_index_alone() {
         .store()
         .lock()
         .unwrap()
-        .create("plan", "the plan", "the secret body")
+        .create("", "plan", "the plan", "the secret body")
         .unwrap();
     let block = runtime
         .context_block()
@@ -445,7 +454,7 @@ fn keyword_search_pins_nothing() {
         .store()
         .lock()
         .unwrap()
-        .create("m", "d", "body")
+        .create("", "m", "d", "body")
         .unwrap();
     assert!(runtime.context_block().is_none());
 }

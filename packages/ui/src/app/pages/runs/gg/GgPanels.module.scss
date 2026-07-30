@@ -1113,6 +1113,37 @@ $context-palette: (
   font-weight: 500;
 }
 
+// How this agent holds its memory instance, when it holds it with anyone else: the
+// scope it bound under, and — for a read-only inherited handle — that it may not write.
+// Absent entirely for an isolated instance, which is what memory has always been.
+.memoryScope {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: t.$space-2xs t.$space-xs;
+}
+
+.memoryScopeBadge {
+  padding: 0 t.$space-2xs;
+  border: 1px solid t.$color-border;
+  border-radius: t.$radius-sm;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 500;
+  color: t.$color-text-muted;
+
+  &[data-readonly] {
+    border-color: t.$color-warning;
+    color: t.$color-warning;
+  }
+}
+
+.memoryScopeNote {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
 // The per-memory revision history, collapsed by default.
 .memoryHistory {
   margin-top: t.$space-2xs;

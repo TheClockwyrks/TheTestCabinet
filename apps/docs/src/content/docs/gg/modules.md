@@ -59,7 +59,10 @@ There are exactly two ways to copy a module, and they are different things:
   see the other's writes. A fork never duplicates telemetry the original has not yet
   reported: one write is one event, on the stream of the agent that made it.
 - **Share** — a **linked** handle on the same store. What one holder writes, the other
-  reads.
+  reads. A new holder's watermarks start at the store's current head, so it is not handed a
+  backlog of everything that happened before it existed, and each holder reports only what
+  *it* did — see [linked memories](/gg/memories/#linked-instances-being-told-what-somebody-else-wrote),
+  the one place a share is reachable from a configuration today.
 
 Two kinds override the choice, and the reasons are worth knowing:
 
@@ -92,6 +95,11 @@ kind, one of four things happens:
    states the reset instead of performing a conversion nobody asked for.
 4. **Initialized fresh** — the receiving profile enables a capability the predecessor did not
    hold.
+
+One rule about caps applies only to a transfer, not to a share: a store several agents are
+curating **together** has one set of limits by construction, so a transfer re-points them
+only when the module's holder is its sole holder. Re-pointing them because one holder was
+replaced would silently change what the others may write.
 
 Two rules about limits:
 

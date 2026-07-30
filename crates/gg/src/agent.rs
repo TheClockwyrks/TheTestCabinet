@@ -128,13 +128,14 @@ use crate::healing::{
 use crate::limits::{
     AgentLimits, FatalFault, RunLimits, RunSpend, TurnErrorKind, TurnOutcome, resolve_run_limits,
 };
-use crate::memories::{MemoriesRuntime, MemoryStrategy};
+use crate::memories::{MemoriesRuntime, MemoryRegistry, MemoryScope, MemoryStrategy};
 use crate::message_log::finish_reason_token;
 use crate::model::{
     ImageContent, Message, ModelClient, ModelError, ModelResponse, ToolCall, ToolDefinition,
 };
 use crate::modules::{
-    CapabilityModules, HistorySetup, Module, ModuleResolveCtx, ModuleSet, Ownership, Refresh,
+    CapabilityModules, HistorySetup, InheritedModules, Module, ModuleResolveCtx, ModuleSet,
+    Ownership, Refresh,
 };
 use crate::persistence::{self, AgentPersistence, PersistenceSetup};
 use crate::prompts::{
@@ -1010,6 +1011,13 @@ struct Orchestrator {
     /// and the queue the [dispatcher](Self::pump_dispatch) reads. [`disabled`](BoardRuntime::disabled)
     /// when the [project-management](CAPABILITY_PROJECT_MANAGEMENT) capability is off.
     board: BoardRuntime,
+    /// The **profile-bound** memory instances of this run: one store per agent profile scoped
+    /// [`shared`](MemoryScope::Shared), created by the first instance of that profile to ask for
+    /// one and held by every later instance of it. Run-global because that is exactly what the
+    /// scope means — two instances of one profile, including two running at the same time, curate
+    /// one notebook and are each told what the other wrote. Empty for every run that scopes
+    /// nothing, which is every run that does not say otherwise.
+    memory_registry: MemoryRegistry,
     /// The agents blocked in a [`wait_for_issue`](Self::begin_issue_wait), keyed by the issue id
     /// each awaits. Each entry is the [scheduler waiter tokens](WaiterToken) of the agents waiting
     /// on that issue; when the issue reaches a terminal state they are all
@@ -1143,6 +1151,12 @@ impl Orchestrator {
         // single agent it actually is.
         warnings.extend(removed_capability_warnings(set));
         warnings.extend(crate::fsm::launch_warnings(set));
+        // Memory scoping is checked for the same reason ownership is, and one reason more: a scope
+        // decides which agents share a notebook, so a configuration that says something gg cannot
+        // honour — an unreadable value, a scope on an agent with no memories, a child that inherits
+        // from a spawner organizing memories differently — would otherwise run as an entirely
+        // different experiment from the one it describes.
+        warnings.extend(crate::memories::launch_warnings(set));
         let deadline = limits.max_runtime.map(|budget| Instant::now() + budget);
         // The Root agent's code setup: responses-as-code is per-agent, but the Root's is what the
         // run-level launch log and the sandbox warm-up decision key on.
@@ -1229,6 +1243,7 @@ impl Orchestrator {
             issue_worktrees: Mutex::new(HashMap::new()),
             issue_reviews: Mutex::new(HashMap::new()),
             board: resolve_board(set),
+            memory_registry: MemoryRegistry::new(),
             issue_waits: Mutex::new(HashMap::new()),
             git_lock: tokio::sync::Mutex::new(()),
             merge_lock: tokio::sync::Mutex::new(()),
@@ -1982,6 +1997,13 @@ enum AgentRole {
         /// result its dispatcher is waiting for. A reviewer returns a verdict, a judge names a
         /// winner, everything else reports what it did.
         ending: EndingRole,
+        /// The [modules](crate::modules) the spawner offered this subagent, which its own profile
+        /// decides whether to bind. Today that is a [share](crate::modules::Module::share) of the
+        /// spawner's memories, which a child scoped [`inherited`](MemoryScope::Inherited) or
+        /// [`read-only`](MemoryScope::ReadOnly) takes and every other child ignores. Empty for a
+        /// detached agent (a reviewer, a judge, a merge agent), which answers to no spawner's
+        /// notebook.
+        inherited: InheritedModules,
         /// The spawner's wait condition the subagent signals on completion.
         parent_wait: Arc<ParentWait>,
         /// The channel the subagent's [return value](AgentReturn) is delivered on.
@@ -2033,6 +2055,10 @@ struct SubagentContext {
     orch: Arc<Orchestrator>,
     /// This agent's own delegation state.
     ctx: AgentCtx,
+    /// What this agent offers the children it spawns: the [modules](crate::modules) a child whose
+    /// profile asks for them binds instead of building its own. Taken once, from this agent's own
+    /// module set, so a spawn is a handle copy rather than a lookup.
+    inherited: InheritedModules,
 }
 
 /// A single agent's [project-management](crate::board) context, threaded into [`Agent::drive`] when
@@ -2164,17 +2190,31 @@ async fn run_agent(
     // **project-management board is shared run-wide** — every agent's board tools mutate the one
     // [`orch.board`], the global work queue the dispatcher reads.
     let orch_skills = orch.skills_runtime();
-    let module_ctx = ModuleResolveCtx {
-        skills: &orch_skills,
-        board: &orch.board,
-        history: HistorySetup {
-            estimator: Arc::clone(&context_setup.estimator),
-            window_limit: context_setup.window_limit,
-            code_mode: code.enabled,
-        },
-        agent_id: &agent.id,
+    // What this agent's spawner offered it, when it had one. Only a profile scoped
+    // [`inherited`](MemoryScope::Inherited) or [`read-only`](MemoryScope::ReadOnly) binds anything
+    // from here; every other profile builds its own state and this is simply unread.
+    let no_inheritance = InheritedModules::default();
+    let inherited = match &role {
+        AgentRole::Sub { inherited, .. } => inherited,
+        AgentRole::Issue { .. } | AgentRole::Root => &no_inheritance,
     };
-    let mut modules = ModuleSet::resolve(&profile, &module_ctx);
+    // Scoped so the borrow of `role` this context takes ends before the role is consumed by the
+    // completion path: resolution is the only thing that needs it.
+    let mut modules = {
+        let module_ctx = ModuleResolveCtx {
+            skills: &orch_skills,
+            board: &orch.board,
+            memories: &orch.memory_registry,
+            inherited,
+            history: HistorySetup {
+                estimator: Arc::clone(&context_setup.estimator),
+                window_limit: context_setup.window_limit,
+                code_mode: code.enabled,
+            },
+            agent_id: &agent.id,
+        };
+        ModuleSet::resolve(&profile, &module_ctx)
+    };
     let archive_store = modules.caps().archive().store();
     // The issue this agent was auto-dispatched to implement, if any. It shapes the agent's *prompt*
     // (which names the issue it is working) and its issue-wait guard, but not its toolset: an
@@ -2238,7 +2278,31 @@ async fn run_agent(
         }
     }
 
-    let mut compaction = CompactionSetup::resolve(&profile);
+    // The agent's memory access, not merely its capability: a read-only holder cannot satisfy a
+    // memory compaction, so the strategy is demoted for it rather than leaving the run to wedge
+    // against a full window it has no call to clear.
+    let memories_writable = modules.caps().memories().is_writable();
+    let mut compaction = CompactionSetup::resolve(&profile, memories_writable);
+    if !memories_writable
+        && profile
+            .capability(CAPABILITY_COMPACTION)
+            .filter(|capability| capability.enabled)
+            .and_then(|capability| capability.implementation.as_deref())
+            .map(str::trim)
+            == Some(test_cabinet_core::gg::COMPACTION_STRATEGY_MEMORY)
+    {
+        emitter.emit(log(
+            "warn",
+            format!(
+                "agent `{}` compacts with the `{}` strategy but holds \
+                 its memories read-only, so it has no call that could satisfy one; it condenses \
+                 with the `{}` strategy instead.",
+                agent.slot,
+                test_cabinet_core::gg::COMPACTION_STRATEGY_MEMORY,
+                compaction.strategy.id(),
+            ),
+        ));
+    }
     // A handoff strategy condenses on a **second** model, resolved through the same factory every
     // agent's own model is. A named model that will not resolve is a misconfiguration, not a reason
     // to stop compacting — a run that stopped compacting would overflow its window a few turns
@@ -2314,6 +2378,9 @@ async fn run_agent(
     let subagent_context = orch.delegation_enabled().then(|| SubagentContext {
         orch: Arc::clone(&orch),
         ctx: AgentCtx::new(inbox_rx, exclusive.clone()),
+        // Taken from this agent's own modules, so a child that inherits binds the very store this
+        // agent is curating rather than a snapshot of it.
+        inherited: InheritedModules::from_spawner(modules.caps()),
     });
 
     // When project management is enabled, this agent gets a project context so its loop can trigger
@@ -2862,6 +2929,9 @@ fn dispatch_child(
         issue_id,
         worktree,
         ending,
+        // What the spawner holds, offered to the child. Whether the child takes it is its own
+        // profile's decision — see `MemoriesRuntime::resolve`.
+        inherited: sub.inherited.offer(),
         parent_wait: Arc::clone(&sub.ctx.wait),
         result: result_tx,
         finished: Arc::clone(&finished),
@@ -3662,6 +3732,9 @@ fn run_detached_agent<'a>(
             issue_id,
             worktree,
             ending,
+            // A detached agent is nobody's subagent in the sense inheritance means: it is
+            // dispatched by gg itself, not by an agent whose notebook it could reasonably continue.
+            inherited: InheritedModules::default(),
             parent_wait: Arc::new(ParentWait::new()),
             result: result_tx,
             finished: Arc::new(AtomicBool::new(false)),
@@ -5153,6 +5226,30 @@ impl Agent {
                         pending_compaction = Some(pending);
                     }
                 }
+            }
+
+            // What the modules owe this agent's *stream* since it last looked. On an unshared run
+            // this is always empty here — a module's deltas are drained the moment the call that
+            // made them is recorded — and it matters only when a module is shared: a sibling's
+            // write moves this agent's store, so this agent's panel is stale until it says so.
+            // The drain is author-filtered, so the sibling's revision is not re-reported here; what
+            // this emits is the snapshot the console renders.
+            for event in caps.drain_events() {
+                emitter.emit(event);
+            }
+
+            // The linked-memory notices: what *other* holders of a module this agent shares have
+            // done since it was last told. Appended at the tail as ordinary ephemeral messages —
+            // never folded into a pinned block, which is what keeps the cached prompt prefix
+            // byte-identical on a turn where a sibling wrote and this agent did nothing.
+            //
+            // Pushed **after** the compaction step above rather than before it, so a boundary that
+            // fires on this very turn cannot sweep news the model has not read yet. A *later*
+            // boundary does sweep them, by which point they have been seen and what they announced
+            // is in the rebuilt block the boundary carries across. Empty on every turn of a run
+            // that shares nothing, which is every run that does not say otherwise.
+            for notice in caps.notices() {
+                context.push(GgContextSource::Memory, Retention::Ephemeral, notice);
             }
 
             // Agent-managed context: rebuild the context-usage signal from the now fully-assembled
@@ -6741,10 +6838,18 @@ fn memories_startup_note(memories: &MemoriesRuntime) -> String {
     .into_iter()
     .flatten()
     .collect();
+    // How this holder binds its instance, said only when it is not the default: an `isolated`
+    // notebook is what "memories" has always meant, so naming it would be noise, while anything
+    // else changes who can see what and is worth a line in the log.
+    let binding = match (memories.scope(), memories.is_writable()) {
+        (MemoryScope::Isolated, _) => String::new(),
+        (scope, true) => format!(" Scope: `{scope}`."),
+        (scope, false) => format!(" Scope: `{scope}` (read-only)."),
+    };
     if limits.is_empty() {
-        format!("{shape}; unlimited.")
+        format!("{shape}; unlimited.{binding}")
     } else {
-        format!("{shape}, up to {}.", limits.join(", "))
+        format!("{shape}, up to {}.{binding}", limits.join(", "))
     }
 }
 
@@ -7240,6 +7345,13 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
                     max_len_index: caps.max_len_index,
                     max_len_description: caps.max_len_description,
                     max_results: caps.max_results,
+                    // How this agent *holds* the memories, as opposed to what they are. Both are
+                    // read off the resolved module rather than off the profile, because both
+                    // depend on how this agent was spawned: a profile scoped `read-only` that
+                    // ended up with an instance of its own may write it.
+                    read_only: !memories.is_writable(),
+                    linked: memories.is_linkable(),
+                    scope: memories.scope().to_string(),
                 }
             }),
             tasks: tasks.offers_tasks().then(|| TasksView {

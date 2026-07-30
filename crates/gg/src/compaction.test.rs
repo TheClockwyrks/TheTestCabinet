@@ -107,7 +107,7 @@ fn setup_resolves_from_the_capability_set() {
     use test_cabinet_core::gg::{CAPABILITY_COMPACTION, GgCapabilityConfig, GgCapabilitySet};
 
     // Absent: disabled.
-    let off = CompactionSetup::resolve(GgCapabilitySet::minimal("mock/x").root());
+    let off = CompactionSetup::resolve(GgCapabilitySet::minimal("mock/x").root(), true);
     assert!(!off.enabled);
 
     // Present + enabled with a param: enabled, headroom read (and the trigger derived from it).
@@ -118,7 +118,7 @@ fn setup_resolves_from_the_capability_set() {
         implementation: None,
         params: json!({ "summaryHeadroom": 0.3 }),
     });
-    let on = CompactionSetup::resolve(set.root());
+    let on = CompactionSetup::resolve(set.root(), true);
     assert!(on.enabled);
     assert_eq!(on.policy.summary_headroom, 0.3);
     assert_eq!(on.policy.trigger_fullness(), 1.0 - 0.3);

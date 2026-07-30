@@ -718,6 +718,10 @@ fn memory_state_serializes_entries_caps_and_totals() {
             max_len_description: Some(120),
             max_results: None,
         },
+        // A holder that shares this instance with the other instances of its own profile, and may
+        // write it.
+        scope: "shared".to_string(),
+        writable: true,
     };
     let value = serde_json::to_value(&kind).expect("serialize");
     assert_eq!(
@@ -742,6 +746,8 @@ fn memory_state_serializes_entries_caps_and_totals() {
                 "maxLenDescription": 120,
                 "maxResults": null,
             },
+            "scope": "shared",
+            "writable": true,
         })
     );
     let back: GgTelemetryKind = serde_json::from_value(value).expect("deserialize");
@@ -771,6 +777,8 @@ fn memory_state_reads_a_record_written_before_lines_and_peaks() {
         total_lines,
         peak,
         caps,
+        scope,
+        writable,
         ..
     } = kind
     else {
@@ -778,6 +786,10 @@ fn memory_state_reads_a_record_written_before_lines_and_peaks() {
     };
     assert_eq!(memories[0].lines, 0);
     assert_eq!(total_lines, 0);
+    // Scoping arrived later still: a record written before it reports no scope, and a holder that
+    // could write — which every holder could, before a read-only one existed.
+    assert_eq!(scope, "");
+    assert!(writable);
     assert_eq!(peak, GgMemoryPeak::default());
     assert_eq!(caps.max_len_description, None);
 }

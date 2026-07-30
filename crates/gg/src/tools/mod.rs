@@ -101,7 +101,7 @@ pub use filesystem::{
 };
 pub use memories::{
     CreateMemoryTool, DeleteMemoryTool, EditMemoryTool, ReadMemoryTool, SearchMemoriesTool,
-    UpdateMemoryTool, WriteMemoryTool, is_memory_tool,
+    UpdateMemoryTool, WriteMemoryTool, is_memory_tool, read_only_refusal,
 };
 pub(crate) use shell::run_command;
 pub use shell::{OffloadPolicy, SHELL_TOOL};
@@ -529,34 +529,38 @@ impl ToolRegistry {
         // strategy, so there is one place a run's strategy is resolved and no way for the toolset
         // to disagree with the store it mutates. Every strategy offers `delete_memory`; the rest
         // of the set is disjoint, so a model is never shown two ways to write the same memory.
+        //
+        // A **read-only** holder (a [read-only](crate::memories::MemoryScope::ReadOnly) inherited
+        // handle onto another agent's instance) is offered the read calls alone. Gating here, on
+        // the module's access rather than on a list of tool names, is what makes the restriction
+        // total in one move: the responses-as-code scope is derived from this registry, and so is
+        // the API section of the system prompt, so a read-only agent is never *shown* a write call
+        // it would then have to be refused for using. Under the scratchpad — which has no read
+        // call, its memories being the pinned block itself — that leaves no memory tools at all,
+        // which is coherent: such an agent reads its memories by having them in its window.
         if capabilities.is_enabled(CAPABILITY_MEMORIES) && modules.memories().offers_memories() {
-            let memories = &modules.memories().store();
-            let strategy = memories.lock().expect("memory store lock").strategy();
+            let memories = modules.memories().binding();
+            let strategy = memories.lock().strategy();
+            let writable = modules.memories().is_writable();
             if strategy.is_file_shaped() {
-                tools.push(Box::new(memories::CreateMemoryTool::new(Arc::clone(
-                    memories,
-                ))));
-                tools.push(Box::new(memories::ReadMemoryTool::new(Arc::clone(
-                    memories,
-                ))));
-                tools.push(Box::new(memories::EditMemoryTool::new(Arc::clone(
-                    memories,
-                ))));
-            } else {
-                tools.push(Box::new(memories::WriteMemoryTool::new(Arc::clone(
-                    memories,
-                ))));
-                tools.push(Box::new(memories::UpdateMemoryTool::new(Arc::clone(
-                    memories,
-                ))));
+                if writable {
+                    tools.push(Box::new(memories::CreateMemoryTool::new(memories.clone())));
+                }
+                tools.push(Box::new(memories::ReadMemoryTool::new(memories.clone())));
+                if writable {
+                    tools.push(Box::new(memories::EditMemoryTool::new(memories.clone())));
+                }
+            } else if writable {
+                tools.push(Box::new(memories::WriteMemoryTool::new(memories.clone())));
+                tools.push(Box::new(memories::UpdateMemoryTool::new(memories.clone())));
             }
-            tools.push(Box::new(memories::DeleteMemoryTool::new(Arc::clone(
-                memories,
-            ))));
+            if writable {
+                tools.push(Box::new(memories::DeleteMemoryTool::new(memories.clone())));
+            }
             if strategy.has_search() {
-                tools.push(Box::new(memories::SearchMemoriesTool::new(Arc::clone(
-                    memories,
-                ))));
+                tools.push(Box::new(memories::SearchMemoriesTool::new(
+                    memories.clone(),
+                )));
             }
         }
 
@@ -617,7 +621,10 @@ impl ToolRegistry {
                 .capability(CAPABILITY_COMPACTION)
                 .filter(|capability| capability.enabled)
                 .and_then(|capability| capability.implementation.as_deref()),
-            capabilities.is_enabled(CAPABILITY_MEMORIES),
+            // Writable, not merely enabled: a read-only memory holder cannot satisfy a memory
+            // compaction, so its run condenses in prose and is offered the tool that goes with
+            // that — see `CompactionStrategy::resolve`.
+            capabilities.is_enabled(CAPABILITY_MEMORIES) && modules.memories().is_writable(),
         )
         .offers_compact_tool(capabilities.is_enabled(CAPABILITY_RESPONSES_AS_CODE))
             && capabilities.is_enabled(CAPABILITY_COMPACTION)

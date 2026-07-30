@@ -14,8 +14,8 @@ use crate::board::BoardRuntime;
 use crate::client::MockClient;
 use crate::client::{
     ClientFactory, DEFAULT_MOCK_MEMORY, DEFAULT_MOCK_SKILL, DEFAULT_MOCK_TASK_MOVEMENT,
-    DEFAULT_MOCK_TASK_SCAFFOLD, MOCK_CODE_LEVEL_FILES, MOCK_ISSUE_REVIEW_PREFIX,
-    MOCK_REVIEW_FIX_FILE, MOCK_REVIEW_FIX_SENTINEL, MOCK_REVIEW_WORKER_FILE,
+    DEFAULT_MOCK_TASK_SCAFFOLD, MOCK_CODE_LEVEL_FILES, MOCK_ISSUE_REVIEW_PREFIX, MOCK_MEMORY_CHILD,
+    MOCK_MEMORY_PARENT, MOCK_REVIEW_FIX_FILE, MOCK_REVIEW_FIX_SENTINEL, MOCK_REVIEW_WORKER_FILE,
     MOCK_SPECULATE_ATTEMPT_PREFIX, MOCK_SUBAGENT_FILE, MOCK_SUBAGENT_RETURN,
 };
 use crate::compaction::{CompactionSetup, CompactionStrategy};
@@ -32,13 +32,14 @@ use crate::telemetry::{CollectingSink, Emitter};
 use crate::tools::{ToolContext, ToolRegistry, VisionContext};
 use test_cabinet_core::gg::{
     ALL_SUBAGENT_SCOPES, CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_COMPACTION,
-    CAPABILITY_CONTEXT_WINDOW_OVERRIDE, CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_READ_FILE,
-    CAPABILITY_REPLAY, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL, CAPABILITY_SKILLS,
-    CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WORKFLOWS,
-    GG_REPLAY_ARTIFACT_PATH, GgAgentConfig, GgAgentStatus, GgCapabilityConfig, GgCapabilitySet,
-    GgContextAction, GgContextSource, GgIssueReviewPhase, GgIssueStatus, GgPromptCacheTtl,
-    GgReplayEntryKind, GgReplayRecord, GgSessionSummary, GgSlotBinding, GgSubagentRef,
-    GgSubagentScope, GgTelemetryEvent, GgTelemetryKind, GgWorkflowPhase, ROOT_AGENT,
+    CAPABILITY_CONTEXT_WINDOW_OVERRIDE, CAPABILITY_MEMORIES, CAPABILITY_PROJECT_MANAGEMENT,
+    CAPABILITY_READ_FILE, CAPABILITY_REPLAY, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL,
+    CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS,
+    CAPABILITY_WORKFLOWS, GG_REPLAY_ARTIFACT_PATH, GgAgentConfig, GgAgentStatus,
+    GgCapabilityConfig, GgCapabilitySet, GgContextAction, GgContextSource, GgIssueReviewPhase,
+    GgIssueStatus, GgPromptCacheTtl, GgReplayEntryKind, GgReplayRecord, GgSessionSummary,
+    GgSlotBinding, GgSubagentRef, GgSubagentScope, GgTelemetryEvent, GgTelemetryKind,
+    GgWorkflowPhase, ROOT_AGENT,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
@@ -4816,6 +4817,163 @@ fn subagent_tools_are_gated_on_the_capability() {
             "`{name}` must not be offered with an empty subagent allowlist"
         );
     }
+}
+
+/// A capability set in which the root and one subagent profile both keep memories, organized as a
+/// scratchpad and scoped by `scope` — the one knob these scoping e2es vary.
+fn memory_scope_set(scope: &str) -> GgCapabilitySet {
+    let mut set = subagent_set(2, 3, &["subagent"]);
+    for agent in &mut set.agents {
+        // The memories capability is on by default, so this re-points the entry that is already
+        // there rather than adding a second one gg would never read.
+        let memories = agent
+            .capabilities
+            .iter_mut()
+            .find(|capability| capability.id == CAPABILITY_MEMORIES)
+            .expect("the default capabilities include memories");
+        memories.enabled = true;
+        memories.params = json!({ "scope": scope });
+    }
+    set
+}
+
+/// The memory names each agent's **last** `MemoryState` reports, keyed by agent id — what each
+/// agent was holding when it stopped, which is the whole observable of a memory scope.
+fn memories_by_agent(
+    events: &[test_cabinet_core::gg::GgTelemetryEvent],
+) -> HashMap<String, Vec<String>> {
+    let mut held: HashMap<String, Vec<String>> = HashMap::new();
+    for event in events {
+        if let GgTelemetryKind::MemoryState { memories, .. } = &event.kind {
+            held.insert(
+                event.agent_id.clone().unwrap_or_default(),
+                memories.iter().map(|m| m.name.clone()).collect(),
+            );
+        }
+    }
+    held
+}
+
+/// The scope each agent's last `MemoryState` reports, keyed by agent id.
+fn scopes_by_agent(events: &[test_cabinet_core::gg::GgTelemetryEvent]) -> HashMap<String, String> {
+    let mut scopes = HashMap::new();
+    for event in events {
+        if let GgTelemetryKind::MemoryState { scope, .. } = &event.kind {
+            scopes.insert(event.agent_id.clone().unwrap_or_default(), scope.clone());
+        }
+    }
+    scopes
+}
+
+/// The offline end-to-end proof that `inherited` is wired through a **real spawn**: the root writes
+/// a memory, delegates, and the child it spawned is holding that memory before it writes one of its
+/// own — after which the root's own store holds both, because there was only ever one.
+#[tokio::test]
+async fn an_inherited_subagent_curates_its_spawners_memories() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-mem".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), memory_scope_set("inherited"));
+    let factory = ScriptedFactory::new()
+        .slot(ROOT_AGENT, |b| {
+            Box::new(MockClient::with_memory_parent_script(&b.model_id))
+        })
+        .slot("subagent", |b| {
+            Box::new(MockClient::with_memory_child_script(&b.model_id))
+        });
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran
+    );
+
+    let events = sink.events();
+    let held = memories_by_agent(&events);
+    let child = held
+        .get("agent-0")
+        .expect("the child reported its memories");
+    assert_eq!(
+        child,
+        &vec![
+            MOCK_MEMORY_CHILD.to_string(),
+            MOCK_MEMORY_PARENT.to_string()
+        ],
+        "the child holds its spawner's memory as well as its own"
+    );
+    let root = held.get(ROOT_AGENT_ID).expect("the root reported its own");
+    assert_eq!(
+        root,
+        &vec![
+            MOCK_MEMORY_CHILD.to_string(),
+            MOCK_MEMORY_PARENT.to_string()
+        ],
+        "and the child's write landed in the store the root is holding"
+    );
+
+    // Each holder's scope is on the wire, so the console can tell one shared store from two.
+    let scopes = scopes_by_agent(&events);
+    assert_eq!(scopes.get("agent-0").map(String::as_str), Some("inherited"));
+
+    // The revision for the child's write is reported once, on the child's own stream — the root
+    // holds the same store but did not make the write.
+    let authors: Vec<Option<String>> = events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::MemoryRevision { name, .. } if name == MOCK_MEMORY_CHILD => {
+                Some(e.agent_id.clone())
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        authors,
+        vec![Some("agent-0".to_string())],
+        "one revision, on the author's stream"
+    );
+
+    // And the linked-memory notice reached the root's *window*: it is holding a store somebody
+    // else wrote to, so its next turn is told what changed and what the memory is for.
+    let noticed = events.iter().any(|e| match &e.kind {
+        GgTelemetryKind::ContextMessage { content, .. } => content.as_deref().is_some_and(|text| {
+            text.contains("Another agent sharing your memories") && text.contains(MOCK_MEMORY_CHILD)
+        }),
+        _ => false,
+    });
+    assert!(noticed, "the root was told about the child's write");
+}
+
+/// The same run under `isolated` — the default, and the behaviour every existing configuration
+/// keeps: the child gets a notebook of its own and neither agent sees the other's memory.
+#[tokio::test]
+async fn an_isolated_subagent_keeps_its_own_memories() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-mem".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), memory_scope_set("isolated"));
+    let factory = ScriptedFactory::new()
+        .slot(ROOT_AGENT, |b| {
+            Box::new(MockClient::with_memory_parent_script(&b.model_id))
+        })
+        .slot("subagent", |b| {
+            Box::new(MockClient::with_memory_child_script(&b.model_id))
+        });
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran
+    );
+
+    let held = memories_by_agent(&sink.events());
+    assert_eq!(
+        held.get("agent-0"),
+        Some(&vec![MOCK_MEMORY_CHILD.to_string()]),
+        "the child holds only what it wrote"
+    );
+    assert_eq!(
+        held.get(ROOT_AGENT_ID),
+        Some(&vec![MOCK_MEMORY_PARENT.to_string()]),
+        "and the root only what it wrote"
+    );
 }
 
 /// The headline offline e2e under a cap of **1**: the root spawns a child on a different slot,

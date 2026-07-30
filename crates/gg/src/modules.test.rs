@@ -17,7 +17,7 @@ use test_cabinet_core::gg::{
 use super::*;
 use crate::board::{BoardCaps, BoardRuntime};
 use crate::context::HeuristicTokenEstimator;
-use crate::memories::{MemoriesRuntime, MemoryCaps, MemoryStrategy};
+use crate::memories::{MemoriesRuntime, MemoryCaps, MemoryRegistry, MemoryStrategy};
 use crate::skills::{SkillLibrary, SkillsRuntime};
 use crate::tasks::{StructuredFields, TaskMode, TasksRuntime};
 
@@ -43,13 +43,27 @@ fn library(dir: &std::path::Path) -> Arc<SkillLibrary> {
 
 /// The resolve context these tests build sets against: a skills runtime, a run-global board, and
 /// one agent id.
-fn ctx<'a>(skills: &'a SkillsRuntime, board: &'a BoardRuntime) -> ModuleResolveCtx<'a> {
+fn ctx<'a>(
+    skills: &'a SkillsRuntime,
+    board: &'a BoardRuntime,
+    memories: &'a MemoryRegistry,
+    inherited: &'a InheritedModules,
+) -> ModuleResolveCtx<'a> {
     ModuleResolveCtx {
         skills,
         board,
+        memories,
+        inherited,
         history: history_setup(),
         agent_id: "agent-1",
     }
+}
+
+/// The two run-global inputs a set is resolved against when nothing is shared and nothing is
+/// inherited — which is every test in this file, since scoping is `memories.scope.test.rs`'s
+/// subject and these tests are about the module model around it.
+fn plain() -> (MemoryRegistry, InheritedModules) {
+    (MemoryRegistry::new(), InheritedModules::default())
 }
 
 /// A profile enabling `capabilities`, each with the given params.
@@ -74,7 +88,7 @@ fn write_memory(runtime: &MemoriesRuntime, name: &str) {
         .store()
         .lock()
         .expect("memory store lock")
-        .write(name, "a description", "a body")
+        .write("", name, "a description", "a body")
         .expect("the write is within the caps");
 }
 
@@ -206,7 +220,11 @@ fn an_unowned_skills_module_lists_no_catalog() {
 fn a_profile_without_the_board_capability_holds_it_unowned() {
     let skills = SkillsRuntime::disabled();
     let board = BoardRuntime::new(BoardCaps::default());
-    let modules = CapabilityModules::resolve(&GgAgentConfig::root(), &ctx(&skills, &board));
+    let (registry, inherited) = plain();
+    let modules = CapabilityModules::resolve(
+        &GgAgentConfig::root(),
+        &ctx(&skills, &board, &registry, &inherited),
+    );
 
     assert!(
         modules.board().offers_board(),
@@ -215,7 +233,8 @@ fn a_profile_without_the_board_capability_holds_it_unowned() {
     assert_eq!(modules.board().ownership(), Ownership::Unowned);
 
     let authoring = profile_with(vec![(CAPABILITY_PROJECT_MANAGEMENT, json!({}))]);
-    let modules = CapabilityModules::resolve(&authoring, &ctx(&skills, &board));
+    let modules =
+        CapabilityModules::resolve(&authoring, &ctx(&skills, &board, &registry, &inherited));
     assert_eq!(modules.board().ownership(), Ownership::Owned);
 }
 
@@ -318,7 +337,7 @@ fn a_fork_carries_the_revision_history() {
         .store()
         .lock()
         .expect("memory store lock")
-        .update("note", "a new description", "a new body")
+        .update("", "note", "a new description", "a new body")
         .expect("the update is within the caps");
 
     let revision = forked
@@ -449,7 +468,8 @@ fn a_history_share_is_a_copy_that_keeps_its_turn_number() {
 fn adopting_re_resolves_the_caps_from_the_receiving_profile() {
     let skills = SkillsRuntime::disabled();
     let board = BoardRuntime::disabled();
-    let ctx = ctx(&skills, &board);
+    let (registry, inherited) = plain();
+    let ctx = ctx(&skills, &board, &registry, &inherited);
 
     let mut tasks = TasksRuntime::with_mode(3, TaskMode::Simple);
     add_task(&tasks, "t1");
@@ -471,7 +491,8 @@ fn adopting_re_resolves_the_caps_from_the_receiving_profile() {
 fn a_tightened_cap_keeps_what_is_already_there() {
     let skills = SkillsRuntime::disabled();
     let board = BoardRuntime::disabled();
-    let ctx = ctx(&skills, &board);
+    let (registry, inherited) = plain();
+    let ctx = ctx(&skills, &board, &registry, &inherited);
 
     let mut memories = MemoriesRuntime::new(MemoryStrategy::Scratchpad, MemoryCaps::default());
     write_memory(&memories, "one");
@@ -489,7 +510,7 @@ fn a_tightened_cap_keeps_what_is_already_there() {
             .store()
             .lock()
             .expect("memory store lock")
-            .write("three", "d", "b")
+            .write("", "three", "d", "b")
             .is_err(),
         "the next write is what the tightened cap refuses"
     );
@@ -501,7 +522,8 @@ fn a_tightened_cap_keeps_what_is_already_there() {
 fn a_profile_that_disables_the_capability_refuses_the_module() {
     let skills = SkillsRuntime::disabled();
     let board = BoardRuntime::disabled();
-    let ctx = ctx(&skills, &board);
+    let (registry, inherited) = plain();
+    let ctx = ctx(&skills, &board, &registry, &inherited);
 
     let mut memories = MemoriesRuntime::new(MemoryStrategy::Scratchpad, MemoryCaps::default());
     assert_eq!(
@@ -517,7 +539,8 @@ fn a_profile_that_disables_the_capability_refuses_the_module() {
 fn a_different_memory_strategy_is_refused_with_a_reason() {
     let skills = SkillsRuntime::disabled();
     let board = BoardRuntime::disabled();
-    let ctx = ctx(&skills, &board);
+    let (registry, inherited) = plain();
+    let ctx = ctx(&skills, &board, &registry, &inherited);
 
     let mut memories = MemoriesRuntime::new(MemoryStrategy::Scratchpad, MemoryCaps::default());
     let mut receiver = profile_with(vec![(CAPABILITY_MEMORIES, json!({}))]);
@@ -538,6 +561,7 @@ fn a_different_memory_strategy_is_refused_with_a_reason() {
 fn an_intersection_transfer_carries_drops_and_initializes() {
     let skills = SkillsRuntime::disabled();
     let board = BoardRuntime::disabled();
+    let (registry, inherited) = plain();
 
     // The predecessor holds memories and a task list; the successor's profile keeps memories, adds
     // the archive, and drops tasks entirely.
@@ -558,7 +582,7 @@ fn an_intersection_transfer_carries_drops_and_initializes() {
         old,
         &successor_profile,
         &TransferPlan::Intersection,
-        &ctx(&skills, &board),
+        &ctx(&skills, &board, &registry, &inherited),
     );
 
     assert!(report.transferred.contains(&ModuleKind::Memories));
@@ -586,6 +610,7 @@ fn an_intersection_transfer_carries_drops_and_initializes() {
 fn an_explicit_transfer_carries_only_what_it_names() {
     let skills = SkillsRuntime::disabled();
     let board = BoardRuntime::disabled();
+    let (registry, inherited) = plain();
 
     let old = ModuleSet::inert(&history_setup())
         .with(ModuleHandle::Memories(MemoriesRuntime::new(
@@ -604,7 +629,7 @@ fn an_explicit_transfer_carries_only_what_it_names() {
         old,
         &successor_profile,
         &TransferPlan::Explicit(vec![ModuleKind::Tasks]),
-        &ctx(&skills, &board),
+        &ctx(&skills, &board, &registry, &inherited),
     );
 
     assert_eq!(report.transferred, vec![ModuleKind::Tasks]);
@@ -628,13 +653,14 @@ fn an_explicit_transfer_carries_only_what_it_names() {
 fn a_transfer_list_naming_an_absent_module_warns() {
     let skills = SkillsRuntime::disabled();
     let board = BoardRuntime::disabled();
+    let (registry, inherited) = plain();
     let old = ModuleSet::inert(&history_setup());
 
     let (_, report) = transfer(
         old,
         &profile_with(Vec::new()),
         &TransferPlan::Explicit(vec![ModuleKind::Memories]),
-        &ctx(&skills, &board),
+        &ctx(&skills, &board, &registry, &inherited),
     );
     assert_eq!(report.warnings.len(), 1, "{report:?}");
     assert!(report.warnings[0].contains("`memories`"));
@@ -647,6 +673,7 @@ fn a_transfer_list_naming_an_absent_module_warns() {
 fn an_incompatible_module_is_reinitialized_with_a_stated_reason() {
     let skills = SkillsRuntime::disabled();
     let board = BoardRuntime::disabled();
+    let (registry, inherited) = plain();
 
     let old = ModuleSet::inert(&history_setup()).with(ModuleHandle::Memories(
         MemoriesRuntime::new(MemoryStrategy::Scratchpad, MemoryCaps::default()),
@@ -660,7 +687,7 @@ fn an_incompatible_module_is_reinitialized_with_a_stated_reason() {
         old,
         &successor_profile,
         &TransferPlan::Intersection,
-        &ctx(&skills, &board),
+        &ctx(&skills, &board, &registry, &inherited),
     );
 
     assert!(!report.transferred.contains(&ModuleKind::Memories));

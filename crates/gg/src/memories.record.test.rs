@@ -1,5 +1,5 @@
 //! The store's **record** of what the model did to memory, as distinct from the set it is
-//! holding: the [revision log](MemoryStore::drain_revisions), the [peaks](MemoryPeak), and the
+//! holding: the [revision log](MemoryStore::log_from), the [peaks](MemoryPeak), and the
 //! line counts both of them report.
 //!
 //! The distinction is the point. A snapshot of the live set cannot show a memory the model wrote
@@ -16,6 +16,24 @@ use super::*;
 /// what is refused.
 fn store() -> MemoryStore {
     MemoryStore::new(MemoryStrategy::Scratchpad, MemoryCaps::default())
+}
+
+/// Every revision the store has recorded, as the telemetry a holder streams for it.
+///
+/// These tests drive a bare store rather than a holder, so they read the whole log from the start
+/// rather than through a cursor — which is what makes them tests of what the store *records*,
+/// leaving what each of several holders is told about it to `memories.scope.test.rs`.
+fn recorded(store: &MemoryStore) -> Vec<GgTelemetryKind> {
+    store
+        .log_from(0)
+        .iter()
+        .map(|entry| entry.revision.to_event())
+        .collect()
+}
+
+/// The store's state snapshot as an ordinary, writable, unshared holder would emit it.
+fn state(store: &MemoryStore) -> GgTelemetryKind {
+    store.state_event(MemoryScope::Isolated, true)
 }
 
 /// Destructure one drained revision event, which is all these tests ever look at.
@@ -41,11 +59,13 @@ fn revision(event: &GgTelemetryKind) -> (&str, u64, GgMemoryChange, &str, &str, 
 #[test]
 fn every_mutation_is_recorded_with_the_text_it_produced() {
     let mut store = store();
-    store.write("plan", "the plan", "maze runner").unwrap();
-    store.update("plan", "the plan", "arrow-key maze").unwrap();
-    store.delete("plan").unwrap();
+    store.write("", "plan", "the plan", "maze runner").unwrap();
+    store
+        .update("", "plan", "the plan", "arrow-key maze")
+        .unwrap();
+    store.delete("", "plan").unwrap();
 
-    let events = store.drain_revisions();
+    let events = recorded(&store);
     assert_eq!(events.len(), 3, "one revision per mutation");
 
     let (name, rev, change, description, body, len, lines) = revision(&events[0]);
@@ -72,15 +92,17 @@ fn every_mutation_is_recorded_with_the_text_it_produced() {
 #[test]
 fn a_deleted_memory_is_still_in_the_record() {
     let mut store = store();
-    store.write("palette", "colours", "teal and sand").unwrap();
-    store.delete("palette").unwrap();
+    store
+        .write("", "palette", "colours", "teal and sand")
+        .unwrap();
+    store.delete("", "palette").unwrap();
 
-    let events = store.drain_revisions();
+    let events = recorded(&store);
     let (_, _, _, _, body, _, _) = revision(&events[0]);
     assert_eq!(body, "teal and sand");
 
     // The live snapshot has forgotten it, which is exactly why the log must not have.
-    let GgTelemetryKind::MemoryState { memories, .. } = store.state_event() else {
+    let GgTelemetryKind::MemoryState { memories, .. } = state(&store) else {
         panic!("expected a MemoryState");
     };
     assert!(memories.is_empty());
@@ -92,15 +114,11 @@ fn a_deleted_memory_is_still_in_the_record() {
 #[test]
 fn revisions_keep_counting_across_a_delete_and_recreate() {
     let mut store = store();
-    store.write("plan", "d", "first").unwrap();
-    store.delete("plan").unwrap();
-    store.write("plan", "d", "second").unwrap();
+    store.write("", "plan", "d", "first").unwrap();
+    store.delete("", "plan").unwrap();
+    store.write("", "plan", "d", "second").unwrap();
 
-    let numbers: Vec<u64> = store
-        .drain_revisions()
-        .iter()
-        .map(|e| revision(e).1)
-        .collect();
+    let numbers: Vec<u64> = recorded(&store).iter().map(|e| revision(e).1).collect();
     assert_eq!(numbers, vec![1, 2, 3]);
 }
 
@@ -109,12 +127,11 @@ fn revisions_keep_counting_across_a_delete_and_recreate() {
 #[test]
 fn revision_numbers_are_per_memory() {
     let mut store = store();
-    store.write("a", "d", "one").unwrap();
-    store.write("b", "d", "two").unwrap();
-    store.update("a", "d", "three").unwrap();
+    store.write("", "a", "d", "one").unwrap();
+    store.write("", "b", "d", "two").unwrap();
+    store.update("", "a", "d", "three").unwrap();
 
-    let seen: Vec<(String, u64)> = store
-        .drain_revisions()
+    let seen: Vec<(String, u64)> = recorded(&store)
         .iter()
         .map(|e| {
             let (name, rev, ..) = revision(e);
@@ -131,19 +148,23 @@ fn revision_numbers_are_per_memory() {
     );
 }
 
-/// The log is **drained**, not accumulated: the run record is where the history lives, so a store
-/// that has handed its revisions over keeps nothing, and a long run does not carry every body it
-/// ever wrote in process memory as well.
+/// The log **accumulates**: reading it does not empty it, and a later mutation appends rather
+/// than replacing what came before.
+///
+/// It has to be append-only, because a holder's place in it is an index. A store may be held by
+/// several agents at once, and a destructive drain would let whichever looked first swallow every
+/// other holder's news — so nobody drains, everybody reads from where it last looked, and the
+/// store keeps the whole record. What each holder is told about it is
+/// `memories.scope.test.rs`'s subject.
 #[test]
-fn draining_the_log_empties_it() {
+fn the_log_accumulates_rather_than_draining() {
     let mut store = store();
-    store.write("plan", "d", "body").unwrap();
-    assert_eq!(store.drain_revisions().len(), 1);
-    assert!(store.drain_revisions().is_empty());
+    store.write("", "plan", "d", "body").unwrap();
+    assert_eq!(recorded(&store).len(), 1);
+    assert_eq!(recorded(&store).len(), 1, "reading it does not consume it");
 
-    // A later mutation starts a fresh batch rather than replaying the old one.
-    store.update("plan", "d", "revised").unwrap();
-    assert_eq!(store.drain_revisions().len(), 1);
+    store.update("", "plan", "d", "revised").unwrap();
+    assert_eq!(recorded(&store).len(), 2, "a later mutation appends");
 }
 
 /// A refused mutation records nothing. The log is what the store *did*, and a call that was turned
@@ -155,10 +176,10 @@ fn a_refused_mutation_is_not_recorded() {
         ..MemoryCaps::default()
     };
     let mut store = MemoryStore::new(MemoryStrategy::Scratchpad, caps);
-    store.write("plan", "d", "over the limit").unwrap_err();
-    store.update("nope", "d", "ok").unwrap_err();
-    store.delete("nope").unwrap_err();
-    assert!(store.drain_revisions().is_empty());
+    store.write("", "plan", "d", "over the limit").unwrap_err();
+    store.update("", "nope", "d", "ok").unwrap_err();
+    store.delete("", "nope").unwrap_err();
+    assert!(recorded(&store).is_empty());
 }
 
 /// The two file-shaped strategies record through their own calls too — `create_memory` and
@@ -170,10 +191,10 @@ fn the_file_shaped_calls_are_recorded_too() {
         MemoryStrategy::Markdown,
         MemoryCaps::for_strategy(MemoryStrategy::Markdown),
     );
-    store.create("layout", "the layout", "a grid").unwrap();
-    store.edit("layout", "a grid", "a hex grid").unwrap();
+    store.create("", "layout", "the layout", "a grid").unwrap();
+    store.edit("", "layout", "a grid", "a hex grid").unwrap();
 
-    let events = store.drain_revisions();
+    let events = recorded(&store);
     let (_, rev, change, _, body, ..) = revision(&events[1]);
     assert_eq!((rev, change), (2, GgMemoryChange::Updated));
     assert_eq!(body, "a hex grid", "the whole memory, not the replacement");
@@ -188,15 +209,17 @@ fn the_file_shaped_calls_are_recorded_too() {
 #[test]
 fn bodies_report_their_line_count() {
     let mut store = store();
-    store.write("one", "d", "a single line").unwrap();
-    store.write("many", "d", "first\nsecond\nthird").unwrap();
+    store.write("", "one", "d", "a single line").unwrap();
+    store
+        .write("", "many", "d", "first\nsecond\nthird")
+        .unwrap();
 
     let GgTelemetryKind::MemoryState {
         memories,
         total_len,
         total_lines,
         ..
-    } = store.state_event()
+    } = state(&store)
     else {
         panic!("expected a MemoryState");
     };
@@ -212,7 +235,7 @@ fn bodies_report_their_line_count() {
 #[test]
 fn a_one_line_body_counts_as_one_line() {
     let mut store = store();
-    store.write("plan", "d", "  just this  ").unwrap();
+    store.write("", "plan", "d", "  just this  ").unwrap();
     assert_eq!(store.total_lines(), 1);
     assert_eq!(store.memories()[0].body(), "just this");
 }
@@ -227,14 +250,14 @@ fn a_one_line_body_counts_as_one_line() {
 #[test]
 fn peaks_survive_the_pruning_that_clears_the_live_set() {
     let mut store = store();
-    store.write("a", "d", "aaaa\naaaa").unwrap();
-    store.write("b", "d", "bbbbbb").unwrap();
+    store.write("", "a", "d", "aaaa\naaaa").unwrap();
+    store.write("", "b", "d", "bbbbbb").unwrap();
     assert_eq!(store.peak().count, 2);
     assert_eq!(store.peak().total_len, 15);
     assert_eq!(store.peak().total_lines, 3);
 
-    store.delete("a").unwrap();
-    store.delete("b").unwrap();
+    store.delete("", "a").unwrap();
+    store.delete("", "b").unwrap();
 
     // Nothing is held, and the record still says what was.
     assert_eq!(store.count(), 0);
@@ -249,9 +272,9 @@ fn peaks_survive_the_pruning_that_clears_the_live_set() {
 #[test]
 fn a_peak_never_falls() {
     let mut store = store();
-    store.write("plan", "d", &"x".repeat(100)).unwrap();
+    store.write("", "plan", "d", &"x".repeat(100)).unwrap();
     assert_eq!(store.peak().total_len, 100);
-    store.update("plan", "d", "tiny").unwrap();
+    store.update("", "plan", "d", "tiny").unwrap();
     assert_eq!(store.total_len(), 4);
     assert_eq!(store.peak().total_len, 100);
 }
@@ -259,10 +282,10 @@ fn a_peak_never_falls() {
 #[test]
 fn the_state_event_reports_the_peaks() {
     let mut store = store();
-    store.write("plan", "d", "a\nb\nc").unwrap();
-    store.delete("plan").unwrap();
+    store.write("", "plan", "d", "a\nb\nc").unwrap();
+    store.delete("", "plan").unwrap();
 
-    let GgTelemetryKind::MemoryState { count, peak, .. } = store.state_event() else {
+    let GgTelemetryKind::MemoryState { count, peak, .. } = state(&store) else {
         panic!("expected a MemoryState");
     };
     assert_eq!(count, 0);
@@ -284,16 +307,16 @@ fn the_runtime_drains_a_whole_batch() {
     {
         let mut store = runtime.store().lock().unwrap().clone();
         // Mutating a clone must not reach the runtime — the shared handle is the store.
-        store.write("stray", "d", "body").unwrap();
+        store.write("", "stray", "d", "body").unwrap();
     }
     assert!(runtime.revision_events().is_empty());
 
     {
         let store = runtime.store();
         let mut store = store.lock().unwrap();
-        store.write("a", "d", "one").unwrap();
-        store.write("b", "d", "two").unwrap();
-        store.delete("a").unwrap();
+        store.write("", "a", "d", "one").unwrap();
+        store.write("", "b", "d", "two").unwrap();
+        store.delete("", "a").unwrap();
     }
     let events = runtime.revision_events();
     assert_eq!(events.len(), 3);
@@ -321,7 +344,7 @@ fn the_state_event_reports_the_description_cap() {
         &json!({ "maxLenDescription": 80 }),
     );
     let store = MemoryStore::new(MemoryStrategy::Markdown, caps);
-    let GgTelemetryKind::MemoryState { caps, .. } = store.state_event() else {
+    let GgTelemetryKind::MemoryState { caps, .. } = state(&store) else {
         panic!("expected a MemoryState");
     };
     assert_eq!(caps.max_len_description, Some(80));

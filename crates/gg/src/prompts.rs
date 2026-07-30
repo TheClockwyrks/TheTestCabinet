@@ -112,6 +112,10 @@ const MEMORIES_TEMPLATE: &str = include_str!("../templates/memories.hbs");
 /// The pinned [memory index](crate::memories::MemoryStrategy::Markdown) block.
 const MEMORY_INDEX_TEMPLATE: &str = include_str!("../templates/memory-index.hbs");
 
+/// The [linked-memory notice](crate::memories::MemoriesRuntime::notice) — what another holder of a
+/// shared memory instance did since this agent was last told.
+const MEMORY_NOTICE_TEMPLATE: &str = include_str!("../templates/memory-notice.hbs");
+
 /// The turn feedback for a [code program](crate::sandbox) that **ran** — whether or not it threw.
 const CODE_RESULT_TEMPLATE: &str = include_str!("../templates/code-result.hbs");
 
@@ -209,6 +213,7 @@ const TEMPLATES: &[(&str, &str)] = &[
     ("board", BOARD_TEMPLATE),
     ("memories", MEMORIES_TEMPLATE),
     ("memory-index", MEMORY_INDEX_TEMPLATE),
+    ("memory-notice", MEMORY_NOTICE_TEMPLATE),
     ("code-result", CODE_RESULT_TEMPLATE),
     ("code-transpile-error", CODE_TRANSPILE_ERROR_TEMPLATE),
     ("code-sandbox-error", CODE_SANDBOX_ERROR_TEMPLATE),
@@ -598,6 +603,21 @@ pub struct MemoriesView {
     pub max_len_description: Option<usize>,
     /// The most memories one search reports.
     pub max_results: Option<usize>,
+    /// Whether this agent holds the memories **read-only** — a
+    /// [`read-only`](crate::memories::MemoryScope::ReadOnly) handle onto another agent's instance.
+    /// It flips each strategy's paragraph from "curate these" to "these are another agent's, and
+    /// here is how to read them", because an agent told to write memories regularly and then
+    /// offered no call that writes one is an agent that will spend turns looking for it.
+    pub read_only: bool,
+    /// Whether this agent's memory instance may be held by **other agents too** — every
+    /// [scope](crate::memories::MemoryScope) but `isolated`. It is what earns the paragraph
+    /// explaining the notices: an agent that will be told "another agent added a memory" mid-thread
+    /// has to know in advance that such a message is gg reporting a fact, not the model being
+    /// addressed by a stranger.
+    pub linked: bool,
+    /// The [scope](crate::memories::MemoryScope) this agent bound under, named literally so the
+    /// prompt and a run's recorded configuration use one vocabulary.
+    pub scope: String,
 }
 
 /// The task-list ceiling the prompt states.
@@ -1094,6 +1114,58 @@ pub struct MemoryIndexContext {
 /// Render the [markdown](crate::memories::MemoryStrategy::Markdown) strategy's pinned index block.
 pub fn render_memory_index(context: &MemoryIndexContext) -> String {
     render("memory-index", context)
+}
+
+/// The variables `memory-notice.hbs` may reference: what **another** holder of this agent's shared
+/// memory instance has done since it was last told.
+///
+/// The notice is the whole of gg's linked-memory signalling, and it is deliberately small. It is
+/// appended at the tail of the window rather than folded into the pinned index, because the index
+/// is the prefix every provider caches and rewriting it on a turn this agent did nothing would
+/// re-bill the whole request. So the news arrives as an ordinary message, once, naming what
+/// changed and leaving the agent to decide whether it bears on the work it is doing.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryNoticeContext {
+    /// What changed, one line per memory rather than one per write, in the order each memory first
+    /// appeared in the batch.
+    pub entries: Vec<MemoryNoticeEntry>,
+    /// The call this run's [strategy](crate::memories::MemoryStrategy) reads a memory with, in
+    /// this agent's execution mode — `None` under the
+    /// [scratchpad](crate::memories::MemoryStrategy::Scratchpad), which has none because its
+    /// memories are already in the window. A notice must be actionable, and a pointer to a call
+    /// the agent does not have is not.
+    pub read_call: Option<String>,
+    /// Whether each entry carries the memory's body inline — what the scratchpad does *instead* of
+    /// naming a read call.
+    pub inline_bodies: bool,
+    /// Whether a pinned [index](MemoryIndexContext) is lagging behind this news until the agent's
+    /// next compaction, which is worth saying so the model does not read the index as a
+    /// contradiction of what it has just been told.
+    pub indexed: bool,
+}
+
+/// One memory a [notice](MemoryNoticeContext) reports, as of the last thing that happened to it in
+/// the batch being reported.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryNoticeEntry {
+    /// The memory's slug.
+    pub name: String,
+    /// What happened to it: `added`, `updated` or `deleted`. Deletions are reported too — an agent
+    /// acting on a memory that has since been deleted is the failure the notice exists to prevent.
+    pub change: String,
+    /// The memory's one-line description as of that change; empty on a deletion, and under a
+    /// strategy that does not require one.
+    pub description: String,
+    /// The memory's body, carried only where there is no read call to fetch it with. Already
+    /// bounded by [`maxLenPerMemory`](crate::memories::MemoryCaps::max_len_per_memory).
+    pub body: Option<String>,
+}
+
+/// Render the [linked-memory notice](crate::memories::MemoriesRuntime::notice).
+pub fn render_memory_notice(context: &MemoryNoticeContext) -> String {
+    render("memory-notice", context)
 }
 
 /// The empty rendering context, for the templates that interpolate nothing and exist purely so

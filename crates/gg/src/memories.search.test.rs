@@ -9,7 +9,7 @@ fn store_of(memories: &[(&str, &str, &str)]) -> MemoryStore {
     let strategy = MemoryStrategy::KeywordSearch;
     let mut store = MemoryStore::new(strategy, MemoryCaps::for_strategy(strategy));
     for (name, description, body) in memories {
-        store.create(name, description, body).unwrap();
+        store.create("", name, description, body).unwrap();
     }
     store
 }
@@ -98,7 +98,7 @@ fn results_are_capped_at_max_results() {
     };
     let mut store = MemoryStore::new(strategy, caps);
     for n in 0..5 {
-        store.create(&format!("m{n}"), "d", "cargo").unwrap();
+        store.create("", &format!("m{n}"), "d", "cargo").unwrap();
     }
     assert_eq!(store.search(&keywords(&["cargo"])).unwrap().len(), 2);
 }
@@ -113,7 +113,7 @@ fn an_unlimited_page_size_returns_every_match() {
     };
     let mut store = MemoryStore::new(strategy, caps);
     for n in 0..30 {
-        store.create(&format!("m{n}"), "d", "cargo").unwrap();
+        store.create("", &format!("m{n}"), "d", "cargo").unwrap();
     }
     assert_eq!(store.search(&keywords(&["cargo"])).unwrap().len(), 30);
 }

@@ -418,6 +418,22 @@ export const MEMORY_STRATEGY_OPTIONS = [
   { value: "keyword-search", label: "Keyword search" },
 ] as const;
 
+// The memory **scopes** (see gg/memories): which memory instance an agent instance binds
+// to. Orthogonal to the strategy, which decides what a memory *is*; this decides whose it
+// is. The empty value is the default (`isolated`), which is the only behaviour gg had
+// before instances could be shared and is what every existing configuration keeps.
+export const MEMORY_SCOPE_OPTIONS = [
+  { value: "", label: "Isolated (default)" },
+  { value: "shared", label: "Shared across this agent's instances" },
+  { value: "inherited", label: "Inherited from the spawner" },
+  { value: "read-only", label: "Inherited, read-only" },
+] as const;
+
+// What the scope picker means, in one paragraph, including the two rules that make the
+// four coherent and that a reader of a recorded configuration has to know.
+export const MEMORY_SCOPE_HINT =
+  "Which memory instance this agent binds. Isolated gives every instance its own, which is what memories always were. Shared binds one store per agent profile, so parallel instances of this agent curate it together. Inherited binds the spawner's store when this agent is spawned as a subagent (and its own otherwise), chaining however deep. Read-only is inherited without write access — but only for an inherited handle: an agent that ends up with its own store may write it, and a read-only agent's own inherited subagent gets write access back. Linked holders are told, in their next prompt, when another holder adds, revises or removes a memory.";
+
 // The memory strategies that bound the store by a **count** of notes: the scratchpad
 // (whose notes live in the window) and keyword search. A markdown run is bounded by its
 // index instead, since every memory needs a line in it.
@@ -742,6 +758,13 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     // be swept across all three arms without retyping its params. Zero means unlimited
     // everywhere.
     params: [
+      {
+        key: "scope",
+        label: "Scope",
+        kind: "select",
+        options: MEMORY_SCOPE_OPTIONS,
+        hint: MEMORY_SCOPE_HINT,
+      },
       {
         key: "maxCount",
         label: "Max memories",

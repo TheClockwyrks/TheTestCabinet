@@ -200,15 +200,20 @@ impl CompactionStrategy {
     ///
     /// [`SelfSummarization`](Self::SelfSummarization) covers `self-summarization`/empty/`None`
     /// **and** any unrecognized name, so a study naming a not-yet-built strategy still launches.
-    /// `memories_enabled` demotes [`Memory`](Self::Memory) to the default when the run has no
-    /// memories to write to — the one strategy with a hard prerequisite, and a run that compacted
-    /// by writing memories it does not have would simply never satisfy its own gate.
-    pub fn resolve(implementation: Option<&str>, memories_enabled: bool) -> Self {
+    ///
+    /// `memories_writable` demotes [`Memory`](Self::Memory) to the default when the agent has no
+    /// memories it can write — the one strategy with a hard prerequisite. That is *writable*, not
+    /// merely enabled: a [read-only](crate::memories::MemoryScope::ReadOnly) holder is shown its
+    /// spawner's memories but offered no call that changes them, so a memory compaction would ask
+    /// it to record its state with calls it does not have and
+    /// [`MemoryWrites`](PendingCompaction::MemoryWrites) could never be satisfied — leaving the run
+    /// wedged against a full window, which is a far worse outcome than condensing in prose.
+    pub fn resolve(implementation: Option<&str>, memories_writable: bool) -> Self {
         match implementation.map(str::trim) {
             Some(COMPACTION_STRATEGY_SELF_COMPACTION) => Self::SelfCompaction,
             Some(COMPACTION_STRATEGY_HANDOFF_SUMMARIZATION) => Self::HandoffSummarization,
             Some(COMPACTION_STRATEGY_HANDOFF_COMPACTION) => Self::HandoffCompaction,
-            Some(COMPACTION_STRATEGY_MEMORY) if memories_enabled => Self::Memory,
+            Some(COMPACTION_STRATEGY_MEMORY) if memories_writable => Self::Memory,
             _ => Self::SelfSummarization,
         }
     }
@@ -767,10 +772,16 @@ impl CompactionSetup {
     /// strategy read from its config. A disabled/absent capability yields a setup whose
     /// [`enabled`](Self::enabled) is `false` (and a default policy/strategy that is never used).
     ///
+    /// `memories_writable` is the agent's *resolved* memory access rather than anything readable
+    /// off the profile, because whether an agent may write its memories depends on how it was
+    /// spawned (see [`MemoryScope`](crate::memories::MemoryScope)) and not only on what it
+    /// declared. It is what demotes a [memory](CompactionStrategy::Memory) compaction that could
+    /// never be satisfied — see [`CompactionStrategy::resolve`].
+    ///
     /// The [handoff client](Self::handoff_client) is **not** resolved here — building a model
     /// client needs the run's client factory, which this pure resolution does not have. The loop's
     /// launch path fills it in ([`handoff_model_id`]).
-    pub fn resolve(set: &GgAgentConfig) -> Self {
+    pub fn resolve(set: &GgAgentConfig, memories_writable: bool) -> Self {
         let capability = set.capability(CAPABILITY_COMPACTION);
         let enabled = set.is_enabled(CAPABILITY_COMPACTION);
         let policy = capability
@@ -778,7 +789,7 @@ impl CompactionSetup {
             .unwrap_or_default();
         let strategy = CompactionStrategy::resolve(
             capability.and_then(|cap| cap.implementation.as_deref()),
-            set.is_enabled(CAPABILITY_MEMORIES),
+            memories_writable,
         );
         Self {
             enabled,

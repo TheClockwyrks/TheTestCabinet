@@ -600,6 +600,26 @@ export type GgMemoryPeak = {
 };
 
 /**
+ * Which [memory](CAPABILITY_MEMORIES) instance an agent instance binds to — the
+ * [`scope`](MEMORY_PARAM_SCOPE) param, resolved.
+ *
+ * Memory used to be strictly per agent instance: a subagent started with an empty notebook and
+ * nothing it wrote was ever seen by anyone else. That is still the default, and it is still the
+ * right answer for an ablation that wants each agent measured on its own curation. The other
+ * three bind the *same* store to several holders, which is what makes a study of shared,
+ * accumulated knowledge possible at all.
+ *
+ * Two rules make the four coherent, and they are the ones a configuration's reader has to know:
+ *
+ * 1. **[`ReadOnly`](Self::ReadOnly) only ever restricts an inherited handle.** An agent that ends
+ *    up with a fresh instance under `read-only` may write it — a private notebook nobody may
+ *    write is not a feature.
+ * 2. **Write access is a property of the holder, not of the store.** So a read-only agent's
+ *    [`Inherited`](Self::Inherited) subagent gets a read/**write** handle onto the same store.
+ */
+export type GgMemoryScope = "isolated" | "shared" | "inherited" | "read-only";
+
+/**
  * The status of one [task](https://docs.testcabinet.ai/gg/tasks/) — a field of a
  * [`GgTaskEntry`] in a [`TasksState`](GgTelemetryKind::TasksState) event.
  *
@@ -1846,6 +1866,21 @@ export type GgTelemetryKind =
        * The bounds these memories are kept within.
        */
       caps: GgMemoryCaps;
+      /**
+       * The [scope](GgMemoryScope) the emitting agent binds this instance under — `isolated`,
+       * `shared`, `inherited` or `read-only`. It is what tells the console that two agents'
+       * memory panels are showing **one** store rather than two that happen to agree, which is
+       * otherwise indistinguishable from a snapshot. Empty on records written before scoping
+       * existed, which the console reads as the `isolated` every run then was.
+       */
+      scope: string;
+      /**
+       * Whether the emitting agent may **write** this instance. `false` marks a
+       * [read-only](GgMemoryScope::ReadOnly) inherited handle: the agent is shown the set and
+       * offered the read calls, and every write call is withheld. Defaults to `true`, which is
+       * what every holder was before read-only handles existed.
+       */
+      writable: boolean;
     }
   | {
       type: "memory_revision";
@@ -2595,6 +2630,21 @@ export type GgTelemetryEvent = {
        * The bounds these memories are kept within.
        */
       caps: GgMemoryCaps;
+      /**
+       * The [scope](GgMemoryScope) the emitting agent binds this instance under — `isolated`,
+       * `shared`, `inherited` or `read-only`. It is what tells the console that two agents'
+       * memory panels are showing **one** store rather than two that happen to agree, which is
+       * otherwise indistinguishable from a snapshot. Empty on records written before scoping
+       * existed, which the console reads as the `isolated` every run then was.
+       */
+      scope: string;
+      /**
+       * Whether the emitting agent may **write** this instance. `false` marks a
+       * [read-only](GgMemoryScope::ReadOnly) inherited handle: the agent is shown the set and
+       * offered the read calls, and every write call is withheld. Defaults to `true`, which is
+       * what every holder was before read-only handles existed.
+       */
+      writable: boolean;
     }
   | {
       type: "memory_revision";

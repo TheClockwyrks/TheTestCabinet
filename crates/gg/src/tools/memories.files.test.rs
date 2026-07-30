@@ -8,11 +8,16 @@ use serde_json::json;
 use tempfile::TempDir;
 
 use super::*;
-use crate::memories::{MemoryCaps, MemoryStore, MemoryStrategy};
+use crate::memories::{MemoryBinding, MemoryCaps, MemoryStore, MemoryStrategy};
 use crate::tools::ToolFailure;
 
-/// A shared store on `strategy` with its documented limits, plus a throwaway workspace context.
-fn fixture(strategy: MemoryStrategy) -> (Arc<Mutex<MemoryStore>>, ToolContext, TempDir) {
+/// A [binding](MemoryBinding) onto a store on `strategy` with its documented limits, plus a
+/// throwaway workspace context.
+///
+/// The binding, rather than the bare store, because that is what a tool takes: a store plus the
+/// agent whose calls go through it. These tests attribute to no agent — the empty author — since
+/// what they are about is what each call does, not whose call it was.
+fn fixture(strategy: MemoryStrategy) -> (MemoryBinding, ToolContext, TempDir) {
     fixture_with(strategy, MemoryCaps::for_strategy(strategy))
 }
 
@@ -20,11 +25,11 @@ fn fixture(strategy: MemoryStrategy) -> (Arc<Mutex<MemoryStore>>, ToolContext, T
 fn fixture_with(
     strategy: MemoryStrategy,
     caps: MemoryCaps,
-) -> (Arc<Mutex<MemoryStore>>, ToolContext, TempDir) {
+) -> (MemoryBinding, ToolContext, TempDir) {
     let dir = TempDir::new().unwrap();
     let ctx = ToolContext::new(dir.path());
     (
-        Arc::new(Mutex::new(MemoryStore::new(strategy, caps))),
+        MemoryBinding::new(Arc::new(Mutex::new(MemoryStore::new(strategy, caps))), ""),
         ctx,
         dir,
     )
@@ -53,7 +58,7 @@ fn hits(outcome: &ToolOutcome) -> &[MemoryHitData] {
 #[tokio::test]
 async fn create_memory_stores_the_contents_and_reports_usage() {
     let (store, ctx, _dir) = fixture(MemoryStrategy::Markdown);
-    let tool = CreateMemoryTool::new(Arc::clone(&store));
+    let tool = CreateMemoryTool::new(store.clone());
 
     let outcome = tool
         .invoke(
@@ -68,7 +73,7 @@ async fn create_memory_stores_the_contents_and_reports_usage() {
     assert!(outcome.ok, "{}", outcome.output);
     assert!(outcome.output.contains("Created memory `build-commands`"));
 
-    let store = store.lock().unwrap();
+    let store = store.lock();
     assert_eq!(store.count(), 1);
     assert_eq!(
         store.read("build-commands").unwrap().body(),
@@ -84,7 +89,7 @@ async fn create_memory_stores_the_contents_and_reports_usage() {
 #[tokio::test]
 async fn create_memory_makes_the_description_optional_without_an_index() {
     let (store, ctx, _dir) = fixture(MemoryStrategy::KeywordSearch);
-    let tool = CreateMemoryTool::new(Arc::clone(&store));
+    let tool = CreateMemoryTool::new(store.clone());
 
     let required = tool.definition().parameters["required"].clone();
     assert_eq!(required, json!(["name", "contents"]));
@@ -93,7 +98,7 @@ async fn create_memory_makes_the_description_optional_without_an_index() {
         .invoke(json!({ "name": "m", "contents": "the contents" }), &ctx)
         .await;
     assert!(outcome.ok, "{}", outcome.output);
-    assert_eq!(store.lock().unwrap().read("m").unwrap().description(), "");
+    assert_eq!(store.lock().read("m").unwrap().description(), "");
 }
 
 /// Under markdown the description *is* the memory's index entry, so it is required both in the
@@ -101,7 +106,7 @@ async fn create_memory_makes_the_description_optional_without_an_index() {
 #[tokio::test]
 async fn create_memory_requires_a_description_with_an_index() {
     let (store, ctx, _dir) = fixture(MemoryStrategy::Markdown);
-    let tool = CreateMemoryTool::new(Arc::clone(&store));
+    let tool = CreateMemoryTool::new(store.clone());
 
     let required = tool.definition().parameters["required"].clone();
     assert_eq!(required, json!(["name", "description", "contents"]));
@@ -112,13 +117,13 @@ async fn create_memory_requires_a_description_with_an_index() {
     assert!(!outcome.ok);
     assert_eq!(outcome.failure, Some(ToolFailure::InvalidArgument));
     assert!(outcome.output.contains("description"));
-    assert_eq!(store.lock().unwrap().count(), 0);
+    assert_eq!(store.lock().count(), 0);
 }
 
 #[tokio::test]
 async fn create_memory_surfaces_a_duplicate_and_a_bad_slug() {
     let (store, ctx, _dir) = fixture(MemoryStrategy::Markdown);
-    let tool = CreateMemoryTool::new(Arc::clone(&store));
+    let tool = CreateMemoryTool::new(store.clone());
     let args = json!({ "name": "dup", "description": "d", "contents": "b" });
 
     assert!(tool.invoke(args.clone(), &ctx).await.ok);
@@ -149,7 +154,7 @@ async fn create_memory_surfaces_a_full_index_as_a_limit() {
             ..MemoryCaps::for_strategy(strategy)
         },
     );
-    let tool = CreateMemoryTool::new(Arc::clone(&store));
+    let tool = CreateMemoryTool::new(store.clone());
 
     assert!(
         tool.invoke(
@@ -167,7 +172,7 @@ async fn create_memory_surfaces_a_full_index_as_a_limit() {
         .await;
     assert_eq!(full.failure, Some(ToolFailure::LimitExceeded));
     assert!(full.output.contains("memory index"));
-    assert_eq!(store.lock().unwrap().count(), 1);
+    assert_eq!(store.lock().count(), 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -181,11 +186,10 @@ async fn read_memory_returns_the_contents_verbatim() {
     let (store, ctx, _dir) = fixture(MemoryStrategy::KeywordSearch);
     store
         .lock()
-        .unwrap()
-        .create("m", "d", "line one\nline two")
+        .create("", "m", "d", "line one\nline two")
         .unwrap();
 
-    let outcome = ReadMemoryTool::new(Arc::clone(&store))
+    let outcome = ReadMemoryTool::new(store.clone())
         .invoke(json!({ "name": "m" }), &ctx)
         .await;
     assert!(outcome.ok);
@@ -212,11 +216,10 @@ async fn edit_memory_replaces_the_unique_occurrence() {
     let (store, ctx, _dir) = fixture(MemoryStrategy::Markdown);
     store
         .lock()
-        .unwrap()
-        .create("m", "d", "the old line\nand another")
+        .create("", "m", "d", "the old line\nand another")
         .unwrap();
 
-    let outcome = EditMemoryTool::new(Arc::clone(&store))
+    let outcome = EditMemoryTool::new(store.clone())
         .invoke(
             json!({ "name": "m", "old_string": "the old line", "new_string": "the new line" }),
             &ctx,
@@ -225,7 +228,7 @@ async fn edit_memory_replaces_the_unique_occurrence() {
     assert!(outcome.ok, "{}", outcome.output);
     assert!(outcome.output.contains("Edited memory `m`"));
     assert_eq!(
-        store.lock().unwrap().read("m").unwrap().body(),
+        store.lock().read("m").unwrap().body(),
         "the new line\nand another"
     );
 }
@@ -235,23 +238,23 @@ async fn edit_memory_replaces_the_unique_occurrence() {
 #[tokio::test]
 async fn edit_memory_accepts_an_empty_replacement() {
     let (store, ctx, _dir) = fixture(MemoryStrategy::Markdown);
-    store.lock().unwrap().create("m", "d", "keep DROP").unwrap();
+    store.lock().create("", "m", "d", "keep DROP").unwrap();
 
-    let outcome = EditMemoryTool::new(Arc::clone(&store))
+    let outcome = EditMemoryTool::new(store.clone())
         .invoke(
             json!({ "name": "m", "old_string": " DROP", "new_string": "" }),
             &ctx,
         )
         .await;
     assert!(outcome.ok, "{}", outcome.output);
-    assert_eq!(store.lock().unwrap().read("m").unwrap().body(), "keep");
+    assert_eq!(store.lock().read("m").unwrap().body(), "keep");
 }
 
 #[tokio::test]
 async fn edit_memory_classifies_each_refusal() {
     let (store, ctx, _dir) = fixture(MemoryStrategy::Markdown);
-    store.lock().unwrap().create("m", "d", "same same").unwrap();
-    let tool = EditMemoryTool::new(Arc::clone(&store));
+    store.lock().create("", "m", "d", "same same").unwrap();
+    let tool = EditMemoryTool::new(store.clone());
 
     let ambiguous = tool
         .invoke(
@@ -279,7 +282,7 @@ async fn edit_memory_classifies_each_refusal() {
         .await;
     assert_eq!(emptied.failure, Some(ToolFailure::InvalidArgument));
     assert!(emptied.output.contains("delete the memory instead"));
-    assert_eq!(store.lock().unwrap().count(), 1);
+    assert_eq!(store.lock().count(), 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -290,20 +293,21 @@ async fn edit_memory_classifies_each_refusal() {
 async fn search_memories_ranks_and_reports_hits() {
     let (store, ctx, _dir) = fixture(MemoryStrategy::KeywordSearch);
     {
-        let mut store = store.lock().unwrap();
+        let mut store = store.lock();
         store
             .create(
+                "",
                 "gates",
                 "How to run the gates",
                 "cargo nextest run --workspace",
             )
             .unwrap();
         store
-            .create("style", "House style", "comments explain why")
+            .create("", "style", "House style", "comments explain why")
             .unwrap();
     }
 
-    let outcome = SearchMemoriesTool::new(Arc::clone(&store))
+    let outcome = SearchMemoriesTool::new(store.clone())
         .invoke(json!({ "keywords": ["cargo", "nextest"] }), &ctx)
         .await;
     assert!(outcome.ok, "{}", outcome.output);
@@ -322,14 +326,14 @@ async fn search_memories_ranks_and_reports_hits() {
 #[tokio::test]
 async fn search_memories_distinguishes_empty_from_unmatched() {
     let (store, ctx, _dir) = fixture(MemoryStrategy::KeywordSearch);
-    let tool = SearchMemoriesTool::new(Arc::clone(&store));
+    let tool = SearchMemoriesTool::new(store.clone());
 
     let empty = tool.invoke(json!({ "keywords": ["anything"] }), &ctx).await;
     assert!(empty.ok);
     assert!(empty.output.contains("no memories yet"));
     assert!(hits(&empty).is_empty());
 
-    store.lock().unwrap().create("m", "d", "something").unwrap();
+    store.lock().create("", "m", "d", "something").unwrap();
     let unmatched = tool.invoke(json!({ "keywords": ["absent"] }), &ctx).await;
     assert!(unmatched.ok);
     assert!(unmatched.output.contains("No memory matches"));

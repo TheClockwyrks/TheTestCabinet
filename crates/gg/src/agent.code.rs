@@ -47,7 +47,7 @@ use crate::tools::{
     ListDirTool, OffloadPolicy, OwnedStructured, ReadMemoryTool, ReadSkillTool, RemoveEpicTool,
     RemoveIssueTool, RemoveTaskTool, SearchArchiveTool, SearchMemoriesTool, SetBlockedByTool,
     SetIssueBlockedByTool, UpdateIssueTool, UpdateMemoryTool, UpdateTaskTool, WriteFileTool,
-    WriteMemoryTool, run_command,
+    WriteMemoryTool, read_only_refusal, run_command,
 };
 
 // ---------------------------------------------------------------------------
@@ -832,7 +832,7 @@ async fn run_code_program(
         board: turn.board.shared(),
         issue_policy: turn.issue_policy.clone(),
         project: turn.project.cloned(),
-        memories_rt: turn.memories.shared(),
+        memories_rt: turn.memories.alias(),
         tasks_rt: turn.tasks.shared(),
         amc: turn.amc.clone(),
         emitter: turn.emitter.clone(),
@@ -1048,13 +1048,25 @@ impl LoopToolApi {
         self.complete(call, outcome, managed)
     }
 
-    /// The compaction gate; `Some(refusal_outcome)` when this call is withheld this turn.
+    /// The gates every serviced call passes: `Some(refusal_outcome)` when this call is withheld.
     ///
-    /// It is the strictest gate gg has: while a compaction is in flight the window is full, so
-    /// every call that is not the one compaction asked for is refused. `compact` itself is exempt,
-    /// exactly as the native path lets it through — the run has no way forward until the window is
-    /// reclaimed.
+    /// Two, and they are refusals for different reasons. **Memory access** is structural — a
+    /// [read-only](crate::memories::MemoryScope::ReadOnly) holder may not write, ever — and is the
+    /// belt to the registry's braces: such a holder is offered no write call at all, so nothing a
+    /// program written against the scope it actually has can reach one, and this catches only a
+    /// program written against a scope it does not.
+    ///
+    /// **Compaction** is the strictest gate gg has, and temporary: while one is in flight the
+    /// window is full, so every call that is not the one compaction asked for is refused. `compact`
+    /// itself is exempt, exactly as the native path lets it through — the run has no way forward
+    /// until the window is reclaimed.
     fn gate(&self, name: &str) -> Option<ToolOutcome> {
+        if is_memory_tool(name) && !self.memories_rt.is_writable() {
+            return Some(ToolOutcome::failed(
+                ToolFailure::Refused,
+                read_only_refusal(self.memories_rt.strategy(), true),
+            ));
+        }
         if let Some(pending) = self.pending_compaction
             && !pending.admits(name, true)
             && name != COMPACT_TOOL
@@ -1364,7 +1376,7 @@ impl ToolApi for LoopToolApi {
             "write_memory",
             json!({ "name": name, "description": description, "body": body }),
             |api| {
-                WriteMemoryTool::new(api.memories_rt.store()).write(
+                WriteMemoryTool::new(api.memories_rt.binding()).write(
                     name.clone(),
                     description.clone(),
                     body.clone(),
@@ -1377,7 +1389,7 @@ impl ToolApi for LoopToolApi {
             "update_memory",
             json!({ "name": name, "description": description, "body": body }),
             |api| {
-                UpdateMemoryTool::new(api.memories_rt.store()).update(
+                UpdateMemoryTool::new(api.memories_rt.binding()).update(
                     name.clone(),
                     description.clone(),
                     body.clone(),
@@ -1395,7 +1407,7 @@ impl ToolApi for LoopToolApi {
             "create_memory",
             json!({ "name": name, "description": description, "contents": contents }),
             |api| {
-                CreateMemoryTool::new(api.memories_rt.store()).create(
+                CreateMemoryTool::new(api.memories_rt.binding()).create(
                     name.clone(),
                     description.clone(),
                     contents.clone(),
@@ -1405,7 +1417,7 @@ impl ToolApi for LoopToolApi {
     }
     fn read_memory(&mut self, name: String) -> ToolOutcome {
         self.serviced("read_memory", json!({ "name": name }), |api| {
-            ReadMemoryTool::new(api.memories_rt.store()).read(name.clone())
+            ReadMemoryTool::new(api.memories_rt.binding()).read(name.clone())
         })
     }
     fn edit_memory(&mut self, name: String, search: String, replace: String) -> ToolOutcome {
@@ -1413,7 +1425,7 @@ impl ToolApi for LoopToolApi {
             "edit_memory",
             json!({ "name": name, "old_string": search, "new_string": replace }),
             |api| {
-                EditMemoryTool::new(api.memories_rt.store()).edit(
+                EditMemoryTool::new(api.memories_rt.binding()).edit(
                     name.clone(),
                     search.clone(),
                     replace.clone(),
@@ -1423,12 +1435,12 @@ impl ToolApi for LoopToolApi {
     }
     fn search_memories(&mut self, keywords: Vec<String>) -> ToolOutcome {
         self.serviced("search_memories", json!({ "keywords": keywords }), |api| {
-            SearchMemoriesTool::new(api.memories_rt.store()).search(keywords.clone())
+            SearchMemoriesTool::new(api.memories_rt.binding()).search(keywords.clone())
         })
     }
     fn delete_memory(&mut self, name: String) -> ToolOutcome {
         self.serviced("delete_memory", json!({ "name": name }), |api| {
-            DeleteMemoryTool::new(api.memories_rt.store()).delete(name.clone())
+            DeleteMemoryTool::new(api.memories_rt.binding()).delete(name.clone())
         })
     }
     fn add_task(

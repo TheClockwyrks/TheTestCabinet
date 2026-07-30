@@ -18,8 +18,6 @@
 //! Only one strategy's tools are ever offered, so `create_memory` can read the store to decide
 //! whether it needs a `description` (the index entry) or merely accepts one.
 
-use std::sync::{Arc, Mutex};
-
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
@@ -31,7 +29,7 @@ use super::{
     CREATE_MEMORY_TOOL, EDIT_MEMORY_TOOL, READ_MEMORY_TOOL, SEARCH_MEMORIES_TOOL, bounds_note,
     failure_for, usage_data, usage_note,
 };
-use crate::memories::{MemoryChange, MemoryHit, MemoryStore};
+use crate::memories::{MemoryBinding, MemoryChange, MemoryHit};
 use crate::model::ToolDefinition;
 
 // ---------------------------------------------------------------------------
@@ -40,12 +38,12 @@ use crate::model::ToolDefinition;
 
 /// Creates a memory file: a slug, a description, and the initial contents.
 pub struct CreateMemoryTool {
-    store: Arc<Mutex<MemoryStore>>,
+    store: MemoryBinding,
 }
 
 impl CreateMemoryTool {
     /// A tool creating memories in `store`.
-    pub fn new(store: Arc<Mutex<MemoryStore>>) -> Self {
+    pub fn new(store: MemoryBinding) -> Self {
         Self { store }
     }
 }
@@ -57,7 +55,7 @@ impl Tool for CreateMemoryTool {
     }
 
     fn definition(&self) -> ToolDefinition {
-        let store = self.store.lock().expect("memory store lock");
+        let store = self.store.lock();
         let caps = store.caps();
         let indexed = store.strategy().has_index();
         drop(store);
@@ -137,8 +135,8 @@ impl CreateMemoryTool {
         description: String,
         contents: String,
     ) -> ToolOutcome {
-        let mut store = self.store.lock().expect("memory store lock");
-        match store.create(&name, &description, &contents) {
+        let mut store = self.store.lock();
+        match store.create(self.store.author(), &name, &description, &contents) {
             Ok(MemoryChange::Written) => ToolOutcome::ok(
                 format!("Created memory `{name}`. {}", usage_note(&store)),
                 format!("created memory `{name}`"),
@@ -156,12 +154,12 @@ impl CreateMemoryTool {
 
 /// Reads one memory's contents back into the model's context.
 pub struct ReadMemoryTool {
-    store: Arc<Mutex<MemoryStore>>,
+    store: MemoryBinding,
 }
 
 impl ReadMemoryTool {
     /// A tool reading memories from `store`.
-    pub fn new(store: Arc<Mutex<MemoryStore>>) -> Self {
+    pub fn new(store: MemoryBinding) -> Self {
         Self { store }
     }
 }
@@ -173,12 +171,7 @@ impl Tool for ReadMemoryTool {
     }
 
     fn definition(&self) -> ToolDefinition {
-        let indexed = self
-            .store
-            .lock()
-            .expect("memory store lock")
-            .strategy()
-            .has_index();
+        let indexed = self.store.lock().strategy().has_index();
         ToolDefinition::new(
             READ_MEMORY_TOOL,
             if indexed {
@@ -220,7 +213,7 @@ impl ReadMemoryTool {
     /// a memory that the memory does not already say, and a wrapper around it would be prose a
     /// program has to strip back off.
     pub(crate) fn read(&self, name: String) -> ToolOutcome {
-        let store = self.store.lock().expect("memory store lock");
+        let store = self.store.lock();
         match store.read(&name) {
             Ok(memory) => {
                 ToolOutcome::ok(memory.body().to_string(), format!("read memory `{name}`"))
@@ -236,12 +229,12 @@ impl ReadMemoryTool {
 
 /// Revises a memory by replacing one exact occurrence of a string.
 pub struct EditMemoryTool {
-    store: Arc<Mutex<MemoryStore>>,
+    store: MemoryBinding,
 }
 
 impl EditMemoryTool {
     /// A tool editing memories in `store`.
-    pub fn new(store: Arc<Mutex<MemoryStore>>) -> Self {
+    pub fn new(store: MemoryBinding) -> Self {
         Self { store }
     }
 }
@@ -253,7 +246,7 @@ impl Tool for EditMemoryTool {
     }
 
     fn definition(&self) -> ToolDefinition {
-        let caps = self.store.lock().expect("memory store lock").caps();
+        let caps = self.store.lock().caps();
         ToolDefinition::new(
             EDIT_MEMORY_TOOL,
             format!(
@@ -313,8 +306,8 @@ impl EditMemoryTool {
     /// Revise a memory — the **standard, typed** `edit_memory` API function both the JSON
     /// [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach.
     pub(crate) fn edit(&self, name: String, old_string: String, new_string: String) -> ToolOutcome {
-        let mut store = self.store.lock().expect("memory store lock");
-        match store.edit(&name, &old_string, &new_string) {
+        let mut store = self.store.lock();
+        match store.edit(self.store.author(), &name, &old_string, &new_string) {
             Ok(MemoryChange::Updated) => ToolOutcome::ok(
                 format!("Edited memory `{name}`. {}", usage_note(&store)),
                 format!("edited memory `{name}`"),
@@ -332,12 +325,12 @@ impl EditMemoryTool {
 
 /// Finds the memories that mention a set of keywords, best first.
 pub struct SearchMemoriesTool {
-    store: Arc<Mutex<MemoryStore>>,
+    store: MemoryBinding,
 }
 
 impl SearchMemoriesTool {
     /// A tool searching `store`.
-    pub fn new(store: Arc<Mutex<MemoryStore>>) -> Self {
+    pub fn new(store: MemoryBinding) -> Self {
         Self { store }
     }
 }
@@ -349,7 +342,7 @@ impl Tool for SearchMemoriesTool {
     }
 
     fn definition(&self) -> ToolDefinition {
-        let caps = self.store.lock().expect("memory store lock").caps();
+        let caps = self.store.lock().caps();
         ToolDefinition::new(
             SEARCH_MEMORIES_TOOL,
             format!(
@@ -391,7 +384,7 @@ impl SearchMemoriesTool {
     /// Search the memories — the **standard, typed** `search_memories` API function both the JSON
     /// [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach.
     pub(crate) fn search(&self, keywords: Vec<String>) -> ToolOutcome {
-        let store = self.store.lock().expect("memory store lock");
+        let store = self.store.lock();
         let hits = match store.search(&keywords) {
             Ok(hits) => hits,
             Err(err) => {

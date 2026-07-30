@@ -234,6 +234,11 @@ const EVENTS: HarnessEvent[] = [
       maxLenDescription: null,
       maxResults: null,
     },
+    // Shared with every instance of this agent, and writable — so the panel badges the
+    // scope, which is the only way one store held by two agents is distinguishable from
+    // two agents that happen to hold the same notes.
+    scope: "shared",
+    writable: true,
   }),
   // The revision stream behind that snapshot: a memory that is still held, and one
   // the model wrote and then deleted — which the snapshot above cannot show, and

@@ -72,7 +72,7 @@ use crate::archive::ArchiveRuntime;
 use crate::board::BoardRuntime;
 use crate::compaction::RetainedCounts;
 use crate::context::{ContextModel, TokenEstimator};
-use crate::memories::MemoriesRuntime;
+use crate::memories::{MemoriesRuntime, MemoryRegistry, MemoryStrategy};
 use crate::model::Message;
 use crate::skills::SkillsRuntime;
 use crate::tasks::TasksRuntime;
@@ -168,8 +168,13 @@ pub trait Module: Send {
     /// every turn of a run in which nothing is shared.
     ///
     /// Advancing the holder's watermark is part of producing the notice, so a given piece of news
-    /// is delivered to a given holder exactly once. The default is "no module of mine is ever
-    /// shared, so there is never anything to say"; only [memories](MemoriesRuntime) overrides it.
+    /// is delivered to a given holder exactly once. An [unowned](Ownership::Unowned) module never
+    /// produces one — it contributes nothing to the assembled prompt — and enforcing that is the
+    /// implementation's job, exactly as it is for [`context_block`](Self::context_block), so no
+    /// caller has to remember it.
+    ///
+    /// The default is "no module of mine is ever shared, so there is never anything to say"; only
+    /// [memories](MemoriesRuntime) overrides it.
     fn notice(&mut self) -> Option<Message> {
         None
     }
@@ -437,7 +442,8 @@ pub struct HistorySetup {
 // ---------------------------------------------------------------------------
 
 /// Everything [`ModuleSet::resolve`] and [`Module::adopt`] need beyond the profile itself: the
-/// run-global resources a module is built *over* rather than *from*.
+/// run-global resources a module is built *over* rather than *from*, and the modules this
+/// particular agent may inherit.
 pub struct ModuleResolveCtx<'a> {
     /// The orchestrator's skills runtime — the loaded library every agent's own read-state runtime
     /// is built over.
@@ -446,11 +452,80 @@ pub struct ModuleResolveCtx<'a> {
     /// [share](Module::share) of this one: the board is the run's single work queue, and two
     /// copies of it would issue the same identifier twice.
     pub board: &'a BoardRuntime,
+    /// The run-global registry of **profile-bound** memory instances — what a
+    /// [`shared`](crate::memories::MemoryScope::Shared)-scoped agent binds, so every instance of
+    /// that profile in the run curates one store.
+    pub memories: &'a MemoryRegistry,
+    /// The modules this agent may take over from the agent that spawned it — empty for every
+    /// agent that has no spawner (the root, an issue's implementer, a detached reviewer or judge).
+    /// Only a profile that asks for them ([`inherited`](crate::memories::MemoryScope::Inherited) or
+    /// [`read-only`](crate::memories::MemoryScope::ReadOnly)) takes anything from here.
+    pub inherited: &'a InheritedModules,
     /// The holder-owned properties of the conversation window.
     pub history: HistorySetup,
     /// The id of the agent instance the modules are being built for. Recorded on a shared store's
     /// entries so a write can be attributed to the holder that made it.
     pub agent_id: &'a str,
+}
+
+/// What a spawned agent may take over from its spawner, offered at the spawn and taken only by a
+/// child whose own profile asks for it.
+///
+/// It is an offer rather than an instruction, and that is the whole of gg's inheritance model: the
+/// spawner always offers what it holds, and the **child's** scope decides whether to bind it, with
+/// what access. That is what makes inheritance compose — a chain of subagents each scoped
+/// `inherited` all end up holding the store the top of the chain created, and a `read-only` link in
+/// the middle restricts only itself, because access is a property of a holder rather than of a
+/// store.
+///
+/// Only memories are inheritable today. The type exists in the plural because it is the seam the
+/// rest of the module kinds arrive through.
+#[derive(Default)]
+pub struct InheritedModules {
+    /// The spawner's memories, when it had any. A child binds a [share](Module::share) of this.
+    pub memories: Option<MemoriesRuntime>,
+}
+
+impl InheritedModules {
+    /// What a spawner offers its children: a [share](Module::share) of its own memories when the
+    /// capability is on for it, and nothing when it is off.
+    ///
+    /// A share rather than the runtime itself because the spawner keeps curating its own memories
+    /// while its children run — they are holders of one store, which is the point.
+    pub fn from_spawner(modules: &CapabilityModules) -> Self {
+        Self {
+            memories: modules
+                .memories()
+                .enabled()
+                .then(|| modules.memories().shared()),
+        }
+    }
+
+    /// The same offer again, for one more child.
+    ///
+    /// A spawner offers what it holds to *every* child it spawns, and each dispatch needs an owned
+    /// value to send into the child's task — so this is a fresh [share](Module::share) of the same
+    /// stores rather than a move. It is not `Clone` for the reason no module type is: a copy has
+    /// to name which of the two copies it means, and this one means "the same store, one more
+    /// holder".
+    pub fn offer(&self) -> Self {
+        Self {
+            memories: self.memories.as_ref().map(MemoriesRuntime::shared),
+        }
+    }
+
+    /// The offered memories, but only if they are organized by `strategy` — otherwise `None`.
+    ///
+    /// A store is read by the calls its own strategy offers: a scratchpad handed to an agent
+    /// configured for a markdown index would be a set it has no call to read and an index it
+    /// cannot see. gg gives such a child a private instance instead, and
+    /// [says so at launch](crate::memories::launch_warnings) rather than leaving it to be
+    /// inferred from a notebook that stayed empty.
+    pub fn memories_organized_as(&self, strategy: MemoryStrategy) -> Option<&MemoriesRuntime> {
+        self.memories
+            .as_ref()
+            .filter(|memories| memories.strategy() == strategy)
+    }
 }
 
 /// Resolve a module-backed capability's [`ownership`](MODULE_PARAM_OWNERSHIP) param, returning the
@@ -557,7 +632,7 @@ impl CapabilityModules {
             Ownership::Unowned
         };
         Self {
-            memories: MemoriesRuntime::resolve(profile),
+            memories: MemoriesRuntime::resolve(profile, ctx),
             tasks: TasksRuntime::resolve(profile),
             board: ctx.board.shared().with_ownership(board_ownership),
             skills: ctx
@@ -714,10 +789,13 @@ impl CapabilityModules {
 
     /// The per-turn notices the modules owe the model — news another holder of a shared module
     /// produced since this holder last looked. Empty on every turn of a run that shares nothing.
+    ///
+    /// Whether a module is [owned](Ownership::Owned) enough to say anything is each module's own
+    /// question, decided inside its [`notice`](Module::notice) — which is what lets an unowned one
+    /// still advance its watermark past news it was never going to be told.
     pub fn notices(&mut self) -> Vec<Message> {
         self.each_mut()
             .into_iter()
-            .filter(|module| module.ownership() == Ownership::Owned)
             .filter_map(|module| module.notice())
             .collect()
     }

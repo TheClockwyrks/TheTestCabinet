@@ -63,6 +63,9 @@ fn full_system() -> SystemContext {
             max_len_index: None,
             max_len_description: None,
             max_results: None,
+            read_only: false,
+            linked: false,
+            scope: "isolated".to_string(),
         }),
         tasks: Some(TasksView { max_tasks: 100 }),
         board: Some(BoardView {
@@ -1263,6 +1266,162 @@ fn an_assigned_issue_names_the_issue_and_its_worktree() {
         !undispatched.contains("Your assigned issue"),
         "an agent with no assignment is told nothing about one:\n{undispatched}"
     );
+}
+
+/// A **read-only** memory holder is told the memories are another agent's and that it has no call
+/// that writes one — instead of being told, as every other holder is, to write them regularly.
+///
+/// A prompt that tells a model to curate memories and a toolset that offers it nothing to curate
+/// them with is how an agent spends turns hunting for a call that was never there.
+#[test]
+fn the_memory_section_changes_shape_for_a_read_only_holder() {
+    let read_only = |view: MemoriesView| {
+        flat(&render_system(
+            &SystemContext {
+                memories: Some(view),
+                ..full_system()
+            },
+            None,
+        ))
+    };
+    let markdown = MemoriesView {
+        scratchpad: false,
+        markdown: true,
+        keyword_search: false,
+        read_only: true,
+        ..memories_view()
+    };
+    let prompt = read_only(markdown);
+    assert!(
+        prompt.contains("another agent's memories"),
+        "the memories are named as somebody else's:\n{prompt}"
+    );
+    assert!(
+        prompt.contains("read one with `read_memory`"),
+        "and the call it does have is named:\n{prompt}"
+    );
+    assert!(
+        prompt.contains("no call that writes one"),
+        "and the ones it does not are ruled out:\n{prompt}"
+    );
+    assert!(
+        !prompt.contains("Write to this regularly"),
+        "it is not also told to curate them:\n{prompt}"
+    );
+
+    // The writable holder still reads the original paragraph.
+    let writable = read_only(MemoriesView {
+        scratchpad: false,
+        markdown: true,
+        keyword_search: false,
+        ..memories_view()
+    });
+    assert!(writable.contains("Write to this regularly"), "{writable}");
+    assert!(!writable.contains("another agent's memories"), "{writable}");
+}
+
+/// A holder whose instance may be shared is told what the linked notices are, before it ever gets
+/// one — a mid-thread message announcing another agent's write has to read as this system reporting
+/// a fact rather than as a stranger addressing the model.
+#[test]
+fn the_memory_section_explains_the_linked_notices() {
+    let linked = flat(&render_system(
+        &SystemContext {
+            memories: Some(MemoriesView {
+                linked: true,
+                scope: "shared".to_string(),
+                ..memories_view()
+            }),
+            ..full_system()
+        },
+        None,
+    ));
+    assert!(linked.contains("These memories are `shared`"), "{linked}");
+    assert!(
+        linked.contains("other agents in this run hold the same set"),
+        "{linked}"
+    );
+    assert!(
+        linked.contains("your own writes are never announced back to you"),
+        "{linked}"
+    );
+
+    // An isolated holder — the default — reads none of it, because none of it can happen to it.
+    let alone = flat(&render_system(
+        &SystemContext {
+            memories: Some(memories_view()),
+            ..full_system()
+        },
+        None,
+    ));
+    assert!(!alone.contains("other agents in this run hold"), "{alone}");
+}
+
+/// The scratchpad memory view every memory-section test varies one field of: writable, unshared,
+/// and organized the way an unconfigured run organizes memories.
+fn memories_view() -> MemoriesView {
+    MemoriesView {
+        scratchpad: true,
+        markdown: false,
+        keyword_search: false,
+        max_count: Some(8),
+        max_len_per_memory: Some(2_000),
+        max_total_len: Some(8_000),
+        max_len_index: None,
+        max_len_description: None,
+        max_results: None,
+        read_only: false,
+        linked: false,
+        scope: "isolated".to_string(),
+    }
+}
+
+/// The linked-memory notice names each memory once, says what happened to it, and points at the
+/// call that reads it — or, under the scratchpad, carries the body instead, because there is no
+/// such call and a notice pointing at one the agent does not have is not actionable.
+#[test]
+fn the_memory_notice_names_what_changed_and_how_to_act_on_it() {
+    let indexed = render_memory_notice(&MemoryNoticeContext {
+        entries: vec![
+            MemoryNoticeEntry {
+                name: "deploy-runbook".to_string(),
+                change: "added".to_string(),
+                description: "how the staging cluster is rolled".to_string(),
+                body: None,
+            },
+            MemoryNoticeEntry {
+                name: "scratch-notes".to_string(),
+                change: "deleted".to_string(),
+                description: String::new(),
+                body: None,
+            },
+        ],
+        read_call: Some("`read_memory`".to_string()),
+        inline_bodies: false,
+        indexed: true,
+    });
+    assert!(indexed.contains("- added `deploy-runbook` — how the staging cluster is rolled"));
+    assert!(indexed.contains("- deleted `scratch-notes`"));
+    assert!(indexed.contains("Read one with `read_memory`"));
+    assert!(
+        flat(&indexed).contains("Your memory index still shows the set as it stood"),
+        "the lagging index is explained:\n{indexed}"
+    );
+
+    let scratchpad = render_memory_notice(&MemoryNoticeContext {
+        entries: vec![MemoryNoticeEntry {
+            name: "plan".to_string(),
+            change: "added".to_string(),
+            description: "the plan".to_string(),
+            body: Some("beat the boss with the grapple".to_string()),
+        }],
+        read_call: None,
+        inline_bodies: true,
+        indexed: false,
+    });
+    assert!(scratchpad.contains("beat the boss with the grapple"));
+    assert!(!scratchpad.contains("Read one with"));
+    assert!(!scratchpad.contains("memory index"));
 }
 
 /// The memories block lists each note verbatim under the heading — and leaves the model's own

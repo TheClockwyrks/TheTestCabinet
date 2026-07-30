@@ -53,9 +53,9 @@
 //! [`disabled`](MemoriesRuntime::disabled) runtime, so there are no memory tools, no prompt text,
 //! no context block, and no telemetry — the feature vanishes.
 
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::BTreeMap;
 use std::fmt;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use serde_json::Value;
 use test_cabinet_core::gg::{
@@ -68,12 +68,25 @@ use crate::model::Message;
 use crate::modules::{
     AdoptError, Module, ModuleHandle, ModuleKind, ModuleResolveCtx, Ownership, Refresh,
 };
-use crate::prompts::{self, MemoriesBlockContext, MemoryIndexContext, MemoryItemView};
+use crate::prompts::{
+    self, MemoriesBlockContext, MemoryIndexContext, MemoryItemView, MemoryNoticeContext,
+};
+
+/// Which memory instance a holder binds to, re-exported from the contract so gg and the
+/// configurations it reads name the same four things. See
+/// [`GgMemoryScope`](test_cabinet_core::gg::GgMemoryScope) for what each one binds.
+pub use test_cabinet_core::gg::GgMemoryScope as MemoryScope;
 
 #[path = "memories.search.rs"]
 mod search;
 
+#[path = "memories.scope.rs"]
+mod scope;
+
+pub use scope::{MemoryRegistry, launch_warnings, resolve_scope};
 pub use search::MemoryHit;
+
+use scope::notice_entries;
 
 /// Default [maximum number of memories](MemoryCaps::max_count) under the
 /// [scratchpad](MemoryStrategy::Scratchpad) strategy. A small ceiling — the point is a curated
@@ -203,21 +216,25 @@ impl MemoryStrategy {
                 create: "`write_memory`",
                 revise: "`update_memory`",
                 delete: "`delete_memory`",
+                read: "`read_memory`",
             },
             (Self::Scratchpad, true) => MemoryCalls {
                 create: "`memory.writeMemory`",
                 revise: "`memory.updateMemory`",
                 delete: "`memory.deleteMemory`",
+                read: "`memory.readMemory`",
             },
             (_, false) => MemoryCalls {
                 create: "`create_memory`",
                 revise: "`edit_memory`",
                 delete: "`delete_memory`",
+                read: "`read_memory`",
             },
             (_, true) => MemoryCalls {
                 create: "`memory.createMemory`",
                 revise: "`memory.editMemory`",
                 delete: "`memory.deleteMemory`",
+                read: "`memory.readMemory`",
             },
         }
     }
@@ -233,6 +250,11 @@ pub struct MemoryCalls {
     pub revise: &'static str,
     /// The call that removes one.
     pub delete: &'static str,
+    /// The call that reads one back. Named for every strategy, but only ever *offered* by the two
+    /// [file-shaped](MemoryStrategy::is_file_shaped) ones — the scratchpad's memories are already
+    /// in the window, so it has nothing to read them with. A prompt that points at it has to check
+    /// the strategy first.
+    pub read: &'static str,
 }
 
 /// The bounds gg keeps the model's [memories](MemoryStore) within, so self-curated notes cannot
@@ -619,11 +641,26 @@ pub enum MemoryChange {
 /// The live set answers "what does the model hold now", which is the smaller half of the
 /// question a study of memory asks. Two things the set cannot show are kept alongside it:
 ///
-/// - the **[revision log](Self::drain_revisions)** — every mutation, in order, with the text it
-///   produced, so a memory the model wrote and later deleted, and the earlier wording of one it
-///   revised, are both still in the record;
+/// - the **[revision log](Self::log_from)** — every mutation, in order, with the text it
+///   produced and the agent that made it, so a memory the model wrote and later deleted, and the
+///   earlier wording of one it revised, are both still in the record;
 /// - the **[peaks](Self::peak)** — the high-water count and length, so a run that curated its
 ///   way back down to two short notes does not read as one that never used memory.
+///
+/// # One store, several holders
+///
+/// A store is not necessarily one agent's. Under every [scope](MemoryScope) but
+/// [`Isolated`](MemoryScope::Isolated) the same store is held by several
+/// [`MemoriesRuntime`]s at once, and that is why the revision log is **append-only and
+/// author-tagged** rather than a queue the first reader empties. A destructive drain cannot serve
+/// two holders: whichever looked first would steal the other's events, and neither could tell
+/// which writes were its own. With a log plus a per-holder cursor, a write is reported exactly
+/// once — on the stream of the agent that made it — and every *other* holder can be told about it
+/// in its next prompt without being told about its own.
+///
+/// The log is never truncated, because a cursor is an index into it. In exchange it holds only
+/// text the store already held once, bounded by the same [per-memory limit](MemoryCaps) every
+/// body is.
 #[derive(Debug, Clone)]
 pub struct MemoryStore {
     strategy: MemoryStrategy,
@@ -632,12 +669,28 @@ pub struct MemoryStore {
     /// The next revision number for each slug ever written, kept across a delete so a
     /// re-created name continues its history rather than restarting it.
     revisions: BTreeMap<String, u64>,
-    /// Mutations recorded but not yet emitted as telemetry, oldest first. Drained by the loop
-    /// after each memory call (or, under responses-as-code, after each program), so a store
-    /// that is never drained cannot grow without bound in a long run.
-    pending: VecDeque<MemoryRevision>,
+    /// Every mutation this store has ever taken, oldest first, each tagged with the agent that
+    /// made it. Append-only: holders read it through their own cursors (see the type's docs).
+    log: Vec<LoggedRevision>,
     /// The high-water marks, updated after every mutation.
     peak: MemoryPeak,
+}
+
+/// One entry of a store's [revision log](MemoryStore::log_from): what changed, and **who** changed
+/// it.
+///
+/// The author is the agent id of the holder whose call performed the mutation, recorded at the
+/// mutation rather than inferred at the drain — the only shape under which two holders of one
+/// store can both be right about whose write a given entry was. It is what makes
+/// [`MemoriesRuntime::drain_events`] report a write once, and
+/// [`MemoriesRuntime::notice`] report it to everyone else.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LoggedRevision {
+    /// What the mutation did.
+    pub revision: MemoryRevision,
+    /// The id of the agent whose call made it. Empty for a store driven directly (a test), which
+    /// reads as "no agent" and matches no holder.
+    pub author: String,
 }
 
 /// One recorded mutation of one memory — an entry of the store's
@@ -702,7 +755,7 @@ impl MemoryStore {
             caps,
             memories: Vec::new(),
             revisions: BTreeMap::new(),
-            pending: VecDeque::new(),
+            log: Vec::new(),
             peak: MemoryPeak::default(),
         }
     }
@@ -758,26 +811,20 @@ impl MemoryStore {
         self.peak
     }
 
-    /// Take the [revisions](MemoryRevision) recorded since the last drain, oldest first — the
-    /// append-only record of what the model did to memory, which the loop turns into
-    /// [`MemoryRevision`](GgTelemetryKind::MemoryRevision) telemetry.
-    ///
-    /// Drained rather than accumulated because the run record is where the history lives; the
-    /// store keeps only what has not been handed over yet, so a run that writes memories for
-    /// hours does not carry every body it ever wrote in process memory as well.
-    pub fn drain_revisions(&mut self) -> Vec<GgTelemetryKind> {
-        self.pending.drain(..).map(|rev| rev.to_event()).collect()
+    /// How many entries the [revision log](Self::log_from) holds — its head, and where a new
+    /// holder's cursors start so it is not told about history it never missed.
+    pub fn log_len(&self) -> usize {
+        self.log.len()
     }
 
-    /// Discard the undrained revisions **without** reporting them — what a
-    /// [fork](MemoriesRuntime::forked) does to the *copy* it makes.
+    /// The [logged revisions](LoggedRevision) at or after `cursor`, oldest first — the
+    /// append-only record of what was done to this store, which each holder reads through its own
+    /// watermark rather than draining out from under the others.
     ///
-    /// A write is one event on one stream. The copy inherits the memories and their history, but
-    /// the queue of mutations nobody has streamed yet still belongs to the holder that made them:
-    /// leaving it in both would emit the same `MemoryRevision` twice, on two agents' streams, for
-    /// one call.
-    pub fn forget_pending(&mut self) {
-        self.pending.clear();
+    /// A `cursor` beyond the head yields nothing, which is what a holder that is already current
+    /// sees on a turn where nobody wrote.
+    pub fn log_from(&self, cursor: usize) -> &[LoggedRevision] {
+        self.log.get(cursor..).unwrap_or(&[])
     }
 
     /// The memories, in slug order. (A read surface for the tests; the loop reaches the
@@ -797,6 +844,7 @@ impl MemoryStore {
     /// exceed the total-length limit.
     pub fn write(
         &mut self,
+        author: &str,
         name: &str,
         description: &str,
         body: &str,
@@ -815,7 +863,7 @@ impl MemoryStore {
             description,
             body,
         });
-        self.record(&name, MemoryChange::Written);
+        self.record(author, &name, MemoryChange::Written);
         Ok(MemoryChange::Written)
     }
 
@@ -825,6 +873,7 @@ impl MemoryStore {
     /// count is unchanged, so the count limit does not apply.)
     pub fn update(
         &mut self,
+        author: &str,
         name: &str,
         description: &str,
         body: &str,
@@ -844,7 +893,7 @@ impl MemoryStore {
             description,
             body,
         };
-        self.record(&name, MemoryChange::Updated);
+        self.record(author, &name, MemoryChange::Updated);
         Ok(MemoryChange::Updated)
     }
 
@@ -864,6 +913,7 @@ impl MemoryStore {
     /// not fit in the index.
     pub fn create(
         &mut self,
+        author: &str,
         name: &str,
         description: &str,
         contents: &str,
@@ -889,7 +939,7 @@ impl MemoryStore {
             description,
             body: contents,
         });
-        self.record(&name, MemoryChange::Written);
+        self.record(author, &name, MemoryChange::Written);
         Ok(MemoryChange::Written)
     }
 
@@ -913,6 +963,7 @@ impl MemoryStore {
     /// deletion, and gg refuses to infer one from an edit.
     pub fn edit(
         &mut self,
+        author: &str,
         name: &str,
         search: &str,
         replace: &str,
@@ -945,7 +996,7 @@ impl MemoryStore {
         let total_without_old = self.total_len() - self.memories[index].len();
         self.check_total(total_without_old + len)?;
         self.memories[index].body = edited;
-        self.record(&name, MemoryChange::Updated);
+        self.record(author, &name, MemoryChange::Updated);
         Ok(MemoryChange::Updated)
     }
 
@@ -970,7 +1021,7 @@ impl MemoryStore {
 
     /// Remove a memory. Refused only if the name is empty or no memory of that name exists — a
     /// deletion never runs into a limit, since it can only free room.
-    pub fn delete(&mut self, name: &str) -> Result<MemoryChange, MemoryError> {
+    pub fn delete(&mut self, author: &str, name: &str) -> Result<MemoryChange, MemoryError> {
         let name = name.trim();
         if name.is_empty() {
             return Err(MemoryError::EmptyField("name"));
@@ -979,7 +1030,7 @@ impl MemoryStore {
             return Err(self.not_found(name));
         };
         let name = self.memories.remove(index).name;
-        self.record(&name, MemoryChange::Deleted);
+        self.record(author, &name, MemoryChange::Deleted);
         Ok(MemoryChange::Deleted)
     }
 
@@ -1020,14 +1071,19 @@ impl MemoryStore {
         self.memories.insert(at, memory);
     }
 
-    /// Append `change` to the [revision log](Self::drain_revisions) and refresh the
+    /// Append `change`, made by `author`, to the [revision log](Self::log_from) and refresh the
     /// [peaks](Self::peak).
     ///
     /// Called at the end of every successful mutation, once the set is already in its new
     /// state — so the text recorded is read back from the store rather than from the caller's
     /// arguments, and can never claim a revision the store did not actually take. A deletion
     /// finds nothing to read back, and records the empty text that says so.
-    fn record(&mut self, name: &str, change: MemoryChange) {
+    ///
+    /// The author travels with the mutation rather than being attached afterwards because a
+    /// store may be held by several agents at once: attribution decided at the drain would be a
+    /// guess, and the guess would be wrong exactly when two agents are curating together, which
+    /// is the case attribution exists for.
+    fn record(&mut self, author: &str, name: &str, change: MemoryChange) {
         let revision = {
             let next = self.revisions.entry(name.to_string()).or_insert(0);
             *next += 1;
@@ -1040,12 +1096,15 @@ impl MemoryStore {
             ),
             None => (String::new(), String::new()),
         };
-        self.pending.push_back(MemoryRevision {
-            name: name.to_string(),
-            revision,
-            change,
-            description,
-            body,
+        self.log.push(LoggedRevision {
+            revision: MemoryRevision {
+                name: name.to_string(),
+                revision,
+                change,
+                description,
+                body,
+            },
+            author: author.to_string(),
         });
         self.peak = MemoryPeak {
             count: self.peak.count.max(self.memories.len()),
@@ -1158,8 +1217,14 @@ impl MemoryStore {
         Ok(())
     }
 
-    /// The [`MemoryState`](GgTelemetryKind::MemoryState) telemetry for the current set.
-    fn state_event(&self) -> GgTelemetryKind {
+    /// The [`MemoryState`](GgTelemetryKind::MemoryState) telemetry for the current set, as the
+    /// holder described by `scope` and `writable` sees it.
+    ///
+    /// The two holder facets are passed in rather than read off the store because they are not
+    /// the store's: one store can be held by an agent that owns it and by another that may only
+    /// read it, and a snapshot that did not say which would make two agents' panels
+    /// indistinguishable.
+    fn state_event(&self, scope: MemoryScope, writable: bool) -> GgTelemetryKind {
         let memories = self
             .memories
             .iter()
@@ -1182,6 +1247,8 @@ impl MemoryStore {
                 total_lines: self.peak.total_lines as u64,
             },
             caps: self.caps.to_contract(),
+            scope: scope.as_str().to_string(),
+            writable,
         }
     }
 
@@ -1283,15 +1350,102 @@ fn validate_slug(name: &str) -> Result<String, MemoryError> {
     Ok(name.to_string())
 }
 
+/// Whether a holder of a [`MemoryStore`] may **write** it.
+///
+/// Access is a property of the *holder*, never of the store — nothing on a store records who may
+/// write it. That is not an implementation detail but the rule that makes
+/// [`read-only`](MemoryScope::ReadOnly) inheritance compose: a read-only agent's own
+/// [`inherited`](MemoryScope::Inherited) subagent gets a read/write handle onto the very same
+/// store, because its own profile says so.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MemoryAccess {
+    /// The holder may create, revise and delete. Every holder that is not a read-only inherited
+    /// handle, including one that asked for `read-only` and ended up with a fresh instance of its
+    /// own — a private notebook nobody may write is not a feature.
+    #[default]
+    ReadWrite,
+    /// The holder is offered the read calls alone. Its write calls are never contributed to the
+    /// [toolset](crate::tools::ToolRegistry), so the model is never shown a schema for one; the
+    /// [responses-as-code](crate::sandbox) path refuses one that reaches it anyway, so a stale
+    /// program cannot write through a handle the registry withheld.
+    ReadOnly,
+}
+
+impl MemoryAccess {
+    /// Whether this holder may write.
+    pub fn is_writable(self) -> bool {
+        matches!(self, MemoryAccess::ReadWrite)
+    }
+}
+
+/// One holder's binding onto a [`MemoryStore`]: the shared store, and the id of the agent whose
+/// calls go through it.
+///
+/// This is what the [memory tools](crate::tools) hold, rather than the bare `Arc<Mutex<…>>` they
+/// held when a store could only ever belong to one agent. Every mutation is attributed to
+/// [`author`](Self::author) as it is recorded, which is what lets several agents curate one store
+/// and still have each write reported exactly once, on the stream of the agent that made it.
+#[derive(Debug, Clone)]
+pub struct MemoryBinding {
+    /// The shared store.
+    store: Arc<Mutex<MemoryStore>>,
+    /// The id of the agent whose calls this binding services.
+    author: Arc<str>,
+}
+
+impl MemoryBinding {
+    /// A binding onto `store` for the agent named `author`.
+    pub fn new(store: Arc<Mutex<MemoryStore>>, author: impl AsRef<str>) -> Self {
+        Self {
+            store,
+            author: Arc::from(author.as_ref()),
+        }
+    }
+
+    /// The agent every mutation made through this binding is recorded against.
+    pub fn author(&self) -> &str {
+        &self.author
+    }
+
+    /// The store, locked. Every memory tool takes this once per call and performs its read or its
+    /// mutation under it.
+    pub fn lock(&self) -> MutexGuard<'_, MemoryStore> {
+        self.store.lock().expect("memory store lock")
+    }
+}
+
+/// One holder's watermarks into its store's [revision log](MemoryStore::log_from).
+///
+/// Two, not one, because a holder owes two different audiences two different things and they
+/// advance at different moments: the run record is owed every write *this* holder made, drained
+/// after each call; the model is owed news of what *other* holders did, delivered once at a turn
+/// boundary. A single cursor would make a drain swallow an undelivered notice.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct HolderCursors {
+    /// How far this holder has streamed as [telemetry](MemoriesRuntime::revision_events).
+    telemetry: usize,
+    /// How far this holder has [told the model](MemoriesRuntime::notice).
+    notice: usize,
+}
+
 /// The loop's live view of the memories capability: whether it is on, which
-/// [strategy](MemoryStrategy) it runs, and the shared [`MemoryStore`].
+/// [strategy](MemoryStrategy) it runs, the [`MemoryStore`] it holds, and **how** it holds it.
 ///
 /// Constructed [enabled](Self::new) with a strategy and resolved limits, or
-/// [disabled](Self::disabled) (an ablation's off arm). It hands the [`store`](Self::store) to the
+/// [disabled](Self::disabled) (an ablation's off arm). It hands a [binding](Self::binding) to the
 /// memory tools, produces the [strategy](Self::strategy) and [limits](Self::caps) the
 /// [system prompt](crate::prompts::SystemContext::memories) states, the
 /// [`MemoryState`](GgTelemetryKind::MemoryState) [telemetry](Self::state_event), and the pinned
 /// [context block](Self::context_block) the loop keeps in the window.
+///
+/// # A holder, not an owner
+///
+/// Under every [scope](MemoryScope) but [`Isolated`](MemoryScope::Isolated) the store behind a
+/// runtime is held by other agents too, and almost everything on this type that is not the store
+/// is about being *one of several holders*: which agent this holder is (so its writes can be
+/// attributed to it), whether it may [write](MemoryAccess) at all, and how far it has told its
+/// stream and its model about what the store has seen. Those watermarks are the whole of the
+/// linked-memory mechanism — see [`notice`](Self::notice).
 ///
 /// It is a [module](crate::modules::Module): it can be [forked](Self::forked) into an independent
 /// notebook, [shared](Self::shared) so several agents curate one, and handed to an agent running
@@ -1307,17 +1461,60 @@ pub struct MemoriesRuntime {
     /// [unowned](crate::modules::Ownership::Unowned) holder keeps the same store and the same
     /// tools, and is told nothing about it up front.
     ownership: Ownership,
-    /// The shared, mutable store — the same handle the tools mutate.
+    /// The shared, mutable store — the same handle the tools mutate, and, under a linking
+    /// [scope](MemoryScope), the same one other agents hold.
     store: Arc<Mutex<MemoryStore>>,
+    /// This holder's watermarks into the store's log. Behind an `Arc` so an [alias](Self::alias) —
+    /// the same holder, temporarily servicing a program on the sandbox's blocking thread —
+    /// advances the very same ones, and a write is not reported twice because the loop and the
+    /// program disagreed about how far they had looked.
+    cursors: Arc<Mutex<HolderCursors>>,
+    /// The id of the agent instance holding this. Recorded against every mutation made through
+    /// this holder's [binding](Self::binding), and compared against a log entry's author to
+    /// decide whether the entry is this holder's news to report or somebody else's news to be
+    /// told about.
+    agent_id: String,
+    /// Which instance this holder bound, and so whether it may be linked to others at all.
+    scope: MemoryScope,
+    /// Whether this holder may write.
+    access: MemoryAccess,
+    /// Whether the holder writes programs rather than calling tools — which changes what the
+    /// memory calls are *named* in the notice this holder is given. A property of the holder's
+    /// execution mode, so it is re-resolved whenever a different agent takes the store over.
+    code_mode: bool,
 }
 
 impl MemoriesRuntime {
     /// An enabled runtime with an empty store organized by `strategy` and bounded by `caps`.
     pub fn new(strategy: MemoryStrategy, caps: MemoryCaps) -> Self {
+        Self::over(
+            Arc::new(Mutex::new(MemoryStore::new(strategy, caps))),
+            false,
+        )
+    }
+
+    /// An enabled runtime over `store`. When `current` the holder's watermarks start at the
+    /// store's head — a new holder of an existing store is not told about, and does not report,
+    /// history it never missed — and otherwise at the beginning, which is what a holder that
+    /// created the store wants.
+    fn over(store: Arc<Mutex<MemoryStore>>, current: bool) -> Self {
+        let head = if current {
+            store.lock().expect("memory store lock").log_len()
+        } else {
+            0
+        };
         Self {
             enabled: true,
             ownership: Ownership::Owned,
-            store: Arc::new(Mutex::new(MemoryStore::new(strategy, caps))),
+            store,
+            cursors: Arc::new(Mutex::new(HolderCursors {
+                telemetry: head,
+                notice: head,
+            })),
+            agent_id: String::new(),
+            scope: MemoryScope::default(),
+            access: MemoryAccess::ReadWrite,
+            code_mode: false,
         }
     }
 
@@ -1326,16 +1523,30 @@ impl MemoriesRuntime {
     pub fn disabled() -> Self {
         Self {
             enabled: false,
-            ownership: Ownership::Owned,
-            store: Arc::new(Mutex::new(MemoryStore::scratchpad())),
+            ..Self::new(MemoryStrategy::Scratchpad, MemoryCaps::default())
         }
     }
 
-    /// Build the memories module `profile` configures: when the [memories](CAPABILITY_MEMORIES)
-    /// capability is enabled, an empty store organized by the [strategy](MemoryStrategy) its
-    /// `implementation` selects and bounded by the [limits](MemoryCaps::resolve) its params
-    /// resolve; otherwise a [disabled](Self::disabled) module (an ablation's off arm).
-    pub fn resolve(profile: &GgAgentConfig) -> Self {
+    /// Build the memories module `profile` configures for the agent instance `ctx` describes.
+    ///
+    /// Two questions are answered here, and they are independent. **What** the memories are —
+    /// the [strategy](MemoryStrategy) the capability's `implementation` selects and the
+    /// [limits](MemoryCaps::resolve) its params resolve — and **whose** they are, which is the
+    /// [`scope`](MEMORY_PARAM_SCOPE):
+    ///
+    /// * [`isolated`](MemoryScope::Isolated) — a fresh store, held by this instance alone;
+    /// * [`shared`](MemoryScope::Shared) — the [registry](MemoryRegistry) entry for this
+    ///   *profile*, so every instance of it in the run is a holder of one store;
+    /// * [`inherited`](MemoryScope::Inherited) / [`read-only`](MemoryScope::ReadOnly) — the
+    ///   spawner's instance when this agent was spawned as a subagent and its spawner organizes
+    ///   memories the same way, and otherwise a fresh one.
+    ///
+    /// A holder that ends up with a fresh instance under `read-only` may **write** it: the scope
+    /// restricts an inherited handle, and only an inherited handle.
+    ///
+    /// A profile with the capability off gets a [disabled](Self::disabled) module (an ablation's
+    /// off arm).
+    pub fn resolve(profile: &GgAgentConfig, ctx: &ModuleResolveCtx<'_>) -> Self {
         if !profile.is_enabled(CAPABILITY_MEMORIES) {
             return Self::disabled();
         }
@@ -1345,13 +1556,58 @@ impl MemoriesRuntime {
         let caps = capability
             .map(|cap| MemoryCaps::resolve(strategy, &cap.params))
             .unwrap_or_else(|| MemoryCaps::for_strategy(strategy));
-        Self::new(strategy, caps)
+        let scope = resolve_scope(profile).0;
+
+        let (mut bound, access) = match scope {
+            MemoryScope::Isolated => (Self::new(strategy, caps), MemoryAccess::ReadWrite),
+            MemoryScope::Shared => (
+                Self::over(ctx.memories.bind(&profile.name, strategy, caps), true),
+                MemoryAccess::ReadWrite,
+            ),
+            MemoryScope::Inherited | MemoryScope::ReadOnly => {
+                match ctx.inherited.memories_organized_as(strategy) {
+                    Some(parent) => (
+                        parent.shared(),
+                        if scope == MemoryScope::ReadOnly {
+                            MemoryAccess::ReadOnly
+                        } else {
+                            MemoryAccess::ReadWrite
+                        },
+                    ),
+                    // No spawner to inherit from (the root, an issue's implementer, a reviewer),
+                    // or one whose memories are organized differently: a private notebook, which
+                    // its holder may write whatever the scope said.
+                    None => (Self::new(strategy, caps), MemoryAccess::ReadWrite),
+                }
+            }
+        };
+        bound.code_mode = ctx.history.code_mode;
+        bound
             .with_ownership(crate::modules::resolve_ownership(profile, CAPABILITY_MEMORIES).0)
+            .with_binding(scope, access)
+            .with_agent(ctx.agent_id)
     }
 
     /// This runtime with its [ownership](Ownership) set.
     pub fn with_ownership(mut self, ownership: Ownership) -> Self {
         self.ownership = ownership;
+        self
+    }
+
+    /// This runtime held by the agent named `agent_id` — whose writes are recorded against it, and
+    /// who is therefore never told about them again.
+    pub fn with_agent(mut self, agent_id: impl Into<String>) -> Self {
+        self.agent_id = agent_id.into();
+        self
+    }
+
+    /// This runtime bound under `scope`, with `access` deciding whether its holder may write.
+    ///
+    /// The two travel together because they are one decision made in two halves: the scope says
+    /// which instance was bound, and the access says what this particular holder may do with it.
+    pub fn with_binding(mut self, scope: MemoryScope, access: MemoryAccess) -> Self {
+        self.scope = scope;
+        self.access = access;
         self
     }
 
@@ -1361,37 +1617,95 @@ impl MemoriesRuntime {
         self.enabled
     }
 
+    /// The [scope](MemoryScope) this holder bound under.
+    pub fn scope(&self) -> MemoryScope {
+        self.scope
+    }
+
+    /// Whether this holder may write. `true` for every holder but a
+    /// [read-only](MemoryScope::ReadOnly) inherited handle — including a **disabled** one, whose
+    /// answer is never read but must not read as a restriction the run did not ask for.
+    pub fn is_writable(&self) -> bool {
+        self.access.is_writable()
+    }
+
+    /// Whether this holder's store may be held by other agents — [`isolated`](MemoryScope::Isolated)
+    /// memories never are, so a run that scopes nothing pays nothing for the machinery that makes
+    /// linking work.
+    pub fn is_linkable(&self) -> bool {
+        self.enabled && self.scope.may_link()
+    }
+
     /// An **independent** notebook holding a copy of everything this one holds: a new store, the
     /// memories and their revision history deep-copied, and the two holders diverging from here.
     /// Carrying the revision numbers is what stops a re-created slug from restarting its history
     /// in the copy.
-    #[allow(dead_code)] // reached through `Module::fork`, which arrives with `fork`/`exec`.
+    ///
+    /// The copy's watermarks start at the copied log's head, so it neither re-reports the
+    /// original's writes as telemetry nor announces them to its model as news: the history came
+    /// with the notebook, and it was never missed.
     pub fn forked(&self) -> Self {
-        let mut copy = self.store.lock().expect("memory store lock").clone();
-        // The revisions this holder has not streamed yet stay with *it*: a write is reported once,
-        // on the stream of the agent that made it, however many copies of the store exist.
-        copy.forget_pending();
+        let copy = self.store.lock().expect("memory store lock").clone();
         Self {
             enabled: self.enabled,
             ownership: self.ownership,
-            store: Arc::new(Mutex::new(copy)),
+            ..Self::over(Arc::new(Mutex::new(copy)), true)
         }
+        .with_agent(self.agent_id.clone())
+        .with_binding(self.scope, self.access)
     }
 
-    /// A **linked** handle onto the same notebook: what one holder writes, every other holder of
-    /// it reads. The basis of
+    /// A **linked** handle onto the same notebook, held by a *different* agent: what one holder
+    /// writes, every other holder of it reads — and is told about, on its next turn. The basis of
     /// [shared memory](https://docs.testcabinet.ai/gg/memories/) between agents.
+    ///
+    /// The new holder's watermarks start at the store's current head, so it is not handed a
+    /// backlog of everything that happened before it existed.
     pub fn shared(&self) -> Self {
         Self {
             enabled: self.enabled,
             ownership: self.ownership,
+            ..Self::over(Arc::clone(&self.store), true)
+        }
+        .with_agent(self.agent_id.clone())
+        .with_binding(self.scope, self.access)
+    }
+
+    /// **The same holder**, reachable from somewhere else — not a second one.
+    ///
+    /// The [responses-as-code](crate::sandbox) path moves the agent's per-turn state onto a
+    /// blocking thread and services the program's calls there, which needs a handle it can own.
+    /// That handle must be the *same* holder as the loop's: it shares the store, the agent id, the
+    /// access **and the watermarks**, so a memory the program wrote is streamed once rather than
+    /// once by the program and again by the loop that reclaimed the state afterwards.
+    pub fn alias(&self) -> Self {
+        Self {
+            enabled: self.enabled,
+            ownership: self.ownership,
             store: Arc::clone(&self.store),
+            cursors: Arc::clone(&self.cursors),
+            agent_id: self.agent_id.clone(),
+            scope: self.scope,
+            access: self.access,
+            code_mode: self.code_mode,
         }
     }
 
-    /// The shared store, for binding into the memory tools.
+    /// The shared store itself, for the reads that do not go through a holder.
+    ///
+    /// Everything in the running loop reaches the store through a [binding](Self::binding) or
+    /// through this type's own derivations, precisely so a mutation is always attributed; this is
+    /// the raw handle the tests drive a store with, where there is no agent to attribute anything
+    /// to.
+    #[allow(dead_code)]
     pub fn store(&self) -> Arc<Mutex<MemoryStore>> {
         Arc::clone(&self.store)
+    }
+
+    /// This holder's [binding](MemoryBinding) onto the store — what the memory tools take, so
+    /// every mutation they make is recorded against the agent that made it.
+    pub fn binding(&self) -> MemoryBinding {
+        MemoryBinding::new(Arc::clone(&self.store), &self.agent_id)
     }
 
     /// The strategy this run's memories are organized by. [`Scratchpad`](MemoryStrategy::Scratchpad)
@@ -1412,31 +1726,63 @@ impl MemoriesRuntime {
         self.store.lock().expect("memory store lock").count()
     }
 
-    /// The [`MemoryState`](GgTelemetryKind::MemoryState) telemetry for the current store,
-    /// or `None` when the capability is off. Emitted at session start (empty, with the
-    /// limits) and after every successful mutation.
+    /// The [`MemoryState`](GgTelemetryKind::MemoryState) telemetry for the current store as *this
+    /// holder* sees it, or `None` when the capability is off. Emitted at session start (empty,
+    /// with the limits) and after every successful mutation.
+    ///
+    /// It carries the holder's [scope](MemoryScope) and whether it may write, so the console can
+    /// tell two agents showing one shared store from two agents that happen to hold the same
+    /// notes — a distinction a snapshot alone cannot make.
     pub fn state_event(&self) -> Option<GgTelemetryKind> {
         if !self.enabled {
             return None;
         }
-        Some(self.store.lock().expect("memory store lock").state_event())
+        Some(
+            self.store
+                .lock()
+                .expect("memory store lock")
+                .state_event(self.scope, self.access.is_writable()),
+        )
     }
 
-    /// The [`MemoryRevision`](GgTelemetryKind::MemoryRevision) telemetry for every mutation
-    /// since the last drain, oldest first — emitted alongside the state snapshot, and empty
-    /// when the capability is off or nothing has changed.
+    /// The [`MemoryRevision`](GgTelemetryKind::MemoryRevision) telemetry **this holder** owes its
+    /// stream: every entry appended to the store's log since this holder last looked that *this
+    /// holder authored*, oldest first. Empty when the capability is off, when nothing has changed,
+    /// or when everything that changed was somebody else's work.
     ///
-    /// One drain can yield several events: a [responses-as-code](crate::sandbox) program makes
-    /// as many memory calls as it likes before the loop next looks, and each of them is a
-    /// revision in its own right.
+    /// Filtering by author is what makes a shared store correct rather than merely shared: a write
+    /// is one event, on the stream of the agent that made it, however many agents hold the store
+    /// it landed in. What the *other* holders get instead is a [notice](Self::notice).
+    ///
+    /// One drain can yield several events: a [responses-as-code](crate::sandbox) program makes as
+    /// many memory calls as it likes before the loop next looks, and each of them is a revision in
+    /// its own right.
     pub fn revision_events(&self) -> Vec<GgTelemetryKind> {
+        self.drain_revisions().0
+    }
+
+    /// This holder's undrained revisions, and whether the store's log moved at all since it last
+    /// looked. The flag is what decides whether a state snapshot is worth re-emitting: a turn in
+    /// which a *sibling* wrote changes what this holder's panel should show even though this
+    /// holder authored none of it.
+    fn drain_revisions(&self) -> (Vec<GgTelemetryKind>, bool) {
         if !self.enabled {
-            return Vec::new();
+            return (Vec::new(), false);
         }
-        self.store
-            .lock()
-            .expect("memory store lock")
-            .drain_revisions()
+        let store = self.store.lock().expect("memory store lock");
+        let mut cursors = self.cursors.lock().expect("memory cursors lock");
+        let head = store.log_len();
+        if cursors.telemetry >= head {
+            return (Vec::new(), false);
+        }
+        let events = store
+            .log_from(cursors.telemetry)
+            .iter()
+            .filter(|entry| entry.author == self.agent_id)
+            .map(|entry| entry.revision.to_event())
+            .collect();
+        cursors.telemetry = head;
+        (events, true)
     }
 
     /// The pinned context block for the current store, or `None` when the capability is off, the
@@ -1458,6 +1804,12 @@ impl MemoriesRuntime {
     /// boundary is about to sweep away, and the fresh one crosses as part of the pinned prefix.
     /// That is the only point at which the model could otherwise lose track of what it holds,
     /// and it is the point the retention contract is about.
+    ///
+    /// **A linked write does not move it.** When another holder writes, this holder is told in a
+    /// [notice](Self::notice) appended at the tail of its window; the block itself is left exactly
+    /// where it is. That is the requirement, and it is also what keeps the cached prompt prefix
+    /// intact: a block that moved every time a sibling wrote would supersede-and-append on turns
+    /// this agent did nothing at all.
     pub fn context_block(&self) -> Option<Message> {
         if !self.enabled {
             return None;
@@ -1466,6 +1818,71 @@ impl MemoriesRuntime {
             .lock()
             .expect("memory store lock")
             .context_block()
+    }
+
+    /// The **linked-memory notice** this holder owes its model: what other holders of its store
+    /// have done since it was last told, as one ephemeral message appended at the tail of its
+    /// window.
+    ///
+    /// `None` — the overwhelmingly common answer — when the capability is off, when this holder is
+    /// [unowned](Ownership::Unowned) (an unowned module tells its holder nothing, by definition),
+    /// or when nothing but this holder's own writes have landed since it last looked.
+    ///
+    /// # Why a tail append
+    ///
+    /// The requirement is that a linked write is *noticed*, and the constraint is that the
+    /// [index](Self::context_block) must not change shape — both because the index is what the
+    /// model reasons about and because a rebuilt index would rewrite the pinned prefix every
+    /// provider caches. Appending at the tail satisfies both: the whole previous request is still
+    /// a byte-identical prefix of this one, so the cache breakpoints still hit, and the notice
+    /// costs its own tokens once. A run in which nothing is linked never produces one at all.
+    ///
+    /// # Delivered exactly once
+    ///
+    /// Producing a notice advances this holder's notice watermark to the store's head, so the same
+    /// news is never delivered twice — and a holder's *own* writes never produce one, because they
+    /// are already in its thread as a call and the confirmation that answered it.
+    ///
+    /// The watermark is **not** rewound by a [compaction](crate::compaction): a notice is
+    /// ephemeral, so a boundary sweeps it, but the boundary rebuilds the pinned block first, so
+    /// everything the notice announced crosses in the block (or, under
+    /// [keyword-search](MemoryStrategy::KeywordSearch), stays findable by search). Re-announcing
+    /// it would be telling the model twice about a memory it has already been told about once and
+    /// may well have read.
+    pub fn notice(&mut self) -> Option<Message> {
+        if !self.enabled {
+            return None;
+        }
+        let store = self.store.lock().expect("memory store lock");
+        let mut cursors = self.cursors.lock().expect("memory cursors lock");
+        let head = store.log_len();
+        if cursors.notice >= head {
+            return None;
+        }
+        let fresh = store.log_from(cursors.notice);
+        cursors.notice = head;
+        // An unowned module contributes nothing to the assembled prompt — but its watermark still
+        // advances, because news this holder was never going to be told is not news held back for
+        // later.
+        if self.ownership != Ownership::Owned {
+            return None;
+        }
+        let strategy = store.strategy();
+        let entries = notice_entries(fresh, &self.agent_id, strategy);
+        if entries.is_empty() {
+            return None;
+        }
+        let calls = strategy.calls(self.code_mode);
+        Some(Message::user(prompts::render_memory_notice(
+            &MemoryNoticeContext {
+                entries,
+                // The scratchpad has no read call: its memories *are* the pinned block, so the
+                // notice carries the bodies rather than pointing at a call the model does not have.
+                read_call: strategy.is_file_shaped().then(|| calls.read.to_string()),
+                inline_bodies: !strategy.is_file_shaped(),
+                indexed: strategy.has_index(),
+            },
+        )))
     }
 }
 
@@ -1497,17 +1914,23 @@ impl Module for MemoriesRuntime {
         MemoriesRuntime::context_block(self)
     }
 
+    fn notice(&mut self) -> Option<Message> {
+        MemoriesRuntime::notice(self)
+    }
+
     fn state_events(&self) -> Vec<GgTelemetryKind> {
         self.state_event().into_iter().collect()
     }
 
     fn drain_events(&mut self) -> Vec<GgTelemetryKind> {
-        // The revisions first — the append-only record of what the model did, which for a deletion
-        // is the only place it is recorded at all — then the snapshot the store is left in. A drain
-        // that found nothing says nothing: re-emitting the snapshot on a turn where memory did not
-        // change would tell the console what it already knows.
-        let mut events = self.revision_events();
-        if events.is_empty() {
+        // The revisions first — the append-only record of what this holder did, which for a
+        // deletion is the only place it is recorded at all — then the snapshot the store is left
+        // in. A drain that found nothing says nothing: re-emitting the snapshot on a turn where
+        // the store did not move would tell the console what it already knows. A turn in which a
+        // *sibling* wrote does move it, and re-emits the snapshot with no revisions of its own,
+        // which is exactly right: this holder's panel changed, but the write was not its work.
+        let (mut events, moved) = self.drain_revisions();
+        if !moved {
             return events;
         }
         events.extend(self.state_event());
@@ -1526,8 +1949,10 @@ impl Module for MemoriesRuntime {
         ModuleHandle::Memories(self.shared())
     }
 
-    /// Re-resolve the limits and the ownership from the receiving profile, refusing a profile that
-    /// does not enable memories at all, or that organizes them by a **different**
+    /// Re-resolve the holder-owned configuration from the receiving profile — its limits, its
+    /// ownership, its [scope](MemoryScope) and the write access that follows from it, the agent
+    /// holding it, and the execution mode its notices are named in — refusing a profile that does
+    /// not enable memories at all, or that organizes them by a **different**
     /// [strategy](MemoryStrategy).
     ///
     /// The strategy is the one thing that cannot be re-resolved: it decides both what the store
@@ -1535,12 +1960,16 @@ impl Module for MemoriesRuntime {
     /// tools read it. Converting a scratchpad into a markdown index would silently change both, so
     /// gg refuses, the caller starts the successor with a fresh store, and the successor is told
     /// why rather than left to discover an empty notebook.
+    ///
+    /// The limits are re-pointed **only when this holder is the store's sole holder**. A store
+    /// several agents are curating together has one set of limits by construction; re-pointing
+    /// them because one of its holders was replaced would silently change what the *others* may
+    /// write.
     fn adopt(
         &mut self,
         profile: &GgAgentConfig,
         ctx: &ModuleResolveCtx<'_>,
     ) -> Result<(), AdoptError> {
-        let _ = ctx;
         if !profile.is_enabled(CAPABILITY_MEMORIES) {
             return Err(AdoptError::Disabled);
         }
@@ -1560,9 +1989,21 @@ impl Module for MemoriesRuntime {
         let caps = capability
             .map(|cap| MemoryCaps::resolve(strategy, &cap.params))
             .unwrap_or_else(|| MemoryCaps::for_strategy(strategy));
-        self.store.lock().expect("memory store lock").set_caps(caps);
+        if Arc::strong_count(&self.store) == 1 {
+            self.store.lock().expect("memory store lock").set_caps(caps);
+        }
+        let scope = resolve_scope(profile).0;
         self.enabled = true;
         self.ownership = crate::modules::resolve_ownership(profile, CAPABILITY_MEMORIES).0;
+        self.scope = scope;
+        self.access = match scope {
+            // A successor that asks for read-only memories and receives a live store is exactly
+            // the inherited case the scope restricts; every other scope hands its holder the pen.
+            MemoryScope::ReadOnly => MemoryAccess::ReadOnly,
+            _ => MemoryAccess::ReadWrite,
+        };
+        self.agent_id = ctx.agent_id.to_string();
+        self.code_mode = ctx.history.code_mode;
         Ok(())
     }
 }
@@ -1578,3 +2019,7 @@ mod files_tests;
 #[cfg(test)]
 #[path = "memories.record.test.rs"]
 mod record_tests;
+
+#[cfg(test)]
+#[path = "memories.scope.test.rs"]
+mod scope_tests;

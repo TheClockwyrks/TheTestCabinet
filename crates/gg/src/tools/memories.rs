@@ -12,8 +12,10 @@
 //! and a run only ever offers one strategy's set, so there is no ambiguity about which tool a call
 //! reaches.
 //!
-//! Each tool mutates the shared [`MemoryStore`] (behind an `Arc<Mutex<…>>` the tool shares
-//! with the [loop](crate::agent)) and returns a [`ToolOutcome`]: a confirmation on success,
+//! Each tool mutates the shared [`MemoryStore`] through the holder's
+//! [binding](crate::memories::MemoryBinding) — the store the [loop](crate::agent) shares, plus the
+//! id of the agent whose calls these are, so a mutation is recorded against the agent that made it
+//! even when several agents are curating one store — and returns a [`ToolOutcome`]: a confirmation on success,
 //! or — when a mutation would breach a [limit](crate::memories::MemoryCaps) — an **error
 //! outcome carrying the store's revise-evict-or-delete guidance**, never a silent truncation. The
 //! loop owns everything downstream: after a successful mutation it emits the
@@ -28,8 +30,6 @@
 //! [`memories`](test_cabinet_core::gg::CAPABILITY_MEMORIES) capability is enabled; when it
 //! is off, none are offered (ablation).
 
-use std::sync::{Arc, Mutex};
-
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
@@ -37,7 +37,7 @@ use super::{
     ArgumentError, MemoryUsageData, Tool, ToolContext, ToolData, ToolFailure, ToolOutcome,
     required_str, saturating_u32,
 };
-use crate::memories::{MemoryChange, MemoryError, MemoryStore};
+use crate::memories::{MemoryBinding, MemoryChange, MemoryError, MemoryStore};
 use crate::model::ToolDefinition;
 
 #[path = "memories.files.rs"]
@@ -73,6 +73,27 @@ pub fn is_memory_tool(name: &str) -> bool {
             | DELETE_MEMORY_TOOL
             | CREATE_MEMORY_TOOL
             | EDIT_MEMORY_TOOL
+    )
+}
+
+/// The model-facing refusal for a memory **write** reaching gg from a holder that may not write.
+///
+/// A [read-only](crate::memories::MemoryScope::ReadOnly) holder is never offered a write call in
+/// the first place — the [registry](super::ToolRegistry) withholds them, so no schema for one is
+/// ever shown and no program has one in scope. This answers the one path that can still reach a
+/// write anyway: a [responses-as-code](crate::sandbox) program written against a scope the agent
+/// no longer has. It names the calls the agent *does* have, because a refusal that only says no
+/// leaves the model to guess at what it may do instead.
+pub fn read_only_refusal(strategy: crate::memories::MemoryStrategy, code_mode: bool) -> String {
+    let calls = strategy.calls(code_mode);
+    let alternative = if strategy.is_file_shaped() {
+        format!(" Read one with {} instead.", calls.read)
+    } else {
+        " They are already in your context above; read them there instead.".to_string()
+    };
+    format!(
+        "these memories belong to another agent and you hold them read-only, so they cannot be \
+         changed from here.{alternative}"
     )
 }
 
@@ -178,12 +199,12 @@ fn failure_for(err: &MemoryError) -> ToolFailure {
 
 /// Creates a new memory the model curates.
 pub struct WriteMemoryTool {
-    store: Arc<Mutex<MemoryStore>>,
+    store: MemoryBinding,
 }
 
 impl WriteMemoryTool {
     /// A tool writing into `store`.
-    pub fn new(store: Arc<Mutex<MemoryStore>>) -> Self {
+    pub fn new(store: MemoryBinding) -> Self {
         Self { store }
     }
 }
@@ -195,7 +216,7 @@ impl Tool for WriteMemoryTool {
     }
 
     fn definition(&self) -> ToolDefinition {
-        let caps = self.store.lock().expect("memory store lock").caps();
+        let caps = self.store.lock().caps();
         ToolDefinition::new(
             WRITE_MEMORY_TOOL,
             format!(
@@ -247,8 +268,8 @@ impl WriteMemoryTool {
     /// Record a memory — the **standard, typed** `write_memory` API function both the JSON
     /// [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach.
     pub(crate) fn write(&self, name: String, description: String, body: String) -> ToolOutcome {
-        let mut store = self.store.lock().expect("memory store lock");
-        match store.write(&name, &description, &body) {
+        let mut store = self.store.lock();
+        match store.write(self.store.author(), &name, &description, &body) {
             Ok(MemoryChange::Written) => ToolOutcome::ok(
                 format!("Saved memory `{name}`. {}", usage_note(&store)),
                 format!("wrote memory `{name}`"),
@@ -266,12 +287,12 @@ impl WriteMemoryTool {
 
 /// Revises an existing memory in place.
 pub struct UpdateMemoryTool {
-    store: Arc<Mutex<MemoryStore>>,
+    store: MemoryBinding,
 }
 
 impl UpdateMemoryTool {
     /// A tool updating memories in `store`.
-    pub fn new(store: Arc<Mutex<MemoryStore>>) -> Self {
+    pub fn new(store: MemoryBinding) -> Self {
         Self { store }
     }
 }
@@ -324,8 +345,8 @@ impl UpdateMemoryTool {
     /// Revise a memory in place — the **standard, typed** `update_memory` API function both the JSON
     /// [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach.
     pub(crate) fn update(&self, name: String, description: String, body: String) -> ToolOutcome {
-        let mut store = self.store.lock().expect("memory store lock");
-        match store.update(&name, &description, &body) {
+        let mut store = self.store.lock();
+        match store.update(self.store.author(), &name, &description, &body) {
             Ok(MemoryChange::Updated) => ToolOutcome::ok(
                 format!("Updated memory `{name}`. {}", usage_note(&store)),
                 format!("updated memory `{name}`"),
@@ -343,12 +364,12 @@ impl UpdateMemoryTool {
 
 /// Removes (evicts) a memory.
 pub struct DeleteMemoryTool {
-    store: Arc<Mutex<MemoryStore>>,
+    store: MemoryBinding,
 }
 
 impl DeleteMemoryTool {
     /// A tool deleting memories from `store`.
-    pub fn new(store: Arc<Mutex<MemoryStore>>) -> Self {
+    pub fn new(store: MemoryBinding) -> Self {
         Self { store }
     }
 }
@@ -391,8 +412,8 @@ impl DeleteMemoryTool {
     /// Remove a memory — the **standard, typed** `delete_memory` API function both the JSON
     /// [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach.
     pub(crate) fn delete(&self, name: String) -> ToolOutcome {
-        let mut store = self.store.lock().expect("memory store lock");
-        match store.delete(&name) {
+        let mut store = self.store.lock();
+        match store.delete(self.store.author(), &name) {
             Ok(MemoryChange::Deleted) => ToolOutcome::ok(
                 format!("Deleted memory `{name}`. {}", usage_note(&store)),
                 format!("deleted memory `{name}`"),

@@ -121,6 +121,117 @@ For example, a markdown run with a small index and no per-memory limit:
 }
 ```
 
+## Scoping: whose memories are these?
+
+By default a memory instance belongs to **one agent instance**: a subagent starts
+with an empty notebook, and nothing it writes is ever seen by anyone else. That is
+still the default, and it is still the right answer for a study that wants each
+agent measured on its own curation.
+
+The `scope` param binds the instance differently.
+
+| `scope` | Which instance the agent binds |
+| --- | --- |
+| `isolated` (default) | A fresh one, per agent **instance** |
+| `shared` | One per agent **profile** — every instance of it in the run, including instances running in parallel |
+| `inherited` | Its **spawner's**, read/write, when it was spawned as a subagent; its own otherwise |
+| `read-only` | As `inherited`, but this agent may not write |
+
+```json
+{
+  "id": "memories",
+  "enabled": true,
+  "implementation": "markdown",
+  "params": { "scope": "inherited", "maxLenIndex": 4096 }
+}
+```
+
+`scope` is only meaningful where the capability is **enabled** — an agent with no
+memories binds none — and setting it on a disabled capability is reported as a
+launch warning. A value gg does not recognize falls back to `isolated` and warns,
+like every other unrecognized capability value.
+
+### Two rules make the four coherent
+
+**`read-only` only ever restricts an inherited handle.** An agent that ends up with
+an instance of its own under `read-only` — the run's root, an issue's implementer,
+a reviewer or judge, or a subagent whose spawner keeps no memories — may write it.
+A private notebook nobody may write is not a feature.
+
+**Write access belongs to the holder, not to the store.** Nothing on a store
+records who may write it. So a `read-only` agent's own `inherited` subagent gets a
+**read/write** handle onto the very same store, and inheritance chains: a subagent
+of a subagent holds the instance the top of the chain created, however deep.
+
+### What a read-only holder is offered
+
+Exactly the read calls, and nothing else — `read_memory` under the two file-shaped
+strategies, plus `search_memories` under `keyword-search`. The write calls are
+never contributed to the toolset, so the model is never shown a schema for one, no
+program has one in scope, and the system prompt says the memories are another
+agent's rather than telling it to curate them. A write that reaches gg anyway (a
+program written against a scope this agent no longer has) is refused with an
+explanation naming the calls it does have.
+
+Under `scratchpad` a read-only holder gets **no memory tools at all**, which is
+coherent: that strategy has no read call because its memories *are* the pinned
+block. It reads them by having them in its window.
+
+One knock-on: an agent configured for [`memory-compaction`](/gg/compaction/) that
+holds its memories read-only is demoted to the default strategy, with a warning. It
+has no call that could satisfy a memory compaction, and a run that could never
+satisfy its own compaction gate would wedge against a full window.
+
+### Inheritance needs a matching strategy
+
+A store is read by the calls its own strategy offers, so a child organizing its
+memories differently from its spawner cannot take the spawner's instance: it gets
+one of its own. gg reports the pairing as a launch warning rather than leaving it
+to be inferred later from a notebook that stayed empty.
+
+## Linked instances: being told what somebody else wrote
+
+Under every scope but `isolated`, several agents can hold one store at once. When
+one of them adds, revises or removes a memory, every **other** holder is told in
+its next prompt:
+
+```
+Another agent sharing your memories has made changes since your last turn:
+
+- added `deploy-runbook` — how the staging cluster is rolled
+- updated `api-conventions` — error envelope + pagination rules
+- deleted `scratch-notes`
+
+Read one with `read_memory` if it bears on what you are doing.
+```
+
+Deletions are included — acting on a memory that has since been deleted is the
+failure the notice exists to prevent — and each memory gets **one line**, saying
+where it ended up, however many writes touched it. Under `scratchpad`, where there
+is no read call, the notice carries each memory's body inline instead of pointing
+at a call the agent does not have.
+
+Three properties are worth knowing, because they are what the notice was designed
+around:
+
+- **The pinned index does not change.** It is rebuilt at a compaction boundary and
+  nowhere else, exactly as it always was. The notice is appended at the tail of the
+  window as an ordinary message, so the whole previous request stays a byte-identical
+  prefix of the next one and the prompt cache is not perturbed. A rebuilt index
+  would rewrite the cached prefix on a turn this agent did nothing at all.
+- **Delivered exactly once, per holder.** Each holder keeps its own watermark. A
+  holder is never told about its own writes — they are already in its thread as a
+  call and the confirmation that answered it — and a holder that joins late is not
+  handed a backlog of everything that happened before it existed.
+- **Not re-issued after a compaction.** The notices are ephemeral, so a boundary
+  sweeps them; but the boundary rebuilds the pinned block first, so everything a
+  notice announced crosses in the block (or, under `keyword-search`, stays findable
+  by search). Announcing it again would tell the model twice about a memory it may
+  already have read.
+
+A run in which nothing is linked never produces a notice at all, and pays nothing
+for the machinery.
+
 ## Compaction
 
 Memories survive a compaction boundary under every strategy — that is the point
@@ -161,12 +272,21 @@ force, and the run's **peaks** — the most memories, characters and lines ever 
 at once. The peaks are there because the live figures alone are misleading: a model
 that curates well spends its budget, prunes, and finishes holding almost nothing.
 
+It also carries **how the emitting agent holds the store**: its `scope`, and whether
+it may write. Without those, two agents curating one shared store and two agents that
+happen to hold the same notes are indistinguishable, and the console badges the
+difference.
+
 The **`memory_revision`** event is one entry of an append-only record of what the
 model *did*: every successful mutation, in order, carrying the memory's text as of
 that revision. It is what a snapshot can never show — a memory written and later
 deleted, and the earlier wording of one that was revised. Revision numbers are per
 slug and keep counting across a delete, so a name that is discarded and re-created
 reads as the history it is. A refused mutation records nothing; it did nothing.
+
+A revision is reported **once**, on the stream of the agent that made it, however
+many agents hold the store it landed in. Every other holder re-emits its own
+`memory_state` instead — its panel changed, but the write was not its work.
 
 The console folds the two together into the Memories panel: current-and-peak
 totals, a treemap of every memory ever held sized by its character count, and each

@@ -425,6 +425,52 @@ fn registry_gates_memory_tools_on_capability_and_a_bound_store() {
     }
 }
 
+/// A **read-only** memory holder is offered the read calls and nothing else.
+///
+/// The gate is at the registry, on the module's access rather than on a list of tool names, which
+/// is what makes the restriction total in one move: the responses-as-code scope is derived from the
+/// registry, and so is the prompt's API section, so a read-only agent is never *shown* a write call
+/// it would then have to be refused for using.
+#[test]
+fn registry_offers_a_read_only_holder_the_read_calls_alone() {
+    use test_cabinet_core::gg::{CAPABILITY_MEMORIES, GgMemoryScope};
+
+    use crate::memories::MemoryAccess;
+
+    let read_only = |strategy| {
+        CapabilityModules::inert().with(ModuleHandle::Memories(
+            MemoriesRuntime::new(strategy, MemoryCaps::for_strategy(strategy))
+                .with_binding(GgMemoryScope::ReadOnly, MemoryAccess::ReadOnly),
+        ))
+    };
+    let on = set_with(vec![GgCapabilityConfig::enabled(CAPABILITY_MEMORIES)]);
+
+    // Markdown: `read_memory` survives; nothing that writes does.
+    let registry = ToolRegistry::from_run(&on, &read_only(MemoryStrategy::Markdown));
+    assert!(offers(&registry, "read_memory"));
+    for name in ["create_memory", "edit_memory", "delete_memory"] {
+        assert!(!offers(&registry, name), "expected `{name}` withheld");
+    }
+
+    // Keyword search additionally keeps its retrieval call, which is how it finds anything at all.
+    let registry = ToolRegistry::from_run(&on, &read_only(MemoryStrategy::KeywordSearch));
+    assert!(offers(&registry, "search_memories"));
+    assert!(offers(&registry, "read_memory"));
+    assert!(!offers(&registry, "delete_memory"));
+
+    // The scratchpad has no read call — its memories *are* the pinned block — so a read-only holder
+    // of one gets no memory tools at all, and reads them by having them in its window.
+    let registry = ToolRegistry::from_run(&on, &read_only(MemoryStrategy::Scratchpad));
+    for name in [
+        "write_memory",
+        "update_memory",
+        "delete_memory",
+        "read_memory",
+    ] {
+        assert!(!offers(&registry, name), "expected `{name}` withheld");
+    }
+}
+
 /// The task tools are offered only when the tasks capability is enabled **and** a task
 /// store is bound — capability off, or no store bound, offers none.
 #[test]

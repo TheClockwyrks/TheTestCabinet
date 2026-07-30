@@ -196,7 +196,7 @@ fn main() -> Result<()> {
                 gg::GgPromptRef, gg::GgLoggedToolCall, gg::GgLoggedImage,
                 gg::GgSkillState,
                 gg::GgMemoryCaps, gg::GgMemoryEntry, gg::GgMemoryChange,
-                gg::GgMemoryPeak,
+                gg::GgMemoryPeak, gg::GgMemoryScope,
                 gg::GgTaskStatus, gg::GgTaskEntry,
                 gg::GgIssueStatus, gg::GgBoardEpic, gg::GgBoardIssue,
                 gg::GgRetainedState, gg::GgContextAction,

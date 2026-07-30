@@ -34,11 +34,11 @@ fn tiny_store() -> MemoryStore {
 fn write_creates_memories_in_name_order() {
     let mut store = MemoryStore::scratchpad();
     assert_eq!(
-        store.write("zeta", "last", "z body"),
+        store.write("", "zeta", "last", "z body"),
         Ok(MemoryChange::Written)
     );
     assert_eq!(
-        store.write("alpha", "first", "a body"),
+        store.write("", "alpha", "first", "a body"),
         Ok(MemoryChange::Written)
     );
 
@@ -54,7 +54,7 @@ fn write_creates_memories_in_name_order() {
 fn write_trims_fields_and_measures_body_length() {
     let mut store = MemoryStore::scratchpad();
     assert_eq!(
-        store.write("  n  ", "  d  ", "  hello  "),
+        store.write("", "  n  ", "  d  ", "  hello  "),
         Ok(MemoryChange::Written)
     );
     let memory = &store.memories()[0];
@@ -69,8 +69,8 @@ fn write_trims_fields_and_measures_body_length() {
 #[test]
 fn write_rejects_a_duplicate_name_pointing_at_update() {
     let mut store = MemoryStore::scratchpad();
-    store.write("dup", "d", "body").unwrap();
-    let err = store.write("dup", "d2", "other").unwrap_err();
+    store.write("", "dup", "d", "body").unwrap();
+    let err = store.write("", "dup", "d2", "other").unwrap_err();
     assert_eq!(
         err,
         MemoryError::Duplicate {
@@ -87,9 +87,9 @@ fn write_rejects_a_duplicate_name_pointing_at_update() {
 #[test]
 fn update_replaces_in_place_and_needs_an_existing_name() {
     let mut store = MemoryStore::scratchpad();
-    store.write("m", "d", "old body").unwrap();
+    store.write("", "m", "d", "old body").unwrap();
     assert_eq!(
-        store.update("m", "d2", "new body"),
+        store.update("", "m", "d2", "new body"),
         Ok(MemoryChange::Updated)
     );
     assert_eq!(store.count(), 1);
@@ -97,7 +97,7 @@ fn update_replaces_in_place_and_needs_an_existing_name() {
     assert_eq!(store.memories()[0].body(), "new body");
 
     // Updating a name that does not exist is a NotFound, not a silent create.
-    let err = store.update("nope", "d", "b").unwrap_err();
+    let err = store.update("", "nope", "d", "b").unwrap_err();
     assert_eq!(
         err,
         MemoryError::NotFound {
@@ -111,21 +111,21 @@ fn update_replaces_in_place_and_needs_an_existing_name() {
 #[test]
 fn delete_evicts_and_needs_an_existing_name() {
     let mut store = MemoryStore::scratchpad();
-    store.write("a", "d", "aa").unwrap();
-    store.write("b", "d", "bb").unwrap();
-    assert_eq!(store.delete("a"), Ok(MemoryChange::Deleted));
+    store.write("", "a", "d", "aa").unwrap();
+    store.write("", "b", "d", "bb").unwrap();
+    assert_eq!(store.delete("", "a"), Ok(MemoryChange::Deleted));
     assert_eq!(store.count(), 1);
     assert_eq!(store.memories()[0].name(), "b");
 
     assert_eq!(
-        store.delete("a").unwrap_err(),
+        store.delete("", "a").unwrap_err(),
         MemoryError::NotFound {
             name: "a".to_string(),
             create: "`write_memory`",
         }
     );
     assert_eq!(
-        store.delete("  ").unwrap_err(),
+        store.delete("", "  ").unwrap_err(),
         MemoryError::EmptyField("name")
     );
 }
@@ -134,15 +134,15 @@ fn delete_evicts_and_needs_an_existing_name() {
 fn writes_reject_empty_fields() {
     let mut store = MemoryStore::scratchpad();
     assert_eq!(
-        store.write("", "d", "b").unwrap_err(),
+        store.write("", "", "d", "b").unwrap_err(),
         MemoryError::EmptyField("name")
     );
     assert_eq!(
-        store.write("n", "  ", "b").unwrap_err(),
+        store.write("", "n", "  ", "b").unwrap_err(),
         MemoryError::EmptyField("description")
     );
     assert_eq!(
-        store.write("n", "d", "").unwrap_err(),
+        store.write("", "n", "d", "").unwrap_err(),
         MemoryError::EmptyField("body")
     );
     assert_eq!(store.count(), 0);
@@ -156,7 +156,7 @@ fn writes_reject_empty_fields() {
 fn per_memory_length_cap_is_enforced_with_a_revise_message() {
     let mut store = tiny_store();
     // 11 chars > the 10-char per-memory cap.
-    let err = store.write("m", "d", "01234567890").unwrap_err();
+    let err = store.write("", "m", "d", "01234567890").unwrap_err();
     assert_eq!(
         err,
         MemoryError::PerMemoryCap {
@@ -172,10 +172,10 @@ fn per_memory_length_cap_is_enforced_with_a_revise_message() {
 #[test]
 fn count_cap_is_enforced_with_a_revise_or_evict_message() {
     let mut store = tiny_store();
-    store.write("a", "d", "aa").unwrap();
-    store.write("b", "d", "bb").unwrap();
+    store.write("", "a", "d", "aa").unwrap();
+    store.write("", "b", "d", "bb").unwrap();
     // The third write hits the 2-memory count cap.
-    let err = store.write("c", "d", "cc").unwrap_err();
+    let err = store.write("", "c", "d", "cc").unwrap_err();
     assert_eq!(
         err,
         MemoryError::CountCap {
@@ -193,9 +193,9 @@ fn count_cap_is_enforced_with_a_revise_or_evict_message() {
 #[test]
 fn total_length_cap_is_enforced_across_memories() {
     let mut store = tiny_store();
-    store.write("a", "d", "0123456789").unwrap(); // 10 chars
+    store.write("", "a", "d", "0123456789").unwrap(); // 10 chars
     // Adding 6 more would be 16 > the 15-char total cap (and count is fine at 2).
-    let err = store.write("b", "d", "abcdef").unwrap_err();
+    let err = store.write("", "b", "d", "abcdef").unwrap_err();
     assert_eq!(
         err,
         MemoryError::TotalCap {
@@ -207,21 +207,27 @@ fn total_length_cap_is_enforced_across_memories() {
     assert_eq!(store.total_len(), 10);
 
     // A 5-char body fits (15 total, at the cap).
-    assert_eq!(store.write("b", "d", "abcde"), Ok(MemoryChange::Written));
+    assert_eq!(
+        store.write("", "b", "d", "abcde"),
+        Ok(MemoryChange::Written)
+    );
     assert_eq!(store.total_len(), 15);
 }
 
 #[test]
 fn update_swaps_the_old_body_out_of_the_total_before_checking() {
     let mut store = tiny_store();
-    store.write("a", "d", "0123456789").unwrap(); // 10 chars, at total budget minus 5
-    store.write("b", "d", "abcde").unwrap(); // 5 chars -> total 15, at the cap
+    store.write("", "a", "d", "0123456789").unwrap(); // 10 chars, at total budget minus 5
+    store.write("", "b", "d", "abcde").unwrap(); // 5 chars -> total 15, at the cap
     // Updating `b` from 5 to 5 chars is fine even though total is at the cap: the old body
     // is removed from the total before the new one is checked in.
-    assert_eq!(store.update("b", "d", "vwxyz"), Ok(MemoryChange::Updated));
+    assert_eq!(
+        store.update("", "b", "d", "vwxyz"),
+        Ok(MemoryChange::Updated)
+    );
     assert_eq!(store.total_len(), 15);
     // But growing `b` to 6 chars would be 16 > 15.
-    let err = store.update("b", "d", "vwxyz!").unwrap_err();
+    let err = store.update("", "b", "d", "vwxyz!").unwrap_err();
     assert_eq!(
         err,
         MemoryError::TotalCap {
@@ -281,7 +287,7 @@ fn a_zero_param_disables_that_limit() {
     let mut store = MemoryStore::new(MemoryStrategy::Scratchpad, caps);
     for n in 0..DEFAULT_MAX_COUNT + 4 {
         store
-            .write(&format!("m{n}"), "d", &"x".repeat(1_000))
+            .write("", &format!("m{n}"), "d", &"x".repeat(1_000))
             .unwrap();
     }
     assert_eq!(store.count(), DEFAULT_MAX_COUNT + 4);
@@ -320,7 +326,7 @@ fn the_description_cap_refuses_a_long_one_liner() {
     };
     let mut store = MemoryStore::new(MemoryStrategy::Scratchpad, caps);
     let long = "a".repeat(21);
-    let err = store.write("plan", &long, "the goal").unwrap_err();
+    let err = store.write("", "plan", &long, "the goal").unwrap_err();
     assert_eq!(
         err,
         MemoryError::DescriptionCap {
@@ -334,11 +340,13 @@ fn the_description_cap_refuses_a_long_one_liner() {
     assert_eq!(store.count(), 0);
 
     // At the limit is fine, and so is revising to a shorter one.
-    store.write("plan", &"a".repeat(20), "the goal").unwrap();
+    store
+        .write("", "plan", &"a".repeat(20), "the goal")
+        .unwrap();
     assert_eq!(store.count(), 1);
-    let err = store.update("plan", &long, "the goal").unwrap_err();
+    let err = store.update("", "plan", &long, "the goal").unwrap_err();
     assert!(matches!(err, MemoryError::DescriptionCap { .. }));
-    store.update("plan", "short", "the goal").unwrap();
+    store.update("", "plan", "short", "the goal").unwrap();
     assert_eq!(store.memories()[0].description(), "short");
 }
 
@@ -354,7 +362,7 @@ fn the_description_cap_is_reported_before_the_body_caps() {
     };
     let mut store = MemoryStore::new(MemoryStrategy::Scratchpad, caps);
     let err = store
-        .write("plan", &"d".repeat(50), &"b".repeat(50))
+        .write("", "plan", &"d".repeat(50), &"b".repeat(50))
         .unwrap_err();
     assert!(matches!(err, MemoryError::DescriptionCap { .. }), "{err:?}");
 }
@@ -421,7 +429,7 @@ fn state_event_starts_empty_with_caps_then_reflects_writes() {
         .store()
         .lock()
         .unwrap()
-        .write("plan", "the plan", "aaa")
+        .write("", "plan", "the plan", "aaa")
         .unwrap();
     let GgTelemetryKind::MemoryState {
         memories,
@@ -448,7 +456,7 @@ fn context_block_is_none_when_empty_and_lists_bodies_when_not() {
         .store()
         .lock()
         .unwrap()
-        .write("plan", "the plan", "the goal")
+        .write("", "plan", "the plan", "the goal")
         .unwrap();
     let block = runtime
         .context_block()

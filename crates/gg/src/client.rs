@@ -130,6 +130,16 @@ pub const DEFAULT_MOCK_SKILL: &str = "getting-started";
 /// `MemoryState` telemetry).
 pub const DEFAULT_MOCK_MEMORY: &str = "game-plan";
 
+/// The memory the [linked-memory parent script](MockClient::with_memory_parent_script) writes
+/// before it delegates — what a subagent that inherits its spawner's memories must be holding on
+/// its very first turn.
+pub const MOCK_MEMORY_PARENT: &str = "house-style";
+
+/// The memory the [linked-memory child script](MockClient::with_memory_child_script) writes, which
+/// lands in whichever store that child bound — its spawner's under an inheriting scope, and its own
+/// otherwise. That difference is the whole observable of memory scoping.
+pub const MOCK_MEMORY_CHILD: &str = "field-notes";
+
 /// The id of the first task the [default mock script](MockClient::with_default_script) adds,
 /// which the second task is blocked by (and which the script later completes to unblock it).
 pub const DEFAULT_MOCK_TASK_SCAFFOLD: &str = "scaffold";
@@ -1807,6 +1817,114 @@ impl MockClient {
         Self::new(model_id, Vec::new())
     }
 
+    /// The **parent** side of the offline [memory scoping](crate::memories::MemoryScope) e2e: a
+    /// script that records a memory, delegates, waits, and finishes.
+    ///
+    /// 1. `write_memory` records [`MOCK_MEMORY_PARENT`] — so the store is non-empty *before* the
+    ///    child exists, which is what makes "the child started holding what its spawner held" an
+    ///    observable rather than a coincidence;
+    /// 2. `spawn_subagent { agent: "subagent" }` schedules the child;
+    /// 3. `wait_for_subagents {}` blocks until it returns;
+    /// 4. a final tool-free turn stops.
+    ///
+    /// Pairs with [`with_memory_child_script`](Self::with_memory_child_script) on the `subagent`
+    /// slot. Between them the two scripts write one memory each, so what each agent's
+    /// [`MemoryState`](test_cabinet_core::gg::GgTelemetryKind::MemoryState) reports is exactly the
+    /// question the scope decides. Selected in production by a mock `model_id` naming
+    /// `memory-parent` (see [`mock_client_for`]), so a scope is drivable **offline through the real
+    /// binary**: bind the primary slot to a `mock/…-memory-parent` model, a `subagent` slot to a
+    /// `mock/…-memory-child` one, and give both profiles a scoped `memories` capability.
+    pub fn with_memory_parent_script(model_id: impl Into<String>) -> Self {
+        let usage = |input: u64, output: u64| TokenCounts {
+            uncached_input: Some(input),
+            cached_input: None,
+            output: Some(output),
+            reasoning: None,
+        };
+        let remember = ModelResponse {
+            text: Some("Recording the house style before delegating.".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "call_parent_memory".to_string(),
+                name: "write_memory".to_string(),
+                arguments: json!({
+                    "name": MOCK_MEMORY_PARENT,
+                    "description": "how this codebase is written",
+                    "body": "Comments explain why, never what.",
+                }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: usage(800, 40),
+            cost: None,
+        };
+        let spawn = ModelResponse {
+            text: Some("Delegating the investigation.".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "call_spawn".to_string(),
+                name: "spawn_subagent".to_string(),
+                arguments: json!({
+                    "prompt": "Look into the thing and record what you find.",
+                    "agent": "subagent",
+                }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: usage(900, 40),
+            cost: None,
+        };
+        let wait = ModelResponse {
+            text: Some("Waiting for the subagent to finish.".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "call_wait".to_string(),
+                name: "wait_for_subagents".to_string(),
+                arguments: json!({}),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: usage(950, 30),
+            cost: None,
+        };
+        let finish = ModelResponse {
+            usage: usage(1000, 50),
+            ..done_turn("The subagent reported back.")
+        };
+        Self::new(model_id, vec![remember, spawn, wait, finish])
+    }
+
+    /// The **child** side of the offline [memory scoping](crate::memories::MemoryScope) e2e: a
+    /// script that records one memory of its own and finishes.
+    ///
+    /// Pairs with [`with_memory_parent_script`](Self::with_memory_parent_script). Its
+    /// [`MemoryState`](test_cabinet_core::gg::GgTelemetryKind::MemoryState) is the assertion
+    /// target: two memories when it inherited its spawner's store, one when it got its own.
+    /// Selected in production by a mock `model_id` naming `memory-child` (see
+    /// [`mock_client_for`]).
+    pub fn with_memory_child_script(model_id: impl Into<String>) -> Self {
+        let usage = |input: u64, output: u64| TokenCounts {
+            uncached_input: Some(input),
+            cached_input: None,
+            output: Some(output),
+            reasoning: None,
+        };
+        let remember = ModelResponse {
+            text: Some("Recording what I found.".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "call_child_memory".to_string(),
+                name: "write_memory".to_string(),
+                arguments: json!({
+                    "name": MOCK_MEMORY_CHILD,
+                    "description": "what the investigation turned up",
+                    "body": "The renderer is the slow part.",
+                }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: usage(500, 30),
+            cost: None,
+        };
+        let finish = ModelResponse {
+            usage: usage(550, 40),
+            ..done_turn(MOCK_SUBAGENT_RETURN)
+        };
+        Self::new(model_id, vec![remember, finish])
+    }
+
     /// The **child** side of the offline [subagents](crate::subagents) e2e: a script that does a
     /// bit of work then returns a distinctive value.
     ///
@@ -2587,6 +2705,10 @@ fn mock_client_for(model_id: &str) -> MockClient {
         MockClient::with_speculate_parent_script(model_id)
     } else if model_id.contains("subagent-parent") {
         MockClient::with_subagent_parent_script(model_id)
+    } else if model_id.contains("memory-child") {
+        MockClient::with_memory_child_script(model_id)
+    } else if model_id.contains("memory-parent") {
+        MockClient::with_memory_parent_script(model_id)
     } else if model_id.contains("code-child") {
         MockClient::with_responses_as_code_child_script(model_id)
     } else if model_id.contains("code-parent") {

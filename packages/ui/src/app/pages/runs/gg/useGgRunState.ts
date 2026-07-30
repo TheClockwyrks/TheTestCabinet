@@ -359,6 +359,15 @@ export interface GgMemoryState {
   totalLines: number;
   peak: GgMemoryPeak;
   caps: GgMemoryCaps;
+  // How the emitting agent binds this instance — "isolated" (its own), "shared",
+  // "inherited" or "read-only". Empty on records written before memory scoping
+  // existed, which were all isolated. Without it two agents holding ONE store are
+  // indistinguishable from two agents that happen to hold the same notes.
+  scope: string;
+  // Whether the emitting agent may write this instance. False marks a read-only
+  // inherited handle onto another agent's memories. True on older records, which
+  // is what every holder was before read-only handles existed.
+  writable: boolean;
   // Every memory the agent ever held, in first-written order, live or deleted.
   history: GgMemoryHistory[];
 }
@@ -1502,6 +1511,8 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
           totalLines: gg.totalLines,
           peak: gg.peak,
           caps: gg.caps,
+          scope: gg.scope ?? "",
+          writable: gg.writable ?? true,
           history: [],
         };
         break;

@@ -39,6 +39,15 @@ const STRATEGY_LABELS: Record<string, string> = {
   "keyword-search": "Keyword search",
 };
 
+// How each memory scope is labeled on the panel's badge. An empty scope is a record
+// written before scoping existed, when every instance was its holder's own — which is
+// exactly what "isolated" means, so it needs no badge of its own and gets none.
+const SCOPE_LABELS: Record<string, string> = {
+  shared: "Shared with every instance of this agent",
+  inherited: "Inherited from this agent's spawner",
+  "read-only": "Inherited from this agent's spawner",
+};
+
 // What each kind of revision is called in the history.
 const CHANGE_LABELS: Record<GgMemoryRevision["change"], string> = {
   written: "written",
@@ -215,8 +224,13 @@ export function MemoriesList({ memory }: MemoriesListProps) {
     );
   }
 
-  const { strategy, count, totalLen, totalLines, peak, caps } = memory;
+  const { strategy, count, totalLen, totalLines, peak, caps, scope, writable } =
+    memory;
   const label = STRATEGY_LABELS[strategy] ?? strategy;
+  // The scope badge answers a question a snapshot alone cannot: whether this panel and
+  // another agent's are showing ONE store. It is shown only when the answer is
+  // interesting — an isolated instance is what memory has always been.
+  const scopeLabel = SCOPE_LABELS[scope];
   // The index is a markdown run's binding constraint and the aggregate body length
   // is the scratchpad's; each is shown only where it is the thing that runs out.
   const indexed = caps.maxLenIndex !== null && caps.maxLenIndex !== undefined;
@@ -235,6 +249,23 @@ export function MemoriesList({ memory }: MemoriesListProps) {
 
   return (
     <div className={styles.stack}>
+      {/* How this agent holds the store, when it holds it with anyone else. */}
+      {scopeLabel ? (
+        <div className={styles.memoryScope}>
+          {/* The badge is the scope itself, warmed when this holder may not write —
+              "read-only" is a scope AND a restriction, so one chip says both. */}
+          <span
+            className={styles.memoryScopeBadge}
+            data-readonly={writable ? undefined : ""}
+          >
+            {scope}
+          </span>
+          <span className={styles.memoryScopeNote}>
+            {scopeLabel}
+            {writable ? "" : " — this agent may read them, not change them"}
+          </span>
+        </div>
+      ) : null}
       {/* Budget meters: how close the model is to the limits this run enforces. */}
       <div className={styles.capMeters}>
         <CapMeter label={label} used={count} cap={caps.maxCount ?? null} />

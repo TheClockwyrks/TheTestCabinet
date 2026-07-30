@@ -1514,6 +1514,68 @@ item at the tail and the pinned index is unchanged (assert the index item's
 position and body across the turn). `compaction.test.rs` — `memory-compaction`
 demotes for a read-only holder. UI: `MemoriesList` badge test.
 
+### 7.2 Stage 3 as built — deviations from §2
+
+Everything in §2 landed. Thirteen things are shaped differently from the sketch above; later
+stages should build on **this** list.
+
+1. **A `MemoryBinding`, and an explicit author on every mutation.** §1.7 says a log entry carries
+   `author: String` but does not say how the store learns it. It could not be inferred at the
+   drain (that is a guess, and it is wrong exactly when two agents curate together), so the five
+   mutating `MemoryStore` methods now take `author: &str` as their first argument, and the seven
+   memory tools bind a `MemoryBinding { store: Arc<Mutex<MemoryStore>>, author: Arc<str> }` in
+   place of the bare `Arc`. `MemoriesRuntime::binding()` mints one; `store()` survives as the raw
+   handle for the tests.
+2. **Cursors live behind an `Arc<Mutex<HolderCursors>>`, not as two `usize` fields**, and there is
+   a third copy operation beside `fork`/`share`: **`MemoriesRuntime::alias()`** — *the same
+   holder, reached from somewhere else*. The responses-as-code path moves per-turn state onto a
+   blocking thread and previously took a `shared()` copy; under per-holder cursors that would have
+   been a second holder with the same agent id, and every program write would have been streamed
+   twice. `agent.code.rs` now takes an `alias()`.
+3. **`drive` drains module events at the turn boundary**, not only inside `record_tool_result`.
+   Without it a linked holder's `MemoryState` never updates when a *sibling* writes — its panel
+   would show a store it is no longer holding. The drain is author-filtered, so this emits the
+   snapshot and no revision.
+4. **The notices are pushed *after* the turn's compaction step**, not in §2.4's slot before the
+   pinned refreshes. An out-of-band compaction firing on the same turn would otherwise sweep news
+   the model had never read. A *later* boundary still sweeps them, by which point they have been
+   seen and the rebuilt block carries what they announced.
+5. **`Module::notice()` enforces ownership itself** (returning `None` for an unowned holder while
+   still advancing its watermark), and `CapabilityModules::notices()` no longer filters by
+   ownership. Same shape as `context_block`, and it stops an unowned module hoarding a backlog.
+6. **`CompactionStrategy::resolve(implementation, memories_writable)`** and
+   **`CompactionSetup::resolve(set, memories_writable)`** — the setup takes the resolved access as
+   an argument because whether an agent may write its memories depends on *how it was spawned*,
+   which no profile can say. `run_agent` passes it and logs the demotion.
+7. **`Module::adopt` re-points caps only when the module has a single holder**
+   (`Arc::strong_count == 1`). A store several agents curate together has one set of limits by
+   construction; re-pointing them because one holder was replaced would change what the others may
+   write. It also re-resolves scope, access, agent id and code mode. It does **not** yet rebind a
+   `shared`-scoped successor to the registry entry for its own profile (§2.2's last table row) —
+   `transfer` has no production caller until stage 4, which should add it there.
+8. **`MemoryScope` is a re-export of the contract enum** `GgMemoryScope` (like `ModuleKind`), with
+   `ALL`, `as_str`, `may_link` and `Display` on the core side. `MemoryAccess` is gg-local, since
+   access is never configured directly — it is derived from the scope and the spawn.
+9. **`InheritedModules` lives in `crates/gg/src/modules.rs`**, with `from_spawner(&CapabilityModules)`,
+   `offer()` (one more share, for one more child) and `memories_organized_as(strategy)`. It is
+   carried on `AgentRole::Sub` and on `SubagentContext`, and reaches resolution through
+   `ModuleResolveCtx { memories: &MemoryRegistry, inherited: &InheritedModules, .. }`.
+10. **A strategy mismatch refuses inheritance** rather than sharing a store the child cannot read,
+    and `memories::launch_warnings` reports the pairing (plus an unreadable `scope`, and a `scope`
+    on a profile whose memories are off) at launch.
+11. **`MemoryCalls` gained `read`**, so the notice can name the read call in the holder's own
+    execution mode; `MemoriesRuntime` therefore carries `code_mode`, re-resolved on adopt.
+12. **`MemoryRegistry`, `resolve_scope`, `launch_warnings` and the notice rendering live in
+    `crates/gg/src/memories.scope.rs`** (a `#[path]` child module beside `memories.search.rs`), so
+    `memories.rs` stays about what a memory *is* and the new file about whose it is.
+13. **`ggCatalog.ts` gained the `scope` picker now**, not in stage 6 — a config surface nobody can
+    author is a feature that may as well not exist. Stage 6 should add `ownership` beside it
+    rather than re-adding `scope`.
+
+`MemoriesView` gained `read_only`, `linked` and `scope` (not just §2.3's `read_only`): a holder that
+will be handed a mid-thread "another agent added a memory" message has to be told in advance that
+such a message is gg reporting a fact.
+
 ### Stage 4 — `feat(gg): fork and exec`
 
 `CAPABILITY_AGENT_TRANSITIONS`, `crates/gg/src/tools/transitions.rs`,

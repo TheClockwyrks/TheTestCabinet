@@ -9,7 +9,7 @@ use serde_json::json;
 use tempfile::TempDir;
 
 use super::*;
-use crate::memories::{MemoryCaps, MemoryStore, MemoryStrategy};
+use crate::memories::{MemoryBinding, MemoryCaps, MemoryStore, MemoryStrategy};
 use crate::tools::ToolFailure;
 
 /// The [`MemoryUsageData`] an outcome carries, or a failure naming what it carried instead.
@@ -20,15 +20,23 @@ fn usage(outcome: &ToolOutcome) -> &MemoryUsageData {
     }
 }
 
-/// A shared store bounded by `caps`, plus a throwaway workspace context.
-fn fixture(caps: MemoryCaps) -> (Arc<Mutex<MemoryStore>>, ToolContext, TempDir) {
+/// A [binding](MemoryBinding) onto a scratchpad store bounded by `caps`, plus a throwaway
+/// workspace context.
+///
+/// The binding, rather than the bare store, because that is what a tool takes: a store plus the
+/// agent whose calls go through it. These tests attribute to no agent — the empty author — since
+/// what they are about is what each call does, not whose call it was.
+fn fixture(caps: MemoryCaps) -> (MemoryBinding, ToolContext, TempDir) {
     let dir = TempDir::new().unwrap();
     let ctx = ToolContext::new(dir.path());
     (
-        Arc::new(Mutex::new(MemoryStore::new(
-            MemoryStrategy::Scratchpad,
-            caps,
-        ))),
+        MemoryBinding::new(
+            Arc::new(Mutex::new(MemoryStore::new(
+                MemoryStrategy::Scratchpad,
+                caps,
+            ))),
+            "",
+        ),
         ctx,
         dir,
     )
@@ -49,7 +57,7 @@ fn tiny_caps() -> MemoryCaps {
 #[tokio::test]
 async fn write_memory_saves_and_reports_usage() {
     let (store, ctx, _dir) = fixture(MemoryCaps::default());
-    let tool = WriteMemoryTool::new(Arc::clone(&store));
+    let tool = WriteMemoryTool::new(store.clone());
 
     let outcome = tool
         .invoke(
@@ -63,7 +71,7 @@ async fn write_memory_saves_and_reports_usage() {
     assert!(outcome.output.contains("1 of"));
 
     // The store actually holds it.
-    let store = store.lock().unwrap();
+    let store = store.lock();
     assert_eq!(store.count(), 1);
     assert_eq!(store.memories()[0].body(), "reach the goal");
 }
@@ -71,7 +79,7 @@ async fn write_memory_saves_and_reports_usage() {
 #[tokio::test]
 async fn write_memory_surfaces_a_duplicate_as_a_tool_error() {
     let (store, ctx, _dir) = fixture(MemoryCaps::default());
-    let tool = WriteMemoryTool::new(Arc::clone(&store));
+    let tool = WriteMemoryTool::new(store.clone());
     let args = json!({ "name": "dup", "description": "d", "body": "b" });
 
     assert!(tool.invoke(args.clone(), &ctx).await.ok);
@@ -84,7 +92,7 @@ async fn write_memory_surfaces_a_duplicate_as_a_tool_error() {
 #[tokio::test]
 async fn write_memory_surfaces_a_cap_breach_as_a_revise_or_evict_error() {
     let (store, ctx, _dir) = fixture(tiny_caps());
-    let tool = WriteMemoryTool::new(Arc::clone(&store));
+    let tool = WriteMemoryTool::new(store.clone());
 
     // A body over the per-memory cap is refused (not truncated) with actionable guidance.
     let outcome = tool
@@ -96,7 +104,7 @@ async fn write_memory_surfaces_a_cap_breach_as_a_revise_or_evict_error() {
     assert!(!outcome.ok);
     assert!(outcome.output.contains("per-memory limit"));
     assert!(outcome.output.contains("concise"));
-    assert_eq!(store.lock().unwrap().count(), 0);
+    assert_eq!(store.lock().count(), 0);
 
     // Fill to the count cap, then the next write is refused with evict guidance.
     tool.invoke(
@@ -117,7 +125,7 @@ async fn write_memory_surfaces_a_cap_breach_as_a_revise_or_evict_error() {
         .await;
     assert!(!outcome.ok);
     assert!(outcome.output.contains("delete_memory"));
-    assert_eq!(store.lock().unwrap().count(), 2);
+    assert_eq!(store.lock().count(), 2);
 }
 
 #[tokio::test]
@@ -135,8 +143,8 @@ async fn write_memory_validates_missing_arguments() {
 #[tokio::test]
 async fn update_memory_revises_or_reports_not_found() {
     let (store, ctx, _dir) = fixture(MemoryCaps::default());
-    let write = WriteMemoryTool::new(Arc::clone(&store));
-    let update = UpdateMemoryTool::new(Arc::clone(&store));
+    let write = WriteMemoryTool::new(store.clone());
+    let update = UpdateMemoryTool::new(store.clone());
 
     write
         .invoke(
@@ -152,7 +160,7 @@ async fn update_memory_revises_or_reports_not_found() {
         .await;
     assert!(outcome.ok);
     assert!(outcome.output.contains("Updated memory `m`"));
-    assert_eq!(store.lock().unwrap().memories()[0].body(), "new body");
+    assert_eq!(store.lock().memories()[0].body(), "new body");
 
     // Updating an unknown memory is an error pointing at write_memory.
     let outcome = update
@@ -168,8 +176,8 @@ async fn update_memory_revises_or_reports_not_found() {
 #[tokio::test]
 async fn delete_memory_evicts_or_reports_not_found() {
     let (store, ctx, _dir) = fixture(MemoryCaps::default());
-    let write = WriteMemoryTool::new(Arc::clone(&store));
-    let delete = DeleteMemoryTool::new(Arc::clone(&store));
+    let write = WriteMemoryTool::new(store.clone());
+    let delete = DeleteMemoryTool::new(store.clone());
 
     write
         .invoke(
@@ -180,7 +188,7 @@ async fn delete_memory_evicts_or_reports_not_found() {
     let outcome = delete.invoke(json!({ "name": "m" }), &ctx).await;
     assert!(outcome.ok);
     assert!(outcome.output.contains("Deleted memory `m`"));
-    assert_eq!(store.lock().unwrap().count(), 0);
+    assert_eq!(store.lock().count(), 0);
 
     let outcome = delete.invoke(json!({ "name": "m" }), &ctx).await;
     assert!(!outcome.ok);
@@ -196,7 +204,7 @@ async fn delete_memory_evicts_or_reports_not_found() {
 #[tokio::test]
 async fn every_memory_mutation_reports_both_capped_axes() {
     let (store, ctx, _dir) = fixture(tiny_caps());
-    let write = WriteMemoryTool::new(Arc::clone(&store));
+    let write = WriteMemoryTool::new(store.clone());
 
     let saved = write
         .invoke(
@@ -217,7 +225,7 @@ async fn every_memory_mutation_reports_both_capped_axes() {
         }
     );
 
-    let updated = UpdateMemoryTool::new(Arc::clone(&store))
+    let updated = UpdateMemoryTool::new(store.clone())
         .invoke(
             json!({ "name": "m", "description": "d", "body": "abcde" }),
             &ctx,
@@ -225,7 +233,7 @@ async fn every_memory_mutation_reports_both_capped_axes() {
         .await;
     assert_eq!(usage(&updated).total_chars, 5);
 
-    let deleted = DeleteMemoryTool::new(Arc::clone(&store))
+    let deleted = DeleteMemoryTool::new(store.clone())
         .invoke(json!({ "name": "m" }), &ctx)
         .await;
     assert_eq!(usage(&deleted).count, 0);
@@ -237,7 +245,7 @@ async fn every_memory_mutation_reports_both_capped_axes() {
 #[tokio::test]
 async fn each_store_refusal_is_classified_from_its_variant() {
     let (store, ctx, _dir) = fixture(tiny_caps());
-    let write = WriteMemoryTool::new(Arc::clone(&store));
+    let write = WriteMemoryTool::new(store.clone());
 
     write
         .invoke(
@@ -254,7 +262,7 @@ async fn each_store_refusal_is_classified_from_its_variant() {
         .await;
     assert_eq!(duplicate.failure, Some(ToolFailure::Conflict));
 
-    let unknown = UpdateMemoryTool::new(Arc::clone(&store))
+    let unknown = UpdateMemoryTool::new(store.clone())
         .invoke(
             json!({ "name": "ghost", "description": "d", "body": "b" }),
             &ctx,

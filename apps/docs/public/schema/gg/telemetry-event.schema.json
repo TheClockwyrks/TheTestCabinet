@@ -1063,6 +1063,11 @@
           },
           "description": "The high-water marks this run's memories reached, so a set that was curated back\ndown still reports how much it once held."
         },
+        "scope": {
+          "default": "",
+          "description": "The [scope](GgMemoryScope) the emitting agent binds this instance under — `isolated`,\n`shared`, `inherited` or `read-only`. It is what tells the console that two agents'\nmemory panels are showing **one** store rather than two that happen to agree, which is\notherwise indistinguishable from a snapshot. Empty on records written before scoping\nexisted, which the console reads as the `isolated` every run then was.",
+          "type": "string"
+        },
         "strategy": {
           "default": "",
           "description": "The [strategy](CAPABILITY_MEMORIES) this run's memories are organized by — which\ntools the model was offered, and which of the [caps](GgMemoryCaps) apply. Empty\non records written before memories had more than one strategy.",
@@ -1084,6 +1089,11 @@
         "type": {
           "const": "memory_state",
           "type": "string"
+        },
+        "writable": {
+          "default": true,
+          "description": "Whether the emitting agent may **write** this instance. `false` marks a\n[read-only](GgMemoryScope::ReadOnly) inherited handle: the agent is shown the set and\noffered the read calls, and every write call is withheld. Defaults to `true`, which is\nwhat every holder was before read-only handles existed.",
+          "type": "boolean"
         }
       },
       "required": ["type", "memories", "count", "totalLen", "caps"],

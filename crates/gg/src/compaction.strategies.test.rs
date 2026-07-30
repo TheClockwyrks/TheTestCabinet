@@ -98,14 +98,40 @@ fn memory_compaction_requires_memories() {
     );
     // …and the same through a whole capability set.
     assert_eq!(
-        CompactionSetup::resolve(set_with(Some("memory-compaction"), json!({}), false).root())
-            .strategy,
+        CompactionSetup::resolve(
+            set_with(Some("memory-compaction"), json!({}), false).root(),
+            false
+        )
+        .strategy,
         CompactionStrategy::SelfSummarization
     );
     assert_eq!(
-        CompactionSetup::resolve(set_with(Some("memory-compaction"), json!({}), true).root())
-            .strategy,
+        CompactionSetup::resolve(
+            set_with(Some("memory-compaction"), json!({}), true).root(),
+            true
+        )
+        .strategy,
         CompactionStrategy::Memory
+    );
+}
+
+/// The prerequisite is *writable* memories, not merely enabled ones.
+///
+/// A [read-only](crate::memories::MemoryScope::ReadOnly) holder is shown its spawner's memories and
+/// offered no call that changes them, so a memory compaction would ask it to record its state with
+/// calls it does not have and the boundary's gate could never be satisfied — leaving the run wedged
+/// against a full window. Demoting is a worse summary; not demoting is no run at all.
+#[test]
+fn memory_compaction_demotes_for_a_read_only_holder() {
+    // The capability is on — the set says so — but this holder may not write, so the strategy that
+    // depends on writing is not the one it gets.
+    assert_eq!(
+        CompactionSetup::resolve(
+            set_with(Some("memory-compaction"), json!({}), true).root(),
+            false
+        )
+        .strategy,
+        CompactionStrategy::SelfSummarization
     );
 }
 
@@ -181,7 +207,7 @@ fn the_handoff_model_is_read_only_for_a_handoff_strategy() {
         Some("openrouter/cheap".to_string())
     );
     assert!(
-        CompactionSetup::resolve(handoff.root())
+        CompactionSetup::resolve(handoff.root(), true)
             .strategy
             .is_handoff()
     );
