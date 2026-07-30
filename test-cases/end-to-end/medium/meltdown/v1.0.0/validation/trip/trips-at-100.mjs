@@ -5,16 +5,28 @@
 // precondition; the real firing/heat systems drive it the rest of the way to 100,
 // where the real trip system takes it offline. A tripped tower stops firing, so we
 // read `tripped` true and `firing` false — it deals no damage while offline.
+//
+// The Stutter is set into a vent corridor rather than parked beside the lane the Core
+// would walk if it crossed on its entry rows. What this item needs from the Core is
+// only that the Stutter has something real to shoot at; which route the Core takes to
+// the exhaust is `pathing.opposite-left`'s subject, and a build that sets off
+// diagonally must not be able to fail THIS item — an emitter that never acquires a
+// target never heats, and the item would report "did not trip" for a tower that was
+// working perfectly. The corridor walls the vent above and below so every route out of
+// it runs past the gun. See the note above `buildVentCorridor` in `_helpers`.
 
 import {
   newGame,
   arrangeNearRedline,
   actUntilTripped,
   tower,
+  actTail,
+  CORRIDOR_WALLS,
 } from "../_helpers.mjs";
 
 export default function item() {
   let id;
+  let walls;
   let hit;
   let t;
 
@@ -31,8 +43,12 @@ export default function item() {
     // assertions made, so this films the 92 drive that decides the verdict.
     async arrange(api) {
       await newGame(api, "containment", "medium", 100000);
-      const c = await arrangeNearRedline(api, "stutter", { heat: 92 });
+      const c = await arrangeNearRedline(api, "stutter", {
+        heat: 92,
+        corridor: true,
+      });
       id = c.id;
+      walls = c.walls;
     },
 
     async act(api) {
@@ -43,9 +59,16 @@ export default function item() {
       // while it is actually offline — where it deals no damage.
       await api.advance(1);
       t = await tower(api, id);
+      // The corridor hands the Stutter its target at once, so the trip lands a beat
+      // into the drive and the sweep stops on the frame it happens — leaving a clip
+      // that ends just as its subject begins. Hold on the tower while it is offline.
+      await actTail(api);
     },
 
     async assert(api, check) {
+      // The scenery, first: a corridor with a hole in it lets the Core walk round the
+      // Stutter, and "did not trip" would then be about the scenery, not the tower.
+      check.expectEq("the vent corridor was built", walls, CORRIDOR_WALLS);
       check.expectOk("the Stutter tripped from overheating", hit);
       check.expectEq("a tripped tower is offline", t.tripped, true);
       check.expectEq(

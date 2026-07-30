@@ -7,15 +7,20 @@
 // its redline; with zero air-facing edges and no conduction drain, its own firing
 // carries it to 100 and the real trip system takes it offline.
 //
-// The emitter has to be able to REACH the lane, which is what makes the row below a
-// load-bearing choice rather than an arbitrary one. The left vent's rows 16..19 are
-// all equally short routes to the right exhaust, so which of them the surge actually
-// walks is the build's own tie-break, and a build that hugs row 16 leaves anything
-// below row 21 outside an Arc's 6-tile range. Boxed at row 22 the Arc never acquires
-// a target, so it never fires, its heat sits exactly where it was posed, and the item
-// reports "did not trip" — a cooling failure that is really an out-of-range emitter.
-// Row 20 is within range of every row the vent can choose, and engagement is asserted
-// below so this can never again be diagnosed as a heat bug.
+// The emitter has to be able to REACH the surge, and no placement beside the vent can
+// promise that on its own: the left vent's four rows are all equally short routes to
+// the right exhaust, and so is a diagonal climb to the top of the floor and back down,
+// so which one the surge walks is the build's own tie-break (see the note above
+// `buildVentCorridor` in `_helpers`). An Arc that never acquires a target never fires,
+// its heat sits exactly where it was posed, and this item reports "did not trip" — a
+// cooling failure that is really an out-of-range emitter.
+//
+// So the surge is routed rather than guessed at: the corridor's roof funnels every
+// left-vent unit along rows 18-19, and the box goes directly underneath it, close
+// enough that the corridor sits well inside the Arc's 6-tile range. The box's own N
+// Forge is what separates the two, so the corridor's standard floor is not used here —
+// only its roof — and engagement is still asserted below, so this can never again be
+// diagnosed as a heat bug.
 //
 // Engagement is read from `damageDealt`, not from `firing`. `firing` is true only on
 // the step a shot actually goes out, and a boxed Arc posed at 95 trips on its FIRST
@@ -23,7 +28,18 @@
 // `firing` is the tick it goes offline — and a tripped tower is not firing. The
 // lifetime damage tally is the durable evidence that it had something to shoot at.
 
-import { newGame, build, spawn, tower, TICK } from "../_helpers.mjs";
+import {
+  newGame,
+  build,
+  spawn,
+  tower,
+  actTail,
+  buildCorridorWalls,
+  CORRIDOR_COL,
+  CORRIDOR_ROW,
+  CORRIDOR_ROOF_WALLS,
+  TICK,
+} from "../_helpers.mjs";
 
 // Box `col,row` (a 2x2 emitter) with a Forge on N, S, W, and E. Returns the emitter's
 // id and how many of the four movers actually went down — a refused placement leaves
@@ -44,9 +60,16 @@ async function boxWithForges(api, type, col, row) {
   return { id, boxed };
 }
 
+// The box sits two rows below the corridor floor, so its N Forge lines the corridor and
+// the Arc itself is the next tower down — inside its own 6-tile range of both corridor
+// rows.
+const BOX_COL = CORRIDOR_COL;
+const BOX_ROW = CORRIDOR_ROW + 2;
+
 export default function item() {
   let towerId;
   let boxedFaces;
+  let walls;
   let r;
   let t;
   let engaged = false;
@@ -64,11 +87,12 @@ export default function item() {
     async arrange(api) {
       await newGame(api, "containment", "medium", 100000);
       await api.call("setLives", 100000);
+      walls = await buildCorridorWalls(api);
       ({ id: towerId, boxed: boxedFaces } = await boxWithForges(
         api,
         "arc",
-        8,
-        20,
+        BOX_COL,
+        BOX_ROW,
       ));
       await spawn(api, "core", "left");
       await spawn(api, "core", "left");
@@ -89,9 +113,18 @@ export default function item() {
         { max: 600, poll: TICK },
       );
       t = await tower(api, towerId);
+      // The corridor puts the surge in front of the Arc immediately and a boxed Arc
+      // posed at 95 trips on its first shot, so the sweep stops within a beat of the
+      // drive starting. Hold on the baked-out tower rather than cutting on it.
+      await actTail(api);
     },
 
     async assert(api, check) {
+      check.expectEq(
+        "the corridor routing the surge past it was built",
+        walls,
+        CORRIDOR_ROOF_WALLS,
+      );
       check.expectEq("all four faces were boxed in", boxedFaces, 4);
       check.expectOk("the boxed-in emitter had a target to fire at", engaged);
       check.expectOk("the boxed-in emitter baked to the trip", r.hit);
