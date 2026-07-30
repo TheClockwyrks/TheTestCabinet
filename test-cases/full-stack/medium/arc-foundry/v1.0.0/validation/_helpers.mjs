@@ -24,9 +24,12 @@
 //     the setters that pose a board. Calling api.advance()/api.until() from arrange
 //     THROWS.
 //   * `act` is the only phase that consumes time, and the only thing filmed. It may
-//     still call control ops (to pose a second scenario mid-scene); it may NOT call
-//     api.reset(), which would hand the build back to its manual clock and silently
-//     freeze the recording.
+//     still call control ops (to pose a second scenario mid-scene), and it may call
+//     api.reset(): the build's own `reset` switches it to the manual clock, but the
+//     runtime hands the clock straight back afterwards, so a reset mid-`act` does not
+//     leave the recording filming a frozen game. Reach for it only when revisiting a
+//     fresh state is what the item has to SHOW (`pathing/three-maps` walks all three
+//     boards on camera); a scenario's opening pose still belongs in `arrange`.
 //
 // So a helper that only poses state (`startBuild`, `placeCandidate`, `armTower`,
 // `spawnControlled`, `assembleCombo`) is arrange-phase and used as-is, while a helper
@@ -215,6 +218,58 @@ export const SPOTS = [
   { col: 20, row: 7 },
 ];
 
+// ---- Unmet preconditions -------------------------------------------------------
+
+/**
+ * Throw an UNMET PRECONDITION: the build answered every debug-API call correctly, but the
+ * scenario this item wanted to pose did not take, so there is nothing to grade.
+ *
+ * An unmarked throw means the API misbehaved and fails the point; this one is recorded as
+ * inconclusive and fails nothing, leaving the point for the reviewer. See
+ * `PRECONDITION_UNMET` in `packages/browser-driver/validation.mjs` for why this is a plain
+ * property rather than a shared error class (this file is loaded by path and cannot import it).
+ */
+export function unmetPrecondition(reason) {
+  const err = new Error(reason);
+  err.ttcPreconditionUnmet = true;
+  return err;
+}
+
+// ---- The maze wall -------------------------------------------------------------
+//
+// One 2x2 piece dropped astride the row-5 corridor between the Entry and WP1, covering columns
+// 20..21 of rows 4..5. The ground route has to round it: it dips a row before the wall, runs along
+// under it, and rejoins the corridor after — trading two of the corridor's orthogonal steps for
+// two diagonal ones.
+//
+// A single piece is enough because a route's LENGTH is what the maze figure measures — the sum of
+// its step lengths, a diagonal counting sqrt(2) tiles against an orthogonal step's 1
+// (`specs/board.md` "Shortest open route", `specs/controls.md`). So that dip costs 2*(sqrt(2) - 1),
+// about 0.83 tiles, and the figure rises. Any wall the route must go around raises it; nothing
+// here needs a bigger structure than the one placement the claim is about.
+export const MAZE_WALL = { col: 20, row: 4 };
+
+/**
+ * ARRANGE. Drop the maze wall through the real placement path and return its piece id. Placement
+ * is free and costs one of the level's five stamps.
+ *
+ * Throws an unmet precondition if the drop was refused: the anchor is legal on the Substation as
+ * the spec lays it out (open floor, clear of every waypoint platform, sealing nothing), so a
+ * build that refuses it has posed no wall to measure — and these items' subject is what a wall
+ * DOES to the route, not which placements a build accepts (`pathing/never-seal-refused` and
+ * `pathing/no-build-on-waypoint` are the items that grade refusals).
+ */
+export async function buildMazeWall(api) {
+  const cand = await placeCandidate(api, "capacitor", 1, MAZE_WALL.col, MAZE_WALL.row);
+  if (!cand) {
+    throw unmetPrecondition(
+      `the maze wall was refused at (${MAZE_WALL.col},${MAZE_WALL.row}); ` +
+        `no wall was posed to measure`,
+    );
+  }
+  return cand.id;
+}
+
 // ---- Core drive helpers --------------------------------------------------------
 
 /** A snapshot shorthand. */
@@ -230,8 +285,9 @@ export async function snap(api) {
 /**
  * ARRANGE. Reset (reseeding all randomness) and begin a run at its opening build phase.
  * `charge` optionally overrides the starting Charge as a precondition for an upgrade.
- * Returns the opening snapshot. Poses only — call it from `arrange`, never from `act`
- * (it resets, which would hand the build back to its own clock mid-recording).
+ * Returns the opening snapshot. Poses only, so it belongs in `arrange` — but it is safe in
+ * `act` for an item whose subject IS reopening a run, since the runtime hands the build's
+ * clock back after a reset (see the arrange/act seam above).
  */
 export async function startBuild(
   api,
@@ -489,6 +545,60 @@ export async function readPanel(api, { tries = 12, per = 80 } = {}) {
   return buttons;
 }
 
+// ---- Menus (driven by the mouse, the way the spec makes primary) ----------------
+//
+// `specs/ui.md` fixes each menu's CONTENT and NAVIGATION but leaves its layout to the build, and
+// `specs/controls.md` requires every menu to be "fully operable with the mouse alone, with the
+// keyboard accelerators as an alternative" — the pointer being the primary path and the keys "an
+// alternative". So a check that drives menus by `Enter` is checking the alternative, and failing a
+// build for it reads as "this state is unreachable" when the state is perfectly reachable with the
+// mouse. That is what happened: a build whose menus a player walks without trouble failed four
+// state-reachability items because it bound no menu keys.
+//
+// Clicking instead needs somewhere to click, and no spec pins menu geometry. `menuButtons()` is
+// what closes that gap (`specs/instrumentation.md`), exactly as `panelButtons()` does for the
+// inspector: it reports the current menu's entries with their rectangles and an `action` naming
+// where each one leads, and a click at the middle of a reported rectangle must activate it. A
+// script can then take the mouse path on ANY layout.
+
+/**
+ * Read the current menu's entries, waiting for the menu to have been DRAWN.
+ *
+ * A menu screen is PAINTED, not simulated: `step` does nothing at all on one
+ * (`specs/instrumentation.md`), so no amount of instant stepping produces the frame a
+ * geometry read needs, and a build that reports its entries from the last rendered frame
+ * legitimately has nothing to report until it has drawn. A fixed `settle` is not a reliable
+ * answer either — how many animation frames a given pause buys is up to the browser, and a
+ * throttled headless Chromium can deliver none.
+ *
+ * So this waits for the entries to appear rather than for a duration, exactly as `readPanel`
+ * does. A build that genuinely draws no entries still returns `[]`, taking the full budget to
+ * say so, which no check is timing.
+ */
+export async function readMenu(api, { tries = 12, per = 80 } = {}) {
+  let entries = [];
+  for (let i = 0; i < tries; i += 1) {
+    await api.settle(per);
+    entries = (await api.call("menuButtons")) ?? [];
+    if (entries.length > 0) return entries;
+  }
+  return entries;
+}
+
+/**
+ * Click a menu choice by its `action`, the way a player would: find the entry the build reports
+ * and click the middle of the rectangle it reported. Returns the entry, or null if the menu
+ * offered no such choice (which a caller should treat as the navigation failing, not as a throw —
+ * the point of the click is to find out whether the choice leads where the spec says).
+ */
+export async function clickMenu(api, action) {
+  const entries = await readMenu(api);
+  const entry = entries.find((e) => e && e.action === action && !e.disabled);
+  if (!entry) return null;
+  await api.call("click", entry.x + entry.w / 2, entry.y + entry.h / 2);
+  return entry;
+}
+
 /**
  * ARRANGE. Spend a ground unit's walk across the chain instantly and stop it on the Collector's
  * doorstep, `lead` px short of the sink.
@@ -541,6 +651,79 @@ export async function skipUntilNearCollector(
     },
     { max, poll },
   );
+}
+
+// ---- The spread pack (for an effect whose subject is hitting SEVERAL units) -----
+//
+// The Coil's chain and the Arc-Node's splash are claims about ONE shot touching MORE THAN ONE
+// unit, so the media has to show more than one unit being touched. Both items used to release
+// their pack with `spawnUnit`'s `count`, which spawns every unit AT THE ENTRY on the same tick —
+// so all of them sat at exactly the same coordinates, walked at the same speed, and stayed
+// perfectly superimposed for the whole clip. Measured against the run implementation the four
+// units of the pack were all at (120, 166): a reviewer watching the recording sees a single
+// Mote, and the one thing the item exists to demonstrate is invisible. Worse, the check passed
+// on it — "two units lost HP" is trivially true of two units in the same place, which is not
+// what "chains to NEARBY units" or "splashes an AREA" means.
+//
+// So the pack is released one unit at a time with a walk between releases, which spaces it along
+// the corridor: separate sprites on screen, at a real distance from each other, so the effect
+// visibly reaches PAST its primary target. The gap is chosen against the spec's own radii
+// (`specs/towers.md`): a T1 Arc-Node splashes 42 px from the impact point and a Coil's bolt leaps
+// up to 70 px, so at 24 px apart the neighbours are comfortably inside both while still reading
+// as distinct units (a unit is drawn about one 20 px tile across).
+export const PACK_COUNT = 4;
+// 0.4 s at a Mote's 60 px/s is ~24 px between neighbours.
+const PACK_GAP_TICKS = 0.4 * SECOND;
+// The pack is scaled well up the wave ramp: a Wave-1 Mote pops in a hit or two and takes the
+// evidence off screen with it, where these survive volley after volley and stay watchable.
+const PACK_WAVE = 14;
+
+/**
+ * ARRANGE. Arm a firing piece on the corridor and walk a SPREAD pack of Motes up to it, stopping
+ * before the leader is in reach so the act opens on the pack closing the last stretch.
+ *
+ * Returns `{ towerId, ids, initHp }` — the pack in chain order (leader first) and each unit's HP
+ * at the moment the act begins, which is what an "how many were hurt by one shot" check diffs
+ * against.
+ *
+ * The approach stops on the LEADER, not the tail: stopping on the tail would leave the leader
+ * already well inside range, and the first shot — the one the whole item is about — would be away
+ * before the recording's first frame.
+ */
+export async function arrangeSpreadPack(api, type, { tier = 1, count = PACK_COUNT } = {}) {
+  const towerId = await armTower(api, { type, tier });
+  const ids = [];
+  for (let i = 0; i < count; i += 1) {
+    const [u] = await spawnControlled(api, "mote", { wave: PACK_WAVE });
+    if (!u) {
+      throw unmetPrecondition(
+        `only ${ids.length} of ${count} pack units could be released; there is no pack to hit`,
+      );
+    }
+    ids.push(u.id);
+    if (i < count - 1) await api.skip(PACK_GAP_TICKS); // this one walks ahead of the next
+  }
+  // Sweep coarsely: every sample is a round trip, and the record pass films those round trips as
+  // a fast-forward before the act begins, so a fine poll buys only a longer burst of teleporting
+  // units at the head of the clip.
+  await skipToApproach(api, towerId, ids[0], { lead: APPROACH_LEAD, poll: APPROACH_POLL });
+  const s = await api.snapshot();
+  const initHp = {};
+  for (const id of ids) {
+    const l = unitById(s, id);
+    if (l) initHp[id] = l.hp;
+  }
+  return { towerId, ids, initHp };
+}
+
+/** How many of `ids` are below the HP they started the act with — i.e. hurt by what just fired. */
+export function hurtCount(s, ids, initHp) {
+  let hurt = 0;
+  for (const id of ids) {
+    const l = unitById(s, id);
+    if (l && l.hp < initHp[id]) hurt += 1;
+  }
+  return hurt;
 }
 
 // ---- Targeting pose helpers ----------------------------------------------------
@@ -667,18 +850,44 @@ export async function actHeadTargets(api, { towerId, aId, bId }) {
   return posed;
 }
 
+// How far apart the HP pose separates its two units along the chain, in ticks of walking. Same
+// half-second the head pose uses: ~30 px between two Motes, which reads as two units on screen
+// and still sits well inside the ~145 px stretch of corridor an Emitter covers, so both are in
+// reach together.
+const HP_GAP_TICKS = 0.5 * SECOND;
+// Bounded wait for the tower's in-flight shots to land before the measurement is baselined. See
+// `actHpTargets` for why this matters and why it is only best-effort.
+const CLEAR_SHOTS_TICKS = 1 * SECOND;
+// How long the pose watches the tower keep choosing, once both units are in reach and baselined.
+// An Emitter's cadence is ~13 ticks, so a second and a half is a good half-dozen shots — enough
+// that the unit it actually favours is unmistakable and one stray hit cannot flip the reading.
+const HP_MEASURE_TICKS = 1.5 * SECOND;
+
 /**
- * ARRANGE half of the HP-targeting pose: arm the Emitter, release a HIGH-HP and a LOW-HP unit
- * on the SAME tick so progress and distance tie and only HP distinguishes them, walk them up to
- * the tower's reach, and set the targeting `mode`. Returns `{ towerId, strongId, weakId }`.
+ * ARRANGE half of the HP-targeting pose: arm the Emitter, release a HIGH-HP and a LOW-HP Mote a
+ * beat apart, walk them up to the tower's reach, and set the targeting `mode`. Returns
+ * `{ towerId, strongId, weakId, pickId, otherId }` — `pickId` being the unit `mode` is required
+ * to choose.
  *
- * The two units are both MOTES, differing only in the wave their HP is scaled to
- * (`spawnUnit`'s `options.wave`, `specs/instrumentation.md`). The pose used to use a Slug and a
- * Cluster, which works only while the pair is measured where it spawns: they carry different
- * roster SPEEDS (38 vs 72 px/s), so the moment the pose involves any walking they draw apart,
- * and by the time the corridor tower can reach one of them the other is far outside its range
- * and not a candidate for any priority. One type at two wave scalings holds the tie the pose
- * depends on — same speed, same position, same progress — for the whole walk.
+ * The two units are both MOTES, differing only in the wave their HP is scaled to (`spawnUnit`'s
+ * `options.wave`, `specs/instrumentation.md`). The pose used to use a Slug and a Cluster, which
+ * works only while the pair is measured where it spawns: they carry different roster SPEEDS (38
+ * vs 72 px/s), so the moment the pose involves any walking they draw apart, and by the time the
+ * corridor tower can reach one of them the other is far outside its range and not a candidate for
+ * any priority. One type at two wave scalings keeps them the same speed for the whole walk.
+ *
+ * WHY THEY ARE NO LONGER RELEASED ON THE SAME TICK. Same speed AND same release tick made them
+ * exactly superimposed — identical coordinates for the entire clip. That was deliberate (it ties
+ * progress and distance so only HP can distinguish them) but it made the media useless: the
+ * recording shows ONE Mote, and "the tower picked the higher-HP unit of a pair" is not a thing a
+ * reviewer can see when the pair is one sprite. It also made the check weaker than it reads,
+ * because a build whose `strongest` actually implements `first` or `nearest` cannot be caught by
+ * a pose where those all resolve to the same unit.
+ *
+ * So the pair is separated, and separated in the direction that makes the check HARDER: the unit
+ * the mode must NOT pick is released first, so it leads the other — further along the chain and
+ * nearer the tower. A build that confuses `strongest` with `first` or `nearest` now picks the
+ * wrong unit and fails, where the superimposed pose let it pass.
  *
  * Pair with `actHpTargets`.
  */
@@ -687,52 +896,115 @@ export async function arrangeHpTargets(api, mode) {
   // The priority is armed before anything is within reach, so every shot the item sees was aimed
   // under it — see APPROACH_LEAD for what went wrong when it was armed afterwards.
   await api.call("setTargeting", towerId, mode);
-  const [strong] = await spawnControlled(api, "mote", { wave: 20 }); // scaled up: the high-HP one
-  const [weak] = await spawnControlled(api, "mote", { wave: 4 }); // the low-HP one
-  // Stop short of reach: neither has been shot at when the act opens, and both are on screen for
-  // it. They spawn on the same tick at the same speed, so they arrive together and only HP tells
-  // them apart.
-  await skipToApproach(api, towerId, weak.id, {
+  // The decoy leads, the required pick trails. `strongest` must reach past the nearer, further-
+  // along weak one; `weakest` must reach past the nearer, further-along strong one.
+  const leadWave = mode === "strongest" ? 4 : 20;
+  const trailWave = mode === "strongest" ? 20 : 4;
+  const [lead] = await spawnControlled(api, "mote", { wave: leadWave });
+  await api.skip(HP_GAP_TICKS); // the decoy walks ahead
+  const [trail] = await spawnControlled(api, "mote", { wave: trailWave });
+  if (!lead || !trail) {
+    throw unmetPrecondition("the HP-targeting pair could not both be released");
+  }
+  const strongId = mode === "strongest" ? trail.id : lead.id;
+  const weakId = mode === "strongest" ? lead.id : trail.id;
+  // Stop short of the TRAILING unit's reach, so the act opens with the pair still walking in and
+  // both of them on screen.
+  await skipToApproach(api, towerId, trail.id, {
     lead: APPROACH_LEAD,
     poll: APPROACH_POLL,
   });
-  return { towerId, strongId: strong.id, weakId: weak.id };
+  return { towerId, strongId, weakId, pickId: trail.id, otherId: lead.id };
 }
 
 /**
- * ACT half of the HP-targeting pose: read both units' pre-shot HP, then run the real
- * simulation until the first shot lands, so a caller can assert which unit lost HP (the
- * single-target Emitter hits only its chosen target). Polls one tick at a time because the
- * instant the HP drops is what is read. Returns `{ strong, weak, strongHp0, weakHp0 }`.
+ * ACT half of the HP-targeting pose: wait until both units are genuinely in reach together,
+ * baseline their HP there, then watch the tower shoot for a while and report how much damage each
+ * of them took. Returns `{ strong, weak, strongHp0, weakHp0, bothInReach, pickDamage,
+ * otherDamage, firstHitWasPick }`.
+ *
+ * WHY IT BASELINES MID-ACT RATHER THAN AT THE OPENING FRAME. The pair walks the corridor 30 px
+ * apart, so the LEADING unit crosses into the Emitter's reach about half a second before the
+ * trailing one, and the tower quite correctly shoots it in the meantime — it is the only thing it
+ * can see, and a priority only ever chooses among what is IN RANGE (`specs/towers.md`). Those
+ * shots say nothing about the priority under test, but a baseline taken before them counts their
+ * damage against it, which would fail whichever mode put its required pick at the back. So the
+ * measurement starts once the choice is actually available: both in reach, and the tower's
+ * in-flight shots landed (a shot is a traveling projectile that carries its damage to impact, so
+ * one loosed at the leader an instant before the trailing unit arrived would otherwise land
+ * inside the window and read as this priority's pick).
+ *
+ * Waiting for the projectile list to drain is best-effort and bounded — a build with a fast enough
+ * cadence may never show an empty one — which is why the verdict rests on how the damage is
+ * DIVIDED across a window of several shots rather than on a single hit. Over a good half-dozen
+ * cadences the unit the tower actually favours takes visibly more, and one stray impact cannot
+ * flip that.
  *
  * Pair with `arrangeHpTargets`.
  */
-export async function actHpTargets(api, { strongId, weakId }) {
-  const s0 = await api.snapshot();
-  const strongHp0 = unitById(s0, strongId).hp;
-  const weakHp0 = unitById(s0, weakId).hp;
-  // The pair walks the last of the approach and the first shot lands. The budget covers that
-  // walk plus a cadence or two, so a build that opens a component on a full cooldown still
-  // resolves.
-  await api.until(
+export async function actHpTargets(api, { towerId, strongId, weakId, pickId, otherId }) {
+  // Both in reach: until then the head is not making the choice this item is about.
+  const reach = await api.until(
     (s) => {
+      const t = towerById(s, towerId);
       const a = unitById(s, strongId);
       const b = unitById(s, weakId);
-      return (a && a.hp < strongHp0) || (b && b.hp < weakHp0);
+      if (!t || !a || !b) return false;
+      return (
+        Math.hypot(a.x - t.cx, a.y - t.cy) <= t.range &&
+        Math.hypot(b.x - t.cx, b.y - t.cy) <= t.range
+      );
     },
     { max: 6 * SECOND, poll: TICK },
   );
+  // Let whatever was already in the air land, so it cannot be counted as this priority's pick.
+  await api.until((s) => (s.projectiles || []).length === 0, {
+    max: CLEAR_SHOTS_TICKS,
+    poll: TICK,
+  });
+
+  const s0 = await api.snapshot();
+  const hp0 = (id) => {
+    const u = unitById(s0, id);
+    return u ? u.hp : 0;
+  };
+  const strongHp0 = hp0(strongId);
+  const weakHp0 = hp0(weakId);
+  const pickHp0 = hp0(pickId);
+  const otherHp0 = hp0(otherId);
+
+  // Which one the tower reaches for first, now that it has a real choice.
+  const first = await api.until(
+    (s) => {
+      const p = unitById(s, pickId);
+      const o = unitById(s, otherId);
+      return (!p || p.hp < pickHp0) || (!o || o.hp < otherHp0);
+    },
+    { max: 6 * SECOND, poll: TICK },
+  );
+  const firstHitWasPick = (() => {
+    const p = unitById(first.snap, pickId);
+    return !p || p.hp < pickHp0;
+  })();
+
+  // Then watch it keep choosing, which is also what makes the priority read as a choice on screen.
+  await api.advance(HP_MEASURE_TICKS);
   const s = await api.snapshot();
-  const posed = {
+  const damage = (id, before) => {
+    const u = unitById(s, id);
+    return u ? before - u.hp : before; // gone entirely means it took everything it had
+  };
+
+  return {
     strong: unitById(s, strongId),
     weak: unitById(s, weakId),
     strongHp0,
     weakHp0,
+    bothInReach: reach.hit,
+    firstHitWasPick,
+    pickDamage: damage(pickId, pickHp0),
+    otherDamage: damage(otherId, otherHp0),
   };
-  // Carry on past the measurement so a reviewer watches the tower keep picking the same one out
-  // of the pair, which is the only way the priority reads as a choice on screen.
-  await api.advance(3 * SECOND);
-  return posed;
 }
 
 // ---- Read helpers --------------------------------------------------------------

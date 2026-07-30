@@ -1,16 +1,23 @@
 // Automated validation for targeting.weakest: under `weakest` a firing component aims at the
 // unit with the least remaining HP.
 //
-// A high-HP Slug and a low-HP Cluster are colocated; the single-target Emitter's first shot
-// must land on the Cluster and leave the Slug untouched.
+// Two Motes scaled to different waves walk the corridor a beat apart, with the HIGH-HP one leading
+// — so it is both further along the chain and nearer the tower, and a build that confuses
+// `weakest` with `first` or `nearest` reaches for the wrong one. Once both are inside the
+// single-target Emitter's reach the damage must land on the low-HP unit.
 //
-// Both units are released on the SAME tick, so the whole board — including the targeting mode —
-// is arrangeable; only waiting for the first shot consumes time, and that is the act.
+// The pair used to be released on the same tick, which tied progress and distance but left the
+// two units exactly superimposed — one sprite in the clip, and a pose in which `first`, `nearest`
+// and `weakest` all resolve to the same unit, so it could not tell them apart. See
+// `arrangeHpTargets` in `_helpers.mjs`.
+//
+// Posing the board is the arrange; the choice the head makes once it has both units to choose
+// between is the behavior under test, so it is the act and it is the clip.
 
 import { arrangeHpTargets, actHpTargets } from "../_helpers.mjs";
 
 export default function item() {
-  // The ids the act needs, and the shot it produced.
+  // The ids the act needs, and how the shooting divided between the pair.
   let ctx;
   let shot;
 
@@ -26,10 +33,15 @@ export default function item() {
     },
 
     async assert(api, check) {
-      const { strong, weak, strongHp0, weakHp0 } = shot;
+      const { strongHp0, weakHp0, bothInReach, firstHitWasPick, pickDamage, otherDamage } = shot;
       check.expectGt("the pose really does differ in HP", strongHp0, weakHp0);
-      check.expectLt("the weakest (lowest-HP) unit was hit", weak.hp, weakHp0);
-      check.expectEq("...and the stronger unit was not", strong.hp, strongHp0);
+      check.expectOk("both units were in reach together, so the priority had a choice", bothInReach);
+      check.expectOk("the first shot of that choice hit the weakest (lowest-HP) unit", firstHitWasPick);
+      check.expectGt(
+        "...and the tower kept favouring it over the nearer, further-along stronger unit",
+        pickDamage,
+        otherDamage,
+      );
     },
   };
 }

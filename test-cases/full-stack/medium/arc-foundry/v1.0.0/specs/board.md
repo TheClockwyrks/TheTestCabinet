@@ -104,10 +104,17 @@ that refuses placements near a waypoint rather than on it is wrong.
 ### Shortest open route between consecutive waypoints
 
 Between its current waypoint target and the next one, a unit takes the shortest
-open route around the walls: grid pathfinding (A\*/BFS) over Open tiles between the
-two waypoint tiles. It does not globally optimize the whole chain; it always solves
-this leg (current position or last waypoint reached to next waypoint), then the
-next leg, and so on. Extending a leg's shortest route by walling is how you maze.
+open route around the walls: grid pathfinding (A\*) over Open tiles between the two
+waypoint tiles, minimizing the route's LENGTH — the sum of its step lengths, with a
+diagonal step counting `√2` tiles against an orthogonal step's `1` (Diagonal rule
+below). It does not globally optimize the whole chain; it always solves this leg
+(current position or last waypoint reached to next waypoint), then the next leg, and
+so on. Extending a leg's shortest route by walling is how you maze.
+
+Length, not step count, is what is minimized and what is measured. Counting steps
+instead would make a diagonal detour free — a route could sidestep a wall and back at
+no cost — and walling a leg would then leave the maze length unchanged, which it never
+does: any wall the route must go around lengthens it.
 
 Progress toward the Collector, the ordering used for the standard `first` target
 (`specs/towers.md`), is measured as waypoint index reached, then remaining path
@@ -121,6 +128,12 @@ Movement steps to an orthogonally or diagonally adjacent Open tile. A diagonal s
 is allowed only when both orthogonally-adjacent tiles it cuts past are also Open, so
 the Load never squeezes through the corner gap between two diagonally-touching
 walls.
+
+A step's length is the distance it actually covers between the two tile centers,
+measured in tiles: an orthogonal step is `1` tile and a diagonal step is `√2`
+(`≈ 1.414`) tiles, the diagonal of a square. This is the cost the route is solved on
+and the unit every route length is reported in — a step diagonally across a tile
+covers more ground than a step across its edge, and counts for more.
 
 ### The never-seal rule
 
@@ -310,11 +323,11 @@ be produced sprites):
   a clear PAUSED read while the game is paused in place (`specs/ui.md`,
   `specs/controls.md`).
 - Maze length: a readout of how long the current maze is, the length of the ground
-  route the Load walks through the ordered waypoint chain around the walls, updating
-  live as the player builds. Hovering it draws the full ground path on the yard
-  (Entry through waypoints to Collector). Air units ignore the maze, so the figure
-  and the drawn path are the walking route only (`specs/controls.md`,
-  `specs/enemies.md`).
+  route the Load walks through the ordered waypoint chain around the walls, in tiles
+  (Shortest open route above), updating live as the player builds. Hovering it draws
+  the full ground path on the yard (Entry through waypoints to Collector). Air units
+  ignore the maze, so the figure and the drawn path are the walking route only
+  (`specs/controls.md`, `specs/enemies.md`).
 - Overlay toggles: a COMBOS toggle opening the combination-tower recipe book and a
   DMG BOARD toggle opening the live tower damage leaderboard; each is a read-only
   overlay the player can toggle at any time and reflects its open/closed state
