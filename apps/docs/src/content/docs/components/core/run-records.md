@@ -155,6 +155,15 @@ The harness version is not duplicated here; it lives in the subject.
     Not the model's fault: retained with a diagnostic detail, but **never** publishable
     and excluded from every model statistic. A harness that merely exited non-zero is
     a `harness_error`, and one that stopped responding is `hung`, not this.
+  - **`canceled`** — an operator killed the run before it finished: a deliberate
+    stop, not an outcome. The run is retained, with everything it streamed before
+    the kill — for a harness whose telemetry is its event stream, that timeline is
+    nearly all of it — and whatever partial artifacts it had collected, so a killed
+    run stays visible and inspectable in the run list rather than vanishing — but it
+    is **never** publishable and is excluded from every model statistic, since
+    nothing about the model can be concluded from a run a human ended. Distinct from
+    `timed_out` and `hung`, the two terminations the Test Cabinet itself decides on a
+    timer: a cancel has no timer and no fault, only an operator.
 
 ## Co-located Run Files
 

@@ -384,7 +384,8 @@ pub struct RunLinks {
 /// a harness that exits **non-zero** is a
 /// [`HarnessError`](RunState::HarnessError) and one that stops responding
 /// altogether is [`Hung`](RunState::Hung); a run stopped before the harness
-/// finished is [`TimedOut`](RunState::TimedOut) (the runtime cap) or
+/// finished is [`TimedOut`](RunState::TimedOut) (the runtime cap),
+/// [`Canceled`](RunState::Canceled) (an operator killed it), or
 /// [`Infrastructure`](RunState::Infrastructure) (everything else).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -443,26 +444,39 @@ pub enum RunState {
     /// A harness that merely exited non-zero is a
     /// [`HarnessError`](RunState::HarnessError), not this.
     Infrastructure,
+    /// An operator killed the run before it finished — a deliberate stop, not an
+    /// outcome. Retained (with everything it streamed before the kill) so a killed
+    /// run stays visible and inspectable in the run list rather than vanishing, but
+    /// **never** publishable and excluded from every model statistic: nothing about
+    /// the model can be concluded from a run a human ended.
+    ///
+    /// Distinct from [`TimedOut`](RunState::TimedOut) and [`Hung`](RunState::Hung),
+    /// the two terminations the Test Cabinet itself decides on a timer; this one has
+    /// no timer and no fault, only an operator.
+    Canceled,
 }
 
 impl RunState {
     /// Every terminal state, so callers that must enumerate them (the backend's
     /// wire-string lists, exhaustiveness tests) cannot silently miss a new one.
-    pub const ALL: [RunState; 6] = [
+    pub const ALL: [RunState; 7] = [
         RunState::Completed,
         RunState::Catastrophic,
         RunState::TimedOut,
         RunState::HarnessError,
         RunState::Hung,
         RunState::Infrastructure,
+        RunState::Canceled,
     ];
 
     /// Whether a run in this state may be published at all. Every state except
-    /// [`Infrastructure`](RunState::Infrastructure) is publishable — completed runs
-    /// through the review gate, the failure tiers through the separate
-    /// publish-failures path.
+    /// [`Infrastructure`](RunState::Infrastructure) and
+    /// [`Canceled`](RunState::Canceled) is publishable — completed runs through the
+    /// review gate, the failure tiers through the separate publish-failures path.
+    /// Those two are retained for inspection only: neither says anything about the
+    /// model.
     pub fn is_publishable(self) -> bool {
-        !matches!(self, RunState::Infrastructure)
+        !matches!(self, RunState::Infrastructure | RunState::Canceled)
     }
 
     /// Whether this state is one of the publishable *failure* tiers
@@ -484,7 +498,8 @@ impl RunState {
     /// [`TimedOut`](RunState::TimedOut)); false for a
     /// [`HarnessError`](RunState::HarnessError), which is recorded only as
     /// a per-model statistic and releases nothing, and for the never-published
-    /// [`Infrastructure`](RunState::Infrastructure). Note this is about the *release*
+    /// [`Infrastructure`](RunState::Infrastructure) and
+    /// [`Canceled`](RunState::Canceled). Note this is about the *release*
     /// step, not whether an asset-generation run has code to release — that gate is
     /// [`TestType::releases_source_repo`](crate::TestType::releases_source_repo).
     ///
@@ -505,7 +520,9 @@ impl RunState {
     /// False for [`Catastrophic`](RunState::Catastrophic) (the build never loaded)
     /// and [`TimedOut`](RunState::TimedOut) (the harness never finished), which may
     /// still release their source without a build to go with it, and for the states
-    /// that release nothing at all.
+    /// that release nothing at all ([`HarnessError`](RunState::HarnessError),
+    /// [`Hung`](RunState::Hung), [`Infrastructure`](RunState::Infrastructure), and
+    /// [`Canceled`](RunState::Canceled)).
     pub fn has_playable_build(self) -> bool {
         matches!(self, RunState::Completed)
     }
@@ -519,6 +536,10 @@ impl RunState {
     /// [`Hung`](RunState::Hung); every other error — the harness-install or
     /// case-init timeouts and container/cluster faults — is the Test Cabinet's
     /// [`Infrastructure`](RunState::Infrastructure).
+    ///
+    /// [`Canceled`](RunState::Canceled) is never reached here: an operator kill is
+    /// not an error the run returns, it is observed out-of-band by the driver
+    /// (which sets the state itself).
     pub fn classify_failure(err: &crate::Error) -> RunState {
         match err {
             crate::Error::RunTimedOut { .. } => RunState::TimedOut,

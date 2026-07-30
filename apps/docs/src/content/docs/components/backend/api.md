@@ -287,6 +287,18 @@ produced build and media land on the [artifact service](/components/artifacts/ov
 playable for review. The public release of the source repo and Cloudflare build is
 done by the publisher at **publish** time, not before.
 
+`POST /jobs/{id}/status` — the driver-authenticated status endpoint that carries
+that record — also accepts a **`canceled`** status, and it is the **only** status
+accepted on a job already in the terminal `canceled` state (every other late report
+from a winding-down driver is discarded, so nothing can resurrect or overwrite a
+killed run). A `canceled` status must carry a run record (`422` without one); the
+backend persists it with the events its relay accumulated for the job and attaches
+the resulting record id to the already-canceled job. It changes nothing else: the
+job keeps its `canceled` state and its cancellation detail, no completion
+notification fires — a kill is an operator action, not something to alert on — and
+no retry is enqueued, since an operator who stopped a run does not want it started
+again.
+
 ### `POST /runs/{id}/reviews` — submit a review
 
 Submit a [review](/components/core/results/#reviews) for a produced run: the
@@ -344,10 +356,18 @@ List stored runs, newest first. A `state` query parameter selects which runs:
   Infrastructure failures are excluded (never publishable).
 - `state=unpublished` — **every** unpublished run whatever its terminal
   state (completed, every failure tier, including the never-publishable
-  infrastructure failures), ordered by finish time. This is the console's
-  "produced" worklist — every run that exists but is not yet public, so an
-  infrastructure failure stays inspectable rather than appearing in no list.
-  Disjoint from the default published listing.
+  infrastructure failures and operator-`canceled` runs), ordered by finish time.
+  This is the console's "produced" worklist — every run that exists but is not yet
+  public, so an infrastructure failure or a killed run stays inspectable rather than
+  appearing in no list. Disjoint from the default published listing.
+
+A **`canceled`** run — one an operator killed mid-flight, whose partial record the
+[driver](/components/driver/overview/#cancellation) still reports — reaches only
+`state=unpublished` and the unfiltered `state=any` (the summary + offset path,
+which applies no lifecycle predicate at all). It can never be published, so it is
+absent from the default `published` listing; it carries no review checklist, so it
+is absent from `review` and `unreviewed`; and it is not a publishable failure, so it
+is absent from `failures`.
 
 #### Two projections
 

@@ -16,8 +16,9 @@ export interface RunStatePresentation {
   /**
    * Whether this is a publishable failure tier (catastrophic, timed-out,
    * harness-error, or hung): real model signal that publishes without a
-   * review. Infrastructure failures are the Test Cabinet's own fault and are never
-   * publishable.
+   * review. The two never-publishable tiers are excluded — an infrastructure
+   * failure is the Test Cabinet's own fault, and a canceled run was stopped by an
+   * operator before it reached any outcome.
    */
   isPublishableFailure: boolean;
 }
@@ -78,6 +79,15 @@ export function describeRunState(state: RunState): RunStatePresentation {
         isFailure: true,
         isPublishableFailure: false,
       };
+    case "canceled":
+      return {
+        label: "Canceled",
+        chip: "canceled",
+        description:
+          "An operator stopped this run before it finished. Everything it streamed up to that point is kept so it can be inspected, but it reached no outcome — it is not a model result and is never published.",
+        isFailure: true,
+        isPublishableFailure: false,
+      };
   }
 }
 
@@ -87,8 +97,8 @@ export function describeRunState(state: RunState): RunStatePresentation {
  *
  * The tones mirror {@link ReliabilityRingWidget}'s fixed outcome palette —
  * completed reads positive, the loud failures negative/accent, and the quiet ones
- * (a hang, our own infrastructure) muted, because nothing about the model
- * happened there.
+ * (a hang, our own infrastructure, an operator's cancel) muted, because nothing
+ * about the model happened there.
  */
 export function runStateColor(state: RunState): string {
   switch (state) {
@@ -104,6 +114,11 @@ export function runStateColor(state: RunState): string {
       return "var(--tcab-muted)";
     case "infrastructure":
       return "var(--tcab-border)";
+    case "canceled":
+      // Quiet like the two above, but distinguishable from them: a dimmed muted
+      // rather than a second use of the border tone, so a distribution chart that
+      // carries both an infrastructure and a canceled segment can still be read.
+      return "color-mix(in srgb, var(--tcab-muted) 50%, var(--tcab-bg))";
   }
 }
 
@@ -115,8 +130,8 @@ export function runStateColor(state: RunState): string {
  * however badly it validated, since a validation script that could not be driven
  * fails the checklist point it backs rather than diverting the run. The remaining
  * tiers genuinely stopped before a usable build existed: `catastrophic` never
- * loaded, `timed_out` never finished, and `harness_error` / `infrastructure`
- * release nothing at all.
+ * loaded, `timed_out` never finished, and `harness_error` / `hung` /
+ * `infrastructure` / `canceled` release nothing at all.
  */
 export function hasPlayableOutcome(state: RunState): boolean {
   return state === "completed";

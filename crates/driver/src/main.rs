@@ -86,6 +86,12 @@ async fn main() -> ExitCode {
     let (tx, rx) = sink::channel();
     let relay = tokio::spawn(sink::relay_task(client.clone(), rx));
 
+    // Filled by `drive` the moment the definition materializes, so the cancellation
+    // arm below — which never sees a return value — can still record the killed run
+    // against its real case identity and test type.
+    let resolved: std::sync::Mutex<Option<test_cabinet_core::TestCaseVersion>> =
+        std::sync::Mutex::new(None);
+
     // Race the run against an operator cancellation. `wait_for_cancellation`
     // resolves only when the backend reports this job `canceled`, so a cancel makes
     // the `select!` drop the `drive` future — which cancels the in-flight harness
@@ -97,7 +103,7 @@ async fn main() -> ExitCode {
         let cancelled = wait_for_cancellation(&client);
         tokio::pin!(cancelled);
         tokio::select! {
-            outcome = drive(&config, &request, &tx, &client) => Some(outcome),
+            outcome = drive(&config, &request, &tx, &client, &resolved) => Some(outcome),
             _ = &mut cancelled => None,
         }
     };
@@ -115,14 +121,21 @@ async fn main() -> ExitCode {
         None => {
             // The run was canceled mid-flight. The backend already moved the job to
             // `canceled` and closed its live stream (that is what the watcher saw),
-            // so there is no terminal status to report — but dropping the run future
-            // only canceled the harness `exec`, it did not remove the sandbox the
-            // run created, so tear it down now. Exit successfully so the cluster does
-            // not treat the canceled run as a driver failure and retry it.
+            // so the job's *state* is settled — but the run is not nothing: it
+            // streamed events right up to the kill, and for a gg run that stream is
+            // the bulk of its telemetry. Hand back a record for it so the killed run
+            // stays in the run list and stays inspectable, instead of vanishing.
+            //
+            // Dropping the run future also only canceled the harness `exec`; it did
+            // not remove the sandbox the run created, so tear that down too. Exit
+            // successfully either way so the cluster does not treat the canceled run
+            // as a driver failure and retry it.
             tracing::info!(
                 job_id = %config.job_id,
-                "run canceled by operator; tearing down the sandbox and exiting"
+                "run canceled by operator; recording the partial run and tearing down the sandbox"
             );
+            let test_case = resolved.lock().ok().and_then(|slot| slot.clone());
+            report_canceled(&client, &config, &request, started_at, test_case.as_ref()).await;
             teardown_sandbox(&config).await;
             ExitCode::SUCCESS
         }
@@ -191,6 +204,60 @@ async fn wait_for_cancellation(client: &JobClient) {
                 tracing::debug!(error = %err, "polling job state for cancellation failed; retrying");
             }
         }
+    }
+}
+
+/// The detail stamped on a canceled run's record, so the console shows *why* the run
+/// ends where it does rather than an unexplained stop.
+const CANCELED_DETAIL: &str = "canceled by operator";
+
+/// Record a run an operator killed: build the partial
+/// [`RunRecord`](test_cabinet_core::RunRecord) for what it got
+/// through — [`RunState::Canceled`](test_cabinet_core::RunState::Canceled), carrying
+/// the resolved case identity when the definition had materialized — and hand it to
+/// the backend, which persists it with the events the relay already accumulated.
+///
+/// That event stream is the point of this: the run's telemetry (for a gg run, nearly
+/// all of it) was streamed as it happened, and without a record to hang it on the
+/// backend has nothing to attach it to and the killed run never reaches the run
+/// list. Everything here is best-effort — the job is already terminal and the
+/// sandbox teardown still has to happen, so a failure to record is logged, never
+/// fatal.
+async fn report_canceled(
+    client: &JobClient,
+    config: &Config,
+    request: &test_cabinet_core::RunRequest,
+    started_at: OffsetDateTime,
+    test_case: Option<&test_cabinet_core::TestCaseVersion>,
+) {
+    // The backend holds the streamed events, so the locally-written `events.jsonl`
+    // (lost with the ephemeral pod anyway) is immaterial — an empty slice, exactly as
+    // `report_failure` passes.
+    let record = match write_failed_record(
+        &config.work_dir.join("out"),
+        &config.job_id,
+        request,
+        test_case,
+        started_at,
+        test_cabinet_core::RunState::Canceled,
+        CANCELED_DETAIL,
+        &[],
+    ) {
+        Ok(mut record) => {
+            // A killed run may still have collected partial artifacts worth keeping
+            // (proof media, an asset frame, a build it had already produced) — upload
+            // them the same as a failed run, so the retained run is as inspectable as
+            // what it actually got to.
+            finalize_artifacts(config, &mut record).await;
+            record
+        }
+        Err(err) => {
+            tracing::warn!(error = %err, "could not build the canceled run record");
+            return;
+        }
+    };
+    if let Err(err) = client.post_status_canceled(record).await {
+        tracing::warn!(error = %err, "could not report `canceled` to the backend");
     }
 }
 

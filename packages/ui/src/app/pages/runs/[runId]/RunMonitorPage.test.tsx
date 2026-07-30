@@ -229,7 +229,11 @@ describe("RunMonitorPage", () => {
 
   it("reports a canceled outcome as an intentional stop, not a failure", async () => {
     const { value } = makeWorkers((handlers) => {
-      handlers.onDone({ kind: "canceled", message: "canceled by operator" });
+      handlers.onDone({
+        kind: "canceled",
+        message: "canceled by operator",
+        record: null,
+      });
     });
 
     renderMonitor(value);

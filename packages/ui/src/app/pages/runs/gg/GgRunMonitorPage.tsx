@@ -148,10 +148,31 @@ export function GgRunMonitorPage() {
                 {status.outcome.message
                   ? `: ${status.outcome.message}`
                   : ""}.{" "}
-                {jobId && (
-                  <Link to={routes.runDetail(jobId)}>
-                    Open the run to see what was recorded.
-                  </Link>
+                {/* A killed gg run keeps everything it streamed before the kill,
+                    so point at the telemetry views rather than only the record —
+                    that stream is the reason the run is worth retaining at all. */}
+                {status.outcome.record ? (
+                  <>
+                    <Link to={routes.runDetail(status.outcome.record.id)}>
+                      Open the run
+                    </Link>{" "}
+                    to see what was recorded,{" "}
+                    <Link to={routes.runGg(status.outcome.record.id)}>
+                      keep reading this view
+                    </Link>{" "}
+                    (it is rebuilt from the telemetry recorded up to the kill),
+                    or{" "}
+                    <Link to={routes.runMetrics(status.outcome.record.id)}>
+                      see its metrics
+                    </Link>
+                    .
+                  </>
+                ) : (
+                  jobId && (
+                    <Link to={routes.runDetail(jobId)}>
+                      Open the run to see what was recorded.
+                    </Link>
+                  )
                 )}
               </p>
             )}

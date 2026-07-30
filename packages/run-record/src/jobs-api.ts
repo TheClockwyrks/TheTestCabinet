@@ -13,7 +13,12 @@ import type { HarnessSlug, RunRecord } from "./index";
 /**
  * The state a driver reports for a job via `POST /jobs/{id}/status`.
  */
-export type DriverState = "starting" | "running" | "succeeded" | "failed";
+export type DriverState =
+  | "starting"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "canceled";
 
 /**
  * The body of `POST /jobs`: what to run, with what, against which model. The
@@ -183,7 +188,8 @@ export type StatusUpdate = {
    */
   state: DriverState;
   /**
-   * The produced run record, required when `state` is `succeeded`. Its `links`
+   * The produced run record, required when `state` is `succeeded` and carried on
+   * a `canceled` report too (the partial record for the killed run). Its `links`
    * are authoritative and stored with it.
    */
   record?: RunRecord;

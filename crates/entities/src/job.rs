@@ -39,7 +39,8 @@ pub struct Model {
     /// The per-job bearer token the driver presents to stream this job's
     /// events/preview/status. Minted at enqueue, never leaves the cluster.
     pub job_token: String,
-    /// The produced run record's id once the job succeeded, else `NULL`. What the
+    /// The produced run record's id once the job succeeded — or the partial record
+    /// the driver handed back for a job an operator canceled — else `NULL`. What the
     /// console navigates to when the live run finishes.
     #[sea_orm(nullable)]
     pub record_id: Option<String>,

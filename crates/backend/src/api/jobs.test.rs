@@ -18,6 +18,9 @@ fn retryable_for_infrastructure_catastrophic_and_harness_error() {
     // neither is a fault to retry.
     assert!(!is_retryable(RunState::TimedOut));
     assert!(!is_retryable(RunState::Completed));
+    // An operator who killed a run does not want it started again — a cancel is a
+    // decision, not a fault.
+    assert!(!is_retryable(RunState::Canceled));
 }
 
 #[test]

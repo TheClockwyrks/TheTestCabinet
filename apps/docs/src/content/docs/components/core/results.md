@@ -204,6 +204,10 @@ requires depends on the run's [terminal state](/components/core/run-records/#sta
   the Test Cabinet's own timer rather than observed after the fact.
 - An **`infrastructure`** failure is the Test Cabinet's own fault and is **never
   publishable** (`422`), no matter what reviews it carries.
+- A **`canceled`** run — one an operator killed from the live monitor — is likewise
+  **never publishable** (`422`), no matter what reviews it carries. It is retained
+  for inspection only: a run a human stopped is not an outcome, so there is nothing
+  about the model to release or report.
 
 Publishing is **asynchronous**: the backend gates the run and enqueues a
 per-publish `tcab-publisher` Job, which does the release work and reports back. The
@@ -242,7 +246,9 @@ the publishable failure tiers: harness errors, hangs, and timeouts — so how of
 model finishes, drives the harness to a non-zero exit, leaves it hanging, or runs
 out of time all read at a glance. (A timeout keeps its source and build, since the
 model did useful work before the cap; a harness error or a hang contributes only
-its count.)
+its count.) `infrastructure` and `canceled` runs are absent from the ring and from
+every other model statistic — neither is a model outcome, and counting a run an
+operator chose to stop would distort every rate it appeared in.
 
 The backend performs publish (and the snapshot regeneration it triggers) as the
 **synchronized** half of the lifecycle: because the backend is the single entity

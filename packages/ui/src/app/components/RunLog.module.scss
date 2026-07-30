@@ -319,6 +319,13 @@ a.row:hover .selectCell .spinner,
   &[data-state="hung"] {
     color: t.$color-warning;
   }
+
+  // A canceled run is not a failure at all — an operator stopped it. Mute it so it
+  // reads as a deliberate stop rather than something the model did wrong, while
+  // still being visible in the list.
+  &[data-state="canceled"] {
+    color: t.$color-text-muted;
+  }
 }
 
 .test {

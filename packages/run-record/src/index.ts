@@ -59,7 +59,8 @@ export type HarnessFamily = "claude" | "codex" | "antigravity" | "openrouter";
  * a harness that exits **non-zero** is a
  * [`HarnessError`](RunState::HarnessError) and one that stops responding
  * altogether is [`Hung`](RunState::Hung); a run stopped before the harness
- * finished is [`TimedOut`](RunState::TimedOut) (the runtime cap) or
+ * finished is [`TimedOut`](RunState::TimedOut) (the runtime cap),
+ * [`Canceled`](RunState::Canceled) (an operator killed it), or
  * [`Infrastructure`](RunState::Infrastructure) (everything else).
  */
 export type RunState =
@@ -68,7 +69,8 @@ export type RunState =
   | "timed_out"
   | "harness_error"
   | "hung"
-  | "infrastructure";
+  | "infrastructure"
+  | "canceled";
 
 /**
  * The authentication mode a run used, recorded so a published run is

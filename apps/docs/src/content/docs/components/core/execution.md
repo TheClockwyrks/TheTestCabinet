@@ -197,6 +197,12 @@ attributed accurately and promptly, and a case's maximum runtime is reachable
 however long it is set — a run that keeps producing output is never interrupted by
 anything but its own cap.
 
+These two are the only terminations the Test Cabinet decides on a timer. A run an
+operator kills from the live monitor is recorded as
+[`canceled`](/components/core/run-records/#status) instead: there is no bound it
+crossed and no fault to attribute, only a human who stopped it, so it is retained
+for inspection but says nothing about the model and can never be published.
+
 ## Model Authored Tests
 
 The goal of a test case is to measure how well a model writes code in a large

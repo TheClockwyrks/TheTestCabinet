@@ -73,11 +73,17 @@ impl RunFailure {
 /// ephemeral scratch dirs, materializes the served definition, selects the
 /// container runtime, and runs the engine. Unlike the worker it records nothing on
 /// failure — the caller streams the outcome to the backend instead.
+///
+/// `resolved` is filled in the moment the definition materializes. It exists for the
+/// one path that never gets a return value: an operator cancellation drops this
+/// future mid-flight, and the caller still needs the run's real case identity and
+/// test type to build the killed run's record.
 pub async fn drive(
     config: &Config,
     request: &RunRequest,
     outbound: &UnboundedSender<Outbound>,
     job_client: &JobClient,
+    resolved: &std::sync::Mutex<Option<TestCaseVersion>>,
 ) -> Result<RunRecord, RunFailure> {
     // When the run requests an explicit auth mode, lock it for the engine by
     // setting `TCAB_AUTH_MODE` before resolution — the driver does not select the
@@ -140,6 +146,13 @@ pub async fn drive(
             request.test_case_slug, version_str, request.variant
         ))
     })?;
+
+    // Publish the resolved version for the cancellation path: from here on, a kill
+    // that drops this future can still record the run against its real case
+    // identity, version, and test type rather than the requested slug alone.
+    if let Ok(mut slot) = resolved.lock() {
+        *slot = Some(test_case.clone());
+    }
 
     // For a game jam, fetch the gameplay READMEs of earlier runs of this jam built
     // with the same harness and model, so the engine can seed them (git-ignored) and

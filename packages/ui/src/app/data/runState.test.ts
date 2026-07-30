@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { RunState } from "@test-cabinet/run-record";
-import { describeRunState, hasPlayableOutcome } from "./runState";
+import {
+  describeRunState,
+  hasPlayableOutcome,
+  runStateColor,
+} from "./runState";
 
 // Every terminal state in the contract, so a state added to the Rust enum without
 // a presentation arm here fails loudly rather than falling through at runtime.
@@ -11,6 +15,7 @@ const ALL_STATES: RunState[] = [
   "harness_error",
   "hung",
   "infrastructure",
+  "canceled",
 ];
 
 describe("hasPlayableOutcome", () => {
@@ -29,6 +34,7 @@ describe("hasPlayableOutcome", () => {
     expect(hasPlayableOutcome("harness_error")).toBe(false);
     expect(hasPlayableOutcome("hung")).toBe(false);
     expect(hasPlayableOutcome("infrastructure")).toBe(false);
+    expect(hasPlayableOutcome("canceled")).toBe(false);
   });
 });
 
@@ -57,7 +63,27 @@ describe("describeRunState", () => {
         state !== "completed",
       );
     }
-    // Infrastructure is our own fault and is the one failure that never publishes.
+    // The two never-publishable tiers: our own infrastructure fault, and a run an
+    // operator stopped before it reached any outcome.
     expect(describeRunState("infrastructure").isPublishableFailure).toBe(false);
+    expect(describeRunState("canceled").isPublishableFailure).toBe(false);
+  });
+
+  it("reads a canceled run as an operator's stop, not a model result", () => {
+    // A killed run is retained and listed like the other non-completions, so it
+    // needs presentation — but it must not read as something the model did.
+    const presentation = describeRunState("canceled");
+    expect(presentation.label).toBe("Canceled");
+    expect(presentation.isFailure).toBe(true);
+    expect(presentation.isPublishableFailure).toBe(false);
+    expect(presentation.description).toMatch(/operator/i);
+    expect(presentation.description).toMatch(/never published/i);
+  });
+
+  it("gives every state its own chart color", () => {
+    // The gg state distribution draws one segment per state, so two states sharing
+    // a color would render as one indistinguishable band.
+    const colors = ALL_STATES.map(runStateColor);
+    expect(new Set(colors).size).toBe(ALL_STATES.length);
   });
 });

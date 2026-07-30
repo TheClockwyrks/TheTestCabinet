@@ -21,6 +21,21 @@ fn publishable_failure_states_match_the_contract() {
     assert_eq!(derived, expected);
     assert!(!derived.contains(&"completed"));
     assert!(!derived.contains(&"infrastructure"));
+    assert!(!derived.contains(&"canceled"));
+
+    // The publish gate's never-publishable list is derived the same way, from
+    // `RunState::is_publishable`, so a new never-publishable tier cannot be added to
+    // the contract and silently slip through the gate.
+    let never = never_publishable_states();
+    let expected_never: Vec<&str> = RunState::ALL
+        .into_iter()
+        .filter(|s| !s.is_publishable())
+        .map(run_state_str)
+        .collect();
+    assert_eq!(never, expected_never);
+    assert!(never.contains(&"infrastructure"));
+    assert!(never.contains(&"canceled"));
+    assert!(!never.contains(&"completed"));
 
     // Every entry must be a real serde wire string, not a hand-typed guess.
     for state in RunState::ALL {
@@ -1037,6 +1052,65 @@ async fn set_job_state_never_overwrites_a_canceled_job() {
 }
 
 #[tokio::test]
+async fn attach_canceled_job_record_keeps_the_kill_but_retains_the_record() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.enqueue_job(new_job("j1", "2026-06-23T00:00:00Z"))
+        .await
+        .unwrap();
+    db.cancel_job("j1", "2026-06-23T00:01:00Z", "canceled by operator")
+        .await
+        .unwrap()
+        .expect("a queued job is cancelable");
+
+    // The killed run's driver hands back the partial record it built. It is
+    // attached, but nothing else about the canceled job moves: without this the
+    // record would be discarded and the killed run would vanish from the run list.
+    let attached = db
+        .attach_canceled_job_record("j1", "r1", "2026-06-23T00:02:00Z")
+        .await
+        .unwrap()
+        .expect("a canceled job accepts its record");
+    assert_eq!(attached.record_id.as_deref(), Some("r1"));
+    assert_eq!(attached.state, "canceled");
+    assert_eq!(attached.detail.as_deref(), Some("canceled by operator"));
+
+    // A duplicate report from a still-winding-down driver cannot overwrite it.
+    assert!(
+        db.attach_canceled_job_record("j1", "r2", "2026-06-23T00:03:00Z")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let still = db.get_job("j1").await.unwrap().expect("the job exists");
+    assert_eq!(still.record_id.as_deref(), Some("r1"));
+}
+
+#[tokio::test]
+async fn attach_canceled_job_record_refuses_a_job_that_was_not_canceled() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.enqueue_job(new_job("j1", "2026-06-23T00:00:00Z"))
+        .await
+        .unwrap();
+    db.set_job_state("j1", "running", "2026-06-23T00:01:00Z", None, None)
+        .await
+        .unwrap();
+
+    // Only a canceled job takes this path; a live one keeps its normal transitions.
+    assert!(
+        db.attach_canceled_job_record("j1", "r1", "2026-06-23T00:02:00Z")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        db.attach_canceled_job_record("missing", "r1", "2026-06-23T00:02:00Z")
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[tokio::test]
 async fn active_jobs_excludes_terminal_jobs_oldest_first() {
     let db = Db::connect_in_memory().await.unwrap();
     db.enqueue_job(new_job("a", "2026-06-23T00:00:00Z"))
@@ -1150,6 +1224,29 @@ async fn publish_refuses_an_infrastructure_failure_even_with_a_review() {
 }
 
 #[tokio::test]
+async fn publish_refuses_a_canceled_run_even_with_a_review() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // A killed run is retained so it stays inspectable, but an operator stopping a
+    // run says nothing about the model — it can never be published, review or not.
+    let mut rec = record("k1");
+    rec.status.state = RunState::Canceled;
+    db.push(&rec, &RunLinks::default(), None).await.unwrap();
+    db.add_review("k1", &review(), None).await.unwrap();
+
+    let err = db
+        .publish("k1", "2026-06-23T00:00:00Z")
+        .await
+        .expect_err("a canceled run must never be publishable");
+    match err {
+        crate::error::BackendError::Unprocessable(message) => assert!(
+            message.contains("canceled by an operator"),
+            "the refusal must name the actual reason, got {message:?}",
+        ),
+        other => panic!("got {other:?}"),
+    }
+}
+
+#[tokio::test]
 async fn publish_allows_a_failure_tier_without_any_review() {
     let db = Db::connect_in_memory().await.unwrap();
     // Catastrophic and timed-out runs are publishable model signal with no review
@@ -1180,6 +1277,7 @@ async fn worklist_holds_completed_runs_and_failures_path_holds_the_rest() {
         ("slow", RunState::TimedOut),
         ("harness", RunState::HarnessError),
         ("infra", RunState::Infrastructure),
+        ("killed", RunState::Canceled),
     ] {
         let mut rec = record(id);
         rec.status.state = state;
@@ -1200,18 +1298,20 @@ async fn worklist_holds_completed_runs_and_failures_path_holds_the_rest() {
     assert_eq!(
         failure_ids,
         vec!["cat", "harness", "slow"],
-        "publishable failures cover catastrophic/timed-out/harness-error but exclude infrastructure"
+        "publishable failures cover catastrophic/timed-out/harness-error but exclude \
+         infrastructure and canceled"
     );
 
     // The console's produced worklist carries every unpublished run whatever its
-    // tier — including the infrastructure failure that appears in neither worklist
-    // above — so an infrastructure failure stays inspectable rather than vanishing.
+    // tier — including the two that appear in neither worklist above, the
+    // infrastructure failure and the run an operator killed — so both stay
+    // inspectable rather than vanishing.
     let (unpublished, _) = db.list_unpublished(50, None).await.unwrap();
     let mut unpublished_ids: Vec<&str> = unpublished.iter().map(|r| r.record.id.as_str()).collect();
     unpublished_ids.sort_unstable();
     assert_eq!(
         unpublished_ids,
-        vec!["cat", "done", "harness", "infra", "slow"],
+        vec!["cat", "done", "harness", "infra", "killed", "slow"],
         "every unpublished run, all tiers, is in the produced worklist"
     );
 
@@ -1223,7 +1323,7 @@ async fn worklist_holds_completed_runs_and_failures_path_holds_the_rest() {
     after_ids.sort_unstable();
     assert_eq!(
         after_ids,
-        vec!["done", "harness", "infra", "slow"],
+        vec!["done", "harness", "infra", "killed", "slow"],
         "a published run leaves the unpublished worklist"
     );
 }

@@ -215,6 +215,23 @@ impl JobClient {
         .await
     }
 
+    /// Acknowledge an operator's cancellation, handing back the partial record the
+    /// driver built for the killed run (`POST /jobs/{id}/status`, `canceled`). The
+    /// job is already terminal, so this changes no state — the backend persists the
+    /// record with the events the relay accumulated and attaches it to the job, so
+    /// the killed run stays visible and inspectable in the run list.
+    pub async fn post_status_canceled(&self, record: RunRecord) -> Result<(), ClientError> {
+        self.post_status(
+            "status (canceled)",
+            &StatusUpdate {
+                state: DriverState::Canceled,
+                record: Some(record),
+                detail: None,
+            },
+        )
+        .await
+    }
+
     /// Send a status update and verify the backend accepted it.
     async fn post_status(
         &self,

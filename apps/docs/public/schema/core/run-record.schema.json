@@ -1278,7 +1278,7 @@
       "type": "object"
     },
     "RunState": {
-      "description": "The terminal state of a run — the single axis that decides publishability and\nhow a run scores. Classified objectively at the point a run ends: a clean\nharness exit splits into [`Completed`](RunState::Completed) and\n[`Catastrophic`](RunState::Catastrophic) (nothing to evaluate — the output\nnever built or loaded);\na harness that exits **non-zero** is a\n[`HarnessError`](RunState::HarnessError) and one that stops responding\naltogether is [`Hung`](RunState::Hung); a run stopped before the harness\nfinished is [`TimedOut`](RunState::TimedOut) (the runtime cap) or\n[`Infrastructure`](RunState::Infrastructure) (everything else).",
+      "description": "The terminal state of a run — the single axis that decides publishability and\nhow a run scores. Classified objectively at the point a run ends: a clean\nharness exit splits into [`Completed`](RunState::Completed) and\n[`Catastrophic`](RunState::Catastrophic) (nothing to evaluate — the output\nnever built or loaded);\na harness that exits **non-zero** is a\n[`HarnessError`](RunState::HarnessError) and one that stops responding\naltogether is [`Hung`](RunState::Hung); a run stopped before the harness\nfinished is [`TimedOut`](RunState::TimedOut) (the runtime cap),\n[`Canceled`](RunState::Canceled) (an operator killed it), or\n[`Infrastructure`](RunState::Infrastructure) (everything else).",
       "oneOf": [
         {
           "const": "completed",
@@ -1308,6 +1308,11 @@
         {
           "const": "infrastructure",
           "description": "The Test Cabinet's own infrastructure failed: the container would not start\nor pull, a pod was OOM-killed, or seeding / the case's init step failed. Not\nthe model's fault — retained with a diagnostic [`RunStatus::detail`] for\ndebugging, but **never** publishable and excluded from every model statistic.\nA harness that merely exited non-zero is a\n[`HarnessError`](RunState::HarnessError), not this.",
+          "type": "string"
+        },
+        {
+          "const": "canceled",
+          "description": "An operator killed the run before it finished — a deliberate stop, not an\noutcome. Retained (with everything it streamed before the kill) so a killed\nrun stays visible and inspectable in the run list rather than vanishing, but\n**never** publishable and excluded from every model statistic: nothing about\nthe model can be concluded from a run a human ended.\n\nDistinct from [`TimedOut`](RunState::TimedOut) and [`Hung`](RunState::Hung),\nthe two terminations the Test Cabinet itself decides on a timer; this one has\nno timer and no fault, only an operator.",
           "type": "string"
         }
       ]

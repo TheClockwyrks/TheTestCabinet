@@ -725,7 +725,13 @@ export type RunOutcome =
   // The run was killed by an operator before it finished (`POST /jobs/{id}/cancel`
   // moved it to the terminal `canceled` state). Distinct from `failed` so the
   // monitor reports an intentional stop rather than a fault.
-  | { kind: "canceled"; message: string };
+  //
+  // `record` is the partial record the driver hands back for the killed run — what
+  // it got through, with everything it had streamed persisted alongside it — so a
+  // killed run stays inspectable. It is `null` only when the driver could not be
+  // reached to produce one, or when it has not landed yet (it is posted a moment
+  // after the cancel, once the harness is actually stopped).
+  | { kind: "canceled"; message: string; record: RunRecord | null };
 
 // The live state of a submitted run job.
 export interface RunJob {

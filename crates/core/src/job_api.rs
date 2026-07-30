@@ -146,6 +146,14 @@ pub enum DriverState {
     Succeeded,
     /// The run could not be driven to a record (reason in `detail`).
     Failed,
+    /// The driver observed that the run was **canceled** by an operator, stopped the
+    /// harness, and is handing back the partial record it built for it (carried in
+    /// the same update, with
+    /// [`RunState::Canceled`](crate::RunState::Canceled)). The job is already
+    /// terminal — the backend moved it to `canceled` when the operator asked — so
+    /// this update only attaches the record, keeping the killed run visible and
+    /// inspectable instead of vanishing.
+    Canceled,
 }
 
 /// The body of `POST /jobs/{id}/status`: the new driver state, plus the produced
@@ -156,7 +164,8 @@ pub enum DriverState {
 pub struct StatusUpdate {
     /// The state the driver is reporting.
     pub state: DriverState,
-    /// The produced run record, required when `state` is `succeeded`. Its `links`
+    /// The produced run record, required when `state` is `succeeded` and carried on
+    /// a `canceled` report too (the partial record for the killed run). Its `links`
     /// are authoritative and stored with it.
     #[serde(default)]
     #[cfg_attr(feature = "contract", ts(optional))]

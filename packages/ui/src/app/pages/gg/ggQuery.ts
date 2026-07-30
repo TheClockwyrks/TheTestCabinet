@@ -169,6 +169,7 @@ export const RUN_STATES: ReadonlyArray<RunState> = [
   "harness_error",
   "hung",
   "infrastructure",
+  "canceled",
 ];
 
 // The first capability with a param, used to seed a `capabilityParam` facet so it

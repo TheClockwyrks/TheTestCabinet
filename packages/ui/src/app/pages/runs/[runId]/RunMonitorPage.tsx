@@ -177,8 +177,14 @@ export function RunMonitorPage() {
         <p className={`${styles.notice} ${styles.warn}`}>
           Run canceled
           {status.outcome.message ? `: ${status.outcome.message}` : ""}.{" "}
-          {runId && (
-            <Link to={routes.runDetail(runId)}>
+          {/* A killed run is retained with everything it streamed before the kill,
+              so link the record it produced when there is one. */}
+          {(status.outcome.record?.id ?? runId) && (
+            <Link
+              to={routes.runDetail(
+                status.outcome.record?.id ?? (runId as string),
+              )}
+            >
               Open the run to see what was recorded.
             </Link>
           )}

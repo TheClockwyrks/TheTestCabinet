@@ -144,8 +144,10 @@ async fn finish(
             Ok(())
         }
         // A `failed`/`canceled` job either produced a failure record (a model
-        // failure with a timeline) or none (an infrastructure failure). Surface the
-        // detail and exit non-zero either way.
+        // failure with a timeline, or the partial record a killed run's driver hands
+        // back a moment after the cancel lands) or none (an infrastructure failure).
+        // Surface the detail and exit non-zero either way — the record, when there
+        // is one, is inspectable in the console.
         JobState::Failed | JobState::Canceled => {
             let detail = status
                 .detail
@@ -243,7 +245,7 @@ fn print_checks(validation: &test_cabinet_core::ValidationSummary) {
 /// A short label for a run's terminal state.
 fn status_label(state: &test_cabinet_core::RunState) -> &'static str {
     use test_cabinet_core::RunState::{
-        Catastrophic, Completed, HarnessError, Hung, Infrastructure, TimedOut,
+        Canceled, Catastrophic, Completed, HarnessError, Hung, Infrastructure, TimedOut,
     };
     match state {
         Completed => "completed",
@@ -252,6 +254,7 @@ fn status_label(state: &test_cabinet_core::RunState) -> &'static str {
         Infrastructure => "infrastructure failure",
         HarnessError => "harness error",
         Hung => "harness hung",
+        Canceled => "canceled by operator",
     }
 }
 

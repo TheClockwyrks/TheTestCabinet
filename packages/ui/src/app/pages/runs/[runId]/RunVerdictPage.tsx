@@ -24,19 +24,23 @@ import { PerformanceResultSection } from "./PerformanceResultSection";
 import { RunErrataCallout } from "./RunErrataCallout";
 import styles from "./RunDetailPages.module.scss";
 
-// The note a failed run's default tab stands in place of its result: it produced
-// neither a reviewable implementation nor a scored one. Catastrophic and
+// The note a run without a result stands in place of one on its default tab: it
+// produced neither a reviewable implementation nor a scored one. Catastrophic and
 // timed-out runs are still publishable model signal, but from the dedicated
-// Publish failures list rather than here; infrastructure failures are kept for
-// inspection only. The failure reason is in the banner above this body, and the
-// Events tab carries whatever timeline was recorded.
+// Publish failures list rather than here; an infrastructure failure or a run an
+// operator canceled is kept for inspection only. The reason is in the banner above
+// this body, and the Events tab carries whatever timeline was recorded — which for
+// a canceled run is the point of retaining it at all.
 function FailureNote({ presentation }: { presentation: RunStatePresentation }) {
+  // The never-publishable tiers differ in *why*, so name the actual state rather
+  // than assuming the reason is always an infrastructure failure.
+  const note = presentation.isPublishableFailure
+    ? "This run produced no result. It can be published as a failure from the Publish failures list."
+    : `This run produced no result, and a run in the ${presentation.label.toLowerCase()} state is never published.`;
   return (
     <Panel>
       <p className={styles.empty}>
-        {presentation.isPublishableFailure
-          ? "This run produced no result. It can be published as a failure from the Publish failures list. See the failure reason above, and the Events tab for what was recorded."
-          : "This run failed before producing a result, and an infrastructure failure is never published. See the failure reason above, and the Events tab for what was recorded."}
+        {note} See the reason above, and the Events tab for what was recorded.
       </p>
     </Panel>
   );

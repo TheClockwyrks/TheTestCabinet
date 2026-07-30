@@ -223,6 +223,10 @@ fn run_state_serializes_snake_case() {
         serde_json::to_value(RunState::Infrastructure).unwrap(),
         json!("infrastructure")
     );
+    assert_eq!(
+        serde_json::to_value(RunState::Canceled).unwrap(),
+        json!("canceled")
+    );
 }
 
 #[test]
@@ -306,6 +310,9 @@ fn run_state_publishability() {
     assert!(RunState::HarnessError.is_publishable());
     assert!(RunState::Hung.is_publishable());
     assert!(!RunState::Infrastructure.is_publishable());
+    // An operator kill is a deliberate stop, not an outcome: nothing about the model
+    // can be concluded from it, so it is never publishable.
+    assert!(!RunState::Canceled.is_publishable());
 
     assert!(!RunState::Completed.is_publishable_failure());
     assert!(RunState::Catastrophic.is_publishable_failure());
@@ -314,6 +321,7 @@ fn run_state_publishability() {
     // A hang is real, reportable model signal just like a harness error.
     assert!(RunState::Hung.is_publishable_failure());
     assert!(!RunState::Infrastructure.is_publishable_failure());
+    assert!(!RunState::Canceled.is_publishable_failure());
 }
 
 #[test]
@@ -327,6 +335,7 @@ fn only_a_loadable_build_is_playable() {
     assert!(!RunState::HarnessError.has_playable_build());
     assert!(!RunState::Hung.has_playable_build());
     assert!(!RunState::Infrastructure.has_playable_build());
+    assert!(!RunState::Canceled.has_playable_build());
 
     // A state that has a playable build must also release it at publish, or the
     // build would exist but never reach the gallery.
@@ -342,7 +351,7 @@ fn only_a_loadable_build_is_playable() {
 fn all_covers_every_state() {
     // `ALL` is what the backend derives its wire-string lists from, so a new state
     // missing from it would silently drop out of those queries.
-    assert_eq!(RunState::ALL.len(), 6);
+    assert_eq!(RunState::ALL.len(), 7);
     for state in RunState::ALL {
         assert!(
             RunState::ALL.iter().filter(|s| **s == state).count() == 1,
@@ -363,6 +372,8 @@ fn run_state_publishes_artifacts() {
     assert!(!RunState::HarnessError.publishes_artifacts());
     assert!(!RunState::Hung.publishes_artifacts());
     assert!(!RunState::Infrastructure.publishes_artifacts());
+    // A killed run releases nothing either: it never reached an outcome.
+    assert!(!RunState::Canceled.publishes_artifacts());
 }
 
 #[test]

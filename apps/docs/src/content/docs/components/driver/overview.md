@@ -65,14 +65,40 @@ The console asks the backend to cancel the job (`POST /jobs/{id}/cancel`, gated 
 the launching account); the backend moves it to the terminal `canceled` state and
 closes its live stream, so every watching monitor reflects the end at once and the
 queue never claims a canceled-while-queued job. The driver **polls its own job's
-state** while it runs, so it observes the cancellation, drops the in-flight harness
-session (which cancels the container `exec`), and **tears its sandbox down** — under
-the Kubernetes runtime it deletes the run's sandbox pod, which it finds by the
-job-id label it stamped on it — then exits without reporting a terminal status (the
-backend already recorded `canceled`). The path is identical on the local
-[k3d](/development/running/) cluster and in production, since both drive a run
-through a driver pod. A late status the winding-down driver might still post is
-ignored by the backend, so it can never resurrect a canceled run.
+state** while it runs, so it observes the cancellation and drops the in-flight
+harness session (which cancels the container `exec`).
+
+The job's *state* is settled at that point, but the run is not nothing: it streamed
+[events](/components/core/events/) right up to the kill, and for a harness whose
+telemetry is its event stream that is the bulk of what the run produced. So rather
+than walk away, the driver **records the killed run**. It waits for its relay to
+drain (every streamed event has reached the backend before any terminal status is
+sent), builds a partial [run record](/components/core/run-records/) with the state
+[`canceled`](/components/core/run-records/#status) and the detail
+`canceled by operator` — carrying the resolved case identity and test type when the
+definition had already materialized — uploads whatever partial artifacts the run
+had collected (proof media, an asset frame, a build it had already produced) the
+same way a failed run does, and posts a `canceled` status carrying that record to
+`POST /jobs/{id}/status`. The backend persists the record together with the events
+its relay accumulated and attaches it to the already-canceled job. It changes
+nothing else: no state change, no completion notification, and no retry. The killed
+run therefore appears in the run list like any other unpublished run, with a working
+Events view, instead of vanishing — though it is
+[never publishable](/components/core/results/#publish).
+
+Recording is **best-effort**: the job is already terminal and the teardown still has
+to happen, so a record that cannot be built or posted is logged and never fatal.
+Either way the driver **tears its sandbox down** — dropping the run future cancels
+the `exec` but leaves the sandbox the run created, so under the Kubernetes runtime
+the driver deletes the run's sandbox pod, which it finds by the job-id label it
+stamped on it — and **exits successfully**, so the cluster does not read a canceled
+run as a driver failure and retry it.
+
+The path is identical on the local [k3d](/development/running/) cluster and in
+production, since both drive a run through a driver pod. Any *other* late status the
+winding-down driver might post before it notices the kill — a `running`,
+`succeeded`, or `failed` — is discarded by the backend, so nothing but the driver's
+own `canceled` acknowledgement can touch a canceled run.
 
 ## Artifacts
 

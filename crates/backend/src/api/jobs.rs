@@ -403,8 +403,13 @@ pub async fn status(
 /// [driver](crate) polls its own job's state while it runs, so it observes the
 /// cancellation, drops the in-flight harness exec, tears its sandbox down, and
 /// exits — the same both on the local cluster and in production, since both drive a
-/// run through a driver pod. No completion notification is fired: a canceled run is
-/// an operator action, not a failure to alert on.
+/// run through a driver pod. On its way out it posts a
+/// [`DriverState::Canceled`](test_cabinet_core::job_api::DriverState::Canceled)
+/// status carrying a [`RunState::Canceled`] record, which
+/// [`update_status`] attaches to this job; that is what keeps a killed run — and
+/// everything it streamed before the kill — visible in the run list. No completion
+/// notification is fired: a canceled run is an operator action, not a failure to
+/// alert on.
 ///
 /// Canceling an already-`canceled` job is an idempotent no-op (`200`); a job that
 /// already ran to `succeeded`/`failed` cannot be canceled (`409`); an unknown job
@@ -559,6 +564,11 @@ pub async fn ingest_preview(
 /// any) is retained too. A terminal update closes the live stream and fires a
 /// completion notification.
 ///
+/// `canceled` is the driver acknowledging an operator's kill: the job is already
+/// terminal, so this only persists the partial record the driver built (with the
+/// relayed events) and attaches it to the job — no state change, no notification,
+/// no retry. It is the only status accepted on an already-canceled job.
+///
 /// Whether a retained non-completed record is *publishable* is deliberately not
 /// decided here — the publish path enforces the interim "completed only" guard,
 /// and turning failures into first-class publishable results is a separate design
@@ -577,7 +587,14 @@ pub async fn update_status(
     // report cannot resurrect or overwrite the canceled run (nor persist a record
     // for it). The driver's poll ends it shortly after; this is the belt-and-braces
     // guard on the backend side.
-    if JobState::from_db(&job.state) == JobState::Canceled {
+    //
+    // The one exception is the driver's own `canceled` report: that *is* the driver
+    // acknowledging the cancellation, and it carries the partial record built from
+    // what the run managed before the kill. It never changes the job's state — it
+    // only attaches that record — so a killed run stays visible and inspectable in
+    // the run list instead of vanishing.
+    let canceled_job = JobState::from_db(&job.state) == JobState::Canceled;
+    if canceled_job && !matches!(update.state, DriverState::Canceled) {
         return Ok(StatusCode::NO_CONTENT);
     }
 
@@ -653,6 +670,31 @@ pub async fn update_status(
             // which.
             let terminal_state = terminal_run_state(Some(record), RunState::Completed);
             maybe_enqueue_retry(&state, &job, terminal_state, already_terminal).await?;
+            Ok(StatusCode::NO_CONTENT)
+        }
+        DriverState::Canceled => {
+            // The driver acknowledging an operator's kill, handing back the partial
+            // record for what the run got through. Persist it with the events the
+            // relay accumulated — that stream is the whole point, it is where a gg
+            // run's telemetry lives — and attach it to the already-terminal job so
+            // the console can navigate to it.
+            //
+            // Everything else a terminal report normally does is deliberately
+            // skipped: the job keeps its `canceled` state and its cancellation
+            // detail, no completion notification fires (a kill is an operator
+            // action, not something to alert on), and no retry is enqueued (an
+            // operator who stopped a run does not want it started again).
+            let Some(record) = update.record.as_ref() else {
+                return Err(ApiError::unprocessable(
+                    "a canceled status must carry the run record",
+                ));
+            };
+            let record_id = persist_record(&state, &id, record).await?;
+            state
+                .db
+                .attach_canceled_job_record(&id, &record_id, &now)
+                .await
+                .map_err(ApiError::from)?;
             Ok(StatusCode::NO_CONTENT)
         }
     }

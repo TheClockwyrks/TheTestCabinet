@@ -1361,7 +1361,8 @@ async fn set_dirty<C: ConnectionTrait>(conn: &C) -> Result<()> {
 /// enforce it identically.
 ///
 /// Publishability is decided by the run's terminal state. Infrastructure failures
-/// are the Test Cabinet's fault, not a model result, and are never publishable.
+/// are the Test Cabinet's fault, not a model result, and canceled runs were stopped
+/// by an operator rather than reaching an outcome; neither is ever publishable.
 /// Completed runs publish through the review gate (≥1 review). The publishable
 /// failure tiers — catastrophic, timed-out, and harness-error —
 /// are real model signal: publishable, but with no review checklist to complete, so the
@@ -1373,9 +1374,14 @@ async fn gate_publishable<C: ConnectionTrait>(
     run_state: &str,
     allow_auto_validated: bool,
 ) -> Result<()> {
-    if run_state == "infrastructure" {
+    if never_publishable_states().contains(&run_state) {
+        let reason = if run_state == "canceled" {
+            "was canceled by an operator"
+        } else {
+            "is an infrastructure failure"
+        };
         return Err(crate::error::BackendError::Unprocessable(format!(
-            "run `{run_id}` is an infrastructure failure and can never be published"
+            "run `{run_id}` {reason} and can never be published"
         )));
     }
     let is_publishable_failure = publishable_failure_states().contains(&run_state);
@@ -2401,7 +2407,23 @@ fn run_state_str(state: test_cabinet_core::run_record::RunState) -> &'static str
         RunState::HarnessError => "harness_error",
         RunState::Hung => "hung",
         RunState::Infrastructure => "infrastructure",
+        RunState::Canceled => "canceled",
     }
+}
+
+/// The wire strings of the run states that can **never** be published — today the
+/// infrastructure failure (our fault, not a model result) and an operator-canceled
+/// run (a deliberate stop, not an outcome). Both are retained for inspection only.
+///
+/// Derived from [`RunState::is_publishable`] rather than written out, for the same
+/// reason [`publishable_failure_states`] is: a new never-publishable state cannot be
+/// added to the contract and silently slip through the publish gate.
+fn never_publishable_states() -> Vec<&'static str> {
+    test_cabinet_core::run_record::RunState::ALL
+        .into_iter()
+        .filter(|state| !state.is_publishable())
+        .map(run_state_str)
+        .collect()
 }
 
 /// Extract the filesystem path from a SQLite **file** connection URL, or `None`
@@ -2664,6 +2686,41 @@ impl Db {
         active.state = Set("canceled".to_string());
         active.updated_at = Set(now.to_string());
         active.detail = Set(Some(detail.to_string()));
+        let updated = active.update(&txn).await?;
+        txn.commit().await?;
+        Ok(Some(updated))
+    }
+
+    /// Attach the produced `record_id` to an already-`canceled` job, leaving its
+    /// state and cancellation `detail` alone. Returns the updated row, or `None`
+    /// when the job is unknown or is not canceled.
+    ///
+    /// The one sanctioned write to a canceled job, and the reason it is not
+    /// [`set_job_state`](Db::set_job_state): a killed run's driver stops the harness,
+    /// builds the partial record for what it got, and posts it a moment after the
+    /// cancel landed. Without this the record would be discarded and the killed run
+    /// would vanish from the run list. It cannot resurrect the job — `state` is never
+    /// written — and an already-attached record is not overwritten, so a duplicate
+    /// report from a winding-down driver is a no-op.
+    pub async fn attach_canceled_job_record(
+        &self,
+        id: &str,
+        record_id: &str,
+        now: &str,
+    ) -> Result<Option<job::Model>> {
+        let txn = self.conn().begin().await?;
+        let candidate = job::Entity::find_by_id(id.to_string())
+            .filter(job::Column::State.eq("canceled"))
+            .filter(job::Column::RecordId.is_null())
+            .one(&txn)
+            .await?;
+        let Some(model) = candidate else {
+            txn.commit().await?;
+            return Ok(None);
+        };
+        let mut active = model.into_active_model();
+        active.record_id = Set(Some(record_id.to_string()));
+        active.updated_at = Set(now.to_string());
         let updated = active.update(&txn).await?;
         txn.commit().await?;
         Ok(Some(updated))

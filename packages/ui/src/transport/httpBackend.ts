@@ -1235,15 +1235,17 @@ export function createBackendExec(
 
     async getRun(runId: string): Promise<RunJob> {
       // The job status carries the record *id*, not the record; read the record
-      // back from the run store when the job succeeded so the caller still gets a
-      // populated `RunJob`.
+      // back from the run store whenever the job has one so the caller gets a
+      // populated `RunJob`. That is not only the succeeded case: a failed job
+      // retains the failure record its driver built, and a canceled one retains the
+      // partial record for the killed run.
       const status = await getJson<JobStatusResponse>(
         backendUrl,
         `/jobs/${encodeURIComponent(runId)}`,
       );
       const state = mapJobState(status.state);
       let record: RunRecord | null = null;
-      if (state === "completed" && status.recordId) {
+      if (status.recordId) {
         record = (await resolveBuild(await backend.readRun(status.recordId)))
           .record;
       }
@@ -1550,9 +1552,21 @@ async function streamLive(
     } else if (status.state === "canceled") {
       // An operator killed the run. Report it as an intentional stop rather than a
       // fault, so the monitor shows "canceled" instead of "failed".
+      //
+      // The killed run's record is not attached yet: the backend closes this stream
+      // the instant the cancel lands, and the driver only posts the record once it
+      // has actually stopped the harness a few seconds later. Wait briefly for it so
+      // the monitor can offer the retained run rather than dead-ending, and settle
+      // for `null` if it never arrives (the driver died with the pod, say) — the run
+      // list is the fallback either way.
+      const recordId = await awaitCanceledRecordId(backendUrl, runId);
+      const record = recordId
+        ? (await resolveBuild(await backend.readRun(recordId))).record
+        : null;
       handlers.onDone({
         kind: "canceled",
         message: status.detail ?? "Run canceled.",
+        record,
       });
     } else {
       handlers.onDone({
@@ -1563,6 +1577,39 @@ async function streamLive(
   } catch (e) {
     if (controller.signal.aborted) return;
     handlers.onError?.(e);
+  }
+}
+
+// How long the monitor waits for a killed run's record to be attached, and how
+// often it re-reads the job while it waits. The driver notices a cancellation on
+// its own poll (a few seconds), stops the harness, uploads whatever partial
+// artifacts it collected, and only then posts the record — so the window is
+// seconds, not instant. The cap keeps a driver that died with its pod from hanging
+// the monitor on a record that is never coming.
+const CANCELED_RECORD_WAIT_MS = 30_000;
+const CANCELED_RECORD_POLL_MS = 1_000;
+
+// Poll a canceled job for the id of the partial record its driver hands back, up to
+// {@link CANCELED_RECORD_WAIT_MS}. Resolves to the id once it lands, or `null` if
+// the wait runs out (or the job cannot be re-read — a transient failure here is not
+// worth surfacing over an already-terminal run).
+async function awaitCanceledRecordId(
+  backendUrl: string,
+  runId: string,
+): Promise<string | null> {
+  const deadline = Date.now() + CANCELED_RECORD_WAIT_MS;
+  for (;;) {
+    try {
+      const status = await getJson<JobStatusResponse>(
+        backendUrl,
+        `/jobs/${encodeURIComponent(runId)}`,
+      );
+      if (status.recordId) return status.recordId;
+    } catch {
+      // Keep waiting; the next tick re-reads.
+    }
+    if (Date.now() >= deadline) return null;
+    await new Promise((resolve) => setTimeout(resolve, CANCELED_RECORD_POLL_MS));
   }
 }
 

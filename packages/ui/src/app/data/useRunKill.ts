@@ -50,9 +50,46 @@ export function useRunKill(): {
       await client.killRun(runId, token);
       // The run is moving to canceled: refresh so it drops out of the active band.
       runtime.requestRefresh();
+      // The killed run does not appear in the produced list yet. Its driver notices
+      // the cancellation on its own poll, stops the harness, and only then hands
+      // back the partial record the backend retains — seconds later. Watch for that
+      // record and refresh again when it lands, so the killed run shows up in the
+      // run list on its own instead of waiting for the next manual reload. Detached
+      // and best-effort: the kill itself has already succeeded, so a record that
+      // never arrives must not surface as a failed cancel.
+      void awaitKilledRunRecord(client, runId).then((landed) => {
+        if (landed) runtime.requestRefresh();
+      });
     },
     [client, token, runtime],
   );
 
   return { canKill, killRun };
+}
+
+// How long to watch a killed run for the record its driver hands back, and how
+// often to re-read it. Mirrors the live monitor's wait: the driver's cancellation
+// poll plus stopping the harness and uploading what it collected is a matter of
+// seconds, and a driver that died with its pod never posts one at all.
+const KILLED_RECORD_WAIT_MS = 30_000;
+const KILLED_RECORD_POLL_MS = 1_000;
+
+// Poll a killed run until the backend reports the retained record for it, resolving
+// `true` once it lands and `false` if the wait runs out. A read that fails is
+// treated as "not yet" — this is a courtesy refresh, never a source of errors.
+async function awaitKilledRunRecord(
+  client: { getRun(runId: string): Promise<{ record: unknown | null }> },
+  runId: string,
+): Promise<boolean> {
+  const deadline = Date.now() + KILLED_RECORD_WAIT_MS;
+  for (;;) {
+    try {
+      const job = await client.getRun(runId);
+      if (job.record) return true;
+    } catch {
+      // Keep waiting; the next tick re-reads.
+    }
+    if (Date.now() >= deadline) return false;
+    await new Promise((resolve) => setTimeout(resolve, KILLED_RECORD_POLL_MS));
+  }
 }

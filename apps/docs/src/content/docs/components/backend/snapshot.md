@@ -7,7 +7,10 @@ built from. The backend is private, so rather than letting the site read it
 directly, the backend **exports** its published runs to a public
 [Cloudflare R2](https://developers.cloudflare.com/r2/) bucket and the site build
 fetches that export. The snapshot holds **only published runs** — a produced run
-that has not yet been published is private and never appears here. The [Overview](/components/backend/overview/#public-snapshot)
+that has not yet been published is private and never appears here, and a run that
+can *never* be published (an `infrastructure` failure, or a
+[`canceled`](/components/core/run-records/#status) run an operator killed) therefore
+never reaches the snapshot at all. The [Overview](/components/backend/overview/#public-snapshot)
 covers why this boundary exists; this page is the authoritative contract for the
 snapshot's **layout** — the cross-component surface between the backend that
 writes it and the site that reads it.
