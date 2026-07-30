@@ -705,6 +705,16 @@ validation = { script = "validation/targeting/ground-and-air.mjs", outputs = [
   { id = "both", name = "An emitter hitting ground and air", kind = "video" },
 ] }
 [[review.categories.items]]
+id = "fire-rate"
+title = "An emitter fires at its stated rate"
+description = "An emitter fires at its published fire rate for as long as it has a target, including when one walks in after a quiet spell — it never discharges a burst of shots at once to make up for the time it spent with nothing to shoot at."
+# Automated validation: an Arc (2.0/s) left idle, then given a target, fires about
+# three shots per second with its shots a full interval apart. See
+# validation/targeting/fire-rate.mjs.
+validation = { script = "validation/targeting/fire-rate.mjs", outputs = [
+  { id = "rate", name = "An emitter firing at its stated rate", kind = "video" },
+] }
+[[review.categories.items]]
 id = "first-along-path"
 title = "Emitters target the unit furthest along"
 description = "An emitter fires on the unit furthest along its path (closest to leaking) first, rather than the nearest one."

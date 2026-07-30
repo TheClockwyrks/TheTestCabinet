@@ -22,15 +22,23 @@
 // left off. That coarse bound is all the return-instant reading can honestly carry,
 // and it is enough — a build that resumes at its pre-trip heat reads ~100 there.
 
+// The Stutter is set into a vent corridor so it engages the Core whatever route that
+// build walks it on. The trip has to happen for real before there is a cooldown to
+// read, and an emitter aimed at a lane the build does not use never fires — which
+// would fail this item on its first assertion for a pathing choice
+// `pathing.opposite-left` already owns. See `buildVentCorridor` in `_helpers`.
+
 import {
   newGame,
   arrangeNearRedline,
   actTripAndRecover,
   REDLINE,
+  CORRIDOR_WALLS,
 } from "../_helpers.mjs";
 
 export default function item() {
   let id;
+  let walls;
   let r;
 
   return {
@@ -42,8 +50,12 @@ export default function item() {
 
     async arrange(api) {
       await newGame(api, "containment", "medium", 100000);
-      const c = await arrangeNearRedline(api, "stutter", { heat: 92 });
+      const c = await arrangeNearRedline(api, "stutter", {
+        heat: 92,
+        corridor: true,
+      });
       id = c.id;
+      walls = c.walls;
     },
 
     // The whole trip-and-recover cycle, which is exactly what the clip should show:
@@ -58,6 +70,9 @@ export default function item() {
     },
 
     async assert(api, check) {
+      // A hole in the corridor lets the Core walk round the emitter, which would read
+      // here as a tower that never tripped rather than as missing scenery.
+      check.expectEq("the vent corridor was built", walls, CORRIDOR_WALLS);
       check.expectOk("the emitter tripped", r.tripped.hit);
       check.expectOk(
         "it was seen offline in its cooldown",

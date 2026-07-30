@@ -12,9 +12,25 @@
 // and this floor holds exactly one tower, so a pair of fresh casualties inside one
 // step can only have come from one shot landing on both.
 
-import { newGame, build, spawn, actTail, TICK } from "../_helpers.mjs";
+// The Bloom is set into a vent corridor. Two things follow from that, and this item
+// needs both: the clump has to come into the Bloom's range at all — which an emitter
+// parked beside an assumed lane cannot count on, since the spec fixes the vent and the
+// exhaust but not the route between them (see the note above `buildVentCorridor` in
+// `_helpers`) — and the corridor funnels the four Motes down the same two rows, so
+// they arrive as the tight clump a splash claim needs rather than fanned across the
+// opening's four rows, which are further apart than the splash radius.
+
+import {
+  newGame,
+  buildVentCorridor,
+  spawn,
+  actTail,
+  CORRIDOR_WALLS,
+  TICK,
+} from "../_helpers.mjs";
 
 export default function item() {
+  let walls;
   let hit = false;
   let mostInOneTick = 0;
 
@@ -30,8 +46,9 @@ export default function item() {
     async arrange(api) {
       await newGame(api, "containment", "medium", 100000);
       await api.call("setLives", 100000);
-      const bloom = await build(api, "bloom", 5, 20);
-      await api.call("setHeat", bloom, 40); // moderate power: hits, but does not one-shot Motes
+      const corridor = await buildVentCorridor(api, "bloom");
+      walls = corridor.walls;
+      await api.call("setHeat", corridor.id, 40); // moderate power: hits, but does not one-shot Motes
       for (let i = 0; i < 4; i += 1) await spawn(api, "mote", "left");
     },
 
@@ -65,6 +82,9 @@ export default function item() {
     },
 
     async assert(api, check) {
+      // A hole in the corridor lets the clump spread out or bypass the Bloom, and
+      // "nothing was splashed" would then be about the scenery, not the splash.
+      check.expectEq("the vent corridor was built", walls, CORRIDOR_WALLS);
       check.expectOk(
         "one Bloom shot damaged more than one unit in the clump",
         hit,

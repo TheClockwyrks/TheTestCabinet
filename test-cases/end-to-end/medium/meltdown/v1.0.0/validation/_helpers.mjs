@@ -22,9 +22,11 @@
 //     filmed.
 //
 // A helper that only poses state or reads it instantly (`newGame`, `restartGame`,
-// `build`, `spawn`, `tower`, `unit`, `heatOf`, `press`, `combatSetup`) is unpaired:
-// it is arrange-callable on its own, and the instant READS are callable from any
-// phase. `restartGame` is additionally act-safe — see its note.
+// `build`, `spawn`, `tower`, `unit`, `heatOf`, `press`, `combatSetup`,
+// `buildCorridorWalls`, `buildVentCorridor`, `corridorSetup`) is unpaired: it is
+// arrange-callable on its own, and the instant READS are callable from any phase.
+// `restartGame` is additionally act-safe — see its note, as are the corridor builders,
+// which place towers and nothing else.
 //
 // UNITS ARE TICKS. Meltdown is a 60 Hz fixed timestep and the debug API's `step`
 // takes whole ticks, so every duration below is a tick count (the runtime converts
@@ -603,20 +605,29 @@ export function glowBetween(before, after) {
 // run the real sim to the trip (and, for the cooldown check, back out of it).
 
 /**
- * ARRANGE half of a trip scenario: build `type` below the left lane, spawn a Core
- * walking through its range, and pose the emitter's heat just under the redline so
- * a few steps of real firing carry it over. Lives are posed high so a leak during
- * the drive cannot end the run out from under the check.
+ * ARRANGE half of a trip scenario: build `type` where a Core walking from the left
+ * vent will come into its range, spawn that Core, and pose the emitter's heat just
+ * under the redline so a few steps of real firing carry it over. Lives are posed high
+ * so a leak during the drive cannot end the run out from under the check.
  *
- * Pair with `actUntilTripped` / `actTripAndRecover`. Returns `{ id, coreId }`.
+ * `corridor: true` sets the emitter into a vent corridor (see `buildVentCorridor`)
+ * instead of parking it at `col,row` beside the lane a build may or may not walk, and
+ * makes `walls` part of the result for the item to assert on. An item whose subject is
+ * the trip itself wants that: engagement stops being a coincidence of the build's
+ * pathfinding. `col`/`row` are ignored when it is set — the corridor fixes the spot.
+ *
+ * Pair with `actUntilTripped` / `actTripAndRecover`. Returns `{ id, coreId }`, plus
+ * `walls` in the corridor form.
  */
 export async function arrangeNearRedline(
   api,
   type,
-  { heat = 92, col = 3, row = 20, rot = 0 } = {},
+  { heat = 92, col = 3, row = 20, rot = 0, corridor = false } = {},
 ) {
   await api.call("setLives", 100000);
-  const c = await combatSetup(api, type, col, row, rot);
+  const c = corridor
+    ? await corridorSetup(api, type, rot)
+    : await combatSetup(api, type, col, row, rot);
   await api.call("setHeat", c.id, heat);
   return c;
 }
@@ -715,11 +726,136 @@ export async function actTripAndRecover(
 /**
  * Place `type` at (col,row) below the left lane and spawn a Core walking through
  * its range so the emitter has a real target to fire at. Returns { id, coreId }.
+ *
+ * The default (col, row) sits below the lane and a few tiles in, which reaches a unit
+ * that crosses the floor along the rows it entered on. That is a route the spec
+ * permits but does not require — see `ventGuard` for the placement an item should use
+ * when it needs the emitter to engage WHATEVER route the build takes.
  */
 export async function combatSetup(api, type, col = 3, row = 20, rot = 0) {
   const id = await build(api, type, col, row, rot);
   const coreId = await spawn(api, "core", "left");
   return { id, coreId };
+}
+
+// ---- The vent corridor: engaging a left-vent unit on ANY route ---------------
+//
+// WHY A SCENARIO CANNOT ASSUME THE SURGE CROSSES ON THE ROWS IT ENTERED ON.
+//
+// Nearly every item here that needs an emitter to fire poses one target: a unit at the
+// left vent, walking to the right exhaust. Where to put the emitter so it engages that
+// unit looks like it has an obvious answer — beside the lane the unit walks — and it
+// does not, because the lane is not the spec's to give. `specs/playfield.md` pins the
+// two ENDS of the journey (the surge appears on tiles `(0, 16)`..`(0, 19)` and leaves
+// through the right exhaust on rows 16..19) and then says only that the surge "walks
+// the shortest available route" between them, where a diagonal step costs the same as
+// an orthogonal one.
+//
+// On an empty floor that leaves a wide family of equally shortest routes, and the
+// straight one across the entry rows is merely the one a reference happens to pick. A
+// build whose pathfinder expands its neighbours in a different order climbs to the top
+// of the floor, runs along the ceiling and comes back down for exactly the same step
+// count, and is walking a shortest route the whole way. Which of those a build takes is
+// a real property worth checking — `pathing.opposite-left` and `pathing.opposite-top`
+// are the items that own it, and they measure the deviation directly — but it must not
+// be the hidden precondition of every OTHER item. An emitter parked beside the assumed
+// lane never acquires a target on such a build, never fires, and never heats, so items
+// about tripping, baking, splash, bounty and targeting all report their own subject as
+// broken when what actually happened is that the check was aimed at empty floor.
+//
+// THE FIX IS TO BUILD THE LANE RATHER THAN ASSUME IT. Towers are walls
+// (`specs/playfield.md`) and the surge re-paths around them, so a scenario can put the
+// unit where it needs it using nothing but the game's own rules: wall the vent above
+// and below and the only way out is the corridor between, whatever the build's
+// pathfinder would have preferred. The walls are SINKS, which never fire and have no
+// heat of their own, and they are held one tile clear of the emitter on every side, so
+// they shape the route and do nothing else — a Sink cools only a TOUCHING emitter
+// (`specs/heat.md`), and a corridor that quietly drained the tower under test would
+// wreck every heat item that uses it. The emitter keeps all four faces open to the air
+// exactly as it would standing alone.
+//
+//   col   0 1 2 3 4 5 6 7 8 9
+//   r14
+//   r16   S S S S S S S S S S   <- five sinks; the leftmost covers the vent's top half
+//   r17   S S S S S S S S S S
+//   r18   . . . . . . . . . .   <- the corridor: every left-vent unit walks this
+//   r19   . . . . . . . . . .
+//   r20   S S . E E . S S S S   <- sink, gap, the emitter under test, gap, two sinks
+//   r21   S S . E E . S S S S
+//
+// The vent's own tiles stay walkable on rows 18 and 19, so nothing is sealed and the
+// never-seal rule (`specs/playfield.md`) has no reason to refuse any of it. Covering
+// the opening's top half is expressly allowed — the surge then appears only on the
+// tiles still open, which is what `sealing.partial-opening-ok` checks a build honours.
+// A unit that slips down through one of the two gaps rather than running the corridor
+// passes directly under the emitter and is in range there too, so both readings of
+// "shortest" end up in front of the gun.
+
+/** The top-left tile of the emitter under test in a vent corridor. */
+export const CORRIDOR_COL = 3;
+export const CORRIDOR_ROW = 20;
+
+/** The corridor's roof: five sinks over rows 16-17, the leftmost over the vent. */
+const CORRIDOR_ROOF_COLS = [0, 2, 4, 6, 8];
+const CORRIDOR_ROOF_ROW = 16;
+
+/**
+ * The walls that make the corridor a corridor: the roof, plus the sink below the vent
+ * that stops a unit dropping out of the opening's bottom edge instead of walking.
+ * Everything to the emitter's right is scenery on top of that.
+ */
+export const CORRIDOR_ROOF_WALLS = CORRIDOR_ROOF_COLS.length + 1;
+
+/** How many sinks a complete corridor is built from — the roof, plus three on the floor. */
+export const CORRIDOR_WALLS = CORRIDOR_ROOF_WALLS + 2;
+
+/**
+ * Build the corridor's roof and its below-vent sink, and report how many went down.
+ *
+ * Separate from {@link buildVentCorridor} because an item whose emitter comes with its
+ * own structure — `cooling.boxed-bakes` boxes one in movers on all four faces — cannot
+ * use the standard floor, but wants the same funnel above it.
+ */
+export async function buildCorridorWalls(api) {
+  let walls = 0;
+  for (const col of CORRIDOR_ROOF_COLS) {
+    if ((await build(api, "sink", col, CORRIDOR_ROOF_ROW)) !== null) walls += 1;
+  }
+  if ((await build(api, "sink", 0, CORRIDOR_ROW)) !== null) walls += 1;
+  return walls;
+}
+
+/**
+ * Build the vent corridor with a `type` emitter set into its floor, and report how
+ * many of the corridor's sinks actually went down.
+ *
+ * Returns `{ id, walls }`: the emitter's id (null if its placement was refused), and
+ * the sink count, which an item should assert is `CORRIDOR_WALLS`. A refused sink is
+ * worth failing on rather than driving through — it opens a way around the emitter,
+ * and the item would then report its own subject as broken for a hole in its scenery.
+ *
+ * The two floor sinks to the emitter's right start one column clear of its footprint,
+ * so this works for a 2x2, 3x3 or 4x4 emitter without moving the roof.
+ */
+export async function buildVentCorridor(api, type, rot = 0) {
+  let walls = await buildCorridorWalls(api);
+  const id = await build(api, type, CORRIDOR_COL, CORRIDOR_ROW, rot);
+
+  const rightOf = CORRIDOR_COL + TOWER_SIZE[type] + 1;
+  for (const col of [rightOf, rightOf + 2]) {
+    if ((await build(api, "sink", col, CORRIDOR_ROW)) !== null) walls += 1;
+  }
+  return { id, walls };
+}
+
+/**
+ * The corridor counterpart to {@link combatSetup}: a `type` emitter set into a vent
+ * corridor with a real Core walking down it. Returns `{ id, coreId, walls }`.
+ */
+export async function corridorSetup(api, type, rot = 0) {
+  const { id, walls } = await buildVentCorridor(api, type, rot);
+  const coreId = await spawn(api, "core", "left");
+  return { id, coreId, walls };
 }
 
 // ---- Audio (reads the Web Audio cues the build actually schedules) ----------

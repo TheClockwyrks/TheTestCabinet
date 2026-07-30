@@ -12,42 +12,53 @@
 // survives the unit and answers the question directly, and it is the same counter
 // `info.counts` checks the build maintains.
 
+// The Flak is set into a vent corridor rather than parked on an assumed lane. The
+// ground half of this item is a claim about a unit that walks THROUGH the Flak's range
+// and comes out the far side untouched, and it is worth nothing if the Mote never
+// entered the range at all — which is what happens on a build whose shortest route out
+// of the vent is a diagonal one, since the spec fixes the vent and the exhaust but not
+// the lane between them. The corridor walls the vent so the Mote has to cross the
+// Flak's range whatever its pathfinder prefers, and the item can go back to asking
+// whether the Flak shoots at it. See the note above `buildVentCorridor` in `_helpers`.
+
 import {
   newGame,
   restartGame,
-  build,
+  buildVentCorridor,
   spawn,
   tower,
   fpCenter,
   actTail,
+  CORRIDOR_COL,
+  CORRIDOR_ROW,
+  CORRIDOR_WALLS,
   TILE,
   TOWER_SIZE,
   TICK,
 } from "../_helpers.mjs";
 
-// The Flak's lane position, and the range it covers from there (specs/towers.md).
-const FLAK_COL = 10;
-const FLAK_ROW = 17;
+// The Flak's corridor position, and the range it covers from there (specs/towers.md).
 const FLAK_RANGE_PX = 8 * TILE;
-const FLAK_CENTER = fpCenter(FLAK_COL, FLAK_ROW, TOWER_SIZE.flak);
+const FLAK_CENTER = fpCenter(CORRIDOR_COL, CORRIDOR_ROW, TOWER_SIZE.flak);
 
-// Pose a hot Flak on the lane with a unit of `surgeType` walking into its range.
-// `start` is the fresh-match helper to use: `newGame` in arrange, and `restartGame`
-// in act — this item is a genuine two-configuration comparison (ground unit, then
-// flyer), so the second setup has to be posed mid-drive, where `reset()` (and
-// therefore `newGame`) throws.
+// Pose a hot Flak in a vent corridor with a unit of `surgeType` walking or flying into
+// its range. `start` is the fresh-match helper to use: `newGame` in arrange, and
+// `restartGame` in act — this item is a genuine two-configuration comparison (ground
+// unit, then flyer), so the second setup has to be posed mid-drive, where `reset()`
+// (and therefore `newGame`) throws.
 async function poseFlakAgainst(api, start, surgeType) {
   await start(api, "containment", "medium", 100000);
   await api.call("setLives", 100000);
-  const flak = await build(api, "flak", FLAK_COL, FLAK_ROW);
-  await api.call("setHeat", flak, 80);
+  const corridor = await buildVentCorridor(api, "flak");
+  await api.call("setHeat", corridor.id, 80);
   const target = await spawn(api, surgeType, "left");
-  return { flak, target };
+  return { flak: corridor.id, target, walls: corridor.walls };
 }
 
 export default function item() {
   let flakId;
   let moteId;
+  let walls;
   let sawInRange = false;
   let firedAtGround = false;
   let groundDamage;
@@ -69,6 +80,7 @@ export default function item() {
       const posed = await poseFlakAgainst(api, newGame, "mote");
       flakId = posed.flak;
       moteId = posed.target;
+      walls = posed.walls;
     },
 
     // Walk the Mote through the Flak's range and out the far side (1200 ticks = the
@@ -124,6 +136,9 @@ export default function item() {
     },
 
     async assert(api, check) {
+      // A hole in the corridor lets the Mote walk round the Flak's range entirely,
+      // which is the one thing this scenario cannot allow.
+      check.expectEq("the vent corridor was built", walls, CORRIDOR_WALLS);
       // Hard: without a Mote inside the Flak's range there was never an opportunity
       // to shoot it, and "no damage" below would mean nothing.
       check.assertOk("the Mote walked into the Flak's range", sawInRange);
