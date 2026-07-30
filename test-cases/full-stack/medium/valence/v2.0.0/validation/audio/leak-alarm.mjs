@@ -13,6 +13,7 @@ import {
   unitById,
   armAudio,
   audioCount,
+  audioCountAbove,
   MAP,
 } from "../_helpers.mjs";
 
@@ -45,7 +46,7 @@ export default function item() {
         max: 240,
         poll: 6,
       });
-      after = await audioCount(api);
+      after = await audioCountAbove(api, before);
       leaked = r.hit;
       await api.advance(30); // a short tail so the clip shows the leak
     },

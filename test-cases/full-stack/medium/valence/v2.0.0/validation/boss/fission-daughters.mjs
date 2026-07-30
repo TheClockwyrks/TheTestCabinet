@@ -95,6 +95,14 @@ export default function item() {
         { max: MAX_FISSION_TICKS, poll: 3 },
       );
 
+      // A build whose boss never fissions releases no daughter at all — which is the very
+      // failure the first assertion reports — so there is nothing here to pose a scenario
+      // around. Stop rather than dereference it: an unguarded read threw out of `act`, and
+      // the runtime reports a throw as a BROKEN DEBUG API, so a build that simply does not
+      // fission was recorded as non-conformant instrumentation instead of as failing this
+      // requirement. The assertions below all tolerate the missing daughter.
+      if (firstDaughterId == null) return;
+
       await clearBoard(api);
       await api.call("setEnergy", 100000);
       const g2 = pathGeom((await api.snapshot()).paths[0]);
@@ -168,18 +176,21 @@ export default function item() {
         daughters.size,
         BOSS_DAUGHTERS,
       );
+      // `every` on an EMPTY list is vacuously true, so each of the three shape claims below
+      // requires at least one daughter to have been seen — otherwise a build that fissions
+      // nothing at all would satisfy them.
       const born = [...daughters.values()];
       check.expectOk(
         "every daughter is heavy in its own right",
-        born.every((u) => u.traits.heavy === true),
+        born.length > 0 && born.every((u) => u.traits.heavy === true),
       );
       check.expectOk(
         "no daughter arrives bonded — it is a bare isotope",
-        born.every((u) => u.traits.bonded === false),
+        born.length > 0 && born.every((u) => u.traits.bonded === false),
       );
       check.expectOk(
         "each is born a full Isotope of 9 shells",
-        born.every((u) => u.maxHp === ISOTOPE_SHELLS),
+        born.length > 0 && born.every((u) => u.maxHp === ISOTOPE_SHELLS),
       );
 
       check.expectOk(
@@ -191,13 +202,16 @@ export default function item() {
         "the daughter passed through the energy tower's range",
         everInRange,
       );
+      // A build whose energy tower wears a daughter down may have killed it, which is the
+      // failure under test — so the read is guarded. Dereferencing a dead unit threw out of
+      // the item, and a throw is reported as a broken debug API, not as this failure.
       check.expectOk(
         "the daughter survived the energy tower",
         afterEnergy != null,
       );
       check.expectEq(
         "energy damage does nothing to a daughter",
-        afterEnergy.hp,
+        afterEnergy ? afterEnergy.hp : 0,
         hpBefore,
       );
       check.expectOk(
@@ -207,7 +221,7 @@ export default function item() {
 
       check.expectOk(
         "the daughter was cracked down and neutralized",
-        decay.hit,
+        decay?.hit === true,
       );
       check.expectGe(
         "a daughter emits its own alpha particles as it decays",

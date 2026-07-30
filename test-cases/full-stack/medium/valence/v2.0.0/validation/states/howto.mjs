@@ -14,11 +14,12 @@ export default function item() {
     },
 
     // The menu navigation IS the behavior, so it belongs here rather than in the set-up.
-    // Both `settle` calls are real repaint pauses in both passes: the first lets the title
-    // draw before keys are injected into it, the second lets the how-to screen draw before
-    // it is read and captured.
+    // The `settle` calls are real repaint pauses in both passes: `navigateMenu` opens with
+    // one of its own so the title has actually been laid out before keys are injected into it
+    // (see MENU_PAINT_MS — a fixed 60 ms here used to land before the first frame on a cold
+    // page and read a working build as unreachable), and the one after lets the how-to screen
+    // draw before it is read and captured.
     async act(api) {
-      await api.settle(60);
       await navigateMenu(api, 1); // title: CONTAINMENT -> HOW TO PLAY, then confirm
       await api.settle(150);
       screen = (await api.snapshot()).screen;

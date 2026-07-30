@@ -12,6 +12,7 @@ import {
   towerById,
   armAudio,
   audioCount,
+  audioCountAbove,
   MAP,
 } from "../_helpers.mjs";
 
@@ -39,8 +40,7 @@ export default function item() {
       // drains the queue (main.ts's `frame`, not the manual sim clock) — unlike the
       // other cue checks, placement itself consumes no simulation time, so nothing
       // else here guarantees a frame has landed yet. A short real settle does.
-      await api.settle(100);
-      after = await audioCount(api);
+      after = await audioCountAbove(api, before);
       snap = await api.snapshot();
       await api.advance(30); // a short tail so the clip shows the placement
     },

@@ -72,6 +72,18 @@ export const MAP = {
   multiple: "multiple",
 };
 
+// Map SELECTORS by the mandated `style` enum (specs/instrumentation.md's `maps[].style`).
+// specs/board.md requires both styles to appear SOMEWHERE in the set and explicitly leaves
+// which map takes which to the model: "The single-path, branching, and multiple-path maps
+// above may each pick either style, so long as both styles appear somewhere in the set." So
+// a check that needs a curved or a straight board must ask for it BY STYLE and let the
+// build answer — pairing a style with a topology (the curved map is the single one, the
+// straight map is the branching one) only describes one conformant arrangement of several.
+export const STYLE = {
+  curved: "curved",
+  straight: "straight",
+};
+
 // Generous preconditions for scenarios that must simply afford towers or never lose.
 export const HUGE_ENERGY = 100000;
 export const HUGE_INTEGRITY = 1e9;
@@ -92,6 +104,20 @@ export function interestOn(energy) {
 //
 // Pure reads of a snapshot already in hand: no api call, no time, so they are
 // callable from any phase.
+
+/**
+ * Build the error an item throws when its scenario cannot be POSED against this build — the
+ * debug API answered every call correctly, there simply was no such spot / shape in the
+ * model's own world. The driver reads it as INCONCLUSIVE rather than as a conformance
+ * failure (see `PRECONDITION_UNMET` in `packages/browser-driver/validation.mjs`). It sets
+ * the documented flag directly rather than importing the runtime's factory, because a case's
+ * `validation/` folder is loaded by path and has no resolvable specifier for that module.
+ */
+export function preconditionUnmet(reason) {
+  const err = new Error(String(reason));
+  err.ttcPreconditionUnmet = true;
+  return err;
+}
 
 export function unitById(snap, id) {
   return snap.matter.find((u) => u.id === id) ?? null;
@@ -159,26 +185,124 @@ export function firstInRange(
   return 0;
 }
 
+/**
+ * The arc length on `pathGeomObj` whose world point is FARTHEST from `tower`, with that
+ * distance. The mirror of `firstInRange`, for a check that needs a unit the tower plainly
+ * cannot reach: a map's geometry is the model's own, and a serpentine legitimately folds a
+ * far-along arc length back alongside the tower, so "half way down the path" is not a
+ * synonym for "out of range". This finds the point that really is furthest away and hands
+ * back the distance so the item can state the clearance it got rather than assume one.
+ *
+ * `from`/`to` bound the search, which a caller almost always wants: the point furthest from
+ * a tower near the inlet is usually the collector itself, and a unit posed there leaks
+ * before the window is out. Leave a margin of at least the fastest atom's travel (speed up
+ * to 112 px/s, specs/matter.md) over the window being measured.
+ *
+ * Pure computation — callable from any phase.
+ */
+export function farthestFrom(
+  pathGeomObj,
+  tower,
+  { stepPx = 4, from = 0, to = pathGeomObj.length } = {},
+) {
+  let best = { s: from, dist: -1 };
+  for (
+    let s = Math.max(0, from);
+    s <= Math.min(pathGeomObj.length, to);
+    s += stepPx
+  ) {
+    const p = pathGeomObj.pointAt(s);
+    const d = Math.hypot(p.x - tower.x, p.y - tower.y);
+    if (d > best.dist) best = { s, dist: d };
+  }
+  return best;
+}
+
+// ---- Two paths: where they coincide, and where they diverge --------------------
+//
+// A branching map's fork is two paths that COINCIDE on a shared trunk (the inlet approach)
+// AND/OR a shared final run, then diverge into distinct lanes between them (specs/board.md).
+// Which of those a conformant map shares is the model's own choice — board.md also allows
+// the lanes to "diverge to their own collectors", and allows per-path inlets and collectors
+// — so a check must READ the shared and divergent stretches off the geometry rather than
+// assume the fork shares both endpoints. These helpers do that, and are what
+// `maps.branching-fork` and `placement.covers-both-lanes` build their scenarios from.
+
+/**
+ * For each of `samples` arc lengths along `ga`, the closest approach to `gb`: `{ s, sOther,
+ * gap }`, where `sOther` is the arc length on `gb` that comes closest and `gap` the distance
+ * between the two points. Pure computation over two `pathGeom` readers — any phase.
+ */
+export function laneGaps(ga, gb, { samples = 200 } = {}) {
+  const rows = [];
+  for (let i = 0; i <= samples; i += 1) {
+    const s = (ga.length * i) / samples;
+    const p = ga.pointAt(s);
+    let best = { sOther: 0, gap: Infinity };
+    for (let j = 0; j <= samples; j += 1) {
+      const so = (gb.length * j) / samples;
+      const q = gb.pointAt(so);
+      const gap = Math.hypot(p.x - q.x, p.y - q.y);
+      if (gap < best.gap) best = { sOther: so, gap };
+    }
+    rows.push({ s, ...best });
+  }
+  return rows;
+}
+
+/**
+ * The longest run of `laneGaps` rows whose `gap` stays within `tol` — a stretch the two
+ * paths genuinely SHARE — reported as its middle sample plus how much of `ga` it spans.
+ * Returns `null` when the paths never coincide. `tol` is deliberately tight (a few pixels):
+ * a shared segment is the same world points, not merely two lanes running near each other.
+ */
+export function sharedStretch(rows, { tol = 6 } = {}) {
+  let best = null;
+  let from = -1;
+  const close = (to) => {
+    if (from < 0) return;
+    const span = rows[to].s - rows[from].s;
+    if (!best || span > best.span) {
+      best = { ...rows[Math.floor((from + to) / 2)], span, from, to };
+    }
+    from = -1;
+  };
+  for (let i = 0; i < rows.length; i += 1) {
+    if (rows[i].gap <= tol) {
+      if (from < 0) from = i;
+    } else close(i - 1);
+  }
+  close(rows.length - 1);
+  return best;
+}
+
+/** The `laneGaps` row where the two paths are furthest apart — the heart of a divergent lane. */
+export function widestGap(rows) {
+  return rows.reduce((a, b) => (b.gap > a.gap ? b : a), rows[0]);
+}
+
 // ---- Run set-up ---------------------------------------------------------------
 //
 // `startRun` (arrange) and `poseRun` (either phase) reach the same state; see the
 // `poseX` note in the file header for why both exist.
 
 /**
- * Resolve a map SELECTOR (a `MAP.*` topology value) to the `id` THIS build gave the map
- * with that topology, read back from the snapshot's `maps` list. Ids are the model's own
- * (specs/instrumentation.md), so a check keys the map by the fixed `topology` enum and
- * never by a literal id. Falls back to matching `difficulty` for robustness.
+ * Resolve a map SELECTOR to the `id` THIS build gave the matching map, read back from the
+ * snapshot's `maps` list. Ids are the model's own (specs/instrumentation.md), so a check
+ * keys the map by one of the fixed enums and never by a literal id: a `MAP.*` topology, a
+ * `STYLE.*` path style, or a difficulty. Tried in that order, so `MAP.single` still means
+ * "the single-path map" whichever style it happens to be drawn in.
  */
 async function resolveMapId(api, selector) {
   const { maps } = await api.snapshot();
   const m =
     maps.find((x) => x.topology === selector) ??
+    maps.find((x) => x.style === selector) ??
     maps.find((x) => x.difficulty === selector);
   if (!m) {
     throw new Error(
-      `no map exposes topology/difficulty "${selector}" (saw ${maps
-        .map((x) => `${x.id}=${x.topology}`)
+      `no map exposes topology/style/difficulty "${selector}" (saw ${maps
+        .map((x) => `${x.id}=${x.topology}/${x.style}`)
         .join(", ")})`,
     );
   }
@@ -269,13 +393,10 @@ export async function placeCovering(
   }
   // The map is the model's own: a conformant build can legitimately have no legal
   // spot for this tower near this arc length, which decides nothing about its debug
-  // API. Mark it inconclusive rather than failing the run — see `PRECONDITION_UNMET`
-  // in `packages/browser-driver/validation.mjs`.
-  const err = new Error(
+  // API. Mark it inconclusive rather than failing the run.
+  throw preconditionUnmet(
     `placeCovering(${kind}) found no legal spot near s=${s}`,
   );
-  err.ttcPreconditionUnmet = true;
-  throw err;
 }
 
 /**
@@ -482,14 +603,31 @@ export async function actNoTowerRound(api, { max = 19200, poll = 120 } = {}) {
 }
 
 // ---- Menu input ---------------------------------------------------------------
+
+// How long to let the build PAINT its menu before injecting keys into it.
+//
+// A menu key only means something once the build has laid the menu out, and a build is
+// entitled to do that as it draws: hit-testing keyboard selection against the entries the
+// last drawn frame produced is a perfectly ordinary way to write one, and the reference and
+// the builds seen so far both do something along those lines. Nothing in specs/controls.md
+// requires the menu to answer a key pressed before the first frame — a player cannot press
+// one that early — so a check that injects keys immediately is testing the harness's timing,
+// not the build. It was doing exactly that: `states.howto` settled 60 ms after `reset()` and
+// then pressed, which on a cold page can land before any frame has run, and the item reported
+// a build whose HOW TO PLAY entry works perfectly a moment later as unreachable. A settle is
+// REAL time in both passes, which is what makes it the right instrument here.
+const MENU_PAINT_MS = 400;
+
 /**
  * From a freshly reset title, drive the menu down `steps` entries and confirm — the
  * same keyboard path a player uses (specs/controls.md). A fresh page opens with the
  * first entry highlighted, so `steps` counts entries below it.
  *
- * Single key presses, so it consumes no simulation time — callable from either phase.
+ * Opens with a real paint settle (see `MENU_PAINT_MS`); the presses themselves consume no
+ * simulation time, so this is callable from either phase.
  */
 export async function navigateMenu(api, steps) {
+  await api.settle(MENU_PAINT_MS);
   for (let i = 0; i < steps; i += 1) await api.call("press", "ArrowDown");
   await api.call("press", "Enter");
 }
@@ -545,13 +683,147 @@ export function colorDistance(a, b) {
 // its cue; `advance` would not do this, since it is an exact instant `step` on the
 // validate pass's manual clock and lets no real (wall-clock) time pass for the fetch
 // to progress.
+//
+// ARMING MUST ALSO GO QUIET. The gesture does not only unlock audio — it is what starts the
+// looping music bed (specs/assets.md: "loop the music bed"), and a build may start that bed a
+// beat later, once its clip has decoded or off a short timer. Anything the gesture kicks off
+// this way lands in the audio log at some unpredictable moment shortly afterwards, and an
+// event-cue check measures a DELTA: if the bed arrives inside its window, the check counts the
+// bed as the event's cue. It did — with a fixed 300 ms arm, a build that starts its bed on a
+// 500 ms timer satisfied `audio.build` and `audio.shot-strip` with their own cues deleted. So
+// arming waits until the log stops growing, and every cue check then takes its baseline with
+// the bed already counted. A build that loops by starting a fresh source per repeat would
+// never go quiet; the bound below gives up rather than hang, which is the one shape this
+// count-only probe cannot fully isolate.
+const ARM_SETTLE_MS = 300;
+const ARM_QUIET_STEP_MS = 120;
+const ARM_QUIET_MAX_MS = 2400;
+
 export async function armAudio(api) {
   await api.userKey("KeyZ");
   await api.userClick(4, 4);
-  await api.settle(300);
+  await api.settle(ARM_SETTLE_MS);
+  // Wait until the log has something in it AND has stopped growing. Both halves matter: a
+  // count that is still zero says nothing has started YET, which is indistinguishable from a
+  // build with no bed — and stopping there is what let the bed arrive later, inside a cue
+  // check's window. A build that really plays nothing simply spends the bound.
+  let previous = -1;
+  let count = await audioCount(api);
+  for (
+    let waited = 0;
+    waited < ARM_QUIET_MAX_MS && (count === 0 || count !== previous);
+    waited += ARM_QUIET_STEP_MS
+  ) {
+    previous = count;
+    await api.settle(ARM_QUIET_STEP_MS);
+    count = await audioCount(api);
+  }
 }
 
 /** The number of Web Audio sources the build has started so far. */
 export async function audioCount(api) {
   return (await api.audio()).length;
+}
+
+/**
+ * Read `audioCount` after a real repaint pause.
+ *
+ * A build may QUEUE its cues from the simulation and play them when it next paints (the
+ * reference does exactly that: `main.ts`'s frame drains `sndQueue` through `audio.play`),
+ * so a cue scheduled during an instant `step` has not reached Web Audio yet — and
+ * `api.advance` cannot help, because on the validate pass it consumes no wall clock at all.
+ * Settling on BOTH sides of a measurement is what makes the delta mean "the cues this span
+ * played", rather than racing whichever frames happened to land between driver round trips.
+ */
+async function settledAudioCount(api) {
+  await api.settle(80);
+  return audioCount(api);
+}
+
+/**
+ * Wait — in REAL time, bounded — until the build has started more Web Audio sources than
+ * `baseline`, and return the count it reached.
+ *
+ * For a cue whose window contains nothing else that could make a sound, "did it play?" is a
+ * question about eventually, not about a particular millisecond. A build is entitled to put
+ * the cue a beat after the trigger: to defer the music bed until its clip has decoded, to
+ * start it off a short timer after the unlocking gesture, to drain a queue on its next
+ * animation frame. None of that is visible to a player, and none of it is forbidden — so a
+ * check that settles a fixed 100 or 300 ms and then reads once is measuring the harness's
+ * patience. It was: `audio.music` read the log 300 ms after arming and reported "no source
+ * starts for the reactor music bed" against a build that starts its bed on a 500 ms timer.
+ *
+ * Use this only where the event under test is the ONLY thing in the window that can play —
+ * a placement, a leak, the music bed. Where a firing tower is also making noise, the window
+ * has to stay tight instead; see `cueOnImpact`.
+ */
+export async function audioCountAbove(
+  api,
+  baseline,
+  { max = 3000, step = 100 } = {},
+) {
+  let count = await audioCount(api);
+  for (let waited = 0; waited < max && count <= baseline; waited += step) {
+    await api.settle(step);
+    count = await audioCount(api);
+  }
+  return count;
+}
+
+/**
+ * Measure the Web Audio sources a build starts across ONE IMPACT on `unitId` — the impact
+ * that fires `event` — and report the count it gained.
+ *
+ * Why not simply compare the log before and after a window that contains the event: a
+ * damage tower plays a cue every time it FIRES (specs/assets.md, "the shot cue when a
+ * damage tower fires"), so any window long enough to contain a bond snap, a decay, or a kill
+ * also contains several shot cues, and the log grows whether or not the event has its own
+ * cue at all. That is not a check of the event's cue — it passes on the shots alone, and
+ * did: `audio.bond-snap` recorded "a bond-snap cue plays on the snap" as satisfied on a run
+ * where the bond never snapped.
+ *
+ * So this walks the fire on the unit impact by impact. For each, it skips (instantly, in
+ * both passes) to the brink — a NEW shot already in the air at the unit, so that shot's own
+ * launch cue is behind the baseline — takes the baseline, and then watches only until the
+ * event fires or that shot is spent. The gain across that span is what the event itself
+ * played. `window` stays well inside a damage tower's reload (the slowest is the Reactor's
+ * 0.6/s, 100 ticks), so no further shot can be launched inside a measured span.
+ *
+ * `event(snapshot)` is evaluated exactly ONCE per sample and its verdict is remembered, so a
+ * caller may keep state in it (the id set an "a fragment was emitted" predicate needs, say)
+ * without the bookkeeping being run twice on the sample that matters most — the same
+ * guarantee `api.until` gives.
+ *
+ * Consumes time, so `act` only. Returns `{ hit, gained, shots, snap }`.
+ */
+export async function cueOnImpact(
+  api,
+  unitId,
+  event,
+  { shots = 8, approach = 900, window = 45 } = {},
+) {
+  const inFlight = new Set();
+  for (let i = 1; i <= shots; i += 1) {
+    const armed = await api.skipUntil(
+      (s) =>
+        s.projectiles.some((p) => p.targetId === unitId && !inFlight.has(p.id)),
+      { max: approach, poll: TICK },
+    );
+    if (!armed.hit) break;
+    for (const p of armed.snap.projectiles) {
+      if (p.targetId === unitId) inFlight.add(p.id);
+    }
+    const before = await settledAudioCount(api);
+    let fired = false;
+    const r = await api.until(
+      (s) => {
+        if (event(s)) fired = true;
+        return fired || !s.projectiles.some((p) => inFlight.has(p.id));
+      },
+      { max: window, poll: TICK },
+    );
+    const gained = (await settledAudioCount(api)) - before;
+    if (fired) return { hit: true, gained, shots: i, snap: r.snap };
+  }
+  return { hit: false, gained: 0, shots: 0, snap: await api.snapshot() };
 }

@@ -303,7 +303,7 @@ validation = { script = "validation/maps/single-path.mjs", outputs = [{ id = "fl
 [[review.categories.items]]
 id = "branching-fork"
 title = "Branching-fork map"
-description = "The medium map forks into two lanes that share an inlet trunk and a final run and diverge between them, so both lanes carry traffic and a tower beside a shared stretch covers both."
+description = "The medium map forks into lanes that coincide on a shared stretch — an inlet trunk and/or a final run — and diverge into distinct lanes between them, so both lanes carry traffic and a tower beside a shared stretch covers both."
 validation = { script = "validation/maps/branching-fork.mjs", outputs = [{ id = "fork", name = "The two lanes of the branching fork", kind = "video" }] }
 [[review.categories.items]]
 id = "multiple-separate"

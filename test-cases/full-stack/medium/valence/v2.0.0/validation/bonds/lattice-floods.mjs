@@ -32,6 +32,12 @@ const ATOM_ELECTRONS = 6; // each constituent atom is a full 6-electron atom
 const LATTICE_TOTAL_SHELLS = LATTICE_POOL + LATTICE_ATOMS * ATOM_ELECTRONS; // 104
 const POLYMER_POOL = 11; // MATTER.polymer.bondHP — the thinner-pool comparison
 const MAX_OPEN_TICKS = 1800; // 1800 ticks = the old 30 s cap
+// Sixteen atoms are born at their parent's own position (specs/board.md), so on the frame the
+// pool gives way they are one illegible pile — which is precisely where the clip used to cut.
+// Freed atoms are faster than the cluster they came from (specs/matter.md), so running on is
+// what turns the pile into the flood the item is named for. The sweep keeps counting through
+// the tail, so a build that releases the tail of its spray a moment later is still counted.
+const TAIL_TICKS = 120;
 
 export default function item() {
   let id;
@@ -60,21 +66,30 @@ export default function item() {
     // The cluster opening and flooding the lane — the behavior the item is about, and
     // the only thing worth filming.
     async act(api) {
+      const collect = (s) => {
+        for (const u of s.matter)
+          if (u.type === "atom" && !seen.has(u.id)) seen.set(u.id, u.electrons);
+      };
       // Poll every TICK: an atom can be shed and neutralized between coarser reads, and
       // this check counts the spray exhaustively.
       r = await api.until(
         (s) => {
-          for (const u of s.matter)
-            if (u.type === "atom" && !seen.has(u.id))
-              seen.set(u.id, u.electrons);
+          collect(s);
           const u = unitById(s, id);
           return u == null || u.traits.bonded === false;
         },
         { max: MAX_OPEN_TICKS, poll: TICK },
       );
       // Include the final converted atom (the cluster itself, once fully opened).
-      for (const u of (await api.snapshot()).matter)
-        if (u.type === "atom" && !seen.has(u.id)) seen.set(u.id, u.electrons);
+      collect(await api.snapshot());
+      // Run on so the flood spreads out on screen, still counting as it goes.
+      await api.until(
+        (s) => {
+          collect(s);
+          return false;
+        },
+        { max: TAIL_TICKS, poll: TICK },
+      );
     },
 
     async assert(api, check) {

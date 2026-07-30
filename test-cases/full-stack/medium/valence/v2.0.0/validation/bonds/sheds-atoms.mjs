@@ -23,6 +23,14 @@ import {
 
 const POLYMER_ATOMS = 6; // MATTER.polymer.atoms — specs/matter.md
 const MAX_OPEN_TICKS = 1800; // 1800 ticks = the old 30 s cap
+// The clip used to cut on the frame the cluster finished opening, which is the frame the
+// spray is at its most illegible: fragments are born at their parent's own position
+// (specs/board.md), so at that instant the freed atoms are still piled on top of it and each
+// other. Freed atoms are faster than the cluster they came from (specs/matter.md), so simply
+// running on pulls them apart — a second and a half is enough for the spray to become a
+// spray on screen. The sweep keeps counting through it, so a build that sheds its last atom
+// a moment later is still counted rather than missed.
+const TAIL_TICKS = 90;
 
 export default function item() {
   let id;
@@ -47,18 +55,28 @@ export default function item() {
     // The cluster being chipped open and shedding its atoms — the whole of the check,
     // and the whole of the clip.
     async act(api) {
+      const collect = (s) => {
+        for (const u of s.matter) if (u.type === "atom") seen.add(u.id);
+      };
       // 1800 ticks = the old 30 s cap; poll 3 = the old 0.05 s chunk.
       r = await api.until(
         (s) => {
-          for (const u of s.matter) if (u.type === "atom") seen.add(u.id);
+          collect(s);
           const u = unitById(s, id);
           return u == null || u.traits.bonded === false;
         },
         { max: MAX_OPEN_TICKS, poll: 3 },
       );
       // Include the final converted atom (the cluster itself, once fully opened).
-      for (const u of (await api.snapshot()).matter)
-        if (u.type === "atom") seen.add(u.id);
+      collect(await api.snapshot());
+      // Run on so the spray separates on screen, still counting as it goes.
+      await api.until(
+        (s) => {
+          collect(s);
+          return false;
+        },
+        { max: TAIL_TICKS, poll: 3 },
+      );
     },
 
     async assert(api, check) {
