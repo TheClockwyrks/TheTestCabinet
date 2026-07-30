@@ -105,6 +105,17 @@ const MAX_CACHE_BREAKPOINTS: usize = 4;
 /// while the stride keeps the un-cached remainder small.
 const CACHE_BREAKPOINT_STRIDE: usize = 8;
 
+/// The `ttl` the [stable breakpoints](CacheTtl::Extended) ask for — Anthropic's **extended**
+/// cache lifetime, in the string form `cache_control` takes.
+///
+/// The default lifetime of a cache entry is five minutes, and that default is what a *harness*
+/// silently loses caching to: a gg turn is not a chat turn. One turn runs a build, a test suite, or
+/// a Playwright pass, and every agent in the run shares one runtime thread — so the gap between an
+/// agent's consecutive requests is routinely minutes, and any gap past five minutes means the next
+/// turn re-sends a prefix whose entry has expired and is billed in full. An hour covers every
+/// realistic gap.
+const CACHE_EXTENDED_TTL: &str = "1h";
+
 /// The longest [session key](build_request_body) OpenRouter accepts (it documents a 256-character
 /// cap). A run's session id is a UUID and nowhere near it, but the key is caller-supplied, and a
 /// key silently rejected for length would take the whole run's cache with it.
@@ -482,7 +493,8 @@ fn truncate(body: &str) -> String {
 /// On a model that [needs them](requires_cache_markers), the messages the
 /// [breakpoint policy](cache_breakpoints) selects are additionally stamped with an explicit
 /// `cache_control` marker, which is what actually *enables* the prompt cache on a provider that
-/// does not cache implicitly — see that function for why the key alone is not enough.
+/// does not cache implicitly — see that function for why the key alone is not enough, and
+/// [`CacheTtl`] for the lifetime each marker asks for.
 pub fn build_request_body(
     model_id: &str,
     messages: &[Message],
@@ -494,10 +506,24 @@ pub fn build_request_body(
     } else {
         Vec::new()
     };
+    // The last breakpoint is the rolling tail; every earlier one names a prefix meant to survive
+    // between turns (see `CacheTtl`). A *lone* breakpoint is the exception: the thread has not
+    // started, so it is the opening context's anchor — the run's single most valuable entry, and
+    // the one a long first turn would otherwise let expire before the second turn could read it.
+    let rolling = (breakpoints.len() > 1).then(|| breakpoints[breakpoints.len() - 1]);
     let messages: Vec<Value> = messages
         .iter()
         .enumerate()
-        .map(|(index, message)| wire_message(message, breakpoints.contains(&index)))
+        .map(|(index, message)| {
+            let ttl = breakpoints.contains(&index).then(|| {
+                if Some(index) == rolling {
+                    CacheTtl::Rolling
+                } else {
+                    CacheTtl::Extended
+                }
+            });
+            wire_message(message, ttl)
+        })
         .collect();
     let mut body = json!({
         "model": model_id,
@@ -590,6 +616,43 @@ fn session_key_on_the_wire(key: &str) -> &str {
 pub fn requires_cache_markers(model_id: &str) -> bool {
     let model_id = model_id.to_ascii_lowercase();
     model_id.starts_with("anthropic/") || model_id.contains("claude")
+}
+
+/// How long a [breakpoint](cache_breakpoints) asks the provider to keep its cache entry.
+///
+/// gg's breakpoints are not interchangeable, so their lifetimes are not either:
+///
+/// - **`Extended`** — the anchor and the grid points, which name prefixes deliberately chosen to
+///   still be prefixes several turns from now. These are what a turn *reads*, so they have to
+///   outlive the gap between two of an agent's turns. Under the five-minute default they often do
+///   not: see [`CACHE_EXTENDED_TTL`].
+/// - **`Rolling`** — the tail, which is rewritten every turn by construction and is read exactly
+///   once, by the turn immediately after it. It gets the default lifetime; buying an hour for
+///   material that is superseded in seconds would be paying the higher write premium for nothing.
+///   A request whose *only* breakpoint is the anchor has no rolling marker at all — see
+///   [`build_request_body`].
+///
+/// Mixing the two in one request is supported, and the stable markers all precede the tail, which
+/// is the order the providers that care require. The split is also why the arrangement is close to
+/// cost-neutral: the extended premium applies to the writes at the stable markers, which the whole
+/// point of the design is to *stop* re-paying every turn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CacheTtl {
+    /// The provider default (five minutes) — the rolling tail.
+    Rolling,
+    /// [`CACHE_EXTENDED_TTL`] — the anchor and grid points.
+    Extended,
+}
+
+impl CacheTtl {
+    /// The `cache_control` value this lifetime serializes to. The default lifetime is expressed by
+    /// *omitting* `ttl`, so the rolling marker is byte-identical to an unqualified breakpoint.
+    fn marker(self) -> Value {
+        match self {
+            Self::Rolling => json!({ "type": "ephemeral" }),
+            Self::Extended => json!({ "type": "ephemeral", "ttl": CACHE_EXTENDED_TTL }),
+        }
+    }
 }
 
 /// Choose which messages carry an explicit `cache_control` breakpoint — the markers that turn a
@@ -691,15 +754,16 @@ fn is_markable(message: &Message) -> bool {
 /// result means the read and what it returned stay one item the context model can
 /// account for, evict, and (if the provider turns out to refuse images) strip.
 ///
-/// `cached` marks this message as a [prompt-cache breakpoint](cache_breakpoints). Because
+/// `cached` marks this message as a [prompt-cache breakpoint](cache_breakpoints) with the
+/// [lifetime](CacheTtl) that breakpoint asks for, or leaves it unmarked when `None`. Because
 /// `cache_control` rides a *content block* and a bare string has none, a marked text-only message
 /// is promoted to the same multi-part array an image-bearing one already used. The marker goes on
 /// the **last** part so the cached prefix covers the whole message — attaching it to the leading
 /// text part of a message with pictures would leave the pictures, by far the expensive half,
 /// outside the cache.
-fn wire_message(message: &Message, cached: bool) -> Value {
+fn wire_message(message: &Message, cached: Option<CacheTtl>) -> Value {
     let mut obj = json!({ "role": role_str(message.role) });
-    if !message.images.is_empty() || (cached && message.content.is_some()) {
+    if !message.images.is_empty() || (cached.is_some() && message.content.is_some()) {
         let mut parts: Vec<Value> = Vec::with_capacity(message.images.len() + 1);
         if let Some(content) = &message.content {
             parts.push(json!({ "type": "text", "text": content }));
@@ -710,8 +774,10 @@ fn wire_message(message: &Message, cached: bool) -> Value {
                 "image_url": { "url": image.data_url() },
             }));
         }
-        if cached && let Some(last) = parts.last_mut() {
-            last["cache_control"] = json!({ "type": "ephemeral" });
+        if let Some(ttl) = cached
+            && let Some(last) = parts.last_mut()
+        {
+            last["cache_control"] = ttl.marker();
         }
         obj["content"] = Value::Array(parts);
     } else if let Some(content) = &message.content {

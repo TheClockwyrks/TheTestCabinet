@@ -276,11 +276,17 @@ fn build_request_body_marks_the_opening_context_and_the_tail() {
     // The anchor is the last message before the first assistant turn (the fixed preamble), and
     // the tail writes this turn's prefix for the next turn to read.
     assert_eq!(marked_indices(&body), vec![1, 3]);
+    // The anchor is read by every later turn, so it asks for the extended lifetime; the tail takes
+    // the default. See `CacheTtl`.
     assert_eq!(
         body["messages"][1]["content"][0]["cache_control"],
-        json!({ "type": "ephemeral" })
+        json!({ "type": "ephemeral", "ttl": "1h" })
     );
     assert_eq!(body["messages"][1]["content"][0]["text"], json!("build it"));
+    assert_eq!(
+        body["messages"][3]["content"][0]["cache_control"],
+        json!({ "type": "ephemeral" })
+    );
 }
 
 /// With no assistant turn yet the whole request is still preamble, so the anchor and the tail are
@@ -378,7 +384,11 @@ fn build_request_body_marks_the_last_part_of_an_image_message() {
     assert_eq!(parts.len(), 2);
     assert!(parts[0].get("cache_control").is_none());
     assert_eq!(parts[1]["type"], json!("image_url"));
-    assert_eq!(parts[1]["cache_control"], json!({ "type": "ephemeral" }));
+    // With no assistant turn yet this is the lone anchor, which takes the extended lifetime.
+    assert_eq!(
+        parts[1]["cache_control"],
+        json!({ "type": "ephemeral", "ttl": "1h" })
+    );
 }
 
 /// An empty request produces no breakpoints rather than panicking on the tail index.
@@ -387,7 +397,8 @@ fn cache_breakpoints_handle_an_empty_request() {
     assert!(cache_breakpoints(&[]).is_empty());
 }
 
-/// The `cache_control` marker on each message of a built body, by index.
+/// The `cache_control` marker on each message of a built body, by index — the wire-level view of
+/// the [lifetimes](CacheTtl) a request asks for.
 fn markers(body: &serde_json::Value) -> Vec<(usize, serde_json::Value)> {
     body["messages"]
         .as_array()
@@ -402,6 +413,78 @@ fn markers(body: &serde_json::Value) -> Vec<(usize, serde_json::Value)> {
                 .map(|marker| (index, marker.clone()))
         })
         .collect()
+}
+
+/// The stable breakpoints — the anchor and the grid points — ask for the **extended** cache
+/// lifetime, and only the rolling tail takes the provider default.
+///
+/// The five-minute default is the one gg was silently losing its cache to: an agent's turn runs a
+/// build or a test suite and every agent shares one runtime thread, so the gap between two of its
+/// requests is routinely longer than the entry lives. The entries a later turn *reads* have to
+/// outlive that gap; the tail, rewritten every turn, has nothing to gain from it.
+#[test]
+fn build_request_body_extends_the_ttl_of_the_stable_breakpoints() {
+    let mut messages = vec![
+        Message::system("a long system prompt"),
+        Message::user("build it"),
+    ];
+    for turn in 0..24 {
+        messages.push(Message::assistant(Some(format!("turn {turn}")), vec![]));
+    }
+    let body = build_request_body("anthropic/claude-haiku-4.5", &messages, &[], None);
+
+    let extended = json!({ "type": "ephemeral", "ttl": "1h" });
+    let rolling = json!({ "type": "ephemeral" });
+    // Anchor at 1 and grid points at 16 and 24 are read by later turns; the tail at 25 is not.
+    assert_eq!(
+        markers(&body),
+        vec![
+            (1, extended.clone()),
+            (16, extended.clone()),
+            (24, extended),
+            (25, rolling),
+        ]
+    );
+}
+
+/// A request whose only breakpoint is the anchor — the first turn, before the thread starts —
+/// extends it rather than treating it as a rolling tail. It is the opening context, the run's
+/// single most valuable entry, and a long first turn is exactly when the default lifetime would
+/// let it expire unread.
+#[test]
+fn build_request_body_extends_a_lone_anchor() {
+    let messages = [
+        Message::system("a long system prompt"),
+        Message::user("build it"),
+    ];
+    let body = build_request_body("anthropic/claude-haiku-4.5", &messages, &[], None);
+
+    assert_eq!(
+        markers(&body),
+        vec![(1, json!({ "type": "ephemeral", "ttl": "1h" }))]
+    );
+}
+
+/// The stable markers all precede the rolling one, which is the order a provider that supports
+/// mixed lifetimes requires — a property of the [breakpoint policy](cache_breakpoints), asserted
+/// here across thread lengths rather than left to the two shapes above.
+#[test]
+fn build_request_body_orders_extended_markers_before_the_rolling_one() {
+    for length in 2..64usize {
+        let mut messages = vec![Message::system("sys"), Message::user("build it")];
+        for turn in 2..length {
+            messages.push(Message::assistant(Some(format!("turn {turn}")), vec![]));
+        }
+        let body = build_request_body("anthropic/claude-haiku-4.5", &messages, &[], None);
+        let sent = markers(&body);
+        let rolling = sent
+            .iter()
+            .position(|(_, marker)| marker.get("ttl").is_none());
+        assert!(
+            rolling.is_none_or(|at| at == sent.len() - 1),
+            "{length} messages put a default-lifetime marker before an extended one: {sent:?}"
+        );
+    }
 }
 
 /// OpenRouter's own refusal — a `404` whose body says no endpoint supports image input —
