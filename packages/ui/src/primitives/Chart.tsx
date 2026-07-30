@@ -43,6 +43,13 @@ export function Chart({ spec, title, className }: ChartProps) {
       lastWidth = width;
       const options = spec(readChartPalette());
       const figure = Plot.plot(width > 0 ? { ...options, width } : options);
+      // Swap the old figure for the new one in a single mutation, never leaving
+      // the container empty: emptying it first would collapse its height, and on
+      // a live page whose charts all re-plot together (the gg monitor re-derives
+      // every graph on each telemetry tick) the enclosing scroller's content
+      // would briefly shrink to nothing, clamping the reader's scroll position
+      // to the top. The height it comes back to is not restored — the scroll is
+      // simply lost — so the container must stay occupied across the swap.
       container.replaceChildren(figure);
     };
     render();
@@ -50,9 +57,16 @@ export function Chart({ spec, title, className }: ChartProps) {
     observer.observe(container);
     return () => {
       observer.disconnect();
-      container.replaceChildren();
     };
   }, [spec]);
+
+  // The figure is DOM we created outside React, so React will not remove it when
+  // this component unmounts. Clearing it belongs here, on unmount only, and not in
+  // the render effect's cleanup, which also runs between re-plots (see above).
+  useEffect(() => {
+    const container = containerRef.current;
+    return () => container?.replaceChildren();
+  }, []);
 
   const cls = className ? `${styles.chart} ${className}` : styles.chart;
   return <div ref={containerRef} className={cls} role="img" aria-label={title} />;
