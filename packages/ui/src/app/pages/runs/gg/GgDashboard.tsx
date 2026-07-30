@@ -48,7 +48,7 @@ export interface GgDashboardStatus {
   tone: "live" | "ok" | "fail";
   /** A secondary line under the pill (e.g. the gg session ending before the stream does). */
   note?: string | null;
-  /** A control on the status line's trailing edge (the live monitor's kill affordance). */
+  /** A control on the card's label row, trailing edge (the live monitor's kill affordance). */
   action?: ReactNode;
 }
 
@@ -556,7 +556,9 @@ function RuntimeCard({
       className={`${styles.card} ${className}`}
       title={
         parallelism != null
-          ? `${formatRuntime(agentMs)} of active agent time in ${formatRuntime(
+          ? `${formatRuntime(agentMs)} of active agent time across ${agentCount} ${
+              agentCount === 1 ? "agent" : "agents"
+            } in ${formatRuntime(
               wallMs ?? 0,
             )} of wall clock — ${parallelism.toFixed(1)} agents working at once on average` +
             (suspendedMs > 0
@@ -574,14 +576,20 @@ function RuntimeCard({
       <span className={styles.metricUnit}>
         {wallMs == null ? "no telemetry yet" : "wall clock"}
       </span>
-      {/* The sum reads as a second line rather than a second tile: it is the same clock
-          counted per agent, so it belongs under the figure it decomposes. "active" rather
-          than "total" because it is exactly that — the waiting is stated after it, on the
-          same line, so the two are read together instead of one standing for both. */}
+      {/* The sum reads as lines under the headline rather than as its own tile: it is the
+          same clock counted per agent, so it belongs under the figure it decomposes.
+          "active" rather than "total" because it is exactly that — the waiting takes a line
+          of its own so neither figure is read as standing for both. How many agents that is
+          spread across is left to the widgets that exist to say so (Agents, Configuration);
+          repeating it here only crowded the two clocks this card is read for.
+
+          Waiting is stated even at zero. This card is watched while it counts up, and a
+          line that appeared the first time an agent blocked would shove the limit line —
+          and every card below it — down mid-glance; a steady `waiting 0s` is also a
+          positive statement that nothing is blocked, which the absent line was not. */}
+      <span className={styles.metricUnit}>active {formatRuntime(agentMs)}</span>
       <span className={styles.metricUnit}>
-        active {formatRuntime(agentMs)} across {agentCount}{" "}
-        {agentCount === 1 ? "agent" : "agents"}
-        {suspendedMs > 0 && `, ${formatRuntime(suspendedMs)} waiting`}
+        waiting {formatRuntime(suspendedMs)}
       </span>
       <span className={styles.metricUnit}>
         {timeoutSeconds != null
@@ -601,18 +609,25 @@ function StatusCard({ status }: { status: GgDashboardStatus }) {
         : styles.pillLive;
   return (
     // A quarter of the row, not all of it: the turn count, the generation rate, and the
-    // runtime take a quarter each beside it. The kill control wraps under the pill at this
-    // width, which is the right trade — the three figures beside it are read at a glance and
-    // the control is reached deliberately.
+    // runtime take a quarter each beside it. The kill control rides on the label's row at
+    // the card's trailing edge rather than in the line below: at this width it used to wrap
+    // under the pill, which both cost a row and moved the control depending on how long the
+    // phase's detail ran. Level with "Status" it is always in the same corner, and the pill
+    // and its detail get the full line back.
     <div className={`${styles.card} ${styles.cardQuarter}`}>
-      <span className={styles.cardLabel}>Status</span>
+      <div className={styles.cardHeader}>
+        <span className={styles.cardLabel}>Status</span>
+        {/* Rendered only when the host supplies one — a finished run has nothing to kill,
+            and an empty span would leave the header a control's height taller than the
+            label it holds. */}
+        {status.action && (
+          <span className={styles.statusAction}>{status.action}</span>
+        )}
+      </div>
       <div className={styles.statusLine}>
         <span className={`${styles.pill} ${toneClass}`}>{status.label}</span>
         {status.detail && (
           <span className={styles.statusDetail}>{status.detail}</span>
-        )}
-        {status.action && (
-          <span className={styles.statusAction}>{status.action}</span>
         )}
       </div>
       {status.note && (

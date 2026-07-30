@@ -185,6 +185,54 @@ describe("deriveGgAgentSummaries", () => {
     expect(critic?.declared).toBe(true);
     expect(critic?.turns).toBe(0);
     expect(critic?.usage.anyTokens).toBe(false);
+    // No responses, so no rate — null rather than a NaN reaching the read-out.
+    expect(critic?.toolCallsPerResponse).toBeNull();
+  });
+
+  it("rates a profile's tool calls against its responses, not against its instances", () => {
+    // The weighting this pins. One instance does the work — four calls over two turns —
+    // and three more take a turn apiece and call nothing. The profile's answer is its
+    // calls over its responses, 4 / 5 = 0.8. Averaging the instances' own rates instead
+    // would give (2.0 + 0 + 0 + 0) / 4 = 0.5, letting three barely-used instances outvote
+    // the one that actually ran; the two numbers differ here precisely so a regression to
+    // the mean-of-means cannot pass.
+    const call = (agentId: string) =>
+      gg(agentId, {
+        type: "tool_call",
+        name: "read_file",
+        args: {},
+      } as GgTelemetryKind);
+
+    const summaries = summarize(
+      [
+        spawn("root", "Root", "vendor/big"),
+        spawn("a1", "worker", "vendor/small", "root"),
+        turn("a1"),
+        turn("a1"),
+        call("a1"),
+        call("a1"),
+        call("a1"),
+        call("a1"),
+        ...["a2", "a3", "a4"].flatMap((id) => [
+          spawn(id, "worker", "vendor/small", "root"),
+          turn(id),
+        ]),
+      ],
+      set(
+        profile("Root", "vendor/big", ["subagents"]),
+        profile("worker", "vendor/small", ["filesystem"]),
+      ),
+    );
+    const worker = summaries.find((s) => s.name === "worker");
+    expect(worker!.instances).toHaveLength(4);
+    expect(worker!.turns).toBe(5);
+    expect(worker!.tools.totalCalls).toBe(4);
+    expect(worker!.toolCallsPerResponse).toBeCloseTo(0.8, 12);
+
+    // The Root took no turn of its own and called nothing, so it has no rate at all.
+    expect(summaries.find((s) => s.name === "Root")!.toolCallsPerResponse).toBe(
+      null,
+    );
   });
 
   it("lists a profile the stream shows but the configuration does not carry", () => {

@@ -51,10 +51,12 @@ export function ExpandablePre({
 }
 
 /**
- * The fullscreen message sheet: a fixed backdrop portalled over the page (so it
- * escapes any panel's overflow/stacking) holding the message text at full width and
- * height. A click on the backdrop, the close button, or Escape dismisses it; a click
- * inside the panel does not (its propagation is stopped).
+ * The fullscreen message sheet: a fixed, blurred scrim portalled over the page (so
+ * it escapes any panel's overflow/stacking) holding the message text at full width
+ * and height. The run monitor stays visible but de-emphasized behind it, so the
+ * overlay reads as a layer rather than as a separate screen. A click on the
+ * backdrop, the close button, or Escape dismisses it; a click inside the panel does
+ * not (its propagation is stopped).
  */
 function MessageOverlay({
   content,

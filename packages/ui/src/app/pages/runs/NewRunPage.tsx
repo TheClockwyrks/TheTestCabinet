@@ -386,6 +386,11 @@ export function NewRunPage() {
           variant: sel.variant,
           harnessSlug: GG_HARNESS_SLUG,
           modelId: capabilitySet.agents?.[0]?.modelId ?? "",
+          // Read off the set that was actually sent rather than the picker option,
+          // so the configuration name the row shows now is byte-identical to the one
+          // the backend will lift back out of the job's stored capability set when
+          // the reconcile re-seeds this row from `/jobs/active`.
+          ggPreset: capabilitySet.preset ?? null,
           runId: ack.jobId,
           // Just enqueued: `queued` on the backend, advanced by the reconcile as it
           // reports each transition.

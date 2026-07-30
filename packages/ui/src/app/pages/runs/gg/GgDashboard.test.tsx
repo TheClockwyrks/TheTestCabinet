@@ -164,6 +164,12 @@ function cardLabels(): string[] {
   );
 }
 
+// The Status card, reached from its label — which lives one level down from the card, in
+// the header row it shares with the kill control.
+function statusCard(): HTMLElement {
+  return screen.getByText("Status").parentElement!.parentElement!;
+}
+
 describe("the gg Dashboard", () => {
   it("lays the live monitor's cards out in one deliberate order", () => {
     renderDashboard(STATUS);
@@ -198,9 +204,34 @@ describe("the gg Dashboard", () => {
     // The pill carries the phase; a run has as many agents working as it has dispatched, so
     // there is no one thing "the agent" is doing to put beside it.
     renderDashboard(STATUS);
-    const card = screen.getByText("Status").parentElement!;
+    // The label now sits in a header row of its own (it shares that row with the kill
+    // control), so the card is a grandparent of its label rather than its parent.
+    const card = statusCard();
     expect(within(card).getByText("Running")).toBeInTheDocument();
     expect(card.textContent).toBe("StatusRunning");
+  });
+
+  it("puts the kill control on the label's row, not under the pill", () => {
+    // The control is reached deliberately and the three figures beside this card are read
+    // at a glance, so it takes the card's trailing corner — a fixed place, level with the
+    // label — instead of wrapping under a status line whose length varies with the detail.
+    renderDashboard({ ...STATUS, action: <button>Kill Run</button> });
+    const kill = screen.getByRole("button", { name: "Kill Run" });
+    const header = screen.getByText("Status").parentElement!;
+    expect(header).toContainElement(kill);
+    // And it is the pill's sibling row, not the pill's own line.
+    expect(
+      within(screen.getByText("Running").parentElement!).queryByRole("button"),
+    ).toBeNull();
+  });
+
+  it("leaves the label's row alone on a run with nothing to kill", () => {
+    // A finished run supplies no control, and an empty slot for one would leave the header
+    // a control's height taller than the label it holds — the label would sit somewhere
+    // else the moment a run ended.
+    renderDashboard(STATUS);
+    const header = screen.getByText("Status").parentElement!;
+    expect(header.childElementCount).toBe(1);
   });
 
   it("states the run's generation rate across every model it used", () => {
@@ -225,13 +256,15 @@ describe("the gg Dashboard", () => {
     // And the sum beneath it: every event carries the run's start timestamp and neither
     // agent ended, so both agents count the full 90s — 3m 00s of agent time inside 1m 30s of
     // wall clock, which is the whole reason both figures are shown. Neither agent ever
-    // blocked, so all of it is active and the card states no waiting.
-    expect(
-      within(card).getByText("active 3m 00s across 2 agents"),
-    ).toBeInTheDocument();
+    // blocked, so the whole of it is active — and the waiting line still reads `0s` rather
+    // than vanishing, so the card keeps its height as a live run starts and stops blocking.
+    expect(within(card).getByText("active 3m 00s")).toBeInTheDocument();
+    expect(within(card).getByText("waiting 0s")).toBeInTheDocument();
     expect(within(card).getByText("limit 4h")).toBeInTheDocument();
-    // The ratio between them is what the tooltip spells out, so "2.0 agents at once" is
-    // stated somewhere rather than left to be divided by the reader.
+    // How many agents that is spread across is the Agents widget's job; the ratio between
+    // the two clocks is the tooltip's, so "2.0 agents at once" is stated somewhere rather
+    // than left to be divided by the reader.
+    expect(card.textContent).not.toContain("agents");
     expect(card.title).toContain("2.0 agents working at once");
   });
 

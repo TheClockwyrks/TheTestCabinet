@@ -45,6 +45,7 @@ import {
   ROOT_ID,
   ggPeakContext,
   ggToolBreakdown,
+  toolCallsPerResponse,
   type AgentTreeNode,
   type DerivedGgState,
   type GgToolBreakdown,
@@ -123,6 +124,17 @@ export interface GgAgentSummary {
   tokensPerSecond: number | null;
   /** Every tool its instances called, most-used first. */
   tools: GgToolBreakdown;
+  /**
+   * How many tool calls the profile got out of each assistant response — every call its
+   * instances made over every turn they took. Null when no instance took a turn.
+   *
+   * Summed rather than averaged across instances, for the same reason
+   * {@link tokensPerSecond} is: a mean of per-instance rates weights a reviewer that took
+   * one turn exactly as heavily as an implementer that took a hundred, so twelve
+   * short-lived instances would decide a figure their work barely contributed to. The
+   * profile's calls over the profile's responses is the question being asked.
+   */
+  toolCallsPerResponse: number | null;
   /** What filled its instances' windows, and what that material cost. */
   context: GgContextAttribution;
 }
@@ -334,6 +346,9 @@ export function deriveGgAgentSummaries(
     // The model the row reads by: what the configuration binds, else what the instances
     // actually ran on (a record with no captured configuration still names its model).
     const modelId = config?.modelId || modelIds[0] || null;
+    // Merged once and read twice: the profile's per-tool list, and the call rate taken
+    // against the turns those same instances took (see `toolCallsPerResponse`).
+    const tools = mergeToolBreakdowns(toolParts);
     return {
       name,
       declared: config != null,
@@ -355,7 +370,8 @@ export function deriveGgAgentSummaries(
       meanPeakFullness: fullnessCount > 0 ? fullnessSum / fullnessCount : null,
       compactions,
       tokensPerSecond: modelMs > 0 ? generated / (modelMs / 1000) : null,
-      tools: mergeToolBreakdowns(toolParts),
+      tools,
+      toolCallsPerResponse: toolCallsPerResponse(tools, turns),
       context: mergeGgAttributions(contextParts),
     };
   });

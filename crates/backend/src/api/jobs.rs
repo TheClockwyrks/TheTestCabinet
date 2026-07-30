@@ -30,6 +30,7 @@ use time::format_description::well_known::Rfc3339;
 use tokio::sync::broadcast::error::RecvError;
 
 use test_cabinet_core::event::HarnessEvent;
+use test_cabinet_core::gg::GgCapabilitySet;
 use test_cabinet_core::preview::AssetPreview;
 use test_cabinet_core::run_record::{HarnessSlug, RunRecord, RunState};
 // The job-API wire shapes shared with the dispatcher, driver, and the queue's
@@ -931,6 +932,12 @@ fn job_status_out(job: &job::Model) -> JobStatusOut {
 }
 
 /// The run's display identity, lifted from the stored job columns.
+///
+/// The gg configuration name comes out of the job's own `gg_config_json` column (the
+/// capability set lifted there at enqueue), so the active-run list can name a gg run's
+/// configuration before the run has produced a record. A set that fails to parse is
+/// treated as nameless rather than failing the listing — the name is a display nicety,
+/// and a job the console cannot list is far worse than one shown by its model.
 fn job_summary(job: &job::Model) -> JobSummary {
     JobSummary {
         test_case_slug: job.test_case_slug.clone(),
@@ -938,6 +945,11 @@ fn job_summary(job: &job::Model) -> JobSummary {
         variant: job.variant.clone(),
         harness_slug: job.harness_slug.clone(),
         model_id: job.model_id.clone(),
+        gg_preset: job
+            .gg_config_json
+            .as_deref()
+            .and_then(|json| serde_json::from_str::<GgCapabilitySet>(json).ok())
+            .and_then(|set| set.preset),
     }
 }
 

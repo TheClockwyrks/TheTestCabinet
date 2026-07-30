@@ -30,6 +30,10 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "A worker-wide notification that a run reached a terminal state. Carries the\nrun's display identity (flattened to the console's notification shape) plus\nhow it ended. Delivered over `GET /notifications` (SSE).",
   "properties": {
+    "ggPreset": {
+      "description": "The name of the gg [configuration](crate::gg::GgCapabilitySet::preset) the job\nwas launched from, lifted out of its stored capability set. A gg run has no\nsingle harness model — [`model_id`](Self::model_id) is only its representative\nprimary-slot binding — so the active-run list identifies a gg row by its\nconfiguration instead. `None` for every third-party-harness job (which carries\nno capability set) and for a gg job assembled by hand rather than from a named\nconfiguration.",
+      "type": ["string", "null"]
+    },
     "harnessSlug": {
       "description": "The harness driving the run, as its slug string.",
       "type": "string"

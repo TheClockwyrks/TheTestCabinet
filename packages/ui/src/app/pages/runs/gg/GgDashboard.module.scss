@@ -130,8 +130,22 @@
   color: t.$color-text-muted;
 }
 
-// The status line: a phase pill plus its detail, on one row, with the kill
-// control (when running) pushed to the trailing edge.
+// A card's label row: the label at the leading edge and, when the card has one, a
+// control opposite it (the Status card's kill affordance). The control is only
+// rendered while there is something to kill, so the row is a control's height while
+// a run is live and collapses to the label's once it ends — deliberately, because an
+// always-rendered empty slot would hold a button's worth of dead space open under
+// every finished run's Status label.
+.cardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
+// The status line: a phase pill plus its detail, on one row. The kill control is not
+// here — it rides on the card's label row, above.
 .statusLine {
   display: flex;
   align-items: center;
@@ -177,9 +191,24 @@
   min-width: 0;
 }
 
-// The kill control sits at the far edge of the status line.
+// The kill control sits at the far edge of the label row. `margin-left: auto` rather
+// than relying on the row's `space-between` alone so it stays pinned right if the row
+// ever carries a third element. It keeps the default `flex: 0 1 auto` — pinning it at
+// `flex: none` would let the failure message the control grows beside its button size
+// this quarter-width card at max-content and spill out of it — and `min-width: 0` so
+// that shrinking can actually reach the message's own text, which then wraps.
 .statusAction {
   margin-left: auto;
+  min-width: 0;
+}
+
+// The control carries a bottom margin for its original home, hanging under the
+// conventional monitor's page header. Here it is a flex item's child, so that margin
+// does not collapse away — it grows the item's box and, being centred, lifts the
+// button off the line the label sits on. Qualified by the host row so it outweighs
+// the component's own rule whichever order the two stylesheets land in.
+.cardHeader .statusAction > * {
+  margin-bottom: 0;
 }
 
 // A headline figure — the cost total, the agent count — big over its unit.

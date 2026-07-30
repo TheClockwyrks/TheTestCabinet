@@ -63,6 +63,17 @@ export type SubjectOut = {
   harnessSlug: HarnessSlug;
   harnessVersion: string | null;
   modelId: string;
+  /**
+   * The name of the gg **configuration** this run was launched from — the
+   * [`preset`](test_cabinet_core::gg::GgCapabilitySet::preset) recorded on the run's
+   * capability set. Lifted onto the card because a gg run has no single harness
+   * model to identify it by ([`model_id`](Self::model_id) is only its
+   * representative primary-slot model, one of several per-agent bindings), so the
+   * run log shows the configuration in that cell instead. `None` for every
+   * third-party-harness run (which carries no capability set) and for a gg run
+   * assembled by hand rather than from a named configuration.
+   */
+  ggPreset?: string | null;
 };
 
 /**

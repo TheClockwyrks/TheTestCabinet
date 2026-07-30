@@ -294,6 +294,16 @@ pub struct JobSummary {
     pub harness_slug: String,
     /// The opaque model id passed to the harness.
     pub model_id: String,
+    /// The name of the gg [configuration](crate::gg::GgCapabilitySet::preset) the job
+    /// was launched from, lifted out of its stored capability set. A gg run has no
+    /// single harness model — [`model_id`](Self::model_id) is only its representative
+    /// primary-slot binding — so the active-run list identifies a gg row by its
+    /// configuration instead. `None` for every third-party-harness job (which carries
+    /// no capability set) and for a gg job assembled by hand rather than from a named
+    /// configuration.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub gg_preset: Option<String>,
 }
 
 /// One in-flight job, as `GET /jobs/active` reports it: the live/job id, the

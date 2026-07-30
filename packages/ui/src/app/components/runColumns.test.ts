@@ -6,9 +6,19 @@ import { columnsForScope, sortRuns, type EnrichedRun } from "./runColumns";
 // A minimal enriched run carrying only the fields the column sort keys read.
 function run(
   id: string,
-  opts: { rating?: Rating | null; tokens?: number | null } = {},
+  opts: {
+    rating?: Rating | null;
+    tokens?: number | null;
+    modelName?: string;
+    configName?: string | null;
+  } = {},
 ): EnrichedRun {
-  const { rating = null, tokens = null } = opts;
+  const {
+    rating = null,
+    tokens = null,
+    modelName = id,
+    configName = null,
+  } = opts;
   return {
     summary: {
       id,
@@ -34,7 +44,8 @@ function run(
     } as unknown as RunSummary,
     local: false,
     displayName: id,
-    modelName: id,
+    modelName,
+    configName,
     rating,
     grade: null,
   };
@@ -85,6 +96,22 @@ describe("sortRuns", () => {
       "great",
       "flawless",
       "unrated",
+    ]);
+  });
+
+  it("orders the model column by what each row actually shows", () => {
+    // A gg row displays (and so sorts by) its configuration; every other row its
+    // model — including a gg row with no configuration name, which falls back.
+    const rows = [
+      run("zeta-model", { modelName: "zeta" }),
+      run("alpha-config", { modelName: "zulu", configName: "alpha" }),
+      run("mid-model", { modelName: "mike" }),
+    ];
+    const asc = sortRuns(rows, { columnId: "model", direction: "asc" });
+    expect(asc.map((r) => r.summary.id)).toEqual([
+      "alpha-config",
+      "mid-model",
+      "zeta-model",
     ]);
   });
 

@@ -15,7 +15,13 @@ import type {
   SpeculationState,
   Workflow,
 } from "./useGgRunState";
-import { ROOT_ID, ggToolBreakdown, shortTokens } from "./useGgRunState";
+import {
+  ROOT_ID,
+  callRatePhrase,
+  ggToolBreakdown,
+  shortTokens,
+  toolCallsPerResponse,
+} from "./useGgRunState";
 import { agentCapabilityOn } from "./ggCatalog";
 import { cx, fsGuide, fsIndent } from "./ggFsTree";
 import { agentPricedSlots, useGgCostBreakdown } from "./ggCost";
@@ -44,6 +50,7 @@ import { SkillsList } from "./SkillsList";
 import { MemoriesList } from "./MemoriesList";
 import {
   ActivityIcon,
+  ChevronIcon,
   CompactionIcon,
   ContextIcon,
   FolderIcon,
@@ -426,7 +433,7 @@ function FolderNode({
         onClick={() => ctx.toggle(folderKey, openByDefault)}
       >
         <span className={panels.fsCaret} aria-hidden="true">
-          {open ? "▾" : "▸"}
+          <ChevronIcon className={open ? panels.fsCaretOpen : undefined} />
         </span>
         {/* An agent's lifecycle dot stands where a folder icon would: the caret
             already says the row is a folder, so the glyph is spent on the one thing
@@ -521,7 +528,7 @@ function SubagentsFolder({
         onClick={() => ctx.toggle(subKey, true)}
       >
         <span className={panels.fsCaret} aria-hidden="true">
-          {open ? "▾" : "▸"}
+          <ChevronIcon className={open ? panels.fsCaretOpen : undefined} />
         </span>
         {open ? (
           <FolderOpenIcon className={panels.fsIcon} />
@@ -809,7 +816,9 @@ function OverviewFile({
           <TokensWidget usage={state.usage} throughput={throughput} bare />
           <CostWidget usage={state.usage} breakdown={costBreakdown} bare />
         </div>
-        {tools.tools.length > 0 && <AgentToolsPanel breakdown={tools} />}
+        {tools.tools.length > 0 && (
+          <AgentToolsPanel breakdown={tools} responses={state.turnCount} />
+        )}
         {/* The run's delegation structure hangs off the main agent — it is a
             whole-run fact, not one subagent's, so it reads on the root. */}
         {isRoot && workflows.length > 0 && (
@@ -827,12 +836,43 @@ function OverviewFile({
 // used first, with how many times it called it and — where the message log recorded
 // it — how many tokens that tool's results added to the window, as a share of all the
 // tokens that entered the agent's context. The Dashboard's agent overview shows the
-// same tools as bare chips; this is the itemized version behind them.
-function AgentToolsPanel({ breakdown }: { breakdown: GgToolBreakdown }) {
-  const { tools, totalContextTokens, outputTokensKnown } = breakdown;
+// same tools as bare chips; this is the itemized version behind them. Its caption line
+// also carries the instance's call rate — how many calls it got out of each response —
+// which is a fact about the agent rather than about any tool in the list, so it sits on
+// the header beside the caption instead of being wedged in as a first row.
+function AgentToolsPanel({
+  breakdown,
+  responses,
+}: {
+  breakdown: GgToolBreakdown;
+  /** This instance's assistant responses — one per turn — the rate's denominator. */
+  responses: number;
+}) {
+  const { tools, totalContextTokens, outputTokensKnown, totalCalls } =
+    breakdown;
+  // The instance's own calls over its own turns, both counted from its own partition of
+  // the stream (never the whole-run `slot_usage` rollups, which the per-agent reduction
+  // drops for exactly this reason). Null before it has taken a turn, so an agent whose
+  // first call is streamed ahead of its first turn reads as calls with no rate yet.
+  const perResponse = toolCallsPerResponse(breakdown, responses);
   return (
     <section className={panels.agentSection}>
-      <span className={panels.subPanelLabel}>Tools</span>
+      <div className={panels.toolsHead}>
+        <span className={panels.subPanelLabel}>Tools</span>
+        <span
+          className={panels.toolsRate}
+          title={
+            "Tool and function calls per assistant response — " +
+            `${callRatePhrase(totalCalls, responses)}. A proxy for efficiency: ` +
+            "an agent that does more per round trip spends fewer responses, less latency, " +
+            "and less context reaching the same place."
+          }
+        >
+          {perResponse != null
+            ? `${perResponse.toFixed(1)} calls per response`
+            : `${totalCalls} call${totalCalls === 1 ? "" : "s"}`}
+        </span>
+      </div>
       <ul className={panels.toolList}>
         {tools.map((tool) => {
           const share =

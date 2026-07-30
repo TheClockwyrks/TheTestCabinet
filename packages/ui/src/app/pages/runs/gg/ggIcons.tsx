@@ -1,9 +1,9 @@
 // Line-art icons for the Instances explorer's filesystem tree, in the same
 // Lucide-style, 24×24, `currentColor` convention as the app's other marks
 // (BellIcon, TrashIcon, DownloadIcon, …) so size and color come from CSS. They
-// replace the ad-hoc Unicode glyphs the tree used to scan by: a folder per agent
-// (open when expanded), and a distinct mark per monitor-view "file" so overview /
-// activity / context / plan / board / tasks / knowledge read at a glance.
+// replace the ad-hoc Unicode glyphs the tree used to scan by: a disclosure caret, a
+// folder per agent (open when expanded), and a distinct mark per monitor-view "file"
+// so overview / activity / context / plan / board / tasks / knowledge read at a glance.
 
 interface IconProps {
   className?: string;
@@ -28,6 +28,23 @@ function Icon({
     >
       {children}
     </svg>
+  );
+}
+
+// The disclosure caret on a folder row: a chevron pointing right when closed, rotated a
+// quarter turn to point down when open (`.fsCaretOpen`).
+//
+// It is drawn rather than typed because the tree hangs its indent guideline off this
+// mark's point. A text caret ("▸"/"▾") sits wherever the font's glyph box puts it inside
+// the caret slot — left of the slot's centre, as it turned out — so the guideline, which
+// drops down the slot's centre line, visibly missed the arrow it is meant to descend
+// from. This one fills its box, and rotated open its point is on the box's vertical
+// centre line, so the line lands exactly under the tip.
+export function ChevronIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <polyline points="9 6 15 12 9 18" />
+    </Icon>
   );
 }
 

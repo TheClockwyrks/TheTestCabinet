@@ -29,8 +29,9 @@ const PAGE_SIZE = 20;
 // is browsable a page at a time. Each page is a server query (the console's backend
 // offset endpoint, the static site's in-memory index), so only one page of
 // summaries is ever held: a header sort re-queries in that order, and the search
-// narrows by test case, harness, or model. Produced (local, unpublished) and
-// in-progress runs lead the first page, pinned so they don't repeat across pages.
+// narrows by test case, harness, model, or gg configuration. Produced (local,
+// unpublished) and in-progress runs lead the first page, pinned so they don't
+// repeat across pages.
 export function RunsPage() {
   const {
     canExecute,
@@ -201,8 +202,14 @@ export function RunsPage() {
 }
 
 // Case-insensitive haystack for a single run: its test case (display name and
-// slug), harness, and model (catalog name and raw id). Only these three subjects
-// are searchable — difficulty and tags are deliberately absent here.
+// slug), harness, model (catalog name and raw id), and — for a gg run — the
+// configuration name its row shows in place of the model. Only these subjects are
+// searchable — difficulty and tags are deliberately absent here.
+//
+// This narrows only the produced (local, unpublished) runs pinned to the first
+// page; the published window is filtered server-side by `q`, which matches the
+// columns lifted onto the `run` table (case, model, harness, variant) and so does
+// not yet see a gg configuration name.
 function searchText(
   run: RunSummary,
   findModel: (id: string, harness?: string) => ModelSummary | undefined,
@@ -215,14 +222,15 @@ function searchText(
     subject.harnessSlug,
     model?.name ?? "",
     subject.modelId,
+    subject.ggPreset ?? "",
   ]
     .join(" ")
     .toLowerCase();
 }
 
-// Case-insensitive haystack for an in-progress run: the same three subjects as a
-// finished row (test case, harness, model) plus its variant, so the search
-// narrows live and finished runs alike.
+// Case-insensitive haystack for an in-progress run: the same subjects as a
+// finished row (test case, harness, model, gg configuration) plus its variant, so
+// the search narrows live and finished runs alike.
 function activeSearchText(
   run: InProgressRun,
   findModel: (id: string, harness?: string) => ModelSummary | undefined,
@@ -235,6 +243,7 @@ function activeSearchText(
     run.variant,
     model?.name ?? "",
     run.modelId,
+    run.ggPreset ?? "",
   ]
     .join(" ")
     .toLowerCase();

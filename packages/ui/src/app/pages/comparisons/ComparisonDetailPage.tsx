@@ -145,10 +145,16 @@ export function ComparisonDetailPage() {
                 variant: controls.variant,
                 harnessSlug: GG_HARNESS_SLUG,
                 // The run's representative model is its root agent's, which is what
-                // the backend lifts into the job's launch identity — so the row
-                // reads the same before and after a reload re-seeds the in-progress
-                // list from the backend's active jobs.
+                // the backend lifts into the job's launch identity.
                 modelId: capabilitySet.agents?.[0]?.modelId ?? "",
+                // What the Runs page actually shows for a gg run: the configuration
+                // it was launched from, read off the set that was sent rather than
+                // the picker option, so it is byte-identical to the name the backend
+                // lifts back out of the stored capability set. Without it the row
+                // would fall back to the root agent's model for its whole in-flight
+                // life — the reconcile only patches `state` on rows it already
+                // tracks, so nothing re-seeds this one until a reload.
+                ggPreset: capabilitySet.preset ?? null,
                 runId: ack.jobId,
                 state: "queued",
               });

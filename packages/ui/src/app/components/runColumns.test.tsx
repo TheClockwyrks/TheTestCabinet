@@ -59,4 +59,30 @@ describe("run column in-progress cells", () => {
     );
     expect(container.textContent).toBe("—");
   });
+
+  it("shows the model for an in-progress third-party-harness run", () => {
+    const { container } = render(
+      column("model").renderActive(activeRun, ctx()),
+    );
+    expect(container.textContent).toBe("claude-opus-4-8");
+  });
+
+  it("shows the configuration for an in-progress gg run", () => {
+    // A gg run binds a model per agent, so its configuration — not the
+    // representative primary-slot model — is what names the row.
+    const { container } = render(
+      column("model").renderActive(
+        { ...activeRun, harnessSlug: "gg", ggPreset: "planning-A" },
+        ctx(),
+      ),
+    );
+    expect(container.textContent).toBe("planning-A");
+  });
+
+  it("falls back to the model for a gg run with no configuration name", () => {
+    const { container } = render(
+      column("model").renderActive({ ...activeRun, harnessSlug: "gg" }, ctx()),
+    );
+    expect(container.textContent).toBe("claude-opus-4-8");
+  });
 });

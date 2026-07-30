@@ -77,6 +77,53 @@ describe("toRunSummary", () => {
     expect(summary.links).toEqual({ sourceRepo: null, playableBuild: null });
   });
 
+  it("carries a null gg configuration for a third-party-harness run", () => {
+    // A non-gg record has no capability set at all, so there is nothing to lift.
+    expect(toRunSummary(record(), []).subject.ggPreset).toBeNull();
+  });
+
+  it("lifts a gg run's configuration name off its capability set", () => {
+    const summary = toRunSummary(
+      record({
+        subject: {
+          testCaseSlug: "carom",
+          testCaseVersion: "1.0.0",
+          testType: "end-to-end",
+          variant: "base",
+          harnessSlug: "gg",
+          harnessVersion: "1",
+          orchestratorSlug: "one-shot",
+          modelId: "anthropic/claude",
+          ggCapabilitySet: { preset: "planning-A", agents: [] },
+        },
+      } as unknown as Partial<RunRecord>),
+      [],
+    );
+    expect(summary.subject.ggPreset).toBe("planning-A");
+  });
+
+  it("carries a null gg configuration for a hand-assembled gg set", () => {
+    // No `preset` means the set was assembled by hand; the run log falls back to
+    // the model rather than showing an empty cell.
+    const summary = toRunSummary(
+      record({
+        subject: {
+          testCaseSlug: "carom",
+          testCaseVersion: "1.0.0",
+          testType: "end-to-end",
+          variant: "base",
+          harnessSlug: "gg",
+          harnessVersion: "1",
+          orchestratorSlug: "one-shot",
+          modelId: "anthropic/claude",
+          ggCapabilitySet: { agents: [] },
+        },
+      } as unknown as Partial<RunRecord>),
+      [],
+    );
+    expect(summary.subject.ggPreset).toBeNull();
+  });
+
   it("carries null performance for a non-performance run", () => {
     expect(toRunSummary(record(), []).performance).toBeNull();
   });

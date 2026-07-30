@@ -118,6 +118,14 @@ export function useRunTable({
 // to the default `date`/`desc` query for it: the header still highlights, and the
 // data simply comes back date-ordered. Note the two id differences from the sort
 // tokens: the TIMESTAMP column maps to `date` and the DURATION column to `runtime`.
+//
+// The MODEL / CONFIG column keeps the server's `model` key even though a gg row
+// displays its configuration: the backend orders by the lifted `run.model_id`
+// column, so on an `externalOrder` page a gg run is positioned by its
+// representative model while showing its configuration name. Ordering by the
+// configuration server-side would need a new lifted column on the `run` table; the
+// locally sorted logs (which use the column's own `sortKey`) already order by what
+// they show.
 const COLUMN_SORT_KEYS: Readonly<Record<string, RunSort>> = {
   test: "testCase",
   category: "testType",

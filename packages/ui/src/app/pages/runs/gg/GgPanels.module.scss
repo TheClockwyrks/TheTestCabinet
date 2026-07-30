@@ -2076,6 +2076,20 @@ $fsm-hue: #2dd4bf;
   gap: t.$space-xs;
 }
 
+// The one place the tree's horizontal geometry is written down. `fsIndent` in
+// `ggFsTree.ts` gives a row at depth `d` a left padding of `$fs-indent-base + d *
+// $fs-indent-step`, and the caret slot that padding lands on is `$fs-caret-size` wide —
+// so those three numbers between them fix where every caret, icon, name and guideline
+// sits. They are shared by the caret, the caret-width spacer on file rows, and the
+// guideline's `left` below; keep them in step with `fsIndent`, which is the copy of the
+// first two that React actually applies.
+$fs-indent-base: 0.5rem;
+$fs-indent-step: 0.85rem;
+$fs-caret-size: 0.9rem;
+// The chevron drawn inside that slot. Smaller than the slot it is centred in, so the
+// caret reads as a light mark next to the row's icon rather than competing with it.
+$fs-caret-glyph: 0.75rem;
+
 // The tree: nested lists, each level indented by inline padding on the row (so the
 // whole clickable row — not just its text — carries the indent).
 .fsTree,
@@ -2111,11 +2125,18 @@ $fsm-hue: #2dd4bf;
   position: absolute;
   top: 0;
   bottom: 0;
-  // The centre of the owning folder's caret: that row's indent (`fsIndent`) plus half the
-  // caret's width, with `--gg-guide-depth` (set per list by `fsGuide`) naming the folder's
-  // own depth. The rows inside step one level further in, so they clear the rule rather
-  // than sitting on it.
-  left: calc(0.5rem + var(--gg-guide-depth, 0) * 0.85rem + 0.45rem);
+  // The centre line of the owning folder's caret slot, written out as the arithmetic it
+  // is: the folder row's own left padding (`fsIndent`: base + its depth × step, with
+  // `--gg-guide-depth` set per list by `fsGuide`) puts the slot's left edge there, and
+  // half the slot's width steps in to its centre. At depth 0 that is 0.5 + 0.45 = 0.95rem;
+  // at depth 2, 0.5 + 1.7 + 0.45 = 2.65rem. The caret is an SVG that fills the slot and,
+  // rotated open, points straight down its centre line, so the rule descends from the tip
+  // of the arrow rather than beside it. Rows inside step a further 0.85rem in, well clear
+  // of the rule rather than sitting on it.
+  left: calc(
+    #{$fs-indent-base} + var(--gg-guide-depth, 0) * #{$fs-indent-step} +
+      #{$fs-caret-size} / 2
+  );
   width: 1px;
   background: var(--gg-guide-muted);
   pointer-events: none;
@@ -2191,17 +2212,42 @@ $fsm-hue: #2dd4bf;
   }
 }
 
-// A file row (as opposed to a folder toggle) leaves room where a folder's caret
-// would sit, so files line up under their folder's name.
-.fsFile {
-  padding-left: t.$space-xs;
+// A file row (as opposed to a folder toggle) has nothing to disclose, so it holds the
+// caret's slot open with an empty flex item of exactly the caret's width. A row's indent
+// is an inline style (see `fsIndent`), which would beat any `padding-left` written here,
+// so the room has to be made *inside* the row — and making it a pseudo-element rather
+// than a `<span>` at every file call site means a new file row cannot forget it and drift
+// half a caret out of line with its folder siblings.
+.fsFile::before {
+  content: "";
+  flex: 0 0 auto;
+  width: $fs-caret-size;
 }
 
+// The caret slot: a fixed-width box the chevron is centred in, so the mark's position is
+// the slot's geometry rather than whatever a glyph's font metrics happened to give it.
+// That is what lets `.fsChildren::before` above hang the indent guideline off the slot's
+// centre and have it land on the arrow.
 .fsCaret {
   flex: 0 0 auto;
-  width: 0.9rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: $fs-caret-size;
+  height: $fs-caret-size;
   color: t.$color-text-muted;
-  font-size: 0.7rem;
+}
+
+.fsCaret svg {
+  width: $fs-caret-glyph;
+  height: $fs-caret-glyph;
+  transition: transform 120ms ease;
+}
+
+// Open: the chevron turns from pointing at the folder to pointing down into it — and
+// down the guideline that drops through its contents.
+.fsCaretOpen {
+  transform: rotate(90deg);
 }
 
 // The leading icon on a tree row — a folder for a grouping row, a line-art mark for a
@@ -2596,9 +2642,18 @@ details[open] > summary .reqCaret {
   }
 }
 
-// The fixed sheet behind the fullscreen message: a dimmed backdrop that fills the
-// viewport and centers the panel. Portalled to `document.body`, so it escapes any
-// panel overflow/stacking. A click here (outside the panel) dismisses.
+// The fixed sheet behind the fullscreen message: a scrim that fills the viewport
+// and centers the panel. Portalled to `document.body`, so it escapes any panel
+// overflow/stacking. A click here (outside the panel) dismisses.
+//
+// The scrim is translucent and blurred rather than opaque so the overlay reads as
+// something layered over the run monitor rather than as a separate screen — you
+// can still see where you were, just softened past the point of competing for
+// attention. The tint is the theme's own background at the same 70% the
+// notifications sidebar's scrim uses (see NotificationsSidebar.module.scss), so
+// the two scrims match and the color follows the palette: it darkens under a dark
+// theme and washes out under a light one, which a hard-coded `rgba(0, 0, 0, …)`
+// could not do.
 .overlayBackdrop {
   position: fixed;
   inset: 0;
@@ -2607,9 +2662,31 @@ details[open] > summary .reqCaret {
   align-items: center;
   justify-content: center;
   padding: t.$space-lg;
-  background: color-mix(in srgb, t.$color-bg 82%, #000);
+  background: color-mix(in srgb, t.$color-bg 70%, transparent);
+  backdrop-filter: blur(0.75rem);
+  -webkit-backdrop-filter: blur(0.75rem);
 }
 
+// Without the blur the scrim alone is doing all of the separation, and at 70% the
+// run monitor still reads through at enough contrast to fight the prompt body —
+// so where `backdrop-filter` is unavailable the scrim goes back to the opaque dim
+// this overlay shipped with.
+@supports not (
+  (backdrop-filter: blur(0.75rem)) or (-webkit-backdrop-filter: blur(0.75rem))
+) {
+  .overlayBackdrop {
+    background: color-mix(in srgb, t.$color-bg 82%, #000);
+  }
+}
+
+// The panel keeps the shared translucent surface (88% — every card in the console
+// uses it) and its reading area below stays at 92%, which over the scrim leaves
+// the text sitting on an effectively opaque backing. That is the deliberate
+// trade-off: a whole system prompt gets read through this thing, so the layered
+// read is bought with the blurred scrim and the panel's edges, never by making
+// long-form prose fight the run monitor showing through behind it. The drop
+// shadow (the popovers' — see RunContextMenu.module.scss) does the rest of the
+// lifting off the page.
 .overlayPanel {
   display: flex;
   flex-direction: column;
@@ -2618,6 +2695,7 @@ details[open] > summary .reqCaret {
   border-radius: t.$radius-lg;
   border: t.$border-hairline solid t.$color-border;
   background: s.$panel-bg;
+  box-shadow: 0 0.5rem 1.5rem color-mix(in srgb, #000 55%, transparent);
   overflow: hidden;
 }
 
@@ -2662,13 +2740,34 @@ details[open] > summary .reqCaret {
   flex: 1;
   min-height: 0;
   padding: t.$space-md;
-  background: t.$color-bg;
+  background: color-mix(in srgb, t.$color-bg 92%, transparent);
   font-family: monospace;
   font-size: t.$font-sm;
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
   overflow: auto;
+}
+
+// A reader who has asked for reduced transparency gets the same opaque treatment,
+// panel included: nothing shows through, and the layering is carried by the
+// panel's border and shadow alone. It has to sit *below* the three rules it
+// overrides — a media query adds no specificity, so between single-class selectors
+// of equal weight the later declaration is the one that wins.
+@media (prefers-reduced-transparency: reduce) {
+  .overlayBackdrop {
+    background: color-mix(in srgb, t.$color-bg 82%, #000);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .overlayPanel {
+    background: t.$color-surface;
+  }
+
+  .overlayContent {
+    background: t.$color-bg;
+  }
 }
 
 .reqToolCalls {
@@ -2805,6 +2904,24 @@ details[open] > summary .reqCaret {
 // --- Tools panel (an agent's per-tool usage) ---------------------------------
 // On an agent's Overview: every tool it called, most used first, with call counts and
 // each tool's result tokens as a share of all tokens that entered its window.
+
+// The caption row: the panel's label with the agent's call rate at its trailing edge. The
+// rate is a fact about the agent rather than about any one tool, so it reads on the header
+// line and leaves the list below it purely per-tool.
+.toolsHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
+.toolsRate {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 
 .toolList {
   list-style: none;

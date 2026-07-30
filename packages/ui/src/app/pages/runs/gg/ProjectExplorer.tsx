@@ -17,7 +17,13 @@ import {
 } from "./IssueViews";
 import { useGgExplorerNav } from "./GgExplorerNav";
 import { cx, fsGuide, fsIndent } from "./ggFsTree";
-import { EpicIcon, FolderIcon, FolderOpenIcon, IssueIcon } from "./ggIcons";
+import {
+  ChevronIcon,
+  EpicIcon,
+  FolderIcon,
+  FolderOpenIcon,
+  IssueIcon,
+} from "./ggIcons";
 import panels from "./GgPanels.module.scss";
 
 // The Project explorer: gg's run-global epic/issue board, read like a filesystem.
@@ -270,7 +276,7 @@ function EpicFolder({
         onClick={() => toggle(folderKey, true)}
       >
         <span className={panels.fsCaret} aria-hidden="true">
-          {open ? "▾" : "▸"}
+          <ChevronIcon className={open ? panels.fsCaretOpen : undefined} />
         </span>
         {open ? (
           <FolderOpenIcon className={panels.fsIcon} />
@@ -359,7 +365,7 @@ function IssueFolder({
         onClick={() => toggle(folderKey, false)}
       >
         <span className={panels.fsCaret} aria-hidden="true">
-          {open ? "▾" : "▸"}
+          <ChevronIcon className={open ? panels.fsCaretOpen : undefined} />
         </span>
         {open ? (
           <FolderOpenIcon className={panels.fsIcon} />

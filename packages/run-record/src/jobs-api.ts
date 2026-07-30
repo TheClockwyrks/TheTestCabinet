@@ -233,6 +233,16 @@ export type JobSummary = {
    * The opaque model id passed to the harness.
    */
   modelId: string;
+  /**
+   * The name of the gg [configuration](crate::gg::GgCapabilitySet::preset) the job
+   * was launched from, lifted out of its stored capability set. A gg run has no
+   * single harness model — [`model_id`](Self::model_id) is only its representative
+   * primary-slot binding — so the active-run list identifies a gg row by its
+   * configuration instead. `None` for every third-party-harness job (which carries
+   * no capability set) and for a gg job assembled by hand rather than from a named
+   * configuration.
+   */
+  ggPreset?: string;
 };
 
 /**
@@ -269,6 +279,16 @@ export type ActiveJobOut = {
    * The opaque model id passed to the harness.
    */
   modelId: string;
+  /**
+   * The name of the gg [configuration](crate::gg::GgCapabilitySet::preset) the job
+   * was launched from, lifted out of its stored capability set. A gg run has no
+   * single harness model — [`model_id`](Self::model_id) is only its representative
+   * primary-slot binding — so the active-run list identifies a gg row by its
+   * configuration instead. `None` for every third-party-harness job (which carries
+   * no capability set) and for a gg job assembled by hand rather than from a named
+   * configuration.
+   */
+  ggPreset?: string;
 };
 
 /**
@@ -418,6 +438,16 @@ export type Notification = {
    * The opaque model id passed to the harness.
    */
   modelId: string;
+  /**
+   * The name of the gg [configuration](crate::gg::GgCapabilitySet::preset) the job
+   * was launched from, lifted out of its stored capability set. A gg run has no
+   * single harness model — [`model_id`](Self::model_id) is only its representative
+   * primary-slot binding — so the active-run list identifies a gg row by its
+   * configuration instead. `None` for every third-party-harness job (which carries
+   * no capability set) and for a gg job assembled by hand rather than from a named
+   * configuration.
+   */
+  ggPreset?: string;
 };
 
 /**

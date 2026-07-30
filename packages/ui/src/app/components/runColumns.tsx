@@ -11,6 +11,7 @@ import {
   RATINGS,
   worstRating,
 } from "../data/ratings";
+import { isGgRun } from "../data/runLinks";
 import { describeRunState } from "../data/runState";
 import { useFindReview } from "../data/writeups";
 import { useFindModel } from "../data/useModels";
@@ -48,11 +49,11 @@ function asGrade(status: string | null | undefined): GradeStatus | null {
 }
 
 /**
- * A finished run resolved for the table: the summary card plus the two values a
- * cell (and a sort) needs that don't live on the card — the case's display name
- * and the run's reviewer rating. Resolved once per row (see {@link
- * useEnrichedRuns}) so sorting and rendering share the work instead of each cell
- * re-deriving it.
+ * A finished run resolved for the table: the summary card plus the values a cell
+ * (and a sort) needs that aren't ready to render off the card — the case's display
+ * name, the run's reviewer rating, and the resolved model/configuration identity.
+ * Resolved once per row (see {@link useEnrichedRuns}) so sorting and rendering
+ * share the work instead of each cell re-deriving it.
  */
 export interface EnrichedRun {
   summary: RunSummary;
@@ -62,6 +63,11 @@ export interface EnrichedRun {
    * both read it; falls back to the canonical model id when the catalog doesn't
    * know the model. */
   modelName: string;
+  /** The gg configuration this run was launched from, resolved once so the cell
+   * and its sort both read it. Null for every non-gg run — and for a gg run that
+   * records no configuration name (one assembled by hand, or produced before the
+   * name was carried on the card) — which shows its model instead. */
+  configName: string | null;
   rating: Rating | null;
   /** A game-jam run's whole-game overall grade, shown as its badge in place of a
    * domain rating (a jam has none). Null for every non-jam run. */
@@ -145,6 +151,22 @@ function activeDash(label: string, numeric: boolean): ReactNode {
       data-label={label}
     >
       &mdash;
+    </span>
+  );
+}
+
+// The MODEL / CONFIG cell, shared by the finished and in-progress renderers so
+// both resolve the fallback identically. `configName` wins when a gg run records
+// one; otherwise the model stands in. The `data-label` follows the value it labels
+// because the phone card renders it as the line's own caption — labelling a
+// configuration "Model" there would be a plain lie.
+function modelCell(configName: string | null, modelName: string): ReactNode {
+  return (
+    <span
+      className={styles.model}
+      data-label={configName == null ? "Model" : "Config"}
+    >
+      {configName ?? modelName}
     </span>
   );
 }
@@ -287,23 +309,32 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
       </span>
     ),
   },
+  // What identifies a run at a glance differs by harness, so this one cell carries
+  // both — hence the two-part header, and the per-row `data-label` that names which
+  // of the two the phone card is actually showing. A third-party-harness run is its
+  // model. A gg run has no single harness model to name: it binds a model per agent,
+  // and the `modelId` on its card is only a representative primary-slot value (see
+  // `RunSubject::model_id` in crates/core/src/run_record.rs), so what actually
+  // distinguishes one gg run from another is the configuration it was launched from.
+  // A gg run that records no configuration name — assembled by hand, or produced
+  // before the name was carried on the summary card — falls back to its model rather
+  // than showing an empty cell.
   {
     id: "model",
-    label: "MODEL",
+    label: "MODEL / CONFIG",
     default: "1.6fr",
+    // Unchanged by the wider header: the drag floor is already raised to the
+    // measured width of the header's own label (see `useResizableColumns`), so
+    // "MODEL / CONFIG" cannot be dragged down to a stub whatever this says.
     min: 96,
     optional: true,
-    sortKey: (row) => row.modelName.toLowerCase(),
-    render: (row) => (
-      <span className={styles.model} data-label="Model">
-        {row.modelName}
-      </span>
-    ),
-    renderActive: (run, ctx) => (
-      <span className={styles.model} data-label="Model">
-        {ctx.modelName(run.modelId, run.harnessSlug)}
-      </span>
-    ),
+    sortKey: (row) => (row.configName ?? row.modelName).toLowerCase(),
+    render: (row) => modelCell(row.configName, row.modelName),
+    renderActive: (run, ctx) =>
+      modelCell(
+        isGgRun(run.harnessSlug) ? (run.ggPreset ?? null) : null,
+        ctx.modelName(run.modelId, run.harnessSlug),
+      ),
   },
   {
     id: "timestamp",
@@ -468,10 +499,11 @@ export function sortRuns(
 }
 
 /**
- * Resolve each run's display name and rating once, up front — the two values a
- * cell or a sort needs that aren't already resolved on the card. A hook because
- * it reads the catalog (for names) and the active review source (for ratings);
- * call it at the top of a page, then sort/page/render the result freely.
+ * Resolve each run's display name, rating, and model/configuration identity once,
+ * up front — the values a cell or a sort needs that aren't ready to render off the
+ * card. A hook because it reads the catalog (for names) and the active review
+ * source (for ratings); call it at the top of a page, then sort/page/render the
+ * result freely.
  *
  * A local, unpublished writeup still wins the rating (an in-progress edit must
  * show before it is published); absent one, the summary's own aggregate rating
@@ -494,10 +526,13 @@ export function useEnrichedRuns(
           local: localIds.has(summary.id),
           displayName: testCaseName(summary.subject.testCaseSlug),
           modelName:
-            findModel(
-              summary.subject.modelId,
-              summary.subject.harnessSlug,
-            )?.name ?? canonicalModelId(summary.subject.modelId),
+            findModel(summary.subject.modelId, summary.subject.harnessSlug)
+              ?.name ?? canonicalModelId(summary.subject.modelId),
+          // Guarded on the harness rather than on the field alone, so a non-gg run
+          // that somehow carried a preset could never displace its model.
+          configName: isGgRun(summary.subject.harnessSlug)
+            ? (summary.subject.ggPreset ?? null)
+            : null,
           rating:
             worstRating(review?.ratings.map((r) => r.rating) ?? []) ??
             summary.rating,

@@ -254,8 +254,10 @@ describe("NewRunPage", () => {
 
     // gg has no batch endpoint, so it never travels through `launchBatch` and has
     // to register the enqueued run itself. Its identity is the launched one — the
-    // `gg` harness and the model bound to the root agent — so the row reads the
-    // same before and after a reload re-seeds the list from the backend.
+    // `gg` harness, the configuration it was launched from (what the runs list
+    // shows a gg row by, in place of the model), and the model bound to the root
+    // agent — so the row reads the same before and after a reload re-seeds the list
+    // from the backend.
     await waitFor(() => expect(track).toHaveBeenCalledTimes(1));
     expect(track.mock.calls[0]![0]).toEqual({
       runId: "job-3",
@@ -264,6 +266,7 @@ describe("NewRunPage", () => {
       variant: "base",
       harnessSlug: "gg",
       modelId: "openai/gpt-5.6-sol",
+      ggPreset: "minimal",
       state: "queued",
     });
   });

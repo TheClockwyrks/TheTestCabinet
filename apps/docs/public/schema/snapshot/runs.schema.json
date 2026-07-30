@@ -155,6 +155,10 @@
     "SubjectOut": {
       "description": "The run subject as a summary card carries it (the slug enum, not a string).",
       "properties": {
+        "ggPreset": {
+          "description": "The name of the gg **configuration** this run was launched from — the\n[`preset`](test_cabinet_core::gg::GgCapabilitySet::preset) recorded on the run's\ncapability set. Lifted onto the card because a gg run has no single harness\nmodel to identify it by ([`model_id`](Self::model_id) is only its\nrepresentative primary-slot model, one of several per-agent bindings), so the\nrun log shows the configuration in that cell instead. `None` for every\nthird-party-harness run (which carries no capability set) and for a gg run\nassembled by hand rather than from a named configuration.",
+          "type": ["string", "null"]
+        },
         "harnessSlug": {
           "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/HarnessSlug"
         },

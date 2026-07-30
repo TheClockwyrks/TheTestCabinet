@@ -5,9 +5,11 @@ import type {
 } from "@test-cabinet/run-record/gg";
 import type { HarnessEvent } from "../../../../client/types";
 import {
+  callRatePhrase,
   ggPeakContext,
   ggToolBreakdown,
   reduceGgEvents,
+  toolCallsPerResponse,
 } from "./useGgRunState";
 
 const TS = "2026-07-26T00:00:00Z";
@@ -121,6 +123,62 @@ describe("ggToolBreakdown", () => {
     expect(breakdown.tools).toEqual([
       { name: "write_file", calls: 2, outputTokens: 0 },
     ]);
+  });
+});
+
+describe("toolCallsPerResponse", () => {
+  // Both halves come off the same partition of the stream: `tool_call` events for the
+  // numerator, `turn_started` for the denominator.
+  const rate = (turns: number, calls: number) => {
+    const state = reduceGgEvents([
+      gg({ type: "session_started" } as GgTelemetryKind),
+      ...Array.from({ length: turns }, () =>
+        gg({ type: "turn_started" } as GgTelemetryKind),
+      ),
+      ...Array.from({ length: calls }, () =>
+        gg({
+          type: "tool_call",
+          name: "read_file",
+          args: {},
+        } as GgTelemetryKind),
+      ),
+    ]);
+    return toolCallsPerResponse(ggToolBreakdown(state), state.turnCount);
+  };
+
+  it("divides an agent's calls by the responses it made them in", () => {
+    expect(rate(4, 6)).toBe(1.5);
+  });
+
+  it("is null rather than NaN when the agent has not taken a turn", () => {
+    // A stream that recorded a call before its first `turn_started` — or a declared agent
+    // that never ran at all — has no denominator, and a rate of nothing is not zero.
+    expect(rate(0, 3)).toBeNull();
+    expect(rate(0, 0)).toBeNull();
+  });
+
+  it("does not clamp a single turn that made many calls", () => {
+    // The responses-as-code shape: one turn whose program bridges dozens of calls. That is
+    // forty calls a response, and reporting it as anything lower would hide the mode's
+    // whole point.
+    expect(rate(1, 40)).toBe(40);
+  });
+});
+
+describe("callRatePhrase", () => {
+  it("agrees its nouns with their counts", () => {
+    // The single-call, single-turn reviewer instance is the common case in a
+    // delegating configuration, and it is the one that reads as broken English if
+    // the nouns are hard-coded plural.
+    expect(callRatePhrase(1, 1)).toBe("1 call across 1 response");
+    expect(callRatePhrase(2, 1)).toBe("2 calls across 1 response");
+    expect(callRatePhrase(1, 2)).toBe("1 call across 2 responses");
+  });
+
+  it("groups thousands, so a busy instance matches the figures beside it", () => {
+    expect(callRatePhrase(1234, 5678)).toBe(
+      "1,234 calls across 5,678 responses",
+    );
   });
 });
 

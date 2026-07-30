@@ -13,9 +13,19 @@ import { RunLog, sortStateToQuery, useRunTable } from "./RunLog";
 function summary(
   id: string,
   slug: string,
-  opts: { tokens?: number; model?: string } = {},
+  opts: {
+    tokens?: number;
+    model?: string;
+    harness?: string;
+    ggPreset?: string | null;
+  } = {},
 ): RunSummary {
-  const { tokens = 100, model = "anthropic/claude" } = opts;
+  const {
+    tokens = 100,
+    model = "anthropic/claude",
+    harness = "claude",
+    ggPreset = null,
+  } = opts;
   return {
     id,
     startedAt: "2026-01-01T00:00:00Z",
@@ -25,9 +35,10 @@ function summary(
       testCaseVersion: "1.0.0",
       testType: "end-to-end",
       variant: "base",
-      harnessSlug: "claude",
+      harnessSlug: harness,
       harnessVersion: "1",
       modelId: model,
+      ggPreset,
     },
     metrics: {
       runTimeSeconds: 60,
@@ -332,7 +343,7 @@ describe("RunLog", () => {
       "TEST",
       "HARNESS",
       "VARIANT",
-      "MODEL",
+      "MODEL / CONFIG",
       "TOKENS",
       "COST",
     ]) {
@@ -344,6 +355,75 @@ describe("RunLog", () => {
     // A hidden column can still be re-shown, which unlocks the survivor again.
     fireEvent.click(screen.getByRole("checkbox", { name: "COST" }));
     expect(screen.getByRole("checkbox", { name: "RATING" })).not.toBeDisabled();
+  });
+});
+
+// The MODEL / CONFIG cell carries whichever identity actually distinguishes a run:
+// a third-party-harness run is its model, a gg run is the configuration it was
+// launched from (its models are per-agent bindings, so no single harness model
+// names it). One listing routinely holds both kinds of row.
+describe("RunLog model/config cell", () => {
+  beforeEach(() => localStorage.clear());
+
+  function renderRuns(runs: RunSummary[]) {
+    function MixedHarness() {
+      const table = useRunTable({
+        runs,
+        localIds: new Set(),
+        localWriteups: {},
+        externalOrder: true,
+      });
+      return <RunLog rows={table.rows} controls={table.controls} />;
+    }
+    return render(
+      <MemoryRouter>
+        <GalleryDataProvider value={galleryValue()}>
+          <MixedHarness />
+        </GalleryDataProvider>
+      </MemoryRouter>,
+    );
+  }
+
+  // The rendered MODEL / CONFIG cells, in DOM order, as `<label>:<value>` — the
+  // label is the caption the phone card shows, and it must name whichever of the
+  // two identities the cell actually carries.
+  function modelCells(container: HTMLElement): string[] {
+    return [
+      ...container.querySelectorAll(
+        '[data-label="Model"],[data-label="Config"]',
+      ),
+    ].map((cell) => `${cell.getAttribute("data-label")}:${cell.textContent}`);
+  }
+
+  it("shows the configuration for a gg row and the model for every other row", () => {
+    const { container } = renderRuns([
+      summary("r-gg", "alpha", {
+        harness: "gg",
+        model: "sonnet-9",
+        ggPreset: "planning-A",
+      }),
+      summary("r-claude", "beta", { model: "opus-5" }),
+    ]);
+    expect(modelCells(container)).toEqual([
+      "Config:planning-A",
+      "Model:opus-5",
+    ]);
+  });
+
+  it("falls back to the model for a gg row with no recorded configuration", () => {
+    // A hand-assembled set (or a run produced before the card carried the name)
+    // has no configuration to show; the cell must not go blank.
+    const { container } = renderRuns([
+      summary("r-gg", "alpha", { harness: "gg", model: "sonnet-9" }),
+    ]);
+    expect(modelCells(container)).toEqual(["Model:sonnet-9"]);
+  });
+
+  it("labels the column for both identities", () => {
+    renderRuns(RUNS);
+    expect(
+      screen.getByRole("button", { name: "Sort by MODEL / CONFIG" }),
+    ).toBeInTheDocument();
   });
 });
 

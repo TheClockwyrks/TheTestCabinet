@@ -231,6 +231,40 @@ fn run_summary_from_stored_maps_fields_without_a_catalog() {
 }
 
 #[test]
+fn run_summary_lifts_the_gg_configuration_name_onto_the_card() {
+    use test_cabinet_core::gg::GgCapabilitySet;
+
+    // A third-party-harness run has no capability set at all, so its card names no
+    // configuration and the run log falls back to showing its model.
+    let plain = stored_run("r1", "2026-06-17T21:40:00Z");
+    assert_eq!(RunSummary::from_stored(&plain).subject.gg_preset, None);
+
+    // A gg run launched from a named configuration: the name rides on the card so
+    // the run log can identify the row without loading the whole record (a gg run
+    // has no single harness model to name it by).
+    let mut named = stored_run("r2", "2026-06-17T21:41:00Z");
+    named.record.subject.harness_slug = HarnessSlug::Gg;
+    named.record.subject.gg_capability_set = Some(GgCapabilitySet {
+        preset: Some("planning-A".to_string()),
+        ..GgCapabilitySet::default()
+    });
+    assert_eq!(
+        RunSummary::from_stored(&named).subject.gg_preset.as_deref(),
+        Some("planning-A")
+    );
+
+    // A gg run assembled by hand records no preset; the card carries none rather
+    // than inventing one, and the run log falls back to the model.
+    let mut hand_assembled = stored_run("r3", "2026-06-17T21:42:00Z");
+    hand_assembled.record.subject.harness_slug = HarnessSlug::Gg;
+    hand_assembled.record.subject.gg_capability_set = Some(GgCapabilitySet::default());
+    assert_eq!(
+        RunSummary::from_stored(&hand_assembled).subject.gg_preset,
+        None
+    );
+}
+
+#[test]
 fn run_summary_lifts_performance_fuel_for_the_leaderboard() {
     use test_cabinet_core::validation::PerformanceResult;
 

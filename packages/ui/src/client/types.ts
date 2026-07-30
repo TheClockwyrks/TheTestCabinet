@@ -26,7 +26,13 @@ import type {
   VerdictStatus,
 } from "../ratings";
 
-export type { DomainRating, Rating, ReviewRevision, ReviewVerdict, VerdictStatus };
+export type {
+  DomainRating,
+  Rating,
+  ReviewRevision,
+  ReviewVerdict,
+  VerdictStatus,
+};
 export type { HarnessFamily, MediaKind, TestType };
 // The normalized harness event shape is generated from the Rust `HarnessEvent`
 // contract (crates/core/src/event.rs) — the live monitor and the published
@@ -742,6 +748,12 @@ export interface InProgressRun {
   variant: string;
   harnessSlug: string;
   modelId: string;
+  // The gg configuration the run was launched from, off the job's stored capability
+  // set. A gg run has no single harness model — `modelId` is only its representative
+  // primary-slot binding — so the run log names a live gg row by its configuration
+  // instead. Absent for every third-party-harness run, and for a gg run assembled by
+  // hand rather than from a named configuration.
+  ggPreset?: string | null;
   // The run's live phase, mapped from the backend's fine-grained job state: still
   // waiting for a dispatcher slot ("queued"), deliberately held back because its
   // harness is at its parallelism cap ("pending"), spinning up the driver +

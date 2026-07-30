@@ -1,8 +1,11 @@
 @use "../styles/tokens" as t;
 @use "../styles/halo" as h;
 
-// Sits under the live monitor's header, aligned to the trailing edge so the kill
-// affordance reads as the run-level negative action without crowding the feed.
+// Aligned to the trailing edge of whatever row hosts it, so the kill affordance reads
+// as the run-level negative action without crowding what it sits beside. The bottom
+// margin is for its original host — the conventional monitor, where it hangs under the
+// page header above the feed; a host that packs it into a row of its own (gg's Status
+// card) zeroes that margin out rather than inheriting spacing meant for another layout.
 .killControl {
   display: flex;
   align-items: center;

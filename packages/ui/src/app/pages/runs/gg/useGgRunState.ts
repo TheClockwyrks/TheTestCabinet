@@ -977,6 +977,45 @@ export function ggToolBreakdown(state: DerivedGgState): GgToolBreakdown {
   };
 }
 
+// How much work an agent got out of each assistant response: its tool calls divided by
+// its responses. It reads as an efficiency proxy — a model that answers a request with
+// four calls is doing four things per round trip, where one that answers with a fifth of
+// a call is mostly talking — and both halves come from events gg emits whatever the run's
+// capabilities are, so it is never silently absent.
+//
+// The denominator is `turnCount`, one per `turn_started`, which gg emits once per model
+// request/response cycle in both execution modes. That is emitted *before* the call, so a
+// turn that errored before answering still counts as a response — the same convention
+// every other turn-keyed figure in this UI uses, and worth keeping consistent rather than
+// special-casing.
+//
+// It is deliberately a ratio of sums and not a mean of per-agent (or per-turn) ratios:
+// averaging ratios weights a one-response instance exactly as heavily as a hundred-response
+// one, so twelve reviewers that each made one call in one turn would drown out the
+// implementer that made four hundred calls over a hundred turns. Dividing the totals asks
+// the question actually being asked — across all this work, how many calls per response —
+// and it is the same reason a profile's generation rate sums its halves (see `ggThroughput`).
+//
+// Null when there were no responses, so a read-out shows nothing rather than a NaN.
+export function toolCallsPerResponse(
+  breakdown: GgToolBreakdown,
+  responses: number,
+): number | null {
+  return responses > 0 ? breakdown.totalCalls / responses : null;
+}
+
+// The rate's own two numbers, spelled out for the hover text that explains it — "412
+// calls across 96 responses", and "1 call across 1 response" for the short-lived
+// reviewer instance that is the common case in a delegating configuration. Shared by
+// the Agents panel and the agent explorer so the two read identically, and grouped so
+// a busy instance says "1,234 calls" rather than "1234 calls".
+const callCountFmt = new Intl.NumberFormat("en-US");
+export function callRatePhrase(totalCalls: number, responses: number): string {
+  const calls = `${callCountFmt.format(totalCalls)} call${totalCalls === 1 ? "" : "s"}`;
+  const turns = `${callCountFmt.format(responses)} response${responses === 1 ? "" : "s"}`;
+  return `${calls} across ${turns}`;
+}
+
 // The high-water mark of an agent's context window over the run — as a fullness
 // fraction when the window is known, and always as a raw token total. This is the
 // "maximum context usage" the Dashboard's agent overview reports, distinct from the

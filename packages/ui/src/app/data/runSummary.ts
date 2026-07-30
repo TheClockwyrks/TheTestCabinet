@@ -29,6 +29,13 @@ export function toRunSummary(
       harnessSlug: record.subject.harnessSlug,
       harnessVersion: record.subject.harnessVersion,
       modelId: record.subject.modelId,
+      // The gg configuration the run was launched from, lifted off its capability
+      // set exactly as the Rust `SubjectOut::from` does — a gg row in the run log
+      // is identified by its configuration, not by the one representative model
+      // `modelId` carries. Null for every third-party-harness run (no capability
+      // set) and for a gg run assembled by hand rather than from a named
+      // configuration.
+      ggPreset: record.subject.ggCapabilitySet?.preset ?? null,
     },
     // The display name is resolved from the catalog elsewhere in the UI; fall back
     // to the slug so a summary is self-describing without a catalog lookup.

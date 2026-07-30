@@ -1174,6 +1174,7 @@ describe("GgRunMonitorPage", () => {
           reasoning: null,
         },
       }),
+      ggFrom("agent-0", "root", { type: "turn_started" }),
       ggFrom("agent-0", "root", { type: "tool_call", name: "grep", args: {} }),
     ];
     renderMonitor(events);
@@ -1189,6 +1190,8 @@ describe("GgRunMonitorPage", () => {
     expect(screen.getByRole("radio", { name: "Instances" })).toBeChecked();
     expect(screen.getByText("Tools")).toBeInTheDocument();
     expect(screen.getByText("grep")).toBeInTheDocument();
+    // …alongside how much it got out of each response: one call in its one turn.
+    expect(screen.getByText("1.0 calls per response")).toBeInTheDocument();
 
     // Its Prompt file carries the brief its parent handed it and the rendered prompt.
     openFile("agent-0 prompt");
@@ -1283,6 +1286,14 @@ describe("GgRunMonitorPage", () => {
     // …and then it sums them: two instances, neither having reached a terminal state.
     expect(screen.getByText("2 running")).toBeInTheDocument();
     expect(screen.getByText("2.0 per instance")).toBeInTheDocument();
+
+    // And the efficiency read: two read_file calls across the four responses the two
+    // instances made between them, so half a call a response — the profile's calls over
+    // the profile's responses, not the mean of its instances' own rates. It shows twice,
+    // once on the comparison line the row still carries while open and once in the
+    // detail's stat grid.
+    expect(screen.getAllByText("0.5")).toHaveLength(2);
+    expect(screen.getByText("2 calls · 4 responses")).toBeInTheDocument();
 
     // And the part no other view has: the material that filled their windows, attributed to
     // the file it came from and charged for every turn it sat there.

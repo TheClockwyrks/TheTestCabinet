@@ -119,3 +119,49 @@ fn launch_models_of_a_third_party_harness_run_is_its_one_model() {
         vec![("claude-opus-4-8".to_string(), HarnessSlug::Claude)]
     );
 }
+
+// --- The active-run list's display identity ---------------------------------
+
+/// A queued job row carrying only the columns `job_summary` reads.
+fn queued_job(harness_slug: &str, gg_config_json: Option<&str>) -> job::Model {
+    job::Model {
+        id: "j1".to_string(),
+        state: "queued".to_string(),
+        request_json: "{}".to_string(),
+        test_case_slug: "pong".to_string(),
+        test_case_version: "v1.0.0".to_string(),
+        variant: "base".to_string(),
+        harness_slug: harness_slug.to_string(),
+        model_id: "claude-sonnet-4-5".to_string(),
+        gg_config_json: gg_config_json.map(str::to_string),
+        job_token: "t".to_string(),
+        record_id: None,
+        detail: None,
+        attempt: 0,
+        created_at: "2026-06-17T20:40:00Z".to_string(),
+        updated_at: "2026-06-17T20:40:00Z".to_string(),
+    }
+}
+
+#[test]
+fn job_summary_names_a_gg_jobs_configuration() {
+    // A third-party-harness job has no capability set, so the active-run list falls
+    // back to showing its model.
+    assert_eq!(job_summary(&queued_job("claude", None)).gg_preset, None);
+
+    // A gg job launched from a named configuration: the name comes straight off the
+    // stored capability set, so a live gg row is identified by its configuration
+    // before the run has produced a record.
+    let named = queued_job("gg", Some(r#"{"preset":"planning-A","agents":[]}"#));
+    assert_eq!(job_summary(&named).gg_preset.as_deref(), Some("planning-A"));
+
+    // A hand-assembled set records no preset — nothing to show, so the row keeps
+    // its model.
+    let hand_assembled = queued_job("gg", Some(r#"{"agents":[]}"#));
+    assert_eq!(job_summary(&hand_assembled).gg_preset, None);
+
+    // An unparseable set must not take the whole active-run listing down with it;
+    // the row degrades to its model instead.
+    let corrupt = queued_job("gg", Some("{not json"));
+    assert_eq!(job_summary(&corrupt).gg_preset, None);
+}

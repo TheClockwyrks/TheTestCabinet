@@ -9,7 +9,7 @@ import styles from "./GgAgentsSummary.module.scss";
 import { useGgAgentSummaries, type GgAgentSummary } from "./ggAgentAggregate";
 import type { GgAttributionRow } from "./ggContextAttribution";
 import type { AgentTreeNode, DerivedGgState } from "./useGgRunState";
-import { shortTokens } from "./useGgRunState";
+import { callRatePhrase, shortTokens } from "./useGgRunState";
 import {
   CostWidget,
   TokensWidget,
@@ -36,6 +36,19 @@ import { useGgExplorerNav } from "./GgExplorerNav";
 // so the basics are stated once rather than once in a table and again in a card below it.
 
 const numberFmt = new Intl.NumberFormat("en-US");
+
+// The call-rate figure is the one reading on this panel whose *meaning* is not obvious from
+// its label, so it explains itself on hover in both places it appears — the closed row's
+// comparison line and the open detail's stat grid — rather than only where there is room.
+function callRateTitle(agent: GgAgentSummary): string {
+  return (
+    "Tool and function calls per assistant response — " +
+    `${callRatePhrase(agent.tools.totalCalls, agent.turns)}, ` +
+    "summed over every instance of this agent. " +
+    "A proxy for efficiency: an agent that does more per round trip spends fewer responses, " +
+    "less latency, and less context reaching the same place."
+  );
+}
 
 /** How many rows a context breakdown shows before the rest fold behind a "show all". */
 const ATTRIBUTION_ROWS_SHOWN = 8;
@@ -227,6 +240,15 @@ function AgentRow({
                 : undefined
             }
           />
+          <Figure
+            label="calls/resp"
+            value={
+              agent.toolCallsPerResponse != null
+                ? agent.toolCallsPerResponse.toFixed(1)
+                : "—"
+            }
+            title={callRateTitle(agent)}
+          />
         </span>
       </button>
       {open && (
@@ -250,14 +272,17 @@ function Figure({
   value,
   sub,
   muted = false,
+  title,
 }: {
   label: string;
   value: string;
   sub?: string;
   muted?: boolean;
+  /** Hover text for a figure whose label cannot say what it measures on its own. */
+  title?: string;
 }) {
   return (
-    <span className={styles.figure}>
+    <span className={styles.figure} title={title}>
       <span className={muted ? styles.figureValueMuted : styles.figureValue}>
         {value}
       </span>
@@ -421,6 +446,19 @@ function AgentStats({ agent }: { agent: GgAgentSummary }) {
             : "window never reclaimed"
         }
       />
+      {/* The profile's calls over the profile's responses, not the mean of its instances'
+          own rates — see `GgAgentSummary.toolCallsPerResponse` for why. The sub says both
+          halves so the ratio can be checked against the numbers it came from. */}
+      <Stat
+        label="calls per response"
+        value={
+          agent.toolCallsPerResponse != null
+            ? agent.toolCallsPerResponse.toFixed(1)
+            : "—"
+        }
+        sub={`${numberFmt.format(agent.tools.totalCalls)} calls · ${numberFmt.format(agent.turns)} responses`}
+        title={callRateTitle(agent)}
+      />
     </div>
   );
 }
@@ -429,13 +467,16 @@ function Stat({
   label,
   value,
   sub,
+  title,
 }: {
   label: string;
   value: string;
   sub?: string;
+  /** Hover text for a stat whose label cannot say what it measures on its own. */
+  title?: string;
 }) {
   return (
-    <div className={dash.stat}>
+    <div className={dash.stat} title={title}>
       <span className={dash.statValue}>{value}</span>
       <span className={dash.statLabel}>{label}</span>
       {sub && <span className={dash.statSub}>{sub}</span>}
