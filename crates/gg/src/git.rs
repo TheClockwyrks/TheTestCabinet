@@ -25,9 +25,36 @@
 //! Every function returns a [`GitError`] rather than panicking, and a **missing `git` binary** is
 //! reported as [`GitError::NotFound`] with a clear message so an offline/misconfigured environment
 //! degrades to "worktrees unavailable" instead of a crash.
+//!
+//! # Every command runs on the blocking pool, and that is not an optimization
+//!
+//! `git` is a subprocess, and waiting for one is **blocking** work: `Command::output` parks the
+//! calling thread until the child exits. gg's turn loop runs on a *single-threaded* Tokio runtime
+//! shared by every agent — the root, every dispatched issue agent, its reviewers, the merge agent —
+//! so a git call made directly on that thread does not slow *its* agent down, it stops **all** of
+//! them, along with every in-flight model request and every timer, for as long as git takes.
+//!
+//! And git takes real time here, because these commands walk the whole workspace. A run whose model
+//! has done an `npm install` has tens of thousands of untracked files in the tree, and the
+//! `git add -A` behind [`commit_worktree`], [`diff_since`] and [`diff_stat_since`] must hash every
+//! one of them: **5.7 s measured** on a 33,000-file / 600 MB tree, with `git worktree add` checking
+//! the same tree out again at 1.8 s. Left on the runtime thread those seconds landed wherever the
+//! other agents happened to be, and the [phase accounting](crate::turn_timing) charged them to
+//! whatever *that* agent was doing — which is how a single `edit_file` came to be reported as a turn
+//! that spent 8.8 s handling its response, a figure a string replacement cannot account for.
+//!
+//! So every invocation here goes through [`git_output`], which runs it on
+//! [`spawn_blocking`](tokio::task::spawn_blocking) — a pool sized for exactly this, whose threads
+//! are *allowed* to block — and awaits the result. That makes every function in this module `async`,
+//! which is the point: an `await` is a yield, so while git walks the tree the runtime keeps turning
+//! every other agent. Callers that must also serialize against each other do so on the
+//! orchestrator's **async** git lock, so an agent waiting its turn parks rather than holding the
+//! thread it was going to wait on.
 
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Output};
+
+use tokio::task;
 
 /// The committer/author identity gg stamps its own commits with (the baseline commit, a worktree's
 /// work commit, and a merge commit), passed as one-shot `-c` overrides so gg never depends on a
@@ -54,6 +81,14 @@ pub enum GitError {
         /// git's captured `stderr`, trimmed.
         stderr: String,
     },
+    /// The command never ran: the [blocking task](git_output) carrying it did not complete, which
+    /// happens only if the runtime is shutting down under it. Distinct from
+    /// [`Command`](Self::Command) because nothing was attempted and git said nothing — reporting it
+    /// as a failed git command would invent a diagnostic git never gave.
+    Offload {
+        /// A short description of what was attempted (for example `"git init"`).
+        context: String,
+    },
 }
 
 impl std::fmt::Display for GitError {
@@ -69,6 +104,9 @@ impl std::fmt::Display for GitError {
                 } else {
                     write!(f, "{context} failed: {stderr}")
                 }
+            }
+            GitError::Offload { context } => {
+                write!(f, "{context} could not be run to completion")
             }
         }
     }
@@ -103,22 +141,44 @@ pub enum ConflictPolicy {
 
 /// Whether the `git` binary can be launched (`git --version` succeeds). Used to decide, once, at
 /// session start, whether the worktrees capability can operate at all.
-pub fn git_available() -> bool {
-    match Command::new("git").arg("--version").output() {
-        Ok(output) => output.status.success(),
-        Err(_) => false,
+pub async fn git_available() -> bool {
+    git_output(Path::new("."), "git --version", &["--version"])
+        .await
+        .is_ok_and(|output| output.status.success())
+}
+
+/// Run `git <args>` in `dir` **on Tokio's blocking pool** and return the finished process, or the
+/// [`GitError`] for a command that could not be run at all.
+///
+/// This is the single seam every invocation in this module goes through, and the reason it exists is
+/// in the [module docs](self): a git subprocess blocks the thread that waits on it, and gg's one
+/// runtime thread carries every agent. The offload is therefore not tuning — it is what keeps one
+/// agent's `git add -A` over an `npm install`-sized tree from stopping the whole harness.
+///
+/// A spawn failure is [`NotFound`](GitError::NotFound) (git absent from the environment), and a
+/// blocking task that did not complete is [`Offload`](GitError::Offload) — the command never ran, so
+/// it is not reported as one that failed. Interpreting the *exit status* is [`run_git`]'s job, or
+/// the caller's where the failure carries meaning (a merge conflict).
+async fn git_output(dir: &Path, context: &str, args: &[&str]) -> Result<Output, GitError> {
+    // Owned for the move onto the blocking thread: the task outlives this frame's borrows.
+    let dir = dir.to_path_buf();
+    let args: Vec<String> = args.iter().map(|arg| (*arg).to_string()).collect();
+    let spawned =
+        task::spawn_blocking(move || Command::new("git").current_dir(dir).args(args).output());
+    match spawned.await {
+        Ok(Ok(output)) => Ok(output),
+        Ok(Err(_)) => Err(GitError::NotFound),
+        Err(_) => Err(GitError::Offload {
+            context: context.to_string(),
+        }),
     }
 }
 
 /// Run `git <args>` in `dir`, returning its trimmed `stdout` on success. A spawn failure maps to
 /// [`GitError::NotFound`] (git absent); a non-zero exit maps to [`GitError::Command`] carrying
 /// `context` and git's `stderr`.
-fn run_git(dir: &Path, context: &str, args: &[&str]) -> Result<String, GitError> {
-    let output = Command::new("git")
-        .current_dir(dir)
-        .args(args)
-        .output()
-        .map_err(|_| GitError::NotFound)?;
+async fn run_git(dir: &Path, context: &str, args: &[&str]) -> Result<String, GitError> {
+    let output = git_output(dir, context, args).await?;
     if output.status.success() {
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
     } else {
@@ -145,10 +205,10 @@ fn is_repo_root(dir: &Path) -> bool {
 /// yields a baseline commit). When it is already a repo, the current `HEAD` is taken as the
 /// baseline. Either way the returned sha is the commit every [worktree](add_worktree) branches
 /// from.
-pub fn ensure_baseline(workspace: &Path) -> Result<String, GitError> {
+pub async fn ensure_baseline(workspace: &Path) -> Result<String, GitError> {
     if !is_repo_root(workspace) {
-        run_git(workspace, "git init", &["init", "-q"])?;
-        run_git(workspace, "git add", &["add", "-A"])?;
+        run_git(workspace, "git init", &["init", "-q"]).await?;
+        run_git(workspace, "git add", &["add", "-A"]).await?;
         let mut commit: Vec<&str> = GG_IDENTITY.to_vec();
         commit.extend_from_slice(&[
             "commit",
@@ -157,17 +217,17 @@ pub fn ensure_baseline(workspace: &Path) -> Result<String, GitError> {
             "-m",
             "gg baseline: seeded workspace",
         ]);
-        run_git(workspace, "git commit", &commit)?;
+        run_git(workspace, "git commit", &commit).await?;
     }
-    run_git(workspace, "git rev-parse HEAD", &["rev-parse", "HEAD"])
+    run_git(workspace, "git rev-parse HEAD", &["rev-parse", "HEAD"]).await
 }
 
 /// The current `HEAD` commit sha of the repository rooted at `dir` — the point an
 /// [issue](https://docs.testcabinet.ai/gg/project-management/)'s worktree branches from, so a later
 /// review diffs only that issue's changes rather than the whole run. On the first dispatch this
 /// equals the [baseline](ensure_baseline); after earlier issue merges advanced `HEAD` it is later.
-pub fn head_commit(dir: &Path) -> Result<String, GitError> {
-    run_git(dir, "git rev-parse HEAD", &["rev-parse", "HEAD"])
+pub async fn head_commit(dir: &Path) -> Result<String, GitError> {
+    run_git(dir, "git rev-parse HEAD", &["rev-parse", "HEAD"]).await
 }
 
 /// The full textual diff of the working tree at `dir` against commit `base` — what a
@@ -178,13 +238,13 @@ pub fn head_commit(dir: &Path) -> Result<String, GitError> {
 /// the index is reset back to `HEAD` so the staging is transient and the main tree is left as it
 /// was. Returns the (possibly empty) diff text. Runs three git calls; the caller serializes them on
 /// the shared git lock since staging mutates the shared index.
-pub fn diff_since(dir: &Path, base: &str) -> Result<String, GitError> {
-    run_git(dir, "git add", &["add", "-A"])?;
-    let diff = run_git(dir, "git diff --cached", &["diff", "--cached", base])?;
+pub async fn diff_since(dir: &Path, base: &str) -> Result<String, GitError> {
+    run_git(dir, "git add", &["add", "-A"]).await?;
+    let diff = run_git(dir, "git diff --cached", &["diff", "--cached", base]).await?;
     // Restore the index to HEAD so the transient staging does not linger (and cannot interfere with
     // a concurrent worktree merge in the main tree). Best-effort: a failure here does not invalidate
     // the diff we already captured.
-    let _ = run_git(dir, "git reset", &["reset", "-q"]);
+    let _ = run_git(dir, "git reset", &["reset", "-q"]).await;
     Ok(diff)
 }
 
@@ -200,21 +260,22 @@ pub fn diff_since(dir: &Path, base: &str) -> Result<String, GitError> {
 ///
 /// Staged and restored exactly like [`diff_since`] (so untracked additions count), and serialized by
 /// the caller on the same git lock.
-pub fn diff_stat_since(dir: &Path, base: &str) -> Result<String, GitError> {
-    run_git(dir, "git add", &["add", "-A"])?;
+pub async fn diff_stat_since(dir: &Path, base: &str) -> Result<String, GitError> {
+    run_git(dir, "git add", &["add", "-A"]).await?;
     let stat = run_git(
         dir,
         "git diff --cached --stat",
         &["diff", "--cached", "--stat", base],
-    )?;
-    let _ = run_git(dir, "git reset", &["reset", "-q"]);
+    )
+    .await?;
+    let _ = run_git(dir, "git reset", &["reset", "-q"]).await;
     Ok(stat)
 }
 
 /// Create a fresh worktree at `worktree_path` on a new `branch` based at commit `base`, from the
 /// repository rooted at `main`. The new worktree is an isolated checkout of `base` the agents
 /// dispatched into it mutate on their own; `worktree_path` must not already exist.
-pub fn add_worktree(
+pub async fn add_worktree(
     main: &Path,
     worktree_path: &Path,
     branch: &str,
@@ -226,23 +287,24 @@ pub fn add_worktree(
         "git worktree add",
         &["worktree", "add", "-q", "-b", branch, &path, base],
     )
+    .await
     .map(|_| ())
 }
 
 /// Stage and commit everything in `worktree` (the agent's produced changes) onto its branch,
 /// returning whether a commit was actually made (`false` when the worktree was left unchanged, so
 /// there is nothing to merge). Uses gg's own [identity](GG_IDENTITY).
-pub fn commit_worktree(worktree: &Path, message: &str) -> Result<bool, GitError> {
-    run_git(worktree, "git add", &["add", "-A"])?;
+pub async fn commit_worktree(worktree: &Path, message: &str) -> Result<bool, GitError> {
+    run_git(worktree, "git add", &["add", "-A"]).await?;
     // Nothing staged means the agent produced no changes: skip the commit (an empty commit would
     // merge as a no-op but muddies the history).
-    let status = run_git(worktree, "git status", &["status", "--porcelain"])?;
+    let status = run_git(worktree, "git status", &["status", "--porcelain"]).await?;
     if status.is_empty() {
         return Ok(false);
     }
     let mut commit: Vec<&str> = GG_IDENTITY.to_vec();
     commit.extend_from_slice(&["commit", "-q", "-m", message]);
-    run_git(worktree, "git commit", &commit)?;
+    run_git(worktree, "git commit", &commit).await?;
     Ok(true)
 }
 
@@ -255,17 +317,14 @@ pub fn commit_worktree(worktree: &Path, message: &str) -> Result<bool, GitError>
 /// [`Keep`](ConflictPolicy::Keep) leaves the conflicted merge in place for a merge agent to
 /// resolve. A genuinely broken invocation (git absent, bad branch name) still returns a
 /// [`GitError`].
-pub fn merge_branch(
+pub async fn merge_branch(
     main: &Path,
     branch: &str,
     policy: ConflictPolicy,
 ) -> Result<MergeOutcome, GitError> {
-    let output = Command::new("git")
-        .current_dir(main)
-        .args(GG_IDENTITY)
-        .args(["merge", "--no-ff", "--no-edit", branch])
-        .output()
-        .map_err(|_| GitError::NotFound)?;
+    let mut args: Vec<&str> = GG_IDENTITY.to_vec();
+    args.extend_from_slice(&["merge", "--no-ff", "--no-edit", branch]);
+    let output = git_output(main, "git merge", &args).await?;
     if output.status.success() {
         return Ok(MergeOutcome::Merged);
     }
@@ -276,7 +335,7 @@ pub fn merge_branch(
     // would overwrite local changes — has nothing to abort, so that failure is ignored).
     let reason = merge_reason(&output.stdout, &output.stderr);
     if policy == ConflictPolicy::Abort {
-        abort_merge(main);
+        abort_merge(main).await;
     }
     Ok(MergeOutcome::Conflict(reason))
 }
@@ -284,12 +343,13 @@ pub fn merge_branch(
 /// Whether the repository rooted at `main` is sitting in an **unfinished merge** (`MERGE_HEAD` is
 /// set) — how gg checks whether a merge agent actually finished the merge it was handed, rather
 /// than taking its word for it.
-pub fn merge_in_progress(main: &Path) -> bool {
+pub async fn merge_in_progress(main: &Path) -> bool {
     run_git(
         main,
         "git rev-parse MERGE_HEAD",
         &["rev-parse", "-q", "--verify", "MERGE_HEAD"],
     )
+    .await
     .is_ok()
 }
 
@@ -297,11 +357,8 @@ pub fn merge_in_progress(main: &Path) -> bool {
 ///
 /// Best-effort and idempotent: a tree with nothing to abort simply reports failure, which is
 /// ignored — this is a cleanup path, and a run must not die because there was no merge to undo.
-pub fn abort_merge(main: &Path) {
-    let _ = Command::new("git")
-        .current_dir(main)
-        .args(["merge", "--abort"])
-        .output();
+pub async fn abort_merge(main: &Path) {
+    let _ = git_output(main, "git merge --abort", &["merge", "--abort"]).await;
 }
 
 /// Assemble a human-readable reason for a failed merge from git's `stdout` (where the conflict
@@ -334,16 +391,21 @@ fn merge_reason(stdout: &[u8], stderr: &[u8]) -> String {
 /// `main`. Best-effort and idempotent: run in every case (a merged, conflicted, or discarded
 /// branch) so no isolated copy or dangling branch is left behind. Individual failures are
 /// returned but the caller typically only logs them — cleanup must not fail a run.
-pub fn remove_worktree(main: &Path, worktree_path: &Path, branch: &str) -> Result<(), GitError> {
+pub async fn remove_worktree(
+    main: &Path,
+    worktree_path: &Path,
+    branch: &str,
+) -> Result<(), GitError> {
     let path = worktree_path.to_string_lossy();
     // Remove the checkout first (it holds the branch checked out, blocking the branch delete).
     run_git(
         main,
         "git worktree remove",
         &["worktree", "remove", "--force", &path],
-    )?;
+    )
+    .await?;
     // Delete the branch (force: it may be unmerged on a discard).
-    run_git(main, "git branch -D", &["branch", "-D", branch])?;
+    run_git(main, "git branch -D", &["branch", "-D", branch]).await?;
     Ok(())
 }
 

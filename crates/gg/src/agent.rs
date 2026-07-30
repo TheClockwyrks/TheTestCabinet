@@ -645,7 +645,7 @@ pub(crate) async fn run_with_factory(
     // worktree (a board issue's, or a speculation attempt's), make the workspace a git repo and
     // commit its baseline, reporting any git-absent/failure loudly on the root's stream so a later
     // issue that has to fall back to the shared tree does so with a reason on the record.
-    let worktrees = resolve_worktrees(set, &invocation.workspace_dir, &root_emitter);
+    let worktrees = resolve_worktrees(set, &invocation.workspace_dir, &root_emitter).await;
 
     // Build the orchestrator: the shared, cross-task state every agent (the root and each
     // subagent) is built and driven from — the scheduler, the per-slot accounting, the offered
@@ -970,11 +970,17 @@ struct Orchestrator {
     /// [marked ready](Scheduler::mark_ready). Guarded so a completing agent and a fresh waiter can
     /// touch it concurrently.
     issue_waits: Mutex<HashMap<String, Vec<WaiterToken>>>,
-    /// Serializes every **synchronous** git operation on the shared repository (worktree
+    /// Serializes every **single-step** git operation on the shared repository (worktree
     /// add/remove, a review's diff), since concurrently-finishing agents would otherwise race on
-    /// `.git` and the main working tree. Held only across the synchronous git calls, never across an
-    /// await — see [`merge_lock`](Self::merge_lock) for the long-running half.
-    git_lock: Mutex<()>,
+    /// `.git` and the main working tree. See [`merge_lock`](Self::merge_lock) for the multi-step
+    /// half, which spans a dispatched merge agent's whole session.
+    ///
+    /// An **async** lock, because what it guards is slow: every [git](crate::git) call runs on the
+    /// blocking pool and is awaited, and the commands here walk the whole workspace (seconds, on a
+    /// tree an `npm install` has filled). A `std` mutex would make an agent waiting its turn *block
+    /// gg's single runtime thread* for as long as the agent ahead of it takes — reintroducing, in the
+    /// wait, exactly the stall that moving git off the runtime thread removed.
+    git_lock: tokio::sync::Mutex<()>,
     /// Serializes the **merge** of an accepted issue's branch back into the main tree.
     ///
     /// A merge is not one git call: it can leave the tree conflicted, dispatch the
@@ -1141,7 +1147,7 @@ impl Orchestrator {
             issue_reviews: Mutex::new(HashMap::new()),
             board: resolve_board(set),
             issue_waits: Mutex::new(HashMap::new()),
-            git_lock: Mutex::new(()),
+            git_lock: tokio::sync::Mutex::new(()),
             merge_lock: tokio::sync::Mutex::new(()),
             config: SubagentConfig::resolve(set),
             scheduler: Scheduler::new(SubagentConfig::resolve(set).max_parallel),
@@ -1318,15 +1324,22 @@ impl Orchestrator {
     /// from `HEAD` is what lets it build on its blockers' work. Returns `None` when git isolation is
     /// unavailable (the issue then works in the shared workspace) or the worktree could not be
     /// created, in which case the reason is logged rather than failing the issue.
-    fn ensure_issue_worktree(&self, issue_id: &str, emitter: &Emitter) -> Option<Worktree> {
-        let mut worktrees = self.issue_worktrees.lock().expect("issue worktrees lock");
-        if let Some(existing) = worktrees.get(issue_id) {
-            return Some(existing.clone());
+    ///
+    /// The [git lock](Self::git_lock) serializes the **creation**, and the map is re-read once it is
+    /// held: two dispatches of the same issue (a retry racing a reopen) therefore produce one
+    /// worktree, not two, even though neither holds the map's own lock across the checkout — which it
+    /// must not, since a checkout is awaited off the runtime thread.
+    async fn ensure_issue_worktree(&self, issue_id: &str, emitter: &Emitter) -> Option<Worktree> {
+        if let Some(existing) = self.issue_worktree(issue_id) {
+            return Some(existing);
         }
         let root = self.worktrees_root.as_ref()?;
         self.baseline_commit.as_ref()?;
-        let _guard = self.git_lock.lock().expect("git lock");
-        let base = match git::head_commit(&self.workspace_dir) {
+        let _guard = self.git_lock.lock().await;
+        if let Some(existing) = self.issue_worktree(issue_id) {
+            return Some(existing);
+        }
+        let base = match git::head_commit(&self.workspace_dir).await {
             Ok(sha) => sha,
             Err(err) => {
                 emitter.emit(log(
@@ -1342,7 +1355,7 @@ impl Orchestrator {
         let slug = worktree_slug(issue_id);
         let branch = format!("gg/issue-{slug}");
         let path = root.join(format!("issue-{slug}"));
-        if let Err(err) = git::add_worktree(&self.workspace_dir, &path, &branch, &base) {
+        if let Err(err) = git::add_worktree(&self.workspace_dir, &path, &branch, &base).await {
             emitter.emit(log(
                 "error",
                 format!(
@@ -1353,7 +1366,10 @@ impl Orchestrator {
             return None;
         }
         let worktree = Worktree { branch, path, base };
-        worktrees.insert(issue_id.to_string(), worktree.clone());
+        self.issue_worktrees
+            .lock()
+            .expect("issue worktrees lock")
+            .insert(issue_id.to_string(), worktree.clone());
         Some(worktree)
     }
 
@@ -1414,13 +1430,15 @@ impl Orchestrator {
     /// rather than being handed a patch of it: a full diff of a real change carries every generated
     /// file it touched (lockfiles above all), which bloats the prompt without telling the reviewer
     /// anything it could not read for itself.
-    fn review_changes(&self, issue_id: &str) -> String {
+    async fn review_changes(&self, issue_id: &str) -> String {
         let Some(baseline) = self.issue_baseline(issue_id) else {
             return String::new();
         };
         let dir = self.issue_workspace(issue_id);
-        let _guard = self.git_lock.lock().expect("git lock");
-        git::diff_stat_since(&dir, &baseline).unwrap_or_default()
+        let _guard = self.git_lock.lock().await;
+        git::diff_stat_since(&dir, &baseline)
+            .await
+            .unwrap_or_default()
     }
 
     /// Append `record` to the [review history](Self::issue_reviews) of `issue_id`.
@@ -1584,11 +1602,6 @@ impl Orchestrator {
                 return self.abort_issue_dispatch(&issue_id, &slot, &err.to_string(), emitter);
             }
         };
-        // Every issue works in its own worktree, created on its first dispatch and reused by every
-        // later agent that touches it (a retry, a review round, its reviewers). Isolation that is
-        // unavailable is logged there and degrades to the shared workspace rather than failing the
-        // issue.
-        self.ensure_issue_worktree(&issue_id, emitter);
         let agent = Agent {
             id: agent_id,
             parent_id: None,
@@ -1597,12 +1610,25 @@ impl Orchestrator {
         };
         let role = AgentRole::Issue {
             brief,
-            issue_id,
+            issue_id: issue_id.clone(),
             retry,
         };
         let (_inbox_tx, inbox_rx) = mpsc::unbounded_channel();
         let orch = Arc::clone(self);
+        let spawn_emitter = emitter.clone();
         let handle = tokio::spawn(async move {
+            // Every issue works in its own worktree, created on its first dispatch and reused by
+            // every later agent that touches it (a retry, a review round, its reviewers). Isolation
+            // that is unavailable is logged there and degrades to the shared workspace rather than
+            // failing the issue.
+            //
+            // Created **inside the spawned task**, not in the dispatch above, because a checkout of
+            // an `npm install`-sized tree takes seconds and this dispatcher runs on the caller's
+            // thread — inside whichever agent's tool call happened to make the issue actionable.
+            // Doing it here charges the wait to the agent that is about to use the worktree, and
+            // leaves the dispatching agent's turn alone. The agent's own workspace is resolved from
+            // the map after this, so it still starts in the worktree it was given.
+            orch.ensure_issue_worktree(&issue_id, &spawn_emitter).await;
             run_agent(orch, agent, role, client, inbox_rx).await;
         });
         self.tasks.lock().expect("subagent tasks lock").push(handle);
@@ -2844,7 +2870,7 @@ fn dispatch_child(
 /// rather than by agent and degrades to the shared tree rather than refusing.) The branch is based
 /// at the main tree's current `HEAD`, so an attempt starts from everything already landed. The git
 /// call is serialized on the shared [git lock](Orchestrator::git_lock).
-fn make_worktree(orch: &Orchestrator, name: &str) -> Result<Worktree, DispatchError> {
+async fn make_worktree(orch: &Orchestrator, name: &str) -> Result<Worktree, DispatchError> {
     let Some(root) = &orch.worktrees_root else {
         return Err(DispatchError::new(
             ToolFailure::Unavailable,
@@ -2852,8 +2878,8 @@ fn make_worktree(orch: &Orchestrator, name: &str) -> Result<Worktree, DispatchEr
              baseline at startup), so this work cannot be run in an isolated copy of the workspace.",
         ));
     };
-    let _guard = orch.git_lock.lock().expect("git lock");
-    let base = git::head_commit(&orch.workspace_dir).map_err(|err| {
+    let _guard = orch.git_lock.lock().await;
+    let base = git::head_commit(&orch.workspace_dir).await.map_err(|err| {
         DispatchError::new(
             ToolFailure::IoError,
             format!(
@@ -2864,12 +2890,14 @@ fn make_worktree(orch: &Orchestrator, name: &str) -> Result<Worktree, DispatchEr
     let slug = worktree_slug(name);
     let branch = format!("gg/{slug}");
     let path = root.join(&slug);
-    git::add_worktree(&orch.workspace_dir, &path, &branch, &base).map_err(|err| {
-        DispatchError::new(
-            ToolFailure::IoError,
-            format!("could not create an isolated worktree: {err}"),
-        )
-    })?;
+    git::add_worktree(&orch.workspace_dir, &path, &branch, &base)
+        .await
+        .map_err(|err| {
+            DispatchError::new(
+                ToolFailure::IoError,
+                format!("could not create an isolated worktree: {err}"),
+            )
+        })?;
     Ok(Worktree { branch, path, base })
 }
 
@@ -3196,7 +3224,7 @@ async fn reconcile_issue(
                     ),
                 ));
                 orch.board.fail_issue(issue_id);
-                discard_issue_worktree(orch, issue_id, emitter);
+                discard_issue_worktree(orch, issue_id, emitter).await;
             }
         }
     } else if (retry as usize) < orch.board.max_retries() {
@@ -3216,7 +3244,7 @@ async fn reconcile_issue(
                 retry + 1
             ),
         ));
-        discard_issue_worktree(orch, issue_id, emitter);
+        discard_issue_worktree(orch, issue_id, emitter).await;
     }
     orch.on_issue_progress(emitter);
 }
@@ -3255,7 +3283,7 @@ async fn run_issue_review(
         baseline.clone(),
     ));
 
-    let changes = orch.review_changes(issue_id);
+    let changes = orch.review_changes(issue_id).await;
     let history = orch.review_history(issue_id);
     let worktree = orch.issue_worktree(issue_id);
     // Who has approved so far *this round*, in the order they ran: reported on whichever event ends
@@ -3397,12 +3425,12 @@ async fn merge_issue_worktree(orch: &Arc<Orchestrator>, issue_id: &str, emitter:
 
     // Commit whatever the issue produced onto its branch. A worktree with no changes commits
     // nothing, which merges as a no-op — an issue whose work was already present is still accepted.
-    if let Err(err) = git::commit_worktree(&worktree.path, &format!("gg issue {issue_id}")) {
+    if let Err(err) = git::commit_worktree(&worktree.path, &format!("gg issue {issue_id}")).await {
         emitter.emit(log(
             "error",
             format!("could not commit the work for issue `{issue_id}`: {err}"),
         ));
-        remove_worktree(orch, &worktree, emitter);
+        remove_worktree(orch, &worktree, emitter).await;
         issue_emitter.emit(GgTelemetryKind::WorktreeMerged {
             branch: worktree.branch,
             merged: false,
@@ -3417,7 +3445,8 @@ async fn merge_issue_worktree(orch: &Arc<Orchestrator>, issue_id: &str, emitter:
         &orch.workspace_dir,
         &worktree.branch,
         git::ConflictPolicy::Keep,
-    );
+    )
+    .await;
     let (merged, conflicts) = match outcome {
         Ok(git::MergeOutcome::Merged) => (true, false),
         Ok(git::MergeOutcome::Conflict(reason)) => {
@@ -3446,9 +3475,9 @@ async fn merge_issue_worktree(orch: &Arc<Orchestrator>, issue_id: &str, emitter:
     // exactly what it was, and the issue is reported as unmerged rather than silently corrupting
     // every later merge.
     if !merged {
-        git::abort_merge(&orch.workspace_dir);
+        git::abort_merge(&orch.workspace_dir).await;
     }
-    remove_worktree(orch, &worktree, emitter);
+    remove_worktree(orch, &worktree, emitter).await;
     issue_emitter.emit(GgTelemetryKind::WorktreeMerged {
         branch: worktree.branch,
         merged,
@@ -3508,7 +3537,7 @@ async fn resolve_merge_conflict(
             return false;
         }
     }
-    if git::merge_in_progress(&orch.workspace_dir) {
+    if git::merge_in_progress(&orch.workspace_dir).await {
         emitter.emit(log(
             "error",
             format!(
@@ -3529,11 +3558,11 @@ async fn resolve_merge_conflict(
 
 /// Throw away `issue_id`'s worktree unmerged — what a [failed](IssueStatus::Failed) issue's
 /// half-finished work gets. A no-op for an issue that never had one.
-fn discard_issue_worktree(orch: &Arc<Orchestrator>, issue_id: &str, emitter: &Emitter) {
+async fn discard_issue_worktree(orch: &Arc<Orchestrator>, issue_id: &str, emitter: &Emitter) {
     let Some(worktree) = orch.take_issue_worktree(issue_id) else {
         return;
     };
-    remove_worktree(orch, &worktree, emitter);
+    remove_worktree(orch, &worktree, emitter).await;
     emitter
         .with_issue(issue_id)
         .emit(GgTelemetryKind::WorktreeMerged {
@@ -3545,9 +3574,11 @@ fn discard_issue_worktree(orch: &Arc<Orchestrator>, issue_id: &str, emitter: &Em
 
 /// Tear a worktree and its branch down. Best-effort: a cleanup failure leaves a breadcrumb but never
 /// fails a run, since the work it guards has already been merged or deliberately discarded.
-fn remove_worktree(orch: &Orchestrator, worktree: &Worktree, emitter: &Emitter) {
-    let _guard = orch.git_lock.lock().expect("git lock");
-    if let Err(err) = git::remove_worktree(&orch.workspace_dir, &worktree.path, &worktree.branch) {
+async fn remove_worktree(orch: &Orchestrator, worktree: &Worktree, emitter: &Emitter) {
+    let _guard = orch.git_lock.lock().await;
+    if let Err(err) =
+        git::remove_worktree(&orch.workspace_dir, &worktree.path, &worktree.branch).await
+    {
         emitter.emit(log(
             "warn",
             format!(
@@ -3888,7 +3919,7 @@ async fn handle_speculate(
         let brief = build_attempt_brief(&base_brief, i, attempts as usize, approaches.get(i));
         // Each attempt gets a fresh worktree of its own, left in place for judging: only the
         // winner's is merged, so an attempt must not be able to reach another's files.
-        let worktree = match make_worktree(&orch, &format!("spec-{}-{}", spawner.id, i)) {
+        let worktree = match make_worktree(&orch, &format!("spec-{}-{}", spawner.id, i)).await {
             Ok(worktree) => worktree,
             Err(err) => {
                 abort_speculation(sub, &orch, emitter, &fanned).await;
@@ -3957,8 +3988,10 @@ async fn handle_speculate(
             None => attempt.status = "(no result)".to_string(),
         }
         attempt.diff = {
-            let _guard = orch.git_lock.lock().expect("git lock");
-            git::diff_since(&attempt.path, &attempt.base).unwrap_or_default()
+            let _guard = orch.git_lock.lock().await;
+            git::diff_since(&attempt.path, &attempt.base)
+                .await
+                .unwrap_or_default()
         };
     }
 
@@ -3971,7 +4004,7 @@ async fn handle_speculate(
         .collect();
 
     if candidates.is_empty() {
-        discard_attempts(&orch, &fanned);
+        discard_attempts(&orch, &fanned).await;
         spec_emitter.emit(speculation_event(
             attempts,
             GgSpeculationPhase::Judged,
@@ -4016,7 +4049,7 @@ async fn handle_speculate(
             }
             Err(err) => {
                 // The judge could not render a verdict: abort rather than merge an unjudged attempt.
-                discard_attempts(&orch, &fanned);
+                discard_attempts(&orch, &fanned).await;
                 emitter.emit(log(
                     "warn",
                     format!(
@@ -4051,8 +4084,8 @@ async fn handle_speculate(
     // Merge the winner's worktree back into the main tree, then discard every attempt's worktree (the
     // winner's now-merged branch and the losers' unmerged branches alike). The main tree, untouched
     // while the attempts ran in isolation, now holds exactly the winning attempt's changes.
-    let merged = merge_speculation_winner(&orch, &fanned[winner_index]);
-    discard_attempts(&orch, &fanned);
+    let merged = merge_speculation_winner(&orch, &fanned[winner_index]).await;
+    discard_attempts(&orch, &fanned).await;
 
     match merged {
         Ok(()) => {
@@ -4108,7 +4141,7 @@ async fn abort_speculation(
 ) {
     let ids: Vec<String> = fanned.iter().map(|a| a.id.clone()).collect();
     let _ = await_children(sub, emitter, &ids).await;
-    discard_attempts(orch, fanned);
+    discard_attempts(orch, fanned).await;
 }
 
 /// Build one [attempt](SpeculationAttempt)'s brief for a [speculative execution](handle_speculate):
@@ -4206,21 +4239,24 @@ async fn dispatch_judge(
 /// [diff](git::diff_since)), then [merge that branch](git::merge_branch) into the workspace with an
 /// explicit merge commit. Returns an error (leaving the main tree unchanged) on a conflict or git
 /// failure. Serialized on the shared [git lock](Orchestrator::git_lock).
-fn merge_speculation_winner(
+async fn merge_speculation_winner(
     orch: &Orchestrator,
     winner: &SpeculationAttempt,
 ) -> Result<(), String> {
-    let _guard = orch.git_lock.lock().expect("git lock");
+    let _guard = orch.git_lock.lock().await;
     git::commit_worktree(
         &winner.path,
         &format!("gg speculation winner {}", winner.id),
     )
+    .await
     .map_err(|err| format!("committing the winning attempt failed: {err}"))?;
     match git::merge_branch(
         &orch.workspace_dir,
         &winner.branch,
         git::ConflictPolicy::Abort,
-    ) {
+    )
+    .await
+    {
         Ok(git::MergeOutcome::Merged) => Ok(()),
         Ok(git::MergeOutcome::Conflict(reason)) => Err(format!(
             "the merge conflicted with the main tree: {}",
@@ -4234,10 +4270,10 @@ fn merge_speculation_winner(
 /// merges its winner, or aborts — so no isolated copy or dangling branch is left behind. Cleanup must
 /// not fail the run, so per-worktree failures are ignored (a stray worktree is only noise).
 /// Serialized on the shared [git lock](Orchestrator::git_lock).
-fn discard_attempts(orch: &Orchestrator, attempts: &[SpeculationAttempt]) {
-    let _guard = orch.git_lock.lock().expect("git lock");
+async fn discard_attempts(orch: &Orchestrator, attempts: &[SpeculationAttempt]) {
+    let _guard = orch.git_lock.lock().await;
     for attempt in attempts {
-        let _ = git::remove_worktree(&orch.workspace_dir, &attempt.path, &attempt.branch);
+        let _ = git::remove_worktree(&orch.workspace_dir, &attempt.path, &attempt.branch).await;
     }
 }
 
@@ -6893,7 +6929,7 @@ fn resolve_board(set: &GgCapabilitySet) -> BoardRuntime {
 /// Any problem — git absent, a failed baseline, or an uncreatable worktree root — is logged
 /// **loudly** at error level and leaves isolation unusable (issues run in the shared workspace and
 /// merge nothing; a `speculate` call is refused) rather than crashing the run.
-fn resolve_worktrees(
+async fn resolve_worktrees(
     set: &GgCapabilitySet,
     workspace_dir: &Path,
     emitter: &Emitter,
@@ -6914,7 +6950,7 @@ fn resolve_worktrees(
         };
     }
 
-    if !git::git_available() {
+    if !git::git_available().await {
         emitter.emit(log(
             "error",
             format!(
@@ -6929,7 +6965,7 @@ fn resolve_worktrees(
         };
     }
 
-    let baseline = match git::ensure_baseline(workspace_dir) {
+    let baseline = match git::ensure_baseline(workspace_dir).await {
         Ok(sha) => sha,
         Err(err) => {
             emitter.emit(log(

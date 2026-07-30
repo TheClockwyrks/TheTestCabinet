@@ -19,19 +19,22 @@ fn read(dir: &Path, rel: &str) -> Option<String> {
 }
 
 /// git is present in the dev/test environment.
-#[test]
-fn git_is_available_in_the_test_environment() {
-    assert!(git_available(), "git must be installed to run these tests");
+#[tokio::test]
+async fn git_is_available_in_the_test_environment() {
+    assert!(
+        git_available().await,
+        "git must be installed to run these tests"
+    );
 }
 
 /// `ensure_baseline` initializes a repo, commits the seeded workspace, and returns a stable sha;
 /// a second call (now a repo) returns the same baseline.
-#[test]
-fn ensure_baseline_initializes_a_repo_and_is_idempotent() {
+#[tokio::test]
+async fn ensure_baseline_initializes_a_repo_and_is_idempotent() {
     let dir = TempDir::new().unwrap();
     write(dir.path(), "index.html", "<html></html>");
 
-    let sha = ensure_baseline(dir.path()).unwrap();
+    let sha = ensure_baseline(dir.path()).await.unwrap();
     assert!(!sha.is_empty(), "the baseline sha is returned");
     assert!(
         dir.path().join(".git").exists(),
@@ -39,22 +42,24 @@ fn ensure_baseline_initializes_a_repo_and_is_idempotent() {
     );
 
     // Idempotent: an already-initialized workspace keeps its baseline HEAD.
-    let again = ensure_baseline(dir.path()).unwrap();
+    let again = ensure_baseline(dir.path()).await.unwrap();
     assert_eq!(again, sha, "an existing repo's HEAD is the baseline");
 }
 
 /// A worktree is an isolated copy: a file written in it is invisible in the main tree until its
 /// branch is committed and merged back, at which point it appears.
-#[test]
-fn worktree_isolates_then_merges_back() {
+#[tokio::test]
+async fn worktree_isolates_then_merges_back() {
     let main = TempDir::new().unwrap();
     let wt_root = TempDir::new().unwrap();
     write(main.path(), "seed.txt", "seed\n");
-    let baseline = ensure_baseline(main.path()).unwrap();
+    let baseline = ensure_baseline(main.path()).await.unwrap();
 
     let wt_path = wt_root.path().join("agent-0");
     let branch = "gg/agent-0";
-    add_worktree(main.path(), &wt_path, branch, &baseline).unwrap();
+    add_worktree(main.path(), &wt_path, branch, &baseline)
+        .await
+        .unwrap();
 
     // The subagent does its work inside the isolated worktree.
     write(&wt_path, "greeting.txt", "hello from the worktree\n");
@@ -67,10 +72,12 @@ fn worktree_isolates_then_merges_back() {
     );
 
     // Commit the worktree's work, then merge it back.
-    let committed = commit_worktree(&wt_path, "subagent work").unwrap();
+    let committed = commit_worktree(&wt_path, "subagent work").await.unwrap();
     assert!(committed, "the worktree had changes to commit");
     assert_eq!(
-        merge_branch(main.path(), branch, ConflictPolicy::Abort).unwrap(),
+        merge_branch(main.path(), branch, ConflictPolicy::Abort)
+            .await
+            .unwrap(),
         MergeOutcome::Merged,
         "the branch merges cleanly"
     );
@@ -83,26 +90,32 @@ fn worktree_isolates_then_merges_back() {
     );
 
     // Cleanup removes the worktree entirely.
-    remove_worktree(main.path(), &wt_path, branch).unwrap();
+    remove_worktree(main.path(), &wt_path, branch)
+        .await
+        .unwrap();
     assert!(!wt_path.exists(), "the worktree checkout is gone");
 }
 
 /// A discarded worktree leaves no trace: its work never reaches the main tree and its branch and
 /// checkout are removed.
-#[test]
-fn discard_removes_worktree_without_merging() {
+#[tokio::test]
+async fn discard_removes_worktree_without_merging() {
     let main = TempDir::new().unwrap();
     let wt_root = TempDir::new().unwrap();
     write(main.path(), "seed.txt", "seed\n");
-    let baseline = ensure_baseline(main.path()).unwrap();
+    let baseline = ensure_baseline(main.path()).await.unwrap();
 
     let wt_path = wt_root.path().join("agent-1");
     let branch = "gg/agent-1";
-    add_worktree(main.path(), &wt_path, branch, &baseline).unwrap();
+    add_worktree(main.path(), &wt_path, branch, &baseline)
+        .await
+        .unwrap();
     write(&wt_path, "scratch.txt", "throwaway\n");
 
     // Discard: never commit or merge, just remove.
-    remove_worktree(main.path(), &wt_path, branch).unwrap();
+    remove_worktree(main.path(), &wt_path, branch)
+        .await
+        .unwrap();
 
     assert_eq!(
         read(main.path(), "scratch.txt"),
@@ -112,30 +125,37 @@ fn discard_removes_worktree_without_merging() {
     assert!(!wt_path.exists(), "the worktree checkout is gone");
     // The branch is gone: adding a worktree on the same branch name succeeds again.
     let reuse = wt_root.path().join("agent-1-again");
-    add_worktree(main.path(), &reuse, branch, &baseline).unwrap();
-    remove_worktree(main.path(), &reuse, branch).unwrap();
+    add_worktree(main.path(), &reuse, branch, &baseline)
+        .await
+        .unwrap();
+    remove_worktree(main.path(), &reuse, branch).await.unwrap();
 }
 
 /// A merge conflict is surfaced (not silently dropped) and leaves the main tree unchanged.
-#[test]
-fn merge_conflict_is_surfaced_and_leaves_main_unchanged() {
+#[tokio::test]
+async fn merge_conflict_is_surfaced_and_leaves_main_unchanged() {
     let main = TempDir::new().unwrap();
     let wt_root = TempDir::new().unwrap();
     write(main.path(), "shared.txt", "base\n");
-    let baseline = ensure_baseline(main.path()).unwrap();
+    let baseline = ensure_baseline(main.path()).await.unwrap();
 
     // The worktree branches from the baseline and changes the shared file one way.
     let wt_path = wt_root.path().join("agent-2");
     let branch = "gg/agent-2";
-    add_worktree(main.path(), &wt_path, branch, &baseline).unwrap();
+    add_worktree(main.path(), &wt_path, branch, &baseline)
+        .await
+        .unwrap();
     write(&wt_path, "shared.txt", "worktree change\n");
-    assert!(commit_worktree(&wt_path, "worktree edit").unwrap());
+    assert!(commit_worktree(&wt_path, "worktree edit").await.unwrap());
 
     // The main tree changes the same file a different way and commits — divergent histories.
     write(main.path(), "shared.txt", "main change\n");
-    assert!(commit_worktree(main.path(), "main edit").unwrap());
+    assert!(commit_worktree(main.path(), "main edit").await.unwrap());
 
-    match merge_branch(main.path(), branch, ConflictPolicy::Abort).unwrap() {
+    match merge_branch(main.path(), branch, ConflictPolicy::Abort)
+        .await
+        .unwrap()
+    {
         MergeOutcome::Conflict(reason) => {
             assert!(!reason.is_empty(), "the conflict carries git's explanation");
         }
@@ -149,14 +169,15 @@ fn merge_conflict_is_surfaced_and_leaves_main_unchanged() {
         "an aborted conflict leaves the main tree unchanged"
     );
     assert!(
-        !merge_in_progress(main.path()),
+        !merge_in_progress(main.path()).await,
         "the abort policy leaves no merge in progress"
     );
 
-    remove_worktree(main.path(), &wt_path, branch).unwrap();
+    remove_worktree(main.path(), &wt_path, branch)
+        .await
+        .unwrap();
 }
 
-/// With git unavailable (an empty `PATH`), the helpers degrade to [`GitError::NotFound`] rather
 /// The [`Keep`](ConflictPolicy::Keep) policy leaves the conflicted merge **in** the tree so a merge
 /// agent can resolve it in place — which is only possible if git has not already unwound it — and
 /// [`abort_merge`] then restores the tree exactly as it was.
@@ -164,34 +185,39 @@ fn merge_conflict_is_surfaced_and_leaves_main_unchanged() {
 /// This is the whole reason the policy exists: an issue's branch that conflicts is not disposable
 /// (it holds accepted work), so gg hands the conflicted tree to an agent rather than dropping the
 /// work the way a losing speculation attempt is dropped.
-#[test]
-fn a_kept_conflict_stays_in_the_tree_until_it_is_resolved_or_aborted() {
+#[tokio::test]
+async fn a_kept_conflict_stays_in_the_tree_until_it_is_resolved_or_aborted() {
     let main = TempDir::new().unwrap();
     let wt_root = TempDir::new().unwrap();
     write(main.path(), "shared.txt", "base\n");
-    let baseline = ensure_baseline(main.path()).unwrap();
+    let baseline = ensure_baseline(main.path()).await.unwrap();
 
     let wt_path = wt_root.path().join("issue-1");
     let branch = "gg/issue-1";
-    add_worktree(main.path(), &wt_path, branch, &baseline).unwrap();
+    add_worktree(main.path(), &wt_path, branch, &baseline)
+        .await
+        .unwrap();
     write(&wt_path, "shared.txt", "issue change\n");
-    assert!(commit_worktree(&wt_path, "issue edit").unwrap());
+    assert!(commit_worktree(&wt_path, "issue edit").await.unwrap());
 
     write(main.path(), "shared.txt", "main change\n");
-    assert!(commit_worktree(main.path(), "main edit").unwrap());
+    assert!(commit_worktree(main.path(), "main edit").await.unwrap());
 
     assert!(
-        !merge_in_progress(main.path()),
+        !merge_in_progress(main.path()).await,
         "nothing is in progress before the merge"
     );
-    match merge_branch(main.path(), branch, ConflictPolicy::Keep).unwrap() {
+    match merge_branch(main.path(), branch, ConflictPolicy::Keep)
+        .await
+        .unwrap()
+    {
         MergeOutcome::Conflict(reason) => {
             assert!(!reason.is_empty(), "the conflict carries git's explanation");
         }
         MergeOutcome::Merged => panic!("divergent edits to the same file must conflict"),
     }
     assert!(
-        merge_in_progress(main.path()),
+        merge_in_progress(main.path()).await,
         "the kept conflict leaves the merge in progress for an agent to finish"
     );
     // The conflicted file is in the tree with markers, which is what the merge agent edits.
@@ -202,9 +228,9 @@ fn a_kept_conflict_stays_in_the_tree_until_it_is_resolved_or_aborted() {
         "the conflicted file carries git's markers"
     );
 
-    abort_merge(main.path());
+    abort_merge(main.path()).await;
     assert!(
-        !merge_in_progress(main.path()),
+        !merge_in_progress(main.path()).await,
         "aborting clears the in-progress merge"
     );
     assert_eq!(
@@ -214,9 +240,10 @@ fn a_kept_conflict_stays_in_the_tree_until_it_is_resolved_or_aborted() {
     );
 }
 
+/// With git unavailable (an empty `PATH`), the helpers degrade to [`GitError::NotFound`] rather
 /// than panicking. Each nextest test runs in its own process, so mutating `PATH` here is isolated.
-#[test]
-fn git_absent_is_reported_not_panicked() {
+#[tokio::test]
+async fn git_absent_is_reported_not_panicked() {
     let dir = TempDir::new().unwrap();
     let saved = std::env::var_os("PATH");
     // SAFETY: nextest isolates each test in its own process.
@@ -224,8 +251,8 @@ fn git_absent_is_reported_not_panicked() {
         std::env::set_var("PATH", "");
     }
 
-    let available = git_available();
-    let baseline = ensure_baseline(dir.path());
+    let available = git_available().await;
+    let baseline = ensure_baseline(dir.path()).await;
 
     // Restore before asserting so a failure does not leave the process without git.
     unsafe {
@@ -242,5 +269,50 @@ fn git_absent_is_reported_not_panicked() {
     assert!(
         matches!(baseline, Err(GitError::NotFound)),
         "a missing git binary is a clear NotFound, not a panic"
+    );
+}
+
+/// **A git call leaves the runtime thread free.** The property the whole module is shaped around:
+/// gg's agents all share one runtime thread, so a git command that walks the workspace must run on
+/// the blocking pool rather than on that thread — otherwise every other agent stops for as long as
+/// git takes, which is seconds on a tree an `npm install` has filled.
+///
+/// It is asserted the only way the property can be observed: a second task that can only run *if the
+/// thread was free*. The counter is zeroed with no await between the reset and the git call, so any
+/// tick at all happened while git was running. A blocking implementation cannot tick even once,
+/// however long it takes. `#[tokio::test]` gives a **current-thread** runtime, which is exactly the
+/// runtime gg runs on, so this measures the real thing rather than a multi-threaded stand-in.
+#[tokio::test]
+async fn a_git_call_leaves_the_runtime_thread_free_for_other_agents() {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    let dir = TempDir::new().unwrap();
+    // Enough files that the `git add -A` inside `ensure_baseline` is real work rather than a
+    // no-op — the point is to be busy in git while the other task looks for its turn.
+    for i in 0..200 {
+        write(dir.path(), &format!("src/file-{i}.txt"), "seeded\n");
+    }
+
+    // Another agent's work, in the only shape a test can watch: a task that counts how many times
+    // the runtime handed it the thread.
+    let ticks = Arc::new(AtomicU64::new(0));
+    let counted = Arc::clone(&ticks);
+    let other_agent = tokio::spawn(async move {
+        loop {
+            counted.fetch_add(1, Ordering::Relaxed);
+            tokio::task::yield_now().await;
+        }
+    });
+
+    ticks.store(0, Ordering::Relaxed);
+    let baseline = ensure_baseline(dir.path()).await.unwrap();
+    let during = ticks.load(Ordering::Relaxed);
+    other_agent.abort();
+
+    assert!(!baseline.is_empty(), "the baseline was committed");
+    assert!(
+        during > 0,
+        "the runtime thread must stay free while git runs: the other task never got a turn"
     );
 }
