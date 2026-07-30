@@ -522,8 +522,13 @@ title = "Respawn"
 [[review.categories.items]]
 id = "critter-after-death"
 title = "Respawns on the near shore after a death"
-description = "After a death (with lives to spare), a fresh critter respawns on the near shore, on solid footing, with the crossing timer reset — not mid-strait and not on the water."
-validation = { script = "validation/respawn/critter-after-death.mjs", outputs = [{ id = "respawn", name = "The critter respawning after a death", kind = "video" }] }
+description = "After a death (with lives to spare), a fresh critter respawns on the near shore, on solid footing, with the crossing timer reset — not mid-strait and not on the water. This holds whichever way the critter died: one inflicted on it (a vehicle sliding into it) and one it brought on itself (hopping off the median into open water) are both driven."
+validation = { script = "validation/respawn/critter-after-death.mjs", outputs = [{ id = "respawn", name = "The critter respawning after a crush and after a drowning", kind = "video" }] }
+[[review.categories.items]]
+id = "death-pause"
+title = "Every death pauses before the respawn"
+description = "A death holds the crossing for a brief pause of about one second — whatever caused it — before the fresh critter appears, and the critter is out of play for its duration. The snapshot reports the phase as dying throughout the pause."
+validation = { script = "validation/respawn/death-pause.mjs", outputs = [{ id = "pause", name = "The pause between a death and the respawn", kind = "video" }] }
 [[review.categories.items]]
 id = "critter-after-score"
 title = "Respawns on the near shore after a bay"

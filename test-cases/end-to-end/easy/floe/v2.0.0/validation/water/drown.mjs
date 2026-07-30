@@ -12,14 +12,20 @@
 // the clip then holds long enough to catch the splash and the fresh critter coming
 // back on the near shore.
 
-import { startCrossing, ROW_MEDIAN, WATER_BOTTOM } from "../_helpers.mjs";
+import {
+  actUntilDeath,
+  startCrossing,
+  ROW_MEDIAN,
+  WATER_BOTTOM,
+} from "../_helpers.mjs";
 
-// The column the critter hops in at, how long it is filmed standing safely on the
-// median first, and how long the clip keeps filming after the drowning — enough to
-// cover the death and the respawn that follows it. The lead-in is what makes the
-// hop read as a hop: without it the clip opens on the press itself, and a reviewer
-// never sees the solid tile the critter left.
+// The column the critter hops in at, the lives it starts with (so the loss reads as a
+// decrement), how long it is filmed standing safely on the median first, and how long
+// the clip keeps filming after the drowning — enough to cover the death and the respawn
+// that follows it. The lead-in is what makes the hop read as a hop: without it the clip
+// opens on the press itself, and a reviewer never sees the solid tile the critter left.
 const COL = 20;
+const LIVES = 3;
 const LEAD_TICKS = 60; // 0.5 s
 const TAIL_TICKS = 240; // 2 s
 
@@ -43,7 +49,7 @@ export default function item() {
     // itself would be a race against the death that hop causes.
     async arrange(api) {
       await startCrossing(api);
-      await api.call("setLives", 3);
+      await api.call("setLives", LIVES);
       await api.call("setLane", WATER_BOTTOM, { cols: [] }); // open water, no floe
       await api.call("placeCritter", COL, WATER_BOTTOM);
       footing = (await api.snapshot()).critter.footing;
@@ -55,14 +61,14 @@ export default function item() {
     async act(api) {
       await api.advance(LEAD_TICKS); // the critter safe on the median, floes drifting
       await api.call("press", "ArrowUp"); // off the median into the cleared lane
-      r = await api.until((s) => s.phase === "dying", { max: 120, poll: 2 }); // 1 s
+      r = await actUntilDeath(api, LIVES, { max: 120, poll: 2 }); // 1 s
       await api.advance(TAIL_TICKS);
     },
 
     async assert(api, check) {
       check.expectEq("footing over open water reads 'water'", footing, "water");
       check.expectOk("hopping onto open water drowns the critter", r.hit);
-      check.expectEq("a life is lost to drowning", r.snap.lives, 2);
+      check.expectEq("a life is lost to drowning", r.snap.lives, LIVES - 1);
     },
   };
 }

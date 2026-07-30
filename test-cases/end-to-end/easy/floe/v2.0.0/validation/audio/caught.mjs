@@ -5,12 +5,19 @@
 // the audio log must grow across it. Lives stay at the fresh-run default so the death
 // respawns rather than ending the run, isolating the caught cue.
 
-import { startCrossing, armAudio, audioCount, ICE_TOP } from "../_helpers.mjs";
+import {
+  actUntilDeath,
+  startCrossing,
+  armAudio,
+  audioCount,
+  ICE_TOP,
+} from "../_helpers.mjs";
 
 export default function item() {
   let before;
   let after;
   let caught;
+  let livesBefore;
 
   return {
     id: "audio.caught",
@@ -21,15 +28,13 @@ export default function item() {
       await api.call("setLane", row, { cols: [] }); // clear the ice so only the bear kills
       await api.call("placeCritter", 20, row);
       await api.call("setBear", 0, { col: 20, row }); // a bear on the critter's tile
+      livesBefore = (await api.snapshot()).lives; // the fresh-run default, read instantly
       await armAudio(api);
     },
 
     async act(api) {
       before = await audioCount(api);
-      const r = await api.until((s) => s.phase !== "crossing", {
-        max: 30,
-        poll: 1,
-      });
+      const r = await actUntilDeath(api, livesBefore, { max: 30 });
       after = await audioCount(api);
       caught = r.hit;
       await api.advance(30); // a short tail so the clip shows the catch
