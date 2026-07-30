@@ -5,6 +5,12 @@
 // parallelism the configuration bought. They also pin the ends the fold has to get right: an
 // agent still running counts up to the present rather than contributing nothing, and the
 // root's clock stops at `session_ended` even though the root never returns to a parent.
+//
+// And the distinction the sum turns on: a suspended agent is not a working one. A parent that
+// blocks on its children occupies that stretch without working through any of it, so the
+// wait is subtracted from its runtime and reported on its own — otherwise a delegating run
+// counts the same wall clock once per waiting ancestor and reports a sum far above the work
+// that happened.
 
 import { describe, expect, it } from "vitest";
 import type {
@@ -50,6 +56,24 @@ const spawn = (slot: string, depth: number) =>
     modelId: "vendor/big",
     depth,
   }) as GgTelemetryKind;
+
+// The pair of transitions that bound a suspension: gg emits `blocked` (with what it is
+// waiting for) as an agent frees its running slot, and `running` as it is granted one back.
+const blockedOn = (condition: string) =>
+  ({
+    type: "agent_status",
+    status: "blocked",
+    waitingOn: condition,
+  }) as GgTelemetryKind;
+
+const resumed = () =>
+  ({ type: "agent_status", status: "running" }) as GgTelemetryKind;
+
+const returned = () =>
+  ({ type: "agent_returned", summary: "ok" }) as GgTelemetryKind;
+
+const ended = () =>
+  ({ type: "session_ended", status: "completed" }) as GgTelemetryKind;
 
 // Fold a stream and read its clocks against a stated present.
 function runtimeOf(events: HarnessEvent[], nowSeconds: number): GgRuntime {
@@ -132,10 +156,111 @@ describe("a gg run's runtime", () => {
     expect(runtimeOf(events, 3600).agentMs).toBe(45_000);
   });
 
+  it("leaves out the stretch a parent spent blocked on its subagents", () => {
+    // The shape of every delegating run: the root fans two implementers out at 10s, frees
+    // its slot to wait for them, and resumes when they return at 70s. Its *span* is the
+    // whole 100s, but it worked through only 40 of them — the 60s in between belong to the
+    // children, which are counted in their own right. Summing spans would report 220s of
+    // agent time for 160s of work, and a deeper tree inflates further with every level.
+    const runtime = runtimeOf(
+      [
+        at(0, "root", { type: "session_started" } as GgTelemetryKind),
+        at(0, "root", spawn("Root", 0)),
+        at(10, "agent-0", spawn("Implementer", 1), "root"),
+        at(10, "agent-1", spawn("Implementer", 1), "root"),
+        at(10, "root", blockedOn("subagents `agent-0`, `agent-1`")),
+        at(70, "agent-0", returned(), "root"),
+        at(70, "agent-1", returned(), "root"),
+        at(70, "root", resumed()),
+        at(100, "root", ended()),
+      ],
+      100,
+    );
+    expect(runtime.wallMs).toBe(100_000);
+    // Root 40s of work (0→10 and 70→100) plus 60s each from the two implementers.
+    expect(runtime.agentMs).toBe(160_000);
+    expect(runtime.suspendedMs).toBe(60_000);
+    expect(runtime.agentCount).toBe(3);
+    expect(runtime.parallelism).toBeCloseTo(1.6, 5);
+  });
+
+  it("sums every wait an agent sat through, not just its last", () => {
+    // Two waits on the same agent — a run that waits on one issue, works, then waits on
+    // another. Keeping only the open interval would report the second wait alone.
+    const runtime = runtimeOf(
+      [
+        at(0, "root", { type: "session_started" } as GgTelemetryKind),
+        at(0, "root", spawn("Root", 0)),
+        at(10, "root", blockedOn("issue `AUTH-1`")),
+        at(20, "root", resumed()),
+        at(40, "root", blockedOn("issue `AUTH-2`")),
+        at(70, "root", resumed()),
+        at(80, "root", ended()),
+      ],
+      80,
+    );
+    expect(runtime.suspendedMs).toBe(10_000 + 30_000);
+    expect(runtime.agentMs).toBe(40_000);
+  });
+
+  it("counts a wait that has not resolved yet against the present", () => {
+    // A live run whose root is blocked right now: the wait has no closing transition, so it
+    // is measured to the present exactly as an unfinished agent's span is. Treating an open
+    // wait as zero would make a run stalled on a hung subagent read as fully active.
+    const runtime = runtimeOf(
+      [
+        at(0, "root", { type: "session_started" } as GgTelemetryKind),
+        at(0, "root", spawn("Root", 0)),
+        at(20, "agent-0", spawn("Implementer", 1), "root"),
+        at(20, "root", blockedOn("subagent `agent-0`")),
+      ],
+      90,
+    );
+    // Root: 20s of work before the block, 70s still waiting. The child works throughout.
+    expect(runtime.agentMs).toBe(20_000 + 70_000);
+    expect(runtime.suspendedMs).toBe(70_000);
+  });
+
+  it("stops a wait at the session's end, as it stops the clocks it bounds", () => {
+    // A run killed while its root waited. The root emits no resume, so the wait closes at
+    // `session_ended` — left open, it would keep growing against the present every second a
+    // reader had a finished run's page open.
+    const events = [
+      at(0, "root", { type: "session_started" } as GgTelemetryKind),
+      at(0, "root", spawn("Root", 0)),
+      at(20, "root", blockedOn("issue `AUTH-1`")),
+      at(50, "root", ended()),
+    ];
+    // Read an hour later: still 20s of work and a 30s wait.
+    const runtime = runtimeOf(events, 3600);
+    expect(runtime.agentMs).toBe(20_000);
+    expect(runtime.suspendedMs).toBe(30_000);
+  });
+
+  it("closes a wait an agent returned straight out of", () => {
+    // A subagent stopped while blocked reports its return without ever resuming, so the
+    // return is what closes the wait.
+    const runtime = runtimeOf(
+      [
+        at(0, "root", { type: "session_started" } as GgTelemetryKind),
+        at(0, "root", spawn("Root", 0)),
+        at(10, "agent-0", spawn("Reviewer", 1), "root"),
+        at(20, "agent-0", blockedOn("issue `AUTH-1`"), "root"),
+        at(50, "agent-0", returned(), "root"),
+        at(60, "root", ended()),
+      ],
+      60,
+    );
+    // The reviewer worked 10s of its 40s span; the root never blocked, so it works 60s.
+    expect(runtime.agentMs).toBe(60_000 + 10_000);
+    expect(runtime.suspendedMs).toBe(30_000);
+  });
+
   it("reads empty before any telemetry arrives", () => {
     const runtime = runtimeOf([], 0);
     expect(runtime.wallMs).toBeNull();
     expect(runtime.agentMs).toBe(0);
+    expect(runtime.suspendedMs).toBe(0);
     expect(runtime.parallelism).toBeNull();
   });
 });

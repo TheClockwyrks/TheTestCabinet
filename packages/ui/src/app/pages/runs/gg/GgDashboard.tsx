@@ -536,6 +536,10 @@ function ThroughputCard({
 // minutes of agent time per wall minute, and the gap between the figures is the parallelism
 // the configuration bought. The wall clock counts up live, so the card is a clock rather than
 // a snapshot of whenever the newest event happened to land.
+//
+// The sum is **active** time: an agent blocked on its children or on a board issue is not
+// working, so its wait is excluded and named separately rather than folded in — a delegating
+// run whose parents mostly wait would otherwise report several times the work it did.
 function RuntimeCard({
   runtime,
   timeoutSeconds,
@@ -546,15 +550,20 @@ function RuntimeCard({
   /** The bento span the card takes — see {@link TurnsCard}. */
   className: string | undefined;
 }) {
-  const { wallMs, agentMs, agentCount, parallelism } = runtime;
+  const { wallMs, agentMs, suspendedMs, agentCount, parallelism } = runtime;
   return (
     <div
       className={`${styles.card} ${className}`}
       title={
         parallelism != null
-          ? `${formatRuntime(agentMs)} of agent time in ${formatRuntime(
+          ? `${formatRuntime(agentMs)} of active agent time in ${formatRuntime(
               wallMs ?? 0,
-            )} of wall clock — ${parallelism.toFixed(1)} agents working at once on average`
+            )} of wall clock — ${parallelism.toFixed(1)} agents working at once on average` +
+            (suspendedMs > 0
+              ? `, plus ${formatRuntime(
+                  suspendedMs,
+                )} spent suspended waiting on subagents or issues`
+              : "")
           : undefined
       }
     >
@@ -566,10 +575,13 @@ function RuntimeCard({
         {wallMs == null ? "no telemetry yet" : "wall clock"}
       </span>
       {/* The sum reads as a second line rather than a second tile: it is the same clock
-          counted per agent, so it belongs under the figure it decomposes. */}
+          counted per agent, so it belongs under the figure it decomposes. "active" rather
+          than "total" because it is exactly that — the waiting is stated after it, on the
+          same line, so the two are read together instead of one standing for both. */}
       <span className={styles.metricUnit}>
-        total {formatRuntime(agentMs)} across {agentCount}{" "}
+        active {formatRuntime(agentMs)} across {agentCount}{" "}
         {agentCount === 1 ? "agent" : "agents"}
+        {suspendedMs > 0 && `, ${formatRuntime(suspendedMs)} waiting`}
       </span>
       <span className={styles.metricUnit}>
         {timeoutSeconds != null

@@ -41,12 +41,21 @@ identically down to the order of the cards) reads a run through these surfaces:
   **caching** (cached vs uncached input) and **reasoning** (reasoning vs non-reasoning
   output) splits shown as rings, an **overview of the agents** that ran, the enforced
   FSM process, and the configuration the run's [independent variable](/gg/overview/)
-  is, plus the two figures that read beside the status: the **turns** the session has
+  is, plus the figures that read beside the status: the **turns** the session has
   spent across every agent, and its **tokens / s** — everything the run generated over
   the time it spent inside its model calls, which is the average across every model it
   used (a multi-model run's card names each model's own rate on hover). The two counts
   say how much a run has done and spent; the rate is what says whether the wall-clock
-  behind them went into generating or into waiting. The agent overview
+  behind them went into generating or into waiting. Beside them the **runtime** states
+  the run's two clocks, because either alone misleads: the **wall clock** the run has
+  occupied (what the [timeout](/gg/execution-limits/) is measured against), and under it
+  every agent's **active** time summed — the gap between the two being the parallelism
+  the configuration bought. Active means *working*: an agent blocked waiting on its
+  [subagents](/gg/subagents/) or on a [board issue](/gg/project-management/) has freed
+  its running slot and is doing nothing, so its wait is left out of the sum and stated
+  after it (`active 1h 12m across 9 agents, 46m waiting`) rather than folded in — a
+  delegating run whose parents mostly wait would otherwise report a figure several times
+  the work it actually did, growing with every level of the tree. The agent overview
   is more than a count: each agent reads as a row carrying its **own turn count**, the
   **peak** its context window reached, its **share of the run's tokens**, and the
   **tools it used** — and each row is a link into that agent's files in the Instances

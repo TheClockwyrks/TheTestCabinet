@@ -134,6 +134,20 @@ export interface AgentNode {
   // subagents it suspended for). Cleared the moment it runs again, so it is only ever
   // set on an agent that is actually waiting.
   waitingOn?: string;
+  // How long the agent has spent SUSPENDED rather than working: its closed `blocked`
+  // intervals — each a wait on an issue or on the subagents it fanned out, freeing its
+  // running slot for the duration — summed in milliseconds. An agent that is blocked
+  // right now also carries `blockedSince`, the start of the interval that has not closed
+  // yet, so a live read-out can measure it against the present.
+  //
+  // This is what separates an agent's *span* from its *runtime*: a parent that fans four
+  // implementers out and waits an hour for them occupies that hour but works through none
+  // of it, so counting its span as runtime would count the same wall clock once per
+  // waiting ancestor (see `ggRuntime`).
+  suspendedMs: number;
+  // When the agent's still-open suspension began, while it is blocked; absent on an agent
+  // that is not waiting. Cleared as the interval closes onto `suspendedMs`.
+  blockedSince?: string;
   // The value the agent returned to its parent, once it returned.
   returnSummary?: string;
   // How the agent's worktree reconciled, once it did: merged back cleanly,
@@ -1139,6 +1153,7 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
         modelId: null,
         depth: 0,
         status: "running",
+        suspendedMs: 0,
       },
     ],
   ]);
@@ -1213,6 +1228,7 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
         modelId: null,
         depth: null,
         status: "running",
+        suspendedMs: 0,
       };
       agents.set(id, node);
     } else if (node.parentId == null && parentId != null && id !== ROOT_ID) {
@@ -1220,6 +1236,29 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
       node.parentId = parentId;
     }
     return node;
+  };
+
+  // Open an agent's suspension at `timestamp` — the `blocked` transition. A repeated block
+  // (a stream that restates the status, or one wait beginning while another is somehow
+  // recorded open) keeps the interval already open rather than restarting it, which would
+  // silently discard the waiting that came before.
+  const openSuspension = (node: AgentNode, timestamp: string) => {
+    if (node.blockedSince == null) node.blockedSince = timestamp;
+  };
+
+  // Close an agent's open suspension at `timestamp`, adding it to the agent's suspended
+  // total — its resume, its return, or (below) the session's end. A no-op on an agent that
+  // was not waiting, so every non-blocked transition can call it unconditionally. An
+  // unparseable timestamp leaves the interval open rather than adding a NaN to the total.
+  const closeSuspension = (node: AgentNode, timestamp: string) => {
+    if (node.blockedSince == null) return;
+    const from = Date.parse(node.blockedSince);
+    const to = Date.parse(timestamp);
+    if (!Number.isFinite(from) || !Number.isFinite(to)) return;
+    delete node.blockedSince;
+    // Floored at zero against a stream whose resume precedes its block (clock skew between
+    // the host and a container), which would otherwise subtract from the total.
+    node.suspendedMs += Math.max(to - from, 0);
   };
 
   events.forEach((event, index) => {
@@ -1323,6 +1362,13 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
         // leaving a stale "waiting on issue X" beside a live agent.
         if (gg.status === "blocked") node.waitingOn = gg.waitingOn;
         else delete node.waitingOn;
+        // The same transition bounds the agent's suspension: gg emits `blocked` as it frees
+        // its slot to wait and `running` as it is granted one back, so the pair is exactly
+        // the stretch the agent was not working (see `AgentNode.suspendedMs`). A terminal
+        // transition out of a block — an agent stopped while it waited — closes the
+        // interval there too, since it never resumed.
+        if (gg.status === "blocked") openSuspension(node, event.timestamp);
+        else closeSuspension(node, event.timestamp);
         // A terminal transition is this agent's clock stopping; a return to running (a
         // retried issue agent) starts it again, so the recorded end is dropped.
         if (gg.status === "done" || gg.status === "failed")
@@ -1337,9 +1383,12 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
         );
         node.returnSummary = gg.summary;
         // A return implies the agent's loop ended normally — and an agent that has
-        // returned is waiting for nothing.
+        // returned is waiting for nothing, so any suspension it was recorded in closes
+        // here (a return with no intervening `running` transition would otherwise leave
+        // the interval open and count the wait against the live clock forever).
         node.status = "done";
         delete node.waitingOn;
+        closeSuspension(node, event.timestamp);
         agentEnded.set(node.id, event.timestamp);
         break;
       }
@@ -1599,13 +1648,20 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
   // seeded "running" for the whole life of a finished run's read-out. Reconcile any
   // agent still in a non-terminal state (the root, or one a truncated stream stranded
   // mid-flight) to the session's outcome, so a concluded run never reads as live.
+  //
+  // A suspension still open at that point closes there for the same reason: the run is
+  // over, so an agent that was waiting when it ended waited until then and no longer —
+  // left open, the wait would keep growing against the present on a finished run's page.
   if (sessionEndStatus != null) {
     const terminal: GgAgentStatus =
       sessionEndStatus === "completed" ? "done" : "failed";
+    // Read off the closure-assigned `let` once, so the loop below narrows cleanly.
+    const endTimestamp: string | null = sessionEndTimestamp;
     for (const node of agents.values()) {
       if (node.status === "running" || node.status === "blocked") {
         node.status = terminal;
       }
+      if (endTimestamp != null) closeSuspension(node, endTimestamp);
     }
   }
 

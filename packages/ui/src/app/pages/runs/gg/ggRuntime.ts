@@ -8,11 +8,23 @@
 // bought. Stating only the wall clock hides that a run was concurrent; stating only the sum
 // makes a parallel run look like it took four times as long as it did.
 //
-// Both are derived from the envelope timestamps the fold already stamps (see
-// `AgentNode.startedAt`/`endedAt` and `DerivedGgState.firstTimestamp`), so they are
+// An agent's runtime is the time it spent **working**, which is not the same as the span it
+// occupied: an agent that fans a fan-out out and blocks on it frees its running slot and
+// waits (see gg/subagents), and so does one waiting on a board issue. Counting those waits
+// as runtime double-counts the wall clock — once for the children doing the work, and again
+// for every ancestor sitting in a wait above them — so a deep delegation tree reports a sum
+// far above the work that actually happened. The fold records each agent's suspensions
+// (`AgentNode.suspendedMs` / `blockedSince`, from gg's `blocked`→`running` transitions) and
+// they are subtracted here; the waiting is still reported, as {@link GgRuntime.suspendedMs},
+// because "three of four agents spent the hour waiting" is a finding about the
+// configuration, not a figure to hide.
+//
+// Everything is derived from the envelope timestamps the fold already stamps (see
+// `AgentNode.startedAt`/`endedAt` and `DerivedGgState.firstTimestamp`), so it is
 // available on the live monitor and on a finished run's gg tab alike — the same reduction of
 // the same stream. An agent with no recorded end is still running, so it counts up to the
-// clock the caller passes rather than contributing nothing.
+// clock the caller passes rather than contributing nothing — and so does a wait that has
+// not resolved yet.
 
 import { useEffect, useState } from "react";
 import type { AgentTreeNode } from "./useGgRunState";
@@ -25,14 +37,24 @@ export interface GgRuntime {
    * so a card reads empty rather than claiming a run of zero length.
    */
   wallMs: number | null;
-  /** Every agent's own runtime, summed. Exceeds {@link wallMs} wherever agents overlapped. */
+  /**
+   * Every agent's own runtime, summed — each agent's span **less the time it spent
+   * suspended** waiting on its subagents or on a board issue, which is time it did no work
+   * (see the module docs). Exceeds {@link wallMs} wherever agents genuinely overlapped.
+   */
   agentMs: number;
+  /**
+   * The counterpart {@link agentMs} excludes: every agent's suspended time, summed — how
+   * much of the run's agent-time went into waiting rather than working.
+   */
+  suspendedMs: number;
   /** How many agents contributed a runtime — the count the sum is spread over. */
   agentCount: number;
   /**
    * `agentMs / wallMs` — the run's average concurrency, so 1 is a strictly sequential run
-   * and 4 means four agents were working at once on average. Null without a wall span to
-   * divide by.
+   * and 4 means four agents were working at once on average. Suspended agents are not
+   * working, so a parent blocked on its children counts toward neither figure while it
+   * waits. Null without a wall span to divide by.
    */
   parallelism: number | null;
 }
@@ -40,6 +62,7 @@ export interface GgRuntime {
 export const EMPTY_GG_RUNTIME: GgRuntime = {
   wallMs: null,
   agentMs: 0,
+  suspendedMs: 0,
   agentCount: 0,
   parallelism: null,
 };
@@ -65,6 +88,7 @@ export function deriveGgRuntime(
   nowMs: number,
 ): GgRuntime {
   let agentMs = 0;
+  let suspendedMs = 0;
   let agentCount = 0;
 
   const walk = (node: AgentTreeNode) => {
@@ -74,7 +98,19 @@ export function deriveGgRuntime(
       // floor at zero guards a stream whose end somehow precedes its start (clock skew
       // between the host and a container), which would otherwise subtract from the sum.
       const endedAt = msOf(node.endedAt) ?? nowMs;
-      agentMs += Math.max(endedAt - startedAt, 0);
+      const spanMs = Math.max(endedAt - startedAt, 0);
+      // An agent still in a wait carries the start of it rather than a closed interval, so
+      // the open one is measured against the same end the span was — the present for a live
+      // agent, its own end for one the stream stopped mid-wait. Clamped to the span so a
+      // stream whose transitions straddle it can never report negative runtime.
+      const openSince = msOf(node.blockedSince);
+      const waitedMs = Math.min(
+        node.suspendedMs +
+          (openSince == null ? 0 : Math.max(endedAt - openSince, 0)),
+        spanMs,
+      );
+      agentMs += spanMs - waitedMs;
+      suspendedMs += waitedMs;
       agentCount += 1;
     }
     node.children.forEach(walk);
@@ -86,6 +122,7 @@ export function deriveGgRuntime(
   return {
     wallMs,
     agentMs,
+    suspendedMs,
     agentCount,
     parallelism: wallMs != null && wallMs > 0 ? agentMs / wallMs : null,
   };

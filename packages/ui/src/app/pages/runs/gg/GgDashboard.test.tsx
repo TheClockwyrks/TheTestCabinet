@@ -224,9 +224,10 @@ describe("the gg Dashboard", () => {
     expect(within(card).getByText("wall clock")).toBeInTheDocument();
     // And the sum beneath it: every event carries the run's start timestamp and neither
     // agent ended, so both agents count the full 90s — 3m 00s of agent time inside 1m 30s of
-    // wall clock, which is the whole reason both figures are shown.
+    // wall clock, which is the whole reason both figures are shown. Neither agent ever
+    // blocked, so all of it is active and the card states no waiting.
     expect(
-      within(card).getByText("total 3m 00s across 2 agents"),
+      within(card).getByText("active 3m 00s across 2 agents"),
     ).toBeInTheDocument();
     expect(within(card).getByText("limit 4h")).toBeInTheDocument();
     // The ratio between them is what the tooltip spells out, so "2.0 agents at once" is
